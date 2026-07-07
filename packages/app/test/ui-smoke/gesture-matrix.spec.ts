@@ -22,9 +22,10 @@
  *      pointer events into (or scroll) the home screen beneath.
  *   5. (touch) Rail flick home→launcher with a genuine CDP touch swipe must
  *      not ghost-launch the tile under the finger.
- *   6. (touch) A vertical pan inside `home-notification-list` scrolls the LIST
- *      — it must not flip the home↔launcher rail, scroll the home surface
- *      beneath, or ghost-tap the row under the finger.
+ *   6. (touch) A vertical pan over `home-notification-list` is contained to the
+ *      inbox (the list is `overscroll-y-contain`) — it must not flip the
+ *      home↔launcher rail, chain into the home column beneath, or ghost-tap the
+ *      row under the finger.
  *   7. (touch) Swiping an inline notification row sideways throws it away.
  *
  * Capture artifacts land in Playwright's `test-results` tree.
@@ -166,12 +167,12 @@ interface SeededNotification {
 }
 
 /**
- * Eight rows so the capped list (`max-h ≈ 312px`, ~4–5 rows) overflows and the
- * touch pan test below has real scroll travel. Priority + recency fix the
- * dashboard order exactly (urgent → high → normals newest-first); the two READ
- * rows are deliberately interleaved ABOVE unread ones ("Sync report" outranks
- * "Weekly digest" on recency) to prove read state never participates in the
- * sort. No row carries a deepLink, so a tap is exactly "mark read".
+ * Eight rows spanning the priority tiers. Priority + recency fix the dashboard
+ * order exactly (urgent → high → normals newest-first); the two READ rows are
+ * deliberately interleaved ABOVE unread ones ("Sync report" outranks "Weekly
+ * digest" on recency) to prove read state never participates in the sort. No
+ * row carries a deepLink, so a tap is exactly "mark read". (The pan-scroll test
+ * needs an overflowing list and seeds its own taller fixture below.)
  */
 function seedInboxNotifications(): SeededNotification[] {
   const base = Date.now();
@@ -213,6 +214,46 @@ const SEEDED_ORDER = [
   "Build passed",
   "Disk cleanup",
 ];
+
+/** Rows the pan-scroll test seeds — see {@link seedOverflowInboxNotifications}. */
+const OVERFLOW_ROWS = 24;
+
+/**
+ * A deliberately tall inbox for the pan-scroll test. The inline center fills the
+ * home column (flex-1, no fixed height cap), so on a tall phone viewport the
+ * 8-row fixture fits without overflow and there is nothing to scroll. Seed
+ * enough rows — one interrupt-tier so the rested shade arms its expand
+ * affordance, the rest sub-interrupt — that the EXPANDED list always exceeds the
+ * column and has real scroll travel to pan.
+ */
+function seedOverflowInboxNotifications(): SeededNotification[] {
+  const base = Date.now();
+  const rows: SeededNotification[] = [
+    {
+      id: "n-urgent",
+      title: "Payment failed",
+      body: "Payment failed — seeded by gesture-matrix",
+      category: "system",
+      priority: "urgent",
+      source: "ui-smoke",
+      createdAt: base - 10_000,
+      readAt: null,
+    },
+  ];
+  for (let i = 0; i < OVERFLOW_ROWS - 1; i += 1) {
+    rows.push({
+      id: `n-fill-${i}`,
+      title: `Notice ${i}`,
+      body: `Notice ${i} — seeded by gesture-matrix`,
+      category: "system",
+      priority: "normal",
+      source: "ui-smoke",
+      createdAt: base - 20_000 - i * 1_000,
+      readAt: null,
+    });
+  }
+  return rows;
+}
 
 /**
  * Serve the seeded inbox. Registered after `installDefaultAppRoutes` (the
@@ -276,6 +317,18 @@ async function rowTitleOrder(center: Locator): Promise<string[]> {
       throw new Error(`notification row with unseeded content: ${text}`);
     return match;
   });
+}
+
+/**
+ * Fan the rested shade open so every seeded row renders flat. The inbox is
+ * priority-triaged: at rest only interrupt-tier rows (high/urgent) show,
+ * Z-stacked by view group, so a mixed-priority seed collapses to a single
+ * visible row. Driving the sr-only expand toggle runs the same pull-to-expand
+ * transition an AT/keyboard user takes, fanning all rows out (one un-stacked
+ * `notification-row` per seeded item).
+ */
+async function expandNotificationShade(page: Page): Promise<void> {
+  await page.getByTestId("notifications-expand-toggle").dispatchEvent("click");
 }
 
 test("dashboard notification center: row tap marks read in place, hover-X dismiss removes, context menu dismisses, no clear-all", async ({
@@ -464,7 +517,7 @@ test.describe("real touch (hasTouch project)", () => {
     await evidenceShot(page, "touch-rail-flick-back-home");
   });
 
-  test("vertical pan inside the notification list scrolls the list — no rail flip, no home scroll, no ghost row-tap", async ({
+  test("vertical pan over the notification list is contained — no rail flip, no home scroll, no ghost row-tap", async ({
     page,
     browserName,
   }, testInfo) => {
@@ -475,56 +528,57 @@ test.describe("real touch (hasTouch project)", () => {
       "CDP Input.dispatchTouchEvent is Chromium-only; non-Chromium touch runs on the real-device capture lanes",
     );
 
-    await installSeededInboxRoutes(page, seedInboxNotifications());
+    await installSeededInboxRoutes(page, seedOverflowInboxNotifications());
     await openHome(page);
 
-    // The inbox is inline on the home column.
+    // Fan the shade out and seed a tall inbox so the home-screen scroller
+    // genuinely overflows — the column CAN scroll, which makes the containment
+    // assertion below meaningful rather than vacuous.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
+    await expandNotificationShade(page);
     const list = page.getByTestId("home-notification-list");
-    await expect(list.getByTestId("notification-row")).toHaveCount(8, {
-      timeout: 15_000,
-    });
-    // The 8 seeded rows must overflow the height cap — without real scroll
-    // travel the "list scrolled" assertion below would be unreachable.
-    const overflows = await list.evaluate(
+    await expect(list.getByTestId("notification-row")).toHaveCount(
+      OVERFLOW_ROWS,
+      { timeout: 15_000 },
+    );
+    const homeScreen = page.getByTestId("home-screen");
+    const overflows = await homeScreen.evaluate(
       (el) => el.scrollHeight > el.clientHeight + 8,
     );
-    expect(overflows, "seeded list must overflow its height cap").toBe(true);
+    expect(
+      overflows,
+      "seeded home column must overflow so containment is not vacuous",
+    ).toBe(true);
+    const homeScrollBefore = await homeScreen.evaluate((el) => el.scrollTop);
 
-    const homeScrollBefore = await page
-      .getByTestId("home-screen")
-      .evaluate((el) => el.scrollTop);
-    const badgeBefore = await center
-      .getByTestId("notifications-unread-badge")
-      .textContent();
+    // Genuine touch pan UP over the notification list (a slight horizontal
+    // wobble, like a real finger). The list is `overscroll-y-contain`, so the pan
+    // is CONTAINED to the notification area: it must not be hijacked into the
+    // horizontal home↔launcher rail, must not chain into the (scrollable) home
+    // column beneath, and its touch release must not ghost-tap the row under the
+    // finger.
+    await cdpTouchDrag(page, list, 4, -160, 10);
+    await page.waitForTimeout(400);
 
-    // Genuine touch pan UP inside the list (a slight horizontal wobble, like a
-    // real finger) → the list consumes it as a scroll.
-    await cdpTouchDrag(page, list, 4, -140, 10);
-    await expect
-      .poll(async () => list.evaluate((el) => el.scrollTop), {
-        timeout: 10_000,
-        message: "the notification list must scroll internally",
-      })
-      .toBeGreaterThan(0);
-
-    // The pan stayed in the list: the rail did not flip, the home surface
-    // beneath did not scroll, and the scroll's touch release did not ghost-tap
-    // the row under the finger (row count + unread badge unchanged).
+    // Rail did not flip; the home column beneath did not scroll (the pan was
+    // contained); every seeded row is still present and none expanded its option
+    // strip (a tap would expand `notification-row-options`); the chat overlay
+    // stayed closed.
     await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
       "data-page",
       "home",
     );
-    const homeScrollAfter = await page
-      .getByTestId("home-screen")
-      .evaluate((el) => el.scrollTop);
+    const homeScrollAfter = await homeScreen.evaluate((el) => el.scrollTop);
     expect(homeScrollAfter).toBe(homeScrollBefore);
-    await expect(list.getByTestId("notification-row")).toHaveCount(8);
-    await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
-      badgeBefore ?? "",
+    await expect(list.getByTestId("notification-row")).toHaveCount(
+      OVERFLOW_ROWS,
     );
-    await evidenceShot(page, "touch-notification-list-scroll-contained");
+    await expect(center.getByTestId("notification-row-options")).toHaveCount(0);
+    await expect(
+      page.getByTestId("continuous-chat-overlay"),
+    ).not.toHaveAttribute("data-open", "true");
+    await evidenceShot(page, "touch-notification-list-pan-contained");
   });
 
   test("swipe an inline row sideways throws it away", async ({
@@ -543,6 +597,9 @@ test.describe("real touch (hasTouch project)", () => {
     // The inbox is inline on the home column — no shade to open.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
+    // Fan the priority-triaged shade out so the sub-interrupt "Backup finished"
+    // row is present to swipe (rested it stays stacked behind the top card).
+    await expandNotificationShade(page);
     await expect(center.getByTestId("notification-row")).toHaveCount(8, {
       timeout: 15_000,
     });

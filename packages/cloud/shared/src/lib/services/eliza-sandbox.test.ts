@@ -2480,8 +2480,12 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       expect(create).toHaveBeenCalledTimes(1);
       expect(stop).not.toHaveBeenCalled();
       expect(markErrorSpy).not.toHaveBeenCalled();
-      // The dead chain is dropped so the next resume boots clean.
-      expect(pruneSpy).toHaveBeenCalledWith(AGENT, 0);
+      // A 401 is an AUTH failure — RECOVERABLE (#15263), not a permanently-lost
+      // snapshot. It degrades to a fresh boot so the agent never bricks, but the
+      // backup chain is PRESERVED so a later token-corrected resume can restore
+      // it. Pruning here would be silent, permanent data loss (#15274), so the
+      // chain-nuking `pruneBackups(agentId, 0)` must NOT fire on this path.
+      expect(pruneSpy).not.toHaveBeenCalledWith(AGENT, 0);
       const logged = errorLogSpy.mock.calls.map((c) => String(c[0])).join("\n");
       expect(logged).toContain("Unrecoverable snapshot, booting fresh");
     } finally {
@@ -2760,6 +2764,66 @@ describe("isUnrecoverableSnapshotError (permanent-vs-transient classification)",
     expect(isUnrecoverableSnapshotError("AEAD decrypt failed")).toBe(false);
     expect(isUnrecoverableSnapshotError(null)).toBe(false);
     expect(isUnrecoverableSnapshotError(undefined)).toBe(false);
+  });
+});
+
+// Snapshot PRUNE-gating classification (`isPermanentlyLostSnapshot`, #15274).
+// A strict SUBSET of `isUnrecoverableSnapshotError`: an auth 401/403 is
+// unrecoverable for THIS provision (boot fresh) but the snapshot is NOT
+// permanently lost — a token-corrected resume (#15263) can still restore it —
+// so it must NEVER gate a `pruneBackups(agentId, 0)`. Only crypto-loss and
+// HTTP 404/410 are permanently lost and safe to prune.
+describe("isPermanentlyLostSnapshot (prune-vs-preserve gating)", () => {
+  test("classifies crypto-loss shapes (KeyNotFoundError / AeadError) as permanently lost", async () => {
+    const { isPermanentlyLostSnapshot } = await import("./eliza-sandbox.ts?actual");
+    const keyGone = await realKeyRotatedAwayError();
+    expect(keyGone).toBeInstanceOf(KeyNotFoundError);
+    expect(isPermanentlyLostSnapshot(keyGone)).toBe(true);
+    const corrupt = await realAeadDecryptError();
+    expect(corrupt.name).toBe("AeadError");
+    expect(isPermanentlyLostSnapshot(corrupt)).toBe(true);
+  });
+
+  test("classifies HTTP 404/410 (snapshot gone) as permanently lost — safe to prune", async () => {
+    const { isPermanentlyLostSnapshot } = await import("./eliza-sandbox.ts?actual");
+    expect(isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 404 Not Found"))).toBe(
+      true,
+    );
+    expect(isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 410 Gone"))).toBe(true);
+    expect(isPermanentlyLostSnapshot(new Error("Snapshot fetch failed: HTTP 410"))).toBe(true);
+  });
+
+  test("does NOT classify auth 401/403 as permanently lost — recoverable, must PRESERVE the chain (#15274)", async () => {
+    const { isPermanentlyLostSnapshot, isUnrecoverableSnapshotError } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    // The exact HQ 14308 incident string. It IS unrecoverable-for-this-provision
+    // (degrade to fresh boot) but NOT permanently lost: PR #15263 shows the 401
+    // was a healthy container missing the agent token, which a corrected resume
+    // restores. Pruning here = silent permanent data loss.
+    const auth401 = new Error('State restore failed: HTTP 401 {"error":"Unauthorized"}');
+    expect(isUnrecoverableSnapshotError(auth401)).toBe(true);
+    expect(isPermanentlyLostSnapshot(auth401)).toBe(false);
+    const auth403 = new Error("State restore failed: HTTP 403 ");
+    expect(isUnrecoverableSnapshotError(auth403)).toBe(true);
+    expect(isPermanentlyLostSnapshot(auth403)).toBe(false);
+    expect(isPermanentlyLostSnapshot(new Error("Snapshot fetch failed: HTTP 401"))).toBe(false);
+    expect(isPermanentlyLostSnapshot(new Error("Snapshot fetch failed: HTTP 403"))).toBe(false);
+  });
+
+  test("does NOT classify transient / non-matching errors as permanently lost", async () => {
+    const { isPermanentlyLostSnapshot } = await import("./eliza-sandbox.ts?actual");
+    // Transient HTTP and network/DB errors were never unrecoverable to begin
+    // with; they must never prune.
+    expect(
+      isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 500 Internal Server Error")),
+    ).toBe(false);
+    expect(isPermanentlyLostSnapshot(new Error("State restore failed: HTTP 503 "))).toBe(false);
+    expect(isPermanentlyLostSnapshot(new Error("connection terminated unexpectedly"))).toBe(false);
+    expect(isPermanentlyLostSnapshot(new TypeError("fetch failed"))).toBe(false);
+    expect(isPermanentlyLostSnapshot("AEAD decrypt failed")).toBe(false);
+    expect(isPermanentlyLostSnapshot(null)).toBe(false);
+    expect(isPermanentlyLostSnapshot(undefined)).toBe(false);
   });
 });
 

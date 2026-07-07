@@ -2,6 +2,7 @@
  * Renders the continuous chat overlay that keeps the composer and transcript
  * available across views.
  */
+import { logger } from "@elizaos/logger";
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
@@ -1012,14 +1013,24 @@ export function ContinuousChatOverlay({
   const conversationLoading = controller.conversationLoading ?? false;
 
   // Copy a message (reveal-row Copy). Stable identity so the memoized row isn't
-  // re-rendered every parent tick.
+  // re-rendered every parent tick. Copy is fire-and-forget UX, but the promise
+  // must still be OBSERVED: an unhandled writeText rejection (permission-denied
+  // environments) surfaces as a pageerror, which the ui-smoke diagnostics gate
+  // rightly fails.
   const handleCopyMessage = React.useCallback((text: string) => {
-    void copyTextToClipboard(text);
+    copyTextToClipboard(text).catch((err: unknown) => {
+      // error-policy:J7 best-effort copy — the failure is logged, never thrown
+      // into the gesture handler.
+      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+    });
   }, []);
   // Press-and-hold copy adds a light haptic on top of the copy (the only
   // extraction affordance on touch, where there is no hover row).
   const handleLongPressCopy = React.useCallback((text: string) => {
-    void copyTextToClipboard(text);
+    copyTextToClipboard(text).catch((err: unknown) => {
+      // error-policy:J7 best-effort copy — logged, never thrown (see above).
+      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+    });
     detentHaptic();
   }, []);
 
@@ -5181,9 +5192,10 @@ export function ContinuousChatOverlay({
               >
                 {/* Message search (#14279): an in-sheet panel that covers the
                     transcript while open. Selecting a hit closes it and jumps
-                    (handleSearchJump). Only reachable via the header control,
-                    which itself only exists at half+; gate on sheetOpen so the
-                    panel never intrudes on the resting composer. */}
+                    (handleSearchJump). Reachable via the composer "+" menu
+                    ("Search chat…"), which only exists while the sheet is open;
+                    gate on sheetOpen so the panel never intrudes on the resting
+                    composer. */}
                 {searchOpen && sheetOpen ? (
                   <div
                     data-testid="chat-message-search"

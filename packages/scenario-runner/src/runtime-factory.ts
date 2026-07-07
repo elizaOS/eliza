@@ -499,6 +499,10 @@ export async function createScenarioRuntime(
       SKILLS_SYNC_CATALOG_ON_START:
         process.env.SKILLS_SYNC_CATALOG_ON_START ?? "false",
       ...(process.env.SKILLS_DIR ? { SKILLS_DIR: process.env.SKILLS_DIR } : {}),
+      // Scenarios assert the raw action-callback text; the character-voice
+      // rewrite (services/message) would spend an unfixtured TEXT_SMALL call and
+      // restyle that text, so keep it off in the deterministic harness.
+      ACTION_CALLBACK_VOICE_REWRITE: "false",
     },
   });
 

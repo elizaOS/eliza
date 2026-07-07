@@ -18,6 +18,7 @@ export type TriggerKind = "text" | "workflow";
 
 import { parsePositiveInteger } from "@elizaos/shared";
 import { CronExpressionParser } from "cron-parser";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDurationMs } from "../../utils/format";
 
@@ -183,7 +184,7 @@ export function loadUserTemplates(): TriggerTemplate[] {
 
 export function saveUserTemplates(templates: TriggerTemplate[]): void {
   try {
-    localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+    shellLocalStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
   } catch {
     // error-policy:J4 localStorage full/unavailable — templates are a local
     // convenience cache; the trigger itself is persisted server-side.

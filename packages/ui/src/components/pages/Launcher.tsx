@@ -18,6 +18,8 @@
  */
 
 import { memo, useCallback } from "react";
+import { useClickSuppression } from "../../gestures/useClickSuppression";
+import { usePointerPressAndHold } from "../../gestures/usePointerPressAndHold";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import { cn } from "../../lib/utils";
 import { emitViewInteraction } from "../../view-telemetry";
@@ -64,6 +66,19 @@ function viewKindBadge(entry: ViewEntry): {
 // tiles whose props actually changed, not the whole page.
 const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
   const badge = viewKindBadge(entry);
+  // A long stationary press must NOT ghost-launch on release: the browser
+  // synthesizes a compat click from that same press, and a bare onClick would
+  // launch whatever tile the finger held (the gesture-matrix "no ghost-launch"
+  // contract). The launcher is read-only — a hold has no action of its own —
+  // so the hold only ARMS click suppression and the release is inert. A tap
+  // (release before the 450ms hold) clears the timer and launches normally;
+  // travel past the slop cancels the hold so scroll-drags keep their own
+  // semantics. autoDisarm:false because the synthesized click can land a task
+  // after the hold fires (touch); consume-on-click still disarms immediately.
+  const suppression = useClickSuppression({ autoDisarm: false });
+  const hold = usePointerPressAndHold<HTMLButtonElement>({
+    onHold: suppression.arm,
+  });
   return (
     <div
       className="group relative flex flex-col items-center gap-1.5 select-none"
@@ -73,6 +88,11 @@ const IconTile = memo(function IconTile({ entry, onLaunch }: IconTileProps) {
         <Button
           variant="ghost"
           aria-label={entry.label}
+          onPointerDown={hold.onPointerDown}
+          onPointerMove={hold.onPointerMove}
+          onPointerUp={hold.onPointerUp}
+          onPointerCancel={hold.onPointerCancel}
+          onClickCapture={suppression.onClickCapture}
           onClick={() => onLaunch(entry)}
           className={cn(
             // ViewTileImage renders this surface as an app icon, not as a

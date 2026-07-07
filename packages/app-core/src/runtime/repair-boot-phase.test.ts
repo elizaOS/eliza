@@ -1,6 +1,6 @@
 /**
  * Unit coverage for the post-ready boot tail phase split in `eliza.ts`:
- * `getDeferAppRoutesEnabled` (the ELIZA_DEFER_APP_ROUTES === "1" truth table) and
+ * `getDeferAppRoutesEnabled` (deferred-by-default; explicit falsy tokens opt out) and
  * `runPostReadyBootTail`, which runs the post-ready-safe boot steps — TTS, app
  * routes, runtime hooks, sensitive-request adapters, credential bridge, trigger
  * bridge, connector catalog, voice warmup — in declared order. Tests drive
@@ -54,25 +54,37 @@ function makeSteps(): { steps: PostReadyBootSteps; order: string[] } {
 }
 
 describe("getDeferAppRoutesEnabled (parser truth table)", () => {
-  it("returns false for undefined / empty / 0 / false / true; true only for '1'", () => {
-    expect(getDeferAppRoutesEnabled({})).toBe(false);
-    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "" })).toBe(
-      false,
-    );
-    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "0" })).toBe(
-      false,
-    );
-    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "false" })).toBe(
-      false,
-    );
-    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "true" })).toBe(
-      false,
-    );
+  it("defers by default; only explicit falsy tokens opt back into the inline tail", () => {
+    // Deferred is the default: unset / empty / truthy values all defer.
+    expect(getDeferAppRoutesEnabled({})).toBe(true);
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "" })).toBe(true);
     expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "1" })).toBe(
       true,
     );
     expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "  1  " })).toBe(
       true,
+    );
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "true" })).toBe(
+      true,
+    );
+    // Explicit opt-out tokens await the tail inline before ready.
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "0" })).toBe(
+      false,
+    );
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: " 0 " })).toBe(
+      false,
+    );
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "false" })).toBe(
+      false,
+    );
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "FALSE" })).toBe(
+      false,
+    );
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "no" })).toBe(
+      false,
+    );
+    expect(getDeferAppRoutesEnabled({ ELIZA_DEFER_APP_ROUTES: "off" })).toBe(
+      false,
     );
   });
 });

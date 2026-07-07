@@ -91,7 +91,8 @@ function isPortraitScreenOrientation(): boolean {
   }
 
   const width = typeof window.innerWidth === "number" ? window.innerWidth : 0;
-  const height = typeof window.innerHeight === "number" ? window.innerHeight : 0;
+  const height =
+    typeof window.innerHeight === "number" ? window.innerHeight : 0;
   if (width > 0 && height > 0) return height >= width;
   return true;
 }

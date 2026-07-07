@@ -74,7 +74,7 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 5 | Long-press conversation item → context menu (450 ms) | chat-conversation-item | `usePressAndHold.ts` (spread by `chat-conversation-item.tsx`) | L2 `chat-conversation-item.test.tsx`, `gestures.test.ts` |
 | 6 | Push-to-talk hold (composer + overlay + ChatSurface mic) | composer + overlay + ChatSurface mic | `usePushToTalk.ts` (pointer-capture hold) | L2 `chat-composer.test.tsx`, `ChatSurface.test.tsx`, `usePushToTalk.test.tsx` |
 | 7 | Tap-outside collapse; drag-vs-tap slop; scrim click-through | overlay | `ContinuousChatOverlay.tsx` | L3 `gesture-matrix.spec.ts` |
-| 8 | Home↔launcher pager swipe, nested-pager arbitration (#12179) | pager | `useHorizontalPager.ts`, `HomeLauncherSurface.tsx` | L1 `useHorizontalPager.test.ts`; L3 `gesture-matrix.spec.ts` + `run-home-screen-e2e.mjs` (video) + `HomeLauncherSurface.test.tsx`; L4 Android |
+| 8 | Home↔launcher pager swipe, nested-pager arbitration (#12179) | pager | `useHorizontalPager.ts`, `HomeLauncherSurface.tsx`, `state/rail-gesture-store.ts` | L1 `useHorizontalPager.test.ts`; L3 `gesture-matrix.spec.ts` + `run-home-screen-e2e.mjs` (video) + `HomeLauncherSurface.test.tsx`; L4 Android |
 | 9 | Topic group flick collapse/expand | TopicGroup | `TopicGroup.tsx` | L3 `run-chatux-gesture-e2e.mjs` (video) |
 | 10 | Send/stop/edit/delete/retry; streaming render; typing phases | chat thread | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` (video) |
 | 11 | Attachments: add/paste/remove outbound; open/lightbox inbound | composer + thread | _not a gesture (see note)_ | L2 `MessageAttachments.test.tsx` |

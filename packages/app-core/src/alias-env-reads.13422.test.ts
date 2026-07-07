@@ -105,10 +105,14 @@ describe("agent-vault-id state dir (ELIZA_STATE_DIR + ELIZA_NAMESPACE)", () => {
   it("derives the canonical state dir from a branded MILADY_STATE_DIR without the mirror", () => {
     process.env.MILADY_STATE_DIR = "/var/milady/state";
 
-    expect(resolveCanonicalStateDir()).toBe("/var/milady/state");
+    // resolveCanonicalStateDir path.resolve()s the dir, so on Windows the POSIX
+    // literal canonicalizes to a drive-anchored path (D:\var\milady\state).
+    // Assert against the same resolution so the check is platform-portable.
+    const expected = path.resolve("/var/milady/state");
+    expect(resolveCanonicalStateDir()).toBe(expected);
     // The vault id is a deterministic hash of that resolved dir — proves the
     // branded value actually flowed into the keychain namespace.
-    expect(deriveAgentVaultId()).toBe(deriveAgentVaultId("/var/milady/state"));
+    expect(deriveAgentVaultId()).toBe(deriveAgentVaultId(expected));
     // Security property: the read must not synthesize the ELIZA_ mirror.
     expect(process.env.ELIZA_STATE_DIR).toBeUndefined();
   });
@@ -117,7 +121,7 @@ describe("agent-vault-id state dir (ELIZA_STATE_DIR + ELIZA_NAMESPACE)", () => {
     process.env.ELIZA_STATE_DIR = "/var/eliza/state";
     process.env.MILADY_STATE_DIR = "/var/milady/state";
 
-    expect(resolveCanonicalStateDir()).toBe("/var/eliza/state");
+    expect(resolveCanonicalStateDir()).toBe(path.resolve("/var/eliza/state"));
   });
 
   it("derives the state dir from a branded MILADY_NAMESPACE", () => {

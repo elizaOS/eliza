@@ -132,12 +132,12 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
     "Relationships is the entity/relationship knowledge-graph viewer; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
   "plugins/plugin-screenshare/src/index.ts":
     "Screenshare is registered by runtime capability loading, not the app boot side-effect loader.",
-  "plugins/plugin-scheduling/src/plugin.ts":
-    "Scheduling's lifeops-live-test view registers through the agent runtime plugin, not the app boot side-effect loader.",
-  "plugins/plugin-elizacloud/src/index.ts":
-    "Eliza Cloud's view registers through the agent runtime plugin, not the app boot side-effect loader.",
   "plugins/plugin-todos/src/index.ts":
     "Todos is a decomposed personal-assistant domain view; it is discoverable through the View Manager but not yet a boot-loaded renderer module.",
+  "plugins/plugin-elizacloud/src/index.ts":
+    "Cloud is the Eliza Cloud account view; it is discoverable through the View Manager but not registered by the app boot side-effect loader (no elizaos.appRegister marker, not imported in main.tsx).",
+  "plugins/plugin-scheduling/src/plugin.ts":
+    "LifeOps Live Test is a developer-only QA validation view gated behind Developer Mode; the route is reachable for the live-test workflow but it is not a boot-loaded renderer module.",
 };
 
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {

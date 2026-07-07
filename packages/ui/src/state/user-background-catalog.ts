@@ -23,6 +23,7 @@
  * for the undo stack. So a data-URL upload simply isn't saved to the catalog.
  */
 
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { BackgroundCatalogEntry } from "./ui-preferences";
 
 const USER_BACKGROUND_CATALOG_KEY = "eliza:ui-background-user-catalog";
@@ -87,7 +88,7 @@ export function loadUserBackgroundCatalog(): BackgroundCatalogEntry[] {
 
 function saveUserBackgroundCatalog(entries: BackgroundCatalogEntry[]): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       USER_BACKGROUND_CATALOG_KEY,
       JSON.stringify(entries.slice(0, MAX_USER_CATALOG_ENTRIES)),
     );

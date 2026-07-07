@@ -196,10 +196,12 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     interaction: "Home↔launcher pager swipe, nested-pager arbitration",
     // HomeScreen hosts the widget scroll (including the pinned notification
     // center's capped list) but registers no gesture of its own — the pager
-    // hook and the rail surface are the handler sites.
+    // hook, the rail surface, and the rail-promotion signal store the pager
+    // arms at pointerdown are the handler sites.
     sites: [
       S("hooks/useHorizontalPager.ts"),
       S("components/shell/HomeLauncherSurface.tsx"),
+      S("state/rail-gesture-store.ts"),
     ],
     tests: [
       S("hooks/useHorizontalPager.test.ts"),
@@ -312,6 +314,7 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/gestures/usePressAndHold.ts",
   "packages/ui/src/hooks/useHorizontalPager.ts",
   "packages/ui/src/hooks/usePushToTalk.ts",
+  "packages/ui/src/state/rail-gesture-store.ts",
 ];
 
 describe("chat gesture coverage gate", () => {

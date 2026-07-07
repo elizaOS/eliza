@@ -6,6 +6,7 @@
   "scripts": {
     "build": "vite build",
     "build:watch": "vite build --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "cli": "bun run src/cli.ts",
     "emulator:cli": "bun run src/cli.ts"
   },
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.50.1",
+    "@types/webxr": "^0.5.0",
     "@types/ws": "^8.5.10",
     "typescript": "^6.0.3",
     "vite": "^8.0.13"

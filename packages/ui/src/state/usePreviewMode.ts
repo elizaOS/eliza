@@ -3,6 +3,7 @@
  * Always opt-in; mirrors useDeveloperMode apart from its default.
  */
 import { useSyncExternalStore } from "react";
+import { shellLocalStorage } from "../surface-realm-channel";
 
 /**
  * Preview Mode state — when on, the shell renders apps, widgets, nav tabs, and
@@ -63,7 +64,7 @@ if (typeof window !== "undefined") {
 function writeStorage(enabled: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, enabled ? ENABLED : DISABLED);
+    shellLocalStorage.setItem(STORAGE_KEY, enabled ? ENABLED : DISABLED);
   } catch {
     // localStorage unavailable (private mode, quota, etc.) — fall through.
   }

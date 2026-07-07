@@ -25,6 +25,7 @@ import {
 } from "../i18n";
 import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import {
@@ -127,7 +128,7 @@ export function loadHomeTimeWidgetHidden(): boolean {
 
 export function saveHomeTimeWidgetHidden(hidden: boolean): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       HOME_TIME_WIDGET_HIDDEN_STORAGE_KEY,
       hidden ? "1" : "0",
     );
@@ -136,7 +137,10 @@ export function saveHomeTimeWidgetHidden(hidden: boolean): void {
 
 export function saveUiThemeMode(mode: UiThemeMode): void {
   tryLocalStorage(() => {
-    localStorage.setItem(UI_THEME_MODE_STORAGE_KEY, normalizeUiThemeMode(mode));
+    shellLocalStorage.setItem(
+      UI_THEME_MODE_STORAGE_KEY,
+      normalizeUiThemeMode(mode),
+    );
   }, undefined);
 }
 const THEME_SWITCHING_ATTRIBUTE = "data-theme-switching";
@@ -173,8 +177,8 @@ export function loadUiTheme(): UiTheme {
 export function saveUiTheme(theme: UiTheme): void {
   tryLocalStorage(() => {
     const normalized = normalizeUiTheme(theme);
-    localStorage.setItem(UI_THEME_STORAGE_KEY, normalized);
-    localStorage.setItem(LEGACY_UI_THEME_STORAGE_KEY, normalized);
+    shellLocalStorage.setItem(UI_THEME_STORAGE_KEY, normalized);
+    shellLocalStorage.setItem(LEGACY_UI_THEME_STORAGE_KEY, normalized);
   }, undefined);
 }
 
@@ -253,7 +257,7 @@ export function loadBackgroundConfig(): BackgroundConfig {
 
 export function saveBackgroundConfig(config: BackgroundConfig): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       UI_BACKGROUND_STORAGE_KEY,
       JSON.stringify(normalizeBackgroundConfig(config)),
     );
@@ -305,7 +309,7 @@ export function loadBackgroundHistory(): BackgroundConfig[] {
 
 export function saveBackgroundHistory(history: BackgroundConfig[]): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       UI_BACKGROUND_HISTORY_STORAGE_KEY,
       JSON.stringify(normalizeBackgroundHistory(history)),
     );
@@ -326,7 +330,7 @@ export function loadBackgroundRedo(): BackgroundConfig[] {
 
 export function saveBackgroundRedo(redo: BackgroundConfig[]): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       UI_BACKGROUND_REDO_STORAGE_KEY,
       JSON.stringify(normalizeBackgroundHistory(redo)),
     );
@@ -401,7 +405,7 @@ export function loadUiAccentId(): string {
 /** Persist the chosen accent preset id (normalized). */
 export function saveUiAccentId(id: string): void {
   tryLocalStorage(() => {
-    localStorage.setItem(UI_ACCENT_STORAGE_KEY, normalizeAccentId(id));
+    shellLocalStorage.setItem(UI_ACCENT_STORAGE_KEY, normalizeAccentId(id));
   }, undefined);
 }
 
@@ -539,9 +543,9 @@ export function savePersistedFirstRunComplete(complete: boolean): void {
 
   try {
     if (complete) {
-      localStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+      shellLocalStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
     } else {
-      localStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
+      shellLocalStorage.removeItem(FIRST_RUN_COMPLETE_STORAGE_KEY);
     }
   } catch (err) {
     logger.warn(
@@ -581,7 +585,7 @@ export async function hydratePersistedFirstRunCompleteFromNativeStore(): Promise
       key: FIRST_RUN_COMPLETE_STORAGE_KEY,
     });
     if (value === "1") {
-      localStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
+      shellLocalStorage.setItem(FIRST_RUN_COMPLETE_STORAGE_KEY, "1");
     }
   } catch {
     // error-policy:J4 native store unavailable — localStorage remains
@@ -604,9 +608,9 @@ export function loadPersistedActivePackId(): string | null {
 export function savePersistedActivePackId(packId: string | null): void {
   tryLocalStorage(() => {
     if (packId) {
-      localStorage.setItem(ACTIVE_PACK_STORAGE_KEY, packId);
+      shellLocalStorage.setItem(ACTIVE_PACK_STORAGE_KEY, packId);
     } else {
-      localStorage.removeItem(ACTIVE_PACK_STORAGE_KEY);
+      shellLocalStorage.removeItem(ACTIVE_PACK_STORAGE_KEY);
     }
   }, undefined);
 }
@@ -621,9 +625,9 @@ export function loadPersistedActivePackUrl(): string | null {
 export function savePersistedActivePackUrl(packUrl: string | null): void {
   tryLocalStorage(() => {
     if (packUrl) {
-      localStorage.setItem(ACTIVE_PACK_URL_STORAGE_KEY, packUrl);
+      shellLocalStorage.setItem(ACTIVE_PACK_URL_STORAGE_KEY, packUrl);
     } else {
-      localStorage.removeItem(ACTIVE_PACK_URL_STORAGE_KEY);
+      shellLocalStorage.removeItem(ACTIVE_PACK_URL_STORAGE_KEY);
     }
   }, undefined);
 }
@@ -639,7 +643,10 @@ export function loadUiLanguage(): UiLanguage {
 
 export function saveUiLanguage(language: UiLanguage): void {
   tryLocalStorage(() => {
-    localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, normalizeLanguage(language));
+    shellLocalStorage.setItem(
+      UI_LANGUAGE_STORAGE_KEY,
+      normalizeLanguage(language),
+    );
   }, undefined);
 }
 
@@ -666,7 +673,10 @@ export function loadUiShellMode(): UiShellMode {
 
 export function saveUiShellMode(mode: UiShellMode): void {
   tryLocalStorage(() => {
-    localStorage.setItem(UI_SHELL_MODE_STORAGE_KEY, normalizeUiShellMode(mode));
+    shellLocalStorage.setItem(
+      UI_SHELL_MODE_STORAGE_KEY,
+      normalizeUiShellMode(mode),
+    );
   }, undefined);
 }
 
@@ -708,7 +718,7 @@ export function loadLastNativeTab(): Tab {
 
 export function saveLastNativeTab(tab: Tab): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       LAST_NATIVE_TAB_STORAGE_KEY,
       normalizeLastNativeTab(tab),
     );
@@ -731,13 +741,16 @@ export function loadAvatarIndex(): number {
 
 export function saveAvatarIndex(index: number): void {
   tryLocalStorage(() => {
-    localStorage.setItem(AVATAR_INDEX_KEY, String(normalizeAvatarIndex(index)));
+    shellLocalStorage.setItem(
+      AVATAR_INDEX_KEY,
+      String(normalizeAvatarIndex(index)),
+    );
   }, undefined);
 }
 
 export function clearAvatarIndex(): void {
   tryLocalStorage(() => {
-    localStorage.removeItem(AVATAR_INDEX_KEY);
+    shellLocalStorage.removeItem(AVATAR_INDEX_KEY);
   }, undefined);
 }
 
@@ -783,7 +796,7 @@ export function loadFavoriteApps(): string[] {
 
 export function saveFavoriteApps(apps: string[]): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       FAVORITE_APPS_KEY,
       JSON.stringify(sanitizeFavoriteApps(apps)),
     );
@@ -915,7 +928,7 @@ export function loadRecentApps(): string[] {
 
 export function saveRecentApps(apps: string[]): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       RECENT_APPS_KEY,
       JSON.stringify(apps.slice(0, RECENT_APPS_MAX)),
     );
@@ -934,7 +947,7 @@ export function loadWalletEnabled(): boolean {
 
 export function saveWalletEnabled(value: boolean): void {
   tryLocalStorage(() => {
-    localStorage.setItem(WALLET_ENABLED_KEY, String(value));
+    shellLocalStorage.setItem(WALLET_ENABLED_KEY, String(value));
   }, undefined);
 }
 
@@ -959,7 +972,7 @@ export function loadContinuousChatMode(): ContinuousChatModeValue {
 
 export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
   tryLocalStorage(() => {
-    localStorage.setItem(CONTINUOUS_CHAT_MODE_KEY, mode);
+    shellLocalStorage.setItem(CONTINUOUS_CHAT_MODE_KEY, mode);
   }, undefined);
 }
 
@@ -981,7 +994,7 @@ export function loadWakeWordEnabled(): boolean {
 
 export function saveWakeWordEnabled(value: boolean): void {
   tryLocalStorage(() => {
-    localStorage.setItem(WAKE_WORD_ENABLED_KEY, String(value));
+    shellLocalStorage.setItem(WAKE_WORD_ENABLED_KEY, String(value));
   }, undefined);
 }
 
@@ -1027,7 +1040,7 @@ export function loadVadAutoStop(): VadAutoStopValue {
 
 export function saveVadAutoStop(value: VadAutoStopValue): void {
   tryLocalStorage(() => {
-    localStorage.setItem(VAD_AUTO_STOP_KEY, JSON.stringify(value));
+    shellLocalStorage.setItem(VAD_AUTO_STOP_KEY, JSON.stringify(value));
   }, undefined);
 }
 
@@ -1043,7 +1056,7 @@ export function loadBrowserEnabled(): boolean {
 
 export function saveBrowserEnabled(value: boolean): void {
   tryLocalStorage(() => {
-    localStorage.setItem(BROWSER_ENABLED_KEY, String(value));
+    shellLocalStorage.setItem(BROWSER_ENABLED_KEY, String(value));
   }, undefined);
 }
 
@@ -1059,7 +1072,7 @@ export function loadComputerUseEnabled(): boolean {
 
 export function saveComputerUseEnabled(value: boolean): void {
   tryLocalStorage(() => {
-    localStorage.setItem(COMPUTER_USE_ENABLED_KEY, String(value));
+    shellLocalStorage.setItem(COMPUTER_USE_ENABLED_KEY, String(value));
   }, undefined);
 }
 
@@ -1083,13 +1096,13 @@ export function loadChatVoiceMuted(): boolean {
 
 export function saveChatAvatarVisible(value: boolean): void {
   tryLocalStorage(() => {
-    localStorage.setItem(CHAT_AVATAR_VISIBLE_KEY, String(value));
+    shellLocalStorage.setItem(CHAT_AVATAR_VISIBLE_KEY, String(value));
   }, undefined);
 }
 
 export function saveChatVoiceMuted(value: boolean): void {
   tryLocalStorage(() => {
-    localStorage.setItem(CHAT_VOICE_MUTED_KEY, String(value));
+    shellLocalStorage.setItem(CHAT_VOICE_MUTED_KEY, String(value));
   }, undefined);
 }
 
@@ -1106,10 +1119,10 @@ export function loadActiveConversationId(): string | null {
 export function saveActiveConversationId(value: string | null): void {
   tryLocalStorage(() => {
     if (value?.trim()) {
-      localStorage.setItem(ACTIVE_CONVERSATION_ID_KEY, value);
+      shellLocalStorage.setItem(ACTIVE_CONVERSATION_ID_KEY, value);
       return;
     }
-    localStorage.removeItem(ACTIVE_CONVERSATION_ID_KEY);
+    shellLocalStorage.removeItem(ACTIVE_CONVERSATION_ID_KEY);
   }, undefined);
 }
 
@@ -1123,7 +1136,7 @@ export function loadCompanionMessageCutoffTs(): number {
 
 export function saveCompanionMessageCutoffTs(value: number): void {
   tryLocalStorage(() => {
-    localStorage.setItem(
+    shellLocalStorage.setItem(
       COMPANION_MESSAGE_CUTOFF_TS_KEY,
       String(Math.max(0, Math.trunc(value))),
     );
@@ -1307,7 +1320,10 @@ export function savePersistedActiveServer(server: PersistedActiveServer): void {
   // savePersistedFirstRunComplete: still no-throw + no-op when unavailable, but
   // surface the failure instead of swallowing it.
   try {
-    localStorage.setItem(ACTIVE_SERVER_STORAGE_KEY, JSON.stringify(server));
+    shellLocalStorage.setItem(
+      ACTIVE_SERVER_STORAGE_KEY,
+      JSON.stringify(server),
+    );
   } catch (err) {
     // error-policy:J4 documented above — no-throw persistence write with the
     // failure surfaced at warn instead of swallowed.
@@ -1319,7 +1335,7 @@ export function savePersistedActiveServer(server: PersistedActiveServer): void {
 
 export function clearPersistedActiveServer(): void {
   tryLocalStorage(() => {
-    localStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
+    shellLocalStorage.removeItem(ACTIVE_SERVER_STORAGE_KEY);
   }, undefined);
 }
 

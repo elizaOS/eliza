@@ -14,6 +14,7 @@ import { isAospShellEnabled } from "../../navigation";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
+import { shellHistory } from "../../surface-realm-channel";
 import { Launcher } from "./Launcher";
 import { curateLauncherPages } from "./launcher-curation";
 
@@ -54,7 +55,7 @@ export const LauncherSurface = React.memo(
         if (window.location.protocol === "file:") {
           window.location.hash = path;
         } else {
-          window.history.pushState(null, "", path);
+          shellHistory.pushState(null, "", path);
           window.dispatchEvent(new PopStateEvent("popstate"));
         }
         if (entry.id === "chat") {

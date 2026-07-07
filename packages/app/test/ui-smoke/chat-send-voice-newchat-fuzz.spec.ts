@@ -189,19 +189,31 @@ async function installConversationStore(
     });
   });
 
-  await page.route("**/api/conversations/*/messages", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    const url = new URL(route.request().url());
-    const id = url.pathname.split("/").slice(-2, -1)[0] ?? "";
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ messages: store.messages[id] ?? [] }),
-    });
-  });
+  // Anchored so it matches `/messages` and `/messages?before=…` but never the
+  // `/messages/stream` route registered above (which owns delivery).
+  await page.route(
+    /\/api\/conversations\/[^/]+\/messages(\?.*)?$/,
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      const url = new URL(route.request().url());
+      const id = url.pathname.split("/").slice(-2, -1)[0] ?? "";
+      // Infinite-scroll load-older paging: a `before=<ts>` request asks for
+      // history older than the oldest shown turn. The seed has none, so answer
+      // empty (the client stops paging) rather than 404ing into the
+      // page-diagnostics guard.
+      const messages = url.searchParams.has("before")
+        ? []
+        : (store.messages[id] ?? []);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ messages }),
+      });
+    },
+  );
 
   await page.route("**/api/conversations/*/greeting**", async (route) => {
     const url = new URL(route.request().url());

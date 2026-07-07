@@ -26,6 +26,7 @@ import {
   subscribeAppShellPages,
 } from "../../app-shell-registry";
 import { cn } from "../../lib/utils";
+import { shellHistory } from "../../surface-realm-channel";
 import { Button } from "../ui/button";
 
 /** A single tab within a section strip. */
@@ -132,7 +133,7 @@ export function navigateToSectionPath(path: string): void {
   if (window.location.protocol === "file:") {
     window.location.hash = path;
   } else {
-    window.history.pushState(null, "", path);
+    shellHistory.pushState(null, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
 }

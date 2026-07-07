@@ -30,9 +30,15 @@
 			"@elizaos/tui/*": ["../../packages/tui/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
-			"@elizaos/import-conversations": ["../../packages/import-conversations/src/index.ts"],
-			"@elizaos/import-conversations/*": ["../../packages/import-conversations/src/*"],
-			"@elizaos/import-conversations/browser": ["../../packages/import-conversations/src/browser.ts"]
+			"@elizaos/import-conversations": [
+				"../../packages/import-conversations/src/index.ts"
+			],
+			"@elizaos/import-conversations/*": [
+				"../../packages/import-conversations/src/*"
+			],
+			"@elizaos/import-conversations/browser": [
+				"../../packages/import-conversations/src/browser.ts"
+			]
 		}
 	},
 	"include": ["src/**/*"],

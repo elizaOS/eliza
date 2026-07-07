@@ -395,12 +395,21 @@ export function computeManagedAgentDbEnv(
     : { DATABASE_URL: dbUri };
 }
 
-// HTTP statuses that make a snapshot fetch/restore deterministically fail for
-// THIS snapshot: 401/403 (auth — a dead/rotated container or rotated token
-// rejects every retry identically), 404 (endpoint or snapshot gone), 410
-// (gone). Everything else — 5xx, 408/429, network/timeout — can heal on a
-// retry and must NOT appear here.
-const PERMANENT_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
+// HTTP statuses that make a snapshot fetch/restore fail for THIS snapshot in a
+// way the current provision cannot retry away, so it must degrade to a fresh
+// boot instead of bricking the agent (#15210): 401/403 (auth — a dead/rotated
+// container or an unauthenticated/rotating token rejects every retry
+// identically), 404 (endpoint or snapshot gone), 410 (gone). Everything else —
+// 5xx, 408/429, network/timeout — can heal on a retry and must NOT appear here.
+const UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
+// The subset that is also PERMANENTLY LOST — the snapshot itself is gone and no
+// later resume can restore it, so the dead backup chain should be pruned: 404
+// (endpoint or snapshot gone) and 410 (gone). 401/403 are auth failures, which
+// are RECOVERABLE (missing/rotating token — see #15263, where the incident 401
+// was a healthy container whose restore push simply omitted the agent token),
+// so they must degrade-but-PRESERVE the chain: never prune a snapshot a
+// token-corrected resume could still restore (#15274).
+const PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES = new Set([404, 410]);
 // Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
 // this file's snapshot HTTP throw sites classify — an unrelated error that
 // merely embeds one of these strings does not.
@@ -425,23 +434,53 @@ const SNAPSHOT_HTTP_ERROR_SHAPE =
  *   runs bundled, where a cross-realm `instanceof` on a dependency's error
  *   class is unreliable.
  * - UNRETRIEVABLE / UNRESTORABLE: the snapshot fetch or restore push was
- *   rejected with a permanently-failing HTTP status (see
- *   `PERMANENT_SNAPSHOT_HTTP_STATUSES`). The incident shape (HQ 14308, agent
+ *   rejected with an unrecoverable-for-this-provision HTTP status (see
+ *   `UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES`). The incident shape (HQ 14308, agent
  *   23766030): `State restore failed: HTTP 401 {"error":"Unauthorized"}` from a
- *   bridge URL pointing at a dead/rotated container — deterministic on every
- *   attempt, so retrying only re-failed the provision into status=error.
+ *   bridge URL — deterministic on every attempt of THIS provision, so retrying
+ *   only re-failed it into status=error.
  *
  * Deliberately NARROW so it never swallows a recoverable failure: HTTP 5xx /
  * 408 / 429, network/timeout errors, a transient KMS error (the Steward
  * backend surfaces HTTP 5xx as a base `KmsError`, not `KeyNotFoundError`), and
  * DB/IO errors are NOT matched and still propagate — degrading on one of those
  * would silently discard state that a retry would have restored.
+ *
+ * NOTE: "unrecoverable for this provision" (boot fresh) is a strictly WIDER
+ * classification than "permanently lost" (also prune the chain). A 401/403 is
+ * unrecoverable here but the snapshot is NOT permanently lost — an auth failure
+ * heals once the token is attached/rotated correctly (#15263), so
+ * `isPermanentlyLostSnapshot` must gate any pruning, never this predicate.
  */
 export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
   const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
-  return match !== null && PERMANENT_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
+  return match !== null && UNRECOVERABLE_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
+}
+
+/**
+ * True only when the snapshot is PERMANENTLY LOST — no later resume, on any
+ * container with any token, can ever restore it — so the dead backup chain is
+ * safe to prune. A strict SUBSET of `isUnrecoverableSnapshotError`:
+ *
+ * - The crypto shapes (`AeadError` / `KeyNotFoundError`): the bytes can never
+ *   be decrypted again (corruption, or the ephemeral `memory` KMS key that
+ *   encrypted them is gone), so the chain is genuinely dead.
+ * - HTTP 404 (endpoint or snapshot gone) / 410 (gone): the snapshot resource
+ *   itself no longer exists to fetch.
+ *
+ * Excludes 401/403: those are AUTH failures (missing/rotating token), which are
+ * RECOVERABLE — pruning on one would silently, permanently discard a snapshot a
+ * token-corrected resume could still restore (#15274 regression class). On an
+ * auth failure we still degrade to a fresh boot (never brick), but we PRESERVE
+ * the chain and let the next authenticated resume restore it.
+ */
+export function isPermanentlyLostSnapshot(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
+  return match !== null && PERMANENTLY_LOST_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
 
 export class ElizaSandboxService {
@@ -5621,21 +5660,37 @@ export class ElizaSandboxService {
 
   /**
    * The single degrade path for a snapshot `isUnrecoverableSnapshotError`
-   * classified as permanently lost (#15210): log it loudly, then drop the dead
-   * backup chain so the next resume boots clean instead of re-hitting the same
-   * unrecoverable snapshot on every provision. Never throws — the caller
-   * continues to a fresh boot, which must not be derailed by cleanup.
+   * cannot restore on THIS provision (#15210): log it loudly, then boot fresh
+   * instead of bricking the agent. Never throws — the caller continues to a
+   * fresh boot, which must not be derailed by cleanup.
+   *
+   * Pruning the backup chain is gated on `isPermanentlyLostSnapshot` (#15274):
+   * only drop it when the snapshot can NEVER be restored (crypto corruption /
+   * gone-key, or HTTP 404/410). For a RECOVERABLE auth failure (401/403) we
+   * still boot fresh but PRESERVE the chain, so a later token-corrected resume
+   * (#15263) can restore it — pruning a recoverable snapshot on a transient 401
+   * is silent, permanent data loss (`pruneBackups(agentId, 0)` deletes the
+   * whole chain and there is no undo).
    */
   private async degradeUnrecoverableSnapshot(
     agentId: string,
     backupId: string | undefined,
     error: unknown,
   ): Promise<void> {
+    const permanentlyLost = isPermanentlyLostSnapshot(error);
     logger.error("[agent-sandbox] Unrecoverable snapshot, booting fresh", {
       agentId,
       backupId,
+      permanentlyLost,
+      // A recoverable auth failure keeps the chain for the next authenticated
+      // resume; a permanent loss drops it so the next resume boots clean.
+      backupChain: permanentlyLost ? "pruned" : "preserved",
       error: error instanceof Error ? error.message : String(error),
     });
+    // Preserve the chain on a recoverable failure (auth 401/403): a
+    // token-corrected resume can still restore it, so pruning here would be
+    // silent, permanent data loss (#15274).
+    if (!permanentlyLost) return;
     // error-policy:J6 best-effort — a failed prune only means we warn + degrade
     // again next boot, never that we fail to boot fresh, so it must not throw
     // out of the provision.

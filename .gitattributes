@@ -1,1 +1,5 @@
-*.patch whitespace=-blank-at-eol
+*.patch -text whitespace=-blank-at-eol
+# Patch bytes are hashed (patches/CHECKSUMS.sha256) and applied verbatim by bun,
+# so they must stay byte-identical across platforms — never let a Windows
+# checkout (autocrlf) rewrite them to CRLF.
+patches/CHECKSUMS.sha256 -text

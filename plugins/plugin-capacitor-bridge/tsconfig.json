@@ -110,6 +110,10 @@
 			"@elizaos/plugin-discord/service": [
 				"../../plugins/plugin-discord/service.ts"
 			],
+			"@elizaos/plugin-meetings": [
+				"../../plugins/plugin-meetings/src/index.ts"
+			],
+			"@elizaos/plugin-meetings/*": ["../../plugins/plugin-meetings/src/*"],
 			"@elizaos/plugin-elizacloud/host-routes": [
 				"../../plugins/plugin-elizacloud/src/host-routes.ts"
 			],

@@ -24,6 +24,7 @@ import {
 import { useRafCoalescer } from "../../gestures";
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { useAppSelector } from "../../state";
+import { shellLocalStorage } from "../../surface-realm-channel";
 // Direct sub-path import for WidgetHost to avoid the widgets/index.ts ↔
 // WidgetHost.tsx chunk-level cycle. The barrel still works fine for
 // resolveWidgetsForSlot — only WidgetHost participates in the cycle.
@@ -101,7 +102,7 @@ export function TasksEventsPanel({
   const commitWidgetsWidth = useCallback((next: number) => {
     setWidgetsWidth(next);
     try {
-      window.localStorage.setItem(WIDGETS_WIDTH_KEY, String(next));
+      shellLocalStorage.setItem(WIDGETS_WIDTH_KEY, String(next));
     } catch {
       // error-policy:J6 best-effort persistence — width still applies for
       // this session; private-mode storage may reject writes

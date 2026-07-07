@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 export const ADVANCED_TOGGLE_STORAGE_KEY = "eliza:settings-advanced";
 
@@ -28,10 +29,7 @@ export function readPersistedAdvancedFlag(): boolean {
 export function writePersistedAdvancedFlag(enabled: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
-      ADVANCED_TOGGLE_STORAGE_KEY,
-      enabled ? "1" : "0",
-    );
+    shellLocalStorage.setItem(ADVANCED_TOGGLE_STORAGE_KEY, enabled ? "1" : "0");
   } catch {
     // error-policy:J6 localStorage may be unavailable (e.g. iframe with
     // denied storage) — the in-memory listener cascade still works.

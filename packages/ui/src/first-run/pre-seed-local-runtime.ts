@@ -16,6 +16,7 @@
  */
 
 import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
+import { shellLocalStorage } from "../surface-realm-channel";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
@@ -60,7 +61,9 @@ function writeLocalAgentActiveServer(): void {
     apiBase: ANDROID_LOCAL_AGENT_IPC_BASE,
   };
   try {
-    window.localStorage.setItem(
+    // Reserved shell key (`elizaos:`) — through the privileged channel so the
+    // raw-global guard admits it while a view scope is active (#13452).
+    shellLocalStorage.setItem(
       ACTIVE_SERVER_STORAGE_KEY,
       JSON.stringify(payload),
     );

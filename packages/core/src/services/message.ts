@@ -8190,6 +8190,12 @@ export function wrapSingleTurnVisibleCallback(
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
+	// The character-voice rewrite spends a TEXT_SMALL call per action callback and
+	// restyles the delivered text. Deterministic harnesses (the scenario runner)
+	// assert the raw action-callback contract and strict-fixture every model call,
+	// so they opt out via ACTION_CALLBACK_VOICE_REWRITE=false; production turns
+	// leave it on by default.
+	if (!actionCallbackVoiceRewriteEnabled(fullRuntime)) return callback;
 	const voiceActionReply = async (
 		response: Content,
 		actionName?: string,
@@ -8287,6 +8293,15 @@ function resolveCallbackActionName(
 		return actions.find((candidate) => candidate.trim().length > 0)?.trim();
 	}
 	return undefined;
+}
+
+function actionCallbackVoiceRewriteEnabled(runtime: IAgentRuntime): boolean {
+	if (typeof runtime.getSetting !== "function") return true;
+	const raw = runtime.getSetting("ACTION_CALLBACK_VOICE_REWRITE");
+	if (raw === undefined || raw === null) return true;
+	const normalized = String(raw).trim();
+	if (!normalized) return true;
+	return parseBooleanFromText(normalized);
 }
 
 function shouldRewriteActionCallback(

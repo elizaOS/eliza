@@ -196,8 +196,8 @@ describe("desktop local restore shares one runtime-mode RPC", () => {
 
   function rpcCallCount(rpcMethod: string): number {
     return bridgeMock.invokeDesktopBridgeRequestWithTimeout.mock.calls.filter(
-      (call) => (call[0] as BridgeRpcOptions | undefined)?.rpcMethod ===
-        rpcMethod,
+      (call) =>
+        (call[0] as BridgeRpcOptions | undefined)?.rpcMethod === rpcMethod,
     ).length;
   }
   const modeCalls = () => rpcCallCount("desktopGetRuntimeMode");

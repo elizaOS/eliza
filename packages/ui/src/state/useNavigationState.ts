@@ -15,6 +15,7 @@ import {
   useState,
 } from "react";
 import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
+import { shellHistory } from "../surface-realm-channel";
 import {
   loadLastNativeTab,
   type ShellView,
@@ -81,7 +82,7 @@ export function useNavigationState(deps: NavigationStateDeps) {
         if (shouldUseHashNavigation()) {
           window.location.hash = path;
         } else {
-          window.history.pushState(null, "", pathWithCurrentShellMode(path));
+          shellHistory.pushState(null, "", pathWithCurrentShellMode(path));
         }
       } catch {
         // non-fatal: browser history update fails in restricted environments

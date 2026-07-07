@@ -11,6 +11,7 @@
 import { ArrowRight, Bot, MessageSquare, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { shellLocalStorage } from "../../../surface-realm-channel";
 import { DiscordIcon } from "../icons";
 import { BrandCard, Button } from "../primitives";
 
@@ -82,12 +83,12 @@ export function SocialConnectionHint({
 
   const handleDismissDiscord = () => {
     setState((prev) => ({ ...prev, discord: true }));
-    localStorage.setItem(STORAGE_KEY_DISCORD, "true");
+    shellLocalStorage.setItem(STORAGE_KEY_DISCORD, "true");
   };
 
   const handleDismissTelegram = () => {
     setState((prev) => ({ ...prev, telegram: true }));
-    localStorage.setItem(STORAGE_KEY_TELEGRAM, "true");
+    shellLocalStorage.setItem(STORAGE_KEY_TELEGRAM, "true");
   };
 
   // Don't show hint if:

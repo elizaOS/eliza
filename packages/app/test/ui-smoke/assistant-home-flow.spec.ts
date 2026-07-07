@@ -303,13 +303,26 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
     await route.fallback();
   });
   await page.route(
-    "**/api/conversations/assistant-home-conversation/messages",
+    // Match the base list AND its `?before=<cursor>` pagination (the infinite
+    // upward-scroll load, #13532) — the plain `**/messages` glob never matched a
+    // query string, so the cursor fetch 404'd. Anchored so it does NOT swallow
+    // the `/messages/stream` sub-route registered below.
+    /\/api\/conversations\/assistant-home-conversation\/messages(?:\?|$)/,
     async (route) => {
-      if (route.request().method() === "GET") {
-        await fulfillJson(route, { messages });
+      if (route.request().method() !== "GET") {
+        await route.fallback();
         return;
       }
-      await route.fallback();
+      // A `before` cursor asks for older history; this fixture conversation has
+      // none, so return an empty page with `hasMore:false` to stop the scroll
+      // from refetching the same cursor.
+      const hasBeforeCursor = new URL(
+        route.request().url(),
+      ).searchParams.has("before");
+      await fulfillJson(route, {
+        messages: hasBeforeCursor ? [] : messages,
+        hasMore: false,
+      });
     },
   );
   await page.route(
@@ -495,6 +508,15 @@ async function openReadyChat(page: Page, targetPath = "/"): Promise<void> {
 async function seedAssistantFlowStorage(page: Page): Promise<void> {
   await seedAppStorage(page, {
     "eliza:mobile-runtime-mode": "local",
+    // Mark the post-login permission soft-ask as already shown
+    // (PERMISSION_PRIMING_STORAGE_KEY in
+    // packages/ui/src/components/permissions/permission-priming.ts). On desktop
+    // the priming set is non-empty, so PermissionPrimingOverlay otherwise opens
+    // a modal "Set up Eliza" dialog over the ready workspace that makes the
+    // launcher/wallet buttons inert — this flow exercises views + wallet, not
+    // priming (which has its own e2e), so pre-dismiss it like the other
+    // onboarding gates seeded here.
+    "eliza:permissions-primed": "1",
   });
 }
 
@@ -790,10 +812,16 @@ test.describe("assistant home app flow", () => {
     await screenshot(page, "04-chat-pill-suppressed");
 
     await openAppPath(page, "/views");
-    await expect(launcherTile(page, "settings")).toBeVisible({
+    const settingsLauncherTile = launcherTile(page, "settings");
+    await expect(settingsLauncherTile).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByRole("button", { name: /Settings/i })).toBeVisible();
+    // The tile's launch control is the inner accessible button (aria-label is
+    // the view label) rendered by the launcher IconTile — scope to the tile so
+    // this asserts the Settings tile itself, not any other "settings" button.
+    await expect(
+      settingsLauncherTile.getByRole("button", { name: /Settings/i }),
+    ).toBeVisible();
     await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
     await screenshot(page, "05-views-with-pill");
 
@@ -957,9 +985,12 @@ test.describe("assistant home app flow", () => {
       pointerId: 1,
       pointerType: "mouse",
     });
-    // Holding past the push-to-talk threshold (200ms) begins capture.
+    // Holding past the push-to-talk threshold (200ms) begins capture. The held
+    // voice control is labelled "release to insert" (ContinuousChatOverlay) —
+    // push-to-talk dictates into the composer draft and does NOT auto-send, so
+    // the label is "insert", not "send".
     const releaseButton = page.getByRole("button", {
-      name: /release to send/i,
+      name: /release to insert/i,
     });
     await expect(releaseButton).toBeVisible({ timeout: 5_000 });
     const releaseHandle = await releaseButton.elementHandle();

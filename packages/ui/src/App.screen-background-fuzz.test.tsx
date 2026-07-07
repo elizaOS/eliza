@@ -416,6 +416,7 @@ vi.mock("three", () => {
 });
 
 import { App } from "./App";
+import { shellHistory } from "./surface-realm-channel";
 
 // ── The full builtin tab universe (mirrors navigation/index.ts BuiltinTab). ──
 // Each entry: the tab id + the route path it activates.
@@ -625,7 +626,7 @@ describe("App screen-background fuzz — color invariant across view switching",
   ): Promise<void> {
     await act(async () => {
       appState.tab = tab;
-      window.history.pushState(null, "", path);
+      shellHistory.pushState(null, "", path);
       window.dispatchEvent(new PopStateEvent("popstate"));
       rerender(<App />);
     });
@@ -871,7 +872,7 @@ describe("App view-surface mutation isolation — rogue view cannot leak global 
   ): Promise<void> {
     await act(async () => {
       appState.tab = tab;
-      window.history.pushState(null, "", path);
+      shellHistory.pushState(null, "", path);
       window.dispatchEvent(new PopStateEvent("popstate"));
       rerender(<App />);
     });

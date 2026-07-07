@@ -322,35 +322,65 @@ export class PresenceSignalBridgeService extends Service {
 
   private readonly recentFingerprints = new Map<string, number>();
 
+  /**
+   * Passive presence/activity capture is a diagnostic side-channel for wake
+   * detection — it shares the MESSAGE_RECEIVED/SENT/REACTION event fan-out with
+   * real message handling and the scheduled-task reply-completion handlers
+   * (runtime.emitEvent runs every handler under one Promise.all, so a throw here
+   * rejects the whole turn). Entity/relationship resolution can legitimately
+   * fail — a not-yet-registered KnowledgeGraphService, an unresolved handle, a
+   * malformed sender id — none of which may take down the turn. Report the
+   * failure observably and continue.
+   */
+  private async runPassiveCapture(
+    label: string,
+    capture: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await capture();
+    } catch (error) {
+      // error-policy:J7 passive presence/activity telemetry must not kill the event loop
+      this.runtime.reportError("presence_signal_bridge", error, { label });
+    }
+  }
+
   private readonly messageReceivedHandler = async (
     payload: MessagePayload,
   ): Promise<void> => {
-    await this.captureActivityFromMessage(EventType.MESSAGE_RECEIVED, payload);
+    await this.runPassiveCapture("message_received", () =>
+      this.captureActivityFromMessage(EventType.MESSAGE_RECEIVED, payload),
+    );
   };
 
   private readonly messageSentHandler = async (
     payload: MessagePayload,
   ): Promise<void> => {
-    await this.captureActivityFromMessage(EventType.MESSAGE_SENT, payload);
+    await this.runPassiveCapture("message_sent", () =>
+      this.captureActivityFromMessage(EventType.MESSAGE_SENT, payload),
+    );
   };
 
   private readonly reactionReceivedHandler = async (
     payload: MessagePayload,
   ): Promise<void> => {
-    if (isRecord(payload.message)) {
-      await this.captureActivityFromMessage(
-        EventType.REACTION_RECEIVED,
-        payload,
-      );
-      return;
-    }
-    await this.captureActivityFromReactionMetadata(payload);
+    await this.runPassiveCapture("reaction_received", async () => {
+      if (isRecord(payload.message)) {
+        await this.captureActivityFromMessage(
+          EventType.REACTION_RECEIVED,
+          payload,
+        );
+        return;
+      }
+      await this.captureActivityFromReactionMetadata(payload);
+    });
   };
 
   private readonly viewSwitchedHandler = async (
     payload: ViewSwitchedPayload,
   ): Promise<void> => {
-    await this.captureActivityFromViewSwitch(payload);
+    await this.runPassiveCapture("view_switched", () =>
+      this.captureActivityFromViewSwitch(payload),
+    );
   };
 
   private readonly actionStartedHandler = async (

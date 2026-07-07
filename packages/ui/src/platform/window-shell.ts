@@ -3,6 +3,7 @@
  * resolves the pathname/target tab for a popped-out surface.
  */
 import { pathForTab } from "../navigation";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 import type { HistoryLike } from "./types";
 
 export type DetachedSurfaceTab =
@@ -168,6 +169,9 @@ export function syncDetachedShellLocation(
 
   const nextUrl = new URL(href);
   nextUrl.pathname = resolveDetachedShellPathname(route);
-  history.replaceState(null, "", nextUrl.toString());
+  // Privileged: detached-shell boot rewrites the shell path by design.
+  runAsPrivilegedShell(() =>
+    history.replaceState(null, "", nextUrl.toString()),
+  );
   return true;
 }

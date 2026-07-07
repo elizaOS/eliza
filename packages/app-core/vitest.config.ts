@@ -123,6 +123,20 @@ const pluginWorkflowSrc = path.join(
   "plugins/plugin-workflow/src",
 );
 const pluginX402Src = path.join(monorepoRoot, "plugins/plugin-x402/src");
+// Optional static plugins imported by
+// packages/agent/src/runtime/optional-plugin-imports.generated.ts. The Windows
+// CI app-and-cli shard runs vitest without a plugin build, so these must resolve
+// to source here like every other package in OPTIONAL_PLUGIN_IMPORTERS —
+// otherwise Vite fails the whole suite at `Failed to resolve entry for package`.
+const pluginNativeFilesystemSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-native-filesystem/src",
+);
+const pluginSchedulingSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-scheduling/src",
+);
+const pluginInboxSrc = path.join(monorepoRoot, "plugins/plugin-inbox/src");
 // Resolve react/react-dom from the location of this config file so the alias
 // works whether react is hoisted to the monorepo root or installed locally.
 // createRequire resolves through the normal Node resolution algorithm (walks up
@@ -360,6 +374,30 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-background-runner$/,
         replacement: path.join(pluginBackgroundRunnerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-native-filesystem$/,
+        replacement: path.join(pluginNativeFilesystemSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-native-filesystem\/(.+)$/,
+        replacement: path.join(pluginNativeFilesystemSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling$/,
+        replacement: path.join(pluginSchedulingSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling\/(.+)$/,
+        replacement: path.join(pluginSchedulingSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/plugin-inbox$/,
+        replacement: path.join(pluginInboxSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-inbox\/(.+)$/,
+        replacement: path.join(pluginInboxSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-commands$/,

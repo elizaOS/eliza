@@ -56,7 +56,7 @@ ELIZA_DESKTOP_VITE_WATCH=1 ELIZA_DESKTOP_VITE_BUILD_WATCH=1 bun eliza/packages/a
 | `--vite-force` | Pass `vite --force` when the Vite dev server starts (clear dep optimization cache) |
 | `--rollup-watch` | With `ELIZA_DESKTOP_VITE_WATCH=1`, use `vite build --watch` instead of `vite dev` |
 | `--no-api` | Electrobun only; no `dev-server.ts` child |
-| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | **Default `1` for desktop dev startup:** defers GGUF embedding prefetch until the API runtime is ready, then warms in the background. |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | **Deferred by default everywhere** (desktop dev included): GGUF embedding prefetch runs after the API runtime is ready. Set `=0`/`false`/`no`/`off` for the eager process-entry prefetch. |
 | `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | Skips GGUF embedding prefetch entirely. Desktop dev sets this by default only when `CI` is truthy; explicit values are preserved. |
 | `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP=1` | Opt in to starting GGUF embedding warmup during runtime bootstrap when neither defer nor skip is set. |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS=1` | Stronger switch: disables local `TEXT_EMBEDDING` registration entirely. Use this when another provider handles embeddings or local embeddings must be unavailable. |

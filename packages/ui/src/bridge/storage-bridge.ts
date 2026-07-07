@@ -14,6 +14,7 @@ import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
+import { runAsPrivilegedShell } from "../surface-realm-channel";
 
 /**
  * Lazy-load the @capacitor/preferences module on demand. Keeping it out of the
@@ -200,9 +201,11 @@ export async function initializeStorageBridge(): Promise<void> {
   for (const [key, value] of entries) {
     if (value === null) continue;
     preferencesCache.set(key, value);
-    // Also set in localStorage for immediate availability
+    // Also set in localStorage for immediate availability. Privileged: the
+    // synced keys are shell-reserved and re-hydration can run after mount
+    // (cold-plugin retry), i.e. while a surface scope has the raw guard armed.
     try {
-      window.localStorage.setItem(key, value);
+      runAsPrivilegedShell(() => window.localStorage.setItem(key, value));
     } catch {
       // error-policy:J4 localStorage mirror is best-effort; the authoritative
       // copy lives in `preferencesCache` (set above). A quota/private-mode
@@ -323,7 +326,10 @@ export async function setStorageValue(
   key: string,
   value: string,
 ): Promise<void> {
-  window.localStorage.setItem(key, value);
+  // Privileged: this is the shell-side persistence helper (session/auth/
+  // first-run keys); the view-facing path is the scoped override in
+  // DynamicViewLoader's bridge compat, not this function.
+  runAsPrivilegedShell(() => window.localStorage.setItem(key, value));
 
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     const { Preferences } = await loadPreferences();
@@ -335,7 +341,7 @@ export async function setStorageValue(
  * Remove a value from storage (works on both native and web)
  */
 export async function removeStorageValue(key: string): Promise<void> {
-  window.localStorage.removeItem(key);
+  runAsPrivilegedShell(() => window.localStorage.removeItem(key));
 
   if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     const { Preferences } = await loadPreferences();

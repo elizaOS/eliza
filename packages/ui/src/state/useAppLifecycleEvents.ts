@@ -32,6 +32,7 @@ import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 import { type ConversationMessage, client } from "../api";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
+import { shellLocalStorage } from "../surface-realm-channel";
 import type { LoadConversationMessagesResult } from "./internal";
 
 /** Storage key for the last-known active conversation id. */
@@ -120,12 +121,12 @@ export function useAppLifecycleEvents({
       if (typeof window !== "undefined") {
         try {
           if (activeId) {
-            window.localStorage.setItem(
+            shellLocalStorage.setItem(
               ACTIVE_CONVERSATION_STORAGE_KEY,
               activeId,
             );
           } else {
-            window.localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY);
+            shellLocalStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY);
           }
         } catch (error) {
           // error-policy:J4 active-conversation persistence mirrors through

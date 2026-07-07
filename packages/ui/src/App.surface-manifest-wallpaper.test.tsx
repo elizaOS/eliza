@@ -377,6 +377,7 @@ vi.mock("three", () => {
 });
 
 import { App } from "./App";
+import { shellHistory } from "./surface-realm-channel";
 
 // Read the single painted background layer + assert exactly one exists.
 function readBackgroundLayer(container: HTMLElement): {
@@ -443,7 +444,7 @@ describe("App wallpaper-grant invariant — manifest gates the wallpaper (#13452
   ): Promise<void> {
     await act(async () => {
       appState.tab = tab;
-      window.history.pushState(null, "", path);
+      shellHistory.pushState(null, "", path);
       window.dispatchEvent(new PopStateEvent("popstate"));
       rerender(<App />);
     });

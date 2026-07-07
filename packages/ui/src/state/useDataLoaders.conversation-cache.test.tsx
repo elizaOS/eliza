@@ -226,9 +226,9 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       await result.current.loadConversationMessages("conv-a");
     });
 
-    expect(conversationMessagesRef.current.map((message) => message.id)).toEqual(
-      ["persisted-1", "server-late", "temp-user", "temp-resp-user"],
-    );
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["persisted-1", "server-late", "temp-user", "temp-resp-user"]);
     expect(setConversationMessages).toHaveBeenLastCalledWith(
       conversationMessagesRef.current,
     );

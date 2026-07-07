@@ -37,6 +37,7 @@ import { CHAT_MESSAGE_SEARCH_EVENT } from "../../events";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { errorMessage } from "../../utils/errors";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
@@ -237,7 +238,7 @@ export function ConversationsSidebar({
   }, []);
   const handleSidebarWidthCommit = useCallback((next: number) => {
     try {
-      window.localStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(next));
+      shellLocalStorage.setItem(CHAT_SIDEBAR_WIDTH_KEY, String(next));
     } catch {
       // error-policy:J6 best-effort persistence — width still applies for
       // this session; private-mode storage may reject writes

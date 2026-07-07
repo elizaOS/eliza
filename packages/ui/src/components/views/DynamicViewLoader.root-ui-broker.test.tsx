@@ -148,4 +148,22 @@ describe("root @elizaos/ui import is broker-scoped, not an escape hatch (#14237)
     // longer resolves to it.
     expect(() => rawNavigate("/raw-path")).not.toThrow();
   });
+
+  it("neither the root nor the bridge barrel hands a view the shell-privileged raw-global channel", async () => {
+    // `shellLocalStorage` / `shellHistory` / `runAsPrivilegedShell` disarm the
+    // raw-global guards; handing them to a view bundle lets it write reserved
+    // shell keys and drive shell navigation unscoped. The bridge barrel
+    // re-exports them (for shell code outside packages/ui) and the ROOT barrel
+    // re-exports the bridge barrel — so both compat surfaces must strip them.
+    // Object spread cannot delete a key the source already carries, so the fix
+    // destructures the channel out of `root` too (not just `bridge`); this is
+    // the regression guard for that.
+    const rootMod = await hostImport("@elizaos/ui");
+    const bridgeMod = await hostImport("@elizaos/ui/bridge");
+    for (const mod of [rootMod, bridgeMod]) {
+      expect(mod.shellLocalStorage).toBeUndefined();
+      expect(mod.shellHistory).toBeUndefined();
+      expect(mod.runAsPrivilegedShell).toBeUndefined();
+    }
+  }, 120_000);
 });

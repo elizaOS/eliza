@@ -7,6 +7,7 @@
 import { logger } from "@elizaos/logger";
 import * as React from "react";
 import { client } from "../api/client";
+import { shellLocalStorage } from "../surface-realm-channel";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";
 
 /**
@@ -164,7 +165,7 @@ function readCache(): CachedWeather | null {
 
 function writeCache(value: CachedWeather): void {
   try {
-    localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(value));
+    shellLocalStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify(value));
   } catch {
     // error-policy:J4 storage full/unavailable — caching is a nicety; the
     // widget refetches on the next mount.
@@ -294,7 +295,7 @@ function noteApproximateLocationOnce(): void {
       groupKey: "weather:approximate-location",
     })
     .then(() => {
-      localStorage.setItem(LOCATION_NOTICE_FLAG_KEY, "posted");
+      shellLocalStorage.setItem(LOCATION_NOTICE_FLAG_KEY, "posted");
     })
     .catch((err: unknown) => {
       // error-policy:J7 the notice is a side diagnostic of the weather path —
@@ -332,7 +333,7 @@ async function promptForCoords(): Promise<Coords> {
  */
 export function invalidateWeatherCache(): void {
   try {
-    localStorage.removeItem(WEATHER_CACHE_KEY);
+    shellLocalStorage.removeItem(WEATHER_CACHE_KEY);
   } catch (err) {
     // error-policy:J6 best-effort cache drop; a surviving stale entry only
     // delays the precise refetch until the TTL lapses.

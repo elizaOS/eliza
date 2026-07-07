@@ -38,6 +38,14 @@ export type AccountPoolCredentialsOptions = {
  * gracefully instead of throwing.
  */
 export interface AgentHostBridge {
+  /**
+   * Record which wallet/steward env keys the launch environment set, BEFORE
+   * config.env merges into process.env. The deferred wallet-key hydrate
+   * consults this baseline so vault-held values keep beating config-merged
+   * ones — the precedence the old pre-merge inline hydrate enforced by
+   * ordering — without ever clobbering an explicit launch env var.
+   */
+  captureWalletEnvBootBaseline(): void;
   hydrateWalletKeysFromNodePlatformSecureStore(): Promise<void> | void;
   runVaultBootstrap(): Promise<{ migrated: number; failed: unknown[] }>;
   sharedVault(): Vault;
@@ -81,6 +89,7 @@ function defaultBuildVariant(): "store" | "direct" {
  * stub used to expose. Used whenever a host has not installed a real bridge.
  */
 export const defaultAgentHostBridge: AgentHostBridge = {
+  captureWalletEnvBootBaseline: () => undefined,
   hydrateWalletKeysFromNodePlatformSecureStore: () => undefined,
   runVaultBootstrap: () => Promise.resolve({ migrated: 0, failed: [] }),
   sharedVault: () => noopVault,

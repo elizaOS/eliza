@@ -6,6 +6,7 @@
  * change notifications via the `storage` event so multiple windows stay in
  * sync.
  */
+import { shellLocalStorage } from "../../surface-realm-channel";
 
 export type AppLaunchMode = "window" | "inline";
 
@@ -85,7 +86,7 @@ export function savePerAppConfig(slug: string, config: PerAppConfig): void {
       alwaysOnTop: Boolean(config.alwaysOnTop),
       settings: sanitizeSettings(config.settings),
     };
-    window.localStorage.setItem(storageKey(slug), JSON.stringify(sanitized));
+    shellLocalStorage.setItem(storageKey(slug), JSON.stringify(sanitized));
   } catch {
     /* ignore — sandboxed storage */
   }

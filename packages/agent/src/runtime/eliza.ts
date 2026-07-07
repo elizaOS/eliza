@@ -143,6 +143,7 @@ import {
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import { buildDefaultElizaCloudServiceRouting } from "@elizaos/shared/contracts/service-routing";
+import { resolveDefaultVaultDataDir } from "@elizaos/vault";
 import { registerDesktopScreenCaptureBridgeService } from "./desktop-screen-capture-bridge-service.ts";
 import { type AgentHostBridge, getAgentHostBridge } from "./host-bridge.ts";
 
@@ -158,6 +159,53 @@ function importAppCoreRuntime(): AgentHostBridge {
   return getAgentHostBridge();
 }
 
+// Single-flight desktop vault boot hydration: the OS-keychain wallet/steward
+// hydrate plus the plaintext→vault migration (`runVaultBootstrap`), moved off
+// the blocking boot path because nothing there consumes its outputs (see the
+// boot-site comment in startEliza). Memoized so concurrent first callers —
+// the deferred boot wave, a hot-restart racing it, any future first-secret-
+// access trigger — await one hydration; re-armed (`= null`) per boot so an
+// in-process restart re-runs the idempotent hydrate exactly as the old inline
+// path did every boot.
+let vaultBootHydration: Promise<void> | null = null;
+
+function ensureVaultBootHydration(): Promise<void> {
+  vaultBootHydration ??= runVaultBootHydration();
+  return vaultBootHydration;
+}
+
+async function runVaultBootHydration(): Promise<void> {
+  // Same environments the old inline block skipped: Android has no D-Bus for
+  // libsecret and no plaintext secrets to migrate; cloud-provisioned sandboxes
+  // get real env vars from the daemon and vault-pglite init has hung there.
+  if (isMobilePlatform() || readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1") {
+    return;
+  }
+  const bridge = importAppCoreRuntime();
+  // The two serial cost centers (OS-keychain hydrate, vault PGlite cold
+  // start) are timed separately so boot-history telemetry shows the long
+  // pole. Order is load-bearing: the hydrate writes wallet keys into
+  // process.env that runVaultBootstrap then mirrors into the vault.
+  const keychainStartMs = Date.now();
+  try {
+    await bridge.hydrateWalletKeysFromNodePlatformSecureStore();
+  } catch (err) {
+    logger.warn(
+      `[wallet][os-store] deferred boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  const keychainMs = Date.now() - keychainStartMs;
+  // Wallet keys may have just landed in process.env; refresh the derived
+  // public-key mirrors (the boot-path sync ran before hydration).
+  syncSolanaPublicKeyEnv();
+
+  const vaultStartMs = Date.now();
+  const bootResult = await bridge.runVaultBootstrap();
+  logger.info(
+    `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length} (keychain=${keychainMs}ms vault-pglite=${Date.now() - vaultStartMs}ms)`,
+  );
+}
+
 function isBundledMobileRuntime(): boolean {
   return (
     (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
@@ -166,6 +214,7 @@ function isBundledMobileRuntime(): boolean {
 }
 
 import { buildCharacterFromConfig } from "./build-character-config.ts";
+import { markDeferredBootPhase } from "./deferred-boot-status.ts";
 import {
   resolvePreferredProviderId,
   resolvePreferredProviderPluginName,
@@ -1739,19 +1788,26 @@ async function installPromptOptimizationLayer(
   }
 }
 
-async function prepareRuntimeForTrajectoryCapture(
+/**
+ * The service-dependent half of trajectory-capture prep: wait (3s-capped) for
+ * the async "trajectories" service registration, default its enabled state,
+ * and bridge it to the SQL trajectory_steps tables that the viewer +
+ * collection read. Without the bridge the core service captures LLM calls
+ * only into its own trajectory_step_index store, so every platform without
+ * the plugin-training log-backfill (mobile, cloud) shows a trajectory with
+ * zero recorded LLM calls. Split out of {@link
+ * prepareRuntimeForTrajectoryCapture} so the first boot can start it in the
+ * background (joined by the deferred wave) instead of blocking
+ * initializeCoreRuntime on the service wait; capture of any LLM call that
+ * lands before this settles may be lost — the accepted trade for the faster
+ * readiness gate.
+ */
+async function wireTrajectoryCaptureService(
   runtime: AgentRuntime,
   context: string,
-  config?: ElizaConfig,
 ): Promise<void> {
   await waitForTrajectoriesService(runtime, context);
   ensureTrajectoryLoggerEnabled(runtime, context);
-  // Bridge the in-memory "trajectories" service to the SQL trajectory_steps
-  // tables that the viewer + collection read. Without this the core service
-  // captures LLM calls only into its own trajectory_step_index store, so every
-  // platform without the plugin-training log-backfill (mobile, cloud) shows a
-  // trajectory with zero recorded LLM calls. Patching here makes capture land
-  // in trajectory_steps universally (local + cloud + mobile).
   try {
     await installDatabaseTrajectoryLogger(runtime);
   } catch (err) {
@@ -1759,6 +1815,14 @@ async function prepareRuntimeForTrajectoryCapture(
       `[eliza] Failed to install database trajectory logger (${context}): ${err instanceof Error ? err.message : err}`,
     );
   }
+}
+
+async function prepareRuntimeForTrajectoryCapture(
+  runtime: AgentRuntime,
+  context: string,
+  config?: ElizaConfig,
+): Promise<void> {
+  await wireTrajectoryCaptureService(runtime, context);
   await installPromptOptimizationLayer(runtime, context, config);
 }
 
@@ -3626,54 +3690,37 @@ export async function startEliza(
   // 2d. Propagate database config into process.env for plugin-sql
   applyDatabaseConfigToEnv(config);
 
-  // Boot-time vault hydration: migrate plaintext sensitive values into the
-  // OS-keychain vault and resolve vault://KEY sentinels in config.env.
+  // Boot-time vault hydration is DEFERRED off the blocking path. The desktop
+  // flow (`hydrateWalletKeysFromNodePlatformSecureStore` + `runVaultBootstrap`)
+  // reaches the OS keychain through `defaultMasterKey().load()` and opens a
+  // second PGlite worker at `<stateDir>/.vault-pglite/`; nothing on the
+  // blocking path consumes its outputs — wallet/steward keys feed plugins in
+  // the DEFERRED set, and migrating plaintext secrets into the vault is
+  // write-side maintenance — so it runs once, single-flight, at the top of
+  // runDeferredBoot() (before the deferred plugin waves that read wallet env).
+  // See ensureVaultBootHydration(); mobile and cloud-provisioned containers
+  // stay skipped inside the hydrator (no D-Bus libsecret on Android; the cloud
+  // daemon injects real env vars, and vault-pglite init has been observed to
+  // hang the 180s cloud health check).
   //
-  // Skipped on mobile AND in cloud-provisioned containers. The vault flow
-  // (`hydrateWalletKeysFromNodePlatformSecureStore` + `runVaultBootstrap`)
-  // reaches for the OS keychain through `defaultMasterKey().load()`
-  // (packages/vault/src/master-key.ts:217) and opens a second PGlite worker
-  // at `<stateDir>/.vault-pglite/`. Both target environments where it's
-  // pointless or actively harmful:
-  //   - Android: no D-Bus for libsecret (vault falls back to an
-  //     ELIZA_VAULT_PASSPHRASE-derived key, which `ElizaAgentService` already
-  //     sets per-install from ANDROID_ID), the spawned bun process has no
-  //     plaintext secrets to migrate (env arrives from the service), and the
-  //     second PGlite worker doubles disk + RAM pressure on a 4 GB device.
-  //   - Cloud sandbox (Docker, ELIZA_CLOUD_PROVISIONED=1): the daemon already
-  //     injects every secret as a real env var (ELIZA_API_TOKEN,
-  //     ELIZAOS_CLOUD_API_KEY, OPENAI_API_KEY, …), libsecret isn't installed
-  //     in the slim image, and the second PGlite worker has been observed to
-  //     hang vault-pglite init silently — blocking the HTTP listen and
-  //     tripping the 180s health check on every fresh provision.
+  // What the blocking path DOES genuinely need from the vault is READS:
+  // `vault://KEY` sentinels persisted in config.env feed process.env, which
+  // the model-provider auto-enable in resolvePlugins(phase:"blocking")
+  // consumes — so sentinel resolution stays inline below. It self-gates: with
+  // no sentinels present it makes zero vault calls, and the vault's own PGlite
+  // opens lazily on the first sentinel lookup only.
+  //
+  // Env precedence: the old inline hydrate ran BEFORE config.env merged into
+  // process.env, so vault-held wallet/steward values beat persisted config
+  // while explicit launch env vars still won. captureWalletEnvBootBaseline()
+  // records which of those keys the launch environment actually set, letting
+  // the deferred hydrate keep that exact precedence (vault beats config-merged
+  // values; never clobbers a real env var).
   const isCloudProvisioned = readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+  vaultBootHydration = null;
   if (!isMobilePlatform() && !isCloudProvisioned) {
-    // pre-resolve-setup's two serial cost centers: the OS-keychain hydrate and
-    // the vault PGlite cold-start. Timed separately and surfaced below so the
-    // boot-history telemetry shows which is the long pole. NOTE: the order is
-    // load-bearing: hydrateWalletKeysFromNodePlatformSecureStore writes wallet
-    // keys into process.env that runVaultBootstrap then mirrors into the vault,
-    // so these must stay sequential unless that mirror is decoupled. Measure
-    // here before attempting to overlap them.
-    const keychainStartMs = Date.now();
-    try {
-      const { hydrateWalletKeysFromNodePlatformSecureStore } =
-        await importAppCoreRuntime();
-      await hydrateWalletKeysFromNodePlatformSecureStore();
-    } catch (err) {
-      logger.warn(
-        `[wallet][os-store] boot hydrate skipped: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    const keychainMs = Date.now() - keychainStartMs;
-
-    const { runVaultBootstrap } = await importAppCoreRuntime();
+    importAppCoreRuntime().captureWalletEnvBootBaseline();
     const { sharedVault } = await importAppCoreRuntime();
-    const vaultStartMs = Date.now();
-    const bootResult = await runVaultBootstrap();
-    logger.info(
-      `[vault-bootstrap] migrated=${bootResult.migrated} failed=${bootResult.failed.length} (keychain=${keychainMs}ms vault-pglite=${Date.now() - vaultStartMs}ms)`,
-    );
 
     const { resolved, missing } = await resolveConfigEnvForProcess(
       config.env as Record<string, unknown> | undefined,
@@ -3986,10 +4033,18 @@ export async function startEliza(
   // safe to run multiple times. Opt-out via
   // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1. Auto-disabled in cloud containers
   // (ELIZA_CLOUD_PROVISIONED=1) — vault PGlite init hangs in the slim Docker
-  // image; see the boot-time vault hydration block earlier in this function.
+  // image; see the boot-time vault hydration comment earlier in this function.
+  //
+  // This stays on the blocking path deliberately: profile overrides must land
+  // in process.env before resolvePlugins(phase:"blocking") snapshots provider
+  // env keys, or a multi-profile user's provider plugin initializes with the
+  // wrong account. It is gated on the vault data dir existing — a missing dir
+  // is provably an empty vault (no profiles), so fresh boots skip the vault
+  // PGlite cold start this inventory listing would otherwise trigger.
   if (
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1" &&
-    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1"
+    readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1" &&
+    existsSync(resolveDefaultVaultDataDir())
   ) {
     try {
       const { sharedVault } = await importAppCoreRuntime();
@@ -4508,6 +4563,10 @@ export async function startEliza(
     }
   };
 
+  // Background trajectory-capture wiring started by initializeCoreRuntime and
+  // joined by the deferred wave (see wireTrajectoryCaptureService).
+  let trajectoryCaptureWiring: Promise<void> = Promise.resolve();
+
   const initializeCoreRuntime = async (): Promise<void> => {
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
@@ -4522,10 +4581,22 @@ export async function startEliza(
         "[eliza] boot continuing with embedding generation disabled: every registered TEXT_EMBEDDING provider failed the dimension probe; memory writes persist without vectors until the deferred re-probe finds a working provider",
       );
     }
-    await prepareRuntimeForTrajectoryCapture(
+    // Fast-path, no-wait: wrap useModel for compaction/tracing now so the very
+    // first turn runs through the optimized prompt path.
+    await installPromptOptimizationLayer(
       runtime,
       "runtime.initialize()",
       config,
+    );
+    // The trajectories-service wait (3s-capped) + db-logger install start in
+    // the background immediately — so capture goes live at the same absolute
+    // moment it used to — but no longer block the readiness gate. The deferred
+    // wave joins this promise so a wiring failure is surfaced there. An LLM
+    // call that lands in the short pre-wired window may miss trajectory_steps
+    // capture; boot itself makes no LLM calls in that window.
+    trajectoryCaptureWiring = wireTrajectoryCaptureService(
+      runtime,
+      "runtime.initialize()",
     );
   };
 
@@ -5119,6 +5190,19 @@ export async function startEliza(
   // (coding-tools/agent-skills → shell, lifeops → google) live entirely within
   // this group, so the existing wave algorithm preserves ordering.
   const runDeferredBoot = async (): Promise<void> => {
+    // Vault boot hydration must land before the deferred plugin waves: it
+    // writes wallet/steward keys into process.env that the deferred plugin
+    // auto-enable and wallet/connector plugins read. Single-flight — a
+    // concurrent first-secret-access caller shares this run.
+    await ensureVaultBootHydration();
+    bootTimer.lap("deferred:vault-hydration");
+
+    // Join the background trajectory-capture wiring started inside
+    // initializeCoreRuntime so a wiring failure surfaces here instead of
+    // vanishing into an unobserved promise.
+    await trajectoryCaptureWiring;
+    bootTimer.lap("deferred:trajectory-wiring");
+
     // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
     // before resolving the deferred plugin set — the Discord connector and the
     // GitHub/git plugins live in this deferred wave and read the env vars these
@@ -5316,19 +5400,30 @@ export async function startEliza(
   // already usable for chat; deferred capabilities register as they complete.
   // Fired AFTER the API server is listening (see below) so the deferred
   // wave's awaited work cannot starve the API bind off the event loop.
+  //
+  // The phase is marked pending HERE — synchronously, before this boot
+  // returns — not inside the (setImmediate-delayed) kickoff, so a health
+  // probe racing the kickoff can never read a stale `settled:true` from a
+  // previous boot while this boot's wave hasn't announced itself yet.
+  markDeferredBootPhase("agent-deferred-boot", "pending");
   const kickoffDeferredBoot = (): void => {
-    void runDeferredBoot().catch((err) => {
-      // error-policy:#14415 — deferred boot registers connectors + feature
-      // plugins after the runtime is chat-ready. A swallowed failure here left
-      // capabilities silently absent (the device-review class of bug: the user
-      // sees an empty feature, not an error). Surface it via reportError so it
-      // reaches RECENT_ERRORS (agent-visible) and escalates on repeat, in
-      // addition to the boot-log warning.
-      logger.warn(`[eliza] Deferred boot failed: ${formatError(err)}`);
-      runtime.reportError("eliza.deferredBoot", err, {
-        phase: "deferred-boot",
+    void runDeferredBoot()
+      .then(() => {
+        markDeferredBootPhase("agent-deferred-boot", "complete");
+      })
+      .catch((err) => {
+        // error-policy:#14415 — deferred boot registers connectors + feature
+        // plugins after the runtime is chat-ready. A swallowed failure here left
+        // capabilities silently absent (the device-review class of bug: the user
+        // sees an empty feature, not an error). Surface it via reportError so it
+        // reaches RECENT_ERRORS (agent-visible) and escalates on repeat, in
+        // addition to the boot-log warning.
+        markDeferredBootPhase("agent-deferred-boot", "failed");
+        logger.warn(`[eliza] Deferred boot failed: ${formatError(err)}`);
+        runtime.reportError("eliza.deferredBoot", err, {
+          phase: "deferred-boot",
+        });
       });
-    });
   };
 
   // 9. Graceful shutdown handler

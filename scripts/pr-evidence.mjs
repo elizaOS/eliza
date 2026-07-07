@@ -173,7 +173,15 @@ async function runGate(pr, body) {
     "-q",
     "[.labels[].name]|join(\",\")",
   ]).trim();
-  const changedFiles = gh(["pr", "diff", String(pr), "--name-only"])
+  // `gh pr diff` 406s past GitHub's 300-file diff cap (hit live on the 350-file
+  // #15291); the paginated files API has no such limit.
+  const changedFiles = gh([
+    "api",
+    `repos/{owner}/{repo}/pulls/${pr}/files`,
+    "--paginate",
+    "-q",
+    ".[].filename",
+  ])
     .split("\n")
     .filter(Boolean);
   const addedFiles = gh([

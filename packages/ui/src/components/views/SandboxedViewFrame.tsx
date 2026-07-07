@@ -27,6 +27,7 @@ import {
 import { logger } from "@elizaos/logger";
 import { dispatchNavigateViewEvent } from "@elizaos/shared/events";
 import { useEffect, useMemo, useRef } from "react";
+import { shellLocalStorage } from "../../surface-realm-channel";
 import { resolveSandboxTokens } from "./sandbox-policy";
 import {
   brokerSandboxedViewRequest,
@@ -67,10 +68,10 @@ export function createSandboxHostFacilities(
         return { value: window.localStorage.getItem(namespaced) };
       }
       if (request.op === "set") {
-        window.localStorage.setItem(namespaced, request.value);
+        shellLocalStorage.setItem(namespaced, request.value);
         return { ok: true };
       }
-      window.localStorage.removeItem(namespaced);
+      shellLocalStorage.removeItem(namespaced);
       return { ok: true };
     },
   };

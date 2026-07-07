@@ -6,6 +6,7 @@ import { logger } from "@elizaos/logger";
 import type { NavigateViewDetail } from "@elizaos/shared/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";
+import { shellHistory } from "./surface-realm-channel";
 
 export type { NavigateViewDetail };
 
@@ -86,7 +87,7 @@ export function navigateBrowserPath(path: string): void {
       window.location.hash = path;
       return;
     }
-    window.history.pushState(null, "", path);
+    shellHistory.pushState(null, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   } catch (err) {
     // error-policy:J4 sandboxed webviews can reject history navigation with a

@@ -205,14 +205,6 @@ const GUI_INTERACTION_OWNERS: Readonly<
       signals: ["Polymarket"],
     },
   ],
-  shopify: [
-    {
-      spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",
-      proves:
-        "Exercises products, create product dialog, orders, inventory, customers, and search controls.",
-      signals: ["Shopify create product", "Shopify inventory increase"],
-    },
-  ],
   wallet: [
     {
       spec: "packages/app/test/ui-smoke/apps-utility-interactions.spec.ts",

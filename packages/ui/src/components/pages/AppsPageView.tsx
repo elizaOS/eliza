@@ -9,6 +9,7 @@ import {
   shouldUseHashNavigation,
 } from "../../navigation";
 import { useAppSelectorShallow } from "../../state";
+import { shellHistory } from "../../surface-realm-channel";
 import { FullscreenView } from "../apps/FullscreenView";
 import { getAppSlug } from "../apps/helpers";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -40,7 +41,7 @@ export function AppsPageView() {
         if (shouldUseHashNavigation()) {
           window.location.hash = expected;
         } else {
-          window.history.replaceState(null, "", expected);
+          shellHistory.replaceState(null, "", expected);
         }
       }
     } catch {
