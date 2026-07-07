@@ -93,8 +93,8 @@ export const ChoiceWidget = memo(function ChoiceWidget({
   // a choice: wrapped in the collapsible shell it read as a dropdown with one
   // entry (header + "1 options" chip + chevron) and its secondary chip washed
   // out on the dark cloud surface (#15144). Render it as one full-width
-  // primary button — no shell, no count chip, no chevron — keeping the same
-  // testids, aria state, and role=status line the shell path exposes.
+  // primary button — no shell, no count chip, no chevron, and no redundant
+  // selected-status line after tap.
   const soleOption =
     firstRun && !allowCustom && options.length === 1 ? options[0] : null;
   if (soleOption) {
@@ -126,11 +126,6 @@ export const ChoiceWidget = memo(function ChoiceWidget({
             <span>{soleOption.label}</span>
           </span>
         </Button>
-        {selected ? (
-          <span role="status" className="px-1 text-xs text-muted">
-            Selected: {selected.label}
-          </span>
-        ) : null}
       </div>
     );
   }

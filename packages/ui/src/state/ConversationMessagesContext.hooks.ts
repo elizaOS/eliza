@@ -31,8 +31,8 @@ export interface ConversationMessagesValue {
   /**
    * Mutate the live transcript directly (supports the functional updater form).
    * Used by the in-chat first-run conductor to seed synthetic onboarding
-   * assistant turns (greeting + CHOICE widgets + the Cloud-OAuth secretRequest)
-   * into the SAME transcript the floating chat renders. Stable identity.
+   * assistant turns into the SAME transcript the floating chat renders. Stable
+   * identity.
    */
   setConversationMessages: Dispatch<SetStateAction<ConversationMessage[]>>;
   /**

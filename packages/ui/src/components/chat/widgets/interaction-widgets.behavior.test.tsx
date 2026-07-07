@@ -301,14 +301,12 @@ describe("ChoiceWidget — pick an option", () => {
     expect(signIn.className.split(/\s+/)).toContain("bg-accent");
     expect(signIn.className.split(/\s+/)).toContain("w-full");
 
-    // After the tap: locked but NOT washed out, with the status line intact.
+    // After the tap: locked but NOT washed out, with no redundant status line.
     fireEvent.click(signIn);
     expect((signIn as HTMLButtonElement).disabled).toBe(true);
     expect(signIn.className).toContain("disabled:opacity-100");
     expect(signIn.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("status").textContent).toMatch(
-      /Sign in to Eliza Cloud/,
-    );
+    expect(screen.queryByRole("status")).toBeNull();
     // Locked = one decision per prompt; a second tap is a no-op.
     fireEvent.click(signIn);
     expect(onChoose).toHaveBeenCalledTimes(1);

@@ -58,6 +58,8 @@ export interface LayoutShiftTelemetryEvent {
 }
 
 export interface LayoutShiftMonitorOptions {
+  /** Start the observer. Default true. */
+  enabled?: boolean;
   /**
    * Accumulate shifts for this long after the first one in a burst, then flush a
    * single summary. Default 1000ms: long enough to coalesce a reflow cascade,
@@ -139,6 +141,7 @@ export function startLayoutShiftMonitor(
   options: LayoutShiftMonitorOptions = {},
 ): () => void {
   if (
+    options.enabled === false ||
     !isRenderTelemetryEnabled() ||
     typeof PerformanceObserver !== "function" ||
     typeof window === "undefined"
@@ -234,6 +237,12 @@ export function startLayoutShiftMonitor(
 export function useLayoutShiftMonitor(
   options: LayoutShiftMonitorOptions = {},
 ): void {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: options read once at start
-  useEffect(() => startLayoutShiftMonitor(options), []);
+  const enabled = options.enabled ?? true;
+  const windowMs = options.windowMs;
+  const clsBudget = options.clsBudget;
+  const emitHealthy = options.emitHealthy;
+  useEffect(
+    () => startLayoutShiftMonitor({ enabled, windowMs, clsBudget, emitHealthy }),
+    [enabled, windowMs, clsBudget, emitHealthy],
+  );
 }

@@ -563,7 +563,7 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("drives the CLOUD path: OAuth turn → direct bind → tutorial start launches the tour", async () => {
+  it("drives the CLOUD path: sign-in action → direct bind → tutorial start launches the tour", async () => {
     mocks.client.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [
@@ -586,22 +586,9 @@ describe("useFirstRunConductor", () => {
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    // The OAuth secretRequest turn seeds immediately (pending), then flips to
-    // saved once the cloud agent bind resolves. The first-run Cloud request is
-    // status-only so onboarding has one sign-in action, not a second OAuth
-    // button inside the status block.
-    const oauthPending = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(oauthPending.secretRequest?.form).toBeUndefined();
-    await waitFor(() => {
-      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
-        "saved",
-      );
-    });
-    expect(turn("first-run:cloud-oauth")?.secretRequest?.reason).toBe(
-      "Eliza Cloud connected",
-    );
 
     await waitForTurn(turn, "first-run:tutorial");
+    expect(turn("first-run:cloud-oauth")).toBeUndefined();
     expect(turn("first-run:cloud-agent")).toBeUndefined();
     expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
     expect(
@@ -834,13 +821,13 @@ describe("useFirstRunConductor", () => {
       ).toBe(true);
     });
 
-    // "Try again" re-runs the SAME (cloud) flow: it re-seeds the connecting
-    // OAuth turn and calls the shared selector again.
+    // "Try again" re-runs the SAME (cloud) flow and calls the shared selector
+    // again without rendering a second in-chat OAuth card.
     expect(tryHandleFirstRunAction("__first_run__:error:retry")).toBe(true);
     await waitForTurn(turn, "first-run:tutorial");
     expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(2);
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
-    expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe("saved");
+    expect(turn("first-run:cloud-oauth")).toBeUndefined();
     unmount();
   });
 
@@ -861,7 +848,6 @@ describe("useFirstRunConductor", () => {
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitForTurn(turn, "first-run:cloud-oauth");
     // A confused user spams other options while the agent listing is still in
     // flight: a duplicate cloud tap, a local tap, and a provider tap. All are
     // consumed as no-ops — no provider turn, no second flow, no POST.
@@ -977,15 +963,10 @@ describe("useFirstRunConductor", () => {
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitFor(() => {
-      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
-        "failed",
-      );
-    });
+    const retry = await waitForTurn(turn, "first-run:cloud-oauth");
     // No dead end: the retry turn carries a fresh (unlocked) runtime CHOICE.
-    expect(turn("first-run:cloud-oauth")?.text).toContain(
-      "__first_run__:runtime:local=",
-    );
+    expect(retry.secretRequest).toBeUndefined();
+    expect(retry.text).toContain("__first_run__:runtime:local=");
 
     // The user bails to LOCAL and still completes onboarding.
     expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
@@ -1006,21 +987,18 @@ describe("useFirstRunConductor", () => {
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitFor(() => {
-      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
-        "failed",
-      );
-    });
+    const retry = await waitForTurn(turn, "first-run:cloud-oauth");
+    expect(retry.secretRequest).toBeUndefined();
     expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
 
-    // The user connects from the OAuth block instead of re-picking: the token
-    // lands and the store learns the connection — the flow resumes by itself.
+    // The user connects in the browser and the store learns the connection —
+    // the flow resumes by itself.
     localStorage.setItem("steward_session_token", "cloud-token");
     mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
     seedAppStore({ elizaCloudConnected: true });
 
     await waitForTurn(turn, "first-run:tutorial");
-    expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe("saved");
+    expect(turn("first-run:cloud-oauth")?.secretRequest).toBeUndefined();
     expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
     unmount();
@@ -1249,9 +1227,8 @@ describe("surfaceCloudLoginRetryTurn", () => {
       "first-run:provider",
       "first-run:cloud-oauth",
     ]);
-    expect(messages[1]?.secretRequest?.status).toBe("failed");
-    expect(messages[1]?.secretRequest?.form).toBeUndefined();
-    expect(messages[1]?.text).toContain("Connect your Eliza Cloud account");
+    expect(messages[1]?.secretRequest).toBeUndefined();
+    expect(messages[1]?.text).toContain("Sign in to Eliza Cloud to continue");
   });
 
   it("replaces the existing cloud OAuth turn on the managed-cloud path", () => {
@@ -1281,7 +1258,7 @@ describe("surfaceCloudLoginRetryTurn", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]?.id).toBe("first-run:cloud-oauth");
-    expect(messages[0]?.secretRequest?.status).toBe("failed");
+    expect(messages[0]?.secretRequest).toBeUndefined();
     // The retry turn re-offers an UNLOCKED runtime CHOICE — without it, every
     // earlier runtime widget is locked and "pick again" is a dead end.
     expect(messages[0]?.text).toContain("pick how to run your agent again");
@@ -1294,8 +1271,8 @@ describe("surfaceCloudLoginRetryTurn", () => {
     const messages = applyRetry([]);
 
     expect(messages[0]?.id).toBe("first-run:cloud-oauth");
-    expect(messages[0]?.secretRequest?.status).toBe("failed");
-    expect(messages[0]?.text).toContain("Sign in to Eliza Cloud to continue");
+    expect(messages[0]?.secretRequest).toBeUndefined();
+    expect(messages[0]?.text).toContain("Hi — I'm Eliza.");
     expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:local=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:remote=");
@@ -1375,7 +1352,6 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // (stored token) lands during it.
     localStorage.setItem("steward_session_token", "cloud-token");
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitForTurn(turn, "first-run:cloud-oauth");
     await waitFor(() => {
       expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     });
@@ -1640,15 +1616,11 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitFor(() => {
-      expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
-        "failed",
-      );
-    });
-    const retry = turn("first-run:cloud-oauth");
-    expect(retry?.text).toContain("Sign in to Eliza Cloud to continue");
-    expect(retry?.text).toContain("__first_run__:runtime:cloud=");
-    expect(retry?.text).not.toContain("__first_run__:runtime:local=");
+    const retry = await waitForTurn(turn, "first-run:cloud-oauth");
+    expect(retry.secretRequest).toBeUndefined();
+    expect(retry.text).toContain("Hi — I'm Eliza.");
+    expect(retry.text).toContain("__first_run__:runtime:cloud=");
+    expect(retry.text).not.toContain("__first_run__:runtime:local=");
     unmount();
   });
 
@@ -1929,7 +1901,7 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
 
     // Cloud remains a live way forward from the re-offered choice.
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitForTurn(turn, "first-run:cloud-oauth");
+    await waitForTurn(turn, "first-run:tutorial");
     unmount();
   });
 
@@ -2024,7 +1996,7 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
 
     // The re-offered choice is live: cloud proceeds normally.
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitForTurn(turn, "first-run:cloud-oauth");
+    await waitForTurn(turn, "first-run:tutorial");
     unmount();
   });
 
@@ -2079,7 +2051,7 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     expect(localStorage.getItem("elizaos:active-server")).toBeNull();
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
-    await waitForTurn(turn, "first-run:cloud-oauth");
+    await waitForTurn(turn, "first-run:tutorial");
     unmount();
   });
 

@@ -3,8 +3,8 @@
  *
  * Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
  * seeds synthetic assistant turns into the SAME live transcript the floating
- * `ContinuousChatOverlay` renders (greeting → runtime CHOICE → Cloud OAuth via
- * the message `secretRequest` field → provider CHOICE → tutorial CHOICE), and
+ * `ContinuousChatOverlay` renders (greeting → runtime CHOICE → provider
+ * CHOICE → tutorial CHOICE; Cloud-only sign-in stays a single CTA), and
  * routes the user's first-run-scoped picks to the headless finish use case
  * (`first-run-finish.ts`). It owns NO presentation — the existing
  * `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
@@ -112,10 +112,9 @@ const GREETING =
 // action value on purpose: the tap IS the user gesture that launches the real
 // login flow (handleCloudLogin inside the provision flow — popup where one can
 // open, same-tab /login navigation where popups are blocked or hostile,
-// #15143) — the OAuth secretRequest block alone only opens the cloud login
-// page and never completes an in-app login by itself.
-const CLOUD_SIGN_IN_GREETING =
-  "Hi — I'm Eliza. To start chatting, sign in below.";
+// #15143). Keep this as one obvious CTA; the Cloud flow itself owns OAuth and
+// provisioning, so there is no second in-chat "Connect" step.
+const CLOUD_SIGN_IN_GREETING = "Hi — I'm Eliza.";
 const CLOUD_SIGN_IN_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Sign in to Eliza Cloud`,
@@ -342,29 +341,6 @@ const ACCENT_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
-function cloudOAuthSecretRequest(
-  status: ConversationSecretRequest["status"],
-): ConversationSecretRequest {
-  const reason =
-    status === "saved"
-      ? "Eliza Cloud connected"
-      : status === "failed"
-        ? "Eliza Cloud sign-in did not finish"
-        : "Waiting for browser sign-in";
-  return {
-    key: "elizacloud",
-    reason,
-    status,
-    delivery:
-      status === "pending"
-        ? {
-            mode: "cloud_authenticated_link",
-            instruction: "Finish signing in in the browser window.",
-          }
-        : undefined,
-  };
-}
-
 // The inline Remote connect form: a URL field + an optional access-token field.
 // `delivery.canCollectValueInCurrentChannel` makes SensitiveRequestBlock render
 // the form here on the owner's device; its `remote_connect` submit dispatches
@@ -416,11 +392,9 @@ export function surfaceCloudLoginRetryTurn(writer: FirstRunTurnWriter): void {
   // runtime to re-pick: the retry turn re-offers the single sign-in button
   // (whose tap re-enters the cloud flow with a fresh user gesture).
   const retryText = isRuntimeChooserEnabled()
-    ? `Connect your Eliza Cloud account to continue — I'll pick up where we left off. You can also pick how to run your agent again.\n\n${runtimeChoiceBlock()}`
-    : `Sign in to Eliza Cloud to continue — I'll pick up where we left off.\n\n${CLOUD_SIGN_IN_CHOICE}`;
-  const connectTurn = makeTurn("first-run:cloud-oauth", retryText, {
-    secretRequest: cloudOAuthSecretRequest("failed"),
-  });
+    ? `Sign in to Eliza Cloud to continue. You can also pick how to run your agent again.\n\n${runtimeChoiceBlock()}`
+    : `${CLOUD_SIGN_IN_GREETING}\n\n${CLOUD_SIGN_IN_CHOICE}`;
+  const connectTurn = makeTurn("first-run:cloud-oauth", retryText);
   writer.seedTurn(connectTurn);
   writer.replaceTurn("first-run:cloud-oauth", connectTurn);
 }
@@ -829,18 +803,13 @@ export function useFirstRunConductor(): void {
           // served its purpose; drop it so a later relaunch doesn't re-resume.
           clearCloudLoginPending();
           closePreOpenedAuthWindow();
-          replaceTurn(
-            "first-run:cloud-oauth",
-            makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
-              secretRequest: cloudOAuthSecretRequest("saved"),
-            }),
-          );
         }
         handleOutcome(outcome);
       })
       // error-policy:J4 unlike runFirstRunFinish (which funnels throws to
       // seedError), these cloud entrypoints can reject (OAuth/network);
-      // without this the "Connecting…" turn strands as an unhandled rejection
+      // without this a rejected OAuth/provision call strands the user with no
+      // recovery action.
       .catch((err: unknown) => seedError(cloudFailureMessage(err)))
       .finally(() => {
         if (preOpenedAuthWindow && !preOpenedAuthWindowClaimed) {
@@ -848,7 +817,7 @@ export function useFirstRunConductor(): void {
         }
         busyRef.current = false;
       });
-  }, [handleOutcome, replaceTurn, seedError]);
+  }, [handleOutcome, seedError]);
 
   const startProviderFinish = React.useCallback(() => {
     busyRef.current = true;
@@ -876,20 +845,12 @@ export function useFirstRunConductor(): void {
       }
       pendingCloudResumeRef.current = null;
       if (resume === "cloud") {
-        replaceTurn(
-          "first-run:cloud-oauth",
-          makeTurn(
-            "first-run:cloud-oauth",
-            "Connecting your Eliza Cloud account…",
-            { secretRequest: cloudOAuthSecretRequest("pending") },
-          ),
-        );
         startCloudProvisionFlow();
         return;
       }
       startProviderFinish();
     },
-    [replaceTurn, startCloudProvisionFlow, startProviderFinish],
+    [startCloudProvisionFlow, startProviderFinish],
   );
 
   // The one bind tail for a cloud agent, shared by the picker tap (chooser
@@ -927,8 +888,8 @@ export function useFirstRunConductor(): void {
 
   // Read-only mirror so the auto-resume effect + the mount rehydrate can drive
   // runCloudResume without listing it as a dep. Its identity churns as its own
-  // deps (replaceTurn, the flow launchers) change; the effect below depending on
-  // it re-fired on every seeded-turn render and, on a stale token, spun the
+  // flow-launcher deps change; the effect below depending on it re-fired on
+  // every seeded-turn render and, on a stale token, spun the
   // provision→fail→re-arm loop (#14387).
   const runCloudResumeRef = React.useRef(runCloudResume);
   runCloudResumeRef.current = runCloudResume;
@@ -1027,13 +988,6 @@ export function useFirstRunConductor(): void {
             localInference: "cloud-inference",
             agentName: draftRef.current.agentName,
           });
-          const connecting = makeTurn(
-            "first-run:cloud-oauth",
-            "Connecting your Eliza Cloud account…",
-            { secretRequest: cloudOAuthSecretRequest("pending") },
-          );
-          seedTurn(connecting);
-          replaceTurn("first-run:cloud-oauth", connecting);
           startCloudProvisionFlow();
           return true;
         }
@@ -1244,13 +1198,6 @@ export function useFirstRunConductor(): void {
         // The persist guard released itself on the failed POST, so a local
         // retry re-POSTs; a cloud retry re-runs provisioning.
         if (draftRef.current.runtime === "cloud") {
-          const connecting = makeTurn(
-            "first-run:cloud-oauth",
-            "Connecting your Eliza Cloud account…",
-            { secretRequest: cloudOAuthSecretRequest("pending") },
-          );
-          seedTurn(connecting);
-          replaceTurn("first-run:cloud-oauth", connecting);
           startCloudProvisionFlow();
           return true;
         }
@@ -1490,9 +1437,8 @@ export function useFirstRunConductor(): void {
     // interrupted cloud/hybrid flow instead of restarting at the greeting.
     // The durable steward token (persisted at login) makes elizaCloudConnected
     // recompute true after relaunch, so the auto-resume effect above completes
-    // onboarding into chat; the re-tappable OAuth turn below is the fallback if
-    // login never finished — either way the user is never bounced back to
-    // "where should your agent run?".
+    // onboarding into chat. If login never finished, re-offer the same single
+    // sign-in CTA instead of rendering a second in-chat Connect card.
     const cloudResume = readCloudLoginPending();
     if (cloudResume) {
       draftRef.current = {
@@ -1505,8 +1451,7 @@ export function useFirstRunConductor(): void {
       seedTurn(
         makeTurn(
           "first-run:cloud-oauth",
-          "Connecting your Eliza Cloud account…",
-          { secretRequest: cloudOAuthSecretRequest("pending") },
+          `${CLOUD_SIGN_IN_GREETING}\n\n${CLOUD_SIGN_IN_CHOICE}`,
         ),
       );
       // If the durable token already made the connection live at launch, the

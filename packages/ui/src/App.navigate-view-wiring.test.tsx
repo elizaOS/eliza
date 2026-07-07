@@ -39,6 +39,10 @@ const desktopTabsState = vi.hoisted(() => ({
   }>,
 }));
 
+const mediaQueryState = vi.hoisted(() => ({
+  matches: false,
+}));
+
 const desktopBridgeMock = vi.hoisted(() => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
   invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
@@ -239,7 +243,7 @@ vi.mock("./hooks/useAuthStatus", () => ({
 }));
 
 vi.mock("./hooks/useMediaQuery", () => ({
-  useMediaQuery: () => false,
+  useMediaQuery: () => mediaQueryState.matches,
 }));
 
 vi.mock("./hooks/useActivityEvents", () => ({
@@ -257,7 +261,7 @@ vi.mock("./hooks", () => ({
     saveCommandModalOpen: false,
     saveCommandText: "",
   }),
-  useMediaQuery: () => false,
+  useMediaQuery: () => mediaQueryState.matches,
   useRenderGuard: vi.fn(),
 }));
 
@@ -444,6 +448,7 @@ describe("App navigate-view event wiring", () => {
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.tab = "chat";
+    mediaQueryState.matches = false;
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();

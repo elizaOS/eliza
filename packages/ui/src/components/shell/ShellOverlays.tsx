@@ -61,6 +61,7 @@ function formatSharePayload(payload: ShareTargetPayload): string {
 const selectTab = (s: AppContextValue) => s.tab;
 const selectSetState = (s: AppContextValue) => s.setState;
 const selectSetActionNotice = (s: AppContextValue) => s.setActionNotice;
+const selectFirstRunComplete = (s: AppContextValue) => s.firstRunComplete;
 
 export function ShellOverlays({
   actionNotice,
@@ -70,8 +71,9 @@ export function ShellOverlays({
   const tab = useAppSelector(selectTab);
   const setState = useAppSelector(selectSetState);
   const setActionNotice = useAppSelector(selectSetActionNotice);
+  const firstRunComplete = useAppSelector(selectFirstRunComplete);
 
-  useLayoutShiftMonitor();
+  useLayoutShiftMonitor({ enabled: firstRunComplete !== false });
   useFrameBudgetMonitor();
 
   useEffect(() => {

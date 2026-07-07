@@ -918,7 +918,7 @@ const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE: ShellMessage = {
   source: "first_run",
   createdAt: 0,
   content: [
-    "Sign in to Eliza Cloud to start chatting.",
+    "Hi — I'm Eliza.",
     "",
     "[CHOICE:first-run id=runtime]",
     "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
