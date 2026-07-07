@@ -1,16 +1,12 @@
 /**
- * ViewManagerView — the single GUI/XR data wrapper for the "views" surface (the
+ * ViewManagerView — the GUI data wrapper for the "views" surface (the
  * "views view"): the deduped manager that fetches GET /api/views and lists every
  * registered view (collapsed one row per logical id with modality chips and
  * per-view open/available state).
  *
  * It owns the live view list (fetch + loading/error state and the open→navigate
  * handoff) and renders the one presentational {@link ViewManagerSpatialView}
- * inside a {@link SpatialSurface}. Omitting the `modality` prop lets
- * `SpatialSurface` auto-detect GUI vs XR via `window.__elizaXRContext`, so the
- * SAME component serves both surfaces. The TUI surface renders the same
- * `ViewManagerSpatialView` through the terminal registry (see
- * `register-terminal-view.tsx`).
+ * inside a {@link SpatialSurface}.
  *
  * Built as a standalone ES-module view bundle; loaded dynamically by the
  * frontend shell via `import("/api/views/views-manager/bundle.js")`. External

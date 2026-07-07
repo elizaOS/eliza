@@ -1,15 +1,10 @@
 /**
- * FeedSpatialView - the Feed prediction-market operator dashboard authored once
- * with the spatial vocabulary, so it renders correctly wherever it is displayed:
- *
- *   - GUI / XR - mounted in `<SpatialSurface>` (DOM; XR scales up).
- *   - TUI      - rendered to real terminal lines by the agent terminal, via
- *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
+ * FeedSpatialView - the Feed prediction-market operator dashboard authored with
+ * the spatial vocabulary and mounted in `<SpatialSurface>` for the GUI surface.
  *
  * It is purely presentational (a snapshot + an action callback in, primitives
  * out) and imports only the cross-modality primitives plus type-only views of
- * the Feed API shapes, so it is safe to render in the Node agent process where
- * the terminal lives (no browser/runtime import).
+ * the Feed API shapes (no browser/runtime import).
  */
 
 import type {

@@ -34,10 +34,11 @@ export const birdclawPlugin: Plugin = {
         "Local-first Twitter/X memory — browse your archived timeline, mentions, likes, and bookmarks",
       icon: "Bird",
       path: "/birdclaw",
-      // ONE declaration → GUI + XR + TUI, all drawn from the single
-      // BirdclawSpatialView source. `modalities` stays a plain literal here
-      // (plugin.ts is not in the view bundle).
-      modalities: ["gui", "xr", "tui"],
+      // GUI-only shipping ("tui"/"xr" remain valid compatibility values but
+      // are no longer declared), drawn from the single BirdclawSpatialView
+      // source. `modalities` stays a plain literal here (plugin.ts is not in
+      // the view bundle).
+      modalities: ["gui"],
       bundlePath: "dist/views/bundle.js",
       // First-party instrumented view (data-agent-id controls): grant the
       // agent-surface capability so the view broker admits agent-driven

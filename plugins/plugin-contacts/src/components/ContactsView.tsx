@@ -1,14 +1,10 @@
 /**
- * ContactsView — the single GUI/XR data wrapper for the Contacts surface.
+ * ContactsView — the GUI data wrapper for the Contacts surface.
  *
  * It owns the live Android address-book data (contact fetch, permission gate,
  * background poll, list/detail/new mode, the new-contact form, and the
  * Call/Text handoffs to the Phone/Messages views) and renders the one
  * presentational {@link ContactsSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
- * TUI surface renders the same `ContactsSpatialView` through the terminal
- * registry (see `register-terminal-view.tsx`).
  *
  * The full-screen overlay-app variant (with vCard import + permission-recovery
  * callout) remains `ContactsAppView`, loaded by the overlay-app registry on

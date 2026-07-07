@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-// `src/index.ts` is a plain view-manifest object that, on a terminal host (no
-// DOM), also runs a lazy side-effect import of `./register-terminal-view` to
-// mount the Feed spatial view in the terminal, and re-exports the pure
+// `src/index.ts` is a plain view-manifest object that re-exports the pure
 // proxy/data layers (`./routes`, `./ui/feed-data`). Stub the (heavy) app-core
 // UI registries those paths can transitively reach so this stays a boot-free
 // assertion on the view declaration shape.
@@ -26,9 +24,9 @@ vi.mock("@elizaos/ui/agent-surface", () => ({
 import feedPlugin from "../src/index.ts";
 
 describe("feedPlugin manifest", () => {
-  it("registers ONE feed view drawing all three modalities from the unified FeedView", () => {
-    // Single source of truth: one declaration, modalities ["gui","xr","tui"],
-    // the unified FeedView spatial component — no per-viewType duplicates.
+  it("registers ONE GUI feed view from the unified FeedView", () => {
+    // Single source of truth: one GUI declaration, the unified FeedView
+    // spatial component — no per-viewType duplicates.
     const views = feedPlugin.views ?? [];
     expect(views).toHaveLength(1);
     const [view] = views;
@@ -36,7 +34,7 @@ describe("feedPlugin manifest", () => {
     expect(view.path).toBe("/feed");
     expect(view.componentExport).toBe("FeedView");
     expect(view.bundlePath).toBe("dist/views/bundle.js");
-    expect(view.modalities).toEqual(["gui", "xr", "tui"]);
+    expect(view.modalities).toEqual(["gui"]);
     // No per-viewType duplicate declarations remain.
     expect(view.viewType).toBeUndefined();
     // Manager-visible + desktop tab metadata carries over to the single view.

@@ -1,14 +1,10 @@
 /**
- * DocumentsView — the single GUI/XR data wrapper for the document store browser.
+ * DocumentsView — the GUI data wrapper for the document store browser.
  *
  * It owns the live document data (the fetcher seam over the read-only endpoints
  * this plugin serves, the quiet background poll, the search round-trip, and the
  * wire->display mapping) and renders the one presentational
- * {@link DocumentsSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so the SAME
- * component serves both surfaces; the TUI surface renders the same
- * `DocumentsSpatialView` through the terminal registry (see
- * `../../register-terminal-view.tsx`).
+ * {@link DocumentsSpatialView} inside a {@link SpatialSurface}.
  *
  * Data source (read-only document routes this plugin serves; see routes.ts):
  *   GET {base}/api/documents?limit=&offset=   -> { documents, total, ... }

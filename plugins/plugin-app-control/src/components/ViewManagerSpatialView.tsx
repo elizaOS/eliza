@@ -1,16 +1,11 @@
 /**
- * ViewManagerSpatialView — the registered-views list authored once with the
- * spatial vocabulary, so it renders correctly wherever it is displayed:
- *
- *   - GUI / XR - mounted in `<SpatialSurface>` (DOM; XR scales up).
- *   - TUI      - rendered to real terminal lines by the agent terminal, via
- *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
+ * ViewManagerSpatialView — the registered-views list authored with the spatial
+ * vocabulary and mounted in `<SpatialSurface>` for the GUI surface.
  *
  * It is purely presentational (a snapshot + an open callback in, primitives out)
  * and imports only the cross-modality primitives plus the pure `ViewEntry`
- * helpers, so it is safe to render in the Node agent process where the terminal
- * lives (no shell-host UI import). The collapse-by-id + modality-chip logic is
- * pure over the snapshot — the single source for GUI, XR, and TUI.
+ * helpers (no shell-host UI import). The collapse-by-id + modality-chip logic is
+ * pure over the snapshot.
  */
 
 import {

@@ -45,11 +45,4 @@ export {
 export { CalendarServiceError } from "./internal/errors.js";
 export * from "./meetings/index.js";
 export { calendarPlugin, calendarPlugin as default } from "./plugin.js";
-export {
-  registerCalendarTerminalView,
-  setCalendarTerminalSnapshot,
-} from "./register-terminal-view.js";
 export * from "./service/index.js";
-
-// Side-effect: DOM-guarded terminal-view registration for the Node agent host.
-import "./register.js";

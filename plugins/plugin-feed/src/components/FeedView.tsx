@@ -1,16 +1,14 @@
 /**
- * FeedView — the GUI/XR wrapper the view bundle exports (`componentExport:
+ * FeedView — the GUI wrapper the view bundle exports (`componentExport:
  * "FeedView"`).
  *
- * On the **GUI** surface it embeds the full Feed web app, authenticated as the
+ * With a live run viewer it embeds the full Feed web app, authenticated as the
  * agent: the run's `viewer` carries the `FEED_AUTH` session token, and
  * {@link EmbeddedAppViewer} performs the `*_READY` → auth postMessage handshake
- * so the real product UI loads signed in. A cross-origin iframe cannot render in
- * XR or a terminal, so the **XR** surface (and the TUI surface, via
- * `register-terminal-view.tsx`) instead render the operator dashboard: this
- * wrapper owns the live Feed data (the ten `getFeed*` loaders, the 12s refresh
- * poll, the pause/resume autonomy control, the suggested-prompt send) feeding the
- * one presentational {@link FeedSpatialView}.
+ * so the real product UI loads signed in. Without one, this wrapper owns the
+ * live Feed data (the ten `getFeed*` loaders, the 12s refresh poll, the
+ * pause/resume autonomy control, the suggested-prompt send) feeding the one
+ * presentational {@link FeedSpatialView} operator dashboard.
  */
 
 import {
@@ -67,10 +65,9 @@ export function FeedView() {
     [appRuns],
   );
 
-  // On the GUI surface, open the full Feed web app authenticated as the agent
-  // (the run's viewer carries the FEED_AUTH session token) instead of the
-  // operator dashboard. A cross-origin iframe can't render in XR/TUI, so those
-  // modalities keep the spatial operator dashboard below.
+  // With a live run viewer on the GUI surface, open the full Feed web app
+  // authenticated as the agent (the run's viewer carries the FEED_AUTH session
+  // token) instead of the operator dashboard.
   const viewerUrl = run?.viewer?.url ?? "";
   const viewerAuthMessage = run?.viewer?.authMessage ?? null;
   const showEmbeddedApp =

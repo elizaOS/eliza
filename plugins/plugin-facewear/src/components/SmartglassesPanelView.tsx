@@ -1,16 +1,12 @@
 /**
- * SmartglassesPanelView — the single GUI/XR data wrapper for the Smartglasses
- * operator panel.
+ * SmartglassesPanelView — the data wrapper for the Smartglasses operator
+ * panel.
  *
  * It owns a live subset of the smartglasses diagnostics (the computed
  * {@link HardwareReport} the full dashboard publishes on
  * `window.facewearSmartglassesReport`, plus the headset connected-state from
  * `/api/facewear/status`) and renders the one presentational
- * {@link SmartglassesSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR, so the SAME
- * component serves both surfaces. The TUI surface renders the same
- * `SmartglassesSpatialView` through the terminal registry (see
- * `register-terminal-view.tsx`).
+ * {@link SmartglassesSpatialView} inside a {@link SpatialSurface}.
  *
  * The full BLE/transport dashboard (`../ui/SmartglassesView.tsx`) is unchanged;
  * it stays mounted as the app-shell page (and is what publishes the live report

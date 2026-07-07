@@ -1,14 +1,9 @@
 /**
- * ModelTesterView — the single GUI/XR/TUI data wrapper for the Model Tester
- * surface.
+ * ModelTesterView — the GUI data wrapper for the Model Tester surface.
  *
  * It owns the live probe data (status fetch, per-probe run dispatch, run-all,
  * prompt presets, image/audio asset pickers) and renders the one presentational
- * {@link ModelTesterSpatialView} inside a {@link SpatialSurface}. Omitting the
- * `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
- * TUI surface renders the same `ModelTesterSpatialView` through the terminal
- * registry (see `register-terminal-view.tsx`).
+ * {@link ModelTesterSpatialView} inside a {@link SpatialSurface}.
  *
  * The spatial vocabulary has no `<input type="file">`; the asset-pick action
  * signals (`pick-image` / `pick-audio`) drive a real hidden file input created

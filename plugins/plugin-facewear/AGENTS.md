@@ -58,12 +58,12 @@ The **GUI config lives in Settings → Wearables**, not the top-level launcher.
 `register.ts` registers one combined `wearables` settings section
 (`WearablesSettingsSection`, group `system`) with two internal tabs:
 `FacewearView` (XR headset manager) and `SmartglassesView` (Even Realities
-pairing + diagnostics). The `facewear`/`smartglasses` view declarations in
-`index.ts` remain (`visibleInManager:false`, `desktopTabEnabled:false`,
-modalities `xr`/`tui`) only so the agent keeps serving the in-headset XR view
-host and terminal (TUI) surfaces, and `FACEWEAR_*`/`SMARTGLASSES_*`/`XR_*`
-actions still resolve. Do **not** re-add a `gui` modality or `app.navTabs` for
-these — wearable hardware is configuration.
+pairing + diagnostics). The former `facewear`/`smartglasses` XR/TUI view
+declarations are retired (#15269): the plugin ships **no** standalone view
+declarations. `"tui"`/`"xr"` remain valid modality values for compatibility
+elsewhere, but this plugin declares none. The `FACEWEAR_*`/`SMARTGLASSES_*`/
+`XR_*` actions and the `/xr/*` routes still resolve. Do **not** re-add view
+declarations or `app.navTabs` for these — wearable hardware is configuration.
 
 ## Layout
 
@@ -71,7 +71,6 @@ these — wearable hardware is configuration.
 src/
   index.ts                    Plugin object + all exports
   register.ts                 Secondary entry for view-only imports
-  register-terminal-view.tsx  Terminal (TUI) view registration
   status-format.ts            Shared status formatting utilities
   actions/
     facewear-connect.ts       FACEWEAR_CONNECT

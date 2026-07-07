@@ -7,7 +7,7 @@ Android address-book overlay app for elizaOS: provides a full-screen UI surface 
 This plugin adds Android address-book capability to an Eliza agent. It ships two surfaces:
 
 1. A **dynamic provider** (`androidContacts`) that reads up to 50 contacts from the device and injects them as planning context — scoped to `contacts` and `messaging` conversation contexts, gated to `ADMIN` role sessions, cached per-turn.
-2. A **full-screen overlay app** (`ContactsAppView`) registered via `@elizaos/ui`'s overlay-app registry, rendered in three view modes: default UI, XR, and TUI (terminal).
+2. A **full-screen overlay app** (`ContactsAppView`) registered via `@elizaos/ui`'s overlay-app registry, shipped for the GUI modality only (`"tui"`/`"xr"` remain valid compatibility modality values but are not declared).
 
 The plugin is Android-only (`elizaos.app.androidOnly: true`). The `src/register.ts` side-effect module skips registration on non-elizaOS runtimes. The `/plugin` export is the entry point for the elizaOS runtime adapter.
 
@@ -18,9 +18,7 @@ Registered in `appContactsPlugin` (`src/plugin.ts`):
 | Kind | Name | Description |
 |------|------|-------------|
 | Provider | `androidContacts` | Read-only: fetches up to 50 contacts (id, displayName, phones, emails, starred) from `@elizaos/capacitor-contacts` and emits JSON context. Dynamic; contexts: `contacts`, `messaging`; roleGate: ADMIN; cacheScope: turn. |
-| View | `contacts` (default) | Full-screen overlay app — `ContactsAppView` component, path `/contacts`. |
-| View | `contacts` (xr) | Same component, `viewType: "xr"`. |
-| View | `contacts` (tui) | Terminal surface — `ContactsTuiView` component export, path `/contacts/tui`. Rendered by `ContactsSpatialView` via `register-terminal-view.tsx`. |
+| View | `contacts` | Full-screen overlay app — `ContactsAppView` component, path `/contacts`, `modalities: ["gui"]`. |
 
 No actions, services, evaluators, events, or routes are registered.
 
@@ -31,7 +29,6 @@ src/
   index.ts                          Public package entry — re-exports plugin, app, register, ui
   plugin.ts                         appContactsPlugin definition (providers + views)
   register.ts                       Side-effect: calls registerContactsApp() when isElizaOS()
-  register-terminal-view.tsx        Registers contacts view for terminal rendering via ContactsSpatialView
   ui.ts                             Re-exports ContactsAppView, contactsApp, registerContactsApp
   providers/
     contacts.ts                     androidContacts provider implementation
@@ -43,11 +40,10 @@ src/
     contacts-contract.test.ts       Contract tests for the overlay-app view surface
     ContactsAppView.tsx             Full-screen overlay UI (list / detail / new modes)
     ContactsAppView.helpers.ts      Helper utilities for ContactsAppView
-    ContactsAppView.interact.ts     Exports interact(capability, params) for TUI programmatic interface
+    ContactsAppView.interact.ts     Exports interact(capability, params) programmatic interface
     ContactsAppView.test.ts         Tests for ContactsAppView
-    ContactsSpatialView.tsx         Spatial/XR/TUI-compatible view (renders in GUI, XR, and terminal)
+    ContactsSpatialView.tsx         Spatial presentational view (GUI-shipped)
     ContactsSpatialView.test.tsx    Tests for ContactsSpatialView
-    ContactsTuiView.test.ts         TUI view tests
 ```
 
 The `./plugin` export (declared in `package.json` exports map) resolves to `dist/plugin.js` / `dist/plugin.d.ts` and is the entry the runtime adapter imports directly.
@@ -87,8 +83,8 @@ The provider limit is a hardcoded constant `CONTACTS_PROVIDER_LIMIT = 50` in `sr
 - **No update or delete.** The `@elizaos/capacitor-contacts` native plugin does not expose contact mutation beyond create and import. The detail panel is read-only; the "Edit" path was intentionally omitted.
 - **In-app Call/Text linking.** The detail view phone rows do not use a `tel:` OS handoff. Each number renders "Call" and "Text" controls that dispatch `eliza:navigate:view` with `{ viewId, viewPath, payload }` for the in-app Phone and Messages views, pre-seeding the target through the generic navigation payload handoff. Email keeps its `mailto:` anchor (there is no in-app email view). Do not reintroduce `tel:`.
 - **Provider roleGate.** `roleGate: { minRole: "ADMIN" }` means the `androidContacts` provider only fires in admin-role sessions. Do not change this without reviewing the address-book privacy model.
-- **TUI interact() function.** `src/components/ContactsAppView.interact.ts` exports `interact(capability, params)` which handles `terminal-list-contacts`, `terminal-create-contact`, and `terminal-import-vcard` capability strings — used by the TUI view's programmatic interface.
-- **Spatial/TUI view.** `ContactsSpatialView.tsx` is authored with the spatial-UI vocabulary and renders in GUI, XR, and terminal (via `register-terminal-view.tsx` + `registerSpatialTerminalView`). It is purely presentational (snapshot + action callback) with no Capacitor runtime imports, so it is safe to run in a Node agent process.
+- **interact() function.** `src/components/ContactsAppView.interact.ts` exports `interact(capability, params)` which handles the `terminal-list-contacts`, `terminal-create-contact`, and `terminal-import-vcard` capability strings — the view's programmatic interface.
+- **Spatial view.** `ContactsSpatialView.tsx` is authored with the spatial-UI vocabulary and is shipped for the GUI modality. It is purely presentational (snapshot + action callback) with no Capacitor runtime imports.
 - **Views bundle.** The overlay UI is built separately via `vite.config.views.ts` into `dist/views/bundle.js`. `bundlePath` in the view descriptors points there. The tsup build (`build:js`) and the vite build (`build:views`) are independent steps.
 - **Peer deps.** React 19 and react-dom 19 are peer dependencies. The host app must provide them.
 - See the root `AGENTS.md` for repo-wide architecture rules, logging conventions, and git workflow.

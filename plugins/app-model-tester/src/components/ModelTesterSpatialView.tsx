@@ -1,14 +1,9 @@
 /**
- * ModelTesterSpatialView - the model-tester dashboard authored once with the
- * spatial vocabulary, so it renders correctly wherever it is displayed:
- *
- *   - GUI / XR - mounted in `<SpatialSurface>` (DOM; XR scales up).
- *   - TUI      - rendered to real terminal lines by the agent terminal, via
- *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
+ * ModelTesterSpatialView - the model-tester dashboard authored with the
+ * spatial vocabulary and mounted in `<SpatialSurface>` for the GUI surface.
  *
  * It is purely presentational (a snapshot + an action callback in, primitives
- * out) and imports only the cross-modality primitives, so it is safe to render
- * in the Node agent process where the terminal lives (no browser/Capacitor
+ * out) and imports only the cross-modality primitives (no browser/Capacitor
  * runtime import). It mirrors the same probe data as the rich
  * `ModelTesterAppView` React view.
  */

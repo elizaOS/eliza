@@ -1,14 +1,10 @@
 /**
- * DocumentsSpatialView — the document store browser authored once with the
- * spatial vocabulary, so it renders correctly wherever it is displayed:
- *
- *   - GUI / XR — mounted in `<SpatialSurface>` (DOM; XR scales up).
- *   - TUI      — rendered to real terminal lines by the agent terminal, via
- *                `registerSpatialTerminalView` (see `register-terminal-view.tsx`).
+ * DocumentsSpatialView — the document store browser authored with the spatial
+ * vocabulary and mounted in `<SpatialSurface>` for the GUI surface.
  *
  * It is purely presentational (a snapshot + an action callback in, primitives
- * out) and imports only the cross-modality primitives, so it is safe to render
- * in the Node agent process where the terminal lives (no browser/client import).
+ * out) and imports only the cross-modality primitives (no browser/client
+ * import).
  *
  * The list, stats, and search results are fetched/mapped in the data wrapper
  * ({@link ./DocumentsView.tsx}) and handed in already projected to display

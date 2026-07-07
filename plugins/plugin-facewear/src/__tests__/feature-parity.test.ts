@@ -81,31 +81,14 @@ describe("XR feature parity audit", () => {
 		unregisterPluginViews(XR_ROUTE_TEST_PLUGIN);
 	});
 
-	// 1. View registration parity — the standalone facewear launcher views are
-	//    agent-facing XR/TUI entries. GUI settings live under Settings → Wearables
-	//    through register.ts and mount the same component source there.
-	it("axis 1 — plugin-facewear declares one XR/TUI view for the 'facewear' id", () => {
+	// 1. View registration — the standalone facewear/smartglasses launcher views
+	//    were XR/TUI-only and are retired (#15269). GUI settings live under
+	//    Settings → Wearables through register.ts. The manifest must not
+	//    reintroduce shipped view declarations.
+	it("axis 1 — plugin-facewear ships no standalone view declarations", () => {
 		const source = readFile("plugins/plugin-facewear/src/index.ts");
-		expect(source, "facewear view id").toContain('id: "facewear"');
-		expect(source, "XR/TUI facewear view").toContain(
-			'modalities: ["xr", "tui"]',
-		);
-		expect(source, "facewear path").toContain('path: "/apps/facewear"');
-		expect(source, "facewear component").toContain(
-			'componentExport: "FacewearView"',
-		);
-	});
-
-	it("axis 1 — plugin-facewear declares one XR/TUI Smartglasses view", () => {
-		const source = readFile("plugins/plugin-facewear/src/index.ts");
-		expect(source, "smartglasses view id").toContain('id: "smartglasses"');
-		expect(source, "smartglasses path").toContain('path: "/apps/smartglasses"');
-		expect(source, "XR/TUI smartglasses view").toContain(
-			'modalities: ["xr", "tui"]',
-		);
-		expect(source, "shared Smartglasses panel component").toContain(
-			'componentExport: "SmartglassesPanelView"',
-		);
+		expect(source, "no views property").not.toContain("views:");
+		expect(source, "no modalities literals").not.toContain("modalities:");
 	});
 
 	// 2. Route infrastructure ───────────────────────────────────────────────────

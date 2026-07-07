@@ -1,14 +1,10 @@
 /**
- * FocusView — the single GUI/XR data wrapper for the Focus / blocker surface.
+ * FocusView — the GUI data wrapper for the Focus / blocker surface.
  *
  * It owns the live website-blocking data (`GET {base}/api/website-blocker`
  * returning a `SelfControlStatus`, the early-release mutation, the load/error
  * state machine, and the settle-chained background poll) and renders the one
  * presentational {@link FocusSpatialView} inside a {@link SpatialSurface}.
- * Omitting the `modality` prop lets `SpatialSurface` auto-detect GUI vs XR via
- * `window.__elizaXRContext`, so the SAME component serves both surfaces. The
- * TUI surface renders the same `FocusSpatialView` through the terminal registry
- * (see `register-terminal-view.tsx`).
  *
  * The default fetcher builds the URL from `client.getBaseUrl()`; tests inject a
  * `fetchStatus` / `releaseBlock` so they stay offline.
