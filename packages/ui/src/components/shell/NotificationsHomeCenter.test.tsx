@@ -582,6 +582,65 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
   });
 
+  it("keeps a fanned stack open when the shade expands", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "A", priority: "high" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "B", priority: "high" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "C", priority: "urgent" }),
+    );
+    render(<NotificationsHomeCenter />);
+    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
+  });
+
+  it("swiping down on a stack fans it without also pulling the shade open", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "A", priority: "high" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "B", priority: "high" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "C", priority: "urgent" }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    const stack = screen.getByTestId("notification-stack");
+    fireEvent.pointerDown(stack, {
+      pointerType: "mouse",
+      button: 0,
+      isPrimary: true,
+      pointerId: 8,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(stack, {
+      pointerType: "mouse",
+      button: 0,
+      isPrimary: true,
+      pointerId: 8,
+      clientY: 110,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      button: 0,
+      isPrimary: true,
+      pointerId: 8,
+      clientY: 110,
+    });
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
+  });
+
   it("swiping away the top card surfaces the next card in the stack", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Below", priority: "high" }),

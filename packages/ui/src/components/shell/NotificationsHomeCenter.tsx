@@ -14,8 +14,9 @@
  *    highest-priority card on top, the rest peeking out beneath it (the iOS
  *    lock-screen stack idiom, stacked by priority). A quiet "N more" hint (not
  *    a button) names what's hidden.
- *  - EXPANDED fans every stack out flat and includes all priorities; the list
- *    is height-capped and scrolls internally.
+ *  - EXPANDED includes all priorities but preserves each view-group stack until
+ *    the user fans that group out in place; the list is height-capped and
+ *    scrolls internally.
  *
  *  Pulling DOWN on the shade (touch drag / mouse drag / wheel-up) while the
  *  list sits at its top toggles between the modes: at rest the pull expands;
@@ -643,8 +644,8 @@ NotificationRow.displayName = "NotificationRow";
 export function NotificationsHomeCenter(): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications } = useNotifications();
-  // Shade mode: rested (priority triage, stacked groups) vs expanded (all
-  // rows, flat). Toggled by the pull gesture — there are no more/less buttons.
+  // Shade mode: rested (priority triage) vs expanded (all priority tiers).
+  // Groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
   // Single-open option strip: expanding one row collapses the others.
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
@@ -705,12 +706,14 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   const toggleShade = useCallback(() => {
     setShadeExpanded((v) => !v);
     setExpandedRowId(null);
-    // Folding the shade folds every fanned stack with it — the rested shade
-    // always comes back in its compact triage form.
-    setExpandedStacks(new Set());
+    if (shadeExpanded) {
+      // Folding the shade folds every fanned stack with it — the rested shade
+      // always comes back in its compact triage form.
+      setExpandedStacks(new Set());
+    }
     // Both modes start reading from the top of the shade.
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, []);
+  }, [shadeExpanded]);
 
   const commitPull = useCallback(() => {
     if (pullPxRef.current >= PULL_COMMIT_PX) toggleShade();
@@ -1048,7 +1051,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                 onPointerUp={() => {
                   stackFanGesture.current = null;
                 }}
-                className="flex items-center px-2 pb-0.5 pt-2 text-left text-2xs font-medium uppercase tracking-[0.08em] text-white/55 first:pt-1 disabled:pointer-events-none"
+                className="flex min-h-touch items-center px-2 pb-0.5 pt-2 text-left text-2xs font-medium uppercase tracking-[0.08em] text-white/55 first:pt-1 disabled:pointer-events-none"
               >
                 {group.label}
                 {fanable ? (
@@ -1081,6 +1084,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                   className="relative"
                   onPointerDown={(e) => {
                     if (e.pointerType !== "mouse" || e.button !== 0) return;
+                    e.stopPropagation();
                     stackFanGesture.current = {
                       key: group.label,
                       startY: e.clientY,
