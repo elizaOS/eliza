@@ -31,6 +31,11 @@ interface PushApi {
     targetPath: string,
     origin: string,
   ) => Promise<unknown>;
+  dispatchToVisibleClients: (
+    clients: unknown,
+    payload: unknown,
+    origin?: string,
+  ) => Promise<boolean>;
   isSafeAppPath: (path: unknown) => boolean;
 }
 
@@ -305,5 +310,87 @@ describe("focusOrOpen", () => {
 
   it("resolves null when clients API is absent", async () => {
     await expect(push.focusOrOpen({}, "/", origin)).resolves.toBeNull();
+  });
+});
+
+describe("dispatchToVisibleClients (foreground suppression)", () => {
+  const origin = "https://app.example";
+  const payload = { title: "Reply", conversationId: "c1" };
+
+  it("posts the payload to a VISIBLE same-origin client and reports in-app delivery", async () => {
+    const postMessage = vi.fn();
+    const clientsLike = {
+      matchAll: vi
+        .fn()
+        .mockResolvedValue([
+          { url: `${origin}/chat`, visibilityState: "visible", postMessage },
+        ]),
+    };
+    const delivered = await push.dispatchToVisibleClients(
+      clientsLike,
+      payload,
+      origin,
+    );
+    expect(delivered).toBe(true);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: "eliza:push-inapp",
+      payload,
+    });
+  });
+
+  it("reports NOT delivered when the only client is hidden (SW then shows the OS notification)", async () => {
+    const postMessage = vi.fn();
+    const clientsLike = {
+      matchAll: vi
+        .fn()
+        .mockResolvedValue([
+          { url: `${origin}/chat`, visibilityState: "hidden", postMessage },
+        ]),
+    };
+    const delivered = await push.dispatchToVisibleClients(
+      clientsLike,
+      payload,
+      origin,
+    );
+    expect(delivered).toBe(false);
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it("accepts a focused client even without visibilityState", async () => {
+    const postMessage = vi.fn();
+    const clientsLike = {
+      matchAll: vi
+        .fn()
+        .mockResolvedValue([
+          { url: `${origin}/chat`, focused: true, postMessage },
+        ]),
+    };
+    expect(
+      await push.dispatchToVisibleClients(clientsLike, payload, origin),
+    ).toBe(true);
+    expect(postMessage).toHaveBeenCalled();
+  });
+
+  it("ignores a VISIBLE cross-origin client (does not suppress the notification)", async () => {
+    const postMessage = vi.fn();
+    const clientsLike = {
+      matchAll: vi.fn().mockResolvedValue([
+        {
+          url: "https://other.example/x",
+          visibilityState: "visible",
+          postMessage,
+        },
+      ]),
+    };
+    expect(
+      await push.dispatchToVisibleClients(clientsLike, payload, origin),
+    ).toBe(false);
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it("resolves false when clients.matchAll is unavailable", async () => {
+    expect(await push.dispatchToVisibleClients({}, payload, origin)).toBe(
+      false,
+    );
   });
 });

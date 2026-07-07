@@ -116,9 +116,19 @@ self.addEventListener("push", (event) => {
   const { title, options } = push.buildNotification(payload);
   const badgeCount = push.badgeCountFromPayload(payload);
 
+  // Foreground suppression: if an app window is visible, hand the payload to
+  // the page (in-app indicator) instead of buzzing an OS notification for a
+  // reply the user is already reading. Only skip the notification when a
+  // visible client actually took it — otherwise always show (userVisibleOnly).
+  const origin = self.location && self.location.origin;
   event.waitUntil(
     Promise.all([
-      self.registration.showNotification(title, options),
+      push
+        .dispatchToVisibleClients(self.clients, payload, origin)
+        .then((deliveredInApp) => {
+          if (deliveredInApp) return undefined;
+          return self.registration.showNotification(title, options);
+        }),
       push.applyBadge(self.navigator, badgeCount),
     ]),
   );

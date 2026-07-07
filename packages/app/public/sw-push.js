@@ -246,6 +246,49 @@
     }
   }
 
+  /**
+   * Foreground suppression: when an app window is already open AND visible, the
+   * user is looking at the app, so an OS notification for a reply they're
+   * reading is noise. Post the payload to those visible same-origin clients (so
+   * the page can surface an in-app indicator) and report that the push was
+   * handled in-app, letting the SW skip `showNotification`. When no window is
+   * visible, resolves false and the SW shows the OS notification as usual.
+   *
+   * The browser's userVisibleOnly contract is honoured: a notification is only
+   * skipped while a visible client exists (the permitted case), never for a
+   * truly-background push. `clientsLike.matchAll` is the injectable seam.
+   */
+  function dispatchToVisibleClients(clientsLike, payload, origin) {
+    const clients = clientsLike;
+    if (!clients || typeof clients.matchAll !== "function") {
+      return Promise.resolve(false);
+    }
+    return clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((windowClients) => {
+        const list = Array.isArray(windowClients) ? windowClients : [];
+        let deliveredInApp = false;
+        for (const client of list) {
+          if (!client) continue;
+          if (origin !== undefined && !isSameOrigin(client.url, origin)) {
+            continue;
+          }
+          // A client is "visible" when the tab/PWA is in the foreground.
+          // `focused` is the stronger signal (also implies visible); accept
+          // either so a visible-but-unfocused split view still suppresses.
+          const visible =
+            client.visibilityState === "visible" || client.focused === true;
+          if (!visible) continue;
+          if (typeof client.postMessage === "function") {
+            client.postMessage({ type: "eliza:push-inapp", payload });
+          }
+          deliveredInApp = true;
+        }
+        return deliveredInApp;
+      })
+      .catch(() => false);
+  }
+
   const api = {
     DEFAULT_TITLE,
     DEFAULT_ICON,
@@ -258,6 +301,7 @@
     clearBadge,
     resolveClickTarget,
     focusOrOpen,
+    dispatchToVisibleClients,
     isSafeAppPath,
   };
 
