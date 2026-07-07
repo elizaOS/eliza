@@ -810,7 +810,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
         if (opts.health instanceof Error) throw opts.health;
         return opts.health;
       }
-      if (cmd.includes("tailscale ip")) {
+      if (cmd.includes("tailscale --socket")) {
         if (opts.tailscaleIp instanceof Error) throw opts.tailscaleIp;
         return opts.tailscaleIp;
       }
@@ -897,7 +897,7 @@ describe("ElizaSandboxService tailnet-IP reconciliation", () => {
       expect(patch.headscale_ip).toBeUndefined();
       // A dead container short-circuits — no IP resolve is attempted on it.
       const tailscaleCalls = exec.mock.calls.filter(([cmd]) =>
-        String(cmd).includes("tailscale ip"),
+        String(cmd).includes("tailscale --socket"),
       );
       expect(tailscaleCalls).toHaveLength(0);
     } finally {

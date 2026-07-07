@@ -4124,7 +4124,7 @@ export class ElizaSandboxService {
 
   /**
    * Resolve the container's CURRENT tailnet IP authoritatively from the node:
-   * `tailscale ip -4` inside the container is the same source the container
+   * `tailscale --socket=/tmp/tailscaled.sock ip -4` inside the container is the same source the container
    * registered with, so it reflects the post-restart node key/IP — unlike the
    * stored headscale_ip, which is a provision-time snapshot.
    */
@@ -4136,7 +4136,7 @@ export class ElizaSandboxService {
     // positive signal), never throws; the caller ratchets toward disconnect.
     try {
       const out = await ssh.exec(
-        `docker exec ${shellQuote(rec.container_name)} tailscale ip -4`,
+        `docker exec ${shellQuote(rec.container_name)} tailscale --socket=/tmp/tailscaled.sock ip -4`,
         RECONCILE_SSH_CMD_TIMEOUT_MS,
       );
       // First 100.64.0.0/10-shaped line; the CLI can also print IPv6 lines.
