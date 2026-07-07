@@ -299,7 +299,11 @@ export {
 } from "./services/message/direct-action-heuristics";
 export * from "./services/notification";
 export * from "./services/optimized-prompt";
-export { resolveOptimizedPromptForRuntime } from "./services/optimized-prompt-resolver";
+export {
+	applyOptimizedProviderSelection,
+	resolveOptimizedContextConfigForRuntime,
+	resolveOptimizedPromptForRuntime,
+} from "./services/optimized-prompt-resolver";
 export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/relationships-graph-builder";

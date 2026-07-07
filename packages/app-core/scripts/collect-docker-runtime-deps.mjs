@@ -75,7 +75,15 @@ const LINKED_WORKSPACE_PACKAGES = [
   "plugins/plugin-personal-assistant",
   "plugins/plugin-task-coordinator",
   "plugins/plugin-training",
-  "plugins/plugin-shopify",
+  "packages/registry",
+  "plugins/plugin-edge-tts",
+  "plugins/plugin-agent-orchestrator",
+  "plugins/plugin-app-control",
+  "plugins/plugin-commands",
+  "packages/plugin-remote-manifest",
+  "packages/auth",
+  "packages/logger",
+  "packages/security",
   "plugins/plugin-agent-skills",
   "plugins/plugin-app-manager",
   "plugins/plugin-browser",
@@ -103,8 +111,8 @@ const LINKED_WORKSPACE_PACKAGES = [
 // Native / desktop / GPU packages that the image deliberately removes or that
 // cannot install in the slim Linux runtime. Excluding them keeps `npm
 // install` from failing on optional native builds the agent never loads on
-// boot. (The image already prunes @node-llama-cpp GPU variants, storybook,
-// and the desktop-only orchestrator.)
+// boot. The image prunes @node-llama-cpp GPU variants and storybook after
+// installation.
 const EXCLUDE = new Set([
   // Desktop / Electron / Capacitor native shells (not used by the headless
   // server runtime).

@@ -94,6 +94,16 @@ describe("tracked pre-pull commands", () => {
     expect(tracked.command).toContain("printf");
   });
 
+  test("tracked pre-pull script is dash-parseable: no '&;' from joining after the backgrounded pull", () => {
+    const tracked = buildTrackedPrePullCommand(IMAGE, "linux/amd64", "test-marker");
+
+    // Regression: joining the script lines with "; " turned `(docker pull …) &`
+    // into `&;`, a hard dash syntax error ("Syntax error: \";\" unexpected") —
+    // every pull/provision on a node failed at parse time.
+    expect(tracked.command).not.toContain("&;");
+    expect(tracked.command).not.toContain("& ;");
+  });
+
   test("builds a scoped reap command for only the recorded pre-pull PID", () => {
     const command = buildPrePullReapCommand(PID_FILE, IMAGE);
 
@@ -103,6 +113,8 @@ describe("tracked pre-pull commands", () => {
     expect(command).toContain(IMAGE);
     expect(command).toContain('kill -9 "$pid"');
     expect(command).not.toContain("pkill");
+    // Regression: "; "-joining `if …; then` yields `then;` (dash syntax error).
+    expect(command).not.toContain("then;");
   });
 
   test("builds a force recovery command for a daemon whose graceful restart hangs", () => {

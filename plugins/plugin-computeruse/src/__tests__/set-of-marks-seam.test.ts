@@ -59,7 +59,7 @@ describe("Set-of-Marks provider seam", () => {
   it("describe yields numbered marks + a center click target", async () => {
     registerSetOfMarksProvider(fakeProvider());
     const provider = getSetOfMarksProvider();
-    const result = await provider!.describe({
+    const result = await provider?.describe({
       displayId: "0",
       sourceX: 100,
       sourceY: 200,

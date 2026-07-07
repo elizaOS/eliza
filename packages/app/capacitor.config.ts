@@ -169,12 +169,12 @@ const config: CapacitorConfig = {
         "",
       apiBase: iosApiBase,
     },
-    // Native launch screen color. Matches the default home background orange
-    // (#ef5a1f) so the native splash flows into the React home with no orange
+    // Native launch screen color. Matches the default home background base
+    // (#000000, black) so the native splash flows into the React home with no
     // flash (issue #9565). The app's real startup UI is rendered by React.
     SplashScreen: {
       launchShowDuration: 0,
-      backgroundColor: "#ef5a1f",
+      backgroundColor: "#000000",
       androidScaleType: "CENTER_CROP",
       splashFullScreen: true,
       splashImmersive: true,
@@ -188,7 +188,7 @@ const config: CapacitorConfig = {
     // own bottom inset so it stays clear of the home indicator.
     contentInset: "never",
     preferredContentMode: "mobile",
-    backgroundColor: "#ef5a1f",
+    backgroundColor: "#000000",
     allowsLinkPreview: false,
     webContentsDebuggingEnabled: webViewDebuggingEnabled,
   },
@@ -197,7 +197,7 @@ const config: CapacitorConfig = {
     // package. Upstream elizaOS owns the shared app-core tree; white-label or
     // explicitly isolated builds use the app-local ignored android/ project.
     path: androidProjectPath,
-    backgroundColor: "#ef5a1f",
+    backgroundColor: "#000000",
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: webViewDebuggingEnabled,

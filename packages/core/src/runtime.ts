@@ -1363,7 +1363,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const recognizers: PiiEntityRecognizer[] = [new RegexEntityRecognizer()];
 		const nerService = this.getService(
 			PII_ENTITY_RECOGNIZER_SERVICE,
-		) as unknown as PiiEntityRecognizerService | null;
+		) as (Service & Partial<PiiEntityRecognizerService>) | null;
 		const nerRecognizer = nerService?.getRecognizer?.() ?? null;
 		if (nerRecognizer) recognizers.push(nerRecognizer);
 

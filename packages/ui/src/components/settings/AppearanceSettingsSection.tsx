@@ -1,9 +1,10 @@
 /**
  * Settings → Appearance section: theme mode, brand accent preset, UI language,
- * the home time/date widget toggle, loaded content packs, and the advanced
- * toggle. All choices persist through the app store (`useAppSelector` setters);
- * every tile is agent-addressable via `useAgentElement`. The advanced toggle
- * reveals the content-pack loader.
+ * the home time/date widget toggle, the background/wallpaper picker, and loaded
+ * content packs. All choices persist through the app store (`useAppSelector`
+ * setters); every tile is agent-addressable via `useAgentElement`. Background
+ * lives here (not a separate tab) since it is one appearance choice; the
+ * standalone Background settings section is consolidated into this one.
  */
 
 import type { LucideIcon } from "lucide-react";
@@ -15,10 +16,8 @@ import type { AccentPreset, UiThemeMode } from "../../state/ui-preferences";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
-import { AdvancedToggle } from "./AdvancedToggle";
-import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { selectableTileClass } from "./appearance-primitives.helpers";
-import { LoadContentPackForm } from "./LoadContentPackForm";
+import { BackgroundSettingsControls } from "./BackgroundSettingsControls";
 import { LoadedPacksList } from "./LoadedPacksList";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -166,7 +165,6 @@ export function AppearanceSettingsSection() {
   );
   const t = useAppSelector((s) => s.t);
   const { activePack, loadedPacks, toggle } = useContentPack();
-  const advancedEnabled = useAdvancedSettingsEnabled();
 
   return (
     <SettingsStack>
@@ -241,20 +239,20 @@ export function AppearanceSettingsSection() {
         />
       </SettingsGroup>
 
+      <SettingsGroup
+        bare
+        title={t("settings.sections.background.label", {
+          defaultValue: "Background",
+        })}
+      >
+        <BackgroundSettingsControls />
+      </SettingsGroup>
+
       <LoadedPacksList
         loadedPacks={loadedPacks}
         activePackId={activePack?.manifest.id ?? null}
         onToggle={toggle}
       />
-
-      <SettingsGroup>
-        <SettingsRow
-          label={t("settings.advanced", { defaultValue: "Advanced" })}
-          control={<AdvancedToggle label="Advanced" />}
-        />
-      </SettingsGroup>
-
-      {advancedEnabled && <LoadContentPackForm />}
     </SettingsStack>
   );
 }

@@ -19,6 +19,7 @@
 
 import {
 	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptContextConfig,
 	type OptimizedPromptFewShotExample,
 	type OptimizedPromptService,
 	type OptimizedPromptTask,
@@ -65,6 +66,55 @@ export function resolveOptimizedPrompt(
 		return optimized.prompt;
 	}
 	return injectDemonstrations(optimized.prompt, optimized.fewShotExamples);
+}
+
+export function resolveOptimizedContextConfig(
+	service: OptimizedPromptService | null | undefined,
+	task: OptimizedPromptTask,
+): OptimizedPromptContextConfig | null {
+	if (!service) return null;
+	const optimized = service.getPrompt(task);
+	return optimized?.contextConfig ?? null;
+}
+
+export function resolveOptimizedContextConfigForRuntime(
+	runtime: OptimizedPromptRuntimeLike,
+	task: OptimizedPromptTask,
+): OptimizedPromptContextConfig | null {
+	const service =
+		(runtime.getService?.(OPTIMIZED_PROMPT_SERVICE) as
+			| OptimizedPromptService
+			| null
+			| undefined) ?? null;
+	return resolveOptimizedContextConfig(service, task);
+}
+
+/**
+ * Apply a learned provider selection/order genome to the provider names the
+ * runtime already deemed eligible. This is deliberately pure: runtime hook
+ * registration can call it without giving artifacts authority to invent
+ * providers that are not registered for the current turn.
+ */
+export function applyOptimizedProviderSelection(
+	current: readonly string[],
+	contextConfig: OptimizedPromptContextConfig | null | undefined,
+): string[] {
+	if (!contextConfig) return [...current];
+	const allowed =
+		contextConfig.providerSet && contextConfig.providerSet.length > 0
+			? new Set(contextConfig.providerSet)
+			: null;
+	const deduped = new Set<string>();
+	for (const name of current) {
+		if (typeof name !== "string" || name.length === 0) continue;
+		if (allowed && !allowed.has(name)) continue;
+		deduped.add(name);
+	}
+	const ordered: string[] = [];
+	for (const name of contextConfig.providerOrder ?? []) {
+		if (deduped.delete(name)) ordered.push(name);
+	}
+	return [...ordered, ...deduped];
 }
 
 /**

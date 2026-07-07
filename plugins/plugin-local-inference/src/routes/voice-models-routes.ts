@@ -95,6 +95,24 @@ interface PinsFile {
 	pinned: VoiceModelId[];
 }
 
+export interface VoiceModelManagementInput {
+	op:
+		| "trigger_voice_model_update"
+		| "pin_voice_model"
+		| "set_voice_model_preferences";
+	id?: string;
+	pinned?: boolean;
+	preferences?: Partial<NetworkPolicyPreferences>;
+}
+
+export type VoiceModelManagementResult =
+	| { op: "trigger_voice_model_update"; id: VoiceModelId; result: unknown }
+	| { op: "pin_voice_model"; id: VoiceModelId; pinned: boolean }
+	| {
+			op: "set_voice_model_preferences";
+			preferences: NetworkPolicyPreferences;
+	  };
+
 /* ----------------------------------------------------------------- *
  * Owner gate — the cellular + metered toggles are OWNER-only.        *
  * The runtime writes `ELIZA_ADMIN_ENTITY_ID` after voice-first-run  *
@@ -230,6 +248,123 @@ async function writePins(pins: ReadonlySet<VoiceModelId>): Promise<void> {
 	await fsp.mkdir(voicePrefsDir(), { recursive: true });
 	const out: PinsFile = { pinned: Array.from(pins).sort() };
 	await fsp.writeFile(voicePinsPath(), JSON.stringify(out, null, 2), "utf8");
+}
+
+function requireVoiceModelId(id: string | undefined, op: string): VoiceModelId {
+	if (typeof id !== "string" || !id.trim()) {
+		throw new Error(`${op} requires id`);
+	}
+	const trimmed = id.trim();
+	if (!KNOWN_VOICE_MODEL_IDS.has(trimmed)) {
+		throw new Error(`unknown voice model id: ${trimmed}`);
+	}
+	return trimmed as VoiceModelId;
+}
+
+export async function applyVoiceModelManagementMutation(
+	input: VoiceModelManagementInput,
+): Promise<VoiceModelManagementResult> {
+	if (input.op === "pin_voice_model") {
+		const id = requireVoiceModelId(input.id, input.op);
+		const pins = await readPins();
+		const pinned = input.pinned === true;
+		if (pinned) pins.add(id);
+		else pins.delete(id);
+		await writePins(pins);
+		return { op: input.op, id, pinned };
+	}
+
+	if (input.op === "set_voice_model_preferences") {
+		const current = await readPreferences();
+		const preferences = normalizePrefs({
+			autoUpdateOnWifi:
+				typeof input.preferences?.autoUpdateOnWifi === "boolean"
+					? input.preferences.autoUpdateOnWifi
+					: current.autoUpdateOnWifi,
+			autoUpdateOnCellular:
+				typeof input.preferences?.autoUpdateOnCellular === "boolean"
+					? input.preferences.autoUpdateOnCellular
+					: current.autoUpdateOnCellular,
+			autoUpdateOnMetered:
+				typeof input.preferences?.autoUpdateOnMetered === "boolean"
+					? input.preferences.autoUpdateOnMetered
+					: current.autoUpdateOnMetered,
+			quietHours: Array.isArray(input.preferences?.quietHours)
+				? input.preferences.quietHours.map((q) => ({
+						start: q.start,
+						end: q.end,
+					}))
+				: current.quietHours.map((q) => ({ start: q.start, end: q.end })),
+		});
+		await writePreferences(preferences);
+		return { op: input.op, preferences };
+	}
+
+	const id = requireVoiceModelId(input.id, input.op);
+	const updater = getUpdater();
+	const [installed, pins] = await Promise.all([
+		resolveInstalledVersions(),
+		readPins(),
+	]);
+	const statuses = await updater.check(
+		{ installed, bundleVersion: resolveBundleVersion() },
+		{ pinned: pins },
+		{ force: true },
+	);
+	const status = statuses.find((s) => s.id === id);
+	if (!status?.latestKnown) throw new Error(`no candidate version for ${id}`);
+	const prefs = await readPreferences();
+	const totalBytes = status.latestKnown.ggufAssets.reduce(
+		(sum, a) => sum + a.sizeBytes,
+		0,
+	);
+	const networkPolicy = await evaluateRuntimePolicy({
+		prefs,
+		estimatedBytes: totalBytes,
+	});
+	if (!networkPolicy.allow) {
+		throw new Error(`network policy refused (reason=${networkPolicy.reason})`);
+	}
+	if (status.latestKnown.ggufAssets.length === 0) {
+		throw new Error(`no assets published for ${id}`);
+	}
+	const results: Array<{
+		finalPath: string;
+		sha256: string;
+		sizeBytes: number;
+	}> = [];
+	const controller = new AbortController();
+	for (
+		let assetIndex = 0;
+		assetIndex < status.latestKnown.ggufAssets.length;
+		assetIndex++
+	) {
+		results.push(
+			await getDownloader()({
+				version: status.latestKnown,
+				bundleVoiceDir: bundleVoiceDir(),
+				stagingDir: voiceStagingDir(),
+				assetIndex,
+				networkPolicy,
+				signal: controller.signal,
+			}),
+		);
+	}
+	const staged = await stageWakeWordModel(status.latestKnown, bundleVoiceDir());
+	return {
+		op: input.op,
+		id,
+		result: {
+			ok: true,
+			id,
+			version: status.latestKnown.version,
+			finalPath: results[0]?.finalPath,
+			finalPaths: results.map((r) => r.finalPath),
+			stagedPaths: staged,
+			sha256: results[0]?.sha256,
+			sizeBytes: results.reduce((n, r) => n + r.sizeBytes, 0),
+		},
+	};
 }
 
 /* ----------------------------------------------------------------- *

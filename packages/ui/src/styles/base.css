@@ -343,12 +343,12 @@ body.desktop {
    The native shell is a fixed-viewport app: no pinch zoom, no rubber-band
    bounce, no two-finger drag, no callout/long-press menu, no scrollbars.
    Safe-area padding is applied at `#root` (see `styles.css`) instead of
-   here — `#root` is pinned to the LARGE viewport (`100lvh`, reclaiming the
-   bottom strip per #14411) so body-level padding wouldn't shrink the React
-   tree's flex container, and inner shells would still render under the status
-   bar. The home-indicator safe area is padded INSIDE the app (composer/bottom
-   rows respect env(safe-area-inset-bottom)), so content bleeds full-height to
-   the true bottom while interactive controls stay above the indicator. */
+   here — `#root` fills the viewport (`100dvh`) so body-level padding wouldn't
+   shrink the React tree's flex container, and inner shells would still render
+   under the status bar. The home-indicator safe area is padded INSIDE the app
+   (composer/bottom rows respect env(safe-area-inset-bottom)), so content bleeds
+   full-height to the true bottom while interactive controls stay above the
+   indicator. */
 /* `body.pwa-standalone` (added from platform/init.ts) covers the INSTALLED
    iOS/Android PWA running on the `web` Capacitor platform: it is NOT the
    native App Store / Play Store build (which takes the `native`/`platform-ios`
@@ -365,16 +365,34 @@ body.pwa-standalone {
   -webkit-user-select: none;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  /* Lock scroll without pinning the body out of flow: an exact-viewport-height
+     body with clipped overflow + `overscroll-behavior: none` cannot scroll or
+     rubber-band, and — unlike `position: fixed` — it leaves the initial
+     containing block for `position: fixed` DESCENDANTS (wallpaper, composer)
+     equal to the true visual viewport, so those layers reach the physical
+     screen bottom. Pinning the body `fixed` is what collapsed that ICB to the
+     small viewport on the iOS Safari standalone PWA and left the home-indicator
+     "black band" the whole reclaim pile was chasing. */
   overscroll-behavior: none;
-  /* Lock the body to viewport extents so a stray drag can't scroll the
-     entire app off-screen. Inner regions opt back in to overflow. */
-  position: fixed;
-  inset: 0;
   overflow: hidden;
+  height: 100vh;
+  /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
+  height: 100dvh;
   /* Raise the tiniest type ramps on phones: 9px/10px is uncomfortable to read
      at arm's length on a handset. Desktop keeps the tighter scale. */
   --text-3xs: 0.625rem;
   --text-2xs: 0.6875rem;
+}
+
+/* Native App Store build only: the WKWebView IS the app window, so pinning the
+   body `fixed; inset: 0` fills the real screen with no ICB collapse (the
+   Safari-standalone quirk does not apply to the native shell). The web/PWA
+   surfaces above use the non-fixed lock instead. */
+body.native,
+body.platform-ios,
+body.platform-android {
+  position: fixed;
+  inset: 0;
 }
 
 /* ─── CSS-FIRST installed-PWA lockdown (detection-independent) ───
@@ -395,17 +413,22 @@ body.pwa-standalone {
    `navigator.standalone` is the only signal and display-mode may be absent). */
 @media all and (display-mode: standalone) and (pointer: coarse),
   all and (display-mode: fullscreen) and (pointer: coarse) {
-  /* biome-ignore lint/style/noDescendingSpecificity: intentional bare-body lockdown that must win regardless of the JS class landing. */
   body {
     touch-action: pan-x pan-y;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    /* Non-fixed scroll lock (see the class-path block above): an exact-height,
+       overflow-clipped body cannot scroll, and keeps the fixed-descendant ICB
+       equal to the true viewport so the wallpaper/composer reach the physical
+       bottom. `position: fixed` here is what collapsed that ICB and painted the
+       home-indicator black band. */
     overscroll-behavior: none;
-    position: fixed;
-    inset: 0;
     overflow: hidden;
+    height: 100vh;
+    /* biome-ignore lint/suspicious/noDuplicateProperties: progressive viewport fallback (vh→dvh). */
+    height: 100dvh;
     --text-3xs: 0.625rem;
     --text-2xs: 0.6875rem;
   }

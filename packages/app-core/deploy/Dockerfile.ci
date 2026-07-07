@@ -97,13 +97,9 @@ RUN if [ -n "${VERSION_CLEAN}" ]; then \
   "; \
   fi
 
-# Remove unbuilt orchestrator (desktop-only, crashes tsx if dist/ missing)
-RUN rm -rf \
-  node_modules/@elizaos/plugin-agent-orchestrator \
-  node_modules/.bun/@elizaos+plugin-agent-orchestrator@* \
-  "${AGENT_DIR}/node_modules/@elizaos/plugin-agent-orchestrator" \
-  plugins/plugin-agent-orchestrator \
-  2>/dev/null || true
+# plugin-agent-orchestrator is imported during agent boot
+# (server-helpers-swarm.ts). Keep it linked in the image; the link step rewrites
+# unbuilt package exports to source paths that the tsx loader resolves.
 
 # Safe pruning only (GPU binaries + obvious dead weight)
 RUN rm -rf \

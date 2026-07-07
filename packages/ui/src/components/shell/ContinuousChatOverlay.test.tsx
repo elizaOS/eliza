@@ -480,14 +480,16 @@ describe("ContinuousChatOverlay", () => {
 
   it("seats the resting composer above the home indicator: full gesture inset plus a small gap", () => {
     // Lock-screen anchoring: with the overlay reclaimed to the true physical
-    // bottom, the resting composer should clear the whole home-indicator/
-    // Android gesture inset plus a small visual gap (~34px + 10px on iOS), not
-    // the old 40% inset compensation that was tuned around the collapsed-ICB
-    // float and left a dead band under the composer.
+    // bottom (device r8, screen.height reclaim), the resting composer clears the
+    // whole home-indicator/Android gesture inset plus a SMALL visual gap
+    // (~34px + 8px on iOS). The gap was trimmed 0.625rem → 0.5rem (device r8:
+    // "bottom has excess padding") so the composer sits one finger above the
+    // indicator, not floating in a dead band, no longer the old 40% inset
+    // compensation that was tuned around the collapsed-ICB float.
     render(<ContinuousChatOverlay controller={makeController()} />);
     const overlay = screen.getByTestId("continuous-chat-overlay");
     expect(overlay.style.paddingBottom).toBe(
-      "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.625rem)",
+      "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
     );
   });
 
@@ -1330,6 +1332,55 @@ describe("ContinuousChatOverlay", () => {
     }
   });
 
+  it("cedes taps to the INLINE home notification center (below the glass) instead of collapsing (device r8)", () => {
+    // #15080 moved the notification inbox inline on the home column, BELOW the
+    // chat glass (not the old Z_NOTIFICATION_OVERLAY shade). Its rows are live
+    // interactive surfaces: without an exemption the outside-tap collapse-
+    // swallower ate the row's tap (preventDefault + suppressNextOutsideClick),
+    // so tapping a notification did NOTHING ("interacting is cooked"). The
+    // swallower now exempts [data-testid="home-notification-center"] and
+    // [data-notif-row]; a tap on a row must leave the chat OPEN and not be
+    // swallowed.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    // Mirror the notification center's real markers: a [data-notif-row] li with
+    // its open button, under the [data-testid="home-notification-center"] host.
+    const center = document.createElement("section");
+    center.setAttribute("data-testid", "home-notification-center");
+    const row = document.createElement("li");
+    row.setAttribute("data-notif-row", "");
+    const rowButton = document.createElement("button");
+    let opened = false;
+    rowButton.addEventListener("click", () => {
+      opened = true;
+    });
+    row.appendChild(rowButton);
+    center.appendChild(row);
+    document.body.appendChild(center);
+    try {
+      fireEvent.pointerDown(rowButton, {
+        clientX: 40,
+        clientY: 40,
+        pointerId: 7,
+      });
+      fireEvent.pointerUp(rowButton, {
+        clientX: 40,
+        clientY: 40,
+        pointerId: 7,
+      });
+      // The chat stays open (tap NOT swallowed into a collapse)...
+      expect(sheet.getAttribute("data-variant")).toBe("open");
+      // ...and the row's own click is NOT suppressed by the swallower.
+      fireEvent.click(rowButton, { clientX: 40, clientY: 40 });
+      expect(opened).toBe(true);
+    } finally {
+      center.remove();
+    }
+  });
+
   it("lets an open dialog own Escape — the chat only collapses once the dialog is gone", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -1601,8 +1652,9 @@ describe("ContinuousChatOverlay", () => {
 
     expect(screen.queryByTestId("chat-composer-clear-debug")).toBeNull();
     // Width is constrained on the panel's wrapper (which also holds the absolute
-    // drag handle); the input row is a single, non-wrapping flex row.
-    expect(panel.parentElement?.className).toContain("max-w-3xl");
+    // drag handle) via the morph-driven inline max-width — 48rem (768px) at rest,
+    // widening to the viewport only as the maximize morph completes.
+    expect(panel.parentElement?.style.maxWidth).toBe("768px");
     expect(bar?.className).toContain("flex");
     expect(bar?.className).not.toContain("flex-wrap");
     expect(input.className).toContain("flex-1");
@@ -2678,14 +2730,15 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-full-clear")).toBeNull();
   });
 
-  it("toggles hands-free voice from the header voice button", () => {
+  it("carries no voice control in the top bar — voice lives on the composer mic", () => {
     const { controller } = makeSwipeController();
     render(<ContinuousChatOverlay controller={controller} />);
     openSheet();
 
-    // The top-bar voice control shares the composer mic's state machine: a
-    // tap enters/exits the hands-free conversation (voice on/off).
-    fireEvent.click(screen.getByTestId("chat-full-voice"));
+    // The redundant top-bar mic was removed: voice has exactly one entry point,
+    // the composer mic. A tap there enters/exits the hands-free conversation.
+    expect(screen.queryByTestId("chat-full-voice")).toBeNull();
+    fireEvent.click(screen.getByTestId("chat-composer-mic"));
     expect(controller.toggleHandsFree).toHaveBeenCalledTimes(1);
   });
 

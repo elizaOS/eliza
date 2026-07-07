@@ -15,6 +15,7 @@ import type {
 } from "../api";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
+import { dedupeGreetings } from "./greeting-dedupe";
 import {
   loadChatAvatarVisible,
   loadChatVoiceMuted,
@@ -372,8 +373,21 @@ export function useChatState(): ChatStateHook {
         | ConversationMessage[]
         | ((prev: ConversationMessage[]) => ConversationMessage[]),
     ) => {
-      const next =
+      const raw =
         typeof v === "function" ? v(conversationMessagesRef.current) : v;
+      // Enforce the single-greeting-per-thread invariant at the one commit
+      // point every seed path routes through. Multiple independent paths seed
+      // an agent greeting (inline `createConversation({ bootstrapGreeting })`
+      // SET, the `fetchGreeting` fallback APPEND, and the cloud agent-switch
+      // reseed); a create/fetch race across an agent switch could otherwise
+      // land two greeting-sourced bubbles with identical text, which the
+      // per-seed `appendGreetingOnce` guard cannot catch once state resets
+      // between the two seeds (the device-review duplicate-greeting defect).
+      // `dedupeGreetings` returns the SAME reference when the invariant already
+      // holds, so this is a no-op for every normal commit and only collapses a
+      // would-be duplicate — keeping the earliest greeting so the visible
+      // bubble never swaps under the user.
+      const next = dedupeGreetings(raw);
       conversationMessagesRef.current = next;
       dispatch({ type: "SET_MESSAGES", value: next });
     },

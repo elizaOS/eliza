@@ -63,13 +63,15 @@ export interface BackgroundConfig {
 }
 
 /**
- * The default shader base: a warm near-black field (NOT a saturated orange
- * wall). The home reads as a banked ember in a dark room, a deep brown-black
- * substrate the orange glow breathes against, so content stays legible and the
- * accent stays an accent. The old default (#ef5a1f) flooded the whole viewport
- * with bright orange and washed every surface out.
+ * The default shader base: pure black. The brand palette is orange / blue /
+ * black / white — the field is black so the orange ember glow
+ * ({@link DEFAULT_BACKGROUND_GLOW}) reads as the visible app background
+ * breathing on top of it, instead of orange-on-orange flat paint. Every
+ * persistent host-chrome surface (launch FOUC guard, PWA theme-color,
+ * manifest colors) and the native boot splashes track this value so boot
+ * never flashes a foreign color and any bleed-through is invisible.
  */
-export const DEFAULT_BACKGROUND_COLOR = "#160d07";
+export const DEFAULT_BACKGROUND_COLOR = "#000000";
 
 /**
  * The ember glow hue the shader layers over {@link DEFAULT_BACKGROUND_COLOR}:
@@ -81,9 +83,9 @@ export const DEFAULT_BACKGROUND_COLOR = "#160d07";
 export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
 
 /**
- * The shader-mode fallback config: the flat banked-ember field. Kept as the
- * base the color swatches and the glsl fallback resolve to. NOT the boot default
- * anymore — see {@link DEFAULT_BACKGROUND_CONFIG}.
+ * The shader-mode config for the black ember field: the boot default (see
+ * {@link DEFAULT_BACKGROUND_CONFIG}) and the base the color swatches and the
+ * glsl fallback resolve to.
  */
 export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
@@ -91,10 +93,10 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
 };
 
 /**
- * The curated "Ember Night" default wallpaper: a warm sunset in the clouds,
- * served as a same-origin static asset from `packages/app/public`. It renders
- * BOTH the boot default AND the matching `ember-night` gallery tile, so the two
- * stay in sync (#13538). A served, code-free, same-origin image the apply
+ * The curated "Ember Night" wallpaper: a warm sunset in the clouds, served as
+ * a same-origin static asset from `packages/app/public`. It renders the
+ * `ember-night` gallery tile (no longer the boot default — the app boots to
+ * the brand-orange shader field). A served, code-free, same-origin image the apply
  * channel already trusts (same class as the gradient data URLs and the
  * `/api/media/<hash>` uploads) — it carries no GLSL source or preset id, so the
  * confinement invariants (#11088 / #13523) hold. The bytes live in `public/`
@@ -131,16 +133,14 @@ const PHOTO_WALLPAPER_IDS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The boot default background. #13538 asks the app to boot to "a nice natural
- * (or interesting curated) default, not a flat color." We ship the curated
- * "Ember Night" sunset-in-the-clouds wallpaper (a served same-origin image); the
- * shader field ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}) stays the fallback
- * when the image is cleared or fails to load.
+ * The boot default background: the black shader field with the orange ember
+ * glow ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}) — not a photo wallpaper.
+ * The curated images (Ember Night sunset, photo wallpapers) remain
+ * user-selectable gallery options.
  */
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
-  mode: "image",
+  mode: "shader",
   color: DEFAULT_BACKGROUND_COLOR,
-  imageUrl: SUNSET_WALLPAPER_URL,
 };
 
 /** A named default background — a curated shader color the user can pick. */

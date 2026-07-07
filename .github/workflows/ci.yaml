@@ -20,7 +20,10 @@ jobs:
     # Skip duplicate runs: run on push to main, or on pull_request events only
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == 'main')
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # 45 not 35: typecheck runs at --concurrency=4 (see below, #15140), so a
+    # near-total affected cone (e.g. a develop→main promote PR) needs headroom
+    # on top of install + build + the 15-minute test step.
+    timeout-minutes: 45
     env:
       # Baseline CI is secret-free. Live/provider-key E2E runs in dedicated
       # opt-in or post-merge workflows, not in the PR test job.
@@ -55,10 +58,13 @@ jobs:
         run: bun run build:core
 
       # PR lane: typecheck only the merge base's dependency cone; on push to
-      # main typecheck the whole workspace (#12341).
+      # main typecheck the whole workspace (#12341). --concurrency=4 not 8:
+      # a develop→main promote PR's affected cone is near-total, and eight
+      # concurrent tsgo processes exhaust a 16 GB hosted runner (#15140);
+      # mirrors develop-pr.yml so the PR lanes stay in agreement.
       - name: Run typecheck (affected — PR)
         if: github.event_name == 'pull_request'
-        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=8 --affected
+        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
         env:
           TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
 

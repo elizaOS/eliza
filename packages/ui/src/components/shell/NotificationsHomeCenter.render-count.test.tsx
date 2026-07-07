@@ -70,7 +70,8 @@ function makeNotification(
     id: `00000000-0000-4000-8000-${hex}` as AgentNotification["id"],
     title: `Notification ${seq}`,
     category: "general",
-    priority: "normal",
+    // High so fixtures render in the rested (interrupt-only) shade.
+    priority: "high",
     source: "test",
     // Spread across the last hour so the rows render distinct "Nm ago" strings
     // that actually change as the clock advances (a real relative-time surface).
@@ -171,7 +172,8 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     // The memo's equality function is the surgical part of the fix: `createdAt`
     // is excluded (it feeds only the leaf), so the once-a-minute newer-timestamp
     // never re-renders the row; but any field that changes the row's OWN markup
-    // (readAt/unread, priority/rail, title, body, deepLink) does.
+    // (title, body, deepLink, data.count) does. Read state and priority no
+    // longer style the row (platform-shade model), so they are not compared.
     const base = makeNotification({
       title: "T",
       body: "B",
@@ -181,8 +183,8 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
     const onOpen = () => {};
     const onDismiss = () => {};
-    const onMarkRead = () => {};
-    const props = { notification: base, onOpen, onDismiss, onMarkRead };
+    const onPrefill = () => {};
+    const props = { notification: base, onOpen, onDismiss, onPrefill };
 
     // createdAt-only delta → equal → memo SKIPS (no row re-render on the minute).
     expect(
@@ -192,19 +194,14 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       }),
     ).toBe(true);
 
-    // Each identity field flips it to a real re-render.
+    // A readAt / priority delta no longer changes the row's markup → equal.
     expect(
       rowPropsEqual(props, {
         ...props,
         notification: { ...base, readAt: Date.now() },
       }),
-    ).toBe(false);
-    expect(
-      rowPropsEqual(props, {
-        ...props,
-        notification: { ...base, priority: "urgent" },
-      }),
-    ).toBe(false);
+    ).toBe(true);
+    // Each identity field flips it to a real re-render.
     expect(
       rowPropsEqual(props, {
         ...props,
@@ -232,20 +229,16 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    expect(screen.getByTestId("notification-row-time").textContent).toBe(
-      "just now",
-    );
+    expect(screen.getByTestId("notification-row-time").textContent).toBe("now");
 
-    // 3 minutes later the SAME row (memoized) shows "3m ago" - not pinned.
+    // 3 minutes later the SAME row (memoized) shows "3m" - not pinned.
     act(() => {
       vi.advanceTimersByTime(3 * MINUTE_MS);
     });
-    expect(screen.getByTestId("notification-row-time").textContent).toBe(
-      "3m ago",
-    );
+    expect(screen.getByTestId("notification-row-time").textContent).toBe("3m");
   });
 
-  it("tap-marks-read still never reorders rows (stable-order invariant)", () => {
+  it("tap clears the row without reordering the survivors (stable-order invariant)", () => {
     const urgent = makeNotification({ priority: "urgent", title: "First" });
     __ingestNotificationForTests(makeNotification({ title: "Second" }));
     __ingestNotificationForTests(urgent);
@@ -258,7 +251,11 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
         .getAllByTestId("notification-row")
         .map((el) => el.textContent ?? "");
     expect(titles()[0]).toContain("First");
+    // Platform-shade acknowledgement: tap expands, acting clears; the
+    // remaining rows keep their order.
     fireEvent.click(screen.getAllByTestId("notification-row")[0]);
-    expect(titles()[0]).toContain("First");
+    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
+    expect(titles()).toHaveLength(1);
+    expect(titles()[0]).toContain("Second");
   });
 });

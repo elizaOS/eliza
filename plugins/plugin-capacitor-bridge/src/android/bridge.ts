@@ -63,7 +63,7 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 import * as nodeFs from "node:fs";
 import nodePath from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { installMobileFsShim } from "../shared/fs-shim.ts";
+import { androidAliasSibling, installMobileFsShim } from "../shared/fs-shim.ts";
 import {
 	createStdioBridge,
 	type StdioBridgeResponseFrame,
@@ -146,20 +146,47 @@ function setupAndroidBridgeEnvironment(): string {
 		canonicalHome = rawHome;
 	}
 
-	// Remap any env var that starts with the symlinked prefix to the
-	// canonical (real) prefix so downstream code resolves paths consistently.
-	if (canonicalHome !== rawHome) {
-		if (process.env.HOME) process.env.HOME = canonicalHome;
+	// Remap any env var carrying a non-canonical spelling of the home dir to
+	// the canonical prefix so downstream path construction produces matching
+	// strings. Two sources of drift, remapped independently: the raw HOME the
+	// process was launched with (when it was itself a symlink spelling), and
+	// the Android /data/data ↔ /data/user/0 alias of the canonical home —
+	// which can appear in OTHER env vars (ELIZA_STATE_DIR, TMPDIR, …) even
+	// when HOME arrived already canonical, so gating all remaps on
+	// `canonicalHome !== rawHome` missed it and the fs shim rejected every
+	// state-dir path at startEliza (silent on-device boot death).
+	const stalePrefixes = new Set<string>();
+	if (canonicalHome !== rawHome) stalePrefixes.add(rawHome);
+	const aliasOfCanonical = androidAliasSibling(canonicalHome);
+	if (aliasOfCanonical) stalePrefixes.add(aliasOfCanonical);
+	stalePrefixes.delete(canonicalHome);
+	if (stalePrefixes.size > 0) {
+		if (process.env.HOME && process.env.HOME !== canonicalHome) {
+			for (const prefix of stalePrefixes) {
+				if (
+					process.env.HOME === prefix ||
+					process.env.HOME.startsWith(`${prefix}/`)
+				) {
+					process.env.HOME =
+						canonicalHome + process.env.HOME.slice(prefix.length);
+					break;
+				}
+			}
+		}
 		for (const key of [
 			"ELIZA_STATE_DIR",
-			"ELIZA_STATE_DIR",
-			"ELIZA_WORKSPACE_DIR",
 			"ELIZA_WORKSPACE_DIR",
 			"TMPDIR",
+			"LOG_FILE",
+			"DIAGNOSTICS_FILE",
 		] as const) {
 			const val = process.env[key];
-			if (val?.startsWith(rawHome)) {
-				process.env[key] = canonicalHome + val.slice(rawHome.length);
+			if (!val) continue;
+			for (const prefix of stalePrefixes) {
+				if (val === prefix || val.startsWith(`${prefix}/`)) {
+					process.env[key] = canonicalHome + val.slice(prefix.length);
+					break;
+				}
 			}
 		}
 	}

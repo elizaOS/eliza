@@ -276,15 +276,36 @@ function historyWalk(repo, tip, window, paths) {
   return byPath;
 }
 
-function commitMeta(repo, sha) {
-  const line = gitText(repo, [
-    "show",
-    "-s",
-    "--format=%H\u001f%cI\u001f%s",
+function parseCommit(repo, sha) {
+  const raw = gitText(repo, ["cat-file", "commit", sha]);
+  const [headers, message = ""] = raw.split(/\n\n/, 2);
+  const committer = headers
+    .split("\n")
+    .find((line) => line.startsWith("committer "));
+  if (!committer) throw new Error(`commit ${sha} has no committer header`);
+  const match = committer.match(/ (\d+) ([+-]\d{4})$/);
+  if (!match) throw new Error(`commit ${sha} has invalid committer header`);
+  const subject = message.split("\n")[0] ?? "";
+  return {
     sha,
-  ]);
-  const [full, date, subject] = line.split("\u001f");
-  return { sha: full, shortSha: full.slice(0, 10), date, subject };
+    ct: Number(match[1]),
+    date: formatGitIso(match[1], match[2]),
+    subject,
+  };
+}
+
+function formatGitIso(timestamp, tz) {
+  const offsetMinutes = Number(tz.slice(1, 3)) * 60 + Number(tz.slice(3, 5));
+  const signedOffsetMinutes = tz.startsWith("-")
+    ? -offsetMinutes
+    : offsetMinutes;
+  const localMs = Number(timestamp) * 1000 + signedOffsetMinutes * 60 * 1000;
+  return `${new Date(localMs).toISOString().replace(".000Z", "")}${tz.slice(0, 3)}:${tz.slice(3)}`;
+}
+
+function commitMeta(repo, sha) {
+  const parsed = parseCommit(repo, sha);
+  return { ...parsed, shortSha: parsed.sha.slice(0, 10) };
 }
 
 function main() {
@@ -332,8 +353,7 @@ function main() {
       `${mergeBase}..${base}`,
     ]),
   );
-  const ctOf = (sha) =>
-    Number(gitText(repo, ["show", "-s", "--format=%ct", sha]));
+  const ctOf = (sha) => parseCommit(repo, sha).ct;
   const behindHours = Math.max(0, (ctOf(base) - ctOf(mergeBase)) / 3600);
   const staleReasons = [];
   if (behindCommits > args.maxBehindCommits) {

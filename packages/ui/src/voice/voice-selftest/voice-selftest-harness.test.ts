@@ -193,8 +193,8 @@ describe("runVoiceSelfTest SEND honesty (#10726)", () => {
               duration: 1,
               numberOfChannels: 1,
               getChannelData: () => new Float32Array([0.1, -0.1, 0.05]),
-            }) as AudioBuffer,
-        } as AudioContext,
+            }) as unknown as AudioBuffer,
+        } as unknown as AudioContext,
       });
 
       const ttsStage = report.stages.find((stage) => stage.stage === "tts");

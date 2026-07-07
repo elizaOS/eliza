@@ -61,6 +61,30 @@ function readDefaultHostCapabilityProbe(): HostCapabilityProbe {
   };
 }
 
+/**
+ * The Capacitor WEB shim is present in EVERY browser tab — including a desktop
+ * or web app that runs a local agent in-page — where `getPlatform()` is `"web"`
+ * and `isNativePlatform()` is `false`. That is NOT a mobile host: classifying it
+ * as `capacitor-foreground-only` (no fs, short-lived) wrongly refuses to start
+ * long-running/fs workflows + scheduled tasks on desktop web. Only a real iOS/
+ * Android shell counts as mobile. A bare probe object with no platform methods
+ * (test fixtures, and any shell that doesn't expose them) keeps the prior
+ * mobile classification so existing native detection is unchanged.
+ */
+function isNativeCapacitorShell(capacitor: unknown): boolean {
+  if (!capacitor || typeof capacitor !== "object") return false;
+  const cap = capacitor as {
+    isNativePlatform?: () => boolean;
+    getPlatform?: () => string;
+  };
+  if (typeof cap.isNativePlatform === "function") return cap.isNativePlatform();
+  if (typeof cap.getPlatform === "function") {
+    const platform = cap.getPlatform();
+    return platform === "ios" || platform === "android";
+  }
+  return true;
+}
+
 function hasCapacitorBackgroundRunner(capacitor: unknown): boolean {
   if (!capacitor || typeof capacitor !== "object") {
     return false;
@@ -90,7 +114,11 @@ export function detectHostCapabilities(
     };
   }
 
-  if (probe.capacitor && typeof probe.capacitor === "object") {
+  if (
+    probe.capacitor &&
+    typeof probe.capacitor === "object" &&
+    isNativeCapacitorShell(probe.capacitor)
+  ) {
     const hasBgRunner = hasCapacitorBackgroundRunner(probe.capacitor);
     return {
       kind: hasBgRunner

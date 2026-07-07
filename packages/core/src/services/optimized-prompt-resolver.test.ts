@@ -21,6 +21,8 @@ import {
 	parseDisabledTasksEnv,
 } from "./optimized-prompt";
 import {
+	applyOptimizedProviderSelection,
+	resolveOptimizedContextConfig,
 	resolveOptimizedPrompt,
 	resolveOptimizedPromptForRuntime,
 } from "./optimized-prompt-resolver";
@@ -162,6 +164,7 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		optimizedPrompt: string;
 	}> = [
 		{ task: "should_respond", optimizedPrompt: "OPT_SHOULD_RESPOND" },
+		{ task: "context_routing", optimizedPrompt: "OPT_CONTEXT_ROUTING" },
 		{ task: "action_planner", optimizedPrompt: "OPT_ACTION_PLANNER" },
 		{ task: "response", optimizedPrompt: "OPT_RESPONSE" },
 		{ task: "media_description", optimizedPrompt: "OPT_MEDIA_DESCRIPTION" },
@@ -255,5 +258,70 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 	test("runtime without getService → baseline", () => {
 		const out = resolveOptimizedPromptForRuntime({}, "response", BASELINE);
 		expect(out).toBe(BASELINE);
+	});
+});
+
+describe("optimized context config", () => {
+	test("resolves contextConfig from the optimized artifact", () => {
+		const service = new OptimizedPromptService();
+		service.setDisabledTasksFromEnv(undefined);
+		const direct = service as unknown as {
+			cache: Partial<
+				Record<
+					OptimizedPromptTask,
+					{ artifact: OptimizedPromptArtifact; loadedAt: number }
+				>
+			>;
+		};
+		direct.cache.action_planner = {
+			artifact: {
+				...makeArtifact("action_planner", "OPT_ACTION_PLANNER"),
+				contextConfig: {
+					providerSet: ["RECENT_MESSAGES", "ACTIONS", "FACTS"],
+					providerOrder: ["FACTS", "RECENT_MESSAGES"],
+					renderTemplates: {
+						RECENT_MESSAGES: "{{role}}: {{text}}",
+					},
+					budgetVector: {
+						RECENT_MESSAGES: 1200,
+					},
+				},
+			},
+			loadedAt: Date.now(),
+		};
+
+		expect(resolveOptimizedContextConfig(service, "action_planner")).toEqual({
+			providerSet: ["RECENT_MESSAGES", "ACTIONS", "FACTS"],
+			providerOrder: ["FACTS", "RECENT_MESSAGES"],
+			renderTemplates: {
+				RECENT_MESSAGES: "{{role}}: {{text}}",
+			},
+			budgetVector: {
+				RECENT_MESSAGES: 1200,
+			},
+		});
+	});
+
+	test("applies provider set and order without inventing providers", () => {
+		const selected = applyOptimizedProviderSelection(
+			["ACTIONS", "RECENT_MESSAGES", "FACTS", "PLATFORM"],
+			{
+				providerSet: ["RECENT_MESSAGES", "FACTS", "MISSING"],
+				providerOrder: ["MISSING", "FACTS", "RECENT_MESSAGES"],
+			},
+		);
+
+		expect(selected).toEqual(["FACTS", "RECENT_MESSAGES"]);
+	});
+
+	test("preserves eligible providers not named in providerOrder", () => {
+		const selected = applyOptimizedProviderSelection(
+			["ACTIONS", "RECENT_MESSAGES", "FACTS"],
+			{
+				providerOrder: ["FACTS"],
+			},
+		);
+
+		expect(selected).toEqual(["FACTS", "ACTIONS", "RECENT_MESSAGES"]);
 	});
 });

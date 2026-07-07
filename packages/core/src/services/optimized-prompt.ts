@@ -66,6 +66,7 @@ export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
 export type OptimizedPromptTask =
 	| "should_respond"
+	| "context_routing"
 	| "action_planner"
 	| "response"
 	| "media_description"
@@ -88,6 +89,10 @@ export type OptimizedPromptTask =
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
+	// The context-routing dataset is trained separately from should_respond;
+	// keeping it as its own artifact task lets the optimizer promote routing
+	// prompts without aliasing them onto the response gate.
+	"context_routing",
 	"action_planner",
 	"response",
 	"media_description",
@@ -155,6 +160,13 @@ export interface OptimizedPromptLineageEntry {
 	notes?: string;
 }
 
+export interface OptimizedPromptContextConfig {
+	providerSet?: readonly string[];
+	providerOrder?: readonly string[];
+	renderTemplates?: Readonly<Record<string, string>>;
+	budgetVector?: Readonly<Record<string, number>>;
+}
+
 export interface OptimizedPromptArtifact {
 	task: OptimizedPromptTask;
 	optimizer: OptimizerName;
@@ -167,11 +179,13 @@ export interface OptimizedPromptArtifact {
 	generatedAt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
 	lineage: OptimizedPromptLineageEntry[];
+	contextConfig?: OptimizedPromptContextConfig;
 }
 
 export interface OptimizedPromptResolved {
 	prompt: string;
 	fewShotExamples?: OptimizedPromptFewShotExample[];
+	contextConfig?: OptimizedPromptContextConfig;
 	optimizerSource: OptimizerName;
 }
 
@@ -380,7 +394,61 @@ export function parseOptimizedPromptArtifact(
 		generatedAt: raw.generatedAt,
 		lineage,
 		fewShotExamples: fewShot,
+		contextConfig: coerceContextConfig(raw.contextConfig),
 	};
+}
+
+function coerceStringArray(value: unknown): string[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const out = value.filter(
+		(entry): entry is string =>
+			typeof entry === "string" && entry.trim().length > 0,
+	);
+	return out.length > 0 ? out : undefined;
+}
+
+function coerceStringRecord(
+	value: unknown,
+): Readonly<Record<string, string>> | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const out: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry === "string" && entry.trim().length > 0) {
+			out[key] = entry;
+		}
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function coerceNumberRecord(
+	value: unknown,
+): Readonly<Record<string, number>> | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const out: Record<string, number> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry === "number" && Number.isFinite(entry) && entry >= 0) {
+			out[key] = entry;
+		}
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function coerceContextConfig(
+	value: unknown,
+): OptimizedPromptContextConfig | undefined {
+	if (!isStringRecord(value)) return undefined;
+	const config: OptimizedPromptContextConfig = {
+		providerSet: coerceStringArray(value.providerSet),
+		providerOrder: coerceStringArray(value.providerOrder),
+		renderTemplates: coerceStringRecord(value.renderTemplates),
+		budgetVector: coerceNumberRecord(value.budgetVector),
+	};
+	return config.providerSet ||
+		config.providerOrder ||
+		config.renderTemplates ||
+		config.budgetVector
+		? config
+		: undefined;
 }
 
 function coerceFewShot(
@@ -509,6 +577,7 @@ export class OptimizedPromptService extends Service {
 		return {
 			prompt: entry.artifact.prompt,
 			fewShotExamples: entry.artifact.fewShotExamples,
+			contextConfig: entry.artifact.contextConfig,
 			optimizerSource: entry.artifact.optimizer,
 		};
 	}

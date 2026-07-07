@@ -20,7 +20,8 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 export default scenario({
   lane: "live-only",
   id: "comms-flood-vip-allowlist-breakthrough",
-  title: "Comms flood: two named VIP sources break through the digest on any channel",
+  title:
+    "Comms flood: two named VIP sources break through the digest on any channel",
   domain: "lifeops.inbox",
   tags: ["lifeops", "comms-flood", "personas", "vip", "12283"],
   status: "active",

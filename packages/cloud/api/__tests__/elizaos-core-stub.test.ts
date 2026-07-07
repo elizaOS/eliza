@@ -6,8 +6,10 @@ import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   fetchWithSsrfGuard,
+  hasDocumentAugmentationEnvelope,
   runWithTrajectoryPurpose,
   SsrfBlockedError,
+  stripAugmentationForPersistence,
 } from "../src/stubs/elizaos-core";
 
 describe("elizaos-core Worker stub", () => {
@@ -23,6 +25,30 @@ describe("elizaos-core Worker stub", () => {
     await expect(
       runWithTrajectoryPurpose("inbox_triage", async () => "ok"),
     ).resolves.toBe("ok");
+  });
+
+  test("strips document augmentation before Worker-side persistence", () => {
+    const message = {
+      content: {
+        text: [
+          "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+          "",
+          "<contextual_documents>",
+          "source text",
+          "</contextual_documents>",
+          "",
+          "<user_request>",
+          "just fixing eliza app for demo",
+          "[Language instruction: Reply in Spanish]",
+          "</user_request>",
+        ].join("\n"),
+      },
+    };
+
+    expect(hasDocumentAugmentationEnvelope(message.content.text)).toBe(true);
+    expect(stripAugmentationForPersistence(message)).toEqual({
+      content: { text: "just fixing eliza app for demo" },
+    });
   });
 
   describe("fetchWithSsrfGuard", () => {

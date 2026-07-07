@@ -68,6 +68,7 @@ import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
+import { NotificationBanners } from "./components/shell/NotificationBanners";
 import { NotificationsShellBoot } from "./components/shell/notifications-boot";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
@@ -96,6 +97,7 @@ import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conduc
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
+import { useAgentSessionRecovery } from "./hooks/useAgentSessionRecovery";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useRole } from "./hooks/useRole";
 import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
@@ -109,12 +111,13 @@ import {
   isRouteRootPath,
   pathForTab,
   shouldUseHashNavigation,
+  type Tab,
   TAB_PATHS,
   tabFromPath,
+  titleForTab,
 } from "./navigation";
 import { applyLaunchConnection } from "./platform";
 import { isIOS, isNative } from "./platform/init";
-import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "./platform/standalone-bottom-reclaim";
 import { RetainedLazyComponent } from "./retained-lazy";
 import {
   type ActionNotice,
@@ -212,6 +215,7 @@ import {
   isWalletSectionPath,
   WalletSectionNav,
 } from "./components/pages/WalletSectionNav";
+import { ViewHeader } from "./components/shared/ViewHeader";
 import { FineTuningView } from "./components/training/injected";
 import { DynamicViewLoader } from "./components/views/DynamicViewLoader";
 import { registerSandboxProbeView } from "./components/views/sandbox-probe-view";
@@ -293,6 +297,10 @@ const LogsView = lazyNamedView(
 const MemoryViewerView = lazyNamedView(
   () => import("./components/pages/MemoryViewerView"),
   "MemoryViewerView",
+);
+const MyAppsView = lazyNamedView(
+  () => import("./components/pages/MyAppsView"),
+  "MyAppsView",
 );
 const PluginsPageView = lazyNamedView(
   () => import("./components/pages/PluginsPageView"),
@@ -1101,16 +1109,26 @@ function findRemoteViewForRoute(
 
 function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
   if (!view.bundleUrl && !view.frameUrl) return null;
+  // Remote plugin bundles render only their own content (a SpatialSurface), not
+  // the app-shell chrome — so the shell owns the standard top bar for them. Every
+  // `normal`-policy view gets the shared ViewHeader (title + back-to-launcher),
+  // matching #13586 ("the shell enforces the shared ViewHeader on every normal
+  // view"); `fullscreen`/`modal`/`immersive` opt out. A section nav (Wallet /
+  // Character strip) already supplies the header, so it suppresses this one.
+  const showHeader = !nav && resolveSurfaceManifest(view).header === "normal";
   return (
     <TabContentView nav={nav}>
-      <DynamicViewLoader
-        bundleUrl={view.bundleUrl}
-        frameUrl={view.frameUrl}
-        componentExport={view.componentExport}
-        viewId={view.id}
-        viewType={view.viewType}
-        surface={view.surface}
-      />
+      {showHeader ? <ViewHeader title={view.label} /> : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <DynamicViewLoader
+          bundleUrl={view.bundleUrl}
+          frameUrl={view.frameUrl}
+          componentExport={view.componentExport}
+          viewId={view.id}
+          viewType={view.viewType}
+          surface={view.surface}
+        />
+      </div>
     </TabContentView>
   );
 }
@@ -1313,15 +1331,26 @@ function buildStaticTabRenderers(): Record<
   const wrap = (node: ReactNode) => () => (
     <TabContentView>{node}</TabContentView>
   );
+  // Tool views that own no header of their own get the shared ViewHeader (back
+  // button + centered title) via the same flush structure MemoryViewerView uses,
+  // so every launcher tool reads the same at the top instead of opening headerless.
+  const withHeader = (tab: Tab, node: ReactNode) => () => (
+    <TabContentView>
+      <div className="flex h-full min-h-0 w-full flex-col">
+        <ViewHeader title={titleForTab(tab)} />
+        <div className="min-h-0 flex-1 overflow-hidden">{node}</div>
+      </div>
+    </TabContentView>
+  );
   return {
     chat: () => <ViewUnavailableFallback />,
     browser: () => <BrowserWorkspaceView />,
     stream: () => <StreamView />,
     tasks: wrap(<TasksPageView />),
     automations: () => <AutomationsFeed />,
-    plugins: wrap(<PluginsPageView />),
-    skills: wrap(<SkillsView />),
-    trajectories: wrap(<TrajectoriesView />),
+    plugins: withHeader("plugins", <PluginsPageView />),
+    skills: withHeader("skills", <SkillsView />),
+    trajectories: withHeader("trajectories", <TrajectoriesView />),
     transcripts: wrap(<LiveMeetingPageView />),
     // Relationships is a Character-family section: the shared CharacterSectionNav
     // (passed as `nav`) owns the "Character" header + strip, so the view renders
@@ -1343,15 +1372,21 @@ function buildStaticTabRenderers(): Record<
       </TabContentView>
     ),
     memories: wrap(<MemoryViewerView />),
+    "my-apps": wrap(<MyAppsView />),
     files: () => (
-      <TabScrollView>
-        <FilesView />
-      </TabScrollView>
+      <TabContentView>
+        <div className="flex h-full min-h-0 w-full flex-col">
+          <ViewHeader title={titleForTab("files")} />
+          <div className="eliza-continuous-chat-scroll min-h-0 flex-1 overflow-y-auto pb-[var(--eliza-continuous-chat-clearance,5.25rem)]">
+            <FilesView />
+          </div>
+        </div>
+      </TabContentView>
     ),
-    runtime: wrap(<RuntimeView />),
-    database: wrap(<DatabasePageView />),
-    logs: wrap(<LogsView />),
-    desktop: wrap(<DesktopWorkspaceSection />),
+    runtime: withHeader("runtime", <RuntimeView />),
+    database: withHeader("database", <DatabasePageView />),
+    logs: withHeader("logs", <LogsView />),
+    desktop: withHeader("desktop", <DesktopWorkspaceSection />),
     settings: ({
       settingsInitialSection,
       settingsNavigatePayload,
@@ -2095,6 +2130,18 @@ export function App() {
       startupCoordinator.phase === "first-run-required" ||
       isPopout,
   });
+  // #15132: after a dedicated cloud agent's container upgrade the persisted
+  // agent credential is stale (every agent-subdomain call 401s) while the cloud
+  // session is still valid. Rather than dead-end at the agent's internal
+  // password wall (a credential no cloud user has), transparently re-run the
+  // pairing exchange to refresh the credential. Only fires for a cloud-managed
+  // dedicated agent WITH a valid cloud session; otherwise stays "idle" and the
+  // wall renders exactly as before.
+  const agentSessionRecoveryStatus = useAgentSessionRecovery({
+    active: authState.phase === "unauthenticated",
+    reason:
+      authState.phase === "unauthenticated" ? authState.reason : undefined,
+  });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
   // delaying WebSocket agent-status updates (which would freeze the loader).
@@ -2626,6 +2673,19 @@ export function App() {
       );
     }
     if (authState.phase === "unauthenticated") {
+      // #15132: a stale post-upgrade agent credential with a valid cloud session
+      // is recoverable, so hold the startup surface while the re-pair runs (it
+      // ends in a full-page navigation to `/pair`) instead of flashing the
+      // password wall. Recovery drops back to "idle" if it can't proceed, and
+      // the wall renders then.
+      if (agentSessionRecoveryStatus === "recovering") {
+        return (
+          <BugReportProvider value={bugReport}>
+            <StartupScreen />
+            <BugReportModal />
+          </BugReportProvider>
+        );
+      }
       return (
         <BugReportProvider value={bugReport}>
           <LoginView onLoginSuccess={refetchAuth} reason={authState.reason} />
@@ -2673,26 +2733,28 @@ export function App() {
           // `paddingTop` below keeps CONTENT notch-aware. Locked by
           // App.safe-area-fill.test.ts.
           //
-          // RECLAIM THE BOTTOM STRIP (#14411): the base height is `h-[100dvh]`
-          // (correct for a desktop browser tab / popout where dvh == the full
-          // window). In the INSTALLED PWA the styles.css standalone blocks pin
-          // #root to 100lvh and reclaim THIS column to 100lvh too (via the
-          // `[data-app-shell-root]` selector), so the app fills full-bleed to
-          // the physical bottom edge instead of leaving the ~59px lvh–dvh strip
-          // as #root's near-black --launch-bg band. The home-indicator safe
-          // area is padded INSIDE the app (the floating composer clears it), so
-          // background content bleeds under the indicator, native-app style.
+          // The base height is `h-[100dvh]` (correct for a desktop browser tab /
+          // popout). In the installed PWA the styles.css standalone blocks fill
+          // #root AND this column (`[data-app-shell-root]`) to 100dvh — the full
+          // screen, since the non-fixed body no longer collapses the viewport —
+          // so the app paints full-bleed to the physical bottom edge. The
+          // home-indicator safe area is padded INSIDE the app (the floating
+          // composer clears it), so background content bleeds under the
+          // indicator, native-app style.
           data-app-shell-root=""
           className="relative flex h-[100dvh] w-full max-w-full flex-col overflow-hidden"
           // Reserve a TIGHT status-bar inset: enough to clear the notch/Dynamic
           // Island but no oversized empty band above the content (the repeated
-          // "too much space at the top" report). Shave the inset down from the
-          // full safe area, with a 1.25rem floor so notch-less phones still
+          // "too much space at the top" report; device r8 screenshot still showed
+          // dead space above the in-app clock). The iOS status bar clock already
+          // draws INSIDE the safe-area-top zone, so any app paddingTop below the
+          // full inset is ADDITIVE dead space. Shave harder, subtract 2rem from
+          // the safe area (was 1.25rem) so the big in-app clock seats snug under
+          // the status bar, with a 0.75rem floor so notch-less phones still
           // clear their status bar. Top banners bleed their bg back up via
           // `.mobile-top-banner:first-child` (styles.css). No-op on web.
           style={{
-            paddingTop:
-              "max(calc(var(--safe-area-top, 0px) - 1.25rem), 1.25rem)",
+            paddingTop: "max(calc(var(--safe-area-top, 0px) - 2rem), 0.75rem)",
           }}
         >
           {/* BOTTOM-BAR / SAFE-AREA FLOOR (do not remove): a viewport-filling
@@ -2720,24 +2782,14 @@ export function App() {
             aria-hidden="true"
             data-testid="app-safe-area-floor"
             className={cn(
+              // `fixed inset-0` with a non-fixed body → its containing block is
+              // the true viewport, so `bottom: 0` reaches the physical screen
+              // edge (no ICB collapse, no reclaim).
               "pointer-events-none fixed inset-0 z-[-1]",
               // Transparent under the full-bleed wallpaper so it shows to the
               // very bottom edge; opaque dark elsewhere as the FOUC guard.
               renderSharedAppBackground ? "bg-transparent" : "bg-bg",
             )}
-            // BOTTOM-BAR ROOT CAUSE (device r6, JS-MEASURED cure): this
-            // `fixed inset-0` floor is a fixed descendant of the fixed body, so
-            // its `bottom: 0` anchors to the ICB that COLLAPSES to the
-            // small/layout viewport on the installed iOS standalone PWA (~59px
-            // short of the true bottom). On OPAQUE routes it then stops short
-            // and the launch-bg strip shows below it; on wallpaper routes it is
-            // transparent so the (now-reclaimed) wallpaper owns the edge. Drop
-            // it by the MEASURED collapse gap (`--standalone-bottom-reclaim`,
-            // set in JS) the composer + wallpaper use so the FOUC guard reaches
-            // the physical bottom too. The prior `max(0px, 100lvh - 100dvh)`
-            // CSS-unit calc was a NO-OP on device (collapsed ICB resolves
-            // lvh === dvh). Var is a hard 0 off-standalone.
-            style={{ bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET }}
           />
           {/* The unified app background, mounted once here so it persists
               seamlessly across shared-background routes. It keeps the
@@ -2841,6 +2893,9 @@ export function App() {
             to the dashboard, where NotificationsHomeCenter is the one
             notification surface. Renders null. */}
         <NotificationsShellBoot />
+        {/* Top-of-screen glass banners for live notification arrivals (iOS/
+            Android heads-up idiom). Renders only while the queue is non-empty. */}
+        <NotificationBanners />
         {/* Tiny dismissible build stamp (bottom-left) so testers can verify
             PWA cache freshness at a glance. Best-effort: hidden when
             /build-info.json is absent (production builds without the

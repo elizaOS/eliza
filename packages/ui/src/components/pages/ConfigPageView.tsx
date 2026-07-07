@@ -15,7 +15,8 @@ import { Check } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
-import { openExternalUrl, preOpenWindow } from "../../utils";
+import { preOpenCloudLoginWindow } from "../../state/cloud-login-launch";
+import { openExternalUrl } from "../../utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
@@ -315,7 +316,7 @@ export function ConfigPageView({
   const cloudStatusProps = {
     connected: elizaCloudConnected,
     loginBusy: elizaCloudLoginBusy,
-    onLogin: () => void handleCloudLogin(preOpenWindow()),
+    onLogin: () => void handleCloudLogin(preOpenCloudLoginWindow()),
   };
 
   const legacyRpcChains = walletConfig?.legacyCustomChains ?? [];
@@ -359,7 +360,7 @@ export function ConfigPageView({
     }),
     group: "rpc-config",
     description: "Sign in to Eliza Cloud to use managed RPC",
-    onActivate: () => void handleCloudLogin(preOpenWindow()),
+    onActivate: () => void handleCloudLogin(preOpenCloudLoginWindow()),
   });
   const saveEl = useAgentElement<HTMLButtonElement>({
     id: "wallet-rpc-save",
@@ -577,7 +578,9 @@ export function ConfigPageView({
                   size="sm"
                   className="text-xs font-bold"
                   {...cloudConnectEl.agentProps}
-                  onClick={() => void handleCloudLogin(preOpenWindow())}
+                  onClick={() =>
+                    void handleCloudLogin(preOpenCloudLoginWindow())
+                  }
                   disabled={elizaCloudLoginBusy}
                 >
                   {elizaCloudLoginBusy

@@ -401,9 +401,12 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     // Fresh post-wake URL, not the stale list-DTO URL.
     expect(result.apiBase).toBe(`${base}/dedicated/agent-ded`);
 
-    // Progress streamed through the connect flow's existing plumbing.
+    // Progress streamed through the connect flow's existing plumbing. The
+    // reuse lookup reports "listing" (not "creating") so downstream consumers
+    // — the first-run silent cloud entry (#15133) — can tell bookkeeping from
+    // a real provisioning phase.
     const statuses = progress.map(([status]) => status);
-    expect(statuses[0]).toBe("creating"); // "Finding your agents..."
+    expect(statuses[0]).toBe("listing"); // "Finding your agents..."
     expect(statuses).toContain("starting");
     expect(statuses[statuses.length - 1]).toBe("ready");
     const startingDetails = progress

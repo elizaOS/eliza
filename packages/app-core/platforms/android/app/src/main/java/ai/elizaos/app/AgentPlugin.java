@@ -44,6 +44,15 @@ public class AgentPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void getLocalAgentBootState(PluginCall call) {
+        try {
+            call.resolve(toJsObject(ElizaAgentService.getLocalAgentBootState(getContext())));
+        } catch (JSONException e) {
+            call.reject("Failed to read local agent boot state", e);
+        }
+    }
+
+    @PluginMethod
     public void getLocalAgentToken(PluginCall call) {
         JSObject result = new JSObject();
         String token = ElizaAgentService.localAgentToken(getContext());
