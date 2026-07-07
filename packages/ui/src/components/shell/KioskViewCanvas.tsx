@@ -4,6 +4,7 @@
  */
 import * as React from "react";
 
+import { useRafCoalescer } from "../../gestures";
 import { cn } from "../../lib/utils";
 import type { KioskViewSurface } from "./useKioskViewSurfaces";
 
@@ -54,27 +55,56 @@ function FloatingViewWindow({
   surface: KioskViewSurface;
 }): React.JSX.Element {
   const [position, setPosition] = React.useState({ x: 80, y: 64 });
+  const windowRef = React.useRef<HTMLDivElement | null>(null);
   const dragState = React.useRef<{
     pointerId: number;
-    x: number;
-    y: number;
+    // Pointer offset from the window origin, so the grab point stays under
+    // the finger/cursor.
+    offsetX: number;
+    offsetY: number;
+    // Committed position when the drag began — the base the per-frame
+    // translate3d delta is measured from.
+    baseX: number;
+    baseY: number;
+    // Canvas size captured once at pointerdown: reading clientWidth/Height in
+    // the move handler forces a layout per pointer event (up to ~1000Hz).
+    canvas: { width: number; height: number } | null;
+    // Last clamped position of the drag, committed to state on release.
+    lastX: number;
+    lastY: number;
   } | null>(null);
+
+  // During a drag the window is moved with a compositor-only translate3d
+  // written straight onto the element, at most once per animation frame —
+  // not a per-event setState + left/top layout write. React re-renders
+  // mid-drag keep the same `position` state, so the style prop diff never
+  // touches (and never clobbers) the transform.
+  const { schedule: scheduleDragWrite, cancel: cancelDragWrite } =
+    useRafCoalescer<{ x: number; y: number }>((next) => {
+      const el = windowRef.current;
+      const origin = dragState.current;
+      if (!el || !origin) return;
+      el.style.transform = `translate3d(${next.x - origin.baseX}px, ${next.y - origin.baseY}px, 0)`;
+    });
 
   /** Keep the title bar reachable: fully on-canvas vertically, and at least
    *  WINDOW_GRAB_MARGIN_PX of it visible horizontally — a window can never be
    *  dragged somewhere it cannot be dragged back from. */
   const clampToCanvas = React.useCallback(
-    (handle: HTMLElement, x: number, y: number) => {
-      const canvas = handle.parentElement?.parentElement;
+    (
+      x: number,
+      y: number,
+      canvas: { width: number; height: number } | null,
+    ) => {
       if (!canvas) return { x, y };
       return {
         x: Math.min(
           Math.max(x, WINDOW_GRAB_MARGIN_PX - surface.width),
-          Math.max(0, canvas.clientWidth - WINDOW_GRAB_MARGIN_PX),
+          Math.max(0, canvas.width - WINDOW_GRAB_MARGIN_PX),
         ),
         y: Math.min(
           Math.max(y, 0),
-          Math.max(0, canvas.clientHeight - WINDOW_TITLE_BAR_PX),
+          Math.max(0, canvas.height - WINDOW_TITLE_BAR_PX),
         ),
       };
     },
@@ -86,10 +116,20 @@ function FloatingViewWindow({
       // One drag at a time: a second touch point must not re-base the origin
       // of the drag already in flight.
       if (dragState.current) return;
+      // handle → window div → canvas. Sized here, once, so move handlers do
+      // no layout reads.
+      const canvasEl = e.currentTarget.parentElement?.parentElement ?? null;
       dragState.current = {
         pointerId: e.pointerId,
-        x: e.clientX - position.x,
-        y: e.clientY - position.y,
+        offsetX: e.clientX - position.x,
+        offsetY: e.clientY - position.y,
+        baseX: position.x,
+        baseY: position.y,
+        canvas: canvasEl
+          ? { width: canvasEl.clientWidth, height: canvasEl.clientHeight }
+          : null,
+        lastX: position.x,
+        lastY: position.y,
       };
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -104,34 +144,50 @@ function FloatingViewWindow({
     (e: React.PointerEvent<HTMLDivElement>) => {
       const origin = dragState.current;
       if (!origin || origin.pointerId !== e.pointerId) return;
-      setPosition(
-        clampToCanvas(
-          e.currentTarget,
-          e.clientX - origin.x,
-          e.clientY - origin.y,
-        ),
+      const next = clampToCanvas(
+        e.clientX - origin.offsetX,
+        e.clientY - origin.offsetY,
+        origin.canvas,
       );
+      origin.lastX = next.x;
+      origin.lastY = next.y;
+      scheduleDragWrite(next);
     },
-    [clampToCanvas],
+    [clampToCanvas, scheduleDragWrite],
   );
 
   // Shared release path for pointerup AND pointercancel/lostpointercapture:
   // a touch-scroll takeover or OS revocation ends the pointer with a CANCEL,
   // not an up — leaving dragState set made the window ghost-follow the next
-  // buttonless hover over the title bar.
-  const endDrag = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const origin = dragState.current;
-    if (!origin || origin.pointerId !== e.pointerId) return;
-    dragState.current = null;
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // The browser may already have revoked capture.
-    }
-  }, []);
+  // buttonless hover over the title bar. Commits the final position: any
+  // pending frame is dropped and left/top are written directly (React may
+  // legitimately bail out of the state commit when the drag returned to its
+  // start), then state is synced for the next render.
+  const endDrag = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const origin = dragState.current;
+      if (!origin || origin.pointerId !== e.pointerId) return;
+      dragState.current = null;
+      cancelDragWrite();
+      const el = windowRef.current;
+      if (el) {
+        el.style.transform = "";
+        el.style.left = `${origin.lastX}px`;
+        el.style.top = `${origin.lastY}px`;
+      }
+      setPosition({ x: origin.lastX, y: origin.lastY });
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // The browser may already have revoked capture.
+      }
+    },
+    [cancelDragWrite],
+  );
 
   return (
     <div
+      ref={windowRef}
       className="absolute flex flex-col overflow-hidden rounded-sm border border-border/50 bg-card "
       style={{
         left: position.x,
