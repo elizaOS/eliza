@@ -33,6 +33,7 @@ import {
   type TalkModeStateEvent,
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
+import { APP_PAUSE_EVENT } from "../events";
 import { resolveApiUrl } from "../utils";
 import { getElizaApiToken } from "../utils/eliza-globals";
 import {
@@ -734,6 +735,51 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     setCaptureMode("idle");
     setInterimTranscript("");
   }, []);
+
+  // Discard the composer's in-flight capture on app suspend WITHOUT transcribing
+  // (#voice-V1). iOS suspends the WebAudio graph when the PWA backgrounds: the
+  // WAV recorder's `ScriptProcessorNode` stalls, so `stop()` would POST a
+  // truncated/empty WAV (a doomed STT round-trip) and throw "No microphone audio
+  // was captured". `recorder.cancel()` releases the getUserMedia MediaStream
+  // tracks (so iOS drops the mic indicator during suspension) and closes the
+  // AudioContext without a transcribe; the browser recognizer is aborted the
+  // same way. `resetListeningState` clears the stuck "listening" UI so the next
+  // gesture re-arms from a clean idle instead of early-returning against a stale
+  // recorder ref. The composer mic is push-to-talk (gesture-driven), not
+  // hands-free, so there is nothing to auto-re-arm on resume — the user's next
+  // press starts a fresh capture.
+  const discardCaptureForSuspend = useCallback(() => {
+    if (listeningModeRef.current === "idle" && !localAsrRecorderRef.current) {
+      return;
+    }
+    enabledRef.current = false;
+    const recorder = localAsrRecorderRef.current;
+    localAsrRecorderRef.current = null;
+    if (recorder) {
+      // cancel() releases the mic tracks + closes the context, no throw, no POST.
+      recorder.cancel();
+    }
+    const recognition = recognitionRef.current;
+    recognitionRef.current = null;
+    if (recognition) {
+      try {
+        recognition.abort();
+      } catch {
+        /* already stopped */
+      }
+    }
+    // Native TalkMode owns its own mic session; ask it to stop so iOS doesn't
+    // hold the recognizer open across suspension. Best-effort — a stopped
+    // recognizer no-ops.
+    if (sttBackendRef.current === "talkmode") {
+      void getTalkModePlugin()
+        .stop()
+        .catch(() => {
+          /* ignore */
+        });
+    }
+    resetListeningState();
+  }, [resetListeningState]);
 
   const ensureTalkModeListeners = useCallback(async () => {
     if (talkModeHandlesRef.current.length > 0) return;
@@ -2717,6 +2763,24 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       window.removeEventListener("keydown", handleUserGesture, true);
     };
   }, [unlockAudio]);
+
+  // ── App suspend: release the mic mid-capture (#voice-V1) ───────────
+  // On the installed iOS PWA, backgrounding suspends the WebAudio graph and
+  // leaves the composer capture stuck (phantom "listening", orphaned mic). Tie
+  // into #15179's lifecycle bridge (which dispatches APP_PAUSE on the web PWA)
+  // to discard the in-flight capture cleanly. Only APP_PAUSE is handled here:
+  // the composer mic is push-to-talk, so resume needs no auto-re-arm — the
+  // hands-free/ambient surface (useShellController) owns re-arm on resume.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onPause = (): void => {
+      discardCaptureForSuspend();
+    };
+    document.addEventListener(APP_PAUSE_EVENT, onPause);
+    return () => {
+      document.removeEventListener(APP_PAUSE_EVENT, onPause);
+    };
+  }, [discardCaptureForSuspend]);
 
   // ── Cleanup on unmount ────────────────────────────────────────────
 

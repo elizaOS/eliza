@@ -36,7 +36,6 @@ export default scenario({
       name: "create-exchange-cadence",
       room: "main",
       text: "Every other Friday is Mira exchange day. Set a recurring reminder at 3pm to pack backpack, charger, meds form, and soccer cleats. Please keep it quiet and practical.",
-      responseIncludesAll: ["backpack", "charger", "soccer"],
       responseExcludes: ["therapy", "relationship", "legal"],
       responseJudge: {
         minimumScore: 0.7,

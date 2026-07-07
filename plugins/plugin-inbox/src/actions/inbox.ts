@@ -28,7 +28,6 @@
  * inject deterministic fetchers via {@link setInboxFetchers}.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -41,7 +40,7 @@ import type {
   MessageSource,
   ProviderDataRecord,
 } from "@elizaos/core";
-import { getDefaultTriageService, logger } from "@elizaos/core";
+import { getDefaultTriageService, hasRoleAccess, logger } from "@elizaos/core";
 import { InboxRepository } from "../inbox/repository.ts";
 import { InboxService } from "../inbox/service.ts";
 import type {
@@ -821,7 +820,7 @@ export async function executeInboxQueueOperation(args: {
 /**
  * Owner-access guard for INBOX. Mirrors the LifeOps `hasLifeOpsAccess`
  * predicate exactly: reject when the runtime agent id or the message entity id
- * is missing/empty, then defer to the shared owner-access check.
+ * is missing/empty, then defer to the shared core role check.
  */
 async function hasInboxAccess(
   runtime: IAgentRuntime,
@@ -836,7 +835,7 @@ async function hasInboxAccess(
   ) {
     return false;
   }
-  return hasOwnerAccess(runtime, message);
+  return hasRoleAccess(runtime, message, "OWNER");
 }
 
 const examples: ActionExample[][] = [

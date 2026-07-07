@@ -40,8 +40,14 @@ export interface SidebarProps extends React.HTMLAttributes<HTMLElement> {
   resizable?: boolean;
   /** Current width in pixels when resizable. Overrides the default width. */
   width?: number;
-  /** Fired while the user drags the resize handle. */
+  /** Fired while the user drags the resize handle (at most once per frame). */
   onWidthChange?: (width: number) => void;
+  /**
+   * Fired once when a resize drag that changed the width ends, with the final
+   * width. Persistence (localStorage etc.) belongs here, not in the per-frame
+   * onWidthChange stream.
+   */
+  onWidthCommit?: (width: number) => void;
   /** Min width in px (default 200). Drag below this and onCollapseRequest fires. */
   minWidth?: number;
   /** Max width in px (default 560). */

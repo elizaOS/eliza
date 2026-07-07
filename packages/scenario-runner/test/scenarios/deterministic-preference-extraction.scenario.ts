@@ -188,8 +188,8 @@ async function expectPreferenceLoopClosed(
 }
 
 export default scenario({
-  lane: "pr-deterministic",
   id: "deterministic-preference-extraction",
+  lane: "pr-deterministic",
   title:
     "A passively extracted preference lands in the personality slot + facts table and re-enters the prompt",
   domain: "scenario-runner",

@@ -14,7 +14,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import os from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	getActiveProject,
@@ -87,7 +87,11 @@ describe("project-registry", () => {
 
 	it("getProjectById returns the record or null", () => {
 		const p = upsertProject({ name: "a", localPath: "/tmp/a" }, env);
-		expect(getProjectById(p.id, env)?.localPath).toBe("/tmp/a");
+		// upsert canonicalizes localPath to an absolute path (resolve → realpath);
+		// for a non-existent dir that is `resolve("/tmp/a")` — `/tmp/a` on POSIX,
+		// `<drive>:\tmp\a` on Windows. Assert the platform-canonical form, not the
+		// bare POSIX spelling, so the round-trip holds on every OS.
+		expect(getProjectById(p.id, env)?.localPath).toBe(resolve("/tmp/a"));
 		expect(getProjectById("nope", env)).toBeNull();
 	});
 
@@ -152,8 +156,10 @@ describe("project-registry", () => {
 			env,
 		);
 		expect(persisted.id).toBe(first);
+		// The upsert persists the canonical (resolve'd) localPath, which differs
+		// from the bare POSIX spelling on Windows (`<drive>:\tmp\legacy-folder`).
 		expect(getProjectById(persisted.id, env)?.localPath).toBe(
-			"/tmp/legacy-folder",
+			resolve("/tmp/legacy-folder"),
 		);
 	});
 

@@ -1789,6 +1789,14 @@ try {
     assert(await p.getByTestId("chat-composer-plus").isVisible(), "EMPTY: chat actions (+) button shown");
     await p.getByTestId("chat-composer-plus").click();
     assert(await p.getByText("Upload file", { exact: true }).isVisible(), "EMPTY: upload lives in the chat-actions menu");
+    // The + menu is the first migrated liquid-glass menu surface: assert the
+    // glass class is live (GlassStyles mounted by the fixture shell) and
+    // capture the open-menu state for visual evidence.
+    assert(
+      (await p.locator(".eliza-glass-menu").count()) >= 1,
+      "EMPTY: chat-actions menu renders on the glass menu variant",
+    );
+    await snap(p, "state-plus-menu-glass");
     await p.keyboard.press("Escape");
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");
     await snap(p, "state-empty");
@@ -3228,9 +3236,12 @@ try {
       return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 4) };
     });
     const hidePx = await pixelAt(p, headingCenter.x, headingCenter.y);
+    // The onboarding surface over the heading may be the dark opaque backdrop
+    // OR the light full-screen panel (theme-dependent) — what it must NEVER be
+    // is the fixture's orange home backdrop showing through.
     assert(
-      hidePx.r < 70 && hidePx.g < 70 && hidePx.b < 70,
-      `ONBOARDING: launcher/home behind is hidden — pixel over the heading is a dark onboarding layer, not the home backdrop (got rgb(${hidePx.r}, ${hidePx.g}, ${hidePx.b}))`,
+      !(hidePx.r > 200 && hidePx.g < 140 && hidePx.b < 90),
+      `ONBOARDING: launcher/home behind is hidden — pixel over the heading is an onboarding layer, not the orange home backdrop (got rgb(${hidePx.r}, ${hidePx.g}, ${hidePx.b}))`,
     );
     await snap(p, "state-onboarding-opaque-backdrop");
 

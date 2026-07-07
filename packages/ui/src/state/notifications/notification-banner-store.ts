@@ -21,12 +21,24 @@ function emit(): void {
 }
 
 /**
- * Queue a notification as a top banner. Newest first; a repeat of an id already
- * showing refreshes it in place (so a superseding same-id update doesn't stack a
- * duplicate). Trimmed to {@link MAX_BANNERS} — older banners drop off the bottom.
+ * Coalescing key: a `groupKey` collapses a burst of superseding arrivals (the
+ * inbox does the same in the store's `upsert`), so a rapid same-group batch
+ * shows ONE banner, not one per arrival. Falls back to the id for ungrouped
+ * notifications.
+ */
+function bannerKey(n: AgentNotification): string {
+  return n.groupKey || n.id;
+}
+
+/**
+ * Queue a notification as a top banner. Newest first; a repeat of the same
+ * coalescing key already showing refreshes it in place (so a superseding
+ * same-group/same-id update doesn't stack a duplicate). Trimmed to
+ * {@link MAX_BANNERS} — older banners drop off the bottom.
  */
 export function pushNotificationBanner(notification: AgentNotification): void {
-  const withoutDup = banners.filter((b) => b.id !== notification.id);
+  const key = bannerKey(notification);
+  const withoutDup = banners.filter((b) => bannerKey(b) !== key);
   banners = [notification, ...withoutDup].slice(0, MAX_BANNERS);
   emit();
 }
@@ -57,4 +69,9 @@ export function useNotificationBanners(): readonly AgentNotification[] {
 export function __resetNotificationBannersForTests(): void {
   banners = [];
   listeners.clear();
+}
+
+/** Test-only snapshot of the live queue (newest first). */
+export function __getBannersForTests(): readonly AgentNotification[] {
+  return banners;
 }

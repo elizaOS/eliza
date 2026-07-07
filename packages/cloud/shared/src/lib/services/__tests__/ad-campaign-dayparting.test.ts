@@ -301,7 +301,7 @@ describe("updateCampaign on an unsynced campaign", () => {
         name: "Renamed",
         dayparting: schedule,
       }),
-    ).rejects.toThrow("only dayparting can be updated before sync");
+    ).rejects.toThrow("only dayparting and spend caps can be updated before sync");
 
     expect(update).not.toHaveBeenCalled();
   });

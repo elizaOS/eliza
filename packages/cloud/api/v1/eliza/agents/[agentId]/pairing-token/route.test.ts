@@ -166,7 +166,11 @@ describe("eliza agent pairing token route", () => {
     });
   });
 
-  test("falls back to the headscale direct Web UI URL when bridge_url is missing", async () => {
+  test("skips a browser-unreachable tailnet headscale URL and falls back to the public managed hostname", async () => {
+    // headscale IPs live on the 100.64/10 tailnet (CGNAT) our containers run on;
+    // a browser can never reach one, so the direct-headscale rung is filtered and
+    // the route must fall back to the public managed hostname (never a dead
+    // http://100.64.x.x redirect).
     findByIdAndOrg.mockResolvedValue({
       ...runningSandbox("dedicated-lazy"),
       bridge_url: null,
@@ -180,7 +184,8 @@ describe("eliza agent pairing token route", () => {
       success: true,
       data: {
         token: "pair-token",
-        redirectUrl: "http://100.64.0.12:19028/pair?token=pair-token",
+        redirectUrl:
+          "https://e06bb509-6c52-4c33-a9f7-66addc43e8c8.elizacloud.ai/pair?token=pair-token",
         expiresIn: 60,
       },
     });

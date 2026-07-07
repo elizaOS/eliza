@@ -11,6 +11,8 @@ node_modules
 /evidence/
 # Voice trajectory video capture (binary webm — regenerate via record-voice-trajectories.mjs)
 packages/ui/src/components/shell/__e2e__/output-voice-recording/
+# Settings hub e2e output (screenshots + webm — regenerate via test:settings-e2e)
+packages/ui/src/components/pages/__e2e__/output-settings/
 # Tutorial spotlight e2e output (screenshots + webm — regenerate via test:tutorial-e2e)
 packages/ui/src/components/pages/tutorial/__e2e__/output-tutorial/
 # FTU welcome e2e output (screenshots + webm — regenerate via test:ftu-home-e2e)
@@ -29,6 +31,8 @@ packages/ui/src/components/pages/__e2e__/output-connectors/
 packages/ui/src/components/pages/__e2e__/output-infinite-scroll/
 # Resize-handles e2e output (screenshots + html bundle — regenerate via the composites __e2e__ runner)
 packages/ui/src/components/composites/__e2e__/output-resize-handles/
+# Divider-drag perf-gate output (webm + screenshots + html bundle — regenerate via test:divider-drag-perf-gate)
+packages/ui/src/components/composites/__e2e__/output-divider-perf/
 # Launcher gesture-loop e2e output (webm videos + html bundle + traces — regenerate via test:launcher-loop-e2e)
 packages/ui/src/components/shell/__e2e__/output-launcher-loop/
 # Activity-feedback e2e output (screenshots + esbuild html bundle — regenerate via test:activity-feedback-e2e)

@@ -18,16 +18,7 @@ import type {
 import { getDefaultTriageService, parseInteractionBlocks } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  hasOwnerAccess: vi.fn(async () => true),
-}));
-
-// inbox.ts imports hasOwnerAccess from the @elizaos/agent/security/access
-// subpath (the barrel does not re-export it); mock that exact specifier or the
-// real owner check runs and every subaction returns PERMISSION_DENIED.
-vi.mock("@elizaos/agent/security/access", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
-}));
+const TEST_AGENT_ID = "11111111-1111-1111-1111-111111111111" as UUID;
 
 import {
   __resetInboxFetchersForTests,
@@ -38,7 +29,7 @@ import {
 
 function makeRuntime(): IAgentRuntime {
   return {
-    agentId: "agent-inbox-test" as UUID,
+    agentId: TEST_AGENT_ID,
     logger: {
       info: () => undefined,
       warn: () => undefined,
@@ -55,7 +46,6 @@ function makeDbRuntime(rowsFor: (sql: string) => unknown): {
   const calls: Array<{ sql: string }> = [];
   const runtime = {
     ...makeRuntime(),
-    agentId: "11111111-1111-1111-1111-111111111111" as UUID,
     adapter: {
       db: {
         execute: async (query: { queryChunks: Array<{ value?: unknown }> }) => {
@@ -73,9 +63,9 @@ function makeDbRuntime(rowsFor: (sql: string) => unknown): {
 function makeMessage(text = "show my inbox"): Memory {
   return {
     id: "msg-inbox-1" as UUID,
-    entityId: "owner-1" as UUID,
+    entityId: TEST_AGENT_ID,
     roomId: "room-inbox-1" as UUID,
-    content: { text },
+    content: { text, source: "test" },
   } as Memory;
 }
 
@@ -143,7 +133,6 @@ function makeTriageRow(
 describe("INBOX umbrella action — cross-channel inbox", () => {
   beforeEach(() => {
     __resetInboxFetchersForTests();
-    mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
   });
 
   describe("metadata", () => {
@@ -177,10 +166,17 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
     });
 
     it("rejects callers that fail the owner-access check", async () => {
-      mocks.hasOwnerAccess.mockResolvedValueOnce(false);
-      const result = await callInbox(makeRuntime(), makeMessage(), {
-        subaction: "list",
-      });
+      const result = await callInbox(
+        makeRuntime(),
+        {
+          ...makeMessage(),
+          entityId: "not-owner" as UUID,
+          content: { text: "show my inbox", source: "discord" },
+        } as Memory,
+        {
+          subaction: "list",
+        },
+      );
       expect(result.success).toBe(false);
       expect(result.data).toMatchObject({ error: "PERMISSION_DENIED" });
     });
@@ -192,8 +188,6 @@ describe("INBOX umbrella action — cross-channel inbox", () => {
       });
       expect(result.success).toBe(false);
       expect(result.data).toMatchObject({ error: "PERMISSION_DENIED" });
-      // The guard short-circuits before the owner-access call.
-      expect(mocks.hasOwnerAccess).not.toHaveBeenCalled();
     });
   });
 

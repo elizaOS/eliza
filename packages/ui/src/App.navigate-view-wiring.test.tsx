@@ -50,6 +50,10 @@ const desktopBridgeMock = vi.hoisted(() => ({
   openDesktopLauncherWindow: vi.fn(async () => ({ id: "launcher-1" })),
 }));
 
+const mediaQueryState = vi.hoisted(() => ({
+  matches: false,
+}));
+
 const dynamicViewLoaderMock = vi.hoisted(() => ({
   render: vi.fn(
     ({
@@ -244,6 +248,10 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // Home widgets gate their loaders on this (#11084); the mounted App renders
   // them, so the mock must export it alongside useAuthStatus.
   useIsAuthenticated: () => true,
+}));
+
+vi.mock("./hooks/useMediaQuery", () => ({
+  useMediaQuery: () => mediaQueryState.matches,
 }));
 
 vi.mock("./hooks/useActivityEvents", () => ({
@@ -448,6 +456,7 @@ describe("App navigate-view event wiring", () => {
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
     appState.tab = "chat";
+    mediaQueryState.matches = false;
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();

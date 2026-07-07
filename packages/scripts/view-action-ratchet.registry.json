@@ -31,7 +31,6 @@
     "uploadDocument": { "action": "DOCUMENT" },
     "uploadDocumentsBulk": { "action": "DOCUMENT" },
     "deleteFile": { "action": "FILES" },
-    "generateBackgroundImage": { "action": "BACKGROUND" },
     "uploadBackgroundImage": { "action": "BACKGROUND" },
     "executeDatabaseQuery": { "action": "DATABASE" },
     "launchApp": { "action": "APP" },

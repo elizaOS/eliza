@@ -150,6 +150,24 @@ export function resolveBuiltinTabId(tab: string): string {
 }
 
 /**
+ * Whether a route is one of the immersive wallpaper surfaces: designed
+ * directly against the raw wallpaper (chat, the /background editor, and the
+ * launcher roots) — as opposed to a content view that sits on the wallpaper
+ * behind the readability scrim. Derived from the same metadata table as the
+ * background policy so a new immersive surface is a one-line data edit, not a
+ * second hand-maintained tab list in App.tsx.
+ */
+export function isImmersiveWallpaperRoute(
+  tab: string,
+  trimmedNavigationPath: string,
+): boolean {
+  const decl = BUILTIN_TAB_BY_ID.get(tab)?.surface;
+  if (decl === undefined) return false;
+  if ("shared" in decl) return decl.shared(trimmedNavigationPath);
+  return resolveSurfaceManifest({ surface: decl }).header === "immersive";
+}
+
+/**
  * The builtin-level background policy for a tab/route, or `null` to fall
  * through to downstream resolution. Data-driven over the surface-manifest table:
  * a full manifest resolves through the grant-gated {@link resolveSurfaceManifest}

@@ -38,6 +38,7 @@ function makeCtx(
   const req = Readable.from(
     body === null ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
+  req.headers = {};
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();

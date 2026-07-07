@@ -98,6 +98,14 @@ export interface Transcript {
   /** Distinct speaker count across segments. */
   speakerCount: number;
   metadata?: Record<string, unknown>;
+  /**
+   * Present (true) only on a served DTO whose content is the PII-scrubbed
+   * variant of the artifact, selected for a redacted-grant viewer (#14781).
+   * A redacted serve always withholds `audioUrl` (audio is never redacted in
+   * v1). Never stored — stored records link variants via
+   * `metadata.redactionOf` / row `metadata.redactedVariantId` instead.
+   */
+  redacted?: true;
 }
 
 /**
@@ -214,6 +222,8 @@ export interface TranscriptSummary {
   hasAudio: boolean;
   /** Server-computed meeting fields; present only for `source: "meeting"`. */
   meeting?: TranscriptSummaryMeetingMeta;
+  /** Present (true) when this row's preview is served from the redacted variant (#14781). */
+  redacted?: true;
 }
 
 /** Default characters of transcript text kept for a list-row preview. */

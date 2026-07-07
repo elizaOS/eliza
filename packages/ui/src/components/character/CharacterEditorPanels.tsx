@@ -189,7 +189,7 @@ export function CharacterIdentityPanel({
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-muted">
+        <span className="text-sm font-semibold text-txt-strong">
           {t("common.name", { defaultValue: "Name" })}
         </span>
         <Input
@@ -206,7 +206,7 @@ export function CharacterIdentityPanel({
         />
       </div>
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-muted">
+        <span className="text-sm font-semibold text-txt-strong">
           {t("settings.identity.systemPromptLabel", {
             defaultValue: "System prompt",
           })}
@@ -226,7 +226,7 @@ export function CharacterIdentityPanel({
         />
       </div>
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-muted">
+        <span className="text-sm font-semibold text-txt-strong">
           {t("charactereditor.AboutMe", { defaultValue: "About Me" })}
         </span>
         <Textarea
@@ -844,9 +844,9 @@ export function CharacterExamplesPanel({
     });
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4 sm:gap-6">
       {/* Chat Examples — flat, no card/border; whitespace separates conversations. */}
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-2 sm:gap-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <span className="text-xs font-medium text-muted">
             {t("charactereditor.ChatExamples", {
@@ -951,7 +951,7 @@ export function CharacterExamplesPanel({
       </section>
 
       {/* Post Examples — flat, no card/border; whitespace separates posts. */}
-      <section className="flex flex-col gap-3">
+      <section className="flex flex-col gap-2 sm:gap-3">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <span className="text-xs font-medium text-muted">
             {t("charactereditor.PostExamples", {

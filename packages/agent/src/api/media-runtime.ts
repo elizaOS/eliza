@@ -218,7 +218,13 @@ export function collectReferencedMedia(
   for (const memory of memories) {
     const attachments = (
       memory.content as
-        | { attachments?: Array<{ url?: unknown; thumbnailUrl?: unknown }> }
+        | {
+            attachments?: Array<{
+              url?: unknown;
+              thumbnailUrl?: unknown;
+              redactedUrl?: unknown;
+            }>;
+          }
         | undefined
     )?.attachments;
     if (Array.isArray(attachments)) {
@@ -232,6 +238,11 @@ export function collectReferencedMedia(
         // window, so inline previews 404 even though the full image survives.
         addUrl(attachment?.url);
         addUrl(attachment?.thumbnailUrl);
+        // The PII-scrubbed variant (#14781) is its own content-addressed file
+        // referenced only via `redactedUrl` on the same attachment; without
+        // this scan the daily GC deletes every redacted variant past the grace
+        // window and redacted-grant viewers 404.
+        addUrl(attachment?.redactedUrl);
       }
     }
 

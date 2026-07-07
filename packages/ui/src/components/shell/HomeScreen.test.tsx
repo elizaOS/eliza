@@ -165,10 +165,6 @@ describe("HomeScreen", () => {
     expect(hostWrapper?.className).toContain("justify-center");
   });
 
-  // (The one-time home "gesture hint" widget was removed from HomeScreen; its
-  // overlap-clearance test went with it. Reintroducing any always-mounted hint
-  // must re-add the composer-footprint bottom clearance the old test pinned.)
-
   it("tapping an inline row expands options; Open follows its safe deep link", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),

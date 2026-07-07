@@ -32,6 +32,7 @@ import type * as React from "react";
 import { useAgentElement } from "../../agent-surface";
 import { cn } from "../../lib/utils";
 import { PagePanel } from "../composites/page-panel";
+import { RedactedBadge } from "../RedactedBadge";
 import { Button } from "../ui/button";
 import { ShellViewAgentSurface } from "../views/ShellViewAgentSurface";
 import { LiveMeetingPane } from "./LiveMeetingPane";
@@ -210,6 +211,9 @@ function TranscriptRow({
     >
       <div className="flex items-center gap-2">
         <span className="min-w-0 truncate font-medium">{summary.title}</span>
+        {summary.redacted ? (
+          <RedactedBadge testId={`transcript-redacted-${summary.id}`} />
+        ) : null}
         {isLive ? (
           <LiveIndicator testId={`transcript-live-${summary.id}`} />
         ) : null}
@@ -483,6 +487,9 @@ export function TranscriptsView({
                   <h2 className="text-base font-semibold text-txt">
                     {selected.title}
                   </h2>
+                  {selected.redacted ? (
+                    <RedactedBadge testId="transcript-detail-redacted" />
+                  ) : null}
                   {selectedIsLiveMeeting ? (
                     <LiveIndicator testId="meeting-detail-live" />
                   ) : null}

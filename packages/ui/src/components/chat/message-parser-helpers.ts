@@ -366,11 +366,37 @@ export function splitInlineCode(text: string): InlineTextPart[] {
   return parts;
 }
 
+/**
+ * Cheap pre-gate for {@link parseSegments}: every non-text region the parser
+ * can produce REQUIRES at least one of these characters, so a message without
+ * any of them is guaranteed plain prose and can skip the whole multi-pass scan
+ * (permission parse, [CONFIG], widget parsers, fenced-JSON JSON.parse, JSONL
+ * patches, fenced code). parseSegments runs on every streaming rAF flush over
+ * the full accumulated text, so for typical streamed prose this single scan
+ * replaces ~8 regex/JSON passes per frame.
+ *
+ * Region → required character:
+ *   - fenced code / fenced-JSON UiSpec / permission fenced body → `` ` ``
+ *   - [CONFIG:…] and every registry inline widget marker
+ *     ([CHOICE]/[FOLLOWUPS]/[FORM]/[WORKFLOW]/[BACKGROUND]/[CHECKLIST]/[TASK])
+ *     → `[` (plugin-registered widgets must also use a `[…]` marker — see
+ *     inline-registry.tsx)
+ *   - JSONL patch lines (`{"op":…` / `{ "op":…`) and the permission card's
+ *     bare-JSON tail → `{`
+ *   - analysis-mode XML blocks (<thought>/<action>/…) → `<`
+ */
+const SEGMENT_TRIGGER_RE = /[`[{<]/;
+
 export function parseSegments(text: string, analysisMode: boolean): Segment[] {
   // If analysis mode is enabled, we parse the raw text to extract XML blocks,
   // otherwise we use the normalized text which strips them.
   const targetText = analysisMode ? text : normalizeDisplayText(text);
   if (!targetText) return [{ kind: "text", text: "" }];
+
+  // Plain prose (no trigger character anywhere) → one text segment, no scans.
+  if (!SEGMENT_TRIGGER_RE.test(targetText)) {
+    return [{ kind: "text", text: targetText }];
+  }
 
   const permissionRequest = analysisMode
     ? null

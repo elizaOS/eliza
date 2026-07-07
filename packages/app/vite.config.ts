@@ -1438,6 +1438,21 @@ function resolveManualChunk(id: string): string | undefined {
     return "runtime-shims";
   }
 
+  // The baked launcher-icon map (`view-icons.generated.ts`) is ~900 KB of
+  // base64 PNG data URIs — a self-contained data blob (no imports) that the
+  // launcher preloads so tiles never show a loading/empty state. It is
+  // statically reachable from the eager entry (App → LauncherSurface →
+  // view-catalog → this map), so Rollup otherwise folds all ~630 KB brotli of
+  // it into the app-logic `index` entry chunk, making that single chunk the
+  // largest in the bundle and blowing the `largestChunkBrotli` budget. Pinning
+  // it to its own chunk keeps the icons eagerly preloaded (design intent
+  // preserved) while splitting the immutable data payload off the frequently-
+  // changing app-logic chunk, so it caches independently and no longer
+  // dominates the entry. Mirrors the vendor-* splits below.
+  if (normalizedId.includes("/components/views/view-icons.generated")) {
+    return "view-icons";
+  }
+
   // Self-contained leaf libraries needed EAGERLY by @elizaos/core's browser
   // SOURCE graph (`utils/crypto-compat.ts` → @noble; runtime/services → uuid),
   // which mobile builds bundle via USE_CORE_SOURCE_BROWSER_ENTRY, and that the

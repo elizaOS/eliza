@@ -78,6 +78,7 @@ function makeRuntime(fragments: Memory[]): {
       id: worldId,
       metadata: {
         roles: { [OWNER_ENTITY]: "OWNER", [USER_ENTITY]: "USER" },
+        roleSources: { [OWNER_ENTITY]: "manual", [USER_ENTITY]: "manual" },
       },
     })),
     getEntityById: vi.fn(async () => null),

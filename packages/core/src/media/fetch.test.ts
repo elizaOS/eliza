@@ -1,7 +1,8 @@
 /**
  * Tests for `fetchRemoteMedia`, the SSRF-guarded remote-media fetch: timeout
  * signal propagation and RFC 5987 `Content-Disposition` filename decoding.
- * Deterministic — the DNS `lookupFn` and `fetchImpl` are injected, no network.
+ * Deterministic — DNS resolution and transport are injected through the
+ * `lookupFn` + `pinnedFetchImpl` pair (the production pinned shape), no network.
  */
 import { describe, expect, it } from "vitest";
 import { fetchRemoteMedia } from "./fetch.ts";
@@ -13,7 +14,10 @@ describe("fetchRemoteMedia", () => {
 			url: "https://example.com/image.png",
 			timeoutMs: 30_000,
 			lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
-			fetchImpl: async (_input, init) => {
+			// With a lookupFn the guard fail-closes unless the transport receives
+			// the computed DNS pin — inject through pinnedFetchImpl, never a plain
+			// fetchImpl that would discard the pin (#11147).
+			pinnedFetchImpl: async ({ init }) => {
 				sawAbortSignal = init?.signal instanceof AbortSignal;
 				return new Response(Buffer.from("png"), {
 					headers: { "content-type": "image/png" },
@@ -29,7 +33,7 @@ describe("fetchRemoteMedia", () => {
 		return fetchRemoteMedia({
 			url: "https://example.com/files/42",
 			lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
-			fetchImpl: async () =>
+			pinnedFetchImpl: async () =>
 				new Response(Buffer.from("hello"), {
 					headers: {
 						"content-type": "text/plain",

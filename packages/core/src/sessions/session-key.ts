@@ -85,7 +85,7 @@ export function parseAgentSessionKey(
 		return null;
 	}
 
-	const agentId = parts[1] ?? "";
+	const agentId = parts[1];
 	if (!agentId) {
 		return null;
 	}

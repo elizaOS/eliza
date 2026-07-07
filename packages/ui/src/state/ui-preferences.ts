@@ -143,35 +143,6 @@ export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   color: DEFAULT_BACKGROUND_COLOR,
 };
 
-/** A named default background — a curated shader color the user can pick. */
-export interface BackgroundPreset {
-  /** Stable slug used by chat ("use the green background") and tests. */
-  id: string;
-  /** Human-readable name shown to screen readers and the agent. */
-  label: string;
-  /** 6-digit hex color driving the shader field. */
-  color: string;
-}
-
-/**
- * The curated default backgrounds. This is the single source of truth shared by
- * the Background view (swatches) and the agent's BACKGROUND action (so "use the
- * green background" maps to the same color the swatch sets). Each preset is a
- * live, breathing shader field — not a flat fill.
- */
-export const BACKGROUND_PRESETS: readonly BackgroundPreset[] = [
-  { id: "orange", label: "Orange", color: "#ef5a1f" },
-  { id: "amber", label: "Amber", color: "#f59e0b" },
-  { id: "rose", label: "Rose", color: "#e11d48" },
-  { id: "red", label: "Red", color: "#dc2626" },
-  { id: "green", label: "Green", color: "#059669" },
-  { id: "olive", label: "Olive", color: "#65a30d" },
-  { id: "stone", label: "Stone", color: "#57534e" },
-  { id: "graphite", label: "Graphite", color: "#3f3f46" },
-  { id: "black", label: "Black", color: "#0a0a0a" },
-  { id: "light", label: "Light", color: "#f4f4f5" },
-];
-
 /* ── Background catalog (curated + metadata) ──────────────────────────── */
 
 /**
@@ -184,6 +155,7 @@ export const BACKGROUND_PRESETS: readonly BackgroundPreset[] = [
  * enforces this: naming a catalog entry can never smuggle arbitrary shader code
  * or an unvetted client URL through the broker.
  */
+
 /**
  * One entry in the curated background catalog: the shared metadata
  * ({@link BackgroundCatalogMeta} from `@elizaos/shared`) plus the concrete

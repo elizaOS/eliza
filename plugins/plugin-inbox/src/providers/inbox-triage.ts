@@ -5,7 +5,6 @@
  * triage snapshot for assistant planning.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,
@@ -13,6 +12,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { InboxRepository } from "../inbox/repository.ts";
 import type { TriageEntry } from "../inbox/types.ts";
 
@@ -25,7 +25,7 @@ const EMPTY: ProviderResult = {
 /**
  * inboxTriage provider — injects pending inbox triage items into owner context.
  *
- * Owner-only (`roleGate.minRole: OWNER` + the `hasOwnerAccess` gate below).
+ * Owner-only (`roleGate.minRole: OWNER` + the core role gate below).
  * Because it only ever runs for the owner, the LifeOps egress redaction it used
  * is always a pass-through, so the ported provider surfaces the owner's full
  * triage snippets and deep links — observably identical to the LifeOps version.
@@ -51,7 +51,7 @@ export const inboxTriageProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) {
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) {
       return EMPTY;
     }
 

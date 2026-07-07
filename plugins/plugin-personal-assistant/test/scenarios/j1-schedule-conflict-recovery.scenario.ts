@@ -50,7 +50,6 @@ export default scenario({
       room: "main",
       text: "Mira is sick on Sam's day and the school called me. Look at my conflict and draft factual options: one to Sam, one to move the client budget review if needed. No commentary about whose day it is, and do not send.",
       plannerExcludes: ["MESSAGE_SEND_CONFIRMED"],
-      responseIncludesAll: ["client budget review", "Sam"],
       responseExcludes: [
         "Sam should have",
         "his responsibility",

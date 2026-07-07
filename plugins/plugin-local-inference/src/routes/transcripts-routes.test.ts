@@ -91,6 +91,12 @@ const access = (requesterEntityId: UUID): AccessContext => ({
 	role: "USER",
 });
 
+const adminAccess = (requesterEntityId: UUID): AccessContext => ({
+	requesterEntityId,
+	worldId: WORLD,
+	role: "ADMIN",
+});
+
 describe("buildTranscriptFromRequest", () => {
 	it("derives duration + speaker count + defaults", () => {
 		const body: CreateTranscriptRequest = {
@@ -367,5 +373,189 @@ describe("transcripts routes", () => {
 			}),
 		);
 		expect(hidden.status).toBe(404);
+	});
+
+	it("selects full / redacted-variant / none per viewer role through the real GET routes (#14781)", async () => {
+		const { rows, runtime } = fakeRuntime();
+		const post = handlerFor("POST", "/api/transcripts");
+		const list = handlerFor("GET", "/api/transcripts");
+		const get = handlerFor("GET", "/api/transcripts/:id");
+
+		// Original owner-private transcript with PII in the text.
+		const original = await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					title: "Payroll",
+					roomId: ROOM,
+					entityId: ENTITY,
+					scope: "owner-private",
+					segments: [
+						{
+							id: "s1",
+							speakerLabel: "Alice",
+							startMs: 0,
+							endMs: 1000,
+							text: "Bob SSN 123-45-6789",
+							words: [],
+						},
+					],
+				},
+			}),
+		);
+		const originalId = (original.body as { transcript: { id: string } })
+			.transcript.id;
+
+		// Redacted variant transcript (its own row); linked from the original.
+		const variant = await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					title: "Payroll (redacted)",
+					roomId: ROOM,
+					entityId: ENTITY,
+					scope: "owner-private",
+					segments: [
+						{
+							id: "s1",
+							speakerLabel: "Alice",
+							startMs: 0,
+							endMs: 1000,
+							text: "Bob SSN [REDACTED]",
+							words: [],
+						},
+					],
+				},
+			}),
+		);
+		const variantId = (variant.body as { transcript: { id: string } })
+			.transcript.id;
+
+		// Read contract this issue owns (write path is PERM-REDACT #14779):
+		// original -> variant link + a redacted grant for VIEWER; variant ->
+		// original backlink so it never lists standalone.
+		const VIEWER = "44444444-4444-4444-4444-444444444444" as UUID;
+		const originalRow = rows.get(originalId);
+		if (!originalRow) throw new Error("original row missing");
+		rows.set(originalId, {
+			...originalRow,
+			metadata: {
+				...(originalRow.metadata as Record<string, unknown>),
+				redactedVariantId: variantId,
+				share: { grants: [{ entityId: VIEWER, mode: "redacted" }] },
+			},
+		});
+		const variantRow = rows.get(variantId);
+		if (!variantRow) throw new Error("variant row missing");
+		rows.set(variantId, {
+			...variantRow,
+			metadata: {
+				...(variantRow.metadata as Record<string, unknown>),
+				redactionOf: originalId,
+			},
+		});
+
+		// OWNER boundary (no context): full original, no flag.
+		const ownerGet = await get(
+			ctx({ runtime: runtime as never, params: { id: originalId } }),
+		);
+		expect(ownerGet.status).toBe(200);
+		const ownerT = (
+			ownerGet.body as {
+				transcript: { segments: Array<{ text: string }>; redacted?: true };
+			}
+		).transcript;
+		expect(ownerT.segments[0].text).toContain("123-45-6789");
+		expect(ownerT.redacted).toBeUndefined();
+
+		// ADMIN rank: full original.
+		const adminGet = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id: originalId },
+				accessContext: adminAccess(VIEWER),
+			}),
+		);
+		const adminT = (
+			adminGet.body as {
+				transcript: { redacted?: true; segments: Array<{ text: string }> };
+			}
+		).transcript;
+		expect(adminT.redacted).toBeUndefined();
+		expect(adminT.segments[0].text).toContain("123-45-6789");
+
+		// USER with the redacted grant: variant under the original id, flagged,
+		// audio + PII withheld.
+		const userGet = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id: originalId },
+				accessContext: access(VIEWER),
+			}),
+		);
+		expect(userGet.status).toBe(200);
+		const userT = (
+			userGet.body as {
+				transcript: {
+					id: string;
+					redacted?: true;
+					audioUrl?: string;
+					segments: Array<{ text: string }>;
+				};
+			}
+		).transcript;
+		expect(userT.id).toBe(originalId);
+		expect(userT.redacted).toBe(true);
+		expect(userT.audioUrl).toBeUndefined();
+		expect(userT.segments[0].text).toBe("Bob SSN [REDACTED]");
+
+		// Ungranted USER: 404 (non-enumerable).
+		const strangerGet = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id: originalId },
+				accessContext: access(OTHER_ENTITY),
+			}),
+		);
+		expect(strangerGet.status).toBe(404);
+
+		// GUEST: 404.
+		const guestGet = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id: originalId },
+				accessContext: {
+					requesterEntityId: OTHER_ENTITY,
+					worldId: WORLD,
+					role: "GUEST",
+				},
+			}),
+		);
+		expect(guestGet.status).toBe(404);
+
+		// List: VIEWER sees exactly one row (the original id, redacted-flagged);
+		// the variant row never lists standalone.
+		const userList = await list(
+			ctx({ runtime: runtime as never, accessContext: access(VIEWER) }),
+		);
+		const userRows = (
+			userList.body as {
+				transcripts: Array<{ id: string; redacted?: true; hasAudio: boolean }>;
+			}
+		).transcripts;
+		expect(userRows).toHaveLength(1);
+		expect(userRows[0]).toMatchObject({
+			id: originalId,
+			redacted: true,
+			hasAudio: false,
+		});
+
+		// Ungranted stranger: empty list.
+		const strangerList = await list(
+			ctx({ runtime: runtime as never, accessContext: access(OTHER_ENTITY) }),
+		);
+		expect(
+			(strangerList.body as { transcripts: unknown[] }).transcripts,
+		).toEqual([]);
 	});
 });

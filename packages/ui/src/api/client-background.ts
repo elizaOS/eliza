@@ -1,7 +1,8 @@
 /**
- * ElizaClient extension for background-image generation: the server runs the
- * agent's image provider, persists to the content-addressed media store, and
- * returns a durable /api/media/<hash> URL.
+ * ElizaClient extension for background-image upload re-hosting into the
+ * content-addressed media store. Agent-driven image generation stays behind
+ * the server-side BACKGROUND action, while the client API owns only the
+ * durable upload handle used by the wallpaper picker and undo history.
  */
 import { ElizaClient } from "./client-base";
 
@@ -12,19 +13,9 @@ import { ElizaClient } from "./client-base";
 declare module "./client-base" {
   interface ElizaClient {
     /**
-     * Generate a background image from a text prompt. The server runs the
-     * agent's image provider and persists the result to the content-addressed
-     * media store, returning a durable same-origin `/api/media/<hash>` URL the
-     * caller can store and render directly.
-     */
-    generateBackgroundImage(
-      prompt: string,
-      size?: string,
-    ): Promise<{ url: string }>;
-    /**
      * Re-host a user-picked wallpaper (downscaled data URL) into the
      * content-addressed media store, returning a durable same-origin
-     * `/api/media/<hash>` URL. Persisting THAT keeps the background config +
+     * `/api/media/<hash>` URL. Persisting the media URL keeps the config and
      * undo history tiny instead of stacking multi-MB data URLs into the
      * ~5 MB localStorage quota (where writes fail silently and the wallpaper
      * reverts on reload).
@@ -36,17 +27,6 @@ declare module "./client-base" {
 // ---------------------------------------------------------------------------
 // Prototype augmentation
 // ---------------------------------------------------------------------------
-
-ElizaClient.prototype.generateBackgroundImage = async function (
-  this: ElizaClient,
-  prompt,
-  size,
-) {
-  return this.fetch<{ url: string }>("/api/background/generate-image", {
-    method: "POST",
-    body: JSON.stringify({ prompt, ...(size ? { size } : {}) }),
-  });
-};
 
 ElizaClient.prototype.uploadBackgroundImage = async function (
   this: ElizaClient,

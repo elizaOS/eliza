@@ -369,6 +369,15 @@ function isPrivateOrInternalUrl(url: string): boolean {
 	}
 }
 
+/** DNS + transport injection for the guarded fetch — the deterministic-test
+ *  seam. The guard fail-closes on a lookupFn without a pinnedFetchImpl, so
+ *  tests inject the pinned pair instead of stubbing global fetch (which the
+ *  node pinned transport bypasses). */
+export type OutboundAttachmentFetchOptions = Pick<
+	Parameters<typeof fetchRemoteMedia>[0],
+	"fetchImpl" | "lookupFn" | "pinnedFetchImpl"
+>;
+
 /**
  * Build a Discord attachment. Generated audio/video URLs are fetched through
  * the core SSRF guard.
@@ -376,6 +385,7 @@ function isPrivateOrInternalUrl(url: string): boolean {
 export async function buildOutboundDiscordAttachment(
 	media: Media,
 	runtime?: Pick<IAgentRuntime, "logger">,
+	fetchOptions?: OutboundAttachmentFetchOptions,
 ): Promise<AttachmentBuilder> {
 	const fileName = getAttachmentFileName(media);
 	const url = media.url?.trim();
@@ -400,6 +410,7 @@ export async function buildOutboundDiscordAttachment(
 				DEFAULT_OUTBOUND_ATTACHMENT_TIMEOUT_MS,
 			),
 			ssrfPolicy: generatedMediaFetchPolicy(url),
+			...fetchOptions,
 		});
 		return new AttachmentBuilder(fetched.buffer, { name: fileName });
 	} catch (error) {

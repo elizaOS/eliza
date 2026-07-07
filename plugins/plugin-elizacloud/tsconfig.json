@@ -31,7 +31,10 @@
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"]
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/import-conversations": ["../../packages/import-conversations/src/index.ts"],
+      "@elizaos/import-conversations/*": ["../../packages/import-conversations/src/*"],
+      "@elizaos/import-conversations/browser": ["../../packages/import-conversations/src/browser.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "__tests__/**/*.ts", "build.ts", "vitest.config.ts"],

@@ -84,7 +84,8 @@ function looksLikeOwnerAppPrivate(input: {
   source?: string;
 }): boolean {
   if (input.channelType !== ChannelType.DM) return false;
-  const source = (input.source ?? "").trim().toLowerCase();
+  const source =
+    typeof input.source === "string" ? input.source.trim().toLowerCase() : "";
   return OWNER_APP_SOURCES.has(source);
 }
 

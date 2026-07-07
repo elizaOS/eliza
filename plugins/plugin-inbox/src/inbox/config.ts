@@ -3,20 +3,28 @@
  * agent config. Nested settings are deep-merged so partial auto-reply or rule
  * overrides do not erase the plugin's default safety thresholds.
  */
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import type { IAgentRuntime } from "@elizaos/core";
 import type { InboxTriageConfig } from "./types.js";
 
-export function loadInboxTriageConfig(): InboxTriageConfig {
-  try {
-    const cfg = loadElizaConfig();
-    const raw = cfg.agents?.defaults?.inboxTriage as
-      | Partial<InboxTriageConfig>
-      | undefined;
-    if (raw && typeof raw === "object") {
-      return deepMergeConfig(DEFAULT_CONFIG, raw);
+const INBOX_TRIAGE_CONFIG_SETTING = "ELIZA_INBOX_TRIAGE_CONFIG_JSON";
+
+export function loadInboxTriageConfig(
+  runtime?: Pick<IAgentRuntime, "getSetting">,
+): InboxTriageConfig {
+  const raw =
+    typeof runtime?.getSetting === "function"
+      ? runtime.getSetting(INBOX_TRIAGE_CONFIG_SETTING)
+      : null;
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<InboxTriageConfig>;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return deepMergeConfig(DEFAULT_CONFIG, parsed);
+      }
+    } catch {
+      // error-policy:J3 malformed optional config setting is invalid input; the
+      // caller gets the default disabled triage config, not a fake custom config.
     }
-  } catch {
-    // Startup can run before a config file exists; defaults keep triage inert.
   }
   return { ...DEFAULT_CONFIG };
 }

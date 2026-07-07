@@ -163,6 +163,18 @@ describe("notification-store", () => {
     expect(pushNotificationBanner).not.toHaveBeenCalled();
   });
 
+  it("threads groupKey into the native request so the OS surface coalesces", async () => {
+    __ingestNotificationForTests(
+      makeNotification({ priority: "high", groupKey: "files" }),
+      1,
+    );
+    await flushDelivery();
+    expect(showNativeNotification).toHaveBeenCalledTimes(1);
+    expect(showNativeNotification.mock.calls[0][0]).toMatchObject({
+      groupKey: "files",
+    });
+  });
+
   it("web focused: the glass banner is the surface (no web Notification)", async () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Deploy done", body: "Build #42" }),

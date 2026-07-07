@@ -1,10 +1,10 @@
 /**
  * Non-core plugin command contract (#8790).
  *
- * Proves the universal slash-command contract end to end with a real,
- * non-core, view-owning plugin (`@elizaos/plugin-task-coordinator`):
+ * Proves the universal slash-command contract end to end with the
+ * task-coordinator plugin's real server-side command contribution:
  *
- *   1. The plugin's `init()` registers a view-scoped slash command into the
+ *   1. The plugin init registers a view-scoped slash command into the
  *      per-runtime `@elizaos/plugin-commands` registry (the standard
  *      command-registration API).
  *   2. That command is served by `GET /api/commands` — but only while the
@@ -16,15 +16,22 @@
  * the connector bridges use, exercised from a non-core contributor.
  */
 
-import type { Action, Content, IAgentRuntime, Memory } from "@elizaos/core";
+import type {
+  Action,
+  Content,
+  IAgentRuntime,
+  Memory,
+  Plugin,
+} from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { initForRuntime } from "@elizaos/plugin-commands";
-import taskCoordinatorPlugin, {
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import {
   ORCHESTRATOR_STATUS_COMMAND_ACTION,
   ORCHESTRATOR_STATUS_COMMAND_KEY,
   orchestratorStatusCommandAction,
-} from "@elizaos/plugin-task-coordinator";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+  registerOrchestratorCommands,
+} from "../../../../plugins/plugin-task-coordinator/src/orchestrator-command.ts";
 
 import { handleCommandsRoutes } from "./commands-routes.ts";
 
@@ -42,6 +49,15 @@ interface ServedPayload {
   activeViewId: string | null;
   agentId: string | null;
 }
+
+const taskCoordinatorPlugin: Plugin = {
+  name: "@elizaos/plugin-task-coordinator",
+  description: "Task coordinator command contract fixture",
+  init: async (_config, runtime) => {
+    registerOrchestratorCommands(runtime.agentId);
+  },
+  actions: [orchestratorStatusCommandAction],
+};
 
 /** Drive the real route handler and return the served catalog payload. */
 async function fetchCatalog(query: string): Promise<ServedPayload> {

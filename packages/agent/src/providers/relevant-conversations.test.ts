@@ -53,6 +53,7 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): {
     // hash memories so these tests isolate the embed path.
     getMemories: vi.fn(async () => []),
     searchMemories,
+    reportError: vi.fn(),
     ...overrides,
   });
   return { runtime, searchMemories };

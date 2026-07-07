@@ -43,6 +43,12 @@
       "@elizaos/ui/platform": ["../../packages/ui/src/platform/index.ts"],
       "@elizaos/ui/platform/*": ["../../packages/ui/src/platform/*"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/import-conversations": [
+        "../../packages/import-conversations/src/index.ts"
+      ],
+      "@elizaos/import-conversations/browser": [
+        "../../packages/import-conversations/src/browser.ts"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],

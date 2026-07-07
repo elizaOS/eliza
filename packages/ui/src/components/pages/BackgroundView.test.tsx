@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
-// Renders the real BackgroundView to cover swatch selection (shader config),
-// undo/redo visibility + revert against the persisted history, and gating the
-// cloud "Generate" control on cloud availability. jsdom; only background-image
-// (canvas downscale) is stubbed.
+// Renders the real BackgroundView to cover wallpaper selection (image config),
+// undo/redo visibility + revert against the persisted history, and upload.
+// The MVP picker is images + upload only — no swatches, no AI generation.
+// jsdom; only background-image (canvas downscale) is stubbed.
 import {
   cleanup,
   fireEvent,
@@ -55,15 +55,17 @@ afterEach(() => {
 });
 
 describe("BackgroundView", () => {
-  it("selecting a swatch sets a shader config", () => {
+  it("selecting a wallpaper tile sets an image config", () => {
     const setBackgroundConfig = vi.fn();
     seed({ setBackgroundConfig });
     render(<BackgroundView />);
-    fireEvent.click(screen.getByLabelText("Set background to Green"));
-    expect(setBackgroundConfig).toHaveBeenCalledWith({
-      mode: "shader",
-      color: "#059669",
-    });
+    fireEvent.click(screen.getByLabelText("Set background to Reef"));
+    expect(setBackgroundConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "image",
+        imageUrl: "/wallpapers/reef.webp",
+      }),
+    );
   });
 
   it("hides Undo when there is no history", () => {
@@ -88,16 +90,10 @@ describe("BackgroundView", () => {
     expect(redoBackgroundConfig).toHaveBeenCalledTimes(1);
   });
 
-  it("hides Generate when cloud is unavailable", () => {
-    seed({ cloud: false });
-    render(<BackgroundView />);
-    expect(screen.queryByLabelText("Generate a background image")).toBeNull();
-  });
-
-  it("shows Generate when cloud is connected", () => {
+  it("never offers AI generation, even with cloud connected (MVP picker)", () => {
     seed({ cloud: true });
     render(<BackgroundView />);
-    expect(screen.getByLabelText("Generate a background image")).not.toBeNull();
+    expect(screen.queryByLabelText("Generate a background image")).toBeNull();
   });
 
   it("uploading an image sets an image config", async () => {
@@ -116,48 +112,5 @@ describe("BackgroundView", () => {
         imageUrl: "data:image/jpeg;base64,ZZZ",
       }),
     );
-  });
-
-  it("generates an image from a prompt and applies it", async () => {
-    const setBackgroundConfig = vi.fn();
-    const spy = vi
-      .spyOn(client, "generateBackgroundImage")
-      .mockResolvedValue({ url: "/api/media/gen.png" });
-    seed({ cloud: true, setBackgroundConfig });
-    render(<BackgroundView />);
-
-    fireEvent.click(screen.getByLabelText("Generate a background image"));
-    fireEvent.change(screen.getByPlaceholderText("Describe a background..."), {
-      target: { value: "a calm beach" },
-    });
-    fireEvent.click(screen.getByLabelText("Generate background from prompt"));
-
-    await waitFor(() => expect(spy).toHaveBeenCalledWith("a calm beach"));
-    await waitFor(() =>
-      expect(setBackgroundConfig).toHaveBeenCalledWith({
-        mode: "image",
-        color: "#ef5a1f",
-        imageUrl: "/api/media/gen.png",
-      }),
-    );
-    spy.mockRestore();
-  });
-
-  it("surfaces a generation error", async () => {
-    const spy = vi
-      .spyOn(client, "generateBackgroundImage")
-      .mockRejectedValue(new Error("out of credits"));
-    seed({ cloud: true });
-    render(<BackgroundView />);
-
-    fireEvent.click(screen.getByLabelText("Generate a background image"));
-    fireEvent.change(screen.getByPlaceholderText("Describe a background..."), {
-      target: { value: "anything" },
-    });
-    fireEvent.click(screen.getByLabelText("Generate background from prompt"));
-
-    const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toContain("out of credits");
-    spy.mockRestore();
   });
 });

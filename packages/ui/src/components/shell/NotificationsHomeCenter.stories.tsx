@@ -126,6 +126,48 @@ export const OnboardingDefaults: Story = {
   ),
 };
 
+/**
+ * A view-group with several interrupt rows renders as the rested Z-stack:
+ * the highest-priority card on top, glass peeks beneath, the group size in
+ * the eyebrow, and the quiet "N more" pull hint under everything.
+ */
+export const StackedGroup: Story = {
+  render: () => (
+    <Seeded
+      notifications={[
+        {
+          title: "Build failed on main",
+          body: "verify lane: typecheck exited 1 — tap to open the run.",
+          category: "task",
+          priority: "urgent",
+        },
+        {
+          title: "PR #42 approved",
+          body: "Ready to merge once CI settles.",
+          category: "task",
+          priority: "high",
+        },
+        {
+          title: "Deploy queued",
+          category: "task",
+          priority: "high",
+        },
+        {
+          title: "Disk almost full",
+          body: "The agent workspace volume is at 94% capacity.",
+          category: "system",
+          priority: "high",
+        },
+        {
+          title: "Take the tour",
+          category: "general",
+          priority: "normal",
+        },
+      ]}
+    />
+  ),
+};
+
 export const ScrollingInbox: Story = {
   render: () => (
     <Seeded

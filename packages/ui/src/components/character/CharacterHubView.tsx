@@ -231,7 +231,7 @@ export function CharacterHubView({
     >
       <div className="custom-scrollbar mx-auto flex min-h-0 w-full min-w-0 max-w-6xl flex-1 flex-col overflow-y-auto overflow-x-hidden px-4 pb-32 pt-1 sm:px-5 lg:px-6">
         <WidgetHost slot="character" className="mb-4" />
-        <div className="flex min-w-0 flex-col gap-6">
+        <div className="flex min-w-0 flex-col gap-4 sm:gap-6">
           {characterSaveError ? (
             <span className="rounded-sm border border-status-danger/20 bg-status-danger-bg px-2 py-1 text-2xs font-medium text-status-danger">
               {characterSaveError}

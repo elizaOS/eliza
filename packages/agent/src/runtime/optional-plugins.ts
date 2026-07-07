@@ -171,13 +171,7 @@ export function renderOptionalPluginImportsModule(
   const entries = packages
     .map((pkg) => {
       const specifier = optionalPluginImportSpecifier(pkg);
-      const needsSubpathResolutionSuppression =
-        OPTIONAL_STATIC_PLUGIN_OVERRIDES[pkg]?.importSubpath;
-      const suppression = needsSubpathResolutionSuppression
-        ? "  // biome-ignore lint/suspicious/noTsIgnore: mixed package tsconfigs make @ts-expect-error unstable here.\n" +
-          "  // @ts-ignore: runtime subpath export is intentional; not every package tsconfig resolves its declaration condition.\n"
-        : "";
-      return `${suppression}  "${pkg}": () => import("${specifier}"),`;
+      return `  "${pkg}": () => import("${specifier}"),`;
     })
     .join("\n");
   return `// GENERATED FILE — DO NOT EDIT BY HAND.

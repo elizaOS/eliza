@@ -25,7 +25,6 @@ const CONVERTED_PLUGINS = [
   "plugin-phone",
   "plugin-polymarket",
   "plugin-screenshare",
-  "plugin-shopify",
   "plugin-task-coordinator",
   "plugin-training",
   "plugin-trajectory-logger",

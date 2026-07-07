@@ -117,7 +117,7 @@ describe("plugin view LLM mock coverage", () => {
     const visualCases = readVisualMatrixCases();
     const visualMockCases = PLUGIN_VIEW_LLM_MOCK_CASES.filter(isGuiOrTui);
 
-    expect(visualCases.length).toBe(57);
+    expect(visualCases.length).toBe(59);
     expect(new Set(visualCases.map(caseKey))).toEqual(
       new Set(visualMockCases.map(caseKey)),
     );
@@ -146,7 +146,7 @@ describe("plugin view LLM mock coverage", () => {
       ]),
     );
 
-    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(86);
+    expect(PLUGIN_VIEW_LLM_MOCK_CASES.length).toBe(88);
     expect(PLUGIN_VIEW_LLM_MOCK_JOURNEYS).toHaveLength(
       PLUGIN_VIEW_LLM_MOCK_CASES.length,
     );

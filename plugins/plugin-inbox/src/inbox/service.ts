@@ -17,8 +17,11 @@
  *     pulling connectors itself.
  */
 
-import { resolveKnowledgeGraphService } from "@elizaos/agent/services/knowledge-graph/service";
-import type { IAgentRuntime, NotificationService } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  NotificationService,
+  Service,
+} from "@elizaos/core";
 import { logger, ServiceType } from "@elizaos/core";
 import type { EntityResolveCandidate } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "./config.ts";
@@ -40,6 +43,24 @@ import type {
   TriageClassification,
   TriageEntry,
 } from "./types.ts";
+
+const KNOWLEDGE_GRAPH_SERVICE = "eliza_knowledge_graph";
+
+type KnowledgeGraphEntityStore = {
+  resolve(input: {
+    identity: { platform: string; handle: string };
+  }): Promise<EntityResolveCandidate[]>;
+};
+
+type KnowledgeGraphServiceLike = Service & {
+  getEntityStore(agentId?: string): KnowledgeGraphEntityStore;
+};
+
+function resolveKnowledgeGraphService(
+  runtime: IAgentRuntime,
+): KnowledgeGraphServiceLike | null {
+  return runtime.getService<KnowledgeGraphServiceLike>(KNOWLEDGE_GRAPH_SERVICE);
+}
 
 /** Lower-cased, angle-bracket-stripped sender email, or null. */
 function normalizeSenderEmail(
@@ -177,7 +198,7 @@ export class InboxService {
   ): Promise<TriageRunResult> {
     if (messages.length === 0) return { triaged: [] };
 
-    const config = opts.config ?? loadInboxTriageConfig();
+    const config = opts.config ?? loadInboxTriageConfig(this.runtime);
     const examples = opts.classifyOnly
       ? []
       : await this.repository.getExamples(opts.exampleLimit ?? 10);

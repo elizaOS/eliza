@@ -1,19 +1,13 @@
 /**
- * The wallpaper GALLERY rendered inside the Background settings subview and the
- * in-chat BACKGROUND widget. It is a creative surface, not a settings form:
- * large live-preview tiles in a responsive grid (curated presets, animated
- * shaders, uploads, and generated images all as visual tiles), a first-class
- * "generate with AI" tile, and tool chips for uploading / picking a custom
- * color. The active wallpaper is clearly marked and a tap applies it live.
+ * The wallpaper GALLERY rendered inside the Appearance settings subview and the
+ * in-chat BACKGROUND widget. Deliberately simple for MVP: the curated image
+ * wallpapers we ship, the user's own uploads, and an Upload chip — no color
+ * swatches, no custom color picker, no shader presets, no AI generation. The
+ * active wallpaper is clearly marked and a tap applies it live.
  *
  * Every tile writes to the shared background store (`useBackgroundConfig` /
  * `ui-preferences`) that drives Home, Launcher, chat, and every view, so choices
  * apply instantly. Every control stays agent-addressable via `useAgentElement`.
- *
- * Background changing is AGENT-DRIVEN (ask the agent, the in-chat BACKGROUND
- * widget renders this gallery) plus the Settings gallery. There is no
- * direct-manipulation long-press picker on the launcher/home; that shortcut was
- * removed as anti-ethos for an agent OS.
  *
  * Two layouts, one gallery:
  *  - `variant="gallery"` (default): a responsive tile grid for the full
@@ -22,27 +16,17 @@
  *    condensed in-chat BACKGROUND widget.
  */
 
-import {
-  ImagePlus,
-  Loader2,
-  Palette,
-  RotateCcw,
-  RotateCw,
-  Sparkles,
-} from "lucide-react";
+import { ImagePlus, RotateCcw, RotateCw } from "lucide-react";
 import type { ChangeEvent, CSSProperties } from "react";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { client } from "../../api";
 import { getShaderPreset } from "../../backgrounds/shader-presets";
 import { cn } from "../../lib/utils";
-import { useAppSelectorShallow } from "../../state/app-store";
 import {
   BACKGROUND_CATALOG,
-  BACKGROUND_PRESETS,
   type BackgroundCatalogEntry,
   type BackgroundConfig,
-  type BackgroundPreset,
   catalogEntryToConfig,
   DEFAULT_BACKGROUND_COLOR,
 } from "../../state/ui-preferences";
@@ -58,15 +42,6 @@ import {
 } from "../pages/background-image";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-
-/** A live thumbnail for one shader-color preset (a full-bleed color field). */
-function presetPreviewStyle(color: string) {
-  return {
-    // A soft top-to-bottom deepening so a flat color still reads as a lit field,
-    // not a paint chip. Same-hue shading, tinted toward the field itself.
-    backgroundImage: `linear-gradient(160deg, color-mix(in oklab, ${color} 88%, white 12%), ${color} 60%, color-mix(in oklab, ${color} 82%, black 18%))`,
-  };
-}
 
 function resolvePreviewImageUrl(url: string): string {
   if (
@@ -104,8 +79,7 @@ function catalogPreviewStyle(entry: BackgroundCatalogEntry) {
 /**
  * The visual chrome shared by every gallery tile: the aspect frame, the
  * selected ring, and the corner check. The tile's paint (`style`) and label
- * come from the caller so presets, catalog entries, and generated images all
- * look like siblings.
+ * come from the caller so curated entries and uploads look like siblings.
  */
 function TileFrame({
   label,
@@ -153,47 +127,9 @@ function TileFrame({
   );
 }
 
-/** A gallery tile for one shader-color preset. */
-function PresetTile({
-  preset,
-  selected,
-  onSelect,
-}: {
-  preset: BackgroundPreset;
-  selected: boolean;
-  onSelect: (color: string) => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `background-preset-${preset.id}`,
-    role: "button",
-    label: `Set background to ${preset.label}`,
-    group: "background-controls",
-    description: `Use the ${preset.label.toLowerCase()} shader background`,
-    onActivate: () => onSelect(preset.color),
-  });
-  return (
-    <button
-      ref={ref}
-      type="button"
-      onClick={() => onSelect(preset.color)}
-      aria-label={`Set background to ${preset.label}`}
-      aria-pressed={selected}
-      className="group/btn block w-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-      {...agentProps}
-    >
-      <TileFrame
-        label={preset.label}
-        selected={selected}
-        style={presetPreviewStyle(preset.color)}
-      />
-    </button>
-  );
-}
-
 /**
- * A gallery tile for one curated catalog entry (natural gradient or animated
- * GLSL preset). Agent-addressable so "use the misty-forest background" activates
- * it.
+ * A gallery tile for one curated catalog entry. Agent-addressable so "use the
+ * misty-forest background" activates it.
  */
 function CatalogTile({
   entry,
@@ -212,7 +148,6 @@ function CatalogTile({
     description: `${entry.description} (${entry.mood})`,
     onActivate: () => onSelect(entry),
   });
-  const meta = entry.kind === "glsl" ? "animated" : entry.mood;
   return (
     <button
       ref={ref}
@@ -226,7 +161,7 @@ function CatalogTile({
     >
       <TileFrame
         label={entry.label}
-        meta={meta}
+        meta={entry.mood}
         selected={selected}
         style={catalogPreviewStyle(entry)}
       />
@@ -244,6 +179,13 @@ export interface BackgroundSettingsControlsProps {
   variant?: "gallery" | "filmstrip";
 }
 
+// The MVP wallpaper set: only the shipped image wallpapers. Shader-color and
+// GLSL entries stay in the catalog data (old persisted configs still render)
+// but are not offered as new choices here.
+const CURATED_IMAGE_CATALOG = BACKGROUND_CATALOG.filter(
+  (entry) => entry.kind === "image",
+);
+
 export function BackgroundSettingsControls({
   className,
   variant = "gallery",
@@ -256,24 +198,14 @@ export function BackgroundSettingsControls({
     canUndoBackground,
     canRedoBackground,
   } = useBackgroundConfig();
-  const { cloudConnected, cloudAuthRejected } = useAppSelectorShallow((s) => ({
-    cloudConnected: s.elizaCloudConnected,
-    cloudAuthRejected: s.elizaCloudAuthRejected,
-  }));
-  const cloudAvailable = Boolean(cloudConnected) && !cloudAuthRejected;
   const isFilmstrip = variant === "filmstrip";
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const colorInputRef = useRef<HTMLInputElement>(null);
-  const promptInputId = useId();
 
   const [error, setError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  // The user's saved/generated catalog entries (persisted, newest first). Shown
-  // in their own "yours" row so a generated background is re-selectable
-  // (#13538). Loaded lazily so first paint stays cheap.
+  // The user's saved catalog entries (persisted, newest first). Shown in their
+  // own "yours" row so an upload is re-selectable (#13538). Loaded lazily so
+  // first paint stays cheap.
   const [userCatalog, setUserCatalog] = useState<BackgroundCatalogEntry[]>(() =>
     loadUserBackgroundCatalog(),
   );
@@ -283,15 +215,6 @@ export function BackgroundSettingsControls({
       ? backgroundConfig
       : { mode: "shader", color: DEFAULT_BACKGROUND_COLOR };
   const activeColor = config.color ?? DEFAULT_BACKGROUND_COLOR;
-  const isShader = config.mode === "shader";
-
-  const selectColor = useCallback(
-    (color: string) => {
-      setError(null);
-      setBackgroundConfig({ mode: "shader", color });
-    },
-    [setBackgroundConfig],
-  );
 
   const selectCatalog = useCallback(
     (entry: BackgroundCatalogEntry) => {
@@ -306,24 +229,13 @@ export function BackgroundSettingsControls({
   );
 
   // Which catalog entry (if any) the live config matches — for the tile
-  // selected-ring. Image entries match on imageUrl; glsl entries on presetId.
-  const activeCatalogId = ((): string | null => {
-    if (config.mode === "image" && config.imageUrl) {
-      return (
-        [...BACKGROUND_CATALOG, ...userCatalog].find(
+  // selected-ring. Image entries match on imageUrl.
+  const activeCatalogId =
+    config.mode === "image" && config.imageUrl
+      ? ([...CURATED_IMAGE_CATALOG, ...userCatalog].find(
           (e) => e.kind === "image" && e.source === config.imageUrl,
-        )?.id ?? null
-      );
-    }
-    if (config.mode === "glsl" && config.shader?.presetId) {
-      return (
-        BACKGROUND_CATALOG.find(
-          (e) => e.kind === "glsl" && e.source === config.shader?.presetId,
-        )?.id ?? null
-      );
-    }
-    return null;
-  })();
+        )?.id ?? null)
+      : null;
 
   const onUploadClick = useCallback(() => {
     setError(null);
@@ -347,7 +259,8 @@ export function BackgroundSettingsControls({
           const { url } = await client.uploadBackgroundImage(dataUrl);
           if (url) imageUrl = url;
         } catch {
-          // Keep the data-URL fallback.
+          // error-policy:J4 designed degrade — offline/server-less keeps the
+          // data-URL wallpaper live; only re-host persistence is skipped.
         }
         setBackgroundConfig({ mode: "image", color: activeColor, imageUrl });
         // Save the upload into the user catalog so it's re-selectable (#13538).
@@ -379,47 +292,6 @@ export function BackgroundSettingsControls({
     [activeColor, setBackgroundConfig],
   );
 
-  const runGenerate = useCallback(async () => {
-    const trimmed = prompt.trim();
-    if (!trimmed || generating) return;
-    setGenerating(true);
-    setError(null);
-    try {
-      const { url } = await client.generateBackgroundImage(trimmed);
-      setBackgroundConfig({ mode: "image", color: activeColor, imageUrl: url });
-      // Save the generated background into the user catalog with its prompt as
-      // metadata so it's re-selectable and describable later (#13538).
-      setUserCatalog(
-        addUserBackgroundEntry({
-          id: `user-${Date.now().toString(36)}`,
-          label: trimmed.slice(0, 40),
-          description: `Generated from “${trimmed}”.`,
-          kind: "image",
-          source: url,
-          mood: "custom",
-          palette: [activeColor],
-          tags: ["custom", "generated"],
-          prompt: trimmed,
-          author: "you",
-        }),
-      );
-      setPromptOpen(false);
-      setPrompt("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Image generation failed.");
-    } finally {
-      setGenerating(false);
-    }
-  }, [activeColor, generating, prompt, setBackgroundConfig]);
-
-  const generateTile = useAgentElement<HTMLButtonElement>({
-    id: "background-generate",
-    role: "button",
-    label: "Generate a background image",
-    group: "background-controls",
-    description: "Generate a background image from a text prompt (cloud)",
-    onActivate: () => setPromptOpen((open) => !open),
-  });
   const uploadButton = useAgentElement<HTMLButtonElement>({
     id: "background-upload",
     role: "button",
@@ -427,14 +299,6 @@ export function BackgroundSettingsControls({
     group: "background-controls",
     description: "Open the file picker to upload a background image",
     onActivate: onUploadClick,
-  });
-  const colorButton = useAgentElement<HTMLButtonElement>({
-    id: "background-custom-color",
-    role: "button",
-    label: "Pick a custom background color",
-    group: "background-controls",
-    description: "Open the color picker to set a custom shader color",
-    onActivate: () => colorInputRef.current?.click(),
   });
   const undoButton = useAgentElement<HTMLButtonElement>({
     id: "background-undo",
@@ -453,38 +317,7 @@ export function BackgroundSettingsControls({
     onActivate: () => redoBackgroundConfig(),
   });
 
-  // The generate tile: a first-class, inviting entry to the AI path (the
-  // Sparkles affordance). It sits at the head of the gallery, sized like a
-  // wallpaper tile so "make one" reads as an equal choice, not a bolted-on field.
-  const generateTileNode = cloudAvailable ? (
-    <button
-      ref={generateTile.ref}
-      type="button"
-      onClick={() => setPromptOpen((open) => !open)}
-      aria-label="Generate a background image"
-      aria-pressed={promptOpen}
-      className="group/btn block w-full rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
-      {...generateTile.agentProps}
-    >
-      <span
-        className={cn(
-          "relative flex aspect-[3/4] w-full min-h-touch flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl px-2 text-center transition-transform duration-200 ease-out",
-          "bg-accent-subtle ring-1 ring-inset ring-accent/40 group-hover/btn:-translate-y-0.5 group-active/btn:scale-[0.98]",
-          promptOpen && "ring-2 ring-accent",
-        )}
-      >
-        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-accent text-accent-fg">
-          <Sparkles className="h-5 w-5" aria-hidden />
-        </span>
-        <span className="text-xs font-semibold text-txt-strong">
-          Make one with AI
-        </span>
-      </span>
-    </button>
-  ) : null;
-
-  // Tool chips: upload + custom color. Rendered as pill tools, not settings
-  // rows, so they read as ways to bring in your own wallpaper.
+  // The upload chip: the one way to bring in your own wallpaper.
   const toolChips = (
     <>
       <Button
@@ -508,38 +341,11 @@ export function BackgroundSettingsControls({
         aria-label="Background image file"
         tabIndex={-1}
       />
-      <Button
-        ref={colorButton.ref}
-        type="button"
-        variant="secondary"
-        onClick={() => colorInputRef.current?.click()}
-        aria-label="Pick a custom background color"
-        className="h-11 gap-2 rounded-full px-4 text-sm"
-        {...colorButton.agentProps}
-      >
-        <span
-          className="h-4 w-4 shrink-0 rounded-full ring-1 ring-inset ring-border/60"
-          style={{ backgroundColor: activeColor }}
-          aria-hidden
-        />
-        <Palette className="h-4 w-4" aria-hidden />
-        Color
-      </Button>
-      <Input
-        ref={colorInputRef}
-        type="color"
-        value={activeColor}
-        onChange={(e) => selectColor(e.target.value)}
-        className="sr-only border-0 bg-transparent p-0"
-        aria-label="Custom background color value"
-        tabIndex={-1}
-      />
     </>
   );
 
   // Revert affordance: a single subtle "revert" that undoes the last change,
-  // with a redo companion only when there is something to restore. Native, not
-  // a pair of utilitarian settings buttons.
+  // with a redo companion only when there is something to restore.
   const revertNode =
     canUndoBackground || canRedoBackground ? (
       <div className="flex items-center gap-1">
@@ -556,82 +362,21 @@ export function BackgroundSettingsControls({
           <RotateCcw className="h-4 w-4" aria-hidden />
           Revert
         </Button>
-        {canRedoBackground ? (
-          <Button
-            ref={redoButton.ref}
-            type="button"
-            variant="ghost"
-            size="icon-lg"
-            onClick={() => redoBackgroundConfig()}
-            aria-label="Redo background change"
-            className="h-11 w-11 rounded-full text-muted hover:text-txt"
-            {...redoButton.agentProps}
-          >
-            <RotateCw className="h-4 w-4" aria-hidden />
-          </Button>
-        ) : (
-          // Keep the redo control in the tree (disabled) so its agent hook and
-          // the existing test contract hold even before anything is undone.
-          <Button
-            ref={redoButton.ref}
-            type="button"
-            variant="ghost"
-            size="icon-lg"
-            onClick={() => redoBackgroundConfig()}
-            disabled
-            aria-label="Redo background change"
-            className="h-11 w-11 rounded-full text-muted disabled:opacity-40"
-            {...redoButton.agentProps}
-          >
-            <RotateCw className="h-4 w-4" aria-hidden />
-          </Button>
-        )}
+        <Button
+          ref={redoButton.ref}
+          type="button"
+          variant="ghost"
+          size="icon-lg"
+          onClick={() => redoBackgroundConfig()}
+          disabled={!canRedoBackground}
+          aria-label="Redo background change"
+          className="h-11 w-11 rounded-full text-muted hover:text-txt disabled:opacity-40"
+          {...redoButton.agentProps}
+        >
+          <RotateCw className="h-4 w-4" aria-hidden />
+        </Button>
       </div>
     ) : null;
-
-  // The prompt composer: revealed by the generate tile. A generous field, not a
-  // cramped settings input.
-  const promptComposer =
-    cloudAvailable && promptOpen ? (
-      <form
-        className="flex w-full items-center gap-2 rounded-2xl bg-bg-accent/50 p-2 ring-1 ring-inset ring-border/40"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void runGenerate();
-        }}
-      >
-        <label htmlFor={promptInputId} className="sr-only">
-          Describe a background
-        </label>
-        <Sparkles className="ml-1.5 h-4 w-4 shrink-0 text-accent" aria-hidden />
-        <Input
-          id={promptInputId}
-          type="text"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="A misty pine forest at dawn"
-          disabled={generating}
-          autoFocus
-          className="h-11 min-w-0 flex-1 border-0 bg-transparent px-1 text-sm text-txt placeholder:text-muted focus-visible:ring-0"
-        />
-        <Button
-          type="submit"
-          variant="default"
-          disabled={generating || prompt.trim().length === 0}
-          aria-label="Generate background from prompt"
-          className="h-11 gap-2 rounded-xl px-4 text-sm"
-        >
-          {generating ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : (
-            <Sparkles className="h-4 w-4" aria-hidden />
-          )}
-          {generating ? "Making" : "Make"}
-        </Button>
-      </form>
-    ) : null;
-
-  const curated = [...BACKGROUND_CATALOG];
 
   // ── Filmstrip layout: the condensed in-chat BACKGROUND widget ────────────────
   if (isFilmstrip) {
@@ -645,24 +390,12 @@ export function BackgroundSettingsControls({
           data-testid="background-catalog-gallery"
           className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
-          {generateTileNode ? (
-            <div className="w-24 shrink-0 snap-start">{generateTileNode}</div>
-          ) : null}
-          {curated.map((entry) => (
+          {CURATED_IMAGE_CATALOG.map((entry) => (
             <div key={entry.id} className="w-24 shrink-0 snap-start">
               <CatalogTile
                 entry={entry}
                 selected={activeCatalogId === entry.id}
                 onSelect={selectCatalog}
-              />
-            </div>
-          ))}
-          {BACKGROUND_PRESETS.map((preset) => (
-            <div key={preset.id} className="w-24 shrink-0 snap-start">
-              <PresetTile
-                preset={preset}
-                selected={isShader && activeColor === preset.color}
-                onSelect={selectColor}
               />
             </div>
           ))}
@@ -676,8 +409,6 @@ export function BackgroundSettingsControls({
             </div>
           ))}
         </div>
-
-        {promptComposer}
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">{toolChips}</div>
@@ -705,27 +436,16 @@ export function BackgroundSettingsControls({
         {revertNode}
       </div>
 
-      {promptComposer}
-
       <div
         data-testid="background-catalog-gallery"
         className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
       >
-        {generateTileNode}
-        {curated.map((entry) => (
+        {CURATED_IMAGE_CATALOG.map((entry) => (
           <CatalogTile
             key={entry.id}
             entry={entry}
             selected={activeCatalogId === entry.id}
             onSelect={selectCatalog}
-          />
-        ))}
-        {BACKGROUND_PRESETS.map((preset) => (
-          <PresetTile
-            key={preset.id}
-            preset={preset}
-            selected={isShader && activeColor === preset.color}
-            onSelect={selectColor}
           />
         ))}
       </div>

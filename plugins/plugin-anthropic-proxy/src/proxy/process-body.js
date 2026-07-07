@@ -5,7 +5,7 @@
  * Layers (in processing order):
  *   2. String trigger sanitization       (sanitize.ts)
  *   3. Tool name renames                 (tool-rename.ts)
- *   6. Property name renames             (property-rename.ts)
+ *   6. Property name renames             (tool-rename.ts)
  *   4. System prompt template strip      (system-prompt.ts)
  *   5. Tool description strip + synthetic CC tools (cc-tool-injection.ts)
  *   1. Billing fingerprint injection     (billing-fingerprint.ts)
@@ -206,10 +206,7 @@ export function processBody(bodyStr, config) {
         }
         const msgsIdx2 = m.indexOf('"messages":[');
         if (msgsIdx2 !== -1) {
-            for (const marker of [
-                '{"type":"thinking"',
-                '{"type":"redacted_thinking"',
-            ]) {
+            for (const marker of ['{"type":"thinking"', '{"type":"redacted_thinking"']) {
                 let searchFrom = msgsIdx2;
                 while (true) {
                     const idx = m.indexOf(marker, searchFrom);

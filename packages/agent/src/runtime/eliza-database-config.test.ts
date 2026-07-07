@@ -107,6 +107,7 @@ describe("database runtime config", () => {
         warn: () => undefined,
         error: () => undefined,
       },
+      registerPlugin: async () => undefined,
     } as unknown as Parameters<typeof installRuntimeMethodBindings>[0];
 
     installRuntimeMethodBindings(runtime);

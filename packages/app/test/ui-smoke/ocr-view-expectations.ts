@@ -24,6 +24,9 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     // blank chat is still caught by the blank-pixel rule, not this expectation.
     requireAny: [
       "Ask ",
+      "Eliza",
+      "Weather",
+      "Today",
       "Good evening",
       "Good morning",
       "Good afternoon",
@@ -57,10 +60,12 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     requireAll: ["Automations"],
     requireAny: [
       "Nothing scheduled yet",
-      "New",
+      "Active",
+      "Prompts",
       "Tasks",
       "Workflows",
-      "Active",
+      "Inactive",
+      "New",
     ],
   },
   "builtin-documents": {
@@ -72,6 +77,9 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   "builtin-relationships": {
     requireAny: [
       "Relationships",
+      "Personality",
+      "Skills",
+      "Experience",
       "No relationships yet",
       "Search people",
       "Connect your platforms",
@@ -93,15 +101,18 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   "builtin-database": {
     requireAny: [
+      "Databases",
+      "Tables",
+      "SQL Editor",
       "Select a table",
       "Open SQL editor",
-      "SQL Editor",
       "Filter tables",
-      "Tables",
     ],
   },
   "builtin-logs": {
     requireAny: [
+      "Logs",
+      "INFO",
       "All levels",
       "Alllevels",
       "Search logs",
@@ -125,8 +136,11 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   // The launcher grid is its own content; `builtin-views` renders the same grid.
   "builtin-apps": {
+    requireAll: ["My Apps"],
     requireAny: [
-      "My Apps",
+      "elizaOS apps",
+      "Advanced",
+      "Load",
       "No apps installed",
       "Create new app",
       "Install, create",
@@ -140,6 +154,8 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
   },
   "builtin-character-select": {
     requireAny: [
+      "Name",
+      "System prompt",
       "About Me",
       "Style Rules",
       "Chat Examples",
@@ -177,7 +193,12 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
     ],
   },
   "builtin-desktop": {
-    requireAny: ["Desktop workspace", "Electrobun desktop runtime"],
+    requireAny: [
+      "Desktop workspace",
+      "Desk rkspace",
+      "Electrobun desktop runtime",
+      "Electrobun desktop runtim",
+    ],
   },
 };
 

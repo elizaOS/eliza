@@ -3,22 +3,12 @@
  *
  * Owner-gated provider that reads the triage queue (urgent + needs_reply +
  * recent auto-replies) from the InboxRepository and renders a compact markdown
- * digest. We mock `hasOwnerAccess` and the runtime DB.
+ * digest. The runtime fixture marks owner-path messages as local test traffic
+ * so the core role gate reaches the deterministic DB path.
  */
 
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  hasOwnerAccess: vi.fn(async () => true),
-}));
-
-// inbox-triage.ts imports hasOwnerAccess from the @elizaos/agent/security/access
-// subpath (the barrel does not re-export it); mock that exact specifier or the
-// real owner check runs, the provider returns early, and counts come back 0.
-vi.mock("@elizaos/agent/security/access", () => ({
-  hasOwnerAccess: mocks.hasOwnerAccess,
-}));
+import { describe, expect, it, vi } from "vitest";
 
 import { inboxTriageProvider } from "../src/providers/inbox-triage.ts";
 
@@ -70,18 +60,21 @@ function makeRuntime(rowsFor: (sql: string) => unknown): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
-const message = { id: "msg" as UUID, entityId: "owner" as UUID } as Memory;
+const message = {
+  id: "msg" as UUID,
+  entityId: "33333333-3333-3333-3333-333333333333" as UUID,
+  content: { source: "test" },
+} as Memory;
 const state = {} as State;
 
 describe("inboxTriage provider", () => {
-  beforeEach(() => {
-    mocks.hasOwnerAccess.mockReset().mockResolvedValue(true);
-  });
-
   it("returns an empty result for non-owners", async () => {
-    mocks.hasOwnerAccess.mockResolvedValueOnce(false);
     const runtime = makeRuntime(() => []);
-    const result = await inboxTriageProvider.get(runtime, message, state);
+    const result = await inboxTriageProvider.get(
+      runtime,
+      { ...message, content: { source: "discord" } } as Memory,
+      state,
+    );
     expect(result.text).toBe("");
     expect(result.values?.inboxUnresolved).toBe(0);
   });

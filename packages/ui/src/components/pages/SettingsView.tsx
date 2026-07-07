@@ -1,14 +1,14 @@
 /**
- * The Settings view (`/settings`): a sectioned settings surface with ONE
- * uniform top bar in every layout (#13590). A shared `ViewHeader` (icon-only
- * back, centered title) sits above a folded top-bar section nav
- * (`SettingsSectionNav`) that replaces the old desktop `w-60` LEFT RAIL and the
- * divergent mobile hub; one nav + one detail region for all form factors.
+ * The Settings view (`/settings`): an iOS/Android-style hub → subview
+ * settings surface with ONE uniform top bar in every layout (#13590). A shared
+ * `ViewHeader` (icon-only back, centered title) sits above either the hub — a
+ * grouped row list (`SettingsHubList`) that IS the main screen — or the open
+ * section's body as a full-width subview.
  *
  * - Hub (no section open): header title = "Settings", back → launcher; the
- *   section nav lets the user pick a section.
- * - Section open: header title = section label, back → hub; the nav keeps the
- *   active section marked.
+ *   grouped row list picks a section.
+ * - Section open: header title = section label, back → hub; only the section
+ *   body renders (no persistent nav chrome).
  *
  * Section content is lazy-loaded and gated by `isViewVisible`; `initialSection`
  * deep-links a specific section. Also reusable in modal form (`inModal`).
@@ -22,7 +22,7 @@ import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
-import { SettingsSectionNav } from "../settings/SettingsSectionNav";
+import { SettingsHubList } from "../settings/SettingsHubList";
 import {
   type GroupedSettingsSections,
   getAllSettingsSections,
@@ -269,7 +269,11 @@ export function SettingsView({
     if (typeof window === "undefined") return;
     const handleHashChange = () => {
       const nextSection = readSettingsHashSection();
-      if (nextSection && visibleSectionIds.has(nextSection)) {
+      if (
+        nextSection &&
+        (visibleSectionIds.has(nextSection) ||
+          getAllSettingsSections().some((s) => s.id === nextSection))
+      ) {
         setActiveSection(nextSection);
       } else {
         setActiveSection(null);
@@ -279,11 +283,17 @@ export function SettingsView({
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, [visibleSectionIds]);
 
-  const activeSectionDef: SettingsSectionDef | null =
-    activeSection && visibleSectionIds.has(activeSection)
-      ? (visibleSections.find((section) => section.id === activeSection) ??
-        null)
-      : null;
+  // Explicit navigation (hash / initialSection / agent anchor) resolves
+  // against the full registry, not just the visible hub rows: hidden sections
+  // stay registered exactly so their deep-links keep working (the mvp-hidden
+  // contract). The hub itself only lists visible sections.
+  const activeSectionDef: SettingsSectionDef | null = activeSection
+    ? (visibleSections.find((section) => section.id === activeSection) ??
+      getAllSettingsSections().find(
+        (section) => section.id === activeSection,
+      ) ??
+      null)
+    : null;
 
   // Uniform top bar: a hub shows "Settings" with a launcher back; an open
   // section shows its label with a back to the hub. One header, both states.
@@ -303,18 +313,6 @@ export function SettingsView({
             backLabel={backLabel}
             className="px-0"
           />
-          {/* The folded top-bar section nav (was the desktop `w-60` rail).
-              One strip, grouped by Agent/System/Security/Cloud, for every form
-              factor — it self-scrolls on narrow viewports. */}
-          <SettingsSectionNav
-            grouped={grouped}
-            activeId={activeSectionDef?.id ?? null}
-            onSelect={openSection}
-            label={(labelKey, fallback) =>
-              t(labelKey, { defaultValue: fallback })
-            }
-            className="mb-4 border-b border-border/45 px-0"
-          />
           {/* Agent-surface anchors: the agent addresses every section by
               `section-<id>` regardless of which one is shown. */}
           <div className="hidden">
@@ -332,7 +330,16 @@ export function SettingsView({
             {activeSectionDef ? (
               <SettingsSectionContent section={activeSectionDef} t={t} />
             ) : (
-              <SettingsHubEmptyState t={t} />
+              /* The hub IS the main screen: an iOS-style grouped row list.
+                 Tapping a row swaps in the section subview; the shared header
+                 back returns here. */
+              <SettingsHubList
+                grouped={grouped}
+                onSelect={openSection}
+                label={(labelKey, fallback) =>
+                  t(labelKey, { defaultValue: fallback })
+                }
+              />
             )}
           </div>
           {primePermission ? (
@@ -345,30 +352,5 @@ export function SettingsView({
         </div>
       </ContentLayout>
     </ShellViewAgentSurface>
-  );
-}
-
-/**
- * The hub's resting state (no section chosen). The doctrine drops the old
- * grouped list — the top-bar section nav IS the picker now — so the body
- * teaches the interface rather than restating the nav: a quiet prompt to choose
- * a section above. Deterministic empty state per the design system.
- */
-function SettingsHubEmptyState({ t }: { t: Translate }) {
-  return (
-    <div
-      data-testid="settings-hub-empty"
-      className="flex min-h-[12rem] flex-col items-start justify-center gap-1"
-    >
-      <p className="text-sm font-medium text-txt-strong">
-        {t("settings.hubEmptyTitle", { defaultValue: "Choose a setting" })}
-      </p>
-      <p className="max-w-prose text-sm text-muted">
-        {t("settings.hubEmptyBody", {
-          defaultValue:
-            "Pick a section from the bar above to set up your agent, the app, and your privacy.",
-        })}
-      </p>
-    </div>
   );
 }

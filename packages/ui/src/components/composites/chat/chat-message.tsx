@@ -438,6 +438,11 @@ function arePropsEqual(
     a.voiceSpeaker === b.voiceSpeaker &&
     a.failureKind === b.failureKind &&
     a.attachments === b.attachments &&
+    // Inline tool-call rows: a mode:"tool" stream update replaces `toolEvents`
+    // by reference while every other compared field stays identical, so without
+    // this compare the memo swallows the re-render and the running tool row
+    // never flips to its settled state.
+    a.toolEvents === b.toolEvents &&
     // Turn-settle fields the glass body renderer reads: a settled turn can gain
     // reasoning / a secret request without its text changing.
     a.reasoning === b.reasoning &&

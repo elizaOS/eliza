@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * Renders BackgroundSettingsSection against a seeded in-memory App store and
- * asserts it mounts the unified background controls and forwards a preset pick
+ * asserts it mounts the unified background controls and forwards a wallpaper pick
  * to `setBackgroundConfig`. jsdom; the background-image module is mocked.
  */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -48,10 +48,12 @@ describe("BackgroundSettingsSection", () => {
     render(<BackgroundSettingsSection />);
 
     expect(screen.getByTestId("background-settings-controls")).not.toBeNull();
-    fireEvent.click(screen.getByLabelText("Set background to Green"));
-    expect(setBackgroundConfig).toHaveBeenCalledWith({
-      mode: "shader",
-      color: "#059669",
-    });
+    fireEvent.click(screen.getByLabelText("Set background to Reef"));
+    expect(setBackgroundConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "image",
+        imageUrl: "/wallpapers/reef.webp",
+      }),
+    );
   });
 });

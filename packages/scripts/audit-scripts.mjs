@@ -115,7 +115,15 @@ const ALLOWED_EXACT = new Set([
   "audit:type-duplication:self-test",
   "audit:tee-secret-leak:self-test",
   "audit:alias-read-guard:self-test",
+  "audit:error-policy-ratchet:self-test",
   "audit:view-action-ratchet:self-test",
+  "audit:voice-policy-ratchet:self-test",
+  "check:loadperf-bundle:json",
+  "check:pr-evidence",
+  "evidence:pr",
+  "evidence:open",
+  "evidence:review:no-open",
+  "seed:messages",
 ]);
 
 /**
@@ -141,12 +149,28 @@ const ORPHAN_SCRIPT_FILE_ALLOWLIST = new Map([
     "strict i18n linter run on demand; not yet wired into verify",
   ],
   [
+    "audit-turbo-build-deps.self-test.mjs",
+    "self-test fixture runner for the Turbo dependency audit; invoked manually when changing that audit",
+  ],
+  [
     "check-secret-hygiene.mjs",
     "standalone secret-hygiene scanner run by hand / in ad-hoc security sweeps",
   ],
   [
+    "ci-capacity-dashboard.mjs",
+    "operator dashboard for live self-hosted GitHub Actions capacity; requires gh credentials and is run by hand",
+  ],
+  [
     "dev-health-check.mjs",
     "interactive dev-stack smoke launcher run by hand during local debugging",
+  ],
+  [
+    "gh-check-run-triage.mjs",
+    "operator triage helper for current GitHub check runs; requires gh credentials and is run by hand",
+  ],
+  [
+    "run-turbo.self-test.mjs",
+    "self-test fixture runner for run-turbo lockfile compatibility checks; invoked manually when changing that wrapper",
   ],
   ["triage-tests.mjs", "human-run test-stack triage report generator"],
   [
@@ -171,6 +195,10 @@ const ROOT_CWD_WRAPPER_ALLOWLIST = new Map([
   [
     "test:desktop:packaged:windows",
     "root release/regression gate for the packaged Windows desktop smoke lane",
+  ],
+  [
+    "test:watch-human",
+    "root human-in-the-loop app E2E watch entrypoint used during manual review",
   ],
   [
     "test:apple-entitlements",

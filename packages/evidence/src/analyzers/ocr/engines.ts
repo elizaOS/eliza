@@ -83,6 +83,18 @@ type FetchLike = (
   json(): Promise<unknown>;
 }>;
 
+type FetchLikeResponse = Awaited<ReturnType<FetchLike>>;
+
+function isFetchLikeResponse(value: unknown): value is FetchLikeResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.ok === "boolean" &&
+    typeof candidate.status === "number" &&
+    typeof candidate.json === "function"
+  );
+}
+
 /**
  * Tesseract CLI engine — the exact invocation ported from visual-qa.mjs
  * (`tesseract <img> - --psm 6`). `ELIZA_TESSERACT_BIN` overrides the binary,
@@ -467,9 +479,17 @@ export class UnlimitedOcrEngine implements OcrEngine {
     this.serveStatePathOption = options.serveStatePath;
     this.model =
       options.model ?? process.env.ELIZA_GPU_VISION_MODEL ?? "unlimited-ocr";
-    // Typed wrapper (not a cast): FetchLike's params are a strict subset of
-    // fetch's, and Response structurally satisfies the narrowed return.
-    this.fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
+    this.fetchImpl =
+      options.fetchImpl ??
+      (async (input, init) => {
+        const response: unknown = await fetch(input, init);
+        if (!isFetchLikeResponse(response)) {
+          throw new EvidenceError("fetch response missing OCR HTTP fields", {
+            code: "GPU_VISION_BAD_FETCH_RESPONSE",
+          });
+        }
+        return response;
+      });
   }
 
   /** Resolve the endpoint: option → env → serve.json discovery. */

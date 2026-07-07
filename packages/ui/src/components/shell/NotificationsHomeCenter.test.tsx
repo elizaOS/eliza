@@ -587,6 +587,57 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     );
     expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
   });
+
+  it("SWIPE-dismissing the stack top promotes the next card WITHOUT its fling-out state (keyed remount)", () => {
+    // The single-child stacked top card must be keyed by id: on swipe-dismiss
+    // the promoted card would otherwise reconcile into the outgoing card's slot
+    // and inherit its `dismissing` transform (translateX 120%) — painting the
+    // arriving card invisible/off-screen.
+    vi.useFakeTimers();
+    try {
+      __ingestNotificationForTests(
+        makeNotification({ title: "Below", priority: "high" }),
+      );
+      __ingestNotificationForTests(
+        makeNotification({ title: "On top", priority: "urgent" }),
+      );
+      render(<NotificationsHomeCenter />);
+      const swipe = screen.getByTestId("notification-row-swipe");
+      // Drag the top card right past SWIPE_DISMISS_PX (88) and release → the
+      // outgoing card gets `translateX(120%)`, then the store removes it (180ms).
+      const step = (type: string, x: number) =>
+        (
+          fireEvent as unknown as Record<
+            string,
+            (e: Element, i: unknown) => void
+          >
+        )[type](swipe, {
+          clientX: x,
+          clientY: 22,
+          pointerId: 3,
+          pointerType: "touch",
+        });
+      step("pointerDown", 20);
+      step("pointerMove", 80);
+      step("pointerMove", 150);
+      step("pointerUp", 150);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      // The promoted "Below" card is fully visible: no residual fling-out
+      // transform, full opacity — the key forced a fresh mount.
+      const promoted = screen.getByTestId("notification-row-swipe");
+      expect(screen.getByTestId("notification-row").textContent).toContain(
+        "Below",
+      );
+      expect(promoted.style.transform).toBeFalsy();
+      expect(
+        promoted.style.opacity === "" || promoted.style.opacity === "1",
+      ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ── Pull-gesture expand/collapse (no more/less buttons) ─────────────────────
@@ -702,6 +753,33 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     fireEvent.touchEnd(list, { touches: [] });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+  });
+
+  it("a continuous drag that scrolls the expanded list back to the top does NOT collapse (re-base at the crossing)", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    // The list is scrolled down 150px; the browser owns the pan until scrollTop
+    // hits 0. A naive dy-from-touchstart would arrive at the top already maxed
+    // and collapse; the re-based pull measures only the AT-TOP travel.
+    Object.defineProperty(list, "scrollTop", {
+      configurable: true,
+      writable: true,
+      value: 150,
+    });
+    fireEvent.touchStart(list, { touches: [{ clientX: 10, clientY: 10 }] });
+    // Still scrolled → not a pull.
+    fireEvent.touchMove(list, { touches: [{ clientX: 10, clientY: 100 }] });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    // Reaches the top; the anchor rebases here, so the remaining travel is tiny.
+    (list as unknown as { scrollTop: number }).scrollTop = 0;
+    fireEvent.touchMove(list, { touches: [{ clientX: 12, clientY: 210 }] });
+    fireEvent.touchMove(list, { touches: [{ clientX: 12, clientY: 232 }] });
+    fireEvent.touchEnd(list, { touches: [] });
+    // Only ~22px of at-top travel → below commit → shade stays expanded.
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
   it("wheel-up at the top of the rested shade expands it", () => {

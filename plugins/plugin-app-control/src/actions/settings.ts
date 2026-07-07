@@ -1389,6 +1389,13 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		action: "BACKGROUND",
 		summary: "Set, generate, undo, or reset the app background.",
 	},
+	notifications: {
+		kind: "unwired",
+		reason:
+			"Push notification enrollment is a client/device permission handshake, not a server-side setting value SETTINGS can safely mutate.",
+		exemptionReason:
+			"SETTINGS can request the OS notification permission through section=permissions key=request permission=notifications, but push subscription and device-token registration must stay in the client Settings surface.",
+	},
 	connectors: {
 		kind: "delegate",
 		action: "PLUGIN",

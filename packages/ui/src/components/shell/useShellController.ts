@@ -25,6 +25,8 @@ import type {
 } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import {
+  APP_PAUSE_EVENT,
+  APP_RESUME_EVENT,
   VOICE_CONTROL_EVENT,
   type VoiceControlEventDetail,
 } from "../../events";
@@ -773,6 +775,34 @@ export function useShellController(): ShellController {
     void stopCaptureAndDrain();
   }, [stopCaptureAndDrain]);
 
+  // Discard an in-flight capture on app suspend WITHOUT transcribing (#voice-V1).
+  // When iOS backgrounds the PWA mid-capture the `ScriptProcessorNode` stalls,
+  // so `handle.stop()` (the drain path) would trigger a doomed STT round-trip on
+  // a truncated/empty WAV and throw "No microphone audio was captured". Instead
+  // `dispose()` runs the recorder's `cancel()` — it releases the MediaStream
+  // tracks (so iOS drops the mic indicator during suspension) and closes the
+  // AudioContext without a transcribe. `explicitStopRef` is set so the clean-
+  // auto-stop carryover does NOT fire (a suspended turn is discarded, not held),
+  // and the state resets clear the stuck "recording" UI so a resume re-arms from
+  // a clean idle. `handsFree` is deliberately left intact: the re-listen loop
+  // (and the resume effect below) re-open the mic on foreground.
+  const discardCaptureForSuspend = React.useCallback(() => {
+    const handle = captureRef.current;
+    if (!handle) return;
+    captureRef.current = null;
+    explicitStopRef.current = true;
+    turnCarryoverRef.current = "";
+    turnAggregatorRef.current?.reset();
+    try {
+      handle.dispose();
+    } catch {
+      /* dispose is best-effort — the recorder's cancel() is idempotent */
+    }
+    setAnalyser(null);
+    setRecording(false);
+    setTranscript("");
+  }, []);
+
   const startCapture = React.useCallback(
     (intent?: CaptureIntent) => {
       // Voice capture is independent of agent-respond readiness. A converse
@@ -1455,6 +1485,67 @@ export function useShellController(): ShellController {
     voiceOutput.speaking,
     composerHasDraft,
     startCapture,
+  ]);
+
+  // ── App suspend / resume: keep voice capture from getting stuck (#voice-V1) ──
+  //
+  // On the installed iOS PWA, backgrounding the app suspends the WebAudio graph:
+  // the WAV recorder's `ScriptProcessorNode` stops firing, but nothing tears the
+  // capture down, so on resume the UI is stuck in a phantom "recording" state
+  // with an orphaned getUserMedia MediaStream (iOS keeps the mic indicator lit)
+  // and the next tap early-returns against the stale `captureRef`.
+  //
+  // This extends #15179's lifecycle bridge (which already dispatches
+  // APP_PAUSE/APP_RESUME on the web PWA and handles chat resync) rather than
+  // duplicating it:
+  //   - APP_PAUSE: discard any in-flight capture (release the mic, reset UI) so
+  //     nothing stalls across suspension. Remember whether the mic was live so
+  //     resume can re-arm it.
+  //   - APP_RESUME: if the mic was hands-free-live at suspend (or always-on
+  //     hands-free is engaged), re-open capture the instant we foreground
+  //     instead of waiting for a user tap. The existing re-listen loop also
+  //     covers this via state deps, but a direct nudge avoids a dead mic when
+  //     the loop's deps didn't change across the suspend.
+  const wasCapturingAtSuspendRef = React.useRef(false);
+  React.useEffect(() => {
+    const onPause = (): void => {
+      wasCapturingAtSuspendRef.current = !!captureRef.current;
+      discardCaptureForSuspend();
+    };
+    const onResume = (): void => {
+      const shouldReArm =
+        (wasCapturingAtSuspendRef.current || handsFreeRef.current) &&
+        !transcriptionModeRef.current;
+      wasCapturingAtSuspendRef.current = false;
+      if (!shouldReArm) return;
+      // Re-open only from a clean idle: never stack a second capture over one
+      // that survived (or was re-armed by the re-listen loop first), and stay
+      // out of the way while a reply is still streaming/speaking (voice is gated
+      // while responding — the loop re-opens once it clears).
+      if (
+        !ready ||
+        recording ||
+        captureRef.current ||
+        chatSending ||
+        voiceOutput.speaking
+      ) {
+        return;
+      }
+      startCapture("converse");
+    };
+    document.addEventListener(APP_PAUSE_EVENT, onPause);
+    document.addEventListener(APP_RESUME_EVENT, onResume);
+    return () => {
+      document.removeEventListener(APP_PAUSE_EVENT, onPause);
+      document.removeEventListener(APP_RESUME_EVENT, onResume);
+    };
+  }, [
+    discardCaptureForSuspend,
+    startCapture,
+    ready,
+    recording,
+    chatSending,
+    voiceOutput.speaking,
   ]);
 
   const waveformMode =

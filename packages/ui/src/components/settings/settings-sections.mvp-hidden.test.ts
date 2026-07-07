@@ -12,6 +12,7 @@ import { getAllSettingsSections } from "./settings-sections";
 const MVP_HIDDEN = [
   "capabilities",
   "apps",
+  "app-permissions",
   "cloud-connectors",
   "runtime",
   "my-runtimes",
@@ -57,7 +58,7 @@ describe("MVP settings declutter", () => {
   });
 
   it("keeps the everyday sections visible with Developer Mode off", () => {
-    for (const id of ["identity", "ai-model", "voice", "appearance"]) {
+    for (const id of ["identity", "ai-model", "permissions", "appearance"]) {
       const section = sectionById(id);
       expect(
         section && isViewVisible(section, DEV_OFF),

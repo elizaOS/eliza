@@ -562,7 +562,10 @@ describe("v5 tiered action surface", () => {
 	});
 
 	it("omits planner tools that execution would reject for the selected context", async () => {
-		process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "GUEST" });
+		// ACTION_ROLE_POLICY authorizes by exact action name only — similes
+		// intentionally do not authorize (action-role-policy.ts), so the key must
+		// be "SHELL", not its "BASH" simile, to loosen SHELL's OWNER gate to GUEST.
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({ SHELL: "GUEST" });
 		_resetActionRolePolicyCacheForTests();
 
 		const shell = makeAction({

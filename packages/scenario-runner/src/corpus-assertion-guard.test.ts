@@ -338,6 +338,8 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "orchestrator-device-modality-reach",
   "orchestrator-evidence-bundle",
   "orchestrator-grilling-happy-path",
+  "orchestrator-multi-project-failure-isolation",
+  "orchestrator-multi-project-portfolio",
   "orchestrator-multi-task-supervisor",
   "orchestrator-reflexion-respawn",
   "orchestrator-view-cloud-deploy",

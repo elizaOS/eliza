@@ -107,6 +107,9 @@
 			"@elizaos/plugin-commands": [
 				"../../plugins/plugin-commands/src/index.ts"
 			],
+			"@elizaos/plugin-discord/service": [
+				"../../plugins/plugin-discord/service.ts"
+			],
 			"@elizaos/plugin-elizacloud/host-routes": [
 				"../../plugins/plugin-elizacloud/src/host-routes.ts"
 			],
@@ -126,6 +129,9 @@
 				"../../plugins/plugin-registry/src/index.ts"
 			],
 			"@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
+			"@elizaos/plugin-streaming": [
+				"../../plugins/plugin-streaming/src/index.ts"
+			],
 			"@elizaos/plugin-task-coordinator": [
 				"../../plugins/plugin-task-coordinator/src/index.ts"
 			],

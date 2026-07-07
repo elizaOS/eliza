@@ -91,6 +91,15 @@
       ],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/import-conversations": [
+        "../../packages/import-conversations/src/index.ts"
+      ],
+      "@elizaos/import-conversations/*": [
+        "../../packages/import-conversations/src/*"
+      ],
+      "@elizaos/import-conversations/browser": [
+        "../../packages/import-conversations/src/browser.ts"
+      ],
       "@elizaos/capacitor-camera": [
         "../../plugins/plugin-native-camera/src/index.ts"
       ],

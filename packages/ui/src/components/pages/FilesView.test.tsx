@@ -3,8 +3,11 @@
 // Renders the real FilesView against a mocked `../../api` client to cover the
 // stored-file grid: per-file rows with kind facets, facet filtering, and the
 // download/share hand-off (with the Share control hidden when unsupported).
-// jsdom; the api client and the download/share helper are stubbed.
+// jsdom; the api client and the download/share helper are stubbed. Renders
+// wrap in RoleProvider (OWNER by default) because the delete affordance is
+// role-gated (#14781).
 
+import type { RoleGateRole } from "@elizaos/core";
 import {
   cleanup,
   fireEvent,
@@ -15,7 +18,16 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoredFile } from "../../api";
+import { RoleProvider } from "../../hooks/useRole";
 import { FilesView } from "./FilesView";
+
+function renderFiles(role: RoleGateRole = "OWNER") {
+  return render(
+    <RoleProvider role={role}>
+      <FilesView />
+    </RoleProvider>,
+  );
+}
 
 // FilesView talks to the runtime exclusively through the `client` singleton
 // re-exported from `../../api`. Mock that module — the real data seam.
@@ -79,7 +91,7 @@ afterEach(() => {
 
 describe("FilesView", () => {
   it("renders a row per stored file with kind facets and metadata", async () => {
-    render(<FilesView />);
+    renderFiles();
 
     expect(await screen.findByText("photo.png")).toBeTruthy();
     expect(screen.getByText("report.pdf")).toBeTruthy();
@@ -96,7 +108,7 @@ describe("FilesView", () => {
   });
 
   it("filters the grid by the selected type facet", async () => {
-    render(<FilesView />);
+    renderFiles();
     await screen.findByText("photo.png");
 
     fireEvent.click(screen.getByTestId("file-facet-document"));
@@ -117,7 +129,7 @@ describe("FilesView", () => {
   });
 
   it("downloads a file through the helper with its url + filename", async () => {
-    render(<FilesView />);
+    renderFiles();
     await screen.findByText("photo.png");
 
     const imageCard = screen
@@ -138,7 +150,7 @@ describe("FilesView", () => {
   });
 
   it("shares a file through the helper", async () => {
-    render(<FilesView />);
+    renderFiles();
     await screen.findByText("photo.png");
 
     const imageCard = screen
@@ -157,7 +169,7 @@ describe("FilesView", () => {
 
   it("hides the Share control when sharing is unsupported", async () => {
     downloadShareMock.canShareFiles.mockReturnValue(false);
-    render(<FilesView />);
+    renderFiles();
     await screen.findByText("photo.png");
 
     expect(screen.queryByTestId("file-share")).toBeNull();
@@ -165,7 +177,7 @@ describe("FilesView", () => {
   });
 
   it("deletes a file via the client and optimistically removes the row", async () => {
-    render(<FilesView />);
+    renderFiles();
     await screen.findByText("report.pdf");
 
     const pdfCard = screen
@@ -188,7 +200,7 @@ describe("FilesView", () => {
 
   it("does not delete when the confirm is declined", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(false);
-    render(<FilesView />);
+    renderFiles();
     await screen.findByText("report.pdf");
 
     const pdfCard = screen
@@ -202,7 +214,7 @@ describe("FilesView", () => {
 
   it("restores the row when the delete fails", async () => {
     clientMock.deleteFile.mockResolvedValue({ deleted: false });
-    render(<FilesView />);
+    renderFiles();
     await screen.findByText("report.pdf");
 
     const pdfCard = screen
@@ -222,7 +234,7 @@ describe("FilesView", () => {
 
   it("shows the empty state when there are no files", async () => {
     clientMock.listFiles.mockResolvedValue({ files: [] });
-    render(<FilesView />);
+    renderFiles();
 
     await waitFor(() => {
       expect(screen.getByTestId("files-empty")).toBeTruthy();
@@ -231,11 +243,32 @@ describe("FilesView", () => {
 
   it("surfaces an error when the list request fails", async () => {
     clientMock.listFiles.mockRejectedValue(new Error("boom"));
-    render(<FilesView />);
+    renderFiles();
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeTruthy();
     });
     expect(screen.getByRole("alert").textContent).toContain("boom");
+  });
+
+  it("renders the designed restricted state (not empty, not error) for a restricted viewer (#14781)", async () => {
+    clientMock.listFiles.mockResolvedValue({ files: [], restricted: true });
+    renderFiles("USER");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("files-restricted")).toBeTruthy();
+    });
+    // Three-state rule: restricted is its own render — no healthy-empty, no error.
+    expect(screen.queryByTestId("files-empty")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("hides the delete affordance below ADMIN rank (#14781)", async () => {
+    renderFiles("USER");
+    await screen.findByText("photo.png");
+
+    expect(screen.queryAllByTestId("file-delete")).toHaveLength(0);
+    // Non-destructive affordances stay available.
+    expect(screen.getAllByTestId("file-download").length).toBeGreaterThan(0);
   });
 });

@@ -86,11 +86,11 @@ describe("settings + voice/transcription terminal views (shell-mount coverage)",
       (id, value) => changes.push({ id, value }),
       () => {},
     );
-    cleanups.push(registerTerminalView("settings", settings));
+    cleanups.push(registerTerminalView("settings-fixture", settings));
 
     const { terminal } = await bootShell({
       routes: [
-        viewsRoute([{ id: "settings", label: "Settings TUI" }]),
+        viewsRoute([{ id: "settings-fixture", label: "Settings TUI" }]),
         ...okViewRoutes,
       ],
     });
@@ -153,11 +153,11 @@ describe("settings + voice/transcription terminal views (shell-mount coverage)",
       () => {},
       () => {},
     );
-    cleanups.push(registerTerminalView("settings", settings));
+    cleanups.push(registerTerminalView("settings-fixture", settings));
 
     const { terminal } = await bootShell({
       routes: [
-        viewsRoute([{ id: "settings", label: "Settings TUI" }]),
+        viewsRoute([{ id: "settings-fixture", label: "Settings TUI" }]),
         ...okViewRoutes,
       ],
     });

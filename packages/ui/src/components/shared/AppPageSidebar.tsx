@@ -131,6 +131,7 @@ export const AppPageSidebar = React.forwardRef<
     onCollapseRequest,
     onCollapsedChange,
     onWidthChange,
+    onWidthCommit,
     resizable,
     showExpandedCollapseButton = false,
     syncId,
@@ -189,20 +190,33 @@ export const AppPageSidebar = React.forwardRef<
   const controlledWidth = widthProp !== undefined;
   const width = controlledWidth ? widthProp : internalWidth;
 
+  // Per-frame during a drag: state only. localStorage writes happen once per
+  // drag in handleWidthCommit — a synchronous storage write per frame stalls
+  // the resize on high-rate pointer devices.
   const handleWidthChange = useCallback(
     (next: number) => {
       const clamped = clampSidebarWidth(next, minWidth, maxWidth);
       if (!controlledWidth) {
         setInternalWidth(clamped);
-        persistSidebarWidth(resolvedWidthStorageKey, clamped);
       }
       onWidthChange?.(clamped);
+    },
+    [controlledWidth, maxWidth, minWidth, onWidthChange],
+  );
+
+  const handleWidthCommit = useCallback(
+    (next: number) => {
+      const clamped = clampSidebarWidth(next, minWidth, maxWidth);
+      if (!controlledWidth) {
+        persistSidebarWidth(resolvedWidthStorageKey, clamped);
+      }
+      onWidthCommit?.(clamped);
     },
     [
       controlledWidth,
       maxWidth,
       minWidth,
-      onWidthChange,
+      onWidthCommit,
       resolvedWidthStorageKey,
     ],
   );
@@ -275,6 +289,7 @@ export const AppPageSidebar = React.forwardRef<
       resizable={effectiveResizable}
       width={effectiveResizable ? width : widthProp}
       onWidthChange={effectiveResizable ? handleWidthChange : onWidthChange}
+      onWidthCommit={effectiveResizable ? handleWidthCommit : onWidthCommit}
       minWidth={minWidth}
       maxWidth={maxWidth}
       onCollapseRequest={

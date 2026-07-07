@@ -113,6 +113,20 @@ export default defineConfig({
         replacement: path.join(root, "packages/cloud/sdk/src/$1"),
       },
       {
+        // Core's src re-exports the cloud routing surface from
+        // `@elizaos/cloud-routing` (packages/core/src/cloud-routing.ts), which
+        // ships no dist. With @elizaos/core source-aliased above, that re-export
+        // only resolves when cloud-routing is pinned to source too — otherwise
+        // vite falls through to its `dist/index.js` entry and fails with
+        // "Failed to resolve entry for @elizaos/cloud-routing".
+        find: /^@elizaos\/cloud-routing$/,
+        replacement: path.join(root, "packages/cloud/routing/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-routing\/(.+)$/,
+        replacement: path.join(root, "packages/cloud/routing/src/$1"),
+      },
+      {
         find: /^@elizaos\/tui$/,
         replacement: path.join(root, "packages/tui/src/index.ts"),
       },

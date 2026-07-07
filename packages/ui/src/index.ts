@@ -461,6 +461,7 @@ export * from "./first-run/mobile-runtime-mode";
 export * from "./first-run/pre-seed-local-runtime";
 export * from "./genui/index";
 export * from "./gestures";
+export * from "./glass";
 export {
   DEFAULT_FRAME_BUDGET,
   FRAME_SAMPLER_INIT,

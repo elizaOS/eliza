@@ -13,6 +13,7 @@ import {
   useClickSuppression,
   useRafCoalescer,
 } from "../gestures";
+import { beginRailGesture, endRailGesture } from "../state/rail-gesture-store";
 
 // The pager's tuned axis/flick/edge values live in the shared gesture constants
 // module as named PAGER_* overrides (see gestures/constants.ts for why each
@@ -289,18 +290,33 @@ export function useHorizontalPager<
     if (!railPromotedRef.current) return;
     railPromotedRef.current = false;
     if (rail) rail.style.willChange = "";
+    // The gesture/settle window closed — release any consumer (live-widget
+    // flushes) parked on the rail-gesture signal.
+    endRailGesture();
   }, []);
   const armRailPromotion = React.useCallback(() => {
     const rail = railRef.current;
     if (!rail || railPromotedRef.current) return;
     // Reduced motion has no animated settle to composite — a pan that jumps
     // page-to-page never runs the transition, so the promotion would only ever
-    // be dropped by the next drag. Skip it entirely (matches #14501).
+    // be dropped by the next drag. Skip it entirely (matches #14501). The
+    // rail-gesture signal is skipped with it: with no promoted layer there is
+    // no re-rasterize cost to shield, and pausing widget updates would be pure
+    // staleness.
     if (prefersReducedMotion()) return;
     railPromotedRef.current = true;
     rail.style.willChange = "transform";
+    // Broadcast the gesture window so live-widget flushes inside the promoted
+    // layer can buffer until the settle ends (they'd repaint the moving
+    // surface mid-swipe otherwise).
+    beginRailGesture();
   }, []);
 
+  // Offset of the most recent transform write. Lets the settle paths detect a
+  // ZERO-DELTA write (a tap, or an abandoned drag that never moved): such a
+  // write changes nothing, so no `transitionend` will ever fire to drop the
+  // pointerdown-armed rail promotion — the caller must drop it directly.
+  const lastWrittenOffsetRef = React.useRef(0);
   const writeOffset = React.useCallback(
     (offset: number, transitionMs: number | null) => {
       const rail = railRef.current;
@@ -314,6 +330,7 @@ export function useHorizontalPager<
       rail.style.transition =
         ms == null ? "none" : `transform ${ms}ms ${SETTLE_EASING}`;
       rail.style.transform = `translate3d(${roundedPx(offset)},0,0)`;
+      lastWrittenOffsetRef.current = offset;
     },
     [],
   );
@@ -364,8 +381,20 @@ export function useHorizontalPager<
     // Re-measure: a viewport resize DURING the drag makes state.width stale, so
     // settling to pageOffset(page, staleWidth) would leave the rail permanently
     // mis-offset.
-    writeOffset(pageOffset(state.page, measureWidth()), SETTLE_MS);
-  }, [cancelScheduledOffset, measureWidth, releaseCapture, writeOffset]);
+    const target = pageOffset(state.page, measureWidth());
+    const noMove = Math.abs(target - lastWrittenOffsetRef.current) < 1;
+    writeOffset(target, SETTLE_MS);
+    // A no-move abandon (press, then the button released off-surface before any
+    // travel) writes the same transform back — no settle transition runs, so no
+    // `transitionend` will drop the pointerdown-armed promotion. Drop it here.
+    if (noMove) dropRailPromotion();
+  }, [
+    cancelScheduledOffset,
+    dropRailPromotion,
+    measureWidth,
+    releaseCapture,
+    writeOffset,
+  ]);
 
   React.useLayoutEffect(() => {
     const width = measureWidth();
@@ -433,6 +462,9 @@ export function useHorizontalPager<
       if (!railPromotedRef.current) return;
       railPromotedRef.current = false;
       if (rail) rail.style.willChange = "";
+      // Mirror dropRailPromotion: an unmount mid-gesture must also release
+      // consumers parked on the rail-gesture signal.
+      endRailGesture();
     };
   }, []);
 
@@ -602,8 +634,17 @@ export function useHorizontalPager<
         hadButtons: event.pointerType !== "touch" && event.buttons > 0,
       };
       writeOffset(baseOffset, null);
+      // Promote the rail NOW, not on the first horizontal-committed move frame:
+      // arming at pointerdown gives the compositor the whole slop window to
+      // build the layer before the first tracked translate, so the opening
+      // frames of a swipe composite instead of paying the promotion raster
+      // right when the finger starts moving. A gesture that commits VERTICAL
+      // drops the promotion immediately (see onPointerMove); a plain tap drops
+      // it in finish()'s zero-delta path. Reduced motion still skips inside
+      // armRailPromotion.
+      armRailPromotion();
     },
-    [cancelScheduledOffset, measureWidth, writeOffset],
+    [armRailPromotion, cancelScheduledOffset, measureWidth, writeOffset],
   );
 
   const onPointerMove = React.useCallback(
@@ -634,14 +675,13 @@ export function useHorizontalPager<
         const ay = Math.abs(dy);
         if (Math.max(ax, ay) < AXIS_COMMIT_SLOP) return;
         state.axis = ax > ay * AXIS_DOMINANCE_RATIO ? "horizontal" : "vertical";
-        // The gesture is now known to be a horizontal pan: promote the rail to
-        // its own compositor layer for the rest of the drag + settle so the
-        // finger-tracked translate (and the blurred/masked notification stack it
-        // carries) composites instead of repainting per frame (#swipe-
-        // smoothness). Armed here (first horizontal-committed frame), not on
-        // pointerdown, so a purely vertical scroll of the home widget list never
-        // needlessly promotes the rail. Dropped on the settle `transitionend`.
-        if (state.axis === "horizontal") armRailPromotion();
+        // The promotion was armed at pointerdown (so the compositor had the
+        // slop window to build the layer before the first tracked frame). A
+        // gesture that commits VERTICAL is the home widget list scrolling, not
+        // a rail pan — the rail will not move, so drop the layer (and release
+        // the rail-gesture signal) immediately instead of holding GPU memory
+        // and parked widget flushes through a scroll.
+        if (state.axis === "vertical") dropRailPromotion();
       }
       if (state.axis !== "horizontal") return;
 
@@ -673,7 +713,7 @@ export function useHorizontalPager<
       }
       scheduleOffset(state.baseOffset + visualDragOffset(state, dx));
     },
-    [abandonDrag, armRailPromotion, scheduleOffset, visualDragOffset],
+    [abandonDrag, dropRailPromotion, scheduleOffset, visualDragOffset],
   );
 
   const onPointerUp = React.useCallback(

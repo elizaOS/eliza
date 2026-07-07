@@ -600,7 +600,7 @@ describe("scenario PR workflow contract", () => {
       "../../../plugins/plugin-app-control/src/index.ts",
     );
     expect(scenarioExecutor).toContain(
-      "actions: [mod.appAction, mod.backgroundAction, mod.viewsAction]",
+      "actions: [\n        mod.appAction,\n        mod.backgroundAction,\n        mod.viewsAction,\n        mod.settingsAction,\n      ]",
     );
     expect(appControlViewsManagement).toContain(
       "owner-gates mutating view management modes but allows window navigation validation",
@@ -745,7 +745,11 @@ describe("scenario PR workflow contract", () => {
       "chat SSE stream emits token + done events for assistant message",
       'getByRole("button", { name: /talk|voice input/i })',
       "VOICE_DM",
-      "hello world from the STT shim",
+      // The shim contract phrase, not a specific utterance: the spec's
+      // simulated turn text changed while the shim-driven end-to-end path
+      // (and its VOICE_DM stream assertion) stayed — pin the stable
+      // assertion message instead of the sample words.
+      "STT shim must receive a final browser turn",
       "always on browser turn",
       "Always-on assistant heard the browser turn",
       "eliza:voice:continuous-chat-mode",

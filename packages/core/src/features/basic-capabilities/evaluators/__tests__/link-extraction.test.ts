@@ -2,10 +2,13 @@
  * Unit coverage for the link-extraction evaluator (`linkExtractionEvaluator`):
  * URL gating, preview fetch/summarize, dedupe and trailing-punctuation
  * stripping, platform stamping, and output parsing. The harness is fully
- * deterministic — a hand-mocked runtime with a `vi.fn` `useModel`, a stubbed
- * `globalThis.fetch`, and no real network, model, or database.
+ * deterministic — a hand-mocked runtime with a `vi.fn` `useModel` and the
+ * link-preview fetch driven through the REAL SSRF guard over an injected
+ * transport (`_setLinkPreviewTransportForTests`), with no real network, model,
+ * or database. The guard's node-pinned transport bypasses a stubbed
+ * `globalThis.fetch` by design, so the deterministic wire is injected instead.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
 	EvaluatorRunContext,
 	Memory,
@@ -13,7 +16,10 @@ import type {
 	UUID,
 } from "../../../../types/index.ts";
 import { ModelType } from "../../../../types/index.ts";
-import { linkExtractionEvaluator } from "../link-extraction.ts";
+import {
+	_setLinkPreviewTransportForTests,
+	linkExtractionEvaluator,
+} from "../link-extraction.ts";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const ENTITY_ID = "00000000-0000-0000-0000-000000000002" as UUID;
@@ -93,15 +99,35 @@ function makeFetchResponse(
 	} as unknown as Response;
 }
 
-describe("linkExtractionEvaluator", () => {
-	const originalFetch = globalThis.fetch;
+// A public pinned address so the guard's SSRF check passes and the injected
+// transport (never the real network) serves the deterministic response.
+const PINNED_LOOKUP = async () => [{ address: "93.184.216.34", family: 4 }];
 
-	beforeEach(() => {
-		globalThis.fetch = vi.fn() as unknown as typeof fetch;
+/** Drive the preview fetch to `response` through the real guard. */
+function stubPreviewFetch(response: Response): void {
+	_setLinkPreviewTransportForTests({
+		lookupFn: PINNED_LOOKUP,
+		pinnedFetchImpl: async () => response,
+		fetchImpl: async () => response,
 	});
+}
 
+/** Drive the preview fetch to throw at the transport (network failure). */
+function stubPreviewFetchFailure(error: Error): void {
+	_setLinkPreviewTransportForTests({
+		lookupFn: PINNED_LOOKUP,
+		pinnedFetchImpl: async () => {
+			throw error;
+		},
+		fetchImpl: async () => {
+			throw error;
+		},
+	});
+}
+
+describe("linkExtractionEvaluator", () => {
 	afterEach(() => {
-		globalThis.fetch = originalFetch;
+		_setLinkPreviewTransportForTests(undefined);
 		vi.restoreAllMocks();
 	});
 
@@ -124,11 +150,11 @@ describe("linkExtractionEvaluator", () => {
 	});
 
 	it("prepare extracts a URL, summarizes via TEXT_SMALL, and persists a link memory", async () => {
-		globalThis.fetch = vi.fn(async () =>
+		stubPreviewFetch(
 			makeFetchResponse(
 				"<html><head><title>Example Domain &amp; Friends</title></head><body><p>This domain is for use in examples.</p></body></html>",
 			),
-		) as unknown as typeof fetch;
+		);
 
 		const runtime = makeRuntime(async (modelType, params) => {
 			expect(modelType).toBe(ModelType.TEXT_SMALL);
@@ -169,9 +195,9 @@ describe("linkExtractionEvaluator", () => {
 	});
 
 	it("prepare dedupes repeated URLs and strips trailing punctuation", async () => {
-		globalThis.fetch = vi.fn(async () =>
+		stubPreviewFetch(
 			makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
-		) as unknown as typeof fetch;
+		);
 
 		const runtime = makeRuntime(async () => "ok summary");
 		const message = makeMessage(
@@ -187,9 +213,7 @@ describe("linkExtractionEvaluator", () => {
 	});
 
 	it("prepare persists the URL even when fetch fails (no title/summary)", async () => {
-		globalThis.fetch = vi.fn(async () => {
-			throw new Error("network down");
-		}) as unknown as typeof fetch;
+		stubPreviewFetchFailure(new Error("network down"));
 
 		const runtime = makeRuntime(async () => "should not be called");
 		const message = makeMessage("look https://unreachable.test/page");
@@ -213,9 +237,9 @@ describe("linkExtractionEvaluator", () => {
 		["discord", "https://example.com/d"],
 		["twitter", "https://example.com/t"],
 	])("stamps the originating platform %s on the persisted link memory", async (platform, url) => {
-		globalThis.fetch = vi.fn(async () =>
+		stubPreviewFetch(
 			makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
-		) as unknown as typeof fetch;
+		);
 
 		const runtime = makeRuntime(async () => "summary");
 		const message = makeMessage(`shared ${url}`, platform);
@@ -236,9 +260,9 @@ describe("linkExtractionEvaluator", () => {
 	});
 
 	it("defaults platform to 'unknown' when the message has no source", async () => {
-		globalThis.fetch = vi.fn(async () =>
+		stubPreviewFetch(
 			makeFetchResponse("<html><title>doc</title><body>x</body></html>"),
-		) as unknown as typeof fetch;
+		);
 
 		const runtime = makeRuntime(async () => "summary");
 		const message = makeMessage("see https://example.com/no-source");

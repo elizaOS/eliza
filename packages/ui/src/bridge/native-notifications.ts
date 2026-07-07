@@ -39,6 +39,12 @@ export interface NativeNotificationRequest {
   deepLink?: string;
   /** Drives the delivery loudness (Android channel, web silence). */
   priority: NotificationPriority;
+  /**
+   * Coalescing key. When set, the OS surface is tagged by it so a superseding
+   * same-group arrival REPLACES the prior notification (matching the inbox's
+   * groupKey collapse) instead of stacking a duplicate. Falls back to `id`.
+   */
+  groupKey?: string;
 }
 
 interface LocalNotificationsPluginLike extends Record<string, unknown> {
@@ -106,14 +112,32 @@ const ANDROID_CHANNELS: Record<
 
 const ensuredChannels = new Set<string>();
 
+/** Test-only: clear the per-tier channel-creation cache between tests so a
+ *  cached channel from an earlier case doesn't skip a later createChannel. */
+export function __resetEnsuredChannelsForTests(): void {
+  ensuredChannels.clear();
+}
+
+/**
+ * `channelId`: the channel to schedule against (undefined off Android, where no
+ * channel is needed). `unusable`: true only when a REQUIRED Android channel
+ * could not be created — the caller must NOT schedule against it and must NOT
+ * report success, because on Android 8+ the NotificationManager silently drops
+ * a post to a nonexistent channel (it does NOT fall back to a default), so a
+ * fabricated "delivered" would suppress the glass fallback and lose the alert.
+ */
 async function ensureAndroidChannel(
   plugin: LocalNotificationsPluginLike,
   priority: NotificationPriority,
-): Promise<string | undefined> {
-  if (Capacitor.getPlatform() !== "android") return undefined;
+): Promise<{ channelId?: string; unusable: boolean }> {
+  if (Capacitor.getPlatform() !== "android") return { unusable: false };
   const channel = ANDROID_CHANNELS[priority] ?? ANDROID_CHANNELS.normal;
-  if (ensuredChannels.has(channel.id)) return channel.id;
-  if (typeof plugin.createChannel !== "function") return channel.id;
+  if (ensuredChannels.has(channel.id))
+    return { channelId: channel.id, unusable: false };
+  // Old plugin without createChannel (pre-8 targets ignore channels entirely) —
+  // scheduling with/without the id posts to the app default; best-effort keep.
+  if (typeof plugin.createChannel !== "function")
+    return { channelId: channel.id, unusable: false };
   try {
     await plugin.createChannel({
       id: channel.id,
@@ -122,11 +146,12 @@ async function ensureAndroidChannel(
       visibility: 1,
     });
     ensuredChannels.add(channel.id);
+    return { channelId: channel.id, unusable: false };
   } catch {
-    // error-policy:J4 channel creation is best-effort; scheduling against the
-    // (possibly uncreated) id still delivers via the app's default channel.
+    // The channel genuinely could not be created on an 8+ device; a post here
+    // would be dropped. Signal unusable so delivery falls through to glass.
+    return { channelId: channel.id, unusable: true };
   }
-  return channel.id;
 }
 
 async function tryLocalNotifications(
@@ -155,15 +180,20 @@ async function tryLocalNotifications(
     }
   }
 
-  const channelId = await ensureAndroidChannel(plugin, req.priority);
+  const channel = await ensureAndroidChannel(plugin, req.priority);
+  // A required Android channel that couldn't be created means the OS would drop
+  // the post — don't claim success; let the store's glass fallback deliver.
+  if (channel.unusable) return false;
 
   await plugin.schedule({
     notifications: [
       {
-        id: numericId(req.id),
+        // Coalesce by groupKey so a superseding same-group arrival reuses the
+        // same OS notification id (replace) instead of stacking a new one.
+        id: numericId(req.groupKey ?? req.id),
         title: req.title,
         body: req.body ?? "",
-        ...(channelId ? { channelId } : {}),
+        ...(channel.channelId ? { channelId: channel.channelId } : {}),
         ...(req.deepLink ? { extra: { deepLink: req.deepLink } } : {}),
       },
     ],
@@ -202,8 +232,10 @@ export function showWebNotification(req: NativeNotificationRequest): boolean {
   if (Notification.permission !== "granted") return false;
   try {
     const notification = new Notification(req.title, {
+      // Coalesce by groupKey: a same-tag notification replaces the prior one in
+      // the OS tray, matching the inbox's groupKey collapse (a burst → one).
+      tag: req.groupKey ?? req.id,
       body: req.body,
-      tag: req.id,
       // Low-priority background chatter must not chime on every delivery.
       silent: req.priority === "low",
     });

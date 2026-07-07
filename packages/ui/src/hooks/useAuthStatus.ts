@@ -8,6 +8,10 @@
  * never leaks the dashboard, but also does not imply bad credentials.
  *
  * Call `refetch()` after login / logout to force a fresh check.
+ *
+ * Startup can overlap the probe with the backend polling/hydration phases via
+ * `primeAuthStatusProbe()`; the hook's activation then reuses that in-flight /
+ * fresh result instead of serializing a new probe after first paint.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -63,6 +67,12 @@ const SERVER_UNAVAILABLE_RETRY_MS = 1000;
 const authStatusSubscribers = new Set<(state: AuthStatusState) => void>();
 let authStatusSnapshot: AuthStatusState = { phase: "loading" };
 let authStatusFetch: Promise<void> | null = null;
+let authStatusPrime: Promise<void> | null = null;
+let authStatusPrimeSettledAt = 0;
+// A primed result is only trusted by the activation path for a boot-scale
+// window; a hook that (re)activates later re-probes exactly as before, so a
+// stale prime can never stand in for the session's current auth state.
+const AUTH_STATUS_PRIME_FRESH_MS = 30_000;
 
 function publishAuthStatus(state: AuthStatusState): void {
   authStatusSnapshot = state;
@@ -121,6 +131,80 @@ async function fetchAuthStatus(): Promise<void> {
 }
 
 /**
+ * Start the `/api/auth/me` probe early — during startup's restoring-session
+ * phase, right after the restored connection is applied to the client — so it
+ * overlaps the backend polling/hydration phases instead of serializing after
+ * the shell becomes paintable (App.tsx's `useAuthStatus` skips until then).
+ *
+ * Only the two outcomes that are stable across the boot race are published
+ * into the shared snapshot: `authenticated` and `unauthenticated` (a 401 is
+ * authoritative). A 503/unreachable outcome is discarded — the backend may
+ * legitimately still be binding mid-boot, and publishing `server_unavailable`
+ * from here would flash the startup-failure screen for a backend that comes
+ * up moments later. The hook's activation fetch re-probes with the full
+ * 10×1s retry budget in that case, exactly as before priming existed.
+ *
+ * Fire-and-forget and single-shot: repeat calls, an in-flight real fetch, or
+ * an already-resolved snapshot make it a no-op.
+ */
+export function primeAuthStatusProbe(): void {
+  if (authStatusPrime || authStatusFetch) return;
+  if (authStatusSnapshot.phase !== "loading") return;
+  authStatusPrime = (async () => {
+    const result = await authMe();
+    // A real fetch started (or a state was published) while the prime was in
+    // flight — that path owns the snapshot; drop the primed result.
+    if (authStatusFetch || authStatusSnapshot.phase !== "loading") return;
+    if (result.ok === true) {
+      publishAuthStatus({
+        phase: "authenticated",
+        identity: result.identity,
+        session: result.session,
+        access: result.access,
+      });
+      return;
+    }
+    if (result.status === 503) return;
+    publishAuthStatus({
+      phase: "unauthenticated",
+      reason:
+        result.reason === "remote_auth_required" ||
+        result.reason === "remote_password_not_configured"
+          ? result.reason
+          : undefined,
+      access: result.access,
+    });
+  })().finally(() => {
+    authStatusPrimeSettledAt = Date.now();
+  });
+}
+
+/**
+ * Activation-path fetch: joins an in-flight probe, accepts a fresh primed
+ * terminal result (so a boot primed by {@link primeAuthStatusProbe} does not
+ * throw the answer away and re-hold the shell on `loading`), and otherwise
+ * fetches exactly like the pre-prime behavior. `refetch()` deliberately does
+ * NOT come through here — login/logout/visibility re-checks must always force
+ * a real probe.
+ */
+async function ensureAuthStatusProbe(): Promise<void> {
+  if (authStatusFetch) return authStatusFetch;
+  if (authStatusPrime) {
+    await authStatusPrime;
+    const fresh =
+      Date.now() - authStatusPrimeSettledAt <= AUTH_STATUS_PRIME_FRESH_MS;
+    if (
+      fresh &&
+      (authStatusSnapshot.phase === "authenticated" ||
+        authStatusSnapshot.phase === "unauthenticated")
+    ) {
+      return;
+    }
+  }
+  return fetchAuthStatus();
+}
+
+/**
  * True once the app-level auth probe (App.tsx's `useAuthStatus`) has resolved
  * to an authenticated session. Read-only: subscribes to the shared snapshot
  * without starting its own fetch or poll, so gating on it adds zero network
@@ -151,6 +235,19 @@ export function __setAuthStatusForTests(state: AuthStatusState): () => void {
   };
 }
 
+/**
+ * Test-only companion to {@link __setAuthStatusForTests}: reset the
+ * module-level probe state (snapshot, in-flight fetch, prime) between tests
+ * so shared-singleton auth state cannot leak across cases. Never call from
+ * product code.
+ */
+export function __resetAuthStatusForTests(): void {
+  authStatusFetch = null;
+  authStatusPrime = null;
+  authStatusPrimeSettledAt = 0;
+  publishAuthStatus({ phase: "loading" });
+}
+
 export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   state: AuthStatusState;
   refetch: () => void;
@@ -168,16 +265,24 @@ export function useAuthStatus(options: UseAuthStatusOptions = {}): {
     await fetchAuthStatus();
   }, []);
 
+  // Activation consumes a fresh startup prime instead of unconditionally
+  // re-probing; every other trigger (refetch, poll, visibility) still forces
+  // a real fetch via `fetch` above.
+  const activate = useCallback(async () => {
+    if (!mountedRef.current) return;
+    await ensureAuthStatusProbe();
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
     authStatusSubscribers.add(setState);
     setState(authStatusSnapshot);
-    if (!skip && !observeOnly) void fetch();
+    if (!skip && !observeOnly) void activate();
     return () => {
       mountedRef.current = false;
       authStatusSubscribers.delete(setState);
     };
-  }, [skip, observeOnly, fetch]);
+  }, [skip, observeOnly, activate]);
 
   useEffect(() => {
     if (skip || observeOnly || pollIntervalMs === 0) return;

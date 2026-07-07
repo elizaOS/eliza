@@ -16,7 +16,6 @@
  *   - or no cross-channel entries exist for that sender.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,
@@ -24,6 +23,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import { hasRoleAccess } from "@elizaos/core";
 import { InboxRepository } from "../inbox/repository.ts";
 import type { TriageEntry } from "../inbox/types.ts";
 
@@ -122,7 +122,7 @@ export const crossChannelContextProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasOwnerAccess(runtime, message))) return EMPTY;
+    if (!(await hasRoleAccess(runtime, message, "OWNER"))) return EMPTY;
 
     const { entityId, name } = await resolveSenderLabel(runtime, message);
     if (!entityId && !name) return EMPTY;

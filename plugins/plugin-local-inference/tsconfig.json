@@ -84,6 +84,15 @@
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
+			"@elizaos/import-conversations": [
+				"../../packages/import-conversations/src/index.ts"
+			],
+			"@elizaos/import-conversations/*": [
+				"../../packages/import-conversations/src/*"
+			],
+			"@elizaos/import-conversations/browser": [
+				"../../packages/import-conversations/src/browser.ts"
+			],
 			"@elizaos/vault": ["../../packages/vault/src/index.ts"],
 			"@elizaos/vault/*": ["../../packages/vault/src/*"],
 			"@elizaos/security": ["../../packages/security/src/index.ts"],

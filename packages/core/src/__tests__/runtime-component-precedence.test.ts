@@ -35,7 +35,15 @@ function makeRuntime(name: string): AgentRuntime {
 }
 
 function makeProvider(name: string, text: string): Provider {
-	return { name, get: async () => ({ text, values: {}, data: {} }) };
+	// Declare `contexts` so registration does not trip the PluginLifecycle
+	// "provider declares no contexts/contextGate" nudge (materializeProviderContexts,
+	// plugin-lifecycle.ts) — an orthogonal warn that would otherwise pollute these
+	// tests' collision-warning counts.
+	return {
+		name,
+		contexts: ["general"],
+		get: async () => ({ text, values: {}, data: {} }),
+	};
 }
 
 function makeAction(name: string, tag: string): Action {

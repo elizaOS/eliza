@@ -83,6 +83,10 @@ function buildHarness(judgeOutput: string, options: HarnessOptions = {}) {
     },
     useModel: vi.fn(async (_type: unknown, params: { prompt: string }) => {
       judgePrompts.push(params.prompt);
+      const rewriteMatch = params.prompt.match(
+        /Message to rewrite:\n([\s\S]*?)\n\nRewritten message:/,
+      );
+      if (rewriteMatch) return rewriteMatch[1];
       return judgeOutput;
     }),
     getMemories: vi.fn(async () => documents),

@@ -62,6 +62,16 @@ export const PLUGIN_VIEW_LLM_MOCK_CASES: PluginViewMockCase[] = [
   { id: "health", viewType: "tui", path: "/health" },
   { id: "inbox", viewType: "gui", path: "/inbox" },
   { id: "inbox", viewType: "tui", path: "/inbox" },
+  {
+    id: "lifeops-live-test",
+    viewType: "gui",
+    path: "/lifeops-live-test",
+  },
+  {
+    id: "lifeops-live-test",
+    viewType: "tui",
+    path: "/lifeops-live-test",
+  },
   { id: "relationships", viewType: "gui", path: "/relationships" },
   { id: "relationships", viewType: "tui", path: "/relationships" },
   { id: "todos", viewType: "gui", path: "/todos" },

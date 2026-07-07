@@ -56,6 +56,20 @@ export interface LiveContainerRef {
   /** Diff key — the agent id (agents) or the container name (apps). */
   key: string;
   status: string;
+  /**
+   * The node this row's canonical container lives on. Only populated (and only
+   * consulted) by node-aware reconcilers: a container on node X whose live row
+   * points at a DIFFERENT node is a stale twin left behind by a re-provision
+   * that moved the workload (see `wrong_node`). Absent for apps.
+   */
+  nodeId?: string;
+  /**
+   * When this row was last written (epoch ms). Node-aware reaping only trusts a
+   * `nodeId` mismatch once the row has been stable for `nodeMoveGraceMs`, so a
+   * container observed mid-provision (its healthy on node X before the row is
+   * updated to X) is never mistaken for a stale twin. Absent for apps.
+   */
+  updatedAtMs?: number;
 }
 
 /** A container the reconciler has decided to forcibly remove. */
@@ -66,8 +80,12 @@ export interface OrphanContainer {
   id: string;
   /** Diff key this container mapped to (agent id, or the name itself). */
   key: string;
-  /** Why it was flagged: no DB row at all, or every row in a terminal state. */
-  reason: "no_db_row" | "terminal_db_row";
+  /**
+   * Why it was flagged: no DB row at all, every row in a terminal state, or —
+   * for node-aware reconcilers — a live row that has stably pointed at a
+   * DIFFERENT node (`wrong_node`, the re-provision-left-a-twin case).
+   */
+  reason: "no_db_row" | "terminal_db_row" | "wrong_node";
 }
 
 /** Per-node SSH surface the reconciler needs. Lets tests inject a fake node. */
@@ -125,7 +143,30 @@ export interface OrphanReconcilerConfig {
   loadStatuses(keys: readonly string[]): Promise<LiveContainerRef[]>;
   /** Log tag, e.g. `orphan-reconciler` / `app-orphan-reconciler`. */
   logScope: string;
+  /**
+   * Opt in to node-aware reaping: also reap a container on node X when the
+   * workload has a live row but every live row points at a DIFFERENT node (a
+   * re-provision moved the workload and left this twin behind). Requires
+   * `loadStatuses` to populate `nodeId` + `updatedAtMs`. Agents set this;
+   * apps (which legitimately fan a name across rows) leave it off.
+   */
+  nodeAware?: boolean;
+  /**
+   * How long a `nodeId` mismatch must persist before the twin is reaped
+   * (epoch-ms delta against the row's `updatedAtMs`). Guards the provision race
+   * where a container is healthy on its new node before the DB row catches up.
+   * Defaults to `DEFAULT_NODE_MOVE_GRACE_MS` when node-aware and unset.
+   */
+  nodeMoveGraceMs?: number;
 }
+
+/**
+ * A stale twin must have been "wrong-noded" for at least this long before it is
+ * reaped — long enough that a normal provision (create container → confirm
+ * healthy → update row's node_id) has written the row, so the freshly-healthy
+ * NEW container is never mistaken for the twin during its own creation window.
+ */
+export const DEFAULT_NODE_MOVE_GRACE_MS = 5 * 60_000;
 
 /**
  * Pure diff: given the containers present on a node and the DB rows that exist
@@ -152,34 +193,78 @@ export interface OrphanReconcilerConfig {
  * Containers whose name does not match the managed pattern are ignored
  * entirely — they belong to something else on the node.
  *
- * This function performs NO I/O so it can be unit-tested exhaustively.
+ * NODE-AWARE reaping (opt-in, `config.nodeAware`): a workload can have a live
+ * (non-terminal) row that points at a DIFFERENT node than the one this container
+ * sits on. That is the re-provision-left-a-twin case (#15228): the worker moved
+ * the agent to a new node and never tore down the old container, which then
+ * holds the headscale identity and makes the new registration flap. We reap the
+ * twin ONLY when EVERY live row for the key points elsewhere AND the newest such
+ * row has been stable for `nodeMoveGraceMs` — so a container that is merely
+ * healthy-before-its-own-row-updates during a normal provision is protected.
+ * When any live row points at THIS node, the container is the canonical one and
+ * is kept.
+ *
+ * `nowMs` is injected (not read from the clock) so this function performs NO I/O
+ * and can be unit-tested exhaustively.
  */
 export function computeOrphanContainersToReap(
   containersOnNode: readonly NodeContainerRef[],
   liveRows: readonly LiveContainerRef[],
-  config: Pick<OrphanReconcilerConfig, "keyOf" | "terminalStatuses">,
+  config: Pick<
+    OrphanReconcilerConfig,
+    "keyOf" | "terminalStatuses" | "nodeAware" | "nodeMoveGraceMs"
+  >,
+  nodeId?: string,
+  nowMs?: number,
 ): OrphanContainer[] {
-  // Group all statuses per key (a key can have >1 DB rows for apps — there is no
-  // unique constraint on containers.name; for agents the key is a PK so the
-  // list is always a singleton).
-  const statusesByKey = new Map<string, string[]>();
+  // Group the full row objects per key (a key can have >1 DB rows for apps —
+  // there is no unique constraint on containers.name; for agents the key is a PK
+  // so the list is always a singleton).
+  const rowsByKey = new Map<string, LiveContainerRef[]>();
   for (const row of liveRows) {
-    const list = statusesByKey.get(row.key) ?? [];
-    list.push(row.status);
-    statusesByKey.set(row.key, list);
+    const list = rowsByKey.get(row.key) ?? [];
+    list.push(row);
+    rowsByKey.set(row.key, list);
   }
+
+  const nodeAware = config.nodeAware === true && nodeId !== undefined;
+  const graceMs = config.nodeMoveGraceMs ?? DEFAULT_NODE_MOVE_GRACE_MS;
 
   const orphans: OrphanContainer[] = [];
   for (const container of containersOnNode) {
     const key = config.keyOf(container.name);
     if (key === null) continue;
 
-    const statuses = statusesByKey.get(key);
-    if (statuses === undefined || statuses.length === 0) {
+    const rows = rowsByKey.get(key);
+    if (rows === undefined || rows.length === 0) {
       orphans.push({ name: container.name, id: container.id, key, reason: "no_db_row" });
-    } else if (statuses.every((s) => config.terminalStatuses.has(s))) {
+      continue;
+    }
+    if (rows.every((r) => config.terminalStatuses.has(r.status))) {
       // Reap ONLY when EVERY row is terminal — any live row protects the key.
       orphans.push({ name: container.name, id: container.id, key, reason: "terminal_db_row" });
+      continue;
+    }
+
+    // A live (non-terminal) row exists. In node-aware mode, this container is a
+    // stale twin iff NONE of the live rows point at this node — the canonical
+    // container lives elsewhere. Require the newest such mismatching row to have
+    // been stable past the grace window before reaping.
+    if (nodeAware) {
+      const liveRows_ = rows.filter((r) => !config.terminalStatuses.has(r.status));
+      const anyOnThisNode = liveRows_.some((r) => r.nodeId === nodeId);
+      if (anyOnThisNode) continue;
+      // Only reap if every live row carries a node (else we can't prove
+      // elsewhere) and the freshest is older than the grace window.
+      const stamps = liveRows_.map((r) => r.updatedAtMs);
+      const allHaveNodeAndStamp = liveRows_.every(
+        (r) => r.nodeId !== undefined && r.updatedAtMs !== undefined,
+      );
+      if (!allHaveNodeAndStamp) continue;
+      const newest = Math.max(...(stamps as number[]));
+      if (nowMs !== undefined && nowMs - newest >= graceMs) {
+        orphans.push({ name: container.name, id: container.id, key, reason: "wrong_node" });
+      }
     }
   }
   return orphans;
@@ -234,7 +319,13 @@ export async function reconcileOrphanContainers(
     if (keys.length === 0) continue;
 
     const liveRows = await config.loadStatuses(keys);
-    const orphans = computeOrphanContainersToReap(containersOnNode, liveRows, config);
+    const orphans = computeOrphanContainersToReap(
+      containersOnNode,
+      liveRows,
+      config,
+      node.node_id,
+      Date.now(),
+    );
 
     for (const orphan of orphans) {
       try {

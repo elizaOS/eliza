@@ -2096,29 +2096,35 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
     topology.services.tts || isCloudContainer,
   );
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_MEDIA", topology.services.media);
-  // Cloud containers normally use cloud embeddings: the cloud TEXT_EMBEDDING
-  // handler (1536-dim) must win over plugin-local-inference's gte-small
-  // (384-dim CPU GGUF). Without this, a dedicated cloud agent warms up and
-  // serves local 384-dim embeddings while the SQL column is provisioned for the
-  // cloud dimension → every memory insert is dropped on a dimension mismatch,
-  // and the CPU embedding warmup wastes boot time. The exception is an explicit
-  // BYO embedding endpoint plus ELIZAOS_CLOUD_USE_EMBEDDINGS=false: that is an
-  // operator-owned override, so preserve it instead of forcing cloud back on.
+  // On-device gte-small (384-dim) is the UNIVERSAL default embedder wherever the
+  // agent runs — desktop, mobile, local, and cloud agents alike. It embeds the
+  // always-on recall hot path in ~10ms vs ~1.4s for a Cloud round-trip, so
+  // routing embeddings to Cloud silently made every reply ~1.4s slower. Cloud
+  // embeddings are now strictly OPT-IN: only an explicit
+  // `ELIZAOS_CLOUD_USE_EMBEDDINGS=true` hands the TEXT_EMBEDDING slot to Cloud
+  // — e.g. a dedicated cloud agent whose memory store is already provisioned at
+  // the cloud 1536-dim width. A fresh store provisions at gte-small's 384-dim
+  // width from first write; an existing 1536-dim store that switches degrades
+  // semantic recall to lexical/BM25 (fail-open, never a dropped memory) until
+  // re-embedded. BYO embedding endpoints need the explicit "false" policy
+  // because plugin-elizacloud registers cloud embedding handlers when the flag
+  // is unset.
   const hasByoEmbeddingProvider = hasExplicitEmbeddingProviderConfig(config);
-  const cloudEmbeddingsExplicitlyDisabled = isExplicitFalseEnvValue(
-    readEffectiveEnvValue(config, "ELIZAOS_CLOUD_USE_EMBEDDINGS"),
-  );
-  const byoEmbeddingProviderOverridesCloud =
-    isCloudContainer &&
-    cloudEmbeddingsExplicitlyDisabled &&
-    hasByoEmbeddingProvider;
-  if (byoEmbeddingProviderOverridesCloud) {
+  const cloudEmbeddingsPolicy = readEffectiveEnvValue(
+    config,
+    "ELIZAOS_CLOUD_USE_EMBEDDINGS",
+  )
+    ?.trim()
+    .toLowerCase();
+  if (isTruthyEnvFlag(cloudEmbeddingsPolicy)) {
+    // Match the truthy set the router (`readBooleanEnv`) and warmup policy
+    // (`isTruthyEnv`) use for this same flag, so `=1`/`=yes`/`=true` all opt into
+    // Cloud embeddings identically at the boot, router, and warmup call sites.
+    process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "true";
+  } else if (cloudEmbeddingsPolicy === "false" || hasByoEmbeddingProvider) {
     process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS = "false";
   } else {
-    setCloudUsageEnv(
-      "ELIZAOS_CLOUD_USE_EMBEDDINGS",
-      topology.services.embeddings || isCloudContainer,
-    );
+    delete process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS;
   }
   setCloudUsageEnv("ELIZAOS_CLOUD_USE_RPC", topology.services.rpc);
 

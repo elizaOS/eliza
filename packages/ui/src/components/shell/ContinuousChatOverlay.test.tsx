@@ -1320,9 +1320,9 @@ describe("ContinuousChatOverlay", () => {
     // interactive surfaces: without an exemption the outside-tap collapse-
     // swallower ate the row's tap (preventDefault + suppressNextOutsideClick),
     // so tapping a notification did NOTHING ("interacting is cooked"). The
-    // swallower now exempts [data-testid="home-notification-center"] and
-    // [data-notif-row]; a tap on a row must leave the chat OPEN and not be
-    // swallowed.
+    // swallower exempts [data-notif-row] (the rows, and their option strip
+    // which lives inside the row); a tap on a row must leave the chat OPEN and
+    // not be swallowed.
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
@@ -1358,6 +1358,31 @@ describe("ContinuousChatOverlay", () => {
       // ...and the row's own click is NOT suppressed by the swallower.
       fireEvent.click(rowButton, { clientX: 40, clientY: 40 });
       expect(opened).toBe(true);
+    } finally {
+      center.remove();
+    }
+  });
+
+  it("still collapses on a tap of the notification center's bare field (not a row)", () => {
+    // The exemption is scoped to [data-notif-row], not the whole flex-1
+    // chromeless center section. A tap on the bare field AROUND the rows (which
+    // looks like plain home background) must still collapse the chat — exempting
+    // the whole section made most of the home band a dead zone (#15145 review).
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    fireEvent.focus(screen.getByLabelText("message"));
+    // Focus alone keeps the sheet open but arms composerFocusedAtPress; blur so
+    // the tap-outside path collapses rather than just clearing focus.
+    fireEvent.blur(screen.getByLabelText("message"));
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+
+    const center = document.createElement("section");
+    center.setAttribute("data-testid", "home-notification-center");
+    document.body.appendChild(center);
+    try {
+      fireEvent.pointerDown(center, { clientX: 40, clientY: 40, pointerId: 9 });
+      fireEvent.pointerUp(center, { clientX: 40, clientY: 40, pointerId: 9 });
+      expect(sheet.getAttribute("data-variant")).toBe("closed");
     } finally {
       center.remove();
     }

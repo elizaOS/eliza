@@ -23,6 +23,8 @@ function jwtExpiresAt(token) {
         if (parts.length < 2)
             return 0;
         const payload = parts[1];
+        if (!payload)
+            return 0;
         // base64url -> base64
         const b64 = payload.replace(/-/g, "+").replace(/_/g, "/");
         const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
@@ -31,6 +33,9 @@ function jwtExpiresAt(token) {
         return typeof parsed.exp === "number" ? parsed.exp * 1000 : 0;
     }
     catch {
+        // error-policy:J3 untrusted-input sanitizing — a non-JWT/undecodable token
+        // yields the explicit 0 = "unknown expiry" marker used only for expiry
+        // diagnostics in getStats(); no credential is fabricated.
         return 0;
     }
 }
@@ -52,9 +57,7 @@ export function loadCredentials(opts = {}) {
     candidates.push(join(home, ".claude", ".credentials.json"));
     candidates.push(join(home, ".claude", "credentials.json"));
     for (const candidate of candidates) {
-        const resolved = candidate.startsWith("~")
-            ? join(home, candidate.slice(1))
-            : candidate;
+        const resolved = candidate.startsWith("~") ? join(home, candidate.slice(1)) : candidate;
         try {
             if (existsSync(resolved) && statSync(resolved).size > 0) {
                 let raw = readFileSync(resolved, "utf8");
@@ -62,7 +65,7 @@ export function loadCredentials(opts = {}) {
                     raw = raw.slice(1);
                 const parsed = JSON.parse(raw);
                 const oauth = parsed.claudeAiOauth;
-                if (!oauth || !oauth.accessToken) {
+                if (!oauth?.accessToken) {
                     return {
                         creds: null,
                         error: `credentials file ${resolved} missing claudeAiOauth.accessToken`,
@@ -80,6 +83,10 @@ export function loadCredentials(opts = {}) {
             }
         }
         catch (e) {
+            // error-policy:J1 boundary translation — an unreadable/unparseable
+            // credentials file becomes a typed LoadResult failure; the proxy server
+            // surfaces it as a 503 auth error and the service exposes it via
+            // startError/PROXY_STATUS. No credential is fabricated.
             return {
                 creds: null,
                 error: `failed to read ${resolved}: ${e.message}`,

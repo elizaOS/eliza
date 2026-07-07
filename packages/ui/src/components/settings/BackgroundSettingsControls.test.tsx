@@ -113,11 +113,16 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
 
     const gallery = screen.getByTestId("background-catalog-gallery");
     expect(gallery).toBeTruthy();
-    // Curated catalog tiles and color presets both render as tappable tiles.
+    // Curated image tiles render as tappable tiles; the color/shader presets
+    // are gone from the MVP picker (images + upload only).
     expect(
       screen.getByLabelText("Set background to Misty Forest"),
     ).toBeTruthy();
-    expect(screen.getByLabelText("Set background to Green")).toBeTruthy();
+    expect(screen.queryByLabelText("Set background to Green")).toBeNull();
+    expect(
+      screen.queryByLabelText("Pick a custom background color"),
+    ).toBeNull();
+    expect(screen.queryByLabelText("Generate a background image")).toBeNull();
   });
 
   it("renders curated photo wallpaper tiles from their actual served image", () => {
@@ -130,14 +135,20 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
   });
 
   it("marks the active wallpaper as pressed and leaves others unpressed", () => {
-    // The live config is the Green shader color, so its tile is the active one.
-    seed({ backgroundConfig: { mode: "shader", color: "#059669" } });
+    // The live config is the Reef image, so its tile is the active one.
+    seed({
+      backgroundConfig: {
+        mode: "image",
+        color: "#ef5a1f",
+        imageUrl: "/wallpapers/reef.webp",
+      },
+    });
     render(<BackgroundSettingsControls />);
 
-    const green = screen.getByLabelText("Set background to Green");
-    const rose = screen.getByLabelText("Set background to Rose");
-    expect(green.getAttribute("aria-pressed")).toBe("true");
-    expect(rose.getAttribute("aria-pressed")).toBe("false");
+    const reef = screen.getByLabelText("Set background to Reef");
+    const misty = screen.getByLabelText("Set background to Misty Forest");
+    expect(reef.getAttribute("aria-pressed")).toBe("true");
+    expect(misty.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("applies a wallpaper on tap through the shared store", () => {
@@ -145,9 +156,12 @@ describe("BackgroundSettingsControls wallpaper gallery", () => {
     seed({ setBackgroundConfig });
     render(<BackgroundSettingsControls />);
 
-    fireEvent.click(screen.getByLabelText("Set background to Rose"));
+    fireEvent.click(screen.getByLabelText("Set background to Reef"));
     expect(setBackgroundConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "shader", color: "#e11d48" }),
+      expect.objectContaining({
+        mode: "image",
+        imageUrl: "/wallpapers/reef.webp",
+      }),
     );
   });
 

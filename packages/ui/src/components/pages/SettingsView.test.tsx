@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 // Renders the real SettingsView against mocked state + stub sections to cover
-// the #13590 uniform layout: ONE shared ViewHeader + a folded top-bar section
-// nav (no desktop `w-60` rail, no divergent mobile hub, no responsive branch),
-// hub → section navigation (section tab → section body → back to hub), the
+// the uniform layout: ONE shared ViewHeader + the iOS-style grouped hub list
+// (no desktop `w-60` rail, no horizontal tab strip, no responsive branch),
+// hub → subview navigation (hub row → section body → back to hub), the
 // initialSection prop, and per-section error boundaries (isolate a throwing
 // section, recover on retry). jsdom; sections and state barrel are stubbed.
 
@@ -128,6 +128,12 @@ vi.mock("../settings/settings-sections", () => {
       accent: "",
       neutral: "",
     },
+    SECTION_HUE_MEDALLION_CLASS: {
+      accent: "",
+      amber: "",
+      rose: "",
+      slate: "",
+    },
     SETTINGS_GROUP_LABEL: groupLabels,
     SETTINGS_GROUP_ORDER: groupOrder,
     SETTINGS_SECTIONS: sections,
@@ -175,18 +181,14 @@ function makeContext(
   };
 }
 
-/** The folded section-nav strip rendered under the shared header. */
-function sectionNav(): HTMLElement {
-  return screen.getByTestId("settings-section-nav");
+/** The grouped hub row list (the settings main screen). */
+function hubList(): HTMLElement {
+  return screen.getByTestId("settings-hub-list");
 }
 
-/** A section tab in the folded nav, by its visible label. */
-function sectionTab(label: string): HTMLButtonElement {
-  const tab = Array.from(sectionNav().querySelectorAll("button")).find(
-    (button) => button.textContent?.trim() === label,
-  );
-  if (!tab) throw new Error(`no section tab labelled "${label}"`);
-  return tab as HTMLButtonElement;
+/** A hub row by its section id. */
+function hubRow(id: string): HTMLButtonElement {
+  return screen.getByTestId(`settings-hub-row-${id}`) as HTMLButtonElement;
 }
 
 beforeEach(() => {
@@ -198,7 +200,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("SettingsView", () => {
-  it("calls loadPlugins on mount and renders the uniform header + folded nav", async () => {
+  it("calls loadPlugins on mount and renders the uniform header + hub list", async () => {
     render(<SettingsView />);
 
     await waitFor(() => {
@@ -207,14 +209,12 @@ describe("SettingsView", () => {
     // The shared ViewHeader renders once, titled "Settings" on the hub.
     const header = screen.getByTestId("view-header");
     expect(header.textContent).toContain("Settings");
-    // The folded section nav lists a tab per registered section; no section
-    // body is mounted until a tab is selected.
-    expect(sectionTab("Basics")).toBeTruthy();
-    expect(sectionTab("Runtime")).toBeTruthy();
+    // The hub lists a row per registered section; no section body is mounted
+    // until a row is tapped.
+    expect(hubRow("identity").textContent).toContain("Basics");
+    expect(hubRow("runtime").textContent).toContain("Runtime");
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
-    // The hub rests on its deterministic empty state, not a section body.
-    expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
   });
 
   it("renders exactly ONE header and NO desktop w-60 rail", () => {
@@ -225,22 +225,24 @@ describe("SettingsView", () => {
     expect(container.querySelector("nav.w-60")).toBeNull();
   });
 
-  it("groups the section tabs by Agent / System under the header", () => {
+  it("groups the hub rows by Agent / System under the header", () => {
     render(<SettingsView />);
-    const nav = sectionNav();
+    const nav = hubList();
     expect(nav.textContent).toContain("Agent");
     expect(nav.textContent).toContain("System");
   });
 
-  it("clicking a section tab opens that section under the same header", () => {
+  it("tapping a hub row opens that section as a subview under the same header", () => {
     render(<SettingsView />);
 
-    fireEvent.click(sectionTab("Runtime"));
+    fireEvent.click(hubRow("runtime"));
 
     // The section body is now mounted and the shared header retitles to it.
     expect(screen.getByTestId("stub-runtime")).toBeTruthy();
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.getByTestId("view-header").textContent).toContain("Runtime");
+    // The hub list is gone while a subview is open (true subview, not a rail).
+    expect(screen.queryByTestId("settings-hub-list")).toBeNull();
     // Still exactly one header — the section did not stack a second one.
     expect(screen.getAllByTestId("view-header")).toHaveLength(1);
   });
@@ -294,9 +296,9 @@ describe("SettingsView", () => {
     const back = screen.getByRole("button", { name: "Back to Settings" });
     fireEvent.click(back);
 
-    // Back on the hub: header titled "Settings", empty state, no section body.
+    // Back on the hub: header titled "Settings", hub list, no section body.
     expect(screen.getByTestId("view-header").textContent).toContain("Settings");
-    expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
+    expect(screen.getByTestId("settings-hub-list")).toBeTruthy();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
 
@@ -363,14 +365,13 @@ describe("SettingsView", () => {
     };
   }
 
-  it("renders the same folded nav + hub on a wide (desktop) viewport", () => {
+  it("renders the same hub list on a wide (desktop) viewport", () => {
     const restore = mockMatchMedia(() => true);
     try {
       render(<SettingsView />);
-      // No auto-selected pane, no rail — just the hub + folded nav, as on mobile.
-      expect(sectionTab("Basics")).toBeTruthy();
-      expect(sectionTab("Runtime")).toBeTruthy();
-      expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
+      // No auto-selected pane, no rail — the same grouped hub as on mobile.
+      expect(hubRow("identity")).toBeTruthy();
+      expect(hubRow("runtime")).toBeTruthy();
       expect(screen.queryByTestId("stub-identity")).toBeNull();
       expect(screen.getAllByTestId("view-header")).toHaveLength(1);
     } finally {
@@ -378,12 +379,11 @@ describe("SettingsView", () => {
     }
   });
 
-  it("renders the same folded nav + hub on a narrow (mobile) viewport", () => {
+  it("renders the same hub list on a narrow (mobile) viewport", () => {
     const restore = mockMatchMedia(() => false);
     try {
       render(<SettingsView />);
-      expect(sectionTab("Basics")).toBeTruthy();
-      expect(screen.getByTestId("settings-hub-empty")).toBeTruthy();
+      expect(hubRow("identity")).toBeTruthy();
       expect(screen.queryByTestId("stub-identity")).toBeNull();
       expect(screen.getAllByTestId("view-header")).toHaveLength(1);
     } finally {

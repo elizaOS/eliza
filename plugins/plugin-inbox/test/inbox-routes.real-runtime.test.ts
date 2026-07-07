@@ -341,7 +341,7 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
         body: { snoozedUntil: new Date(Date.now() + 1000).toISOString() },
       },
     );
-    expect(missing.status).toBe(400);
+    expect(missing.status).toBe(404);
     expect(String((missing.body as { error: string }).error)).toContain(
       "was not found",
     );
@@ -392,7 +392,7 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
         body: { body: "hello" },
       },
     );
-    expect(noEntry.status).toBe(400);
+    expect(noEntry.status).toBe(404);
 
     const unresolved = await repo.getUnresolved({
       limit: 1,

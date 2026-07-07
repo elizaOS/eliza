@@ -30,6 +30,7 @@
     "tokens": [
       "plugins/plugin-agent-orchestrator",
       "plugins/plugin-app-control",
+      "plugins/plugin-health",
       "plugins/plugin-personal-assistant"
     ],
     "reason": "scans the named scenario-root plugins to verify PR/live lane tags and workflow coverage"
@@ -245,6 +246,30 @@
       "plugins/plugin-x"
     ],
     "reason": "maps LifeOps HITL connector groups to the plugins needing OAuth/credentials for live validation"
+  },
+  {
+    "file": "scripts/lifeops/connector-paths.mjs",
+    "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
+    "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
+  },
+  {
+    "file": "scripts/lifeops/credential-probes.mjs",
+    "tokens": ["plugins/plugin-github"],
+    "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
+  },
+  {
+    "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
+    "tokens": ["plugins/plugin-github"],
+    "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
+  },
+  {
+    "file": "scripts/lifeops/run-11632-live-lanes.mjs",
+    "tokens": [
+      "plugins/plugin-google",
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-x"
+    ],
+    "reason": "LifeOps live-lane runner enumerates the connector plugins that require real OAuth credentials"
   },
   {
     "file": "scripts/training-harvest/build-manifest.mjs",

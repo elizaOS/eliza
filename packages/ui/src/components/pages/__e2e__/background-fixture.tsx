@@ -28,7 +28,6 @@ import {
 } from "../../../state/background-history";
 import { __setAppValueForTests } from "../../../state/app-store";
 import {
-  BACKGROUND_PRESETS,
   type BackgroundConfig,
 } from "../../../state/ui-preferences";
 import { emitViewEvent } from "../../../views/view-event-bus";
@@ -46,6 +45,15 @@ type Win = typeof window & {
 // This e2e exercises shader, image, undo/redo, and GLSL transitions over
 // file://. Keep the starting point as an explicit shader so the served-image
 // production default does not depend on app public assets in the fixture.
+// Fixture-local shader-color chips: the production picker is images+upload
+// only, but the fixture drives the AppBackground PIPELINE (store → shader →
+// undo/redo), which still supports arbitrary shader colors via the agent's
+// background:apply path. These are harness controls, not product UI.
+const BACKGROUND_PRESETS = [
+  { id: "orange", label: "Orange", color: "#ef5a1f" },
+  { id: "green", label: "Green", color: "#059669" },
+  { id: "rose", label: "Rose", color: "#e11d48" },
+] as const;
 const ORANGE_PRESET = BACKGROUND_PRESETS.find((preset) => preset.id === "orange");
 if (!ORANGE_PRESET) {
   throw new Error('Missing "orange" background preset for background e2e');

@@ -661,6 +661,7 @@ let lastCaptureOpts: CaptureOpts | null = null;
 let captureHandles: Array<{
   start: Mock<() => Promise<void>>;
   stop: Mock<() => Promise<void>>;
+  dispose: Mock<() => void>;
 }> = [];
 
 function installFakeCapture(): void {
@@ -1067,6 +1068,73 @@ describe("useShellController — voice capture routing", () => {
     expect(
       window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
     ).toBe("vad-gated");
+  });
+
+  // ── #voice-V1: capture survives app suspend on iOS PWA ──
+  //
+  // The installed web PWA gets APP_PAUSE/APP_RESUME from #15179's lifecycle
+  // bridge on background/foreground. Mid-capture the WAV recorder's WebAudio
+  // graph stalls on suspend; without teardown the shell is stuck in a phantom
+  // recording state with an orphaned mic. These assert the pause discards the
+  // capture (dispose → recorder.cancel releases the mic) and resume re-arms.
+  it("APP_PAUSE discards an in-flight hands-free capture and resets recording", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    expect(result.current.recording).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    // Background the app mid-capture.
+    await act(async () => {
+      document.dispatchEvent(new Event("eliza:app-pause"));
+    });
+
+    // The capture is discarded via dispose() (recorder.cancel releases the
+    // MediaStream tracks — the iOS mic indicator drops), NOT drained via stop()
+    // (which would POST an empty/truncated WAV and throw). Recording UI resets
+    // so a resume re-arms from a clean idle, but hands-free intent is retained.
+    expect(captureHandles[0]?.dispose).toHaveBeenCalledTimes(1);
+    expect(captureHandles[0]?.stop).not.toHaveBeenCalled();
+    expect(result.current.recording).toBe(false);
+    expect(result.current.handsFree).toBe(true);
+  });
+
+  it("APP_RESUME re-arms the mic after a suspend when hands-free was live", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      document.dispatchEvent(new Event("eliza:app-pause"));
+    });
+    expect(result.current.recording).toBe(false);
+
+    // Foreground: capture re-opens without a user tap (a fresh factory call).
+    await act(async () => {
+      document.dispatchEvent(new Event("eliza:app-resume"));
+      await Promise.resolve();
+    });
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(2);
+    expect(captureHandles[1]?.start).toHaveBeenCalledTimes(1);
+    expect(result.current.recording).toBe(true);
+  });
+
+  it("APP_RESUME does NOT re-arm the mic when hands-free was never engaged", async () => {
+    renderHook(() => useShellController());
+    // No capture running, not hands-free.
+    await act(async () => {
+      document.dispatchEvent(new Event("eliza:app-pause"));
+    });
+    await act(async () => {
+      document.dispatchEvent(new Event("eliza:app-resume"));
+      await Promise.resolve();
+    });
+    // Nothing to re-arm — no phantom capture is created on resume.
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
   });
 });
 

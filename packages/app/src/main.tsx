@@ -170,6 +170,7 @@ import {
   APP_URL_SCHEME,
 } from "./app-config";
 import { renderBootFailure } from "./boot-failure";
+import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
 import { isTrustedAppLink } from "./deep-link-handler";
@@ -3674,6 +3675,13 @@ async function main(): Promise<void> {
 
   injectWaifuChatAccessToken();
 
+  // Kick the hashed @elizaos/ui/voice chunk fetch off NOW — before any
+  // storage-bridge await — so it downloads concurrently with the native
+  // Preferences hydration below instead of serializing after it. The module
+  // is only consumed at the per-platform await sites further down; load
+  // failure resolves null there (never gates mounting the app).
+  const voiceModuleReady = startVoiceModuleLoad();
+
   // The iOS full-Bun backend smoke is a headless QA gate that must run BEFORE
   // any window-shell / popout routing — some shell routes return before the
   // main boot path, so wiring the smoke only into the main path left it
@@ -3711,6 +3719,11 @@ async function main(): Promise<void> {
   }
 
   markStartup("bridges:start", { platform });
+  // Storage hydration must complete BEFORE mountReactApp: React reads the
+  // persisted session/first-run/theme state through localStorage on first
+  // render, and on native those keys only exist after the Preferences
+  // hydration lands. The voice chunk (kicked off above) downloads in parallel
+  // with this wait.
   await initializeStorageBridge();
   if (isIOS) {
     initializeCapacitorBridge();
@@ -3724,8 +3737,7 @@ async function main(): Promise<void> {
     // On-device AEC acoustic-loop evidence harness (#11373): exposes
     // window.__aecLoop and the tap-free `elizaos://aec-loop?...` trigger so
     // the real speaker→mic echo loop can be driven + captured on hardware.
-    const { installAecLoopHarness } = await import("@elizaos/ui/voice");
-    installAecLoopHarness();
+    (await voiceModuleReady)?.installAecLoopHarness();
   } else if (isAndroid) {
     initializeCapacitorBridge();
     installAndroidNativeAgentFetchBridge();
@@ -3739,38 +3751,36 @@ async function main(): Promise<void> {
     // voice classifiers running IN the bionic app process via the ElizaVoice
     // host, replacing the musl bun-agent transport) so both can be driven +
     // read on-device via CDP.
-    const {
-      installAecLoopHarness,
-      installDiarizationPumpHarness,
-      installJniVoiceHarness,
-    } = await import("@elizaos/ui/voice");
-    installDiarizationPumpHarness();
-    installJniVoiceHarness();
-    // On-device AEC acoustic-loop evidence harness (#11373): window.__aecLoop
-    // plus the `elizaos://aec-loop?...` tap-free trigger.
-    installAecLoopHarness();
+    const voice = await voiceModuleReady;
+    if (voice) {
+      voice.installDiarizationPumpHarness();
+      voice.installJniVoiceHarness();
+      // On-device AEC acoustic-loop evidence harness (#11373):
+      // window.__aecLoop plus the `elizaos://aec-loop?...` tap-free trigger.
+      voice.installAecLoopHarness();
+    }
   }
   // Desktop fused on-device wake (#10351): forward native libwakeword fires from
   // the agent process to the renderer's `eliza:fused-wake` bridge so the
   // battery-efficient on-device path drives the bottom bar — not just the
-  // Swabble fallback. No-op off-desktop (no electrobun RPC). Awaited before
-  // mountReactApp so `window.__ELIZA_FUSED_WAKE__` is set for the wake
-  // controller's first-render capability probe.
-  // A separate hashed lazy chunk that runs on ALL platforms before first
-  // paint. Never let a voice-chunk load failure (e.g. a stale index.html
-  // pointing at a purged hash during a redeploy) gate mounting the app.
-  try {
-    const { registerDesktopFusedWake } = await import("@elizaos/ui/voice");
-    registerDesktopFusedWake();
-  } catch (error) {
-    // error-policy:J4 never let a voice-chunk load failure (e.g. a stale
-    // index.html pointing at a purged hash) gate mounting the app
-    console.warn("[boot] fused-wake voice module unavailable", error);
+  // Swabble fallback. Awaited before mountReactApp ONLY on desktop, where
+  // useWakeController's first-render capability probe reads
+  // `window.__ELIZA_FUSED_WAKE__`; on web/mobile the registration is a no-op
+  // (no electrobun RPC), so blocking first paint on the voice chunk there
+  // bought nothing — it runs after mount instead (see below).
+  if (isDesktopPlatform()) {
+    (await voiceModuleReady)?.registerDesktopFusedWake();
   }
   markStartup("bridges:end", { platform });
   measureStartup("bridges", "bridges:start", "bridges:end");
   mountReactApp();
   scheduleDeferredAppModuleLoadsAfterPaint();
+  if (!isDesktopPlatform()) {
+    // Off-desktop registerDesktopFusedWake self-gates to a no-op; keep calling
+    // it post-mount so any host that DOES expose the electrobun RPC without
+    // the desktop platform marker still wires the channel.
+    void voiceModuleReady.then((voice) => voice?.registerDesktopFusedWake());
+  }
   await initializePlatform();
 }
 

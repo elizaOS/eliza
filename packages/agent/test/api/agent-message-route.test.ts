@@ -175,6 +175,7 @@ function createRuntime(
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     emitEvent: vi.fn(async () => undefined),
+    drainChatPreHandlers: vi.fn(async () => null),
     ...overrides,
   };
   return runtime as unknown as AgentRuntime;
@@ -514,6 +515,7 @@ describe("AgentRuntime model dispatch (layer-2 verification from #7680)", () => 
       models: new Map<string, ModelEntry[]>(),
       logger: { debug: () => {}, info: () => {}, warn: () => {} },
       agentId: stringToUuid("model-routing-agent"),
+      emitEvent: vi.fn(async () => undefined),
     };
 
     const proto = AgentRuntime.prototype as unknown as Record<

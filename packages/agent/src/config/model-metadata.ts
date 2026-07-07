@@ -50,6 +50,14 @@ function toFiniteNonNegativeNumber(value: unknown): number | undefined {
   return value;
 }
 
+function nonNegativeNumberOrDefault(
+  value: unknown,
+  defaultValue: number,
+): number {
+  const normalized = toFiniteNonNegativeNumber(value);
+  return normalized === undefined ? defaultValue : normalized;
+}
+
 function normalizeCost(value: unknown): ModelDefinitionConfig["cost"] {
   const record =
     value && typeof value === "object" && !Array.isArray(value)
@@ -57,10 +65,19 @@ function normalizeCost(value: unknown): ModelDefinitionConfig["cost"] {
       : {};
 
   return {
-    input: toFiniteNonNegativeNumber(record.input) ?? 0,
-    output: toFiniteNonNegativeNumber(record.output) ?? 0,
-    cacheRead: toFiniteNonNegativeNumber(record.cacheRead) ?? 0,
-    cacheWrite: toFiniteNonNegativeNumber(record.cacheWrite) ?? 0,
+    input: nonNegativeNumberOrDefault(record.input, DEFAULT_MODEL_COST.input),
+    output: nonNegativeNumberOrDefault(
+      record.output,
+      DEFAULT_MODEL_COST.output,
+    ),
+    cacheRead: nonNegativeNumberOrDefault(
+      record.cacheRead,
+      DEFAULT_MODEL_COST.cacheRead,
+    ),
+    cacheWrite: nonNegativeNumberOrDefault(
+      record.cacheWrite,
+      DEFAULT_MODEL_COST.cacheWrite,
+    ),
   };
 }
 

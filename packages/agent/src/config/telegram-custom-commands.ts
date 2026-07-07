@@ -31,6 +31,10 @@ export function normalizeTelegramCommandDescription(value: string): string {
   return value.trim();
 }
 
+function optionalCommandString(value: string | null | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
 export function resolveTelegramCustomCommands(params: {
   commands?: TelegramCustomCommandInput[] | null;
   reservedCommands?: Set<string>;
@@ -51,7 +55,7 @@ export function resolveTelegramCustomCommands(params: {
   for (let index = 0; index < entries.length; index += 1) {
     const entry = entries[index];
     const normalized = normalizeTelegramCommandName(
-      String(entry?.command ?? ""),
+      optionalCommandString(entry?.command),
     );
     if (!normalized) {
       issues.push({
@@ -86,7 +90,7 @@ export function resolveTelegramCustomCommands(params: {
       continue;
     }
     const description = normalizeTelegramCommandDescription(
-      String(entry?.description ?? ""),
+      optionalCommandString(entry?.description),
     );
     if (!description) {
       issues.push({

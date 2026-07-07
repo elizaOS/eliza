@@ -198,7 +198,6 @@ describe("Discord connector outbound media", () => {
 				headers: { "content-type": "video/mp4" },
 			});
 		});
-		vi.stubGlobal("fetch", fetchMock);
 
 		const file = await buildOutboundDiscordAttachment(
 			media({
@@ -209,6 +208,14 @@ describe("Discord connector outbound media", () => {
 				title: "clip.mp4",
 			}),
 			runtime,
+			// The REAL guard runs; only DNS + transport are injected (the node
+			// pinned transport bypasses a stubbed global fetch by design).
+			{
+				lookupFn: async () => [{ address: "203.0.113.7", family: 4 }],
+				pinnedFetchImpl: async ({ url, init }) =>
+					fetchMock(url.toString(), init),
+				fetchImpl: async (input, init) => fetchMock(String(input), init),
+			},
 		);
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -223,7 +230,6 @@ describe("Discord connector outbound media", () => {
 		const fetchMock = vi.fn(async () => {
 			throw new Error("must not fetch");
 		});
-		vi.stubGlobal("fetch", fetchMock);
 
 		const privateUrl = "http://192.168.255.164:8080/private/clip.mp4";
 		const file = await buildOutboundDiscordAttachment(
@@ -234,6 +240,12 @@ describe("Discord connector outbound media", () => {
 				title: "clip.mp4",
 			}),
 			runtime,
+			{
+				lookupFn: async () => [{ address: "192.168.255.164", family: 4 }],
+				pinnedFetchImpl: async ({ url, init }) =>
+					fetchMock(url.toString(), init),
+				fetchImpl: async (input, init) => fetchMock(String(input), init),
+			},
 		);
 
 		expect(fetchMock).not.toHaveBeenCalled();

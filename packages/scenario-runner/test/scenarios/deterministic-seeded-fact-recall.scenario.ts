@@ -72,8 +72,8 @@ async function expectSeededFactSurfaced(
 }
 
 export default scenario({
-  lane: "pr-deterministic",
   id: "deterministic-seeded-fact-recall",
+  lane: "pr-deterministic",
   title:
     "A plain-text memory seed lands as a durable fact the FACTS provider surfaces",
   domain: "scenario-runner",

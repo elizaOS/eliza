@@ -118,7 +118,9 @@ describe("App safe-area fill invariant", () => {
     );
     expect(cls).toContain("fixed");
     expect(cls).toContain("inset-0");
-    expect(cls).toContain("bg-black/50");
-    expect(cls).not.toContain("bg-bg/55");
+    // Theme-aware frosted veil: view copy renders in theme tokens, so the
+    // scrim pulls toward the theme surface (never a fixed black wash).
+    expect(cls).toContain("bg-bg/75");
+    expect(cls).toContain("backdrop-blur");
   });
 });

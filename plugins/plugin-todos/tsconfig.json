@@ -28,6 +28,15 @@
       "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/import-conversations": [
+        "../../packages/import-conversations/src/index.ts"
+      ],
+      "@elizaos/import-conversations/*": [
+        "../../packages/import-conversations/src/*"
+      ],
+      "@elizaos/import-conversations/browser": [
+        "../../packages/import-conversations/src/browser.ts"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],

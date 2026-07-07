@@ -96,6 +96,7 @@ import { persistMobileRuntimeModeForServerTarget } from "./first-run/mobile-runt
 import { BootRecoveryConductorMount } from "./first-run/use-boot-recovery-conductor";
 import { FirstRunConductorMount } from "./first-run/use-first-run-conductor";
 import { ModelStatusConductorMount } from "./first-run/use-model-status-conductor";
+import { GlassStyles } from "./glass";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAgentSessionRecovery } from "./hooks/useAgentSessionRecovery";
 import { useAuthStatus } from "./hooks/useAuthStatus";
@@ -198,6 +199,7 @@ import {
   subscribeAppShellPages,
 } from "./app-shell-registry";
 import {
+  isImmersiveWallpaperRoute,
   resolveBuiltinBackgroundPolicy,
   resolveBuiltinTabId,
 } from "./builtin-tab-registry";
@@ -579,6 +581,9 @@ function TabScrollView({
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
+      // Transparent over the shared wallpaper (the shell floor covers the
+      // explicitly-opaque routes) — same default as TabContentView.
+      surface="transparent"
       nav={nav}
       main={
         <div
@@ -594,7 +599,10 @@ function TabScrollView({
 
 function TabContentView({
   children,
-  surface = "opaque",
+  // Views sit on the shared launcher wallpaper by default (the shell paints an
+  // opaque floor for the few explicitly-opaque routes), so the workspace panel
+  // is transparent unless a view opts back into its own opaque surface.
+  surface = "transparent",
   nav,
 }: {
   children: ReactNode;
@@ -837,6 +845,16 @@ function useCurrentNavigationPath(): string {
 function viewRegistrationBackgroundPolicy(
   decl: SurfaceManifestBearer | null | undefined,
 ): AppShellBackgroundPolicy {
+  // Host default: a BUILTIN view that declares no background sits on the
+  // shared launcher wallpaper (with the readability scrim). The wallpaper
+  // default is scoped to first-party registrations only — an undeclared
+  // remote/plugin view keeps the grant-gated default-deny (#13452: shared is
+  // an explicit opt-in via the `wallpaper` grant, never an accident), and an
+  // explicit declaration always resolves through the core resolver (browser
+  // stays opaque; ungranted "shared" downgrades).
+  const declared = decl?.surface?.background ?? decl?.backgroundPolicy;
+  const builtin = (decl as { builtin?: boolean } | null | undefined)?.builtin;
+  if (declared === undefined && builtin === true) return "shared";
   return resolveSurfaceBackgroundPolicy(decl);
 }
 
@@ -904,7 +922,11 @@ function resolveActiveScreenBackgroundPolicy({
     return viewRegistrationBackgroundPolicy(registeredView);
   }
 
-  return "opaque";
+  // Default: builtin views paint NO surface of their own — they sit on the
+  // shared launcher wallpaper (with the readability scrim below). A view that
+  // needs an opaque surface declares it (manifest / registration), like the
+  // browser's native-webview isolation above.
+  return "shared";
 }
 
 function useActiveScreenBackgroundPolicy({
@@ -2294,6 +2316,14 @@ export function App() {
 
   const isChat = tab === "chat";
   const isSettingsPage = tab === "settings";
+  // Readability scrim over the shared wallpaper for every content view that is
+  // NOT an immersive wallpaper surface (chat/background and the launcher roots
+  // design directly against the wallpaper); derived from the builtin-tab
+  // registry so the immersive set has one owner.
+  const wallpaperScrimActive = !isImmersiveWallpaperRoute(
+    tab,
+    trimmedNavigationPath(navigationPath),
+  );
   const isFullBleed = useTabIsFullBleed(tab);
 
   // Keep hook order stable across first-run/auth state transitions.
@@ -2626,6 +2656,9 @@ export function App() {
   // unmounted until /api/auth/me resolves for returning sessions.
   // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
+  // Restored sessions usually arrive here already decided: the restore phase
+  // primes the probe (primeAuthStatusProbe) so it overlaps backend polling /
+  // hydration instead of serializing an extra round-trip after first paint.
   if (
     isShellPaintableNow &&
     !isPopout &&
@@ -2796,20 +2829,25 @@ export function App() {
               background event channel mounted for the whole session, but only
               renders the visual wallpaper when the active route opts into the
               Home/Launcher background. */}
+          {/* One glass stylesheet + refraction defs per document; every
+              eliza-glass-* surface (menus, cards, pills) resolves here. */}
+          <GlassStyles />
           <AppBackground visible={renderSharedAppBackground} />
           {/* Readability scrim for text-dense shared-background views. It sits
               between the wallpaper (z-0) and content (z-10) and covers safe
-              areas too. Settings deliberately shows the LIVE launcher
-              wallpaper behind a 50% dark veil (theme-independent black, not
-              bg/, so light mode never washes it out) — the user can change the
-              background from Settings and watch it apply behind the panel.
-              Opaque or overlay-app routes use the plain underlay instead, so
-              the wallpaper cannot leak through. */}
-          {renderSharedAppBackground && isSettingsPage ? (
+              areas too. A THEME-AWARE frosted veil (bg/75 + blur), not a fixed
+              black wash: view copy renders in theme tokens, so the veil must
+              pull toward the theme surface for text to stay legible on any
+              wallpaper in both light and dark. The wallpaper reads through as
+              a tint; the immersive surfaces (chat, /background, launcher
+              roots) stay unscrimmed by design. Opaque or overlay-app routes
+              use the plain underlay instead, so the wallpaper cannot leak
+              through. */}
+          {renderSharedAppBackground && wallpaperScrimActive ? (
             <div
               aria-hidden="true"
               data-testid="app-background-scrim"
-              className="pointer-events-none fixed inset-0 z-[1] bg-black/50"
+              className="pointer-events-none fixed inset-0 z-[1] bg-bg/75 backdrop-blur-2xl"
             />
           ) : null}
           {renderOpaqueAppBackground ? (

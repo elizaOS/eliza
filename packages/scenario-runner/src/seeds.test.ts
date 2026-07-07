@@ -1384,6 +1384,10 @@ describe("scenario gmail seeds", () => {
       requests.map((request) => `${request.method} ${request.path}`),
     ).toEqual([
       "DELETE /__mock/google/gmail/fault",
+      // seedGmailInbox reads the mock's fixture manifest to resolve message ids
+      // dynamically (gmailFixtureMessageIds), so this GET precedes the per-message
+      // fetches; it falls back to the hardcoded ids only if the manifest is absent.
+      "GET /__mock/google/gmail/fixtures",
       "GET /gmail/v1/users/me/messages/msg-finance",
       "GET /gmail/v1/users/me/messages/msg-sarah",
       "GET /gmail/v1/users/me/messages/msg-newsletter",
@@ -1413,6 +1417,10 @@ describe("scenario gmail seeds", () => {
       requests.map((request) => `${request.method} ${request.path}`),
     ).toEqual([
       "DELETE /__mock/google/gmail/fault",
+      // seedGmailInbox reads the mock's fixture manifest to resolve message ids
+      // dynamically (gmailFixtureMessageIds), so this GET precedes the per-message
+      // fetches; it falls back to the hardcoded ids only if the manifest is absent.
+      "GET /__mock/google/gmail/fixtures",
       "GET /gmail/v1/users/me/messages/msg-finance",
       "GET /gmail/v1/users/me/messages/msg-sarah",
       "GET /gmail/v1/users/me/messages/msg-newsletter",

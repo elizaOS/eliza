@@ -11,7 +11,9 @@ import {
   type IFileStorageService,
   type Route,
   ServiceType,
+  type UUID,
 } from "@elizaos/core";
+import { selectFilesForViewer } from "./files-disclosure.ts";
 
 function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {
   return (
@@ -19,7 +21,11 @@ function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {
   );
 }
 
-/** GET /api/files — list every stored file (newest first). */
+/**
+ * GET /api/files — list stored files (newest first), selected per viewer
+ * (#14781): the single-owner boundary and OWNER/ADMIN-rank viewers see the
+ * whole store; USER/GUEST viewers get the designed restricted state.
+ */
 export const filesListRoute: Route = {
   type: "GET",
   path: "/api/files",
@@ -32,7 +38,12 @@ export const filesListRoute: Route = {
     }
     const files = await storage.list();
     files.sort((a, b) => b.createdAt - a.createdAt);
-    return { status: 200, body: { files } };
+    const body = selectFilesForViewer(
+      files,
+      ctx.accessContext,
+      ctx.runtime.agentId as UUID,
+    );
+    return { status: 200, body };
   },
 };
 

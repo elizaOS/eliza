@@ -48,7 +48,6 @@ const VIEW_MANIFESTS = [
   "plugins/app-model-tester/src/plugin.ts",
   "plugins/plugin-phone/src/plugin.ts",
   "plugins/plugin-polymarket/src/plugin.ts",
-  "plugins/plugin-shopify/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
@@ -101,15 +100,6 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-polymarket-orderbook",
     "terminal-polymarket-positions",
     "terminal-polymarket-trading-check",
-  ],
-  "plugins/plugin-shopify/src/shopify-view-bundle.ts": [
-    "terminal-shopify-state",
-    "terminal-shopify-products",
-    "terminal-shopify-orders",
-    "terminal-shopify-inventory",
-    "terminal-shopify-customers",
-    "terminal-shopify-create-product",
-    "terminal-shopify-adjust-inventory",
   ],
   "plugins/plugin-wallet-ui/src/InventoryView.tsx": [
     "terminal-wallet-state",
@@ -350,12 +340,16 @@ function viewDeclarations(manifestPath: string): CoveredView[] {
       const bundlePath = stringField(object, "bundlePath");
       const componentExport = stringField(object, "componentExport");
       if (!id || !label || !bundlePath || !componentExport) return [];
+      const surface = object.includes('"agent-surface"')
+        ? ({ capabilities: ["agent-surface"] } as const)
+        : undefined;
       // One declaration with `modalities` expands to one CoveredView per
       // surface — the same bundle + component routed in gui, tui, and xr.
       return viewObjectModalities(object).map((viewType) => ({
         id,
         label,
         ...(path === null ? {} : { path }),
+        ...(surface ? { surface } : {}),
         viewType,
         bundlePath,
         componentExport,
@@ -375,7 +369,9 @@ function makeCtx(
 ): ViewsRouteContext {
   const url = new URL(`http://localhost${pathname}`);
   const req = new EventEmitter() as http.IncomingMessage;
-  req.headers = {};
+  req.headers = {
+    "x-elizaos-client-id": "plugin-tui-view-coverage-client",
+  };
   if (body !== undefined) {
     const chunk = Buffer.from(JSON.stringify(body));
     process.nextTick(() => {
@@ -394,6 +390,10 @@ function makeCtx(
     json: json ?? (() => {}),
     error: error ?? (() => {}),
     broadcastWs,
+    broadcastWsToClientId: (_clientId, payload) => {
+      broadcastWs?.(payload);
+      return broadcastWs ? 1 : 0;
+    },
   };
 }
 

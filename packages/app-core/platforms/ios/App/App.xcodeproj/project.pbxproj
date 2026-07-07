@@ -39,6 +39,7 @@
 		EKBD00010000000000000004 /* ElizaKeyboardDictationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = EKBD00010000000000000106 /* ElizaKeyboardDictationState.swift */; };
 		EKBD00010000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EKBD00010000000000000107 /* PrivacyInfo.xcprivacy */; };
 		ELIZAKBDBRIDGE0000000001 /* ElizaKeyboardBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZAKBDBRIDGE0000000002 /* ElizaKeyboardBridge.swift */; };
+		GLASSBRIDGE0000000000001 /* GlassBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = GLASSBRIDGE0000000000002 /* GlassBridge.swift */; };
 		WBCB00010000000000000001 /* ActionRequestHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000102 /* ActionRequestHandler.swift */; };
 		WBCB00010000000000000002 /* WebsiteBlockerContentExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = WBCB00010000000000000101 /* WebsiteBlockerContentExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AUIT00010000000000000001 /* BootCaptureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AUIT00010000000000000002 /* BootCaptureUITests.swift */; };
@@ -152,6 +153,7 @@
 		EWDG00010000000000000107 /* ElizaDictationLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaDictationLiveActivity.swift; sourceTree = "<group>"; };
 		ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaLiveActivityBridge.swift; sourceTree = "<group>"; };
 		ELIZAKBDBRIDGE0000000002 /* ElizaKeyboardBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaKeyboardBridge.swift; sourceTree = "<group>"; };
+		GLASSBRIDGE0000000000002 /* GlassBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassBridge.swift; sourceTree = "<group>"; };
 		EKBD00010000000000000101 /* ElizaKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ElizaKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		EKBD00010000000000000102 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		EKBD00010000000000000103 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -272,6 +274,7 @@
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
 				ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */,
 				ELIZAKBDBRIDGE0000000002 /* ElizaKeyboardBridge.swift */,
+				GLASSBRIDGE0000000000002 /* GlassBridge.swift */,
 				AWDG00010000000000000002 /* AgentWatchdog.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -692,6 +695,7 @@
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
 				ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */,
 				ELIZAKBDBRIDGE0000000001 /* ElizaKeyboardBridge.swift in Sources */,
+				GLASSBRIDGE0000000000001 /* GlassBridge.swift in Sources */,
 				EWDG00010000000000000004 /* ElizaDictationAttributes.swift in Sources */,
 				EKBD00010000000000000004 /* ElizaKeyboardDictationState.swift in Sources */,
 				AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */,

@@ -33,6 +33,7 @@ function makeReqWithBody(body?: unknown): http.IncomingMessage {
   // Provide just enough of the IncomingMessage interface for readJsonBody.
   (em as unknown as { headers: Record<string, string> }).headers = {
     "content-type": "application/json",
+    "x-elizaos-client-id": "views-integration-client",
   };
   (em as unknown as { method: string }).method = "POST";
   if (body !== undefined) {
@@ -91,6 +92,10 @@ function makeCtx(
     error,
     developerMode,
     broadcastWs,
+    broadcastWsToClientId: (_clientId, payload) => {
+      broadcastWs?.(payload);
+      return broadcastWs ? 1 : 0;
+    },
   };
   return { ctx, json, error };
 }
@@ -1133,6 +1138,7 @@ describe("POST /api/views/:id/interact", () => {
   it("returns 400 for undeclared capability when view has declared capabilities", async () => {
     const viewWithCaps = {
       ...WALLET_VIEW,
+      surface: { capabilities: ["agent-surface"] as const },
       capabilities: [{ id: "custom-action", description: "A custom action" }],
     };
     await registerPluginViews(
@@ -1167,6 +1173,7 @@ describe("POST /api/views/:id/interact", () => {
   ] as const)("allows standard capability %s on views with declared capabilities", async (capability) => {
     const viewWithCaps = {
       ...WALLET_VIEW,
+      surface: { capabilities: ["agent-surface"] as const },
       capabilities: [{ id: "custom-action", description: "A custom action" }],
     };
     await registerPluginViews(

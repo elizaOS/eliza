@@ -11,7 +11,12 @@
  * handlers will be migrated onto `runtime.routes` in later phases.
  */
 
-import type { IAgentRuntime, Route, RouteHandlerResult } from "@elizaos/core";
+import type {
+  AccessContext,
+  IAgentRuntime,
+  Route,
+  RouteHandlerResult,
+} from "@elizaos/core";
 import { type Context, Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
@@ -23,6 +28,12 @@ export interface HonoAdapterOptions {
   isAuthorized: (req: Request) => boolean;
   /** Predicate that decides whether the incoming request is trusted loopback/local. */
   isTrustedLocal?: (req: Request) => boolean;
+  /**
+   * Boundary-resolved requester identity for per-viewer DTO selection
+   * (#14781). Absent/`undefined` means the single-owner local boundary and
+   * routes serve their existing unfiltered content.
+   */
+  resolveAccessContext?: (req: Request) => AccessContext | undefined;
 }
 
 function honoMethod(type: Route["type"]): string | null {
@@ -138,6 +149,7 @@ export function mountRoutesOnHono(
         inProcess: false,
         isAuthorized: () => options.isAuthorized(request),
         isTrustedLocal: () => options.isTrustedLocal?.(request) ?? false,
+        accessContext: options.resolveAccessContext?.(request),
       }).catch(
         (err: unknown): RouteHandlerResult => ({
           status: 500,

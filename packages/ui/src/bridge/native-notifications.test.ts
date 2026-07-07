@@ -24,6 +24,7 @@ vi.mock("./native-plugins", () => ({
 }));
 
 import {
+  __resetEnsuredChannelsForTests,
   showNativeNotification,
   showWebNotification,
 } from "./native-notifications";
@@ -56,6 +57,8 @@ function makeLocalNotifications(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   platform.value = "android";
   for (const key of Object.keys(plugins)) delete plugins[key];
+  // Channel cache is module-level; clear it so each case exercises createChannel.
+  __resetEnsuredChannelsForTests();
 });
 
 afterEach(() => {
@@ -119,6 +122,54 @@ describe("showNativeNotification (android channels)", () => {
     });
     expect(result).toBe("none");
     expect(local.schedule).not.toHaveBeenCalled();
+  });
+
+  it("returns none (never fabricates 'local') when the Android channel can't be created", async () => {
+    // On Android 8+ a post to a nonexistent channel is silently dropped, so
+    // claiming "local" here would suppress the store's glass fallback and lose
+    // the alert. A createChannel failure must read as unhandled.
+    const local = makeLocalNotifications({
+      createChannel: vi.fn(async () => {
+        throw new Error("channel create failed");
+      }),
+    });
+    plugins.LocalNotifications = local;
+    const result = await showNativeNotification({
+      id: "n4",
+      title: "Dropped",
+      priority: "high",
+    });
+    expect(result).toBe("none");
+    expect(local.schedule).not.toHaveBeenCalled();
+  });
+
+  it("coalesces the scheduled id by groupKey so a same-group burst replaces in the tray", async () => {
+    const local = makeLocalNotifications();
+    plugins.LocalNotifications = local;
+    await showNativeNotification({
+      id: "id-a",
+      title: "1 file",
+      priority: "high",
+      groupKey: "files",
+    });
+    await showNativeNotification({
+      id: "id-b",
+      title: "2 files",
+      priority: "high",
+      groupKey: "files",
+    });
+    const first = local.schedule.mock.calls[0]?.[0]?.notifications[0]?.id;
+    const second = local.schedule.mock.calls[1]?.[0]?.notifications[0]?.id;
+    // Same groupKey -> same derived numeric id -> the OS replaces, not stacks.
+    expect(first).toBe(second);
+    await showNativeNotification({
+      id: "id-c",
+      title: "other",
+      priority: "high",
+      groupKey: "other",
+    });
+    const third = local.schedule.mock.calls[2]?.[0]?.notifications[0]?.id;
+    expect(third).not.toBe(first);
   });
 });
 

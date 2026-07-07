@@ -124,7 +124,8 @@ beforeAll(async () => {
         description text,
         metadata jsonb NOT NULL DEFAULT '{}',
         stripe_payment_intent_id text,
-        created_at timestamp NOT NULL DEFAULT now()
+        created_at timestamp NOT NULL DEFAULT now(),
+        settled_at timestamp
       )`,
       // The refund/credit path's `applyCreditIncrease` uses
       // `ON CONFLICT (stripe_payment_intent_id) DO NOTHING`, which requires this

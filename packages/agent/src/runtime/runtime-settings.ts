@@ -86,6 +86,13 @@ export function buildRuntimeSettingsProjection(
           ),
         }
       : {}),
+    ...(config.agents?.defaults?.inboxTriage
+      ? {
+          ELIZA_INBOX_TRIAGE_CONFIG_JSON: JSON.stringify(
+            config.agents.defaults.inboxTriage,
+          ),
+        }
+      : {}),
     ...(config.roles?.connectorAdmins
       ? {
           ELIZA_ROLES_CONNECTOR_ADMINS_JSON: JSON.stringify(

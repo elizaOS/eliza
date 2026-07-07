@@ -304,6 +304,16 @@ export interface Media {
 	 * its presence means the bytes are stored + served but not machine-readable.
 	 */
 	notProcessed?: string;
+
+	/**
+	 * Served URL of this attachment's PII-scrubbed variant — a SEPARATE
+	 * content-addressed media object under its own sha256 (#14781; per #8876
+	 * redacted variants are new bytes, never an edit of the original). When a
+	 * viewer's disclosure resolves to `redacted`, the DTO layer emits this URL
+	 * in place of `url` and withholds the original. Never a file id — the URL
+	 * itself is the reference the media GC scans.
+	 */
+	redactedUrl?: string;
 }
 
 export const ContentType = {

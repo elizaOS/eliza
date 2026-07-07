@@ -6,8 +6,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLocalAsrAutoStopDetector,
+  DEFAULT_LOCAL_ASR_AUTO_STOP,
+  decodeMonoPcm16Wav,
   encodeMonoPcm16Wav,
   isSilentPcmAudio,
+  isSilentWav,
   measurePcmAudio,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
@@ -145,5 +148,83 @@ describe("startLocalAsrRecorder resume failure", () => {
     );
     expect(trackStop).toHaveBeenCalledTimes(1);
     expect(contextClose).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("decodeMonoPcm16Wav / isSilentWav (#voice-V5 silence guard)", () => {
+  it("round-trips PCM16 WAV encode → decode within quantization error", () => {
+    const pcm = new Float32Array([0, 0.5, -0.5, 0.999, -0.999]);
+    const wav = encodeMonoPcm16Wav(pcm, 16000);
+    const decoded = decodeMonoPcm16Wav(wav);
+
+    expect(decoded.length).toBe(pcm.length);
+    for (let i = 0; i < pcm.length; i += 1) {
+      // 16-bit quantization: max error ~1/32768.
+      expect(decoded[i]).toBeCloseTo(pcm[i] ?? 0, 3);
+    }
+  });
+
+  it("reads a near-silent capture as silent (no cloud round-trip)", () => {
+    // A few tiny frames below the 0.0005 peak floor: a captured-but-silent tap.
+    const pcm = new Float32Array(1600);
+    pcm[10] = 0.0002;
+    pcm[11] = -0.0002;
+    const wav = encodeMonoPcm16Wav(pcm, 16000);
+
+    expect(isSilentPcmAudio(pcm)).toBe(true);
+    expect(isSilentWav(wav)).toBe(true);
+  });
+
+  it("reads a WAV carrying real speech as non-silent (POST proceeds)", () => {
+    const pcm = new Float32Array(1600);
+    pcm[800] = 0.4;
+    pcm[801] = -0.35;
+    const wav = encodeMonoPcm16Wav(pcm, 16000);
+
+    expect(isSilentWav(wav)).toBe(false);
+  });
+
+  it("treats an undecodable / non-WAV body as silent (safe default)", () => {
+    // Not a RIFF header → empty PCM → silent (don't burn a round-trip on junk).
+    const notWav = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(decodeMonoPcm16Wav(notWav)).toHaveLength(0);
+    expect(isSilentWav(notWav)).toBe(true);
+  });
+
+  it("locates the data chunk even when other sub-chunks precede it", () => {
+    // Hand-build RIFF/WAVE with a bogus 4-byte 'LIST' chunk before 'data'.
+    const pcmBytes = new Uint8Array([0x00, 0x40, 0x00, 0xc0]); // two int16 samples
+    const listPayload = new Uint8Array([9, 9, 9, 9]);
+    const total = 12 + (8 + listPayload.length) + (8 + pcmBytes.length);
+    const buf = new ArrayBuffer(total);
+    const view = new DataView(buf);
+    const u8 = new Uint8Array(buf);
+    const ascii = (o: number, s: string) => {
+      for (let i = 0; i < s.length; i += 1)
+        view.setUint8(o + i, s.charCodeAt(i));
+    };
+    ascii(0, "RIFF");
+    view.setUint32(4, total - 8, true);
+    ascii(8, "WAVE");
+    let o = 12;
+    ascii(o, "LIST");
+    view.setUint32(o + 4, listPayload.length, true);
+    u8.set(listPayload, o + 8);
+    o += 8 + listPayload.length;
+    ascii(o, "data");
+    view.setUint32(o + 4, pcmBytes.length, true);
+    u8.set(pcmBytes, o + 8);
+
+    const decoded = decodeMonoPcm16Wav(u8);
+    expect(decoded.length).toBe(2);
+    // 0x4000 = 16384 → ~0.5, 0xC000 = -16384 → ~-0.5.
+    expect(decoded[0]).toBeCloseTo(0.5, 2);
+    expect(decoded[1]).toBeCloseTo(-0.5, 2);
+  });
+});
+
+describe("DEFAULT_LOCAL_ASR_AUTO_STOP silence window (#voice-V6)", () => {
+  it("defaults the trailing-silence window to the snappier 550ms", () => {
+    expect(DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs).toBe(550);
   });
 });

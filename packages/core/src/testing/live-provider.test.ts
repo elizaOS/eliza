@@ -77,7 +77,12 @@ function writeCodexCredentials(home: string): void {
 }
 
 beforeAll(() => {
-	for (const name of [...PROVIDER_ENV_VARS, "HOME", "ELIZA_CONFIG_PATH"]) {
+	for (const name of [
+		...PROVIDER_ENV_VARS,
+		"HOME",
+		"USERPROFILE",
+		"ELIZA_CONFIG_PATH",
+	]) {
 		savedEnv.set(name, process.env[name]);
 	}
 	// Keep the module-level cloud-config cache away from the real user config:
@@ -106,7 +111,10 @@ function resetEnv(): void {
 		delete process.env[name];
 	}
 	tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "live-provider-test-"));
+	// os.homedir() reads $HOME on POSIX but %USERPROFILE% on Windows — set both
+	// so the redirect works on every CI platform.
 	process.env.HOME = tempHome;
+	process.env.USERPROFILE = tempHome;
 }
 
 describe("cli live provider", () => {

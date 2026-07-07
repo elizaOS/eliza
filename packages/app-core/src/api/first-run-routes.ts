@@ -7,6 +7,11 @@
  * back so the upstream config save keeps it, then mirrors the merged config to
  * the live runtime through a loopback `PUT /api/config`.
  *
+ * A committed local-target run is also the boot trigger for a fresh install
+ * that deferred its runtime at startup (deferred-runtime-boot.ts): once the
+ * completion state is on disk, the handler fires the single-flight runtime
+ * boot; cloud/remote targets deliberately leave the process runtime-less.
+ *
  * A defensive delayed resave (`scheduleCloudApiKeyResave`) re-writes
  * `cloud.apiKey` if a concurrent config write clobbers it — a best-effort
  * workaround for an unreproduced upstream race, logged at warn on failure.
@@ -19,6 +24,7 @@ import {
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import {
+  type DeploymentTargetRuntime,
   getCloudSecret,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
@@ -27,7 +33,14 @@ import {
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth.ts";
-import type { CompatRuntimeState } from "./compat-route-shared";
+import {
+  type CompatRuntimeState,
+  hasCompatPersistedFirstRunState,
+} from "./compat-route-shared";
+import {
+  isRuntimeBootDeferred,
+  triggerDeferredRuntimeBoot,
+} from "./deferred-runtime-boot";
 import { sendJson as sendJsonResponse } from "./response";
 import {
   deriveFirstRunReplayBody,
@@ -199,6 +212,7 @@ export async function handleFirstRunRoute(
   const rawBody = Buffer.concat(chunks);
 
   let capturedCloudApiKey: string | undefined;
+  let committedRuntimeTarget: DeploymentTargetRuntime | undefined;
 
   try {
     const body = JSON.parse(rawBody.toString("utf8")) as Record<
@@ -222,6 +236,7 @@ export async function handleFirstRunRoute(
     const replayDeploymentTarget = normalizeDeploymentTargetConfig(
       replayBodyRecord.deploymentTarget,
     );
+    committedRuntimeTarget = replayDeploymentTarget?.runtime;
     const replayLinkedAccounts = normalizeLinkedAccountFlagsConfig(
       replayBodyRecord.linkedAccounts,
     );
@@ -289,6 +304,34 @@ export async function handleFirstRunRoute(
 
   if (capturedCloudApiKey) {
     scheduleCloudApiKeyResave(capturedCloudApiKey);
+  }
+
+  // Fresh-install deferred boot (see deferred-runtime-boot.ts): a committed
+  // LOCAL-target onboarding is THE signal to boot the agent runtime this
+  // process skipped at startup. Cloud/remote targets stay runtime-less on
+  // purpose — the client binds the cloud/remote agent and this process never
+  // needed a local runtime (#13377). Gated on the same on-disk predicate the
+  // status route serves, so a failed persist never boots the discarded
+  // pre-onboarding default runtime. Fire-and-forget: the client's finish flow
+  // does not wait on this response for readiness (it polls /api/status, and
+  // early chat turns hold on the runtime-ready gate); a boot failure is
+  // observable there as state "error".
+  if (
+    isRuntimeBootDeferred() &&
+    committedRuntimeTarget !== "cloud" &&
+    committedRuntimeTarget !== "remote" &&
+    hasCompatPersistedFirstRunState(loadElizaConfig())
+  ) {
+    triggerDeferredRuntimeBoot("first-run onboarding committed").catch(
+      (err) => {
+        // error-policy:J5 — the failure is observed by clients via
+        // /api/status (the boot closure flips state to "error" before
+        // rethrowing); this log is the server-side record of the same event.
+        logger.error(
+          `[api] Deferred runtime boot after first-run commit failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+        );
+      },
+    );
   }
 
   return true;

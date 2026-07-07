@@ -13,6 +13,9 @@
     "paths": {
       "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
+      "@elizaos/import-conversations/*": ["../import-conversations/src/*"],
+      "@elizaos/import-conversations/browser": ["../import-conversations/src/browser.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],

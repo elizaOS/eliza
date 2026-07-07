@@ -128,12 +128,18 @@ export interface SensitiveRequestDispatchRegistry {
 
 export function createSensitiveRequestDispatchRegistry(): SensitiveRequestDispatchRegistry {
 	const adapters = new Map<DeliveryTarget, SensitiveRequestDeliveryAdapter[]>();
-	const listFor = (target: DeliveryTarget): SensitiveRequestDeliveryAdapter[] =>
-		adapters.get(target) ?? [];
+	const emptyAdapters: SensitiveRequestDeliveryAdapter[] = [];
+	const listFor = (
+		target: DeliveryTarget,
+	): SensitiveRequestDeliveryAdapter[] => {
+		const registered = adapters.get(target);
+		return registered === undefined ? emptyAdapters : registered;
+	};
 
 	return {
 		register(adapter) {
-			const arr = adapters.get(adapter.target) ?? [];
+			const existing = adapters.get(adapter.target);
+			const arr = existing === undefined ? [] : existing;
 			// Idempotent: registering the same adapter object twice is a no-op.
 			if (!arr.includes(adapter)) arr.push(adapter);
 			adapters.set(adapter.target, arr);

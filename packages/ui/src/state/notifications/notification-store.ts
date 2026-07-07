@@ -155,6 +155,10 @@ async function deliver(notification: AgentNotification): Promise<void> {
     body: notification.body,
     deepLink: notification.deepLink,
     priority: notification.priority,
+    // Coalesce the OS surface the way the inbox does: a superseding
+    // same-groupKey arrival must REPLACE the prior OS notification (shared tag),
+    // not stack a second one for a single inbox row.
+    groupKey: notification.groupKey,
   };
   // error-policy:J6 best-effort OS-interrupt sink; the inbox (set separately
   // in ingest) is the source of truth, so a failed native alert must not
@@ -305,9 +309,17 @@ async function hydrate(): Promise<void> {
       unreadCount: res.unreadCount,
       hydrated: true,
     });
-  } catch {
-    // Inbox endpoint not ready (early boot) — mark hydrated so the UI shows
-    // an empty state instead of a perpetual spinner; live events still arrive.
+  } catch (err) {
+    // error-policy:J1 transport boundary: the inbox HTTP hydrate failed
+    // (endpoint not ready at early boot, or a real 5xx/network fault). Surface
+    // it — a silent swallow here is the banned "not loaded reads as empty".
+    // Recovery is designed: mark hydrated so the surface renders (not a
+    // perpetual spinner) and the live WS stream, subscribed independently in
+    // initNotifications, still populates the inbox from the next event on.
+    logger.warn(
+      { err },
+      "[notification-store] inbox hydrate failed; live WS stream will populate",
+    );
     setState({ hydrated: true });
   }
 }

@@ -24,13 +24,18 @@ vi.mock("./server-helpers-auth.ts", () => ({
 
 import { type AuthRouteContext, handleAuthRoutes } from "./auth-routes.ts";
 
-function mkCtx(): {
+function mkCtx(remoteAddress = "203.0.113.10"): {
   ctx: AuthRouteContext;
   captured: { body?: unknown; status?: number };
 } {
   const captured: { body?: unknown; status?: number } = {};
   const ctx = {
-    req: { method: "GET", url: "/api/auth/me", headers: {} },
+    req: {
+      method: "GET",
+      url: "/api/auth/me",
+      headers: {},
+      socket: { remoteAddress },
+    },
     res: {},
     method: "GET",
     pathname: "/api/auth/me",
@@ -56,7 +61,7 @@ describe("/api/auth/me boundary role (#9948)", () => {
   it("returns role OWNER for an authorized loopback request", async () => {
     mocks.isAuthorized.mockReturnValue(true);
     mocks.isTrustedLocalRequest.mockReturnValue(true);
-    const { ctx, captured } = mkCtx();
+    const { ctx, captured } = mkCtx("127.0.0.1");
     expect(await handleAuthRoutes(ctx)).toBe(true);
     expect(captured.status).toBe(200);
     expect((captured.body as { access: { role: string } }).access.role).toBe(

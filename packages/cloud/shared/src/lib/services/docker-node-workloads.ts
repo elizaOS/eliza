@@ -108,26 +108,46 @@ export function agentIdFromContainerName(name: string): string | null {
 }
 
 /**
- * Load (key, status) for the agent_sandboxes rows matching the given agent ids,
- * including terminal-state rows. The reconciler needs the status to tell a
- * missing row (`no_db_row`) apart from a terminal one (`terminal_db_row`).
- * `agent_sandboxes.id` is a PRIMARY KEY, so each key maps to at most one row.
+ * Load (key, status, nodeId, updatedAtMs) for the agent_sandboxes rows matching
+ * the given agent ids, including terminal-state rows. The reconciler needs the
+ * status to tell a missing row (`no_db_row`) from a terminal one
+ * (`terminal_db_row`), and the node + timestamp to detect a stale twin left on
+ * an old node by a re-provision (`wrong_node`, #15228). `agent_sandboxes.id` is
+ * a PRIMARY KEY, so each key maps to at most one row.
  */
 async function loadSandboxStatusesByIds(agentIds: readonly string[]): Promise<LiveContainerRef[]> {
   if (agentIds.length === 0) return [];
-  return dbRead
-    .select({ key: agentSandboxes.id, status: agentSandboxes.status })
+  const rows = await dbRead
+    .select({
+      key: agentSandboxes.id,
+      status: agentSandboxes.status,
+      nodeId: agentSandboxes.node_id,
+      updatedAt: agentSandboxes.updated_at,
+    })
     .from(agentSandboxes)
     .where(inArray(agentSandboxes.id, agentIds as string[]));
+  return rows.map((r) => ({
+    key: r.key,
+    status: r.status,
+    nodeId: r.nodeId ?? undefined,
+    updatedAtMs: r.updatedAt ? new Date(r.updatedAt).getTime() : undefined,
+  }));
 }
 
-/** The three agent-specific deltas injected into the shared reconciler. */
+/**
+ * The agent-specific deltas injected into the shared reconciler. Agents are
+ * `nodeAware`: a sandbox has exactly one canonical node (`node_id`), so a
+ * container found on any OTHER node is a stale twin from a re-provision that
+ * moved the workload (#15228). Apps deliberately fan one name across rows and
+ * are NOT node-aware.
+ */
 const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   prefix: AGENT_CONTAINER_NAME_PREFIX,
   keyOf: agentIdFromContainerName,
   terminalStatuses: TERMINAL_SANDBOX_STATUSES,
   loadStatuses: loadSandboxStatusesByIds,
   logScope: "orphan-reconciler",
+  nodeAware: true,
 };
 
 /**

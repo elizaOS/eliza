@@ -129,9 +129,9 @@ const AppPermissionsSection = lazy(() =>
     default: m.AppPermissionsSection,
   })),
 );
-const PermissionsSection = lazy(() =>
-  import("./PermissionsSection").then((m) => ({
-    default: m.PermissionsSection,
+const PermissionsCombinedSection = lazy(() =>
+  import("./PermissionsCombinedSection").then((m) => ({
+    default: m.PermissionsCombinedSection,
   })),
 );
 const SecretsManagerSection = lazy(() =>
@@ -485,7 +485,10 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     hue: "amber",
     labelKey: "settings.sections.permissions.label",
     titleKey: "common.permissions",
-    Component: PermissionsSection,
+    // The everyday Permissions subview stacks device permissions + per-app
+    // grants in one screen (hub consolidation); the standalone sections below
+    // stay registered for deep-links.
+    Component: PermissionsCombinedSection,
   },
   {
     id: "app-permissions",
@@ -495,6 +498,9 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     tone: "warn",
     hue: "amber",
     labelKey: "settings.sections.apppermissions.label",
+    // Folded into the combined Permissions subview for the everyday hub;
+    // registered-but-hidden so the deep-link/agent address still resolves.
+    developerOnly: true,
     Component: AppPermissionsSection,
   },
   {

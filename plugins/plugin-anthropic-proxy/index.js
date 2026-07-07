@@ -1,9 +1,10 @@
 /**
- * @elizaos/plugin-anthropic-proxy
- *
- * Routes Anthropic API traffic through a Claude Max/Pro subscription via
- * Claude Code OAuth tokens. Ports Shadow's existing standalone proxy
- * (ocplatform-routing-layer/proxy.js v2.2.3) into the eliza plugin shape.
+ * Plugin definition and `init()` for routing Anthropic API traffic through a
+ * Claude Max/Pro subscription via Claude Code OAuth tokens. Registers the
+ * proxy service, the `PROXY_STATUS` action, and the status route, re-exports
+ * the transform primitives for downstream consumers, and self-declares
+ * `autoEnable`. On start the service self-injects `ANTHROPIC_BASE_URL` so
+ * plugin-anthropic routes transparently through the proxy.
  *
  * Modes (env CLAUDE_MAX_PROXY_MODE):
  *   inline (default): start an in-process proxy on this agent
@@ -13,7 +14,7 @@
 import { logger } from "@elizaos/core";
 import { proxyStatusAction } from "./src/actions/proxy-status.action.js";
 import { anthropicProxyRoutes } from "./src/routes/status-route.js";
-import { AnthropicProxyService, resolveConfig, } from "./src/services/proxy-service.js";
+import { AnthropicProxyService, resolveConfig } from "./src/services/proxy-service.js";
 export { computeBillingFingerprint } from "./src/proxy/billing-fingerprint.js";
 export { DEFAULT_REVERSE_MAP, DEFAULT_TOOL_RENAMES, } from "./src/proxy/constants.js";
 export { processBody, } from "./src/proxy/process-body.js";
