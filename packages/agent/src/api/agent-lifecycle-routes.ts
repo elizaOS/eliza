@@ -6,6 +6,13 @@
  * validates its body, calls enable/disableAutonomy on the AUTONOMY_SERVICE_TYPE
  * service when present, and always syncs runtime.enableAutonomy. Sits behind the
  * authenticated dashboard gate; not public.
+ *
+ * With no live runtime, POST /api/agent/start is a real boot request, not a
+ * flag flip: it boots through the host's injected `onRestart` — the same
+ * closure POST /api/agent/restart uses, which app-core's fresh-install
+ * deferral funnels into a single-flight boot. Reporting "running" with a null
+ * runtime would be fake-ready: a host that cannot boot answers 503, and a
+ * failed boot answers 500 with the reported state flipped to "error".
  */
 import {
   type AgentRuntime,
@@ -37,6 +44,14 @@ export interface AgentLifecycleRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "error" | "json" | "readJsonBody"> {
   state: AgentLifecycleRouteState;
+  /**
+   * Boots (or reboots) a runtime in-process. Injected by hosts that own a
+   * boot path (server-only startEliza, dev supervisor); absent on hosts that
+   * cannot boot, where a start request with no runtime must fail honestly.
+   */
+  onRestart?: (() => Promise<AgentRuntime | null>) | undefined;
+  /** Post-swap rewiring (streams, model broadcast) — mirrors the restart route. */
+  onRuntimeSwapped?: (() => void) | undefined;
 }
 
 type AutonomyToggleService = {
@@ -66,9 +81,67 @@ export async function handleAgentLifecycleRoutes(
     | null;
 
   if (method === "POST" && pathname === "/api/agent/start") {
-    state.agentState = "running";
-    state.startedAt = Date.now();
-    state.model = detectRuntimeModel(state.runtime);
+    if (!state.runtime) {
+      // A boot is already underway (parallel-bind warming window, an
+      // in-flight restart, or the deferred fresh-install boot): starting is
+      // idempotent — report the in-progress state and let the client poll
+      // /api/status instead of racing a second boot.
+      if (
+        state.agentState === "starting" ||
+        state.agentState === "restarting"
+      ) {
+        json(res, {
+          ok: true,
+          status: {
+            state: state.agentState,
+            agentName: state.agentName,
+            model: state.model,
+            startedAt: state.startedAt,
+          },
+        });
+        return true;
+      }
+      if (!ctx.onRestart) {
+        error(
+          res,
+          "Agent runtime is not available and this server cannot boot one on demand",
+          503,
+        );
+        return true;
+      }
+      state.agentState = "starting";
+      state.startedAt = Date.now();
+      try {
+        const booted = await ctx.onRestart();
+        if (!booted) {
+          state.agentState = "error";
+          state.startedAt = undefined;
+          error(res, "Agent start failed — runtime did not initialize", 500);
+          return true;
+        }
+        state.runtime = booted;
+        state.agentState = "running";
+        state.agentName = booted.character.name ?? state.agentName;
+        state.model = detectRuntimeModel(booted);
+        state.startedAt = Date.now();
+        ctx.onRuntimeSwapped?.();
+      } catch (err) {
+        // error-policy:J1 boundary translation — the boot failure becomes a
+        // structured 500 + reported state "error"; never a fake "running".
+        state.agentState = "error";
+        state.startedAt = undefined;
+        error(
+          res,
+          `Agent start failed: ${err instanceof Error ? err.message : String(err)}`,
+          500,
+        );
+        return true;
+      }
+    } else {
+      state.agentState = "running";
+      state.startedAt = Date.now();
+      state.model = detectRuntimeModel(state.runtime);
+    }
 
     json(res, {
       ok: true,

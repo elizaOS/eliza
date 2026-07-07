@@ -2305,6 +2305,11 @@ async function handleRequest(
       error,
       json,
       readJsonBody,
+      // Lets POST /api/agent/start boot a runtime from the runtime-less state
+      // (fresh-install deferred boot / stopped host) instead of fake-flipping
+      // the reported state to "running" with nothing behind it.
+      onRestart: ctx?.onRestart ?? undefined,
+      onRuntimeSwapped: ctx?.onRuntimeSwapped,
     })
   ) {
     return;
