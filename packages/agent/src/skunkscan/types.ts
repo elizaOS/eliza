@@ -166,6 +166,14 @@ export type WalletCaseSummary = {
     | "high_risk";
 };
 
+export type WalletTrustSummary = {
+  trustScore: number;
+  trustLevel: "very_low" | "low" | "medium" | "high" | "very_high";
+  confidence: "low" | "medium" | "high";
+  positiveSignals: string[];
+  limitations: string[];
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -232,6 +240,7 @@ export type WalletInvestigationResult = {
   defi?: WalletDeFiSummary;
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
+  trust?: WalletTrustSummary;
   exposure?: WalletExposureSummary;
   relationships?: WalletRelationshipSummary;
   evidence?: WalletEvidenceItem[];
