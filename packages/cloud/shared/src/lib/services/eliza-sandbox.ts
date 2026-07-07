@@ -395,28 +395,53 @@ export function computeManagedAgentDbEnv(
     : { DATABASE_URL: dbUri };
 }
 
+// HTTP statuses that make a snapshot fetch/restore deterministically fail for
+// THIS snapshot: 401/403 (auth — a dead/rotated container or rotated token
+// rejects every retry identically), 404 (endpoint or snapshot gone), 410
+// (gone). Everything else — 5xx, 408/429, network/timeout — can heal on a
+// retry and must NOT appear here.
+const PERMANENT_SNAPSHOT_HTTP_STATUSES = new Set([401, 403, 404, 410]);
+// Anchored on the exact `fetchSnapshotState` / `pushState` throw shapes so only
+// this file's snapshot HTTP throw sites classify — an unrelated error that
+// merely embeds one of these strings does not.
+const SNAPSHOT_HTTP_ERROR_SHAPE =
+  /^(?:Snapshot fetch failed|State restore failed): HTTP (\d{3})(?:\s|$)/;
+
 /**
- * True only when a stored backup snapshot can never be decrypted again: the
- * AEAD auth tag fails to verify (corruption / wrong key / wrong AAD, surfaced
- * by `@elizaos/security` as `AeadError`) or the KMS key version that encrypted
- * it no longer exists (`KeyNotFoundError` — thrown only by the ephemeral
- * `memory` KMS backend, which derives a fresh per-process key on every restart
- * and thus orphans everything it previously encrypted). Both are permanent
- * regardless of retries, so a resume degrades to a fresh boot on them rather
- * than failing the whole provision closed (see the restore path in `provision`).
+ * True only when a stored backup snapshot can never be applied, no matter how
+ * many times the provision retries. An agent's identity, config, and durable
+ * data live in the DB record; a snapshot holds only volatile in-memory session
+ * state — so the designed degrade for an unrecoverable snapshot (#15210) is
+ * "boot fresh, lose only the volatile session", never "brick the whole agent".
+ * Two shapes qualify:
  *
- * Deliberately NARROW so it never swallows a recoverable failure: a transient
- * KMS error (the Steward backend surfaces HTTP 5xx as a base `KmsError`, not
- * `KeyNotFoundError`), a DB/network/IO error, or anything else is NOT matched
- * and still propagates — degrading on one of those would silently discard state
- * that a retry would have restored. Matched by error class NAME rather than
- * `instanceof` because `AeadError` is internal to `@elizaos/security` (not
- * exported) and this code runs bundled, where a cross-realm `instanceof` on a
- * dependency's error class is unreliable.
+ * - UNDECRYPTABLE: the AEAD auth tag fails to verify (corruption / wrong key /
+ *   wrong AAD, surfaced by `@elizaos/security` as `AeadError`) or the KMS key
+ *   version that encrypted it no longer exists (`KeyNotFoundError` — thrown
+ *   only by the ephemeral `memory` KMS backend, which derives a fresh
+ *   per-process key on every restart and thus orphans everything it previously
+ *   encrypted). Matched by error class NAME rather than `instanceof` because
+ *   `AeadError` is internal to `@elizaos/security` (not exported) and this code
+ *   runs bundled, where a cross-realm `instanceof` on a dependency's error
+ *   class is unreliable.
+ * - UNRETRIEVABLE / UNRESTORABLE: the snapshot fetch or restore push was
+ *   rejected with a permanently-failing HTTP status (see
+ *   `PERMANENT_SNAPSHOT_HTTP_STATUSES`). The incident shape (HQ 14308, agent
+ *   23766030): `State restore failed: HTTP 401 {"error":"Unauthorized"}` from a
+ *   bridge URL pointing at a dead/rotated container — deterministic on every
+ *   attempt, so retrying only re-failed the provision into status=error.
+ *
+ * Deliberately NARROW so it never swallows a recoverable failure: HTTP 5xx /
+ * 408 / 429, network/timeout errors, a transient KMS error (the Steward
+ * backend surfaces HTTP 5xx as a base `KmsError`, not `KeyNotFoundError`), and
+ * DB/IO errors are NOT matched and still propagate — degrading on one of those
+ * would silently discard state that a retry would have restored.
  */
-export function isUndecryptableSnapshotError(error: unknown): boolean {
+export function isUnrecoverableSnapshotError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-  return error.name === "AeadError" || error.name === "KeyNotFoundError";
+  if (error.name === "AeadError" || error.name === "KeyNotFoundError") return true;
+  const match = SNAPSHOT_HTTP_ERROR_SHAPE.exec(error.message);
+  return match !== null && PERMANENT_SNAPSHOT_HTTP_STATUSES.has(Number(match[1]));
 }
 
 export class ElizaSandboxService {
@@ -1540,17 +1565,22 @@ export class ElizaSandboxService {
 
         // 5. Restore from backup (reconstructs incrementals back to a full).
         //
-        // Fetching + reconstructing the snapshot decrypts its state under the
-        // org DEK. An UNDECRYPTABLE snapshot — the key that encrypted it is gone
-        // (the ephemeral `memory` KMS backend rotates its key on every restart,
-        // orphaning older ciphertext) or the bytes are corrupt — is unrecoverable
-        // no matter how many times we retry, so it degrades to a FRESH boot
-        // instead of failing the whole provision closed (error-policy:J4 designed
-        // degrade — a corrupt snapshot is unrecoverable regardless, so booting
-        // without prior in-memory state is correct, not a fabricated success).
-        // Only crypto/auth/key-missing failures degrade; a transient DB/IO/network
-        // error is rethrown so the provision fails and the resume job retries
-        // rather than silently discarding recoverable state.
+        // The snapshot holds only volatile in-memory session state — the agent's
+        // identity, config, and durable data live in the DB record — so an
+        // UNRECOVERABLE snapshot degrades to a FRESH boot instead of failing the
+        // whole provision closed (error-policy:J4 designed degrade — the state is
+        // unrestorable regardless of retries, so booting without prior in-memory
+        // state is correct, not a fabricated success). Two unrecoverable shapes,
+        // classified by `isUnrecoverableSnapshotError`: UNDECRYPTABLE (the org
+        // DEK that encrypted it is gone — the ephemeral `memory` KMS backend
+        // rotates its key on every restart — or the bytes are corrupt) and
+        // UNRESTORABLE (the restore push is rejected with a permanent HTTP
+        // status; HQ 14308 bricked an agent on a deterministic 401). Degrading on
+        // FIRST detection matters: these failures re-fail identically on every
+        // attempt, so retrying only burns the provision attempts and lands in
+        // markError. A transient DB/IO/network/5xx error is rethrown so the
+        // provision fails and the resume job retries rather than silently
+        // discarding recoverable state.
         let backup: Awaited<ReturnType<typeof agentSandboxesRepository.getLatestBackup>>;
         let restoreState: Awaited<
           ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
@@ -1561,23 +1591,8 @@ export class ElizaSandboxService {
             ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
             : undefined;
         } catch (error) {
-          if (!isUndecryptableSnapshotError(error)) throw error;
-          logger.error("[agent-sandbox] Undecryptable snapshot, booting fresh", {
-            agentId: rec.id,
-            backupId: backup?.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-          // Drop the whole orphaned backup chain (all its rows share the now-lost
-          // org DEK) so the next resume boots clean instead of re-hitting this
-          // dead snapshot every time. error-policy:J6 best-effort — a failed prune
-          // only means we warn + degrade again next boot, never that we fail to
-          // boot fresh, so it must not throw out of the provision.
-          await agentSandboxesRepository.pruneBackups(rec.id, 0).catch((pruneErr) => {
-            logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
-              agentId: rec.id,
-              error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
-            });
-          });
+          if (!isUnrecoverableSnapshotError(error)) throw error;
+          await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
           backup = undefined;
           restoreState = undefined;
         }
@@ -1587,18 +1602,24 @@ export class ElizaSandboxService {
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             if (
-              rec.execution_tier !== "custom" ||
-              !message.startsWith("State restore failed: HTTP 404")
+              rec.execution_tier === "custom" &&
+              message.startsWith("State restore failed: HTTP 404")
             ) {
+              // Designed benign skip, checked BEFORE the unrecoverable degrade:
+              // a custom image simply lacks the restore endpoint, so the
+              // snapshot stays intact for a future image that has one.
+              logger.info(
+                "[agent-sandbox] Backup restore skipped: custom image has no restore endpoint",
+                {
+                  agentId: rec.id,
+                  backupId: backup?.id,
+                },
+              );
+            } else if (isUnrecoverableSnapshotError(error)) {
+              await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
+            } else {
               throw error;
             }
-            logger.info(
-              "[agent-sandbox] Backup restore skipped: custom image has no restore endpoint",
-              {
-                agentId: rec.id,
-                backupId: backup?.id,
-              },
-            );
           }
         } else if (backup) {
           logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
@@ -5595,6 +5616,34 @@ export class ElizaSandboxService {
       agentId: sandboxRecordId,
       type,
       bytes: backup?.size_bytes ?? sizeBytes,
+    });
+  }
+
+  /**
+   * The single degrade path for a snapshot `isUnrecoverableSnapshotError`
+   * classified as permanently lost (#15210): log it loudly, then drop the dead
+   * backup chain so the next resume boots clean instead of re-hitting the same
+   * unrecoverable snapshot on every provision. Never throws — the caller
+   * continues to a fresh boot, which must not be derailed by cleanup.
+   */
+  private async degradeUnrecoverableSnapshot(
+    agentId: string,
+    backupId: string | undefined,
+    error: unknown,
+  ): Promise<void> {
+    logger.error("[agent-sandbox] Unrecoverable snapshot, booting fresh", {
+      agentId,
+      backupId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    // error-policy:J6 best-effort — a failed prune only means we warn + degrade
+    // again next boot, never that we fail to boot fresh, so it must not throw
+    // out of the provision.
+    await agentSandboxesRepository.pruneBackups(agentId, 0).catch((pruneErr) => {
+      logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
+        agentId,
+        error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
+      });
     });
   }
 
