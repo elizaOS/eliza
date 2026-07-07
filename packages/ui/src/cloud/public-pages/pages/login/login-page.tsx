@@ -26,7 +26,23 @@ function StewardLoginSectionFallback() {
 
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
-    <div className="theme-cloud min-h-[100dvh] bg-bg text-txt">
+    <div className="theme-cloud relative min-h-[100dvh] text-txt">
+      {/* SAFE-AREA FILL (installed iOS PWA): the `bg-bg` fill is a `fixed
+          inset-0` underlay, NOT a `min-h-[100dvh]` slab. On the installed
+          standalone PWA the body is non-fixed (base.css / styles.css lockdown),
+          so a `fixed inset-0` element's containing block IS the true visual
+          viewport — it paints edge-to-edge UNDER the status bar and down to the
+          home-indicator edge. A `min-h-[100dvh]` in-flow div instead starts at
+          the collapsed layout-viewport top, leaving the status-bar band showing
+          the black `--launch-bg` FOUC guard through (the reported "black band").
+          The safe-area inset then lives EXACTLY ONCE, on the content padding
+          below — this public route renders through CloudRouterShell, NOT the
+          App.tsx shell column, so nothing else insets it (#15361). */}
+      <div
+        aria-hidden="true"
+        data-testid="login-safe-area-fill"
+        className="pointer-events-none fixed inset-0 z-[-1] bg-bg"
+      />
       <div
         className="flex min-h-[100dvh] w-full flex-col px-4"
         style={{
