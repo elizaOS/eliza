@@ -21,6 +21,8 @@ import type {
   Conversation,
   ConversationMessageSearchResult,
 } from "../../api/client-types-chat";
+import { CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT } from "../../hooks/useConversationRenderWindow";
+import { onViewEvent } from "../../views/view-event-bus";
 import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 
 type AppState = Record<string, unknown>;
@@ -129,7 +131,15 @@ async function openSearchAndJump() {
   fireEvent.click(result);
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // Anchor stand-ins are appended straight to document.body (not via render), so
+  // testing-library's cleanup misses them — remove them so a leftover anchor
+  // can't satisfy the NEXT test's "anchor absent" precondition.
+  for (const el of document.body.querySelectorAll('[id^="chat-message-"]')) {
+    el.remove();
+  }
+});
 
 describe("ConversationsSidebar jump-to-message (#9955)", () => {
   beforeEach(() => {
@@ -140,6 +150,65 @@ describe("ConversationsSidebar jump-to-message (#9955)", () => {
       count: 1,
     });
     appMock.value = makeAppState();
+  });
+
+  it("emits the render-window reveal after the around-load so a windowed transcript mounts the pivot", async () => {
+    // A windowed ChatView/overlay slices the centered around-load's pivot out of
+    // the render window unless it is told to reveal (#15281). The sidebar must
+    // fire CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT after a successful around-load.
+    const scroll = scrollSpy();
+    const revealEvents: number[] = [];
+    const off = onViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT, () =>
+      revealEvents.push(Date.now()),
+    );
+    const loadConversationMessagesAround = vi.fn(
+      async (_conversationId: string, messageId: string) => {
+        const el = document.createElement("div");
+        el.id = getChatMessageAnchorId(messageId);
+        document.body.appendChild(el);
+        return true;
+      },
+    );
+    appMock.value = makeAppState({ loadConversationMessagesAround });
+
+    render(<ConversationsSidebar />);
+    await openSearchAndJump();
+
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1), {
+      timeout: 3000,
+    });
+    expect(loadConversationMessagesAround).toHaveBeenCalledWith(
+      TARGET_CONVERSATION_ID,
+      OLD_MESSAGE_ID,
+    );
+    expect(revealEvents).toHaveLength(1);
+    off();
+  });
+
+  it("does NOT emit the reveal when the hit is already in the loaded window", async () => {
+    // No around-load → no reveal: the in-window common case must not force the
+    // transcript to unbound its DOM.
+    scrollSpy();
+    const el = document.createElement("div");
+    el.id = getChatMessageAnchorId(OLD_MESSAGE_ID);
+    document.body.appendChild(el);
+    const revealEvents: number[] = [];
+    const off = onViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT, () =>
+      revealEvents.push(Date.now()),
+    );
+    appMock.value = makeAppState({
+      loadConversationMessagesAround: vi.fn(async () => true),
+    });
+
+    render(<ConversationsSidebar />);
+    await openSearchAndJump();
+
+    await waitFor(
+      () => expect(Element.prototype.scrollIntoView).toHaveBeenCalled(),
+      { timeout: 3000 },
+    );
+    expect(revealEvents).toHaveLength(0);
+    off();
   });
 
   it("loads the window AROUND a far-back hit (anchor absent) then scrolls it into view", async () => {
