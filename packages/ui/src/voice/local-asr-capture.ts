@@ -139,14 +139,14 @@ export const POST_TTS_ECHO_THRESHOLD_MULTIPLIER = 4;
 export const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
   startGraceMs: 250,
   minSpeechMs: 180,
-  // Trailing-silence window that ends a hands-free turn (#voice-V6). Dropped
-  // 900 → 550 to shave ~350ms off every turn's speech-end → capture-stop leg
-  // (the single biggest tunable in the latency budget). The user override still
-  // wins: `loadVadAutoStop()` reads a persisted `silenceMs` first and only
-  // falls back to this default. NOTE: needs on-device false-cutoff verification
-  // — a too-tight window clips speakers who pause mid-sentence; if that regresses
-  // in the field, nudge back up (or expose a per-user calibration).
-  silenceMs: 550,
+  // Trailing-silence window that ends a hands-free turn (#voice-V6). 900 → 650:
+  // still shaves ~250ms off every turn's speech-end → capture-stop leg, but keeps
+  // headroom for natural inter-clause pauses (per review on #15267: 550 risks
+  // clipping slow/deliberate speakers, and mid-sentence pauses routinely exceed
+  // 550ms). The user override still wins: `loadVadAutoStop()` reads a persisted
+  // `silenceMs` first and only falls back to this default. On-device tuning can
+  // move this again once false-cutoff behavior is verified on the installed PWA.
+  silenceMs: 650,
   maxSpeechMs: 12_000,
   speechRmsThreshold: 0.003,
   speechPeakThreshold: 0.012,

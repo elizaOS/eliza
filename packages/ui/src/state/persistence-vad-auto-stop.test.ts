@@ -48,12 +48,12 @@ describe("VAD auto-stop persistence", () => {
     });
   });
 
-  it("defaults to the snappier 550ms silence window (#voice-V6)", () => {
+  it("defaults to the snappier 650ms silence window (#voice-V6)", () => {
     // The tightened default flows through from DEFAULT_LOCAL_ASR_AUTO_STOP.
-    expect(loadVadAutoStop().silenceMs).toBe(550);
+    expect(loadVadAutoStop().silenceMs).toBe(650);
   });
 
-  it("lets a persisted user silenceMs override the 550ms default (#voice-V6)", () => {
+  it("lets a persisted user silenceMs override the 650ms default (#voice-V6)", () => {
     // A user who calibrated a longer window (e.g. slow speaker) keeps it — the
     // default drop must not clobber an explicit override.
     saveVadAutoStop({ silenceMs: 900, speechRmsThreshold: 0.003 });
