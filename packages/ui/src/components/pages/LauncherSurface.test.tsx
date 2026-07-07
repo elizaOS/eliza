@@ -14,7 +14,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ViewRegistryEntry } from "../../hooks/useAvailableViews";
 import { useRoutableViews } from "../../hooks/useAvailableViews";
-import { saveLauncherRecents } from "../../state/persistence";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { LauncherSurface } from "./LauncherSurface";
 
@@ -103,15 +102,19 @@ describe("LauncherSurface", () => {
   it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
     render(<LauncherSurface />);
 
-    // No dock: chat/settings tile on the single page alongside everything else.
+    // No dock: settings/wallet tile on the single page alongside everything else.
     expect(screen.queryByTestId("launcher-dock")).toBeNull();
 
     const page = within(screen.getByTestId("launcher-page-window"));
-    expect(page.getByTestId("launcher-tile-chat")).toBeTruthy();
+    // chat is the home surface, not a tile (#14479) — stale assertion fixed:
+    // the tile was removed there but this expectation was left behind.
+    expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
     expect(page.getByTestId("launcher-tile-settings")).toBeTruthy();
     expect(page.getByTestId("launcher-tile-wallet")).toBeTruthy();
     expect(page.getByTestId("launcher-tile-browser")).toBeTruthy();
 
+    // chat is the home surface, never a launcher tile (#14479).
+    expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();
@@ -119,21 +122,6 @@ describe("LauncherSurface", () => {
 
   it("collapses duplicate wallet registrations to a single tile", () => {
     render(<LauncherSurface />);
-    expect(screen.getAllByTestId("launcher-tile-wallet")).toHaveLength(1);
-  });
-
-  it("does not render a Recents zone even with persisted recents (removed as duplicate noise)", () => {
-    // Recency is still recorded on launch (other surfaces read it) but the
-    // launcher no longer surfaces a Recents row, it only mirrored the top of
-    // All Apps two rows down (#13453 deslop).
-    saveLauncherRecents(["browser", "wallet"]);
-
-    render(<LauncherSurface />);
-
-    expect(screen.queryByRole("heading", { name: "Recents" })).toBeNull();
-    expect(screen.queryByTestId("launcher-zone-recents")).toBeNull();
-    // The apps themselves still exist once, in All Apps.
-    expect(screen.getByTestId("launcher-tile-browser")).toBeTruthy();
     expect(screen.getAllByTestId("launcher-tile-wallet")).toHaveLength(1);
   });
 

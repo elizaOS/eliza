@@ -15,8 +15,8 @@ export const creditBalanceProvider: Provider = {
   description: "ElizaCloud credit balance",
   descriptionCompressed: "ElizaCloud credit balance.",
   dynamic: true,
-  contexts: ["settings", "finance"],
-  contextGate: { anyOf: ["settings", "finance"] },
+  contexts: ["cloud", "settings", "finance"],
+  contextGate: { anyOf: ["cloud", "settings", "finance"] },
   cacheStable: false,
   cacheScope: "turn",
   // Cloud credit balance is operator/billing context — admin+ only (#12094 item 3).

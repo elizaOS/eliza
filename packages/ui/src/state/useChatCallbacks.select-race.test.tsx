@@ -420,12 +420,10 @@ describe("rapid conversation switching must never delete a real conversation", (
     });
     // The committed draft is legitimately cleaned up…
     expect(h.deletedConversationIds()).toEqual(["draft-d"]);
-    // …while the thread STILL holds the draft's greeting (B has not committed).
+    // …while the uncached target clears the visible thread until B commits.
     expect(h.activeConversationIdRef.current).toBe("conv-b");
-    expect(h.conversationMessagesRef.current).toEqual([greetingMessage()]);
-    expect(result.current.loaders.loadedConversationIdRef.current).toBe(
-      "draft-d",
-    );
+    expect(h.conversationMessagesRef.current).toEqual([]);
+    expect(result.current.loaders.loadedConversationIdRef.current).toBeNull();
 
     // Before B's messages commit, select C. THE BUG: this call read
     // prevId=conv-b but prevMessages=[draft greeting] and fired

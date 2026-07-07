@@ -252,7 +252,7 @@ export function deserializeTokenTree(input: Uint8Array): TokenTreeDescriptor {
     flat.push({ tokenId, terminal, childPtrs });
   }
 
-  if (flat.length === 0 || flat[0]!.tokenId !== ROOT_TOKEN_ID) {
+  if (flat.length === 0 || flat[0]?.tokenId !== ROOT_TOKEN_ID) {
     throw new Error(
       "deserializeTokenTree: root node missing or has non-sentinel tokenId",
     );

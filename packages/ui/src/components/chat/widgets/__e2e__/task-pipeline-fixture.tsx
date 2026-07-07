@@ -12,7 +12,6 @@
  */
 import { ChevronDown, CirclePlay } from "lucide-react";
 import { createRoot } from "react-dom/client";
-import { __setAppValueForTests } from "../../../../state/app-store";
 import type {
   SubagentActivity,
   TaskActivityStep,
@@ -21,15 +20,8 @@ import type { WorkflowSpec } from "../../message-workflow-parser";
 import { PlanChecklist, SubagentBlock } from "../task-pipeline";
 import { WorkflowSteps } from "../workflow-steps";
 
-// The pipeline widgets render inside `ChatWidgetShell`, whose only store read is
-// `useAppSelector((s) => s.t)` (the i18n translator). Seed just that so the tree
-// mounts without a full `AppProvider`; `t` echoes the caller's defaultValue,
-// which is what the real i18n fallback does for these widget labels.
-__setAppValueForTests({
-  t: (key: string, opts?: { defaultValue?: string }) =>
-    opts?.defaultValue ?? key,
-} as never);
-
+// ChatWidgetShell's i18n selector is supplied by the runner's esbuild state
+// stub. Keep this render fixture data-only so it never mutates the app store.
 const T = 1_748_779_200_000;
 
 function step(

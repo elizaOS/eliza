@@ -353,7 +353,6 @@
         "@capacitor/keyboard",
         "@capacitor/push-notifications",
         "@elizaos/plugin-personal-assistant",
-        "@elizaos/plugin-shopify",
         "@elizaos/plugin-browser",
         "@elizaos/plugin-discord",
         "@elizaos/plugin-local-inference",

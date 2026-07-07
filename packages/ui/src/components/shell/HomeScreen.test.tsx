@@ -69,7 +69,8 @@ function makeNotification(
     id: "11111111-1111-1111-1111-111111111111" as AgentNotification["id"],
     title: "Build finished",
     category: "task",
-    priority: "normal",
+    // High so the row renders in the rested (interrupt-tier-only) shade.
+    priority: "high",
     source: "test",
     createdAt: Date.now() - 60_000,
     readAt: null,
@@ -188,13 +189,14 @@ describe("HomeScreen", () => {
     expect(cls).toMatch(/safe-area-bottom|android-gesture-inset-bottom/);
   });
 
-  it("tapping an inline row follows its safe deep link", () => {
+  it("tapping an inline row expands options; Open follows its safe deep link", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
     fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-option-open"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
   });
 });

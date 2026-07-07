@@ -1414,6 +1414,8 @@ export function CharacterEditor({
                   className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "personality" ? " hidden" : ""}`}
                 >
                   <CharacterIdentityPanel
+                    nameText={typeof d.name === "string" ? d.name : ""}
+                    systemText={typeof d.system === "string" ? d.system : ""}
                     bioText={bioText}
                     handleFieldEdit={handleFieldEdit}
                     t={t}

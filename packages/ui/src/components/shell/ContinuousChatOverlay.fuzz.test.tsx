@@ -511,17 +511,18 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
     expect(detentOf()).toBe("collapsed");
   });
 
-  it("pull-up-to-maximize then top-20% pull-down returns to the inset full detent (#13531)", () => {
+  it("pull-up-to-maximize then a restore-zone pull-down drops full-bleed and rests open (not a collapse)", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     // Big over-pull maximizes.
     gotoMaximized();
     expect(sheet().getAttribute("data-maximized")).toBe("true");
     assertInvariants("maximized");
-    // A downward pull in the top-20% restore zone drops full-bleed but keeps the
-    // sheet open at the FULL detent (not a full collapse).
+    // A downward pull in the restore zone drops full-bleed and rests at the
+    // RELEASED height (live restore, not a fixed snap): this ~300px pull lands
+    // un-maximized but still OPEN — the key contract is "not a full collapse".
     pullDownRestoreZone();
     expect(sheet().getAttribute("data-maximized")).not.toBe("true");
-    expect(detentOf()).toBe("full");
+    expect(sheet().getAttribute("data-variant")).toBe("open");
     assertInvariants("un-maximized");
   });
 });

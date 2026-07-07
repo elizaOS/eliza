@@ -36,17 +36,23 @@ import { fileToBackgroundDataUrl } from "../background-image";
 
 type Win = typeof window & {
   __emitBgApply?: (payload: Record<string, unknown>) => void;
+  __getBgState?: () => {
+    config: BackgroundConfig;
+    history: BackgroundConfig[];
+    redo: BackgroundConfig[];
+  };
 };
 
-// The e2e starts from an explicit warm-orange shader field rather than the
-// product default (`DEFAULT_BACKGROUND_CONFIG`, now the curated "Ember Night"
-// image at a served same-origin URL that 404s under file://): this fixture
-// exercises the set/undo/redo/shader/image mechanism, so it needs a
-// deterministic, network-free starting state. "orange" (#ef5a1f) is the first
-// curated preset, so the swatch/chat color assertions read a known base hue.
-const INITIAL_CONFIG: BackgroundConfig = {
+// This e2e exercises shader, image, undo/redo, and GLSL transitions over
+// file://. Keep the starting point as an explicit shader so the served-image
+// production default does not depend on app public assets in the fixture.
+const ORANGE_PRESET = BACKGROUND_PRESETS.find((preset) => preset.id === "orange");
+if (!ORANGE_PRESET) {
+  throw new Error('Missing "orange" background preset for background e2e');
+}
+const INITIAL_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "shader",
-  color: BACKGROUND_PRESETS[0].color,
+  color: ORANGE_PRESET.color,
 };
 
 function seed(
@@ -70,10 +76,12 @@ function seed(
 }
 
 // Seed before first paint so store-backed selectors never read an empty store.
-seed(INITIAL_CONFIG, [], [], () => {}, () => {}, () => {});
+seed(INITIAL_BACKGROUND_CONFIG, [], [], () => {}, () => {}, () => {});
 
 function Harness(): React.JSX.Element {
-  const [config, setConfig] = useState<BackgroundConfig>(INITIAL_CONFIG);
+  const [config, setConfig] = useState<BackgroundConfig>(
+    INITIAL_BACKGROUND_CONFIG,
+  );
   const [history, setHistory] = useState<BackgroundConfig[]>([]);
   const [redoStack, setRedoStack] = useState<BackgroundConfig[]>([]);
 
@@ -139,6 +147,14 @@ function Harness(): React.JSX.Element {
     (window as Win).__emitBgApply = (payload) =>
       emitViewEvent(BACKGROUND_APPLY_EVENT, payload, "agent");
   }, []);
+
+  useLayoutEffect(() => {
+    (window as Win).__getBgState = () => ({
+      config: configRef.current,
+      history: historyRef.current,
+      redo: redoRef.current,
+    });
+  }, [config, history, redoStack]);
 
   const onFile = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {

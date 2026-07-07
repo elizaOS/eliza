@@ -104,6 +104,19 @@ import {
   type LifeOpsWorkflowRun,
 } from "../contracts/index.js";
 import {
+  type LifeOpsBriefEngagementEventType,
+  type LifeOpsBriefItemEngagementSummary,
+  type LifeOpsBriefItemKind,
+  type LifeOpsBriefItemSource,
+  summarizeBriefEngagementRows,
+} from "./briefing/editorial-judgment.js";
+import type {
+  LifeOpsCommitmentKind,
+  LifeOpsCommitmentLedgerRecord,
+  LifeOpsCommitmentSource,
+  LifeOpsCommitmentStatus,
+} from "./commitments/index.js";
+import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountId,
   deriveConnectorAccountIdFromGrant,
@@ -236,6 +249,30 @@ export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
 
 type LifeOpsInboxCacheWriteMessage = LifeOpsInboxMessage & {
   priorityFlags?: readonly string[];
+};
+
+export interface LifeOpsBriefItemEngagementRecord {
+  id: string;
+  agentId: string;
+  briefingId: string;
+  itemId: string;
+  source: LifeOpsBriefItemSource;
+  kind: LifeOpsBriefItemKind;
+  sourceId: string;
+  itemClass: string;
+  eventType: LifeOpsBriefEngagementEventType;
+  eventAt: string;
+  weight: number;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
+
+export type LifeOpsBriefItemEngagementWrite = Omit<
+  LifeOpsBriefItemEngagementRecord,
+  "id" | "createdAt"
+> & {
+  id?: string;
+  createdAt?: string;
 };
 
 // Finance tables were carved out of plugin-personal-assistant into
@@ -489,6 +526,26 @@ function parseWebsiteAccessGrant(
   };
 }
 
+function parseBriefItemEngagement(
+  row: Record<string, unknown>,
+): LifeOpsBriefItemEngagementRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    briefingId: toText(row.briefing_id),
+    itemId: toText(row.item_id),
+    source: toText(row.source) as LifeOpsBriefItemSource,
+    kind: toText(row.kind) as LifeOpsBriefItemKind,
+    sourceId: toText(row.source_id),
+    itemClass: toText(row.item_class),
+    eventType: toText(row.event_type) as LifeOpsBriefEngagementEventType,
+    eventAt: toText(row.event_at),
+    weight: toNumber(row.weight),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+  };
+}
+
 function parseConnectorGrant(
   row: Record<string, unknown>,
 ): LifeOpsConnectorGrant {
@@ -559,6 +616,29 @@ function parseAuditEvent(row: Record<string, unknown>): LifeOpsAuditEvent {
     decision: parseJsonRecord(row.decision_json),
     actor: toText(row.actor) as LifeOpsAuditEvent["actor"],
     createdAt: toText(row.created_at),
+  };
+}
+
+function parseCommitmentLedgerRecord(
+  row: Record<string, unknown>,
+): LifeOpsCommitmentLedgerRecord {
+  return {
+    id: toText(row.id),
+    agentId: toText(row.agent_id),
+    source: toText(row.source) as LifeOpsCommitmentSource,
+    sourceKey: toText(row.source_key),
+    kind: toText(row.kind) as LifeOpsCommitmentKind,
+    summary: toText(row.summary),
+    counterparty: row.counterparty ? toText(row.counterparty) : null,
+    dueAt: row.due_at ? toText(row.due_at) : null,
+    confidence: toNumber(row.confidence),
+    status: toText(row.status, "open") as LifeOpsCommitmentStatus,
+    scheduledTaskId: row.scheduled_task_id
+      ? toText(row.scheduled_task_id)
+      : null,
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
   };
 }
 
@@ -2620,6 +2700,145 @@ export class LifeOpsRepository {
     }
   }
 
+  async recordBriefItemEngagement(
+    input: LifeOpsBriefItemEngagementWrite,
+  ): Promise<LifeOpsBriefItemEngagementRecord> {
+    const createdAt = input.createdAt ?? isoNow();
+    const id =
+      input.id ??
+      `brief_eng_${crypto
+        .createHash("sha256")
+        .update(
+          [
+            input.agentId,
+            input.briefingId,
+            input.itemId,
+            input.eventType,
+            input.eventAt,
+          ].join("\0"),
+        )
+        .digest("hex")
+        .slice(0, 20)}`;
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_brief_item_engagements (
+        id, agent_id, briefing_id, item_id, source, kind, source_id,
+        item_class, event_type, event_at, weight, metadata_json, created_at
+      ) VALUES (
+        ${sqlQuote(id)},
+        ${sqlQuote(input.agentId)},
+        ${sqlQuote(input.briefingId)},
+        ${sqlQuote(input.itemId)},
+        ${sqlQuote(input.source)},
+        ${sqlQuote(input.kind)},
+        ${sqlQuote(input.sourceId)},
+        ${sqlQuote(input.itemClass)},
+        ${sqlQuote(input.eventType)},
+        ${sqlQuote(input.eventAt)},
+        ${sqlNumber(input.weight)},
+        ${sqlJson(input.metadata)},
+        ${sqlQuote(createdAt)}
+      )
+      ON CONFLICT (agent_id, briefing_id, item_id, event_type, event_at)
+      DO UPDATE SET
+        source = EXCLUDED.source,
+        kind = EXCLUDED.kind,
+        source_id = EXCLUDED.source_id,
+        item_class = EXCLUDED.item_class,
+        weight = EXCLUDED.weight,
+        metadata_json = EXCLUDED.metadata_json`,
+    );
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE agent_id = ${sqlQuote(input.agentId)}
+          AND briefing_id = ${sqlQuote(input.briefingId)}
+          AND item_id = ${sqlQuote(input.itemId)}
+          AND event_type = ${sqlQuote(input.eventType)}
+          AND event_at = ${sqlQuote(input.eventAt)}
+        LIMIT 1`,
+    );
+    const row = rows[0] ? parseBriefItemEngagement(rows[0]) : null;
+    if (!row) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Failed to reload brief engagement",
+        {
+          code: "LIFEOPS_BRIEF_ENGAGEMENT_RELOAD_FAILED",
+          context: {
+            agentId: input.agentId,
+            briefingId: input.briefingId,
+            itemId: input.itemId,
+            eventType: input.eventType,
+            eventAt: input.eventAt,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    return row;
+  }
+
+  async getBriefItemEngagement(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsBriefItemEngagementRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseBriefItemEngagement(row) : null;
+  }
+
+  async listBriefItemEngagements(
+    agentId: string,
+    options: {
+      briefingId?: string;
+      itemClass?: string;
+      sinceIso?: string;
+      untilIso?: string;
+    } = {},
+  ): Promise<LifeOpsBriefItemEngagementRecord[]> {
+    const where = [`agent_id = ${sqlQuote(agentId)}`];
+    if (options.briefingId) {
+      where.push(`briefing_id = ${sqlQuote(options.briefingId)}`);
+    }
+    if (options.itemClass) {
+      where.push(`item_class = ${sqlQuote(options.itemClass)}`);
+    }
+    if (options.sinceIso) {
+      where.push(`event_at >= ${sqlQuote(options.sinceIso)}`);
+    }
+    if (options.untilIso) {
+      where.push(`event_at <= ${sqlQuote(options.untilIso)}`);
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_brief_item_engagements
+        WHERE ${where.join(" AND ")}
+        ORDER BY event_at ASC, created_at ASC`,
+    );
+    return rows.map(parseBriefItemEngagement);
+  }
+
+  async summarizeBriefItemEngagements(
+    agentId: string,
+    options: {
+      sinceIso?: string;
+      untilIso?: string;
+    } = {},
+  ): Promise<readonly LifeOpsBriefItemEngagementSummary[]> {
+    return summarizeBriefEngagementRows(
+      await this.listBriefItemEngagements(agentId, options),
+    );
+  }
+
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
     await executeRawSql(
       this.runtime,
@@ -3267,6 +3486,91 @@ export class LifeOpsRepository {
         ORDER BY created_at DESC`,
     );
     return rows.map(parseAuditEvent);
+  }
+
+  async upsertCommitmentLedgerRecord(
+    record: LifeOpsCommitmentLedgerRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_commitment_ledger (
+        id, agent_id, source, source_key, kind, summary, counterparty, due_at,
+        confidence, status, scheduled_task_id, metadata_json, created_at,
+        updated_at
+      ) VALUES (
+        ${sqlQuote(record.id)},
+        ${sqlQuote(record.agentId)},
+        ${sqlQuote(record.source)},
+        ${sqlQuote(record.sourceKey)},
+        ${sqlQuote(record.kind)},
+        ${sqlQuote(record.summary)},
+        ${sqlText(record.counterparty)},
+        ${sqlText(record.dueAt)},
+        ${sqlNumber(record.confidence)},
+        ${sqlQuote(record.status)},
+        ${sqlText(record.scheduledTaskId)},
+        ${sqlJson(record.metadata)},
+        ${sqlQuote(record.createdAt)},
+        ${sqlQuote(record.updatedAt)}
+      )
+      ON CONFLICT(agent_id, source, source_key, kind, summary)
+      DO UPDATE SET
+        counterparty = EXCLUDED.counterparty,
+        due_at = EXCLUDED.due_at,
+        confidence = EXCLUDED.confidence,
+        status = EXCLUDED.status,
+        scheduled_task_id = EXCLUDED.scheduled_task_id,
+        metadata_json = EXCLUDED.metadata_json,
+        updated_at = EXCLUDED.updated_at`,
+    );
+  }
+
+  async getCommitmentLedgerRecord(
+    agentId: string,
+    id: string,
+  ): Promise<LifeOpsCommitmentLedgerRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_commitment_ledger
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(id)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseCommitmentLedgerRecord(row) : null;
+  }
+
+  async listCommitmentLedgerRecords(
+    agentId: string,
+    filter: {
+      statuses?: LifeOpsCommitmentStatus[];
+      dueBeforeIso?: string;
+      source?: LifeOpsCommitmentSource;
+    } = {},
+  ): Promise<LifeOpsCommitmentLedgerRecord[]> {
+    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
+    if (filter.statuses?.length) {
+      clauses.push(
+        `status IN (${filter.statuses.map((status) => sqlQuote(status)).join(", ")})`,
+      );
+    }
+    if (filter.dueBeforeIso) {
+      clauses.push(
+        `(due_at IS NULL OR due_at <= ${sqlQuote(filter.dueBeforeIso)})`,
+      );
+    }
+    if (filter.source) {
+      clauses.push(`source = ${sqlQuote(filter.source)}`);
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_commitment_ledger
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY due_at ASC NULLS LAST, created_at ASC`,
+    );
+    return rows.map(parseCommitmentLedgerRecord);
   }
 
   // ---------------------------------------------------------------------

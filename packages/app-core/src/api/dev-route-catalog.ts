@@ -240,6 +240,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "my-apps",
+    path: "/apps/my-apps",
+    label: "My Apps",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "runtime",
     path: "/apps/runtime",
     label: "Runtime",

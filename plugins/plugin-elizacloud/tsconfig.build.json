@@ -25,6 +25,7 @@
     "build.ts",
     "vitest.config.ts",
     "**/__tests__/**",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "src/components/**"
   ]
 }

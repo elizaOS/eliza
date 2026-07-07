@@ -37,9 +37,13 @@
  * `isRuntimeChooserEnabled()` and OFF by default. With the chooser off,
  * onboarding is a single "sign in to Eliza Cloud" step — the greeting IS the
  * sign-in prompt, an already-usable session (hosted web with a live login, a
- * durable token, a completed mobile OAuth round trip) skips the ask entirely,
- * and provisioning success flips the real gate immediately. The tutorial is
- * never a completion gate in this mode; it stays reachable from its home tile.
+ * durable token, a completed mobile OAuth round trip, or a session recovered
+ * from the console's cross-subdomain cookie) enters SILENTLY (#15133): zero
+ * onboarding turns for a pure agent reuse, the real provisioning narration
+ * only when an agent is actually created or cold-boot woken, the existing
+ * in-chat selector when the account has several agents. Provisioning success
+ * flips the real gate immediately. The tutorial is never a completion gate in
+ * this mode; it stays reachable from its home tile.
  */
 
 import { logger } from "@elizaos/logger";
@@ -61,9 +65,12 @@ import {
 import { getBootConfig } from "../config/boot-config";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
+import {
+  preOpenCloudLoginWindow,
+  resolveCloudSignInPageUrl,
+} from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
-import { preOpenWindow } from "../utils";
 import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
@@ -91,9 +98,10 @@ const GREETING =
 
 // Cloud-only greetings (#13377). The sign-in button reuses the runtime:cloud
 // action value on purpose: the tap IS the user gesture that launches the real
-// login flow (handleCloudLogin inside the provision flow, popup-blocker safe
-// via preOpenWindow) — the OAuth secretRequest block alone only opens the
-// cloud site and never completes an in-app login.
+// login flow (handleCloudLogin inside the provision flow — popup where one can
+// open, same-tab /login navigation where popups are blocked or hostile,
+// #15143) — the OAuth secretRequest block alone only opens the cloud login
+// page and never completes an in-app login by itself.
 const CLOUD_SIGN_IN_GREETING =
   "Hi — I'm Eliza. Sign in to Eliza Cloud and I'll get you set up.";
 const CLOUD_SIGN_IN_CHOICE = [
@@ -105,6 +113,23 @@ const CLOUD_WELCOME_BACK =
   "Welcome back — you're already signed in to Eliza Cloud. Setting up your agent…";
 const CLOUD_ONLY_DONE =
   'You\'re all set — ask me anything. Want a quick tour? Type "restart tutorial" whenever you like.';
+
+// Bounded cookie-recovery refresh at conductor mount (#15133). Mirrors
+// STEWARD_RESTORE_REFRESH_TIMEOUT_MS in startup-phase-restore.ts so a hung
+// same-origin refresh costs an authenticated console user at most this long of
+// quiet empty chat before degrading to the normal sign-in greeting.
+const FIRST_RUN_COOKIE_REFRESH_TIMEOUT_MS = 4_000;
+
+// onStatus codes that mark a REAL provisioning wait — an actual agent create,
+// a sandbox build, or a dedicated container's cold-boot wake. Every other code
+// the finish path narrates ("setup" / "listing" / "ready" / "persist") wraps a
+// couple of fast REST calls, which reads as fake provisioning theater to an
+// already-signed-in user (#15133) — the silent entry drops those.
+const REAL_PROVISION_STATUS_CODES = new Set([
+  "creating",
+  "provisioning",
+  "starting",
+]);
 
 /** User-facing recovery message when a cloud provisioning call rejects. */
 function cloudFailureMessage(err: unknown): string {
@@ -281,7 +306,9 @@ function cloudOAuthSecretRequest(
       fields: [],
       submitLabel: "Connect Eliza Cloud",
       provider: "elizacloud",
-      authorizationUrl: getBootConfig().cloudApiBase || "https://elizacloud.ai",
+      authorizationUrl: resolveCloudSignInPageUrl(
+        getBootConfig().cloudApiBase || "https://elizacloud.ai",
+      ),
     },
   };
 }
@@ -400,6 +427,15 @@ export function useFirstRunConductor(): void {
   // True while a finish error's recovery choice is on screen; steers the
   // free-text reply persona (below). Cleared when the next pick supersedes it.
   const erroredRef = React.useRef(false);
+  // Silent cloud entry (#15133): set when onboarding starts with an
+  // already-usable session (stored token, live connection, or a session
+  // recovered from the console's cross-subdomain cookie). The user already
+  // signed in, so the conductor seeds NOTHING — no greeting, no welcome-back,
+  // no reuse-narration statuses, no done wrap-up; a pure agent reuse lands
+  // straight in chat. The silence ends (ref cleared) the moment something
+  // genuinely interactive or genuinely slow must render: a REAL provisioning
+  // status, the multi-agent selector, a sign-in retry ask, or an error turn.
+  const silentCloudEntryRef = React.useRef(false);
   // Monotonic id source for typed-text turns: guarantees a unique user/reply id
   // per send even when two land in the same millisecond, so `seedTurn`'s id
   // dedup never silently swallows an acknowledged message.
@@ -473,7 +509,13 @@ export function useFirstRunConductor(): void {
     if (completedRef.current) return;
     provisionedRef.current = true;
     completedRef.current = true;
-    seedTurn(makeTurn("first-run:cloud-done", CLOUD_ONLY_DONE));
+    // A silent entry that STAYED silent was a pure reuse (#15133): the user is
+    // already signed in and their agent already exists — land straight in chat
+    // with no wrap-up turn. A create/wake path cleared the ref on its first
+    // real provisioning status, so its wrap-up still renders.
+    if (!silentCloudEntryRef.current) {
+      seedTurn(makeTurn("first-run:cloud-done", CLOUD_ONLY_DONE));
+    }
     completeFirstRun("chat");
   }, [seedTurn, completeFirstRun]);
 
@@ -516,7 +558,7 @@ export function useFirstRunConductor(): void {
       uiLanguage,
       elizaCloudConnected,
       handleCloudLogin,
-      preOpenWindow,
+      preOpenWindow: preOpenCloudLoginWindow,
       setRuntimeState: (key, value) => {
         setState(key, value as never);
       },
@@ -528,10 +570,20 @@ export function useFirstRunConductor(): void {
         }
         completeCloudOnly();
       },
-      onStatus: (text) => {
-        if (text) {
-          seedTurn(makeTurn(`first-run:status:${text}`, text));
+      onStatus: (text, code) => {
+        if (!text) return;
+        if (silentCloudEntryRef.current) {
+          // Silent cloud entry (#15133): reuse narration ("Setting up your
+          // cloud agent", "Finding your agents...", "Connected to your
+          // agent", "Saving first-run profile") wraps two fast REST calls —
+          // provisioning theater for someone who already has an agent. Only
+          // a REAL wait breaks the silence: an actual create, a sandbox
+          // build, or a dedicated cold-boot wake take genuinely long, so
+          // clear the ref and narrate honestly from that point on.
+          if (!code || !REAL_PROVISION_STATUS_CODES.has(code)) return;
+          silentCloudEntryRef.current = false;
         }
+        seedTurn(makeTurn(`first-run:status:${text}`, text));
       },
     }),
     [
@@ -551,6 +603,10 @@ export function useFirstRunConductor(): void {
   const seedError = React.useCallback(
     (message: string) => {
       erroredRef.current = true;
+      // An error turn ends a silent cloud entry: from here on the user is in
+      // an interactive recovery conversation, so retry statuses and the done
+      // wrap-up must render again.
+      silentCloudEntryRef.current = false;
       // A DISTINCT, non-looping error surface: the error turn carries its own
       // recovery choice (retry / restart / Settings escape) so onboarding is
       // always recoverable. It must NOT re-append the runtime CHOICE — that
@@ -627,15 +683,20 @@ export function useFirstRunConductor(): void {
           }
           return;
         case "pick-cloud-agent": {
-          // Cloud-only onboarding (#13377): signing in IS onboarding — never
-          // interpose an agent picker. Adopt the first agent; the list arrives
-          // newest-first with running agents prioritized.
+          // Cloud-only onboarding (#13377/#15133): exactly one agent means
+          // there is nothing to choose — adopt it directly (the list arrives
+          // newest-first with running agents prioritized). Two or more get
+          // the existing in-chat selector, per the #15133 spec — silently
+          // adopting agents[0] hid the user's other agents behind Settings.
           if (!isRuntimeChooserEnabled()) {
             const first = outcome.agents[0]?.agent_id;
-            if (first) {
+            if (outcome.agents.length === 1 && first) {
               bindCloudAgentByIdRef.current?.(first);
               return;
             }
+            // The selector is an interactive ask — end any silent entry so
+            // the post-pick bind statuses render.
+            silentCloudEntryRef.current = false;
           }
           seedCloudAgentChoice(
             outcome.agents.map((a) => ({ id: a.agent_id, name: a.agent_name })),
@@ -655,6 +716,9 @@ export function useFirstRunConductor(): void {
             : draftRef.current.runtime === "cloud"
               ? "cloud"
               : "hybrid";
+          // Asking for a sign-in ends a silent entry: the session turned out
+          // not to be usable, so the flow is back to the visible ask path.
+          silentCloudEntryRef.current = false;
           surfaceCloudLoginRetryTurn({ seedTurn, replaceTurn });
           return;
         }
@@ -1084,8 +1148,13 @@ export function useFirstRunConductor(): void {
     (text: string): boolean => {
       const trimmed = text.trim();
       if (!trimmed) return true;
+      // A silent cloud entry counts as provisioning even before its first
+      // network call lands (the bounded cookie refresh): there is no sign-in
+      // ask on screen, so the signIn nudge would point at nothing.
       const reply =
-        busyRef.current || bindInFlightRef.current
+        busyRef.current ||
+        bindInFlightRef.current ||
+        silentCloudEntryRef.current
           ? FIRST_RUN_TEXT_REPLY.provisioning
           : provisionedRef.current
             ? FIRST_RUN_TEXT_REPLY.wrapUp
@@ -1119,20 +1188,25 @@ export function useFirstRunConductor(): void {
       return;
     }
     resetFirstRunPersistGuard();
+    // A fresh activation decides silence for itself below — a stale `true`
+    // from a previous mount (silent entry unmounted mid-flight, user signed
+    // out, conductor re-entered) must not suppress this run's turns.
+    silentCloudEntryRef.current = false;
     setFirstRunActionHandler((value) => handleActionRef.current(value));
     setFirstRunTextHandler((value) => handleTextRef.current(value));
     // Cloud-only onboarding (#13377): sign in to Eliza Cloud is the single
     // path. An already-usable session (hosted web where the user is logged in
-    // to Eliza Cloud, a durable token from a previous login, or a completed
-    // OAuth round trip after a mobile WebView eviction) skips the sign-in ask
-    // entirely and provisions immediately without a gesture —
-    // launchStewardLogin short-circuits on the stored token, so no sign-in
-    // surface ever appears. Otherwise the greeting offers the one sign-in
-    // button; its tap enters the normal cloud pick path (the gesture the real
-    // login flow needs). A cold relaunch just re-enters this branch, so no
-    // durable resume marker is needed — any stale chooser-mode marker is
-    // dropped. The local-backup restore probe is skipped: restoring a local
-    // agent is a chooser-mode concept.
+    // to Eliza Cloud, a durable token from a previous login, a completed
+    // OAuth round trip after a mobile WebView eviction, or a session
+    // recovered from the console's cross-subdomain cookie) enters SILENTLY
+    // (#15133): no greeting, no welcome-back, no reuse narration — a pure
+    // reuse lands straight in chat, and only a real provision/wake narrates.
+    // Otherwise the greeting offers the one sign-in button; its tap enters
+    // the normal cloud pick path (the gesture the real login flow needs). A
+    // cold relaunch just re-enters this branch, so no durable resume marker
+    // is needed — any stale chooser-mode marker is dropped. The local-backup
+    // restore probe is skipped: restoring a local agent is a chooser-mode
+    // concept.
     if (!isRuntimeChooserEnabled()) {
       clearCloudLoginPending();
       draftRef.current = {
@@ -1140,51 +1214,30 @@ export function useFirstRunConductor(): void {
         runtime: "cloud",
         localInference: "cloud-inference",
       };
-      // The resume is armed in BOTH branches: with a usable session it drives
+      // The resume is armed in ALL branches: with a usable session it drives
       // the immediate provision; without one it lets a session that lands
       // later without a tap (login from another same-origin tab, an injected
       // hosted-web session) auto-continue via the auto-resume effect.
       pendingCloudResumeRef.current = "cloud";
       let tokenPoll: ReturnType<typeof setInterval> | null = null;
-      if (elizaCloudConnectedRef.current || hasUsableStoredStewardToken()) {
-        seedTurn(makeTurn("first-run:cloud-signin", CLOUD_WELCOME_BACK));
-        runCloudResumeRef.current("cloud");
-      } else {
+      let cancelled = false;
+      // Degrade target shared by the no-session path and a failed cookie
+      // recovery: the sign-in greeting plus a cheap localStorage poll. A
+      // usable session can LAND after mount without any elizaCloudConnected
+      // flip (the native storage bridge hydrates the durable token from
+      // Capacitor Preferences asynchronously; a web login in another
+      // same-origin tab writes it directly), so poll (one localStorage read
+      // per tick) and upgrade to the welcome-back skip the moment it appears;
+      // a pick already in flight always wins. The welcome-back turn stays on
+      // THIS path only — a greeting was genuinely shown, so silently yanking
+      // the conversation would read as broken.
+      const seedSignInGreetingAndPoll = () => {
         seedTurn(
           makeTurn(
             "first-run:greeting",
             `${CLOUD_SIGN_IN_GREETING}\n\n${CLOUD_SIGN_IN_CHOICE}`,
           ),
         );
-        // Cross-subdomain SSO: a user already signed in on the console carries
-        // the shared, HttpOnly .elizacloud.ai refresh cookie, but localStorage
-        // does not cross subdomains — so this app origin has no stored token
-        // and would ask them to sign in AGAIN. Recover the access token from
-        // the cookie (same-origin refresh route, same pattern as the /login
-        // page); the token poll below then upgrades to welcome-back within
-        // 500ms. Fire-and-forget: a failed refresh simply leaves the normal
-        // sign-in greeting in place.
-        if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
-          // error-policy:J4 failed cookie refresh degrades to the sign-in
-          // greeting already on screen; it never fabricates a session.
-          refreshCloudStewardSession()
-            .then((refreshed) => {
-              if (!refreshed?.token) return;
-              writeStoredStewardToken(refreshed.token);
-              try {
-                window.dispatchEvent(new CustomEvent("steward-token-sync"));
-              } catch {
-                // error-policy:J6 best-effort nudge — the poll re-reads anyway.
-              }
-            })
-            .catch(() => undefined);
-        }
-        // A usable session can also LAND after this mount without any
-        // elizaCloudConnected flip: the native storage bridge hydrates the
-        // durable token from Capacitor Preferences asynchronously, and a web
-        // login in another same-origin tab writes it directly. Poll cheaply
-        // (one localStorage read) and upgrade to the welcome-back skip the
-        // moment it appears; a pick already in flight always wins.
         tokenPoll = setInterval(() => {
           if (
             busyRef.current ||
@@ -1199,8 +1252,59 @@ export function useFirstRunConductor(): void {
           seedTurn(makeTurn("first-run:cloud-signin", CLOUD_WELCOME_BACK));
           runCloudResumeRef.current("cloud");
         }, 500);
+      };
+      if (elizaCloudConnectedRef.current || hasUsableStoredStewardToken()) {
+        silentCloudEntryRef.current = true;
+        runCloudResumeRef.current("cloud");
+      } else if (typeof window !== "undefined" && hasStewardAuthedCookie()) {
+        // Cross-subdomain SSO (#15089/#15133): a user already signed in on
+        // the console carries the shared, HttpOnly .elizacloud.ai refresh
+        // cookie, but localStorage does not cross subdomains — so this app
+        // origin has no stored token yet. Seed NOTHING and recover the access
+        // token first (same-origin refresh, bounded like
+        // startup-phase-restore's resolveRestoredStewardToken) so an
+        // authenticated user never sees a sign-in greeting that a
+        // welcome-back then has to walk back — the "onboarding theater"
+        // report. During the sub-second hold the already-painted shell shows
+        // the empty first-run chat; a stale marker cookie costs at most the
+        // 4s bound before the normal greeting appears. Web-only by
+        // construction: native has no document cookie and carries the durable
+        // token through the branch above.
+        silentCloudEntryRef.current = true;
+        void (async () => {
+          let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
+          // error-policy:J4 a failed/timed-out cookie refresh degrades to the
+          // normal sign-in greeting below; it never fabricates a session.
+          const refreshed = await Promise.race([
+            refreshCloudStewardSession().catch(() => null),
+            new Promise<null>((resolve) => {
+              refreshTimeout = setTimeout(
+                () => resolve(null),
+                FIRST_RUN_COOKIE_REFRESH_TIMEOUT_MS,
+              );
+            }),
+          ]);
+          if (refreshTimeout) clearTimeout(refreshTimeout);
+          if (cancelled) return;
+          if (refreshed?.token) {
+            writeStoredStewardToken(refreshed.token);
+            try {
+              window.dispatchEvent(new CustomEvent("steward-token-sync"));
+            } catch {
+              // error-policy:J6 best-effort nudge — consumers re-read the
+              // stored token on their next tick regardless.
+            }
+            runCloudResumeRef.current("cloud");
+            return;
+          }
+          silentCloudEntryRef.current = false;
+          seedSignInGreetingAndPoll();
+        })();
+      } else {
+        seedSignInGreetingAndPoll();
       }
       return () => {
+        cancelled = true;
         if (tokenPoll) clearInterval(tokenPoll);
         setFirstRunActionHandler(null);
         setFirstRunTextHandler(null);

@@ -14,15 +14,16 @@ import type { StartupShellProps } from "./startup-shell-types";
 const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
 // Launch surface for the startup splash + loading: it must match the default
-// HOME background orange (#ef5a1f = DEFAULT_BACKGROUND_COLOR, the home
-// ShaderBackground) so boot/launch flows seamlessly into the home with no
-// orange→orange flash (#9565). NOTE: this is NOT `--bg` — the theme background
-// is white/black (`:root`/`.dark`) or the brand orange #ff8a24 (`.theme-app`),
-// none of which is the home shader color — so a dedicated launch token is used.
-// Whitelabel seam: hosts override `--launch-bg` / `--accent-foreground`; the
-// literal fallbacks are the elizaOS defaults.
+// HOME background base (#000000 = DEFAULT_BACKGROUND_COLOR, the black field
+// under the home ShaderBackground's orange ember glow) so boot/launch flows
+// seamlessly into the home with no flash (#9565). NOTE: this is NOT `--bg` —
+// the theme background is white/black (`:root`/`.dark`) or the brand orange
+// #ff8a24 (`.theme-app`), none of which is the home shader base — so a
+// dedicated launch token is used. Whitelabel seam: hosts override
+// `--launch-bg` / `--accent-foreground`; the literal fallbacks are the
+// elizaOS defaults.
 const LAUNCH_SURFACE =
-  "bg-[var(--launch-bg,#ef5a1f)] text-[var(--accent-foreground,#fff)]";
+  "bg-[var(--launch-bg,#000000)] text-[var(--accent-foreground,#fff)]";
 
 // A fast, already-cached boot flips the view through the loading state for only
 // a few milliseconds before the app is ready. Painting the full-screen orange

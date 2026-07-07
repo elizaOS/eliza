@@ -622,13 +622,13 @@ function normalizeCompletionCheckInput(
   if (typeof check.kind === "string" && check.kind.trim().length > 0) {
     return check;
   }
-  if (typeof (check as { type?: unknown }).type === "string") {
-    const kind = (check as { type: string }).type.trim();
+  const legacyCheck = check as ScheduledTask["completionCheck"] & {
+    type?: unknown;
+  };
+  if (typeof legacyCheck.type === "string") {
+    const kind = legacyCheck.type.trim();
     if (kind.length > 0) {
-      const { type: _type, ...rest } =
-        check as ScheduledTask["completionCheck"] & {
-          type?: string;
-        };
+      const { type: _type, ...rest } = legacyCheck;
       return { ...rest, kind };
     }
   }

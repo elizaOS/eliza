@@ -1,136 +1,103 @@
 {
-  "packages/ui/src/cloud-ui/components/data-list/api-keys-summary.tsx": [
-    "L37 toLocaleString() [no locale]",
-    "L43 toLocaleDateString() [no locale]"
-  ],
-  "packages/ui/src/cloud-ui/components/data-list/api-keys-table.tsx": [
-    "L196 toLocaleString() [no locale]",
-    "L199 toLocaleString() [no locale]",
-    "L272 toLocaleString() [no locale]",
-    "L275 toLocaleString() [no locale]"
-  ],
   "packages/ui/src/cloud-ui/components/data-list/apps-list-view.tsx": [
-    "L168 toLocaleString() [no locale]",
-    "L172 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/cloud-ui/components/image-gen/enhanced-loading.tsx": [
-    "L29 Math.random()"
+    "L187 toLocaleString() [no locale]",
+    "L191 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud-ui/components/log-viewer.tsx": [
-    "L259 toLocaleTimeString() [no locale]"
+    "L263 toLocaleTimeString() [no locale]"
   ],
   "packages/ui/src/cloud-ui/components/voice/voice-status-badge.tsx": [
     "L35 new Date()"
   ],
-  "packages/ui/src/cloud-ui/runtime/render-telemetry.tsx": ["L47 Date.now()"],
+  "packages/ui/src/cloud-ui/runtime/render-telemetry.tsx": [
+    "L52 Date.now()"
+  ],
   "packages/ui/src/cloud/account-security/components/active-sessions-panel.tsx": [
-    "L129 toLocaleString() [no locale]"
+    "L138 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/account-security/components/plugin-permissions-page-client.tsx": [
-    "L142 toLocaleString() [no locale]",
-    "L144 toLocaleString() [no locale]"
+    "L141 toLocaleString() [no locale]",
+    "L143 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/admin/ModerationPage.tsx": [
-    "L356 toLocaleString() [no locale]",
-    "L610 toLocaleDateString() [no locale]"
+    "L346 toLocaleString() [no locale]",
+    "L600 toLocaleDateString() [no locale]"
   ],
   "packages/ui/src/cloud/admin/RpcStatusPage.tsx": [
-    "L168 toLocaleString() [no locale]",
-    "L192 toLocaleString() [no locale]"
+    "L162 toLocaleString() [no locale]",
+    "L186 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/analytics/_components/analytics-page-client.tsx": [
-    "L127 toLocaleString() [no locale]",
-    "L172 toLocaleString() [no locale]",
-    "L189 toLocaleString() [no locale]",
-    "L225 toLocaleString() [no locale]"
+    "L124 toLocaleString() [no locale]",
+    "L167 toLocaleString() [no locale]",
+    "L184 toLocaleString() [no locale]",
+    "L219 toLocaleString() [no locale]"
   ],
-  "packages/ui/src/cloud/analytics/_components/filters.tsx": ["L58 new Date()"],
+  "packages/ui/src/cloud/analytics/_components/filters.tsx": [
+    "L56 new Date()"
+  ],
   "packages/ui/src/cloud/analytics/_components/usage-chart.tsx": [
-    "L109 toLocaleString() [no locale]",
-    "L214 toLocaleString() [no locale]"
+    "L107 toLocaleString() [no locale]",
+    "L212 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/applications/ApplicationsPage.tsx": [
-    "L66 toLocaleString() [no locale]",
-    "L73 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/cloud/applications/components/app-analytics.tsx": [
-    "L299 toLocaleDateString() [no locale]",
-    "L386 toLocaleString() [no locale]",
-    "L391 toLocaleString() [no locale]",
-    "L500 toLocaleString() [no locale]",
-    "L505 toLocaleString() [no locale]",
-    "L513 toLocaleString() [no locale]",
-    "L567 toLocaleString() [no locale]",
-    "L613 toLocaleString() [no locale]",
-    "L649 toLocaleString() [no locale]",
-    "L656 toLocaleString() [no locale]",
-    "L723 toLocaleString() [no locale]",
-    "L753 toLocaleString() [no locale]"
-  ],
-  "packages/ui/src/cloud/applications/components/app-domains.tsx": [
-    "L950 toLocaleTimeString() [no locale]"
-  ],
-  "packages/ui/src/cloud/applications/components/app-overview.tsx": [
-    "L228 toLocaleString() [no locale]",
-    "L236 toLocaleString() [no locale]"
+    "L57 toLocaleString() [no locale]",
+    "L64 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/applications/components/app-users.tsx": [
-    "L251 toLocaleString() [no locale]"
+    "L249 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/billing/components/direct-crypto-credit-card.tsx": [
-    "L341 Date.now()",
-    "L357 Date.now()"
+    "L428 Date.now()",
+    "L445 Date.now()"
   ],
   "packages/ui/src/cloud/billing/components/payment-waiting-overlay.tsx": [
     "L217 toLocaleTimeString() [no locale]"
   ],
   "packages/ui/src/cloud/instances/components/create-eliza-agent-dialog.tsx": [
-    "L437 Date.now()",
-    "L509 Date.now()"
+    "L443 Date.now()",
+    "L515 Date.now()"
   ],
   "packages/ui/src/cloud/instances/components/docker-logs-viewer.tsx": [
     "L103 new Date()"
   ],
   "packages/ui/src/cloud/instances/components/eliza-agent-logs-viewer.tsx": [
-    "L254 new Date()"
+    "L257 new Date()"
+  ],
+  "packages/ui/src/cloud/instances/components/eliza-agents-table.tsx": [
+    "L823 Date.now()"
   ],
   "packages/ui/src/cloud/mcps/McpDetailDrawer.tsx": [
-    "L275 toLocaleString() [no locale]",
-    "L281 toLocaleString() [no locale]",
-    "L293 toLocaleString() [no locale]"
+    "L257 toLocaleString() [no locale]",
+    "L263 toLocaleString() [no locale]",
+    "L275 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/monetization/earnings/EarningsPageClient.tsx": [
-    "L887 toLocaleTimeString() [no locale]"
+    "L876 toLocaleTimeString() [no locale]"
   ],
   "packages/ui/src/cloud/organization/organization-general-tab.tsx": [
-    "L102 toLocaleString() [no locale]"
+    "L100 toLocaleString() [no locale]"
   ],
   "packages/ui/src/cloud/organization/pending-invites-list.tsx": [
-    "L47 Date.now()",
-    "L70 new Date()"
+    "L45 Date.now()",
+    "L66 new Date()"
   ],
   "packages/ui/src/cloud/public-pages/pages/invite/invite-accept-page.tsx": [
-    "L241 Date.now()"
+    "L254 Date.now()"
   ],
   "packages/ui/src/cloud/public-pages/pages/payment/app-charge-page.tsx": [
     "L150 Date.now()"
   ],
-  "packages/ui/src/components/connectors/XRPairingPanel.tsx": [
-    "L86 toLocaleTimeString() [no locale]"
+  "packages/ui/src/components/pages/chat-view-hooks.tsx": [
+    "L817 Date.now()"
   ],
-  "packages/ui/src/components/pages/chat-view-hooks.tsx": ["L812 Date.now()"],
   "packages/ui/src/components/pages/ElizaCloudDashboard.tsx": [
-    "L594 Date.now()"
+    "L605 Date.now()"
   ],
-  "packages/ui/src/components/pages/ElizaOsAppsView.tsx": [
-    "L1758 toLocaleString() [no locale]"
+  "packages/ui/src/components/shell/PairingView.tsx": [
+    "L55 Date.now()"
   ],
-  "packages/ui/src/components/pages/HeartbeatForm.tsx": ["L1206 new Date()"],
-  "packages/ui/src/components/shell/PairingView.tsx": ["L49 Date.now()"],
-  "packages/ui/src/components/shell/usePromptSuggestions.ts": [
-    "L279 new Date()"
-  ],
-  "packages/ui/src/widgets/__fixtures__/home-widget-mock-data.ts": [
-    "L69 Date.now()"
+  "packages/ui/src/tutorial/TutorialConductor.tsx": [
+    "L229 Date.now()"
   ]
 }

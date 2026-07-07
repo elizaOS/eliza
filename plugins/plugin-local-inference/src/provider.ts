@@ -37,6 +37,7 @@ import {
 
 import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
+import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
@@ -1115,6 +1116,7 @@ export const localInferencePlugin: Plugin = {
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
 	actions: [
+		localInferenceManagementAction,
 		generateMediaAction,
 		identifySpeakerAction,
 		startTranscriptionAction,

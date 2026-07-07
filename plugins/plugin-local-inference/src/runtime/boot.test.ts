@@ -23,7 +23,7 @@ vi.mock("./ensure-local-inference-handler", () => ({
 }));
 vi.mock("./mobile-local-inference-gate", () => ({
 	shouldEnableMobileLocalInference: () => shouldEnableMobileLocalInference(),
-	warnIfMobileGateActiveWithoutPlatform: (args: unknown) =>
+	warnIfMobileGateActiveWithoutPlatform: (_args: unknown) =>
 		warnIfMobileGateActiveWithoutPlatform(),
 }));
 vi.mock("@elizaos/core", () => ({

@@ -239,6 +239,8 @@ export function CharacterHubView({
           ) : null}
           <section>
             <CharacterIdentityPanel
+              nameText={typeof d.name === "string" ? d.name : ""}
+              systemText={typeof d.system === "string" ? d.system : ""}
               bioText={bioText}
               handleFieldEdit={handleAutoSavedFieldEdit}
               t={t}
