@@ -111,8 +111,13 @@ export function applyOptimizedProviderSelection(
 		deduped.add(name);
 	}
 	const ordered: string[] = [];
-	for (const name of contextConfig.providerOrder ?? []) {
-		if (deduped.delete(name)) ordered.push(name);
+	// providerOrder is optional config: absent means "keep natural order",
+	// which is the empty ordered-prefix — not a masked failure.
+	const configuredOrder = contextConfig.providerOrder;
+	if (configuredOrder) {
+		for (const name of configuredOrder) {
+			if (deduped.delete(name)) ordered.push(name);
+		}
 	}
 	return [...ordered, ...deduped];
 }

@@ -177,10 +177,13 @@ export class PiiScrubService extends Service {
 			return;
 		}
 
+		// Destructuring default: an omitted candidateSpans is the designed
+		// "detector offered no spans" input, not a broken pipeline.
+		const { candidateSpans = [] } = payload;
 		const item: PiiScrubQueueItem = {
 			content,
 			rulesetVersion: payload.rulesetVersion,
-			candidateSpans: payload.candidateSpans ?? [],
+			candidateSpans,
 			contextPack: payload.contextPack,
 			pseudonymAssignments: payload.pseudonymAssignments,
 			priority: payload.priority ?? "low",
@@ -332,7 +335,10 @@ export class PiiScrubService extends Service {
 	}
 
 	getQueueSize(): number {
-		return this.batchQueue?.size ?? 0;
+		// After stop() the queue is gone by design; zero is the truthful answer,
+		// not a masked failure.
+		if (!this.batchQueue) return 0;
+		return this.batchQueue.size;
 	}
 
 	getQueueStats(): {

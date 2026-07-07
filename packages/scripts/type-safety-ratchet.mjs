@@ -119,6 +119,12 @@ function isProductionSourceFile(relPath) {
   if (/\.(test|spec|e2e|stories?|fixture|mock)\.(ts|tsx)$/.test(base)) {
     return false;
   }
+  // Codegen output living outside a generated/ directory (e.g.
+  // `*.generated.ts` next to its consumer). The gate polices hand-written
+  // escape hatches; a generator that must emit a suppression documents the
+  // constraint at its render site, and the `generated/` DIRECTORY exclusion
+  // above already exempts the same category when it is folder-shaped.
+  if (/\.generated\.(ts|tsx)$/.test(base)) return false;
 
   return true;
 }
@@ -343,6 +349,8 @@ function baselinePayload(files, counts) {
         "*.fixture.tsx",
         "*.mock.ts",
         "*.mock.tsx",
+        "*.generated.ts",
+        "*.generated.tsx",
         "**/__fixtures__/**",
         "**/__mocks__/**",
         "**/__tests__/**",

@@ -47,7 +47,9 @@ export function flattenTrajectoryMessages(
 			const content =
 				typeof record.content === "string"
 					? record.content
-					: JSON.stringify(record.content ?? "");
+					: // Diagnostics rendering: an absent content serializes as "null" so
+						// the trajectory shows the hole instead of silently reading empty.
+						JSON.stringify(record.content ?? null);
 			return `${role}:\n${content}`;
 		})
 		.join("\n\n");
@@ -90,7 +92,9 @@ function providerSnapshotsFromState(state: State | undefined): {
 }
 
 function locateProviderSpan(
-	prompt: string,
+	// Undefined (no prompt captured) and empty both mean "nothing to locate";
+	// the guard below already returns the explicit no-span result for both.
+	prompt: string | undefined,
 	snapshot: ProviderTextSnapshot,
 	cursor: number,
 ): { start?: number; end?: number; nextCursor: number } {
@@ -128,7 +132,7 @@ export function buildProviderAttributionsFromState(args: {
 	const { providerOrder, snapshots } = providerSnapshotsFromState(args.state);
 	let cursor = 0;
 	const providerAttributions = snapshots.map((snapshot) => {
-		const span = locateProviderSpan(args.prompt ?? "", snapshot, cursor);
+		const span = locateProviderSpan(args.prompt, snapshot, cursor);
 		cursor = span.nextCursor;
 		return {
 			providerName: snapshot.providerName,
