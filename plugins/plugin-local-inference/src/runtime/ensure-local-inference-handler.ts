@@ -748,16 +748,29 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 		fusedEmbedHandlePromise = (async () => {
 			try {
 				require.resolve("bun:ffi");
-			} catch {
+			} catch (e) {
+				logger.warn(
+					`[local-inference] fused embed unavailable: bun:ffi not resolvable (${String(e)})`,
+				);
 				return null;
 			}
 			const { resolveFusedLibraryPath } = await import(
 				"../services/desktop-fused-ffi-backend-runtime"
 			);
 			const bundleRoot = resolveFusedEmbedBundleRoot(cfg);
-			if (!bundleRoot) return null;
+			if (!bundleRoot) {
+				logger.warn(
+					`[local-inference] fused embed unavailable: no bundle root for "${cfg.model}" under "${cfg.modelsDir}"`,
+				);
+				return null;
+			}
 			const libPath = resolveFusedLibraryPath(bundleRoot);
-			if (!libPath) return null;
+			if (!libPath) {
+				logger.warn(
+					`[local-inference] fused embed unavailable: fused lib not found for bundle "${bundleRoot}"`,
+				);
+				return null;
+			}
 			const { loadElizaInferenceFfi } = await import(
 				"../services/voice/ffi-bindings"
 			);
@@ -767,6 +780,9 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				ffi.embedSupported() !== true ||
 				typeof ffi.embed !== "function"
 			) {
+				logger.warn(
+					`[local-inference] fused embed unavailable: lib "${libPath}" reports no embed support`,
+				);
 				ffi.close();
 				return null;
 			}
@@ -775,13 +791,24 @@ async function getFusedEmbeddingHandle(cfg: DesktopEmbeddingConfig): Promise<{
 				`[local-inference] Desktop embeddings via fused libelizainference (eliza_inference_embed) anchored at ${bundleRoot} — node-llama-cpp embedding path retired`,
 			);
 			return { ffi, ctx, embed: ffi.embed };
-		})().catch(() => {
+		})().catch((e) => {
+			logger.warn(
+				`[local-inference] fused embed init threw: ${e instanceof Error ? e.message : String(e)}`,
+			);
 			fusedEmbedHandlePromise = null;
 			return null;
 		});
 	}
 	const handle = await fusedEmbedHandlePromise;
-	if (!handle) return null;
+	if (!handle) {
+		// A null resolution (e.g. the embedding GGUF or fused lib was not yet
+		// staged when the boot dimension-probe issued the first call) must not be
+		// cached for the process lifetime — otherwise embeddings fall to Cloud
+		// permanently even after the on-device model finishes staging. Clear the
+		// memo so the next embed retries; a real success is cached and reused.
+		fusedEmbedHandlePromise = null;
+		return null;
+	}
 	// gte-small / BERT bi-encoders use MEAN pooling; a decoder-as-embedder
 	// (`--pooling last`) is selected via ELIZA_EMBED_POOLING=last.
 	const pooling =
