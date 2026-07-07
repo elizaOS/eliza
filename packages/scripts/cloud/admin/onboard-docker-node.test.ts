@@ -6,6 +6,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildOnboardSshConfig,
+  capacityForOnboardUpsert,
   hostKeyFingerprintForOnboardUpsert,
   parseArgs,
   parseDockerPs,
@@ -163,7 +164,7 @@ describe("host-key pinning helpers", () => {
     const onHostKeyDiscovered = async () => {};
     const config = buildOnboardSshConfig(
       args,
-      { host_key_fingerprint: "pinned-fingerprint" },
+      { host_key_fingerprint: "pinned-fingerprint", capacity: 8 },
       onHostKeyDiscovered,
     );
 
@@ -183,7 +184,7 @@ describe("host-key pinning helpers", () => {
     expect(
       buildOnboardSshConfig(
         args,
-        { host_key_fingerprint: null },
+        { host_key_fingerprint: null, capacity: 8 },
         onHostKeyDiscovered,
       ).hostKeyFingerprint,
     ).toBeUndefined();
@@ -195,7 +196,7 @@ describe("host-key pinning helpers", () => {
   it("never overwrites an established pin with a re-onboard capture", () => {
     expect(
       hostKeyFingerprintForOnboardUpsert(
-        { host_key_fingerprint: "pinned-fingerprint" },
+        { host_key_fingerprint: "pinned-fingerprint", capacity: 8 },
         "attacker-fingerprint",
       ),
     ).toBe("pinned-fingerprint");
@@ -207,10 +208,28 @@ describe("host-key pinning helpers", () => {
     );
     expect(
       hostKeyFingerprintForOnboardUpsert(
-        { host_key_fingerprint: null },
+        { host_key_fingerprint: null, capacity: 8 },
         "first-pin",
       ),
     ).toBe("first-pin");
     expect(hostKeyFingerprintForOnboardUpsert(null, undefined)).toBeNull();
+  });
+});
+
+describe("capacityForOnboardUpsert", () => {
+  it("preserves an existing node's operator-tuned capacity across re-onboard", () => {
+    // Robot the operator bumped to 24 via a direct DB write; the --capacity
+    // flag still carries the small-box default and must not win.
+    expect(
+      capacityForOnboardUpsert(
+        { host_key_fingerprint: "pinned", capacity: 24 },
+        8,
+      ),
+    ).toBe(24);
+  });
+
+  it("seeds a brand-new row from the --capacity flag", () => {
+    expect(capacityForOnboardUpsert(null, 8)).toBe(8);
+    expect(capacityForOnboardUpsert(null, 4)).toBe(4);
   });
 });

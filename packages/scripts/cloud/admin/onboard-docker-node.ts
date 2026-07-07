@@ -129,6 +129,7 @@ export interface OnboardArgs {
 
 interface ExistingDockerNodePin {
   host_key_fingerprint: string | null;
+  capacity: number;
 }
 
 interface OnboardSshConfig {
@@ -160,6 +161,21 @@ export function hostKeyFingerprintForOnboardUpsert(
   capturedFingerprint: string | undefined,
 ): string | null {
   return existing?.host_key_fingerprint ?? capturedFingerprint ?? null;
+}
+
+/**
+ * Capacity to write on (re-)onboard. Once a node exists, its slot count is
+ * operator-owned (tuned via the admin PATCH route or a direct DB update to
+ * match the box's real RAM), so a re-onboard preserves it and never resets it
+ * to the `--capacity` default (which is sized for the small cpx32-class node
+ * this script was born on). The flag value is only used to seed a brand-new
+ * row.
+ */
+export function capacityForOnboardUpsert(
+  existing: ExistingDockerNodePin | null,
+  flagCapacity: number,
+): number {
+  return existing?.capacity ?? flagCapacity;
 }
 
 /** Parse argv + env into a validated config. Throws on missing required fields. */
@@ -332,7 +348,9 @@ async function main(): Promise<void> {
         hostname: args.host,
         ssh_port: args.sshPort,
         ssh_user: args.sshUser,
-        capacity: args.capacity,
+        // Preserve an operator-tuned capacity across re-onboards; the
+        // `--capacity` default only seeds a brand-new row (see create branch).
+        capacity: capacityForOnboardUpsert(existing, args.capacity),
         status: "unknown",
         // Never overwrite an established pin during re-onboard; a differing
         // presented key must fail in DockerSSHClient before this update.

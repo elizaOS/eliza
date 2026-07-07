@@ -215,11 +215,56 @@ describe("bootstrap-callback node-identity guard (#12876)", () => {
 
     expect(res.status).toBe(200);
     expect(mockUpdate).toHaveBeenCalledTimes(1);
-    // Identity preserved, non-identity field (capacity) still updated.
+    // Identity preserved. Capacity is operator-owned once the row exists, so a
+    // re-bootstrap must NOT write it — the request value is ignored here.
     expect(lastUpdateArg?.hostname).toBe("10.0.0.1");
     expect(lastUpdateArg?.ssh_user).toBe("root");
     expect(lastUpdateArg?.ssh_port).toBe(22);
-    expect(lastUpdateArg?.capacity).toBe(16);
+    expect(lastUpdateArg).not.toHaveProperty("capacity");
+  });
+
+  test("re-bootstrap preserves an operator-tuned capacity (does not reset to the request/default)", async () => {
+    // A 252 GB robot the operator hand-tuned to 24 slots via a direct DB write.
+    stored = { ...EXISTING, capacity: 24, metadata: { ...EXISTING.metadata } };
+
+    const res = await post({
+      nodeId: "node-1",
+      hostname: "10.0.0.1",
+      sshUser: "root",
+      sshPort: 22,
+      // Callback reports the small-box default; it must not clobber the tune.
+      capacity: 8,
+      hostKeyFingerprint: "SHA256:pinned-fingerprint",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledTimes(1);
+    expect(lastUpdateArg).not.toHaveProperty("capacity");
+    expect(stored?.capacity).toBe(24);
+  });
+
+  test("brand-new node still gets its capacity stamped from the request", async () => {
+    stored = null; // findByNodeId returns null → insert path
+    let createdCapacity: number | undefined;
+    mockCreate.mockImplementationOnce(async (data: StoredNode) => {
+      createdCapacity = data.capacity;
+      stored = { ...data, id: "node-row-new" };
+      return stored;
+    });
+
+    const res = await post({
+      nodeId: "node-3",
+      hostname: "10.0.0.60",
+      sshUser: "root",
+      sshPort: 22,
+      capacity: 24,
+      hostKeyFingerprint: "SHA256:new-node",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(createdCapacity).toBe(24);
   });
 
   test("rejects liveness re-bootstrap without the required pinned fingerprint", async () => {
