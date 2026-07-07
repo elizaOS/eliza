@@ -116,14 +116,29 @@ function Harness({ growthKey, scroller, reduceMotion, onState }: HarnessProps) {
 }
 
 let rafQueue: FrameRequestCallback[] = [];
+// Captured ResizeObserver callbacks so a test can drive a scroller reflow
+// synchronously (jsdom lays nothing out, so ResizeObserver never fires on its
+// own). `fireResize` invokes them, mirroring a settle-frame of the send-detent
+// spring / keyboard geometry change that grows the scroller with no growthKey.
+let resizeObserverCallbacks: Array<() => void> = [];
 
 beforeEach(() => {
   rafQueue = [];
+  resizeObserverCallbacks = [];
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
     rafQueue.push(cb);
     return rafQueue.length;
   });
   vi.stubGlobal("cancelAnimationFrame", () => {});
+  class MockResizeObserver {
+    constructor(cb: () => void) {
+      resizeObserverCallbacks.push(cb);
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  vi.stubGlobal("ResizeObserver", MockResizeObserver);
 });
 
 afterEach(() => {
@@ -136,6 +151,13 @@ function flushRaf() {
   rafQueue = [];
   act(() => {
     for (const cb of q) cb(0);
+  });
+}
+
+// Fire every registered ResizeObserver callback — a single reflow frame.
+function fireResize() {
+  act(() => {
+    for (const cb of resizeObserverCallbacks) cb();
   });
 }
 
@@ -268,5 +290,64 @@ describe("useThreadAutoScroll", () => {
       scroller.dispatchEvent(new Event("scroll"));
     });
     expect(cap.get().atBottom).toBe(true);
+  });
+
+  // Geometry-only re-pin: the scroller changes size (or its content reflows)
+  // with NO growthKey change, so the growth effect never fires. The overlay's
+  // send path is the motivating device regression (#15178): sending springs the
+  // sheet to its half/full detent, so the thread scroller grows over ~300ms
+  // AFTER the send-commit pin already landed. A ResizeObserver on the scroller
+  // re-pins the settle so the newest line stays in view.
+  it("re-pins to the bottom when the scroller reflows taller after the send pin (detent-spring settle, no growthKey change) (#15178)", () => {
+    // A small resting window (clientHeight 300) over 1000px of content.
+    let height = 1000;
+    const clientHeight = 300;
+    const scroller = makeClampingScroller(() => height, clientHeight);
+    const cap = capture();
+    const { rerender } = render(
+      <Harness growthKey={1} scroller={scroller} onState={cap.onState} />,
+    );
+    flushRaf();
+    expect(scroller.scrollTop).toBe(700); // 1000 - 300
+
+    // SEND: the user message appends, growing the content 1000 -> 1150.
+    height = 1150;
+    rerender(
+      <Harness growthKey={2} scroller={scroller} onState={cap.onState} />,
+    );
+    flushRaf();
+    expect(scroller.scrollTop).toBe(850); // pinned to 1150 - 300
+    expect(cap.get().atBottom).toBe(true);
+
+    // The detent spring settles: the taller sheet + laid-out reply chrome grow
+    // the CONTENT 1150 -> 1450 with the SAME growthKey (a layout-only reflow, no
+    // new line). Pre-fix nothing re-pins and the reader strands at 850 while the
+    // true bottom is 1150 — the reported "list stays where it was" on send.
+    height = 1450;
+    fireResize();
+    flushRaf();
+    expect(scroller.scrollTop).toBe(1150); // 1450 - 300, back at the true bottom
+    expect(cap.get().atBottom).toBe(true);
+  });
+
+  it("does NOT re-pin a reader who has scrolled up when the scroller reflows", () => {
+    let height = 1000;
+    const clientHeight = 300;
+    const scroller = makeClampingScroller(() => height, clientHeight);
+    const cap = capture();
+    render(<Harness growthKey={1} scroller={scroller} onState={cap.onState} />);
+    flushRaf();
+    // Reader scrolls up into history; the scroll listener flips atBottom false.
+    scroller.scrollTop = 100;
+    act(() => {
+      scroller.dispatchEvent(new Event("scroll"));
+    });
+    expect(cap.get().atBottom).toBe(false);
+    // A reflow grows the content while they read — they must not be yanked.
+    height = 1600;
+    fireResize();
+    flushRaf();
+    expect(scroller.scrollTop).toBe(100);
+    expect(cap.get().atBottom).toBe(false);
   });
 });
