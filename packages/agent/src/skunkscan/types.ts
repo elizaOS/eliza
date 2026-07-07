@@ -56,6 +56,23 @@ export type WalletWhaleSummary = {
   reasons: string[];
 };
 
+export type WalletEvidenceItem = {
+  id: string;
+  category:
+    | "identity"
+    | "activity"
+    | "age"
+    | "funding"
+    | "portfolio"
+    | "defi"
+    | "risk"
+    | "whale"
+    | "behavior";
+  severity: "info" | "low" | "medium" | "high";
+  title: string;
+  description: string;
+};
+
 export type WalletDeFiProtocol = {
   programId: string;
   protocol: string;
@@ -177,6 +194,7 @@ export type WalletInvestigationResult = {
   defi?: WalletDeFiSummary;
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
+  evidence?: WalletEvidenceItem[];
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
