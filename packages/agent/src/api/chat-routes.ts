@@ -43,6 +43,7 @@ import type {
 } from "@elizaos/shared";
 import {
   asRecord,
+  DELTA_STREAM_PROTOCOL,
   extractAssistantReplyText,
   isLinkedAccountProviderId,
   normalizeCharacterLanguage,
@@ -1795,6 +1796,83 @@ export function writeChatTokenSse(
   writeSse(res, { type: "token", text, fullText });
 }
 
+export { DELTA_STREAM_PROTOCOL };
+
+export type ChatTokenStreamProtocol = "legacy" | typeof DELTA_STREAM_PROTOCOL;
+
+/**
+ * The two write functions a token-stream writer needs, injected so a caller can
+ * pass its OWN (test-mockable) imports. `conversation-routes` imports
+ * `writeChatTokenSse`/`writeSse` from this module; several route tests
+ * `vi.mock` those exports to capture frames, so the writer must dispatch
+ * through the caller's references, not this module's closure-bound originals.
+ */
+export interface ChatTokenStreamWriterDeps {
+  writeChatTokenSse: typeof writeChatTokenSse;
+  writeSse: typeof writeSse;
+}
+
+/**
+ * Framing-agnostic front for the streaming chat token wire. `legacy` reproduces
+ * the historical per-token `{text, fullText}` frame byte-for-byte; `delta-v2`
+ * ships bare `{text}` deltas and re-sends the accumulated `fullText` only on a
+ * geometric byte budget, so an M-chunk reply carries O(N) bytes instead of the
+ * legacy O(N²) (every token re-serialized its whole prefix). The protocol is
+ * negotiated per request (see `readChatRequestPayload`).
+ */
+export interface ChatTokenStreamWriter {
+  /** An incremental streamed chunk. `fullText` is the accumulated text so far. */
+  writeChunk(res: http.ServerResponse, chunk: string, fullText: string): void;
+  /** An authoritative full-text replace (structured-field rewrite, single-frame
+   *  reply). The client treats the carried `fullText` as the new buffer. */
+  writeSnapshot(res: http.ServerResponse, fullText: string): void;
+}
+
+export function createChatTokenStreamWriter(
+  protocol: ChatTokenStreamProtocol,
+  deps: ChatTokenStreamWriterDeps,
+): ChatTokenStreamWriter {
+  if (protocol === "legacy") {
+    return {
+      writeChunk(res, chunk, fullText) {
+        deps.writeChatTokenSse(res, chunk, fullText);
+      },
+      writeSnapshot(res, fullText) {
+        deps.writeChatTokenSse(res, fullText, fullText);
+      },
+    };
+  }
+
+  // delta-v2. Snapshot cost is amortized geometrically: a full-text frame is
+  // re-sent only after at least as many delta bytes have streamed as the
+  // previous snapshot's length (floor 2048 so short replies still self-heal on
+  // a dropped/reordered delta). Snapshots therefore land at ~2048, 4096, 8192,
+  // … bytes — genuinely periodic — and their bytes sum to ~2N, keeping the
+  // total wire (deltas N + snapshots 2N) linear in reply length. A fixed
+  // every-K-tokens cadence would still be O(N²/K) and is intentionally avoided.
+  let bytesSinceSnapshot = 0;
+  let lengthAtLastSnapshot = 0;
+  return {
+    writeChunk(res, chunk, fullText) {
+      bytesSinceSnapshot += chunk.length;
+      if (bytesSinceSnapshot >= Math.max(2048, lengthAtLastSnapshot)) {
+        deps.writeSse(res, { type: "token", text: chunk, fullText });
+        bytesSinceSnapshot = 0;
+        lengthAtLastSnapshot = fullText.length;
+      } else {
+        deps.writeSse(res, { type: "token", text: chunk });
+      }
+    },
+    writeSnapshot(res, fullText) {
+      // No `text` field: the client reads `fullText` as an authoritative
+      // replace rather than an append.
+      deps.writeSse(res, { type: "token", fullText });
+      bytesSinceSnapshot = 0;
+      lengthAtLastSnapshot = fullText.length;
+    },
+  };
+}
+
 export function writeChatStatusSse(
   res: http.ServerResponse,
   status: ChatTurnStatus,
@@ -2046,6 +2124,10 @@ export async function readChatRequestPayload(
   /** Client-supplied idempotency key (see `isDuplicateChatMessage`); absent
    *  when the client did not stamp one. */
   clientMessageId?: string;
+  /** Present only when the client advertised the exact delta-v2 wire protocol;
+   *  drives `createChatTokenStreamWriter`. Unknown values are ignored so the
+   *  server stays on legacy framing for un-negotiated clients. */
+  streamProtocol?: typeof DELTA_STREAM_PROTOCOL;
 } | null> {
   const body = await helpers.readJsonBody<{
     text?: string;
@@ -2055,6 +2137,7 @@ export async function readChatRequestPayload(
     source?: string;
     metadata?: Record<string, unknown>;
     clientMessageId?: string;
+    streamProtocol?: string;
   }>(req, res, { maxBytes });
   if (!body) return null;
   const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
@@ -2096,6 +2179,10 @@ export async function readChatRequestPayload(
       ? body.metadata
       : undefined;
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
+  const streamProtocol =
+    body.streamProtocol === DELTA_STREAM_PROTOCOL
+      ? DELTA_STREAM_PROTOCOL
+      : undefined;
   return {
     prompt: normalizedPrompt,
     channelType,
@@ -2104,6 +2191,7 @@ export async function readChatRequestPayload(
     ...(source ? { source } : {}),
     ...(metadata ? { metadata } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
+    ...(streamProtocol ? { streamProtocol } : {}),
   };
 }
 

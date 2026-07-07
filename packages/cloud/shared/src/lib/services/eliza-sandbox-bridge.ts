@@ -230,6 +230,11 @@ export class ElizaSandboxBridgeService {
     }
 
     const messageId = crypto.randomUUID();
+    // Accumulate across frames: a delta-v2 agent (client `streamProtocol` can
+    // ride through the bridge to it) ships bare `{type:"token",text}` deltas and
+    // resends `fullText` only on a periodic snapshot, so the downstream
+    // `fullText`/done text must be rebuilt here, not read off each frame.
+    let accumulated = "";
     const stream = response.body
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(
@@ -244,13 +249,18 @@ export class ElizaSandboxBridgeService {
               }
               try {
                 const data = JSON.parse(dataLine.slice(6));
-                if (data?.type === "token" && typeof data.text === "string") {
+                if (data?.type === "token") {
+                  const delta = typeof data.text === "string" ? data.text : "";
+                  accumulated =
+                    typeof data.fullText === "string"
+                      ? data.fullText
+                      : accumulated + delta;
                   controller.enqueue(
                     `event: chunk\ndata: ${JSON.stringify({
                       messageId,
-                      chunk: data.text,
-                      text: data.text,
-                      fullText: typeof data.fullText === "string" ? data.fullText : data.text,
+                      chunk: delta,
+                      text: delta,
+                      fullText: accumulated,
                       timestamp: Date.now(),
                     })}\n\n`,
                   );
@@ -260,7 +270,7 @@ export class ElizaSandboxBridgeService {
                   controller.enqueue(
                     `event: done\ndata: ${JSON.stringify({
                       messageId,
-                      text: typeof data.fullText === "string" ? data.fullText : "",
+                      text: typeof data.fullText === "string" ? data.fullText : accumulated,
                     })}\n\n`,
                   );
                   continue;

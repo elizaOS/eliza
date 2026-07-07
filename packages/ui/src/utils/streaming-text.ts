@@ -4,6 +4,8 @@
  */
 export {
   computeStreamingDelta,
+  DELTA_STREAM_PROTOCOL,
+  type DeltaStreamProtocol,
   mergeStreamingText,
   resolveStreamingUpdate,
   type StreamingUpdateResult,
