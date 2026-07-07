@@ -149,6 +149,14 @@ const trust = analyzeWalletTrust(
   risk,
 );
 
+const caseSummary = analyzeWalletCaseSummary(
+  age,
+  risk,
+  whale,
+  defi,
+  behavior,
+);
+
 const investigationReplay = analyzeInvestigationReplay(
   portfolio,
   activity,
@@ -161,14 +169,6 @@ const investigationReplay = analyzeInvestigationReplay(
   whale,
   trust,
   caseSummary,
-);
-
-const caseSummary = analyzeWalletCaseSummary(
-  age,
-  risk,
-  whale,
-  defi,
-  behavior,
 );
 
 const evidence = analyzeWalletEvidence(
