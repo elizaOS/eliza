@@ -1,7 +1,7 @@
 /** Runs a live sandbox smoke path for agent plugin isolation and runtime launch behavior. */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import type { IAgentRuntime, UUID } from "@elizaos/core";
+import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
 import {
   E2BRemoteCapabilityRouterService,
   type E2BSandboxFactory,
@@ -38,9 +38,14 @@ for (const target of targets) {
   try {
     outcomes.push(await runTarget(target));
   } catch (error) {
+    // A CAPABILITY_UNAVAILABLE thrown from the router means the provider is not
+    // configured/installed in this environment (e.g. the e2b factory plugin is
+    // absent, or credentials are partial) — that is a SKIP, not a failure. The
+    // `strict && skipped` gate below still fails-closed under --strict. Any
+    // other error is a genuine smoke failure and stays `failed`.
     outcomes.push({
       target,
-      status: "failed",
+      status: isCapabilityUnavailable(error) ? "skipped" : "failed",
       message: error instanceof Error ? error.message : String(error),
     });
   }
@@ -80,6 +85,22 @@ async function runSandboxProviderSmoke(
   // sandbox factory so the router can reach the e2b provider in this smoke.
   const factory =
     provider === "e2b" ? await loadE2BSandboxFactory(runtime) : undefined;
+  // In non-strict mode a provider that cannot initialize is a SKIP, not a
+  // failure: `--strict` is the fail-closed switch (the workflow only passes it
+  // on manual dispatch), so a routine push smoke must stay green when a
+  // provider is genuinely unconfigurable in this environment. Here the e2b
+  // backend is unreachable whenever its optional plugin (and the `e2b` SDK it
+  // pulls in) is not installed — surface that as a clear skip up front rather
+  // than letting the router throw CAPABILITY_UNAVAILABLE mid-run and reading as
+  // a hard failure.
+  if (provider === "e2b" && !factory) {
+    return {
+      target: provider,
+      status: "skipped",
+      message:
+        "e2b backend unavailable: @elizaos/plugin-e2b-sandbox is not installed (add the plugin, or run with --strict to fail-close).",
+    };
+  }
   const service = new E2BRemoteCapabilityRouterService(
     runtime,
     undefined,
@@ -344,6 +365,12 @@ function requireObject(value: unknown, label: string): JsonRecord {
 
 function isObject(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isCapabilityUnavailable(error: unknown): boolean {
+  return (
+    error instanceof CapabilityError && error.code === "CAPABILITY_UNAVAILABLE"
+  );
 }
 
 async function withTimeout<T>(
