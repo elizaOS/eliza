@@ -395,6 +395,105 @@ describe("JS-measured bottom reclaim is PRESENT and INSTALL-GUARDED (durable dev
     expect(indexSrc).toContain("installStandaloneBottomReclaim");
   });
 
+  // ===================================================================
+  // THE REAL-CHAIN GUARD (#15178). The `init.ts` test above pins the ui
+  // `setupPlatformStyles`, but the installed iOS standalone PWA does NOT boot
+  // through that function — `packages/app/src/main.tsx` defines and calls its
+  // OWN local `setupPlatformStyles()` (the ui one is only reachable from unit
+  // tests). #15178's WIP (f903c59) dropped the installer from that LOCAL
+  // function and the "restore" landed only in the orphaned ui copy, so the
+  // installer never ran on device (chip: `rc?` / `rcw:off`) while every jsdom
+  // test above stayed green. These assertions read the ACTUAL app entry file so
+  // an orphaned installer turns CI RED at the real boot path, not just in the
+  // ui-only copy. THIS is the test that would have caught the regression.
+  const appMainPath = resolve(process.cwd(), "../app/src/main.tsx");
+
+  it("the app entry (main.tsx) EXISTS and is the file under contract", () => {
+    expect(
+      existsSync(appMainPath),
+      "packages/app/src/main.tsx must exist — it is the real installed-PWA boot path",
+    ).toBe(true);
+  });
+
+  it("app/main.tsx IMPORTS the reclaim installer + gate (the real boot path resolves them)", () => {
+    const mainSrc = readFileSync(appMainPath, "utf8");
+    expect(
+      mainSrc,
+      "main.tsx must import installStandaloneBottomReclaim (else the installer is orphaned on the live entry path — #15178)",
+    ).toContain("installStandaloneBottomReclaim");
+    expect(
+      mainSrc,
+      "main.tsx must import shouldInstallStandaloneBottomReclaim (the platform gate)",
+    ).toContain("shouldInstallStandaloneBottomReclaim");
+    expect(
+      mainSrc,
+      "main.tsx must import clearStandaloneBottomReclaim (the non-standalone hard-0 branch)",
+    ).toContain("clearStandaloneBottomReclaim");
+  });
+
+  it("app/main.tsx CALLS the installer behind the gate INSIDE its local setupPlatformStyles (removal => red CI, not a silent device regression)", () => {
+    const mainSrc = readFileSync(appMainPath, "utf8");
+    // The gate must wrap the install call (not merely import it): same invariant
+    // the init.ts test pins, but on the file that actually runs on device.
+    const gatedInstall =
+      /shouldInstallStandaloneBottomReclaim\(\{[\s\S]*?\}\)[\s\S]*?\)\s*\{[\s\S]*?installStandaloneBottomReclaim\(\)/;
+    expect(
+      gatedInstall.test(mainSrc),
+      "main.tsx must call installStandaloneBottomReclaim() inside the shouldInstall gate (this is the #15178 load-bearing line on the REAL boot path)",
+    ).toBe(true);
+    // ...and the else branch clears on non-standalone surfaces.
+    expect(
+      mainSrc,
+      "main.tsx must clear the reclaim var on the non-standalone branch",
+    ).toContain("clearStandaloneBottomReclaim()");
+  });
+
+  it("the installer + gate live INSIDE the local setupPlatformStyles that main() invokes (tree-shake / orphan proof)", () => {
+    const mainSrc = readFileSync(appMainPath, "utf8");
+    // Isolate the local setupPlatformStyles body and assert the install gate is
+    // WITHIN it — so a future refactor cannot move the call out of the function
+    // that the boot path actually calls and re-orphan the installer.
+    const fnMatch = mainSrc.match(
+      /function setupPlatformStyles\(\)\s*:\s*void\s*\{([\s\S]*?)\n\}/,
+    );
+    expect(
+      fnMatch,
+      "main.tsx must define a local setupPlatformStyles() — the function main() calls on the PWA boot path",
+    ).not.toBeNull();
+    const body = fnMatch?.[1] ?? "";
+    expect(
+      body,
+      "installStandaloneBottomReclaim() must be called INSIDE main.tsx's local setupPlatformStyles (not orphaned elsewhere)",
+    ).toContain("installStandaloneBottomReclaim(");
+    expect(
+      body,
+      "the platform gate must guard the install INSIDE setupPlatformStyles",
+    ).toContain("shouldInstallStandaloneBottomReclaim(");
+    // And that function is actually invoked on the boot path (not just defined).
+    expect(
+      mainSrc.match(/\n\s*setupPlatformStyles\(\);/g)?.length ?? 0,
+      "main() must call setupPlatformStyles() on the boot path",
+    ).toBeGreaterThan(0);
+  });
+
+  it("the reclaim module exposes the wiring witness (rcw:on/off/clear) for device diagnostics", () => {
+    const reclaimSrc = readFileSync(
+      resolve(uiSrc, "platform/standalone-bottom-reclaim.ts"),
+      "utf8",
+    );
+    // The chip must be able to distinguish "installer never ran" (rcw:off, the
+    // #15178 signature) from "installer ran, measured 0" (rcw:on, rc0).
+    expect(reclaimSrc).toContain("getStandaloneBottomReclaimState");
+    const badgeSrc = readFileSync(
+      resolve(uiSrc, "components/shell/BuildBadge.tsx"),
+      "utf8",
+    );
+    expect(
+      badgeSrc,
+      "the build-badge chip must surface the reclaim wiring state (rcw) so device debugging is unambiguous",
+    ).toContain("getStandaloneBottomReclaimState");
+  });
+
   it("the composer overlay applies the measured reclaim offset at rest", () => {
     const overlaySrc = readFileSync(
       resolve(uiSrc, "components/shell/ContinuousChatOverlay.tsx"),

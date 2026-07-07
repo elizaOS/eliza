@@ -217,6 +217,7 @@ export function clearStandaloneBottomReclaim(): void {
   // Forget any frozen resting gap: a surface re-initialised as non-standalone
   // must not re-serve a stale iOS collapse value if it later re-arms.
   lastRestingGap = 0;
+  reclaimWiringState = "cleared";
   if (typeof document === "undefined") return;
   document.documentElement.style.setProperty(RECLAIM_VAR, "0px");
 }
@@ -245,6 +246,29 @@ export function shouldInstallStandaloneBottomReclaim({
  * listeners before attaching new ones — no duplicate listeners, no leak.
  */
 let activeDisposer: (() => void) | null = null;
+
+/**
+ * Boot-path wiring witness. `null` until either branch of the install gate runs;
+ * `"installed"` once {@link installStandaloneBottomReclaim} arms the listeners;
+ * `"cleared"` once {@link clearStandaloneBottomReclaim} zeroes the var. This is
+ * the DEVICE-DEBUG signal that closes the #15178 blind spot: a chip reading
+ * `rc?` (var unset) AND `off` here proves the installer was never called on the
+ * live boot path (an import/wiring gap), vs `on0` which proves it ran and simply
+ * measured no collapse. Read via {@link getStandaloneBottomReclaimState}.
+ */
+let reclaimWiringState: "installed" | "cleared" | null = null;
+
+/**
+ * Report whether the reclaim install gate has run on THIS surface, for the
+ * build-badge diagnostics chip. `"off"` = gate never ran (installer not wired
+ * into the live entry path — the #15178 regression); `"on"` = installer armed;
+ * `"clear"` = explicitly zeroed on a non-standalone surface.
+ */
+export function getStandaloneBottomReclaimState(): "on" | "clear" | "off" {
+  if (reclaimWiringState === "installed") return "on";
+  if (reclaimWiringState === "cleared") return "clear";
+  return "off";
+}
 
 /**
  * Install the standalone bottom-reclaim: measure once now, then re-measure on
@@ -294,6 +318,8 @@ export function installStandaloneBottomReclaim(): () => void {
   vv?.addEventListener("scroll", schedule);
   window.addEventListener("resize", schedule);
   window.addEventListener("orientationchange", schedule);
+
+  reclaimWiringState = "installed";
 
   const dispose = (): void => {
     if (rafId !== null && typeof window.cancelAnimationFrame === "function") {
