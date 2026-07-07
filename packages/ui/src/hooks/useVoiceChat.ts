@@ -33,6 +33,7 @@ import {
   type TalkModeStateEvent,
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
+import { APP_PAUSE_EVENT } from "../events";
 import { resolveApiUrl } from "../utils";
 import { getElizaApiToken } from "../utils/eliza-globals";
 import {
@@ -40,7 +41,6 @@ import {
   ttsDebug,
   ttsDebugTextPreview,
 } from "../utils/tts-debug";
-import { APP_PAUSE_EVENT } from "../events";
 import { hasConfiguredApiKey } from "../voice";
 import {
   isLocalAsrCaptureSupported,
