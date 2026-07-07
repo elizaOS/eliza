@@ -24,7 +24,10 @@ import {
   type NewJob,
   prepareJobInsertData,
 } from "../../db/repositories/jobs";
-import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import {
+  agentSandboxes,
+  UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
+} from "../../db/schemas/agent-sandboxes";
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
 import { jobs } from "../../db/schemas/jobs";
@@ -760,6 +763,74 @@ export function resolvePerJobTimeoutMs(jobType: string): number {
   return COLD_BOOT_JOB_TYPES.has(jobType as ProvisioningJobType)
     ? Math.max(PER_JOB_TIMEOUT_MS, COLD_BOOT_STALE_JOB_THRESHOLD_MS)
     : PER_JOB_TIMEOUT_MS;
+}
+
+/**
+ * Machine-readable trailer appended to `agent_sandboxes.error_message` when an
+ * AGENT_UPGRADE exhausts retries on a ROLLBACK-SAFE failure (the old container
+ * still serves). Encodes the exhausted TARGET digest so the fleet reconciler
+ * can re-arm the agent when a NEWER target digest is published, instead of
+ * excluding the row from all future upgrades forever. Kept in error_message to
+ * avoid a schema migration (mission constraint) while staying strictly
+ * additive: pre-existing rows have no trailer and parse to `null`.
+ *
+ * Format (single line, trailer at END so the human-readable cause stays first):
+ *   `<human message> [upgrade-failed-target:<digest>]`
+ * `<digest>` is the resolved sha256 target ref; `unknown` when the exhausted
+ * job carried no target digest (defensive). The prefix constant lives in the
+ * schema layer (`UPGRADE_FAILURE_TARGET_MARKER_PREFIX`) so the reconciler query
+ * can share it without a service↔repository import cycle.
+ */
+export function buildUpgradeFailureMarker(
+  maxAttempts: number,
+  cause: string,
+  toDigest: string | null,
+): string {
+  const target = toDigest && toDigest.length > 0 ? toDigest : "unknown";
+  return `Upgrade permanently failed after ${maxAttempts} attempts: ${cause} ${UPGRADE_FAILURE_TARGET_MARKER_PREFIX}${target}]`;
+}
+
+/**
+ * Parse the exhausted TARGET digest out of a rollback-safe upgrade-failure
+ * error_message. Returns null when no trailer is present (a non-upgrade error,
+ * a pre-existing row, or an `unknown` target), so callers treat "no recorded
+ * target" as "do not re-arm on target change" (conservative).
+ */
+export function parseUpgradeFailureTargetDigest(errorMessage: string | null): string | null {
+  if (!errorMessage) return null;
+  const start = errorMessage.lastIndexOf(UPGRADE_FAILURE_TARGET_MARKER_PREFIX);
+  if (start === -1) return null;
+  const from = start + UPGRADE_FAILURE_TARGET_MARKER_PREFIX.length;
+  const end = errorMessage.indexOf("]", from);
+  if (end === -1) return null;
+  const digest = errorMessage.slice(from, end);
+  return digest === "unknown" || digest.length === 0 ? null : digest;
+}
+
+/**
+ * Thrown by `executeAgentUpgrade` when `executeUpgrade` reports a failure,
+ * carrying the rollback-safe classification through the worker's generic
+ * catch → `incrementAttempt` → `buildPermanentFailureWriteback` path.
+ *
+ * `rolledBack === true` means the OLD container is still serving (a
+ * rollback-safe failure); the permanent-failure writeback must NOT mark the
+ * sandbox terminal. `rolledBack === false` means the agent is genuinely not
+ * serving on the old container, so the terminal error writeback is correct.
+ * `toDigest` is the target the exhausted upgrade was aiming at, recorded so
+ * the reconciler can re-arm the agent when a NEWER target digest is published
+ * (a rollback-safe exclusion must not be permanent — always-on agents that hit
+ * a transient rollback-safe failure must still receive future security
+ * patches). See #15357 / lalalune's #15311 review.
+ */
+export class UpgradeFailedError extends Error {
+  readonly rolledBack: boolean;
+  readonly toDigest: string;
+  constructor(message: string, opts: { rolledBack: boolean; toDigest: string }) {
+    super(message);
+    this.name = "UpgradeFailedError";
+    this.rolledBack = opts.rolledBack;
+    this.toDigest = opts.toDigest;
+  }
 }
 
 export class ProvisioningJobService {
@@ -1649,7 +1720,11 @@ export class ProvisioningJobService {
         // `onFailedInTx` makes both commit together (or roll back together,
         // so the recovery cron re-runs the whole thing). The cron stays as
         // the backstop, never the primary signal.
-        const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg);
+        // Rollback-safe classification only exists for AGENT_UPGRADE failures
+        // (thrown as UpgradeFailedError). For every other job type this is
+        // undefined and the writeback ignores it.
+        const upgradeFailure = err instanceof UpgradeFailedError ? err : undefined;
+        const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
         const updated = await jobsRepository.incrementAttempt(
           job.id,
           errorMsg,
@@ -1694,6 +1769,7 @@ export class ProvisioningJobService {
   private buildPermanentFailureWriteback(
     job: Job,
     errorMsg: string,
+    upgradeFailure?: UpgradeFailedError,
   ): ((tx: DbTransaction, failedJob: Job) => Promise<void>) | undefined {
     switch (job.type) {
       // Mark the sandbox "error" so the UI reflects reality instead of staying
@@ -1715,19 +1791,76 @@ export class ProvisioningJobService {
           });
         };
       }
+      // A permanently-exhausted AGENT_UPGRADE is NOT uniformly terminal. Most
+      // upgrade failures are ROLLBACK-SAFE (blue provision/health/digest/runtime
+      // /snapshot/swap failures) — executeUpgrade never tears down the OLD
+      // container before a successful atomic swap, so the agent keeps serving on
+      // its previous version. Marking such a row `status:"error"` would (1) make
+      // the dedicated proxy reject live traffic (dedicated-agent-proxy.ts) and
+      // (2) expose the still-live container to the orphan reconciler
+      // (docker-node-workloads.ts) — killing a healthy agent. So:
+      //   - rollback-safe (default, and the only genuinely-safe failure class):
+      //     keep `status:"running"`, record the failure + the exhausted target
+      //     digest in error_message so the reconciler stops re-enqueuing the
+      //     SAME doomed target, WITHOUT declaring the live sandbox terminal.
+      //     Encoding the target digest lets the reconciler re-arm the agent for
+      //     a NEWER target (see listRunningWithDigestOtherThan) so a transient
+      //     rollback-safe failure never permanently freezes an always-on agent
+      //     out of future security patches.
+      //   - genuinely-dead (rolledBack === false, e.g. the agent was already not
+      //     running): keep the terminal `status:"error"` writeback, mirroring
+      //     AGENT_PROVISION, so the UI reflects reality.
       case JOB_TYPES.AGENT_UPGRADE: {
-        const { agentId } = readAgentUpgradeJobData(job);
+        const upgradeData = readAgentUpgradeJobData(job);
+        const { agentId } = upgradeData;
+        // Classification is carried on the thrown UpgradeFailedError. Absent it
+        // (defensive: an upgrade that failed via the outer worker path — a
+        // withTimeout(...) wrap or an unexpected throw BEFORE executeUpgrade
+        // returns success:false — so no UpgradeFailedError is constructed),
+        // default to rollback-safe: never error a possibly-live agent on an
+        // unknown cause. Fall back to the job's own target digest (always
+        // present in the job data) so the re-armable marker still records the
+        // EXACT exhausted target — otherwise the reconciler's target-scoped
+        // skip would immediately re-enqueue the same doomed target and recreate
+        // the retry storm this marker prevents (codex #15357 P2).
+        const rolledBack = upgradeFailure?.rolledBack ?? true;
+        // Prefer the classification's target, but treat an empty/absent error
+        // digest as "not carried" and fall back to the job's own target (always
+        // present, validated by readAgentUpgradeJobData) so the re-armable marker
+        // ALWAYS records the EXACT exhausted target. A `??` alone would let an
+        // empty-string error digest through and degrade the marker to "unknown".
+        const errorDigest = upgradeFailure?.toDigest;
+        const toDigest =
+          errorDigest && errorDigest.length > 0 ? errorDigest : upgradeData.toDigest || null;
+        if (!rolledBack) {
+          // Genuinely-dead old container: terminal, like AGENT_PROVISION.
+          return async (tx) => {
+            await tx
+              .update(agentSandboxes)
+              .set({
+                status: "error",
+                error_message: `Upgrade permanently failed after ${job.max_attempts} attempts (agent not serving): ${errorMsg}`,
+                updated_at: new Date(),
+              })
+              .where(eq(agentSandboxes.id, agentId));
+            logger.warn(
+              "[provisioning-jobs] Marked sandbox error after permanent upgrade failure on a non-serving agent",
+              { jobId: job.id, agentId },
+            );
+          };
+        }
+        // Rollback-safe: keep the agent running, record a re-armable marker.
         return async (tx) => {
           await tx
             .update(agentSandboxes)
             .set({
-              error_message: `Upgrade permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
+              error_message: buildUpgradeFailureMarker(job.max_attempts, errorMsg, toDigest),
               updated_at: new Date(),
             })
             .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.status, "running")));
           logger.warn(
-            "[provisioning-jobs] Recorded permanent upgrade failure without marking sandbox terminal",
-            { jobId: job.id, agentId },
+            "[provisioning-jobs] Recorded rollback-safe upgrade failure without marking sandbox terminal",
+            { jobId: job.id, agentId, failedTargetDigest: toDigest },
           );
         };
       }
@@ -2275,7 +2408,20 @@ export class ProvisioningJobService {
       // Failures are visible by the row staying on the OLD image_digest; the
       // reconciler will try again on the next cycle. The worker's standard
       // error handling marks the job failed and stores this error message.
-      throw new Error(result.error ?? "Unknown agent_upgrade failure");
+      //
+      // Carry executeUpgrade's rollback-safe classification through the generic
+      // catch → incrementAttempt → buildPermanentFailureWriteback path so the
+      // permanent-failure writeback can distinguish a still-serving old
+      // container (rollback-safe: keep `running`) from a genuinely-down agent
+      // (keep the terminal error writeback). Default UNKNOWN classifications to
+      // rollback-safe (`true`): erroring a still-serving agent (proxy rejects
+      // live traffic + orphan reconciler reaps it) is strictly worse than
+      // leaving a genuinely-dead agent non-terminal (the stuck-recovery cron is
+      // the backstop for that case).
+      throw new UpgradeFailedError(result.error ?? "Unknown agent_upgrade failure", {
+        rolledBack: result.rolledBack ?? true,
+        toDigest: data.toDigest,
+      });
     }
 
     const jobResult: AgentUpgradeJobResult = {

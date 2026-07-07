@@ -210,7 +210,7 @@ describe("AgentSandboxesRepository", () => {
       throw new Error("listRunningWithDigestOtherThan did not build a where clause");
     const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
     // Only running, non-deleted, default-image, non-pool rows on a stale digest
-    // with no explicit failure marker are upgrade candidates...
+    // that are not already-exhausted against THIS target are upgrade candidates...
     expect(sql).toContain("status");
     expect(sql).toContain("is distinct from");
     expect(sql).toContain("error_message");
@@ -234,6 +234,39 @@ describe("AgentSandboxesRepository", () => {
     expect(sql).toContain("reverse");
     expect(params).toContain("ghcr.io/elizaos/eliza-agent");
     expect(params).not.toContain("ghcr.io/elizaos/eliza-agent:prod");
+  });
+
+  test("fleet-upgrade candidates re-arm on a NEW target after a rollback-safe upgrade failure (#15357)", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    const { UPGRADE_FAILURE_TARGET_MARKER_PREFIX } = await import("../schemas/agent-sandboxes");
+
+    const targetDigest = "sha256:target";
+    await new AgentSandboxesRepository().listRunningWithDigestOtherThan(
+      targetDigest,
+      "ghcr.io/elizaos/eliza-agent:prod",
+      5,
+    );
+
+    if (!capturedWhere)
+      throw new Error("listRunningWithDigestOtherThan did not build a where clause");
+    const { sql, params } = new PgDialect().sqlToQuery(capturedWhere);
+    const lower = sql.toLowerCase();
+
+    // The rollback-safe exclusion must be digest-AWARE, not a blanket
+    // `error_message IS NULL`. A single transient rollback-safe failure must
+    // NOT permanently freeze an always-on agent out of ALL future upgrades
+    // (NubsCarson's #15311 adversarial finding). The predicate re-arms the row
+    // for a NEWER target while still skipping a re-enqueue of the SAME doomed
+    // target. Assert both the marker probe and the exact-target probe are
+    // present, and that the target-scoped bind carries THIS target digest.
+    expect(lower).toContain("error_message");
+    expect(lower).toContain("not like");
+    // Marker-presence bind (any upgrade-failure marker) and the exact-target
+    // bind (marker for THIS target only) are both parameterized.
+    expect(params).toContain(`%${UPGRADE_FAILURE_TARGET_MARKER_PREFIX}%`);
+    expect(params).toContain(`%${UPGRADE_FAILURE_TARGET_MARKER_PREFIX}${targetDigest}]%`);
   });
 
   test("backup inserts encrypt state_data at rest and hydration returns plaintext", async () => {

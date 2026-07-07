@@ -4916,18 +4916,44 @@ export class ElizaSandboxService {
     newContainerName?: string;
     newDigest?: string | null;
     error?: string;
+    /**
+     * True when this failure is ROLLBACK-SAFE: the OLD container was never torn
+     * down (or was confirmed alive) and is still serving traffic, so the upgrade
+     * failed WITHOUT taking the agent down. The permanent-failure writeback must
+     * NOT mark such a sandbox terminal — doing so makes the dedicated proxy
+     * reject live traffic (dedicated-agent-proxy.ts) and exposes the still-live
+     * container to the orphan reconciler (docker-node-workloads.ts). Undefined
+     * on success. `false` means the agent is genuinely not serving on the old
+     * container (e.g. it was already not running), so the terminal error
+     * writeback is correct.
+     *
+     * INVARIANT: every `success:false` path in executeUpgrade below returns
+     * before the atomic swap commits, so the OLD container is untouched — the
+     * blue/health/digest/runtime/snapshot/swap-failure paths all tear down ONLY
+     * the freshly-provisioned blue and leave old alive. The only genuinely-dead
+     * outcome is `Agent not running` (old already not serving); `Agent not
+     * found` is intercepted upstream by completeIfAgentGone and never reaches
+     * the writeback. See #15357 / lalalune's #15311 review.
+     */
+    rolledBack?: boolean;
   }> {
     const agent = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!agent) return { success: false, error: "Agent not found" };
     if (agent.status !== "running") {
+      // Genuinely-dead: the old container is not serving (status is not
+      // running), so the terminal error writeback is correct here.
       return {
         success: false,
+        rolledBack: false,
         error: `Agent not running (status: ${agent.status})`,
       };
     }
     if (!agent.node_id || !agent.container_name) {
+      // Shared-runtime / web-only row: nothing was torn down. The old serving
+      // path is untouched. (These are already excluded by the reconciler.)
       return {
         success: false,
+        rolledBack: true,
         error: "Agent has no node_id or container_name to upgrade from",
       };
     }
@@ -4940,8 +4966,10 @@ export class ElizaSandboxService {
     // re-provisions on the target image+digest, so moving a fleet-managed agent
     // to the current default is safe regardless of its current tag.
     if (agent.docker_image && imageRepo(agent.docker_image) !== imageRepo(dockerImage)) {
+      // Refusal before any container work: old container is untouched and live.
       return {
         success: false,
+        rolledBack: true,
         error: "Agent uses a custom docker image; refusing fleet upgrade",
       };
     }
@@ -4951,8 +4979,12 @@ export class ElizaSandboxService {
     const oldSandboxId = agent.sandbox_id;
     const oldNode = await dockerNodesRepository.findByNodeId(oldNodeId);
     if (!oldNode) {
+      // We could not resolve the old node to do a blue provision, but we did NOT
+      // touch the old container — it is still running wherever it was. Treat as
+      // rollback-safe: the agent keeps serving on the old container.
       return {
         success: false,
+        rolledBack: true,
         error: `Old node ${oldNodeId} not registered in docker_nodes`,
       };
     }
@@ -4960,8 +4992,10 @@ export class ElizaSandboxService {
     const provider = await this.getProvider();
     const { DockerSandboxProvider } = await import("./docker-sandbox-provider");
     if (!(provider instanceof DockerSandboxProvider)) {
+      // No container work happened; old container is untouched and live.
       return {
         success: false,
+        rolledBack: true,
         error: "Fleet upgrade only supported on docker provider",
       };
     }
@@ -4997,6 +5031,7 @@ export class ElizaSandboxService {
     } catch (err) {
       return {
         success: false,
+        rolledBack: true,
         oldNodeId,
         oldContainerName,
         error: `Blue provision failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -5015,6 +5050,7 @@ export class ElizaSandboxService {
       }
       return {
         success: false,
+        rolledBack: true,
         oldNodeId,
         oldContainerName,
         error: "Blue health check failed; rolled back to old container",
@@ -5036,6 +5072,7 @@ export class ElizaSandboxService {
       }
       return {
         success: false,
+        rolledBack: true,
         oldNodeId,
         oldContainerName,
         error: "Blue provisioner returned non-docker metadata",
@@ -5050,6 +5087,7 @@ export class ElizaSandboxService {
       );
       return {
         success: false,
+        rolledBack: true,
         oldNodeId,
         oldContainerName,
         error: `Blue image digest mismatch: expected ${toDigest}, got ${blueMeta.imageDigest}`,
@@ -5069,6 +5107,7 @@ export class ElizaSandboxService {
       );
       return {
         success: false,
+        rolledBack: true,
         oldNodeId,
         oldContainerName,
         error: `Blue runtime readiness gate failed: ${runtimeHealth.error}`,
@@ -5093,6 +5132,7 @@ export class ElizaSandboxService {
       );
       return {
         success: false,
+        rolledBack: true,
         oldNodeId,
         oldContainerName,
         error: `Pre-upgrade snapshot failed: ${preUpgradeSnapshot.error ?? "unknown error"}`,
@@ -5155,6 +5195,7 @@ export class ElizaSandboxService {
       );
       return {
         success: false,
+        rolledBack: true,
         oldNodeId,
         oldContainerName,
         error: `Atomic swap UPDATE failed: ${errMsg}`,

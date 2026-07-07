@@ -330,6 +330,19 @@ export const agentSandboxBackups = pgTable(
   }),
 );
 
+/**
+ * Machine-readable trailer appended to `agent_sandboxes.error_message` when an
+ * AGENT_UPGRADE exhausts retries on a ROLLBACK-SAFE failure (the old container
+ * still serves its previous version). Encodes the exhausted TARGET digest so
+ * the fleet reconciler can re-arm the agent for a NEWER target digest instead
+ * of excluding it from all future upgrades forever. Lives in error_message to
+ * avoid a schema migration; strictly additive (rows without it parse to null).
+ * Defined here (schema layer) so both the writeback (provisioning-jobs service)
+ * and the reconciler query (agent-sandboxes repository) can share it without a
+ * service↔repository import cycle. See #15357 / lalalune's #15311 review.
+ */
+export const UPGRADE_FAILURE_TARGET_MARKER_PREFIX = "[upgrade-failed-target:";
+
 export type AgentSandbox = InferSelectModel<typeof agentSandboxes>;
 export type NewAgentSandbox = InferInsertModel<typeof agentSandboxes>;
 export type StoredAgentSandboxBackup = InferSelectModel<typeof agentSandboxBackups>;

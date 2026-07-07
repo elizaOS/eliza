@@ -28,6 +28,7 @@ import {
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
+  UPGRADE_FAILURE_TARGET_MARKER_PREFIX,
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
 } from "../schemas/agent-sandboxes";
@@ -393,7 +394,26 @@ export class AgentSandboxesRepository {
           eq(agentSandboxes.status, "running"),
           sql`${agentSandboxes.deleted_at} IS NULL`,
           sql`${agentSandboxes.image_digest} IS DISTINCT FROM ${targetDigest}`,
-          sql`${agentSandboxes.error_message} IS NULL`,
+          // Skip a row ONLY when it carries a rollback-safe upgrade-failure
+          // marker for THIS EXACT target digest — i.e. the same doomed upgrade
+          // already exhausted its retries, so re-enqueuing it would just fail
+          // again against the still-serving old container. Re-arm when:
+          //   - error_message IS NULL (clean row), OR
+          //   - it has some non-upgrade error_message with no target marker
+          //     (defensive: don't let an unrelated message freeze upgrades), OR
+          //   - it has a target marker for a DIFFERENT target digest — a NEWER
+          //     image was published, which may well succeed where the old target
+          //     failed. Without this, a single transient rollback-safe failure
+          //     (SSH blip, registry hiccup) would permanently exclude an
+          //     always-on agent from ALL future fleet upgrades, including
+          //     security patches (#15357 / NubsCarson's #15311 adversarial
+          //     review). Genuinely-dead upgrade failures are `status:"error"`
+          //     and already excluded by the status filter above.
+          sql`(
+            ${agentSandboxes.error_message} IS NULL
+            OR ${agentSandboxes.error_message} NOT LIKE ${`%${UPGRADE_FAILURE_TARGET_MARKER_PREFIX}%`}
+            OR ${agentSandboxes.error_message} NOT LIKE ${`%${UPGRADE_FAILURE_TARGET_MARKER_PREFIX}${targetDigest}]%`}
+          )`,
           // Only reconcile agents on the configured default image. Per-agent
           // image overrides are intentional and must not be rolled onto the
           // global fleet tag. Match on the REPO, not the full ref: a fleet agent
