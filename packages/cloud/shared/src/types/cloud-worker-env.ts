@@ -185,6 +185,14 @@ export interface Bindings {
   /** VAPID contact subject sent to push services, e.g. `mailto:ops@example.com`. */
   ELIZA_WEB_PUSH_VAPID_SUBJECT?: string;
   AGENT_ROUTER_ORIGIN_HOST?: string;
+  /**
+   * When `"true"`/`"1"`, the agent-router reaches a running sandbox through the
+   * docker host's published bridge/web ports instead of a headscale mesh IP. The
+   * dedicated-agent proxy reads it to mirror that gate: with fallback off (the
+   * staging default), a running sandbox that has no `headscale_ip` is unroutable,
+   * so the proxy short-circuits to a readable 503 instead of a CORS-less CP 404.
+   */
+  AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK?: string;
   ELIZA_APP_WEBHOOK_GATEWAY_URL?: string;
   ELIZA_CLOUD_AGENT_BASE_DOMAIN?: string;
   WEBHOOK_GATEWAY_URL?: string;

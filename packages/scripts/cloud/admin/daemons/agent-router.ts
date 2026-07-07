@@ -49,6 +49,10 @@ const AGENT_ID_RE =
 // path open between requests, so a cold POST is rare).
 const PROXY_TAILNET_RETRY_ATTEMPTS = 1;
 const PROXY_TAILNET_RETRY_DELAY_MS = 400;
+// A `running` sandbox with no resolvable ingress (empty headscale_ip, fallback
+// off) is transient — the mesh join has not completed yet — so we advertise a
+// short client retry window rather than a terminal not-found.
+const UNROUTABLE_RETRY_AFTER_SECONDS = 5;
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
   "content-length",
@@ -305,16 +309,71 @@ function buildProxyHeaders(req: IncomingMessage, target: string): Headers {
   return headers;
 }
 
+/**
+ * CORS headers for the browser-facing agent-proxy path. nginx forwards the
+ * request here verbatim and injects nothing, so an error we return with no
+ * `access-control-allow-origin` reaches the browser as an opaque
+ * "No 'Access-Control-Allow-Origin'" failure that hides the real status (#15347).
+ * The agent's own responses already carry CORS (its `resolveCorsOrigin` reflects
+ * any origin when provisioned), so we mirror that by reflecting the caller's
+ * Origin — `*` only for a header-less (non-browser) caller, where credentials
+ * are moot.
+ */
+function corsHeaders(origin: string | undefined): Record<string, string> {
+  return {
+    "access-control-allow-origin": origin || "*",
+    vary: "origin",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "access-control-allow-headers": "authorization,content-type,x-api-key",
+  };
+}
+
+/**
+ * Response for an agent host request that resolves to no routable target. A
+ * `running` row with no ingress is "unroutable, retry" (503); anything else is a
+ * genuine not-found (404). Both carry CORS so the browser can read the status
+ * instead of an opaque CORS failure.
+ */
+export function buildUnresolvedAgentResponse(
+  sandbox: SandboxRoutingFields | null | undefined,
+  origin: string | undefined,
+): Response {
+  const unroutable = sandbox?.status === "running";
+  if (unroutable) {
+    return Response.json(
+      { error: "agent has no routable ingress yet", code: "agent_unroutable" },
+      {
+        status: 503,
+        headers: {
+          ...corsHeaders(origin),
+          "retry-after": String(UNROUTABLE_RETRY_AFTER_SECONDS),
+        },
+      },
+    );
+  }
+  return Response.json(
+    { error: "agent not found or not running" },
+    { status: 404, headers: corsHeaders(origin) },
+  );
+}
+
 async function proxyAgentRequest(
   agentId: string,
   url: URL,
   req: IncomingMessage,
 ): Promise<Response> {
-  const routing = await resolveAgentRouting(agentId);
+  const { findAgentSandboxRoutingById } = await loadDeps();
+  const sandbox = await findAgentSandboxRoutingById(agentId);
+  const routing = sandbox
+    ? resolveSandboxRouting(sandbox, {
+        allowBridgeHostFallback: isBridgeHostFallbackEnabled(),
+      })
+    : null;
   if (!routing) {
-    return Response.json(
-      { error: "agent not found or not running" },
-      { status: 404 },
+    return buildUnresolvedAgentResponse(
+      sandbox,
+      headerValue(req.headers.origin),
     );
   }
 
@@ -347,7 +406,7 @@ async function proxyAgentRequest(
   }
 }
 
-async function handleRequest(
+export async function handleRequest(
   url: URL,
   req?: IncomingMessage,
 ): Promise<Response> {
@@ -361,7 +420,18 @@ async function handleRequest(
   );
   if (!match) {
     const agentId = req ? extractAgentIdFromHost(getEffectiveHost(req)) : null;
-    if (agentId && req) return proxyAgentRequest(agentId, url, req);
+    if (agentId && req) {
+      // A browser preflights a cross-origin agent call with OPTIONS; answer it
+      // at the router with CORS so the real request is allowed to proceed even
+      // when the agent itself is unroutable (#15347). No DB lookup / proxy.
+      if (req.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: corsHeaders(headerValue(req.headers.origin)),
+        });
+      }
+      return proxyAgentRequest(agentId, url, req);
+    }
     return Response.json({ error: "not found" }, { status: 404 });
   }
   const agentId = match[1];

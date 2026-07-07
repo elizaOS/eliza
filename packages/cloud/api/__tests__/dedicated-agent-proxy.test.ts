@@ -67,17 +67,22 @@ const { handleDedicatedAgentProxy } = await import(
 const AGENT = "11111111-1111-1111-1111-111111111111";
 const ENV = { AGENT_ROUTER_ORIGIN_HOST: "cp.example.test" } as never;
 
-function makeRequest(cloudToken?: string): Request {
+function makeRequest(cloudToken?: string, origin?: string): Request {
   const headers = new Headers();
   if (cloudToken) headers.set("authorization", `Bearer ${cloudToken}`);
+  if (origin) headers.set("origin", origin);
   return new Request(`https://${AGENT}.elizacloud.ai/api/status`, { headers });
 }
 const urlOf = (r: Request) => new URL(r.url);
 
+// A running row carries a mesh IP once it has joined headscale; without it the
+// proxy short-circuits (running-but-unroutable, #15347), so the happy-path
+// fixture pins one to prove the token-swap path still routes.
 const runningDedicated = {
   id: AGENT,
   execution_tier: "dedicated-always",
   status: "running",
+  headscale_ip: "100.64.0.21",
   environment_vars: { ELIZA_API_TOKEN: "agent-secret-token" },
   agent_name: "qa",
   updated_at: new Date(),
@@ -96,7 +101,10 @@ describe("dedicated-agent-proxy — unified auth", () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
     sandboxResult = runningDedicated;
 
-    const r = makeRequest("cloud-token-abc");
+    const r = makeRequest(
+      "cloud-token-abc",
+      "https://app-staging.elizacloud.ai",
+    );
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
 
     expect(res.status).toBe(200);
@@ -107,6 +115,11 @@ describe("dedicated-agent-proxy — unified auth", () => {
     );
     expect(captured?.headers.get("x-api-key")).toBeNull();
     expect(new URL(captured?.url ?? "").hostname).toBe("cp.example.test");
+    // withCors backfills the browser Origin even though the mocked upstream
+    // ("ok") carried none, so the proxied response is never CORS-opaque (#15347).
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
   });
 
   test("NO cloud token → pass through unchanged (never injects the agent token)", async () => {
@@ -141,11 +154,16 @@ describe("dedicated-agent-proxy — unified auth", () => {
   test("owner of a NON-RUNNING agent → 202 resume, does NOT proxy to the container", async () => {
     authResult = { user: { id: "u1", organization_id: "org1" } };
     sandboxResult = { ...runningDedicated, status: "stopped" };
-    const r = makeRequest("cloud-token");
+    const r = makeRequest("cloud-token", "https://app-staging.elizacloud.ai");
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(202);
     expect(res.headers.get("Retry-After")).toBe("5");
     expect(captured).toBeNull();
+    // Regression: the 202 previously bypassed CORS entirely (this handler is
+    // mounted before Hono's cors middleware), so the browser could not read it.
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
   });
 
   test("owner of a NON-RUNNING agent WITH sufficient credits → 202 and enqueues the resume (#11583)", async () => {
@@ -168,9 +186,13 @@ describe("dedicated-agent-proxy — unified auth", () => {
       balance: 0,
       error: "Insufficient credits.",
     };
-    const r = makeRequest("cloud-token");
+    const r = makeRequest("cloud-token", "https://app-staging.elizacloud.ai");
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.status).toBe(402);
+    // Regression: browser-visible billing failure must carry CORS (#15347).
+    expect(res.headers.get("access-control-allow-origin")).toBe(
+      "https://app-staging.elizacloud.ai",
+    );
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe("insufficient_credits");
     expect(enqueueCalls).toBe(0); // no free compute
@@ -212,5 +234,90 @@ describe("dedicated-agent-proxy — unified auth", () => {
     expect(new URL(captured?.url ?? "").searchParams.get("token")).toBe(
       "attacker-cloud-token",
     );
+  });
+});
+
+/**
+ * The demo show-stopper (#15347): a staging agent is `running` but never joined
+ * headscale, so `headscale_ip` is empty and the CP returns a CORS-less 404 the
+ * browser reads as an opaque CORS error. The proxy must (a) answer preflights,
+ * (b) short-circuit the doomed CP round-trip with a readable 503, and (c)
+ * guarantee CORS on every browser-visible response.
+ */
+describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", () => {
+  const ORIGIN = "https://app-staging.elizacloud.ai";
+
+  test("OPTIONS preflight → 204 + reflected CORS, no auth/DB/proxy work", async () => {
+    authResult = "throw"; // even a total auth failure must not reach here
+    const r = new Request(`https://${AGENT}.elizacloud.ai/api/status`, {
+      method: "OPTIONS",
+      headers: { origin: ORIGIN },
+    });
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(captured).toBeNull(); // preflight is answered at the edge
+  });
+
+  test("owner + running + EMPTY headscale_ip + fallback off → 503 agent_unroutable + CORS, no CP round-trip", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, headscale_ip: "" };
+
+    const r = makeRequest("cloud-token", ORIGIN);
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("5");
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    const body = (await res.json()) as { code?: string; success?: boolean };
+    expect(body.code).toBe("agent_unroutable");
+    expect(body.success).toBe(false);
+    // The whole point: never proxy a guaranteed CORS-less 404 to the CP.
+    expect(captured).toBeNull();
+  });
+
+  test("owner + running + NULL headscale_ip → 503 (null is treated as empty)", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, headscale_ip: null };
+    const r = makeRequest("cloud-token", ORIGIN);
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(503);
+    expect(captured).toBeNull();
+  });
+
+  test("bridge-host fallback ON + running + empty ip → proxied, NOT short-circuited", async () => {
+    // The CP can reach the agent via published host ports when the operator
+    // opts into the fallback, so the worker must not pre-empt that with a 503.
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = { ...runningDedicated, headscale_ip: "" };
+    const fallbackEnv = {
+      AGENT_ROUTER_ORIGIN_HOST: "cp.example.test",
+      AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK: "1",
+    } as never;
+
+    const r = makeRequest("cloud-token", ORIGIN);
+    const res = await handleDedicatedAgentProxy(
+      r,
+      fallbackEnv,
+      urlOf(r),
+      AGENT,
+    );
+
+    expect(res.status).toBe(200);
+    expect(captured).not.toBeNull(); // proxied to the CP
+    expect(captured?.headers.get("authorization")).toBe(
+      "Bearer agent-secret-token",
+    );
+  });
+
+  test("unauthenticated pass-through still gets CORS backfilled", async () => {
+    // No valid token → pass through to the CP unchanged; the CP has no CORS, so
+    // withCors must still backfill it or the browser sees an opaque failure.
+    authResult = "throw";
+    const r = makeRequest(undefined, ORIGIN);
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(captured).not.toBeNull(); // forwarded to the CP
   });
 });

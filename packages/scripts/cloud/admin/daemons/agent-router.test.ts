@@ -1,7 +1,11 @@
 // Exercises cloud admin daemons agent router.test automation behavior with deterministic script fixtures.
+
 import { describe, expect, it } from "bun:test";
+import type { IncomingMessage } from "node:http";
 import {
+  buildUnresolvedAgentResponse,
   extractAgentIdFromHost,
+  handleRequest,
   isBridgeHostFallbackEnabled,
   resolveSandboxRouting,
   selectAgentProxyTarget,
@@ -142,6 +146,92 @@ describe("selectAgentProxyTarget", () => {
     expect(selectAgentProxyTarget(routing, "/v1/chat/completions")).toBe(
       routing.bridgeTarget,
     );
+  });
+});
+
+describe("buildUnresolvedAgentResponse — CORS-bearing failure (#15347)", () => {
+  const ORIGIN = "https://app-staging.elizacloud.ai";
+
+  it("running row with no routable ingress → 503 agent_unroutable + reflected CORS + retry-after", async () => {
+    // A `running` sandbox whose headscale_ip never persisted is the exact 48/48
+    // staging state: reachable status, no mesh IP → resolveSandboxRouting = null.
+    const res = buildUnresolvedAgentResponse(
+      { status: "running", headscale_ip: null, web_ui_port: 20001 },
+      ORIGIN,
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(res.headers.get("vary")).toBe("origin");
+    expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(res.headers.get("retry-after")).toBe("5");
+    const body = (await res.json()) as { code?: string; error?: string };
+    expect(body.code).toBe("agent_unroutable");
+  });
+
+  it("no such agent (undefined) → 404 not-found, still CORS-bearing", async () => {
+    const res = buildUnresolvedAgentResponse(undefined, ORIGIN);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(res.headers.get("retry-after")).toBeNull();
+    const body = (await res.json()) as { error?: string; code?: string };
+    expect(body.error).toBe("agent not found or not running");
+    expect(body.code).toBeUndefined();
+  });
+
+  it("non-running row (pending/stopped) with empty ip → 404, NOT 503 (only running is 'unroutable')", () => {
+    for (const status of ["pending", "stopped", "disconnected"]) {
+      const res = buildUnresolvedAgentResponse(
+        { status, headscale_ip: "", web_ui_port: 20001 },
+        ORIGIN,
+      );
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("header-less (non-browser) caller → wildcard origin", () => {
+    const res = buildUnresolvedAgentResponse(
+      { status: "running", headscale_ip: null, web_ui_port: 20001 },
+      undefined,
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
+
+describe("handleRequest — agent-host CORS preflight (#15347)", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const HOST = `${AGENT}.elizacloud.ai`;
+  const ORIGIN = "https://app-staging.elizacloud.ai";
+
+  function fakeReq(
+    method: string,
+    host: string,
+    origin?: string,
+  ): IncomingMessage {
+    return {
+      method,
+      headers: origin ? { host, origin } : { host },
+      socket: { remoteAddress: "127.0.0.1" },
+    } as unknown as IncomingMessage;
+  }
+
+  it("OPTIONS to an agent subdomain → 204 + reflected CORS, no proxy/DB hop", async () => {
+    // The preflight is answered at the router before any sandbox lookup, so a
+    // cross-origin agent call is allowed even while the agent itself is
+    // unroutable. A DB hit here would throw (no DATABASE_URL in unit env), so a
+    // clean 204 also proves the short-circuit ran before proxyAgentRequest.
+    const url = new URL(`http://${HOST}/api/agents`);
+    const res = await handleRequest(url, fakeReq("OPTIONS", HOST, ORIGIN));
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+  });
+
+  it("non-agent host with no route match → plain 404 (unchanged)", async () => {
+    const res = await handleRequest(
+      new URL("http://cp-internal.example/nope"),
+      fakeReq("GET", "cp-internal.example"),
+    );
+    expect(res.status).toBe(404);
   });
 });
 

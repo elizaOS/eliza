@@ -223,7 +223,54 @@ function extractQueryToken(request: Request, url: URL): string | null {
 }
 
 /**
+ * CORS headers for a browser-visible proxy response. The CP (nginx → agent-router)
+ * forwards verbatim and injects nothing, so its CORS-less 404/503 — and our own
+ * JSON error envelopes — reach the browser as an opaque
+ * "No 'Access-Control-Allow-Origin'" failure (#15347). Reflect the caller's
+ * Origin (mirrors the agent's own `resolveCorsOrigin`, which reflects any origin
+ * when provisioned); `*` only for a header-less non-browser caller.
+ */
+function corsHeadersFor(request: Request): Record<string, string> {
+  const origin = request.headers.get("origin");
+  return {
+    "access-control-allow-origin": origin ?? "*",
+    vary: "origin",
+    "access-control-allow-credentials": "true",
+    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "access-control-allow-headers": "authorization,content-type,x-api-key",
+  };
+}
+
+/**
+ * Guarantee CORS on a browser-visible response. Applied only when the response
+ * lacks it, so the agent's own CORS-bearing responses (the happy path) pass
+ * through untouched and only the CP's/our error responses are augmented.
+ */
+function withCors(request: Request, response: Response): Response {
+  if (response.headers.has("access-control-allow-origin")) return response;
+  const headers = new Headers(response.headers);
+  for (const [key, value] of Object.entries(corsHeadersFor(request))) {
+    headers.set(key, value);
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function isBridgeHostFallbackEnabled(env: Bindings): boolean {
+  return (
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
+    env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "1"
+  );
+}
+
+/**
  * Auth-unify + proxy a request bound for `https://<agentId>.elizacloud.ai/*`.
+ * Every browser-visible return path carries CORS (`withCors`), and a CORS
+ * preflight is answered at the edge so a cross-origin agent call is never blocked
+ * by the CP's CORS-less responses (#15347).
  */
 export function handleDedicatedAgentProxy(
   request: Request,
@@ -231,74 +278,113 @@ export function handleDedicatedAgentProxy(
   url: URL,
   agentId: string,
 ): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return Promise.resolve(
+      new Response(null, { status: 204, headers: corsHeadersFor(request) }),
+    );
+  }
   return runWithCloudBindingsAsync(env, async () => {
+    const response = await proxyDedicatedAgent(request, env, url, agentId);
+    return withCors(request, response);
+  });
+}
+
+async function proxyDedicatedAgent(
+  request: Request,
+  env: Bindings,
+  url: URL,
+  agentId: string,
+): Promise<Response> {
+  try {
+    // 1. Validate the CLOUD token. It rides in the Authorization header for
+    //    HTTP, or as `?token=` for the WebSocket upgrade. No valid token →
+    //    pass through unchanged (web UI assets, the pairing exchange, the
+    //    agent's own token); the container's auth is the backstop.
+    const queryToken = extractQueryToken(request, url);
+    // Header/cookie auth validates the ORIGINAL request (preserves every
+    // existing auth method); a query-only (WS) token validates through a
+    // synthetic header request so it takes the exact same path.
+    const authRequest = queryToken
+      ? new Request(request.url, {
+          headers: { authorization: `Bearer ${queryToken}` },
+        })
+      : request;
+    let orgId: string;
+    let userId: string;
     try {
-      // 1. Validate the CLOUD token. It rides in the Authorization header for
-      //    HTTP, or as `?token=` for the WebSocket upgrade. No valid token →
-      //    pass through unchanged (web UI assets, the pairing exchange, the
-      //    agent's own token); the container's auth is the backstop.
-      const queryToken = extractQueryToken(request, url);
-      // Header/cookie auth validates the ORIGINAL request (preserves every
-      // existing auth method); a query-only (WS) token validates through a
-      // synthetic header request so it takes the exact same path.
-      const authRequest = queryToken
-        ? new Request(request.url, {
-            headers: { authorization: `Bearer ${queryToken}` },
-          })
-        : request;
-      let orgId: string;
-      let userId: string;
-      try {
-        const { user } = await requireAuthOrApiKeyWithOrg(authRequest);
-        orgId = user.organization_id;
-        userId = user.id;
-      } catch {
-        return proxyToOrigin(request, env, url);
-      }
-
-      // 2. Ownership — the caller's org MUST own this dedicated agent. Not
-      //    owned / not found / shared → pass through unchanged (never widen
-      //    access here; the container's own token auth rejects non-owners).
-      const sandbox = await agentSandboxesRepository.findByIdAndOrg(
-        agentId,
-        orgId,
-      );
-      if (!sandbox || sandbox.execution_tier === "shared") {
-        return proxyToOrigin(request, env, url);
-      }
-
-      // 3. Lifecycle — a non-running agent isn't reachable; resume + 202.
-      if (sandbox.status !== "running") {
-        return resumeAndRespond(sandbox, agentId, orgId, userId);
-      }
-
-      // 4. Unified auth — swap the validated owner's cloud token for the agent's
-      //    own ELIZA_API_TOKEN so the container accepts the request. For a WS
-      //    upgrade the token rode in `?token=`, so rewrite that too.
-      const envVars = (sandbox.environment_vars ?? {}) as Record<
-        string,
-        string
-      >;
-      const agentToken = envVars.ELIZA_API_TOKEN?.trim();
-      // No managed token (older / not-yet-provisioned agent) → pass through.
-      return proxyToOrigin(
-        request,
-        env,
-        url,
-        agentToken || undefined,
-        queryToken !== null,
-      );
-    } catch (error) {
-      // Fail-closed: any unexpected error → pass through WITHOUT injecting, so
-      // the container's own auth still gates access.
-      logger.error(
-        "[dedicated-proxy] unexpected error; passing through unauthenticated",
-        {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      const { user } = await requireAuthOrApiKeyWithOrg(authRequest);
+      orgId = user.organization_id;
+      userId = user.id;
+    } catch {
       return proxyToOrigin(request, env, url);
     }
-  });
+
+    // 2. Ownership — the caller's org MUST own this dedicated agent. Not
+    //    owned / not found / shared → pass through unchanged (never widen
+    //    access here; the container's own token auth rejects non-owners).
+    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
+      agentId,
+      orgId,
+    );
+    if (!sandbox || sandbox.execution_tier === "shared") {
+      return proxyToOrigin(request, env, url);
+    }
+
+    // 3. Lifecycle — a non-running agent isn't reachable; resume + 202.
+    if (sandbox.status !== "running") {
+      return resumeAndRespond(sandbox, agentId, orgId, userId);
+    }
+
+    // 3b. Reachability — a `running` row can still lack a routable mesh
+    //     ingress (empty headscale_ip, bridge-host fallback off — the staging
+    //     default) because the container never finished joining headscale.
+    //     Proxying it hits the CP, which returns a CORS-less 404 the browser
+    //     reads as an opaque CORS failure, dead-ending chat (#15347). Mirror
+    //     the router's own gate and short-circuit to a readable, CORS-bearing
+    //     503 so the app renders a real "starting/unavailable" state and
+    //     retries — no doomed CP round-trip.
+    const headscaleIp = (sandbox.headscale_ip ?? "").trim();
+    if (!headscaleIp && !isBridgeHostFallbackEnabled(env)) {
+      logger.warn(
+        "[dedicated-proxy] agent running but unroutable (no headscale_ip)",
+        { agentId, orgId, status: sandbox.status },
+      );
+      const response = Response.json(
+        {
+          success: false,
+          code: "agent_unroutable",
+          error:
+            "Agent is running but has no routable network ingress yet (mesh join incomplete). Retry shortly.",
+        },
+        { status: 503 },
+      );
+      response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
+      return response;
+    }
+
+    // 4. Unified auth — swap the validated owner's cloud token for the agent's
+    //    own ELIZA_API_TOKEN so the container accepts the request. For a WS
+    //    upgrade the token rode in `?token=`, so rewrite that too.
+    const envVars = (sandbox.environment_vars ?? {}) as Record<string, string>;
+    const agentToken = envVars.ELIZA_API_TOKEN?.trim();
+    // No managed token (older / not-yet-provisioned agent) → pass through.
+    return proxyToOrigin(
+      request,
+      env,
+      url,
+      agentToken || undefined,
+      queryToken !== null,
+    );
+  } catch (error) {
+    // Fail-closed: any unexpected error → pass through WITHOUT injecting, so
+    // the container's own auth still gates access.
+    logger.error(
+      "[dedicated-proxy] unexpected error; passing through unauthenticated",
+      {
+        agentId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+    return proxyToOrigin(request, env, url);
+  }
 }
