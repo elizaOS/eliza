@@ -65,6 +65,7 @@ import {
   setConflictDetectLoader,
 } from "./actions/conflict-detect.js";
 import { connectorAction } from "./actions/connector.js";
+import { creativeDraftAction } from "./actions/creative-draft.js";
 import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
@@ -653,6 +654,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     ...promoteSubactionsToActions(personalAssistantAction),
     entityAction,
     ...promoteSubactionsToActions(ownerDocumentsAction),
+    ...promoteSubactionsToActions(creativeDraftAction),
     ...promoteSubactionsToActions(briefAction),
     ...promoteSubactionsToActions(prioritizeAction),
     ...promoteSubactionsToActions(conflictDetectAction),

@@ -301,6 +301,7 @@ export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export {
 	applyOptimizedProviderSelection,
+	type OptimizedPromptRuntimeLike,
 	resolveOptimizedContextConfigForRuntime,
 	resolveOptimizedPromptForRuntime,
 } from "./services/optimized-prompt-resolver";

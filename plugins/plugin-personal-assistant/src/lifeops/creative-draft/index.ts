@@ -5,9 +5,29 @@
  * structured prompt contract, a style card, and an iterable draft artifact.
  * It deliberately keeps storage out of scope: work-thread/document surfaces can
  * persist the returned artifact without re-parsing prompt prose.
+ *
+ * The drafting instructions are a GEPA optimization target: buildCreativeDraftPrompt
+ * sources them through OptimizedPromptService for the `creative_draft` task
+ * (CREATIVE_DRAFT_INSTRUCTIONS is the baseline) rather than hardcoding the raw
+ * string. The CREATIVE_DRAFT action (src/actions/creative-draft.ts) is the real
+ * consumer that wires a runtime into this producer.
  */
 
 import crypto from "node:crypto";
+import {
+  type OptimizedPromptRuntimeLike,
+  type OptimizedPromptTask,
+  resolveOptimizedPromptForRuntime,
+} from "@elizaos/core";
+
+/**
+ * OptimizedPromptService task id for owner-voice drafting. The inline
+ * {@link CREATIVE_DRAFT_INSTRUCTIONS} is the GEPA optimization baseline;
+ * {@link buildCreativeDraftPrompt} substitutes an optimized artifact through
+ * this task when one is loaded, so an absent artifact is a no-op.
+ */
+export const CREATIVE_DRAFT_OPTIMIZATION_TASK: OptimizedPromptTask =
+  "creative_draft";
 
 export const CREATIVE_DRAFT_INSTRUCTIONS = `Draft in the owner's voice from the supplied memos and style card.
 
@@ -82,6 +102,16 @@ export interface CreativeDraftRevision {
   readonly acceptedEdit?: string;
   readonly vetoedPhrase?: string;
   readonly replacementText?: string;
+  /**
+   * Which section {@link replacementText} rewrites. `sectionId` (the stable
+   * hashed section id) wins when both are given; `sectionIndex` is the
+   * positional fallback. Unspecified means the first section — the common case
+   * of a single-section draft — but a memo maps to each section, so a revision
+   * that only ever edited section 0 could not honor the owner's "keep the anger
+   * in the second section" directive.
+   */
+  readonly sectionId?: string;
+  readonly sectionIndex?: number;
   readonly revisedAt: string;
 }
 
@@ -242,17 +272,53 @@ export function applyCreativeDraftRevision(
   const replacementText = revision.replacementText
     ? normalizeWhitespace(revision.replacementText)
     : null;
+  const targetIndex = resolveRevisionSectionIndex(draft.sections, revision);
+  if (replacementText && targetIndex === null) {
+    throw new Error(
+      `[creative-draft] revision targets an unknown section (sectionId=${
+        revision.sectionId ?? "<none>"
+      }, sectionIndex=${revision.sectionIndex ?? "<none>"})`,
+    );
+  }
   return {
     ...draft,
     acceptedEdits,
     vetoedPhrases,
-    sections: replacementText
-      ? draft.sections.map((section, index) =>
-          index === 0 ? { ...section, text: replacementText } : section,
-        )
-      : draft.sections,
+    sections:
+      replacementText && targetIndex !== null
+        ? draft.sections.map((section, index) =>
+            index === targetIndex
+              ? { ...section, text: replacementText }
+              : section,
+          )
+        : draft.sections,
     updatedAt: revision.revisedAt,
   };
+}
+
+/**
+ * Resolve which section a revision edits. `sectionId` (stable hashed id) wins
+ * over the positional `sectionIndex`; when neither is set, default to the
+ * first section. Returns `null` for an out-of-range index or an unknown
+ * `sectionId` so the caller can reject the revision rather than silently
+ * rewriting the wrong section.
+ */
+function resolveRevisionSectionIndex(
+  sections: readonly CreativeDraftSection[],
+  revision: CreativeDraftRevision,
+): number | null {
+  if (revision.sectionId !== undefined) {
+    const byId = sections.findIndex(
+      (section) => section.id === revision.sectionId,
+    );
+    return byId >= 0 ? byId : null;
+  }
+  if (revision.sectionIndex !== undefined) {
+    return revision.sectionIndex >= 0 && revision.sectionIndex < sections.length
+      ? revision.sectionIndex
+      : null;
+  }
+  return sections.length > 0 ? 0 : null;
 }
 
 export function buildCreativeDraftPrompt(args: {
@@ -260,6 +326,13 @@ export function buildCreativeDraftPrompt(args: {
   memos: readonly CreativeMemoTranscript[];
   styleCard: OwnerVoiceStyleCard;
   currentDraft?: CreativeDraftArtifact;
+  /**
+   * When supplied, the drafting instructions are sourced through
+   * OptimizedPromptService for the `creative_draft` task; the inline
+   * {@link CREATIVE_DRAFT_INSTRUCTIONS} is the baseline used when no artifact
+   * is loaded. Omit it (e.g. in unit tests) to always use the baseline.
+   */
+  runtime?: OptimizedPromptRuntimeLike;
 }): string {
   const payload = JSON.stringify(
     {
@@ -272,7 +345,14 @@ export function buildCreativeDraftPrompt(args: {
     null,
     2,
   );
-  return `${CREATIVE_DRAFT_INSTRUCTIONS}
+  const instructions = args.runtime
+    ? resolveOptimizedPromptForRuntime(
+        args.runtime,
+        CREATIVE_DRAFT_OPTIMIZATION_TASK,
+        CREATIVE_DRAFT_INSTRUCTIONS,
+      )
+    : CREATIVE_DRAFT_INSTRUCTIONS;
+  return `${instructions}
 
 Data:
 ${payload}`;

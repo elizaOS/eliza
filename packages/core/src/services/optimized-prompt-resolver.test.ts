@@ -182,6 +182,7 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		{ task: "morning_brief", optimizedPrompt: "OPT_MORNING_BRIEF" },
 		{ task: "health_checkin", optimizedPrompt: "OPT_HEALTH_CHECKIN" },
 		{ task: "screentime_recap", optimizedPrompt: "OPT_SCREENTIME_RECAP" },
+		{ task: "creative_draft", optimizedPrompt: "OPT_CREATIVE_DRAFT" },
 	];
 
 	test("covers every OPTIMIZED_PROMPT_TASKS entry", () => {

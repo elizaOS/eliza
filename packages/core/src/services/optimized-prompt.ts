@@ -85,7 +85,8 @@ export type OptimizedPromptTask =
 	| "meeting_prep"
 	| "morning_brief"
 	| "health_checkin"
-	| "screentime_recap";
+	| "screentime_recap"
+	| "creative_draft";
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
@@ -110,6 +111,7 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"morning_brief",
 	"health_checkin",
 	"screentime_recap",
+	"creative_draft",
 ] as const;
 
 /**
@@ -127,6 +129,7 @@ export const LIFEOPS_OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"morning_brief",
 	"health_checkin",
 	"screentime_recap",
+	"creative_draft",
 ] as const;
 
 export type OptimizerName =

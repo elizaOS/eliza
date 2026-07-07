@@ -136,4 +136,133 @@ describe("creative draft owner-voice primitives", () => {
     );
     expect(revised.sections[1]).toEqual(initial.sections[1]);
   });
+
+  it("revises a non-first section by sectionIndex", () => {
+    const styleCard = buildOwnerVoiceStyleCard(ownerSources);
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Two-part memo",
+        targetForm: "memo" as const,
+        ownerAsk: "Draft this.",
+      },
+      memos,
+      styleCard,
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+
+    const revised = applyCreativeDraftRevision(initial, {
+      instruction: "Soften the closing.",
+      sectionIndex: 1,
+      replacementText: "We can still build the honest version.",
+      revisedAt: "2026-07-06T10:30:00.000Z",
+    });
+
+    // The first section is untouched; only the targeted second section changes.
+    expect(revised.sections[0]).toEqual(initial.sections[0]);
+    expect(revised.sections[1]?.text).toBe(
+      "We can still build the honest version.",
+    );
+  });
+
+  it("revises a non-first section by sectionId regardless of position", () => {
+    const styleCard = buildOwnerVoiceStyleCard(ownerSources);
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Two-part memo",
+        targetForm: "memo" as const,
+        ownerAsk: "Draft this.",
+      },
+      memos,
+      styleCard,
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+    const targetSection = initial.sections[1];
+    if (!targetSection) throw new Error("expected a second section");
+
+    const revised = applyCreativeDraftRevision(initial, {
+      instruction: "Rewrite the hopeful close.",
+      sectionId: targetSection.id,
+      replacementText: "Stop hiding behind process and ship the honest one.",
+      revisedAt: "2026-07-06T10:35:00.000Z",
+    });
+
+    expect(revised.sections[0]).toEqual(initial.sections[0]);
+    expect(revised.sections[1]?.text).toBe(
+      "Stop hiding behind process and ship the honest one.",
+    );
+  });
+
+  it("rejects a revision whose target section does not exist", () => {
+    const styleCard = buildOwnerVoiceStyleCard(ownerSources);
+    const initial = createCreativeDraftArtifact({
+      request: {
+        title: "Two-part memo",
+        targetForm: "memo" as const,
+        ownerAsk: "Draft this.",
+      },
+      memos,
+      styleCard,
+      nowIso: "2026-07-06T10:10:00.000Z",
+    });
+
+    expect(() =>
+      applyCreativeDraftRevision(initial, {
+        instruction: "Edit a section that isn't there.",
+        sectionIndex: 9,
+        replacementText: "orphan text",
+        revisedAt: "2026-07-06T10:40:00.000Z",
+      }),
+    ).toThrow(/unknown section/u);
+    expect(() =>
+      applyCreativeDraftRevision(initial, {
+        instruction: "Edit by a bogus id.",
+        sectionId: "section_does_not_exist",
+        replacementText: "orphan text",
+        revisedAt: "2026-07-06T10:41:00.000Z",
+      }),
+    ).toThrow(/unknown section/u);
+  });
+
+  it("sources instructions through OptimizedPromptService when a runtime is supplied", () => {
+    const styleCard = buildOwnerVoiceStyleCard(ownerSources);
+    const request = {
+      title: "Optimized Draft",
+      targetForm: "essay" as const,
+      ownerAsk: "Draft in my voice.",
+    };
+    const optimizedInstructions =
+      "OPTIMIZED creative_draft instructions — write in the owner's voice.";
+    const runtime = {
+      getService(name: string) {
+        if (name !== "optimized_prompt") return null;
+        return {
+          getPrompt(task: string) {
+            return task === "creative_draft"
+              ? { prompt: optimizedInstructions, optimizerSource: "gepa" }
+              : null;
+          },
+        };
+      },
+    };
+
+    const optimizedPrompt = buildCreativeDraftPrompt({
+      request,
+      memos,
+      styleCard,
+      runtime,
+    });
+    const baselinePrompt = buildCreativeDraftPrompt({
+      request,
+      memos,
+      styleCard,
+    });
+
+    expect(optimizedPrompt).toContain(optimizedInstructions);
+    expect(optimizedPrompt).not.toContain("not like a consultant");
+    // Absent a runtime, the inline baseline is used unchanged.
+    expect(baselinePrompt).toContain("not like a consultant");
+    // The structured data payload is composed around the resolved instructions
+    // in both cases.
+    expect(optimizedPrompt).toContain('"task": "creative_draft"');
+  });
 });
