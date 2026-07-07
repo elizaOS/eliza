@@ -1443,6 +1443,174 @@ describe("v5 planner loop skeleton", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
+	// #15230: on the CLI text lane the model answers a tool-required turn with a
+	// grammar-valid [FORM] widget reply instead of routing JSON. The gate must
+	// capture that as a legitimate terminal answer instead of burning the miss
+	// budget and letting the caller synthesize a failure apology.
+	const FORM_REPLY =
+		'Happy to set that up — pick what works:\n[FORM]\n{"title":"Schedule it","submit_label":"Save","fields":[{"name":"date","label":"Date","type":"date"},{"name":"time","label":"Time","type":"time"}]}\n[/FORM]';
+
+	it("finishes with the model's own [FORM] reply when it is re-emitted after the required-tool retry (#15230)", async () => {
+		const executeToolCall = vi.fn();
+		const runtime = {
+			useModel: vi.fn(async () => ({ text: FORM_REPLY, toolCalls: [] })),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 3 },
+			executeToolCall,
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toContain("[FORM]");
+		expect(result.finalMessage).toContain('"date"');
+		expect(result.finalMessage).toContain('"time"');
+		// One corrective retry, then the identical re-emission finishes the turn
+		// — NOT maxRequiredToolMisses+1 model spawns and NOT a throw.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(executeToolCall).not.toHaveBeenCalled();
+	});
+
+	it("surfaces the latest widget reply at required-tool exhaustion when re-emissions differ (#15230)", async () => {
+		const secondReply =
+			'Sure — just need the details:\n[FORM]\n{"title":"Schedule it","fields":[{"name":"when","label":"When","type":"datetime"}]}\n[/FORM]';
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({ text: FORM_REPLY, toolCalls: [] })
+				.mockResolvedValueOnce({ text: secondReply, toolCalls: [] }),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(secondReply);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("finishes with a REPLY-wrapped [FORM] reply under the required-tool gate (#15230)", async () => {
+		// A planner that DOES wrap its widget answer in an explicit REPLY call
+		// hits the terminal_only_tool_calls branch — the same capture must apply.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{ id: "reply-1", name: "REPLY", arguments: { text: FORM_REPLY } },
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 3 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toContain("[FORM]");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not capture a malformed widget block as a terminal answer (#15230)", async () => {
+		// The strict parser leaves a malformed block as plain text (no newline
+		// framing, invalid JSON) — zero parsed blocks means the text gets no
+		// widget escape hatch and prose acceptance cannot creep in.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "Pick what works: [FORM] not-json [/FORM]",
+				toolCalls: [],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("rejects a widget reply carrying leaked tool markup (#15230)", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: `I need to call SEARCH_MESSAGES first. {"parameters": {"q":"x"}}\n${FORM_REPLY}`,
+				toolCalls: [],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+				requireNonTerminalToolCall: true,
+				config: { maxRequiredToolMisses: 1 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).rejects.toMatchObject({
+			name: "TrajectoryLimitExceeded",
+			kind: "required_tool_misses",
+		});
+	});
+
+	it("captures a widget reply that says 'let me know' or promises follow-through (#15230)", async () => {
+		// Pins two deliberate gate choices: "let me know" is carved out of the
+		// in-flight reject (widget replies legitimately ask the user to respond),
+		// and a forward-looking "I'll …" conditioned on user input is allowed —
+		// the form gates the side effect on the user's answer.
+		const reply = `Pick a time and let me know — I'll set it up right after.\n[FORM]\n{"title":"Schedule it","fields":[{"name":"time","label":"Time","type":"time"}]}\n[/FORM]`;
+		const runtime = {
+			useModel: vi.fn(async () => ({ text: reply, toolCalls: [] })),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "LOOKUP", description: "Lookup current status." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 3 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(reply);
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
 	it("retries planner calls to tools that are not exposed this turn", async () => {
 		const runtime = {
 			useModel: vi

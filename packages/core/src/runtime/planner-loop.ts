@@ -11,6 +11,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { computeCallCostUsd } from "../features/trajectories/pricing";
 import { logger } from "../logger";
+import { parseInteractionBlocks } from "../messaging/interactions/parse";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import {
@@ -286,6 +287,12 @@ export async function runPlannerLoop(
 	// `maxRequiredToolMisses`, throws `TrajectoryLimitExceeded`, and the
 	// caller surfaces a generic apology instead of the planner's real answer.
 	let lastTerminalRefusalText: string | undefined;
+	// Sanitized widget-bearing terminal text from the previous required-tool
+	// miss. When the model re-emits the identical widget reply after one
+	// corrective retry it is deterministically committed to that answer —
+	// finish with it instead of burning the remaining miss budget (which costs
+	// four cold CLI spawns on the text-planner lane, #15230).
+	let lastMissWidgetText: string | undefined;
 
 	// Coding/full-surface mode (set above from ELIZA_PLANNER_FULL_ACTION_SURFACE):
 	// when the model emits a batch of tool calls in a single response, execute
@@ -361,7 +368,28 @@ export async function runPlannerLoop(
 					const refusalCandidate =
 						userSafeRefusalCandidate(lastPlannerExplicitMessageToUser) ??
 						userSafeRefusalCandidate(plannerOutput.messageToUser);
-					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
+					// A widget-bearing reply ([FORM]/[CHOICE]/…) is a legitimate
+					// terminal answer that asks the user for input — capture it like a
+					// refusal so it survives required-tool exhaustion, and finish
+					// immediately when the model re-emits it verbatim after one
+					// corrective retry (#15230).
+					const widgetCandidate =
+						refusalCandidate === undefined
+							? (userSafeWidgetReplyCandidate(
+									lastPlannerExplicitMessageToUser,
+								) ?? userSafeWidgetReplyCandidate(plannerOutput.messageToUser))
+							: undefined;
+					if (widgetCandidate && widgetCandidate === lastMissWidgetText) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: widgetCandidate,
+						});
+					}
+					lastMissWidgetText = widgetCandidate;
+					const captured = refusalCandidate ?? widgetCandidate;
+					if (captured) lastTerminalRefusalText = captured;
 					requiredToolMisses++;
 					if (
 						requiredToolMisses > config.maxRequiredToolMisses &&
@@ -511,13 +539,29 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
-					const refusalCandidate = userSafeRefusalCandidate(
-						terminalMessageFromToolCalls(
-							plannerOutput.toolCalls,
-							plannerOutput.messageToUser,
-						),
+					const terminalText = terminalMessageFromToolCalls(
+						plannerOutput.toolCalls,
+						plannerOutput.messageToUser,
 					);
-					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
+					const refusalCandidate = userSafeRefusalCandidate(terminalText);
+					// Same widget-reply escape hatch as the no_tool_calls branch above:
+					// a planner that wraps its [FORM] answer in an explicit REPLY call
+					// must not lose it to the required-tool gate either (#15230).
+					const widgetCandidate =
+						refusalCandidate === undefined
+							? userSafeWidgetReplyCandidate(terminalText)
+							: undefined;
+					if (widgetCandidate && widgetCandidate === lastMissWidgetText) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: widgetCandidate,
+						});
+					}
+					lastMissWidgetText = widgetCandidate;
+					const captured = refusalCandidate ?? widgetCandidate;
+					if (captured) lastTerminalRefusalText = captured;
 					requiredToolMisses++;
 					if (
 						requiredToolMisses > config.maxRequiredToolMisses &&
@@ -3513,6 +3557,42 @@ function userSafeRefusalCandidate(
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (looksLikePreToolThought(candidate)) return undefined;
 	if (IN_FLIGHT_ACTION_CLAIM.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	return candidate;
+}
+
+// In-flight narration reject for widget replies. Narrower than
+// IN_FLIGHT_ACTION_CLAIM because widget replies legitimately say "let me know" /
+// "pick a time and let me know", and a forward-looking promise conditioned on
+// user input ("I'll set it up once you pick a time") is not a false "doing it
+// now" claim — the widget block itself proves the turn ends by asking the user.
+const WIDGET_REPLY_IN_FLIGHT_CLAIM = [
+	/\blet me\b(?!\s+know\b)/i,
+	/\bI'?m\s+(?:checking|fetching|searching|looking|pulling|reviewing|gathering|working|getting|grabbing|loading|digging|querying)\b/i,
+	/\b(?:one|just a)\s+(?:sec|second|moment|min|minute)\b/i,
+	/\bplease (?:hold|wait)\b/i,
+	/\b(?:be right back|brb|hang on)\b/i,
+];
+
+// A terminal reply that renders as an interactive widget (grammar-valid
+// [FORM]/[CHOICE]/[FOLLOWUPS] block) is a request for user input — the
+// conversational analog of an honest refusal to act without more information.
+// Under the required-tool gate it must be capturable the same way a refusal is
+// (#15230): the CLI text lane cannot express REPLY as a native tool call, and
+// discarding a grammar-valid [FORM] answer to synthesize an apology fabricates
+// a failure. The strict block parser is the authenticity check: a pre-tool
+// thought never contains a parse-valid widget block (a malformed block is left
+// as plain text and yields zero blocks).
+function userSafeWidgetReplyCandidate(
+	message: string | undefined,
+): string | undefined {
+	const candidate = sanitizePlannerMessage(message);
+	if (!candidate) return undefined;
+	if (parseInteractionBlocks(candidate).blocks.length === 0) return undefined;
+	if (isUnsafeUserVisibleText(candidate)) return undefined;
+	if (looksLikePreToolThought(candidate)) return undefined;
+	if (WIDGET_REPLY_IN_FLIGHT_CLAIM.some((pattern) => pattern.test(candidate))) {
 		return undefined;
 	}
 	return candidate;
