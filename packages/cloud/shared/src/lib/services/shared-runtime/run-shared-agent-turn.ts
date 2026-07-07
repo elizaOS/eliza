@@ -30,6 +30,8 @@ import {
 export interface SharedTurnMessage {
   role: "user" | "assistant";
   content: string;
+  /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
+  createdAt?: number;
 }
 
 export interface SharedAgentCharacter {
@@ -116,10 +118,11 @@ function appendTurn(
   userMessage: string,
   reply: string,
 ): SharedTurnMessage[] {
+  const sentAt = Date.now();
   return [
     ...history,
-    { role: "user", content: userMessage },
-    { role: "assistant", content: reply },
+    { role: "user", content: userMessage, createdAt: sentAt },
+    { role: "assistant", content: reply, createdAt: sentAt + 1 },
   ];
 }
 

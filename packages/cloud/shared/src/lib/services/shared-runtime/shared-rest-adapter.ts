@@ -50,6 +50,7 @@ export interface SharedRestMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
+  timestamp: number;
 }
 
 /** The canonical (single) conversation id for a shared agent === its agent id. */
@@ -313,6 +314,24 @@ export function sharedRestConversationDelete(): { ok: true } {
   return { ok: true };
 }
 
+function sharedRestMessageTimestamp(
+  turn: { createdAt?: unknown },
+  index: number,
+  total: number,
+): number {
+  if (
+    typeof turn.createdAt === "number" &&
+    Number.isFinite(turn.createdAt) &&
+    turn.createdAt > 0
+  ) {
+    return turn.createdAt;
+  }
+  // Legacy shared-runtime history rows predate createdAt. Keep them finite but
+  // safely older than the UI's "just sent" reconciliation window, so a repeated
+  // failed send is still restored instead of being masked by an old same-text row.
+  return Date.now() - 5 * 60_000 - (total - index);
+}
+
 /**
  * GET .../api/conversations/:id/messages — read the bridge's persisted turn
  * history for this room and present it in the REST message shape. Ids are
@@ -330,6 +349,7 @@ export async function sharedRestMessagesGet(
     id: `${conversationId}:${index}`,
     role: turn.role,
     text: turn.content,
+    timestamp: sharedRestMessageTimestamp(turn, index, history.length),
   }));
   return { messages };
 }

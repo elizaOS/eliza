@@ -84,7 +84,12 @@ describe("runSharedAgentTurn (degraded path — no model configured)", () => {
     expect(result.degraded).toBe(true);
     expect(result.reply).toContain("Nova");
     expect(result.history).toHaveLength(2);
-    expect(result.history[0]).toEqual({ role: "user", content: "hello there" });
+    expect(result.history[0]).toMatchObject({
+      role: "user",
+      content: "hello there",
+    });
+    expect(typeof result.history[0]?.createdAt).toBe("number");
     expect(result.history[1]?.role).toBe("assistant");
+    expect(typeof result.history[1]?.createdAt).toBe("number");
   });
 });

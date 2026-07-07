@@ -90,8 +90,13 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(result.model).toBe("none");
     expect(result.reply).toContain("no shared model configured");
     expect(result.history).toHaveLength(2);
-    expect(result.history[0]).toEqual({ role: "user", content: "hello there" });
+    expect(result.history[0]).toMatchObject({
+      role: "user",
+      content: "hello there",
+    });
+    expect(typeof result.history[0]?.createdAt).toBe("number");
     expect(result.history[1]?.role).toBe("assistant");
+    expect(typeof result.history[1]?.createdAt).toBe("number");
   });
 
   test("a successful turn returns the reply with degraded:false (not a tautology — real SUT runs)", async () => {
@@ -113,7 +118,12 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
     expect(result.usage).toEqual({ totalTokens: 7 });
     // history + new user message + assistant reply.
     expect(result.history).toHaveLength(4);
-    expect(result.history[2]).toEqual({ role: "user", content: "hi" });
-    expect(result.history[3]).toEqual({ role: "assistant", content: "hi from Nova" });
+    expect(result.history[2]).toMatchObject({ role: "user", content: "hi" });
+    expect(typeof result.history[2]?.createdAt).toBe("number");
+    expect(result.history[3]).toMatchObject({
+      role: "assistant",
+      content: "hi from Nova",
+    });
+    expect(typeof result.history[3]?.createdAt).toBe("number");
   });
 });

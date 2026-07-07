@@ -3,7 +3,8 @@
  * client talk to a server-less shared agent. The load-bearing invariants:
  *   - the conversation is canonical (id === agentId === roomId), so the list is
  *     always one item and create is idempotent;
- *   - history maps SharedTurnMessage{role,content} → REST {id,role,text};
+ *   - history maps SharedTurnMessage{role,content,createdAt} → REST
+ *     {id,role,text,timestamp};
  *   - send forwards to the bridge `message.send` and returns its reply text;
  *   - the startup shell (status/first-run/views/config/auth-me/character) returns
  *     the exact shapes the mobile app probes on boot.
@@ -205,15 +206,25 @@ describe("shared-rest-adapter — messages", () => {
   });
 
   test("GET maps bridge turn history → REST messages", async () => {
+    const before = Date.now();
     getSharedConversationHistory.mockResolvedValue([
-      { role: "user", content: "hi" },
+      { role: "user", content: "hi", createdAt: 1_783_382_400_000 },
       { role: "assistant", content: "Hello!" },
     ]);
     const { messages } = await sharedRestMessagesGet(AGENT, AGENT);
-    expect(messages).toEqual([
-      { id: `${AGENT}:0`, role: "user", text: "hi" },
-      { id: `${AGENT}:1`, role: "assistant", text: "Hello!" },
-    ]);
+    expect(messages[0]).toEqual({
+      id: `${AGENT}:0`,
+      role: "user",
+      text: "hi",
+      timestamp: 1_783_382_400_000,
+    });
+    expect(messages[1]).toMatchObject({
+      id: `${AGENT}:1`,
+      role: "assistant",
+      text: "Hello!",
+    });
+    expect(typeof messages[1]?.timestamp).toBe("number");
+    expect(messages[1]?.timestamp).toBeLessThan(before - 60_000);
     expect(getSharedConversationHistory).toHaveBeenCalledWith(AGENT, AGENT);
   });
 
