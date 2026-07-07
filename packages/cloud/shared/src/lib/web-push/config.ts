@@ -5,9 +5,9 @@
  * `applicationServerKey` passed to `pushManager.subscribe`) and is surfaced via
  * the boot-config `webPushVapidPublicKey` field.
  *
- * The PRIVATE key is a CLOUD SECRET. It is read from the Worker env
- * (`process.env` in the Workers runtime maps to the configured secret bindings)
- * and MUST NEVER be committed, logged, or sent to the client.
+ * The PRIVATE key is a CLOUD SECRET. Worker call sites pass the request `c.env`
+ * bindings explicitly; Node/test call sites may rely on `process.env`. The key
+ * MUST NEVER be committed, logged, or sent to the client.
  *
  * Env vars:
  *   ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY   — base64url uncompressed P-256 point
@@ -22,7 +22,14 @@ export const WEB_PUSH_PRIVATE_KEY_ENV = "ELIZA_WEB_PUSH_VAPID_PRIVATE_KEY";
 export const WEB_PUSH_SUBJECT_ENV = "ELIZA_WEB_PUSH_VAPID_SUBJECT";
 
 /** A minimal env bag so this is testable without the global `process`. */
-export type WebPushEnv = Record<string, string | undefined>;
+export type WebPushEnv = Record<string, unknown>;
+
+function readStringBinding(env: WebPushEnv, key: string): string | undefined {
+  const value = env[key];
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
 
 /**
  * Read only the PUBLIC key — safe to inject into served HTML / boot config.
@@ -31,8 +38,7 @@ export type WebPushEnv = Record<string, string | undefined>;
 export function getWebPushPublicKey(
   env: WebPushEnv = typeof process !== "undefined" ? process.env : {},
 ): string | undefined {
-  const key = env[WEB_PUSH_PUBLIC_KEY_ENV]?.trim();
-  return key ? key : undefined;
+  return readStringBinding(env, WEB_PUSH_PUBLIC_KEY_ENV);
 }
 
 /**
@@ -44,9 +50,9 @@ export function getWebPushPublicKey(
 export function getWebPushVapidConfig(
   env: WebPushEnv = typeof process !== "undefined" ? process.env : {},
 ): WebPushVapidConfig | null {
-  const publicKey = env[WEB_PUSH_PUBLIC_KEY_ENV]?.trim();
-  const privateKey = env[WEB_PUSH_PRIVATE_KEY_ENV]?.trim();
-  const subject = env[WEB_PUSH_SUBJECT_ENV]?.trim() || "mailto:push@elizacloud.ai";
+  const publicKey = readStringBinding(env, WEB_PUSH_PUBLIC_KEY_ENV);
+  const privateKey = readStringBinding(env, WEB_PUSH_PRIVATE_KEY_ENV);
+  const subject = readStringBinding(env, WEB_PUSH_SUBJECT_ENV) ?? "mailto:push@elizacloud.ai";
   if (!publicKey || !privateKey) return null;
   return { publicKey, privateKey, subject };
 }

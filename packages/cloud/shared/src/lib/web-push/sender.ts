@@ -95,10 +95,7 @@ export async function sendWebPush(
     ...(deps.now ? { now: deps.now } : {}),
   });
 
-  const { body } = await encryptWebPushPayload(
-    JSON.stringify(payload),
-    subscription.keys,
-  );
+  const { body } = await encryptWebPushPayload(JSON.stringify(payload), subscription.keys);
 
   const headers: Record<string, string> = {
     Authorization: buildVapidAuthHeader(jwt, vapid.publicKey),

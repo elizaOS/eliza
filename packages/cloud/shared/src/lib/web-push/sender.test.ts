@@ -4,22 +4,18 @@ import { describe, expect, test, vi } from "vitest";
 import { bytesToBase64Url } from "./base64url";
 import {
   isGoneStatus,
+  type StoredPushSubscription,
   sendWebPush,
   sendWebPushBatch,
-  type StoredPushSubscription,
   type WebPushVapidConfig,
 } from "./sender";
 
 async function makeVapid(): Promise<WebPushVapidConfig> {
-  const pair = (await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign"],
-  )) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+  ])) as CryptoKeyPair;
   const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
-  const rawPub = new Uint8Array(
-    await crypto.subtle.exportKey("raw", pair.publicKey),
-  );
+  const rawPub = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
   return {
     publicKey: bytesToBase64Url(rawPub),
     privateKey: jwk.d as string,
@@ -30,14 +26,10 @@ async function makeVapid(): Promise<WebPushVapidConfig> {
 async function makeSubscription(
   endpoint = "https://push.example.com/abc",
 ): Promise<StoredPushSubscription> {
-  const uaPair = (await crypto.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveBits"],
-  )) as CryptoKeyPair;
-  const uaPublicRaw = new Uint8Array(
-    await crypto.subtle.exportKey("raw", uaPair.publicKey),
-  );
+  const uaPair = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveBits",
+  ])) as CryptoKeyPair;
+  const uaPublicRaw = new Uint8Array(await crypto.subtle.exportKey("raw", uaPair.publicKey));
   return {
     endpoint,
     keys: {
@@ -63,12 +55,9 @@ describe("sendWebPush", () => {
     const sub = await makeSubscription();
     const fetchImpl = vi.fn(async () => new Response(null, { status: 201 }));
 
-    const outcome = await sendWebPush(
-      sub,
-      { title: "T", body: "B" },
-      vapid,
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
-    );
+    const outcome = await sendWebPush(sub, { title: "T", body: "B" }, vapid, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
 
     expect(outcome).toEqual({ ok: true, status: 201 });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -150,12 +139,9 @@ describe("sendWebPushBatch", () => {
       return new Response(null, { status: 500 });
     });
 
-    const result = await sendWebPushBatch(
-      [good, gone, err],
-      { title: "T", body: "B" },
-      vapid,
-      { fetchImpl: fetchImpl as unknown as typeof fetch },
-    );
+    const result = await sendWebPushBatch([good, gone, err], { title: "T", body: "B" }, vapid, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
 
     expect(result.sent).toBe(1);
     expect(result.failed).toBe(2);

@@ -15,19 +15,16 @@ import { z } from "zod";
 import { webPushSubscriptionsRepository } from "@/db/repositories/web-push-subscriptions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { isValidPushEndpoint } from "@/lib/web-push";
 import { logger } from "@/lib/utils/logger";
+import { isValidPushEndpoint } from "@/lib/web-push";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 // Web Push endpoints must be HTTPS URLs to a PUBLIC push service. The sender
 // later POSTs to whatever is persisted, so validating here (SSRF guard) keeps a
 // stored endpoint from ever being an internal service the Worker can reach.
-const pushEndpoint = z
-  .string()
-  .url()
-  .refine(isValidPushEndpoint, {
-    message: "endpoint must be an https URL to a public push service",
-  });
+const pushEndpoint = z.string().url().refine(isValidPushEndpoint, {
+  message: "endpoint must be an https URL to a public push service",
+});
 
 const subscribeSchema = z.object({
   agentId: z.string().uuid(),
@@ -49,7 +46,10 @@ const app = new Hono<AppEnv>();
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json().catch(() => {
+      // error-policy:J3 malformed subscription JSON is invalid input for this request body.
+      return null;
+    });
     const parsed = subscribeSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
@@ -81,7 +81,10 @@ app.post("/", async (c) => {
 app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json().catch(() => {
+      // error-policy:J3 malformed unsubscribe JSON is invalid input for this request body.
+      return null;
+    });
     const parsed = unsubscribeSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(

@@ -1,4 +1,8 @@
-// Exercises cloud API v1 agents agentid message route.test behavior with deterministic Worker route fixtures.
+/**
+ * Service-key agent message route coverage with deterministic Worker fixtures.
+ * The suite proves wallet-owned routing, reply polling, and deferred web-push
+ * sender wiring without standing up the daemon bridge.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
@@ -33,6 +37,10 @@ const getJobForOrg = mock(async () => ({
     reason: "ok",
   },
 }));
+const notifyAgentReply = mock(async () => ({
+  pushed: false,
+  reason: "unconfigured" as const,
+}));
 
 mock.module("@/lib/auth/service-key-hono-worker", () => ({
   requireServiceKey,
@@ -61,6 +69,10 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+mock.module("@/lib/web-push", () => ({
+  notifyAgentReply,
+}));
+
 const { default: messageRoute } = await import("./route");
 
 describe("service agent message route", () => {
@@ -84,6 +96,7 @@ describe("service agent message route", () => {
       },
     });
     triggerImmediate.mockClear();
+    notifyAgentReply.mockClear();
     getJobForOrg.mockClear();
     getJobForOrg.mockResolvedValue({
       id: "message-job-1",
@@ -113,7 +126,11 @@ describe("service agent message route", () => {
           }),
         },
       ),
-      { WAIFU_SERVICE_KEY: "svc" },
+      {
+        WAIFU_SERVICE_KEY: "svc",
+        ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY: "PUBKEY",
+        ELIZA_WEB_PUSH_VAPID_PRIVATE_KEY: "PRIVKEY",
+      },
     );
 
     expect(response.status).toBe(200);
@@ -137,6 +154,21 @@ describe("service agent message route", () => {
     expect(getJobForOrg).toHaveBeenCalledWith(
       "message-job-1",
       "agent-wallet-org",
+    );
+    expect(notifyAgentReply).toHaveBeenCalledWith(
+      {
+        userId: "patron-user",
+        agentId: "cloud-agent-1",
+        replyText: "hello back",
+        title: "New message",
+        conversationId: "session-1",
+      },
+      expect.objectContaining({
+        env: expect.objectContaining({
+          ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY: "PUBKEY",
+          ELIZA_WEB_PUSH_VAPID_PRIVATE_KEY: "PRIVKEY",
+        }),
+      }),
     );
   });
 

@@ -2,14 +2,7 @@
 // (user, agent), used by the cloud Web Push sender to notify an owner when the
 // installed PWA is closed. See packages/cloud/shared/src/lib/web-push.
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import {
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
 /**
@@ -57,22 +50,19 @@ export const webPushSubscriptions = pgTable(
     // This is the upsert conflict target so a repeat subscribe for the SAME
     // agent+device refreshes keys, while a NEW agent on the same device adds a
     // row instead of clobbering the existing one.
-    endpoint_agent_uidx: uniqueIndex(
-      "web_push_subscriptions_endpoint_agent_uidx",
-    ).on(table.endpoint, table.agent_id),
+    endpoint_agent_uidx: uniqueIndex("web_push_subscriptions_endpoint_agent_uidx").on(
+      table.endpoint,
+      table.agent_id,
+    ),
     user_agent_idx: index("web_push_subscriptions_user_agent_idx").on(
       table.user_id,
       table.agent_id,
     ),
     user_idx: index("web_push_subscriptions_user_idx").on(table.user_id),
     // Prune-by-endpoint (404/410 gone) removes the device across all agents.
-    endpoint_idx: index("web_push_subscriptions_endpoint_idx").on(
-      table.endpoint,
-    ),
+    endpoint_idx: index("web_push_subscriptions_endpoint_idx").on(table.endpoint),
   }),
 );
 
 export type WebPushSubscription = InferSelectModel<typeof webPushSubscriptions>;
-export type NewWebPushSubscription = InferInsertModel<
-  typeof webPushSubscriptions
->;
+export type NewWebPushSubscription = InferInsertModel<typeof webPushSubscriptions>;

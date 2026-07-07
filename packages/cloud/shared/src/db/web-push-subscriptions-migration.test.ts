@@ -18,11 +18,7 @@ describe("web_push_subscriptions migration (PWA web push, §3 PR-2)", () => {
     const journal = JSON.parse(
       readFileSync(join(migrationsDir, "meta", "_journal.json"), "utf8"),
     ) as { entries: Array<{ tag: string }> };
-    expect(
-      journal.entries.some(
-        (e) => e.tag === "0172_web_push_subscriptions",
-      ),
-    ).toBe(true);
+    expect(journal.entries.some((e) => e.tag === "0172_web_push_subscriptions")).toBe(true);
   });
 
   it("is additive + idempotent (CREATE ... IF NOT EXISTS)", () => {
@@ -56,11 +52,8 @@ describe("web_push_subscriptions migration (PWA web push, §3 PR-2)", () => {
   });
 
   it("schema defines the composite unique index matching the migration", () => {
-    const schema = readFileSync(
-      join(schemasDir, "web-push-subscriptions.ts"),
-      "utf8",
-    );
+    const schema = readFileSync(join(schemasDir, "web-push-subscriptions.ts"), "utf8");
     expect(schema).toContain("web_push_subscriptions_endpoint_agent_uidx");
-    expect(schema).toMatch(/\.on\(\s*table\.endpoint,\s*table\.agent_id\s*\)/);
+    expect(schema).toMatch(/\.on\(\s*table\.endpoint,\s*table\.agent_id,?\s*\)/);
   });
 });

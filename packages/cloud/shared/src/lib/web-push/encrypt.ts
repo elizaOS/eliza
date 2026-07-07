@@ -52,13 +52,9 @@ async function hkdf(
   info: Uint8Array,
   length: number,
 ): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    ikm as BufferSource,
-    "HKDF",
-    false,
-    ["deriveBits"],
-  );
+  const key = await crypto.subtle.importKey("raw", ikm as BufferSource, "HKDF", false, [
+    "deriveBits",
+  ]);
   const bits = await crypto.subtle.deriveBits(
     {
       name: "HKDF",
@@ -133,8 +129,7 @@ export async function encryptWebPushPayload(
         "deriveBits",
       ]) as Promise<CryptoKeyPair>);
 
-  const plaintext =
-    typeof payload === "string" ? new TextEncoder().encode(payload) : payload;
+  const plaintext = typeof payload === "string" ? new TextEncoder().encode(payload) : payload;
 
   const uaPublicRaw = base64UrlToBytes(keys.p256dh);
   const authSecret = base64UrlToBytes(keys.auth);
@@ -155,11 +150,7 @@ export async function encryptWebPushPayload(
   const ecdhSecret = new Uint8Array(ecdhBits);
 
   // 2) PRK_key = HKDF(salt=auth, ikm=ecdh, info="WebPush: info\0"||ua||as, 32)
-  const keyInfo = concatBytes(
-    asciiWithNul("WebPush: info"),
-    uaPublicRaw,
-    asPublicRaw,
-  );
+  const keyInfo = concatBytes(asciiWithNul("WebPush: info"), uaPublicRaw, asPublicRaw);
   const prkKey = await hkdf(authSecret, ecdhSecret, keyInfo, 32);
 
   // 3) Content salt + CEK + NONCE.
@@ -191,12 +182,7 @@ export async function encryptWebPushPayload(
   // 5) aes128gcm header: salt(16) || rs(4 BE) || idlen(1) || keyid(as_public 65).
   const rs = new Uint8Array(4);
   new DataView(rs.buffer).setUint32(0, DEFAULT_RECORD_SIZE, false);
-  const header = concatBytes(
-    salt,
-    rs,
-    new Uint8Array([asPublicRaw.length]),
-    asPublicRaw,
-  );
+  const header = concatBytes(salt, rs, new Uint8Array([asPublicRaw.length]), asPublicRaw);
 
   return { body: concatBytes(header, ciphertext) };
 }

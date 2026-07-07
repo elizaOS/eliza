@@ -86,6 +86,10 @@ mock.module("@/lib/web-push", () => ({
       return false;
     }
   },
+  notifyAgentReply: mock(async () => ({
+    pushed: false,
+    reason: "unconfigured",
+  })),
 }));
 
 const { default: app } = await import("./route");

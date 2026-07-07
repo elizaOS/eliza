@@ -1,11 +1,9 @@
-// Agent-reply → push bridge. Proves: no push when unconfigured, no push when a
-// foreground client is live, no push with zero subscriptions, and that a live
-// send prunes gone endpoints.
-import { describe, expect, test, vi } from "vitest";
-import {
-  WEB_PUSH_PRIVATE_KEY_ENV,
-  WEB_PUSH_PUBLIC_KEY_ENV,
-} from "./config";
+/**
+ * Agent-reply push bridge coverage for the no-op cases, live delivery path,
+ * dead-subscription pruning, and explicit infrastructure-failure result.
+ */
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { WEB_PUSH_PRIVATE_KEY_ENV, WEB_PUSH_PUBLIC_KEY_ENV } from "./config";
 import { notifyAgentReply } from "./notify-service";
 
 const CONFIGURED_ENV = {
@@ -28,6 +26,11 @@ function fakeRepo(rows: Array<{ endpoint: string; p256dh: string; auth: string }
 const ROW = { endpoint: "https://push/1", p256dh: "p", auth: "a" };
 
 describe("notifyAgentReply", () => {
+  beforeEach(() => {
+    testLogger.info.mockClear();
+    testLogger.warn.mockClear();
+  });
+
   test("no push when VAPID is unconfigured", async () => {
     const result = await notifyAgentReply(
       { userId: "u", agentId: "a", replyText: "hi", title: "Sol" },
@@ -130,7 +133,7 @@ describe("notifyAgentReply", () => {
     expect(payload.body.endsWith("…")).toBe(true);
   });
 
-  test("never throws — a repository error yields a non-fatal result", async () => {
+  test("never throws — a repository error yields a non-fatal failure result", async () => {
     const repo = {
       listForUserAgent: vi.fn(async () => {
         throw new Error("db down");
@@ -143,6 +146,27 @@ describe("notifyAgentReply", () => {
       { userId: "u", agentId: "a", replyText: "hi", title: "Sol" },
       { env: CONFIGURED_ENV, repository: repo, logger: testLogger },
     );
-    expect(result).toEqual({ pushed: false, reason: "no-subscriptions" });
+    expect(result).toEqual({ pushed: false, reason: "failed" });
+    expect(testLogger.warn).toHaveBeenCalledWith(
+      "[web-push] notifyAgentReply failed (non-fatal)",
+      expect.objectContaining({ userId: "u", agentId: "a", error: "db down" }),
+    );
+  });
+
+  test("never throws — a send error yields a non-fatal failure result", async () => {
+    const repo = fakeRepo([ROW]);
+    const sendBatch = vi.fn(async () => {
+      throw new Error("push provider down");
+    });
+    const result = await notifyAgentReply(
+      { userId: "u", agentId: "a", replyText: "hi", title: "Sol" },
+      {
+        env: CONFIGURED_ENV,
+        repository: repo,
+        sendBatch: sendBatch as never,
+        logger: testLogger,
+      },
+    );
+    expect(result).toEqual({ pushed: false, reason: "failed" });
   });
 });

@@ -2,11 +2,7 @@
 // the public key, has the right claims, and rejects malformed keys.
 import { describe, expect, test } from "vitest";
 import { base64UrlToBytes } from "./base64url";
-import {
-  buildVapidAuthHeader,
-  pushEndpointAudience,
-  signVapidJwt,
-} from "./vapid";
+import { buildVapidAuthHeader, pushEndpointAudience, signVapidJwt } from "./vapid";
 
 /** Generate a fresh P-256 keypair and return base64url public/private strings. */
 async function generateVapidKeys(): Promise<{
@@ -14,15 +10,12 @@ async function generateVapidKeys(): Promise<{
   privateKey: string;
   cryptoPublic: CryptoKey;
 }> {
-  const pair = (await crypto.subtle.generateKey(
-    { name: "ECDSA", namedCurve: "P-256" },
-    true,
-    ["sign", "verify"],
-  )) as CryptoKeyPair;
+  const pair = (await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ])) as CryptoKeyPair;
   const jwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
-  const rawPub = new Uint8Array(
-    await crypto.subtle.exportKey("raw", pair.publicKey),
-  );
+  const rawPub = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
   const b64url = (b: Uint8Array) =>
     btoa(String.fromCharCode(...b))
       .replace(/\+/g, "-")
@@ -37,9 +30,9 @@ async function generateVapidKeys(): Promise<{
 
 describe("pushEndpointAudience", () => {
   test("derives scheme+host origin from an endpoint", () => {
-    expect(
-      pushEndpointAudience("https://web.push.apple.com/abc/def?x=1"),
-    ).toBe("https://web.push.apple.com");
+    expect(pushEndpointAudience("https://web.push.apple.com/abc/def?x=1")).toBe(
+      "https://web.push.apple.com",
+    );
   });
 
   test("throws on a garbage endpoint", () => {
@@ -66,15 +59,11 @@ describe("signVapidJwt", () => {
     expect(sigB64).toBeTruthy();
 
     // Header is ES256 JWT.
-    const header = JSON.parse(
-      new TextDecoder().decode(base64UrlToBytes(headerB64)),
-    );
+    const header = JSON.parse(new TextDecoder().decode(base64UrlToBytes(headerB64)));
     expect(header).toEqual({ typ: "JWT", alg: "ES256" });
 
     // Claims.
-    const payload = JSON.parse(
-      new TextDecoder().decode(base64UrlToBytes(payloadB64)),
-    );
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(payloadB64)));
     expect(payload.aud).toBe("https://web.push.apple.com");
     expect(payload.sub).toBe("mailto:push@example.com");
     expect(payload.exp).toBe(Math.floor(fixedNow() / 1000) + 12 * 60 * 60);
@@ -111,9 +100,7 @@ describe("signVapidJwt", () => {
       publicKey: keys.publicKey,
       expiresAt: 123456,
     });
-    const payload = JSON.parse(
-      new TextDecoder().decode(base64UrlToBytes(jwt.split(".")[1])),
-    );
+    const payload = JSON.parse(new TextDecoder().decode(base64UrlToBytes(jwt.split(".")[1])));
     expect(payload.exp).toBe(123456);
   });
 
@@ -132,8 +119,6 @@ describe("signVapidJwt", () => {
 
 describe("buildVapidAuthHeader", () => {
   test("formats the single-header vapid scheme", () => {
-    expect(buildVapidAuthHeader("JWT.HERE", "PUBKEY")).toBe(
-      "vapid t=JWT.HERE, k=PUBKEY",
-    );
+    expect(buildVapidAuthHeader("JWT.HERE", "PUBKEY")).toBe("vapid t=JWT.HERE, k=PUBKEY");
   });
 });

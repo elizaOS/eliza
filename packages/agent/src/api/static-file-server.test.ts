@@ -99,9 +99,13 @@ describe("injectApiBaseIntoHtml web-push VAPID public key", () => {
   });
 
   it("merges apiBase + VAPID public key into a single boot-config write", () => {
-    const out = injectApiBaseIntoHtml(Buffer.from(html), "https://proxy.example", {
-      webPushVapidPublicKey: VAPID_PUBLIC,
-    }).toString("utf-8");
+    const out = injectApiBaseIntoHtml(
+      Buffer.from(html),
+      "https://proxy.example",
+      {
+        webPushVapidPublicKey: VAPID_PUBLIC,
+      },
+    ).toString("utf-8");
     expect(out).toContain("apiBase");
     expect(out).toContain("https://proxy.example");
     expect(out).toContain("webPushVapidPublicKey");

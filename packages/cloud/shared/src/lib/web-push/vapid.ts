@@ -50,15 +50,10 @@ export function pushEndpointAudience(endpoint: string): string {
  * the `x`/`y` JWK coordinates from the 65-byte uncompressed public point so the
  * caller only has to persist the two base64url strings web-push emits.
  */
-async function importVapidSigningKey(
-  privateKey: string,
-  publicKey: string,
-): Promise<CryptoKey> {
+async function importVapidSigningKey(privateKey: string, publicKey: string): Promise<CryptoKey> {
   const pub = base64UrlToBytes(publicKey);
   if (pub.length !== 65 || pub[0] !== 0x04) {
-    throw new Error(
-      "VAPID public key must be a 65-byte uncompressed P-256 point (0x04 prefix)",
-    );
+    throw new Error("VAPID public key must be a 65-byte uncompressed P-256 point (0x04 prefix)");
   }
   const x = bytesToBase64Url(pub.subarray(1, 33));
   const y = bytesToBase64Url(pub.subarray(33, 65));

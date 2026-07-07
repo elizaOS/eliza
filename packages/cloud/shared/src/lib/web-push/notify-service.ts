@@ -16,10 +16,7 @@
 import type { webPushSubscriptionsRepository } from "../../db/repositories/web-push-subscriptions";
 import { logger as sharedLogger } from "../utils/logger";
 import { getWebPushVapidConfig, type WebPushEnv } from "./config";
-import {
-  sendWebPushBatch,
-  type WebPushNotificationPayload,
-} from "./sender";
+import { sendWebPushBatch, type WebPushNotificationPayload } from "./sender";
 
 /** Minimal logger seam so unit tests can inject a fake and avoid the DB/core
  *  graph the shared cloud logger pulls in. Production uses the shared
@@ -50,10 +47,7 @@ export interface NotifyDeps {
    * (user, agent) — in which case we DON'T push. Absent ⇒ treat as not-live
    * (push), since the caller couldn't prove a live client.
    */
-  isForegroundActive?: (
-    userId: string,
-    agentId: string,
-  ) => Promise<boolean> | boolean;
+  isForegroundActive?: (userId: string, agentId: string) => Promise<boolean> | boolean;
   /** Injectable repository (for tests). */
   repository?: typeof webPushSubscriptionsRepository;
   /** Injectable batch sender (for tests). */
@@ -72,7 +66,10 @@ function toBody(text: string): string {
 }
 
 export type NotifyResult =
-  | { pushed: false; reason: "unconfigured" | "foreground-active" | "no-subscriptions" }
+  | {
+      pushed: false;
+      reason: "unconfigured" | "foreground-active" | "no-subscriptions" | "failed";
+    }
   | { pushed: true; sent: number; failed: number; pruned: number };
 
 /**
@@ -99,8 +96,7 @@ export async function notifyAgentReply(
     // Drizzle/DB layer for unit tests that inject a fake repository.
     const repo =
       deps.repository ??
-      (await import("../../db/repositories/web-push-subscriptions"))
-        .webPushSubscriptionsRepository;
+      (await import("../../db/repositories/web-push-subscriptions")).webPushSubscriptionsRepository;
     const rows = await repo.listForUserAgent(input.userId, input.agentId);
     if (rows.length === 0) return { pushed: false, reason: "no-subscriptions" };
 
@@ -111,9 +107,7 @@ export async function notifyAgentReply(
       ...(input.conversationId ? { conversationId: input.conversationId } : {}),
       agentId: input.agentId,
       ...(input.deepLink ? { deepLink: input.deepLink } : {}),
-      ...(typeof input.badgeCount === "number"
-        ? { badgeCount: input.badgeCount }
-        : {}),
+      ...(typeof input.badgeCount === "number" ? { badgeCount: input.badgeCount } : {}),
     };
 
     const sendBatch = deps.sendBatch ?? sendWebPushBatch;
@@ -143,11 +137,12 @@ export async function notifyAgentReply(
       pruned,
     };
   } catch (error) {
+    // error-policy:J4 push delivery is an optional side effect of a completed reply; return an explicit failure so callers never read infrastructure errors as an empty subscription set.
     logger.warn("[web-push] notifyAgentReply failed (non-fatal)", {
       userId: input.userId,
       agentId: input.agentId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return { pushed: false, reason: "no-subscriptions" };
+    return { pushed: false, reason: "failed" };
   }
 }

@@ -4,10 +4,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { StoredPushSubscription } from "../../lib/web-push/sender";
 import { dbRead, dbWrite } from "../client";
-import {
-  type WebPushSubscription,
-  webPushSubscriptions,
-} from "../schemas/web-push-subscriptions";
+import { type WebPushSubscription, webPushSubscriptions } from "../schemas/web-push-subscriptions";
 
 export interface UpsertWebPushSubscriptionInput {
   userId: string;
@@ -34,9 +31,7 @@ export const webPushSubscriptionsRepository = {
    * while the SAME device subscribing to a DIFFERENT agent adds a new row (it
    * does not clobber the first agent's subscription).
    */
-  async upsert(
-    input: UpsertWebPushSubscriptionInput,
-  ): Promise<WebPushSubscription> {
+  async upsert(input: UpsertWebPushSubscriptionInput): Promise<WebPushSubscription> {
     const [row] = await dbWrite
       .insert(webPushSubscriptions)
       .values({
@@ -67,28 +62,19 @@ export const webPushSubscriptionsRepository = {
     const rows = await dbWrite
       .delete(webPushSubscriptions)
       .where(
-        and(
-          eq(webPushSubscriptions.user_id, userId),
-          eq(webPushSubscriptions.endpoint, endpoint),
-        ),
+        and(eq(webPushSubscriptions.user_id, userId), eq(webPushSubscriptions.endpoint, endpoint)),
       )
       .returning({ id: webPushSubscriptions.id });
     return rows.length;
   },
 
   /** All subscriptions for a (user, agent) — the fan-out target for a push. */
-  async listForUserAgent(
-    userId: string,
-    agentId: string,
-  ): Promise<WebPushSubscription[]> {
+  async listForUserAgent(userId: string, agentId: string): Promise<WebPushSubscription[]> {
     return dbRead
       .select()
       .from(webPushSubscriptions)
       .where(
-        and(
-          eq(webPushSubscriptions.user_id, userId),
-          eq(webPushSubscriptions.agent_id, agentId),
-        ),
+        and(eq(webPushSubscriptions.user_id, userId), eq(webPushSubscriptions.agent_id, agentId)),
       );
   },
 

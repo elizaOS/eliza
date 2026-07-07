@@ -178,6 +178,12 @@ export interface Bindings {
   // ---- App config ----
   NEXT_PUBLIC_APP_URL?: string;
   NEXT_PUBLIC_API_URL?: string;
+  /** Public VAPID key exposed by the static manifest route and used to gate web-push enablement. */
+  ELIZA_WEB_PUSH_VAPID_PUBLIC_KEY?: string;
+  /** Private VAPID key used only by the cloud sender; deploy as a Worker secret. */
+  ELIZA_WEB_PUSH_VAPID_PRIVATE_KEY?: string;
+  /** VAPID contact subject sent to push services, e.g. `mailto:ops@example.com`. */
+  ELIZA_WEB_PUSH_VAPID_SUBJECT?: string;
   AGENT_ROUTER_ORIGIN_HOST?: string;
   ELIZA_APP_WEBHOOK_GATEWAY_URL?: string;
   ELIZA_CLOUD_AGENT_BASE_DOMAIN?: string;

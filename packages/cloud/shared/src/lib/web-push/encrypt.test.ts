@@ -8,14 +8,10 @@ import { encryptWebPushPayload } from "./encrypt";
 
 /** A UA (browser) subscription keypair: p256dh (public) + auth secret. */
 async function makeUaSubscription() {
-  const uaPair = (await crypto.subtle.generateKey(
-    { name: "ECDH", namedCurve: "P-256" },
-    true,
-    ["deriveBits"],
-  )) as CryptoKeyPair;
-  const uaPublicRaw = new Uint8Array(
-    await crypto.subtle.exportKey("raw", uaPair.publicKey),
-  );
+  const uaPair = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+    "deriveBits",
+  ])) as CryptoKeyPair;
+  const uaPublicRaw = new Uint8Array(await crypto.subtle.exportKey("raw", uaPair.publicKey));
   const auth = crypto.getRandomValues(new Uint8Array(16));
   return {
     keys: {
@@ -28,15 +24,8 @@ async function makeUaSubscription() {
   };
 }
 
-async function hkdf(
-  salt: Uint8Array,
-  ikm: Uint8Array,
-  info: Uint8Array,
-  length: number,
-) {
-  const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, [
-    "deriveBits",
-  ]);
+async function hkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, length: number) {
+  const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
     { name: "HKDF", hash: "SHA-256", salt, info },
     key,
@@ -65,10 +54,7 @@ describe("encryptWebPushPayload", () => {
     expect(body.length).toBeGreaterThan(86);
     const idlen = body[20]; // after salt(16)+rs(4)
     expect(idlen).toBe(65); // the app-server ephemeral public point length
-    const rs = new DataView(body.buffer, body.byteOffset + 16, 4).getUint32(
-      0,
-      false,
-    );
+    const rs = new DataView(body.buffer, body.byteOffset + 16, 4).getUint32(0, false);
     expect(rs).toBe(4096);
 
     // keyid (as_public) is a valid uncompressed P-256 point.
@@ -110,21 +96,12 @@ describe("encryptWebPushPayload", () => {
     // PRK_key = HKDF(auth, ecdh, "WebPush: info\0"||ua_pub||as_pub, 32)
     const keyInfo = concat(nul("WebPush: info"), ua.uaPublicRaw, asPublicRaw);
     const prkKey = await hkdf(ua.authBytes, ecdhSecret, keyInfo, 32);
-    const cek = await hkdf(
-      salt,
-      prkKey,
-      nul("Content-Encoding: aes128gcm"),
-      16,
-    );
+    const cek = await hkdf(salt, prkKey, nul("Content-Encoding: aes128gcm"), 16);
     const nonce = await hkdf(salt, prkKey, nul("Content-Encoding: nonce"), 12);
 
-    const aesKey = await crypto.subtle.importKey(
-      "raw",
-      cek,
-      { name: "AES-GCM" },
-      false,
-      ["decrypt"],
-    );
+    const aesKey = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, [
+      "decrypt",
+    ]);
     const plainBuf = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: nonce, tagLength: 128 },
       aesKey,
@@ -143,11 +120,9 @@ describe("encryptWebPushPayload", () => {
   test("uses injected randomness + ephemeral key deterministically", async () => {
     const ua = await makeUaSubscription();
     const fixedSalt = new Uint8Array(16).fill(7);
-    const asPair = (await crypto.subtle.generateKey(
-      { name: "ECDH", namedCurve: "P-256" },
-      true,
-      ["deriveBits"],
-    )) as CryptoKeyPair;
+    const asPair = (await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, [
+      "deriveBits",
+    ])) as CryptoKeyPair;
 
     const opts = {
       randomBytes: () => fixedSalt,
@@ -173,8 +148,6 @@ describe("encryptWebPushPayload", () => {
 
   test("base64url round-trips arbitrary bytes", () => {
     const bytes = new Uint8Array([0, 1, 2, 250, 251, 255, 62, 63]);
-    expect(Array.from(base64UrlToBytes(bytesToBase64Url(bytes)))).toEqual(
-      Array.from(bytes),
-    );
+    expect(Array.from(base64UrlToBytes(bytesToBase64Url(bytes)))).toEqual(Array.from(bytes));
   });
 });
