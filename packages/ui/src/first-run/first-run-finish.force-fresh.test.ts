@@ -38,9 +38,9 @@ import {
   enableForceFreshFirstRun,
   isForceFreshFirstRunEnabled,
 } from "../platform/first-run-reset";
-import { bindCloudAgent } from "./first-run-finish";
-import type { FirstRunFinishPorts } from "./first-run-finish";
 import type { FirstRunProfileDraft } from "./first-run";
+import type { FirstRunFinishPorts } from "./first-run-finish";
+import { bindCloudAgent } from "./first-run-finish";
 
 const SHARED_AGENT_BASE =
   "https://staging.elizacloud.ai/api/v1/eliza/agents/cad3c071";
@@ -118,12 +118,7 @@ describe("bindCloudAgent clears the durable force-fresh flag on completion", () 
 
     // Act: complete onboarding against a SHARED cloud agent base (skips the
     // /api/first-run POST — the historically-uncovered clear path).
-    const outcome = await bindCloudAgent(
-      draft(),
-      "steward-token",
-      {},
-      ports(),
-    );
+    const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
 
     // Assert: onboarding completed AND the durable directive is cleared, so a
     // subsequent cold boot / PWA relaunch does NOT re-run the force-fresh
@@ -136,12 +131,7 @@ describe("bindCloudAgent clears the durable force-fresh flag on completion", () 
 
   it("is a no-op-safe clear when force-fresh was never armed (idempotent)", async () => {
     expect(isForceFreshFirstRunEnabled()).toBe(false);
-    const outcome = await bindCloudAgent(
-      draft(),
-      "steward-token",
-      {},
-      ports(),
-    );
+    const outcome = await bindCloudAgent(draft(), "steward-token", {}, ports());
     expect(outcome.kind).toBe("done");
     expect(isForceFreshFirstRunEnabled()).toBe(false);
   });
