@@ -1,14 +1,27 @@
 /**
  * Hook that subscribes to WebSocket activity events and maintains a ring buffer
- * of recent entries for the chat widget rail.
+ * of recent entries for the chat widget rail. State commits are rAF-coalesced
+ * and parked entirely while the home↔launcher rail is mid-gesture
+ * (rail-gesture-store) — a widget re-render would re-rasterize the promoted,
+ * moving rail layer — then flushed once on settle.
  */
 
 import { activityEventToPlaintext } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import { parseProactiveMessageEvent } from "../state/parsers";
+import {
+  isRailGestureActive,
+  railGestureActiveMs,
+  subscribeRailGesture,
+} from "../state/rail-gesture-store";
 
 const RING_BUFFER_CAP = 200;
+
+// Safety valve for the rail-gesture park below: if the gesture window somehow
+// stays open longer than this (a missed release edge), events flush anyway so
+// the widget rail can never go permanently stale behind a stuck signal.
+const RAIL_GESTURE_PARK_MAX_MS = 5_000;
 
 export interface ActivityEventSource {
   type: "pty-session-event" | "proactive-message" | "agent_event";
@@ -95,6 +108,9 @@ export function useActivityEvents() {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const bufferRef = useRef<ActivityEvent[]>([]);
   const flushHandleRef = useRef<number | null>(null);
+  // True while bufferRef holds entries the rendered `events` state has not seen
+  // yet — the "something is parked" flag the rail-gesture release edge checks.
+  const dirtyRef = useRef(false);
 
   const cancelPendingFlush = useCallback(() => {
     if (flushHandleRef.current === null) {
@@ -110,6 +126,7 @@ export function useActivityEvents() {
     }
     flushHandleRef.current = requestAnimationFrame(() => {
       flushHandleRef.current = null;
+      dirtyRef.current = false;
       setEvents([...bufferRef.current]);
     });
   }, []);
@@ -122,8 +139,33 @@ export function useActivityEvents() {
       if (buf.length > RING_BUFFER_CAP) {
         buf.length = RING_BUFFER_CAP;
       }
+      dirtyRef.current = true;
+      // Park the state commit while the launcher rail is mid-gesture: a flush
+      // re-renders WidgetHost inside the promoted rail layer, re-rasterizing
+      // the surface the finger is dragging. The ring buffer keeps accumulating;
+      // the release-edge subscription below commits ONCE on settle. The time
+      // cap bounds staleness if a release edge is ever missed.
+      if (
+        isRailGestureActive() &&
+        railGestureActiveMs() < RAIL_GESTURE_PARK_MAX_MS
+      ) {
+        return;
+      }
       scheduleFlush();
     },
+    [scheduleFlush],
+  );
+
+  // Flush the parked buffer exactly once when the rail gesture settles. The
+  // rAF coalescer already dedupes against an event that lands in the same
+  // frame as the release edge.
+  useEffect(
+    () =>
+      subscribeRailGesture(() => {
+        if (!isRailGestureActive() && dirtyRef.current) {
+          scheduleFlush();
+        }
+      }),
     [scheduleFlush],
   );
 
@@ -207,6 +249,7 @@ export function useActivityEvents() {
 
   const clearEvents = useCallback(() => {
     bufferRef.current = [];
+    dirtyRef.current = false;
     cancelPendingFlush();
     setEvents([]);
   }, [cancelPendingFlush]);

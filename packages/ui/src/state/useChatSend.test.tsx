@@ -11,6 +11,8 @@ import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  ChatToolCallEvent,
+  ChatTurnStatus,
   CodingAgentSession,
   Conversation,
   ConversationMessage,
@@ -596,6 +598,164 @@ describe("useChatSend always streams (#9174)", () => {
     expect(deps.setChatFirstTokenReceived).toHaveBeenCalledWith(true);
     // The streaming callback actually received incremental tokens.
     expect(tokens).toEqual([["Hello", " world"]]);
+  });
+});
+
+describe("useChatSend streaming-frame coalescing (text + status + tool)", () => {
+  let rafQueue: FrameRequestCallback[];
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+    rafQueue = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      rafQueue[id - 1] = () => {};
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function flushRaf(): number {
+    const q = rafQueue;
+    rafQueue = [];
+    act(() => {
+      for (const cb of q) cb(0);
+    });
+    return q.length;
+  }
+
+  it("parks token+status+tool from one SSE burst into a SINGLE frame, committing all three together", async () => {
+    // Capture the per-event callbacks from a stream that stays pending so the
+    // rAF frame can be observed BEFORE the terminal synchronous flush.
+    let onTokenCb!: (t: string, a?: string) => void;
+    let onStatusCb!: (s: ChatTurnStatus) => void;
+    let onToolCb!: (e: ChatToolCallEvent) => void;
+    let resolveStream!: (v: { text: string; completed: boolean }) => void;
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+        _channelType: string,
+        _signal: AbortSignal,
+        _images: unknown,
+        _metadata: unknown,
+        onStatus: (s: ChatTurnStatus) => void,
+        onTool: (e: ChatToolCallEvent) => void,
+      ) => {
+        onTokenCb = onToken;
+        onStatusCb = onStatus;
+        onToolCb = onTool;
+        return new Promise((resolve) => {
+          resolveStream = resolve;
+        });
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+      // Let the send reach the streaming call and register the callbacks.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // One SSE burst: a token, a status phase, and a tool call all arrive in the
+    // same tick — before any frame runs.
+    act(() => {
+      onTokenCb("Search", "Search");
+      onStatusCb({ kind: "running_tool", toolName: "web_search" });
+      onToolCb({ phase: "call", callId: "c1", toolName: "web_search" });
+    });
+
+    // Nothing has committed yet: no text on the assistant turn, no status set,
+    // no tool rows — all three are parked for the single scheduled frame.
+    const assistantBefore = deps.conversationMessagesRef.current.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantBefore?.text ?? "").toBe("");
+    expect(assistantBefore?.toolEvents ?? []).toHaveLength(0);
+    expect(setStatusSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "running_tool" }),
+    );
+
+    // Exactly one frame was scheduled for the whole burst; flushing it commits
+    // text, tool row, and status together.
+    const framesRun = flushRaf();
+    expect(framesRun).toBe(1);
+
+    const assistantAfter = deps.conversationMessagesRef.current.find(
+      (m) => m.role === "assistant",
+    );
+    expect(assistantAfter?.text).toBe("Search");
+    expect(assistantAfter?.toolEvents ?? []).toHaveLength(1);
+    expect(setStatusSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "running_tool", toolName: "web_search" }),
+    );
+
+    // Terminal transition: resolve the stream and drain.
+    await act(async () => {
+      resolveStream({ text: "Search done", completed: true });
+      await sendPromise;
+    });
+  });
+
+  it("flushes parked tool/status synchronously on the terminal transition even if no frame ran", async () => {
+    // A tool event + status arrive, then the stream resolves in the SAME tick
+    // before any rAF fires. The synchronous flushStreamingText() before the
+    // terminal modification must still commit them (no lost tool row / status).
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+        _channelType: string,
+        _signal: AbortSignal,
+        _images: unknown,
+        _metadata: unknown,
+        onStatus: (s: ChatTurnStatus) => void,
+        onTool: (e: ChatToolCallEvent) => void,
+      ) => {
+        onToken("partial", "partial");
+        onStatus({ kind: "running_tool", toolName: "web_search" });
+        onTool({ phase: "call", callId: "c1", toolName: "web_search" });
+        // No rAF flush between here and return — the terminal path must flush.
+        return { text: "partial done", completed: true };
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("hi", { conversationId: "conv-1" });
+    });
+
+    // The tool row survived to the final thread (merged before the reload's
+    // no-op) and the status phase was committed at least once.
+    expect(setStatusSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "running_tool" }),
+    );
+    // Status is cleared to null when the turn settles.
+    expect(setStatusSpy).toHaveBeenLastCalledWith(null);
   });
 });
 

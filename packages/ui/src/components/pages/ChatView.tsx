@@ -35,6 +35,7 @@ import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
+import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
@@ -283,9 +284,11 @@ export function ChatView({
     [appTranslate],
   );
 
-  const messagesRef = useRef<HTMLDivElement>(null);
   // Top sentinel for infinite upward scroll (#13532): rendered just above the
   // first transcript row; when it nears the viewport the older page prefetches.
+  // The scroller node itself is owned by useThreadAutoScroll below (its returned
+  // `scrollRef` is wired to the transcript, the load-older observer, and the
+  // ChatThreadLayout scroll region).
   const topSentinelRef = useRef<HTMLDivElement>(null);
   // Whether the server reports older turns beyond the current top. Starts true
   // (we don't know until the first load-older) and latches false at the true
@@ -493,15 +496,6 @@ export function ChatView({
     setHasMoreOlder(true);
   }, [activeConversationId]);
 
-  useLoadOlderOnScroll<HTMLDivElement>({
-    scrollRef: messagesRef,
-    sentinelRef: topSentinelRef,
-    onLoadOlder: loadOlderMessages,
-    hasMore: hasMoreOlder && !isGameModal,
-    topItemKey: visibleMsgs[0]?.id ?? "",
-    enabled: !isGameModal,
-  });
-
   const {
     companionCarryover,
     gameModalCarryoverOpacity,
@@ -513,59 +507,50 @@ export function ChatView({
     visibleMsgs,
   });
 
+  // The exact set the transcript paints into the shared scroller (the game-modal
+  // variant renders its own windowed set + a companion carryover above it).
+  const displayedMsgs = isGameModal ? gameModalVisibleMsgs : visibleMsgs;
+  const lastDisplayed = displayedMsgs.at(-1);
+  const displayedCount =
+    displayedMsgs.length +
+    (isGameModal ? (companionCarryover?.messages.length ?? 0) : 0);
+  // Bottom-follow via the ONE shared thread-scroll engine (#12348), replacing
+  // the legacy per-flush `scrollTo` that re-read layout and restarted a smooth
+  // scroll on every streamed rAF flush (yanking scrolled-up readers). The engine
+  // follows the tail only while the reader rests at the bottom — measured against
+  // the pre-growth height so a big single-commit append is not misread as
+  // "scrolled up" — coalesces the follow into a single rAF write, and leaves a
+  // reader who scrolled up to read history alone. `growthKey` tracks tail
+  // mutation (streamed tokens → instant follow); `lineKey` marks a NEW line
+  // (smooth glide). The transcript is unmounted on the terminal/inbox branches,
+  // so gate the engine there: the false→true edge on return re-pins instantly
+  // instead of flashing at the top.
+  const { scrollRef: messagesRef } = useThreadAutoScroll<HTMLDivElement>({
+    growthKey: `${displayedCount}:${lastDisplayed?.id ?? ""}:${lastDisplayed?.text.length ?? 0}`,
+    lineKey: lastDisplayed?.id ?? "",
+    enabled: !activeTerminalSessionId && !inboxChat,
+  });
+
+  // Infinite upward scroll shares the SAME scroller node as the auto-scroll
+  // engine (#13532). It owns the OTHER direction — an older-page prepend grows
+  // the thread upward and it anchors the reader's viewport by the scrollHeight
+  // delta so a reader parked in history stays put (the anchoring that replaces
+  // the legacy moved-but-present-top guard). The auto-scroll engine above never
+  // fights it: a prepend leaves the reader off-bottom, so it does not follow.
+  useLoadOlderOnScroll<HTMLDivElement>({
+    scrollRef: messagesRef,
+    sentinelRef: topSentinelRef,
+    onLoadOlder: loadOlderMessages,
+    hasMore: hasMoreOlder && !isGameModal,
+    topItemKey: visibleMsgs[0]?.id ?? "",
+    enabled: !isGameModal,
+  });
+
   useChatAvatarVoiceBridge({
     mouthOpen: voice.mouthOpen,
     isSpeaking: voice.isSpeaking,
     onSpeakingChange: handleChatAvatarSpeakingChange,
   });
-
-  // Auto-scroll on new messages. Use instant scroll when already near the
-  // bottom (or when the user is actively sending) to prevent the visible
-  // "scroll from top" effect that occurs when many background messages
-  // (e.g. coding-agent updates) arrive in rapid succession during smooth
-  // scrolling. Only smooth-scroll when the user has scrolled up and a new
-  // message nudges them back down.
-  //
-  // Previous FIRST visible id, used to recognize an older-page prepend
-  // (#13532): the prior top message is still present, just pushed down by the
-  // new page. New content always lands at the TAIL, so a moved-but-present top
-  // means the reader is parked in history and useLoadOlderOnScroll has just
-  // restored their anchor — pulling them to the bottom would undo it.
-  const prevTopVisibleIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    const prevTopId = prevTopVisibleIdRef.current;
-    prevTopVisibleIdRef.current = visibleMsgs[0]?.id ?? null;
-    const displayedCompanionMessageCount =
-      (companionCarryover?.messages.length ?? 0) + gameModalVisibleMsgs.length;
-    if (
-      !chatSending &&
-      visibleMsgs.length === 0 &&
-      (!isGameModal || displayedCompanionMessageCount === 0)
-    ) {
-      return;
-    }
-    if (
-      prevTopId !== null &&
-      visibleMsgs[0]?.id !== prevTopId &&
-      visibleMsgs.some((m) => m.id === prevTopId)
-    ) {
-      return;
-    }
-    const el = messagesRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const nearBottom = distanceFromBottom < 150;
-    el.scrollTo({
-      top: el.scrollHeight,
-      behavior: nearBottom ? "instant" : "smooth",
-    });
-  }, [
-    chatSending,
-    companionCarryover,
-    gameModalVisibleMsgs,
-    isGameModal,
-    visibleMsgs,
-  ]);
 
   // Auto-resize textarea
   useEffect(() => {

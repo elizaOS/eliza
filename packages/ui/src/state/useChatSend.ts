@@ -11,6 +11,7 @@ import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {
+  type ChatToolCallEvent,
   type ChatTurnStatus,
   type CodingAgentSession,
   type ConversationChannelType,
@@ -54,6 +55,12 @@ import {
 // ── Types ────────────────────────────────────────────────────────────
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+
+// Sentinel for the streaming buffer's `pendingStatus`: "no status update
+// parked", distinct from a parked `null` (an explicit clear-the-status commit).
+// Module scope (not per-render) so the flush callbacks stay referentially
+// stable across renders.
+const NO_PENDING_STATUS = Symbol("no-pending-status");
 
 /** Derive the rendered-attachment kind for an optimistic bubble from its MIME. */
 function optimisticAttachmentKind(
@@ -688,33 +695,102 @@ export function useChatSend(deps: UseChatSendDeps) {
   const handoffFrozenRef = useRef(false);
 
   // Streaming-commit throttle.
-  // The SSE `onToken` callback fires once per token (often >60/sec on a fast
-  // model). Instead of committing each one, the latest cumulative text is parked
-  // here and applied at most once per animation frame. Chat sends are serialized
-  // through the queue, so a single in-flight buffer is sufficient.
+  // The SSE stream fires three per-event callbacks that each trigger a state
+  // commit: `onToken` (cumulative text, often >60/sec on a fast model),
+  // `onStatus` (live turn phase), and `onToolEvent` (inline tool-call steps).
+  // Committing each one synchronously means up to three React renders per SSE
+  // event; instead every callback parks its latest value here and a single rAF
+  // commits all three in ONE frame. Chat sends are serialized through the
+  // queue, so a single in-flight buffer is sufficient.
+  //
+  // `pendingStatus` uses the NO_PENDING_STATUS sentinel = "no status update
+  // parked", distinct from a parked `null` (an explicit clear-the-status
+  // commit).
   const streamingFlushRef = useRef<{
     messageId: string;
     pendingText: string | null;
+    pendingStatus: ChatTurnStatus | null | typeof NO_PENDING_STATUS;
+    pendingToolEvents: ChatToolCallEvent[];
     frameId: number | null;
-  }>({ messageId: "", pendingText: null, frameId: null });
+  }>({
+    messageId: "",
+    pendingText: null,
+    pendingStatus: NO_PENDING_STATUS,
+    pendingToolEvents: [],
+    frameId: null,
+  });
 
-  // Apply whatever cumulative text is parked for the in-flight turn, then clear
-  // the pending slot. Safe to call when nothing is pending (no-op).
+  // Commit whatever text/status/tool events are parked for the in-flight turn in
+  // one pass, then clear the pending slots. Order matters: tool events merge
+  // onto the same turn as the text, and the status is a sibling indicator — all
+  // three settle together so the frame reflects a single coherent stream state.
+  // Safe to call when nothing is pending (no-op).
+  const commitStreamingBuffer = useCallback(() => {
+    const buffer = streamingFlushRef.current;
+    if (buffer.pendingText !== null) {
+      const fullText = buffer.pendingText;
+      buffer.pendingText = null;
+      applyStreamingTextModification(setConversationMessages, {
+        messageId: buffer.messageId,
+        mode: "replace",
+        fullText,
+      });
+    }
+    if (buffer.pendingToolEvents.length > 0) {
+      const toolEvents = buffer.pendingToolEvents;
+      buffer.pendingToolEvents = [];
+      for (const event of toolEvents) {
+        applyStreamingTextModification(setConversationMessages, {
+          messageId: buffer.messageId,
+          mode: "tool",
+          event,
+        });
+      }
+    }
+    if (buffer.pendingStatus !== NO_PENDING_STATUS) {
+      const status = buffer.pendingStatus;
+      buffer.pendingStatus = NO_PENDING_STATUS;
+      setServerTurnStatus(status);
+    }
+  }, [setConversationMessages, setServerTurnStatus]);
+
+  // Apply whatever streaming state is parked for the in-flight turn NOW
+  // (synchronously) and cancel the pending frame — called before every terminal
+  // / abort transition so no token, tool row, or status is lost. Safe when
+  // nothing is pending (no-op).
   const flushStreamingText = useCallback(() => {
     const buffer = streamingFlushRef.current;
     if (buffer.frameId !== null) {
       cancelAnimationFrame(buffer.frameId);
       buffer.frameId = null;
     }
-    if (buffer.pendingText === null) return;
-    const fullText = buffer.pendingText;
+    commitStreamingBuffer();
+  }, [commitStreamingBuffer]);
+
+  // Reset the buffer to a fresh turn when `messageId` changes, dropping any
+  // stale parked state (text/status/tool) from the prior turn. Runs BEFORE a
+  // scheduler parks its value, so the reset never clobbers the value just set.
+  const startStreamingTurn = useCallback((messageId: string) => {
+    const buffer = streamingFlushRef.current;
+    if (buffer.messageId === messageId) return;
+    if (buffer.frameId !== null) cancelAnimationFrame(buffer.frameId);
+    buffer.messageId = messageId;
     buffer.pendingText = null;
-    applyStreamingTextModification(setConversationMessages, {
-      messageId: buffer.messageId,
-      mode: "replace",
-      fullText,
+    buffer.pendingStatus = NO_PENDING_STATUS;
+    buffer.pendingToolEvents = [];
+    buffer.frameId = null;
+  }, []);
+
+  // Ensure a single rAF is scheduled to commit whatever is currently parked.
+  // Repeated calls within a frame never schedule additional frames.
+  const ensureStreamingFrame = useCallback(() => {
+    const buffer = streamingFlushRef.current;
+    if (buffer.frameId !== null) return;
+    buffer.frameId = requestAnimationFrame(() => {
+      buffer.frameId = null;
+      commitStreamingBuffer();
     });
-  }, [setConversationMessages]);
+  }, [commitStreamingBuffer]);
 
   // Park the latest cumulative text for `messageId` and ensure a single rAF is
   // scheduled to commit it. Repeated calls within a frame overwrite the parked
@@ -722,28 +798,35 @@ export function useChatSend(deps: UseChatSendDeps) {
   // commit per frame.
   const scheduleStreamingText = useCallback(
     (messageId: string, fullText: string) => {
-      const buffer = streamingFlushRef.current;
-      // A new turn started — drop any stale parked text from the prior turn.
-      if (buffer.messageId !== messageId) {
-        if (buffer.frameId !== null) cancelAnimationFrame(buffer.frameId);
-        buffer.messageId = messageId;
-        buffer.frameId = null;
-      }
-      buffer.pendingText = fullText;
-      if (buffer.frameId !== null) return;
-      buffer.frameId = requestAnimationFrame(() => {
-        buffer.frameId = null;
-        if (buffer.pendingText === null) return;
-        const next = buffer.pendingText;
-        buffer.pendingText = null;
-        applyStreamingTextModification(setConversationMessages, {
-          messageId: buffer.messageId,
-          mode: "replace",
-          fullText: next,
-        });
-      });
+      startStreamingTurn(messageId);
+      streamingFlushRef.current.pendingText = fullText;
+      ensureStreamingFrame();
     },
-    [setConversationMessages],
+    [startStreamingTurn, ensureStreamingFrame],
+  );
+
+  // Park a live turn-status phase for `messageId`; the latest value wins within
+  // a frame (superseded phases are never rendered). Coalesced into the same
+  // frame as text/tool events (#8813).
+  const scheduleServerTurnStatus = useCallback(
+    (messageId: string, status: ChatTurnStatus | null) => {
+      startStreamingTurn(messageId);
+      streamingFlushRef.current.pendingStatus = status;
+      ensureStreamingFrame();
+    },
+    [startStreamingTurn, ensureStreamingFrame],
+  );
+
+  // Park one inline tool-call step for `messageId`. Unlike text/status these
+  // ACCUMULATE within a frame — each step (call → result/error) is a distinct
+  // merge onto the turn's `toolEvents`, so none may be dropped (#13535).
+  const scheduleToolEvent = useCallback(
+    (messageId: string, event: ChatToolCallEvent) => {
+      startStreamingTurn(messageId);
+      streamingFlushRef.current.pendingToolEvents.push(event);
+      ensureStreamingFrame();
+    },
+    [startStreamingTurn, ensureStreamingFrame],
   );
 
   // Cancel any in-flight frame on unmount so a late rAF never commits into a
@@ -756,6 +839,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         buffer.frameId = null;
       }
       buffer.pendingText = null;
+      buffer.pendingStatus = NO_PENDING_STATUS;
+      buffer.pendingToolEvents = [];
     };
   }, []);
 
@@ -1363,16 +1448,14 @@ export function useChatSend(deps: UseChatSendDeps) {
           imagesToSend,
           turn.metadata,
           // Live server phase → the rich status indicator. Additive; the reply
-          // streams through onToken above regardless.
-          (status) => setServerTurnStatus(status),
+          // streams through onToken above regardless. Coalesced into the same
+          // rAF frame as the text/tool commits (flushed synchronously below
+          // before any terminal transition).
+          (status) => scheduleServerTurnStatus(assistantMsgId, status),
           // Inline tool-call steps → the turn's tool rows (call → result/error),
           // merged by callId so one row flips running → settled (#13535).
-          (event) =>
-            applyStreamingTextModification(setConversationMessages, {
-              messageId: assistantMsgId,
-              mode: "tool",
-              event,
-            }),
+          // Coalesced into the streaming frame with the text + status.
+          (event) => scheduleToolEvent(assistantMsgId, event),
           // Idempotency key — reused verbatim across the single auto-retry so a
           // send that landed during a blip is server-side de-duped.
           clientMessageId,
@@ -1645,13 +1728,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               controller?.signal,
               imagesToSend,
               turn.metadata,
-              (serverStatus) => setServerTurnStatus(serverStatus),
-              (event) =>
-                applyStreamingTextModification(setConversationMessages, {
-                  messageId: replayAssistantId,
-                  mode: "tool",
-                  event,
-                }),
+              (serverStatus) =>
+                scheduleServerTurnStatus(replayAssistantId, serverStatus),
+              (event) => scheduleToolEvent(replayAssistantId, event),
               // Same idempotency key across the whole logical turn, including
               // the 404 recreate-and-replay recovery.
               clientMessageId,
@@ -1884,6 +1963,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       elizaCloudConnected,
       pollCloudCredits,
       scheduleStreamingText,
+      scheduleServerTurnStatus,
+      scheduleToolEvent,
       flushStreamingText,
     ],
   );
@@ -2199,14 +2280,10 @@ export function useChatSend(deps: UseChatSendDeps) {
             undefined,
             buildChatViewMetadata(tab),
             // No overlay status on the action/DM path (its finally doesn't clear
-            // it); still stream inline tool rows onto the turn (#13535).
+            // it); still stream inline tool rows onto the turn (#13535),
+            // coalesced into the streaming frame with the text.
             undefined,
-            (event) =>
-              applyStreamingTextModification(setConversationMessages, {
-                messageId: assistantMsgId,
-                mode: "tool",
-                event,
-              }),
+            (event) => scheduleToolEvent(assistantMsgId, event),
           );
 
           // Commit any token parked by the throttle before the terminal
@@ -2350,6 +2427,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       tab,
       uiLanguage,
       scheduleStreamingText,
+      scheduleToolEvent,
       flushStreamingText,
     ],
   );

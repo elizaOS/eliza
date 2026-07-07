@@ -124,7 +124,11 @@ export function HomeLauncherSurface({
           // rail flick. Without it a touch device hands a horizontal drag to the
           // browser's own scroll/back gesture, which fires `pointercancel`
           // instead of `pointerup` — the flick silently never commits.
-          className="relative h-full w-1/2 shrink-0 touch-pan-y"
+          // `contain: layout style paint`: each half is a fixed-size pane, so
+          // scope layout/style/paint invalidation to it — a widget re-render
+          // inside one half then can't dirty the other half (or the promoted
+          // rail layer's geometry) mid-gesture.
+          className="relative h-full w-1/2 shrink-0 touch-pan-y [contain:layout_style_paint]"
           onPointerDown={pager.handlers.onPointerDown}
           onPointerMove={pager.handlers.onPointerMove}
           onPointerUp={pager.handlers.onPointerUp}
@@ -139,8 +143,9 @@ export function HomeLauncherSurface({
           aria-hidden={page !== "launcher"}
           inert={page !== "launcher" || undefined}
           // Same as the home half: vertical scroll (the tile grid) stays with
-          // the browser, horizontal flicks (right → back home) are ours.
-          className="relative h-full w-1/2 shrink-0 touch-pan-y"
+          // the browser, horizontal flicks (right → back home) are ours; and
+          // the same containment so tile churn can't invalidate the home half.
+          className="relative h-full w-1/2 shrink-0 touch-pan-y [contain:layout_style_paint]"
           onPointerDown={pager.handlers.onPointerDown}
           onPointerMove={pager.handlers.onPointerMove}
           onPointerUp={pager.handlers.onPointerUp}

@@ -47,7 +47,14 @@ export interface InlineWidgetMatch<TData = unknown> {
 export interface InlineWidgetDefinition<TData = unknown> {
   /** Unique marker kind, e.g. `"task"`, `"choice"`. */
   readonly kind: string;
-  /** Scan a reply for this widget's regions, left to right. */
+  /**
+   * Scan a reply for this widget's regions, left to right.
+   *
+   * Marker contract: the text form MUST be a bracketed `[…]` marker (like all
+   * built-ins). `parseSegments` pre-gates the whole widget scan on the message
+   * containing one of `` ` `` `[` `{` `<`, so a marker without any of those
+   * characters would never reach this parser on plain-prose messages.
+   */
   parse(text: string): InlineWidgetMatch<TData>[];
   /** Render one matched payload. `key` is React-stable; `ctx` drives chat. */
   render(data: TData, ctx: InlineWidgetContext, key: string): ReactNode;
