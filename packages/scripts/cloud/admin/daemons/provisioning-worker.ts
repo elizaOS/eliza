@@ -36,7 +36,7 @@ type WorkerNodeManager =
 type WorkerNodeAutoscaler =
   typeof import("@elizaos/cloud-shared/lib/services/containers/node-autoscaler").getNodeAutoscaler;
 type WorkerWarmPoolManager =
-  typeof import("@elizaos/cloud-shared/lib/services/containers/warm-pool-manager").WarmPoolManager;
+  typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool").WarmPoolManager;
 type WorkerContainersEnv =
   typeof import("@elizaos/cloud-shared/lib/config/containers-env").containersEnv;
 type WorkerAssertSSHKeyAvailable =
@@ -272,6 +272,24 @@ function resultContext(result: ProcessingResult): Record<string, unknown> {
   };
 }
 
+/**
+ * Flatten an error's `cause` chain into the logged message. Drizzle wraps
+ * query failures in `DrizzleQueryError` with the underlying pg error on
+ * `.cause`, so logging only `error.message` yields "Failed query: <SQL>…" and
+ * hides the actual failure (e.g. the TLS certificate rejection behind every
+ * cycle failure during a DB repoint). Depth-bounded so a pathological
+ * self-referencing chain can't loop. Exported for unit testing.
+ */
+export function formatErrorWithCause(error: unknown): string {
+  let message = error instanceof Error ? error.message : String(error);
+  let cause: unknown = error instanceof Error ? error.cause : undefined;
+  for (let depth = 0; cause !== undefined && depth < 5; depth++) {
+    message += `; caused by: ${cause instanceof Error ? cause.message : String(cause)}`;
+    cause = cause instanceof Error ? cause.cause : undefined;
+  }
+  return message;
+}
+
 export async function assertProvisioningWorkerPreflight(
   opts: {
     env?: NodeJS.ProcessEnv;
@@ -292,7 +310,7 @@ export async function assertProvisioningWorkerPreflight(
     const { systemKey } = await import("@elizaos/security/kms");
     await kms.getOrCreateKey(systemKey("provisioning-worker-preflight"));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatErrorWithCause(error);
     throw new Error(
       "Provisioning worker preflight failed: KMS is not usable. " +
         "Refusing to publish a healthy heartbeat or claim provisioning jobs. " +
@@ -466,7 +484,7 @@ async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
     } catch (error) {
       return {
         action: "scale_up_failed",
-        detail: error instanceof Error ? error.message : String(error),
+        detail: formatErrorWithCause(error),
       };
     }
   }
@@ -484,7 +502,7 @@ async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
   } catch (error) {
     return {
       action: "drain_failed",
-      detail: `${target}: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `${target}: ${formatErrorWithCause(error)}`,
     };
   }
 }
@@ -575,7 +593,7 @@ async function processFleetUpgradeCycle(): Promise<FleetUpgradeSummary> {
     } catch (err) {
       logger.warn("[provisioning-worker] fleet-upgrade enqueue failed", {
         agentId: c.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatErrorWithCause(err),
       });
     }
   }
@@ -799,7 +817,7 @@ async function publishHeartbeat(logger: WorkerLogger): Promise<void> {
     await publishProvisioningWorkerHeartbeat();
   } catch (error) {
     logger.warn("[provisioning-worker] heartbeat publish failed", {
-      error: error instanceof Error ? error.message : String(error),
+      error: formatErrorWithCause(error),
     });
   }
 }
@@ -937,7 +955,7 @@ async function runBoundedPhase<T>(
     onResult(result);
   } catch (error) {
     logger.error(`[provisioning-worker] ${label} failed`, {
-      error: error instanceof Error ? error.message : String(error),
+      error: formatErrorWithCause(error),
     });
   }
 }
@@ -1033,7 +1051,7 @@ async function runWorkCycle(
     // A group-level timeout frees the cycle (every leaf is independently
     // bounded) so the watchdog clock advances and infra maintenance still runs.
     logger.error("[provisioning-worker] work cycle exceeded its budget", {
-      error: error instanceof Error ? error.message : String(error),
+      error: formatErrorWithCause(error),
       workCycleTimeoutMs: WORK_CYCLE_TIMEOUT_MS,
     });
   }
@@ -1055,7 +1073,7 @@ async function pollCycle(
     logger.error(
       "[provisioning-worker] preflight failed; withholding heartbeat",
       {
-        error: error instanceof Error ? error.message : String(error),
+        error: formatErrorWithCause(error),
       },
     );
     return;
@@ -1308,7 +1326,7 @@ async function main(): Promise<void> {
     assertSSHKeyAvailable();
   } catch (error) {
     logger.error(
-      `[provisioning-worker] CRITICAL: ${error instanceof Error ? error.message : String(error)}`,
+      `[provisioning-worker] CRITICAL: ${formatErrorWithCause(error)}`,
     );
     throw error;
   }
@@ -1401,10 +1419,7 @@ export async function closeOpenHandles(
     if (result.status === "rejected") {
       logger.warn("[provisioning-worker] shutdown cleanup failed", {
         handle: closers[i][0],
-        error:
-          result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason),
+        error: formatErrorWithCause(result.reason),
       });
     }
   });
@@ -1448,7 +1463,7 @@ process.on("SIGTERM", () => requestShutdown("SIGTERM"));
 process.on("unhandledRejection", (reason) => {
   void loadDeps().then(({ logger }) => {
     logger.error("[provisioning-worker] unhandled rejection", {
-      error: reason instanceof Error ? reason.message : String(reason),
+      error: formatErrorWithCause(reason),
     });
   });
 });
@@ -1464,7 +1479,7 @@ if (isMainModule()) {
     },
     (error) => {
       process.stderr.write(
-        `[provisioning-worker] fatal: ${error instanceof Error ? error.message : String(error)}\n`,
+        `[provisioning-worker] fatal: ${formatErrorWithCause(error)}\n`,
       );
       // Same open-handles reasoning as the clean path: `process.exitCode = 1`
       // alone leaves a dead worker hanging instead of letting Restart=always

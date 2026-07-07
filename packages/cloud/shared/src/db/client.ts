@@ -180,6 +180,37 @@ export function enforceTlsForRemote(url: string): {
   };
 }
 
+/**
+ * pg-pool `onConnect` hook: apply server-side idle-session timeouts to every
+ * fresh connection. Long-running Node services (agent-server, gateways,
+ * daemons) hold pooled connections on the shared Postgres. A checkout that's
+ * never released, or a transaction abandoned open, would otherwise sit forever
+ * and can exhaust max_connections ("too many clients already"). The pool reaps
+ * its OWN idle connections within seconds, so these server-side timeouts only
+ * ever fire on genuinely leaked/abandoned sessions — reclaiming the slot.
+ *
+ * Registered as `onConnect` (NOT `pool.on("connect")`): pg-pool awaits this
+ * hook to completion before handing the fresh client to a waiting checkout, so
+ * the SET can never overlap the checkout's first query on the same client —
+ * the overlap node-pg deprecates ("Calling client.query() when the client is
+ * already executing a query…", removed in pg@9). idle_session_timeout is PG14+
+ * (idle_in_transaction_session_timeout is PG9.6+); the catch keeps the hook a
+ * no-op on older servers instead of failing the connection.
+ */
+export async function applyIdleSessionTimeouts(client: {
+  query: (text: string) => Promise<unknown>;
+}): Promise<void> {
+  try {
+    await client.query(
+      "SET idle_session_timeout = '10min'; SET idle_in_transaction_session_timeout = '5min'",
+    );
+  } catch (err) {
+    logger.debug("[db] could not set idle session timeouts", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
   const env = getCloudAwareEnv();
   const inWorkerRuntime = isCloudflareWorkerRuntime();
@@ -216,6 +247,13 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
     options.idleTimeoutMillis = 30_000;
     options.connectionTimeoutMillis = 30_000;
   }
+
+  // Skip on Workers (maxUses=1, can't leak, and we don't want an extra
+  // round-trip per request) and on local PGlite.
+  if (!inWorkerRuntime && !isLocalTcp) {
+    options.onConnect = applyIdleSessionTimeouts;
+  }
+
   const pool = new PgPool(options);
   // node-pg emits 'error' on an IDLE pooled client that the server/proxy drops
   // (Railway/Hyperdrive recycling a connection, or the PGlite socket bridge
@@ -227,28 +265,6 @@ function createPgPool(url: string, hyperdriveUrl?: string): PgPool {
       error: err instanceof Error ? err.message : String(err),
     });
   });
-  // Long-running Node services (agent-server, gateways) hold pooled connections
-  // on the shared Postgres. A checkout that's never released, or a transaction
-  // abandoned open, would otherwise sit forever and can exhaust
-  // max_connections ("too many clients already"). The pool reaps its OWN idle
-  // connections within seconds, so these server-side timeouts only ever fire on
-  // genuinely leaked/abandoned sessions — reclaiming the slot. Skip on Workers
-  // (maxUses=1, can't leak, and we don't want an extra round-trip per request)
-  // and on local PGlite. idle_session_timeout is PG14+; the catch keeps it a
-  // no-op on older servers (idle_in_transaction_session_timeout is PG9.6+).
-  if (!inWorkerRuntime && !isLocalTcp) {
-    pool.on("connect", (client) => {
-      void client
-        .query(
-          "SET idle_session_timeout = '10min'; SET idle_in_transaction_session_timeout = '5min'",
-        )
-        .catch((err) => {
-          logger.debug("[db] could not set idle session timeouts", {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-    });
-  }
   if (isLocalTcp) {
     disableLocalPreparedStatements(pool, { simpleQueryMode: inWorkerRuntime });
   }
