@@ -35,6 +35,11 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+// Per-test negotiated wire protocol the mocked payload reader advertises, so a
+// single fixture drives both the legacy and delta-v2 framings through the real
+// route handler.
+let requestStreamProtocol: "delta-v2" | undefined;
+
 vi.mock("../chat-routes.ts", async () => {
   const actual =
     await vi.importActual<typeof import("../chat-routes.ts")>(
@@ -49,6 +54,9 @@ vi.mock("../chat-routes.ts", async () => {
       preferredLanguage: undefined,
       source: "api",
       metadata: undefined,
+      ...(requestStreamProtocol
+        ? { streamProtocol: requestStreamProtocol }
+        : {}),
     })),
     persistConversationMemory: vi.fn(async () => undefined),
     persistAssistantConversationMemory: vi.fn(async () => undefined),
@@ -248,7 +256,50 @@ function createModelBackedMessageService() {
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
-function createState(): {
+/**
+ * A message service that ignores useModel and drives the route's onStreamChunk
+ * with a fixed chunk plan, so a test can force a mid-stream snapshot (a "replace"
+ * update — chunk that revises earlier text) and assert the fullText-only frame
+ * the delta writer emits for it.
+ */
+function createChunkPlanMessageService(
+  chunks: string[],
+  finalText: string,
+  thought: string,
+): NonNullable<AgentRuntime["messageService"]> {
+  return {
+    async handleMessage(
+      _runtime: AgentRuntime,
+      _message: { content?: { text?: unknown } },
+      _callback: unknown,
+      options?: {
+        abortSignal?: AbortSignal;
+        onStreamChunk?: (chunk: string) => Promise<void> | void;
+      },
+    ) {
+      for (const chunk of chunks) {
+        await Promise.resolve();
+        await options?.onStreamChunk?.(chunk);
+      }
+      return {
+        didRespond: true,
+        responseContent: { text: finalText, thought },
+        responseMessages: [],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "stream-contract-snapshot-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
+function createState(
+  messageServiceOverride?: NonNullable<AgentRuntime["messageService"]>,
+): {
   state: ConversationRouteState;
   useModel: ReturnType<typeof createStreamingUseModelFixture>;
 } {
@@ -272,7 +323,7 @@ function createState(): {
     logger,
     emitEvent: vi.fn(async () => undefined),
     useModel: useModel as unknown as AgentRuntime["useModel"],
-    messageService: createModelBackedMessageService(),
+    messageService: messageServiceOverride ?? createModelBackedMessageService(),
     ensureConnection: vi.fn(async () => undefined),
     updateWorld: vi.fn(async () => undefined),
     getWorld: vi.fn(async () => null),
@@ -302,7 +353,9 @@ function createState(): {
   };
 }
 
-function createCtx(): {
+function createCtx(
+  messageServiceOverride?: NonNullable<AgentRuntime["messageService"]>,
+): {
   ctx: ConversationRouteContext;
   record: MockResponseRecord;
   useModel: ReturnType<typeof createStreamingUseModelFixture>;
@@ -310,7 +363,7 @@ function createCtx(): {
   const socket = createMockSocket();
   const req = createReq(socket);
   const { res, record } = createMockRes();
-  const { state, useModel } = createState();
+  const { state, useModel } = createState(messageServiceOverride);
   const ctx: ConversationRouteContext = {
     req,
     res,
@@ -330,6 +383,7 @@ function createCtx(): {
 describe("conversation stream SSE contract (#10712)", () => {
   afterEach(() => {
     vi.clearAllMocks();
+    requestStreamProtocol = undefined;
   });
 
   it("emits thinking→streaming status, ordered cumulative token frames, then a terminal done frame with thought", async () => {
@@ -444,5 +498,83 @@ describe("conversation stream SSE contract (#10712)", () => {
     // The ctx error helper writes `error <status>: <message>` — no SSE header.
     expect(record.headers["Content-Type"]).toBeUndefined();
     expect(record.writes.join("")).toContain("error 404");
+  });
+
+  it("ships bare deltas (no per-token fullText) when the client negotiates delta-v2, and reconstructs the done text", async () => {
+    requestStreamProtocol = "delta-v2";
+    const { ctx, record } = createCtx();
+
+    await handleConversationRoutes(ctx);
+
+    const payloads = parseSsePayloads(record.writes);
+    const tokens = payloads.filter((payload) => payload.type === "token");
+    // These four tokens total ~27 chars — well under the 2048-byte snapshot
+    // floor — so EVERY token frame is a pure delta with no fullText key.
+    expect(tokens.map((payload) => payload.text)).toEqual(TOKENS);
+    for (const token of tokens) {
+      expect(token).not.toHaveProperty("fullText");
+    }
+    // Client semantics (append delta when no fullText) reconstruct the reply.
+    const reconstructed = tokens.reduce(
+      (acc, token) => acc + String(token.text ?? ""),
+      "",
+    );
+    expect(reconstructed).toBe(FINAL_TEXT);
+    // The terminal done frame is the full-text authority in delta framing too.
+    const done = payloads.find((payload) => payload.type === "done");
+    expect(done).toMatchObject({ type: "done", fullText: FINAL_TEXT });
+  });
+
+  it("emits a mid-stream structured rewrite as a fullText-only snapshot frame under delta-v2 (cumulative fullText under legacy)", async () => {
+    // "Hello wrld" then "Hello world" is a non-append revise: the route's
+    // onStreamChunk → appendIncomingText resolves it to a snapshot replace, so
+    // onSnapshot fires with the corrected text.
+    const messageService = createChunkPlanMessageService(
+      ["Hello wrld", "Hello world"],
+      "Hello world",
+      "corrected a typo mid-stream",
+    );
+
+    // Delta framing: the append is a bare delta; the revise is a fullText-only
+    // snapshot frame (authoritative replace, no `text`).
+    requestStreamProtocol = "delta-v2";
+    const delta = createCtx(messageService);
+    await handleConversationRoutes(delta.ctx);
+    const deltaTokens = parseSsePayloads(delta.record.writes).filter(
+      (payload) => payload.type === "token",
+    );
+    expect(deltaTokens).toEqual([
+      { type: "token", text: "Hello wrld" },
+      { type: "token", fullText: "Hello world" },
+    ]);
+    // Replay with client semantics (append text; replace on fullText).
+    const deltaReconstructed = deltaTokens.reduce((acc, token) => {
+      if (typeof token.fullText === "string") return token.fullText;
+      return acc + String(token.text ?? "");
+    }, "");
+    expect(deltaReconstructed).toBe("Hello world");
+    const deltaDone = parseSsePayloads(delta.record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(deltaDone).toMatchObject({ fullText: "Hello world" });
+
+    // Legacy framing: BOTH frames carry cumulative fullText (byte-identical to
+    // the historical writer), so an un-negotiated client stays correct.
+    requestStreamProtocol = undefined;
+    const legacy = createCtx(
+      createChunkPlanMessageService(
+        ["Hello wrld", "Hello world"],
+        "Hello world",
+        "corrected a typo mid-stream",
+      ),
+    );
+    await handleConversationRoutes(legacy.ctx);
+    const legacyTokens = parseSsePayloads(legacy.record.writes).filter(
+      (payload) => payload.type === "token",
+    );
+    expect(legacyTokens).toEqual([
+      { type: "token", text: "Hello wrld", fullText: "Hello wrld" },
+      { type: "token", text: "Hello world", fullText: "Hello world" },
+    ]);
   });
 });
