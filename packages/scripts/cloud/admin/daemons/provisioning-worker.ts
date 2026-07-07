@@ -66,6 +66,10 @@ type PreflightCreateKmsClient = (opts: {
   env: NodeJS.ProcessEnv;
 }) => PreflightKmsClient;
 
+type PreflightResolveKmsBackend = (opts: {
+  env: NodeJS.ProcessEnv;
+}) => "memory" | "local" | "steward";
+
 interface WorkerDeps {
   logger: WorkerLogger;
   provisioningJobService: WorkerService;
@@ -310,16 +314,105 @@ export function formatErrorWithCause(error: unknown): string {
   return message;
 }
 
+/**
+ * One-shot latch so the active KMS backend is logged once at startup, not on
+ * every poll cycle (the preflight re-runs each cycle to gate the hb_signal).
+ * Reset only for tests.
+ */
+let kmsBackendLogged = false;
+
+/** Reset the KMS-backend log latch (tests only). */
+export function resetKmsBackendLogForTests(): void {
+  kmsBackendLogged = false;
+}
+
+/**
+ * Log the active KMS backend exactly once (#15310, behavior 1: "log the active
+ * KMS backend at startup"). The preflight has no logger in scope (it runs
+ * before/independently of loadDeps), and @elizaos/security itself only has
+ * `console` as a diagnostic channel, so we mirror that here. `console.warn` for
+ * `memory` (about to be refused outside test) so it stands out; `console.info`
+ * otherwise.
+ */
+function logKmsBackendOnce(
+  backend: "memory" | "local" | "steward",
+  env: NodeJS.ProcessEnv,
+): void {
+  if (kmsBackendLogged) return;
+  kmsBackendLogged = true;
+  const nodeEnv = env.NODE_ENV ?? "<unset>";
+  const line = `[provisioning-worker] active KMS backend: ${backend} (NODE_ENV=${nodeEnv})`;
+  // eslint-disable-next-line no-console
+  if (backend === "memory") console.warn(line);
+  // eslint-disable-next-line no-console
+  else console.info(line);
+}
+
+/**
+ * A KMS backend is "durable" if it survives a worker restart. The `memory`
+ * backend does NOT: it derives a fresh per-process root key on every start, so
+ * every DEK / snapshot / API-key it encrypted is orphaned on the next restart
+ * (KeyNotFoundError, then `AEAD decrypt failed` on the old backup). That is the
+ * staging root cause behind #15310 — the worker ran `ELIZA_KMS_BACKEND=memory`,
+ * so every pre-upgrade snapshot was permanently undecryptable after a bounce.
+ *
+ * `memory` is legitimate only in NODE_ENV=test/development (each test process is
+ * its own throwaway world). Anywhere else — including staging, which the
+ * existing `getKmsClient()` guard MISSES because it gates on
+ * `isProductionDeployment` (staging is not "production") — a `memory` backend is
+ * a latent data-loss bomb. Exported for unit testing; pure so the decision is
+ * checkable without booting a KMS client.
+ */
+export function assertKmsBackendDurable(
+  backend: "memory" | "local" | "steward",
+  env: NodeJS.ProcessEnv,
+): void {
+  if (backend !== "memory") return;
+
+  // Ephemeral `memory` is only ever acceptable in test/development, where each
+  // process is disposable. NODE_ENV unset (a bare daemon launch) is treated as
+  // NOT test/development — refuse, because a real deploy that forgot to set
+  // NODE_ENV is exactly the misconfig we are guarding against.
+  const nodeEnv = env.NODE_ENV;
+  if (nodeEnv === "test" || nodeEnv === "development") return;
+
+  throw new Error(
+    "memory KMS loses all org DEKs on restart; set ELIZA_KMS_BACKEND=local " +
+      "(with a persistent ELIZA_LOCAL_ROOT_KEY) or a durable backend. The " +
+      "ephemeral 'memory' backend rotates its root key on every process start, " +
+      "so every pre-upgrade snapshot, API key, and BYO secret it encrypts is " +
+      "permanently undecryptable after the next worker restart (this stranded " +
+      "real users on staging, #15310). It is only valid in " +
+      `NODE_ENV=test/development (got NODE_ENV=${nodeEnv ?? "<unset>"}).`,
+  );
+}
+
 export async function assertProvisioningWorkerPreflight(
   opts: {
     env?: NodeJS.ProcessEnv;
     createKmsClient?: PreflightCreateKmsClient;
+    resolveKmsBackend?: PreflightResolveKmsBackend;
   } = {},
 ): Promise<void> {
   const env = opts.env ?? process.env;
-  const createKmsClient =
-    opts.createKmsClient ??
-    (await import("@elizaos/security/kms")).createKmsClient;
+  const kmsModule =
+    opts.createKmsClient && opts.resolveKmsBackend
+      ? null
+      : await import("@elizaos/security/kms");
+  const createKmsClient = opts.createKmsClient ?? kmsModule!.createKmsClient;
+  const resolveKmsBackend =
+    opts.resolveKmsBackend ?? kmsModule!.resolveKmsBackend;
+
+  // Config preflight (#15310, behavior 1): resolve the active backend, log it
+  // once, and REFUSE to start on the ephemeral `memory` backend outside
+  // test/development BEFORE we ever touch a key. This runs ahead of the
+  // getOrCreateKey probe because `memory` would happily service that probe — it
+  // works fine in-process; the failure only manifests on the NEXT restart, by
+  // which point the backups are already lost. A loud, actionable, fail-fast is
+  // the only prevention.
+  const backend = resolveKmsBackend({ env });
+  logKmsBackendOnce(backend, env);
+  assertKmsBackendDurable(backend, env);
 
   try {
     const kms = createKmsClient({ env });

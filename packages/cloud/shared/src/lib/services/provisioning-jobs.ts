@@ -1715,6 +1715,42 @@ export class ProvisioningJobService {
           });
         };
       }
+      // #15310 (self-healing, behavior 2): a permanently-failed agent_upgrade
+      // used to have NO writeback case here — the sandbox row was left
+      // untouched, so the org sat on a possibly-dead container while the UI
+      // still rendered the upgrade as an indefinite "Setting up…" tile and the
+      // reconciler kept re-enqueuing the same doomed upgrade against the same
+      // dead agent id. That is the exact strand this issue is about. Flip the
+      // row to `error` with an actionable message so (a) the client's boot
+      // reconciliation lane can detect "onboarded locally but the bound agent
+      // is in error" and re-enter provisioning, and (b) the failure surfaces
+      // instead of spinning forever.
+      //
+      // NOTE: this is the dead-agent-row CLEANUP half only. The full
+      // "re-enqueue a FRESH dedicated create" (issue's retry-semantics bullet)
+      // needs a product decision on who owns/names the new agent and cannot be
+      // safely half-designed here — the upgrade path swaps containers on an
+      // EXISTING sandbox row and never mints a new one, so re-enqueue-fresh is
+      // a new create flow, not a re-arm. Tracked as a follow-up (see PR body).
+      // Marking the row `error` is the bounded, correct, non-stranding step
+      // that unblocks the client reconciliation lane today.
+      case JOB_TYPES.AGENT_UPGRADE: {
+        const { agentId } = readAgentUpgradeJobData(job);
+        return async (tx) => {
+          await tx
+            .update(agentSandboxes)
+            .set({
+              status: "error",
+              error_message: `Upgrade permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
+              updated_at: new Date(),
+            })
+            .where(eq(agentSandboxes.id, agentId));
+          logger.warn(
+            "[provisioning-jobs] Marked sandbox as error after permanent upgrade failure",
+            { jobId: job.id, agentId },
+          );
+        };
+      }
       // Apps / Product 2: a permanently failed deploy must flip the app off
       // `building`, or the deploy-status route (which echoes
       // `apps.deployment_status`) reports BUILDING forever — the CLI/dashboard

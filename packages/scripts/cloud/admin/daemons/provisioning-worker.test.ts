@@ -1,6 +1,7 @@
 // Exercises cloud admin daemons provisioning worker.test automation behavior with deterministic script fixtures.
 import { describe, expect, it, mock } from "bun:test";
 import {
+  assertKmsBackendDurable,
   assertProvisioningWorkerPreflight,
   closeOpenHandles,
   databaseHostForLogs,
@@ -11,6 +12,7 @@ import {
   pollSleep,
   readWorkerConfig,
   requestShutdown,
+  resetKmsBackendLogForTests,
   WORKER_TIMING,
 } from "./provisioning-worker";
 
@@ -107,6 +109,135 @@ describe("assertProvisioningWorkerPreflight", () => {
         }),
       }),
     ).rejects.toThrow("Steward endpoint unavailable");
+  });
+});
+
+describe("assertKmsBackendDurable (#15310 KMS preflight guard)", () => {
+  it("throws on memory backend in production (the exact staging misconfig)", () => {
+    // Staging ran ELIZA_KMS_BACKEND=memory. Every worker restart lost all org
+    // DEKs, every pre-upgrade snapshot became permanently undecryptable, and
+    // real users were stranded on "Setting up your cloud agent…". This guard
+    // MUST refuse to boot on that shape.
+    expect(() =>
+      assertKmsBackendDurable("memory", {
+        NODE_ENV: "production",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/memory KMS loses all org DEKs on restart/);
+    expect(() =>
+      assertKmsBackendDurable("memory", {
+        NODE_ENV: "production",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/ELIZA_KMS_BACKEND=local/);
+  });
+
+  it("throws on memory backend in staging (NODE_ENV=staging or unset)", () => {
+    // isProductionDeployment gates staging as NOT production — which is why the
+    // existing getKmsClient guard MISSED tonight's outage. This preflight is
+    // stricter: memory is only ever valid in test/development, so staging AND
+    // a bare daemon launch (NODE_ENV=<unset>) are both refused.
+    expect(() =>
+      assertKmsBackendDurable("memory", {
+        NODE_ENV: "staging",
+      } as NodeJS.ProcessEnv),
+    ).toThrow(/memory KMS loses all org DEKs/);
+    expect(() =>
+      assertKmsBackendDurable("memory", {} as NodeJS.ProcessEnv),
+    ).toThrow(/NODE_ENV=<unset>/);
+  });
+
+  it("passes on memory backend in test / development (legitimate use)", () => {
+    // Every test process is its own throwaway world; the existing security
+    // package tests + kms-client.test.ts all rely on memory as the default.
+    expect(() =>
+      assertKmsBackendDurable("memory", {
+        NODE_ENV: "test",
+      } as NodeJS.ProcessEnv),
+    ).not.toThrow();
+    expect(() =>
+      assertKmsBackendDurable("memory", {
+        NODE_ENV: "development",
+      } as NodeJS.ProcessEnv),
+    ).not.toThrow();
+  });
+
+  it("passes on durable backends (local / steward) in every env", () => {
+    for (const nodeEnv of [
+      "production",
+      "staging",
+      "test",
+      "development",
+      undefined,
+    ]) {
+      const env = { NODE_ENV: nodeEnv } as NodeJS.ProcessEnv;
+      expect(() => assertKmsBackendDurable("local", env)).not.toThrow();
+      expect(() => assertKmsBackendDurable("steward", env)).not.toThrow();
+    }
+  });
+});
+
+describe("assertProvisioningWorkerPreflight (#15310 memory-backend refusal)", () => {
+  it("REFUSES to boot when the resolved backend is memory in production, BEFORE touching the KMS", async () => {
+    // The old preflight would happily call getOrCreateKey() on a memory KMS
+    // (it works in-process) and pass — the failure only surfaces on the NEXT
+    // restart, by which point every backup is unreadable. The new guard runs
+    // ahead of the KMS probe so a getOrCreateKey that would have succeeded
+    // NEVER RUNS on a memory backend in production.
+    resetKmsBackendLogForTests();
+    const getOrCreateKey = mock(async () => ({ keyId: "ok", version: 1 }));
+    const createKmsClient = mock(() => ({ getOrCreateKey }));
+
+    await expect(
+      assertProvisioningWorkerPreflight({
+        env: {
+          ELIZA_KMS_BACKEND: "memory",
+          NODE_ENV: "production",
+        } as NodeJS.ProcessEnv,
+        createKmsClient,
+        resolveKmsBackend: () => "memory",
+      }),
+    ).rejects.toThrow(/memory KMS loses all org DEKs on restart/);
+
+    // Critical: the probe MUST NOT have run — memory backend passes
+    // getOrCreateKey in-process, so touching it would have masked the failure.
+    expect(createKmsClient).not.toHaveBeenCalled();
+    expect(getOrCreateKey).not.toHaveBeenCalled();
+  });
+
+  it("proceeds through the KMS probe when the resolved backend is local", async () => {
+    resetKmsBackendLogForTests();
+    const getOrCreateKey = mock(async () => ({ keyId: "ok", version: 1 }));
+    const createKmsClient = mock(() => ({ getOrCreateKey }));
+
+    await assertProvisioningWorkerPreflight({
+      env: {
+        ELIZA_KMS_BACKEND: "local",
+        NODE_ENV: "production",
+      } as NodeJS.ProcessEnv,
+      createKmsClient,
+      resolveKmsBackend: () => "local",
+    });
+
+    expect(createKmsClient).toHaveBeenCalledTimes(1);
+    expect(getOrCreateKey).toHaveBeenCalledWith(
+      "system:provisioning-worker-preflight/v1",
+    );
+  });
+
+  it("tolerates memory backend when NODE_ENV=test (existing tests must keep working)", async () => {
+    resetKmsBackendLogForTests();
+    const getOrCreateKey = mock(async () => ({ keyId: "ok", version: 1 }));
+    const createKmsClient = mock(() => ({ getOrCreateKey }));
+
+    await assertProvisioningWorkerPreflight({
+      env: {
+        ELIZA_KMS_BACKEND: "memory",
+        NODE_ENV: "test",
+      } as NodeJS.ProcessEnv,
+      createKmsClient,
+      resolveKmsBackend: () => "memory",
+    });
+
+    expect(createKmsClient).toHaveBeenCalledTimes(1);
   });
 });
 
