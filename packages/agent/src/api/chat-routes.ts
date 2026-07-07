@@ -234,6 +234,28 @@ export function isDuplicateChatMessage(
   return false;
 }
 
+/**
+ * Roll back an idempotency key recorded by {@link isDuplicateChatMessage}.
+ *
+ * The guard records at request ARRIVAL (so a duplicate landing while the
+ * original is still mid-turn is suppressed — that's the blip-retry window it
+ * exists for). But when the original turn dies WITHOUT persisting a visible
+ * assistant reply — a client disconnect aborts generation, or an error hits
+ * after a disconnect so no fallback reply is persisted — a suppressed retry
+ * would eat the user's message entirely: no reply, no error, no retry chip.
+ * Callers release the key on exactly those paths so the client's single
+ * auto-retry legitimately re-runs the turn (it is not a duplicate of any
+ * delivered outcome). Releasing is always safe: the worst case is the
+ * pre-guard behavior (a second turn) on a turn that produced nothing.
+ */
+export function releaseChatMessageId(
+  scope: string,
+  clientMessageId: string | null,
+): void {
+  if (!clientMessageId) return;
+  chatSeenMessageIds.delete(`${scope}:${clientMessageId}`);
+}
+
 /** Test-only: clear the HTTP chat idempotency cache between cases. */
 export function __resetChatDedupeForTests(): void {
   chatSeenMessageIds.clear();
