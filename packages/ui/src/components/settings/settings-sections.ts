@@ -10,6 +10,7 @@
 
 import {
   Archive,
+  BellRing,
   Bot,
   Brain,
   Cloud,
@@ -100,6 +101,11 @@ const AppearanceSettingsSection = lazy(() =>
 const BackgroundSettingsSection = lazy(() =>
   import("./BackgroundSettingsSection").then((m) => ({
     default: m.BackgroundSettingsSection,
+  })),
+);
+const WebPushSettingsSection = lazy(() =>
+  import("./WebPushSettingsSection").then((m) => ({
+    default: m.WebPushSettingsSection,
   })),
 );
 const RemotePluginHostSection = lazy(() =>
@@ -379,6 +385,17 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     developerOnly: true,
     // Chrome-light so the live wallpaper shows through while choices apply.
     Component: BackgroundSettingsSection,
+  },
+  {
+    id: "notifications",
+    defaultLabel: "Notifications",
+    group: "system",
+    aliases: ["push", "notify"],
+    icon: BellRing,
+    tone: "accent",
+    hue: "accent",
+    labelKey: "settings.sections.notifications.label",
+    Component: WebPushSettingsSection,
   },
   {
     id: "runtime",

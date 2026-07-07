@@ -277,9 +277,15 @@ export function evaluatePrEvidence(
   options = {},
 ) {
   const rows = extractEvidenceRows(body ?? "");
+  // When a changed-file list is available, path detection is the sole surface
+  // trigger: the auto-labeler applies `ui` to ANY packages/ui path, so the
+  // label alone forces screenshots onto non-visual .ts changes. The label
+  // trigger survives only for label-only invocations (no file list), where it
+  // is the best signal available.
   const surfaceArtifactsRequired =
-    requiresSurfaceArtifacts(options.labels) ||
-    requiresSurfaceArtifactsFromFiles(options.changedFiles);
+    parseChangedFiles(options.changedFiles).length > 0
+      ? requiresSurfaceArtifactsFromFiles(options.changedFiles)
+      : requiresSurfaceArtifacts(options.labels);
   // A wholly-new surface (every touched UI file was ADDED) has no "before"
   // state to photograph; that one row may be N/A-with-reason.
   const beforeNaAllowed = beforeScreenshotImpossible(

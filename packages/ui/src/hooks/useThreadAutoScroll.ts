@@ -118,6 +118,12 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
   // recovers the true pre-growth position (#12348).
   const lastGrowthHeightRef = useRef(0);
 
+  // Whether the reader is resting at the bottom, mirrored into a ref so the
+  // geometry-follow observer below can read it without re-subscribing on every
+  // atBottom flip (the observer must stay attached across the whole open sheet).
+  const atBottomRef = useRef(atBottom);
+  atBottomRef.current = atBottom;
+
   const syncAtBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -136,6 +142,56 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     el.addEventListener("scroll", syncAtBottom, { passive: true });
     return () => el.removeEventListener("scroll", syncAtBottom);
   }, [syncAtBottom, enabled]);
+
+  // Re-pin the bottom when the SCROLLER'S OWN GEOMETRY changes while the reader
+  // rests at the bottom — a shrink or grow that carries no thread growth so the
+  // growthKey effect never fires. The overlay's send path is the motivating
+  // case (#15178 device regression): sending springs the sheet to its half/full
+  // detent, so the thread scroller grows over ~300ms AFTER the send-commit pin
+  // already landed. Without a re-pin the settled thread strands short of the
+  // newest line — the reader sends and the list doesn't follow. A soft keyboard
+  // opening/closing (which shrinks/grows the scroller) is the same class of
+  // geometry-only change. Gated on `atBottomRef` so a reader scrolled up into
+  // history is never yanked by a resize, and we only ever follow, never fight a
+  // manual scroll. rAF-coalesced so a multi-frame spring settle writes once per
+  // frame at most.
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof ResizeObserver === "undefined") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf: number | null = null;
+    const followResize = () => {
+      raf = null;
+      const node = scrollRef.current;
+      if (!node) return;
+      // Only follow a resize for a reader who was resting at the bottom. Trust
+      // the tracked `atBottom` state (kept truthful by the scroll listener)
+      // rather than a live re-measure: the reflow that fires this observer may
+      // have already grown the content past the at-bottom band with scrollTop
+      // preserved, so a live measure would read "scrolled up" and wrongly stop
+      // following — the same stale-measure trap the growth effect avoids. A
+      // reader who has scrolled up has `atBottom` false and is never yanked.
+      if (!atBottomRef.current) return;
+      node.scrollTop = node.scrollHeight;
+      lastGrowthHeightRef.current = node.scrollHeight;
+    };
+    const ro = new ResizeObserver(() => {
+      if (raf != null) return;
+      if (typeof requestAnimationFrame === "function") {
+        raf = requestAnimationFrame(followResize);
+      } else {
+        followResize();
+      }
+    });
+    ro.observe(el);
+    return () => {
+      if (raf != null && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(raf);
+      }
+      ro.disconnect();
+    };
+  }, [enabled]);
 
   const jumpToLatest = useCallback(() => {
     const el = scrollRef.current;

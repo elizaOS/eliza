@@ -1640,16 +1640,19 @@ function AppProviderInner({
     greetingInFlightConversationRef,
   });
 
-  // ── Capacitor app lifecycle (APP_RESUME / APP_PAUSE) ────────────────
-  // Bridges native lifecycle events into the chat pipeline: aborts
-  // in-flight streams before iOS suspends the process, persists the
-  // active conversation id, and re-probes /api/health on resume so the
-  // renderer notices a respawned FGS / dev server on a new port.
+  // ── App lifecycle (APP_RESUME / APP_PAUSE) ───────────────────────────
+  // Bridges lifecycle events into the chat pipeline on every surface
+  // (native + installed web PWA): aborts in-flight streams before iOS
+  // suspends the process and persists the active conversation id on
+  // pause; on resume re-probes /api/health, forces a WS reconnect, and
+  // refetches the active conversation tail so messages missed while
+  // backgrounded appear (esp. dedicated-agent REST mode with no WS).
   useAppLifecycleEvents({
     activeConversationIdRef,
     conversationMessagesRef,
     chatAbortRef,
     setConversationMessages,
+    loadConversationMessages,
   });
 
   // ── Chat composer draft persistence ────────────────────────────────

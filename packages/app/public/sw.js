@@ -18,6 +18,19 @@
 
 "use strict";
 
+// Web Push handler logic (push/notificationclick shaping, deep-link routing,
+// badge helpers) lives in a standalone, unit-tested module. importScripts runs
+// it synchronously at SW startup and attaches `self.__elizaPush`. Guarded so a
+// missing file (older deploy) degrades to "no push" rather than failing SW
+// install for the whole app.
+try {
+  importScripts("/sw-push.js");
+} catch (err) {
+  // Push is a progressive enhancement — the SW's caching still works without it.
+  // eslint-disable-next-line no-console
+  console.warn("[SW] push module unavailable:", err && err.message);
+}
+
 const VIEWS_CACHE_NAME = "elizaos-views-v1";
 // Bump the shell cache to evict any stale precached index/CSS in an installed
 // iOS standalone PWA (Add-to-Home-Screen runs this SW). The network-first shell
@@ -83,6 +96,48 @@ self.addEventListener("activate", (event) => {
 
       await self.clients.claim();
     })(),
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Web Push (iOS 16.4+ installed PWA) — client-side foundation.
+//
+// The cloud sender lands separately; here the SW just renders an inbound push
+// as a notification, syncs the app badge, and routes a click back to the right
+// conversation. All shaping/routing logic is in `/sw-push.js` (`__elizaPush`),
+// which is unit-tested; these listeners are thin adapters over it.
+// ---------------------------------------------------------------------------
+
+self.addEventListener("push", (event) => {
+  const push = self.__elizaPush;
+  if (!push) return; // module failed to load — nothing to render.
+
+  const payload = push.parsePushData(event.data);
+  const { title, options } = push.buildNotification(payload);
+  const badgeCount = push.badgeCountFromPayload(payload);
+
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      push.applyBadge(self.navigator, badgeCount),
+    ]),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  const push = self.__elizaPush;
+  event.notification.close();
+  if (!push) return;
+
+  const data = event.notification.data;
+  const targetPath = push.resolveClickTarget(data, self.location.origin);
+
+  event.waitUntil(
+    Promise.all([
+      push.focusOrOpen(self.clients, targetPath, self.location.origin),
+      // A tapped notification means the user is reading — clear the badge.
+      push.clearBadge(self.navigator),
+    ]),
   );
 });
 
@@ -168,6 +223,15 @@ self.addEventListener("message", (event) => {
 
   if (data.type === "sw:evict-all-views") {
     event.waitUntil(caches.delete(VIEWS_CACHE_NAME));
+  }
+
+  // The page asks the SW to clear the app badge when it comes to the
+  // foreground / a conversation is opened (the page can't always call
+  // clearAppBadge itself under all install modes; the SW owns the badge it set
+  // on push receipt).
+  if (data.type === "sw:clear-badge") {
+    const push = self.__elizaPush;
+    if (push) event.waitUntil(push.clearBadge(self.navigator));
   }
 });
 

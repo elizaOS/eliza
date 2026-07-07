@@ -97,6 +97,12 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     aliases: ["theme", "look"],
   },
   { id: "background", defaultLabel: "Background", group: "system" },
+  {
+    id: "notifications",
+    defaultLabel: "Notifications",
+    group: "system",
+    aliases: ["push", "notify"],
+  },
   { id: "runtime", defaultLabel: "Runtime", group: "system" },
   {
     id: "wallet-rpc",

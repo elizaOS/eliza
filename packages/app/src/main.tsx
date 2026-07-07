@@ -58,6 +58,7 @@ import {
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import { logger } from "@elizaos/logger";
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
@@ -104,6 +105,10 @@ import {
   parseFirstRunRemoteConnectDeepLink,
   routeFirstRunDeepLink,
 } from "@elizaos/ui/first-run/deep-link-handler";
+import {
+  FIRST_RUN_CLOUD_LOGIN_ACTION,
+  tryHandleFirstRunAction,
+} from "@elizaos/ui/first-run/first-run-action-channel";
 import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
@@ -380,6 +385,10 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
+const IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY =
+  "eliza:ios-cloud-onboarding-smoke:request";
+const IOS_CLOUD_ONBOARDING_SMOKE_RESULT_KEY =
+  "eliza:ios-cloud-onboarding-smoke:result";
 const IOS_AUTH_CALLBACK_SMOKE_REQUEST_KEY = "eliza:auth-callback-smoke:request";
 const IOS_AUTH_CALLBACK_SMOKE_RESULT_KEY = "eliza:auth-callback-smoke:result";
 const IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY =
@@ -405,6 +414,7 @@ let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
 let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
+let iosCloudOnboardingSmokeStarted = false;
 let iosOnboardingRelaunchSmokeStarted = false;
 let iosMixedContentSmokeStarted = false;
 
@@ -699,6 +709,15 @@ async function writeIosOnboardingSmokeResult(
   await writeIosPreferenceSmokeResult(IOS_ONBOARDING_SMOKE_RESULT_KEY, result);
 }
 
+async function writeIosCloudOnboardingSmokeResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  await writeIosPreferenceSmokeResult(
+    IOS_CLOUD_ONBOARDING_SMOKE_RESULT_KEY,
+    result,
+  );
+}
+
 async function writeIosOnboardingRelaunchSmokeResult(
   result: Record<string, unknown>,
 ): Promise<void> {
@@ -921,6 +940,25 @@ function readIosOnboardingSmokeStorageSnapshot(): Record<
   );
 }
 
+function readIosCloudOnboardingSmokeStorageSnapshot(): Record<
+  string,
+  string | boolean | null
+> {
+  const base = readIosOnboardingSmokeStorageSnapshot();
+  let stewardSessionToken = "";
+  try {
+    stewardSessionToken =
+      window.localStorage.getItem("steward_session_token") ?? "";
+  } catch {
+    // error-policy:J7 diagnostics snapshot — an unreadable key reports false
+    stewardSessionToken = "";
+  }
+  return {
+    ...base,
+    stewardSessionPresent: stewardSessionToken.length > 0,
+  };
+}
+
 async function waitForIosOnboardingSmokeStorageSnapshot(
   apiBase: string,
 ): Promise<Record<string, string | null>> {
@@ -1000,6 +1038,187 @@ async function driveIosLivenessChatTurn(prompt: string): Promise<string> {
   throw new Error(
     "iOS liveness chat turn: assistant never produced a reply within the timeout",
   );
+}
+
+function parseIosCloudOnboardingSmokeRequest(raw: string | null): {
+  mode: "tap" | "autologin";
+} {
+  if (!raw || raw === "1") return { mode: "tap" };
+  try {
+    const parsed = JSON.parse(raw) as { mode?: unknown };
+    return parsed.mode === "autologin"
+      ? { mode: "autologin" }
+      : { mode: "tap" };
+  } catch (error) {
+    // error-policy:J2 corrupt smoke-request blob cannot drive a valid path
+    throw new Error("Invalid iOS cloud-onboarding smoke request", {
+      cause: error,
+    });
+  }
+}
+
+function installFirstRunPostCounter(): {
+  getCount: () => number;
+  restore: () => void;
+} {
+  const originalFetch = window.fetch.bind(window);
+  let firstRunPostCount = 0;
+  window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const method =
+      init?.method ??
+      (typeof input === "object" && "method" in input ? input.method : "GET");
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (
+      String(method).toUpperCase() === "POST" &&
+      /\/api\/first-run(?:[?#]|$)/.test(url)
+    ) {
+      firstRunPostCount += 1;
+    }
+    return originalFetch(input, init);
+  }) as typeof window.fetch;
+  return {
+    getCount: () => firstRunPostCount,
+    restore: () => {
+      window.fetch = originalFetch;
+    },
+  };
+}
+
+async function waitForIosCloudSignInGreeting(): Promise<boolean> {
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const text = document.body?.innerText ?? "";
+    if (/Sign in to Eliza Cloud/i.test(text)) return true;
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error("Timed out waiting for the Eliza Cloud sign-in greeting");
+}
+
+async function triggerIosCloudSignInAction(): Promise<void> {
+  const deadline = Date.now() + IOS_ONBOARDING_SMOKE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (tryHandleFirstRunAction(FIRST_RUN_CLOUD_LOGIN_ACTION)) return;
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+  }
+  throw new Error("Timed out waiting for the cloud sign-in action handler");
+}
+
+async function waitForIosCloudOnboardingHome(): Promise<{
+  home: HTMLElement;
+  composer: HTMLElement;
+}> {
+  const home = await waitForIosOnboardingElement<HTMLElement>(
+    '[data-testid="home-launcher-surface"][data-page="home"]',
+    { visible: true, timeoutMs: IOS_ONBOARDING_SMOKE_TIMEOUT_MS },
+  );
+  const composer = await waitForIosOnboardingElement<HTMLElement>(
+    '[data-testid="chat-composer-textarea"]',
+    { visible: true, timeoutMs: IOS_ONBOARDING_SMOKE_TIMEOUT_MS },
+  );
+  return { home, composer };
+}
+
+async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
+  if (!isIOS || iosCloudOnboardingSmokeStarted) {
+    return iosCloudOnboardingSmokeStarted;
+  }
+  let rawRequest: string | null = null;
+  try {
+    rawRequest = window.localStorage.getItem(
+      IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY,
+    );
+  } catch {
+    // error-policy:J3 unavailable storage reads as "no request"; the
+    // Preferences fallback below still serves the simulator harness
+    rawRequest = null;
+  }
+  if (!rawRequest) {
+    rawRequest = await boundedPreferenceGet(
+      IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY,
+    );
+  }
+  if (!rawRequest) return false;
+
+  iosCloudOnboardingSmokeStarted = true;
+  const request = parseIosCloudOnboardingSmokeRequest(rawRequest);
+  const firstRunCounter = installFirstRunPostCounter();
+  await writeIosCloudOnboardingSmokeResult({
+    ok: false,
+    phase: "running",
+    mode: request.mode,
+    startedAt: new Date().toISOString(),
+  });
+
+  try {
+    let signInGreetingVisible = false;
+    if (request.mode === "tap") {
+      signInGreetingVisible = await waitForIosCloudSignInGreeting();
+      await triggerIosCloudSignInAction();
+    }
+
+    const { home, composer } = await waitForIosCloudOnboardingHome();
+    const storage = readIosCloudOnboardingSmokeStorageSnapshot();
+    const firstRunPostCount = firstRunCounter.getCount();
+    const activeServer = storage["elizaos:active-server"];
+    const cloudActiveServer =
+      typeof activeServer === "string" &&
+      activeServer.includes('"kind":"cloud"');
+    const onboardingHidden = !document.querySelector(
+      '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
+    );
+
+    await writeIosCloudOnboardingSmokeResult({
+      ok:
+        Boolean(home) &&
+        Boolean(composer) &&
+        onboardingHidden &&
+        cloudActiveServer &&
+        firstRunPostCount === 1,
+      phase: "complete",
+      mode: request.mode,
+      finishedAt: new Date().toISOString(),
+      signInGreetingVisible,
+      homeVisible: Boolean(home),
+      composerVisible: Boolean(composer),
+      onboardingHidden,
+      firstRunPostCount,
+      cloudActiveServer,
+      storage,
+    });
+  } catch (error) {
+    // error-policy:J1 smoke boundary — the failure is written to the
+    // harness result sink
+    await writeIosCloudOnboardingSmokeResult({
+      ok: false,
+      phase: "failed",
+      mode: request.mode,
+      finishedAt: new Date().toISOString(),
+      firstRunPostCount: firstRunCounter.getCount(),
+      error: error instanceof Error ? error.message : String(error),
+      storage: readIosCloudOnboardingSmokeStorageSnapshot(),
+    });
+  } finally {
+    firstRunCounter.restore();
+    try {
+      window.localStorage.removeItem(IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY);
+    } catch (error) {
+      // error-policy:J6 best-effort cleanup — Preferences removal below is
+      // authoritative for the simulator harness
+      logger.debug(
+        { error },
+        "[iOSCloudOnboardingSmoke] localStorage request cleanup failed",
+      );
+    }
+    await boundedPreferenceWrite(() =>
+      Preferences.remove({ key: IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY }),
+    );
+  }
+  return true;
 }
 
 async function fetchIosMixedContentHealth(apiBase: string): Promise<
@@ -1933,6 +2152,7 @@ async function initializePlatform(): Promise<void> {
   initializeCapacitorBridge();
   void runIosFullBunSmokeIfRequested();
   void runIosOnboardingSmokeIfRequested();
+  void runIosCloudOnboardingSmokeIfRequested();
   void runIosOnboardingRelaunchSmokeIfRequested();
   void runIosAttachmentSmokeIfRequested({
     isIOS,
@@ -1963,12 +2183,18 @@ async function initializePlatform(): Promise<void> {
     );
   }
 
+  // Foreground/background lifecycle + connectivity are wired on every surface,
+  // including installed web PWAs (#PWA-D1). `createMobileLifecycle` guards
+  // Capacitor calls and falls back to `document.visibilitychange` plus window
+  // `online`/`offline`; `setAppActive` dedupes native `appStateChange` so the
+  // browser fallback cannot double-fire resume handling.
+  getMobileLifecycle().initializeAppLifecycle();
+  void getMobileLifecycle().initializeNetworkListener();
+
   if (isIOS || isAndroid) {
     await initializeStatusBar();
     await initializeKeyboard();
-    getMobileLifecycle().initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
-    void getMobileLifecycle().initializeNetworkListener();
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
     void registerMobileBlockerBackends();
@@ -2080,7 +2306,7 @@ async function initializeKeyboard(): Promise<void> {
 }
 
 /**
- * Live Android/Capacitor lifecycle helper. `main.tsx` keeps its own
+ * Live cross-platform lifecycle helper. `main.tsx` keeps its own
  * status-bar / keyboard wiring, but the app-lifecycle path (foreground/
  * background events + the `visibilitychange` fallback, the hardware-back
  * contract — `dispatchBackIntent()` first, then `history.back()` /
