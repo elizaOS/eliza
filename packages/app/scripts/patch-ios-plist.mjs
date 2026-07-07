@@ -97,7 +97,9 @@ function ensureArrayStringValue(xml, key, value) {
     return { next: xml, changed: false };
   }
   const [, prefix, body, suffix] = match;
-  if (new RegExp(`<string>${escapeKey(escapeXml(value))}</string>`).test(body)) {
+  if (
+    new RegExp(`<string>${escapeKey(escapeXml(value))}</string>`).test(body)
+  ) {
     return { next: xml, changed: false };
   }
   const indent = body.match(/\n(\s*)<string>/)?.[1] ?? "\t\t";

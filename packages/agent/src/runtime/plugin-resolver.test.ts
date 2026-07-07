@@ -135,7 +135,7 @@ describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
       // The provider fixture reuses a real PROVIDER_PLUGIN_MAP package name so
       // the phase filter classifies it as a model provider; the plain fixture
       // is an ordinary custom plugin.
-      await writeDropIn("deepseek", "@elizaos/plugin-deepseek");
+      await writeDropIn("nearai", "@elizaos/plugin-nearai");
       await writeDropIn("plain", "@dropins/plugin-plainfixture");
       process.chdir(workspace);
       const config = {
@@ -151,7 +151,7 @@ describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
         phase: "blocking",
       });
       const blockingNames = blocking.map((p) => p.name);
-      expect(blockingNames).toContain("@elizaos/plugin-deepseek");
+      expect(blockingNames).toContain("@elizaos/plugin-nearai");
       expect(blockingNames).not.toContain("@dropins/plugin-plainfixture");
 
       const deferred = await resolvePlugins(config, {
@@ -159,7 +159,7 @@ describe("resolvePlugins boot-phase split for model providers (#14038)", () => {
         phase: "deferred",
       });
       const deferredNames = deferred.map((p) => p.name);
-      expect(deferredNames).not.toContain("@elizaos/plugin-deepseek");
+      expect(deferredNames).not.toContain("@elizaos/plugin-nearai");
       expect(deferredNames).toContain("@dropins/plugin-plainfixture");
     } finally {
       process.chdir(previousCwd);

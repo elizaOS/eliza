@@ -3,7 +3,6 @@
  * /api/media URL.
  */
 import type * as React from "react";
-import { STANDALONE_BOTTOM_RECLAIM_OFFSET } from "../platform/standalone-bottom-reclaim";
 import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
 
 export interface ImageBackgroundProps {
@@ -20,7 +19,7 @@ export interface ImageBackgroundProps {
  *  - `/api/media/<hash>` (a re-hosted upload/generation) — an AGENT-API path, so
  *    resolve it against the runtime API base (`resolveApiUrl`); a bare `/api/…`
  *    on `file://` would point at the SPA, not the backend, and 404.
- *  - `/bg-sunset.jpg` / `/wallpapers/<id>.webp` (curated static assets in
+ *  - `/bg-sunset.webp` / `/wallpapers/<id>.webp` (curated static assets in
  *    `packages/app/public`) — a PUBLIC ASSET path, so resolve it against the SPA
  *    asset base (`resolveAppAssetUrl`); on packaged `file://` a bare `/wallpapers`
  *    would resolve to `file:///wallpapers` and fail. This is the same
@@ -57,16 +56,14 @@ function resolveWallpaperUrl(url: string): string {
  * filter work) is also the cheapest possible treatment: one plain composited
  * layer, gate-safe, GPU-trivial.
  *
- * BOTTOM-EDGE FLOOR (device r6): the wallpaper is a `fixed inset-0` cover-fit
- * layer that now reaches the TRUE physical bottom on the installed iOS
- * standalone PWA via the JS-MEASURED `--standalone-bottom-reclaim` on its
- * `bottom` (below). Because the wallpaper genuinely owns the whole screen down
- * to the home-indicator edge, NO cosmetic bottom-floor gradient is needed: the
- * prior warm-ember lift strip (removed) existed only to disguise the launch-bg
- * band that showed when the wallpaper stopped ~59px short under the useless
- * CSS-unit reclaim. With the measured reclaim the wallpaper's own pixels fill
- * the edge, lock-screen style, so we mount ONLY the legibility scrim and let
- * the image itself paint the bottom — no dead band, no cosmetic strip. */
+ * BOTTOM EDGE: the wallpaper is a `fixed inset-0` cover-fit layer. With the
+ * mobile/PWA body scroll-locked WITHOUT `position: fixed` (styles/base.css), a
+ * fixed layer's containing block is the true viewport, so `inset-0` reaches the
+ * physical screen bottom on its own — the wallpaper owns the whole screen down
+ * to the home-indicator edge, lock-screen style. No cosmetic bottom-floor
+ * gradient is needed (the prior warm-ember lift strip existed only to disguise
+ * the launch-bg band that showed when a `position: fixed` body collapsed the
+ * ICB and the wallpaper stopped short); we mount ONLY the legibility scrim. */
 export function ImageBackground({
   imageUrl,
 }: ImageBackgroundProps): React.JSX.Element {
@@ -78,20 +75,6 @@ export function ImageBackground({
       className="pointer-events-none fixed inset-0"
       style={{
         zIndex: 0,
-        // BOTTOM-BAR ROOT CAUSE (device r6, JS-MEASURED cure): this
-        // `fixed inset-0` cover image's `bottom: 0` anchors to the
-        // fixed-descendant ICB, which COLLAPSES to the small/layout viewport on
-        // the installed iOS standalone PWA (~59px short of the true physical
-        // bottom). Left alone the wallpaper stops above the home-indicator zone
-        // and the dimmed launch-bg shows through as the near-black bar. Drop the
-        // bottom edge by the MEASURED collapse gap
-        // (`--standalone-bottom-reclaim`, set in JS from window/visualViewport
-        // vs documentElement.clientHeight) so the cover image reaches the TRUE
-        // physical bottom. The prior `max(0px, 100lvh - 100dvh)` CSS-unit calc
-        // was a NO-OP on device because the collapsed fixed-body ICB resolves
-        // BOTH lvh and dvh to the same collapsed box (delta 0) — the reason the
-        // strip survived 5 CSS-only fixes. The var is a hard 0 off-standalone.
-        bottom: STANDALONE_BOTTOM_RECLAIM_OFFSET,
         backgroundImage: `url("${resolveWallpaperUrl(imageUrl)}")`,
         backgroundSize: "cover",
         backgroundPosition: "center",
@@ -102,9 +85,8 @@ export function ImageBackground({
           the image layer (not a sibling) so the shell's exactly-one-background
           invariant holds and every image wallpaper — default or user-uploaded —
           gets the same treatment. NO cosmetic bottom-floor gradient below it:
-          the measured reclaim (parent `bottom`) makes the wallpaper reach the
-          true physical bottom, so the image's own pixels own the
-          home-indicator edge, lock-screen style. */}
+          the fixed wallpaper and mirrored root canvas make the image's own
+          pixels own the home-indicator edge, lock-screen style. */}
       <div
         aria-hidden="true"
         data-testid="app-background-image-scrim"

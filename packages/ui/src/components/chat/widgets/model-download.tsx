@@ -8,7 +8,10 @@
 import { Download, Loader2, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
+import { supportsFullAppShellRoutes } from "../../../api/app-shell-capabilities";
+import { isDesktopExternalApiBaseUrl } from "../../../api/desktop-external-api-base";
 import { useIsAuthenticated } from "../../../hooks/useAuthStatus";
+import { useRuntimeMode } from "../../../hooks/useRuntimeMode";
 import { cn } from "../../../lib/utils";
 import {
   deriveHomeModelStatus,
@@ -75,10 +78,23 @@ const INITIAL: LocalModelDownloads = {
   loading: true,
 };
 
+const SETTLED_NOT_REQUIRED: LocalModelDownloads = {
+  status: NOT_REQUIRED_STATUS,
+  rows: [],
+  loading: false,
+};
+
 function appendTokenParam(url: string): string {
   const token = getElizaApiToken()?.trim();
   if (!token) return url;
   return `${url}${url.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+}
+
+function supportsLocalInferenceStatus(): boolean {
+  const baseUrl = client.getBaseUrl();
+  return (
+    supportsFullAppShellRoutes(baseUrl) && !isDesktopExternalApiBaseUrl(baseUrl)
+  );
 }
 
 function rowsFromReadiness(
@@ -116,10 +132,19 @@ export function useLocalModelDownloads(): LocalModelDownloads {
   // probe resolves, so the hub fetch + download SSE stream must stay dormant
   // until the session is authenticated (mirrors useHomeModelStatus).
   const authenticated = useIsAuthenticated();
+  const runtimeMode = useRuntimeMode();
 
   useEffect(() => {
-    if (!authenticated) {
+    if (!authenticated || runtimeMode.state.phase === "loading") {
       setState(INITIAL);
+      return;
+    }
+    if (
+      runtimeMode.isCloudMode ||
+      runtimeMode.isRemoteMode ||
+      !supportsLocalInferenceStatus()
+    ) {
+      setState(SETTLED_NOT_REQUIRED);
       return;
     }
 
@@ -168,7 +193,12 @@ export function useLocalModelDownloads(): LocalModelDownloads {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       es?.close();
     };
-  }, [authenticated]);
+  }, [
+    authenticated,
+    runtimeMode.isCloudMode,
+    runtimeMode.isRemoteMode,
+    runtimeMode.state.phase,
+  ]);
 
   return state;
 }

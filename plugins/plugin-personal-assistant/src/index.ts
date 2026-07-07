@@ -47,6 +47,7 @@ export {
   personalAssistantAction,
 } from "./actions/owner-surfaces.js";
 export { remoteDesktopAction } from "./actions/remote-desktop.js";
+export { resolveReferentAction } from "./actions/resolve-referent.js";
 export { resolveRequestAction } from "./actions/resolve-request.js";
 export { voiceCallAction } from "./actions/voice-call.js";
 export * from "./api/client-lifeops.js";

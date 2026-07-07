@@ -44,18 +44,14 @@ export const LEGACY_STEWARD_COOKIES: StewardCookieNames = {
  * never clear or rotate the unsuffixed names because doing so logs out a live
  * production tab.
  */
-export function canMutateLegacyStewardCookies(
-  environment: string | undefined,
-): boolean {
+export function canMutateLegacyStewardCookies(environment: string | undefined): boolean {
   return !environment || environment === "production";
 }
 
 /** Resolve the cookie names for a Worker environment (`c.env.ENVIRONMENT`).
  * Unset (local dev / tests) behaves as production: localhost cookies are
  * host-scoped (no shared parent zone), so there is nothing to collide with. */
-export function stewardCookieNames(
-  environment: string | undefined,
-): StewardCookieNames {
+export function stewardCookieNames(environment: string | undefined): StewardCookieNames {
   if (!environment || environment === "production") {
     return LEGACY_STEWARD_COOKIES;
   }
@@ -71,11 +67,7 @@ export function stewardCookieNames(
  * the historical unsuffixed access cookie. This closes on 2026-08-04, one
  * 30-day refresh-cookie Max-Age after the 2026-07-05 scoped-cookie rollout.
  */
-export const LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS = Date.UTC(
-  2026,
-  7,
-  4,
-);
+export const LEGACY_STEWARD_COOKIE_FALLBACK_EXPIRES_AT_MS = Date.UTC(2026, 7, 4);
 
 /**
  * Read this environment's Steward access cookie, then the historical unsuffixed

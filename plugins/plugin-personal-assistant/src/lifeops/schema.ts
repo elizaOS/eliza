@@ -316,6 +316,41 @@ export const lifeAuditEvents = appLifeopsPgSchema.table(
   ],
 );
 
+export const lifeCommitmentLedger = appLifeopsPgSchema.table(
+  "life_commitment_ledger",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    source: text("source").notNull(),
+    sourceKey: text("source_key").notNull(),
+    kind: text("kind").notNull(),
+    summary: text("summary").notNull(),
+    counterparty: text("counterparty"),
+    dueAt: text("due_at"),
+    confidence: real("confidence").notNull(),
+    status: text("status").notNull().default("open"),
+    scheduledTaskId: text("scheduled_task_id"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique("uniq_life_commitment_source").on(
+      t.agentId,
+      t.source,
+      t.sourceKey,
+      t.kind,
+      t.summary,
+    ),
+    index("idx_life_commitment_agent_status_due").on(
+      t.agentId,
+      t.status,
+      t.dueAt,
+    ),
+    index("idx_life_commitment_source").on(t.agentId, t.source, t.sourceKey),
+  ],
+);
+
 // Finance tables (life_payment_*, life_subscription_*) moved to
 // @elizaos/plugin-finances under pgSchema("app_finances"). PA no longer creates
 // them in app_lifeops; the finances plugin owns + migrates them. PA's raw
@@ -1550,6 +1585,39 @@ export const lifeWorkThreadEvents = appLifeopsPgSchema.table(
   ],
 );
 
+export const lifeBriefItemEngagements = appLifeopsPgSchema.table(
+  "life_brief_item_engagements",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    briefingId: text("briefing_id").notNull(),
+    itemId: text("item_id").notNull(),
+    source: text("source").notNull(),
+    kind: text("kind").notNull(),
+    sourceId: text("source_id").notNull(),
+    itemClass: text("item_class").notNull(),
+    eventType: text("event_type").notNull(),
+    eventAt: text("event_at").notNull(),
+    weight: real("weight").notNull().default(0),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.briefingId, t.itemId, t.eventType, t.eventAt),
+    index("idx_life_brief_item_engagements_item").on(
+      t.agentId,
+      t.itemId,
+      t.eventAt,
+    ),
+    index("idx_life_brief_item_engagements_class").on(
+      t.agentId,
+      t.itemClass,
+      t.eventAt,
+    ),
+    index("idx_life_brief_item_engagements_brief").on(t.agentId, t.briefingId),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Aggregate export for plugin schema property
 // ---------------------------------------------------------------------------
@@ -1564,6 +1632,7 @@ export const lifeOpsSchema = {
   lifeReminderPlans,
   lifeReminderAttempts,
   lifeAuditEvents,
+  lifeCommitmentLedger,
   lifeEmailUnsubscribes,
   lifeActivitySignals,
   lifeHealthMetricSamples,
@@ -1611,6 +1680,7 @@ export const lifeOpsSchema = {
   lifeScheduledTaskLog,
   lifeWorkThreads,
   lifeWorkThreadEvents,
+  lifeBriefItemEngagements,
   lifeopsFeaturesTable,
 } as const;
 

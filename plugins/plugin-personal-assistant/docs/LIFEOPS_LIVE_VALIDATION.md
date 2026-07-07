@@ -12,7 +12,7 @@ skip rules when credentials/devices are absent. Fill the **Result** columns in a
 copy under the local scratch dir `reports/lifeops-live-validation/<session>/`
 (gitignored — evidence is never committed to the repo) and attach the redacted
 screenshots / logs **inline in the PR/issue** per
-[`PR_EVIDENCE.md`](../../../PR_EVIDENCE.md) (MP4 video, JPG screenshots, logs in
+[`CONTRIBUTING.md`](../../../CONTRIBUTING.md) (MP4 video, JPG screenshots, logs in
 a `<details>` block).
 
 ## How to run a live session
@@ -34,7 +34,7 @@ bun run test:e2e:record                 # recorded walkthrough for the PR video
 # 6. Drive each view/action below as OWNER, then repeat as a non-owner AGENT
 #    identity to confirm the permission matrix. Stage all artifacts under
 #    reports/lifeops-live-validation/<session>/ and attach them inline on the
-#    PR/issue per PR_EVIDENCE.md.
+#    PR/issue per CONTRIBUTING.md.
 ```
 
 The HITL runner tracks this lane as the `lifeops-live` group

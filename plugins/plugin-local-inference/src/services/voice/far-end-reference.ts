@@ -37,6 +37,7 @@ import {
 	estimateEchoAlignment,
 } from "@elizaos/shared/voice/aec";
 import {
+	AudioFrameDecodeError,
 	type AudioFrameEvent,
 	decodeAudioFramePcm,
 } from "./audio-frame-consumer.js";
@@ -112,6 +113,7 @@ export interface FarEndReferenceStatus {
 	/** True only once real playback samples were delivered (#9583 honesty). */
 	echoReferenceWired: boolean;
 	playbackFramesReceived: number;
+	playbackFramesDropped: number;
 	playbackSamplesReceived: number;
 	lastPlaybackFrameAt: number | null;
 	playbackResets: number;
@@ -143,6 +145,7 @@ export class FarEndReference {
 	});
 	private readonly canceller: NlmsEchoCanceller;
 	private playbackFramesReceived = 0;
+	private playbackFramesDropped = 0;
 	private playbackSamplesReceived = 0;
 	private lastPlaybackFrameAt: number | null = null;
 	private lastFrameTimestampMs: number | null = null;
@@ -164,7 +167,18 @@ export class FarEndReference {
 	/** Feed a batch of rendered-playback frames (base64 LE-s16 16 kHz mono). */
 	pushPlayback(frames: AudioFrameEvent[], nowMs = Date.now()): void {
 		for (const frame of frames) {
-			const pcm = decodeAudioFramePcm(frame);
+			// A malformed wire frame (odd byte length, wrong rate) is untrusted
+			// input: drop and count it rather than throwing out of the shared
+			// far-end reference and 500-ing the playback route (#12263 J3).
+			let pcm: Float32Array;
+			try {
+				pcm = decodeAudioFramePcm(frame);
+			} catch (err) {
+				// error-policy:J3 malformed playback frames are untrusted wire input.
+				if (!(err instanceof AudioFrameDecodeError)) throw err;
+				this.playbackFramesDropped += 1;
+				continue;
+			}
 			if (
 				this.lastFrameTimestampMs !== null &&
 				frame.timestamp < this.lastFrameTimestampMs - TIMESTAMP_BACKWARD_JUMP_MS
@@ -300,6 +314,7 @@ export class FarEndReference {
 		return {
 			echoReferenceWired: this.playbackSamplesReceived > 0,
 			playbackFramesReceived: this.playbackFramesReceived,
+			playbackFramesDropped: this.playbackFramesDropped,
 			playbackSamplesReceived: this.playbackSamplesReceived,
 			lastPlaybackFrameAt: this.lastPlaybackFrameAt,
 			playbackResets: this.playbackResets,

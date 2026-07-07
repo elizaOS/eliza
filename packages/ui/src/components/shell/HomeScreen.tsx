@@ -3,22 +3,15 @@
  * dashboard affordances.
  */
 import {
-  Bell,
   Camera,
-  ChevronDown,
   Contact,
   type LucideIcon,
   MessageSquare,
   Phone,
 } from "lucide-react";
 import type * as React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { haptics } from "../../bridge/capacitor-bridge";
-import {
-  dispatchChatCollapse,
-  OPEN_NOTIFICATION_CENTER_EVENT,
-} from "../../events";
 import { useActivityEvents } from "../../hooks/useActivityEvents";
 import { isRenderTelemetryEnabled } from "../../hooks/useRenderGuard";
 import { cn } from "../../lib/utils";
@@ -27,8 +20,7 @@ import { LAYOUT_SHIFT_OBSERVER_INIT } from "../../testing/layout-stability";
 import { WidgetHost } from "../../widgets/WidgetHost";
 import { Button } from "../ui/button";
 import { DefaultHomeWidgets } from "./DefaultHomeWidgets";
-import { HomeGestureHint } from "./HomeGestureHint";
-import { NotificationsShade } from "./NotificationsShade";
+import { NotificationsHomeCenter } from "./NotificationsHomeCenter";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 // A gentle staggered fade-up as the home settles in - iOS-style, calm, and
@@ -44,94 +36,6 @@ const HOME_ENTER_CSS = `
   .home-enter { animation: none; }
 }
 `;
-
-/**
- * Minimum downward pull (px) before the notification shade opens. Small enough
- * to feel immediate, large enough that a vertical scroll graze or a sloppy tap
- * never counts as a pull.
- */
-const NOTIF_PULL_THRESHOLD_PX = 24;
-
-/**
- * The top hint the notification shade drops from: a quiet pill ("N
- * notifications") that self-hides when the inbox is empty. Tap or a downward
- * pull ≥ {@link NOTIF_PULL_THRESHOLD_PX} opens the shade — the pull is tracked
- * with pointer capture on the pill itself so the home scroller never fights it.
- * The chevron points DOWN: notifications come from above, the inverse of the
- * chat sheet that rises from the bottom.
- */
-function NotificationsPullDownHint({
-  onOpen,
-}: {
-  onOpen: () => void;
-}): React.JSX.Element | null {
-  const { notifications, unreadCount } = useNotifications();
-  const startY = useRef<number | null>(null);
-  const pulled = useRef(false);
-  if (notifications.length === 0) return null;
-  const count = notifications.length;
-  return (
-    <div className="flex justify-center pb-1">
-      <button
-        type="button"
-        data-testid="home-notifications-hint"
-        aria-label={
-          unreadCount > 0
-            ? `Open notifications, ${unreadCount} unread`
-            : "Open notifications"
-        }
-        onClick={() => {
-          // A completed pull already opened the shade; don't double-fire on
-          // the click the same gesture synthesizes.
-          if (pulled.current) {
-            pulled.current = false;
-            return;
-          }
-          onOpen();
-        }}
-        onPointerDown={(e) => {
-          startY.current = e.clientY;
-          pulled.current = false;
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-        }}
-        onPointerMove={(e) => {
-          if (startY.current === null || pulled.current) return;
-          if (e.clientY - startY.current >= NOTIF_PULL_THRESHOLD_PX) {
-            pulled.current = true;
-            void haptics.light();
-            onOpen();
-          }
-        }}
-        onPointerUp={() => {
-          startY.current = null;
-        }}
-        onPointerCancel={() => {
-          startY.current = null;
-          pulled.current = false;
-        }}
-        className={cn(
-          "flex min-h-touch touch-none items-center gap-1.5 rounded-full px-3.5 py-1.5",
-          "bg-black/28 text-white/85 backdrop-blur-md supports-[backdrop-filter]:bg-black/22",
-          "border border-white/30 transition-colors hover:bg-black/40 active:scale-[0.97] motion-reduce:active:scale-100",
-        )}
-      >
-        <ChevronDown className="h-3.5 w-3.5 text-white/70" aria-hidden />
-        <Bell className="h-3.5 w-3.5" aria-hidden />
-        <span className="text-xs font-medium tabular-nums">
-          {count === 1 ? "1 notification" : `${count} notifications`}
-        </span>
-        {unreadCount > 0 ? (
-          <span
-            data-testid="home-notifications-hint-unread"
-            className="rounded-full bg-white/20 px-1.5 text-2xs font-semibold tabular-nums leading-[1.1rem] text-white"
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        ) : null}
-      </button>
-    </div>
-  );
-}
 
 /**
  * The entrance fade-up must play exactly ONCE, on first mount - not on every
@@ -249,10 +153,10 @@ export interface HomeScreenProps {
  * recent messages, orchestrator activity, and the per-plugin attention cards
  * (calendar/goals/finances/health/relationships/inbox), each self-hiding when
  * empty and dynamically ranked so whatever needs attention floats to the top.
- * Notifications stay HIDDEN until pulled DOWN: a top hint pill (self-hiding
- * when the inbox is empty) opens the NotificationsShade sheet on tap or a
- * downward pull anywhere on the home, so the resting home is just the ambient
- * field + clock when nothing's active. The AOSP native-OS tiles render below on Android. The
+ * The notification inbox (NotificationsHomeCenter) sits inline on the SAME
+ * layer directly beneath the time/weather header, self-hiding when empty and
+ * fading in Apple-style when notifications arrive, so a quiet home is just the
+ * ambient field + clock. The AOSP native-OS tiles render below on Android. The
  * chat overlay floats over the bottom; this scrolls with clearance for it.
  */
 export function HomeScreen({
@@ -270,82 +174,17 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
 
-  // The notification shade: hidden until pulled DOWN from the top hint pill or
-  // by a downward drag anywhere on the home. Opening it also collapses the chat
-  // (the reveal and the chat dismissal are one motion — item pull-down inverts
-  // the chat sheet that rises from the bottom).
-  const [shadeOpen, setShadeOpen] = useState(false);
-  const openShade = useCallback(() => {
-    setShadeOpen(true);
-    dispatchChatCollapse();
-  }, []);
-  const closeShade = useCallback(() => setShadeOpen(false), []);
-
-  // "Open notifications" from anywhere (desktop tray/menu, `//notifications`
-  // deep link): NotificationsShellBoot navigates to this home half, and this
-  // opens the shade over it.
-  useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-    const onOpen = () => setShadeOpen(true);
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    return () =>
-      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-  }, []);
-
-  // Region-wide pull-down: a downward touch drag that STARTS at the top of the
-  // home scroller (nothing to scroll up into) opens the shade, so "drag down
-  // anywhere" works, not just on the hint pill. This MUST be a non-passive
-  // `touchmove` listener that preventDefaults — the scroller is `touch-action:
-  // pan-y`, so a pointer-event handler loses the vertical drag to the browser's
-  // native pan before it can cross the threshold (the pan-y pointer-gesture
-  // gotcha). The ref lets us bind the native listener directly.
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
-  const openShadeRef = useRef(openShade);
-  openShadeRef.current = openShade;
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return undefined;
-    let startY: number | null = null;
-    let opened = false;
-    const onStart = (e: TouchEvent) => {
-      // Only arm when the scroller is at the top; a mid-list drag is a scroll.
-      startY =
-        el.scrollTop <= 0 && e.touches.length === 1
-          ? e.touches[0].clientY
-          : null;
-      opened = false;
-    };
-    const onMove = (e: TouchEvent) => {
-      if (startY === null || opened) return;
-      const dy = e.touches[0].clientY - startY;
-      if (dy >= NOTIF_PULL_THRESHOLD_PX) {
-        opened = true;
-        // Claim the gesture from the native pan so it reads as a pull, not a scroll.
-        e.preventDefault();
-        void haptics.light();
-        openShadeRef.current();
-      }
-    };
-    const clear = () => {
-      startY = null;
-    };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchmove", onMove, { passive: false });
-    el.addEventListener("touchend", clear, { passive: true });
-    el.addEventListener("touchcancel", clear, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchmove", onMove);
-      el.removeEventListener("touchend", clear);
-      el.removeEventListener("touchcancel", clear);
-    };
-  }, []);
+  // When the inbox has notifications it becomes the home's primary content and
+  // grows to fill the column down to the chat; the ranked widget host then sits
+  // below it at natural height. With an empty inbox the widget host reclaims the
+  // `flex-1` breathing region (centred), so a quiet home stays calmly centred.
+  const { notifications } = useNotifications();
+  const hasNotifications = notifications.length > 0;
 
   return (
     <>
       <div
         data-testid="home-screen"
-        ref={scrollerRef}
         className={cn(
           // `touch-pan-y`: this scroller covers the whole home half, and a
           // scroll container's OWN touch-action governs which pans the browser
@@ -379,20 +218,12 @@ export function HomeScreen({
           and lays its blocks out as a flex column so the vertical space is
           distributed on purpose, not left as a void above the composer. The
           editorial header (greeting/clock + weather) anchors the TOP; the
-          prioritized widget stack sits in a `flex-1` breathing region that
-          grows to absorb the space and centres its content within it, so an
-          empty widget set reads as calm airiness rather than a broken gap; the
-          AOSP tiles settle at the BOTTOM; the notifications hint anchors the
-          TOP (the shade drops from above). */}
+          notification inbox sits directly beneath it; the prioritized widget
+          stack sits in a `flex-1` breathing region that grows to absorb the
+          space and centres its content within it, so an empty widget set reads
+          as calm airiness rather than a broken gap; the AOSP tiles settle at
+          the BOTTOM. */}
         <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
-          {/* Notifications drop from the top: the hint pill anchors the top of
-            the column, self-hides when the inbox is empty, and opens the shade
-            on tap or a downward pull. The shade is a portal overlay, so opening
-            it never reflows this dashboard. */}
-          <div className={enterClass} style={{ animationDelay: "60ms" }}>
-            <NotificationsPullDownHint onOpen={openShade} />
-          </div>
-
           {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
@@ -400,19 +231,33 @@ export function HomeScreen({
             <DefaultHomeWidgets />
           </div>
 
-          {/* The prioritized data widgets (#9143) live in the breathing region:
-            a `flex-1` block that grows to fill the space between the header and
-            the bottom tiles, so the column always spans the full height. Its
-            content is vertically centred within that region - when widgets are
-            present they sit in the visual middle (no top-heavy clustering with a
-            void beneath); when the host self-hides everything, the empty region
-            simply reads as calm, intentional space rather than a dead gap. A
-            little top padding sets the stack apart from the editorial header as
-            its own section. */}
+          {/* Notifications live inline on the SAME layer as the widgets, in the
+            band between the time/weather header above and the chat below —
+            self-hiding when the inbox is empty. A small `mt-4` sets it apart
+            from the editorial header. When present it grows (`flex-1 min-h-0`)
+            to fill the column down to the chat, its list scrolling internally;
+            it fades in (Apple-style) on first appearance. */}
           <div
             className={cn(
               enterClass,
-              "flex flex-1 flex-col justify-center py-6",
+              "mt-4",
+              hasNotifications && "flex min-h-0 flex-1 flex-col",
+            )}
+            style={{ animationDelay: "90ms" }}
+          >
+            <NotificationsHomeCenter />
+          </div>
+
+          {/* The prioritized data widgets (#9143). With notifications present
+            they sit at natural height directly beneath the (grown) inbox. With
+            an EMPTY inbox this reclaims the `flex-1` breathing region and centres
+            its content, so a quiet home reads as calm airiness rather than a
+            broken gap. A little padding sets the stack apart as its own section. */}
+          <div
+            className={cn(
+              enterClass,
+              "flex flex-col py-6",
+              !hasNotifications && "flex-1 justify-center",
             )}
             style={{ animationDelay: "110ms" }}
           >
@@ -422,34 +267,6 @@ export function HomeScreen({
               events={events}
               clearEvents={clearEvents}
             />
-          </div>
-
-          {/* GESTURE-HINT OVERLAP FIX (#14945 follow-up): the one-time hint used
-            to sit as an ordinary flow item with only a `pb-2` gutter. When it
-            was the terminal content item (the common no-AOSP-tiles home) it
-            landed at the very bottom of the `min-h-full` column — exactly the
-            top edge of the scroller's reserved composer-clearance pad. On device
-            the floating composer (resting a full safe-area inset off the true
-            bottom, standing its measured pill height tall) overlapped that edge,
-            so only the top few pixels of the hint peeked above the composer.
-
-            Fix: pin the hint STICKY to the bottom of the scroller, offset up by
-            the exact composer footprint (published pill-height var) + bottom
-            safe area + a small gap. Sticky keeps it in normal flow (so a tall
-            widget stack still pushes it down and it scrolls with content) while
-            GUARANTEEING it never descends into the composer's zone — it always
-            rests fully ABOVE the floating composer, never behind it. The gap
-            matches the scroller's own composer pad math so the hint tracks the
-            live pill height, not a stale guess. */}
-          <div
-            className={cn(
-              enterClass,
-              "sticky z-[2] pb-2",
-              "bottom-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+0.75rem)]",
-            )}
-            style={{ animationDelay: "130ms" }}
-          >
-            <HomeGestureHint />
           </div>
 
           {tiles.length > 0 ? (
@@ -495,7 +312,6 @@ export function HomeScreen({
           ) : null}
         </div>
       </div>
-      {shadeOpen ? <NotificationsShade onClose={closeShade} /> : null}
     </>
   );
 }

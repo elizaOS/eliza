@@ -105,8 +105,15 @@ const FEW_SEED: ShellMessage[] = [
     content:
       "Hey — I'm your assistant. Want a quick two-minute tour, or should we jump straight in?",
     createdAt: 1,
+    source: "first_run",
   },
-  { id: "f2", role: "user", content: "let's do the tour", createdAt: 2 },
+  {
+    id: "f2",
+    role: "user",
+    content: "let's do the tour",
+    createdAt: 2,
+    source: "first_run",
+  },
 ];
 // `?streaming` seeds an EMPTY in-flight assistant turn + responding, so its
 // bubble shows the breathing dots anchored where the streamed text fills in.

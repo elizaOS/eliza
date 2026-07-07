@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 // Native notification bridge: per-priority Android channel routing, the
-// first-that-succeeds channel chain, and the web fallback's silence rules —
-// against mocked Capacitor plugin registries (no device in jsdom).
+// native-only first-that-succeeds chain (web is NOT in it — regression for the
+// native-first delivery split), and the separate web fallback's permission +
+// silence rules — against mocked Capacitor plugin registries (no device).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,7 +23,10 @@ vi.mock("./native-plugins", () => ({
   getNativePlugin: (name: string) => plugins[name] ?? {},
 }));
 
-import { showNativeNotification } from "./native-notifications";
+import {
+  showNativeNotification,
+  showWebNotification,
+} from "./native-notifications";
 
 interface ScheduleArg {
   notifications: Array<{
@@ -56,6 +60,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("showNativeNotification (android channels)", () => {
@@ -117,8 +122,33 @@ describe("showNativeNotification (android channels)", () => {
   });
 });
 
-describe("showNativeNotification (web fallback)", () => {
-  it("delivers via the web Notification API with low priority silent", async () => {
+describe("showNativeNotification (web platform)", () => {
+  it("never falls back to the web Notification API — that surface belongs to the caller", async () => {
+    // Regression for the native-first delivery split: with no Capacitor
+    // channels, the NATIVE chain reports "none" even when the browser
+    // Notification API is available; the store then chooses glass banner vs
+    // showWebNotification by visibility.
+    platform.value = "web";
+    const constructed = vi.fn();
+    class FakeNotification {
+      static permission = "granted";
+      constructor(title: string, options?: NotificationOptions) {
+        constructed(title, options);
+      }
+    }
+    vi.stubGlobal("Notification", FakeNotification);
+    const result = await showNativeNotification({
+      id: "n4",
+      title: "Quiet update",
+      priority: "low",
+    });
+    expect(result).toBe("none");
+    expect(constructed).not.toHaveBeenCalled();
+  });
+});
+
+describe("showWebNotification", () => {
+  it("delivers via the web Notification API with low priority silent", () => {
     platform.value = "web";
     const instances: Array<{ title: string; options?: NotificationOptions }> =
       [];
@@ -129,33 +159,37 @@ describe("showNativeNotification (web fallback)", () => {
       }
     }
     vi.stubGlobal("Notification", FakeNotification);
-    const result = await showNativeNotification({
-      id: "n4",
-      title: "Quiet update",
-      priority: "low",
-    });
-    expect(result).toBe("web");
+    expect(
+      showWebNotification({ id: "n5", title: "Quiet update", priority: "low" }),
+    ).toBe(true);
     expect(instances[0]?.options?.silent).toBe(true);
 
-    await showNativeNotification({
-      id: "n5",
-      title: "Loud update",
-      priority: "urgent",
-    });
+    expect(
+      showWebNotification({
+        id: "n6",
+        title: "Loud update",
+        priority: "urgent",
+      }),
+    ).toBe(true);
     expect(instances[1]?.options?.silent).toBe(false);
   });
 
-  it("returns none when web permission is not granted", async () => {
+  it("returns false when web permission is not granted", () => {
     platform.value = "web";
     vi.stubGlobal(
       "Notification",
       Object.assign(function Notification() {}, { permission: "denied" }),
     );
-    const result = await showNativeNotification({
-      id: "n6",
-      title: "Nope",
-      priority: "normal",
-    });
-    expect(result).toBe("none");
+    expect(
+      showWebNotification({ id: "n7", title: "Nope", priority: "normal" }),
+    ).toBe(false);
+  });
+
+  it("returns false when the Notification API is absent", () => {
+    platform.value = "web";
+    vi.stubGlobal("Notification", undefined);
+    expect(
+      showWebNotification({ id: "n8", title: "Nope", priority: "normal" }),
+    ).toBe(false);
   });
 });

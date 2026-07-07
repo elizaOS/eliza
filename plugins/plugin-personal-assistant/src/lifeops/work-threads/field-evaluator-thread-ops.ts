@@ -72,6 +72,8 @@ Use for:
 
 abort preempts turn: stop in-flight work, emit short ack. Use when user clearly retracts current request ("nvm", "stop", "actually don't", "wait don't do that").
 
+Do not use for owner record keeping: goals ("I want a goal", "my goal is", "count it if", "track this goal"), todos, reminders, habits, routines, alarms, check-ins, and schedules route through their OWNER_* actions instead of threadOps.
+
 Empty array when no thread intent. Do not invent threads; only use active workThreadId values listed elsewhere in prompt.`;
 
 // ---------------------------------------------------------------------------

@@ -698,6 +698,14 @@ const TUTORIAL_STEP_ORDER = [
   "new-chat",
   "done",
 ] as const;
+const FIRST_RUN_READY_TIMEOUT_MS = {
+  mock: 20_000,
+  live: 60_000,
+} satisfies Record<Lane, number>;
+const FIRST_RUN_TEXT_TIMEOUT_MS = {
+  mock: 15_000,
+  live: 45_000,
+} satisfies Record<Lane, number>;
 
 /** Choice-button locator for a tour step's `__tutorial__:` action value. */
 function tutorialChoice(page: Page, verb: string, stepId: string) {
@@ -762,26 +770,33 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     title: "Cold app launch",
     expectation:
       "First app load from / with first-run incomplete: the real chat overlay renders first-run choices in the transcript. No render failure, no stack trace.",
-    async run({ page }) {
+    async run({ page, lane }) {
       await page.goto("/", { waitUntil: "domcontentloaded" });
+      const startedAt = Date.now();
       const overlay = page.getByTestId("continuous-chat-overlay");
-      await expect(overlay).toBeVisible({ timeout: 20_000 });
+      await expect(overlay).toBeVisible({
+        timeout: FIRST_RUN_READY_TIMEOUT_MS[lane],
+      });
       await expect(
         page.getByText("First, where should your agent run?", { exact: false }),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: FIRST_RUN_TEXT_TIMEOUT_MS[lane] });
       await expect(page.getByTestId("first-run-runtime-chooser")).toHaveCount(
         0,
       );
+      const firstRunVisibleMs = Date.now() - startedAt;
       return {
         assertions: [
           "Loaded / with first-run incomplete",
-          "continuous-chat-overlay + transcript runtime choices became visible within 20s",
+          `continuous-chat-overlay + transcript runtime choices became visible in ${firstRunVisibleMs}ms`,
         ],
-        dom: await domMarkers(page, {
-          chatOverlay: '[data-testid="continuous-chat-overlay"]',
-          runtimeChoice: '[data-testid="choice-__first_run__:runtime:cloud"]',
-          root: "#root",
-        }),
+        dom: {
+          ...(await domMarkers(page, {
+            chatOverlay: '[data-testid="continuous-chat-overlay"]',
+            runtimeChoice: '[data-testid="choice-__first_run__:runtime:cloud"]',
+            root: "#root",
+          })),
+          firstRunVisibleMs,
+        },
       };
     },
   },
@@ -791,10 +806,10 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
     title: "Onboarding runtime choice",
     expectation:
       "The chat transcript asks how the agent should run, with Eliza Cloud, on-device, and remote-agent options (Bring your own keys is a provider sub-choice, not a location — #11509).",
-    async run({ page }) {
+    async run({ page, lane }) {
       await expect(
         page.getByText("First, where should your agent run?", { exact: false }),
-      ).toBeVisible({ timeout: 15_000 });
+      ).toBeVisible({ timeout: FIRST_RUN_TEXT_TIMEOUT_MS[lane] });
       const cloud = page.getByTestId("choice-__first_run__:runtime:cloud");
       const local = page.getByTestId("choice-__first_run__:runtime:local");
       const remote = page.getByTestId("choice-__first_run__:runtime:remote");

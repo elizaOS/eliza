@@ -101,6 +101,7 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_STATE_DIR_NAME = ".eliza";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
+    private static final String AGENT_LAUNCH_CHILD_SCRIPT = "launch-child.sh";
     private static final String BUN_BINARY = "bun";
     private static final String AGENT_LOG_NAME = "agent.log";
     private static final String AGENT_RESTART_DIAGNOSTICS_NAME = "agent-restart-diagnostics.jsonl";
@@ -200,6 +201,7 @@ public class ElizaAgentService extends Service {
     private volatile boolean foregroundStartDenied;
     private volatile boolean detachedAgentMode;
     private volatile long detachedLaunchStartedAtMs;
+    private long detachedProbeArmedForLaunchMs;
     private int restartAttempts;
     private String currentStatus = "starting";
 
@@ -211,6 +213,7 @@ public class ElizaAgentService extends Service {
     // token via ELIZA_REQUIRE_LOCAL_AUTH=1.
     private static volatile String currentLocalAgentToken;
     private static volatile String currentTerminalRunToken;
+    private static volatile ElizaAgentService activeInstance;
 
     /** Called by the Capacitor agent plugin Android binding. */
     public static String localAgentToken() {
@@ -225,6 +228,70 @@ public class ElizaAgentService extends Service {
      * the dashboard at the pairing screen. Fall back to the recovery file that
      * {@link #writeLocalAgentTokenFile} persists, and cache it for this process.
      */
+    public static JSONObject getLocalAgentBootState(Context context) throws JSONException {
+        ElizaAgentService instance = activeInstance;
+        boolean socketListening = isLocalAgentSocketListening();
+        long launchStartedAtMs = 0L;
+        String status = "unknown";
+        int attempts = 0;
+        boolean hasStartWorker = false;
+        boolean detached = false;
+        if (instance != null) {
+            synchronized (instance.processLock) {
+                status = instance.currentStatus;
+                attempts = instance.restartAttempts;
+                detached = instance.detachedAgentMode;
+                launchStartedAtMs = instance.detachedLaunchStartedAtMs;
+                hasStartWorker = instance.startWorker != null && instance.startWorker.isAlive();
+            }
+        }
+        if (launchStartedAtMs <= 0L && context != null) {
+            launchStartedAtMs = context.getSharedPreferences(EXIT_INFO_PREFS, Context.MODE_PRIVATE)
+                .getLong(DETACHED_LAUNCH_STAMP_KEY, 0L);
+        }
+        long ageMs = launchStartedAtMs > 0L
+            ? Math.max(0L, System.currentTimeMillis() - launchStartedAtMs)
+            : -1L;
+
+        JSONObject result = new JSONObject();
+        if (socketListening) {
+            result.put("state", "listening");
+            result.put("reason", "request socket is accepting connections");
+        } else if ("restarting".equals(status)) {
+            result.put("state", "restarting");
+            result.put("reason", status);
+        } else if (isTerminalBootStatus(status)) {
+            result.put("state", "dead");
+            result.put("reason", status);
+        } else if (hasStartWorker
+                || "starting".equals(status)
+                || (detached && ageMs >= 0L && ageMs < AGENT_BOOT_GRACE_MS)
+                || (ageMs >= 0L && ageMs < AGENT_BOOT_GRACE_MS)) {
+            result.put("state", "booting");
+            result.put("reason", status);
+        } else {
+            result.put("state", "dead");
+            result.put("reason", "local agent service is not booting and the request socket is closed");
+        }
+        if (attempts > 0) {
+            result.put("attempt", attempts);
+        }
+        if (ageMs >= 0L) {
+            result.put("ageMs", ageMs);
+        }
+        result.put("socketListening", socketListening);
+        result.put("serviceActive", instance != null);
+        return result;
+    }
+
+    private static boolean isTerminalBootStatus(String status) {
+        if (status == null) return false;
+        return status.startsWith("agent exited:")
+            || "fatal".equals(status)
+            || status.endsWith("-failed")
+            || status.startsWith("missing-");
+    }
+
     public static String localAgentToken(Context context) {
         String token = currentLocalAgentToken;
         if (token != null && !token.trim().isEmpty()) {
@@ -634,6 +701,7 @@ public class ElizaAgentService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        activeInstance = this;
         ensureNotificationChannel();
 
         Notification notification = buildNotification("Eliza agent", "Starting…");
@@ -775,6 +843,9 @@ public class ElizaAgentService extends Service {
         NotificationManager mgr = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (mgr != null) {
             mgr.cancel(NOTIFICATION_ID);
+        }
+        if (activeInstance == this) {
+            activeInstance = null;
         }
         super.onDestroy();
     }
@@ -1137,6 +1208,10 @@ public class ElizaAgentService extends Service {
         // Staging is fresh, so copyAssetIfMissing always copies here.
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(stagingRoot, AGENT_BUNDLE_NAME));
         copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_SCRIPT));
+        // Detached-child half of the launcher (see stage-android-agent.mjs:
+        // LAUNCH_CHILD_SCRIPT) — launch.sh invokes it by path, so it must land
+        // in the same atomic stage as launch.sh itself.
+        copyAssetIfPresent(assets, "agent/" + AGENT_LAUNCH_CHILD_SCRIPT, new File(stagingRoot, AGENT_LAUNCH_CHILD_SCRIPT));
 
         // PGlite runtime assets. pglite.wasm + initdb.wasm + pglite.data sit
         // next to the bundle (`new URL("./pglite.X", import.meta.url)`).
@@ -1204,21 +1279,43 @@ public class ElizaAgentService extends Service {
             }
         }
 
-        boolean stdcxxLinkedFromNative = linkPackagedRuntimeLibrary(
+        ensureRuntimeLibraryLinks(abiDir);
+    }
+
+    /**
+     * Make the runtime soname symlinks (`libstdc++.so.6`, `libgcc_s.so.1`)
+     * valid against THIS process's install paths. bun requests those sonames
+     * at load time; the packaged copies live in {@link #nativeLibraryDir()}
+     * under jniLibs names (`libeliza_stdcpp.so` / `libeliza_gcc_s.so`), so the
+     * abi dir carries soname symlinks into the install dir.
+     *
+     * The install dir under /data/app/~~<random>/ is minted fresh on EVERY
+     * package update, so an absolute symlink staged by a previous install
+     * dangles after `adb install -r` / a store update — bun then dies within
+     * ~1s of exec ("Error loading shared library libstdc++.so.6") with its
+     * stdio on /dev/null, which presented as the silent
+     * `local_agent_unavailable` boot wedge. This method is therefore called
+     * BOTH from extraction finalize and from {@link #startAgentProcess}
+     * immediately before every spawn: staging correctness is not enough —
+     * the links must be re-validated against the live ApplicationInfo each
+     * time the agent launches.
+     */
+    private void ensureRuntimeLibraryLinks(File abiDir) {
+        boolean stdcxxLinkedFromNative = ensureRuntimeLibraryLink(
             abiDir,
             "libstdc++.so.6",
             "libeliza_stdcpp.so"
         );
-        linkPackagedRuntimeLibrary(abiDir, "libgcc_s.so.1", "libeliza_gcc_s.so");
+        ensureRuntimeLibraryLink(abiDir, "libgcc_s.so.1", "libeliza_gcc_s.so");
 
-        // bun requests `libstdc++.so.6` (the soname) at runtime, but the file we
-        // shipped is the versioned realpath (`libstdc++.so.6.0.33`). Without a
-        // symlink the musl loader can't find the shared object and bun crashes
-        // with hundreds of "Error relocating: symbol not found" lines. Link the
-        // soname to the realpath inside the same abi dir so LD_LIBRARY_PATH
-        // resolution works without LD_PRELOAD.
+        // No packaged libstdc++ in nativeLibraryDir (legacy assets-channel
+        // APKs): link the soname to the versioned realpath shipped next to it
+        // (`libstdc++.so.6.0.33`). The relative target is immune to install-dir
+        // churn, so only create it when missing or dangling.
         if (!stdcxxLinkedFromNative) {
-            for (String name : abiFiles) {
+            String[] names = abiDir.list();
+            if (names == null) return;
+            for (String name : names) {
                 if (name.startsWith("libstdc++.so.6.")) {
                     File realPath = new File(abiDir, name);
                     File symlink = new File(abiDir, "libstdc++.so.6");
@@ -1240,6 +1337,39 @@ public class ElizaAgentService extends Service {
                 }
             }
         }
+    }
+
+    /**
+     * Ensure one soname symlink resolves to the packaged copy in the CURRENT
+     * {@link #nativeLibraryDir()}. A link that already resolves to that exact
+     * target is left untouched; a missing, dangling, or stale-target link is
+     * recreated (the repair is logged — it is the fingerprint of the
+     * post-update dangling-symlink boot failure). Returns false when the
+     * packaged copy does not exist in this build, so the caller can fall back
+     * to the versioned-realpath link.
+     */
+    private boolean ensureRuntimeLibraryLink(
+        File abiDir,
+        String soname,
+        String packagedName
+    ) {
+        File packaged = new File(nativeLibraryDir(), packagedName);
+        if (!packaged.exists() || packaged.length() <= 0) return false;
+        File symlink = new File(abiDir, soname);
+        java.nio.file.Path linkPath = symlink.toPath();
+        try {
+            if (java.nio.file.Files.isSymbolicLink(linkPath)) {
+                java.nio.file.Path target = java.nio.file.Files.readSymbolicLink(linkPath);
+                if (target.equals(packaged.toPath()) && symlink.exists()) {
+                    return true;
+                }
+                Log.w(TAG, "Runtime symlink " + soname + " is dangling or stale ("
+                        + target + "); relinking to " + packaged.getAbsolutePath());
+            }
+        } catch (IOException error) {
+            // Unreadable link state — fall through and recreate it.
+        }
+        return linkPackagedRuntimeLibrary(abiDir, soname, packagedName);
     }
 
     /**
@@ -1680,16 +1810,44 @@ public class ElizaAgentService extends Service {
             if (launchStartedAt > 0L
                     && (System.currentTimeMillis() - launchStartedAt)
                         < AGENT_BOOT_GRACE_MS) {
-                detachedAgentMode = true;
-                detachedLaunchStartedAtMs = launchStartedAt;
-                Map<String, String> details = new LinkedHashMap<>();
-                details.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
-                details.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
-                appendDiagnosticEvent("detached-agent-cold-boot-guard", details);
-                Log.i(TAG, "Detached agent still in cold boot (launched "
+                // The stamp alone can outlive the boot it describes: a force-stop
+                // or LMK kill takes down bun AND launch-child.sh in one sweep, so
+                // no agent-child-exited line is ever journaled, and a successor
+                // service instance would shepherd a corpse for the rest of the
+                // grace window (#15189). Before trusting the stamp, check that
+                // the journaled child of THIS launch still has a live /proc
+                // entry that looks like our runtime.
+                AgentChildStart childStart = readLatestAgentChildStart(launchStartedAt);
+                if (coldBootStampTrustworthy(
+                        childStart != null,
+                        childStart != null && isAgentChildProcessAlive(childStart.childPid))) {
+                    detachedAgentMode = true;
+                    detachedLaunchStartedAtMs = launchStartedAt;
+                    Map<String, String> details = new LinkedHashMap<>();
+                    details.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
+                    details.put("bootGraceMs", String.valueOf(AGENT_BOOT_GRACE_MS));
+                    appendDiagnosticEvent("detached-agent-cold-boot-guard", details);
+                    Log.i(TAG, "Detached agent still in cold boot (launched "
+                        + (System.currentTimeMillis() - launchStartedAt)
+                        + "ms ago); not relaunching.");
+                    // This instance may not be the one that launched the boot
+                    // (service churn while bun is still coming up). The launcher
+                    // instance's startup probe died with its process — arm one
+                    // here so the boot is shepherded to running/restart instead
+                    // of trusted blindly until the stamp expires.
+                    armDetachedStartupProbeOnce(
+                        launchStartedAt,
+                        childStart != null ? childStart.startupTraceId : null);
+                    return;
+                }
+                Map<String, String> staleDetails = new LinkedHashMap<>();
+                staleDetails.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
+                staleDetails.put("childPid", childStart.childPid);
+                appendDiagnosticEvent("detached-agent-cold-boot-guard-stale", staleDetails);
+                Log.w(TAG, "Detached agent launch stamp is "
                     + (System.currentTimeMillis() - launchStartedAt)
-                    + "ms ago); not relaunching.");
-                return;
+                    + "ms old but child pid " + childStart.childPid
+                    + " is gone with no journaled exit; relaunching instead of trusting the stamp.");
             }
 
             String abi = resolveRuntimeAbi();
@@ -1739,6 +1897,13 @@ public class ElizaAgentService extends Service {
                 loader = preferPackagedExecutable(loader, packagedLoaderName);
             }
             bun = preferPackagedExecutable(bun, "libeliza_bun.so");
+
+            // Re-validate the soname symlinks against THIS install's
+            // nativeLibraryDir on every spawn: a package update mints a new
+            // /data/app/~~<random>/ dir and dangles absolute links staged by
+            // the previous install, which kills bun ~1s into exec with no
+            // visible error (stdio is on /dev/null).
+            ensureRuntimeLibraryLinks(abiDir);
 
             // Generate a fresh per-boot token for the WebView↔agent loopback.
             // Without this the loopback API would accept any local request
@@ -2529,7 +2694,7 @@ public class ElizaAgentService extends Service {
                     }
                 }
                 if (stillThisProcess && !shuttingDown && detachedAgentMode && code == 0) {
-                    startDetachedStartupProbe(launchStartedAtMs, startupTraceId);
+                    armDetachedStartupProbeOnce(launchStartedAtMs, startupTraceId);
                     return;
                 }
                 if (stillThisProcess && !shuttingDown) {
@@ -2695,6 +2860,143 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    private static final class AgentChildStart {
+        final long timestampMs;
+        final String childPid;
+        final String startupTraceId;
+
+        AgentChildStart(long timestampMs, String childPid, String startupTraceId) {
+            this.timestampMs = timestampMs;
+            this.childPid = childPid;
+            this.startupTraceId = startupTraceId;
+        }
+    }
+
+    /**
+     * Whether the cold-boot guard may trust the persisted launch stamp. The
+     * stamp says a boot STARTED recently; only the journaled child's /proc
+     * liveness says it is still going. No journaled start yet means the
+     * launcher is inside its first second — trust the stamp rather than
+     * relaunch-churn over it. A journaled child that is gone from /proc with
+     * no exit record is the force-stop/LMK signature (#15189): the kill took
+     * launch-child.sh down with bun, so no agent-child-exited line was ever
+     * written, and trusting the stamp would shepherd a corpse for the rest of
+     * the grace window.
+     */
+    static boolean coldBootStampTrustworthy(
+            boolean childStartJournaled, boolean childProcessAlive) {
+        return !childStartJournaled || childProcessAlive;
+    }
+
+    /**
+     * Same-uid liveness check for the detached agent child. Conservative in
+     * both directions: an unparseable pid trusts the stamp (no relaunch churn
+     * on a mid-write journal tail), and a live /proc entry only counts when
+     * its cmdline still looks like our runtime — a recycled pid can be a
+     * different process wearing the number (the WebView sandbox recycles
+     * quickly after a force-stop). Every process in the launch chain carries
+     * the app data path in its argv (sh launch-child.sh <log> <agent root> …,
+     * then the bun exec), so matching "bun"/"eliza" covers both the pre-exec
+     * shell and the final runtime.
+     */
+    private static boolean isAgentChildProcessAlive(String childPid) {
+        int pid;
+        try {
+            pid = Integer.parseInt(childPid == null ? "" : childPid.trim());
+        } catch (NumberFormatException invalid) {
+            return true;
+        }
+        if (pid <= 0) {
+            return true;
+        }
+        File proc = new File("/proc/" + pid);
+        if (!proc.exists()) {
+            return false;
+        }
+        try (FileInputStream in = new FileInputStream(new File(proc, "cmdline"))) {
+            byte[] buffer = new byte[4096];
+            int read = in.read(buffer);
+            if (read <= 0) {
+                // A live process always has argv; empty cmdline here is a
+                // kernel-thread/zombie shell that cannot be our runtime.
+                return false;
+            }
+            String cmdline = new String(buffer, 0, read, StandardCharsets.UTF_8).replace('\0', ' ');
+            return cmdline.contains("bun") || cmdline.contains("eliza");
+        } catch (IOException unreadable) {
+            // error-policy:J4 /proc read denied or raced a teardown — cannot
+            // prove death, so keep the guard (relaunch churn over a live boot
+            // is the worse failure mode).
+            return true;
+        }
+    }
+
+    /**
+     * Scan the restart-diagnostics JSONL for the newest agent-child-started
+     * record belonging to this launch window, so the cold-boot guard can
+     * liveness-check the exact child the stamp describes.
+     */
+    private AgentChildStart readLatestAgentChildStart(long launchStartedAtMs) {
+        String content = readDiagnosticsForScan();
+        if (content == null) {
+            return null;
+        }
+        AgentChildStart latest = null;
+        long cutoffMs = Math.max(0L, launchStartedAtMs - 2_000L);
+        for (String line : content.split("\\n")) {
+            if (line.trim().isEmpty()) {
+                continue;
+            }
+            try {
+                JSONObject json = new JSONObject(line);
+                if (!"agent-child-started".equals(json.optString("event", ""))) {
+                    continue;
+                }
+                long timestampMs = json.optLong("ts", 0L);
+                if (timestampMs > 0L && timestampMs < cutoffMs) {
+                    continue;
+                }
+                JSONObject details = json.optJSONObject("details");
+                String childPid = details != null ? details.optString("childPid", "") : "";
+                String traceId = details != null ? details.optString("startupTraceId", "") : "";
+                latest = new AgentChildStart(timestampMs, childPid, traceId);
+            } catch (JSONException ignored) {
+                // error-policy:J3 partial or malformed diagnostic lines are invalid
+                // records; skip them and keep scanning, same as the exit reader.
+            }
+        }
+        return latest;
+    }
+
+    /**
+     * Bounded read of the restart-diagnostics journal for record scans.
+     * Shared by the child start/exit readers.
+     */
+    private String readDiagnosticsForScan() {
+        File log = new File(agentRoot(), AGENT_RESTART_DIAGNOSTICS_NAME);
+        if (!log.isFile()) {
+            return null;
+        }
+        long maxBytes = Math.min(log.length(), AGENT_RESTART_DIAGNOSTICS_MAX_BYTES);
+        if (maxBytes <= 0L) {
+            return null;
+        }
+        byte[] bytes = new byte[(int) maxBytes];
+        int read = 0;
+        try (FileInputStream input = new FileInputStream(log)) {
+            while (read < bytes.length) {
+                int n = input.read(bytes, read, bytes.length - read);
+                if (n < 0) break;
+                read += n;
+            }
+        } catch (IOException error) {
+            // error-policy:J7 diagnostic JSONL read failures must not kill the watchdog loop.
+            Log.w(TAG, "Could not read agent child diagnostics", error);
+            return null;
+        }
+        return new String(bytes, 0, read, StandardCharsets.UTF_8);
+    }
+
     /**
      * Human attribution for an agent child exit code. Codes >= 128 are
      * 128+signal deaths; the three that actually occur on-device get named
@@ -2853,28 +3155,10 @@ public class ElizaAgentService extends Service {
     }
 
     private AgentChildExit readLatestAgentChildExit(long launchStartedAtMs, String startupTraceId) {
-        File log = new File(agentRoot(), AGENT_RESTART_DIAGNOSTICS_NAME);
-        if (!log.isFile()) {
+        String content = readDiagnosticsForScan();
+        if (content == null) {
             return null;
         }
-        long maxBytes = Math.min(log.length(), AGENT_RESTART_DIAGNOSTICS_MAX_BYTES);
-        if (maxBytes <= 0L) {
-            return null;
-        }
-        byte[] bytes = new byte[(int) maxBytes];
-        int read = 0;
-        try (FileInputStream input = new FileInputStream(log)) {
-            while (read < bytes.length) {
-                int n = input.read(bytes, read, bytes.length - read);
-                if (n < 0) break;
-                read += n;
-            }
-        } catch (IOException error) {
-            // error-policy:J7 diagnostic JSONL read failures must not kill the watchdog loop.
-            Log.w(TAG, "Could not read agent child diagnostics", error);
-            return null;
-        }
-        String content = new String(bytes, 0, read, StandardCharsets.UTF_8);
         AgentChildExit latest = null;
         long cutoffMs = Math.max(0L, launchStartedAtMs - 2_000L);
         for (String line : content.split("\\n")) {
@@ -2908,6 +3192,23 @@ public class ElizaAgentService extends Service {
             }
         }
         return latest;
+    }
+
+    /**
+     * Arm the detached startup probe exactly once per launch stamp. Both the
+     * launching instance (via its exit watcher) and a successor instance that
+     * adopted the boot through the cold-boot guard call this; repeated
+     * onStartCommand deliveries for the same launch must not stack probe
+     * threads that would each schedule their own restart.
+     */
+    private void armDetachedStartupProbeOnce(long launchStartedAtMs, String startupTraceId) {
+        synchronized (processLock) {
+            if (detachedProbeArmedForLaunchMs == launchStartedAtMs) {
+                return;
+            }
+            detachedProbeArmedForLaunchMs = launchStartedAtMs;
+        }
+        startDetachedStartupProbe(launchStartedAtMs, startupTraceId);
     }
 
     private void startDetachedStartupProbe(final long launchStartedAtMs, final String startupTraceId) {
@@ -2992,7 +3293,7 @@ public class ElizaAgentService extends Service {
      * #startAgentProcess()} to adopt a surviving detached agent instead of
      * killing + restarting it when the service/Activity is recreated.
      */
-    private boolean isLocalAgentSocketListening() {
+    private static boolean isLocalAgentSocketListening() {
         LocalSocket socket = new LocalSocket();
         try {
             socket.connect(new LocalSocketAddress(
@@ -3471,18 +3772,50 @@ public class ElizaAgentService extends Service {
      * - On AOSP / ElizaOS-branded devices (`ro.elizaos.product` set or any
      *   white-label fork's `ro.<brand>os.product`), the device IS the
      *   agent: always start.
-     * - On stock Android, only start when the user has explicitly picked the
-     *   Local runtime in the onboarding picker (mobile-runtime-mode ==
-     *   "local"). Cloud, hybrid cloud, remote, tunnel, and not-yet-chosen
-     *   modes do not need this service.
+     * - On stock Android, start when the user picked the Local runtime in
+     *   the onboarding picker (mobile-runtime-mode == "local"), or when no
+     *   mode has been chosen yet on a build that ships the agent payload.
+     *   The renderer's pre-seed (pre-seed-local-runtime.ts) commits the
+     *   on-device agent as the startup target on the first frame of every
+     *   payload-shipping build — but it runs after this gate has already
+     *   been evaluated in MainActivity.onCreate, so waiting for the
+     *   persisted choice deadlocks the first-ever launch: the WebView polls
+     *   an abstract socket no one is serving until the startup timeout card
+     *   (#15189). Matching the pre-seed's build truth here closes that gap;
+     *   the cloud-thinned Play-Store build and UI-only debug builds carry no
+     *   payload and keep the cloud-first fresh-install behavior.
+     * - An explicit cloud, hybrid cloud, remote, or tunnel choice never
+     *   auto-starts this service.
      */
     public static boolean shouldAutoStart(Context context) {
-        return shouldAutoStartForRuntimeMode(isBrandedDevice(), readRuntimeMode(context));
+        return shouldAutoStartForRuntimeMode(
+            isBrandedDevice(), readRuntimeMode(context), apkBundlesAgentPayload(context));
     }
 
-    static boolean shouldAutoStartForRuntimeMode(boolean brandedDevice, String mode) {
+    static boolean shouldAutoStartForRuntimeMode(
+            boolean brandedDevice, String mode, boolean bundlesAgentPayload) {
         if (brandedDevice) return true;
-        return "local".equals(mode == null ? null : mode.trim());
+        String trimmed = mode == null ? null : mode.trim();
+        if ("local".equals(trimmed)) return true;
+        return (trimmed == null || trimmed.isEmpty()) && bundlesAgentPayload;
+    }
+
+    /**
+     * Whether this APK ships the on-device agent payload. Native mirror of the
+     * renderer's isAndroidLocalSideloadBuild() build truth: the cloud-thinning
+     * build step strips assets/agent/** from the Play-Store APK, so probing the
+     * bundle asset distinguishes the local-sideload/system builds (payload
+     * present) from cloud-thinned and UI-only WebView-debug builds.
+     */
+    static boolean apkBundlesAgentPayload(Context context) {
+        if (context == null) return false;
+        try (InputStream probe = context.getAssets().open("agent/" + AGENT_BUNDLE_NAME)) {
+            return true;
+        } catch (IOException missing) {
+            // error-policy:J3 asset probe — absence of the bundle IS the negative
+            // signal (thinned build), not a failure to report.
+            return false;
+        }
     }
 
     /**
@@ -3531,7 +3864,15 @@ public class ElizaAgentService extends Service {
     public static void start(Context context) {
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_START);
-        context.startForegroundService(intent);
+        try {
+            context.startForegroundService(intent);
+        } catch (IllegalStateException error) {
+            // error-policy:J1 process boundary — same background-FGS
+            // restriction as GatewayConnectionService.start: a receiver-time
+            // start while the app is stopped must degrade to a deferred
+            // start (next foreground entry), not kill the process.
+            Log.w(TAG, "Deferred ElizaAgentService start; background FGS not allowed now: " + error.getMessage());
+        }
     }
 
     /** Request a graceful stop via the ACTION_STOP intent. */

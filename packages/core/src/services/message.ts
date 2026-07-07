@@ -152,6 +152,10 @@ import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import { resolveTraceCorrelationFromEnv } from "../runtime/trace-correlation";
 import {
+	buildProviderAttributionsFromState,
+	flattenTrajectoryMessages,
+} from "../runtime/trajectory-provider-attribution";
+import {
 	createJsonFileTrajectoryRecorder,
 	finalizeTrajectoryRecording,
 	isTrajectoryRecordingEnabled,
@@ -249,7 +253,10 @@ import {
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
-import { getUserMessageText } from "../utils/message-text";
+import {
+	getUserMessageText,
+	stripAugmentationForPersistence,
+} from "../utils/message-text";
 import { readEnv } from "../utils/read-env";
 import {
 	extractFirstSentence,
@@ -3053,6 +3060,7 @@ direct/private rules:
 - Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations: use contexts=["simple"] and put the final answer in replyText.
 - For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.
 - Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
 - Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is in available_contexts — route to it; deny only when nothing matches.
@@ -6449,6 +6457,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
 				prefixHash: stage1PrefixHash,
 				provider: messageHandlerProvider,
+				state: args.state,
 				logger: args.runtime.logger,
 			});
 		}
@@ -6994,6 +7003,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				evaluatorEffects,
 				recorder,
 				trajectoryId,
+				providerAttributionState: plannerState,
 				executeToolCall: (toolCall, ctx) =>
 					executeV5PlannedToolCall({
 						runtime: args.runtime,
@@ -7191,6 +7201,7 @@ async function recordMessageHandlerStage(args: {
 	 * the real provider instead of the fabricated `"default"` literal (#13623).
 	 */
 	provider?: string;
+	state?: State;
 	logger?: IAgentRuntime["logger"];
 }): Promise<void> {
 	try {
@@ -7200,6 +7211,13 @@ async function recordMessageHandlerStage(args: {
 				? undefined
 				: extractMessageHandlerUsage(args.raw);
 		const modelName = extractMessageHandlerModelName(args.raw);
+		// Flatten `messages` only to locate provider spans; the flattened form is
+		// not persisted — `messages` is the canonical record and spans index into
+		// `flattenTrajectoryMessages(messages)` reconstructed at read time.
+		const providerAttribution = buildProviderAttributionsFromState({
+			state: args.state,
+			prompt: flattenTrajectoryMessages(args.messages),
+		});
 		await args.recorder.recordStage(args.trajectoryId, {
 			stageId: `stage-msghandler-${args.startedAt}`,
 			kind: "messageHandler",
@@ -7218,6 +7236,8 @@ async function recordMessageHandlerStage(args: {
 				toolCalls: extractMessageHandlerToolCalls(args.raw),
 				usage,
 				finishReason: getStage1FinishReason(args.raw) || undefined,
+				providerOrder: providerAttribution.providerOrder,
+				providerAttributions: providerAttribution.providerAttributions,
 			},
 			cache: args.prefixHash
 				? {
@@ -9212,6 +9232,15 @@ export class DefaultMessageService implements IMessageService {
 		);
 		let memoryToQueue: Memory;
 
+		// The document augmentation envelope
+		// (`<contextual_documents>...</contextual_documents>` + `<user_request>`)
+		// is a model-facing wrapper added just for this turn's LLM prompt. Persist
+		// and embed the clean user text so the stored memory does not echo raw
+		// wrapper XML back into the user's chat bubble or re-enter context as
+		// history on later turns. `message` (used downstream this turn) keeps its
+		// wrap.
+		const persistableMessage = stripAugmentationForPersistence(message);
+
 		if (message.id) {
 			const existingMemory = await runtime.getMemoryById(message.id);
 			if (existingMemory) {
@@ -9221,14 +9250,20 @@ export class DefaultMessageService implements IMessageService {
 				);
 				memoryToQueue = existingMemory;
 			} else {
-				const createdMemoryId = await runtime.createMemory(message, "messages");
-				memoryToQueue = { ...message, id: createdMemoryId };
+				const createdMemoryId = await runtime.createMemory(
+					persistableMessage,
+					"messages",
+				);
+				memoryToQueue = { ...persistableMessage, id: createdMemoryId };
 			}
 			await runtime.queueEmbeddingGeneration(memoryToQueue, "high");
 		} else {
-			const memoryId = await runtime.createMemory(message, "messages");
+			const memoryId = await runtime.createMemory(
+				persistableMessage,
+				"messages",
+			);
 			message.id = memoryId;
-			memoryToQueue = { ...message, id: memoryId };
+			memoryToQueue = { ...persistableMessage, id: memoryId };
 			await runtime.queueEmbeddingGeneration(memoryToQueue, "normal");
 		}
 

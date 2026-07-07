@@ -29,6 +29,57 @@ export const SURFACE_OCR_EVIDENCE_ROW = {
   id: "ocr-review",
   label: "OCR visual text review",
 };
+
+/**
+ * A changed file forces surface artifacts when it is a rendered-UI source file
+ * — labels are advisory and agents routinely omit them, so the gate cannot rely
+ * on them alone. Detection is deliberately narrow: a visual EXTENSION (`.tsx`,
+ * CSS family, `.svg`, `.html`, `.vue`) under a UI-bearing PACKAGE, excluding
+ * test/story/fixture files that render nothing a user sees. This is why editing
+ * a real component in `packages/ui` or `packages/app` demands screenshots while
+ * editing its `*.test.tsx` or `*.stories.tsx` does not.
+ */
+const SURFACE_PATH_RE =
+  /(^|\/)(packages\/(app|ui|tui|homepage)|apps\/app|packages\/cloud\/frontend|packages\/os\/landing)\//i;
+const SURFACE_VISUAL_EXT_RE = /\.(tsx|jsx|css|scss|sass|less|svg|html|vue)$/i;
+const SURFACE_NON_VISUAL_RE =
+  /(\.(test|spec|stories|story|bench)\.|\.d\.ts$|(^|\/)(__tests__|__e2e__|__mocks__|__fixtures__|test|tests|e2e|stories)\/)/i;
+
+/**
+ * True when any changed file is a rendered-UI source file (see `SURFACE_PATH_RE`
+ * rationale). Backslash paths from a Windows runner are normalized so the same
+ * diff classifies identically on either OS.
+ */
+export function requiresSurfaceArtifactsFromFiles(files) {
+  return surfaceFiles(files).length > 0;
+}
+
+/** The rendered-UI source files within a changed-file list. */
+export function surfaceFiles(files) {
+  return parseChangedFiles(files)
+    .map((raw) => raw.replaceAll("\\", "/"))
+    .filter(
+      (file) =>
+        SURFACE_PATH_RE.test(file) &&
+        SURFACE_VISUAL_EXT_RE.test(file) &&
+        !SURFACE_NON_VISUAL_RE.test(file),
+    );
+}
+
+/**
+ * A "before" screenshot is impossible when the ENTIRE touched UI surface is new
+ * — every rendered-UI file in the diff was ADDED, none modified. In that case
+ * the before-screenshots row may be an honest `N/A - <reason>` instead of
+ * media. Determined mechanically from the added-files list (`git diff
+ * --diff-filter=A`), never from the reason text, so it cannot be gamed by
+ * prose.
+ */
+export function beforeScreenshotImpossible(changedFiles, addedFiles) {
+  const surface = surfaceFiles(changedFiles);
+  if (surface.length === 0) return false;
+  const added = new Set(surfaceFiles(addedFiles));
+  return surface.every((file) => added.has(file));
+}
 const OCR_EVIDENCE_RE =
   /\bOCR\b|ocr-triage|mvp:visual-verify|audit:app:verify|tesseract|text readout/i;
 
@@ -61,11 +112,29 @@ export function requiresSurfaceArtifacts(labels) {
 
 export function hasOcrEvidenceReference(rows) {
   for (const rowText of rows.values()) {
-    if (OCR_EVIDENCE_RE.test(rowText) && hasArtifactReference(rowText)) {
+    // OCR proof must reference real evidence, not a page link: either an
+    // actual media artifact or a linked report/log file next to OCR keywords.
+    if (
+      OCR_EVIDENCE_RE.test(rowText) &&
+      (hasVisualArtifactReference(rowText) ||
+        hasEvidenceFileReference(rowText))
+    ) {
       return true;
     }
   }
   return false;
+}
+
+// Linked non-media evidence file (an OCR report/JSON/log) — still stricter
+// than "any URL": the link target must look like a file, not a web page.
+const EVIDENCE_FILE_RE = /\.(json|txt|log|csv|md)(\?\S*)?(\s|$|\)|"|')/i;
+
+export function hasEvidenceFileReference(text) {
+  const value = String(text ?? "");
+  return (
+    (EVIDENCE_FILE_RE.test(value) || GITHUB_ATTACHMENT_RE.test(value)) &&
+    !RETIRED_REPO_EVIDENCE_RE.test(value)
+  );
 }
 
 export function hasNaWithReason(text) {
@@ -90,6 +159,35 @@ export function hasArtifactReference(text) {
       text,
     )
   ) {
+    return true;
+  }
+  return false;
+}
+
+// A GitHub-uploaded attachment (drag-and-drop) lands on one of these hosts;
+// these URLs are the unforgeable signal that a real image/video is embedded.
+const GITHUB_ATTACHMENT_RE =
+  /(https?:\/\/)?(github\.com\/user-attachments\/assets\/|user-images\.githubusercontent\.com\/|github\.com\/[^/\s)]+\/[^/\s)]+\/assets\/)/i;
+// A URL/path whose tail is an image or video file — a directly-linked media file.
+const MEDIA_EXT_RE =
+  /\.(png|jpe?g|gif|webp|apng|avif|bmp|svg|mp4|mov|webm|m4v|ogg)(\?\S*)?(\s|$|\)|"|')/i;
+
+/**
+ * Strict media check for the VISUAL evidence rows (screenshots, walkthrough
+ * video, OCR readout). Unlike `hasArtifactReference`, a bare link to a page —
+ * the PR itself, a `/checks` tab, a commit, a job log — does NOT count: those
+ * are how an author games the loose check while attaching no pixels. Only a
+ * real embedded/linked image or video satisfies it: a GitHub attachment-host
+ * URL, a markdown image embed `![](…)`, an `<img>`/`<video>` tag, or a URL/path
+ * ending in a known media extension. This is the difference between "here is a
+ * link" and "here is the picture".
+ */
+export function hasVisualArtifactReference(text) {
+  const value = String(text ?? "");
+  if (GITHUB_ATTACHMENT_RE.test(value)) return true;
+  if (/!\[[^\]]*\]\(\s*\S+\s*\)/.test(value)) return true; // ![alt](url) embed
+  if (/<(img|video|source|picture)\b[^>]*>/i.test(value)) return true;
+  if (MEDIA_EXT_RE.test(value) && !RETIRED_REPO_EVIDENCE_RE.test(value)) {
     return true;
   }
   return false;
@@ -179,22 +277,33 @@ export function evaluatePrEvidence(
   options = {},
 ) {
   const rows = extractEvidenceRows(body ?? "");
-  const surfaceArtifactsRequired = requiresSurfaceArtifacts(options.labels);
+  const surfaceArtifactsRequired =
+    requiresSurfaceArtifacts(options.labels) ||
+    requiresSurfaceArtifactsFromFiles(options.changedFiles);
+  // A wholly-new surface (every touched UI file was ADDED) has no "before"
+  // state to photograph; that one row may be N/A-with-reason.
+  const beforeNaAllowed = beforeScreenshotImpossible(
+    options.changedFiles,
+    options.addedFiles,
+  );
   const findings = requiredRows.map(({ id, label }) => {
     if (!rows.has(id)) return { id, label, status: "missing" };
     const rowText = rows.get(id);
     if (rowText.length === 0) return { id, label, status: "blank" };
     const artifactRequired =
-      surfaceArtifactsRequired && SURFACE_ARTIFACT_ROW_IDS.includes(id);
-    if (artifactRequired && !hasArtifactReference(rowText)) {
+      surfaceArtifactsRequired &&
+      SURFACE_ARTIFACT_ROW_IDS.includes(id) &&
+      !(id === "before-screenshots" && beforeNaAllowed && hasNaWithReason(rowText));
+    // Visual rows on a surface PR demand REAL media (attachment/embed/media
+    // URL) — a link to the PR page or a /checks tab is not a screenshot.
+    if (artifactRequired && !hasVisualArtifactReference(rowText)) {
       return { id, label, status: "artifact-required" };
     }
     return {
       id,
       label,
-      status: isRowSatisfiedForContext(rowText, { artifactRequired })
-        ? "ok"
-        : "blank",
+      status:
+        artifactRequired || isRowSatisfied(rowText) ? "ok" : "blank",
     };
   });
   if (surfaceArtifactsRequired && !hasOcrEvidenceReference(rows)) {
@@ -225,13 +334,13 @@ function readBody(args) {
   }
 }
 
-function readChangedFiles(args) {
-  const idx = args.indexOf("--changed-files-file");
+function readFileListArg(args, flag) {
+  const idx = args.indexOf(flag);
   if (idx === -1) return [];
 
   const file = args[idx + 1];
   if (!file) {
-    console.error("--changed-files-file requires a path argument");
+    console.error(`${flag} requires a path argument`);
     process.exit(2);
   }
   return parseChangedFiles(readFileSync(file, "utf8"));
@@ -245,7 +354,14 @@ Options:
   --labels <labels>   Comma-separated PR labels; ui/frontend/native require
                       concrete screenshot/video artifacts and linked OCR proof.
   --changed-files-file <path>
-                      Reject committed files under retired repo evidence paths.
+                      Reject committed files under retired repo evidence paths,
+                      AND require concrete screenshot/video/OCR artifacts when a
+                      rendered-UI source file is in the diff (labels optional).
+  --added-files-file <path>
+                      Newline list of ADDED files (git diff --diff-filter=A).
+                      When every rendered-UI file in the diff is newly added,
+                      the before-screenshots row may be 'N/A - <reason>' (a
+                      brand-new surface has no before state).
   --json              Print machine-readable findings JSON.
   --self-test         Run the planted-fixture self-check.
   --help, -h          Show this help.
@@ -342,6 +458,40 @@ function runSelfTest() {
   }
 
   {
+    const body = REQUIRED_EVIDENCE_ROWS.map(
+      ({ id }) =>
+        `<!-- evidence-row:${id} -->\n- [ ] row \`N/A - not applicable to this change\`.`,
+    ).join("\n\n");
+    const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: ["packages/ui/src/components/Foo.tsx"],
+    });
+    if (ok) {
+      failures.push("UI-file diff with all-N/A rows should fail (no labels)");
+    }
+    if (
+      findings.find((finding) => finding.id === "before-screenshots")
+        ?.status !== "artifact-required"
+    ) {
+      failures.push("UI-file diff should require screenshot artifacts");
+    }
+  }
+
+  {
+    const { ok } = evaluatePrEvidence(buildFixtureBody(), REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: [
+        "packages/ui/src/components/Foo.test.tsx",
+        "packages/app-core/src/services/thing.ts",
+        "packages/ui/src/components/Foo.stories.tsx",
+      ],
+    });
+    if (!ok) {
+      failures.push(
+        "test/story/server-only diff should not trigger surface artifacts",
+      );
+    }
+  }
+
+  {
     const { ok } = evaluatePrEvidence(
       buildFixtureBody({ "backend-logs": "- [ ] Backend logs N/A" }),
     );
@@ -393,7 +543,7 @@ function runSelfTest() {
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exit(1);
   }
-  console.log("check-pr-evidence self-test passed (9 cases).");
+  console.log("check-pr-evidence self-test passed (11 cases).");
 }
 
 function main() {
@@ -410,11 +560,13 @@ function main() {
   const body = readBody(args);
   const labelsIdx = args.indexOf("--labels");
   const labels = labelsIdx === -1 ? "" : (args[labelsIdx + 1] ?? "");
-  const retiredEvidenceFiles = findRetiredRepoEvidenceFiles(
-    readChangedFiles(args),
-  );
+  const changedFiles = readFileListArg(args, "--changed-files-file");
+  const addedFiles = readFileListArg(args, "--added-files-file");
+  const retiredEvidenceFiles = findRetiredRepoEvidenceFiles(changedFiles);
   const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
     labels,
+    changedFiles,
+    addedFiles,
   });
   const allOk = ok && retiredEvidenceFiles.length === 0;
 
@@ -438,11 +590,23 @@ function main() {
   if (!allOk) {
     const bad = findings.filter((finding) => finding.status !== "ok");
     console.error(
-      `\nEvidence gate FAILED: ${bad.length} row(s) blank or missing, ${retiredEvidenceFiles.length} retired repo evidence file(s) changed. ` +
-        "Attach the artifact inline (GitHub attachment URL) or write `N/A - <reason>` on each row. " +
-        "For ui/frontend/native PRs, before/after screenshots and walkthrough video require concrete inline artifact links. " +
-        "Surface PRs also require linked OCR evidence from the visual review/audit. " +
-        "Retired repo-local evidence paths do not count as evidence and must not be committed.",
+      `\nEvidence gate FAILED: ${bad.length} row(s) need attention, ${retiredEvidenceFiles.length} retired repo evidence file(s) changed.
+
+How to fix (fastest path):
+  1. bun run evidence:doctor            # install any missing capture tool
+  2. capture: bun run --cwd packages/app audit:app  (screenshots + OCR)
+     and/or the fixtures under packages/ui/src/components/shell/__e2e__/
+  3. attach + patch rows in ONE command:
+     node scripts/pr-evidence.mjs rows <pr> \\
+       --row after-screenshots=shot.jpg --row walkthrough-video=walk.mp4 \\
+       --row ocr-review=ocr.txt --row frontend-logs=e2e.log ...
+     (uploads to the pr-evidence release and verifies this gate locally)
+
+Rules: visual rows on UI-touching PRs need REAL media (an uploaded image/video,
+not a link to the PR or /checks page); every other row needs an artifact link
+or 'N/A - <reason>'. A wholly-new surface may N/A the before-screenshots row.
+Worked example: https://github.com/elizaOS/eliza/pull/15171
+Full standard: CONTRIBUTING.md § Evidence.`,
     );
     process.exit(1);
   }

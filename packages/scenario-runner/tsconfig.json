@@ -101,7 +101,9 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
-      "@elizaos/plugin-xr": ["../../plugins/plugin-xr/src/index.ts"],
+      "@elizaos/plugin-facewear": [
+        "../../plugins/plugin-facewear/src/index.ts"
+      ],
       "@elizaos/capacitor-appblocker": [
         "../../plugins/plugin-native-appblocker/src/index.ts"
       ],

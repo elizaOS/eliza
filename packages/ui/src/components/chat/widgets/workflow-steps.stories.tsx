@@ -5,6 +5,7 @@
  * feeds it.
  */
 import type { Meta, StoryObj } from "@storybook/react";
+import { mockApp } from "../../../storybook/mock-providers.helpers";
 import type { WorkflowSpec } from "../message-workflow-parser";
 import { WorkflowSteps } from "./workflow-steps";
 
@@ -15,6 +16,7 @@ function workflow(steps: WorkflowSpec["steps"], title?: string): WorkflowSpec {
 const meta = {
   title: "Chat/Widgets/WorkflowSteps",
   component: WorkflowSteps,
+  decorators: [mockApp()],
 } satisfies Meta<typeof WorkflowSteps>;
 
 export default meta;

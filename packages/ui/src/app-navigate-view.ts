@@ -73,7 +73,6 @@ export function directTabForNavigateView(
   path: string,
 ): "views" | "apps" | null {
   if (path === "/views") return "views";
-  if (path === "/apps") return "apps";
   if (detail.viewId === "views-manager" && detail.viewType !== "tui") {
     return "views";
   }

@@ -4,7 +4,7 @@
   "description": "S3-compatible object storage plugin for saving files, media, and generated artifacts.",
   "npmName": "@elizaos/plugin-s3-storage",
   "version": "2.0.0-beta.0",
-  "source": "bundled",
+  "source": "store",
   "tags": ["storage", "files", "s3", "s3-storage"],
   "config": {
     "AWS_REGION": {

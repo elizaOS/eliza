@@ -5345,6 +5345,13 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
   "ElizaAgentWatchdogPolicy.java",
+  // On-device agent helpers that only ElizaAgentService drives: the cold-boot
+  // asset-extraction policy (170 MB agent bundle staging) and the in-process
+  // bionic/llama GPU inference server. They import/reference ElizaAgentService,
+  // so they must be removed alongside it or the cloud target compiles a dangling
+  // reference and auditAndroidCloudSource rejects the tree (#15106).
+  "ElizaAssetExtractionPolicy.java",
+  "ElizaBionicInferenceServer.java",
   "ElizaAccessibilityService.java",
   "ElizaAssistActivity.java",
   "ElizaVoiceInteractionService.java",
@@ -5368,6 +5375,17 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
+];
+
+// Java sources that survive the cloud strip but are rewritten (or deleted) by
+// rewriteCloudJavaSources() so that the android-cloud tree compiles without
+// ElizaAgentService. Kept as an exported single source of truth so the strip
+// list and the audit stay in agreement (#15106).
+export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
+  "MainActivity.java",
+  "AgentPlugin.java",
+  "ElizaTasksWorker.java",
+  "ElizaNativeBridge.java",
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
@@ -7459,7 +7477,40 @@ const isMain =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
+/**
+ * Emit the wall-clock build duration so the startup-budget gate
+ * (packages/app/scripts/check-startup-budget.mjs) can regression-check build
+ * time (issue #14414). Opt-in via ELIZA_MOBILE_BUILD_TIMING_OUT so default
+ * builds are byte-for-byte unchanged; the file records the wall-clock the
+ * `build` budget target is defined against.
+ */
+function writeBuildTiming(target, buildMs) {
+  const out = process.env.ELIZA_MOBILE_BUILD_TIMING_OUT;
+  if (!out) return;
+  const budgetTarget =
+    process.env.ELIZA_MOBILE_BUILD_TIMING_TARGET ??
+    (target.startsWith("ios") ? "ios-ipa" : "android-apk");
+  fs.writeFileSync(
+    out,
+    `${JSON.stringify(
+      {
+        capturedAtIso: new Date().toISOString(),
+        buildTarget: target,
+        target: budgetTarget,
+        buildMs: Math.round(buildMs),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(
+    `[mobile-build] build timing: ${Math.round(buildMs)}ms → ${out} (budget target ${budgetTarget})`,
+  );
+}
+
 if (isMain) {
   console.log(`[mobile-build] App: ${APP.appName} (${APP.appId})`);
+  const buildStart = Date.now();
   await main();
+  writeBuildTiming(process.argv[2], Date.now() - buildStart);
 }

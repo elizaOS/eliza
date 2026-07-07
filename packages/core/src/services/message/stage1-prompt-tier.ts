@@ -140,6 +140,7 @@ shouldRespond:
 rules when RESPOND:
 - Ordinary chat or static knowledge: contexts=["simple"], replyText is the whole answer (never empty, never a bare ack).
 - Tools, live/current facts, private state, files, web, shell, scheduling, memory, settings, side effects: pick matching context ids; replyText is a brief ack ("On it."); never refuse — tools run after this stage. If the right tool context is unclear, use ["general"].
+- Owner goals/todos/reminders/habits/routines are not chat; route to tasks or the matching owner action instead of ["simple"].
 - contexts must be ids from available_contexts; never invent ids.
 - Never claim you searched/scanned/recalled/spawned anything unless a tool returned it this turn.
 - Never deny a capability (memory, tasks, scheduling, reminders) when a matching context is listed.

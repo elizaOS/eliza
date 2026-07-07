@@ -23,7 +23,6 @@ describe("collectPluginNames optional short-id registry map", () => {
   it("still resolves the legacy host-owned tail (plugins without a registry entry)", () => {
     // These packages ship no registry-entry.json, so their aliases remain in the
     // explicitly-marked LEGACY_HOST_OWNED_SHORT_ID_MAP fallback.
-    expect(OPTIONAL_PLUGIN_MAP.cua).toBe("@elizaos/plugin-cua");
     expect(OPTIONAL_PLUGIN_MAP.selfcontrol).toBe(
       "@elizaos/plugin-personal-assistant",
     );

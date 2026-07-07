@@ -581,6 +581,80 @@ function normalizeTitle(value: string): string {
   return normalizeIntentText(value);
 }
 
+function goalSuccessCriteriaLooksConcrete(
+  request: Pick<CreateLifeOpsGoalRequest, "successCriteria">,
+): boolean {
+  const criteriaText = JSON.stringify(request.successCriteria ?? "")
+    .toLowerCase()
+    .trim();
+  if (!criteriaText) {
+    return false;
+  }
+  return (
+    /\d/.test(criteriaText) ||
+    /\b(once|twice|daily|weekly|monthly)\b|(?:\bevery|\beach)\s+(?:day|week|month)\b|\bwithin\s+(?:a|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:day|week|month)s?\b/.test(
+      criteriaText,
+    )
+  );
+}
+
+function ownerTextHasConcreteGoalCriteria(value: string): boolean {
+  const text = normalizeIntentText(value);
+  return (
+    /(?:\$|€|£)\s*\d/.test(text) ||
+    /\b\d+\s*(?:x|times?|sessions?|blocks?|minutes?|mins?|hours?|days?|weeks?|months?|years?|percent|%)\b/.test(
+      text,
+    ) ||
+    /\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:times?|sessions?|blocks?|minutes?|mins?|hours?|days?|weeks?|months?|years?)\b/.test(
+      text,
+    ) ||
+    /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b/.test(
+      text,
+    ) ||
+    /\b(?:once|twice|daily|weekly|monthly|every day|each day|every week|each week|per week|per month)\b/.test(
+      text,
+    )
+  );
+}
+
+function buildConcreteGoalSuccessQuestion(title: string): string {
+  return `I can draft this as "${title}", and I will not save it yet. What would count as success: how often you want to do it, what kind of attempt counts, or what evidence I should track?`;
+}
+
+function summaryFromGoalSection(value: unknown): string | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const summary = (value as { summary?: unknown }).summary;
+  return typeof summary === "string" && summary.trim().length > 0
+    ? summary.trim()
+    : null;
+}
+
+function buildSavedGoalReply(goal: {
+  title: string;
+  successCriteria?: unknown;
+  supportStrategy?: unknown;
+}): string {
+  const parts = [`Saved — "${goal.title}".`];
+  const successSummary = summaryFromGoalSection(goal.successCriteria);
+  const supportSummary = summaryFromGoalSection(goal.supportStrategy);
+  if (successSummary) {
+    parts.push(`Success: ${successSummary}`);
+  }
+  if (supportSummary) {
+    parts.push(`Plan: ${supportSummary}`);
+  }
+  return parts.join(" ");
+}
+
+function isExplicitLifeCreateConfirmation(value: string): boolean {
+  const text = normalizeIntentText(value);
+  return /\b(ok|okay|yes|yep|yeah|sure|confirmed?|save it|save that|save this|save the goal|lock it in|do it|looks good|that works|go ahead)\b/.test(
+    text,
+  );
+}
+
 function matchByTitle<
   T extends { definition?: { title: string }; goal?: { title: string } },
 >(entries: T[], targetTitle: string): T | null {
@@ -3174,6 +3248,9 @@ export async function runLifeOperationHandler(
     }
 
     if (internalOp === "create_goal") {
+      const goalCreateConfirmed =
+        createConfirmed &&
+        isExplicitLifeCreateConfirmation(messageText(message));
       const deferredGoalDraft =
         reuseDeferredDraft && deferredDraft?.operation === "create_goal"
           ? deferredDraft
@@ -3220,9 +3297,34 @@ export async function runLifeOperationHandler(
       let evaluationSummary: string | null = null;
 
       const hasExplicitGroundedGoal =
-        Boolean(title) &&
-        (createConfirmed ||
-          (Boolean(successCriteria) && Boolean(supportStrategy)));
+        Boolean(title) && Boolean(successCriteria) && Boolean(supportStrategy);
+
+      if (hasExplicitGroundedGoal) {
+        const successSummary =
+          successCriteria &&
+          typeof successCriteria.summary === "string" &&
+          successCriteria.summary.trim().length > 0
+            ? successCriteria.summary.trim()
+            : null;
+        goalMetadata = mergeGoalMetadataWithGrounding({
+          metadata: {
+            ...goalMetadata,
+            source: "chat",
+            originalIntent: intent,
+          },
+          nowIso: new Date().toISOString(),
+          plan: {
+            cadence,
+            confidence: null,
+            evaluationSummary:
+              successSummary ?? description ?? "Goal has explicit criteria.",
+            groundingState: "grounded",
+            missingCriticalFields: [],
+            successCriteria,
+            targetDomain: null,
+          },
+        });
+      }
 
       if (
         (!deferredGoalDraft || editingDeferredGoalDraft) &&
@@ -3271,6 +3373,9 @@ export async function runLifeOperationHandler(
           !successCriteria ||
           !supportStrategy
         ) {
+          const text =
+            llmPlan.response ??
+            "What would count as success for that goal, and over what time window?";
           // A clarification request is a successful outcome from the
           // agent's point of view — the agent chose to ask instead of
           // invent an ungrounded goal. Callers rely on `success: true +
@@ -3278,9 +3383,8 @@ export async function runLifeOperationHandler(
           // handler error.
           return {
             success: true,
-            text:
-              llmPlan.response ??
-              "What would count as success for that goal, and over what time window?",
+            text,
+            userFacingText: text,
             values: {
               success: true,
               error: "NOOP_GOAL_UNGROUNDED",
@@ -3336,13 +3440,38 @@ export async function runLifeOperationHandler(
       });
       if (
         shouldRequireLifeCreateConfirmation({
-          confirmed: createConfirmed,
+          confirmed: goalCreateConfirmed,
           messageSource:
             typeof message.content.source === "string"
               ? message.content.source
               : undefined,
         })
       ) {
+        if (
+          !goalSuccessCriteriaLooksConcrete(goalDraft.request) ||
+          (!deferredGoalDraft &&
+            !ownerTextHasConcreteGoalCriteria(messageText(message)))
+        ) {
+          const text = buildConcreteGoalSuccessQuestion(
+            goalDraft.request.title,
+          );
+          return {
+            success: false,
+            text,
+            userFacingText: text,
+            data: {
+              actionName: ownerSurfaceActionName,
+              deferred: true,
+              saved: false,
+              requiresConfirmation: true,
+              lifeDraft: goalDraft,
+              experienceLoop,
+              preview: {
+                title: goalDraft.request.title,
+              },
+            },
+          };
+        }
         const fallbackParts = [
           evaluationSummary
             ? `I can save "${goalDraft.request.title}" as a goal. Success looks like this: ${evaluationSummary} Confirm and I'll save it, or tell me what to change.`
@@ -3356,21 +3485,23 @@ export async function runLifeOperationHandler(
         // Preview only — the goal is not persisted until the confirm turn.
         // success:false keeps the "not saved yet" state honest (no-fabricate,
         // task_611a9f0b); the draft survives on `data.lifeDraft` for confirm.
+        const text = await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "preview_goal",
+          fallback: fallbackParts.join(" "),
+          context: {
+            draft: goalDraft.request,
+            groundingSummary: evaluationSummary,
+            experienceLoop,
+          },
+        });
         return {
           success: false,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "preview_goal",
-            fallback: fallbackParts.join(" "),
-            context: {
-              draft: goalDraft.request,
-              groundingSummary: evaluationSummary,
-              experienceLoop,
-            },
-          }),
+          text,
+          userFacingText: text,
           data: {
             actionName: ownerSurfaceActionName,
             deferred: true,
@@ -3409,26 +3540,13 @@ export async function runLifeOperationHandler(
       const experienceSummary = formatGoalExperienceLoopSummary(
         createdExperienceLoop,
       );
-      const fallback = experienceSummary
-        ? `Saved goal "${created.goal.title}". ${experienceSummary}`
-        : `Saved goal "${created.goal.title}".`;
+      const text = experienceSummary
+        ? `${buildSavedGoalReply(created.goal)} ${experienceSummary}`
+        : buildSavedGoalReply(created.goal);
       return {
         success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "saved_goal",
-          fallback,
-          context: {
-            created: {
-              title: created.goal.title,
-              cadence: created.goal.cadence,
-            },
-            experienceLoop: createdExperienceLoop,
-          },
-        }),
+        text,
+        userFacingText: text,
         data: toActionData({
           ...created,
           experienceLoop: createdExperienceLoop,

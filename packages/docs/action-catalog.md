@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 185
+- **Registered runtime actions:** 191
 
 ## Actions
 
@@ -348,6 +348,9 @@ section drifts from source.
 - `CLIPBOARD` — `plugins/plugin-computeruse/src/actions/clipboard.ts`
 - `CLOSE_ALL_VIEWS` — `plugins/plugin-app-control/src/actions/views.ts`
 - `CLOSE_VIEW` — `plugins/plugin-app-control/src/actions/views.ts`
+- `CLOUD_ACCOUNT_STATUS` — `plugins/plugin-elizacloud/src/actions/cloud-account-status.ts`
+- `CLOUD_CREATE_API_KEY` — `plugins/plugin-elizacloud/src/actions/create-cloud-api-key.ts`
+- `CLOUD_LIST_AGENTS` — `plugins/plugin-elizacloud/src/actions/list-cloud-agents.ts`
 - `COMPACT_CONVERSATION` — `packages/agent/src/actions/compact-conversation.ts`
 - `COMPUTER_USE` — `plugins/plugin-computeruse/src/actions/use-computer.ts`
 - `COMPUTER_USE_AGENT` — `plugins/plugin-computeruse/src/actions/use-computer-agent.ts`
@@ -361,6 +364,7 @@ section drifts from source.
 - `CREATE_LINEAR_COMMENT` — `plugins/plugin-linear/src/actions/createComment.ts`
 - `CREATE_LINEAR_ISSUE` — `plugins/plugin-linear/src/actions/createIssue.ts`
 - `CREATE_OAUTH_INTENT` — `packages/core/src/features/oauth/actions/create-oauth-intent.ts`
+- `CREATIVE_DRAFT` — `plugins/plugin-personal-assistant/src/actions/creative-draft.ts`
 - `CREDENTIALS` — `plugins/plugin-personal-assistant/src/actions/credentials.ts`
 - `DATABASE` — `packages/agent/src/actions/database.ts`
 - `DECLARE_SUB_AGENT_CREDENTIAL_SCOPE` — `packages/core/src/features/sub-agent-credentials/actions/declare-sub-agent-credential-scope.ts`
@@ -410,6 +414,7 @@ section drifts from source.
 - `LIST_LINEAR_COMMENTS` — `plugins/plugin-linear/src/actions/listComments.ts`
 - `LIST_OVERDUE_FOLLOWUPS` — `plugins/plugin-personal-assistant/src/followup/actions/listOverdueFollowups.ts`
 - `LIST_PRESS_RELEASES` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
+- `LOCAL_INFERENCE` — `plugins/plugin-local-inference/src/actions/local-inference-management.ts`
 - `LOGS` — `packages/agent/src/actions/logs.ts`
 - `MANAGE_BROWSER_BRIDGE` — `plugins/plugin-browser/src/actions/manage-browser-bridge.ts`
 - `MANAGE_PLUGINS` — `packages/core/src/features/plugin-manager/actions/plugin.ts`
@@ -448,6 +453,7 @@ section drifts from source.
 - `PROBE_PLUGIN_CONFIG_REQUIREMENTS` — `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts`
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
 - `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
+- `RESOLVE_REFERENT` — `plugins/plugin-personal-assistant/src/actions/resolve-referent.ts`
 - `RESOLVE_REQUEST` — `plugins/plugin-personal-assistant/src/actions/resolve-request.ts`
 - `RETRIEVE_CHILD_AGENT_RESULTS` — `packages/core/src/features/sub-agent-credentials/actions/retrieve-child-agent-results.ts`
 - `REVOKE_OAUTH_CREDENTIAL` — `packages/core/src/features/oauth/actions/revoke-oauth-credential.ts`

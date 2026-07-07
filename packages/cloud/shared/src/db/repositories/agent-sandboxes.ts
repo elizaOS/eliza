@@ -32,6 +32,7 @@ import {
   WARM_POOL_USER_ID,
 } from "../schemas/agent-sandboxes";
 import { jobs } from "../schemas/jobs";
+import { imageRepo, imageRepoSql } from "../utils/docker-image-ref";
 
 export type {
   AgentBackupSnapshotType,
@@ -228,13 +229,19 @@ export class AgentSandboxesRepository {
   }
 
   /**
-   * `disconnected` always-on (paid) agents that should be reconciled back to
-   * `running`. A `dedicated-always` agent is contractually meant to stay up, so
-   * a transient tailnet drop that flipped it to `disconnected` must self-heal —
-   * the recovery cycle re-probes the bridge and either flips it back to
-   * `running` (still reachable) or re-provisions it (truly down). Scoped to
-   * `dedicated-always` because `dedicated-lazy`/`shared` are NOT meant to hold
-   * an always-on container. Deleted rows are excluded.
+   * Always-on (paid) agents that should be reconciled back to `running`. A
+   * `dedicated-always` agent is contractually meant to stay up, so a transient
+   * tailnet drop that flipped it to `disconnected` must self-heal — the recovery
+   * cycle re-probes the bridge and either flips it back to `running` (still
+   * reachable) or re-provisions it (truly down). Blue/green swaps can also race
+   * a stale monitor write that leaves a healthy container behind an `error` row;
+   * include only errored rows with a bridge to probe, rollback metadata, and no
+   * explicit `error_message`. Generic provisioning/restore failures set an
+   * operator-visible error message, can also leave a bridge behind, and must stay
+   * failed instead of being silently revived.
+   *
+   * Scoped to `dedicated-always` because `dedicated-lazy`/`shared` are NOT meant
+   * to hold an always-on container. Deleted rows are excluded.
    */
   async listRecoverable(limit = 100): Promise<
     Array<{
@@ -244,6 +251,7 @@ export class AgentSandboxesRepository {
       agent_name: string | null;
       bridge_url: string | null;
       updated_at: Date;
+      status: AgentSandboxStatus;
     }>
   > {
     return dbRead
@@ -254,11 +262,20 @@ export class AgentSandboxesRepository {
         agent_name: agentSandboxes.agent_name,
         bridge_url: agentSandboxes.bridge_url,
         updated_at: agentSandboxes.updated_at,
+        status: agentSandboxes.status,
       })
       .from(agentSandboxes)
       .where(
         and(
-          eq(agentSandboxes.status, "disconnected"),
+          sql`(
+            ${agentSandboxes.status} = 'disconnected'
+            OR (
+              ${agentSandboxes.status} = 'error'
+              AND ${agentSandboxes.bridge_url} IS NOT NULL
+              AND ${agentSandboxes.previous_image_digest} IS NOT NULL
+              AND ${agentSandboxes.error_message} IS NULL
+            )
+          )`,
           eq(agentSandboxes.execution_tier, "dedicated-always"),
           sql`${agentSandboxes.deleted_at} IS NULL`,
         ),
@@ -376,8 +393,11 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.image_digest} IS DISTINCT FROM ${targetDigest}`,
           // Only reconcile agents on the configured default image. Per-agent
           // image overrides are intentional and must not be rolled onto the
-          // global fleet tag.
-          sql`(${agentSandboxes.docker_image} IS NULL OR ${agentSandboxes.docker_image} = ${targetImage})`,
+          // global fleet tag. Match on the REPO, not the full ref: a fleet agent
+          // pinned to an older tag or a digest (`…:sha-abc`, `…@sha256:…`) is
+          // still the default image and must be selected, otherwise sha-pinned
+          // default agents never drift back to the current default (#15101).
+          sql`(${agentSandboxes.docker_image} IS NULL OR ${imageRepoSql(agentSandboxes.docker_image)} = ${imageRepo(targetImage)})`,
           // Skip pool-owned rows (warm pool entries) — they get the new
           // image naturally on next claim, no need to disrupt them.
           sql`${agentSandboxes.pool_status} IS NULL`,
@@ -431,7 +451,10 @@ export class AgentSandboxesRepository {
           sql`${agentSandboxes.deleted_at} IS NULL`,
           eq(agentSandboxes.image_digest, currentDigest),
           isNotNull(agentSandboxes.previous_image_digest),
-          sql`(${agentSandboxes.docker_image} IS NULL OR ${agentSandboxes.docker_image} = ${targetImage})`,
+          // Match the default image by REPO, not full ref — same rationale as
+          // listRunningWithDigestOtherThan (#15101): a rollback-eligible fleet
+          // agent may be pinned to a different tag/digest of the same repo.
+          sql`(${agentSandboxes.docker_image} IS NULL OR ${imageRepoSql(agentSandboxes.docker_image)} = ${imageRepo(targetImage)})`,
           sql`${agentSandboxes.pool_status} IS NULL`,
           sql`${agentSandboxes.node_id} IS NOT NULL`,
           sql`${agentSandboxes.container_name} IS NOT NULL`,
@@ -637,26 +660,37 @@ export class AgentSandboxesRepository {
   }
 
   /**
-   * Atomically restore a still-disconnected agent to `running` after a
-   * successful bridge re-probe. The recovery read -> probe -> write window spans
-   * seconds, during which the row may move to `deletion_pending` (delete
-   * enqueue), `stopped` (shutdown nulls `bridge_url`), or `provisioning`
-   * (re-provision). This compare-and-set only flips a row that is STILL
-   * `disconnected` with a live bridge and not soft-deleted, so a stale probe can
-   * never resurrect a being-deleted agent or wedge a stopped one at `running`
-   * with a dead bridge. Returns the row when it won, undefined when it lost the
-   * race (and the caller must NOT treat it as recovered).
+   * Atomically restore a still-recoverable agent to `running` after a successful
+   * bridge re-probe. The recovery read -> probe -> write window spans seconds,
+   * during which the row may move to `deletion_pending` (delete enqueue),
+   * `stopped` (shutdown nulls `bridge_url`), or `provisioning` (re-provision).
+   * This compare-and-set only flips a row that is STILL in the status the caller
+   * probed with a live bridge and not soft-deleted. Errored rows additionally
+   * must carry `previous_image_digest` and no explicit `error_message`, so
+   * generic provisioning/restore failures are not masked. A stale probe can never
+   * resurrect a being-deleted agent or wedge a stopped one at `running` with a
+   * dead bridge. Returns the row when it won, undefined when it lost the race
+   * (and the caller must NOT treat it as recovered).
    */
-  async markReconnectedFromDisconnected(id: string): Promise<AgentSandbox | undefined> {
+  async markReconnectedFromDisconnected(
+    id: string,
+    expectedStatus: "disconnected" | "error" = "disconnected",
+  ): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
     const [r] = await dbWrite
       .update(agentSandboxes)
-      .set({ status: "running", last_heartbeat_at: new Date(), updated_at: new Date() })
+      .set({
+        status: "running",
+        error_message: null,
+        last_heartbeat_at: new Date(),
+        updated_at: new Date(),
+      })
       .where(
         and(
           eq(agentSandboxes.id, id),
-          eq(agentSandboxes.status, "disconnected"),
+          eq(agentSandboxes.status, expectedStatus),
           sql`${agentSandboxes.bridge_url} IS NOT NULL`,
+          sql`${expectedStatus} != 'error' OR (${agentSandboxes.previous_image_digest} IS NOT NULL AND ${agentSandboxes.error_message} IS NULL)`,
           sql`${agentSandboxes.deleted_at} IS NULL`,
         ),
       )

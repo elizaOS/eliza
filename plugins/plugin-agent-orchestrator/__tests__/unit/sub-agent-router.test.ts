@@ -113,6 +113,7 @@ function makeRuntime(opts: {
   acp: unknown;
   agentId?: string;
   setting?: Record<string, string | undefined>;
+  roomEntities?: Array<Record<string, unknown>>;
 }) {
   const handleMessage = vi.fn<
     (
@@ -134,6 +135,11 @@ function makeRuntime(opts: {
   const createMemory = vi.fn(async () => undefined);
   const createEntity = vi.fn(async () => true);
   const addParticipant = vi.fn(async () => true);
+  const getEntitiesForRoom = vi.fn(async (_roomId: string) => [
+    ...(opts.roomEntities ?? []),
+  ]);
+  const deleteParticipants = vi.fn(async () => true);
+  const reportError = vi.fn();
   const emitEvent = vi.fn<
     (name: string, payload: { source: string }) => Promise<void>
   >(async () => undefined);
@@ -162,6 +168,9 @@ function makeRuntime(opts: {
     createMemory,
     createEntity,
     addParticipant,
+    getEntitiesForRoom,
+    deleteParticipants,
+    reportError,
     emitEvent,
     sendMessageToTarget,
     messageService: { handleMessage },
@@ -172,6 +181,9 @@ function makeRuntime(opts: {
     createMemory,
     createEntity,
     addParticipant,
+    getEntitiesForRoom,
+    deleteParticipants,
+    reportError,
     emitEvent,
     sendMessageToTarget,
     spawnSession,

@@ -262,6 +262,7 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   experience: "GraduationCap",
   "character-skills": "Sparkles",
   memories: "BrainCircuit",
+  "my-apps": "LayoutGrid",
   rolodex: "UsersRound",
   runtime: "Terminal",
   database: "Database",

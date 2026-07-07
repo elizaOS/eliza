@@ -52,6 +52,14 @@ type LifeOpsReminderAttemptForTest = {
   reviewStatus?: string | null;
 };
 
+type LifeOpsBrowserSessionForTest = {
+  id: string;
+  title: string;
+  status: string;
+  result: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+};
+
 let activeServer: http.Server | null = null;
 const originalGoogleBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
 
@@ -786,6 +794,327 @@ describe("scenario memory seeds", () => {
     }
   }, 120_000);
 
+  it("maps appointment and scheduled-push-ladder seeds into calendar and scheduled-task state", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-appointment-ladder-seed-test",
+    });
+    try {
+      const roomId = stringToUuid("scenario-appointment-ladder-room");
+      const ownerId = stringToUuid("scenario-appointment-ladder-owner");
+      await harness.runtime.ensureConnection({
+        entityId: ownerId,
+        roomId,
+        worldId: stringToUuid("scenario-appointment-ladder-world"),
+        userName: "Scenario owner",
+        source: "scenario-runner",
+        channelId: roomId,
+        type: "DM",
+      });
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.scheduled-notification-cancel-when-event-cancelled",
+        now: "2026-07-06T14:00:00.000Z",
+        primaryRoomId: roomId,
+        primaryUserId: ownerId,
+      } as ScenarioContext;
+
+      const missingEventResult = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "scheduled-push-ladder",
+          eventId: "missing-event",
+          rungs: [{ offsetMin: -10, channel: "mobile", status: "pending" }],
+        },
+      } satisfies ScenarioSeedStep);
+      const appointmentResult = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "appointment",
+          id: "evt-investor-sync",
+          provider: "Westside Imaging",
+          startAt: "2026-07-06T20:00:00.000Z",
+          requiresSignature: true,
+          signatureCompleted: false,
+        },
+      } satisfies ScenarioSeedStep);
+      const ladderResult = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "scheduled-push-ladder",
+          eventId: "evt-investor-sync",
+          rungs: [
+            { offsetMin: -60, channel: "desktop", status: "pending" },
+            { offsetMin: -10, channel: "mobile", status: "pending" },
+          ],
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(missingEventResult).toMatch(
+        /requires a previously seeded calendar event/,
+      );
+      expect(appointmentResult).toBeUndefined();
+      expect(ladderResult).toBeUndefined();
+      const { LifeOpsRepository } = await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts"
+      );
+      const repository = new LifeOpsRepository(harness.runtime);
+      const events = await repository.listCalendarEvents(
+        String(harness.runtime.agentId),
+        "google",
+        "2026-07-06T19:30:00.000Z",
+        "2026-07-06T21:00:00.000Z",
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          title: "Westside Imaging appointment",
+          startAt: "2026-07-06T20:00:00.000Z",
+          metadata: expect.objectContaining({
+            source: "scenario-seed",
+            appointment: expect.objectContaining({
+              provider: "Westside Imaging",
+              requiresSignature: true,
+              signatureCompleted: false,
+            }),
+          }),
+        }),
+      );
+
+      const scheduledTasks = await repository.listScheduledTasks(
+        String(harness.runtime.agentId),
+        { kind: "reminder", status: "scheduled" },
+      );
+      expect(
+        scheduledTasks.filter(
+          (task: LifeOpsScheduledTaskForTest) =>
+            task.metadata?.seedKind === "scheduled-push-ladder",
+        ),
+      ).toHaveLength(2);
+      expect(scheduledTasks).toContainEqual(
+        expect.objectContaining({
+          taskId:
+            "scenario-scheduled-push-ladder:push.scheduled-notification-cancel-when-event-cancelled:evt-investor-sync:0:desktop",
+          metadata: expect.objectContaining({
+            eventId: "evt-investor-sync",
+            rung: {
+              offsetMin: -60,
+              channel: "desktop",
+              status: "pending",
+              index: 0,
+            },
+          }),
+          trigger: {
+            kind: "once",
+            atIso: "2026-07-06T19:00:00.000Z",
+          },
+        }),
+      );
+      expect(scheduledTasks).toContainEqual(
+        expect.objectContaining({
+          taskId:
+            "scenario-scheduled-push-ladder:push.scheduled-notification-cancel-when-event-cancelled:evt-investor-sync:1:mobile",
+          trigger: {
+            kind: "once",
+            atIso: "2026-07-06T19:50:00.000Z",
+          },
+        }),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("maps browser-task-state seeds into browser workflow sessions", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-browser-task-seed-test",
+    });
+    try {
+      const roomId = stringToUuid("scenario-browser-task-room");
+      const ownerId = stringToUuid("scenario-browser-task-owner");
+      await harness.runtime.ensureConnection({
+        entityId: ownerId,
+        roomId,
+        worldId: stringToUuid("scenario-browser-task-world"),
+        userName: "Scenario owner",
+        source: "scenario-runner",
+        channelId: roomId,
+        type: "DM",
+      });
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "push.stuck-agent-calls-user-CAPTCHA",
+        now: "2026-07-06T14:00:00.000Z",
+        primaryRoomId: roomId,
+        primaryUserId: ownerId,
+      } as ScenarioContext;
+
+      const result = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "browser-task-state",
+          task: "United online check-in",
+          blockedBy: "CAPTCHA",
+          attempts: 2,
+        },
+      } satisfies ScenarioSeedStep);
+
+      expect(result).toBeUndefined();
+      const { LifeOpsRepository } = await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts"
+      );
+      const repository = new LifeOpsRepository(harness.runtime);
+      const sessions = (await repository.listBrowserSessions(
+        String(harness.runtime.agentId),
+      )) as LifeOpsBrowserSessionForTest[];
+      expect(sessions).toContainEqual(
+        expect.objectContaining({
+          title: "United online check-in",
+          status: "failed",
+          result: {
+            browserTask: {
+              task: "United online check-in",
+              blockedBy: "CAPTCHA",
+              attempts: 2,
+              state: "blocked",
+            },
+          },
+          metadata: expect.objectContaining({
+            source: "scenario-seed",
+            seedKind: "browser-task-state",
+          }),
+        }),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
+  it("maps follow-up, digest, and voice-attempt seeds into LifeOps scheduled state", async () => {
+    const harness = await createRealTestRuntime({
+      withLLM: false,
+      characterName: "scenario-followup-state-seed-test",
+    });
+    try {
+      const roomId = stringToUuid("scenario-followup-state-room");
+      const ownerId = stringToUuid("scenario-followup-state-owner");
+      await harness.runtime.ensureConnection({
+        entityId: ownerId,
+        roomId,
+        worldId: stringToUuid("scenario-followup-state-world"),
+        userName: "Scenario owner",
+        source: "scenario-runner",
+        channelId: roomId,
+        type: "DM",
+      });
+      const ctx = {
+        runtime: harness.runtime,
+        scenarioId: "followup.list-overdue-by-priority",
+        now: "2026-07-06T14:00:00.000Z",
+        primaryRoomId: roomId,
+        primaryUserId: ownerId,
+      } as ScenarioContext;
+
+      await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "overdue-followup",
+          name: "Reply to Acme VIP customer",
+          priority: "vip",
+          overdueAt: "2026-07-01T14:00:00.000Z",
+        },
+      } satisfies ScenarioSeedStep);
+      await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "pending-low-urgency-pushes",
+          items: [
+            { title: "Send newsletter draft", category: "writing" },
+            { title: "Archive old email labels", category: "inbox" },
+          ],
+        },
+      } satisfies ScenarioSeedStep);
+      await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        content: {
+          kind: "voice-call-attempt",
+          outcome: "voicemail",
+          attemptedAt: "2026-07-06T13:55:00.000Z",
+          reason: "CAPTCHA on United check-in",
+        },
+      } satisfies ScenarioSeedStep);
+
+      const { LifeOpsRepository } = (await import(
+        "../../../plugins/plugin-personal-assistant/src/lifeops/repository.ts"
+      )) as {
+        LifeOpsRepository: new (
+          runtime: AgentRuntime,
+        ) => {
+          listScheduledTasks: (
+            agentId: string,
+            filter?: Record<string, unknown>,
+          ) => Promise<LifeOpsScheduledTaskForTest[]>;
+          listReminderAttempts: (
+            agentId: string,
+            filter?: Record<string, unknown>,
+          ) => Promise<LifeOpsReminderAttemptForTest[]>;
+        };
+      };
+      const repository = new LifeOpsRepository(harness.runtime);
+      const scheduledTasks = await repository.listScheduledTasks(
+        String(harness.runtime.agentId),
+        { status: "scheduled" },
+      );
+      expect(scheduledTasks).toContainEqual(
+        expect.objectContaining({
+          taskId:
+            "scenario-overdue-followup:followup.list-overdue-by-priority:Reply to Acme VIP customer",
+          priority: "high",
+          metadata: expect.objectContaining({
+            seedKind: "overdue-followup",
+            followup: expect.objectContaining({
+              topic: null,
+              overdueAt: "2026-07-01T14:00:00.000Z",
+            }),
+          }),
+        }),
+      );
+      expect(scheduledTasks).toContainEqual(
+        expect.objectContaining({
+          taskId:
+            "scenario-pending-low-urgency-pushes:followup.list-overdue-by-priority:Low-urgency digest",
+          priority: "low",
+          metadata: expect.objectContaining({
+            seedKind: "pending-low-urgency-pushes",
+            digest: expect.objectContaining({
+              titles: ["Send newsletter draft", "Archive old email labels"],
+            }),
+          }),
+        }),
+      );
+
+      const attempts = await repository.listReminderAttempts(
+        String(harness.runtime.agentId),
+        {
+          planId:
+            "scenario-reminder-plan:followup.list-overdue-by-priority:CAPTCHA on United check-in",
+        },
+      );
+      expect(attempts).toContainEqual(
+        expect.objectContaining({
+          channel: "voice",
+          outcome: "blocked_connector",
+          deliveryMetadata: expect.objectContaining({
+            result: "failed",
+            title: "CAPTCHA on United check-in",
+          }),
+        }),
+      );
+    } finally {
+      await harness.cleanup();
+    }
+  }, 120_000);
+
   it("maps rolodex-entity memory seeds into relationship contacts", async () => {
     const { ctx, relationships, runtime } = createSeedHarness();
 
@@ -1000,12 +1329,14 @@ describe("scenario memory seeds", () => {
     const result = await applyScenarioSeedStep(ctx, {
       type: "memory",
       content: {
-        kind: "voice-call-attempt",
+        kind: "future-unsupported-kind",
         text: "hello",
       },
     } satisfies ScenarioSeedStep);
 
-    expect(result).toMatch(/unsupported memory seed kind "voice-call-attempt"/);
+    expect(result).toMatch(
+      /unsupported memory seed kind "future-unsupported-kind"/,
+    );
     expect(result).toContain("user-state");
     expect(createMemory).not.toHaveBeenCalled();
     expect(relationships.addContact).not.toHaveBeenCalled();

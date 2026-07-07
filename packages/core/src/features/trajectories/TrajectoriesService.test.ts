@@ -145,6 +145,18 @@ describe("TrajectoriesService", () => {
 			purpose: "action",
 			actionType: "runtime.useModel",
 			latencyMs: 1,
+			providerOrder: ["CHARACTER"],
+			providerAttributions: [
+				{
+					providerName: "CHARACTER",
+					sha256:
+						"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+					tokenCount: 8,
+					position: 0,
+					spanStart: 5,
+					spanEnd: 19,
+				},
+			],
 		});
 		await service.flushWriteQueue(trajectoryId);
 
@@ -157,6 +169,14 @@ describe("TrajectoriesService", () => {
 		expect(call.tools.circular.self).toBe("[Circular]");
 		expect(call.tools.circular.fn).toBe("[Function toolHandler]");
 		expect(call.providerMetadata.self).toBe("[Circular]");
+		expect(call.providerOrder).toEqual(["CHARACTER"]);
+		expect(call.providerAttributions[0]).toMatchObject({
+			providerName: "CHARACTER",
+			tokenCount: 8,
+			position: 0,
+			spanStart: 5,
+			spanEnd: 19,
+		});
 	});
 
 	it("keeps empty step objects parseable across queued step writes", async () => {

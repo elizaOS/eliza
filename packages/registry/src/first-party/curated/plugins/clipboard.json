@@ -4,7 +4,7 @@
   "description": "File-based memory storage plugin for ElizaOS - persistent notes and clipboard",
   "npmName": "@elizaos/plugin-clipboard",
   "version": "2.0.0-beta.0",
-  "source": "bundled",
+  "source": "store",
   "tags": ["clipboard", "memory", "notes", "storage"],
   "config": {
     "CLIPBOARD_BASE_PATH": {

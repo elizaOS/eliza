@@ -1,6 +1,6 @@
 # @elizaos/app
 
-The cross-platform renderer shell for [elizaOS](https://github.com/elizaos) — the
+The cross-platform renderer shell for [elizaOS](https://github.com/elizaos) â the
 top-level Vite application that boots the Eliza agent UI on web browsers,
 Electrobun desktop (macOS/Windows/Linux), and Capacitor-wrapped iOS/Android.
 
@@ -18,12 +18,12 @@ gotchas), see [`AGENTS.md`](./AGENTS.md).
 ```
 app.config.ts        App identity (appId, appName, envPrefix, urlScheme, branding)
 capacitor.config.ts  Capacitor mobile config (derived from app.config.ts)
-vite.config.ts       Build config — alias resolution, chunk splitting, Vite plugins
+vite.config.ts       Build config â alias resolution, chunk splitting, Vite plugins
 index.html           HTML shell (tokens replaced at build by appShellMetadataPlugin)
 src/
   main.tsx           React boot: plugin loading, root render, platform init
   app-config.ts      Re-exports APP_CONFIG and derived branding/namespace constants
-  deep-link-routing.ts  Custom URL scheme → hash route mapping
+  deep-link-routing.ts  Custom URL scheme â hash route mapping
   mobile-*.ts        Capacitor bridges + app lifecycle
 vite/                Browser-bundle Vite plugins (native-module-stub-plugin.ts)
 scripts/             Build, plugin build, Playwright runner, mobile preflight/install
@@ -54,7 +54,7 @@ bun run cap:sync       # Capacitor sync (both platforms) + patch iOS plist
 ```
 
 The desktop shell is built by Electrobun from the repo root (`bun run dev:desktop`),
-not from inside this package — `packages/app` only produces the renderer.
+not from inside this package â `packages/app` only produces the renderer.
 
 ## Config
 
@@ -64,14 +64,15 @@ for the full env var table; `.env.example` documents the build-time `VITE_*` fla
 
 ## Launch Surface
 
-Native boot splash surfaces (`capacitor.config.ts`, Android launch resources,
-iOS `LaunchScreen.storyboard`) use the splash orange `#ef5a1f`, not the brand
-accent `#FF5800`. Persistent host-chrome surfaces (`index.html` FOUC
-background, `<meta name="theme-color">` / manifest colors via `app.config.ts`,
-the renderer root CSS) use the dark home background `#160d07`
-(`DEFAULT_BACKGROUND_COLOR`): they stay visible under the app (iOS
-home-indicator safe-area, overscroll), so an orange there reads as a glowing
-band instead of a boot flash.
+All boot/launch surfaces are black `#000000` (`DEFAULT_BACKGROUND_COLOR`, the
+base field under the home ShaderBackground's orange ember glow): the native
+splashes (`capacitor.config.ts`, Android launch resources, iOS
+`LaunchScreen.storyboard`) and the persistent host-chrome surfaces
+(`index.html` FOUC background, `<meta name="theme-color">` / manifest colors
+via `app.config.ts`, the renderer root CSS). The persistent surfaces stay
+visible under the app (iOS home-indicator safe-area, overscroll), so they
+must equal the default home background base for bleed-through to be
+invisible — and boot never paints orange. The brand accent stays `#FF5800`.
 
 ## License
 

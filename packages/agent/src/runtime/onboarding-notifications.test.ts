@@ -52,9 +52,15 @@ describe("seedOnboardingNotifications", () => {
       "onboarding:help",
       "onboarding:calendar",
     ]);
-    // Deep links must be plain root-relative paths (isSafeDeepLink allowlist).
+    // Deep links must be root-relative paths (isSafeDeepLink allowlist),
+    // optionally carrying a percent-encoded `?prefill=` composer seed.
     for (const n of notified) {
-      expect(n.deepLink).toMatch(/^\/[a-z-]+$/);
+      expect(n.deepLink).toMatch(/^\/[a-z-]+(\?prefill=[A-Za-z0-9%]+)?$/);
+      expect(n.deepLink?.startsWith("//")).toBe(false);
+    }
+    // Every seed lands the user in the conversation, not a settings page.
+    for (const n of notified) {
+      expect(n.deepLink?.startsWith("/chat")).toBe(true);
     }
     expect(
       cache.get(

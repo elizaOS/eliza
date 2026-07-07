@@ -26,9 +26,11 @@ export {
 } from "./default-pack.js";
 export {
   buildScheduledDispatchRenderPrompt,
+  buildScheduledDispatchTitlePrompt,
   RENDER_FAILURE_RETRY_MINUTES,
   renderFailureDispatchResult,
   renderScheduledDispatchMessage,
+  renderScheduledDispatchTitle,
 } from "./dispatch-render.js";
 export {
   expectedReplyKindForTask,

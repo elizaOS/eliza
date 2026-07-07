@@ -11,11 +11,11 @@
  *      launches; a long press must NOT launch on release (regression: the
  *      compat click after a long press passed the `!editing` guard and
  *      ghost-launched the tile).
- *   2. Notification shade (`home-notification-center` inside the pull-up
- *      NotificationsShade, opened from `home-notifications-hint`) — a seeded
- *      inbox renders its rows; a row tap marks it read IN PLACE (order ignores
- *      read state, so the row never moves under the pointer); the per-row X
- *      dismisses; clear-all empties the inbox and the card self-hides.
+ *   2. Inline notification inbox (`home-notification-center`, rendered directly
+ *      on the home column) — a seeded inbox renders its rows; a row tap marks it
+ *      read IN PLACE (order ignores read state, so the row never moves under the
+ *      pointer); the per-row hover-X and the right-click menu each dismiss; there
+ *      is no bulk clear-all.
  *   3. Chat sheet flick/drag detents — a fast upward flick on the grabber
  *      snaps the sheet open; a slow sub-threshold drag leaves it closed.
  *   4. Drag-through prevention — dragging the sheet grabber must not deliver
@@ -25,9 +25,7 @@
  *   6. (touch) A vertical pan inside `home-notification-list` scrolls the LIST
  *      — it must not flip the home↔launcher rail, scroll the home surface
  *      beneath, or ghost-tap the row under the finger.
- *   7. (touch) A downward pull anywhere on the home reveals the pull-DOWN shade
- *      and fires the chat-collapse event; swiping a row sideways throws it away;
- *      dragging the grabber UP retracts the shade.
+ *   7. (touch) Swiping an inline notification row sideways throws it away.
  *
  * Capture artifacts land in Playwright's `test-results` tree.
  */
@@ -294,16 +292,16 @@ test("dashboard notification center: row tap marks read in place, hover-X dismis
   await installSeededInboxRoutes(page, seedInboxNotifications());
   await openHome(page);
 
-  // (a) Notifications stay hidden until pulled down: the home shows only the
-  // top hint pill; tapping it opens the shade carrying the inbox card with
-  // every seeded row, in priority-bucket-then-recency order, and the unread
-  // badge counts the six unread rows.
-  await expect(page.getByTestId("home-notification-center")).toHaveCount(0);
-  const hint = page.getByTestId("home-notifications-hint");
-  await expect(hint).toBeVisible({ timeout: 15_000 });
-  await hint.click();
+  // (a) The inbox renders INLINE on the home column (no shade, no hint pill):
+  // it carries every seeded row in priority-bucket-then-recency order, and the
+  // unread badge counts the six unread rows.
   const center = page.getByTestId("home-notification-center");
   await expect(center).toBeVisible({ timeout: 15_000 });
+  // Inline on the same layer — inside the home scroller, not a portal shade.
+  await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
+  await expect(
+    page.getByTestId("home-screen").getByTestId("home-notification-center"),
+  ).toBeVisible();
   await expect(center.getByTestId("notification-row")).toHaveCount(8, {
     timeout: 15_000,
   });
@@ -480,10 +478,7 @@ test.describe("real touch (hasTouch project)", () => {
     await installSeededInboxRoutes(page, seedInboxNotifications());
     await openHome(page);
 
-    // Notifications hide behind the pull-up hint: open the shade first.
-    const hint = page.getByTestId("home-notifications-hint");
-    await expect(hint).toBeVisible({ timeout: 15_000 });
-    await hint.click();
+    // The inbox is inline on the home column.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
     const list = page.getByTestId("home-notification-list");
@@ -532,7 +527,7 @@ test.describe("real touch (hasTouch project)", () => {
     await evidenceShot(page, "touch-notification-list-scroll-contained");
   });
 
-  test("pull DOWN anywhere on the home reveals the shade and collapses the chat", async ({
+  test("swipe an inline row sideways throws it away", async ({
     page,
     browserName,
   }, testInfo) => {
@@ -545,64 +540,7 @@ test.describe("real touch (hasTouch project)", () => {
 
     await installSeededInboxRoutes(page, seedInboxNotifications());
     await openHome(page);
-
-    // Record the chat-collapse event the pull-down is supposed to fire (item 5:
-    // revealing notifications and dismissing the open chat are one motion).
-    await page.evaluate(() => {
-      (window as unknown as { __collapseFired__?: number }).__collapseFired__ =
-        0;
-      window.addEventListener("eliza:chat:collapse", () => {
-        (
-          window as unknown as { __collapseFired__: number }
-        ).__collapseFired__ += 1;
-      });
-    });
-
-    // At rest the shade is closed and the home shows only the top hint pill.
-    await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
-    await evidenceShot(page, "pull-down-before-home-rest");
-
-    // A genuine touch drag DOWN starting at the top of the home scroller opens
-    // the shade — "drag down anywhere", not just on the hint.
-    const home = page.getByTestId("home-screen");
-    await cdpTouchDrag(page, home, 6, 120, 12);
-
-    await expect(page.getByTestId("notifications-shade")).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.getByTestId("home-notification-center")).toBeVisible();
-    // The same gesture asked the chat overlay to collapse.
-    await expect
-      .poll(
-        async () =>
-          page.evaluate(
-            () =>
-              (window as unknown as { __collapseFired__: number })
-                .__collapseFired__,
-          ),
-        { timeout: 10_000, message: "pull-down must fire eliza:chat:collapse" },
-      )
-      .toBeGreaterThan(0);
-    await expect(
-      page.getByTestId("continuous-chat-overlay"),
-    ).not.toHaveAttribute("data-open", "true");
-    await evidenceShot(page, "pull-down-after-shade-open");
-  });
-
-  test("swipe a row sideways throws it away; drag the grabber UP closes the shade", async ({
-    page,
-    browserName,
-  }, testInfo) => {
-    const hasTouch = Boolean(testInfo.project.use?.hasTouch);
-    test.skip(!hasTouch, "requires a touch-enabled project (hasTouch)");
-    test.skip(
-      browserName !== "chromium",
-      "CDP Input.dispatchTouchEvent is Chromium-only; non-Chromium touch runs on the real-device capture lanes",
-    );
-
-    await installSeededInboxRoutes(page, seedInboxNotifications());
-    await openHome(page);
-    await page.getByTestId("home-notifications-hint").click();
+    // The inbox is inline on the home column — no shade to open.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
     await expect(center.getByTestId("notification-row")).toHaveCount(8, {
@@ -610,7 +548,7 @@ test.describe("real touch (hasTouch project)", () => {
     });
 
     // Throw a specific row LEFT past the dismiss threshold — the touch swipe
-    // idiom that replaces the hover X on coarse pointers (item 3).
+    // idiom that replaces the hover X on coarse pointers.
     const swipeTarget = center
       .locator("li[data-notif-row]")
       .filter({ hasText: "Backup finished" })
@@ -622,20 +560,5 @@ test.describe("real touch (hasTouch project)", () => {
       timeout: 10_000,
     });
     await evidenceShot(page, "swipe-row-dismissed");
-
-    // Drag the grabber UP past the close threshold — the shade retracts to the
-    // top it dropped from (item 4: drag up hides).
-    await cdpTouchDrag(
-      page,
-      page.getByTestId("notifications-shade-grabber"),
-      0,
-      -96,
-      12,
-    );
-    await expect(page.getByTestId("notifications-shade")).toHaveCount(0, {
-      timeout: 10_000,
-    });
-    await expect(page.getByTestId("home-screen")).toBeVisible();
-    await evidenceShot(page, "drag-up-shade-closed");
   });
 });

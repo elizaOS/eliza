@@ -5,28 +5,94 @@
 // catch-all). This is a single global `_middleware.ts` rather than two
 // `[[path]].ts` catch-all functions because Cloudflare's bundler translates
 // `[[path]]` -> `/:path*`, which path-to-regexp v8 (now used by the Pages
-// runtime) rejects with `Missing parameter name at index 15`. A single
-// `_middleware.ts` has no per-route path pattern at all, so the parser is
-// never invoked.
+// runtime) rejects with `Missing parameter name at index 15`. Upstream
+// selection per Pages environment via `API_UPSTREAM` (see `_proxy.ts`).
 //
-// Mirrors `packages/cloud-frontend/functions/_middleware.ts` so apex behaviour
-// is identical before and after the cutover. Upstream selection per Pages
-// environment via `API_UPSTREAM` (set in the Pages project / `wrangler.toml`):
-//   production branch (main) => API_UPSTREAM=https://api.elizacloud.ai
-//   preview/staging branch   => API_UPSTREAM=https://api-staging.elizacloud.ai
-// The fallback in `_proxy.ts` keeps custom production domains on production and
-// sends `*.pages.dev` previews to staging so preview deploys never mutate
-// production state.
+// This middleware also owns the cache-discipline behaviors that the Pages
+// config files cannot express (#15182 residue):
+//
+// - `/assets/*` misses return a real 404, never the SPA fallback. Cloudflare
+//   Pages `_redirects` supports only 200 rewrites and 3xx redirects — a
+//   `/assets/* /index.html 404` line is silently ignored — so without this
+//   branch a stale tab requesting a rotated chunk hash receives index.html
+//   with the long-lived asset Cache-Control and caches garbage AS the chunk
+//   (white screen + cache poisoning). Conditional validators are stripped
+//   before the asset lookup because the fallback shares index.html's ETag: an
+//   already-poisoned browser would otherwise revalidate its cached index.html
+//   copy into a 304 and keep the poison forever.
+//
+// - Cache-Control on `/assets/*` hits and `/sw.js` is set here, not in
+//   `public/_headers`, because multiple matching `_headers` rules aggregate
+//   into one comma-joined value instead of overriding — the `/*` no-cache rule
+//   would join the asset immutable rule as "no-cache, public, max-age=...,
+//   immutable", which browsers resolve as revalidate-always. The service
+//   worker gets `no-store` (not `no-cache`) so the zone edge never caches it:
+//   an edge-cached .js response has its browser TTL rewritten to the zone
+//   default (max-age=14400), which would delay SW update propagation by hours.
 
 import { type PagesProxyEnv, proxyToApiWorker } from "./_proxy";
 
 interface MiddlewareContext {
   request: Request;
   env: PagesProxyEnv;
-  next: () => Promise<Response>;
+  next: (input?: Request) => Promise<Response>;
 }
 
 const PROXY_PREFIXES = ["/api/", "/steward/"];
+
+const ASSETS_PREFIX = "/assets/";
+const SERVICE_WORKER_PATH = "/sw.js";
+
+// Vite content-hashes every file it emits under /assets/, so a hit is
+// immutable by construction; a byte change always produces a new filename.
+const ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+const SERVICE_WORKER_CACHE_CONTROL = "no-store";
+
+const withCacheControl = (response: Response, value: string): Response => {
+  const headers = new Headers(response.headers);
+  headers.set("Cache-Control", value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
+// The SPA fallback is the only text/html producer under /assets/ — the Vite
+// asset dir contains js/css/fonts/wasm/images only — so an html content type
+// is the definitive miss signal.
+const isSpaFallback = (response: Response): boolean =>
+  (response.headers.get("Content-Type") ?? "")
+    .toLowerCase()
+    .includes("text/html");
+
+const serveAsset = async (context: MiddlewareContext): Promise<Response> => {
+  const headers = new Headers(context.request.headers);
+  headers.delete("If-None-Match");
+  headers.delete("If-Modified-Since");
+  const response = await context.next(
+    new Request(context.request, { headers }),
+  );
+
+  if (isSpaFallback(response)) {
+    // Constructed responses bypass `public/_headers`, so the safety headers
+    // are set explicitly. no-store keeps the 404 out of every cache layer so
+    // recovery is immediate once a deploy restores (or a reload re-resolves)
+    // the chunk graph.
+    return new Response("Not Found", {
+      status: 404,
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+
+  return response.ok
+    ? withCacheControl(response, ASSET_CACHE_CONTROL)
+    : response;
+};
 
 // The hosted-web SPA is embedded inside the Discord Activities and Telegram
 // Mini App iframes. The global `public/_headers` rule pins every response to
@@ -68,7 +134,15 @@ export const onRequest = async (
     return proxyToApiWorker(context);
   }
 
+  if (url.pathname.startsWith(ASSETS_PREFIX)) {
+    return serveAsset(context);
+  }
+
   const response = await context.next();
+
+  if (url.pathname === SERVICE_WORKER_PATH) {
+    return withCacheControl(response, SERVICE_WORKER_CACHE_CONTROL);
+  }
 
   if (!isEmbedPath(url.pathname)) {
     return response;

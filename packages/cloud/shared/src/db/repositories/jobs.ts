@@ -595,6 +595,21 @@ export class JobsRepository {
       .where(and(eq(jobs.type, type), sql`${jobs.status} IN ('pending', 'in_progress')`));
     return rows[0]?.count ?? 0;
   }
+
+  /**
+   * `created_at` of the newest jobs row, any type or status; null when the
+   * table is empty. Powers the provisioning-worker DB liveness check
+   * (#15160): a jobs table nobody has written to in days usually means this
+   * process's DATABASE_URL points at a database the API stopped writing to.
+   */
+  async findLatestCreatedAt(): Promise<Date | null> {
+    const rows = await dbRead
+      .select({ created_at: jobs.created_at })
+      .from(jobs)
+      .orderBy(desc(jobs.created_at))
+      .limit(1);
+    return rows[0]?.created_at ?? null;
+  }
 }
 
 // Singleton instance

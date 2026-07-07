@@ -137,6 +137,34 @@ describe("FarEndReference.cancelUtterance", () => {
 		expect(result.pcm).toBe(near); // the untouched input array
 	});
 
+	it("drops a malformed playback frame instead of throwing", () => {
+		const farEnd = new FarEndReference();
+		const good = speechLike(FRAME_SAMPLES, 1);
+		const oddFrame: AudioFrameEvent = {
+			pcm16: Buffer.alloc(807).toString("base64"), // odd byte length
+			sampleRate: SAMPLE_RATE,
+			channels: 1,
+			samples: 403,
+			rms: 0.1,
+			timestamp: 0,
+			frameIndex: 0,
+		};
+		const goodFrame: AudioFrameEvent = {
+			pcm16: encodePcm16Base64(good),
+			sampleRate: SAMPLE_RATE,
+			channels: 1,
+			samples: FRAME_SAMPLES,
+			rms: 0.1,
+			timestamp: 20,
+			frameIndex: 1,
+		};
+		expect(() => farEnd.pushPlayback([oddFrame, goodFrame])).not.toThrow();
+		const status = farEnd.status();
+		expect(status.playbackFramesDropped).toBe(1);
+		expect(status.playbackFramesReceived).toBe(1);
+		expect(status.playbackSamplesReceived).toBe(FRAME_SAMPLES);
+	});
+
 	it("passes through bit-exact when the utterance carries no correlated echo", () => {
 		const farEnd = new FarEndReference();
 		const far = speechLike(48_000, 11);

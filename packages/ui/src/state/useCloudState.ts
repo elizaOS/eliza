@@ -45,6 +45,10 @@ import {
 } from "../utils";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
+  navigateToSameTabCloudLogin,
+  shouldUseSameTabCloudLogin,
+} from "./cloud-login-launch";
+import {
   getInjectedEthereumProvider,
   siweLoginWithInjectedWallet,
 } from "./cloud-siwe-login";
@@ -494,14 +498,19 @@ export function useCloudState({
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
 
-      // Wallet SIWE (#13377): an injected EIP-1193 provider (a real browser
-      // wallet, or the e2e harness wallet on devices) signs in with a genuine
-      // EIP-4361 handshake against the cloud API — no browser round trip, no
-      // human beyond the wallet's own approval. Taken only when a provider is
-      // actually injected AND no still-usable session exists; a rejection or
-      // handshake failure falls through to the other sign-in paths on the
-      // same click.
-      if (!hasUsableStoredStewardToken() && getInjectedEthereumProvider()) {
+      // Zero-interaction wallet SIWE (#13377) is the E2E HARNESS path ONLY.
+      // A real browser wallet (Phantom, MetaMask, …) injects window.ethereum
+      // too, so taking this branch for any injected provider auto-pops the
+      // user's wallet the instant they click "Sign in with Eliza Cloud" —
+      // even when they meant to pick Google — and leaves the pre-opened
+      // popup blank (the "white page"). Real wallet sign-in is an EXPLICIT
+      // choice behind the /login page's EVM/Solana buttons; only the harness
+      // wallet (isElizaE2eWallet, packages/ui/src/platform/e2e-wallet.ts, which
+      // by its own gates never installs on deployed web) may sign in headlessly.
+      if (
+        !hasUsableStoredStewardToken() &&
+        getInjectedEthereumProvider()?.isElizaE2eWallet === true
+      ) {
         const siweBase =
           getBootConfig().cloudApiBase ?? "https://elizacloud.ai";
         try {
@@ -643,6 +652,26 @@ export function useCloudState({
           completeLogin();
           return loginCompletion;
         }
+      }
+
+      // #15143 mobile-web sign-in: when the popup path cannot work — the
+      // pre-opened handle came back null (popup blocked; the runtime signal on
+      // any browser) or this is a touch-primary browser where even a popup
+      // that opens is a disorienting tab switch — navigate THIS tab to the
+      // same-origin Steward /login page instead of starting a device-code
+      // session whose browser window would never open. The returnTo round
+      // trip lands back here and the stored Steward token completes the login
+      // (first-run resumes via its marker + mount-time token poll). Direct
+      // cloud targets only: an agent-proxied (hasBackend) login stays on the
+      // device-code flow, whose copyable fallback link is the designed
+      // degrade for blocked popups there.
+      if (useDirectAuth && shouldUseSameTabCloudLogin(prePoppedWindow)) {
+        closePrePoppedWindow();
+        navigateToSameTabCloudLogin();
+        elizaCloudLoginBusyRef.current = false;
+        setElizaCloudLoginBusy(false);
+        completeLogin();
+        return loginCompletion;
       }
 
       try {

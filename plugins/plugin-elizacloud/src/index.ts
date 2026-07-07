@@ -1,6 +1,11 @@
 import type { IAgentRuntime, Plugin, ProcessEnvLike } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
+// Cloud account actions
+import { cloudAccountStatusAction } from "./actions/cloud-account-status";
+import { createCloudApiKeyAction } from "./actions/create-cloud-api-key";
+import { listCloudAgentsAction } from "./actions/list-cloud-agents";
 // Cloud providers
+import { cloudAccountProvider } from "./cloud-providers/cloud-account";
 import { cloudStatusProvider } from "./cloud-providers/cloud-status";
 import { containerHealthProvider } from "./cloud-providers/container-health";
 import { creditBalanceProvider } from "./cloud-providers/credit-balance";
@@ -159,6 +164,12 @@ export function registerCloudEmbeddingModels(runtime: IAgentRuntime): void {
 
 export const elizaOSCloudPlugin: Plugin = {
   name: "elizaOSCloud",
+  // "elizaOSCloud" is a load-bearing runtime identity (model-provider name in
+  // version-compat, inference timing, runtime model context) that cannot be
+  // renamed to the npm name — packageName lets the view registry resolve the
+  // real package dir so the `cloud` view bundle is served (see
+  // registerPluginViews in packages/agent/src/api/views-registry.ts).
+  packageName: "@elizaos/plugin-elizacloud",
   description:
     "ElizaOS Cloud plugin — Multi-model AI generation, container provisioning, agent bridge, and billing management",
   autoEnable: {
@@ -242,6 +253,25 @@ export const elizaOSCloudPlugin: Plugin = {
     // stay in the static `models` map below.
     registerTextInferenceModels(runtime);
     registerCloudEmbeddingModels(runtime);
+
+    // The `cloud` routing signal: Stage-1 selects contexts from the registry
+    // catalog, and the description text is what routes "my credits / my hosted
+    // agents / my cloud billing" turns onto the planner path where the
+    // context-gated CLOUD_ACCOUNT provider and cloud actions live. tryRegister
+    // is idempotent across plugin re-registration (register throws on dupes).
+    // The ADMIN minRole also derives the effective role gate for cloud-tagged
+    // actions that declare none (#12089).
+    runtime.contexts.tryRegister({
+      id: "cloud",
+      label: "Eliza Cloud",
+      description:
+        "The user's Eliza Cloud account: sign-in status, billing, credit balance, top-ups, API keys, hosted agents/containers, and deployed cloud apps. Use when the user asks about their cloud account, credits, billing, hosted agents, or app deployments.",
+      descriptionCompressed:
+        "Eliza Cloud account/billing/credits/hosted agents & apps",
+      sensitivity: "private",
+      cacheScope: "turn",
+      roleGate: { minRole: "ADMIN" },
+    });
   },
 
   // ─── Runtime Event Handlers ──────────────────────────────────────────
@@ -280,6 +310,43 @@ export const elizaOSCloudPlugin: Plugin = {
     creditBalanceProvider,
     containerHealthProvider,
     modelRegistryProvider,
+    cloudAccountProvider,
+  ],
+
+  // ─── Cloud Account Actions ───────────────────────────────────────────
+  // All validate() on the CLOUD_AUTH signed-in state so they vanish from the
+  // planner tool list when the agent has no cloud credential; handlers
+  // re-guard because validate is advisory.
+  actions: [
+    cloudAccountStatusAction,
+    listCloudAgentsAction,
+    createCloudApiKeyAction,
+  ],
+
+  // ─── In-app view ─────────────────────────────────────────────────────
+  // The "Cloud" launcher tile: served from dist/views/bundle.js (built by
+  // vite.config.views.ts) and mounted by the shell at /cloud. Curated launcher
+  // placement + cloud-sign-in gating live in
+  // packages/ui/src/components/pages/launcher-curation.ts.
+  views: [
+    {
+      id: "cloud",
+      label: "Cloud",
+      description:
+        "Your Eliza Cloud account — credits, hosted agents, API keys, and billing",
+      icon: "Cloud",
+      path: "/cloud",
+      // Plain array literal on purpose: plugin.ts is not part of the view
+      // bundle, and a core runtime export reaching the bundle build breaks it
+      // (the wallet-ui lesson).
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "CloudView",
+      surface: { capabilities: ["agent-surface"] },
+      tags: ["cloud", "billing", "credits", "account", "api-keys", "agents"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 
   // ─── Capability Model Handlers ───────────────────────────────────────

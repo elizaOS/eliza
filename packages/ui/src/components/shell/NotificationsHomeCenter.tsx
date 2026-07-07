@@ -1,31 +1,45 @@
 /**
- * The app's notification inbox. It is NOT pinned on the dashboard: the home
- * stays clean and the inbox stays hidden until the user pulls the shade DOWN —
- * HomeScreen mounts this inside the NotificationsShade sheet, so this component
- * owns the inbox content (rows, open/deep-link, per-row dismiss, mark-all-read)
- * and self-hides when empty. It has no card chrome of its own — no fill, no
- * border — it floats on the shade's surface; rows carry no bulk clear-all, only
- * per-row dismissal (hover X on mouse, sideways swipe on touch, or the row's
- * long-press / right-click contextual menu).
+ * The app's notification inbox, mounted INLINE on the home column (HomeScreen)
+ * directly beneath the time/weather header, the same layer as the widgets, in
+ * the band between the header and the floating chat. It owns the inbox content
+ * (rows, open/deep-link, per-row dismiss), self-hides when empty, and fades in
+ * Apple-style when the first notification arrives. The inbox container has no
+ * card chrome of its own; each notification is a liquid-glass card and the
+ * view-group eyebrows carry the structure.
  *
- * Rows are grouped by the VIEW they deep-link into (falling back to the
- * producer category), like a platform notification shade groups by app. The
- * list is height-capped and scrolls internally: edge fades mask the
- * clipped rows, and where scroll-driven animations are supported rows gently
- * scale/fade as they slide through the viewport edges (a notification-shade
- * depth cue). Both effects are GPU-only and fully stilled under
- * prefers-reduced-motion; browsers without view-timeline support keep the
- * static fades and plain scrolling.
+ * Two shade modes, toggled by a pull gesture (no buttons):
  *
- * Ordering is deliberately NOT the unread-first inbox rank: rows sort by
- * priority bucket then recency, ignoring read state, so tapping a row (which
- * marks it read) never reshuffles the list under the user's finger. Groups
- * inherit the position of their highest-ranked row.
+ *  - RESTED is triage, not a log: only interrupt-tier (`high`/`urgent`) rows
+ *    show, and a view-group with several of them renders as a Z-stack — the
+ *    highest-priority card on top, the rest peeking out beneath it (the iOS
+ *    lock-screen stack idiom, stacked by priority). A quiet "N more" hint (not
+ *    a button) names what's hidden.
+ *  - EXPANDED fans every stack out flat and includes all priorities; the list
+ *    is height-capped and scrolls internally.
+ *
+ *  Pulling DOWN on the shade (touch drag / mouse drag / wheel-up) while the
+ *  list sits at its top toggles between the modes: at rest the pull expands;
+ *  expanded, scrolling back up past the top compresses the shade again. A
+ *  visually-hidden toggle button keeps the same transition reachable for
+ *  keyboard and assistive tech.
+ *
+ * Acknowledgement is the platform-shade model (iOS lock screen / Android
+ * shade) with an expand step: tap opens the row's contextual option strip
+ * (Suggest a reply / Review / Open / Dismiss; see notificationRowOptions);
+ * acting on an option clears the row. Only one row's strip is open at a time —
+ * expanding a row collapses the others. The options are bare action text (no
+ * pill fill, no border). Horizontal drag (mouse or touch) dismisses; there is
+ * no read/unread bookkeeping, no dots, no corner X. The sort order is a stable
+ * priority-first total order, so live arrivals never reshuffle existing rows
+ * under the user's finger; groups inherit the position of their highest-ranked
+ * row.
  */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
-import { Check, CheckCheck, ExternalLink, X } from "lucide-react";
+import { tierForPriority } from "@elizaos/core";
+import { ChevronDown } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { haptics } from "../../bridge/capacitor-bridge";
+import { dispatchChatPrefill } from "../../events";
 import { cn } from "../../lib/utils";
 import { tabFromPath, titleForTab } from "../../navigation";
 import {
@@ -33,15 +47,12 @@ import {
   navigateDeepLink,
 } from "../../state/notifications/navigate-deep-link";
 import {
-  markAllNotificationsRead,
-  markNotificationRead,
   removeNotification,
   useNotifications,
 } from "../../state/notifications/notification-store";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
-import { Button } from "../ui/button";
+import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
 import { RelativeTime } from "./RelativeTime";
-import { WALLPAPER_TEXT } from "./wallpaper-idiom";
 
 /**
  * Horizontal travel (px) a touch swipe must clear before the row commits to a
@@ -50,15 +61,8 @@ import { WALLPAPER_TEXT } from "./wallpaper-idiom";
  */
 const SWIPE_DISMISS_PX = 88;
 
-/** Long-press duration (ms) that opens the row's contextual menu on touch. */
+/** Long-press duration (ms) that expands the row's options on touch. */
 const LONG_PRESS_MS = 420;
-
-/**
- * Height cap for the scrolling list (the header stays pinned above it). Sized
- * so the dashboard keeps the widget grid visible below on a phone while still
- * showing ~4–5 rows before scrolling.
- */
-const LIST_MAX_HEIGHT = "max-h-[min(45dvh,19.5rem)]";
 
 /**
  * Upper bound on rendered rows. The store caps the inbox at 300 but painting
@@ -68,21 +72,72 @@ const LIST_MAX_HEIGHT = "max-h-[min(45dvh,19.5rem)]";
 const MAX_RENDERED_ROWS = 100;
 
 /**
- * Scroll polish for the capped list, in one inline block (house pattern -
+ * Dampened overscroll travel (px) past the list top that commits the shade
+ * mode toggle on release. The raw finger/mouse travel is roughly double
+ * (see dampenPull); wheel deltas accumulate against the same threshold.
+ */
+export const PULL_COMMIT_PX = 40;
+
+/** Dead zone (px) before a vertical drag starts reading as a pull. */
+const PULL_SLOP_PX = 8;
+
+/** How many cards may peek out beneath a rested stack's top card. */
+const MAX_STACK_PEEKS = 2;
+
+/** Vertical offset (px) each successive peek card protrudes beneath the top. */
+const STACK_PEEK_OFFSET_PX = 8;
+
+/**
+ * Rubber-band a raw downward overscroll travel into the dampened pull the
+ * shade renders and commits against. Exported for the gesture tests.
+ */
+export function dampenPull(rawDy: number): number {
+  return Math.min(Math.max(0, rawDy - PULL_SLOP_PX) * 0.5, 96);
+}
+
+/**
+ * Scroll + glass polish for the shade, in one inline block (house pattern —
  * see HOME_ENTER_CSS in HomeScreen):
  *
+ *  - `.eliza-notif-glass` is the liquid-glass card recipe every notification
+ *    (and stack peek) carries: frosted translucent fill, the shared specular
+ *    sheen + inset edge stack from ./liquid-glass, hover as a neutral lighten.
  *  - `.eliza-notif-scroll` carries the top/bottom edge fade masks, toggled by
  *    the `data-fade-top` / `data-fade-bottom` attributes the scroll handler
  *    maintains, so rows dissolve at the clipped edges instead of hard-cutting.
  *  - Where `animation-timeline: view()` is supported, each row also scales and
- *    fades slightly while crossing the scrollport edges - the depth cue of a
+ *    fades slightly while crossing the scrollport edges — the depth cue of a
  *    platform notification shade. Progressive enhancement only; the fallback
  *    is the plain masked scroll.
  *  - New rows (live arrivals) slide in from the top.
  *
- * All of it is opacity/transform-only and disabled under reduced motion.
+ * All of it is opacity/transform/color-only and disabled under reduced motion.
  */
 const NOTIF_SCROLL_CSS = `
+/* Apple-style entrance: the whole inbox fades + rises a touch the moment it
+   first appears in the home column (empty → first notification), so it settles
+   in rather than popping. Opacity/transform only; stilled under reduced motion. */
+@keyframes eliza-notif-center-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.eliza-notif-center-in {
+  animation: eliza-notif-center-in 320ms cubic-bezier(0.22,1,0.36,1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eliza-notif-center-in { animation: none; }
+}
+.eliza-notif-glass {
+  background-color: rgb(12 12 14 / 34%);
+  background-image: ${LIQUID_GLASS_SHEEN};
+  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW};
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+  transition: background-color 150ms linear;
+}
+.eliza-notif-glass:hover {
+  background-color: rgb(38 38 42 / 42%);
+}
 .eliza-notif-scroll {
   scrollbar-width: none;
 }
@@ -132,9 +187,10 @@ const NOTIF_SCROLL_CSS = `
 `;
 
 /**
- * Stable dashboard order: priority bucket, then recency, then id as the total
- * tiebreak. Read state styles rows but never orders them - marking a row read
- * on tap must not move it (the inbox-style unread-first rank reshuffles).
+ * Stable shade order: priority bucket, then recency, then id as the total
+ * tiebreak. A total order, so live arrivals never reshuffle existing rows.
+ * The shade has exactly one order — priority triage; there is no user-facing
+ * sort mode.
  */
 export function orderDashboardNotifications(
   notifications: readonly AgentNotification[],
@@ -147,6 +203,16 @@ export function orderDashboardNotifications(
     if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
     return a.id.localeCompare(b.id);
   });
+}
+
+/**
+ * Whether a notification renders in the shade's rested (compressed) state.
+ * Only interrupt-tier rows (`high`/`urgent`) show by default — the shade is a
+ * triage surface, not a log; everything else sits behind the pull-to-expand
+ * gesture.
+ */
+export function isInterruptPriority(n: AgentNotification): boolean {
+  return tierForPriority(n.priority) === "interrupt";
 }
 
 /** Human group labels for producer categories with no in-app deep link. */
@@ -180,9 +246,10 @@ export function notificationGroupLabel(n: AgentNotification): string {
 }
 
 /**
- * Dashboard rows grouped by view. Rows keep the stable priority→recency order;
+ * Shade rows grouped by view. Rows keep the stable priority→recency order;
  * a group sits where its highest-ranked row would (Map insertion order), so
  * the most urgent view stacks first — priority-sorted groups, newest inside.
+ * In the rested shade each group renders as a Z-stack with `rows[0]` on top.
  */
 export function groupDashboardNotifications(
   notifications: readonly AgentNotification[],
@@ -197,24 +264,58 @@ export function groupDashboardNotifications(
   return [...groups.entries()].map(([label, rows]) => ({ label, rows }));
 }
 
+/** One inline contextual option a tapped (expanded) row offers. */
+export interface NotificationRowOption {
+  id: string;
+  label: string;
+  kind: "open" | "prefill" | "dismiss";
+  /** Composer seed for `kind: "prefill"` (opens the chat, never auto-sends). */
+  prefill?: string;
+}
+
 /**
- * One notification row: a whole-row open button (mark read + scheme-checked
- * deep link). The row carries no fill or border of its own — it floats on the
- * shade's field, spacing separates turns. Dismissal is pointer-idiomatic: a
- * mouse reveals an X on hover; touch throws the row left or right past
- * {@link SWIPE_DISMISS_PX} to dismiss (springs back below it). A long-press
- * (touch) or right-click (mouse) opens a contextual menu — open / mark read /
- * dismiss — so tap stays a single clean "open the view" action.
- *
- * Memoized (binding pattern, spec §C.4): the relative timestamp now lives in a
- * `<RelativeTime>` leaf that owns the minute tick, so the row no longer has to
- * re-render every minute to keep "5m ago" honest. With time rendering out of
- * the row's render path, a stable-props memo is correct - it re-renders only
- * when the row's actual content changes, and `arePropsEqual` compares the
- * identity fields that drive its markup: `id`, `readAt` (unread styling),
- * `priority` (rail), `title`, `body`, `data.count`, plus the two callbacks (stable via the
- * parent's `useCallback`). `createdAt` is intentionally NOT compared: it feeds
- * only the leaf, which subscribes to the tick itself.
+ * The contextual options a row expands to on tap, derived from category +
+ * deepLink. Every notification exposes at least one action plus Dismiss:
+ * a message offers "Suggest a reply" (chat prefill), an approval "Review",
+ * task-like categories a labeled open, anything with a safe deepLink a plain
+ * Open. Acting on any option acknowledges (clears) the row.
+ */
+export function notificationRowOptions(
+  n: AgentNotification,
+): NotificationRowOption[] {
+  const options: NotificationRowOption[] = [];
+  const hasLink = Boolean(n.deepLink && isSafeDeepLink(n.deepLink));
+  if (n.category === "message") {
+    options.push({
+      id: "suggest-reply",
+      label: "Suggest a reply",
+      kind: "prefill",
+      prefill: `Suggest a reply to "${n.title}"${n.body ? ` — ${n.body}` : ""}`,
+    });
+  }
+  if (hasLink) {
+    const label =
+      n.category === "approval"
+        ? "Review"
+        : n.category === "task" || n.category === "agent"
+          ? "Open task"
+          : n.category === "workflow"
+            ? "View run"
+            : "Open";
+    options.push({ id: "open", label, kind: "open" });
+  }
+  options.push({ id: "dismiss", label: "Dismiss", kind: "dismiss" });
+  return options;
+}
+
+/**
+ * Memoized (binding pattern, spec §C.4): the relative timestamp lives in a
+ * `<RelativeTime>` leaf that owns the minute tick, so the row never re-renders
+ * to keep "5m" honest. `arePropsEqual` compares the identity fields that drive
+ * its markup: `id`, `title`, `body`, `deepLink`, `category` (options),
+ * `data.count`, the single-open `expanded` flag, plus the callbacks (stable
+ * via the parent's `useCallback`). `createdAt` is intentionally NOT compared:
+ * it feeds only the leaf.
  */
 export function rowPropsEqual(
   prev: NotificationRowProps,
@@ -224,23 +325,28 @@ export function rowPropsEqual(
   const b = next.notification;
   return (
     a.id === b.id &&
-    a.readAt === b.readAt &&
-    a.priority === b.priority &&
     a.title === b.title &&
     a.body === b.body &&
     a.deepLink === b.deepLink &&
+    a.category === b.category &&
     a.data?.count === b.data?.count &&
+    prev.expanded === next.expanded &&
+    prev.onToggleExpand === next.onToggleExpand &&
     prev.onOpen === next.onOpen &&
     prev.onDismiss === next.onDismiss &&
-    prev.onMarkRead === next.onMarkRead
+    prev.onPrefill === next.onPrefill
   );
 }
 
 export interface NotificationRowProps {
   notification: AgentNotification;
+  /** Whether THIS row's option strip is open (single-open, parent-owned). */
+  expanded: boolean;
+  /** Toggle this row's strip; the parent collapses every other row. */
+  onToggleExpand: (id: string) => void;
   onOpen: (n: AgentNotification) => void;
   onDismiss: (id: string) => void;
-  onMarkRead: (id: string) => void;
+  onPrefill: (n: AgentNotification, text: string) => void;
 }
 
 let notificationRowRenderObserverForTests: (() => void) | null = null;
@@ -258,24 +364,31 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
   notificationsHomeCenterRenderObserverForTests = observer;
 }
 
+/**
+ * One liquid-glass notification card. Tap EXPANDS it into its contextual
+ * options ({@link notificationRowOptions}) and collapses any sibling — the
+ * option strip is single-open, owned by the parent; tap again collapses.
+ * Long-press (touch) and right-click (mouse) also expand. Acting on any option
+ * acknowledges the row (it clears from the shade). Dragging the row
+ * horizontally off the screen — mouse or touch — past {@link SWIPE_DISMISS_PX}
+ * dismisses it; there is no corner X. The card carries the shared glass
+ * recipe; its options are bare action text with no fill or border.
+ */
 const NotificationRow = memo(function NotificationRow({
   notification,
+  expanded,
+  onToggleExpand,
   onOpen,
   onDismiss,
-  onMarkRead,
+  onPrefill,
 }: NotificationRowProps): React.JSX.Element {
   notificationRowRenderObserverForTests?.();
-  const unread = !notification.readAt;
-  const urgent = notification.priority === "urgent";
-  const high = notification.priority === "high";
 
-  // Touch swipe-to-dismiss + long-press menu. `swipeX` drives the live drag
-  // transform; `menuOpen` is the contextual menu. Refs hold the in-flight
-  // gesture so the memoized row never needs the parent to re-render mid-drag.
+  // Swipe-to-dismiss state. `swipeX` drives the live drag transform; refs hold
+  // the in-flight gesture so the memoized row never needs the parent to
+  // re-render mid-drag.
   const [swipeX, setSwipeX] = useState(0);
   const [dismissing, setDismissing] = useState<"left" | "right" | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const gesture = useRef<{
     id: number;
     startX: number;
@@ -284,8 +397,8 @@ const NotificationRow = memo(function NotificationRow({
     longPress: number | null;
     moved: boolean;
   } | null>(null);
-  // Set true by a completed swipe / long-press so the synthetic click the same
-  // gesture emits doesn't also fire "open".
+  // Set true by a completed swipe / drag / long-press so the synthetic click
+  // the same gesture emits doesn't also toggle the options.
   const suppressClick = useRef(false);
 
   const clearGesture = useCallback(() => {
@@ -306,13 +419,12 @@ const NotificationRow = memo(function NotificationRow({
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (menuOpen) return;
       suppressClick.current = false;
       const longPress =
         e.pointerType !== "mouse"
           ? window.setTimeout(() => {
               suppressClick.current = true;
-              setMenuOpen(true);
+              onToggleExpand(notification.id);
               void haptics.light();
             }, LONG_PRESS_MS)
           : null;
@@ -325,7 +437,7 @@ const NotificationRow = memo(function NotificationRow({
         moved: false,
       };
     },
-    [menuOpen],
+    [notification.id, onToggleExpand],
   );
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -335,8 +447,10 @@ const NotificationRow = memo(function NotificationRow({
     const dy = e.clientY - g.startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) g.moved = true;
     // Lock the axis on first real movement: a vertical drag belongs to the
-    // list scroller, only a horizontal one is a dismiss swipe. Touch only —
-    // a mouse drag must never hijack text selection or the scrollbar.
+    // list scroller (or the shade's pull gesture), only a horizontal one is a
+    // dismiss swipe. Mouse and touch both swipe — the rows are buttons (no
+    // text selection to hijack), and the 8px lock threshold keeps ordinary
+    // clicks from starting a drag.
     if (g.axis === "none" && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
       g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
       // Any committed drag cancels the pending long-press.
@@ -345,7 +459,7 @@ const NotificationRow = memo(function NotificationRow({
         g.longPress = null;
       }
     }
-    if (g.axis !== "x" || e.pointerType === "mouse") return;
+    if (g.axis !== "x") return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     setSwipeX(dx);
   }, []);
@@ -358,6 +472,10 @@ const NotificationRow = memo(function NotificationRow({
         return;
       }
       clearGesture();
+      // A committed drag on either axis never doubles as a tap: a horizontal
+      // one is a swipe (may spring back), a vertical one belongs to the
+      // scroller/pull gesture — neither may toggle the options on release.
+      if (g.axis !== "none") suppressClick.current = true;
       if (g.axis === "x") {
         const dx = e.clientX - g.startX;
         if (Math.abs(dx) >= SWIPE_DISMISS_PX) {
@@ -370,62 +488,29 @@ const NotificationRow = memo(function NotificationRow({
     [clearGesture, commitDismiss],
   );
 
-  // Close the contextual menu on an OUTSIDE pointer / Escape while it is open.
-  // The containment check is what lets a click LAND on a menu item: a blanket
-  // "close on any pointerdown" would unmount the menu on the item's own
-  // pointerdown, swallowing the click before it fires.
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-    const onPointer = (ev: PointerEvent) => {
-      const target = ev.target as Node | null;
-      if (menuRef.current && target && menuRef.current.contains(target)) return;
-      setMenuOpen(false);
-    };
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") setMenuOpen(false);
-    };
-    // Defer one tick so the opening long-press/right-click isn't the "outside".
-    const id = window.setTimeout(() => {
-      window.addEventListener("pointerdown", onPointer);
-      window.addEventListener("keydown", onKey);
-    }, 0);
-    return () => {
-      window.clearTimeout(id);
-      window.removeEventListener("pointerdown", onPointer);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [menuOpen]);
-
   // §C.3 count-aware coalescing: a superseding same-groupKey notification carries
   // data.count so the row reads "3 new files" via a small chip instead of the
   // inbox silently keeping only the last of the batch. Only surfaced for N > 1.
   const rawCount = notification.data?.count;
   const count = typeof rawCount === "number" && rawCount > 1 ? rawCount : null;
-  // Lock-screen restraint: NO per-row icon chip (a box inside a box inside the
-  // card). Priority is carried by a hairline accent rail on the leading edge -
-  // present only for urgent/high - and an unread state by a single dot, so a
-  // quiet normal notification is just its line + time, like an iOS lock note.
-  const accent = urgent || high ? "bg-white/75" : null;
+  // Lock-screen restraint: no per-row icon chip, no accent rail — a
+  // notification is its glass card, line + time, like an iOS lock note.
   const dragging = swipeX !== 0 && !dismissing;
+  const options = notificationRowOptions(notification);
   return (
     <li
-      // Lifted above sibling rows while the menu is open so the menu — which
-      // overflows past this row's box — is never painted over (each row's swipe
-      // transform makes its own stacking context, so a later row would other-
-      // wise cover the menu and swallow its clicks).
-      className={cn("eliza-notif-row relative", menuOpen && "z-30")}
+      className="eliza-notif-row relative"
       data-notif-row
       onContextMenu={(e) => {
         e.preventDefault();
-        setMenuOpen(true);
+        onToggleExpand(notification.id);
       }}
     >
       <div
         data-testid="notification-row-swipe"
         style={{
           // Only apply a transform while actually swiping/dismissing: a resting
-          // `translateX(0)` still creates a stacking context on every row, which
-          // is what buries an open menu behind the next row.
+          // `translateX(0)` would create a stacking context on every row.
           transform: dismissing
             ? `translateX(${dismissing === "left" ? "-120%" : "120%"})`
             : swipeX
@@ -442,73 +527,38 @@ const NotificationRow = memo(function NotificationRow({
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
         className={cn(
-          // No fill, no border of its own — the row floats on the shade field;
-          // a hover wash is the only rest→hover chrome. Unread keeps a faint tint.
-          "eliza-notif-row-inner group relative flex items-stretch overflow-hidden rounded-xl transition-colors duration-150 hover:bg-white/10",
-          unread && "bg-white/8",
+          // The liquid-glass card surface (fill/sheen/edge live in the shared
+          // .eliza-notif-glass recipe; hover is its neutral lighten).
+          "eliza-notif-row-inner eliza-notif-glass group relative flex flex-col overflow-hidden rounded-2xl",
         )}
       >
-        {/* Priority rail: a 2px edge tint, urgent/high only. The row without
-            it reads as ordinary - restraint over decoration. */}
-        {accent ? (
-          <span
-            aria-hidden
-            data-testid="notification-row-accent"
-            className={cn(
-              "absolute inset-y-1.5 left-0 w-0.5 rounded-full",
-              accent,
-            )}
-          />
-        ) : null}
         <button
           type="button"
           data-testid="notification-row"
-          data-unread={unread ? "true" : undefined}
+          aria-expanded={expanded}
           aria-label={`${notification.title}${
             notification.body ? `. ${notification.body}` : ""
-          }${unread ? ". Unread." : ""}`}
+          }`}
           onClick={(e) => {
-            // A swipe / long-press synthesizes a click on release; swallow it so
-            // the gesture doesn't also open the notification.
+            // A swipe / drag / long-press synthesizes a click on release;
+            // swallow it so the gesture doesn't also toggle the options.
             if (suppressClick.current) {
               suppressClick.current = false;
               e.preventDefault();
               return;
             }
-            onOpen(notification);
+            onToggleExpand(notification.id);
           }}
-          className="flex min-h-touch min-w-0 flex-1 flex-col gap-0.5 rounded-xl px-3 py-2 pr-9 text-left active:scale-[0.99] motion-reduce:active:scale-100 pointer-coarse:pr-3"
+          className="flex min-h-touch min-w-0 flex-col gap-0.5 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
         >
           <span className="flex items-baseline gap-1.5">
-            {unread ? (
-              <span
-                aria-hidden
-                data-testid="notification-unread-dot"
-                className={cn(
-                  "mb-px h-1.5 w-1.5 shrink-0 self-center rounded-full",
-                  "bg-white",
-                )}
-              />
-            ) : null}
-            <span
-              className={cn(
-                "truncate text-sm",
-                unread
-                  ? "font-semibold text-white"
-                  : "font-medium text-white/78",
-              )}
-            >
+            <span className="truncate text-sm font-semibold text-white">
               {notification.title}
             </span>
             {count ? (
               <span
                 data-testid="notification-count-chip"
-                className={cn(
-                  "shrink-0 rounded-full px-1.5 text-2xs font-semibold tabular-nums leading-[1.15rem]",
-                  unread
-                    ? "bg-white/18 text-white"
-                    : "bg-white/10 text-white/70",
-                )}
+                className="shrink-0 rounded-full bg-white/14 px-1.5 text-2xs font-semibold tabular-nums leading-[1.15rem] text-white"
               >
                 {count}
                 <span className="sr-only"> grouped notifications</span>
@@ -516,6 +566,7 @@ const NotificationRow = memo(function NotificationRow({
             ) : null}
             <RelativeTime
               ts={notification.createdAt}
+              short
               className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
               data-testid="notification-row-time"
             />
@@ -526,102 +577,93 @@ const NotificationRow = memo(function NotificationRow({
             </span>
           ) : null}
         </button>
-        {/* Mouse-only dismiss: hidden at rest, revealed on row hover or keyboard
-            focus. Touch has no hover — it throws the row sideways to dismiss (or
-            long-presses for the menu), so the X is `pointer-coarse:hidden` to
-            keep touch rows clean and reclaim the trailing space. */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Dismiss notification"
-          data-testid="notification-row-dismiss"
-          onClick={() => onDismiss(notification.id)}
-          className="absolute right-1 top-1.5 h-auto w-auto shrink-0 rounded-full p-1.5 text-white/55 opacity-0 transition-opacity hover:bg-white/10 hover:text-white focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:hidden"
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-      {menuOpen ? (
-        <div
-          ref={menuRef}
-          role="menu"
-          aria-label="Notification actions"
-          data-testid="notification-row-menu"
-          // Anchored to the trailing edge over the row. The outside-close
-          // listener skips pointerdowns inside this subtree (containment check)
-          // so a menu-item click is never swallowed.
-          className="absolute right-2 top-full z-10 mt-0.5 flex min-w-40 flex-col overflow-hidden rounded-xl border border-white/12 bg-black/80 py-1 text-sm text-white shadow-lg backdrop-blur-md"
-        >
-          {notification.deepLink && isSafeDeepLink(notification.deepLink) ? (
-            <button
-              type="button"
-              role="menuitem"
-              data-testid="notification-menu-open"
-              onClick={() => {
-                setMenuOpen(false);
-                onOpen(notification);
-              }}
-              className="flex items-center gap-2 px-3 py-2 text-left hover:bg-white/10"
-            >
-              <ExternalLink className="h-4 w-4 shrink-0 text-white/70" />
-              Open
-            </button>
-          ) : null}
-          {unread ? (
-            <button
-              type="button"
-              role="menuitem"
-              data-testid="notification-menu-mark-read"
-              onClick={() => {
-                setMenuOpen(false);
-                onMarkRead(notification.id);
-              }}
-              className="flex items-center gap-2 px-3 py-2 text-left hover:bg-white/10"
-            >
-              <Check className="h-4 w-4 shrink-0 text-white/70" />
-              Mark as read
-            </button>
-          ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            data-testid="notification-menu-dismiss"
-            onClick={() => {
-              setMenuOpen(false);
-              onDismiss(notification.id);
-            }}
-            className="flex items-center gap-2 px-3 py-2 text-left hover:bg-white/10"
+        {expanded ? (
+          <fieldset
+            aria-label="Notification actions"
+            data-testid="notification-row-options"
+            className="m-0 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 border-0 px-3 pb-2.5 pt-0.5"
           >
-            <X className="h-4 w-4 shrink-0 text-white/70" />
-            Dismiss
-          </button>
-        </div>
-      ) : null}
+            {options.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                data-testid={`notification-option-${option.id}`}
+                onClick={() => {
+                  if (option.kind === "open") onOpen(notification);
+                  else if (option.kind === "prefill" && option.prefill)
+                    onPrefill(notification, option.prefill);
+                  else onDismiss(notification.id);
+                }}
+                className={cn(
+                  // Bare action text: no fill, no border, no pill — the label
+                  // IS the affordance; hover only brightens the text.
+                  "min-h-touch py-2 text-xs font-medium transition-colors",
+                  option.kind === "dismiss"
+                    ? "text-white/60 hover:text-white"
+                    : "text-white/90 hover:text-white",
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </fieldset>
+        ) : null}
+      </div>
     </li>
   );
 }, rowPropsEqual);
 NotificationRow.displayName = "NotificationRow";
 
 /**
- * The notification inbox card. Self-hiding: renders nothing until the inbox
- * has at least one notification. Mounted inside NotificationsShade (the home
- * pull-up sheet), never pinned on the dashboard itself.
+ * The notification inbox. Self-hiding: renders nothing until the inbox has at
+ * least one notification. Mounted inline on the home column (HomeScreen),
+ * directly beneath the time/weather header — the same layer as the widgets.
  */
-export interface NotificationsHomeCenterProps {
-  /** Called after a row activates a safe in-app deep link. */
-  onNavigate?: (deepLink: string) => void;
-}
-
-export function NotificationsHomeCenter({
-  onNavigate,
-}: NotificationsHomeCenterProps = {}): React.JSX.Element | null {
+export function NotificationsHomeCenter(): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
-  const { notifications, unreadCount } = useNotifications();
+  const { notifications } = useNotifications();
+  // Shade mode: rested (priority triage, stacked groups) vs expanded (all
+  // rows, flat). Toggled by the pull gesture — there are no more/less buttons.
+  const [shadeExpanded, setShadeExpanded] = useState(false);
+  // Single-open option strip: expanding one row collapses the others.
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  // Dampened live pull (px). State drives the rubber-band transform; the ref
+  // mirrors it for the native touch listeners' commit path.
+  const [pullPx, setPullPxState] = useState(0);
+  const pullPxRef = useRef(0);
   // No list-level clock tick here (binding pattern, spec §C.4): relative
   // timestamps live in the `<RelativeTime>` leaf inside each row, which owns the
   // shared visibility-gated ticker. The minute roll re-renders those text nodes
   // only - not this list, not the rows, not the glass surface.
   const scrollRef = useRef<HTMLUListElement | null>(null);
+  const pointerPull = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    axis: "none" | "x" | "y";
+  } | null>(null);
+  const wheelPull = useRef(0);
+  const wheelCooldownUntil = useRef(0);
+  // Mirrors whether the shade currently has more to reveal (rested) — the
+  // native touch listeners read it without re-binding on every data change.
+  const canExpandRef = useRef(false);
+
+  const setPullPx = useCallback((px: number) => {
+    pullPxRef.current = px;
+    setPullPxState(px);
+  }, []);
+
+  const toggleShade = useCallback(() => {
+    setShadeExpanded((v) => !v);
+    setExpandedRowId(null);
+    // Both modes start reading from the top of the shade.
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, []);
+
+  const commitPull = useCallback(() => {
+    if (pullPxRef.current >= PULL_COMMIT_PX) toggleShade();
+    setPullPx(0);
+  }, [setPullPx, toggleShade]);
 
   // Maintain the edge-fade attributes from real scroll geometry. Runs on
   // scroll and whenever the row count changes (a dismiss can end the overflow).
@@ -638,121 +680,308 @@ export function NotificationsHomeCenter({
     syncEdgeFades();
   }, [syncEdgeFades, notifications.length]);
 
-  const openNotification = useCallback(
-    (n: AgentNotification) => {
-      if (!n.readAt) void markNotificationRead(n.id);
-      // deepLink is producer/LLM-influenceable - only scheme-checked links
-      // navigate; anything else the tap is just "mark read".
-      if (n.deepLink && isSafeDeepLink(n.deepLink)) {
-        navigateDeepLink(n.deepLink);
-        onNavigate?.(n.deepLink);
+  // The pull gesture's TOUCH path binds native listeners: the list is a real
+  // `touch-action: pan-y` scroller, so the browser claims a downward pan for
+  // scrolling the moment it starts — a React (passive) touchmove can't take it
+  // back. A non-passive touchmove that preventDefault()s only the at-top
+  // downward overscroll is the one way to own the pull without breaking
+  // ordinary scrolling (see reference: pan-y pull gestures are dead on arrival
+  // without this). `hasNotifications` re-runs the bind when the inbox goes
+  // empty↔populated — the empty inbox renders nothing, so on first arrival the
+  // list element only exists after that re-render.
+  const hasNotifications = notifications.length > 0;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !hasNotifications) return;
+    let start: { x: number; y: number } | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      start =
+        e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY } : null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!start || !t) return;
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      // A horizontal gesture belongs to the row swipe; hand it off for good.
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > PULL_SLOP_PX) {
+        start = null;
+        return;
       }
-    },
-    [onNavigate],
-  );
+      if (el.scrollTop <= 0 && dy > PULL_SLOP_PX && canExpandRef.current) {
+        e.preventDefault();
+        setPullPx(dampenPull(dy));
+      }
+    };
+    const onTouchEnd = () => {
+      start = null;
+      commitPull();
+    };
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [commitPull, setPullPx, hasNotifications]);
+
+  const openNotification = useCallback((n: AgentNotification) => {
+    // Platform-shade acknowledgement (iOS/Android): tapping a notification
+    // acts on it AND removes it from the shade — no lingering "read" restyle.
+    // deepLink is producer/LLM-influenceable - only scheme-checked links
+    // navigate; anything else the tap just clears the row.
+    if (n.deepLink && isSafeDeepLink(n.deepLink)) {
+      navigateDeepLink(n.deepLink);
+    }
+    void removeNotification(n.id);
+  }, []);
   const dismissNotification = useCallback((id: string) => {
     void removeNotification(id);
   }, []);
-  const markReadNotification = useCallback((id: string) => {
-    void markNotificationRead(id);
+  const prefillNotification = useCallback(
+    (n: AgentNotification, text: string) => {
+      // "Suggest a reply"-class options: open the chat with the ask staged for
+      // review (never auto-sent), then acknowledge the row.
+      dispatchChatPrefill({ text });
+      void removeNotification(n.id);
+    },
+    [],
+  );
+  const toggleRowExpand = useCallback((id: string) => {
+    // Single-open: expanding a row collapses whichever other row was open.
+    setExpandedRowId((current) => (current === id ? null : id));
   }, []);
+
+  // An emptied-out inbox resets the shade so the next arrival starts rested.
+  useEffect(() => {
+    if (notifications.length === 0) {
+      setShadeExpanded(false);
+      setExpandedRowId(null);
+    }
+  }, [notifications.length]);
 
   if (notifications.length === 0) return null;
 
-  // Cap rendered rows, then group by view: the cap keeps the always-cheap
-  // paint budget; grouping happens on the capped slice so headers never count
-  // against visible rows.
+  // Cap rendered rows, filter to the rested (interrupt-tier) slice unless
+  // expanded, then group by view: the cap keeps the always-cheap paint budget;
+  // grouping happens on the shown slice so headers never count against rows.
   const capped = orderDashboardNotifications(notifications).slice(
     0,
     MAX_RENDERED_ROWS,
   );
-  const groups = groupDashboardNotifications(capped);
+  const shown = shadeExpanded ? capped : capped.filter(isInterruptPriority);
+  const groups = groupDashboardNotifications(shown);
+  // Rested, only each group's TOP card is fully visible (the rest peek from
+  // the stack), so "more" counts everything the rest of the shade is hiding:
+  // sub-interrupt rows plus the stacked-behind cards.
+  const hiddenCount = shadeExpanded ? 0 : capped.length - groups.length;
+  const canExpand = !shadeExpanded && hiddenCount > 0;
+  canExpandRef.current = canExpand || shadeExpanded;
+
+  const onListPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || !e.isPrimary) return;
+    pointerPull.current = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      axis: "none",
+    };
+  };
+  const onListPointerMove = (e: React.PointerEvent) => {
+    const g = pointerPull.current;
+    const el = scrollRef.current;
+    if (!g || g.id !== e.pointerId || !el) return;
+    const dx = e.clientX - g.startX;
+    const dy = e.clientY - g.startY;
+    if (g.axis === "none" && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+      g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+    }
+    if (g.axis !== "y") return;
+    if (el.scrollTop <= 0 && dy > PULL_SLOP_PX && canExpandRef.current) {
+      setPullPx(dampenPull(dy));
+    } else if (pullPxRef.current !== 0) {
+      setPullPx(0);
+    }
+  };
+  const onListPointerEnd = (e: React.PointerEvent) => {
+    const g = pointerPull.current;
+    if (!g || g.id !== e.pointerId) return;
+    pointerPull.current = null;
+    commitPull();
+  };
+  const onListWheel = (e: React.WheelEvent) => {
+    const el = scrollRef.current;
+    if (!el || !canExpandRef.current) return;
+    const now = Date.now();
+    if (now < wheelCooldownUntil.current) return;
+    // Wheel-up while the list already sits at its top is the desktop pull.
+    if (el.scrollTop > 0 || e.deltaY >= 0) {
+      wheelPull.current = 0;
+      return;
+    }
+    wheelPull.current += -e.deltaY;
+    if (wheelPull.current >= PULL_COMMIT_PX) {
+      wheelPull.current = 0;
+      // Swallow trailing momentum so one flick doesn't double-toggle.
+      wheelCooldownUntil.current = now + 500;
+      toggleShade();
+    }
+  };
 
   return (
     <section
-      aria-label={
-        unreadCount > 0
-          ? `Notifications, ${unreadCount} unread`
-          : "Notifications"
-      }
+      aria-label="Notifications"
       data-testid="home-notification-center"
-      // No card chrome: the inbox has no fill and no border of its own. It floats
-      // directly on the shade's own surface (the pull-down sheet owns the
-      // backdrop) — rows are separated by spacing and their hover wash, so the
-      // list reads as bare lock-screen notes, not a boxed panel.
-      className="flex flex-col overflow-hidden"
+      // No card chrome on the CONTAINER: the inbox has no fill and no border of
+      // its own — the glass lives on each notification card. It sits inline on
+      // the home field directly under the time/weather header.
+      // `eliza-notif-center-in` fades the whole inbox in (Apple-style) the
+      // moment it first appears. `min-h-0 flex-1` lets it fill the home column
+      // down to the chat when the parent grows it.
+      className="eliza-notif-center-in flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <style>{NOTIF_SCROLL_CSS}</style>
-      {/* Pinned header: a quiet eyebrow + unread count, actions to the right.
-          No boxed bell chip - the label alone names the surface. */}
-      <div className="flex shrink-0 items-center gap-1.5 px-3.5 pb-1 pt-2.5">
-        <span
-          className={cn(
-            "text-2xs font-medium uppercase tracking-[0.1em]",
-            WALLPAPER_TEXT.secondary,
-          )}
-        >
-          Notifications
-        </span>
-        {unreadCount > 0 ? (
-          <span
-            data-testid="notifications-unread-badge"
-            className="text-2xs font-semibold tabular-nums leading-none text-white"
-          >
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        ) : null}
-        <span className="ml-auto flex items-center gap-0.5">
-          {unreadCount > 0 ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Mark all read"
-              title="Mark all read"
-              data-testid="notifications-mark-all-read"
-              className={cn(
-                WALLPAPER_TEXT.secondary,
-                "hover:bg-white/10 hover:text-white",
-              )}
-              onClick={() => void markAllNotificationsRead()}
-            >
-              <CheckCheck className="h-4 w-4" />
-            </Button>
-          ) : null}
-        </span>
-      </div>
+      {/* No "Notifications" header, no sort toggle, no more/less buttons; the
+          inbox is always priority-triaged, the view-group eyebrows carry the
+          only structure, and the pull gesture owns expand/collapse. */}
       <ul
         ref={scrollRef}
         onScroll={syncEdgeFades}
+        onPointerDown={onListPointerDown}
+        onPointerMove={onListPointerMove}
+        onPointerUp={onListPointerEnd}
+        onPointerCancel={onListPointerEnd}
+        onWheel={onListWheel}
         data-testid="home-notification-list"
+        data-shade-mode={shadeExpanded ? "expanded" : "rested"}
+        style={{
+          // Rubber-band while pulling; springs back (or into the new mode)
+          // on release. Transform-only, so the glass never repaints.
+          transform: pullPx ? `translateY(${pullPx}px)` : undefined,
+          transition: pullPx
+            ? "none"
+            : "transform 200ms cubic-bezier(0.22,1,0.36,1)",
+        }}
         className={cn(
-          "eliza-notif-scroll flex flex-col gap-0.5 overflow-y-auto overscroll-y-contain px-1.5 pb-1.5",
-          LIST_MAX_HEIGHT,
+          "eliza-notif-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-y-contain px-1.5 pb-1.5",
         )}
       >
-        {groups.map((group) => (
-          <li key={group.label} className="flex flex-col gap-0.5">
-            {/* View group header (Apple-shade idiom: group by destination).
-                A quiet eyebrow, not a boxed section — restraint over chrome. */}
-            <span
-              data-testid="notification-group-label"
-              className="px-2 pb-0.5 pt-2 text-2xs font-medium uppercase tracking-[0.08em] text-white/55 first:pt-1"
-            >
-              {group.label}
-            </span>
-            <ul className="flex flex-col gap-0.5">
-              {group.rows.map((notification) => (
-                <NotificationRow
-                  key={notification.id}
-                  notification={notification}
-                  onOpen={openNotification}
-                  onDismiss={dismissNotification}
-                  onMarkRead={markReadNotification}
-                />
-              ))}
-            </ul>
+        {groups.map((group) => {
+          const stacked = !shadeExpanded && group.rows.length > 1;
+          const peeks = stacked ? group.rows.slice(1, 1 + MAX_STACK_PEEKS) : [];
+          const rows = stacked
+            ? [group.rows[0] as AgentNotification]
+            : group.rows;
+          return (
+            <li key={group.label} className="flex flex-col gap-1">
+              {/* View group header (Apple-shade idiom: group by destination).
+                  A quiet eyebrow, not a boxed section — restraint over chrome. */}
+              <span
+                data-testid="notification-group-label"
+                className="px-2 pb-0.5 pt-2 text-2xs font-medium uppercase tracking-[0.08em] text-white/55 first:pt-1"
+              >
+                {group.label}
+                {stacked ? (
+                  <span
+                    data-testid="notification-stack-count"
+                    className="pl-1.5 normal-case tracking-normal text-white/40 tabular-nums"
+                  >
+                    {group.rows.length}
+                  </span>
+                ) : null}
+              </span>
+              {stacked ? (
+                // The Z-stack: the group's highest-priority card on top, the
+                // next cards peeking out beneath it — depth in Z, ordered by
+                // the same priority→recency order the fanned list uses.
+                <div
+                  data-testid="notification-stack"
+                  className="relative"
+                  style={{
+                    paddingBottom: peeks.length * STACK_PEEK_OFFSET_PX,
+                  }}
+                >
+                  <ul className="relative z-[2] flex flex-col">
+                    <NotificationRow
+                      notification={rows[0] as AgentNotification}
+                      expanded={expandedRowId === rows[0]?.id}
+                      onToggleExpand={toggleRowExpand}
+                      onOpen={openNotification}
+                      onDismiss={dismissNotification}
+                      onPrefill={prefillNotification}
+                    />
+                  </ul>
+                  {peeks.map((peek, i) => (
+                    <div
+                      key={peek.id}
+                      aria-hidden
+                      data-testid="notification-stack-peek"
+                      className="eliza-notif-glass pointer-events-none absolute inset-0 rounded-2xl"
+                      style={{
+                        zIndex: 1 - i,
+                        opacity: 0.75 - i * 0.25,
+                        transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
+                          1 - (i + 1) * 0.045
+                        })`,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {rows.map((notification) => (
+                    <NotificationRow
+                      key={notification.id}
+                      notification={notification}
+                      expanded={expandedRowId === notification.id}
+                      onToggleExpand={toggleRowExpand}
+                      onOpen={openNotification}
+                      onDismiss={dismissNotification}
+                      onPrefill={prefillNotification}
+                    />
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+        {/* The rested shade names what it is hiding with a quiet hint — NOT a
+            button; the pull gesture owns the transition. A visually-hidden
+            toggle keeps the same transition reachable for keyboard/AT. */}
+        {canExpand ? (
+          <li
+            aria-hidden
+            data-testid="notifications-pull-hint"
+            className="pointer-events-none flex items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50"
+          >
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 transition-transform",
+                pullPx >= PULL_COMMIT_PX && "rotate-180",
+              )}
+            />
+            {hiddenCount} more
           </li>
-        ))}
+        ) : null}
+        {canExpand || shadeExpanded ? (
+          <li>
+            <button
+              type="button"
+              data-testid="notifications-expand-toggle"
+              className="sr-only"
+              onClick={toggleShade}
+            >
+              {shadeExpanded
+                ? "Show fewer notifications"
+                : `Show ${hiddenCount} more notifications`}
+            </button>
+          </li>
+        ) : null}
       </ul>
     </section>
   );

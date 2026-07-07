@@ -242,6 +242,72 @@ let activeModelState: {
 	error?: string;
 } = { modelId: null, loadedAt: null, status: "idle" };
 
+export type LocalInferenceManagementOp =
+	| "start_download"
+	| "cancel_download"
+	| "set_active"
+	| "clear_active"
+	| "uninstall_model"
+	| "verify_model"
+	| "trigger_voice_model_update"
+	| "pin_voice_model"
+	| "set_voice_model_preferences"
+	| "set_policy"
+	| "set_preferred_provider"
+	| "set_assignment";
+
+export interface LocalInferenceManagementInput {
+	op: LocalInferenceManagementOp;
+	modelId?: string;
+	voiceModelId?: string;
+	slot?: string;
+	provider?: string;
+	policy?: string;
+	pinned?: boolean;
+	voicePreferences?: {
+		autoUpdateOnWifi?: boolean;
+		autoUpdateOnCellular?: boolean;
+		autoUpdateOnMetered?: boolean;
+		quietHours?: Array<{ start: string; end: string }>;
+	};
+}
+
+export type LocalInferenceManagementResult =
+	| { op: "start_download"; modelId: string; job: DownloadJob }
+	| { op: "cancel_download"; modelId: string | null; cancelled: true }
+	| { op: "set_active"; modelId: string; active: typeof activeModelState }
+	| { op: "clear_active"; active: typeof activeModelState }
+	| { op: "uninstall_model"; modelId: string; removed: boolean }
+	| { op: "trigger_voice_model_update"; id: string; result: unknown }
+	| { op: "pin_voice_model"; id: string; pinned: boolean }
+	| { op: "set_voice_model_preferences"; preferences: unknown }
+	| {
+			op: "verify_model";
+			modelId: string;
+			state: "ok" | "unknown";
+			currentSha256: string;
+			expectedSha256: string | null;
+			currentBytes: number;
+	  }
+	| {
+			op: "set_policy";
+			slot: string;
+			policy: string | null;
+			preferences: RoutingPreferences;
+	  }
+	| {
+			op: "set_preferred_provider";
+			slot: string;
+			provider: string | null;
+			preferences: RoutingPreferences;
+	  }
+	| {
+			op: "set_assignment";
+			slot: keyof Assignments;
+			modelId: string | null;
+			assignments: Assignments;
+	  };
+
 export function getLocalInferenceActiveModelId(): string | undefined {
 	const serviceActive = localInferenceServiceIfLoaded()?.getActive();
 	if (serviceActive?.status === "ready" && serviceActive.modelId?.trim()) {
@@ -1263,6 +1329,183 @@ export async function handleLocalInferenceChatCommand(
 		activeModelId: activeModelState.modelId,
 		progress: progressForJob(job),
 	});
+}
+
+function requireModelId(modelId: string | undefined, op: string): string {
+	if (typeof modelId !== "string" || !modelId.trim()) {
+		throw new Error(`${op} requires modelId`);
+	}
+	return modelId.trim();
+}
+
+function requireSlot(slot: string | undefined, op: string): string {
+	if (typeof slot !== "string" || !slot.trim()) {
+		throw new Error(`${op} requires slot`);
+	}
+	return slot.trim();
+}
+
+export async function applyLocalInferenceManagementMutation(
+	input: LocalInferenceManagementInput,
+): Promise<LocalInferenceManagementResult> {
+	switch (input.op) {
+		case "start_download": {
+			const modelId = requireModelId(input.modelId, input.op);
+			return { op: input.op, modelId, job: await startDownload(modelId) };
+		}
+		case "cancel_download": {
+			const modelId = input.modelId?.trim() || null;
+			const targets = modelId ? [modelId] : [...activeDownloads.keys()];
+			for (const target of targets) {
+				activeDownloads.get(target)?.abortController.abort();
+				activeDownloads.delete(target);
+			}
+			return {
+				op: input.op,
+				modelId: modelId ?? targets[0] ?? null,
+				cancelled: true,
+			};
+		}
+		case "set_active": {
+			const modelId = requireModelId(input.modelId, input.op);
+			const installed = (await installedSnapshot()).find(
+				(model) => model.id === modelId,
+			);
+			if (!installed) throw new Error(`Model not installed: ${modelId}`);
+			const result = await activateInstalledModel(installed);
+			if (result.localInference.status === "failed") {
+				throw new Error(
+					result.localInference.error ?? "Failed to activate model",
+				);
+			}
+			return { op: input.op, modelId, active: activeModelState };
+		}
+		case "clear_active": {
+			if (shouldUseAospLocalInference()) {
+				const { clearAospLocalInferenceModel } =
+					await getAospLocalInferenceApi();
+				activeModelState = await clearAospLocalInferenceModel();
+				return { op: input.op, active: activeModelState };
+			}
+			try {
+				const { unloadMobileDeviceBridgeModel } =
+					await getMobileDeviceBridgeApi();
+				await unloadMobileDeviceBridgeModel();
+			} catch (error) {
+				// Clearing chat routing should still reset our state in headless tests.
+				logger.debug(
+					`[local-inference] clear_active ignored bridge unload failure: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			}
+			activeModelState = { modelId: null, loadedAt: null, status: "idle" };
+			return { op: input.op, active: activeModelState };
+		}
+		case "uninstall_model": {
+			const modelId = requireModelId(input.modelId, input.op);
+			return {
+				op: input.op,
+				modelId,
+				removed: await removeInstalledModel(modelId),
+			};
+		}
+		case "verify_model": {
+			const modelId = requireModelId(input.modelId, input.op);
+			const installed = (await installedSnapshot()).find(
+				(model) => model.id === modelId,
+			);
+			if (!installed) throw new Error(`Model not installed: ${modelId}`);
+			const currentSha256 = await hashFile(installed.path);
+			return {
+				op: input.op,
+				modelId,
+				state: currentSha256 === installed.sha256 ? "ok" : "unknown",
+				currentSha256,
+				expectedSha256: installed.sha256 ?? null,
+				currentBytes: installed.sizeBytes,
+			};
+		}
+		case "trigger_voice_model_update":
+		case "pin_voice_model":
+		case "set_voice_model_preferences": {
+			const { applyVoiceModelManagementMutation } = await import(
+				"./routes/voice-models-routes.js"
+			);
+			return applyVoiceModelManagementMutation({
+				op: input.op,
+				id: input.voiceModelId ?? input.modelId,
+				pinned: input.pinned,
+				preferences: input.voicePreferences,
+			});
+		}
+		case "set_policy": {
+			const slot = requireSlot(input.slot, input.op);
+			const current = await readJsonFile<RoutingPreferencesFile>(
+				routingPath(),
+				defaultRoutingPreferences(),
+			);
+			if (typeof input.policy === "string" && input.policy.trim()) {
+				current.preferences.policy[slot] = input.policy.trim();
+			} else {
+				delete current.preferences.policy[slot];
+			}
+			await writeJsonFile(routingPath(), current);
+			return {
+				op: input.op,
+				slot,
+				policy: current.preferences.policy[slot] ?? null,
+				preferences: current.preferences,
+			};
+		}
+		case "set_preferred_provider": {
+			const slot = requireSlot(input.slot, input.op);
+			const current = await readJsonFile<RoutingPreferencesFile>(
+				routingPath(),
+				defaultRoutingPreferences(),
+			);
+			if (typeof input.provider === "string" && input.provider.trim()) {
+				current.preferences.preferredProvider[slot] = input.provider.trim();
+			} else {
+				delete current.preferences.preferredProvider[slot];
+			}
+			await writeJsonFile(routingPath(), current);
+			return {
+				op: input.op,
+				slot,
+				provider: current.preferences.preferredProvider[slot] ?? null,
+				preferences: current.preferences,
+			};
+		}
+		case "set_assignment": {
+			const slot = requireSlot(input.slot, input.op);
+			if (!ASSIGNMENT_SLOTS.has(slot as keyof Assignments)) {
+				throw new Error(`Unknown local-inference assignment slot: ${slot}`);
+			}
+			const assignments = await readAssignments();
+			const modelId = input.modelId?.trim() || null;
+			if (modelId) {
+				if (!isCuratedCatalogModelId(modelId)) {
+					throw new Error(
+						"Local inference assignments are limited to curated Eliza-1 tiers.",
+					);
+				}
+				assignments[slot as keyof Assignments] = modelId;
+			} else {
+				delete assignments[slot as keyof Assignments];
+			}
+			return {
+				op: input.op,
+				slot: slot as keyof Assignments,
+				modelId,
+				assignments: await writeAssignments(assignments),
+			};
+		}
+		default: {
+			const _exhaustive: never = input.op;
+			throw new Error(`Unsupported local-inference op: ${String(_exhaustive)}`);
+		}
+	}
 }
 
 function writeSse(res: http.ServerResponse, payload: unknown): void {

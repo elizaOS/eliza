@@ -139,6 +139,8 @@
     "test:matrix:review": "node scripts/evidence-review/run-matrix.mjs --open",
     "test:matrix": "node scripts/evidence-review/run-matrix.mjs --no-open",
     "test:watch-human": "bun run --cwd packages/app test:e2e:human",
+    "evidence:doctor": "node scripts/evidence-doctor.mjs",
+    "evidence:pr": "node scripts/pr-evidence.mjs",
     "evidence:certify": "bun packages/evidence/src/cli.ts certify",
     "evidence:review": "node scripts/evidence-review/generate.mjs --open",
     "evidence:open": "node scripts/evidence-review/generate.mjs --open",
@@ -230,7 +232,7 @@
     "sync:artifacts": "bun packages/scripts/sync-artifacts.mjs",
     "check:view-bundles": "bun packages/scripts/view-bundle-import-guard.mjs"
   },
-  "packageManager": "bun@1.4.0-canary.1",
+  "packageManager": "bun@1.4.0",
   "workspaces": [
     "packages/*",
     "!packages/feed",
@@ -357,8 +359,8 @@
     "has-ansi": "6.0.2",
     "ai": "6.0.174",
     "@ai-sdk/gateway": "3.0.109",
-    "@ai-sdk/provider": "3.0.10",
-    "@ai-sdk/provider-utils": "4.0.26",
+    "@ai-sdk/provider": "3.0.13",
+    "@ai-sdk/provider-utils": "4.0.36",
     "@ai-sdk/openai": "3.0.58",
     "pg-native": "npm:empty-npm-package@1.0.0",
     "libpq": "npm:empty-npm-package@1.0.0",

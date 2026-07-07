@@ -50,10 +50,36 @@ function resolveDirectWebUiUrlFromHealthUrl(
   }
 }
 
+function isBrowserUnreachableHost(hostname: string): boolean {
+  const h = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (h === "localhost" || h === "::1" || h.startsWith("127.")) return false;
+  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+  return /^f[cd]/.test(h) || h.startsWith("fe80");
+}
+
+function browserReachableOrigin(origin: string | null): string | null {
+  if (!origin) return null;
+  try {
+    return isBrowserUnreachableHost(new URL(origin).hostname) ? null : origin;
+  } catch {
+    return null;
+  }
+}
+
 function resolveManagedWebUiUrl(sandbox: PairingSandboxShape): string | null {
   return (
-    resolveDirectWebUiUrlFromBridgeHost(sandbox) ??
-    resolveDirectWebUiUrlFromHealthUrl(sandbox)
+    browserReachableOrigin(resolveDirectWebUiUrlFromBridgeHost(sandbox)) ??
+    browserReachableOrigin(resolveDirectWebUiUrlFromHealthUrl(sandbox))
   );
 }
 
@@ -89,10 +115,49 @@ describe("resolveManagedWebUiUrl (pairing-token direct URL fallback)", () => {
   it("trims whitespace before parsing", () => {
     expect(
       resolveManagedWebUiUrl({
-        bridge_url: "  http://10.0.0.1:8080  ",
+        bridge_url: "  http://168.119.244.189:8080  ",
         web_ui_port: 3000,
       }),
-    ).toBe("http://10.0.0.1:3000");
+    ).toBe("http://168.119.244.189:3000");
+  });
+
+  it("never hands a tailnet/CGNAT origin to the browser (the dead 100.64.x.x /pair redirect)", () => {
+    // Production bridge_url lives on the tailnet — browsers cannot route
+    // 100.64/10, so the direct rungs must yield null and the route falls
+    // through to the public <agentId>.<baseDomain> proxy URL.
+    expect(
+      resolveManagedWebUiUrl({
+        bridge_url: "http://100.64.0.157:21748",
+        web_ui_port: 21748,
+      }),
+    ).toBe(null);
+    expect(
+      resolveManagedWebUiUrl({
+        health_url: "http://100.64.0.157:21748/health",
+      }),
+    ).toBe(null);
+  });
+
+  it("rejects RFC1918 and link-local origins but keeps loopback (local dev) and public IPs", () => {
+    for (const host of [
+      "10.0.0.1",
+      "172.16.5.5",
+      "192.168.1.10",
+      "169.254.9.9",
+    ]) {
+      expect(
+        resolveManagedWebUiUrl({
+          bridge_url: `http://${host}:19027`,
+          web_ui_port: 3000,
+        }),
+      ).toBe(null);
+    }
+    expect(
+      resolveManagedWebUiUrl({
+        bridge_url: "http://127.0.0.1:18888",
+        web_ui_port: 3000,
+      }),
+    ).toBe("http://127.0.0.1:3000");
   });
 
   it("returns null for empty/missing direct URL inputs", () => {

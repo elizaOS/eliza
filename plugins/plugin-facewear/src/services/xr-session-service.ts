@@ -38,6 +38,8 @@ export const XR_SERVICE_TYPE = "xr-session";
 export const XR_WS_PORT_DEFAULT = 31338;
 export const XR_WS_PORT_ENV = "XR_WS_PORT";
 
+type WebSocketRawData = Buffer | ArrayBuffer | Buffer[];
+
 export interface XRConnection {
 	id: string;
 	ws: WebSocket;
@@ -45,6 +47,12 @@ export interface XRConnection {
 	entityId: UUID;
 	roomId: UUID;
 	connectedAt: Date;
+}
+
+function rawDataToBuffer(data: WebSocketRawData): Buffer {
+	if (Buffer.isBuffer(data)) return data;
+	if (Array.isArray(data)) return Buffer.concat(data);
+	return Buffer.from(data);
 }
 
 export class XRSessionService extends Service {
@@ -77,8 +85,8 @@ export class XRSessionService extends Service {
 		);
 		this.wss = new WebSocketServer({ port });
 
-		this.wss.on("connection", (ws) => this.onConnect(runtime, ws));
-		this.wss.on("error", (err) =>
+		this.wss.on("connection", (ws: WebSocket) => this.onConnect(runtime, ws));
+		this.wss.on("error", (err: Error) =>
 			runtime.reportError("XRSessionService.wss", err),
 		);
 
@@ -195,12 +203,13 @@ export class XRSessionService extends Service {
 	private onConnect(runtime: IAgentRuntime, ws: WebSocket): void {
 		const connId = crypto.randomUUID();
 
-		ws.on("message", (data, isBinary) => {
+		ws.on("message", (data: WebSocketRawData, isBinary: boolean) => {
 			try {
+				const payload = rawDataToBuffer(data);
 				if (isBinary) {
-					this.handleBinaryMessage(connId, data as Buffer);
+					this.handleBinaryMessage(connId, payload);
 				} else {
-					this.handleTextMessage(runtime, connId, ws, data.toString("utf8"));
+					this.handleTextMessage(runtime, connId, ws, payload.toString("utf8"));
 				}
 			} catch (err) {
 				// error-policy:J1 per-message transport boundary — a single
@@ -218,7 +227,7 @@ export class XRSessionService extends Service {
 			logger.info(`[XRSessionService] device disconnected: ${connId}`);
 		});
 
-		ws.on("error", (err) =>
+		ws.on("error", (err: Error) =>
 			logger.warn({ err, connId }, "[XRSessionService] ws connection error"),
 		);
 	}

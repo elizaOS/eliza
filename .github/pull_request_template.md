@@ -134,9 +134,16 @@ Full-page before AND after screenshots are required for any UI change. Include a
 video click-through of the flow.
 
 ```bash
+  bun run evidence:doctor                 (check capture tools; prints fixes for any missing)
   bun run test:e2e:record                 (general E2E recordings)
   bun run --cwd packages/app audit:app    (app + cloud UI — REQUIRED for UI changes)
 ```
+
+A UI-touching diff (rendered `.tsx`/`.css`/`.svg` under `packages/app`,
+`packages/ui`, `apps/app`, …) MUST attach real screenshot/video/OCR artifacts —
+the CI evidence gate rejects `N/A` on those rows for such diffs, label or not.
+If a capture tool is missing, `evidence:doctor` prints the install command;
+install it rather than marking evidence `N/A`.
 
 ### Before
 

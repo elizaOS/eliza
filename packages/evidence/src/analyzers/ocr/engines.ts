@@ -467,7 +467,7 @@ export class UnlimitedOcrEngine implements OcrEngine {
     this.serveStatePathOption = options.serveStatePath;
     this.model =
       options.model ?? process.env.ELIZA_GPU_VISION_MODEL ?? "unlimited-ocr";
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.fetchImpl = options.fetchImpl ?? (fetch as unknown as FetchLike);
   }
 
   /** Resolve the endpoint: option → env → serve.json discovery. */

@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type {
   Content,
+  Entity,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -73,6 +74,11 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 
 const ACPX_ROUTER_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
+// Display name of the ONE shared entity every router post is attributed to.
+// The name is frozen at first creation per DB (adapter-side
+// onConflictDoNothing), so keep it generic — per-session identity lives on
+// each memory's content.metadata, never on this entity (#15102).
+const SHARED_SUB_AGENT_ENTITY_NAME = "sub-agents";
 // Metadata key the router stamps on a session it hands off to a successor
 // (verify-retry, state-lost respawn, or account failover) before that session
 // is torn down. Its teardown `stopped` is handoff plumbing, not a user-facing
@@ -506,6 +512,14 @@ export class SubAgentRouter extends Service {
   private readonly parentAgentBuffers = new Map<string, string>();
   private readonly parentAgentDispatchCounts = new Map<string, number>();
   private readonly verifyRetryHandedOffSessions = new Set<string>();
+  // Legacy-entity sweep memos (#15102). Rooms already swept this process, and
+  // sessions whose origin room the spawn-time probe already resolved — both
+  // FIFO-bounded like the per-session tracking maps above. A failed sweep
+  // drops its room from the memo so the next event in that room retries.
+  private readonly sweptLegacyEntityRooms = new Set<string>();
+  private readonly legacySweepProbedSessions = new Set<string>();
+  // Deterministic shared entityId, constant per runtime (agentId-derived).
+  private sharedEntityIdMemo: UUID | undefined;
   // The two runaway-loop backstops (per-session round-trip cap + per-lineage
   // state_lost respawn cap) and the cross-session completion-dedupe compare-
   // and-set are consolidated into one pure, fuzz-tested reducer. Every counter
@@ -752,10 +766,87 @@ export class SubAgentRouter extends Service {
     this.parentAgentBuffers.clear();
     this.parentAgentDispatchCounts.clear();
     this.verifyRetryHandedOffSessions.clear();
+    this.sweptLegacyEntityRooms.clear();
+    this.legacySweepProbedSessions.clear();
     this.loopState = createRouterLoopState({
       roundTripCap: this.loopState.roundTripCap,
       stateLostRespawnCap: this.loopState.stateLostRespawnCap,
     });
+  }
+
+  /**
+   * The ONE entity every router post is attributed to (#15102). Derived from
+   * the agentId only — NOT the sessionId — so entity growth is O(1) per agent.
+   * The `:shared` suffix guarantees no collision with any legacy per-session
+   * id (those hashed a sessionId UUID in that position).
+   */
+  private sharedSubAgentEntityId(): UUID {
+    this.sharedEntityIdMemo ??= deriveUuidFromString(
+      `${this.runtime.agentId}:${SUB_AGENT_ENTITY_NAMESPACE}:shared`,
+    );
+    return this.sharedEntityIdMemo;
+  }
+
+  /**
+   * One-shot per-room migration for the legacy per-session sub-agent entities
+   * (#15102): earlier router versions minted one PERMANENT entity per spawned
+   * session ("sub-agent: <task…>"), so a long-lived room accumulated hundreds
+   * of entities polluting every entities-in-room consumer (#15087 measured
+   * 861, 850 of them sub-agents).
+   *
+   * This is an unlink, not a delete: getEntitiesForRoom is a
+   * participants→entities join on every adapter, so removing only the
+   * participant rows hides a legacy entity from ALL room consumers at once,
+   * while the entity row stays behind as a dormant FK anchor —
+   * memories.entity_id stays valid, and historical transcripts keep their
+   * per-task display name (recentMessages backfills authors via
+   * getEntityById, which reads the entities table directly). Nothing FKs
+   * participants, so the unlink is cascade-free on every adapter.
+   *
+   * No liveness heuristic is needed: the router now derives ONE shared
+   * entityId per agent, so no event can ever post under a per-session entity
+   * again — every entity carrying the per-session creation marker is stale by
+   * definition. Classification is structural (the creation-time
+   * `metadata[sub_agent].subAgentSessionId` marker), never name matching.
+   *
+   * OPERATORS: do NOT hand-delete the dormant "sub-agent: …" entity rows —
+   * on plugin-sql that delete cascades to the historical transcript memories
+   * that FK them. Their population is bounded at its pre-#15102 count.
+   */
+  private async sweepLegacySubAgentParticipants(roomId: UUID): Promise<void> {
+    if (this.sweptLegacyEntityRooms.has(roomId)) return;
+    this.sweptLegacyEntityRooms.add(roomId);
+    pruneOldestTracked(this.sweptLegacyEntityRooms, PARENT_AGENT_TRACKING_CAP);
+    try {
+      const entities = await this.runtime.getEntitiesForRoom(roomId);
+      const sharedId = this.sharedSubAgentEntityId();
+      const stale = entities.filter(
+        (entity): entity is Entity & { id: UUID } =>
+          typeof entity.id === "string" &&
+          entity.id !== sharedId &&
+          isLegacySubAgentEntityMetadata(entity.metadata),
+      );
+      if (stale.length === 0) return;
+      await this.runtime.deleteParticipants(
+        stale.map((entity) => ({ entityId: entity.id, roomId })),
+      );
+      this.log(
+        "info",
+        "unlinked legacy per-session sub-agent entities from room",
+        { roomId, count: stale.length },
+      );
+    } catch (err) {
+      // error-policy:J7 background event-routing: a failed sweep must not
+      // abort delivery. Surfaced via reportError (RECENT_ERRORS + escalation)
+      // and retried on the next event in this room — memo dropped below;
+      // idempotent by construction (a second sweep finds an empty stale set).
+      this.sweptLegacyEntityRooms.delete(roomId);
+      this.runtime.reportError(
+        "SubAgentRouter.sweepLegacySubAgentParticipants",
+        err,
+        { roomId },
+      );
+    }
   }
 
   private async handleEvent(
@@ -786,6 +877,23 @@ export class SubAgentRouter extends Service {
       this.verifyRetryHandedOffSessions,
       PARENT_AGENT_TRACKING_CAP,
     );
+    // Legacy-entity sweep, spawn-time leg (#15102): the first event of any
+    // kind from a session (a fresh spawn streams output immediately) is the
+    // earliest in-router signal that its origin room is active, so a polluted
+    // room heals on the next spawn rather than the next completion. Memoized
+    // per session so steady-state streaming costs no getSession round-trips.
+    if (this.acp && !this.legacySweepProbedSessions.has(sessionId)) {
+      this.legacySweepProbedSessions.add(sessionId);
+      pruneOldestTracked(
+        this.legacySweepProbedSessions,
+        PARENT_AGENT_TRACKING_CAP,
+      );
+      const probed = (await this.acp.getSession(sessionId)) ?? undefined;
+      const probedOrigin = probed ? readOrigin(probed) : null;
+      if (probedOrigin) {
+        await this.sweepLegacySubAgentParticipants(probedOrigin.roomId);
+      }
+    }
     if (!shouldInject(event)) return;
     const acp = this.acp;
     if (!acp) return;
@@ -1048,13 +1156,22 @@ export class SubAgentRouter extends Service {
       );
     }
 
-    const subAgentEntityId = deriveUuidFromString(
-      `${this.runtime.agentId}:${SUB_AGENT_ENTITY_NAMESPACE}:${sessionId}`,
-    );
-    // The synthetic sub-agent entityId is a deterministic UUID for the
-    // session — but it doesn't exist in the entities table yet, so the
-    // FK on memories.entity_id rejects the insert and the router post
-    // dies before the planner ever sees it.
+    const subAgentEntityId = this.sharedSubAgentEntityId();
+    // The synthetic sub-agent entityId is a deterministic UUID — but it
+    // doesn't exist in the entities table yet, so the FK on
+    // memories.entity_id rejects the insert and the router post dies before
+    // the planner ever sees it.
+    //
+    // ONE shared entity per agent, not one per session (#15102): a session
+    // entity is permanent (router memories FK it, and on plugin-sql deleting
+    // it cascades the transcripts), so per-session derivation grew a live
+    // room to 861 entities (850 sub-agents) and polluted every
+    // entities-in-room consumer (#15087). Sharing loses nothing: per-session
+    // identity is fully carried by every router memory
+    // (content.metadata.subAgentSessionId et al. + the `[sub-agent: …]` text
+    // header), and session resolvers read memory metadata, never the entity.
+    // Legacy per-session entities are hidden from room consumers by
+    // sweepLegacySubAgentParticipants.
     //
     // Create just the entity, NOT a full ensureConnection. ensureConnection
     // upserts the room with `channelId: c.channelId ?? c.roomId` — we don't
@@ -1062,17 +1179,20 @@ export class SubAgentRouter extends Service {
     // Discord plugin's `channelId = snowflake` with `channelId = UUID` and
     // break outbound delivery via runtime.sendMessageToTarget. The room
     // already exists (the user's inbound Discord message created it); we
-    // only need the entity + room participation.
+    // only need the entity + room participation. The per-event create is
+    // idempotent (adapter-side conflict-do-nothing) so it self-heals if an
+    // operator deletes the row.
     await this.runtime
       .createEntity({
         id: subAgentEntityId,
         agentId: this.runtime.agentId,
-        names: [`sub-agent: ${origin.label}`],
+        names: [SHARED_SUB_AGENT_ENTITY_NAME],
+        // Deliberately NO per-session data here, ever: the entity is shared
+        // by every session, so a sessionId/agentType stamp would be a lie for
+        // all but one of them — and `subAgentSessionId` in this marker is
+        // exactly what the legacy sweep classifies as stale.
         metadata: {
-          [ACPX_ROUTER_SOURCE]: {
-            subAgentSessionId: sessionId,
-            subAgentAgentType: session.agentType,
-          },
+          [ACPX_ROUTER_SOURCE]: { shared: true },
         },
       })
       .catch((err) => {
@@ -1367,6 +1487,15 @@ export class SubAgentRouter extends Service {
     }
     const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
+    // Legacy-entity sweep, delivery leg (#15102): every room this event posts
+    // to gets swept once per process — covers the task/worktree swarm rooms
+    // the spawn-time probe (origin room only) doesn't reach. Memoized, so
+    // this is a Set lookup per target in steady state.
+    await Promise.all(
+      targets.map((target) =>
+        this.sweepLegacySubAgentParticipants(target.roomId),
+      ),
+    );
     await Promise.all(
       targets.map((target) =>
         this.runtime
@@ -3430,6 +3559,25 @@ function pruneDelivered(set: Set<string>, max: number): void {
 // Cap for the per-session parent-agent tracking collections (buffers, dispatch
 // counts, verify-retry handoffs). Far above any realistic concurrent-session
 // count; it exists only to stop unbounded growth over a long uptime.
+/**
+ * Structural marker for a LEGACY per-session sub-agent entity (#15102): the
+ * router stamped `metadata[sub_agent].subAgentSessionId` at creation on every
+ * per-session entity it minted. The shared entity carries `{ shared: true }`
+ * (no session id) and human/agent entities carry no router marker at all, so
+ * neither can ever classify as stale. Exported for the sweep tests.
+ */
+export function isLegacySubAgentEntityMetadata(
+  metadata: Entity["metadata"],
+): boolean {
+  const marker = metadata?.[ACPX_ROUTER_SOURCE];
+  if (typeof marker !== "object" || marker === null || Array.isArray(marker)) {
+    return false;
+  }
+  return (
+    typeof (marker as Record<string, unknown>).subAgentSessionId === "string"
+  );
+}
+
 const PARENT_AGENT_TRACKING_CAP = 256;
 
 /**

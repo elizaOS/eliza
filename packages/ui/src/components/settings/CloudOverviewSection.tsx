@@ -20,6 +20,7 @@ import { useCallback } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { useAppSelectorShallow } from "../../state";
 import { Button } from "../ui/button";
+import { CloudAgentsSection } from "./CloudAgentsSection";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
 const CLOUD_FEATURES = [
@@ -190,20 +191,26 @@ export function CloudOverviewSection() {
         ) : null}
       </SettingsGroup>
 
-      <SettingsGroup
-        title={t("settings.cloudOverview.unlockTitle", {
-          defaultValue: "Unlock with Cloud",
-        })}
-      >
-        {CLOUD_FEATURES.map((feature) => (
-          <SettingsRow
-            key={feature.label}
-            icon={feature.icon}
-            label={feature.label}
-            description={feature.description}
-          />
-        ))}
-      </SettingsGroup>
+      {/* Connected: this is the ONE Cloud tab for MVP, so agent management
+          renders inline. Disconnected: pitch what Cloud unlocks instead. */}
+      {elizaCloudConnected ? (
+        <CloudAgentsSection />
+      ) : (
+        <SettingsGroup
+          title={t("settings.cloudOverview.unlockTitle", {
+            defaultValue: "Unlock with Cloud",
+          })}
+        >
+          {CLOUD_FEATURES.map((feature) => (
+            <SettingsRow
+              key={feature.label}
+              icon={feature.icon}
+              label={feature.label}
+              description={feature.description}
+            />
+          ))}
+        </SettingsGroup>
+      )}
     </SettingsStack>
   );
 }

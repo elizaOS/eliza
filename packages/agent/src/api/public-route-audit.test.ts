@@ -103,4 +103,19 @@ describe("public:true route allowlist (#9948)", () => {
       rmSync(fixtureDir, { recursive: true, force: true });
     }
   });
+
+  it("ships the baseline next to the compiled module (build:dist copies it)", () => {
+    // The compiled dist/api/public-route-audit.js resolves the baseline as a
+    // sibling file; tsc only emits .ts sources, so the JSON must be copied by
+    // the build script or every dist consumer hits ENOENT.
+    const packageJson = JSON.parse(
+      readFileSync(
+        join(import.meta.dirname, "..", "..", "package.json"),
+        "utf8",
+      ),
+    ) as { scripts: Record<string, string> };
+    expect(packageJson.scripts["build:dist"]).toContain(
+      "src/api/public-route-audit.baseline.json",
+    );
+  });
 });

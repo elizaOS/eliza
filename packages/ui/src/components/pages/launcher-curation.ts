@@ -43,14 +43,17 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   "wallet",
   "tasks",
   "automations",
+  "my-apps",
   "browser",
-  // Character family — the old single Character hub, split into top-level tiles.
+  // Cloud account app — gated to cloud-signed-in sessions via
+  // LAUNCHER_CLOUD_IDS below.
+  "cloud",
+  // Character family — ONE tile. Personality/Relationships/Skills/Experience
+  // are sections inside it (CharacterSectionNav strip, #13560/#13591); their
+  // standalone tiles live in LAUNCHER_HIDDEN_IDS so the grid shows a single
+  // entry point while every /character/* deep link keeps working.
   "character",
-  // `relationships` moved to LAUNCHER_DEVELOPER_ORDER (#14479) — empty in the
-  // MVP, so hidden from the default grid but still reachable in Developer Mode.
   "documents",
-  "character-skills",
-  "experience",
   "memories",
   "feed",
   "stream",
@@ -59,10 +62,8 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
 /** Developer-gated launcher surfaces, in display order. Shown on the same
  *  launcher page after the apps, only when Developer Mode is on. Mostly tools
  *  (trajectory viewer, database, runtime, logs, skills, plugins) plus
- *  `fine-tuning` (model training, a developer surface not an everyday app) and
- *  `relationships` — a real view that renders empty in the MVP (#14479), so it
- *  is developer-gated (hidden from the everyday grid) but kept and reachable,
- *  not deleted. The whole set hides together under the Developer Mode toggle. */
+ *  `fine-tuning` (model training, a developer surface not an everyday app).
+ *  The whole set hides together under the Developer Mode toggle. */
 export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "trajectories",
   "database",
@@ -71,7 +72,6 @@ export const LAUNCHER_DEVELOPER_ORDER: readonly string[] = [
   "skills",
   "plugins",
   "fine-tuning",
-  "relationships",
 ];
 
 /**
@@ -108,6 +108,13 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "background",
   "voice",
   "character-select",
+  // Character-family sections — reached via the Character tile's section
+  // strip (CharacterSectionNav); standalone tiles would triple-tile one hub.
+  // The hidden-set check runs on the CANONICAL id, so this also swallows the
+  // `rolodex` alias and `@elizaos/app-relationship-viewer`'s targetTab.
+  "character-skills",
+  "experience",
+  "relationships",
   "desktop",
   // `chat` is the home/primary surface, not a launcher tile — a Chat tile is
   // pure redundancy next to the always-present home chat (#14479).
@@ -237,7 +244,10 @@ function preferenceScore(entry: ViewEntry): number {
  * without this gate it shows as an "Apps" tile even when cloud is
  * disconnected. (#10725)
  */
-export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set(["cloud-apps"]);
+export const LAUNCHER_CLOUD_IDS: ReadonlySet<string> = new Set([
+  "cloud-apps",
+  "cloud",
+]);
 
 export interface CurateLauncherOptions {
   /** Include the native-OS tiles (phone/messages/contacts/camera/files). */
@@ -360,70 +370,4 @@ export function normalizeLauncherLabel(label: string): string {
     .replace(/\s*([-/])\s*/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-/** A named launcher zone (Favorites / All Apps) with its tiles. */
-export interface LauncherZone {
-  key: "favorites" | "all";
-  label: string;
-  entries: ViewEntry[];
-}
-
-export interface LauncherZoneOptions {
-  /** Canonical launcher ids the user pinned, in pin order. */
-  favoriteIds: readonly string[];
-}
-
-/**
- * Wrap a flat, already-curated tile list as a single "All Apps" zone — the shape
- * `Launcher` renders when there is no Recents/Favorites context (stories, e2e
- * fixtures, the first-run launcher). Keeps callers that only have `ViewEntry[]`
- * off the full {@link curateLauncherZones} projection.
- */
-export function allAppsZone(entries: ViewEntry[]): LauncherZone[] {
-  return [{ key: "all", label: "All Apps", entries }];
-}
-
-/**
- * Partition a curated launcher page into the named zones the launcher renders:
- * Favorites (user-pinned) and All Apps (the full curated page, in curation
- * order).
- *
- * The Recents zone was removed (#13453 launcher deslop): it only mirrored the
- * top of All Apps two rows down, the same Settings/Wallet/Tasks tiles, so it
- * was pure duplicate visual noise, not a meaningful recency signal. Favorites
- * are a projection OVER the curated page, an id that is not a currently-visible
- * tile (uninstalled, gated off) is silently skipped, so a stale favorite can
- * never resurrect a hidden tile. All Apps always lists every visible tile so the
- * launcher stays complete even when a tile is also pinned. The empty Favorites
- * zone is omitted by the caller (this returns it empty so the shape is stable
- * for tests).
- */
-export function curateLauncherZones(
-  page: ViewEntry[],
-  { favoriteIds }: LauncherZoneOptions,
-): LauncherZone[] {
-  const byId = new Map(page.map((entry) => [entry.id, entry]));
-  const pickInOrder = (ids: readonly string[]): ViewEntry[] => {
-    const picked: ViewEntry[] = [];
-    const seen = new Set<string>();
-    for (const rawId of ids) {
-      const id = canonicalLauncherId(rawId);
-      if (seen.has(id)) continue;
-      const entry = byId.get(id);
-      if (!entry) continue;
-      seen.add(id);
-      picked.push(entry);
-    }
-    return picked;
-  };
-
-  return [
-    {
-      key: "favorites",
-      label: "Favorites",
-      entries: pickInOrder(favoriteIds),
-    },
-    { key: "all", label: "All Apps", entries: page },
-  ];
 }

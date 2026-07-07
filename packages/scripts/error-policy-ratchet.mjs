@@ -37,7 +37,16 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const ts = require("typescript");
+const args = new Set(process.argv.slice(2));
+const FORCE_LEXICAL = args.has("--force-lexical");
+let ts = null;
+if (!FORCE_LEXICAL) {
+  try {
+    ts = require("typescript");
+  } catch (err) {
+    if (err?.code !== "MODULE_NOT_FOUND") throw err;
+  }
+}
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
@@ -72,7 +81,6 @@ const EXCLUDED_SEGMENTS = new Set([
   "tests",
 ]);
 
-const args = new Set(process.argv.slice(2));
 const JSON_FLAG = args.has("--json");
 const SELF_TEST = args.has("--self-test");
 const REPORT = args.has("--report");
@@ -118,12 +126,121 @@ function sourceFileKind(relPath) {
   return relPath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
 }
 
+function stripCommentsAndStrings(sourceText) {
+  let out = "";
+  let state = "code";
+  let quote = "";
+  for (let i = 0; i < sourceText.length; i += 1) {
+    const ch = sourceText[i];
+    const next = sourceText[i + 1];
+
+    if (state === "lineComment") {
+      if (ch === "\n") {
+        state = "code";
+        out += ch;
+      } else {
+        out += " ";
+      }
+      continue;
+    }
+
+    if (state === "blockComment") {
+      if (ch === "*" && next === "/") {
+        out += "  ";
+        i += 1;
+        state = "code";
+      } else {
+        out += ch === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+
+    if (state === "string") {
+      if (ch === "\\") {
+        out += " ";
+        if (next) {
+          out += next === "\n" ? "\n" : " ";
+          i += 1;
+        }
+      } else if (ch === quote) {
+        out += " ";
+        state = "code";
+      } else {
+        out += ch === "\n" ? "\n" : " ";
+      }
+      continue;
+    }
+
+    if (ch === "/" && next === "/") {
+      out += "  ";
+      i += 1;
+      state = "lineComment";
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      out += "  ";
+      i += 1;
+      state = "blockComment";
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      out += " ";
+      quote = ch;
+      state = "string";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function lineForIndex(sourceText, index) {
+  let line = 1;
+  for (let i = 0; i < index; i += 1) {
+    if (sourceText[i] === "\n") line += 1;
+  }
+  return line;
+}
+
+function collectFindingsLexical(sourceText, relPath) {
+  const source = stripCommentsAndStrings(sourceText);
+  const findings = [];
+  const trackConsole = inServerConsoleScope(relPath);
+
+  for (const match of source.matchAll(/\bcatch\s*(?:\([^)]*\)\s*)?\{\s*\}/g)) {
+    findings.push({
+      kind: "emptyCatch",
+      file: relPath,
+      line: lineForIndex(source, match.index),
+    });
+  }
+
+  if (trackConsole) {
+    for (const match of source.matchAll(
+      /\bconsole\s*\.\s*[A-Za-z_$][\w$]*\s*\(/g,
+    )) {
+      let i = match.index - 1;
+      while (i >= 0 && /\s/.test(source[i])) i -= 1;
+      if (source[i] === ".") continue;
+      findings.push({
+        kind: "serverConsole",
+        file: relPath,
+        line: lineForIndex(source, match.index),
+      });
+    }
+  }
+
+  return findings;
+}
+
 /**
  * Classify one source file's text. Empty catch blocks are counted everywhere;
  * console.* calls only when the file is in SERVER_CONSOLE_SCOPE. Exported for
  * the self-test.
  */
 export function collectFindings(sourceText, relPath) {
+  if (!ts) return collectFindingsLexical(sourceText, relPath);
+
   const sourceFile = ts.createSourceFile(
     relPath,
     sourceText,
@@ -201,9 +318,11 @@ function resolveBaseRef() {
     "develop",
   ].filter(Boolean);
   for (const ref of candidates) {
-    if (git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
-      allowFailure: true,
-    })) {
+    if (
+      git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`], {
+        allowFailure: true,
+      })
+    ) {
       return ref;
     }
   }
@@ -291,7 +410,12 @@ function repoWideTotals() {
   );
   const findings = [];
   for (const relPath of files) {
-    findings.push(...collectFindings(readFileSync(path.join(ROOT, relPath), "utf8"), relPath));
+    findings.push(
+      ...collectFindings(
+        readFileSync(path.join(ROOT, relPath), "utf8"),
+        relPath,
+      ),
+    );
   }
   return { filesScanned: files.length, counts: summarize(findings) };
 }
@@ -302,7 +426,9 @@ function printHumanSummary({ baseRef, base, files, perFile, regressions }) {
   );
   for (const row of perFile) {
     const deltas = Object.keys(KIND_LABELS)
-      .map((kind) => `${kind} ${row.base[kind] ?? 0}->${row.current[kind] ?? 0}`)
+      .map(
+        (kind) => `${kind} ${row.base[kind] ?? 0}->${row.current[kind] ?? 0}`,
+      )
       .join(", ");
     console.log(`[error-policy-ratchet]   ${row.file}: ${deltas}`);
   }
@@ -310,7 +436,9 @@ function printHumanSummary({ baseRef, base, files, perFile, regressions }) {
     console.log("[error-policy-ratchet] no new fallback-slop in touched files");
     return;
   }
-  console.error("[error-policy-ratchet] new fallback-slop added in touched files:");
+  console.error(
+    "[error-policy-ratchet] new fallback-slop added in touched files:",
+  );
   for (const r of regressions) {
     console.error(
       `  - ${r.file}: ${KIND_LABELS[r.kind]} ${r.base} -> ${r.current}`,
@@ -373,23 +501,33 @@ function runSelfTest() {
     { ...ZERO_COUNTS },
   );
   if (unchanged.length !== 0) {
-    console.error("[error-policy-ratchet] self-test failed: unchanged file regressed");
+    console.error(
+      "[error-policy-ratchet] self-test failed: unchanged file regressed",
+    );
     process.exit(1);
   }
   if (added.length !== 1 || added[0].kind !== "emptyCatch") {
-    console.error("[error-policy-ratchet] self-test failed: added slop not caught");
+    console.error(
+      "[error-policy-ratchet] self-test failed: added slop not caught",
+    );
     process.exit(1);
   }
   if (removed.length !== 0) {
-    console.error("[error-policy-ratchet] self-test failed: removal counted as regression");
+    console.error(
+      "[error-policy-ratchet] self-test failed: removal counted as regression",
+    );
     process.exit(1);
   }
   if (newFileClean.length !== 0) {
-    console.error("[error-policy-ratchet] self-test failed: clean new file regressed");
+    console.error(
+      "[error-policy-ratchet] self-test failed: clean new file regressed",
+    );
     process.exit(1);
   }
   if (newFileSlop.length !== 1 || newFileSlop[0].kind !== "emptyCatch") {
-    console.error("[error-policy-ratchet] self-test failed: new-file slop not caught");
+    console.error(
+      "[error-policy-ratchet] self-test failed: new-file slop not caught",
+    );
     process.exit(1);
   }
   console.log("[error-policy-ratchet] self-test passed");

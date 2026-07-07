@@ -1,5 +1,10 @@
 /** Storybook + story-gate visual states for the inline chat FormRequest widget. */
 import type { Meta, StoryObj } from "@storybook/react";
+import {
+  assert,
+  waitForTestId,
+} from "../../../storybook/home-widget-decorator";
+import { mockApp } from "../../../storybook/mock-providers.helpers";
 import type { FormRequestSpec } from "../message-form-parser";
 import { FormRequest } from "./form-request";
 
@@ -10,6 +15,7 @@ const meta = {
   argTypes: {
     onSubmit: { action: "submit" },
   },
+  decorators: [mockApp()],
 } satisfies Meta<typeof FormRequest>;
 
 export default meta;
@@ -200,6 +206,37 @@ export const Minimal: Story = {
       ],
     },
     onSubmit: () => {},
+  },
+};
+
+export const SubmittedCollapsed: Story = {
+  args: {
+    form: {
+      id: "minimal-submitted",
+      title: "Quick answer",
+      submitLabel: "OK",
+      fields: [
+        {
+          name: "answer",
+          type: "text",
+          placeholder: "Type something",
+        },
+      ],
+    },
+    onSubmit: () => {},
+  },
+  play: async ({ canvasElement }) => {
+    const submit = canvasElement.querySelector("button[type='submit']");
+    assert(submit instanceof HTMLButtonElement, "submit button is visible");
+    submit.click();
+    const summary = await waitForTestId(
+      canvasElement,
+      "form-request-shell-summary",
+    );
+    assert(
+      /quick answer submitted/i.test(summary.textContent ?? ""),
+      "submitted form summary is visible",
+    );
   },
 };
 

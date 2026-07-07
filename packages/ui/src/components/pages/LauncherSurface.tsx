@@ -1,11 +1,9 @@
 /**
  * Data + state wrapper around `Launcher`: pulls the routable views, filters them
  * by the user's enabled view kinds and active modality, curates them into the
- * ordered page (`curateLauncherPages`), partitions that page into the named
- * Recents/Favorites/All-Apps zones (`curateLauncherZones`), and wires tile taps
- * to view navigation and chat-open. It owns the launcher's
- * Recents/Favorites state (view-id keyed, persisted locally) so a tap records
- * recency and a pin toggles a favorite. `Launcher` itself is pure presentation.
+ * ordered page (`curateLauncherPages`), and wires tile taps to view navigation
+ * and chat-open. `Launcher` itself is pure presentation — one flat grid, no
+ * favorites, recents, or section zones.
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
@@ -15,18 +13,9 @@ import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
 import { isAospShellEnabled } from "../../navigation";
 import { getActiveViewModality } from "../../platform/platform-guards";
 import { useAppSelectorShallow } from "../../state";
-import {
-  loadLauncherFavorites,
-  recordLauncherRecent,
-  saveLauncherFavorites,
-} from "../../state/persistence";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { Launcher } from "./Launcher";
-import {
-  canonicalLauncherId,
-  curateLauncherPages,
-  curateLauncherZones,
-} from "./launcher-curation";
+import { curateLauncherPages } from "./launcher-curation";
 
 export const LauncherSurface = React.memo(
   function LauncherSurface(): React.JSX.Element {
@@ -37,14 +26,6 @@ export const LauncherSurface = React.memo(
     }));
     const activeModality = React.useMemo(() => getActiveViewModality(), []);
     const isAosp = React.useMemo(() => isAospShellEnabled(), []);
-
-    const [favoriteIds, setFavoriteIds] = React.useState<string[]>(() =>
-      loadLauncherFavorites(),
-    );
-    const favoriteIdSet = React.useMemo(
-      () => new Set(favoriteIds),
-      [favoriteIds],
-    );
 
     // The launcher renders the loaded views for the active modality; the curation
     // layer owns removal, dedup, AOSP-gating, and developer/preview visibility.
@@ -66,26 +47,7 @@ export const LauncherSurface = React.memo(
       [modalEntries, isAosp, enabledKinds, elizaCloudConnected],
     );
 
-    const zones = React.useMemo(
-      () => curateLauncherZones(page, { favoriteIds }),
-      [page, favoriteIds],
-    );
-
-    const handleToggleFavorite = React.useCallback((entry: ViewEntry) => {
-      const id = canonicalLauncherId(entry.id);
-      setFavoriteIds((current) => {
-        const next = current.includes(id)
-          ? current.filter((x) => x !== id)
-          : [...current, id];
-        saveLauncherFavorites(next);
-        return next;
-      });
-    }, []);
-
     const handleLaunch = React.useCallback((entry: ViewEntry) => {
-      // Recency is still recorded (other surfaces read it) but no longer drives a
-      // launcher zone, the Recents row was removed as duplicate noise (#13453).
-      recordLauncherRecent(canonicalLauncherId(entry.id));
       const path = entry.path ?? `/apps/${entry.id}`;
       try {
         if (typeof window === "undefined") return;
@@ -111,13 +73,7 @@ export const LauncherSurface = React.memo(
 
     return (
       <div className="absolute inset-0 flex min-h-0 flex-col px-0 pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.75rem)]">
-        <Launcher
-          zones={zones}
-          loading={loading}
-          onLaunch={handleLaunch}
-          onToggleFavorite={handleToggleFavorite}
-          favoriteIds={favoriteIdSet}
-        />
+        <Launcher entries={page} loading={loading} onLaunch={handleLaunch} />
       </div>
     );
   },

@@ -18,7 +18,7 @@
       "pack": "G1",
       "tier": "T1",
       "surface": "lifeops-bench",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-A: identify one genuinely overdue reply from message history without fabricating urgency."
     },
     {
@@ -26,7 +26,7 @@
       "pack": "G1",
       "tier": "T2",
       "surface": "scenario-runner",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-B: draft a brief apology and hold for owner approval; never send automatically."
     },
     {
@@ -34,7 +34,7 @@
       "pack": "G1",
       "tier": "T2",
       "surface": "lifeops-bench",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-C: batch several overdue replies into reviewable drafts ordered by priority."
     },
     {
@@ -42,7 +42,7 @@
       "pack": "G1",
       "tier": "T4",
       "surface": "scenario-runner",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-D: avoid guilt/over-apology language when the thread does not warrant it."
     },
     {
@@ -50,7 +50,7 @@
       "pack": "G1",
       "tier": "T2",
       "surface": "lifeops-bench",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-E: adapt apology draft tone to email vs chat without exposing hidden policy text."
     },
     {
@@ -58,7 +58,7 @@
       "pack": "G1",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-F: prioritize the overdue VIP reply while preserving lower-priority backlog context."
     },
     {
@@ -66,7 +66,7 @@
       "pack": "G1",
       "tier": "T4",
       "surface": "lifeops-bench",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-G: fail closed on any external send until the owner explicitly approves."
     },
     {
@@ -74,7 +74,7 @@
       "pack": "G1",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-H: once a draft is approved or sent, reset the follow-up cadence structurally."
     },
     {
@@ -82,15 +82,15 @@
       "pack": "G1",
       "tier": "T2",
       "surface": "lifeops-bench",
-      "status": "planned",
+      "status": "authored",
       "notes": "SCEN-I: distinguish stale no-action threads from overdue obligations."
     },
     {
       "id": "g1.overdue_comms.cross_channel_summary",
       "pack": "G1",
       "tier": "T3",
-      "surface": "scenario-runner",
-      "status": "planned",
+      "surface": "lifeops-bench",
+      "status": "authored",
       "notes": "SCEN-J: summarize cross-channel context before proposing a draft."
     }
   ]

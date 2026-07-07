@@ -16,6 +16,10 @@ const pluginMock = vi.hoisted(() => ({
 
 vi.mock("../../bridge/native-plugins", () => ({
   getMobileSignalsPlugin: () => pluginMock.value,
+  // The push-registration module (pulled in transitively by the settings tree)
+  // reads this at import time; the full-module mock must expose it or vitest
+  // throws "No getPushNotificationsPlugin export is defined on the mock".
+  getPushNotificationsPlugin: () => ({}),
 }));
 
 vi.mock("../../state", () => ({

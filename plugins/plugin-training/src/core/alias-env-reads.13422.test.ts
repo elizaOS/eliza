@@ -93,7 +93,9 @@ describe("plugin-training ELIZA_STATE_DIR alias reads (#13422 P7)", () => {
 
   it("falls back to the ~/.eliza default when neither key is set", () => {
     expect(readAliasedEnv("ELIZA_STATE_DIR")).toBeUndefined();
-    expect(exportTrajectoriesInputDir()).toBe(join(DEFAULT_STATE_DIR, "trajectories"));
+    expect(exportTrajectoriesInputDir()).toBe(
+      join(DEFAULT_STATE_DIR, "trajectories"),
+    );
     expect(trainStateDir()).toBe(DEFAULT_STATE_DIR);
   });
 

@@ -259,6 +259,7 @@ const LIFEOPS_NATIVE_TASKS = [
   "morning_brief",
   "health_checkin",
   "screentime_recap",
+  "creative_draft",
 ] as const;
 
 const LIFEOPS_NATIVE_TASK_SET = new Set<string>(LIFEOPS_NATIVE_TASKS);

@@ -4,7 +4,7 @@
   "description": "Zalo connector for official account messaging and support workflows.",
   "npmName": "@elizaos/plugin-zalo",
   "version": "2.0.0-beta.0",
-  "source": "bundled",
+  "source": "store",
   "tags": ["connector", "messaging", "zalo", "chat", "social", "social-chat"],
   "config": {
     "ZALO_APP_ID": {

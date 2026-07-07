@@ -1,19 +1,21 @@
 {
   "description": "Story files with a Storybook `play` interaction test (#9943 ratchet floor). Regenerate with: bun run --cwd packages/ui audit:stories:play -- --update-baseline",
   "files": [
+    "packages/ui/src/components/chat/InlinePluginConfig.stories.tsx",
+    "packages/ui/src/components/chat/MessageContent.stories.tsx",
+    "packages/ui/src/components/chat/widgets/ChoiceWidget.stories.tsx",
     "packages/ui/src/components/chat/widgets/agent-provisioning.stories.tsx",
     "packages/ui/src/components/chat/widgets/calendar-upcoming.stories.tsx",
-    "packages/ui/src/components/chat/widgets/finances-alerts.stories.tsx",
+    "packages/ui/src/components/chat/widgets/form-request.stories.tsx",
     "packages/ui/src/components/chat/widgets/goals-attention.stories.tsx",
     "packages/ui/src/components/chat/widgets/health-sleep.stories.tsx",
     "packages/ui/src/components/chat/widgets/home-widget-card.stories.tsx",
-    "packages/ui/src/components/chat/widgets/inbox-unread.stories.tsx",
     "packages/ui/src/components/chat/widgets/model-download.stories.tsx",
     "packages/ui/src/components/chat/widgets/needs-attention.stories.tsx",
-    "packages/ui/src/components/chat/widgets/relationships-attention.stories.tsx",
     "packages/ui/src/components/composites/chat/chat-message-actions.stories.tsx",
     "packages/ui/src/components/pages/Launcher.stories.tsx",
     "packages/ui/src/components/shell/RestartBanner.stories.tsx",
-    "packages/ui/src/components/shell/ShortcutsOverlay.stories.tsx"
+    "packages/ui/src/components/shell/ShortcutsOverlay.stories.tsx",
+    "packages/ui/src/components/shell/StartupScreen.stories.tsx"
   ]
 }

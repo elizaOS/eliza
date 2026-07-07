@@ -21,7 +21,11 @@ export function useAuthenticatedQueryGate(
 ): AuthenticatedQueryGate {
   const session = useSessionAuth();
   return {
-    enabled: enabled && session.ready && session.authenticated,
+    // Gate on `authenticated` (a valid, expiry-checked stored token exists and
+    // api-client injects it as the Bearer) rather than also on `ready` — the
+    // latter waits for the @stwd SDK's slow session resolution, which left the
+    // agents list spinning for seconds after the token was already usable.
+    enabled: enabled && session.authenticated,
     userId: session.user?.id ?? null,
   };
 }

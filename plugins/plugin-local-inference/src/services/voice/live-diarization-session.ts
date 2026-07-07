@@ -35,6 +35,7 @@ import {
 	AudioFrameConsumer,
 	type AudioFrameConsumerConfig,
 	type AudioFrameConsumerDeps,
+	AudioFrameDecodeError,
 	type AudioFrameEvent,
 	decodeAudioFramePcm,
 	type EchoReferenceProvider,
@@ -127,6 +128,8 @@ export interface LiveDiarizationStatus {
 		echoReferenceWired: boolean;
 		/** Far-end playback frames delivered via /api/voice/playback-frames. */
 		playbackFramesReceived: number;
+		/** Playback frames dropped at the decode boundary (malformed wire frame). */
+		playbackFramesDropped: number;
 		/** Total decoded far-end samples delivered (@16 kHz). */
 		playbackSamplesReceived: number;
 		/** Wall-clock epoch ms of the last delivered playback frame (null = never). */
@@ -334,6 +337,10 @@ export class LiveDiarizationSession {
 	 */
 	private playbackFramesReceived = 0;
 	private playbackSamplesReceived = 0;
+	/** Playback frames that failed the wire-format decode and were dropped rather
+	 * than crashing the transport (a malformed frame from the device is untrusted
+	 * input, not a fatal error). Surfaced in status alongside `framesDropped`. */
+	private playbackFramesDropped = 0;
 	private lastPlaybackFrameAt: number | null = null;
 	/** Agent self-voice imprint (#12256 layer 3): built with the fused encoder,
 	 * fed the agent's rendered playback (the same frames the AEC reference
@@ -634,7 +641,18 @@ export class LiveDiarizationSession {
 	 */
 	pushPlayback(frames: AudioFrameEvent[]): void {
 		for (const frame of frames) {
-			const pcm = decodeAudioFramePcm(frame);
+			// A malformed frame off the wire (odd byte length, wrong rate) is
+			// untrusted input: drop and count it, never let it 500 the batch and
+			// take down the whole playback transport (#12263 J3).
+			let pcm: Float32Array;
+			try {
+				pcm = decodeAudioFramePcm(frame);
+			} catch (err) {
+				// error-policy:J3 malformed playback frames are untrusted wire input.
+				if (!(err instanceof AudioFrameDecodeError)) throw err;
+				this.playbackFramesDropped += 1;
+				continue;
+			}
 			this.echoBuffer.pushAt(frame.timestamp, pcm);
 			this.playbackFramesReceived += 1;
 			this.playbackSamplesReceived += pcm.length;
@@ -679,7 +697,7 @@ export class LiveDiarizationSession {
 			await this.ensureBuilt();
 			consumerReady = this.consumer != null;
 		} catch {
-			// Fused diarizer unavailable; the pure-TS AEC seam below still runs.
+			// error-policy:J4 fused diarizer is optional for the pure TypeScript AEC path.
 		}
 		for (const frame of frames) {
 			this.framesReceived += 1;
@@ -691,11 +709,20 @@ export class LiveDiarizationSession {
 					}
 					this.captureAecFrame(near, frame.timestamp);
 				} catch {
-					// Let AudioFrameConsumer own decode-error accounting below.
+					// error-policy:J3 AudioFrameConsumer owns decode-error accounting below.
 				}
 			}
 			if (consumerReady && this.consumer) {
-				await this.consumer.onAudioFrame(frame);
+				// The consumer already counts a decode failure in `droppedFrames`
+				// before rethrowing; swallow only that typed wire-format error so one
+				// malformed frame drops instead of 500-ing the batch. Any other error
+				// (VAD/attribution processing failure) still surfaces.
+				try {
+					await this.consumer.onAudioFrame(frame);
+				} catch (err) {
+					// error-policy:J3 AudioFrameConsumer already counted this malformed frame.
+					if (!(err instanceof AudioFrameDecodeError)) throw err;
+				}
 			}
 		}
 	}
@@ -728,6 +755,7 @@ export class LiveDiarizationSession {
 					this.options.echoReference != null ||
 					this.playbackSamplesReceived > 0,
 				playbackFramesReceived: this.playbackFramesReceived,
+				playbackFramesDropped: this.playbackFramesDropped,
 				playbackSamplesReceived: this.playbackSamplesReceived,
 				lastPlaybackFrameAt: this.lastPlaybackFrameAt,
 				echoDelaySamples: this.delayCalibrator.delaySamples,

@@ -17,6 +17,8 @@
  * exporters, read routes, rewards); widen additively so on-disk rows and the
  * viewer wire shapes stay backward-compatible.
  */
+
+import type { TrajectoryProviderAttribution } from "../../runtime/trajectory-provider-attribution";
 import type { JsonObject, JsonPrimitive, JsonValue, UUID } from "../../types";
 import type { ContextEvent } from "../../types/context-object";
 
@@ -110,6 +112,8 @@ export interface LLMCall {
 	roomId?: string;
 	messageId?: string;
 	executionTraceId?: string;
+	providerOrder?: string[];
+	providerAttributions?: TrajectoryProviderAttribution[];
 }
 
 export interface ProviderAccess {
@@ -122,6 +126,11 @@ export interface ProviderAccess {
 
 	// What was returned
 	data: Record<string, JsonValue>;
+	sha256?: string;
+	tokenCount?: number;
+	position?: number;
+	spanStart?: number;
+	spanEnd?: number;
 
 	// Context
 	purpose: string;

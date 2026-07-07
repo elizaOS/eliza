@@ -20,13 +20,19 @@ import {
   type MessageAttachmentContentType,
 } from "../api";
 import { isLimitedCloudAgentApiBase } from "../api/app-shell-capabilities";
-import { isStreamGenerationError } from "../api/client-base";
+import {
+  generateChatClientMessageId,
+  isNetworkCurrentlyConnected,
+  isStreamGenerationError,
+  onNetworkStatusChange,
+} from "../api/client-base";
 import {
   expandSavedCustomCommand,
   loadSavedCustomCommands,
   normalizeSlashCommandName,
 } from "../chat";
 import {
+  APP_RESUME_EVENT,
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
@@ -181,6 +187,160 @@ export function buildSendFailureNotice(err: unknown): string {
  */
 export const UNDELIVERED_TURN_NOTICE =
   "That message didn't reach the agent — it may still be starting up. Retry in a moment.";
+
+/**
+ * Whether a send failure is a *transport* failure worth auto-retrying once when
+ * connectivity returns — a dropped connection / DNS failure (`kind:"network"`),
+ * a request that never completed in time (`kind:"timeout"`), or the gateway
+ * bad/unavailable pair (502/503) an edge throws mid-blip. Deliberately narrow:
+ *
+ *  - 4xx (validation / auth / rate-limit / not-found) are NOT transport blips —
+ *    replaying them on reconnect fails identically, so they keep their existing
+ *    manual-resend copy.
+ *  - AbortError is a user Stop, never retried.
+ *  - A structured stream gate (no_provider / accountConnect) is a real answer,
+ *    not a transport failure.
+ *
+ * Exported for the send path and unit tests (the classification is the crux of
+ * "retry the blips, don't loop on real rejections").
+ */
+export function isRetryableSendError(err: unknown): boolean {
+  if (err == null) return false;
+  const name = (err as { name?: unknown }).name;
+  if (name === "AbortError") return false;
+  const kind = (err as { kind?: unknown }).kind;
+  if (kind === "network" || kind === "timeout") return true;
+  const status = (err as { status?: unknown }).status;
+  return status === 502 || status === 503;
+}
+
+/**
+ * Whether THIS failure should trigger the wait-for-reconnect auto-retry, as
+ * opposed to just being retryable copy on a manual affordance. Scoped tighter
+ * than {@link isRetryableSendError} so we only *hold* a turn (waiting for the
+ * network to come back) when a network drop is the plausible cause:
+ *
+ *  - a genuine transport drop (`kind:"network"`, e.g. "Failed to fetch") — the
+ *    blip case the E2 lane targets ("no more lost messages on network blips"),
+ *    ALWAYS eligible even if the bridge hasn't yet flipped to offline (iOS
+ *    frequently kills the socket on suspend without firing an `offline` edge);
+ *  - any retryable error while the device is ALREADY reporting offline — a
+ *    503/timeout during a known outage is worth holding for reconnect too.
+ *
+ * A 503 "agent waking up" or a slow-response timeout while the device is ONLINE
+ * is NOT a connectivity problem — there is no reconnect coming, so waiting is
+ * pointless; those keep the existing immediate manual-resend affordance.
+ */
+export function shouldAutoRetryOnReconnect(err: unknown): boolean {
+  if (!isRetryableSendError(err)) return false;
+  const kind = (err as { kind?: unknown }).kind;
+  if (kind === "network") return true;
+  return !isNetworkCurrentlyConnected();
+}
+
+/**
+ * Debounce for coalescing a burst of reconnect signals (an `online` edge, a
+ * `ws-reconnected`, and an `APP_RESUME` can all fire within a few ms of a
+ * device waking) into a single retry trigger — so the auto-retry runs ONCE,
+ * not once per signal.
+ */
+const RECONNECT_SIGNAL_DEBOUNCE_MS = 400;
+
+/**
+ * Max time to wait for a reconnect signal before giving up and surfacing the
+ * manual resend affordance. A blip that never heals within this window is
+ * treated as a genuine outage — the user gets the resend chip rather than a
+ * turn stuck forever in the sending state.
+ */
+const RECONNECT_WAIT_TIMEOUT_MS = 30_000;
+
+/**
+ * Resolve `true` the moment connectivity plausibly returns — the first of a
+ * bridged network `online` edge ({@link onNetworkStatusChange}), an
+ * {@link APP_RESUME_EVENT} (iOS foreground, where `online` often does NOT
+ * fire because the socket was silently killed on suspend, not on a network
+ * change), or a WS reconnect (`ws-reconnected`) — debounced so a cluster of
+ * signals fires the retry once. Resolves `false` on timeout or if `signal`
+ * aborts (the turn was superseded / the user navigated away). Never rejects,
+ * and always tears down every listener + timer on settle so nothing leaks.
+ */
+function waitForReconnect(
+  onWsEvent: (type: string, handler: () => void) => () => void,
+  signal: AbortSignal | null | undefined,
+  timeoutMs: number = RECONNECT_WAIT_TIMEOUT_MS,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    if (signal?.aborted) {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    const cleanups: Array<() => void> = [];
+
+    const teardown = (): void => {
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      if (timeoutTimer !== null) clearTimeout(timeoutTimer);
+      for (const cleanup of cleanups) {
+        try {
+          cleanup();
+        } catch {
+          // a listener teardown throwing must not block the others
+        }
+      }
+    };
+
+    const settle = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      teardown();
+      resolve(value);
+    };
+
+    // Debounce the resolve so a burst (online + ws-reconnected + resume) fires
+    // the retry exactly once.
+    const onSignal = (): void => {
+      if (settled) return;
+      if (debounceTimer !== null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(
+        () => settle(true),
+        RECONNECT_SIGNAL_DEBOUNCE_MS,
+      );
+    };
+
+    // Bridged Capacitor/`online` network transition (true = connected).
+    cleanups.push(
+      onNetworkStatusChange((connected) => {
+        if (connected) onSignal();
+      }),
+    );
+
+    // WS reconnect — the dedicated-agent REST path never fires this, but the
+    // shared-runtime WS does, and it's a strong "we're back online" signal.
+    cleanups.push(onWsEvent("ws-reconnected", onSignal));
+
+    // App foreground: on iOS the socket is often silently dead after a suspend
+    // and no `online` edge fires, so resume is the only reconnect hint we get.
+    if (typeof document !== "undefined") {
+      const onResume = (): void => onSignal();
+      document.addEventListener(APP_RESUME_EVENT, onResume);
+      cleanups.push(() =>
+        document.removeEventListener(APP_RESUME_EVENT, onResume),
+      );
+    }
+
+    // The turn was superseded (new chat / conversation switch / stop) — stop
+    // waiting so the retry doesn't fire into a torn-down context.
+    if (signal) {
+      const onAbort = (): void => settle(false);
+      signal.addEventListener("abort", onAbort, { once: true });
+      cleanups.push(() => signal.removeEventListener("abort", onAbort));
+    }
+
+    timeoutTimer = setTimeout(() => settle(false), timeoutMs);
+  });
+}
 
 /**
  * Clock-skew slack for matching a just-sent user turn against the server's
@@ -380,6 +540,20 @@ export interface QueuedChatSend {
   conversationId?: string | null;
   images?: ImageAttachment[];
   metadata?: Record<string, unknown>;
+  /**
+   * Idempotency key for this logical turn. Minted once on the first attempt and
+   * reused verbatim on the single auto-retry so a request that actually landed
+   * server-side during a blip is de-duped instead of double-delivered. Absent
+   * on a fresh enqueue (the drain mints it); present on the retry re-enqueue.
+   */
+  clientMessageId?: string;
+  /**
+   * True on the re-enqueued turn AFTER its one auto-retry-on-reconnect has been
+   * spent — the guard that makes the auto-retry fire exactly once (never a
+   * loop). A retry that also fails falls straight through to the manual resend
+   * affordance.
+   */
+  autoRetried?: boolean;
   resolve: () => void;
   reject: (error: unknown) => void;
 }
@@ -1013,6 +1187,12 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
+      // Mint the idempotency key ONCE per logical turn and reuse it across the
+      // single auto-retry (the re-enqueued turn carries it back in). A send
+      // that actually landed server-side during a blip is then de-duped by the
+      // server on the retry instead of double-delivered.
+      const clientMessageId =
+        turn.clientMessageId ?? generateChatClientMessageId();
       let controller: AbortController | null = null;
       let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
@@ -1193,6 +1373,9 @@ export function useChatSend(deps: UseChatSendDeps) {
               mode: "tool",
               event,
             }),
+          // Idempotency key — reused verbatim across the single auto-retry so a
+          // send that landed during a blip is server-side de-duped.
+          clientMessageId,
         );
 
         // Commit any token parked by the throttle before the terminal
@@ -1469,6 +1652,9 @@ export function useChatSend(deps: UseChatSendDeps) {
                   mode: "tool",
                   event,
                 }),
+              // Same idempotency key across the whole logical turn, including
+              // the 404 recreate-and-replay recovery.
+              clientMessageId,
             );
 
             // Commit any throttle-parked token before the terminal modification.
@@ -1513,8 +1699,82 @@ export function useChatSend(deps: UseChatSendDeps) {
               );
             }
           }
+        } else if (shouldAutoRetryOnReconnect(err) && !turn.autoRetried) {
+          // Retryable transport failure (a network blip / timeout / 502/503)
+          // on the FIRST attempt: instead of immediately surfacing the manual
+          // resend affordance, hold the turn in its normal sending state and
+          // auto-retry ONCE the moment connectivity returns. This is the E2
+          // "messages survive network blips" guarantee — the common case on
+          // cellular is a sub-second drop that heals on its own, and making the
+          // user tap Resend for it is the difference between "just works" and
+          // "ugh, again." The retry:
+          //   - keeps the existing pending/sending UI (no new surface), so the
+          //     turn simply looks like it's still sending during the wait;
+          //   - reuses the SAME clientMessageId so a request that actually
+          //     landed server-side during the blip is de-duped, not doubled;
+          //   - fires EXACTLY once (waitForReconnect is debounced and the
+          //     re-enqueued turn is stamped autoRetried) — never a loop;
+          //   - aborts cleanly if the turn is superseded (new chat / stop /
+          //     conversation switch abort the controller signal we wait on);
+          //   - falls through to the manual affordance below only if the retry
+          //     ALSO fails or connectivity never returns within the window.
+          const reconnected = await waitForReconnect(
+            (type, handler) => client.onWsEvent(type, () => handler()),
+            controller?.signal,
+          );
+          if (reconnected && !controller?.signal.aborted) {
+            // Drop the stale placeholder from the failed attempt; the requeued
+            // turn paints its own fresh optimistic bubble on drain.
+            dropEmptyAssistantPlaceholder(assistantMsgId);
+            // Re-enqueue at the FRONT so the retry runs before any turns the
+            // user queued behind it, preserving send order. Same key + text +
+            // images + metadata; autoRetried stops a second auto-retry.
+            chatSendQueueRef.current.unshift({
+              rawInput: turn.rawInput,
+              channelType: turn.channelType,
+              conversationId: convId,
+              images: turn.images,
+              metadata: turn.metadata,
+              clientMessageId,
+              autoRetried: true,
+              resolve: () => {},
+              reject: () => {},
+            });
+            // The drain loop (flushQueuedChatSends) re-invokes this for the
+            // requeued turn; nothing more to do here.
+            return;
+          }
+          // Connectivity never returned (timeout) or the turn was superseded
+          // (abort). An abort is a user Stop / navigation — stay silent, drop
+          // the placeholder, and let the finally block settle. A timeout falls
+          // through to the manual resend affordance so the turn isn't stuck
+          // sending forever.
+          if (controller?.signal.aborted) {
+            dropEmptyAssistantPlaceholder(assistantMsgId);
+            return;
+          }
+          // Timed out waiting — surface the manual resend path (mirror the
+          // generic branch: drop the placeholder, KEEP the user's message,
+          // notice + reconcile + restore-evicted).
+          dropEmptyAssistantPlaceholder(assistantMsgId);
+          setActionNotice(buildSendFailureNotice(err), "error", 8_000);
+          await loadConversationMessages(convId);
+          if (activeConversationIdRef.current === convId) {
+            restoreEvictedUserTurn({
+              userMsgId,
+              assistantMsgId,
+              text,
+              timestamp: now,
+              ...(optimisticAttachments
+                ? { attachments: optimisticAttachments }
+                : {}),
+            });
+          }
         } else {
           // Non-abort, non-404 send failure (network/timeout/5xx/auth/429/4xx).
+          // Reaches here on a NON-retryable failure, or a retryable one whose
+          // single auto-retry was already spent (turn.autoRetried) — either way
+          // the user gets the manual resend affordance now.
           // Drop the empty assistant placeholder but KEEP the user's message,
           // and surface a status-specific notice so a stalled turn is never
           // silent dead air (the typing indicator stalls at ~30s while the SSE

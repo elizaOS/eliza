@@ -42,6 +42,7 @@ import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
+import { PiiScrubService } from "../../services/pii-scrub.ts";
 import { TaskService } from "../../services/task.ts";
 import { EventType } from "../../types/events.ts";
 import type {
@@ -1393,6 +1394,9 @@ export const basicEvaluators: RegisteredEvaluator[] = [linkExtractionEvaluator];
 export const basicServices: ServiceClass[] = [
 	TaskService,
 	EmbeddingGenerationService,
+	// Async PII scrub rails (#14808): drains a priority BatchQueue on the core
+	// task scheduler, content-hash idempotent, non-blocking. LOCAL lane.
+	PiiScrubService,
 	EvaluatorService,
 	// Loads optimized prompts for action_planner / media_description / etc.
 	// from the on-disk store (<stateDir>/optimized-prompts/<task>). Cheap
@@ -1611,6 +1615,7 @@ export function createBasicCapabilitiesPlugin(
 			// Optional chaining skips services that were not started.
 			await runtime.getService(TaskService.serviceType)?.stop();
 			await runtime.getService(EmbeddingGenerationService.serviceType)?.stop();
+			await runtime.getService(PiiScrubService.serviceType)?.stop();
 			await runtime.getService(EvaluatorService.serviceType)?.stop();
 			await runtime.getService(OptimizedPromptService.serviceType)?.stop();
 			await runtime.getService(ChannelTopicsService.serviceType)?.stop();

@@ -1268,3 +1268,55 @@ jobs:
             nohup bash -c 'timeout 30s rm -rf "$1" || true' _ "$stale_dir" >/dev/null 2>&1 &
             echo "Scheduled best-effort cleanup for ${stale_dir}."
           fi
+
+  # ---------------------------------------------------------------------------
+  # Post-deploy routing verification (regression guard for "staging pointing at
+  # prod CF"). After the Worker + both Pages projects deploy, probe the LIVE
+  # custom domains of the just-deployed environment and assert each is served by
+  # THAT environment -- not the other one leaking through the prod
+  # `*.elizacloud.ai/*` wildcard or a mis-mapped Pages custom domain. This does
+  # NOT gate the deploy (it already happened); it surfaces a misroute as a red
+  # check. The always-on scheduled monitor is .github/workflows/verify-cf-routing.yml.
+  # ---------------------------------------------------------------------------
+  verify-routing:
+    name: Verify ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }} routing
+    needs: [deploy-api, deploy-console, deploy-app]
+    # Custom domains only exist for the real environments -- PR previews deploy to
+    # a preview branch alias, so skip them. Require all three deploys to have
+    # landed (the beacon is served by the API Worker; the domains by the two Pages
+    # projects), else there is nothing trustworthy to probe.
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && needs.deploy-api.result == 'success' && needs.deploy-console.result == 'success' && needs.deploy-app.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+
+      - name: Resolve deployed environment
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.environment }}" = "production" ]; then
+            env=production
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            env=production
+          else
+            env=staging
+          fi
+          echo "environment=$env" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the just-deployed environment serves itself
+        # This run built AND deployed the beacon-carrying Worker for this env, so
+        # require the beacon: a beaconless answer means the deploy that was
+        # supposed to carry it did not take. A genuine cross-wire is always fatal.
+        run: |
+          node packages/scripts/cloud/verify-environment-routing-cli.mjs \
+            --environment "${{ steps.env.outputs.environment }}" \
+            --require-beacon

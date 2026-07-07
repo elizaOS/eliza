@@ -4,6 +4,11 @@
 export { AppBackground, type AppBackgroundProps } from "./AppBackground";
 export type { BackgroundHostProps } from "./BackgroundHost";
 export { BackgroundHost } from "./BackgroundHost";
+export {
+  applyRootCanvasPaint,
+  computeRootCanvasPaint,
+  type RootCanvasPaint,
+} from "./html-canvas-paint";
 export { ImageBackground, type ImageBackgroundProps } from "./ImageBackground";
 export {
   ProgrammableShaderBackground,

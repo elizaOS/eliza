@@ -95,12 +95,25 @@ interface StructuralFingerprint {
   hasNoProviderGate: boolean;
 }
 
+function normalizeChoiceTestId(id: string): string {
+  return id
+    .replace(
+      /^choice-shell-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(-(?:body|chevron))?$/i,
+      "choice-shell-<generated>$1",
+    )
+    .replace(
+      /^choice-shell-choice-[a-z0-9]+-[a-z0-9]+(-(?:body|chevron))?$/i,
+      "choice-shell-<generated>$1",
+    );
+}
+
 function fingerprint(root: HTMLElement): StructuralFingerprint {
   const choiceOptions = Array.from(
     root.querySelectorAll('[data-testid^="choice-"]'),
   )
     .map((el) => el.getAttribute("data-testid") ?? "")
     .filter((id) => id.startsWith("choice-") && !id.startsWith("choice-custom"))
+    .map(normalizeChoiceTestId)
     .sort();
   const codeBlocks = root.querySelectorAll('[data-testid="code-block"]');
   // Inline `` `code` `` spans lift to the inline code primitive (a distinct
@@ -196,10 +209,13 @@ const CORPUS: Array<{ name: string; message: ConversationMessage }> = [
     ),
   },
   {
+    name: "reasoning block (single text segment)",
+    message: assistant("You're free after 3pm.", {
+      reasoning: "I checked the calendar and the afternoon is open.",
+    }),
+  },
+  {
     name: "reasoning block (multi-segment)",
-    // Reasoning renders alongside rich segments on both surfaces; a code block
-    // makes the message multi-segment so MessageContent's reasoning branch (not
-    // its single-text fast path) runs — the apples-to-apples reasoning case.
     message: assistant("The answer is:\n```txt\n42\n```", {
       reasoning: "I considered several options and settled on 42.",
     }),
@@ -282,7 +298,7 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
 
 // ── PINNED divergences ──────────────────────────────────────────────────────
 //
-// The two surfaces DO legitimately diverge in three structural ways today. These
+// The two surfaces DO legitimately diverge in two structural ways today. These
 // are pinned (not "fixed" here) so each is a CONSCIOUS contract: the only way to
 // reconcile a surface is to flip the assertion in this file, never a silent edit
 // to one switch statement. Mirrors how parser-parity.contract.test.ts pins the
@@ -313,25 +329,7 @@ describe("chat render parity — PINNED divergences (intended/tracked) — #9954
     expect(overlayPrint.hasInlineCode).toBe(false);
   });
 
-  // (2) Reasoning on a single-text-segment reply. MessageContent's fast path
-  //     returns the plain body BEFORE its multi-segment branch that renders the
-  //     ThinkingBlock, so a plain reply WITH reasoning shows no Thinking
-  //     disclosure in ChatView. ThreadLine renders the ThinkingBlock for every
-  //     settled assistant turn with reasoning. (Latent ChatView drop — see the
-  //     test's FLAG; reconciling it would flip this pin to agreement.) When the
-  //     body is multi-segment, BOTH render it — that case is in the agreement
-  //     corpus ("reasoning + code"), so this pins ONLY the single-segment gap.
-  it("PIN: reasoning on a plain single-segment reply shows Thinking only in the overlay", () => {
-    const { viewPrint, overlayPrint } = renderBoth(
-      assistant("You're free after 3pm.", {
-        reasoning: "I checked the calendar and the afternoon is open.",
-      }),
-    );
-    expect(viewPrint.hasReasoning).toBe(false);
-    expect(overlayPrint.hasReasoning).toBe(true);
-  });
-
-  // (3) Secret request with a rich body + reasoning. MessageContent early-returns
+  // (2) Secret request with a rich body + reasoning. MessageContent early-returns
   //     ONLY the SensitiveRequestBlock — body code/widgets and reasoning are
   //     suppressed. ThreadLine co-renders the body (so a fenced block still shows
   //     a code block), the secret block, AND reasoning. Both emit exactly one

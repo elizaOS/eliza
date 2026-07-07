@@ -3,7 +3,7 @@
   "name": "Hedera",
   "description": "ElizaOS plugin for Hedera blockchain",
   "npmName": "@elizaos/plugin-hedera",
-  "source": "bundled",
+  "source": "store",
   "tags": ["hedera", "hedera-agent-kit", "llm"],
   "config": {
     "HEDERA_NETWORK": {

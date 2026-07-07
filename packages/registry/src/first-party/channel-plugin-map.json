@@ -7,7 +7,6 @@
   "feishu": "@elizaos/plugin-feishu",
   "googlechat": "@elizaos/plugin-google-chat",
   "imessage": "@elizaos/plugin-imessage",
-  "lens": "@elizaos/plugin-lens",
   "matrix": "@elizaos/plugin-matrix",
   "mattermost": "@elizaos/plugin-mattermost",
   "msteams": "@elizaos/plugin-msteams",

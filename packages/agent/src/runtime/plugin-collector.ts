@@ -275,7 +275,7 @@ function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
  * time like {@link CHANNEL_PLUGIN_MAP} / {@link PROVIDER_PLUGIN_MAP}). Each key
  * is a bare short id that `plugins.allow`, `plugins.entries`, or
  * `config.features` may carry; without an entry here collectPluginNames() would
- * fall through to loading the short id as a literal package name (`import("cua")`),
+ * fall through to loading the short id as a literal package name (`import("obsidian")`),
  * which silently fails inside the loader's error boundary. This is the shrinking
  * legacy tail — when one of these plugins adds a registry entry, move its aliases
  * into that entry's `shortIds` and delete the row here.
@@ -283,8 +283,6 @@ function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
 const LEGACY_HOST_OWNED_SHORT_ID_MAP: Readonly<Record<string, string>> = {
   // plugin-personal-assistant (no registry-entry.json yet).
   selfcontrol: "@elizaos/plugin-personal-assistant",
-  // plugin-cua (no registry-entry.json yet).
-  cua: "@elizaos/plugin-cua",
   // plugin-obsidian (no registry-entry.json yet).
   obsidian: "@elizaos/plugin-obsidian",
   // plugin-repoprompt (no registry-entry.json yet).
@@ -697,14 +695,6 @@ export function collectPluginNames(
   if (config.x402?.enabled) {
     pluginsToLoad.add("@elizaos/plugin-x402");
     track("@elizaos/plugin-x402", "config.x402.enabled");
-  }
-
-  // Opinion plugin — auto-load when API key is present.
-  // NOT in PROVIDER_PLUGIN_MAP because it is a feature plugin, not a model
-  // provider, and would be incorrectly removed during provider precedence.
-  if (process.env.OPINION_API_KEY?.trim()) {
-    pluginsToLoad.add("@elizaos/plugin-opinion");
-    track("@elizaos/plugin-opinion", "env: OPINION_API_KEY");
   }
 
   // These are plugins that were installed via the plugin-manager at runtime

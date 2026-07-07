@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Supports app-core build, packaging, or development orchestration for link docker local app packages mjs. */
+/** Links workspace packages into the prebuilt agent Docker image. */
 
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -46,11 +46,21 @@ const localPackages = [
   "eliza/plugins/plugin-personal-assistant",
   "eliza/plugins/plugin-task-coordinator",
   "eliza/plugins/plugin-training",
-  "eliza/plugins/plugin-shopify",
+  "eliza/plugins/plugin-edge-tts",
+  "eliza/plugins/plugin-agent-orchestrator",
+  "eliza/plugins/plugin-app-control",
+  "eliza/plugins/plugin-commands",
+  "eliza/packages/plugin-remote-manifest",
+  "eliza/packages/auth",
+  "eliza/packages/logger",
+  "eliza/packages/security",
   "eliza/packages/app-core",
   "eliza/packages/cloud/sdk",
   "eliza/packages/shared",
   "eliza/packages/skills",
+  // @elizaos/agent's cli imports @elizaos/tui for the bundled `tui` command;
+  // keep it linked so the command works inside the image.
+  "eliza/packages/tui",
   "eliza/packages/ui",
   "eliza/packages/vault",
   "eliza/plugins/plugin-agent-skills",
@@ -65,6 +75,7 @@ const localPackages = [
   "eliza/plugins/plugin-local-inference",
   "eliza/plugins/plugin-mcp",
   "eliza/plugins/plugin-pdf",
+  "eliza/plugins/plugin-registry",
   "eliza/plugins/plugin-signal",
   "eliza/plugins/plugin-streaming",
   "eliza/plugins/plugin-native-activity-tracker",

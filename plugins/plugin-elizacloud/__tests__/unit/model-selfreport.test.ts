@@ -109,11 +109,7 @@ describe("cloud-brained model self-report", () => {
     });
     registerTextInferenceModels(runtime);
 
-    const result = await runtimeModelContextProvider.get(
-      runtime,
-      selfModelQuestion(),
-      {} as never
-    );
+    const result = await runtimeModelContextProvider.get(runtime, selfModelQuestion(), {} as never);
 
     expect(result.text).toContain(`Response handler model: ${DEFAULT_ELIZA_CLOUD_TEXT_MODEL}`);
     expect(result.text).toContain(`Large text model: ${DEFAULT_ELIZA_CLOUD_LARGE_MODEL}`);
@@ -133,11 +129,7 @@ describe("cloud-brained model self-report", () => {
     });
     registerTextInferenceModels(runtime);
 
-    const result = await runtimeModelContextProvider.get(
-      runtime,
-      selfModelQuestion(),
-      {} as never
-    );
+    const result = await runtimeModelContextProvider.get(runtime, selfModelQuestion(), {} as never);
 
     // Response handler falls back to the small tier, planner to the large tier
     // — the same chains the handlers resolve per call.

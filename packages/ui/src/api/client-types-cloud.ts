@@ -100,6 +100,27 @@ export interface CloudCredits {
   topUpUrl?: string;
 }
 
+export interface CloudApiKeySummary {
+  id: string;
+  name: string;
+  keyPrefix: string | null;
+  createdAt: string | null;
+}
+
+/**
+ * Result of listing the org's Eliza Cloud API keys. `keys` is null — not an
+ * empty array — whenever the list could not be retrieved (signed out,
+ * session-only route rejected the credential, or no direct-cloud transport),
+ * so consumers can render a designed "manage in console" state instead of a
+ * false healthy-empty (`GET /api/v1/api-keys` requires a user session; an
+ * `eliza_` API key cannot list keys).
+ */
+export interface CloudApiKeys {
+  keys: CloudApiKeySummary[] | null;
+  manageUrl: string;
+  reason?: "not-connected" | "session-required";
+}
+
 export interface LocalAgentBackupMetadata {
   fileName: string;
   path: string;

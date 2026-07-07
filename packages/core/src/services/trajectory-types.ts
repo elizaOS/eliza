@@ -4,6 +4,8 @@
  * usage-totals, and cache-stats shapes; and the eliza-native export row and
  * format tag that the export helpers and training pipelines consume.
  */
+
+import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution";
 import type { JsonValue } from "../types/primitives.ts";
 
 // Re-export the canonical retrieval-funnel shapes from `trajectory-recorder`
@@ -125,6 +127,8 @@ export interface TrajectoryLlmCallRecord {
 	executionTraceId?: string;
 	createdAt?: string;
 	tokenUsageEstimated?: boolean;
+	providerOrder?: string[];
+	providerAttributions?: TrajectoryProviderAttribution[];
 }
 
 export interface TrajectoryProviderAccessRecord {
@@ -134,6 +138,11 @@ export interface TrajectoryProviderAccessRecord {
 	providerName?: string;
 	purpose?: string;
 	data?: Record<string, unknown>;
+	sha256?: string;
+	tokenCount?: number;
+	position?: number;
+	spanStart?: number;
+	spanEnd?: number;
 	query?: Record<string, unknown>;
 	timestamp?: number;
 	runId?: string;

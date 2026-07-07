@@ -289,8 +289,13 @@ export async function registerPluginViews(
   // entries first so deleted or renamed views do not survive the reload.
   unregisterPluginViews(plugin.name);
 
-  // Resolve plugin directory once for all views in this plugin.
-  const resolvedDir = pluginDir ?? (await resolvePluginPackageDir(plugin.name));
+  // Resolve plugin directory once for all views in this plugin. A plugin whose
+  // runtime `name` is not its npm package name (e.g. "elizaOSCloud" →
+  // @elizaos/plugin-elizacloud) declares `packageName` so resolution targets
+  // the real package instead of failing on name-derived candidates.
+  const resolvedDir =
+    pluginDir ??
+    (await resolvePluginPackageDir(plugin.packageName ?? plugin.name));
 
   const registered: ViewRegistryEntry[] = [];
   for (const view of views) {

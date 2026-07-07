@@ -51,6 +51,7 @@ import {
   registerScheduledTaskRunnerDeps,
   renderFailureDispatchResult,
   renderScheduledDispatchMessage,
+  renderScheduledDispatchTitle,
   type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
@@ -617,12 +618,17 @@ export function createProductionScheduledTaskDispatcher(opts: {
           });
           surfacesAccepted += 1;
         }
-        const isUrgent = record.intensity === "urgent";
         const notifier = getNotifier(opts.runtime);
         if (notifier) {
           try {
+            const title = await renderScheduledDispatchTitle(
+              opts.runtime,
+              record,
+              message,
+            );
+            const isUrgent = record.intensity === "urgent";
             await notifier.notify({
-              title: isUrgent ? "Approval needed" : "Reminder",
+              title,
               body: message,
               category: isUrgent ? "approval" : "reminder",
               priority: isUrgent ? "urgent" : "normal",
@@ -637,6 +643,13 @@ export function createProductionScheduledTaskDispatcher(opts: {
             });
             surfacesAccepted += 1;
           } catch (error) {
+            // error-policy:J4 explicit user-facing degrade — the assistant
+            // stream may still have accepted the same owner-facing message.
+            opts.runtime.reportError(
+              "lifeops:scheduled-task:notification-render",
+              error,
+              { taskId: record.taskId, channelKey: record.channelKey },
+            );
             logger.warn(
               { src: "lifeops:scheduled-task", error },
               "Notification emit failed",

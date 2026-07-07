@@ -94,6 +94,8 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudAccount.title",
     defaultTitle: "Account & Profile",
     order: 0,
+    // Hidden for MVP — the single "Eliza Cloud" tab is the one Cloud surface.
+    developerOnly: true,
     Component: CloudAccountSection,
   });
 
@@ -108,6 +110,8 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudBilling.title",
     defaultTitle: "Billing & Credits",
     order: 1,
+    // Hidden for MVP — the single "Eliza Cloud" tab is the one Cloud surface.
+    developerOnly: true,
     Component: CloudBillingSection,
   });
 
@@ -167,6 +171,8 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudOrganization.title",
     defaultTitle: "Organization",
     order: 2,
+    // Hidden for MVP — the single "Eliza Cloud" tab is the one Cloud surface.
+    developerOnly: true,
     Component: CloudOrganizationSection,
   });
 
@@ -185,6 +191,8 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudSecurity.title",
     defaultTitle: "Sessions, Privacy & Audit",
     order: 100,
+    // Hidden for MVP (kept registered so the deep-link still resolves).
+    developerOnly: true,
     Component: CloudSecuritySection,
   });
 
@@ -199,6 +207,8 @@ export function registerCloudSettingsSections(): void {
     titleKey: "settings.sections.cloudPluginGrants.title",
     defaultTitle: "Plugin Grants",
     order: 101,
+    // Hidden for MVP (kept registered so the deep-link still resolves).
+    developerOnly: true,
     Component: CloudPluginGrantsSection,
   });
 

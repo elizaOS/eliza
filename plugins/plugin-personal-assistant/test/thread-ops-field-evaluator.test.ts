@@ -134,6 +134,12 @@ describe("threadOpsFieldEvaluator", () => {
       expect(threadOpsFieldEvaluator.description).toContain("abort");
       expect(threadOpsFieldEvaluator.description).toContain("steer");
       expect(threadOpsFieldEvaluator.description).toContain("merge");
+      expect(threadOpsFieldEvaluator.description).toContain(
+        'goals ("I want a goal", "my goal is", "count it if", "track this goal")',
+      );
+      expect(threadOpsFieldEvaluator.description).toContain(
+        "route through their OWNER_* actions instead of threadOps",
+      );
     });
 
     it("declares a strict-mode schema with all op types including abort", () => {

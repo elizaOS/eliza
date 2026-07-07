@@ -709,10 +709,50 @@ describe("MessageContent sensitive requests", () => {
     document.removeEventListener(CONNECT_EVENT, onConnect);
   });
 
-  it("surfaces a clear error when the OAuth popup is blocked", () => {
+  it("degrades a blocked OAuth popup to same-tab navigation on plain web (#15143)", () => {
     const openMock = vi.fn().mockReturnValue(null);
     const originalOpen = window.open;
     window.open = openMock as typeof window.open;
+    const assignSpy = vi.fn();
+    const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+      window,
+      "location",
+    );
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, assign: assignSpy },
+    });
+
+    const { container } = render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingOAuthRequest() })}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
+    // Mobile/plain-web browsers block windowed popups by default; instead of
+    // the dead-end "allow pop-ups" instruction, the current tab navigates to
+    // the (https-validated) consent URL.
+    expect(assignSpy).toHaveBeenCalledWith(
+      "https://example.test/oauth/authorize?state=abc",
+    );
+    expect(container.textContent).not.toContain("Pop-up blocked");
+    // No fallback message-stream emission on popup block.
+    expect(updateSecretsMock).not.toHaveBeenCalled();
+
+    window.open = originalOpen;
+    if (originalLocationDescriptor) {
+      Object.defineProperty(window, "location", originalLocationDescriptor);
+    }
+  });
+
+  it("keeps the visible popup-blocked error where same-tab navigation is unavailable (desktop shell)", () => {
+    const openMock = vi.fn().mockReturnValue(null);
+    const originalOpen = window.open;
+    window.open = openMock as typeof window.open;
+    const windowWithElectrobun = window as Window & {
+      __electrobunWindowId?: number;
+    };
+    windowWithElectrobun.__electrobunWindowId = 1;
 
     const { container } = render(
       <MessageContent
@@ -721,10 +761,10 @@ describe("MessageContent sensitive requests", () => {
     );
     fireEvent.click(screen.getByTestId("sensitive-request-oauth-start"));
     expect(container.textContent).toContain("Pop-up blocked");
-    // No fallback message-stream emission on popup block.
     expect(updateSecretsMock).not.toHaveBeenCalled();
 
     window.open = originalOpen;
+    delete windowWithElectrobun.__electrobunWindowId;
   });
 });
 

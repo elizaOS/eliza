@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FirstRunOptions } from "../api";
+import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
 import { clearPersistedActiveServer } from "./persistence";
 import {
   isRecoverableRemoteBase,
@@ -29,8 +30,30 @@ const cloudMock = vi.hoisted(() => ({
   getCloudAuthToken: vi.fn(() => null as string | null),
 }));
 
+const androidBootStateMock = vi.hoisted(() => ({
+  getAndroidLocalAgentBootStateForUrl: vi.fn(
+    async (): Promise<{
+      state: "unknown" | "booting" | "dead" | "listening" | "restarting";
+      reason?: string;
+      ageMs?: number;
+    }> => ({
+      state: "unknown",
+    }),
+  ),
+  requestAndroidLocalAgentStartForUrl: vi.fn(
+    async (_url: string | null | undefined) => false,
+  ),
+}));
+
 vi.mock("../api", () => ({
   client: clientMock,
+}));
+
+vi.mock("../api/android-native-agent-transport", () => ({
+  getAndroidLocalAgentBootStateForUrl:
+    androidBootStateMock.getAndroidLocalAgentBootStateForUrl,
+  requestAndroidLocalAgentStartForUrl:
+    androidBootStateMock.requestAndroidLocalAgentStartForUrl,
 }));
 
 vi.mock("../api/client-cloud", () => ({
@@ -127,6 +150,12 @@ beforeEach(() => {
   });
   clientMock.hasToken.mockReturnValue(false);
   clientMock.getBaseUrl.mockReturnValue("");
+  androidBootStateMock.getAndroidLocalAgentBootStateForUrl.mockResolvedValue({
+    state: "unknown",
+  });
+  androidBootStateMock.requestAndroidLocalAgentStartForUrl.mockResolvedValue(
+    false,
+  );
   cloudMock.getCloudAuthToken.mockReturnValue(null);
 });
 
@@ -237,6 +266,78 @@ describe("runPollingBackend", () => {
       firstRunComplete: false,
     });
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+  });
+
+  it("requests a native local-agent start on every poll iteration for the polled base", async () => {
+    // #15189: on a fresh install the native auto-start gate ran before the
+    // renderer pre-seeded the local target, so the agent the poll waits for
+    // was never asked to start. The poll must fire the start request for the
+    // base it polls on EVERY iteration — one request can be lost to a service
+    // teardown race or a child death, and native start is idempotent, so
+    // re-asking each retry is what makes the revive self-healing.
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    const ipcBase = ANDROID_LOCAL_AGENT_IPC_BASE;
+    clientMock.getBaseUrl.mockReturnValue(ipcBase);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus
+      .mockRejectedValueOnce(
+        Object.assign(new Error("socket not accepting"), {
+          kind: "network",
+          path: "/api/auth/status",
+        }),
+      )
+      .mockResolvedValue({
+        required: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      });
+
+    const localServer = {
+      id: "android:local-agent",
+      kind: "remote" as const,
+      label: "On-device agent",
+      apiBase: ipcBase,
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: localServer,
+      restoredActiveServer: localServer,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: false,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    // Two iterations ran (one rejected probe, one success) → two requests,
+    // both for the polled base. The per-iteration re-ask is deliberate: it is
+    // what revives the agent when an earlier request was lost.
+    expect(
+      androidBootStateMock.requestAndroidLocalAgentStartForUrl,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      androidBootStateMock.requestAndroidLocalAgentStartForUrl.mock.calls.map(
+        (call) => call[0],
+      ),
+    ).toEqual([ipcBase, ipcBase]);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
   });
 
   it("routes a DEV-UI-shell (port 2138) same-origin proxy outage to offline first-run instead of waiting for timeout", async () => {
@@ -1384,6 +1485,86 @@ describe("runPollingBackend bounded native boot (#11030)", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 
+  it("keeps Android cold boots in progress when native boot-state says booting", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getBaseUrl.mockReturnValue(mobileLocalServer.apiBase);
+    androidBootStateMock.getAndroidLocalAgentBootStateForUrl.mockResolvedValue({
+      state: "booting",
+      reason: "launcher is still within boot grace",
+    });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Local agent request failed"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        ...nativePolicy,
+        backendTimeoutMs: 600,
+        nativeConsecutiveFailureBudgetMs: 150,
+      },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(
+      androidBootStateMock.getAndroidLocalAgentBootStateForUrl,
+    ).toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("consecutive failures"),
+      }),
+    );
+  });
+
+  it("burns the Android native failure budget when boot-state says dead", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    installNativeWindow();
+    clientMock.getBaseUrl.mockReturnValue(mobileLocalServer.apiBase);
+    androidBootStateMock.getAndroidLocalAgentBootStateForUrl.mockResolvedValue({
+      state: "dead",
+      reason: "agent exited: exit 127",
+    });
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Local agent request failed"), {
+        kind: "network",
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      { ...nativePolicy, nativeConsecutiveFailureBudgetMs: 150 },
+      nativeCtx(),
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
+    expect(deps.setStartupError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "backend-timeout",
+        message: expect.stringContaining("consecutive failures"),
+      }),
+    );
+  });
+
   it("bounds the native boot: consecutive failures past the native budget surface the last failure", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
@@ -2024,7 +2205,12 @@ describe("runPollingBackend progress-aware native budget + dead-cloud recovery (
         },
         {
           persistedActiveServer: null,
-          restoredActiveServer: null,
+          restoredActiveServer: {
+            id: "local:desktop",
+            kind: "local",
+            label: "Local agent",
+            apiBase: "http://127.0.0.1:34137",
+          },
           shouldPreserveCompletedFirstRun: false,
           hadPriorFirstRun: false,
         },

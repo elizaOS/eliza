@@ -165,7 +165,5 @@ export interface MeetingPipelineOptions {
   /** Retain raw session audio for the transcript record's audio player. */
   retainAudio: boolean;
   billing?: MeetingBillingSession;
-  onSpendCapReached?: (
-    error: Error & { code: "insufficient_credits" },
-  ) => void;
+  onSpendCapReached?: (error: Error & { code: "insufficient_credits" }) => void;
 }

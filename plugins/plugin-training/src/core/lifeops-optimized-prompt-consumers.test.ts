@@ -23,6 +23,8 @@ const EXPECTED_CONSUMERS = {
   morning_brief: "plugins/plugin-personal-assistant/src/actions/brief.ts",
   health_checkin: "plugins/plugin-health/src/actions/health.ts",
   screentime_recap: "plugins/plugin-health/src/actions/screen-time.ts",
+  creative_draft:
+    "plugins/plugin-personal-assistant/src/lifeops/creative-draft/index.ts",
 } as const;
 
 function resolverSnippetFor(source: string, task: string): string | null {

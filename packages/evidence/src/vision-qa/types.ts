@@ -9,8 +9,13 @@
  * qa.json writer, and CLI all agree on; widen additively.
  */
 
-/** Vision backend selector. `local` is `openai-compatible` at a swapped base URL. */
-export type VisionBackend = "anthropic" | "openai" | "local";
+/**
+ * Vision backend selector. `local` is `openai-compatible` at a swapped base
+ * URL; `cli` shells out to an already-authenticated coding-agent CLI (Claude
+ * Code or Codex) that views the screenshot and answers — the escape hatch for
+ * environments that have an authed CLI but no API key or local server.
+ */
+export type VisionBackend = "anthropic" | "openai" | "local" | "cli";
 
 /**
  * One question about an image. `expected` is an OPTIONAL reviewer assertion:

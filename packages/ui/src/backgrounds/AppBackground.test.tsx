@@ -42,42 +42,31 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
-  it("extends the shader wallpaper past the collapsed-ICB bottom via the JS-MEASURED reclaim var (standalone PWA)", () => {
-    // BOTTOM-BAR ROOT CAUSE (device r6): the wallpaper is `fixed inset-0`, so
-    // its `bottom: 0` anchors to the fixed-descendant initial containing block.
-    // On the installed iOS standalone PWA that ICB COLLAPSES to the small/layout
-    // viewport (~59px short of the true bottom), so the wallpaper stops ABOVE
-    // the home-indicator zone and the dimmed launch-bg shows through as the
-    // near-black strip. The OLD `-1 * max(0px, 100lvh - 100dvh)` CSS-unit calc
-    // was a NO-OP on device (the collapsed ICB resolves lvh === dvh), which is
-    // why the strip survived 5 fixes. The reclaim now references the
-    // JS-MEASURED `--standalone-bottom-reclaim` var so it reflects the ACTUAL
-    // device gap. No-op everywhere the two viewports agree (var = 0).
+  it("renders wallpaper layers as full-bleed `fixed inset-0` with no bottom-reclaim override", () => {
+    // The wallpaper is `fixed inset-0`; with the mobile/PWA body scroll-locked
+    // WITHOUT `position: fixed` (styles/base.css), a fixed layer's containing
+    // block is the true viewport, so `inset-0` reaches the physical screen
+    // bottom on its own — no measured bottom offset.
     seed({ mode: "shader", color: "#ef5a1f" });
     const { container } = render(<AppBackground />);
     const shader = container.querySelector<HTMLElement>(
       '[data-testid="app-background-shader"]',
     );
-    // jsdom's CSS parser preserves var()/calc() literally; assert the reclaim
-    // references the MEASURED var, not the useless lvh/dvh CSS-unit delta.
-    const bottom = shader?.style.bottom ?? "";
-    expect(bottom).toContain("calc");
-    expect(bottom).toContain("--standalone-bottom-reclaim");
-    expect(bottom).not.toContain("100dvh");
-    expect(bottom).not.toContain("100lvh");
+    expect(shader?.className).toContain("fixed");
+    expect(shader?.className).toContain("inset-0");
+    // No inline bottom override, and specifically no reclaim var.
+    expect(shader?.style.bottom ?? "").toBe("");
   });
 
-  it("extends the image wallpaper past the collapsed-ICB bottom via the JS-MEASURED reclaim var (standalone PWA)", () => {
+  it("renders the image wallpaper as full-bleed `fixed inset-0` with no bottom-reclaim override", () => {
     seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
     const { container } = render(<AppBackground />);
     const image = container.querySelector<HTMLElement>(
       '[data-testid="app-background-image"]',
     );
-    const bottom = image?.style.bottom ?? "";
-    expect(bottom).toContain("calc");
-    expect(bottom).toContain("--standalone-bottom-reclaim");
-    expect(bottom).not.toContain("100dvh");
-    expect(bottom).not.toContain("100lvh");
+    expect(image?.className).toContain("fixed");
+    expect(image?.className).toContain("inset-0");
+    expect(image?.style.bottom ?? "").toBe("");
   });
 
   it("renders a cover image when configured for image mode", () => {
@@ -109,14 +98,12 @@ describe("AppBackground", () => {
     expect(scrim?.className).toContain("bg-bg/50");
   });
 
-  it("does NOT reintroduce the cosmetic warm bottom-floor gradient (measured reclaim makes the wallpaper own the true bottom)", () => {
+  it("does NOT reintroduce the cosmetic warm bottom-floor gradient", () => {
     // The cosmetic warm-ember floor lift existed ONLY to disguise the launch-bg
-    // band that showed when the wallpaper stopped ~59px short under the useless
-    // CSS-unit reclaim. With the JS-MEASURED reclaim the wallpaper's own pixels
-    // reach the true physical bottom, so the cosmetic strip is dead weight and
-    // must NOT return (it re-tinted the home-indicator zone a warm brown — the
-    // recurring "bottom bar" in disguise). Only the legibility scrim remains
-    // inside the single image layer.
+    // band that showed when fixed app boxes stopped short of the drawable
+    // screen. The wallpaper plus root-canvas mirror own the edge now, so the
+    // cosmetic strip is dead weight and must NOT return. Only the legibility
+    // scrim remains inside the single image layer.
     seed({ mode: "image", color: "#000000", imageUrl: "/api/media/x.png" });
     const { container } = render(<AppBackground />);
     expect(
@@ -179,5 +166,34 @@ describe("AppBackground", () => {
     expect(
       container.querySelector('[data-testid="app-background-image"]'),
     ).toBeNull();
+  });
+
+  it("mirrors an image background onto the ROOT canvas so the strip shows the wallpaper, not #160d07", () => {
+    // The canvas-propagation cure (device r8): the ROOT element's background
+    // paints the always-full-screen viewport canvas, immune to the collapsed
+    // fixed-body ICB. Mounting AppBackground with an image config must mirror
+    // that image onto documentElement so the bottom strip paints the wallpaper.
+    document.documentElement.style.backgroundImage = "";
+    seed({ mode: "image", color: "#160d07", imageUrl: "/bg-sunset.webp" });
+    render(<AppBackground />);
+    const bg = document.documentElement.style.backgroundImage;
+    expect(bg).toContain("bg-sunset.webp");
+    expect(document.documentElement.style.backgroundSize).toBe("cover");
+    expect(document.documentElement.style.backgroundPosition).toBe(
+      "center bottom",
+    );
+    document.documentElement.style.backgroundImage = "";
+  });
+
+  it("mirrors a shader field's base color onto the ROOT canvas (no image) so the strip matches the field", () => {
+    document.documentElement.style.backgroundImage = "";
+    seed({ mode: "shader", color: "#3a1f0d" });
+    render(<AppBackground />);
+    // No static image for a shader field (it's a WebGL canvas in a box); the
+    // canvas gets the base color so the strip is the field's tone, not #160d07.
+    expect(document.documentElement.style.backgroundImage).toBe("");
+    expect(document.documentElement.style.backgroundColor).toBe(
+      "rgb(58, 31, 13)",
+    );
   });
 });

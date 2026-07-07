@@ -1159,7 +1159,6 @@
   "cloud.billing.loading": "Cargando facturación",
   "cloud.billing.metaDescription": "Añade fondos y gestiona tu facturación",
   "cloud.billing.metaTitle": "Facturación",
-  "cloud.billing.noOrganization": "No hay organización asociada a esta cuenta",
   "cloud.billing.pageTitle": "Facturación",
   "cloud.billing.paymentCanceled": "Pago cancelado. No se cobró nada.",
   "cloud.billing.success.backToBilling": "Volver a Facturación",

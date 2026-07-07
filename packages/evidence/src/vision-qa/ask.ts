@@ -14,8 +14,13 @@
  */
 
 import { EvidenceError } from "../errors.ts";
-import { parseAnswers, RETRY_CORRECTION } from "./backends.ts";
+import {
+  type BackendResponse,
+  parseAnswers,
+  RETRY_CORRECTION,
+} from "./backends.ts";
 import { queryHash, readCache, writeCache } from "./cache.ts";
+import { CliVisionBackend } from "./cli-backend.ts";
 import { createBackendClient, resolveBackend } from "./config.ts";
 import { DEFAULT_MAX_EDGE, prepareImage } from "./image.ts";
 import type {
@@ -146,15 +151,25 @@ export async function askAboutImage(
   for (let attempt = 0; attempt < 2 && answers === null; attempt += 1) {
     const correction = attempt === 0 ? null : RETRY_CORRECTION;
     if (attempt > 0) retries += 1;
-    const request = client.buildRequest(image, questions, correction);
-    const responseBody = await postJson(
-      fetchImpl,
-      request.url,
-      request.headers,
-      request.body,
-      timeoutMs,
-    );
-    const extracted = client.extractResponse(responseBody);
+    // The CLI backend drives a subprocess, not a request; every other backend
+    // shares the fetch → extract path. Both yield the same BackendResponse, so
+    // the retry loop and usage accounting below are backend-agnostic.
+    let extracted: BackendResponse;
+    if (client instanceof CliVisionBackend) {
+      extracted = await client.invoke(image, questions, correction, {
+        timeoutMs,
+      });
+    } else {
+      const request = client.buildRequest(image, questions, correction);
+      const responseBody = await postJson(
+        fetchImpl,
+        request.url,
+        request.headers,
+        request.body,
+        timeoutMs,
+      );
+      extracted = client.extractResponse(responseBody);
+    }
     usage.inputTokens += extracted.usage.inputTokens;
     usage.outputTokens += extracted.usage.outputTokens;
     try {

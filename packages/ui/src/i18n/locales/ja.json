@@ -1159,7 +1159,6 @@
   "cloud.billing.loading": "お支払い情報を読み込み中",
   "cloud.billing.metaDescription": "資金を追加し、お支払いを管理",
   "cloud.billing.metaTitle": "お支払い",
-  "cloud.billing.noOrganization": "このアカウントに関連付けられた組織がありません",
   "cloud.billing.pageTitle": "お支払い",
   "cloud.billing.paymentCanceled": "お支払いがキャンセルされました。請求はされていません。",
   "cloud.billing.success.backToBilling": "お支払いに戻る",

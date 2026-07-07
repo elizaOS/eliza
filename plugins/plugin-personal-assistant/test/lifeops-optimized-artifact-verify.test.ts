@@ -37,6 +37,12 @@ import {
 import { afterAll, describe, expect, it } from "vitest";
 import { buildNarrativePrompt } from "../src/actions/brief.js";
 import {
+  buildCreativeDraftPrompt,
+  buildOwnerVoiceStyleCard,
+  CREATIVE_DRAFT_INSTRUCTIONS,
+  createCreativeDraftArtifact,
+} from "../src/lifeops/creative-draft/index.js";
+import {
   BRIEF_NARRATIVE_INSTRUCTIONS,
   MEETING_PREP_INSTRUCTIONS,
   REMINDER_DISPATCH_INSTRUCTIONS,
@@ -48,6 +54,7 @@ const VERIFIABLE_TASKS = [
   "meeting_prep",
   "morning_brief",
   "screentime_recap",
+  "creative_draft",
 ] as const satisfies readonly OptimizedPromptTask[];
 type VerifiableTask = (typeof VERIFIABLE_TASKS)[number];
 
@@ -56,6 +63,7 @@ const BASELINE_BY_TASK: Record<VerifiableTask, string> = {
   meeting_prep: MEETING_PREP_INSTRUCTIONS,
   morning_brief: BRIEF_NARRATIVE_INSTRUCTIONS,
   screentime_recap: SCREENTIME_RECAP_INSTRUCTIONS,
+  creative_draft: CREATIVE_DRAFT_INSTRUCTIONS,
 };
 
 /**
@@ -136,6 +144,40 @@ function renderScenario(task: VerifiableTask, runtime: IAgentRuntime): string {
       });
     case "screentime_recap":
       return buildScreenTimeRecapRules(runtime).join("\n");
+    case "creative_draft": {
+      const styleCard = buildOwnerVoiceStyleCard([
+        {
+          id: "essay-1",
+          source: "essay",
+          text: "Look, I think the point is to say the hard thing plainly.",
+        },
+      ]);
+      const request = {
+        title: "Honest Strategy Essay",
+        targetForm: "essay" as const,
+        ownerAsk: "Turn these memos into an essay in my voice.",
+      };
+      const memos = [
+        {
+          id: "memo-1",
+          transcript: "The team wasted six months calling drift a strategy.",
+          affect: "angry" as const,
+        },
+      ];
+      const draft = createCreativeDraftArtifact({
+        request,
+        memos,
+        styleCard,
+        nowIso: "2026-07-06T10:10:00.000Z",
+      });
+      return buildCreativeDraftPrompt({
+        request,
+        memos,
+        styleCard,
+        currentDraft: draft,
+        runtime,
+      });
+    }
   }
 }
 
@@ -161,6 +203,8 @@ const SYNTHETIC_PROMPT: Record<VerifiableTask, string> = {
     "SYNTHETIC-OPTIMIZED morning brief: compress the schedule into two sentences.",
   screentime_recap:
     'SYNTHETIC-OPTIMIZED screen-time recap: return {"recap":"...","topApps":[],"suggestion":"..."} JSON.',
+  creative_draft:
+    "SYNTHETIC-OPTIMIZED owner-voice draft: keep each memo's affect and sound like the owner on a good day.",
 };
 
 function syntheticArtifact(task: VerifiableTask): OptimizedPromptArtifact {

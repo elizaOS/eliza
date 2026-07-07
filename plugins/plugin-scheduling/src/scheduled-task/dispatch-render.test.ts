@@ -9,14 +9,17 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   buildScheduledDispatchRenderPrompt,
+  buildScheduledDispatchTitlePrompt,
   RENDER_FAILURE_RETRY_MINUTES,
   renderScheduledDispatchMessage,
+  renderScheduledDispatchTitle,
 } from "./dispatch-render.js";
 import { ScheduledTaskRunnerService } from "./runner-service.js";
 
 const INSTRUCTION =
   "Remind the owner to take their medication and ask how they slept.";
 const RENDERED = "Time for your medication — and how did you sleep last night?";
+const RENDERED_TITLE = "Medication and sleep check";
 
 interface NotifyCapture {
   title?: string;
@@ -114,11 +117,52 @@ describe("renderScheduledDispatchMessage", () => {
   });
 });
 
+describe("renderScheduledDispatchTitle", () => {
+  it("returns a model-rendered title from the owner-facing body", async () => {
+    const { runtime, modelPrompts } = makeRuntime({
+      model: () => RENDERED_TITLE,
+    });
+    const title = await renderScheduledDispatchTitle(
+      runtime,
+      {
+        taskId: "st_title",
+        firedAtIso: "2026-07-05T09:00:00.000Z",
+        channelKey: "in_app",
+        promptInstructions: INSTRUCTION,
+        contextRequest: undefined,
+      },
+      RENDERED,
+    );
+
+    expect(title).toBe(RENDERED_TITLE);
+    expect(modelPrompts).toHaveLength(1);
+    expect(modelPrompts[0]).toContain(RENDERED);
+    expect(modelPrompts[0]).not.toContain(INSTRUCTION);
+  });
+
+  it("throws on blank title output", async () => {
+    await expect(
+      renderScheduledDispatchTitle(
+        makeRuntime({ model: () => "  \n" }).runtime,
+        {
+          taskId: "st_title_blank",
+          firedAtIso: "2026-07-05T09:00:00.000Z",
+          channelKey: "in_app",
+          promptInstructions: INSTRUCTION,
+          contextRequest: undefined,
+        },
+        RENDERED,
+      ),
+    ).rejects.toMatchObject({ code: "SCHEDULED_DISPATCH_TITLE_RENDER_EMPTY" });
+  });
+});
+
 describe("default scheduled-task dispatcher (no injected deps)", () => {
-  it("notifies with the model-rendered body, never the raw instruction", async () => {
+  it("notifies with model-rendered body and title, never raw or generic copy", async () => {
     const notified: NotifyCapture[] = [];
     const { runtime, modelPrompts } = makeRuntime({
-      model: () => RENDERED,
+      model: ({ prompt }) =>
+        prompt.includes("notification title") ? RENDERED_TITLE : RENDERED,
       notified,
     });
     const service = await ScheduledTaskRunnerService.start(runtime);
@@ -128,9 +172,13 @@ describe("default scheduled-task dispatcher (no injected deps)", () => {
     const fired = await runner.fire(task.taskId);
 
     expect(fired.state.status).toBe("fired");
-    expect(modelPrompts).toHaveLength(1);
+    expect(modelPrompts).toHaveLength(2);
     expect(modelPrompts[0]).toContain(INSTRUCTION);
+    expect(modelPrompts[1]).toContain(RENDERED);
     expect(notified).toHaveLength(1);
+    expect(notified[0]?.title).toBe(RENDERED_TITLE);
+    expect(notified[0]?.title).not.toBe("Reminder");
+    expect(notified[0]?.title).not.toBe("Approval needed");
     expect(notified[0]?.body).toBe(RENDERED);
     expect(notified[0]?.body).not.toContain("Remind the owner to take");
   });
@@ -183,5 +231,26 @@ describe("buildScheduledDispatchRenderPrompt", () => {
     expect(
       buildScheduledDispatchRenderPrompt({ ...base, intensity: "soft" }),
     ).toContain("gentle");
+  });
+});
+
+describe("buildScheduledDispatchTitlePrompt", () => {
+  it("uses the rendered body as title context and structural urgency framing", () => {
+    const normal = buildScheduledDispatchTitlePrompt(
+      {
+        intensity: "normal",
+        firedAtIso: "2026-07-05T09:00:00.000Z",
+      },
+      RENDERED,
+    );
+    expect(normal).toContain(RENDERED);
+    expect(normal).toContain("under 8 words");
+    expect(normal).not.toContain(INSTRUCTION);
+    expect(
+      buildScheduledDispatchTitlePrompt(
+        { intensity: "urgent", firedAtIso: "2026-07-05T09:00:00.000Z" },
+        RENDERED,
+      ),
+    ).toContain("urgent");
   });
 });
