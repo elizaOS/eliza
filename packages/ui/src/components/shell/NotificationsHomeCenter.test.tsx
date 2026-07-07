@@ -439,12 +439,14 @@ describe("NotificationsHomeCenter", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("caps rendering at 100 rows when the shade is expanded", () => {
+  it("caps rendering at 100 rows when the shade + stack are expanded", () => {
     for (let i = 0; i < 120; i++) {
       __ingestNotificationForTests(makeNotification({ priority: "high" }));
     }
     render(<NotificationsHomeCenter />);
     fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    // Stacks persist through the shade toggle; fan the group to see its rows.
+    fireEvent.click(screen.getByTestId("notification-group-label"));
     expect(screen.getAllByTestId("notification-row")).toHaveLength(100);
   });
 
@@ -457,6 +459,7 @@ describe("NotificationsHomeCenter", () => {
     );
     render(<NotificationsHomeCenter />);
     fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    fireEvent.click(screen.getByTestId("notification-group-label"));
     // A notification is its glass card - no leading edge highlight even for
     // urgent rows, no per-row icon chip.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
@@ -511,7 +514,9 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(peeks).toHaveLength(2);
     for (const peek of peeks) {
       expect(peek.className).toContain("eliza-notif-glass");
-      expect(peek.getAttribute("aria-hidden")).toBe("true");
+      // Peeks are TAPPABLE (tap fans the stack) and blur with depth.
+      expect(peek.tagName).toBe("BUTTON");
+      expect(peek.style.filter).toContain("blur(");
       expect(peek.style.transform).toMatch(/translateY\(\d+px\) scale\(0\.9/);
     }
     // Deeper cards sit lower in Z and protrude further.
@@ -545,7 +550,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
   });
 
-  it("expanding the shade fans every stack out flat", () => {
+  it("expanding the shade keeps the stacks; tapping a peek fans the group in place", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "A", priority: "high" }),
     );
@@ -557,7 +562,12 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     );
     render(<NotificationsHomeCenter />);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    // The shade toggle reveals more GROUPS but never flattens a stack.
     fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getByTestId("notification-stack")).toBeTruthy();
+    // Tapping the peeked card below the top one fans the stack out.
+    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     expect(screen.queryByTestId("notification-stack")).toBeNull();
     expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
@@ -566,6 +576,10 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       .getAllByTestId("notification-row")
       .map((el) => el.textContent ?? "");
     expect(titles[0]).toContain("C");
+    // The eyebrow folds it back into the stack.
+    fireEvent.click(screen.getByTestId("notification-group-label"));
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getByTestId("notification-stack")).toBeTruthy();
   });
 
   it("swiping away the top card surfaces the next card in the stack", () => {
@@ -680,10 +694,14 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    // All three priorities are now represented — still stacked (1 top card +
+    // 2 tappable peeks); the shade toggle reveals groups, never flattens them.
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
     fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
   });
 
   it("a mouse pull-down past the commit travel expands the shade", () => {
@@ -710,7 +728,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientY: 140,
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    // Stacks persist through the pull; the peeks carry the revealed rows.
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
   });
 
   it("a short pull springs back without toggling", () => {
@@ -752,7 +772,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
     fireEvent.touchEnd(list, { touches: [] });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    // Stacks persist through the pull; the peeks carry the revealed rows.
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
   });
 
   it("a continuous drag that scrolls the expanded list back to the top does NOT collapse (re-base at the crossing)", () => {

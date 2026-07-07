@@ -163,9 +163,12 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    // Fan the shade out so all 30 rows paint flat (rested stacks would hide
-    // same-category rows behind their group's top card).
+    // Fan the shade AND the group's stack out so all 30 rows paint flat
+    // (stacks persist through the shade toggle now).
     fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    for (const label of screen.getAllByTestId("notification-group-label")) {
+      if (!(label as HTMLButtonElement).disabled) fireEvent.click(label);
+    }
     expect(screen.getAllByTestId("notification-row")).toHaveLength(30);
     expect(rowRenders).toBeGreaterThanOrEqual(30);
 
