@@ -5100,6 +5100,7 @@ export class ElizaSandboxService {
             image_digest = ${toDigest},
             previous_image_digest = ${fromDigest},
             previous_docker_image = ${current.docker_image ?? dockerImage},
+            error_message = NULL,
             last_heartbeat_at = NOW(),
             updated_at = NOW()
           WHERE id = ${agentId}

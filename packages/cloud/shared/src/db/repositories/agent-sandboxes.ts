@@ -358,11 +358,13 @@ export class AgentSandboxesRepository {
   }
 
   /**
-   * Find running, non-deleted agents whose stored `image_digest` differs
-   * from `targetDigest` (treating NULL as different). Used by the
-   * fleet-upgrade reconciler to enqueue blue/green swaps onto the
-   * currently-deployed image. Capped by `limit` so a single cycle doesn't
-   * try to enqueue the whole fleet at once.
+   * Find running, non-deleted agents whose stored `image_digest` differs from
+   * `targetDigest` (treating NULL as different). Used by the fleet-upgrade
+   * reconciler to enqueue blue/green swaps onto the currently-deployed image.
+   * Rows with an explicit `error_message` are skipped because an exhausted
+   * upgrade records its terminal retry state there without marking the still-live
+   * sandbox non-running. Capped by `limit` so a single cycle doesn't try to
+   * enqueue the whole fleet at once.
    */
   async listRunningWithDigestOtherThan(
     targetDigest: string,
@@ -391,6 +393,7 @@ export class AgentSandboxesRepository {
           eq(agentSandboxes.status, "running"),
           sql`${agentSandboxes.deleted_at} IS NULL`,
           sql`${agentSandboxes.image_digest} IS DISTINCT FROM ${targetDigest}`,
+          sql`${agentSandboxes.error_message} IS NULL`,
           // Only reconcile agents on the configured default image. Per-agent
           // image overrides are intentional and must not be rolled onto the
           // global fleet tag. Match on the REPO, not the full ref: a fleet agent

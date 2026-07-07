@@ -210,9 +210,10 @@ describe("AgentSandboxesRepository", () => {
       throw new Error("listRunningWithDigestOtherThan did not build a where clause");
     const sql = new PgDialect().sqlToQuery(capturedWhere).sql.toLowerCase();
     // Only running, non-deleted, default-image, non-pool rows on a stale digest
-    // are upgrade candidates...
+    // with no explicit failure marker are upgrade candidates...
     expect(sql).toContain("status");
     expect(sql).toContain("is distinct from");
+    expect(sql).toContain("error_message");
     expect(sql).toContain("pool_status");
     // ...AND they must actually have a fleet container. Shared-runtime / web-only
     // agents are "running" through the router origin with no node_id /
