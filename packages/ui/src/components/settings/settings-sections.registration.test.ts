@@ -163,6 +163,7 @@ describe("settings information architecture (grouped display order)", () => {
     expect(catalogIdsInGroup("system")).toEqual([
       "appearance",
       "background",
+      "notifications",
       "runtime",
       "wallet-rpc",
       "remote-plugins",
