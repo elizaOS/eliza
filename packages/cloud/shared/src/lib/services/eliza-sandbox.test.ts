@@ -3214,6 +3214,10 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       expect(params).toContain(TO_DIGEST); // image_digest := toDigest
       expect(params).toContain(FROM_DIGEST); // previous_image_digest := fromDigest
       expect(params).toContain(DOCKER_IMAGE); // previous_docker_image (agent.docker_image is null → dockerImage)
+      // Success clears the upgrade-exhaustion marker: a row frozen for a prior
+      // target re-arms the moment a swap onto a new target lands (#15358).
+      const updateSql = new PgDialect().sqlToQuery(executedSql as SQL).sql.toLowerCase();
+      expect(updateSql).toContain("error_message = null");
       // The old container is best-effort torn down on its specific node; the
       // blue is the live one and is NOT stopped.
       expect(stopOnSpecificNode).toHaveBeenCalledTimes(1);
@@ -3332,6 +3336,93 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       readSpy.mockRestore();
       snapshotSpy.mockRestore();
     }
+  });
+
+  // Shared driver for the CAS docker_image-leg cases (#15358): run a full
+  // executeUpgrade with the given row at BOTH the pre-provision read and the
+  // in-transaction CAS read, and report whether the swap UPDATE was issued.
+  async function runSwapWithRow(agentRow: AgentSandbox, casRow: AgentSandbox = agentRow) {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agentRow);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(casRow);
+    const snapshotSpy = spyOn(
+      svc as unknown as { snapshot: (...a: unknown[]) => Promise<{ success: boolean }> },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    let executedSql: unknown;
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async (query: unknown) => {
+          executedSql = query;
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+      return { res, executedSql, stop };
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+    }
+  }
+
+  test("(e1) EMPTY docker_image pin + configured ref → CAS admits, swap proceeds (#15358)", async () => {
+    // 45 running prod agents carry an empty docker_image; an exact-ref CAS
+    // treated "" !== configured ref as a concurrent change and abandoned the
+    // swap AFTER the blue provision + snapshot, every attempt, until the
+    // upgrade exhausted and the failure marker froze the agent.
+    const row: AgentSandbox = { ...liveAgentRow(), docker_image: "" };
+    const { res, executedSql } = await runSwapWithRow(row);
+    expect(res.success).toBe(true);
+    expect(executedSql).toBeDefined();
+    expect(sqlBoundParams(executedSql)).toContain(TO_DIGEST);
+  });
+
+  test("(e2) same-repo different-tag pin → CAS admits, swap proceeds (#15358)", async () => {
+    // A digest-drifted fleet agent pinned to an older tag of the SAME repo is
+    // exactly what selection admits (#15101 repo-match); the CAS must mirror
+    // that, or every selected sha-pinned agent churns provision→abandon.
+    const PINNED = "ghcr.io/elizaos/eliza-agent:sha-519b5d8";
+    const row: AgentSandbox = { ...liveAgentRow(), docker_image: PINNED };
+    const { res, executedSql } = await runSwapWithRow(row);
+    expect(res.success).toBe(true);
+    // The pinned ref (not the configured one) is preserved as the rollback image.
+    expect(sqlBoundParams(executedSql)).toContain(PINNED);
+  });
+
+  test("(e3) CONCURRENT repoint at a DIFFERENT repo → CAS abandons, blue torn down (#15358)", async () => {
+    // The CAS's true purpose: the user switched the agent to a custom image
+    // while the blue provisioned — adopting the blue would clobber that choice.
+    const movedRow: AgentSandbox = {
+      ...liveAgentRow(),
+      docker_image: "ghcr.io/acme/custom-agent:latest",
+    };
+    const { res, executedSql, stop } = await runSwapWithRow(liveAgentRow(), movedRow);
+    expect(res.success).toBe(false);
+    expect(res.error).toContain("Agent changed during upgrade");
+    // No UPDATE was issued and the orphaned blue is stopped.
+    expect(executedSql).toBeUndefined();
+    expect(stop).toHaveBeenCalledWith("sandbox-new-1");
   });
 });
 

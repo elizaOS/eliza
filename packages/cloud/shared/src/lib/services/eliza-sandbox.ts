@@ -5150,7 +5150,19 @@ export class ElizaSandboxService {
           current.container_name !== oldContainerName ||
           current.sandbox_id !== oldSandboxId ||
           current.image_digest !== fromDigest ||
-          (current.docker_image && current.docker_image !== dockerImage)
+          // The docker_image leg of this CAS exists to catch one concurrent
+          // COMPETING change: the agent being repointed at a custom image (a
+          // DIFFERENT repo) while the blue provisioned — adopting the blue
+          // would clobber that user choice. It must NOT demand textual ref
+          // equality: selection admits any tag/digest/empty pin of the fleet
+          // repo (#15101 repo-match), so an exact-string compare abandoned
+          // every selected sha-pinned or empty-pinned row AFTER the full blue
+          // provision + snapshot, exhausted the job's retries, and the
+          // exhaustion marker then froze the agent out of all future upgrades
+          // (#15358). Mirror the selection/pre-provision semantics — abandon
+          // only on a real repo change; the digest/node/container/sandbox legs
+          // above still detect every other concurrent mutation.
+          (current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
         ) {
           return false;
         }
@@ -5469,7 +5481,12 @@ export class ElizaSandboxService {
           current.container_name !== oldContainerName ||
           current.sandbox_id !== oldSandboxId ||
           current.image_digest !== fromDigest ||
-          (current.docker_image && current.docker_image !== dockerImage)
+          // Same repo-match semantics as the upgrade swap's CAS above: this
+          // leg detects a concurrent repoint at a DIFFERENT repo, not textual
+          // pin drift within the fleet repo (an empty or tag/digest-pinned
+          // docker_image on the same repo is still the fleet image — #15101,
+          // #15358). `dockerImage` here is the recorded rollback ref.
+          (current.docker_image && imageRepo(current.docker_image) !== imageRepo(dockerImage))
         ) {
           return false;
         }
