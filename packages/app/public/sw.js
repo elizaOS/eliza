@@ -4,11 +4,16 @@
  * Cache strategies:
  *  - /api/views/:id/bundle.js  → Stale-While-Revalidate (serve cache, update in background)
  *  - /api/views/:id/hero       → Cache-First with 24h max-age
- *  - App shell (index.html)    → Network-First with cache fallback
+ *  - /assets/<hashed>.{js,css} → Cache-First (immutable: the content hash is in
+ *                                the filename, so a byte-changed asset gets a new
+ *                                URL and can never be served stale)
+ *  - App shell (index.html)    → Network-First with cache fallback + navigation
+ *                                preload (browser fetches in parallel with SW
+ *                                boot, so a cold nav doesn't wait on SW startup)
  *
- * Cache is version-keyed (VIEWS_CACHE_NAME, SHELL_CACHE_NAME) so bumping the
- * version strings in a future deploy triggers automatic cleanup of old caches
- * in the `activate` handler.
+ * Cache is version-keyed (VIEWS_CACHE_NAME, SHELL_CACHE_NAME, ASSETS_CACHE_NAME)
+ * so bumping the version strings in a future deploy triggers automatic cleanup
+ * of old caches in the `activate` handler.
  */
 
 "use strict";
@@ -22,11 +27,27 @@ const VIEWS_CACHE_NAME = "elizaos-views-v1";
 // background is the black field with the orange ember glow, and boot no
 // longer paints orange). Bump drops any cached prior shell.
 const SHELL_CACHE_NAME = "elizaos-shell-v5";
+// Immutable runtime cache for Vite's content-hashed build output (/assets/*).
+// The filename hash IS the cache key's freshness guarantee: any byte change
+// produces a new filename, so cache-first can never serve a stale asset. This
+// insulates a resumed iOS PWA from WKWebView's aggressive HTTP-cache eviction
+// under memory pressure (which otherwise forces a multi-MB re-download of the
+// same immutable bundle). Bump the version to purge the whole cache on deploy.
+const ASSETS_CACHE_NAME = "elizaos-assets-v1";
 const HERO_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 h
-const KNOWN_CACHES = [VIEWS_CACHE_NAME, SHELL_CACHE_NAME];
+// Bound the immutable /assets/* cache so a long-lived install with many deploys
+// can't grow it without limit. Content-hashed assets accumulate across builds;
+// keep the most-recently-used window and evict the oldest beyond it. 220 entries
+// comfortably covers one full eager+lazy graph (the develop dist ships ~765
+// chunks total, but a single session only touches the entry + visited routes).
+const ASSETS_CACHE_MAX_ENTRIES = 220;
+const KNOWN_CACHES = [VIEWS_CACHE_NAME, SHELL_CACHE_NAME, ASSETS_CACHE_NAME];
 
 const VIEW_BUNDLE_RE = /^\/api\/views\/[^/]+\/bundle\.js$/;
 const VIEW_HERO_RE = /^\/api\/views\/[^/]+\/hero$/;
+// Vite emits content-hashed static build output under /assets/. The hash makes
+// these safe to treat as immutable (cache-first, never revalidate).
+const IMMUTABLE_ASSET_RE = /^\/assets\/[^/]+\.(?:js|mjs|css|woff2?|json|wasm)$/;
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -39,16 +60,29 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => !KNOWN_CACHES.includes(key))
-            .map((key) => caches.delete(key)),
-        ),
-      )
-      .then(() => self.clients.claim()),
+    (async () => {
+      // Drop any caches from a prior SW version (including bumped ASSETS/SHELL).
+      const keys = await caches.keys();
+      await Promise.all(
+        keys
+          .filter((key) => !KNOWN_CACHES.includes(key))
+          .map((key) => caches.delete(key)),
+      );
+
+      // Enable navigation preload: the browser fetches the navigation request
+      // in parallel with SW startup, so a cold navigation no longer stalls
+      // waiting for the worker to boot before the network fetch even begins.
+      // Feature-detected — Safari shipped this in 16.4, older engines no-op.
+      if (self.registration.navigationPreload) {
+        try {
+          await self.registration.navigationPreload.enable();
+        } catch {
+          // Non-fatal: fall back to plain network-first if enable() rejects.
+        }
+      }
+
+      await self.clients.claim();
+    })(),
   );
 });
 
@@ -83,6 +117,14 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Immutable content-hashed build assets: serve cache-first with no max-age
+  // (the hash guarantees freshness) so a memory-pressure HTTP-cache eviction on
+  // iOS can't force re-downloading the full bundle on resume.
+  if (IMMUTABLE_ASSET_RE.test(pathname)) {
+    event.respondWith(immutableAssetFirst(request, ASSETS_CACHE_NAME));
+    return;
+  }
+
   // Auth navigations are NEVER intercepted: the sign-in page and the OAuth
   // callback must always load the freshest shell from the network. A stale
   // cached shell can carry an outdated build — e.g. one baked with the wrong
@@ -99,8 +141,13 @@ self.addEventListener("fetch", (event) => {
 
   // App shell: only intercept navigation requests for index.html (not API calls
   // or static assets that the browser handles fine without SW involvement).
+  // `event.preloadResponse` carries the browser's parallel navigation-preload
+  // fetch (when enabled), so networkFirst can consume it instead of issuing a
+  // second fetch — the cold-nav win.
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request, SHELL_CACHE_NAME));
+    event.respondWith(
+      networkFirst(request, SHELL_CACHE_NAME, event.preloadResponse),
+    );
     return;
   }
 });
@@ -194,14 +241,52 @@ async function cacheFirst(request, cacheName, maxAgeMs) {
 }
 
 /**
- * Network-First with cache fallback:
- * Try the network; on failure serve the cached version; on total miss return 503.
+ * Cache-First for immutable content-hashed assets:
+ * The filename hash guarantees freshness, so a cache hit is always safe to
+ * serve with no revalidation. On a miss, fetch + cache, then trim the cache to
+ * its bounded MRU window so a long-lived install across many deploys can't grow
+ * the asset cache without limit.
  */
-async function networkFirst(request, cacheName) {
+async function immutableAssetFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+
+  let networkResponse;
+  try {
+    networkResponse = await fetch(request.clone());
+  } catch {
+    return new Response("Offline", { status: 503 });
+  }
+
+  if (networkResponse.ok) {
+    await cache.put(request, networkResponse.clone());
+    // Bound the cache: evict oldest (insertion-order) entries beyond the cap.
+    // Cache Storage preserves put() order, so keys()[0] is the least-recently
+    // added; trimming from the front keeps the most recent window.
+    await trimCache(cacheName, ASSETS_CACHE_MAX_ENTRIES);
+  }
+
+  return networkResponse;
+}
+
+/**
+ * Network-First with cache fallback:
+ * Prefer the navigation-preload response (parallel browser fetch) when present,
+ * else fetch; cache any OK response; on network failure serve the cached shell;
+ * on total miss return 503.
+ */
+async function networkFirst(request, cacheName, preloadResponsePromise) {
   const cache = await caches.open(cacheName);
 
   try {
-    const networkResponse = await fetch(request.clone());
+    // Consume the browser's navigation-preload response if one was started;
+    // otherwise fall back to a fresh fetch. `preloadResponse` resolves to
+    // undefined when navigation preload is unsupported/disabled.
+    const preloaded = preloadResponsePromise
+      ? await preloadResponsePromise
+      : undefined;
+    const networkResponse = preloaded ?? (await fetch(request.clone()));
     if (networkResponse.ok) {
       await cache.put(request, networkResponse.clone());
     }
@@ -210,6 +295,19 @@ async function networkFirst(request, cacheName) {
     const cached = await cache.match(request);
     return cached ?? new Response("Offline", { status: 503 });
   }
+}
+
+/**
+ * Trim a cache to at most `maxEntries`, deleting the oldest entries first.
+ * Cache Storage `keys()` returns requests in insertion order, so slicing off
+ * the front removes the least-recently-added assets.
+ */
+async function trimCache(cacheName, maxEntries) {
+  const cache = await caches.open(cacheName);
+  const keys = await cache.keys();
+  if (keys.length <= maxEntries) return;
+  const excess = keys.slice(0, keys.length - maxEntries);
+  await Promise.all(excess.map((key) => cache.delete(key)));
 }
 
 // ---------------------------------------------------------------------------
