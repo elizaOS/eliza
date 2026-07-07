@@ -91,6 +91,35 @@ If an evidence type does not apply, keep it visible in the PR and write
 `N/A - <reason>`. Never leave evidence rows blank. Open every artifact yourself
 before asking for review; capturing is not review.
 
+**The gate is mechanical and fails closed.** `.github/workflows/pr.yaml` runs
+`scripts/check-pr-evidence.mjs` on every PR: a blank/checkbox-only evidence row,
+or a bare `N/A` with no reason, fails the check. A PR whose **diff touches a
+rendered-UI source file** (a `.tsx`/`.css`/`.svg`/`.html` under `packages/app`,
+`packages/ui`, `apps/app`, …) must attach **concrete** before/after screenshot,
+walkthrough-video, and OCR-review artifacts — a link, not `N/A` — even when the
+`ui`/`frontend`/`native` label is absent. Do not try to route around this by
+dropping the label; fix the pipeline and capture the evidence.
+
+**Before capturing, check your toolchain.** Run the doctor; it reports every
+capture tool (tesseract, ffmpeg, Playwright browsers, GPU/Baidu OCR, Apple
+Vision, VLM API keys, the claude/codex CLIs) and prints the exact install/start
+command for anything missing. Install what it flags — a missing tool is a
+fixable instruction, never a reason to ship without evidence.
+
+```bash
+bun run evidence:doctor            # human report of the capture toolchain
+bun run evidence:doctor -- --strict  # non-zero exit if a REQUIRED tool is missing
+```
+
+**Visual verification is layered and always available.** OCR runs the GPU/Baidu
+Unlimited-OCR engine when a vision server is up and falls back to tesseract
+otherwise; heuristic checks add flat-color/palette and pixel-diff comparisons;
+and structured VLM Q&A (`vision-qa`) reviews screenshots against explicit
+questions. When no API key or local server is configured, set
+`ELIZA_VISION_QA_BACKEND=cli` to review screenshots through an already-authed
+`claude` or `codex` CLI (auto-detected by the doctor) — real token usage is
+recorded, so the review is admissible evidence.
+
 Useful commands:
 
 ```bash
