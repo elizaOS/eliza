@@ -73,6 +73,8 @@ describe("CliVisionBackend claude", () => {
     expect(seenArgs).toContain("-p");
     expect(seenArgs).toContain("--output-format");
     expect(seenArgs).toContain("json");
+    // Grants the headless CLI read access to the staged image's directory.
+    expect(seenArgs).toContain("--add-dir");
     // The prompt must point the CLI at a real on-disk image path.
     const prompt = seenArgs[seenArgs.indexOf("-p") + 1];
     expect(prompt).toMatch(/Read the image file at .+\.png/);

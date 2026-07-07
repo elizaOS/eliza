@@ -252,6 +252,7 @@ export class CliVisionBackend {
       return this.cli === "claude"
         ? await this.invokeClaude(
             staged.imagePath,
+            staged.dir,
             questions,
             correction,
             timeoutMs,
@@ -270,6 +271,7 @@ export class CliVisionBackend {
 
   private async invokeClaude(
     imagePath: string,
+    imageDir: string,
     questions: VisionQuestion[],
     correction: string | null,
     timeoutMs: number,
@@ -279,9 +281,12 @@ export class CliVisionBackend {
       correction,
       `Read the image file at ${imagePath} using your Read tool, then answer strictly about what it shows.`,
     );
+    // The staged image lives outside the CLI's working directory; --add-dir
+    // grants read access so headless `-p` mode (which cannot prompt for
+    // permission) can open it instead of denying the Read and answering blind.
     const result = await this.run(
       this.command,
-      ["-p", prompt, "--output-format", "json"],
+      ["-p", prompt, "--output-format", "json", "--add-dir", imageDir],
       { timeoutMs },
     );
     if (result.code !== 0) {
