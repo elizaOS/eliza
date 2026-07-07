@@ -366,6 +366,30 @@ export function computeManagedAgentDbEnv(
     : { DATABASE_URL: dbUri };
 }
 
+/**
+ * True only when a stored backup snapshot can never be decrypted again: the
+ * AEAD auth tag fails to verify (corruption / wrong key / wrong AAD, surfaced
+ * by `@elizaos/security` as `AeadError`) or the KMS key version that encrypted
+ * it no longer exists (`KeyNotFoundError` — thrown only by the ephemeral
+ * `memory` KMS backend, which derives a fresh per-process key on every restart
+ * and thus orphans everything it previously encrypted). Both are permanent
+ * regardless of retries, so a resume degrades to a fresh boot on them rather
+ * than failing the whole provision closed (see the restore path in `provision`).
+ *
+ * Deliberately NARROW so it never swallows a recoverable failure: a transient
+ * KMS error (the Steward backend surfaces HTTP 5xx as a base `KmsError`, not
+ * `KeyNotFoundError`), a DB/network/IO error, or anything else is NOT matched
+ * and still propagates — degrading on one of those would silently discard state
+ * that a retry would have restored. Matched by error class NAME rather than
+ * `instanceof` because `AeadError` is internal to `@elizaos/security` (not
+ * exported) and this code runs bundled, where a cross-realm `instanceof` on a
+ * dependency's error class is unreliable.
+ */
+export function isUndecryptableSnapshotError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "AeadError" || error.name === "KeyNotFoundError";
+}
+
 export class ElizaSandboxService {
   private _provider?: SandboxProvider;
   private _providerPromise?: Promise<SandboxProvider>;
@@ -1486,36 +1510,72 @@ export class ElizaSandboxService {
         await agentBillingRepository.reactivateSandboxBillingAfterFunding(rec.id, new Date());
 
         // 5. Restore from backup (reconstructs incrementals back to a full).
-        const backup = await agentSandboxesRepository.getLatestBackup(rec.id);
-        if (backup) {
-          const restoreState = await agentSandboxesRepository.getReconstructedBackupState(
-            backup.id,
-          );
-          if (restoreState) {
-            try {
-              await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
-            } catch (error) {
-              const message = error instanceof Error ? error.message : String(error);
-              if (
-                rec.execution_tier !== "custom" ||
-                !message.startsWith("State restore failed: HTTP 404")
-              ) {
-                throw error;
-              }
-              logger.info(
-                "[agent-sandbox] Backup restore skipped: custom image has no restore endpoint",
-                {
-                  agentId: rec.id,
-                  backupId: backup.id,
-                },
-              );
-            }
-          } else {
-            logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
+        //
+        // Fetching + reconstructing the snapshot decrypts its state under the
+        // org DEK. An UNDECRYPTABLE snapshot — the key that encrypted it is gone
+        // (the ephemeral `memory` KMS backend rotates its key on every restart,
+        // orphaning older ciphertext) or the bytes are corrupt — is unrecoverable
+        // no matter how many times we retry, so it degrades to a FRESH boot
+        // instead of failing the whole provision closed (error-policy:J4 designed
+        // degrade — a corrupt snapshot is unrecoverable regardless, so booting
+        // without prior in-memory state is correct, not a fabricated success).
+        // Only crypto/auth/key-missing failures degrade; a transient DB/IO/network
+        // error is rethrown so the provision fails and the resume job retries
+        // rather than silently discarding recoverable state.
+        let backup: Awaited<ReturnType<typeof agentSandboxesRepository.getLatestBackup>>;
+        let restoreState: Awaited<
+          ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
+        >;
+        try {
+          backup = await agentSandboxesRepository.getLatestBackup(rec.id);
+          restoreState = backup
+            ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
+            : undefined;
+        } catch (error) {
+          if (!isUndecryptableSnapshotError(error)) throw error;
+          logger.error("[agent-sandbox] Undecryptable snapshot, booting fresh", {
+            agentId: rec.id,
+            backupId: backup?.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          // Drop the whole orphaned backup chain (all its rows share the now-lost
+          // org DEK) so the next resume boots clean instead of re-hitting this
+          // dead snapshot every time. error-policy:J6 best-effort — a failed prune
+          // only means we warn + degrade again next boot, never that we fail to
+          // boot fresh, so it must not throw out of the provision.
+          await agentSandboxesRepository.pruneBackups(rec.id, 0).catch((pruneErr) => {
+            logger.warn("[agent-sandbox] Failed to drop orphaned snapshot after degrade", {
               agentId: rec.id,
-              backupId: backup.id,
+              error: pruneErr instanceof Error ? pruneErr.message : String(pruneErr),
             });
+          });
+          backup = undefined;
+          restoreState = undefined;
+        }
+        if (restoreState) {
+          try {
+            await this.pushState(handle.bridgeUrl, restoreState, { trusted: true });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (
+              rec.execution_tier !== "custom" ||
+              !message.startsWith("State restore failed: HTTP 404")
+            ) {
+              throw error;
+            }
+            logger.info(
+              "[agent-sandbox] Backup restore skipped: custom image has no restore endpoint",
+              {
+                agentId: rec.id,
+                backupId: backup?.id,
+              },
+            );
           }
+        } else if (backup) {
+          logger.warn("[agent-sandbox] Backup restore skipped: reconstructed state was null", {
+            agentId: rec.id,
+            backupId: backup.id,
+          });
         }
 
         logger.info("[agent-sandbox] Provisioned", {
