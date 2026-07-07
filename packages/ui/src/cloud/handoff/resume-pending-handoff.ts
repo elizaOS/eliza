@@ -20,7 +20,7 @@ import {
   savePendingCloudHandoff,
 } from "./pending-handoff-store";
 import { runCloudAgentHandoff } from "./run-cloud-agent-handoff";
-import { silentlyRepointToDedicated } from "./silent-repoint";
+import { runAgentSessionRecovery } from "../../state/agent-session-recovery-runner";
 
 let resumeAttemptedThisSession = false;
 /**
@@ -71,6 +71,27 @@ async function dedicatedHandoffTargetState(
     // assumption.
     const status = (err as { status?: unknown } | null)?.status;
     return status === 404 ? "gone" : "unknown";
+  }
+}
+
+async function pairDedicatedCloudAgentInCurrentWindow(opts: {
+  cloudApiBase: string;
+  agentId: string;
+  cloudToken: string;
+}): Promise<void> {
+  if (typeof window === "undefined") {
+    throw new Error("Cloud agent sign-in requires a browser window.");
+  }
+  const result = await runAgentSessionRecovery({
+    cloudApiBase: opts.cloudApiBase,
+    agentId: opts.agentId,
+    cloudToken: opts.cloudToken,
+    navigate: (url) => {
+      window.location.replace(url);
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message);
   }
 }
 
@@ -162,13 +183,12 @@ export function resumePendingCloudHandoff(): boolean {
           dedicatedAgentId: pending.dedicatedAgentId,
           cloudApiBase: pending.cloudApiBase,
           authToken,
-          onSwitch: (containerBase) => {
-            silentlyRepointToDedicated({
-              containerBase,
-              authToken,
-              dedicatedAgentId: pending.dedicatedAgentId,
-            });
-          },
+          onSwitch: async () =>
+            pairDedicatedCloudAgentInCurrentWindow({
+              cloudApiBase: pending.cloudApiBase,
+              agentId: pending.dedicatedAgentId,
+              cloudToken: authToken,
+            }),
         }),
       () => {
         void client
@@ -264,13 +284,12 @@ async function runFreshDedicatedHandoff(
           dedicatedAgentId,
           cloudApiBase: pending.cloudApiBase,
           authToken,
-          onSwitch: (containerBase) => {
-            silentlyRepointToDedicated({
-              containerBase,
-              authToken,
-              dedicatedAgentId,
-            });
-          },
+          onSwitch: async () =>
+            pairDedicatedCloudAgentInCurrentWindow({
+              cloudApiBase: pending.cloudApiBase,
+              agentId: dedicatedAgentId,
+              cloudToken: authToken,
+            }),
         }),
       () => {
         void client

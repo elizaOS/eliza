@@ -10,9 +10,13 @@
  * `stopListening()` API. Separating them keeps the orchestration testable
  * independently of the engine.
  *
- * The `CancellationToken` shape defined here only exposes the UI surface; the
- * full cross-layer cancellation contract (abort signal propagated through the
- * cloud relay) is not yet wired.
+ * The `CancellationToken` shape defined here exposes the UI surface. The
+ * cross-layer cancellation contract (abort of the SERVER generation on a
+ * barge-in) is wired at the true speech-detected edge in `useVoiceChat`
+ * (`onUserSpeechInterrupt`), NOT here: this hook's listening-state transition
+ * is also driven by the internal passive-capture rearm during TTS, so firing a
+ * server abort off it would cancel ordinary assistant replies the instant the
+ * mic reopens. The token cancellation below stays a pure UI-surface signal.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

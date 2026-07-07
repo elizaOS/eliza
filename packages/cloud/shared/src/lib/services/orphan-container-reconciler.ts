@@ -46,6 +46,15 @@ export interface NodeContainerRef {
   name: string;
   /** Docker container id (used for the `docker rm -f` target). */
   id: string;
+  /**
+   * When the container was created (epoch ms), parsed from `docker ps`'s
+   * CreatedAt. `wrong_node` reaping requires the container ITSELF to be older
+   * than the grace window: during a re-placement the worker creates the
+   * container on the NEW node before it updates the sandbox row, so a
+   * seconds-old container paired with a stale row pointing elsewhere is a
+   * provision in flight, not a twin. Unparseable/absent → never wrong_node-reaped.
+   */
+  createdAtMs?: number;
 }
 
 /**
@@ -261,6 +270,15 @@ export function computeOrphanContainersToReap(
         (r) => r.nodeId !== undefined && r.updatedAtMs !== undefined,
       );
       if (!allHaveNodeAndStamp) continue;
+      // The CONTAINER must also be older than the grace window. A row's age
+      // alone cannot protect an in-flight re-placement: the worker creates the
+      // container on the new node BEFORE updating the row, so mid-provision the
+      // stale row (old timestamp, old node) makes a seconds-old container look
+      // reapable — the row-age check would even pass MORE easily. Caught live
+      // in the prod dry-run: a 29-second-old container drew a wrong_node
+      // verdict against a 12-day-old row. Unknown container age → never reap.
+      if (container.createdAtMs === undefined) continue;
+      if (nowMs !== undefined && nowMs - container.createdAtMs < graceMs) continue;
       const newest = Math.max(...(stamps as number[]));
       if (nowMs !== undefined && nowMs - newest >= graceMs) {
         orphans.push({ name: container.name, id: container.id, key, reason: "wrong_node" });
@@ -401,7 +419,7 @@ export async function reconcileOrphanContainersOnNodes(
           const client = ssh();
           await client.connect();
           const output = await client.exec(
-            `docker ps -a --format '{{.Names}}|{{.ID}}' --filter name=${shellQuote(config.prefix)}`,
+            `docker ps -a --format '{{.Names}}|{{.ID}}|{{.CreatedAt}}' --filter name=${shellQuote(config.prefix)}`,
             ORPHAN_LIST_TIMEOUT_MS,
           );
           return (
@@ -413,8 +431,15 @@ export async function reconcileOrphanContainersOnNodes(
               // exclude any container that merely contains the prefix mid-name.
               .filter((line) => line.startsWith(config.prefix))
               .map((line) => {
-                const [name = "", id = ""] = line.split("|");
-                return { name, id };
+                const [name = "", id = "", createdAtRaw = ""] = line.split("|");
+                // docker's CreatedAt: "2026-07-07 16:45:01 +0000 UTC" — Date
+                // rejects the trailing " UTC" but parses the "+0000" offset.
+                const createdAt = Date.parse(createdAtRaw.replace(" UTC", "").trim());
+                return {
+                  name,
+                  id,
+                  ...(Number.isFinite(createdAt) ? { createdAtMs: createdAt } : {}),
+                };
               })
               .filter((c) => c.name && c.id)
           );

@@ -1,25 +1,33 @@
+Explanation: The `sid` suite is intentionally NOT in our sources (see the
+Explanation: removed config/chroot_sources/sid.{chroot,binary}). Upstream Tails
+Explanation: pulls newer firmware + webext-ublock-origin-firefox from sid on its
+Explanation: stable base; on this trixie base every one of those packages is
+Explanation: already in trixie, and sid's presence only destabilized the apt
+Explanation: solver into cross-suite "two conflicting decisions" deadlocks
+Explanation: (rocm/mesa, StarPU, libpcp3/libpgpool). These firmware +
+Explanation: ublock pins therefore target trixie, not sid.
 Package: firmware-linux-free
-Pin: release o=Debian,n=sid
+Pin: release o=Debian,n=trixie
 Pin-Priority: 999
 
 Package: src:firmware-nonfree
-Pin: release o=Debian,n=sid
+Pin: release o=Debian,n=trixie
 Pin-Priority: 990
 
 Package: firmware-ath9k-htc
-Pin: release o=Debian,n=sid
+Pin: release o=Debian,n=trixie
 Pin-Priority: 999
 
 Package: firmware-carl9170
-Pin: release o=Debian,n=sid
+Pin: release o=Debian,n=trixie
 Pin-Priority: 999
 
 Package: firmware-sof-signed
-Pin: release o=Debian,n=sid
+Pin: release o=Debian,n=trixie
 Pin-Priority: 999
 
 Package: firmware-zd1211
-Pin: release o=Debian,n=sid
+Pin: release o=Debian,n=trixie
 Pin-Priority: 999
 
 Explanation: #15477
@@ -28,7 +36,7 @@ Pin: origin deb.tails.boum.org
 Pin-Priority: 999
 
 Package: webext-ublock-origin-firefox
-Pin: release o=Debian,n=sid
+Pin: release o=Debian,n=trixie
 Pin-Priority: 999
 
 Explanation: Upgrading to more recent version of Electrum allow us to get rid of Qt5 (tails#21085)

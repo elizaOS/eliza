@@ -29,7 +29,10 @@ const mocks = vi.hoisted(() => ({
     base.includes("/api/v1/eliza/agents/"),
   ),
   loadPersistedActiveServer: vi.fn((): Record<string, unknown> | null => null),
-  silentlyRepointToDedicated: vi.fn(),
+  runAgentSessionRecovery: vi.fn(async () => ({
+    ok: true as const,
+    redirectUrl: "https://dedicated-1.elizacloud.ai/pair?token=pairing",
+  })),
   getCloudCompatAgent: vi.fn(async (_id: string) => ({
     success: true as boolean,
     data: { id: "dedicated-1", status: "provisioning" },
@@ -65,8 +68,8 @@ vi.mock("../../state", () => ({
   loadPersistedActiveServer: mocks.loadPersistedActiveServer,
 }));
 
-vi.mock("./silent-repoint", () => ({
-  silentlyRepointToDedicated: mocks.silentlyRepointToDedicated,
+vi.mock("../../state/agent-session-recovery-runner", () => ({
+  runAgentSessionRecovery: mocks.runAgentSessionRecovery,
 }));
 
 import {
@@ -128,6 +131,10 @@ describe("resumePendingCloudHandoff", () => {
       base.includes("/api/v1/eliza/agents/"),
     );
     mocks.loadPersistedActiveServer.mockReturnValue(null);
+    mocks.runAgentSessionRecovery.mockResolvedValue({
+      ok: true,
+      redirectUrl: "https://dedicated-1.elizacloud.ai/pair?token=pairing",
+    });
     mocks.getCloudCompatAgent.mockResolvedValue({
       success: true,
       data: { id: "dedicated-1", status: "provisioning" },
@@ -156,7 +163,7 @@ describe("resumePendingCloudHandoff", () => {
     mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
     mocks.startCloudAgentHandoff.mockImplementation(async (opts) => {
       // The supervisor calls onSwitch once the dedicated container is live.
-      (opts as { onSwitch?: (base: string) => void }).onSwitch?.(
+      await (opts as { onSwitch?: (base: string) => Promise<void> }).onSwitch?.(
         "https://dedicated-1.elizacloud.ai",
       );
       return { status: "switched" as const, imported: 1 };
@@ -173,10 +180,11 @@ describe("resumePendingCloudHandoff", () => {
       cloudApiBase: "https://elizacloud.ai",
       authToken: "cloud-token",
     });
-    expect(mocks.silentlyRepointToDedicated).toHaveBeenCalledWith({
-      containerBase: "https://dedicated-1.elizacloud.ai",
-      authToken: "cloud-token",
-      dedicatedAgentId: "dedicated-1",
+    expect(mocks.runAgentSessionRecovery).toHaveBeenCalledWith({
+      cloudApiBase: "https://elizacloud.ai",
+      agentId: "dedicated-1",
+      cloudToken: "cloud-token",
+      navigate: expect.any(Function),
     });
     // Success terminal → the shared bridge row is deleted.
     expect(mocks.deleteSharedBridgeAgent).toHaveBeenCalledWith("shared-1", {
@@ -198,7 +206,7 @@ describe("resumePendingCloudHandoff", () => {
     await settle();
 
     expect(mocks.deleteSharedBridgeAgent).not.toHaveBeenCalled();
-    expect(mocks.silentlyRepointToDedicated).not.toHaveBeenCalled();
+    expect(mocks.runAgentSessionRecovery).not.toHaveBeenCalled();
   });
 
   it("clears a stale marker when the active server is no longer the pending shared bridge", () => {

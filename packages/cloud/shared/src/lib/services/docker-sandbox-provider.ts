@@ -1924,39 +1924,43 @@ export class DockerSandboxProvider implements SandboxProvider {
    * while the container itself is healthy.
    */
   private async pollSshDockerHealth(meta: ContainerMeta, deadline: number): Promise<boolean> {
-    const ssh = DockerSSHClient.getClient(
-      meta.hostname,
-      meta.sshPort,
-      meta.hostKeyFingerprint,
-      meta.sshUser,
-    );
-    const inspectCmd = `docker inspect --format '{{.State.Health.Status}}' ${shellQuote(meta.containerName)}`;
-    const hostProbeCmd = `sh -lc ${shellQuote(
-      [
-        `for URL in http://127.0.0.1:${meta.bridgePort}/api/health http://127.0.0.1:${meta.webUiPort}/; do`,
-        `STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" 2>/dev/null || true);`,
-        `case "$STATUS" in 200|301|302|401) exit 0;; esac;`,
-        `done; exit 1`,
-      ].join(" "),
-    )}`;
-
     // The budget varies by caller (full window standalone, short window as the
     // tailnet fallback), so log the actual one instead of a constant.
     const budgetMs = Math.max(0, deadline - Date.now());
+    let current = meta;
     logger.info(
-      `[docker-sandbox] Polling Docker health for ${meta.containerName} on ${meta.nodeId} (${meta.hostname}) (timeout: ${Math.round(budgetMs / 1000)}s)`,
+      `[docker-sandbox] Polling Docker health for ${current.containerName} on ${current.nodeId} (${current.hostname}) (timeout: ${Math.round(budgetMs / 1000)}s)`,
     );
 
     while (Date.now() < deadline) {
+      // Placement-affecting jobs can overlap the health wait, so each probe
+      // reads the current node before dialing docker on that host.
+      current = await this.refreshNodeMeta(current);
+      const ssh = DockerSSHClient.getClient(
+        current.hostname,
+        current.sshPort,
+        current.hostKeyFingerprint,
+        current.sshUser,
+      );
+      const inspectCmd = `docker inspect --format '{{.State.Health.Status}}' ${shellQuote(current.containerName)}`;
+      const hostProbeCmd = `sh -lc ${shellQuote(
+        [
+          `for URL in http://127.0.0.1:${current.bridgePort}/api/health http://127.0.0.1:${current.webUiPort}/; do`,
+          `STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL" 2>/dev/null || true);`,
+          `case "$STATUS" in 200|301|302|401) exit 0;; esac;`,
+          `done; exit 1`,
+        ].join(" "),
+      )}`;
+
       try {
         await ssh.exec(hostProbeCmd, Math.min(10_000, HEALTH_CHECK_TIMEOUT_MS));
         logger.info(
-          `[docker-sandbox] Host HTTP probe passed for ${meta.containerName} on ${meta.nodeId}`,
+          `[docker-sandbox] Host HTTP probe passed for ${current.containerName} on ${current.nodeId}`,
         );
         return true;
       } catch (err) {
         logger.debug(
-          `[docker-sandbox] Host HTTP probe failed for ${meta.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
+          `[docker-sandbox] Host HTTP probe failed for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
@@ -1967,17 +1971,17 @@ export class DockerSandboxProvider implements SandboxProvider {
 
         if (status === "healthy") {
           logger.info(
-            `[docker-sandbox] Docker health check passed for ${meta.containerName}: ${status}`,
+            `[docker-sandbox] Docker health check passed for ${current.containerName}: ${status}`,
           );
           return true;
         }
 
         logger.debug(
-          `[docker-sandbox] Docker health for ${meta.containerName} is ${status || "unknown"}, retrying...`,
+          `[docker-sandbox] Docker health for ${current.containerName} is ${status || "unknown"}, retrying...`,
         );
       } catch (err) {
         logger.debug(
-          `[docker-sandbox] Docker health inspect failed for ${meta.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
+          `[docker-sandbox] Docker health inspect failed for ${current.containerName}, retrying: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
 
@@ -1994,28 +1998,34 @@ export class DockerSandboxProvider implements SandboxProvider {
     }
 
     logger.warn(
-      `[docker-sandbox] Docker health check timed out after ${Math.round(budgetMs / 1000)}s for ${meta.containerName} on ${meta.hostname}`,
+      `[docker-sandbox] Docker health check timed out after ${Math.round(budgetMs / 1000)}s for ${current.containerName} on ${current.hostname}`,
+    );
+    const ssh = DockerSSHClient.getClient(
+      current.hostname,
+      current.sshPort,
+      current.hostKeyFingerprint,
+      current.sshUser,
     );
     try {
       const diagnostics = await ssh.exec(
         [
           `echo '--- inspect ---'`,
-          `docker inspect --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' ${shellQuote(meta.containerName)} || true`,
+          `docker inspect --format 'state={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' ${shellQuote(current.containerName)} || true`,
           `echo '--- ports ---'`,
-          `docker port ${shellQuote(meta.containerName)} || true`,
+          `docker port ${shellQuote(current.containerName)} || true`,
           `echo '--- logs ---'`,
-          `docker logs --tail 160 ${shellQuote(meta.containerName)} 2>&1 || true`,
+          `docker logs --tail 160 ${shellQuote(current.containerName)} 2>&1 || true`,
         ].join("; "),
         DOCKER_CMD_TIMEOUT_MS,
       );
       logger.warn("[docker-sandbox] Health timeout diagnostics", {
-        containerName: meta.containerName,
-        nodeId: meta.nodeId,
+        containerName: current.containerName,
+        nodeId: current.nodeId,
         diagnostics: diagnostics.slice(-12_000),
       });
     } catch (diagnosticsError) {
       logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
-        containerName: meta.containerName,
+        containerName: current.containerName,
         error:
           diagnosticsError instanceof Error ? diagnosticsError.message : String(diagnosticsError),
       });
@@ -2096,66 +2106,89 @@ export class DockerSandboxProvider implements SandboxProvider {
     const tracked = this.containers.get(sandboxId);
     if (tracked) return tracked;
 
-    // DB lookup: hydrate from persisted metadata after restart
-    try {
-      const sandbox = await agentSandboxesRepository.findBySandboxId(sandboxId);
-      if (sandbox && sandbox.node_id && sandbox.container_name) {
-        // Find hostname + SSH config from DB node record or env var
-        let hostname = "";
-        let sshPort = DEFAULT_SSH_PORT;
-        let sshUser = DEFAULT_SSH_USERNAME;
-        let hostKeyFingerprint: string | undefined;
+    const meta = await this.hydrateContainerFromDb(sandboxId);
+    if (meta) return meta;
 
-        const dbNode = await dockerNodesRepository.findByNodeId(sandbox.node_id);
-        if (dbNode) {
-          hostname = dbNode.hostname;
-          sshPort = dbNode.ssh_port ?? DEFAULT_SSH_PORT;
-          sshUser = dbNode.ssh_user ?? DEFAULT_SSH_USERNAME;
-          hostKeyFingerprint = dbNode.host_key_fingerprint ?? undefined;
-        } else {
-          throw new Error(
-            `[docker-sandbox] Missing persisted docker node metadata for node "${sandbox.node_id}"`,
-          );
-        }
-
-        if (hostname) {
-          const bridgePort = sandbox.bridge_port ?? 0;
-          const webUiPort = sandbox.web_ui_port ?? 0;
-          if (!bridgePort || !webUiPort) {
-            logger.warn(
-              `[docker-sandbox] Missing port data for "${sandboxId}": bridge=${bridgePort}, webUi=${webUiPort}`,
-            );
-          }
-
-          const meta: ContainerMeta = {
-            nodeId: sandbox.node_id,
-            hostname,
-            containerName: sandbox.container_name,
-            bridgePort,
-            webUiPort,
-            agentId: sandbox.id, // sandbox.id IS the agent ID (PK = agent identifier throughout the system)
-            sshPort,
-            sshUser,
-            hostKeyFingerprint,
-          };
-
-          // Cache key is sandboxId which equals containerName (set in create() return value)
-          this.containers.set(sandboxId, meta);
-          logger.info(
-            `[docker-sandbox] Hydrated container "${sandboxId}" from DB → node ${meta.nodeId} (${meta.hostname})`,
-          );
-          return meta;
-        }
-      }
-    } catch (err) {
-      logger.warn(
-        `[docker-sandbox] DB lookup failed for container "${sandboxId}": ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-
-    // Last resort: container not found
     throw new Error(
       `[docker-sandbox] Container "${sandboxId}" not found in memory or DB. Cannot resolve target node.`,
     );
+  }
+
+  /**
+   * Read the container's node placement straight from the DB (agent_sandboxes
+   * row + its docker_nodes record), bypassing the in-memory fast path, and
+   * refresh the cache. Returns null only when there is no usable sandbox row;
+   * repository and configuration failures propagate to the caller.
+   */
+  private async hydrateContainerFromDb(sandboxId: string): Promise<ContainerMeta | null> {
+    const sandbox = await agentSandboxesRepository.findBySandboxId(sandboxId);
+    if (!sandbox || !sandbox.node_id || !sandbox.container_name) return null;
+
+    const dbNode = await dockerNodesRepository.findByNodeId(sandbox.node_id);
+    if (!dbNode) {
+      throw new Error(
+        `[docker-sandbox] Missing persisted docker node metadata for node "${sandbox.node_id}"`,
+      );
+    }
+    if (!dbNode.hostname) {
+      throw new Error(`[docker-sandbox] Docker node "${sandbox.node_id}" is missing hostname`);
+    }
+
+    if (!sandbox.bridge_port || !sandbox.web_ui_port) {
+      throw new Error(
+        `[docker-sandbox] Missing port data for "${sandboxId}": bridge=${sandbox.bridge_port}, webUi=${sandbox.web_ui_port}`,
+      );
+    }
+
+    const meta: ContainerMeta = {
+      nodeId: sandbox.node_id,
+      hostname: dbNode.hostname,
+      containerName: sandbox.container_name,
+      bridgePort: sandbox.bridge_port,
+      webUiPort: sandbox.web_ui_port,
+      agentId: sandbox.id, // sandbox.id IS the agent ID (PK = agent identifier throughout the system)
+      sshPort: dbNode.ssh_port ?? DEFAULT_SSH_PORT,
+      sshUser: dbNode.ssh_user ?? DEFAULT_SSH_USERNAME,
+      hostKeyFingerprint: dbNode.host_key_fingerprint ?? undefined,
+    };
+
+    // Docker handles use the container name as sandboxId, so the refreshed row
+    // updates the same cache key used by create(), stop(), and runCommand().
+    this.containers.set(sandboxId, meta);
+    logger.info(
+      `[docker-sandbox] Hydrated container "${sandboxId}" from DB -> node ${meta.nodeId} (${meta.hostname})`,
+    );
+    return meta;
+  }
+
+  /**
+   * Re-read the container's current node from the DB during a long health poll.
+   * A concurrent placement-affecting job (upgrade + resume + provision-retry can
+   * overlap for one agent during a recovery storm) may re-place the agent onto a
+   * different node mid-wait; the job that is polling health captured its node at
+   * job start. Returning the last-known node on a refresh failure keeps a DB
+   * blip from turning an otherwise-valid liveness probe into a failed provision.
+   */
+  private async refreshNodeMeta(previous: ContainerMeta): Promise<ContainerMeta> {
+    let fresh: ContainerMeta | null;
+    try {
+      fresh = await this.hydrateContainerFromDb(previous.containerName);
+    } catch (err) {
+      // error-policy:J4 best-effort health-poll placement refresh - a failed
+      // DB read cannot prove the previous node is wrong, so the liveness probe
+      // keeps using the last-known placement and logs the refresh failure.
+      logger.warn(
+        `[docker-sandbox] Failed to refresh node for ${previous.containerName}; keeping ${previous.nodeId} (${previous.hostname}) for this health probe: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return previous;
+    }
+
+    if (!fresh) return previous;
+    if (fresh.nodeId !== previous.nodeId || fresh.hostname !== previous.hostname) {
+      logger.info(
+        `[docker-sandbox] ${previous.containerName} re-placed mid health-wait: node ${previous.nodeId} (${previous.hostname}) -> ${fresh.nodeId} (${fresh.hostname}); following the new node`,
+      );
+    }
+    return fresh;
   }
 }

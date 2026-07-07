@@ -10,6 +10,7 @@ import type { ServerResponse } from "node:http";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import {
+  createChatTokenStreamWriter,
   initSse,
   writeChatTokenSse,
   writeSse,
@@ -248,6 +249,168 @@ describe("SSE wire format", () => {
         expect(JSON.parse(dataLines.join("\n"))).toEqual({ text });
       }),
       { numRuns: 200 },
+    );
+  });
+});
+
+const streamWriterDeps = { writeChatTokenSse, writeSse };
+
+// Replays delta-v2 frames with the exact client reducer contract
+// (`applyStreamChatTokenEvent`): an explicit `fullText` is an authoritative
+// replace; a bare `text` is an append.
+function replayClient(frames: ParsedFrame[]): string {
+  let text = "";
+  for (const { payload } of frames) {
+    if (payload.type !== "token") continue;
+    if (typeof payload.fullText === "string") {
+      text = payload.fullText;
+    } else if (typeof payload.text === "string") {
+      text += payload.text;
+    }
+  }
+  return text;
+}
+
+describe("delta-v2 chat token stream writer", () => {
+  it("legacy writer output is byte-identical to writeChatTokenSse", () => {
+    const viaWriter = createMockResponse();
+    const direct = createMockResponse();
+    const writer = createChatTokenStreamWriter("legacy", streamWriterDeps);
+
+    let acc = "";
+    for (const chunk of ["Hel", "lo ", "there", "!"]) {
+      acc += chunk;
+      writer.writeChunk(viaWriter.res, chunk, acc);
+      writeChatTokenSse(direct.res, chunk, acc);
+    }
+    // A snapshot (structured rewrite / single-frame reply) matches today's
+    // onSnapshot call, which passed the text as BOTH args.
+    writer.writeSnapshot(viaWriter.res, acc);
+    writeChatTokenSse(direct.res, acc, acc);
+
+    expect(viaWriter.writes).toEqual(direct.writes);
+  });
+
+  it("delta writer omits fullText on ordinary tokens and re-sends it only on the byte budget", () => {
+    const mock = createMockResponse();
+    const writer = createChatTokenStreamWriter("delta-v2", streamWriterDeps);
+
+    const chunk = "x".repeat(64);
+    let acc = "";
+    // 40 chunks × 64 = 2560 chars — crosses the 2048-byte snapshot floor once.
+    for (let i = 0; i < 40; i += 1) {
+      acc += chunk;
+      writer.writeChunk(mock.res, chunk, acc);
+    }
+
+    const frames = parseFrames(mock.writes);
+    expect(frames).toHaveLength(40);
+    const snapshotBearing = frames.filter((f) => "fullText" in f.payload);
+    // Exactly one snapshot-bearing frame, landing the first time accumulated
+    // delta bytes reach 2048 (chunk index 31 → 32 × 64 = 2048 chars).
+    expect(snapshotBearing).toHaveLength(1);
+    expect(snapshotBearing[0].payload.fullText).toBe("x".repeat(2048));
+    // A snapshot-bearing chunk frame still carries its own delta text.
+    expect(snapshotBearing[0].payload.text).toBe(chunk);
+    // Every OTHER frame is a bare delta with no fullText key at all.
+    for (const frame of frames) {
+      if (frame === snapshotBearing[0]) continue;
+      expect(frame.payload).not.toHaveProperty("fullText");
+      expect(frame.payload.text).toBe(chunk);
+    }
+  });
+
+  it("writeSnapshot emits a fullText-only frame (no text field) and resets the budget", () => {
+    const mock = createMockResponse();
+    const writer = createChatTokenStreamWriter("delta-v2", streamWriterDeps);
+
+    writer.writeChunk(mock.res, "hi", "hi");
+    writer.writeSnapshot(mock.res, "hi there — corrected");
+
+    const frames = parseFrames(mock.writes);
+    expect(frames[0].payload).toEqual({ type: "token", text: "hi" });
+    expect(frames[1].payload).toEqual({
+      type: "token",
+      fullText: "hi there — corrected",
+    });
+  });
+
+  it("carries linear (O(N)) bytes vs the legacy writer's quadratic wire", () => {
+    const chunkText = "x".repeat(8);
+    const chunkCount = 500;
+
+    const deltaMock = createMockResponse();
+    const deltaWriter = createChatTokenStreamWriter(
+      "delta-v2",
+      streamWriterDeps,
+    );
+    const legacyMock = createMockResponse();
+    const legacyWriter = createChatTokenStreamWriter(
+      "legacy",
+      streamWriterDeps,
+    );
+
+    let acc = "";
+    for (let i = 0; i < chunkCount; i += 1) {
+      acc += chunkText;
+      deltaWriter.writeChunk(deltaMock.res, chunkText, acc);
+      legacyWriter.writeChunk(legacyMock.res, chunkText, acc);
+    }
+    const finalLen = acc.length; // 4000
+    const deltaBytes = deltaMock.writes.join("").length;
+    const legacyBytes = legacyMock.writes.join("").length;
+
+    // Linear envelope: delta wire ≤ (deltas ~= N) + (snapshots ~= 2N) + framing.
+    const envelope = 4 * finalLen + 64 * chunkCount;
+    expect(
+      deltaBytes,
+      `delta bytes ${deltaBytes} must be ≤ linear envelope ${envelope} (finalLen=${finalLen}, chunks=${chunkCount})`,
+    ).toBeLessThanOrEqual(envelope);
+    // The whole point: legacy re-sends the growing prefix every token (O(N²)).
+    expect(
+      legacyBytes,
+      `legacy bytes ${legacyBytes} must exceed 20× delta bytes ${deltaBytes} (ratio=${(legacyBytes / deltaBytes).toFixed(1)}×)`,
+    ).toBeGreaterThan(20 * deltaBytes);
+  });
+
+  it("replaying any delta+snapshot interleaving reconstructs the exact final text", () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.oneof(
+            fc.record({
+              kind: fc.constant<"chunk">("chunk"),
+              value: fc.string({ minLength: 1, maxLength: 2600 }),
+            }),
+            fc.record({
+              kind: fc.constant<"snapshot">("snapshot"),
+              value: fc.string({ maxLength: 2600 }),
+            }),
+          ),
+          { maxLength: 40 },
+        ),
+        (ops) => {
+          const mock = createMockResponse();
+          const writer = createChatTokenStreamWriter(
+            "delta-v2",
+            streamWriterDeps,
+          );
+          // Mirror the server's streamedText bookkeeping: onChunk appends the
+          // delta; onSnapshot replaces with the structured rewrite.
+          let serverText = "";
+          for (const op of ops) {
+            if (op.kind === "chunk") {
+              serverText += op.value;
+              writer.writeChunk(mock.res, op.value, serverText);
+            } else {
+              serverText = op.value;
+              writer.writeSnapshot(mock.res, serverText);
+            }
+          }
+          expect(replayClient(parseFrames(mock.writes))).toBe(serverText);
+        },
+      ),
+      { numRuns: 300 },
     );
   });
 });

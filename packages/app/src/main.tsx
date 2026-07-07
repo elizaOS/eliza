@@ -144,12 +144,15 @@ import {
   syncDetachedShellLocation,
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
+import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
 import {
   applyUiTheme,
+  createPersistedActiveServer,
   loadUiLanguage,
   loadUiThemeMode,
   resolveUiTheme,
+  savePersistedActiveServer,
 } from "@elizaos/ui/state/persistence";
 import { initScreenCaptureBridge } from "@elizaos/ui/state/screen-capture-bridge";
 import {
@@ -159,6 +162,10 @@ import {
 } from "@elizaos/ui/state/startup-telemetry";
 import { getChatOverlayHotkey } from "@elizaos/ui/state/useChatOverlayHotkey";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
+import {
+  dedicatedCloudAgentIdFromBase,
+  isDedicatedCloudAgentBase,
+} from "@elizaos/ui/utils/cloud-agent-base";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
@@ -448,6 +455,24 @@ function applyCloudPairSessionToken(): void {
       ?.trim();
     if (!token) return;
     client.setToken(token);
+    const apiBase = isDedicatedCloudAgentBase(window.location.origin)
+      ? window.location.origin
+      : getBootConfig().apiBase?.trim();
+    if (!isDedicatedCloudAgentBase(apiBase)) return;
+    const agentId = dedicatedCloudAgentIdFromBase(apiBase);
+    const activeServer = createPersistedActiveServer({
+      kind: "cloud",
+      ...(agentId ? { id: `cloud:${agentId}` } : {}),
+      apiBase,
+      accessToken: token,
+    });
+    savePersistedActiveServer(activeServer);
+    upsertAndActivateAgentProfile({
+      kind: "cloud",
+      label: activeServer.label,
+      ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
+      accessToken: token,
+    });
   } catch {
     // error-policy:J4 sessionStorage can be unavailable in hardened browser
     // contexts — the pairing token is simply not adopted

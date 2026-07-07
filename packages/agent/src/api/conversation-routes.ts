@@ -59,6 +59,7 @@ import type {
 } from "./chat-routes.ts";
 import {
   classifyChatFailure,
+  createChatTokenStreamWriter,
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
@@ -2477,7 +2478,14 @@ export async function handleConversationRoutes(
       preferredLanguage,
       source,
       metadata: chatMetadata,
+      streamProtocol,
     } = chatPayload;
+    // Deps are the module-imported write fns so route tests that vi.mock
+    // `writeChatTokenSse`/`writeSse` keep capturing frames on the legacy path.
+    const tokenWriter = createChatTokenStreamWriter(
+      streamProtocol ?? "legacy",
+      { writeChatTokenSse, writeSse },
+    );
 
     // The SSE channel opens as soon as the request is validated — before
     // runtime resolution, room setup, and user-message persistence — so the
@@ -2547,7 +2555,7 @@ export async function handleConversationRoutes(
       const endActiveChatTurn = beginActiveChatTurn(state);
       try {
         if (!disconnectTracker.isAborted()) {
-          writeChatTokenSse(res, walletModeGuidance, walletModeGuidance);
+          tokenWriter.writeSnapshot(res, walletModeGuidance);
           try {
             await persistAssistantConversationMemory(
               runtime,
@@ -2633,7 +2641,7 @@ export async function handleConversationRoutes(
               return;
             }
             streamedText += chunk;
-            writeChatTokenSse(res, chunk, streamedText);
+            tokenWriter.writeChunk(res, chunk, streamedText);
           },
           onSnapshot: (text) => {
             if (!text) return;
@@ -2656,7 +2664,7 @@ export async function handleConversationRoutes(
               return;
             }
             streamedText = text;
-            writeChatTokenSse(res, text, streamedText);
+            tokenWriter.writeSnapshot(res, streamedText);
           },
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),
@@ -2676,7 +2684,7 @@ export async function handleConversationRoutes(
             for (const chunk of chunkVisibleTextForSse(resolvedText)) {
               if (disconnectTracker.isAborted()) break;
               streamedText += chunk;
-              writeChatTokenSse(res, chunk, streamedText);
+              tokenWriter.writeChunk(res, chunk, streamedText);
               await new Promise((resolve) => setTimeout(resolve, 60));
             }
           }

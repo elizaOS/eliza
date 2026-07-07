@@ -261,6 +261,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const [isListening, setIsListening] = useState(false);
   const [captureMode, setCaptureMode] = useState<VoiceCaptureMode>("idle");
   const [isSpeaking, setIsSpeaking] = useState(false);
+  // Mirror of `isSpeaking` for callbacks that must read the live value (the
+  // transcript handler closes over stale state otherwise). Used to gate the
+  // cross-layer barge-in so the server abort fires ONLY on a genuine
+  // speak-over, not on ordinary utterances when the assistant is silent.
+  const isSpeakingRef = useRef(false);
+  isSpeakingRef.current = isSpeaking;
   const [mouthOpen, setMouthOpen] = useState(0);
   const [interimTranscript, setInterimTranscript] = useState("");
   const [supported, setSupported] = useState(false);
@@ -370,6 +376,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   voiceConfigRef.current = effectiveVoiceConfig;
   const interruptOnSpeechRef = useRef(options.interruptOnSpeech ?? true);
   interruptOnSpeechRef.current = options.interruptOnSpeech ?? true;
+  const onUserSpeechInterruptRef = useRef(options.onUserSpeechInterrupt);
+  onUserSpeechInterruptRef.current = options.onUserSpeechInterrupt;
   const interruptSpeechRef = useRef<() => void>(() => {});
   const playbackFramePumpRef = useRef<PlaybackFramePump | null>(null);
 
@@ -692,7 +700,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       });
 
       if (interruptOnSpeechRef.current) {
+        // Was the assistant actually speaking when this speech arrived? Capture
+        // it BEFORE the local interrupt flips `isSpeaking` off, so the
+        // cross-layer barge-in only fires on a genuine speak-over.
+        const wasAssistantSpeaking = isSpeakingRef.current;
         interruptSpeechRef.current();
+        // Cross-layer barge-in: recognized user speech landed mid-assistant-
+        // turn. Abort the SERVER generation too (local audio + TTS queue are
+        // already cleared by the interrupt above). Gated on the assistant
+        // actually speaking so an ordinary utterance in a lull is untouched.
+        if (wasAssistantSpeaking) {
+          onUserSpeechInterruptRef.current?.();
+        }
       }
 
       if (isFinal && mode === "passive") {

@@ -26,6 +26,8 @@ import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
   refreshCloudStewardSession,
+  resolveDirectCloudAuthApiBase,
+  resolveDirectCloudWebBase,
 } from "../api/client-cloud";
 import {
   invokeDesktopBridgeRequestWithTimeout,
@@ -45,6 +47,7 @@ import {
 } from "../utils";
 import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
 import {
+  CLOUD_LOGIN_POPUP_NAME,
   navigateToSameTabCloudLogin,
   shouldUseSameTabCloudLogin,
 } from "./cloud-login-launch";
@@ -63,9 +66,14 @@ import { isPrivateNetworkHost } from "./private-network-host";
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS = 1000;
+const ELIZA_CLOUD_LOGIN_RETURN_POLL_TIMEOUT_MS = 60_000;
 const ELIZA_CLOUD_LOGIN_TIMEOUT_MS = 300_000;
 const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://elizacloud.ai";
+const ELIZA_CLOUD_LOGIN_COMPLETE_PARAM = "elizaCloudLogin";
+const ELIZA_CLOUD_LOGIN_SESSION_PARAM = "elizaCloudLoginSession";
+
+let activeCloudLoginPopup: Window | null = null;
 
 /** Cloud=Steward token-lifecycle: how often to check the JWT for expiry. */
 const STEWARD_REFRESH_CHECK_INTERVAL_MS = 60_000;
@@ -111,6 +119,164 @@ function isSameOriginLocalHttpBackend(): boolean {
 function isDevUiPortWithoutEmbeddedBackend(): boolean {
   if (typeof window === "undefined") return false;
   return window.location.port === "2138";
+}
+
+function isTrustedCloudAuthMessageOrigin(
+  origin: string,
+  cloudApiBase: string,
+): boolean {
+  if (!origin) return false;
+  try {
+    return (
+      new URL(origin).origin ===
+      new URL(resolveDirectCloudWebBase(cloudApiBase)).origin
+    );
+  } catch (error) {
+    void error;
+    return false;
+  }
+}
+
+function isMatchingCloudAuthCompleteMessage(
+  data: unknown,
+  sessionId: string,
+): boolean {
+  if (!sessionId || typeof data !== "object" || data === null) return false;
+  const message = data as { type?: unknown; sessionId?: unknown };
+  return (
+    message.type === "eliza-cloud-auth-complete" &&
+    message.sessionId === sessionId
+  );
+}
+
+function readCloudLoginReturnSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get(ELIZA_CLOUD_LOGIN_COMPLETE_PARAM) !== "complete") {
+      return null;
+    }
+    const sessionId = url.searchParams
+      .get(ELIZA_CLOUD_LOGIN_SESSION_PARAM)
+      ?.trim();
+    return sessionId || null;
+  } catch (error) {
+    void error;
+    return null;
+  }
+}
+
+function clearCloudLoginReturnParams(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const url = new URL(window.location.href);
+    let changed = false;
+    for (const key of [
+      ELIZA_CLOUD_LOGIN_COMPLETE_PARAM,
+      ELIZA_CLOUD_LOGIN_SESSION_PARAM,
+    ]) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.delete(key);
+        changed = true;
+      }
+    }
+    if (changed) {
+      const next = `${url.pathname}${url.search}${url.hash}`;
+      window.history.replaceState(window.history.state, "", next);
+    }
+  } catch (error) {
+    void error;
+    // error-policy:J3 URL cleanup is cosmetic; auth polling can still proceed.
+  }
+}
+
+function rememberCloudLoginPopup(popup: Window | null): void {
+  if (popup && !popup.closed) {
+    activeCloudLoginPopup = popup;
+  }
+}
+
+function openNamedCloudLoginPopup(url: string): Window | null {
+  if (typeof window === "undefined" || typeof window.open !== "function") {
+    return null;
+  }
+  try {
+    const popup = window.open(url, CLOUD_LOGIN_POPUP_NAME);
+    rememberCloudLoginPopup(popup);
+    return popup && !popup.closed ? popup : null;
+  } catch (error) {
+    void error;
+    // error-policy:J4 popup launch can be blocked; caller owns fallback.
+    return null;
+  }
+}
+
+function closePopupWindow(popup: Window | null): void {
+  if (!popup || popup.closed) return;
+  try {
+    popup.close();
+  } catch (error) {
+    void error;
+    // error-policy:J6 best-effort popup teardown after auth return.
+  }
+  try {
+    if (!popup.closed) {
+      popup.location.href = "about:blank";
+      globalThis.setTimeout(() => {
+        try {
+          popup.close();
+        } catch (error) {
+          void error;
+          // error-policy:J6 best-effort delayed close after blanking the popup.
+        }
+      }, 0);
+    }
+  } catch (error) {
+    void error;
+    // error-policy:J6 cross-origin window policies can reject navigation.
+  }
+}
+
+function closeCloudLoginPopup(popup: Window | null): void {
+  const hadKnownPopup = Boolean(popup || activeCloudLoginPopup);
+  const candidates: Window[] = [];
+  const addCandidate = (candidate: Window | null) => {
+    if (!candidate || candidates.includes(candidate)) return;
+    candidates.push(candidate);
+  };
+  addCandidate(popup);
+  addCandidate(activeCloudLoginPopup);
+  activeCloudLoginPopup = null;
+  if (
+    hadKnownPopup &&
+    typeof window !== "undefined" &&
+    typeof window.open === "function"
+  ) {
+    try {
+      addCandidate(window.open("", CLOUD_LOGIN_POPUP_NAME));
+    } catch (error) {
+      void error;
+      // error-policy:J6 reclaiming a named popup is opportunistic cleanup.
+    }
+  }
+  candidates.forEach(closePopupWindow);
+}
+
+function closeActiveCloudLoginPopup(): void {
+  closeCloudLoginPopup(activeCloudLoginPopup);
+}
+
+function closeReturnedAuthTabIfOpenerStillExists(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const opener = window.opener as Window | null;
+    if (opener && !opener.closed) {
+      window.close();
+    }
+  } catch (error) {
+    void error;
+    // error-policy:J6 best-effort close; a normal tab simply remains open.
+  }
 }
 
 function isCapacitorNativeRuntime(): boolean {
@@ -456,14 +622,16 @@ export function useCloudState({
 
   const handleCloudLogin = useCallback(
     async (prePoppedWindow: Window | null = null) => {
-      let prePoppedWindowNavigatedExternally = false;
+      rememberCloudLoginPopup(prePoppedWindow);
       const closePrePoppedWindow = () => {
-        if (!prePoppedWindow || prePoppedWindowNavigatedExternally) return;
-        try {
-          prePoppedWindow.close();
-        } catch {
-          // error-policy:J6 best-effort teardown — closing a window the user
-          // navigated cross-origin throws; nothing to recover.
+        closeCloudLoginPopup(prePoppedWindow);
+      };
+      let cloudAuthMessageHandler: ((event: MessageEvent) => void) | null =
+        null;
+      const removeCloudAuthMessageListener = () => {
+        if (cloudAuthMessageHandler && typeof window !== "undefined") {
+          window.removeEventListener("message", cloudAuthMessageHandler);
+          cloudAuthMessageHandler = null;
         }
       };
 
@@ -698,6 +866,28 @@ export function useCloudState({
           return loginCompletion;
         }
 
+        const sessionId = resp.sessionId ?? "";
+        const authenticatedCloudApiBase =
+          useDirectAuth && resp.apiBase ? resp.apiBase : cloudApiBase;
+        if (sessionId && typeof window !== "undefined") {
+          cloudAuthMessageHandler = (event: MessageEvent) => {
+            if (
+              !isTrustedCloudAuthMessageOrigin(
+                event.origin,
+                authenticatedCloudApiBase,
+              )
+            ) {
+              return;
+            }
+            if (!isMatchingCloudAuthCompleteMessage(event.data, sessionId)) {
+              return;
+            }
+            closePrePoppedWindow();
+            void closeExternalBrowser();
+          };
+          window.addEventListener("message", cloudAuthMessageHandler);
+        }
+
         // Open the login URL in the system browser. On Capacitor iOS the
         // pre-opened window preserves the user-gesture context so WKWebView
         // routes the URL out to Safari instead of dropping it silently.
@@ -711,26 +901,26 @@ export function useCloudState({
         if (resp.browserUrl) {
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
           if (prePoppedWindow) {
-            navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl);
-            prePoppedWindowNavigatedExternally = true;
+            navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl, {
+              preserveOpener: true,
+            });
           } else {
-            try {
-              await openExternalUrl(resp.browserUrl);
-            } catch {
-              // error-policy:J4 browser launch failed — degrade to a visible
-              // copyable link so the user can complete login manually.
-              setElizaCloudLoginError(
-                `Open this link to log in: ${resp.browserUrl}`,
-              );
+            const popup = openNamedCloudLoginPopup(resp.browserUrl);
+            if (!popup) {
+              try {
+                await openExternalUrl(resp.browserUrl);
+              } catch {
+                // error-policy:J4 browser launch failed — degrade to a visible
+                // copyable link so the user can complete login manually.
+                setElizaCloudLoginError(
+                  `Open this link to log in: ${resp.browserUrl}`,
+                );
+              }
             }
           }
         } else {
           closePrePoppedWindow();
         }
-
-        const sessionId = resp.sessionId ?? "";
-        const authenticatedCloudApiBase =
-          useDirectAuth && resp.apiBase ? resp.apiBase : cloudApiBase;
 
         let pollInFlight = false;
         let consecutivePollErrors = 0;
@@ -740,6 +930,7 @@ export function useCloudState({
             clearInterval(elizaCloudLoginPollTimer.current);
             elizaCloudLoginPollTimer.current = null;
           }
+          removeCloudAuthMessageListener();
           elizaCloudLoginBusyRef.current = false;
           setElizaCloudLoginBusy(false);
           // Clear the manual-link fallback once the device-code session is
@@ -805,7 +996,7 @@ export function useCloudState({
               if (useDirectAuth) {
                 if (!poll.token) {
                   stopCloudLoginPolling(
-                    "Eliza Cloud login completed, but the cloud session did not return an API key.",
+                    "Eliza Cloud login completed, but the cloud session did not return a session token.",
                   );
                   return;
                 }
@@ -859,6 +1050,8 @@ export function useCloudState({
           }
         }, ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS);
       } catch (err) {
+        closePrePoppedWindow();
+        removeCloudAuthMessageListener();
         setElizaCloudLoginError(
           err instanceof Error ? err.message : "Eliza Cloud login failed",
         );
@@ -881,6 +1074,104 @@ export function useCloudState({
       loadWalletConfig,
     ],
   );
+
+  useEffect(() => {
+    const sessionId = readCloudLoginReturnSessionId();
+    if (!sessionId) {
+      clearCloudLoginReturnParams();
+      return;
+    }
+    clearCloudLoginReturnParams();
+    if (elizaCloudLoginBusyRef.current) return;
+
+    let cancelled = false;
+    const sleep = (ms: number) =>
+      new Promise((resolve) => window.setTimeout(resolve, ms));
+
+    void (async () => {
+      elizaCloudLoginBusyRef.current = true;
+      setElizaCloudLoginBusy(true);
+      setElizaCloudLoginError(null);
+      setElizaCloudLoginFallbackUrl(null);
+      const cloudApiBase =
+        getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
+      const authenticatedCloudApiBase =
+        resolveDirectCloudAuthApiBase(cloudApiBase);
+      const deadline = Date.now() + ELIZA_CLOUD_LOGIN_RETURN_POLL_TIMEOUT_MS;
+      let lastError: string | null = null;
+
+      try {
+        while (!cancelled && Date.now() < deadline) {
+          const poll = await client.cloudLoginPollDirect(
+            authenticatedCloudApiBase,
+            sessionId,
+          );
+          if (cancelled) return;
+
+          if (poll.status === "authenticated") {
+            if (!poll.token) {
+              lastError =
+                "Eliza Cloud login completed, but the cloud session did not return a session token.";
+              break;
+            }
+            writeStoredStewardToken(poll.token);
+            setBootConfig({
+              ...getBootConfig(),
+              cloudApiBase: authenticatedCloudApiBase,
+            });
+            client.setBaseUrl(authenticatedCloudApiBase, { persist: false });
+            client.setToken(poll.token);
+            setElizaCloudConnected(true);
+            setElizaCloudLoginError(null);
+            if (poll.userId) {
+              setElizaCloudUserId(poll.userId);
+            }
+            closeActiveCloudLoginPopup();
+            closeReturnedAuthTabIfOpenerStillExists();
+            void closeExternalBrowser();
+            setActionNotice(
+              "Logged in to Eliza Cloud successfully.",
+              "success",
+              6000,
+            );
+            return;
+          }
+
+          if (poll.status === "expired" || poll.status === "error") {
+            lastError =
+              poll.error ?? "Login session expired. Please sign in again.";
+            break;
+          }
+
+          await sleep(ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS);
+        }
+
+        if (!cancelled) {
+          setElizaCloudLoginError(
+            lastError ??
+              "Eliza Cloud login did not finish. Please sign in again.",
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setElizaCloudLoginError(
+            err instanceof Error
+              ? err.message
+              : "Eliza Cloud login did not finish. Please sign in again.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setActionNotice]);
 
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {

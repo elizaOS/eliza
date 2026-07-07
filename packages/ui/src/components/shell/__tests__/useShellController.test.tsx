@@ -152,6 +152,23 @@ vi.mock("../../../voice/voice-capture-factory", () => ({
   createVoiceCapture: vi.fn(),
 }));
 
+// Microphone-permission probe: stubbed so tests can drive the last-known
+// grant the engage-time gate reads. Defaults to "unknown" (the jsdom reality:
+// no `navigator.permissions.microphone`), so the common engage path stays
+// synchronous and proceeds exactly as before. Keeps the rest of the module
+// real (WAV/silence helpers used elsewhere).
+const micPermissionMock = vi.hoisted(() => ({
+  state: "unknown" as "granted" | "denied" | "prompt" | "unknown",
+}));
+vi.mock("../../../voice/local-asr-capture", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../../voice/local-asr-capture")>();
+  return {
+    ...actual,
+    queryMicrophonePermission: vi.fn(async () => micPermissionMock.state),
+  };
+});
+
 // Voice OUTPUT is stubbed to a quiet, controllable surface so the hands-free
 // re-listen loop is deterministic (never spuriously "speaking").
 const voiceOutputMock = vi.hoisted(() => ({
@@ -730,6 +747,8 @@ describe("useShellController — voice capture routing", () => {
     createVoiceCaptureMock.mockReset();
     installFakeCapture();
     voiceOutputMock.speaking = false;
+    // Default the mic grant to "unknown" (jsdom reality) so engage proceeds.
+    micPermissionMock.state = "unknown";
     appMock.value.agentStatus = { ...READY_STATUS };
     appMock.value.sendChatText.mockClear();
     // Hands-free now persists to localStorage (continuous-chat-mode). Clear it so
@@ -773,6 +792,146 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
       channelType: "VOICE_DM",
     });
+  });
+
+  it("engage does not open the mic when the mic grant is known-denied", async () => {
+    // The OS revoked the installed-PWA grant. The once-per-mount boot probe
+    // seeds micPermission "denied"; a hands-free tap must then short-circuit
+    // with the "re-enable mic" affordance instead of opening a mic that would
+    // reject through getUserMedia.
+    micPermissionMock.state = "denied";
+    const { result } = renderHook(() => useShellController());
+    // Flush the boot permission probe so micPermission is "denied".
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.micPermission).toBe("denied");
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+
+    // No capture opened, hands-free stayed at rest, and the affordance surfaced.
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
+    expect(appMock.value.setActionNotice).toHaveBeenCalledWith(
+      expect.stringContaining("Microphone access is off"),
+      "error",
+      expect.any(Number),
+    );
+  });
+
+  it("recheckMicPermission recovers to 'granted' and clears the block", async () => {
+    micPermissionMock.state = "denied";
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.micPermission).toBe("denied");
+
+    // User grants permission in settings, then the affordance's re-check runs.
+    micPermissionMock.state = "granted";
+    await act(async () => {
+      await result.current.recheckMicPermission();
+    });
+    expect(result.current.micPermission).toBe("granted");
+
+    // A subsequent engage now opens the mic normally.
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+    expect(result.current.handsFree).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("a denied to re-enable tap engages on the first retry via a fresh probe", async () => {
+    // The last-known state can be stale "denied" after the user has since
+    // re-enabled permission in settings. The first retry tap must re-probe and
+    // engage instead of spending the tap on the stale ref.
+    micPermissionMock.state = "denied";
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.micPermission).toBe("denied");
+
+    // User re-enables permission in system settings (ref is still stale-denied
+    // — no recheck has run yet). The next tap must catch the recovery itself.
+    micPermissionMock.state = "granted";
+    await act(async () => {
+      result.current.toggleHandsFree();
+    });
+
+    expect(result.current.handsFree).toBe(true);
+    expect(createVoiceCaptureMock).toHaveBeenCalledTimes(1);
+    // The stale-denied notice must not fire on this successful retry.
+    expect(appMock.value.setActionNotice).not.toHaveBeenCalledWith(
+      expect.stringContaining("Microphone access is off"),
+      "error",
+      expect.any(Number),
+    );
+    // And always-on is persisted so a reload restores the recovered loop.
+    expect(
+      window.localStorage.getItem("eliza:voice:continuous-chat-mode"),
+    ).toBe("always-on");
+  });
+
+  it("a successful capture clears a stale 'denied' mic-permission state", async () => {
+    // getUserMedia succeeding proves the grant is live: a prior "denied" must
+    // not linger on micPermission after a successful push-to-talk/dictation
+    // open, or the re-enable affordance stays lit despite working access.
+    micPermissionMock.state = "denied";
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.micPermission).toBe("denied");
+
+    // A push-to-talk dictation capture opens successfully (fake capture always
+    // resolves start()). That success must clear the stale denied state.
+    await act(async () => {
+      result.current.startRecording("dictate");
+    });
+    expect(result.current.recording).toBe(true);
+    expect(result.current.micPermission).toBe("granted");
+  });
+
+  it("a denied background refresh rolls back a phantom always-on engage", async () => {
+    // Fast-path engage while a reply is responding: onProceed sets handsFree but
+    // does not open capture yet (gated on !responding). If the background
+    // refresh then discovers the grant is revoked, the shell must not stay in a
+    // phantom always-on state — it rolls back to rest with the affordance.
+    // Mount with a reply already in flight so `responding` is true from the
+    // first render (voice gated → no capture opens on engage).
+    micPermissionMock.state = "unknown";
+    voiceOutputMock.speaking = true;
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.micPermission).toBe("unknown");
+    expect(result.current.responding).toBe(true);
+
+    // The grant is actually revoked; the background refresh will discover it.
+    micPermissionMock.state = "denied";
+
+    await act(async () => {
+      result.current.toggleHandsFree();
+      // Flush the background recheckMicPermission promise.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // No capture opened (was gated), and the phantom always-on was rolled back.
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
+    expect(result.current.handsFree).toBe(false);
+    expect(result.current.micPermission).toBe("denied");
+    voiceOutputMock.speaking = false;
   });
 
   it("voice-settings apply always-on engages the mounted hands-free shell", async () => {
@@ -1041,6 +1200,26 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
       channelType: "VOICE_DM",
     });
+  });
+
+  it("boot always-on does not engage when the mic grant is denied", async () => {
+    // Persisted always-on + a revoked OS grant: the boot effect must await the
+    // fresh permission probe (the ref isn't seeded yet on the boot tick) and
+    // stay disengaged instead of opening a mic getUserMedia would reject.
+    micPermissionMock.state = "denied";
+    window.localStorage.setItem(
+      "eliza:voice:continuous-chat-mode",
+      "always-on",
+    );
+
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+    });
+
+    expect(result.current.handsFree).toBe(false);
+    expect(createVoiceCaptureMock).not.toHaveBeenCalled();
   });
 
   it("persists always-on on tap and restores the prior mode on tap-off", async () => {

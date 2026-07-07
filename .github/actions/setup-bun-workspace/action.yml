@@ -241,7 +241,10 @@ runs:
       if: ${{ inputs.install-native-deps == 'true' && runner.os == 'Linux' }}
       shell: bash
       run: |
-        # Some CI runners intermittently fail reaching Ubuntu mirrors over IPv6.
+        if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
+          echo "::warning::passwordless sudo unavailable; skipping native apt deps (assuming runner image is pre-provisioned)"
+        else
+          # Some CI runners intermittently fail reaching Ubuntu mirrors over IPv6.
         # Force IPv4 and retry apt commands so CI setup is resilient. Also
         # disable unrelated Microsoft feeds because their 403s make apt-get
         # update fail before Ubuntu packages can install.
@@ -266,7 +269,8 @@ runs:
             exit 1
           fi
           sleep $((attempt * 10))
-        done
+          done
+        fi
 
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
@@ -364,7 +368,7 @@ runs:
         fi
         # Final fallback: scan the whole node_modules tree (slower but
         # exhaustive). Skip if we already found one above.
-        if [ -z "$install_js" ] || [ ! -f "$install_js" ]; then
+        if { [ -z "$install_js" ] || [ ! -f "$install_js" ]; } && [ -d node_modules ]; then
           install_js="$(find node_modules -path '*/bun/install.js' -print -quit 2>/dev/null)"
         fi
         if [ -n "$install_js" ] && [ -f "$install_js" ]; then

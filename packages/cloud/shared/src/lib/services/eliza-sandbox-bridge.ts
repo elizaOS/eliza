@@ -230,46 +230,74 @@ export class ElizaSandboxBridgeService {
     }
 
     const messageId = crypto.randomUUID();
+    // Accumulate across frames: a delta-v2 agent (client `streamProtocol` can
+    // ride through the bridge to it) ships bare `{type:"token",text}` deltas and
+    // resends `fullText` only on a periodic snapshot, so the downstream
+    // `fullText`/done text must be rebuilt here, not read off each frame.
+    let accumulated = "";
+    let pending = "";
+    const findEventBreak = (value: string) => {
+      const lfBreak = value.indexOf("\n\n");
+      const crlfBreak = value.indexOf("\r\n\r\n");
+      if (lfBreak === -1 && crlfBreak === -1) return null;
+      if (lfBreak === -1) return { index: crlfBreak, length: 4 };
+      if (crlfBreak === -1) return { index: lfBreak, length: 2 };
+      return lfBreak < crlfBreak ? { index: lfBreak, length: 2 } : { index: crlfBreak, length: 4 };
+    };
+    const emitFrame = (frame: string, controller: TransformStreamDefaultController<string>) => {
+      if (!frame.trim()) return;
+      const dataLine = frame.split(/\r?\n/).find((line) => line.startsWith("data:"));
+      if (!dataLine) {
+        controller.enqueue(`${frame}\n\n`);
+        return;
+      }
+      try {
+        const data = JSON.parse(dataLine.slice(5).trimStart());
+        if (data?.type === "token") {
+          const delta = typeof data.text === "string" ? data.text : "";
+          accumulated = typeof data.fullText === "string" ? data.fullText : accumulated + delta;
+          controller.enqueue(
+            `event: chunk\ndata: ${JSON.stringify({
+              messageId,
+              chunk: delta,
+              text: delta,
+              fullText: accumulated,
+              timestamp: Date.now(),
+            })}\n\n`,
+          );
+          return;
+        }
+        if (data?.type === "done") {
+          controller.enqueue(
+            `event: done\ndata: ${JSON.stringify({
+              messageId,
+              text: typeof data.fullText === "string" ? data.fullText : accumulated,
+            })}\n\n`,
+          );
+          return;
+        }
+      } catch {
+        // error-policy:J3 untrusted SSE frames are invalid for normalization and pass through unchanged.
+      }
+      controller.enqueue(`${frame}\n\n`);
+    };
     const stream = response.body
       .pipeThrough(new TextDecoderStream())
       .pipeThrough(
         new TransformStream<string, string>({
           transform: (chunk, controller) => {
-            for (const frame of chunk.split("\n\n")) {
-              if (!frame.trim()) continue;
-              const dataLine = frame.split("\n").find((line) => line.startsWith("data: "));
-              if (!dataLine) {
-                controller.enqueue(`${frame}\n\n`);
-                continue;
-              }
-              try {
-                const data = JSON.parse(dataLine.slice(6));
-                if (data?.type === "token" && typeof data.text === "string") {
-                  controller.enqueue(
-                    `event: chunk\ndata: ${JSON.stringify({
-                      messageId,
-                      chunk: data.text,
-                      text: data.text,
-                      fullText: typeof data.fullText === "string" ? data.fullText : data.text,
-                      timestamp: Date.now(),
-                    })}\n\n`,
-                  );
-                  continue;
-                }
-                if (data?.type === "done") {
-                  controller.enqueue(
-                    `event: done\ndata: ${JSON.stringify({
-                      messageId,
-                      text: typeof data.fullText === "string" ? data.fullText : "",
-                    })}\n\n`,
-                  );
-                  continue;
-                }
-              } catch {
-                // Pass unknown frames through unchanged.
-              }
-              controller.enqueue(`${frame}\n\n`);
+            pending += chunk;
+            let eventBreak = findEventBreak(pending);
+            while (eventBreak) {
+              const frame = pending.slice(0, eventBreak.index);
+              pending = pending.slice(eventBreak.index + eventBreak.length);
+              emitFrame(frame, controller);
+              eventBreak = findEventBreak(pending);
             }
+          },
+          flush: (controller) => {
+            if (pending.trim()) emitFrame(pending, controller);
+            pending = "";
           },
         }),
       )

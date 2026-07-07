@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSameTabCloudLoginPath,
   canNavigateSameTabForBlockedPopup,
+  CLOUD_LOGIN_POPUP_NAME,
   hasSameOriginStewardLogin,
   isTouchPrimaryWebBrowser,
   preOpenCloudLoginWindow,
@@ -177,7 +178,7 @@ describe("preOpenCloudLoginWindow", () => {
     const popup = makePopup(false);
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     expect(preOpenCloudLoginWindow()).toBe(popup);
-    expect(openSpy).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
   });
 });
 

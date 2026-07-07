@@ -56,6 +56,7 @@ const mocks = vi.hoisted(() => ({
   refreshCloudStewardSession: vi.fn(
     async (): Promise<{ token?: string } | null> => null,
   ),
+  preOpenCloudLoginWindow: vi.fn((): Window | null => null),
   // The device RAM probe is a native boundary like the client: tests inject a
   // tier here (null = jsdom's honest "unknown"); the gate's own probe path is
   // covered in device-ram-gate.test.ts against the real bridge seam.
@@ -105,6 +106,15 @@ vi.mock("./device-ram-gate", async (importOriginal) => {
         );
       }
     },
+  };
+});
+
+vi.mock("../state/cloud-login-launch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../state/cloud-login-launch")>();
+  return {
+    ...actual,
+    preOpenCloudLoginWindow: mocks.preOpenCloudLoginWindow,
   };
 });
 
@@ -266,7 +276,9 @@ beforeEach(() => {
     success: true,
     data: [],
   });
+  mocks.client.getCloudStatus.mockResolvedValue({ connected: true });
   mocks.refreshCloudStewardSession.mockResolvedValue(null);
+  mocks.preOpenCloudLoginWindow.mockReturnValue(null);
   localStorage.setItem("steward_session_token", "cloud-token");
   // The runtime chooser (local / remote paths) is OFF by default (#13377);
   // these suites exercise the full chooser, so they opt in via the override.
@@ -551,7 +563,7 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("drives the CLOUD path: OAuth turn → agent CHOICE → bind → tutorial start launches the tour", async () => {
+  it("drives the CLOUD path: OAuth turn → direct bind → tutorial start launches the tour", async () => {
     mocks.client.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [
@@ -575,32 +587,29 @@ describe("useFirstRunConductor", () => {
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     // The OAuth secretRequest turn seeds immediately (pending), then flips to
-    // saved once the agent list resolves.
+    // saved once the cloud agent bind resolves. The first-run Cloud request is
+    // status-only so onboarding has one sign-in action, not a second OAuth
+    // button inside the status block.
     const oauthPending = await waitForTurn(turn, "first-run:cloud-oauth");
-    expect(oauthPending.secretRequest?.form?.kind).toBe("oauth");
+    expect(oauthPending.secretRequest?.form).toBeUndefined();
     await waitFor(() => {
       expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe(
         "saved",
       );
     });
-
-    // ≥1 agents → a cloud-agent CHOICE (running agent first, plus create-new).
-    const agentChoice = await waitForTurn(turn, "first-run:cloud-agent");
-    expect(agentChoice.text).toContain(
-      "__first_run__:cloud-agent:agent-1=Prod",
-    );
-    expect(agentChoice.text).toContain(
-      "__first_run__:cloud-agent:new=Create a new agent",
+    expect(turn("first-run:cloud-oauth")?.secretRequest?.reason).toBe(
+      "Eliza Cloud connected",
     );
 
-    expect(tryHandleFirstRunAction("__first_run__:cloud-agent:agent-1")).toBe(
-      true,
-    );
     await waitForTurn(turn, "first-run:tutorial");
+    expect(turn("first-run:cloud-agent")).toBeUndefined();
     expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
     expect(
       mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-1", authToken: "cloud-token" });
+    ).toMatchObject({ authToken: "cloud-token" });
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).not.toHaveProperty("preferAgentId");
     // The bound base owns app-shell routes → first-run persisted exactly once.
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
 
@@ -625,6 +634,23 @@ describe("useFirstRunConductor", () => {
     expect(readCloudLoginPending()).toMatchObject({
       runtime: "cloud",
       localInference: "cloud-inference",
+    });
+    unmount();
+  });
+
+  it("pre-opens the Cloud auth window synchronously and reuses it for login", async () => {
+    const authWindow = { close: vi.fn() } as unknown as Window;
+    mocks.preOpenCloudLoginWindow.mockReturnValue(authWindow);
+    mocks.client.getCloudStatus.mockResolvedValue({ connected: false });
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+
+    expect(mocks.preOpenCloudLoginWindow).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(spies.handleCloudLogin).toHaveBeenCalledWith(authWindow);
     });
     unmount();
   });
@@ -685,9 +711,11 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("surfaces a cloud listing failure as a DISTINCT recovery turn (retry / restart / Settings), and 'restart' → LOCAL succeeds", async () => {
-    mocks.client.getCloudCompatAgents.mockRejectedValue(
-      new Error("cloud is down"),
+  it("surfaces a cloud provisioning lookup failure as a DISTINCT recovery turn (retry / restart / Settings), and 'restart' → LOCAL succeeds", async () => {
+    mocks.client.selectOrProvisionCloudAgent.mockRejectedValueOnce(
+      new Error(
+        "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+      ),
     );
     seedAppStore();
     const { transcript, turn, unmount } = renderConductor();
@@ -789,11 +817,12 @@ describe("useFirstRunConductor", () => {
     unmount();
   });
 
-  it("error:retry after a CLOUD listing failure re-seeds the OAuth turn and re-runs cloud provisioning (0 agents → auto-provision → tutorial)", async () => {
-    // First listing throws (transport failure), the retry succeeds with 0 agents.
-    mocks.client.getCloudCompatAgents
-      .mockRejectedValueOnce(new Error("cloud is down"))
-      .mockResolvedValue({ success: true, data: [] });
+  it("error:retry after a CLOUD lookup failure re-seeds the OAuth turn and re-runs cloud provisioning", async () => {
+    mocks.client.selectOrProvisionCloudAgent.mockRejectedValueOnce(
+      new Error(
+        "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+      ),
+    );
     seedAppStore();
     const { transcript, turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
@@ -806,23 +835,25 @@ describe("useFirstRunConductor", () => {
     });
 
     // "Try again" re-runs the SAME (cloud) flow: it re-seeds the connecting
-    // OAuth turn and calls listing a second time, then auto-provisions.
+    // OAuth turn and calls the shared selector again.
     expect(tryHandleFirstRunAction("__first_run__:error:retry")).toBe(true);
     await waitForTurn(turn, "first-run:tutorial");
-    expect(mocks.client.getCloudCompatAgents).toHaveBeenCalledTimes(2);
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(2);
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
     expect(turn("first-run:cloud-oauth")?.secretRequest?.status).toBe("saved");
     unmount();
   });
 
   it("consumes every pick while a provisioning flow is in flight — no concurrent flows", async () => {
-    let releaseAgents: (value: { success: true; data: never[] }) => void =
-      () => {};
-    mocks.client.getCloudCompatAgents.mockImplementation(
+    let releaseAgent: (value: {
+      apiBase: string;
+      agentId: string;
+      created: boolean;
+    }) => void = () => {};
+    mocks.client.selectOrProvisionCloudAgent.mockImplementation(
       () =>
         new Promise((resolve) => {
-          releaseAgents = resolve as typeof releaseAgents;
+          releaseAgent = resolve as typeof releaseAgent;
         }),
     );
     seedAppStore();
@@ -840,12 +871,16 @@ describe("useFirstRunConductor", () => {
       true,
     );
     await new Promise((resolve) => setTimeout(resolve, 25));
-    expect(mocks.client.getCloudCompatAgents).toHaveBeenCalledTimes(1);
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
     expect(turn("first-run:provider")).toBeUndefined();
     expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
 
-    // The in-flight flow settles normally: 0 agents → auto-provision → tutorial.
-    releaseAgents({ success: true, data: [] });
+    // The in-flight flow settles normally: shared selector → tutorial.
+    releaseAgent({
+      apiBase: "https://agent.example.test",
+      agentId: "agent-1",
+      created: false,
+    });
     await waitForTurn(turn, "first-run:tutorial");
     expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
@@ -901,6 +936,36 @@ describe("useFirstRunConductor", () => {
     expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     // The late "start" tap after the skip must not launch the tour.
     expect(readTutorialState().active).toBe(false);
+    unmount();
+  });
+
+  it("closes the claimed Cloud login popup after first-run auth succeeds", async () => {
+    localStorage.removeItem("steward_session_token");
+    const close = vi.fn();
+    const popup = { close } as unknown as Window;
+    mocks.preOpenCloudLoginWindow.mockReturnValue(popup);
+    mocks.client.getCloudStatus
+      .mockResolvedValueOnce({ connected: false })
+      .mockResolvedValue({ connected: true });
+    const handleCloudLogin = vi.fn(async () => {
+      localStorage.setItem("steward_session_token", "cloud-token");
+    });
+    seedAppStore({
+      elizaCloudConnected: false,
+      handleCloudLogin,
+    });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    await waitFor(() => {
+      expect(handleCloudLogin).toHaveBeenCalledWith(popup);
+    });
+    await waitFor(() => {
+      expect(close).toHaveBeenCalledTimes(1);
+    });
+    expect(turn("first-run:cloud-oauth")?.secretRequest?.form).toBeUndefined();
+
     unmount();
   });
 
@@ -1076,7 +1141,7 @@ describe("surfaceCloudLoginRetryTurn", () => {
       "first-run:cloud-oauth",
     ]);
     expect(messages[1]?.secretRequest?.status).toBe("failed");
-    expect(messages[1]?.secretRequest?.form?.kind).toBe("oauth");
+    expect(messages[1]?.secretRequest?.form).toBeUndefined();
     expect(messages[1]?.text).toContain("Connect your Eliza Cloud account");
   });
 
@@ -1179,11 +1244,14 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // The #15133 bar: an authenticated user's next rendered state is the
     // agent chat itself — the transcript carries NOT ONE onboarding turn.
     expect(transcript.current).toEqual([]);
-    // The single agent was adopted directly (no picker, no create).
+    // The shared selector adopts the best healthy agent directly (no picker).
     expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
     expect(
       mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-only", authToken: "cloud-token" });
+    ).toMatchObject({ authToken: "cloud-token" });
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).not.toHaveProperty("preferAgentId");
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
     unmount();
   });
@@ -1229,7 +1297,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
-  it("multiple agents surface the existing in-chat selector (#15133) — newest-running first — and the pick binds + completes", async () => {
+  it("a connected cloud-only session binds directly without surfacing the agent selector", async () => {
     mocks.client.getCloudCompatAgents.mockResolvedValue({
       success: true,
       data: [
@@ -1250,38 +1318,19 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     const spies = seedAppStore({ elizaCloudConnected: true });
     const { transcript, turn, unmount } = renderConductor();
 
-    // The selector is the FIRST rendered turn: the silent entry seeds no
-    // greeting/welcome-back ahead of it.
-    const choice = await waitForTurn(turn, "first-run:cloud-agent");
-    expect(transcript.current.map((m) => m.id)).toEqual([
-      "first-run:cloud-agent",
-    ]);
-    expect(choice.text).toContain(
-      "__first_run__:cloud-agent:agent-newest-running=Newest",
-    );
-    expect(choice.text).toContain("__first_run__:cloud-agent:agent-older=");
-    expect(choice.text).toContain(
-      "__first_run__:cloud-agent:new=Create a new agent",
-    );
-    expect(choice.text.indexOf("agent-newest-running")).toBeLessThan(
-      choice.text.indexOf("agent-older"),
-    );
-    // Nothing bound before the user chose.
-    expect(mocks.client.selectOrProvisionCloudAgent).not.toHaveBeenCalled();
-    expect(spies.completeFirstRun).not.toHaveBeenCalled();
-
-    // Picking an agent binds exactly it and completes onboarding; the
-    // selector was an interactive ask, so the done wrap-up renders again.
-    expect(
-      tryHandleFirstRunAction("__first_run__:cloud-agent:agent-older"),
-    ).toBe(true);
     await waitFor(() => {
       expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     });
+    expect(transcript.current.some((m) => m.id === "first-run:greeting")).toBe(
+      false,
+    );
+    expect(turn("first-run:cloud-agent")).toBeUndefined();
     expect(
       mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
-    ).toMatchObject({ preferAgentId: "agent-older" });
-    await waitForTurn(turn, "first-run:cloud-done");
+    ).toMatchObject({ authToken: "cloud-token" });
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).not.toHaveProperty("preferAgentId");
     unmount();
   });
 
@@ -1373,9 +1422,11 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(
       mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
     ).toMatchObject({
-      preferAgentId: "agent-console",
       authToken: "cookie-token",
     });
+    expect(
+      mocks.client.selectOrProvisionCloudAgent.mock.calls[0][0],
+    ).not.toHaveProperty("preferAgentId");
     unmount();
   });
 
@@ -1493,11 +1544,9 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
   });
 
   it("finish errors offer retry + Settings only — 'choose a different way to run' does not exist", async () => {
-    mocks.client.getCloudCompatAgents.mockResolvedValue({
-      success: false,
-      data: [],
-      error: "cloud agent list failed",
-    });
+    mocks.client.selectOrProvisionCloudAgent.mockRejectedValue(
+      new Error("cloud agent lookup failed"),
+    );
     const spies = seedAppStore({ elizaCloudConnected: true });
     const { transcript, unmount } = renderConductor();
 
@@ -1594,12 +1643,14 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
 
     // No runaway: give any residual auto-resume loop a window, then prove the
-    // provision listing was attempted a bounded number of times and does not keep
+    // provisioning was attempted a bounded number of times and does not keep
     // growing (pre-fix it grew every re-fired render).
-    const listed = mocks.client.getCloudCompatAgents.mock.calls.length;
+    const attempts = mocks.client.selectOrProvisionCloudAgent.mock.calls.length;
     await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(mocks.client.getCloudCompatAgents.mock.calls.length).toBe(listed);
-    expect(listed).toBeLessThanOrEqual(3);
+    expect(mocks.client.selectOrProvisionCloudAgent.mock.calls.length).toBe(
+      attempts,
+    );
+    expect(attempts).toBeLessThanOrEqual(3);
     unmount();
   });
 });

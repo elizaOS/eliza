@@ -50,10 +50,9 @@
  * durable token, a completed mobile OAuth round trip, or a session recovered
  * from the console's cross-subdomain cookie) enters SILENTLY (#15133): zero
  * onboarding turns for a pure agent reuse, the real provisioning narration
- * only when an agent is actually created or cold-boot woken, the existing
- * in-chat selector when the account has several agents. Provisioning success
- * flips the real gate immediately. The tutorial is never a completion gate in
- * this mode; it stays reachable from its home tile.
+ * only when an agent is actually created or cold-boot woken. Provisioning
+ * success flips the real gate immediately. The tutorial is never a completion
+ * gate in this mode; it stays reachable from its home tile.
  */
 
 import { logger } from "@elizaos/logger";
@@ -72,13 +71,9 @@ import {
   getCloudAuthToken,
   refreshCloudStewardSession,
 } from "../api/client-cloud";
-import { getBootConfig } from "../config/boot-config";
 import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
-import {
-  preOpenCloudLoginWindow,
-  resolveCloudSignInPageUrl,
-} from "../state/cloud-login-launch";
+import { preOpenCloudLoginWindow } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
 import { startTutorial } from "../tutorial/tutorial-service";
 import {
@@ -119,7 +114,7 @@ const GREETING =
 // #15143) — the OAuth secretRequest block alone only opens the cloud login
 // page and never completes an in-app login by itself.
 const CLOUD_SIGN_IN_GREETING =
-  "Hi — I'm Eliza. Sign in to Eliza Cloud and I'll get you set up.";
+  "Hi — I'm Eliza. To start chatting, sign in below.";
 const CLOUD_SIGN_IN_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Sign in to Eliza Cloud`,
@@ -349,21 +344,23 @@ const ACCENT_CHOICE = [
 function cloudOAuthSecretRequest(
   status: ConversationSecretRequest["status"],
 ): ConversationSecretRequest {
+  const reason =
+    status === "saved"
+      ? "Eliza Cloud connected"
+      : status === "failed"
+        ? "Eliza Cloud sign-in did not finish"
+        : "Waiting for browser sign-in";
   return {
     key: "elizacloud",
-    reason: "Connect your Eliza Cloud account",
+    reason,
     status,
-    form: {
-      type: "sensitive_request_form",
-      kind: "oauth",
-      mode: "cloud_authenticated_link",
-      fields: [],
-      submitLabel: "Connect Eliza Cloud",
-      provider: "elizacloud",
-      authorizationUrl: resolveCloudSignInPageUrl(
-        getBootConfig().cloudApiBase || "https://elizacloud.ai",
-      ),
-    },
+    delivery:
+      status === "pending"
+        ? {
+            mode: "cloud_authenticated_link",
+            instruction: "Finish signing in in the browser window.",
+          }
+        : undefined,
   };
 }
 
@@ -741,12 +738,14 @@ export function useFirstRunConductor(): void {
             else completeCloudOnly();
           }
           return;
+        case "handoff-started":
+          // A dedicated cloud agent is completing the official /pair handoff in
+          // the current window. The navigation owns the next UI state.
+          return;
         case "pick-cloud-agent": {
-          // Cloud-only onboarding (#13377/#15133): exactly one agent means
-          // there is nothing to choose — adopt it directly (the list arrives
-          // newest-first with running agents prioritized). Two or more get
-          // the existing in-chat selector, per the #15133 spec — silently
-          // adopting agents[0] hid the user's other agents behind Settings.
+          // Compatibility path for any legacy/stale picker outcome. The main
+          // Cloud first-run path now binds the best healthy agent directly so
+          // onboarding stays a single sign-in flow.
           if (!isRuntimeChooserEnabled()) {
             const first = outcome.agents[0]?.agent_id;
             if (outcome.agents.length === 1 && first) {
@@ -799,12 +798,36 @@ export function useFirstRunConductor(): void {
   // ── Flow launchers (shared by the action handler + the auto-resume) ──────
   const startCloudProvisionFlow = React.useCallback(() => {
     busyRef.current = true;
-    void listOrAutoProvisionCloudAgent(draftRef.current, portsRef.current)
+    const ports = portsRef.current;
+    const preOpenedAuthWindow = ports.preOpenWindow?.() ?? null;
+    let preOpenedAuthWindowClaimed = false;
+    const closePreOpenedAuthWindow = () => {
+      if (!preOpenedAuthWindow) return;
+      try {
+        preOpenedAuthWindow.close();
+      } catch (error) {
+        void error;
+        // error-policy:J6 best-effort cleanup for an auth popup we no longer need.
+      }
+    };
+    const flowPorts: FirstRunFinishPorts = {
+      ...ports,
+      preOpenWindow: () => {
+        preOpenedAuthWindowClaimed = true;
+        return preOpenedAuthWindow;
+      },
+    };
+    void listOrAutoProvisionCloudAgent(draftRef.current, flowPorts)
       .then((outcome) => {
-        if (outcome.kind === "done" || outcome.kind === "pick-cloud-agent") {
+        if (
+          outcome.kind === "done" ||
+          outcome.kind === "pick-cloud-agent" ||
+          outcome.kind === "handoff-started"
+        ) {
           // Login resolved + provisioning is proceeding — the resume marker has
           // served its purpose; drop it so a later relaunch doesn't re-resume.
           clearCloudLoginPending();
+          closePreOpenedAuthWindow();
           replaceTurn(
             "first-run:cloud-oauth",
             makeTurn("first-run:cloud-oauth", "Eliza Cloud connected.", {
@@ -819,6 +842,9 @@ export function useFirstRunConductor(): void {
       // without this the "Connecting…" turn strands as an unhandled rejection
       .catch((err: unknown) => seedError(cloudFailureMessage(err)))
       .finally(() => {
+        if (preOpenedAuthWindow && !preOpenedAuthWindowClaimed) {
+          closePreOpenedAuthWindow();
+        }
         busyRef.current = false;
       });
   }, [handleOutcome, replaceTurn, seedError]);
@@ -1426,7 +1452,8 @@ export function useFirstRunConductor(): void {
             writeStoredStewardToken(refreshed.token);
             try {
               window.dispatchEvent(new CustomEvent("steward-token-sync"));
-            } catch {
+            } catch (error) {
+              void error;
               // error-policy:J6 best-effort nudge — consumers re-read the
               // stored token on their next tick regardless.
             }

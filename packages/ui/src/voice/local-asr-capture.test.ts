@@ -12,6 +12,7 @@ import {
   isSilentPcmAudio,
   isSilentWav,
   measurePcmAudio,
+  queryMicrophonePermission,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
 
@@ -226,5 +227,55 @@ describe("decodeMonoPcm16Wav / isSilentWav (#voice-V5 silence guard)", () => {
 describe("DEFAULT_LOCAL_ASR_AUTO_STOP silence window (#voice-V6)", () => {
   it("defaults the trailing-silence window to the snappier 650ms", () => {
     expect(DEFAULT_LOCAL_ASR_AUTO_STOP.silenceMs).toBe(650);
+  });
+});
+
+describe("queryMicrophonePermission", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns 'granted' when the Permissions API reports a live grant", async () => {
+    const query = vi.fn().mockResolvedValue({ state: "granted" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+
+    await expect(queryMicrophonePermission()).resolves.toBe("granted");
+    expect(query).toHaveBeenCalledWith({ name: "microphone" });
+  });
+
+  it("surfaces a revoked grant as 'denied' so the re-enable affordance shows", async () => {
+    const query = vi.fn().mockResolvedValue({ state: "denied" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+
+    await expect(queryMicrophonePermission()).resolves.toBe("denied");
+  });
+
+  it("passes 'prompt' through so getUserMedia is allowed to re-prompt", async () => {
+    const query = vi.fn().mockResolvedValue({ state: "prompt" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+
+    await expect(queryMicrophonePermission()).resolves.toBe("prompt");
+  });
+
+  it("returns 'unknown' (never throws) when the descriptor is unsupported", async () => {
+    // Safari/older iOS reject the `"microphone"` descriptor; the probe must
+    // degrade to "unknown" so callers proceed normally instead of blocking.
+    const query = vi.fn().mockRejectedValue(new TypeError("unsupported name"));
+    vi.stubGlobal("navigator", { permissions: { query } });
+
+    await expect(queryMicrophonePermission()).resolves.toBe("unknown");
+  });
+
+  it("returns 'unknown' when the Permissions API is entirely absent", async () => {
+    vi.stubGlobal("navigator", {});
+
+    await expect(queryMicrophonePermission()).resolves.toBe("unknown");
+  });
+
+  it("maps an unrecognized permission state to 'unknown'", async () => {
+    const query = vi.fn().mockResolvedValue({ state: "weird-future-state" });
+    vi.stubGlobal("navigator", { permissions: { query } });
+
+    await expect(queryMicrophonePermission()).resolves.toBe("unknown");
   });
 });

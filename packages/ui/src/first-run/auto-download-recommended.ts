@@ -28,6 +28,7 @@ import type {
   CatalogModel,
   ModelHubSnapshot,
 } from "../services/local-inference/types";
+import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 
 const AUTO_DOWNLOAD_MARKER_KEY = "eliza.localInference.autoDownloadAttempted";
 const HEALTH_POLL_INTERVAL_MS = 2_000;
@@ -95,6 +96,7 @@ function pickInstalledElizaDownloadModel(
 export async function autoDownloadRecommendedLocalModelInBackground(
   apiBase: string,
 ): Promise<void> {
+  if (isElizaCloudControlPlaneAgentlessBase(apiBase)) return;
   if (readMarker()) return;
 
   const ready = await waitForLocalAgent(apiBase);

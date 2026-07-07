@@ -23,7 +23,6 @@ import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import { savePendingCloudHandoff } from "../cloud/handoff/pending-handoff-store";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
-import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
 import { isAndroid, isDesktopPlatform, isIOS } from "../platform/init";
@@ -34,6 +33,7 @@ import {
   removeAgentProfile,
   savePersistedActiveServer,
 } from "../state";
+import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import { isCloudStatusAuthenticated } from "../utils";
 import { autoDownloadRecommendedLocalModelInBackground } from "./auto-download-recommended";
 import { assertDeviceRamTierAllowsLocalRuntime } from "./device-ram-gate";
@@ -98,6 +98,7 @@ type FirstRunRuntimeStateKey =
 
 export type FirstRunFinishOutcome =
   | { kind: "done" }
+  | { kind: "handoff-started" }
   | { kind: "needs-cloud-login"; fallbackUrl?: string }
   | { kind: "pick-cloud-agent"; agents: CloudCompatAgent[] }
   | { kind: "error"; message: string };
@@ -220,6 +221,27 @@ async function getCloudStatusIfSupported() {
   return client.getCloudStatus().catch(() => null);
 }
 
+async function pairDedicatedCloudAgentInCurrentWindow(opts: {
+  cloudApiBase: string;
+  agentId: string;
+  cloudToken: string;
+}): Promise<void> {
+  if (typeof window === "undefined") {
+    throw new Error("Cloud agent sign-in requires a browser window.");
+  }
+  const result = await runAgentSessionRecovery({
+    cloudApiBase: opts.cloudApiBase,
+    agentId: opts.agentId,
+    cloudToken: opts.cloudToken,
+    navigate: (url) => {
+      window.location.replace(url);
+    },
+  });
+  if (!result.ok) {
+    throw new Error(result.message);
+  }
+}
+
 function readSyncOnDeviceAgentBearer(): string | null {
   try {
     const bridge = (
@@ -305,22 +327,6 @@ async function waitForAgentApi(): Promise<void> {
   throw new Error(
     "The agent API did not become ready before the first-run deadline.",
   );
-}
-
-/**
- * Newest-first, running-prioritized order — mirrors pickPreferredCloudAgent
- * (client-cloud.ts) so the picker's top-of-list matches the silent auto-default.
- */
-function sortCloudAgentsForPicker(
-  agents: CloudCompatAgent[],
-): CloudCompatAgent[] {
-  return [...agents]
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-    .sort((a, b) => {
-      const aRunning = a.status === "running" ? 0 : 1;
-      const bRunning = b.status === "running" ? 0 : 1;
-      return aRunning - bRunning;
-    });
 }
 
 function syncIdentity(
@@ -462,8 +468,9 @@ export async function bindCloudAgent(
         (entry): entry is string => typeof entry === "string",
       )
     : ["An autonomous AI agent."];
+  const cloudApiBase = getBootConfig().cloudApiBase || "https://elizacloud.ai";
   const selectedAgent = await client.selectOrProvisionCloudAgent({
-    cloudApiBase: getBootConfig().cloudApiBase || "https://elizacloud.ai",
+    cloudApiBase,
     authToken,
     name,
     bio,
@@ -475,6 +482,24 @@ export async function bindCloudAgent(
     onProgress: (status, detail) => ports.onStatus?.(detail ?? status, status),
   });
   const cloudAgentApiBase = selectedAgent.apiBase;
+  if (selectedAgent.requiresAgentPairing) {
+    ports.onStatus?.("Signing in to your cloud agent", "pairing");
+    try {
+      await pairDedicatedCloudAgentInCurrentWindow({
+        cloudApiBase,
+        agentId: selectedAgent.agentId,
+        cloudToken: authToken,
+      });
+      return { kind: "handoff-started" };
+    } catch (err) {
+      return {
+        kind: "error",
+        message: `Couldn't sign in to your cloud agent: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
+    }
+  }
   client.setBaseUrl(cloudAgentApiBase);
   client.setToken(authToken);
   const activeServer = createPersistedActiveServer({
@@ -555,13 +580,12 @@ export async function bindCloudAgent(
           dedicatedAgentId,
           cloudApiBase,
           authToken,
-          onSwitch: (containerBase) => {
-            silentlyRepointToDedicated({
-              containerBase,
-              authToken,
-              dedicatedAgentId,
-            });
-          },
+          onSwitch: async () =>
+            pairDedicatedCloudAgentInCurrentWindow({
+              cloudApiBase,
+              agentId: dedicatedAgentId,
+              cloudToken: authToken,
+            }),
         });
       },
       () => {
@@ -585,9 +609,9 @@ export async function bindCloudAgent(
 }
 
 /**
- * Cloud finish entry: connect Eliza Cloud (Steward), then list the user's cloud
- * agents. 0 agents → auto-provision; ≥1 → return `pick-cloud-agent` so the
- * conductor seeds a `[CHOICE:first-run id=cloud-agent]` block.
+ * Cloud finish entry: connect Eliza Cloud (Steward), then bind the best healthy
+ * existing agent or create one if needed. First-run stays a single clean path;
+ * specific agent management belongs in Settings after onboarding.
  */
 export async function listOrAutoProvisionCloudAgent(
   sourceDraft: FirstRunProfileDraft,
@@ -626,41 +650,7 @@ export async function listOrAutoProvisionCloudAgent(
   if (!authToken) {
     return { kind: "error", message: "Eliza Cloud authentication required." };
   }
-  let list: { success: boolean; data: CloudCompatAgent[]; error?: string };
-  try {
-    list = await client.getCloudCompatAgents();
-  } catch {
-    // error-policy:J1 a thrown error here is a TRANSPORT failure (offline /
-    // DNS / timeout),
-    // not an API message — the client returns { success:false } for real API
-    // errors. Surface a friendly, actionable line instead of leaking the raw
-    // `Unable to resolve host "api.elizacloud.ai"` UnknownHostException to the
-    // onboarding chat.
-    list = {
-      success: false,
-      data: [],
-      error:
-        "Couldn't reach Eliza Cloud — check your internet connection and try again.",
-    };
-  }
-  if (!list.success) {
-    return {
-      kind: "error",
-      message: list.error ?? "Could not load your agents. Try again.",
-    };
-  }
-  if (list.data.length === 0) {
-    return bindCloudAgent(
-      sourceDraft,
-      authToken,
-      { forceCreate: false },
-      ports,
-    );
-  }
-  return {
-    kind: "pick-cloud-agent",
-    agents: sortCloudAgentsForPicker(list.data),
-  };
+  return bindCloudAgent(sourceDraft, authToken, { forceCreate: false }, ports);
 }
 
 // ── Router entry — validate + route by runtime ───────────────────────────────

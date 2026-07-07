@@ -4,7 +4,8 @@
  * `CliLoginPage` device-login flow: an unauthenticated visitor is redirected
  * straight to /login (no CLI interstitial) with a per-session guard so it never
  * loops; an authenticated visitor POSTs /complete, notifies the opener, and
- * shows success without redirecting or closing; a missing session id or a
+ * returns app-launched sessions to their sanitized return target while keeping
+ * the success screen as the terminal/manual fallback; a missing session id or a
  * completion failure renders the error panel with no POST. The router,
  * session-auth hook, api-client, Steward provider, and i18n are doubled.
  */
@@ -71,6 +72,10 @@ const GUARD_KEY = "eliza-cloud-cli-login-autosignin:sess-1";
 const SIGN_IN_HREF = `/login?returnTo=${encodeURIComponent(
   "/auth/cli-login?session=sess-1",
 )}`;
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
 
 function resetSessionAuth() {
   sessionAuthRef.current = {
@@ -78,6 +83,25 @@ function resetSessionAuth() {
     authenticated: false,
     user: null,
   };
+}
+
+function stubLocationReplace(): ReturnType<typeof vi.fn> {
+  const replace = vi.fn();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: {
+      ...window.location,
+      origin: "https://elizacloud.ai",
+      replace,
+    },
+  });
+  return replace;
+}
+
+function restoreLocation(): void {
+  if (originalLocationDescriptor) {
+    Object.defineProperty(window, "location", originalLocationDescriptor);
+  }
 }
 
 beforeEach(() => {
@@ -91,6 +115,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  restoreLocation();
   vi.restoreAllMocks();
   delete (window as { opener?: unknown }).opener;
 });
@@ -131,7 +156,7 @@ describe("CliLoginPage", () => {
     expect(link.getAttribute("href")).toBe(SIGN_IN_HREF);
   });
 
-  it("completes the session when authenticated: POSTs /complete, notifies the opener, shows success, never redirects or script-closes", async () => {
+  it("completes authenticated terminal/manual sessions with the success fallback", async () => {
     sessionAuthRef.current = {
       ready: true,
       authenticated: true,
@@ -160,16 +185,93 @@ describe("CliLoginPage", () => {
       { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
       "*",
     );
+    expect(screen.getByRole("button", { name: "Close window" })).toBeTruthy();
     expect(
-      screen
-        .getByRole("link", { name: "Continue to dashboard" })
-        .getAttribute("href"),
-    ).toBe("/");
+      screen.queryByRole("link", { name: "Continue to dashboard" }),
+    ).toBeNull();
     expect(screen.queryByText("API Key Details")).toBeNull();
     expect(screen.queryByText("ek_live_abc")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Close Window" })).toBeNull();
     expect(navigateMock).not.toHaveBeenCalled();
     expect(closeSpy).not.toHaveBeenCalled();
+  });
+
+  it("redirects authenticated app-launched sessions back to the sanitized returnTo", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: "sess-1",
+      returnTo: "http://localhost:2138/chat?firstRun=1",
+    });
+    sessionAuthRef.current = {
+      ready: true,
+      authenticated: true,
+      user: { id: "u1", email: "a@b.co" },
+    };
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    const replace = stubLocationReplace();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+
+    render(<CliLoginPage />);
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "http://localhost:2138/chat?firstRun=1",
+      ),
+    );
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Returning to app")).toBeTruthy();
+    expect(screen.queryByText("Authentication Complete!")).toBeNull();
+  });
+
+  it("allows the production apex app as a returnTo target", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: "sess-1",
+      returnTo: "https://elizacloud.ai/chat?elizaCloudLogin=complete",
+    });
+    sessionAuthRef.current = {
+      ready: true,
+      authenticated: true,
+      user: { id: "u1", email: "a@b.co" },
+    };
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    const replace = stubLocationReplace();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+
+    render(<CliLoginPage />);
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "https://elizacloud.ai/chat?elizaCloudLogin=complete",
+      ),
+    );
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Returning to app")).toBeTruthy();
+    expect(screen.queryByText("Authentication Complete!")).toBeNull();
+  });
+
+  it("ignores untrusted returnTo origins and keeps the success fallback", async () => {
+    searchParamsRef.current = new URLSearchParams({
+      session: "sess-1",
+      returnTo: "https://evil.example.test/chat",
+    });
+    sessionAuthRef.current = {
+      ready: true,
+      authenticated: true,
+      user: { id: "u1", email: "a@b.co" },
+    };
+    apiFetchMock.mockResolvedValue({
+      json: async () => ({ keyPrefix: "ek_live_abc" }),
+    });
+    const replace = stubLocationReplace();
+
+    render(<CliLoginPage />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Authentication Complete!")).toBeTruthy(),
+    );
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("renders the error panel when the session id is missing — no POST, no redirect, no dead close button", async () => {

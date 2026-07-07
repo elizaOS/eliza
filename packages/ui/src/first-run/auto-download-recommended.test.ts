@@ -84,6 +84,18 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
     vi.clearAllMocks();
   });
 
+  it("does not probe /api/health for an agentless Eliza Cloud control-plane base", async () => {
+    vi.stubGlobal("window", { localStorage: fakeLocalStorage() });
+
+    await autoDownloadRecommendedLocalModelInBackground(
+      "https://api.elizacloud.ai",
+    );
+
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(mockClient.getLocalInferenceHub).not.toHaveBeenCalled();
+    expect(mockClient.startLocalInferenceDownload).not.toHaveBeenCalled();
+  });
+
   it("queues the fit-aware recommended default model on iOS simulator hardware", async () => {
     vi.stubGlobal("window", { localStorage: fakeLocalStorage() });
     fetchWithCsrfMock.mockResolvedValue(new Response("ok", { status: 200 }));

@@ -19,6 +19,7 @@ import {
   getCloudAuthToken,
   isDirectCloudSharedAgentBase,
 } from "../api/client-cloud";
+import { getBootConfig } from "../config/boot-config";
 import {
   appendIosBootTrace,
   isIosInProcessLocalAgentBase,
@@ -58,6 +59,8 @@ import {
 import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
+import { resolveAgentSessionRecovery } from "./agent-session-recovery";
+import { runAgentSessionRecovery } from "./agent-session-recovery-runner";
 
 function isCapacitorNative(): boolean {
   try {
@@ -370,6 +373,7 @@ export async function runPollingBackend(
   // Guards a one-shot recovery: if the saved server is unreachable we clear it
   // and re-point the client at the local origin exactly once, never in a loop.
   let fellBackToLocal = false;
+  let attemptedCloudAgentSessionRecovery = false;
   // Capacitor-native bounded boot (issue #11030): timestamp of the FIRST
   // failure in the current unbroken failure streak. Reset to null by any
   // successful probe; when the streak outlives the native budget the poll
@@ -483,6 +487,62 @@ export async function runPollingBackend(
     deps.setFirstRunComplete(false);
     deps.setFirstRunLoading(false);
     dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
+  };
+
+  const tryRecoverStaleCloudAgentSession = async (
+    why: string,
+  ): Promise<boolean> => {
+    if (attemptedCloudAgentSessionRecovery) return false;
+    if (!client.hasToken()) return false;
+
+    const activeServer =
+      ctx?.persistedActiveServer ?? ctx?.restoredActiveServer ?? null;
+    if (activeServer?.kind !== "cloud") return false;
+
+    const cloudToken = getCloudAuthToken(client);
+    if (!cloudToken) {
+      attemptedCloudAgentSessionRecovery = true;
+      recoverToAgentSelection(
+        `${why}; no valid Eliza Cloud session token is available`,
+      );
+      return true;
+    }
+
+    const decision = resolveAgentSessionRecovery({
+      reason: "remote_auth_required",
+      activeServer,
+      cloudToken,
+      cloudApiBase:
+        getBootConfig().cloudApiBase?.trim() || "https://elizacloud.ai",
+      alreadyAttempted: false,
+    });
+    if (decision.action !== "re-pair") return false;
+
+    attemptedCloudAgentSessionRecovery = true;
+    logger.warn(
+      {
+        staleBase: client.getBaseUrl(),
+        agentId: decision.agentId,
+        reason: why,
+      },
+      "[startup-phase-poll] saved cloud agent credential was rejected; refreshing it via cloud pairing",
+    );
+
+    const result = await runAgentSessionRecovery({
+      cloudApiBase: decision.cloudApiBase,
+      agentId: decision.agentId,
+      cloudToken,
+      navigate: (url) => {
+        if (typeof window !== "undefined") {
+          window.location.assign(url);
+        }
+      },
+    });
+
+    if (result.ok) return true;
+
+    recoverToAgentSelection(`${why}; re-pair failed: ${result.message}`);
+    return true;
   };
 
   const isSameOriginProxyBase = () => {
@@ -706,6 +766,13 @@ export async function runPollingBackend(
       // "Remote access blocked" message. Without this, the phone is stuck
       // in startup because every first-run/runtime endpoint returns 401.
       if (auth.required && !auth.authenticated && client.hasToken()) {
+        if (
+          await tryRecoverStaleCloudAgentSession(
+            "auth status rejected the saved cloud agent credential",
+          )
+        ) {
+          return;
+        }
         deps.setAuthRequired(false);
         deps.setFirstRunComplete(true);
         deps.setFirstRunLoading(false);
@@ -800,6 +867,13 @@ export async function runPollingBackend(
           } catch (err) {
             const ae = asApiLikeError(err);
             if (ae?.status === 401 && client.hasToken()) {
+              if (
+                await tryRecoverStaleCloudAgentSession(
+                  "first-run setup routes rejected the saved cloud agent credential",
+                )
+              ) {
+                return;
+              }
               // Transient 401: retry. /api/auth/status is the auth gate.
               optErr = err;
               await new Promise<void>((r) => {
@@ -934,6 +1008,15 @@ export async function runPollingBackend(
         );
         return;
       }
+      if (
+        ae?.status === 401 &&
+        client.hasToken() &&
+        (await tryRecoverStaleCloudAgentSession(
+          "backend poll rejected the saved cloud agent credential",
+        ))
+      ) {
+        return;
+      }
       if (ae?.status === 401 && !client.hasToken()) {
         // On Capacitor native the bearer token is injected asynchronously by
         // the native Agent plugin after the WebView boots. The first poll can
@@ -966,6 +1049,14 @@ export async function runPollingBackend(
         client.hasToken() &&
         latestAuth.authenticated
       ) {
+        if (
+          ae.status === 401 &&
+          (await tryRecoverStaleCloudAgentSession(
+            "runtime routes rejected the saved cloud agent credential",
+          ))
+        ) {
+          return;
+        }
         // Bearer-only token (paired but no password session). /api/auth/status
         // returned authenticated:true but a downstream endpoint
         // (firstRun-status, etc.) still 401s, or the server's auth rate

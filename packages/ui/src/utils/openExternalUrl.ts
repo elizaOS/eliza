@@ -94,7 +94,7 @@ export async function closeExternalBrowser(): Promise<void> {
  * navigatePreOpenedWindow(win, authUrl);
  * ```
  */
-export function preOpenWindow(): Window | null {
+export function preOpenWindow(target = "_blank"): Window | null {
   if (getElectrobunRendererRpc() !== undefined) return null; // Desktop uses RPC
   // Capacitor native: openExternalUrl uses the Browser plugin (no
   // gesture-context dependency). Avoid window.open here because WKWebView's
@@ -105,7 +105,7 @@ export function preOpenWindow(): Window | null {
     return null;
   // Open a blank window synchronously (preserves user-gesture context).
   // No noopener (nullifies return value) or noreferrer (can make about:blank cross-origin).
-  return window.open("about:blank", "_blank");
+  return window.open("about:blank", target);
 }
 
 /**
@@ -115,14 +115,17 @@ export function preOpenWindow(): Window | null {
 export function navigatePreOpenedWindow(
   popup: Window | null,
   url: string,
+  options?: { preserveOpener?: boolean },
 ): void {
   if (popup && !popup.closed) {
     popup.location.href = url;
-    // Security: sever the opener reference now that navigation is done.
-    try {
-      popup.opener = null;
-    } catch {
-      /* cross-origin — fine */
+    if (!options?.preserveOpener) {
+      // Security: sever the opener reference now that navigation is done.
+      try {
+        popup.opener = null;
+      } catch {
+        /* cross-origin — fine */
+      }
     }
     return;
   }

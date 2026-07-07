@@ -710,6 +710,13 @@ export interface AppActions {
     options?: { metadata?: Record<string, unknown> },
   ) => Promise<void>;
   handleChatStop: () => void;
+  /**
+   * Narrow interrupt of the active chat turn: aborts the in-flight server
+   * generation (relay `POST /api/turns/:roomId/abort`) + local stream, and
+   * resets sending state. Unlike `handleChatStop` this does NOT tear down
+   * coding-agent PTY sessions, so it is safe to fire on a voice barge-in.
+   */
+  interruptActiveChatPipeline: () => void;
   handleChatRetry: (assistantMsgId: string) => void;
   handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
   /** Persistently delete a single message (#13533): server DELETE + optimistic

@@ -24,7 +24,10 @@ import {
   getElizaApiToken,
   setElizaApiBase,
 } from "../utils/eliza-globals";
-import { mergeStreamingText } from "../utils/streaming-text";
+import {
+  DELTA_STREAM_PROTOCOL,
+  mergeStreamingText,
+} from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
 import type {
   AccountConnectRequest,
@@ -190,6 +193,12 @@ function parseChatToolCallEvent(
 }
 
 type StreamChatState = {
+  /** True when this request advertised delta-v2, so a token frame WITHOUT
+   *  `fullText` is a pure delta to plain-append — never routed through
+   *  `mergeStreamingText`, whose overlap heuristic would drop a legitimately
+   *  repeated multi-char delta (e.g. a second "the " after a buffer ending in
+   *  "the "). */
+  deltaProtocol: boolean;
   fullText: string;
   doneText: string | null;
   doneAgentName: string | null;
@@ -261,9 +270,17 @@ function applyStreamChatTokenEvent(
   const chunk = parsed.text ?? "";
   const nextFullText =
     typeof parsed.fullText === "string"
-      ? parsed.fullText
+      ? // An explicit snapshot is always authoritative (delta-v2 periodic
+        // snapshot AND legacy per-token fullText both land here).
+        parsed.fullText
       : chunk
-        ? mergeStreamingText(state.fullText, chunk)
+        ? // No fullText: a bare delta. Under negotiated delta-v2 the server
+          // guarantees pure appends, so bypass mergeStreamingText (its overlap
+          // dedupe drops legitimately repeated multi-char deltas). Foreign /
+          // un-negotiated streams still ride the merge heuristic.
+          state.deltaProtocol
+          ? state.fullText + chunk
+          : mergeStreamingText(state.fullText, chunk)
         : state.fullText;
   if (nextFullText === state.fullText) return false;
   state.fullText = nextFullText;
@@ -1784,6 +1801,10 @@ export class ElizaClient {
           text,
           channelType,
           clientMessageId: resolvedClientMessageId,
+          // Opt into delta framing: the server ships bare deltas + periodic
+          // snapshots instead of the full text on every token (O(N) wire). Old
+          // servers ignore the unknown field and keep legacy per-token fullText.
+          streamProtocol: DELTA_STREAM_PROTOCOL,
           ...(images?.length ? { images } : {}),
           ...(metadata ? { metadata } : {}),
         }),
@@ -1802,6 +1823,7 @@ export class ElizaClient {
     const reader = res.body.getReader();
     let buffer = "";
     const streamState: StreamChatState = {
+      deltaProtocol: true,
       fullText: "",
       doneText: null,
       doneAgentName: null,

@@ -73,6 +73,55 @@ export function isLocalAsrCaptureSupported(): boolean {
   );
 }
 
+/**
+ * The subset of `PermissionState` the voice loop reacts to, plus `"unknown"`
+ * for the platforms where the Permissions API can't answer (Safari/iOS PWA
+ * historically does not support the `"microphone"` descriptor name — the query
+ * rejects). `"unknown"` is treated as "proceed and let getUserMedia decide"
+ * so the recheck never blocks capture on a browser that simply can't report.
+ */
+export type MicrophonePermissionState =
+  | "granted"
+  | "denied"
+  | "prompt"
+  | "unknown";
+
+/**
+ * Proactively read the microphone permission via
+ * `navigator.permissions.query({ name: "microphone" })` without opening the
+ * mic. Used to show a "re-enable mic" affordance on hands-free engage / boot
+ * before `getUserMedia` reaches a revoked grant at capture time.
+ *
+ * Returns `"unknown"` (never throws) when the Permissions API is missing or
+ * the `"microphone"` descriptor is unsupported (Safari/older iOS) — callers
+ * treat unknown as "proceed normally", identical to `"prompt"`/`"granted"`.
+ */
+export async function queryMicrophonePermission(): Promise<MicrophonePermissionState> {
+  if (
+    typeof navigator === "undefined" ||
+    typeof navigator.permissions?.query !== "function"
+  ) {
+    return "unknown";
+  }
+  try {
+    const status = await navigator.permissions.query({
+      // `"microphone"` isn't in the older lib.dom PermissionName union; the
+      // cast is the same one the desktop permissions client uses.
+      name: "microphone" as PermissionName,
+    });
+    const state = status?.state;
+    if (state === "granted" || state === "denied" || state === "prompt") {
+      return state;
+    }
+    return "unknown";
+  } catch {
+    // Unsupported descriptor / query rejection → "unknown" is the explicit
+    // "can't determine, proceed normally" signal (matches the desktop
+    // permissions probe's null-on-throw contract).
+    return "unknown";
+  }
+}
+
 function concatPcm(chunks: Float32Array[]): Float32Array {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const out = new Float32Array(total);

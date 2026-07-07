@@ -280,12 +280,25 @@ describe("useVoiceChat bidirectional browser voice", () => {
     expect(recognition?.stopped).toBe(false);
   });
 
-  it("cancels assistant playback when user speech barges in", async () => {
+  it("cancels assistant playback AND fires onUserSpeechInterrupt on a passive barge-in", async () => {
+    // Real continuous-chat barge-in: the passive mic is ALREADY open when the
+    // assistant starts speaking, and user speech lands mid-TTS. This is the
+    // path that must abort the server turn (the mic is not reopened per turn,
+    // so `isSpeaking` is still live when the transcript arrives).
+    const onUserSpeechInterrupt = vi.fn();
     const { result } = renderHook(() =>
       useVoiceChat({
         onTranscript: vi.fn(),
+        onUserSpeechInterrupt,
       }),
     );
+
+    // Passive mic opens first (continuous mode), then the assistant speaks.
+    await act(async () => {
+      await result.current.startListening("passive");
+    });
+    const recognition = FakeSpeechRecognition.instances[0];
+    expect(recognition?.started).toBe(true);
 
     act(() => {
       result.current.speak("The assistant is still speaking.");
@@ -293,17 +306,43 @@ describe("useVoiceChat bidirectional browser voice", () => {
     await waitFor(() => {
       expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
     });
+    // Assistant is actively speaking with the mic still open.
+    expect(result.current.isSpeaking).toBe(true);
+    expect(result.current.isListening).toBe(true);
 
-    await act(async () => {
-      await result.current.startListening("hands-free");
-    });
-    const recognition = FakeSpeechRecognition.instances[0];
-
+    // User speaks over the assistant.
     act(() => {
       recognition?.emitResult("interrupt with my voice", false);
     });
 
+    // Local audio is cut...
     expect(speechSynthesisMock.cancel).toHaveBeenCalled();
+    // ...and the cross-layer server-turn abort is signalled exactly once.
+    expect(onUserSpeechInterrupt).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT fire onUserSpeechInterrupt when the assistant is not speaking", async () => {
+    // An ordinary utterance in a lull (no active assistant turn) must not abort
+    // a server turn — there is nothing to interrupt.
+    const onUserSpeechInterrupt = vi.fn();
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        onUserSpeechInterrupt,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("hands-free");
+    });
+    expect(result.current.isSpeaking).toBe(false);
+    const recognition = FakeSpeechRecognition.instances[0];
+
+    act(() => {
+      recognition?.emitResult("just a normal message", false);
+    });
+
+    expect(onUserSpeechInterrupt).not.toHaveBeenCalled();
   });
 
   it("keeps hands-free capture alive while speaking the wait phrase", async () => {

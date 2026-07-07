@@ -23,6 +23,7 @@ const COMPLETE_TIMEOUT_MS = 30_000;
 type CompletionState =
   | { status: "idle" }
   | { status: "completing" }
+  | { status: "redirecting" }
   | { status: "success"; apiKeyPrefix: string }
   | { status: "error"; errorMessage: string };
 
@@ -31,6 +32,7 @@ type PageState =
   | { status: "loading" }
   | { status: "waiting_auth" }
   | { status: "completing" }
+  | { status: "redirecting" }
   | { status: "success"; apiKeyPrefix: string }
   | { status: "error"; errorMessage: string };
 
@@ -47,6 +49,36 @@ const PANEL_TONE_CLASSES: Record<
   danger: { container: "bg-destructive-subtle", icon: "text-destructive" },
   success: { container: "bg-status-success-bg", icon: "text-status-success" },
 };
+
+function isAllowedCliReturnHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host === "elizacloud.ai" ||
+    host === "www.elizacloud.ai" ||
+    host === "staging.elizacloud.ai" ||
+    host === "app.elizacloud.ai" ||
+    host === "app-staging.elizacloud.ai"
+  );
+}
+
+function sanitizeCliLoginReturnTo(value: string | null): string | null {
+  if (!value?.trim()) return null;
+  if (typeof window === "undefined") return null;
+  try {
+    const url = new URL(value, window.location.origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!isAllowedCliReturnHost(url.hostname)) return null;
+    return url.toString();
+    } catch (error) {
+      void error;
+      return null;
+    }
+}
 
 function getPageState({
   authenticated,
@@ -122,6 +154,7 @@ export default function CliLoginPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const sessionId = searchParams.get("session");
+  const launchReturnTo = sanitizeCliLoginReturnTo(searchParams.get("returnTo"));
   const [completion, setCompletion] = useState<CompletionState>({
     status: "idle",
   });
@@ -161,6 +194,18 @@ export default function CliLoginPage() {
           { type: "eliza-cloud-auth-complete", sessionId },
           "*",
         );
+        if (launchReturnTo) {
+          setCompletion({ status: "redirecting" });
+          try {
+            window.close();
+          } catch (error) {
+            void error;
+            // Some browsers reject script-close for normal tabs; redirect below
+            // still lands the user back in the app that started sign-in.
+          }
+          window.location.replace(launchReturnTo);
+          return;
+        }
         setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
       } catch (error) {
         const aborted =
@@ -193,7 +238,7 @@ export default function CliLoginPage() {
       clearTimeout(timeout);
       if (!completionFiredRef.current) abort.abort();
     };
-  }, [authenticated, ready, sessionId, t]);
+  }, [authenticated, launchReturnTo, ready, sessionId, t]);
 
   const pageState = getPageState({
     authenticated,
@@ -229,7 +274,8 @@ export default function CliLoginPage() {
     }
     try {
       sessionStorage.setItem(autoSignInKey, "1");
-    } catch {
+    } catch (error) {
+      void error;
       // sessionStorage unavailable — fall through to the manual sign-in button.
     }
     navigate(signInHref, { replace: true });
@@ -323,17 +369,29 @@ export default function CliLoginPage() {
     );
   }
 
-  if (pageState.status === "completing") {
+  if (pageState.status === "completing" || pageState.status === "redirecting") {
     return (
       <CliLoginPanel
-        description={t("cloud.cliLogin.completingDescription", {
-          defaultValue: "Finishing sign-in…",
-        })}
+        description={
+          pageState.status === "redirecting"
+            ? t("cloud.cliLogin.returningDescription", {
+                defaultValue: "Returning to your app…",
+              })
+            : t("cloud.cliLogin.completingDescription", {
+                defaultValue: "Finishing sign-in…",
+              })
+        }
         icon={Key}
         iconClassName="animate-pulse"
-        title={t("cloud.cliLogin.generatingApiKey", {
-          defaultValue: "Generating API Key",
-        })}
+        title={
+          pageState.status === "redirecting"
+            ? t("cloud.cliLogin.returningTitle", {
+                defaultValue: "Returning to app",
+              })
+            : t("cloud.cliLogin.generatingApiKey", {
+                defaultValue: "Generating API Key",
+              })
+        }
         tone="accent"
       >
         <div className="flex gap-1.5 mt-2">
@@ -349,13 +407,14 @@ export default function CliLoginPage() {
     return (
       <CliLoginPanel
         actions={
-          <a href="/" className="w-full">
-            <Button className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground">
-              {t("cloud.cliLogin.continueToDashboard", {
-                defaultValue: "Continue to dashboard",
-              })}
-            </Button>
-          </a>
+          <Button
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            onClick={() => window.close()}
+          >
+            {t("cloud.cliLogin.closeWindow", {
+              defaultValue: "Close window",
+            })}
+          </Button>
         }
         description={t("cloud.cliLogin.successDescription", {
           defaultValue:
