@@ -39,8 +39,8 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { useAppSelectorShallow } from "../../state";
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import { shellLocalStorage } from "../../surface-realm-channel";
-import { emitViewEvent } from "../../views/view-event-bus";
 import { errorMessage } from "../../utils/errors";
+import { emitViewEvent } from "../../views/view-event-bus";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
 import { getChatMessageAnchorId } from "../composites/chat/chat-message";

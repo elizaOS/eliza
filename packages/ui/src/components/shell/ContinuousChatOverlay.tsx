@@ -61,11 +61,11 @@ import {
   sqrtRubberBand,
   useRafCoalescer,
 } from "../../gestures";
+import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
-import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
@@ -135,7 +135,10 @@ import {
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
-import { filterRenderableShellMessages, type ShellMessage } from "./shell-state";
+import {
+  filterRenderableShellMessages,
+  type ShellMessage,
+} from "./shell-state";
 import { TopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
 import {

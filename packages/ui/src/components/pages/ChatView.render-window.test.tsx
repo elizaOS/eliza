@@ -15,8 +15,8 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConversationMessage } from "../../api/client-types-chat";
-import { emitViewEvent } from "../../views/view-event-bus";
 import { CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT } from "../../hooks/useConversationRenderWindow";
+import { emitViewEvent } from "../../views/view-event-bus";
 import {
   MAX_LOADED_SHELL_WINDOW,
   MAX_RENDERED_SHELL_MESSAGES,
