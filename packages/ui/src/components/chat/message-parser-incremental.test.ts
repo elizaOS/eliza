@@ -179,6 +179,45 @@ const FIXTURES: Array<{ name: string; text: string; analysis?: boolean }> = [
     analysis: true,
     text: "<thought>\nI should greet them first.\n</thought>\n<response>\nHello, how can I help?\n</response>",
   },
+  // ── Adjacency regression fixtures (byte-identical claim enforcement) ──
+  // Three real divergence classes a per-prefix differential surfaced on the
+  // pristine incremental parser; each now stays byte-identical to the full
+  // parse at every prefix length.
+  {
+    // Class 2: a `*…*` / `_…_` stage direction begins right after a newline. It
+    // collapses to a space and `\n[ \t]+` → `\n` folds the newline forward; a cut
+    // before the `*`/`_` normalized the tail in isolation and stranded a space.
+    name: "stage direction directly after a newline (class 2)",
+    text: "Hello there\n*smiles warmly* good to see you again my old friend today.",
+  },
+  {
+    name: "underscore stage direction directly after a newline (class 2)",
+    text: "Line one here\n_shrugs_ not sure but this is my best guess for now here.",
+  },
+  {
+    // Class 3: an open `(` whose trailing whitespace the full pass collapses
+    // (`\(\s+` → `(`). The seam cut must not strand the `(` on the stable side.
+    name: "open paren before a newline seam (class 3)",
+    text: "Consider the function (\nwhich spans onto the next line here) carefully now.",
+  },
+  {
+    // Class 1: a ` ```json ` UiSpec block immediately following a lang'd fenced
+    // block. The global fence regexes pair the first block's close with the
+    // UiSpec's open, so the full parse renders the UiSpec as raw `code`; the
+    // sliced tail scan would emit an interactive widget. Must stay `code`.
+    name: "```json UiSpec fence-adjacent to a lang'd code block (class 1)",
+    text:
+      "pre\n\n```txt\nhi\n```\n```json\n" +
+      '{"root":"panel","elements":{"panel":{"type":"text","text":"hi"}}}\n' +
+      "```\n\ndone.",
+  },
+  {
+    name: "```json UiSpec coupled across a stage direction (class 1 × class 2)",
+    text:
+      "```js\nq = 1\n```\n*smiles warmly*```json\n" +
+      '{"root":"p","elements":{"p":{"type":"text"}}}\n' +
+      "```\n",
+  },
 ];
 
 describe("parseSegmentsStreaming differential (byte-identical to full parse)", () => {
@@ -194,6 +233,47 @@ describe("parseSegmentsStreaming differential (byte-identical to full parse)", (
       });
     }
   }
+});
+
+// Fragments biased toward the seams that broke the byte-identical claim:
+// fenced blocks (empty / lang'd / `json` UiSpec), stage directions butting a
+// newline or a fence, open parens at a line end, and inline markers. Assembled
+// in random order and lengths, then streamed prefix-by-prefix (chunk = 1) and
+// diffed against the full parse at EVERY prefix — the adjacency-heavy corpus
+// that turns the "byte-identical" claim into an enforced invariant.
+const ADJACENCY_FRAGMENTS = [
+  "```\ncode\n```\n",
+  "```txt\nhi\n```\n",
+  "```js\nq=1\n```\n",
+  '```json\n{"root":"p","elements":{"p":{"type":"text"}}}\n```\n',
+  '```\n{"root":"p","elements":{"p":{"type":"text"}}}\n```\n',
+  '```json\n{"note":"x"}\n```\n',
+  "\n",
+  "\n\n",
+  "*smiles warmly*",
+  "_shrugs_",
+  "prose line here\n",
+  "text (\nwrapped) done\n",
+  "a paragraph\nof text\n",
+  "[CHOICE:x id=c1]\ny=Yes\nn=No\n[/CHOICE]\n",
+  "[CONFIG:@elizaos/plugin-discord]\n",
+  '{"op":"add","path":"/root","value":"p"}\n',
+  "inline `tok` here\n",
+];
+
+describe("adjacency-heavy random-assembly differential (byte-identical)", () => {
+  it("streams 1500 random fragment assemblies with zero divergence", () => {
+    const rng = makeRng(0xc0ffee);
+    for (let run = 0; run < 1500; run++) {
+      const count = 2 + Math.floor(rng() * 7);
+      let text = "";
+      for (let i = 0; i < count; i++)
+        text +=
+          ADJACENCY_FRAGMENTS[Math.floor(rng() * ADJACENCY_FRAGMENTS.length)];
+      // chunk = 1 is the strictest streaming: every single-char prefix is a frame.
+      assertDifferential(false, prefixesByChunk(text, 1));
+    }
+  });
 });
 
 describe("normalize seam locality (computeSafeNormCut)", () => {

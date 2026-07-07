@@ -111,11 +111,19 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
     closed.some((b) => i > b.start && i < b.end);
 
   let openLtAt = -1; // dangling '<' with no later '>' (clean ⇒ -1 at fromCut)
+  // A '(' whose only-whitespace trailer reaches the candidate cut: the full
+  // pass collapses `\(\s+` → `(` forward across the boundary, so freezing the
+  // whitespace into a separate window would strand `(\n…`. Mirrors the `)`
+  // guard below (which blocks the symmetric `\s+\)` back-collapse).
+  let openParenAt = -1;
   let bestCut = fromCut;
   for (let i = fromCut + 1; i < raw.length; i++) {
     const prev = raw[i - 1];
     if (prev === "<") openLtAt = i - 1;
     else if (prev === ">") openLtAt = -1;
+    if (prev === "(") openParenAt = i - 1;
+    else if (prev !== " " && prev !== "\t" && prev !== "\n" && prev !== "\r")
+      openParenAt = -1;
     if (i > unclosedFrom) break;
 
     if (prev !== "\n") continue;
@@ -123,7 +131,13 @@ export function computeSafeNormCut(raw: string, fromCut: number): number {
     if (next === "\n" || next === " " || next === "\t" || next === "\r")
       continue;
     if (next === ")") continue;
+    // A stage-direction span (`*…*` / `_…_`) starting right after the newline is
+    // collapsed to a space by `stripAssistantStageDirections`, then `\n[ \t]+` →
+    // `\n` folds the newline forward. Cutting before the `*`/`_` normalizes the
+    // tail in isolation and leaves a stray leading space at the seam.
+    if (next === "*" || next === "_") continue;
     if (openLtAt !== -1) continue;
+    if (openParenAt !== -1) continue;
     if (insideClosedBlock(i)) continue;
     if (i > unclosedFrom) break;
     bestCut = i;
@@ -140,6 +154,38 @@ function fenceCount(text: string, from: number, to: number): number {
     i = text.indexOf("```", i + 3);
   }
   return count;
+}
+
+/**
+ * Would the tail scan mis-classify a fenced UiSpec that the full parser renders
+ * as raw `code`? `FENCED_JSON_RE` / `FENCED_CODE_RE` are global and pair fences
+ * sequentially: when a ` ```json ` UiSpec block is preceded by a fenced block
+ * whose own opener the JSON pass cannot consume (any non-empty, non-`json` lang
+ * tag), that earlier block's CLOSING fence pairs with the UiSpec's OPENING fence,
+ * so the full parse emits the UiSpec as a `code` block. The incremental tail scan
+ * restarts fence-pairing inside the sliced tail, sees the ` ```json ` cleanly,
+ * and emits a `ui-spec` widget — the same message rendering as an interactive
+ * widget on the streaming surface and raw code on a full parse.
+ *
+ * `tailRegions` already carries what the sliced scan produced, so a fenced
+ * ui-spec region (its text opens with ` ``` `, distinguishing it from a
+ * `{`-prefixed JSONL-patch ui-spec) that has ANY fence before it in `target` is
+ * the exact at-risk shape. Refusing the incremental frame and full-parsing is the
+ * only globally fence-consistent answer; it costs the incremental win only on
+ * these rare fence-preceded fenced UiSpecs and never diverges.
+ */
+function hasCoupledFencedUiSpecRisk(
+  tailRegions: readonly SegmentRegion[],
+  target: string,
+): boolean {
+  const firstFence = target.indexOf("```");
+  if (firstFence === -1) return false;
+  for (const r of tailRegions) {
+    if (r.segment.kind !== "ui-spec") continue;
+    if (target.slice(r.start, r.start + 3) !== "```") continue; // patch ui-spec
+    if (firstFence < r.start) return true; // a fence precedes this UiSpec
+  }
+  return false;
 }
 
 /**
@@ -177,6 +223,33 @@ function isMergeablePatchTail(r: SegmentRegion, target: string): boolean {
   if (after.trim().length === 0) return true;
   const firstLine = after.split("\n").find((l) => l.trim().length > 0) ?? "";
   return firstLine.trimStart().startsWith("{");
+}
+
+/**
+ * Would freezing the stable cut at fenced region `r`'s end leave its closing
+ * ` ``` ` free to re-pair with a later ` ``` ` opener the full parser sees?
+ *
+ * `FENCED_JSON_RE` / `FENCED_CODE_RE` are global: when a fenced block is
+ * immediately followed by another (only blank lines between), the first block's
+ * CLOSING fence pairs with the second's OPENING fence, so the full parser can
+ * render the second block as `code` even when it is a ` ```json ` UiSpec. The
+ * incremental tail scan restarts fence-pairing at the frozen cut and would pair
+ * that ` ```json ` cleanly into a `ui-spec` widget — the same message then
+ * renders as an interactive widget on the streaming surface and a raw code block
+ * on a full parse. Refusing to freeze past such a region keeps the whole
+ * adjacent-fence cluster inside the live tail scan, whose fence pairing (from a
+ * cut with even global fence parity) matches the full parser's. It costs only
+ * the incremental win in the rare adjacent-fence frame; output never diverges.
+ *
+ * A trailing all-whitespace tail is also held: a ` ``` ` opener could still
+ * arrive and make the region the first half of an adjacent pair.
+ */
+function isUnsealedFenceTail(r: SegmentRegion, target: string): boolean {
+  if (target.slice(r.start, r.start + 3) !== "```") return false;
+  const after = target.slice(r.end).trimStart();
+  if (after.length === 0) return true; // a ` ``` ` opener could still arrive
+  if (after.startsWith("```")) return true; // adjacent fence opener confirmed
+  return /^`+$/.test(after); // an opener's fence delimiter still streaming in
 }
 
 /**
@@ -358,6 +431,13 @@ export function parseSegmentsStreaming(
     });
   }
 
+  // A fenced UiSpec preceded by another fence pairs differently under the
+  // global full parse than under this sliced tail scan; the sliced view would
+  // render a widget where the full parse renders raw code. Full-parse instead.
+  if (hasCoupledFencedUiSpecRisk(tailRegions, target)) {
+    return fullRebuild(text, analysisMode);
+  }
+
   const sortedTail = [...tailRegions].sort((a, b) => a.start - b.start);
   const tail = interleaveSegments(target, sortedTail, prevCut);
   const segments =
@@ -380,6 +460,7 @@ export function parseSegmentsStreaming(
     cursor = r.end;
     if (r.end >= target.length) break; // no content after ⇒ closer not confirmed
     if (isMergeablePatchTail(r, target)) break;
+    if (isUnsealedFenceTail(r, target)) break;
     newCut = r.end;
     cutRegionCount = idx + 1;
   }
