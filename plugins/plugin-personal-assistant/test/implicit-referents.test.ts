@@ -2,8 +2,9 @@
  * Tests for implicit referent resolution.
  *
  * Candidate stores are represented by seeded facts, threads, calendar records,
- * and episodic anchors so the ranking contract is deterministic before live
- * retrieval and executor wiring are added.
+ * and episodic anchors so the ranking contract is deterministic. Each case names
+ * exactly what it proves: lexical/signal ranking, semantic-prior resolution with
+ * a negative control, episodic anchoring, and one-question disambiguation.
  */
 
 import { describe, expect, it } from "vitest";
@@ -52,42 +53,67 @@ describe("implicit referent resolver", () => {
     expect(result.confirmationText).toContain('Resolving "Clear my afternoon');
   });
 
-  it("resolves 'the usual' from owner facts without requiring restaurant-name lexical overlap", () => {
+  it("resolves 'the usual' by semantic prior when neither candidate shares a lexical token with the ask", () => {
+    // "Book the usual." carries no non-stop-word tokens, so lexicalScore is 0 for
+    // every candidate. Both candidates are owner facts tagged "usual", so the
+    // source-signal boost is identical too. The only signal that separates them
+    // is `prior` (the semantic-relevance score a retrieval layer supplies). This
+    // is the case the resolver exists for: pick the right referent with no shared
+    // words. The negative control below confirms `prior` is load-bearing here.
+    const candidates = [
+      {
+        id: "fact:osteria",
+        source: "owner_fact" as const,
+        label: "Osteria corner table",
+        summary: "corner table at Osteria for dinner",
+        confirmation: "booking the Osteria corner table",
+        tags: ["usual", "restaurant", "dinner"],
+        occurredAt: "2026-07-04T20:00:00.000Z",
+        executorHint: "calendar.create_event.preview",
+      },
+      {
+        id: "fact:coffee",
+        source: "owner_fact" as const,
+        label: "Blue Bottle morning order",
+        summary: "oat cappuccino each morning",
+        confirmation: "ordering the morning coffee",
+        tags: ["usual", "coffee", "morning"],
+        occurredAt: "2026-07-04T16:00:00.000Z",
+      },
+    ];
+
     const result = resolveImplicitReferent({
-      ask: "Book the usual for Thursday.",
+      ask: "Book the usual.",
       nowIso,
-      candidates: [
-        {
-          id: "fact:osteria",
-          source: "owner_fact",
-          label: "Osteria corner table preference",
-          summary:
-            "Owner's usual Thursday dinner is a corner table at Osteria at 7pm.",
-          confirmation: "booking the usual Thursday Osteria corner table",
-          tags: ["usual", "weekday", "restaurant", "thursday"],
-          occurredAt: "2026-06-29T20:00:00.000Z",
-          prior: 0.75,
-          executorHint: "calendar.create_event.preview",
-        },
-        {
-          id: "fact:coffee",
-          source: "owner_fact",
-          label: "Blue Bottle morning order",
-          summary: "Owner usually gets an oat cappuccino in the morning.",
-          confirmation: "ordering the usual morning coffee",
-          tags: ["usual", "coffee"],
-          occurredAt: "2026-06-20T16:00:00.000Z",
-          prior: 0.3,
-        },
-      ],
+      candidates: candidates.map((candidate) =>
+        candidate.id === "fact:osteria"
+          ? { ...candidate, prior: 0.95 }
+          : { ...candidate, prior: 0.1 },
+      ),
     });
 
     expect(result.decision).toBe("resolved");
     if (result.decision !== "resolved") throw new Error("expected resolved");
     expect(result.selected.candidate.id).toBe("fact:osteria");
-    expect(result.confirmationText).toContain(
-      "booking the usual Thursday Osteria corner table",
+    // No lexical match fired — the resolution is driven by prior, not overlap.
+    expect(result.selected.evidence).not.toContain('matched "usual"');
+    expect(result.selected.evidence.some((e) => e.startsWith("matched "))).toBe(
+      false,
     );
+    expect(result.selected.evidence).toContain("prior=0.95");
+    expect(result.confirmationText).toContain(
+      "booking the Osteria corner table",
+    );
+
+    // Negative control: strip the semantic prior and the identical facts become
+    // indistinguishable — the resolver must ask rather than guess. This proves
+    // the prior is what carried the resolution above.
+    const withoutPrior = resolveImplicitReferent({
+      ask: "Book the usual.",
+      nowIso,
+      candidates,
+    });
+    expect(withoutPrior.decision).toBe("ask");
   });
 
   it("resolves same-as-last-time asks against episodic anchors", () => {

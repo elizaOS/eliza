@@ -13,6 +13,7 @@ export * from "./engine.js";
 export * from "./goal-grounding.js";
 export * from "./goal-semantic-evaluator.js";
 export * from "./google-plugin-delegates.js";
+export * from "./implicit-referents/candidate-sources.js";
 export * from "./implicit-referents/index.js";
 export * from "./intent-sync.js";
 export * from "./meeting-ghost/index.js";
