@@ -82,6 +82,24 @@ export type WalletDeFiSummary = {
   notes: string[];
 };
 
+export type WalletBehaviorSummary = {
+  primaryProfile:
+    | "unknown"
+    | "new_wallet"
+    | "holder"
+    | "active_trader"
+    | "defi_user"
+    | "liquidity_provider"
+    | "whale"
+    | "high_risk_wallet";
+
+  confidence: "low" | "medium" | "high";
+
+  traits: string[];
+
+  explanation: string;
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -146,6 +164,7 @@ export type WalletInvestigationResult = {
   portfolio?: WalletPortfolioSummary;
   whale?: WalletWhaleSummary;
   defi?: WalletDeFiSummary;
+  behavior?: WalletBehaviorSummary;
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
