@@ -1427,6 +1427,7 @@ export class ElizaSandboxService {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
 
+    const previousStatus = rec.status;
     const lock = await agentSandboxesRepository.trySetProvisioning(rec.id);
     if (!lock) {
       if (rec.status === "running" && rec.bridge_url && rec.health_url)
@@ -1442,6 +1443,7 @@ export class ElizaSandboxService {
         error: "Agent is already being provisioned",
       };
     }
+    rec = lock;
 
     // 1. Database
     let dbUri = rec.database_uri;
@@ -1517,42 +1519,54 @@ export class ElizaSandboxService {
       let handle;
 
       try {
-        // 2. Sandbox (via provider)
-        const callerEnv = materializedEnv;
-        // DATABASE_URL precedence: a self-contained image (e.g. a coding
-        // container running its own bot) can ship its OWN database. Do not
-        // silently clobber it with the managed shared DB URL — that would force the
-        // image onto a DB it never asked for. If the caller already set
-        // DATABASE_URL, keep it and expose the managed URL under a distinct
-        // name (ELIZA_MANAGED_DATABASE_URL) so the image can opt in. Only when
-        // the caller did NOT supply one do we inject the managed URL as
-        // DATABASE_URL — the normal managed-agent path, byte-identical to before.
-        const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
-        handle = await (await this.getProvider()).create({
-          agentId: rec.id,
-          agentName: rec.agent_name ?? "CloudAgent",
-          organizationId: rec.organization_id,
-          environmentVars: {
-            ...callerEnv,
-            ...dbEnv,
-          },
-          // Path A: pass the persisted character so the container boots AS
-          // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
-          // injection + packages/agent/src/runtime/sandbox-character.ts).
-          agentConfig:
-            rec.agent_config &&
-            typeof rec.agent_config === "object" &&
-            !Array.isArray(rec.agent_config)
-              ? (rec.agent_config as Record<string, unknown>)
-              : undefined,
-          // Path A: the gateways route by character_id, so the container must
-          // register under, and answer as, that id (see
-          // SANDBOX_ROUTE_AGENT_ID injection).
-          routeAgentId: rec.character_id ?? undefined,
-          snapshotId: rec.snapshot_id ?? undefined,
-          dockerImage: rec.docker_image ?? undefined,
-          container: containerLaunch,
-        });
+        const retryHandle =
+          attempt === 1 && previousStatus === "provisioning"
+            ? this.buildProvisioningRetryHandle(rec)
+            : null;
+        if (retryHandle) {
+          handle = retryHandle;
+          logger.info("[agent-sandbox] Re-probing persisted provisioning container before create", {
+            agentId: rec.id,
+            sandboxId: handle.sandboxId,
+          });
+        } else {
+          // 2. Sandbox (via provider)
+          const callerEnv = materializedEnv;
+          // DATABASE_URL precedence: a self-contained image (e.g. a coding
+          // container running its own bot) can ship its OWN database. Do not
+          // silently clobber it with the managed shared DB URL — that would force the
+          // image onto a DB it never asked for. If the caller already set
+          // DATABASE_URL, keep it and expose the managed URL under a distinct
+          // name (ELIZA_MANAGED_DATABASE_URL) so the image can opt in. Only when
+          // the caller did NOT supply one do we inject the managed URL as
+          // DATABASE_URL — the normal managed-agent path, byte-identical to before.
+          const dbEnv = computeManagedAgentDbEnv(callerEnv, dbUri);
+          handle = await (await this.getProvider()).create({
+            agentId: rec.id,
+            agentName: rec.agent_name ?? "CloudAgent",
+            organizationId: rec.organization_id,
+            environmentVars: {
+              ...callerEnv,
+              ...dbEnv,
+            },
+            // Path A: pass the persisted character so the container boots AS
+            // this agent (see docker-sandbox-provider ELIZA_AGENT_CHARACTER_JSON
+            // injection + packages/agent/src/runtime/sandbox-character.ts).
+            agentConfig:
+              rec.agent_config &&
+              typeof rec.agent_config === "object" &&
+              !Array.isArray(rec.agent_config)
+                ? (rec.agent_config as Record<string, unknown>)
+                : undefined,
+            // Path A: the gateways route by character_id, so the container must
+            // register under, and answer as, that id (see
+            // SANDBOX_ROUTE_AGENT_ID injection).
+            routeAgentId: rec.character_id ?? undefined,
+            snapshotId: rec.snapshot_id ?? undefined,
+            dockerImage: rec.docker_image ?? undefined,
+            container: containerLaunch,
+          });
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await this.markError(rec, `Sandbox creation failed: ${msg}`);
@@ -5947,6 +5961,23 @@ export class ElizaSandboxService {
       error_message: msg,
       error_count: (rec.error_count ?? 0) + 1,
     });
+  }
+
+  /**
+   * Resume a prior transport-unresolved provision attempt before creating a new
+   * deterministic Docker container. The provider's container name is
+   * `agent-${id}`; calling create again while the preserved container still
+   * exists turns Docker's "already in use" into a cleanup path that removes the
+   * very container the retry was meant to save.
+   */
+  private buildProvisioningRetryHandle(rec: AgentSandbox): SandboxHandle | null {
+    if (!rec.sandbox_id || !rec.bridge_url || !rec.health_url) return null;
+    return {
+      sandboxId: rec.sandbox_id,
+      bridgeUrl: rec.bridge_url,
+      healthUrl: rec.health_url,
+      metadata: rec.headscale_ip ? { headscaleIp: rec.headscale_ip } : undefined,
+    };
   }
 
   /**

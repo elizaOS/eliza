@@ -2814,6 +2814,78 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
       getProviderSpy.mockRestore();
     }
   });
+
+  test("(10) retry after transport_unresolved adopts the persisted container instead of re-creating it", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row: AgentSandbox = {
+      ...provisioningReadyRow(),
+      status: "provisioning",
+      sandbox_id: "sandbox-blue-1",
+      bridge_url: "https://runtime-blue.example",
+      health_url: "https://runtime-blue.example/api/health",
+      node_id: "node-blue",
+      container_name: "agent-blue-1",
+      bridge_port: 3333,
+      web_ui_port: 4444,
+      headscale_ip: "100.64.0.42",
+    };
+    const finalRow: AgentSandbox = { ...row, status: "running" };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(row);
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => (data.status === "running" ? finalRow : { ...row, ...data }),
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const create = mock(async () => providerHandle());
+    const stop = mock(async () => {});
+    const healthInputs: Array<{ sandboxId: string }> = [];
+    const svc = new ElizaSandboxService();
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create,
+      stop,
+      checkHealth: async () => true,
+      checkHealthDetailed: async (handle) => {
+        healthInputs.push({ sandboxId: handle.sandboxId });
+        return { ready: true, verdict: "ready" as const };
+      },
+    } as unknown as SandboxProvider);
+
+    try {
+      const res = await svc.provision(AGENT, ORG);
+
+      expect(res.success).toBe(true);
+      expect(create).not.toHaveBeenCalled();
+      expect(stop).not.toHaveBeenCalled();
+      expect(healthInputs).toEqual([{ sandboxId: "sandbox-blue-1" }]);
+      const runningWrite = updateSpy.mock.calls.find(
+        ([, data]) => (data as { status?: string }).status === "running",
+      );
+      expect(runningWrite).toBeDefined();
+      expect((runningWrite?.[1] as { sandbox_id?: string }).sandbox_id).toBe("sandbox-blue-1");
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
 });
 
 // Snapshot-degrade error classification (`isUnrecoverableSnapshotError`), proven
