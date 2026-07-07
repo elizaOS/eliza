@@ -1,16 +1,9 @@
-// Regression for #15203: the node-side docker health poll must follow the
-// agent's CURRENT node. A placement-affecting job (upgrade + resume +
-// provision-retry can overlap for one agent during a post-image-fix recovery
-// storm) re-places the agent onto a different node mid-wait. The job that is
-// polling health captured its node at job start; before the fix it kept SSHing
-// the ORIGINAL node — which no longer holds the container — logging
-// "error: no such object" in a tight loop until the 360s timeout killed an
-// otherwise-healthy provision. The fix re-reads the node from the DB before
-// every probe, so the poll follows the re-placement and passes on the new node.
-//
-// The poll's inter-iteration setTimeout is stubbed to fire synchronously so the
-// multi-iteration path runs without wall-clock waits; the SSH client and the DB
-// re-read are faked so no real node or database is touched.
+/**
+ * Regression coverage for the docker health poll that follows an agent's
+ * current node while provisioning jobs overlap. The harness stubs the poll wait
+ * to fire synchronously and fakes SSH/DB reads so the multi-iteration path runs
+ * without live docker nodes or a database.
+ */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { DockerSandboxProvider } from "../docker-sandbox-provider";
 import { DockerSSHClient } from "../docker-ssh";
@@ -56,23 +49,21 @@ const NEW_NODE: ContainerMetaShape = {
  */
 function fakeSshByHost(healthyHostname: string) {
   const probedHosts: string[] = [];
-  const getClient = spyOn(DockerSSHClient, "getClient").mockImplementation(
-    ((hostname: string) => {
-      probedHosts.push(hostname);
-      return {
-        exec: mock(async (command: string) => {
-          if (hostname !== healthyHostname) {
-            throw new Error(
-              `[docker-ssh] Command exited with code 1 on ${hostname}: [stderr] error: no such object: agent-506ed636-`,
-            );
-          }
-          // Host HTTP probe passes (exit 0); docker inspect reports healthy.
-          if (command.includes("docker inspect")) return "healthy";
-          return "";
-        }),
-      } as unknown as DockerSSHClient;
-    }) as unknown as typeof DockerSSHClient.getClient,
-  );
+  const getClient = spyOn(DockerSSHClient, "getClient").mockImplementation(((hostname: string) => {
+    probedHosts.push(hostname);
+    return {
+      exec: mock(async (command: string) => {
+        if (hostname !== healthyHostname) {
+          throw new Error(
+            `[docker-ssh] Command exited with code 1 on ${hostname}: [stderr] error: no such object: agent-506ed636-`,
+          );
+        }
+        // The healthy node passes both probe styles so either success path is valid.
+        if (command.includes("docker inspect")) return "healthy";
+        return "";
+      }),
+    } as unknown as DockerSSHClient;
+  }) as unknown as typeof DockerSSHClient.getClient);
   return { getClient, probedHosts };
 }
 
@@ -93,12 +84,11 @@ describe("pollSshDockerHealth follows agent re-placement (#15203)", () => {
     const provider = new DockerSandboxProvider();
     const internals = provider as unknown as PollInternals;
 
-    // The container lives on NEW_NODE; the poll was seeded with OLD_NODE.
     const { getClient, probedHosts } = fakeSshByHost(NEW_NODE.hostname);
     stubPollWaits();
 
-    // First re-read still sees the old placement (the re-placement commit lands
-    // after this iteration); the second sees the new node.
+    // Placement can change between probe iterations while the poll still holds
+    // the metadata captured by the job that started it.
     const hydrate = spyOn(internals, "hydrateContainerFromDb")
       .mockResolvedValueOnce(OLD_NODE)
       .mockResolvedValue(NEW_NODE);
@@ -107,14 +97,9 @@ describe("pollSshDockerHealth follows agent re-placement (#15203)", () => {
     const healthy = await internals.pollSshDockerHealth(OLD_NODE, deadline);
 
     expect(healthy).toBe(true);
-    // It re-read the node from the DB at least twice — once per poll iteration.
     expect(hydrate.mock.calls.length).toBeGreaterThanOrEqual(2);
-    // It probed the stale node first (and failed), then followed the DB to the
-    // new node and passed there.
     expect(probedHosts).toContain(OLD_NODE.hostname);
     expect(probedHosts).toContain(NEW_NODE.hostname);
-    // The last host it dialed is the new node — the loop did not end on the
-    // stale handle.
     expect(probedHosts.at(-1)).toBe(NEW_NODE.hostname);
     getClient.mockRestore();
   });
@@ -134,16 +119,14 @@ describe("pollSshDockerHealth follows agent re-placement (#15203)", () => {
     getClient.mockRestore();
   });
 
-  test("a transient DB miss during the poll keeps the last-known node rather than aborting", async () => {
+  test("a transient DB failure during the poll keeps the last-known node rather than aborting", async () => {
     const provider = new DockerSandboxProvider();
     const internals = provider as unknown as PollInternals;
 
     const { getClient, probedHosts } = fakeSshByHost(OLD_NODE.hostname);
     stubPollWaits();
-    // First re-read blips (DB unreachable → null); refreshNodeMeta must fall
-    // back to the last-known node so the blip does not abort the poll.
     spyOn(internals, "hydrateContainerFromDb")
-      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error("database unavailable"))
       .mockResolvedValue(OLD_NODE);
 
     const healthy = await internals.pollSshDockerHealth(OLD_NODE, Date.now() + 60_000);
