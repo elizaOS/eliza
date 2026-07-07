@@ -243,9 +243,8 @@ runs:
       run: |
         if ! command -v sudo >/dev/null 2>&1 || ! sudo -n true 2>/dev/null; then
           echo "::warning::passwordless sudo unavailable; skipping native apt deps (assuming runner image is pre-provisioned)"
-          exit 0
-        fi
-        # Some CI runners intermittently fail reaching Ubuntu mirrors over IPv6.
+        else
+          # Some CI runners intermittently fail reaching Ubuntu mirrors over IPv6.
         # Force IPv4 and retry apt commands so CI setup is resilient. Also
         # disable unrelated Microsoft feeds because their 403s make apt-get
         # update fail before Ubuntu packages can install.
@@ -270,7 +269,8 @@ runs:
             exit 1
           fi
           sleep $((attempt * 10))
-        done
+          done
+        fi
 
     - name: Setup Bun
       uses: oven-sh/setup-bun@v2
