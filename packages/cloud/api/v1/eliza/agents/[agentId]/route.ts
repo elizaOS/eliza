@@ -388,7 +388,11 @@ app.delete("/", async (c) => {
       );
     }
 
-    if (existing.execution_tier === "shared") {
+    // A sandbox-backed delete needs provider.stop(), which reaches the Docker
+    // node through ssh2. Workerd deliberately stubs ssh2, so only the
+    // provisioning daemon can perform that teardown; the synchronous path is
+    // reserved for pure-DB shared agents without a sandbox (#15275).
+    if (existing.execution_tier === "shared" && !existing.sandbox_id) {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
@@ -437,12 +441,10 @@ app.delete("/", async (c) => {
       }
     }
 
-    // Async delete via the same job-queue path agent_provision uses. This
-    // moves the SSH stop, Neon deletion, and per-agent key revoke off the
-    // request thread so a slow / unreachable Hetzner core can no longer
-    // make the API hang or silently return 200 while the container lives
-    // on. Idempotent: a second DELETE while a job is in flight reuses
-    // the existing one.
+    // Dedicated agents and sandbox-backed shared agents use the same daemon
+    // job because SSH teardown, Neon deletion, and per-agent key revocation
+    // must run outside the Worker request boundary. Enqueue marks the row
+    // `deletion_pending`; a repeated DELETE reuses the in-flight job.
     const enqueueResult = await provisioningJobService.enqueueAgentDeleteOnce({
       agentId,
       organizationId: user.organization_id,

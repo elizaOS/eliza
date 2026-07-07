@@ -1271,7 +1271,9 @@ export class ElizaSandboxService {
             status: precheck.status,
             error: errorMessage,
           });
-          return { success: false, error: "Failed to delete sandbox" };
+          // Job results and API boundaries need the teardown cause because a
+          // generic delete failure cannot distinguish Docker stop/rm faults.
+          return { success: false, error: `Failed to delete sandbox: ${errorMessage}` };
         }
       }
     }
