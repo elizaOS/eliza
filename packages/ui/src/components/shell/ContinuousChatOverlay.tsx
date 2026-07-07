@@ -70,6 +70,12 @@ import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
+import { isIOS, isNative, isStandalonePwa } from "../../platform/init";
+import {
+  KEYBOARD_INTRUSION_THRESHOLD_PX,
+  STANDALONE_BOTTOM_RECLAIM_OFFSET,
+  shouldInstallStandaloneBottomReclaim,
+} from "../../platform/standalone-bottom-reclaim";
 import { useAppSelectorShallow } from "../../state";
 import {
   clearChatDraft,
@@ -229,6 +235,18 @@ const HANDLE_BAR_COLOR = "rgba(255, 247, 240, 0.86)";
 // opacity/translate only: animating blur/filter or scaling a scrollable
 // transcript repaints too much of the viewport and visibly janks on laptops.
 const OVERLAY_EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+
+// `screen.height` is a useful keyboard-down reference only on the iOS
+// standalone/native surfaces that own the collapsed-viewport reclaim. On
+// desktop and Android it describes the monitor or physical device rather than
+// the layout viewport, so using it there would create false keyboard lifts.
+const SCREEN_KEYBOARD_SIGNAL_ACTIVE =
+  typeof window !== "undefined" &&
+  shouldInstallStandaloneBottomReclaim({
+    standalonePwa: isStandalonePwa(),
+    isNative,
+    isIOS,
+  });
 
 // Pull-sheet detents. The chat-history window is bottom-anchored just above the
 // fixed composer; its height animates between the closed composer/grabber and
@@ -2159,9 +2177,36 @@ export function ContinuousChatOverlay({
     const vv = window.visualViewport;
     const innerHeight = window.innerHeight;
     const height = vv?.height ?? innerHeight;
-    const keyboardInset = vv
-      ? Math.max(0, innerHeight - vv.height - vv.offsetTop)
-      : 0;
+    // On iOS standalone/native, the soft keyboard can shrink innerHeight and
+    // visualViewport.height together, making their delta read as zero. The
+    // gated screen-height signal recovers that keyboard intrusion on the same
+    // surfaces that install the bottom reclaim. The threshold filters the
+    // smaller resting collapse band so it is never treated as a keyboard.
+    let keyboardInset = 0;
+    if (vv) {
+      const insetFromInner = Math.max(
+        0,
+        innerHeight - vv.height - vv.offsetTop,
+      );
+      let screenKeyboard = 0;
+      if (SCREEN_KEYBOARD_SIGNAL_ACTIVE) {
+        const screenHeight =
+          typeof window.screen?.height === "number" && window.screen.height > 0
+            ? window.screen.height
+            : 0;
+        const insetFromScreen =
+          screenHeight > 0
+            ? Math.max(0, screenHeight - vv.height - vv.offsetTop)
+            : 0;
+        // Only trust the screen-based signal once it clears the resting-collapse
+        // band (so the ~59px fixed-body ICB collapse is never a keyboard).
+        screenKeyboard =
+          insetFromScreen >= KEYBOARD_INTRUSION_THRESHOLD_PX
+            ? insetFromScreen
+            : 0;
+      }
+      keyboardInset = Math.max(insetFromInner, screenKeyboard);
+    }
     // innerHeight is the LAYOUT viewport: on Android it shrinks (adjustResize)
     // when the keyboard opens, on iOS (`resize: "body"`) it does not. The lift
     // math below uses that to avoid double-counting the keyboard. innerWidth +
@@ -4581,29 +4626,17 @@ export function ContinuousChatOverlay({
       // chat low without touching that zone.
       style={{
         zIndex: Z_SHELL_OVERLAY,
-        // At rest the overlay anchors `bottom: 0`. With the body scroll-locked
-        // WITHOUT `position: fixed` (see styles/base.css), this `fixed` overlay's
-        // containing block is the true viewport, so `bottom: 0` seats it at the
-        // physical screen bottom — no ICB collapse, no reclaim offset. When the
-        // keyboard is up the visual viewport shrinks and `effectiveKeyboardInset`
-        // drives the lift instead. The home-indicator clearance is the composer
-        // row's own `paddingBottom` (below), so buttons stay above the indicator.
-        bottom: keyboardLiftActive ? effectiveKeyboardInset : 0,
-        // Full-bleed fills the screen edge-to-edge: NO overlay bottom padding,
-        // so the glass panel reaches the true bottom (no orange gap). The
-        // gesture-zone clearance moves INSIDE the composer row (below) so the
-        // input still sits above the home-gesture bar. Non-full-bleed anchors
-        // the composer LOW, lock-screen style, CLEARING the home indicator: now
-        // that the overlay itself seats at the TRUE physical bottom (the `bottom`
-        // reclaim above), the resting padding must clear the WHOLE home-indicator
-        // safe area (env(safe-area-inset-bottom) ~34px) plus a small gap, so the
-        // composer rests ~42–46px off the physical edge — above the indicator,
-        // not floating in a dead band above it. (Previously this multiplied the
-        // inset by 0.4 to sit the pill ~13px up; that tuning was compensating
-        // for the collapsed-ICB float — with the overlay now correctly at the
-        // true bottom, the full inset + gap is the right, native-app clearance.)
-        // The same holds for Android gesture pills. Everything below the composer
-        // is the full-bleed wallpaper / app floor — no cosmetic strip repaints it.
+        // At rest, the measured reclaim offset seats the composer at the
+        // physical bottom on collapsed iOS standalone/native viewports. Off that
+        // surface the custom property is zero. When the keyboard is visible,
+        // effectiveKeyboardInset owns the lift instead of the reclaim offset.
+        bottom: keyboardLiftActive
+          ? effectiveKeyboardInset
+          : STANDALONE_BOTTOM_RECLAIM_OFFSET,
+        // Full-bleed uses no overlay bottom padding; gesture-zone clearance
+        // lives inside the composer row so controls sit above the home indicator.
+        // Non-full-bleed keeps the same safe-area clearance above the reclaimed
+        // physical bottom, with the wallpaper/app floor owning everything below.
         // Side inset eases with the shape spring (12px inset → 0 at full-bleed).
         paddingLeft: overlayPadX,
         paddingRight: overlayPadX,
