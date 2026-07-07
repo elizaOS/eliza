@@ -161,20 +161,33 @@ describe("layout-shift-intent marker (#15257)", () => {
   it("a continuous drag arms the marker ONCE, not per height tick", async () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
     const el = grabber();
+    // The transcript-churn effect arms the marker at MOUNT; wait (real clock)
+    // for that burst to clear so the drag below starts from a disarmed marker
+    // and the single write we count belongs to the gesture alone.
+    await waitFor(
+      () =>
+        expect(
+          document.querySelector("[data-eliza-layout-shift-intent]"),
+        ).toBeNull(),
+      { timeout: 3000 },
+    );
     const setAttr = vi.spyOn(Element.prototype, "setAttribute");
+    const d = drag(el);
     try {
-      fireEvent.pointerDown(el, { clientY: 740, pointerId: 1 });
-      // 20 move ticks well inside the 180ms clear window (real clock): every
-      // tick refreshes the armed marker; only the FIRST may write the attribute.
-      for (let i = 1; i <= 20; i++) {
-        fireEvent.pointerMove(el, { clientY: 740 - i * 12, pointerId: 1 });
+      d.down(740);
+      // 8 move ticks, each advancing the mocked clock 120ms — past the old
+      // implementation's 100ms re-arm throttle, so pre-#15257 code re-wrote
+      // the attribute on EVERY tick (~8 writes). Once-per-burst arming writes
+      // it exactly once (the marker MUST arm — 0 writes would break the CLS
+      // gate) and every later tick only refreshes the last-motion timestamp.
+      for (let i = 1; i <= 8; i++) {
+        await d.move(740 - i * 24, 120);
       }
-      await settleFrames();
       const markerWrites = setAttr.mock.calls.filter(
         ([name]) => name === "data-eliza-layout-shift-intent",
       ).length;
-      expect(markerWrites).toBeLessThanOrEqual(1);
-      fireEvent.pointerUp(el, { clientY: 500, pointerId: 1 });
+      expect(markerWrites).toBe(1);
+      d.up(548);
     } finally {
       setAttr.mockRestore();
     }
