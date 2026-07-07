@@ -195,6 +195,14 @@ export function useChatVoiceController(options: {
   uiLanguage: string;
   /** Caller owns continuous-chat mode (persistence + UI toggle). Defaults to off. */
   continuousMode?: VoiceContinuousMode;
+  /**
+   * Abort the in-flight server generation for the active turn. Wired to the
+   * chat pipeline's narrow interrupt (relay `POST /api/turns/:roomId/abort` +
+   * local stream abort) so a voice barge-in stops the server work, not just the
+   * local audio. Distinct from the composer stop so it does NOT tear down
+   * unrelated coding-agent PTY sessions.
+   */
+  onServerTurnAbort?: () => void;
 }) {
   const { setTimeout } = useTimeout();
   const {
@@ -214,7 +222,10 @@ export function useChatVoiceController(options: {
     setState,
     uiLanguage,
     continuousMode = DEFAULT_VOICE_CONTINUOUS_MODE,
+    onServerTurnAbort,
   } = options;
+  const onServerTurnAbortRef = useRef(onServerTurnAbort);
+  onServerTurnAbortRef.current = onServerTurnAbort;
   /** After the first `eliza:cloud-status-updated`, mirrors server `cloudVoiceProxyAvailable` (avoids one-frame lag vs context). */
   const [cloudVoiceSnapshot, setCloudVoiceSnapshot] = useState<boolean | null>(
     null,
@@ -455,9 +466,19 @@ export function useChatVoiceController(options: {
     elizaCloudHasPersistedKey,
   ]);
 
+  // Cross-layer barge-in: fired at the TRUE speech-detected edge in useVoiceChat
+  // (a recognized transcript arriving while the assistant is speaking), i.e. the
+  // same edge that already drives the local `stopSpeaking`. Routes to the chat
+  // pipeline's narrow server-turn abort so the in-flight generation stops
+  // server-side, not just the local audio + TTS queue.
+  const handleBargeIn = useCallback(() => {
+    onServerTurnAbortRef.current?.();
+  }, []);
+
   const voice = useVoiceChat({
     cloudConnected: cloudVoiceAvailable,
     interruptOnSpeech: true,
+    onUserSpeechInterrupt: handleBargeIn,
     lang: mapUiLanguageToSpeechLocale(uiLanguage),
     onPlaybackStart: handleVoicePlaybackStart,
     onTranscript: handleVoiceTranscript,

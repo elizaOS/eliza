@@ -188,6 +188,16 @@ export interface VoiceChatOptions {
   cloudConnected?: boolean;
   /** Whether user speech should immediately interrupt assistant playback */
   interruptOnSpeech?: boolean;
+  /**
+   * Cross-layer barge-in hook. Fired when a recognized transcript arrives while
+   * the assistant is actively speaking — the same true speech-detected edge that
+   * drives the local `stopSpeaking`. Lets the caller abort the in-flight SERVER
+   * generation for the interrupted turn (not just clear local audio + the TTS
+   * queue). NOT fired for ordinary utterances when the assistant is silent, and
+   * NOT tied to the mic-open transition (which the continuous-chat rearm also
+   * triggers during TTS).
+   */
+  onUserSpeechInterrupt?: () => void;
   /** Language for speech recognition (default: "en-US") */
   lang?: string;
   /** Saved voice configuration — switches TTS provider when set */

@@ -227,3 +227,30 @@ describe("useContinuousChat thinking-timeout", () => {
     }
   });
 });
+
+describe("useContinuousChat interrupt indicator (UI-only, no server abort)", () => {
+  // Regression guard for the codex P1: the listening-state transition drives
+  // ONLY the UI interrupt pulse. It must NOT be used to abort the server turn,
+  // because the hook itself reopens passive capture during TTS (mic rearm),
+  // which would otherwise cut off ordinary assistant replies. The server abort
+  // lives at the true speech-detected edge in useVoiceChat.
+  it("pulses 'interrupting' when the mic reopens during TTS", () => {
+    const { result, rerender } = renderHook(
+      ({ voice }: { voice: VoiceChatState }) =>
+        useContinuousChat({ voice, mode: "always-on" }),
+      {
+        initialProps: {
+          voice: makeVoiceState({ isSpeaking: true, isListening: false }),
+        },
+      },
+    );
+
+    act(() => {
+      rerender({
+        voice: makeVoiceState({ isSpeaking: true, isListening: true }),
+      });
+    });
+
+    expect(result.current.status).toBe("interrupting");
+  });
+});

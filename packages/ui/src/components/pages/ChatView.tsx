@@ -198,6 +198,7 @@ export function ChatView({
     companionMessageCutoffTs: s.companionMessageCutoffTs,
     handleChatSend: s.handleChatSend,
     handleChatStop: s.handleChatStop,
+    interruptActiveChatPipeline: s.interruptActiveChatPipeline,
     handleChatEdit: s.handleChatEdit,
     handleChatDelete: s.handleChatDelete,
     elizaCloudConnected: s.elizaCloudConnected,
@@ -226,6 +227,7 @@ export function ChatView({
     companionMessageCutoffTs,
     handleChatSend,
     handleChatStop,
+    interruptActiveChatPipeline,
     handleChatEdit,
     handleChatDelete,
     elizaCloudConnected,
@@ -419,6 +421,7 @@ export function ChatView({
     setState,
     uiLanguage,
     continuousMode: continuousChatMode,
+    onServerTurnAbort: interruptActiveChatPipeline,
   });
   // Stop any in-flight voice playback when the user switches conversations.
   // useLayoutEffect (not useEffect): must run *before* useChatVoiceController's
