@@ -419,6 +419,54 @@ describe("check-pr-evidence row primitives", () => {
     );
   });
 
+  it("allows N/A before-screenshots when the whole UI surface is newly added", () => {
+    const media = (id, n) =>
+      `- [x] ![${id}](https://github.com/user-attachments/assets/00000000-0000-0000-0000-00000000000${n})`;
+    const body = buildBody({
+      "before-screenshots":
+        "- [ ] Before screenshots `N/A - the settings section is new in this PR; no prior surface existed`.",
+      "after-screenshots": media("after", 2),
+      "walkthrough-video":
+        "- [x] https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
+      "domain-artifacts":
+        "- [ ] OCR text readout: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000008",
+    });
+    const changedFiles = [
+      "packages/ui/src/components/settings/NewSection.tsx",
+      "packages/ui/src/components/settings/new-section.test.ts",
+    ];
+    // Whole surface added → before may be N/A-with-reason.
+    const allNew = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles,
+      addedFiles: changedFiles,
+    });
+    assert.equal(allNew.ok, true);
+    // Same body but the surface file was MODIFIED → before still needs media.
+    const modified = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles,
+      addedFiles: [],
+    });
+    assert.equal(modified.ok, false);
+    assert.equal(
+      modified.findings.find((f) => f.id === "before-screenshots").status,
+      "artifact-required",
+    );
+    // A bare N/A with no reason never qualifies, even for a new surface.
+    const bare = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots": "- [ ] Before screenshots N/A",
+        "after-screenshots": media("after", 2),
+        "walkthrough-video":
+          "- [x] https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000003",
+        "domain-artifacts":
+          "- [ ] OCR text readout: https://github.com/user-attachments/assets/00000000-0000-0000-0000-000000000008",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles, addedFiles: changedFiles },
+    );
+    assert.equal(bare.ok, false);
+  });
+
   it("normalizes labels and detects surface labels", () => {
     assert.deepEqual(parseLabels("bug, UI\nNative"), ["bug", "ui", "native"]);
     assert.equal(requiresSurfaceArtifacts("testing,backend"), false);
