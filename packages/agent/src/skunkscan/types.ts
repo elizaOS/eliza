@@ -91,6 +91,26 @@ export type WalletExposureSummary = {
   notes: string[];
 };
 
+export type WalletRelationship = {
+  address: string;
+  relationship:
+    | "funder"
+    | "receiver"
+    | "exchange"
+    | "bridge"
+    | "known_wallet";
+
+  label?: string | null;
+
+  confidence: "low" | "medium" | "high";
+};
+
+export type WalletRelationshipSummary = {
+  relationshipCount: number;
+  relationships: WalletRelationship[];
+  notes: string[];
+};
+
 export type WalletDeFiProtocol = {
   programId: string;
   protocol: string;
@@ -213,6 +233,7 @@ export type WalletInvestigationResult = {
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
   exposure?: WalletExposureSummary;
+  relationships?: WalletRelationshipSummary;
   evidence?: WalletEvidenceItem[];
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
