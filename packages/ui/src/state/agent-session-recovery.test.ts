@@ -149,4 +149,26 @@ describe("resolveAgentSessionRecovery", () => {
       expect(decision.agentId).toBe("abc-123");
     }
   });
+
+  it("resolves the agent id from a dedicated cloud subdomain when the id prefix is absent", () => {
+    const decision = resolveAgentSessionRecovery({
+      reason: "remote_auth_required",
+      activeServer: {
+        kind: "cloud",
+        id: "cloud",
+        label: "Dedicated",
+        apiBase: "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+      },
+      cloudToken: "steward.jwt.token",
+      cloudApiBase: "https://elizacloud.ai",
+      alreadyAttempted: false,
+    });
+
+    expect(decision.action).toBe("re-pair");
+    if (decision.action === "re-pair") {
+      expect(decision.agentId).toBe(
+        "23766030-c096-4a14-932a-a4e43c562432",
+      );
+    }
+  });
 });

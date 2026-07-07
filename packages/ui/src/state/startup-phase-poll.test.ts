@@ -30,6 +30,10 @@ const cloudMock = vi.hoisted(() => ({
   getCloudAuthToken: vi.fn(() => null as string | null),
 }));
 
+const agentSessionRecoveryMock = vi.hoisted(() => ({
+  runAgentSessionRecovery: vi.fn(),
+}));
+
 const androidBootStateMock = vi.hoisted(() => ({
   getAndroidLocalAgentBootStateForUrl: vi.fn(
     async (): Promise<{
@@ -62,6 +66,10 @@ vi.mock("../api/client-cloud", () => ({
   isDirectCloudSharedAgentBase: (url: string | null | undefined) =>
     !!url &&
     /\/api\/v1\/eliza\/agents\/[^/]+(?:\/bridge)?\/?$/.test(url.trim()),
+}));
+
+vi.mock("./agent-session-recovery-runner", () => ({
+  runAgentSessionRecovery: agentSessionRecoveryMock.runAgentSessionRecovery,
 }));
 
 vi.mock("../platform", async (importOriginal) => ({
@@ -157,6 +165,10 @@ beforeEach(() => {
     false,
   );
   cloudMock.getCloudAuthToken.mockReturnValue(null);
+  agentSessionRecoveryMock.runAgentSessionRecovery.mockResolvedValue({
+    ok: true,
+    redirectUrl: "https://agent-123.elizacloud.ai/pair?token=pairing",
+  });
 });
 
 afterEach(() => {
@@ -982,6 +994,140 @@ describe("runPollingBackend", () => {
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: true,
+    });
+  });
+
+  it("re-pairs a stale dedicated Cloud credential during backend polling instead of reaching the password wall", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: {
+        origin: "http://localhost:2138",
+        protocol: "http:",
+        port: "2138",
+        assign: vi.fn(),
+      },
+    };
+    const activeServer = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+      accessToken: "stale-agent-token",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: activeServer,
+      restoredActiveServer: activeServer,
+      shouldPreserveCompletedFirstRun: true,
+      hadPriorFirstRun: true,
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("steward.jwt.token");
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Unauthorized"), {
+        kind: "http",
+        status: 401,
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(agentSessionRecoveryMock.runAgentSessionRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cloudApiBase: "https://elizacloud.ai",
+        agentId: "agent-123",
+        cloudToken: "steward.jwt.token",
+        navigate: expect.any(Function),
+      }),
+    );
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+  });
+
+  it("routes a stale saved Cloud agent with no Cloud session back to onboarding, not the password wall", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: {
+        origin: "http://localhost:2138",
+        protocol: "http:",
+        port: "2138",
+      },
+    };
+    const activeServer = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+      accessToken: "stale-agent-token",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: activeServer,
+      restoredActiveServer: activeServer,
+      shouldPreserveCompletedFirstRun: true,
+      hadPriorFirstRun: true,
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue(null);
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Unauthorized"), {
+        kind: "http",
+        status: 401,
+        path: "/api/auth/status",
+      }),
+    );
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(agentSessionRecoveryMock.runAgentSessionRecovery).not.toHaveBeenCalled();
+    expect(clearPersistedActiveServer).toHaveBeenCalled();
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
     });
   });
 

@@ -19,6 +19,7 @@ import { getBootConfig } from "../config/boot-config";
 import {
   buildCloudSharedAgentApiBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isDedicatedCloudAgentBase,
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { ElizaClient } from "./client-base";
@@ -228,12 +229,95 @@ function firstNumber(...values: unknown[]): number | null {
   return null;
 }
 
+function directCloudLoginToken(data: unknown): string | null {
+  const root = recordOrNull(data);
+  const nested = recordOrNull(root?.data);
+  // Prefer Steward/session tokens over the legacy API key field. Some Cloud
+  // responses include both; using apiKey first can persist a token that lists
+  // agents but fails unified agent restore/wake authorization.
+  return firstString(
+    root?.token,
+    root?.accessToken,
+    root?.stewardToken,
+    root?.sessionToken,
+    nested?.token,
+    nested?.accessToken,
+    nested?.stewardToken,
+    nested?.sessionToken,
+    root?.apiKey,
+    nested?.apiKey,
+  );
+}
+
+function directCloudLoginStringField(
+  data: unknown,
+  field: string,
+  snakeField?: string,
+): string | undefined {
+  const root = recordOrNull(data);
+  const nested = recordOrNull(root?.data);
+  return (
+    firstString(
+      root?.[field],
+      snakeField ? root?.[snakeField] : undefined,
+      nested?.[field],
+      snakeField ? nested?.[snakeField] : undefined,
+    ) ?? undefined
+  );
+}
+
+function normalizeCloudLoginPollStatus(
+  value: unknown,
+): "pending" | "authenticated" | "expired" | "error" {
+  const status = stringOrNull(value)?.toLowerCase();
+  if (
+    status === "authenticated" ||
+    status === "expired" ||
+    status === "error" ||
+    status === "pending"
+  ) {
+    return status;
+  }
+  return "pending";
+}
+
 function errorStringOrNull(value: unknown): string | null {
   const direct = stringOrNull(value);
   if (direct) return direct;
   const record = recordOrNull(value);
   if (!record) return null;
   return firstString(record.error, record.message, record.reason);
+}
+
+function parseCloudLoginPollData(data: unknown): {
+  status: "pending" | "authenticated" | "expired" | "error";
+  organizationId?: string;
+  token?: string;
+  userId?: string;
+  error?: string;
+} {
+  const root = recordOrNull(data);
+  const nested = recordOrNull(root?.data);
+  const status = normalizeCloudLoginPollStatus(
+    firstString(root?.status, nested?.status),
+  );
+  return {
+    status,
+    ...(status === "authenticated"
+      ? {
+          token: directCloudLoginToken(data) ?? undefined,
+          organizationId: directCloudLoginStringField(
+            data,
+            "organizationId",
+            "organization_id",
+          ),
+          userId: directCloudLoginStringField(data, "userId", "user_id"),
+        }
+      : {}),
+    ...(status === "error"
+      ? { error: errorStringOrNull(data) ?? "Poll request failed" }
+      : {}),
+  };
 }
 
 function generateCloudLoginSessionId(): string {
@@ -248,6 +332,41 @@ function generateCloudLoginSessionId(): string {
     );
   }
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function resolveCloudCliLoginReturnUrl(sessionId: string): string | null {
+  if (shouldUseNativeCloudHttp() || typeof window === "undefined") return null;
+  try {
+    const { origin, pathname, protocol, search, hash } = window.location;
+    if (protocol !== "http:" && protocol !== "https:") return null;
+    const path =
+      pathname.startsWith("/") &&
+      !pathname.startsWith("//") &&
+      !pathname.startsWith("/auth/cli-login")
+        ? `${pathname}${search}${hash}`
+        : "/chat";
+    const url = new URL(path, origin);
+    url.searchParams.set("elizaCloudLogin", "complete");
+    url.searchParams.set("elizaCloudLoginSession", sessionId);
+    return url.toString();
+  } catch {
+    // error-policy:J3 a malformed app URL just falls back to the existing
+    // polling/close path; the Cloud page will keep its success fallback.
+    return null;
+  }
+}
+
+function buildCloudCliLoginBrowserUrl(
+  cloudWebBase: string,
+  sessionId: string,
+): string {
+  const url = new URL("/auth/cli-login", cloudWebBase);
+  url.searchParams.set("session", sessionId);
+  const returnTo = resolveCloudCliLoginReturnUrl(sessionId);
+  if (returnTo) {
+    url.searchParams.set("returnTo", returnTo);
+  }
+  return url.toString();
 }
 
 function shouldUseNativeCloudHttp(): boolean {
@@ -313,7 +432,7 @@ export function resolveDirectCloudWebBase(cloudBase: string): string {
   return normalized;
 }
 
-function resolveDirectCloudAuthApiBase(cloudBase: string): string {
+export function resolveDirectCloudAuthApiBase(cloudBase: string): string {
   const normalized = cloudBase.replace(/\/+$/, "");
   try {
     const url = new URL(normalized);
@@ -1394,6 +1513,12 @@ declare module "./client-base" {
       apiBase: string;
       bridgeUrl: string | null;
       created: boolean;
+      /**
+       * Dedicated agent subdomains require the official cloud pairing-token
+       * handoff before the browser can use `/api/*` with an agent-local bearer.
+       * Shared-runtime adapters continue to use the Steward session token.
+       */
+      requiresAgentPairing?: boolean;
     }>;
     /**
      * Background shared→personal handoff for a freshly provisioned cloud agent:
@@ -2748,7 +2873,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
         ok: true,
         apiBase: authApiBase,
         sessionId,
-        browserUrl: `${cloudWebBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
+        browserUrl: buildCloudCliLoginBrowserUrl(cloudWebBase, sessionId),
       };
     }
 
@@ -2767,7 +2892,7 @@ ElizaClient.prototype.cloudLoginDirect = async function (
       ok: true,
       apiBase: authApiBase,
       sessionId,
-      browserUrl: `${cloudWebBase}/auth/cli-login?session=${encodeURIComponent(sessionId)}`,
+      browserUrl: buildCloudCliLoginBrowserUrl(cloudWebBase, sessionId),
     };
   } catch (err) {
     return {
@@ -2803,16 +2928,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
           error: `Poll failed (${res.status})`,
         };
       }
-      const data = res.data;
-      if (data.status === "authenticated" && data.apiKey) {
-        return {
-          status: "authenticated" as const,
-          organizationId: data.organizationId,
-          token: data.apiKey,
-          userId: data.userId,
-        };
-      }
-      return { status: data.status || "pending" };
+      return parseCloudLoginPollData(parseDirectCloudJsonSafe(res.data));
     }
 
     const res = await fetch(
@@ -2832,16 +2948,7 @@ ElizaClient.prototype.cloudLoginPollDirect = async function (
         error: `Poll failed (${res.status})`,
       };
     }
-    const data = await res.json();
-    if (data.status === "authenticated" && data.apiKey) {
-      return {
-        status: "authenticated" as const,
-        organizationId: data.organizationId,
-        token: data.apiKey,
-        userId: data.userId,
-      };
-    }
-    return { status: data.status ?? ("pending" as const) };
+    return parseCloudLoginPollData(await res.json());
   } catch {
     return { status: "error" as const, error: "Poll request failed" };
   }
@@ -3093,6 +3200,12 @@ const CLOUD_AGENT_WAKE_POLL_INTERVAL_MS = 5_000;
 const CLOUD_AGENT_WAKE_TIMEOUT_MS = 6 * 60_000;
 const CLOUD_AGENT_FAILED_STATUSES = new Set(["error", "failed"]);
 
+function isTerminalFailedCloudAgent(agent: CloudCompatAgent): boolean {
+  return CLOUD_AGENT_FAILED_STATUSES.has(
+    String(agent.status ?? "").toLowerCase(),
+  );
+}
+
 /**
  * Wait for a dedicated cloud agent to report `running` on the control plane,
  * kicking a resume first so a stopped/suspended container actually boots.
@@ -3169,8 +3282,10 @@ export async function waitForCloudAgentRunning(
 
 /**
  * Pick which agent to reuse from a cloud agent list: a specific requested id if
- * it still exists, else the most-recently-created "running" agent, else the
- * most recent of any status.
+ * it still exists and is not terminal-bad, else the most-recently-created
+ * "running" agent, else the most recent non-terminal agent. Terminal failed
+ * rows are not reusable for first-run; reusing them just replays their stale
+ * restore/provisioning error forever.
  */
 function pickPreferredCloudAgent(
   agents: CloudCompatAgent[],
@@ -3178,12 +3293,14 @@ function pickPreferredCloudAgent(
 ): CloudCompatAgent | null {
   if (!agents.length) return null;
   if (preferAgentId) {
-    const exact = agents.find((a) => a.agent_id === preferAgentId);
+    const exact = agents.find(
+      (a) => a.agent_id === preferAgentId && !isTerminalFailedCloudAgent(a),
+    );
     if (exact) return exact;
   }
-  const byNewest = [...agents].sort((a, b) =>
-    String(b.created_at).localeCompare(String(a.created_at)),
-  );
+  const byNewest = agents
+    .filter((a) => !isTerminalFailedCloudAgent(a))
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   return byNewest.find((a) => a.status === "running") ?? byNewest[0] ?? null;
 }
 
@@ -3202,6 +3319,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   } = options;
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
+  let forceCreateForTerminalAgents = false;
   // Ensure the direct-cloud requests below authenticate even on a cold boot,
   // where the resolved token may be empty (the caller always passes the session
   // token). Persist it through the canonical steward-session store so
@@ -3238,6 +3356,10 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
       );
     }
     const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
+    forceCreateForTerminalAgents =
+      list.data.length > 0 &&
+      !chosen &&
+      list.data.every(isTerminalFailedCloudAgent);
     if (chosen) {
       let agent = chosen;
       const initialBase = resolveCloudAgentApiBase({
@@ -3281,6 +3403,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         apiBase,
         bridgeUrl: agent.bridge_url,
         created: false,
+        requiresAgentPairing: isDedicatedCloudAgentBase(apiBase),
       };
     }
   }
@@ -3298,7 +3421,9 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const created = await this.createCloudCompatAgent({
     agentName: name,
     ...(bio?.length ? { agentConfig: { bio } } : {}),
-    ...(forceCreate ? { forceCreate: true } : {}),
+    ...(forceCreate || (forceCreateForTerminalAgents && !preferSharedTier)
+      ? { forceCreate: true }
+      : {}),
     ...(preferSharedTier ? { preferSharedTier: true } : {}),
   });
   if (!created.success || !created.data.agentId) {
@@ -3342,6 +3467,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     // explicit `false` demotes to reuse; an absent flag (older worker) stays
     // `true` so the pre-existing create UX is unchanged.
     created: created.created !== false,
+    requiresAgentPairing: isDedicatedCloudAgentBase(apiBase),
   };
 };
 

@@ -33,6 +33,7 @@ import { useEffect, useRef } from "react";
 import { type ConversationMessage, client } from "../api";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { shellLocalStorage } from "../surface-realm-channel";
+import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import type { LoadConversationMessagesResult } from "./internal";
 
 /** Storage key for the last-known active conversation id. */
@@ -87,6 +88,9 @@ function isHealthy(body: unknown): boolean {
  * different port than the boot config remembered.
  */
 async function probeAgentHealth(): Promise<boolean> {
+  if (isElizaCloudControlPlaneAgentlessBase(client.getBaseUrl())) {
+    return false;
+  }
   try {
     const body = await client.fetch<unknown>("/api/health", undefined, {
       allowNonOk: true,
@@ -180,40 +184,45 @@ export function useAppLifecycleEvents({
     // One resume burst runs at most one reconnect and one tail reload.
     const runResume = (): void => {
       resumeTimer = null;
+      const skipAgentRuntimeResume = isElizaCloudControlPlaneAgentlessBase(
+        client.getBaseUrl(),
+      );
 
-      void probeAgentHealth();
+      if (!skipAgentRuntimeResume) {
+        void probeAgentHealth();
 
-      // Force a WS reconnect / reset the reconnect backoff. iOS often does NOT
-      // fire `online` on resume (the socket was silently killed during
-      // suspension, not a network change), so the resumed PWA can otherwise
-      // sit on a dead socket until the 30s background probe or a user action.
-      // `resetConnection` clears the pending backoff timer, resets the attempt
-      // counter, and re-runs `connectWs()`. For dedicated-agent REST bases
-      // `connectWs()` short-circuits to connected-over-REST (no socket, no
-      // churn), so this is safe when the WS is absent.
-      try {
-        client.resetConnection();
-      } catch (error) {
-        // error-policy:J4 resume reconnect - the tail refetch below is the
-        // user-visible freshness path, and the background probe remains a
-        // retry path for the websocket.
-        logger.warn({ error }, "[AppLifecycle] resume reconnect failed");
-      }
+        // Force a WS reconnect / reset the reconnect backoff. iOS often does NOT
+        // fire `online` on resume (the socket was silently killed during
+        // suspension, not a network change), so the resumed PWA can otherwise
+        // sit on a dead socket until the 30s background probe or a user action.
+        // `resetConnection` clears the pending backoff timer, resets the attempt
+        // counter, and re-runs `connectWs()`. For dedicated-agent REST bases
+        // `connectWs()` short-circuits to connected-over-REST (no socket, no
+        // churn), so this is safe when the WS is absent.
+        try {
+          client.resetConnection();
+        } catch (error) {
+          // error-policy:J4 resume reconnect - the tail refetch below is the
+          // user-visible freshness path, and the background probe remains a
+          // retry path for the websocket.
+          logger.warn({ error }, "[AppLifecycle] resume reconnect failed");
+        }
 
-      // Refetch the active conversation tail so agent messages emitted while
-      // backgrounded appear. Dedicated-agent REST mode has no websocket
-      // reconnect event, so this explicit reload is its transcript re-sync
-      // path after suspension.
-      const convId = activeConversationIdRefStable.current;
-      if (convId) {
-        void loadConversationMessagesRef.current(convId).catch((error) => {
-          // error-policy:J4 resume tail refetch - a failed reload leaves the
-          // last-known transcript visible; the next interaction/open retries.
-          logger.warn(
-            { convId, error },
-            "[AppLifecycle] resume conversation tail refetch failed",
-          );
-        });
+        // Refetch the active conversation tail so agent messages emitted while
+        // backgrounded appear. Dedicated-agent REST mode has no websocket
+        // reconnect event, so this explicit reload is its transcript re-sync
+        // path after suspension.
+        const convId = activeConversationIdRefStable.current;
+        if (convId) {
+          void loadConversationMessagesRef.current(convId).catch((error) => {
+            // error-policy:J4 resume tail refetch - a failed reload leaves the
+            // last-known transcript visible; the next interaction/open retries.
+            logger.warn(
+              { convId, error },
+              "[AppLifecycle] resume conversation tail refetch failed",
+            );
+          });
+        }
       }
 
       sweepStalePlaceholder();

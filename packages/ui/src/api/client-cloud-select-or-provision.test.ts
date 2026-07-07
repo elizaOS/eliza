@@ -83,6 +83,25 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
+  it("marks real dedicated Eliza Cloud agent subdomains as requiring pairing", async () => {
+    const { client, getCloudCompatAgents } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "agent-dedicated",
+          web_ui_url: "https://agent-dedicated.elizacloud.ai",
+          webUiUrl: "https://agent-dedicated.elizacloud.ai",
+        }),
+      ],
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(result.apiBase).toBe("https://agent-dedicated.elizacloud.ai");
+    expect(result.requiresAgentPairing).toBe(true);
+  });
+
   it("does NOT provision when the list fetch throws (transient/network error)", async () => {
     const { client, getCloudCompatAgents, createCloudCompatAgent } =
       fakeClient();
@@ -138,6 +157,108 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.created).toBe(true);
     expect(result.agentId).toBe("agent-new");
     expect(createCloudCompatAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not reuse terminal-error agents; force-creates a replacement instead", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "agent-broken",
+          status: "error",
+          error_message:
+            'State restore failed: HTTP 401 {"error":"Unauthorized"}',
+          created_at: "2026-07-07T03:42:55.378Z",
+        }),
+      ],
+    });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-replacement",
+        agentName: "Eliza",
+        jobId: "job-1",
+        status: "provisioning",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-replacement",
+        status: "provisioning",
+        web_ui_url: "https://agent-replacement.example.test",
+        webUiUrl: "https://agent-replacement.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(result.created).toBe(true);
+    expect(result.agentId).toBe("agent-replacement");
+    expect(createCloudCompatAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentName: "Eliza",
+        forceCreate: true,
+      }),
+    );
+  });
+
+  it("does not send forceCreate for shared-tier replacements when terminal-error agents exist", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "agent-broken",
+          status: "error",
+          error_message:
+            'State restore failed: HTTP 401 {"error":"Unauthorized"}',
+          created_at: "2026-07-07T03:42:55.378Z",
+        }),
+      ],
+    });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-shared-replacement",
+        agentName: "Eliza",
+        jobId: "job-1",
+        status: "provisioning",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-shared-replacement",
+        status: "provisioning",
+        web_ui_url: "https://agent-shared-replacement.example.test",
+        webUiUrl: "https://agent-shared-replacement.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      preferSharedTier: true,
+    });
+
+    expect(result.created).toBe(true);
+    expect(result.agentId).toBe("agent-shared-replacement");
+    expect(createCloudCompatAgent).toHaveBeenCalledTimes(1);
+    const createPayload = createCloudCompatAgent.mock.calls[0]?.[0];
+    expect(createPayload).toEqual(
+      expect.objectContaining({
+        agentName: "Eliza",
+        preferSharedTier: true,
+      }),
+    );
+    expect(createPayload).not.toHaveProperty("forceCreate");
   });
 
   it("forwards forceCreate through the create branch so explicit new-agent requests cannot reuse an existing backend row", async () => {
@@ -318,14 +439,15 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
       data: makeAgent({
         agent_id: "agent-warm",
         status: "running",
-        web_ui_url: "https://agent-warm.example.test",
-        webUiUrl: "https://agent-warm.example.test",
+        web_ui_url: "https://agent-warm.elizacloud.ai",
+        webUiUrl: "https://agent-warm.elizacloud.ai",
       }),
     });
 
     const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
 
     expect(result.created).toBe(true);
-    expect(result.apiBase).toContain("agent-warm.example.test");
+    expect(result.apiBase).toContain("agent-warm.elizacloud.ai");
+    expect(result.requiresAgentPairing).toBe(true);
   });
 });

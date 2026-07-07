@@ -21,6 +21,7 @@
  */
 
 import { isDirectCloudSharedAgentBase } from "../api/client-cloud";
+import { dedicatedCloudAgentIdFromBase } from "../utils/cloud-agent-base";
 import type { PersistedActiveServer } from "./persistence";
 
 /**
@@ -86,6 +87,9 @@ export function resolveDedicatedAgentId(
 
   const base = server.apiBase?.trim();
   if (base) {
+    const subdomainAgentId = dedicatedCloudAgentIdFromBase(base);
+    if (subdomainAgentId) return subdomainAgentId;
+
     const match = base.match(
       /\/api\/v1\/eliza\/agents\/([^/]+)(?:\/bridge)?\/?$/,
     );

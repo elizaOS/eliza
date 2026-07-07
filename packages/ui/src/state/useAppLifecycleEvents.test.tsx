@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   client: {
     resetConnection: vi.fn(),
     fetch: vi.fn(async () => ({ ok: true })),
+    getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
   },
 }));
 
@@ -104,6 +105,7 @@ describe("useAppLifecycleEvents", () => {
     vi.useFakeTimers();
     mocks.client.resetConnection.mockClear();
     mocks.client.fetch.mockClear();
+    mocks.client.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
     window.localStorage.clear();
   });
 
@@ -186,6 +188,18 @@ describe("useAppLifecycleEvents", () => {
     vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
 
     expect(mocks.client.resetConnection).toHaveBeenCalledTimes(1);
+    expect(loadConversationMessages).not.toHaveBeenCalled();
+  });
+
+  it("does not probe /api/health against the agentless Cloud control plane", () => {
+    mocks.client.getBaseUrl.mockReturnValue("https://api.elizacloud.ai");
+    const { loadConversationMessages } = setup({ activeId: "conv-cloud" });
+
+    dispatchResume();
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(mocks.client.fetch).not.toHaveBeenCalled();
+    expect(mocks.client.resetConnection).not.toHaveBeenCalled();
     expect(loadConversationMessages).not.toHaveBeenCalled();
   });
 

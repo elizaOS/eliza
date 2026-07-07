@@ -61,6 +61,7 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
+import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
@@ -1865,8 +1866,9 @@ async function handleRequest(
   // falls through to the normal pipeline.
   const handleCloudPairRoute = getAgentHostBridge().handleCloudPairRoute;
   if (
-    typeof handleCloudPairRoute === "function" &&
-    (await handleCloudPairRoute(req, res))
+    (typeof handleCloudPairRoute === "function" &&
+      (await handleCloudPairRoute(req, res))) ||
+    (await handleStandaloneCloudPairRoute(req, res))
   ) {
     return;
   }

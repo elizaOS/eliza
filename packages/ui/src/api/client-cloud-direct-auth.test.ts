@@ -141,6 +141,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       data: {
         status: "authenticated",
         apiKey: "cloud-api-key",
+        token: "cloud-session-token",
         organizationId: "org-1",
         userId: "user-1",
       },
@@ -160,7 +161,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(result).toEqual({
       status: "authenticated",
       organizationId: "org-1",
-      token: "cloud-api-key",
+      token: "cloud-session-token",
       userId: "user-1",
     });
     expectNoLocalPersistOrStatusProbe();

@@ -41,10 +41,12 @@ import {
   isForceFreshFirstRunEnabled,
   isIOS,
   isNative,
+  isOnboardingReplayRequested,
 } from "../platform";
 import {
   buildCloudSharedAgentApiBase,
   isElizaCloudControlPlaneAgentlessBase,
+  isDedicatedCloudAgentBase,
   normalizeDirectCloudSharedAgentApiBase,
 } from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
@@ -459,7 +461,14 @@ export async function applyRestoredConnection(args: {
     // refresh it BEFORE handing it to the client so a returning user never
     // boots into a permanently-401ing session (see resolveRestoredStewardToken).
     const stewardToken = await stewardTokenPromise;
-    clientRef.setToken(stewardToken || resolved.accessToken || null);
+    // Dedicated agent subdomains use an agent-local paired token for `/api/*`.
+    // Prefer a persisted paired token there, but keep the Steward fallback so
+    // older stale installs still reach the startup re-pair recovery path.
+    clientRef.setToken(
+      isDedicatedCloudAgentBase(resolved.apiBase)
+        ? resolved.accessToken || stewardToken || null
+        : stewardToken || resolved.accessToken || null,
+    );
     return;
   }
 
@@ -693,7 +702,9 @@ export async function runRestoringSession(
   }
 
   const preserveCompleted =
-    hadPrior && !deps.firstRunCompletionCommittedRef.current;
+    hadPrior &&
+    !deps.firstRunCompletionCommittedRef.current &&
+    !isOnboardingReplayRequested();
 
   if (!restoredActiveServer) {
     // No saved backend found — let the user (re-)onboard.

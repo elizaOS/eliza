@@ -1,13 +1,11 @@
 // @vitest-environment jsdom
 
 // First-run onboarding gating for the floating chat overlay (`firstRunOpen`):
-// the sheet opens pinned at FULL with an OPAQUE backdrop, every collapse path
-// (Escape, outside tap, grabber pull-down/close) is a no-op, the composer TEXT
-// + SEND are UNLOCKED (#12178 — typed text is answered by the in-chat conductor
-// and never reaches the server) while attach + mic stay disabled, the CHOICE
-// widgets stay interactive, and the sheet drops from full to the half detent
-// (with the backdrop fading to the normal scrim) exactly once on the completion
-// (falling) edge.
+// the sheet opens pinned at FULL/MAXIMIZED with an OPAQUE backdrop, every
+// collapse path (Escape, outside tap, drag/close) is a no-op, the drag handle is
+// hidden, the composer is sign-in-first/locked, transcript CHOICE widgets stay
+// interactive, and the sheet drops from full to the half detent (with the
+// backdrop fading to the normal scrim) exactly once on the completion edge.
 
 import {
   act,
@@ -128,16 +126,13 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(screen.getByTestId("chat-thread")).toBeTruthy();
   });
 
-  it("unlocks the composer text during onboarding with an inviting placeholder; attach + mic stay inert", () => {
+  it("locks the composer text during onboarding with a sign-in placeholder; attach + mic stay inert", () => {
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-    expect(input.disabled).toBe(false);
-    // The placeholder must match the unlocked behavior — not read as locked.
-    // "Connect to cloud to enable chat" contradicted the typeable composer
-    // (#12178): free text is answered by the in-chat conductor locally.
-    expect(input.placeholder).toBe("Ask Eliza anything, or sign in above");
+    expect(input.disabled).toBe(true);
+    expect(input.placeholder).toBe("Sign in to start chatting");
 
     // The composer actions ("+") menu + mic have no agent to serve them yet —
     // still inert (pre-runtime). The "+" trigger is natively disabled.
@@ -153,13 +148,11 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(controller.toggleHandsFree).not.toHaveBeenCalled();
   });
 
-  it("routes composer free text to the in-chat conductor during onboarding — send stays live but the server is never reached", () => {
+  it("ignores prefill/free-text entry during onboarding so setup stays sign-in-first", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
 
-    // CHAT_PREFILL_EVENT is a real non-keyboard draft entry point; the composer
-    // is unlocked now, so it lands a draft and the send control goes live.
     act(() => {
       window.dispatchEvent(
         new CustomEvent(CHAT_PREFILL_EVENT, {
@@ -168,16 +161,14 @@ describe("ContinuousChatOverlay first-run gating", () => {
       );
     });
 
-    const send = screen.getByTestId("chat-composer-action");
-    expect(send.getAttribute("aria-disabled")).not.toBe("true");
-    fireEvent.click(send);
-    // The typed text goes to the conductor via the shared action funnel — the
-    // HARD rule: nothing reaches the server pre-completion.
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.value).toBe("");
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
     expect(controller.send).not.toHaveBeenCalled();
-    expect(sendActionMessage).toHaveBeenCalledWith("free text mid-onboarding");
+    expect(sendActionMessage).not.toHaveBeenCalled();
   });
 
-  it("answers Enter-typed free text through the conductor funnel, never controller.send", () => {
+  it("does not submit typed text with Enter while the onboarding composer is locked", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
@@ -186,10 +177,8 @@ describe("ContinuousChatOverlay first-run gating", () => {
     fireEvent.change(input, { target: { value: "will this work yet?" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(sendActionMessage).toHaveBeenCalledWith("will this work yet?");
+    expect(sendActionMessage).not.toHaveBeenCalled();
     expect(controller.send).not.toHaveBeenCalled();
-    // The composer clears after the conductor consumes the turn.
-    expect(input.value).toBe("");
   });
 
   it("paints an OPAQUE bg-bg backdrop while onboarding is open (no launcher/home shows through)", () => {
@@ -224,7 +213,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     );
   });
 
-  it("opens edge-to-edge full-bleed (maximized) during onboarding, keeping the inert grabber instead of the restore zone", () => {
+  it("opens edge-to-edge full-bleed (maximized) during onboarding without drag affordances", () => {
     render(
       <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
     );
@@ -232,10 +221,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     // The login/first-run chat is full-screen: full-bleed edge-to-edge.
     expect(sheet.getAttribute("data-maximized")).toBe("true");
     expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
-    // Full-bleed normally swaps the grabber for the "drag to exit full screen"
-    // restore zone, but onboarding pins the sheet — that gesture is a no-op, so
-    // the (inert) grabber stays and the misleading restore affordance is absent.
-    expect(screen.getByTestId("chat-sheet-grabber")).toBeTruthy();
+    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
   });
 
@@ -273,25 +259,13 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-detent")).toBe("full");
   });
 
-  it("ignores grabber pull-down and keyboard close while onboarding is active", () => {
+  it("does not render the grabber while onboarding is active", () => {
     render(
       <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
     );
     const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(sheet.getAttribute("data-variant")).toBe("open");
-
-    // Keyboard close paths on the grabber (Enter toggles, ArrowDown/Escape close).
-    fireEvent.keyDown(grabber, { key: "Escape" });
-    fireEvent.keyDown(grabber, { key: "ArrowDown" });
-    fireEvent.keyDown(grabber, { key: "Enter" });
-    expect(sheet.getAttribute("data-variant")).toBe("open");
-    expect(sheet.getAttribute("data-detent")).toBe("full");
-
-    // A deliberate downward drag on the grabber (pull-down collapse gesture).
-    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 2 });
-    fireEvent.pointerMove(grabber, { clientY: 420, pointerId: 2 });
-    fireEvent.pointerUp(grabber, { clientY: 420, pointerId: 2 });
+    expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");
   });
@@ -350,7 +324,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(cloud.getAttribute("tabindex")).not.toBe("-1");
   });
 
-  it("renders onboarding transcript turns with panel chrome over the opaque dark backdrop", () => {
+  it("renders onboarding transcript turns through the normal thread row", () => {
     const controller = makeController({
       messages: [
         {
@@ -363,13 +337,129 @@ describe("ContinuousChatOverlay first-run gating", () => {
     } as unknown as Partial<ShellController>);
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
 
-    const message = screen.getByTestId("chat-message");
+    const message = screen.getByTestId("thread-line");
     expect(message.getAttribute("data-role")).toBe("assistant");
-    expect(screen.queryByTestId("thread-line")).toBeNull();
     expect(
       screen.getByText("Hi — I'm Eliza. First, where should your agent run?"),
     ).toBeTruthy();
     expect(screen.queryByText("Agent")).toBeNull();
+  });
+
+  it("renders one fallback sign-in turn if onboarding opens before the conductor seeds messages", () => {
+    vi.useFakeTimers();
+    seedAppStoreWithActionSpy();
+    try {
+      render(
+        <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+      );
+
+      expect(
+        screen.queryByText("Sign in to Eliza Cloud to start chatting."),
+      ).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(
+        screen.getByText("Sign in to Eliza Cloud to start chatting."),
+      ).toBeTruthy();
+      expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
+      expect(
+        screen.getByTestId("choice-__first_run__:runtime:cloud"),
+      ).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels the fallback if the conductor seeds the real sign-in greeting first", () => {
+    vi.useFakeTimers();
+    seedAppStoreWithActionSpy();
+    const realGreeting = {
+      id: "first-run:greeting",
+      role: "assistant",
+      content: [
+        "Hi — I'm Eliza. To start chatting, sign in below.",
+        "",
+        "[CHOICE:first-run id=runtime]",
+        "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+        "[/CHOICE]",
+      ].join("\n"),
+      createdAt: 1,
+    } as const;
+
+    try {
+      const { rerender } = render(
+        <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      rerender(
+        <ContinuousChatOverlay
+          controller={makeController({
+            messages: [realGreeting],
+          } as unknown as Partial<ShellController>)}
+          firstRunOpen
+        />,
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(
+        screen.queryByText("Sign in to Eliza Cloud to start chatting."),
+      ).toBeNull();
+      expect(
+        screen.getByText("Hi — I'm Eliza. To start chatting, sign in below."),
+      ).toBeTruthy();
+      expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows only the latest first-run sign-in turn so stale greetings do not create a second sign-in", () => {
+    seedAppStoreWithActionSpy();
+    const controller = makeController({
+      messages: [
+        {
+          id: "first-run:greeting",
+          role: "assistant",
+          content: [
+            "Hi — I'm Eliza. To start chatting, sign in below.",
+            "",
+            "[CHOICE:first-run id=runtime]",
+            "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 1,
+        },
+        {
+          id: "first-run:cloud-oauth",
+          role: "assistant",
+          content: [
+            "Sign in to Eliza Cloud to continue — I'll pick up where we left off.",
+            "",
+            "[CHOICE:first-run id=runtime]",
+            "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+            "[/CHOICE]",
+          ].join("\n"),
+          createdAt: 2,
+        },
+      ],
+    } as unknown as Partial<ShellController>);
+
+    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+
+    expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
+    expect(
+      screen.queryByText("Hi — I'm Eliza. To start chatting, sign in below."),
+    ).toBeNull();
   });
 
   it("exposes the sr-only onboarding-state probe with the current step + choice ids while onboarding is open", () => {

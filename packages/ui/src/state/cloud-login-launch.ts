@@ -26,6 +26,8 @@ import { configuredStewardApiUrlOverride } from "../cloud/shell/steward-config";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../cloud/shell/steward-url";
 import { preOpenWindow } from "../utils/openExternalUrl";
 
+export const CLOUD_LOGIN_POPUP_NAME = "eliza-cloud-auth";
+
 function isCapacitorNativeRuntime(): boolean {
   if (typeof globalThis === "undefined") return false;
   const capacitor = (
@@ -86,7 +88,7 @@ export function preOpenCloudLoginWindow(): Window | null {
   ) {
     return null;
   }
-  return preOpenWindow();
+  return preOpenWindow(CLOUD_LOGIN_POPUP_NAME);
 }
 
 /**
