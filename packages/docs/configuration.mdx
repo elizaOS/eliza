@@ -861,13 +861,15 @@ Configure the local embedding model for vector memory search:
 }
 ```
 
-`ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP=1` defers startup GGUF embedding prefetch
-until the dev/runtime server is ready, then warms in the background.
-`ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP=1` skips the prefetch entirely.
-`ELIZA_DISABLE_LOCAL_EMBEDDINGS=1` disables local `TEXT_EMBEDDING`
-registration entirely. Desktop dev defaults to deferred background warmup;
-CI defaults to skip. Set `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP=1` to
-start warmup during runtime bootstrap when no skip/defer override is present.
+Startup GGUF embedding prefetch is **deferred by default** on every CLI/server
+path: it runs in the background once the runtime is ready (and self-skips when
+Eliza Cloud embeddings are active) instead of firing a multi-GB download +
+hardware probe at process entry before the readiness gate. Set
+`ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP=0` (or `false`/`no`/`off`) to restore the
+eager process-entry prefetch — useful for benchmarks that want the download on
+the boot path. `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP=1` skips the prefetch
+entirely; `ELIZA_DISABLE_LOCAL_EMBEDDINGS=1` disables local `TEXT_EMBEDDING`
+registration entirely. CI defaults to skip.
 
 ## Browser
 

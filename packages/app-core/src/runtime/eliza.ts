@@ -12,7 +12,8 @@
  *
  * Also owns PGlite startup-error normalization + auto-reset (quarantine a
  * corrupt `.elizadb` and retry once), the ELIZA_SKIP_APP_ROUTE_PLUGINS /
- * ELIZA_DEFER_APP_ROUTES boot knobs (both default to byte-identical boot), the
+ * ELIZA_DEFER_APP_ROUTES boot knobs (the tail defers by default;
+ * ELIZA_DEFER_APP_ROUTES=0 opts back into the inline pre-ready tail), the
  * local-agent IPC port gate (#12180), and a direct-run CLI (help/version) when
  * executed as a script. Mobile platforms take a trimmed boot path. Several seams
  * (PostReadyBootSteps, __setLatestBootTailRuntimeForTest) exist only for focused
@@ -42,6 +43,7 @@ import {
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
+import { markDeferredBootPhase } from "@elizaos/agent/runtime/deferred-boot-status";
 import { installAgentHostBridge } from "./install-agent-host-bridge.js";
 
 export { CHANNEL_PLUGIN_MAP } from "./channel-plugin-map.js";
@@ -484,22 +486,29 @@ export function getSkippedAppRoutePluginIds(): Set<string> {
 }
 
 /**
- * Opt-in dev knob: when set to the literal token `"1"`, the post-ready boot
- * tail (app-route plugins, training hooks, sensitive-request adapters, telegram
- * polling, trigger bridge, connector catalog, voice warmup) runs in the
- * background instead of blocking the readiness gate, so `/api/health` flips
- * `ready:true` and "Agent ready" prints sooner. Composes with
- * {@link getSkippedAppRoutePluginIds}: `ELIZA_SKIP_APP_ROUTE_PLUGINS` filters
- * WHICH route plugins load; this controls WHETHER that tail blocks ready.
+ * Whether the post-ready boot tail (app-route plugins, training hooks,
+ * sensitive-request adapters, telegram polling, trigger bridge, connector
+ * catalog, voice warmup) runs in the background instead of blocking the
+ * readiness gate. Deferred by DEFAULT: `/api/health` flips `ready:true` and
+ * "Agent ready" prints before the tail's ~11 app-route dynamic imports
+ * (lifeops alone registers 188 routes) finish, so feature routes can 404 for
+ * a sub-second-to-few-second window right after ready. Consumers that need
+ * those routes poll `/api/health` for `deferredBoot.settled` (this tail
+ * reports as phase `app-route-tail`) instead of sleeping.
  *
- * Returns true ONLY for `"1"` (undefined / `""` / `"0"` / `"false"` / `"true"`
- * all return false) so the default boot is byte-identical: the tail is awaited
- * inline exactly as before.
+ * Opt out with `ELIZA_DEFER_APP_ROUTES=0|false|no|off` to await the tail
+ * inline before ready — the pre-deferral boot shape, for callers that must
+ * have every feature route mounted at ready and accept the slower
+ * time-to-ready. Any other value (unset, `""`, `"1"`, `"true"`) defers.
+ * Composes with {@link getSkippedAppRoutePluginIds}:
+ * `ELIZA_SKIP_APP_ROUTE_PLUGINS` filters WHICH route plugins load; this
+ * controls WHETHER the tail blocks ready.
  */
 export function getDeferAppRoutesEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  return env.ELIZA_DEFER_APP_ROUTES?.trim() === "1";
+  const raw = env.ELIZA_DEFER_APP_ROUTES?.trim().toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "no" || raw === "off");
 }
 
 /**
@@ -930,17 +939,40 @@ async function repairRuntimeAfterBoot(
 
   // Post-ready tail: feature-route plugins, training hooks, sensitive-request
   // adapters, telegram polling, the trigger bridge, the connector catalog, and
-  // voice warmup. None of these gate correctness of the first turn, so when
-  // ELIZA_DEFER_APP_ROUTES=1 they run in the background and ready flips before
-  // the tail completes (feature routes may 404 for a brief window — same
-  // audience as ELIZA_SKIP_APP_ROUTE_PLUGINS). When the knob is unset the tail
-  // is awaited inline, identical in steps and order to the pre-split path.
+  // voice warmup. None of these gate correctness of the first turn, so by
+  // default they run in the background and ready flips before the tail
+  // completes (feature routes may 404 for a brief window — poll /api/health
+  // `deferredBoot.settled` before hitting them). ELIZA_DEFER_APP_ROUTES=0
+  // opts back into awaiting the tail inline, identical in steps and order to
+  // the pre-split path. The phase is marked pending before ready can flip so
+  // a health probe never reads a not-yet-announced tail as settled.
   latestBootTailRuntime = runtime;
+  markDeferredBootPhase("app-route-tail", "pending");
   if (getDeferAppRoutesEnabled()) {
-    void runPostReadyBootTail(runtime);
+    void runPostReadyBootTail(runtime).catch((err: unknown) => {
+      // error-policy:J1 boundary translation — the deferred tail has no caller
+      // left to throw to; a TTS-handler or runtime-hook failure here would
+      // otherwise vanish into an unhandled rejection. Mark the phase failed
+      // (so health-pollers stop waiting) and surface it agent-visibly.
+      markDeferredBootPhase("app-route-tail", "failed");
+      logger.error(
+        `[eliza] post-ready boot tail failed: ${formatErrorWithStack(err)}`,
+      );
+      runtime.reportError("eliza.postReadyBootTail", err, {
+        phase: "app-route-tail",
+      });
+    });
     return runtime;
   }
-  await runPostReadyBootTail(runtime);
+  try {
+    await runPostReadyBootTail(runtime);
+  } catch (err) {
+    // error-policy:J2 context-preserving rethrow — inline mode keeps the
+    // pre-split contract (a tail failure fails the boot); only the phase
+    // marker is updated so health never reports a failed tail as pending.
+    markDeferredBootPhase("app-route-tail", "failed");
+    throw err;
+  }
   return runtime;
 }
 
@@ -1035,6 +1067,10 @@ export async function runPostReadyBootTail(
   // server-only + restart paths), so the warmup fires regardless of entry
   // point. Fire-and-forget; gated + non-fatal inside startDeferredVoiceWarmup.
   void steps.startDeferredVoiceWarmup(runtime);
+
+  // Marked here — not at the dispatch site — so a superseded tail (early
+  // return above) never stamps `complete` over the newer boot's `pending`.
+  markDeferredBootPhase("app-route-tail", "complete");
 }
 
 /**
@@ -1154,8 +1190,20 @@ async function ensureConnectorTargetCatalog(
 // uncaughtException and kills the agent.
 let warmupInFlight: Promise<void> | null = null;
 
+// Deferred by DEFAULT: the process-entry warmup fired a GGUF download +
+// hardware probe before the readiness gate on every CLI/server boot, while
+// the agent's deferred wave (startEmbeddingWarmup in @elizaos/agent) and the
+// dev-server ready hook already warm the same model after ready — and the
+// warmup self-skips when cloud embeddings are active. Only an explicit
+// falsy ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP (0/false/no/off) restores the
+// eager process-entry fire (benchmarks that want the download on the boot
+// path). ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP still skips warmup entirely
+// (checked inside the warmup policy).
 function isLocalEmbeddingWarmupDeferredByEnv(): boolean {
-  return isTruthyEnvValue(process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP);
+  const raw = process.env.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP
+    ?.trim()
+    .toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "no" || raw === "off");
 }
 
 function startLocalEmbeddingWarmup(

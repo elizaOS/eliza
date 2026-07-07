@@ -59,7 +59,7 @@ Key environment variables (all optional unless noted):
 | `MODELS_DIR` | Override the GGUF model directory (default: `~/.eliza/models`) |
 | `LOCAL_SMALL_MODEL` | Small model filename (mobile/Capacitor adapter) |
 | `LOCAL_LARGE_MODEL` | Large model filename (mobile/Capacitor adapter) |
-| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | Set truthy to defer startup GGUF embedding prefetch until the dev/runtime server is ready |
+| `ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP` | Defer is the DEFAULT: startup GGUF embedding prefetch runs after the runtime is ready. Set to `0`/`false`/`no`/`off` for the eager process-entry prefetch |
 | `ELIZA_SKIP_LOCAL_EMBEDDING_WARMUP` | Set truthy to skip GGUF embedding prefetch entirely while leaving local embedding settings intact |
 | `ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP` | Desktop startup opt-in that starts GGUF embedding warmup during runtime bootstrap when no skip/defer override is set |
 | `ELIZA_DISABLE_LOCAL_EMBEDDINGS` | Set `1` to disable local `TEXT_EMBEDDING` registration entirely |

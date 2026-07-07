@@ -20,12 +20,14 @@ describe("desktop startup embedding warmup policy", () => {
     expect(policy.source).toContain("CI");
   });
 
-  it("allows explicit startup embedding warmup opt-in", () => {
+  it("allows explicit startup embedding warmup opt-in (defers off in the child)", () => {
     const policy = resolveDesktopStartupEmbeddingWarmupPolicy({
       ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP: "1",
     });
 
-    expect(policy.env).toEqual({});
+    // Runtime warmup now defers by default, so the opt-in must inject an
+    // explicit defer-off into the child to reach the process-entry warmup.
+    expect(policy.env).toEqual({ ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP: "0" });
     expect(policy.effective).toBe("startup background");
     expect(policy.source).toContain(
       "ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP=1",

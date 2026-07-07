@@ -234,6 +234,10 @@ export function applyPackagedStartupEmbeddingWarmupPolicy(
   if (
     isTruthyDesktopEnv(childEnv.ELIZA_ENABLE_STARTUP_LOCAL_EMBEDDING_WARMUP)
   ) {
+    // Runtime warmup now defers by default; the opt-in wants process-entry
+    // warmup, so disable the deferral in the child explicitly (leaving it
+    // unset would land on the deferred default, not the eager path).
+    childEnv.ELIZA_DEFER_LOCAL_EMBEDDING_WARMUP = "0";
     return;
   }
 
@@ -252,8 +256,11 @@ export function applyPackagedStartupEmbeddingWarmupPolicy(
  * far more visible than a sub-second feature-route gap.
  *
  * Only sets the default when `ELIZA_DEFER_APP_ROUTES` is unset, so an explicit
- * `0`/`1` from the user or a test harness always wins. The production CLI
- * `serve` path (not spawned here) is untouched and keeps the awaited-inline tail.
+ * `0`/`1` from the user or a test harness always wins. The runtime now defers
+ * the tail by default on every path (including the production CLI `serve`
+ * path), so this explicit set is belt-and-suspenders for the desktop child —
+ * it keeps the desktop default pinned regardless of any future runtime-default
+ * change and stays a no-op when the operator opts out with `=0`.
  */
 export function applyDesktopDeferAppRoutesPolicy(
   childEnv: Record<string, string>,

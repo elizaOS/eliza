@@ -19,6 +19,7 @@ import {
   hasTextGenerationHandler,
 } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.ts";
+import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
@@ -602,6 +603,10 @@ export async function handleHealthRoutes(
       uptime,
       agentState: state.agentState,
       startup: state.startup,
+      // Deferred capabilities (feature routes, connectors, non-essential
+      // plugins) register AFTER `ready` flips. Poll `deferredBoot.settled`
+      // before hitting feature routes right after boot instead of sleeping.
+      deferredBoot: getDeferredBootStatus(),
     });
     return true;
   }
