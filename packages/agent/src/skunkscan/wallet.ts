@@ -16,6 +16,7 @@ import { analyzeWalletDeFi } from "./analyzers/defi";
 import { analyzeWalletBehavior } from "./analyzers/behavior";
 import { analyzeWalletCaseSummary } from "./analyzers/caseSummary";
 import { analyzeWalletEvidence } from "./analyzers/evidence";
+import { analyzeWalletExposure } from "./analyzers/exposure";
 import {
   SupportedChain,
   WalletBalance,
@@ -128,6 +129,11 @@ const behavior = analyzeWalletBehavior(
   risk,
 );
 
+const exposure = analyzeWalletExposure(
+  walletAddress,
+  funding,
+);
+
 const caseSummary = analyzeWalletCaseSummary(
   age,
   risk,
@@ -157,6 +163,7 @@ portfolio,
 whale,
 defi,
 behavior,
+exposure,
 caseSummary,
 evidence,
 recentTransactions,
