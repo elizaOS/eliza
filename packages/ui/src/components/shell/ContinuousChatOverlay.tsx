@@ -1493,6 +1493,10 @@ export function ContinuousChatOverlay({
   const dragPinnedRef = React.useRef(false);
   const dragOffAtPinRef = React.useRef(0);
   const dragPinTopRef = React.useRef(0);
+
+  const resetPullPeak = React.useCallback(() => {
+    maxPullRawRef.current = 0;
+  }, []);
   const dragStartTopRef = React.useRef(0);
   // At rest the collapsed composer should not carry hidden transcript/header
   // DOM. During an upward pull, though, the sheet needs a mounted body so the
@@ -3051,11 +3055,11 @@ export function ContinuousChatOverlay({
   const goToDetent = React.useCallback(
     (to: "collapsed" | "half" | "full") => {
       // Flip the settled detent; the [baseH] effect springs the height to it.
-      // A detent always clears any free-drag rest height and (since only FULL
-      // can be maximized) drops full-bleed when stepping anywhere else.
+      // A detent always clears any free-drag rest height. Full-bleed is a
+      // separate, explicit maximize state: plain FULL is the inset full detent.
       draggingRef.current = false;
       setFreeH(null);
-      if (to !== "full") setMaximized(false);
+      setMaximized(false);
       // "collapsed" is the input bar (sheet closed); half/full open the thread.
       setMode(to === "collapsed" ? "input" : to);
       const target = to === "collapsed" ? 0 : to === "half" ? halfH : openH;
@@ -3073,9 +3077,9 @@ export function ContinuousChatOverlay({
         // semi-transparent.
         animateOpenProgress(1);
       }
-      // Settle the shape morph: any detent but a still-maximized FULL is the
-      // inset shape, so un-morph a partial over-pull that landed on a detent.
-      animateFullBleedTo(to === "full" && fullBleedRef.current ? 1 : 0);
+      // Settle the shape morph: every detent is inset; full-bleed only comes
+      // from the explicit maximize path.
+      animateFullBleedTo(0);
       // A flick-to-detent ends the gesture: drop the finger-only pin fraction so
       // it can't leave the resting cap inflated above the detent's own height.
       overpullCapT.set(0);
@@ -4155,6 +4159,9 @@ export function ContinuousChatOverlay({
         }
       }
       const overpullT = Math.max(rawOverpullT, measuredOverpullT);
+      const startedFromFullDetent = expanded && freeH == null;
+      const livePeakTravel = cont - Math.min(0, dragStartContRef.current);
+      const liveLongHaul = livePeakTravel >= viewportH * 0.8;
       // Feed the finger's over-pull to the height cap so it lifts through the
       // inset-ceiling flex-overshoot dead zone (where `cont < insetPanelMaxH` yet
       // the panel is already pinned at the ceiling) — the panel edge keeps
@@ -4174,6 +4181,7 @@ export function ContinuousChatOverlay({
       // settles at the inset FULL detent instead.
       if (
         overpullT >= MAXIMIZE_COMMIT_T &&
+        (startedFromFullDetent || liveLongHaul) &&
         !maximized &&
         !keyboardBlocksMaximize
       ) {
@@ -4202,6 +4210,8 @@ export function ContinuousChatOverlay({
       fullPanelMaxH,
       maxOverPull,
       viewportH,
+      expanded,
+      freeH,
       threadHeight,
       openProgress,
       fullBleedT,
@@ -4234,14 +4244,14 @@ export function ContinuousChatOverlay({
     // instead of an edge-to-edge maximize that would spill above the visible area.
     if (keyboardBlocksMaximize) return false;
     // Two distinct maximize intents, both read from the gesture itself:
-    //  - OVER-PULL: the peak raw pull carried at least half the maximize morph
-    //    PAST the FULL detent (the finger visibly squared the corners) — the
-    //    canonical exit upward from an already-tall sheet.
-    //  - LONG HAUL: the drag STARTED at/below the half detent and swept ≥80%
-    //    of the screen — "grabbed it at the bottom and threw it to the top"
-    //    (pill/input/half starts). Gating on the start height keeps a mere
-    //    one-detent flick from a tall free rest stepping to FULL instead of
-    //    surprise-maximizing.
+    //  - OVER-PULL: a drag that started at the inset FULL detent and whose peak
+    //    raw pull carried at least half the maximize morph PAST that detent (the
+    //    finger visibly squared the corners) — the canonical exit upward from
+    //    FULL. A free-rest below FULL steps to FULL first instead of surprise
+    //    maximizing on a short flick.
+    //  - LONG HAUL: the drag swept ≥80% of the screen — "grabbed it and threw
+    //    it to the top". Short free-rest flicks step to FULL because the raw
+    //    travel stays below this threshold.
     // The 80% is measured against the LAYOUT viewport (screen space), not the
     // keyboard-shrunk visual viewport: with a soft keyboard up, 80% of the
     // visual height can fall below the FULL detent, so an ordinary flick to
@@ -4251,13 +4261,15 @@ export function ContinuousChatOverlay({
     const peak = maxPullRawRef.current;
     // "At least half the real morph gap past the inset FULL height" — the
     // finger visibly carried the panel more than halfway to edge-to-edge.
-    const overPulled = peak >= insetPanelMaxH + maxOverPull * MAXIMIZE_COMMIT_T;
+    const startedFromFullDetent = expanded && freeH == null;
+    const overPulled =
+      startedFromFullDetent &&
+      peak >= insetPanelMaxH + maxOverPull * MAXIMIZE_COMMIT_T;
     // Long haul measures TRAVEL, not height: a pull that began on the pill
     // spends PILL_OPEN_DISTANCE forming the input before any height exists, so
     // shift the peak by the below-zero start to compare finger distance.
     const peakTravel = peak - Math.min(0, dragStartContRef.current);
-    const longHaul =
-      dragStartHRef.current <= halfH + 1 && peakTravel >= screenH * 0.8;
+    const longHaul = peakTravel >= screenH * 0.8;
     if (overPulled || longHaul) {
       focusThreadRef.current = true;
       maximizeFromPull();
@@ -4271,11 +4283,13 @@ export function ContinuousChatOverlay({
     viewport.innerHeight,
     insetPanelMaxH,
     maxOverPull,
-    halfH,
     maximizeFromPull,
+    expanded,
+    freeH,
   ]);
 
   const pullBinding: PullGestureBinding = usePullGesture({
+    onStart: resetPullPeak,
     onDrag: onDragOffset,
     onDragReset: settleDrag,
     // Horizontal swipe carries two meanings by sheet state: collapsed, it is
@@ -4425,14 +4439,16 @@ export function ContinuousChatOverlay({
       // chat. (Open-sheet drags that reach the bottom land via the magnetism
       // below — collapseFromRelease picks pill vs input.)
       if (!sheetOpen && direction === "down") {
-        if (openProgress.get() <= 0.5) collapseToPill();
+        if (dragContRef.current <= -PILL_OPEN_DISTANCE / 2) collapseToPill();
         else settleDrag();
         return;
       }
-      // A slow over-pull past the 80%-viewport threshold maximizes (#13531),
-      // even though the visible height rubber-banded at FULL — the peak raw pull
-      // (maxPullRawRef) carries the intent. Must win before detent magnetism.
-      if (maybeMaximizeOnRelease()) return;
+      // A slow upward over-pull past the 80%-viewport threshold maximizes
+      // (#13531), even though the visible height rubber-banded at FULL — the
+      // peak raw pull (maxPullRawRef) carries the intent. Downward restore drags
+      // must not re-enter full-bleed, even if a previous upward peak was visible
+      // before the release settled.
+      if (direction === "up" && maybeMaximizeOnRelease()) return;
       const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
       // DETENT MAGNETISM — the resting positions are the detents {collapsed:0,
       // half, full}; a release within SHEET_DETENT_MAGNET of one snaps to it
@@ -4541,6 +4557,7 @@ export function ContinuousChatOverlay({
     } else {
       setFreeH(h);
       setMode("half");
+      setMaximized(false);
     }
   }, [
     pinnedOpen,
@@ -4562,6 +4579,7 @@ export function ContinuousChatOverlay({
     settleDrag();
   }, [settleDrag]);
   const maximizeRestoreBinding: PullGestureBinding = usePullGesture({
+    onStart: resetPullPeak,
     // Sideways swipe on the maximize grab strip dismisses the chat to the
     // pill — the same drag-the-chat-away gesture the open-sheet grabber owns
     // (fullBleed is derived from mode, so its settle animation unwinds the

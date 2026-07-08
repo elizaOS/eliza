@@ -46,7 +46,27 @@ async function settleMainThread(page: Page): Promise<void> {
 async function centerOf(page: Page, selector: string): Promise<Center> {
   // Settle first so the box also reflects the committed layout.
   await settleMainThread(page);
-  const box = await page.locator(selector).first().boundingBox();
+  await page.waitForFunction(
+    (selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return false;
+      const b = el.getBoundingClientRect();
+      return b.width > 0 && b.height > 0;
+    },
+    selector,
+    { timeout: 3000 },
+  );
+  const box = await page.evaluate((selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const b = el.getBoundingClientRect();
+    return {
+      x: b.x,
+      y: b.y,
+      width: b.width,
+      height: b.height,
+    };
+  }, selector);
   if (!box) throw new Error(`real-touch: no bounding box for ${selector}`);
   return { cx: box.x + box.width / 2, cy: box.y + box.height / 2, box };
 }

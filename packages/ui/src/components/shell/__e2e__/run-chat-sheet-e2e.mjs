@@ -100,6 +100,16 @@ const chatState = (p) =>
 const headerShown = async (p) =>
   (await p.getByTestId("chat-sheet").getAttribute("data-header-shown")) ===
   "true";
+async function waitForHeaderShown(p, timeout = 1500) {
+  await p.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="chat-sheet"]')
+        ?.getAttribute("data-header-shown") === "true",
+    undefined,
+    { timeout },
+  );
+}
 // The history (thread) is the element whose height animates 0 → half → full;
 // the panel (chat-sheet) also holds the always-present input, so measure the
 // thread for detent heights.
@@ -292,6 +302,79 @@ const SETTLE = 480; // spring settle time before measuring a detent
 const heldTouchDrags = new WeakMap();
 const testIdSelector = (testId) => `[data-testid="${testId}"]`;
 
+async function visibleBoxForTestId(p, target, timeout = 3000) {
+  const selector = testIdSelector(target);
+  try {
+    await p.waitForFunction(
+      (selector) => {
+        const el = document.querySelector(selector);
+        if (!el) return false;
+        const b = el.getBoundingClientRect();
+        return b.width > 0 && b.height > 0;
+      },
+      selector,
+      { timeout },
+    );
+  } catch (error) {
+    const state = await p.evaluate(() => {
+      const sheet = document.querySelector('[data-testid="chat-sheet"]');
+      const restore = document.querySelector(
+        '[data-testid="chat-maximize-restore-zone"]',
+      );
+      const grabber = document.querySelector('[data-testid="chat-sheet-grabber"]');
+      const pill = document.querySelector('[data-testid="chat-pill"]');
+      const rect = (el) => {
+        if (!el) return null;
+        const b = el.getBoundingClientRect();
+        return {
+          x: Math.round(b.x),
+          y: Math.round(b.y),
+          width: Math.round(b.width),
+          height: Math.round(b.height),
+        };
+      };
+      return {
+        sheet: sheet
+          ? {
+              detent: sheet.getAttribute("data-detent"),
+              variant: sheet.getAttribute("data-variant"),
+              maximized: sheet.getAttribute("data-maximized"),
+              chatState: sheet.getAttribute("data-chat-state"),
+              rect: rect(sheet),
+            }
+          : null,
+        grabber: rect(grabber),
+        restore: rect(restore),
+        pill: rect(pill),
+      };
+    });
+    throw new Error(
+      `gesture target ${target} did not produce a visible box: ${JSON.stringify(state)}`,
+      { cause: error },
+    );
+  }
+  const box = await p.evaluate((selector) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const b = el.getBoundingClientRect();
+    return {
+      x: b.x,
+      y: b.y,
+      width: b.width,
+      height: b.height,
+    };
+  }, selector);
+  if (!box) {
+    const state = await p.evaluate(() => ({
+      sheet: document.querySelector('[data-testid="chat-sheet"]')?.outerHTML,
+    }));
+    throw new Error(
+      `gesture target ${target} resolved without a bounding box: ${JSON.stringify(state)}`,
+    );
+  }
+  return box;
+}
+
 async function gesture(
   p,
   up,
@@ -300,6 +383,7 @@ async function gesture(
     slow = false,
     hold = false,
     steps = 12,
+    stepDelayMs,
     // Which handle to drag. When omitted, follow the live detent: the pill
     // state unmounts the open-sheet grabber, so the gesture must start from the
     // pill itself.
@@ -307,30 +391,39 @@ async function gesture(
   } = {},
 ) {
   const resolvedTarget =
-    target ?? ((await detent(p)) === "pill" ? "chat-pill" : "chat-sheet-grabber");
-  const b = await p.getByTestId(resolvedTarget).boundingBox();
-  const cx = b.x + b.width / 2;
-  const cy = b.y + b.height / 2;
-  const targetY = (i) => cy - (up * i) / steps;
-  if (pointer === "mouse") {
-    await p.mouse.move(cx, cy);
-    await p.mouse.down();
-    for (let i = 1; i <= steps; i += 1) {
-      await p.mouse.move(cx, targetY(i));
-      if (slow) await p.waitForTimeout(28);
-    }
-    if (!hold) await p.mouse.up();
-  } else {
+    target ??
+    ((await chatState(p)) === "MAXIMIZED"
+      ? "chat-maximize-restore-zone"
+      : (await detent(p)) === "pill"
+        ? "chat-pill"
+        : "chat-sheet-grabber");
+  if (pointer === "touch") {
+    await visibleBoxForTestId(p, resolvedTarget);
     const drag = await touchDragHold(p, testIdSelector(resolvedTarget), 0, -up, {
       steps,
-      stepDelayMs: slow ? 28 : 0,
+      stepDelayMs: slow ? 28 : (stepDelayMs ?? 1),
     });
     if (hold) {
       heldTouchDrags.set(p, drag);
     } else {
       await drag.release();
     }
+    return;
   }
+
+  const b = await visibleBoxForTestId(p, resolvedTarget);
+  const cx = b.x + b.width / 2;
+  const cy = b.y + b.height / 2;
+  const targetY = (i) => cy - (up * i) / steps;
+  await p.mouse.move(cx, cy);
+  await p.mouse.down();
+  for (let i = 1; i <= steps; i += 1) {
+    await p.mouse.move(cx, targetY(i));
+    if (slow) await p.waitForTimeout(28);
+    else if (stepDelayMs != null && stepDelayMs > 0)
+      await p.waitForTimeout(stepDelayMs);
+  }
+  if (!hold) await p.mouse.up();
 }
 async function release(p, pointer, up = 0) {
   if (pointer === "mouse") {
@@ -346,6 +439,16 @@ async function release(p, pointer, up = 0) {
 async function maximizeByPull(p, pointer = "mouse") {
   await gesture(p, 760, { pointer, slow: true, steps: 24 });
   await p.waitForTimeout(SETTLE);
+}
+
+async function openToFullDetent(p, pointer, label = "open to FULL") {
+  await gesture(p, 160, { pointer, slow: false, steps: 1 });
+  await p.waitForTimeout(SETTLE);
+  if ((await detent(p)) !== "full") {
+    await gesture(p, 220, { pointer, slow: false, steps: 1 });
+    await p.waitForTimeout(SETTLE);
+  }
+  assert((await detent(p)) === "full", `[${pointer}] ${label}`);
 }
 
 // `keyboardTouch`: after a big BEYOND-full over-pull the full-bleed panel on the
@@ -366,24 +469,23 @@ async function restoreFromMaximized(p, pointer = "mouse", keyboardTouch = false)
   if (pointer === "touch" && keyboardTouch) {
     await zone.focus();
     await p.keyboard.press("ArrowDown");
-  } else if (pointer === "mouse") {
-    const b = await zone.boundingBox();
-    const cx = b.x + b.width / 2;
-    const cy = b.y + Math.max(24, b.height - 24);
-    await p.mouse.move(cx, cy);
-    await p.mouse.down();
-    await p.mouse.move(cx, cy + 120, { steps: 8 });
-    await p.mouse.up();
   } else {
-    const drag = await touchDragHold(
-      p,
-      testIdSelector("chat-maximize-restore-zone"),
-      0,
-      120,
-      { steps: 8, stepDelayMs: 12 },
-    );
-    await drag.release();
+    await gesture(p, -120, {
+      pointer,
+      slow: true,
+      steps: 8,
+      target: "chat-maximize-restore-zone",
+      stepDelayMs: pointer === "touch" ? 12 : undefined,
+    });
   }
+  await p.waitForTimeout(SETTLE);
+}
+
+async function restoreFromMaximizedByKeyboard(p) {
+  const zone = p.getByTestId("chat-maximize-restore-zone");
+  await zone.waitFor();
+  await zone.focus();
+  await p.keyboard.press("ArrowDown");
   await p.waitForTimeout(SETTLE);
 }
 
@@ -404,7 +506,7 @@ async function runDragSuite(p, pointer, tag) {
   await snap(p, `${tag}-collapsed`);
 
   // FLICK up → HALF (fast deliberate pull crosses the velocity threshold → snap to a detent)
-  await gesture(p, 160, { pointer, slow: false, steps: 2 });
+  await gesture(p, 160, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
   assert((await detent(p)) === "half", `[${pointer}] flick-up snaps COLLAPSED→HALF`);
   await waitForSheetHeightNear(p, halfH, TOL);
@@ -437,7 +539,7 @@ async function runDragSuite(p, pointer, tag) {
   );
 
   // FLICK up again → FULL — the sheet rises to the top of the screen
-  await gesture(p, 140, { pointer, slow: false, steps: 2 });
+  await gesture(p, 140, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
   assert((await detent(p)) === "full", `[${pointer}] flick-up snaps HALF→FULL`);
   fullH = Math.round(await sheetHeight(p));
@@ -507,6 +609,9 @@ async function runDragSuite(p, pointer, tag) {
     near(await sheetHeight(p), fullH, TOL + 48),
     `[${pointer}] settles back near FULL after restore`,
   );
+  if ((await chatState(p)) === "MAXIMIZED") {
+    await restoreFromMaximizedByKeyboard(p);
+  }
 
   // mid-drag HOLD between detents (live 1:1 tracking)
   await gesture(p, -150, { pointer, hold: true }); // pull down ~150 from full
@@ -521,17 +626,17 @@ async function runDragSuite(p, pointer, tag) {
   await p.waitForTimeout(SETTLE);
 
   // FREE DRAG: a deliberate SLOW drag RESTS where released (not snapped to a
-  // detent). Flick to FULL first for a known start, then slow-drag down. The
+  // detent). Reset to a clean inset FULL, then slow-drag down. The
   // strict "rests in the middle" check is mouse-authoritative — real touch can
   // coalesce a slow drag and under-travel; touch still verifies the sheet stays
-  // open (no snap-shut) after the drag. The flick is deliberately SHORT (100px):
-  // from a tall free rest a 200px flick's raw travel can cross the 80%-viewport
-  // maximize threshold, which would commit MAXIMIZED instead of stepping to
-  // FULL — a flick here only needs to step one detent for the known start.
-  await gesture(p, 100, { pointer, slow: false, steps: 2 });
+  // open (no snap-shut) after the drag. The preceding maximize/restore checks
+  // intentionally churn full-bleed state; normalize before this independent
+  // free-rest assertion so it only tests the open-sheet grabber.
+  await p.keyboard.press("Escape");
   await p.waitForTimeout(SETTLE);
+  await openToFullDetent(p, pointer, "free-rest reset reaches FULL");
   const startFree = Math.round(await sheetHeight(p));
-  await gesture(p, -180, { pointer, slow: true, steps: 16 });
+  await gesture(p, -240, { pointer, slow: true, steps: 24 });
   await p.waitForTimeout(SETTLE);
   const restedH = Math.round(await sheetHeight(p));
   if (pointer === "mouse") {
@@ -552,7 +657,7 @@ async function runDragSuite(p, pointer, tag) {
   // before reaching the pill, since the pill needs a flick from the collapsed
   // input — not an open sheet).
   for (let i = 0; i < 5 && (await variant(p)) === "open"; i += 1) {
-    await gesture(p, -130, { pointer, slow: false, steps: 2 });
+    await gesture(p, -130, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
   assert((await variant(p)) === "closed", `[${pointer}] flick-down returns to COLLAPSED`);
@@ -576,9 +681,15 @@ async function runDragSuite(p, pointer, tag) {
   assert((await variant(p)) === "closed", `[${pointer}] clicking outside COLLAPSES the chat`);
   await snap(p, `${tag}-clicked-out-collapsed`);
 
-  // FLICK up (short + fast → velocity threshold, distance < 56). Few steps so
-  // the down→up wall-clock is tiny → high velocity, the whole point of a flick.
-  await gesture(p, 48, { pointer, slow: false, steps: 2 });
+  // FLICK up (short + fast → velocity threshold, distance < 56). Use a
+  // one-frame decisive move: multiple sub-56 automation moves can spend most of
+  // their time in CDP/Playwright plumbing instead of in the gesture itself.
+  await gesture(p, 54, {
+    pointer,
+    slow: false,
+    steps: 1,
+    stepDelayMs: pointer === "touch" ? 0 : undefined,
+  });
   await p.waitForTimeout(SETTLE);
   assert((await variant(p)) === "open", `[${pointer}] FLICK up opens despite <56px travel (velocity)`);
   await snap(p, `${tag}-flick-open`);
@@ -664,7 +775,7 @@ async function runContinuumSuite(p, pointer, tag) {
     (await variant(p)) === "closed",
     `[${tag}-continuum] starts at the INPUT resting state`,
   );
-  await gesture(p, -120, { pointer, slow: false, steps: 2 });
+  await gesture(p, -120, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
   assert(
     (await detent(p)) === "pill" && (await chatState(p)) === "CLOSED",
@@ -702,7 +813,7 @@ async function runContinuumSuite(p, pointer, tag) {
   );
 
   // -- Back to the pill for the big held drag --------------------------------
-  await gesture(p, -120, { pointer, slow: false, steps: 2 });
+  await gesture(p, -120, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
   assert(
     (await detent(p)) === "pill",
@@ -980,7 +1091,7 @@ async function runMidDragCommitSuite(p, tag) {
   await p.mouse.down();
   const leg = async (toY, steps = 18) => {
     await p.mouse.move(cx, toY, { steps });
-    await p.waitForTimeout(120);
+    await p.waitForTimeout(220);
     return await sheetHeight(p);
   };
   const upH1 = await leg(topY);
@@ -1066,15 +1177,10 @@ async function mutateAssistant(p, hook, text) {
 
 async function openSheetToFull(p, pointer) {
   await p.waitForSelector('[data-testid="chat-sheet"]');
-  await gesture(p, 160, {
-    pointer,
-    slow: false,
-    steps: 2,
-    target: (await detent(p)) === "pill" ? "chat-pill" : "chat-sheet-grabber",
-  });
+  await gesture(p, 160, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
   if ((await detent(p)) !== "full") {
-    await gesture(p, 220, { pointer, slow: false, steps: 2 });
+    await gesture(p, 220, { pointer, slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
   }
   assert((await detent(p)) === "full", `[${pointer}] AUTOSCROLL opens the sheet to FULL`);
@@ -1250,7 +1356,7 @@ async function runFingerTrackingSuite(page) {
   // top is the DISCRETE maximize spring, so the 1:1 band is measured on the
   // sub-ceiling samples (topFloor 90) and the drag runs PAST the top so the
   // discrete commit fires and the panel reaches the edge.
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   const vh = await viewportH(page);
   const up = await sampleGrabberDrag(page, -30);
@@ -1266,9 +1372,9 @@ async function runFingerTrackingSuite(page) {
   // Reset to a clean inset FULL sheet for the collapse test.
   await page.keyboard.press("Escape");
   await page.waitForTimeout(SETTLE);
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
-  await gesture(page, 220, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 220, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
 
   // (B) FULL → drag the grabber all the way down; the sheet edge follows 1:1
@@ -1294,9 +1400,9 @@ async function runFingerTrackingSuite(page) {
   }
   await page.keyboard.press("Escape");
   await page.waitForTimeout(SETTLE);
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   assert(
     (await detent(page)) === "full" &&
@@ -1466,7 +1572,7 @@ async function runAnimationAppearanceSuite(page) {
 
   // (2) Handle bar is a LIGHT bar when the sheet is OPEN (grabber lives outside
   // the panel theme — the black-handle locus).
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   const grabberRgb = parseColor(await barColor("chat-sheet-grabber"));
   assert(
@@ -1512,7 +1618,7 @@ async function runAnimationAppearanceSuite(page) {
 
   // (2) Pill bar is the SAME light bar as the grabber (identical through the
   // crossfade).
-  await gesture(page, -120, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, -120, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   const pillRgb = parseColor(await barColor("chat-pill"));
   assert(
@@ -1534,9 +1640,9 @@ if (process.env.MAX_PROBE) {
   await page.waitForSelector('[data-testid="chat-sheet"]');
   await page.waitForTimeout(700);
   // Open to full via the normal half -> full gesture path.
-  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 160, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
-  await gesture(page, 220, { pointer: "mouse", slow: false, steps: 2 });
+  await gesture(page, 220, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
   console.log(`start detent: ${await detent(page)}`);
   const b = await page.getByTestId("chat-sheet-grabber").boundingBox();
@@ -2497,9 +2603,9 @@ try {
     // Flick to FULL with the keyboard still up — the WORST case for height.
     // Slow drags deliberately free-rest; the FULL semantic state requires a
     // committed flick/pull release, so drive the real touch path that way.
-    await gesture(p, 120, { pointer: "touch", slow: false, steps: 2 }); // → HALF
+    await gesture(p, 120, { pointer: "touch", slow: false, steps: 1 }); // → HALF
     await p.waitForTimeout(SETTLE);
-    await gesture(p, 240, { pointer: "touch", slow: false, steps: 2 }); // → FULL
+    await gesture(p, 240, { pointer: "touch", slow: false, steps: 1 }); // → FULL
     await p.waitForTimeout(SETTLE);
     const keyboardFullDetent = await detent(p);
     assert(
@@ -2580,7 +2686,7 @@ try {
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     assert((await detent(p)) === "collapsed", "PILL: reset to the input peek before flick check");
-    await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -90, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL: flick-down collapses the input → pill");
     assert(
@@ -2622,7 +2728,7 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
-    await gesture(p, -90, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -90, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL-TAP: collapsed to pill first");
     // Real tap: touchStart then touchEnd at the SAME spot (no move).
@@ -2668,9 +2774,10 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
-    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, 120, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "half", "NAV: opened to half");
+    await waitForHeaderShown(p);
     assert(
       (await headerShown(p)) &&
         (await p.getByTestId("chat-composer-plus").isVisible()),
@@ -2694,9 +2801,9 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
-    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
-    await gesture(p, 140, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, 140, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     await maximizeByPull(p);
     assert(
@@ -2729,7 +2836,7 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
-    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "half", "MAX-HALF: at half before maximize");
     await maximizeByPull(p);
@@ -2778,7 +2885,7 @@ try {
       window.dispatchEvent(new Event("resize"));
     });
     await p.waitForTimeout(120);
-    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 2 }); // → half
+    await gesture(p, 90, { pointer: "mouse", slow: false, steps: 1 }); // → half
     await p.waitForTimeout(SETTLE);
     await maximizeByPull(p); // → full-bleed
     assert(
@@ -2828,7 +2935,7 @@ try {
     );
     await snap(p, "state-INPUT");
 
-    await gesture(p, halfH, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, halfH, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert(
       (await chatState(p)) === "OPEN_HALF_OR_OVER",
@@ -2928,9 +3035,9 @@ try {
     // CLOSED — flick down to input, then down again to the pill. Real touch:
     // the grabber sits near the screen bottom, so a downward mouse drag clamps at
     // the viewport edge; CDP touch events carry the full downward delta.
-    await gesture(p, -vh, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -vh, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
-    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert(
       (await chatState(p)) === "CLOSED",
@@ -2949,7 +3056,7 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(600);
-    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert((await chatState(p)) === "CLOSED", "PILL-MORPH: collapsed to pill");
 
@@ -2989,7 +3096,7 @@ try {
     await p.waitForTimeout(SETTLE);
 
     // FLICK up from the pill → reaches the chat (history present), not a stop.
-    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     await gesture(p, 140, {
       pointer: "mouse",
@@ -3062,7 +3169,7 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
-    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "PILL-INPUT: collapsed to pill first");
     // SLOW pull up ~80px: past the 60px halfway-open mark (commits to leaving the
@@ -3121,7 +3228,7 @@ try {
     await gotoFixture(p);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
-    await gesture(p, -160, { pointer: "touch", slow: false, steps: 2 });
+    await gesture(p, -160, { pointer: "touch", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     assert((await detent(p)) === "pill", "ROTATION: collapsed to pill first");
     await gesture(p, 60, {
@@ -3170,7 +3277,7 @@ try {
 
     // Open to full so the header is shown and the grabber sits high (a downward
     // drag stays on-screen).
-    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     if (
       (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 1
@@ -3198,7 +3305,7 @@ try {
     await p.waitForTimeout(SETTLE);
 
     // Invariant: data-chat-state==="MAXIMIZED" IFF data-maximized==="true".
-    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, vh, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     if (
       (await p.locator('[data-testid="chat-sheet"][data-maximized="true"]').count()) === 0
@@ -3228,7 +3335,7 @@ try {
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
     // Open the thread so the in-flight assistant bubble is on screen.
-    await gesture(p, 400, { pointer: "mouse", slow: false, steps: 2 });
+    await gesture(p, 400, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     const dotsInBubble = await p
       .locator(

@@ -38,6 +38,8 @@ import {
  * scrolls natively (we only capture once the user clearly means to swipe).
  */
 export interface PullGestureOptions {
+  /** Pointer/finger press accepted as the start of a new gesture. */
+  onStart?: () => void;
   /** Released after a drag/flick UP past threshold. */
   onPullUp?: () => void;
   /** Released after a drag/flick DOWN past threshold. */
@@ -101,6 +103,7 @@ export function usePullGesture(
   const {
     onPullUp,
     onPullDown,
+    onStart,
     onDrag,
     onDragReset,
     onSwipeLeft,
@@ -176,6 +179,7 @@ export function usePullGesture(
       axis.current = null;
       last.current = { x: event.clientX, y: event.clientY, t: start.current.t };
       previous.current = null;
+      onStart?.();
       // Pure horizontal swipe surfaces defer capture until axis commit so native
       // vertical scrolling still works. A vertical pull handle captures
       // immediately even when it also supports horizontal swipes; otherwise a
@@ -188,7 +192,7 @@ export function usePullGesture(
         }
       }
     },
-    [hasSwipe, hasVerticalPull],
+    [hasSwipe, hasVerticalPull, onStart],
   );
 
   const onPointerMove = React.useCallback(
@@ -266,22 +270,55 @@ export function usePullGesture(
       last.current = null;
       previous.current = null;
 
-      const deltaUp = s.y - event.clientY; // up positive
-      const deltaLeft = s.x - event.clientX; // left positive
-      const elapsed = Math.max(1, performance.now() - s.t);
+      const eventDeltaUp = s.y - event.clientY; // up positive
+      const eventDeltaLeft = s.x - event.clientX; // left positive
+      const lastDeltaUp = lastSample ? s.y - lastSample.y : eventDeltaUp;
+      const lastDeltaLeft = lastSample ? s.x - lastSample.x : eventDeltaLeft;
+      const eventTravel = Math.hypot(eventDeltaLeft, eventDeltaUp);
+      const lastTravel = Math.hypot(lastDeltaLeft, lastDeltaUp);
+      // Touch-end coordinates can be stale (often the original press point)
+      // even after real touchMove samples drove the UI. Use the furthest
+      // observed point so release direction/distance matches the gesture the
+      // page actually handled, while still accepting browsers that coalesce all
+      // motion into the pointerup event.
+      const useLastSample = Boolean(
+        event.pointerType === "touch" && lastSample && lastTravel > eventTravel,
+      );
+      const deltaUp = useLastSample ? lastDeltaUp : eventDeltaUp;
+      const deltaLeft = useLastSample ? lastDeltaLeft : eventDeltaLeft;
+      const elapsed = Math.max(
+        1,
+        (useLastSample && lastSample ? lastSample.t : performance.now()) - s.t,
+      );
       const velocityUp = deltaUp / elapsed;
       const velocityLeft = deltaLeft / elapsed;
+      const recentDeltaUp =
+        previousSample && lastSample ? previousSample.y - lastSample.y : 0;
+      const recentDeltaLeft =
+        previousSample && lastSample ? previousSample.x - lastSample.x : 0;
+      // Recent-segment velocity is only meaningful once we have at least two
+      // real move samples. The seed sample captured at pointerdown has the
+      // same timestamp as a first move in several unit paths, and treating that
+      // seed→first-move jump as "recent" turns slow single-move drags into
+      // fake flicks.
+      const recentSegmentHasPriorMove = Boolean(
+        previousSample && previousSample.t > s.t,
+      );
+      const recentSegmentYIsIntentional =
+        recentSegmentHasPriorMove && Math.abs(recentDeltaUp) >= TAP_SLOP;
+      const recentSegmentXIsIntentional =
+        recentSegmentHasPriorMove && Math.abs(recentDeltaLeft) >= TAP_SLOP;
       const recentElapsed =
-        previousSample && lastSample && lastSample.t - previousSample.t >= 8
-          ? lastSample.t - previousSample.t
+        previousSample && lastSample
+          ? Math.max(1, lastSample.t - previousSample.t)
           : null;
       const recentVelocityUp =
-        previousSample && lastSample && recentElapsed
-          ? (previousSample.y - lastSample.y) / recentElapsed
+        recentElapsed && recentSegmentYIsIntentional
+          ? recentDeltaUp / recentElapsed
           : velocityUp;
       const recentVelocityLeft =
-        previousSample && lastSample && recentElapsed
-          ? (previousSample.x - lastSample.x) / recentElapsed
+        recentElapsed && recentSegmentXIsIntentional
+          ? recentDeltaLeft / recentElapsed
           : velocityLeft;
       const movedY = Math.abs(deltaUp);
       const movedX = Math.abs(deltaLeft);
