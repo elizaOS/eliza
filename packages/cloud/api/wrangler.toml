@@ -517,7 +517,7 @@ INFERENCE_BILLING_LEDGER = ""
 # executionCtx.waitUntil; the critical path keeps a cached 402 gate (15s
 # org-balance hint + in-isolate refusal blocklist). Requires
 # INFERENCE_OPTIMISTIC_BILLING. Off until soaked; cutover is an ops flip.
-INFERENCE_DEFERRED_ADMISSION = "false"
+INFERENCE_DEFERRED_ADMISSION = "true"
 # Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
 # leased requests are carried back into the Redis window), 60s shouldBlockUser
 # memo, 60s model-catalog memo. Default off; rollback = flip off.
