@@ -169,6 +169,7 @@ export function usePullGesture(
 
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent) => {
+      if (event.isPrimary === false && event.pointerType && event.pointerType !== "mouse") return;
       if (start.current && start.current.pointerId !== event.pointerId) return;
       start.current = {
         x: event.clientX,

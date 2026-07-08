@@ -87,6 +87,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
       setPointerCapture() {},
       releasePointerCapture() {},
     },
+    overrides: Partial<React.PointerEvent> = {},
   ): React.PointerEvent {
     return {
       clientX: x,
@@ -94,6 +95,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
       pointerId,
       isPrimary: true,
       currentTarget,
+      ...overrides,
     } as unknown as React.PointerEvent;
   }
 
@@ -224,6 +226,72 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onDrag).toHaveBeenLastCalledWith(130);
     expect(onPullUp).toHaveBeenCalledTimes(1);
     expect(onSettleFree).not.toHaveBeenCalled();
+  });
+
+  it("uses the tracked touch sample when pointerup reports stale coordinates", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onPullUp = vi.fn();
+    const onTap = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onDrag: vi.fn(), onPullUp, onTap }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(100, 300, 1, undefined, { pointerType: "touch" }));
+    t = 100;
+    b.onPointerMove(pointer(100, 180, 1, undefined, { pointerType: "touch" }));
+    t = 120;
+    b.onPointerUp(pointer(100, 300, 1, undefined, { pointerType: "touch" }));
+
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onTap).not.toHaveBeenCalled();
+  });
+
+  it("does not treat one slow move as a recent-segment flick", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    let t = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => t);
+
+    const onPullUp = vi.fn();
+    const onSettleFree = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({
+        onDrag: vi.fn(),
+        onPullUp,
+        onSettleFree,
+        distanceThreshold: 999,
+        velocityThreshold: 0.5,
+      }),
+    );
+    const b = result.current;
+
+    t = 0;
+    b.onPointerDown(pointer(100, 300));
+    t = 500;
+    b.onPointerMove(pointer(100, 220));
+    t = 520;
+    b.onPointerUp(pointer(100, 220));
+
+    expect(onPullUp).not.toHaveBeenCalled();
+    expect(onSettleFree).toHaveBeenCalledWith("up");
   });
 
   it("resets instead of sending onDrag(0) for a horizontal-dominant move on a vertical-only binding", () => {
@@ -473,6 +541,39 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
 
     b.onPointerMove(pointer(100, 180, 1));
     b.onPointerUp(pointer(100, 180, 1));
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onStart once for the accepted pointer and ignores secondary starts", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onStart = vi.fn();
+    const onPullUp = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onStart, onDrag: vi.fn(), onPullUp }),
+    );
+    const b = result.current;
+
+    b.onPointerDown(pointer(100, 300, 2, undefined, { isPrimary: false, pointerType: "touch" }));
+    b.onPointerMove(pointer(100, 160, 2, undefined, { isPrimary: false, pointerType: "touch" }));
+    b.onPointerUp(pointer(100, 160, 2, undefined, { isPrimary: false, pointerType: "touch" }));
+
+    expect(onStart).not.toHaveBeenCalled();
+    expect(onPullUp).not.toHaveBeenCalled();
+
+    b.onPointerDown(pointer(100, 300, 1));
+    b.onPointerDown(pointer(100, 280, 2, undefined, { isPrimary: false, pointerType: "touch" }));
+    b.onPointerMove(pointer(100, 160, 1));
+    b.onPointerUp(pointer(100, 160, 1));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
     expect(onPullUp).toHaveBeenCalledTimes(1);
   });
 

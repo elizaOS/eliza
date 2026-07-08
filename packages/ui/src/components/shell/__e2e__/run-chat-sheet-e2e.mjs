@@ -609,7 +609,16 @@ async function runDragSuite(p, pointer, tag) {
     near(await sheetHeight(p), fullH, TOL + 48),
     `[${pointer}] settles back near FULL after restore`,
   );
-  if ((await chatState(p)) === "MAXIMIZED") {
+  const restoredState = await chatState(p);
+  const restoredStillMaximized =
+    (await p
+      .locator('[data-testid="chat-sheet"][data-maximized="true"]')
+      .count()) === 1;
+  assert(
+    restoredState !== "MAXIMIZED" && !restoredStillMaximized,
+    `[${pointer}] restore after committed over-pull leaves MAXIMIZED state (state=${restoredState}, data-maximized=${restoredStillMaximized})`,
+  );
+  if (restoredStillMaximized) {
     await restoreFromMaximizedByKeyboard(p);
   }
 
