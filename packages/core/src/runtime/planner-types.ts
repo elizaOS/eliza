@@ -210,6 +210,20 @@ export interface PlannerLoopParams {
 	 */
 	stageOneReplyText?: string;
 	/**
+	 * Per-turn override that SHRINKS the required-tool miss budget (never
+	 * grows it — the effective budget is `min(config.maxRequiredToolMisses,
+	 * override)`). Threaded by the message service on turns Stage 1 already
+	 * answered where the only tool "evidence" is a text-inferred view-surface
+	 * token overlap (e.g. "close a window in vim" matching the views action's
+	 * WINDOW noun): the stage-1 answer is the almost-certain outcome, so the
+	 * rescue should fire after ONE rejected planner answer instead of burning
+	 * the full budget (~13s of wasted re-prompts observed live). Honored only
+	 * when `stageOneReplyText` passes the answer-shape gate — without a
+	 * finishable answer the full budget applies so corrective retries keep
+	 * their chance to convert the planner.
+	 */
+	requiredToolMissBudgetOverride?: number;
+	/**
 	 * Trajectory recorder for v5 observability. When supplied, the planner
 	 * loop records one stage per planner call, tool execution, and evaluator
 	 * call. When omitted the loop is unaffected.

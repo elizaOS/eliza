@@ -153,6 +153,15 @@ export interface MessageHandlerPlan {
 	contextSlices?: string[];
 	candidateActions?: string[];
 	parentActionHints?: string[];
+	/**
+	 * Per-turn cap on the planner's required-tool miss budget, set by the
+	 * Stage-1 router when the ONLY tool evidence for an already-answered
+	 * simple turn is a text-inferred view-surface token overlap. The planner
+	 * loop honors it only when the stage-1 reply passes its answer-shape gate
+	 * (see PlannerLoopParams.requiredToolMissBudgetOverride); it can shrink
+	 * the budget, never grow it.
+	 */
+	requiredToolMissBudget?: number;
 	deterministicToolCall?: MessageHandlerDeterministicToolCall;
 	[key: string]: JsonValue | MessageHandlerDeterministicToolCall | undefined;
 }

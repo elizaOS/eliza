@@ -10,7 +10,12 @@ import { describe, expect, it, vi } from "vitest";
 import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
-import { parsePlannerOutput, runPlannerLoop } from "../planner-loop";
+import {
+	PROGRESS_ONLY_ANSWER_REJECT,
+	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
+	parsePlannerOutput,
+	runPlannerLoop,
+} from "../planner-loop";
 import type { RecordedStage, TrajectoryRecorder } from "../trajectory-recorder";
 
 describe("v5 planner loop skeleton", () => {
@@ -1155,6 +1160,120 @@ describe("v5 planner loop skeleton", () => {
 		// Stage 1's replyText is preferred over the planner's rejected REPLY
 		// text — it is the cleaner ground truth for the turn.
 		expect(result.finalMessage).toBe("391");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("requiredToolMissBudgetOverride=0 finishes with the Stage-1 answer after exactly one rejected reply", async () => {
+		// The vim-window shape (live trajectory, 2026-07-07): Stage 1 answered
+		// the turn, a view-surface token overlap escalated it to tool-required,
+		// and the planner kept answering. Without the override the rescue fires
+		// only after the full miss budget (four rejected answers, ~18.5s live);
+		// with the per-turn cap it fires after ONE.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: { text: "Use :q to close the current window." },
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			requireNonTerminalToolCall: true,
+			stageOneReplyText:
+				"Use :q to close the current window, or Ctrl-w c to close a split.",
+			requiredToolMissBudgetOverride: 0,
+			config: { maxRequiredToolMisses: 3 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"Use :q to close the current window, or Ctrl-w c to close a split.",
+		);
+		// Exactly one planner call: the first rejected answer exhausts the
+		// capped budget and the rescue ships the Stage-1 answer.
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores the miss-budget override when the Stage-1 replyText is not answer-shaped", async () => {
+		// Honesty guard: with an ack-shaped Stage-1 reply there is no better
+		// answer to rescue with, so an early exhaustion could only ship a worse
+		// fallback — the full corrective budget must keep converting the
+		// planner. The override is honored ONLY when the Stage-1 text passes
+		// the answer-shape gate.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: { text: "The answer is 391." },
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			requireNonTerminalToolCall: true,
+			stageOneReplyText: "Checking the price now.",
+			requiredToolMissBudgetOverride: 0,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		// Full budget applied (two planner calls, not one) and the rescue fell
+		// back to the planner's own rejected answer, never the ack.
+		expect(result.finalMessage).toBe("The answer is 391.");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("the miss-budget override can only shrink the budget, never grow it", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: "reply-1",
+						name: "REPLY",
+						arguments: { text: "The answer is 391." },
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "VIEWS", description: "Open a UI view." }],
+			requireNonTerminalToolCall: true,
+			stageOneReplyText: "391",
+			requiredToolMissBudgetOverride: 5,
+			config: { maxRequiredToolMisses: 1 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("391");
+		// config.maxRequiredToolMisses=1 still bounds the loop: two calls, not six.
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
@@ -2801,5 +2920,63 @@ describe("v5 planner loop — evaluator gate", () => {
 
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe("Here is your answer.");
+	});
+});
+
+// Single-source contract for the progress/ack opener vocabulary (see
+// PROGRESS_ONLY_REPLY_OPENERS_PATTERN in planner-loop.ts): the message
+// service's looksLikeProgressOnlyReply builds its regex from the SAME exported
+// pattern, and the exhaustion-path PROGRESS_ONLY_ANSWER_REJECT extends it —
+// so a new progress verb added to the shared pattern reaches both consumers,
+// and the deliberate planner-only extras stay visible as an explicit,
+// documented difference instead of silent drift.
+describe("progress-only reply vocabulary single-sourcing", () => {
+	const sharedBase = new RegExp(
+		`^(?:${PROGRESS_ONLY_REPLY_OPENERS_PATTERN})\\b`,
+		"i",
+	);
+	const sharedOpenerSamples = [
+		"Checking the price now.",
+		"Fetching the data.",
+		"Gathering results.",
+		"Looking up the forecast.",
+		"Looking into it.",
+		"Running the command.",
+		"Using the search tool.",
+		"Spawning the sub-agent now.",
+		"Starting the build.",
+		"Working on it.",
+		"One moment.",
+		"Let me pull that up.",
+		"I'll check on that.",
+		"I will get back to you.",
+	];
+	// Final-answer-only rejects: bare acknowledgements the exhaustion path must
+	// never ship as the WHOLE turn, but which the message service deliberately
+	// does NOT treat as progress-only ("Okay, the answer is 42." is routinely a
+	// legitimate finished answer for its complete-direct-reply valve).
+	const answerRejectOnlySamples = [
+		"Opening the settings panel.",
+		"Got it, on the way.",
+		"Okay, here we go.",
+		"Ok.",
+		"On it.",
+	];
+
+	it("the exhaustion-path answer reject is a strict superset of the shared opener set", () => {
+		for (const sample of sharedOpenerSamples) {
+			expect(sharedBase.test(sample.toLowerCase()), sample).toBe(true);
+			expect(PROGRESS_ONLY_ANSWER_REJECT.test(sample), sample).toBe(true);
+		}
+		for (const sample of answerRejectOnlySamples) {
+			expect(sharedBase.test(sample.toLowerCase()), sample).toBe(false);
+			expect(PROGRESS_ONLY_ANSWER_REJECT.test(sample), sample).toBe(true);
+		}
+	});
+
+	it("the answer reject embeds the shared pattern verbatim (construction, not a copy)", () => {
+		expect(PROGRESS_ONLY_ANSWER_REJECT.source).toContain(
+			PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
+		);
 	});
 });

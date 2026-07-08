@@ -256,6 +256,24 @@ export function releaseChatMessageId(
   chatSeenMessageIds.delete(`${scope}:${clientMessageId}`);
 }
 
+/**
+ * Original arrival timestamp recorded for a `(scope, clientMessageId)` pair,
+ * or `null` when the pair is unknown (never seen, expired and swept, or
+ * released). Consulted by the duplicate-suppression branches AFTER
+ * {@link isDuplicateChatMessage} returns `true`: the recorded arrival bounds
+ * the "since" window for looking up the FIRST attempt's persisted assistant
+ * reply, so a retry that lands after delivery can return that reply instead
+ * of an empty ignored turn. A duplicate sighting never refreshes the stored
+ * timestamp, so this is always the first attempt's arrival.
+ */
+export function getChatMessageIdFirstSeenAt(
+  scope: string,
+  clientMessageId: string | null,
+): number | null {
+  if (!clientMessageId) return null;
+  return chatSeenMessageIds.get(`${scope}:${clientMessageId}`) ?? null;
+}
+
 /** Test-only: clear the HTTP chat idempotency cache between cases. */
 export function __resetChatDedupeForTests(): void {
   chatSeenMessageIds.clear();
