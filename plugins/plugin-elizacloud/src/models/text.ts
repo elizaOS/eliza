@@ -1598,9 +1598,14 @@ export async function streamNativeChatCompletion(
         const choice = asRecord(choices[0]);
         const delta = recordAt(choice, "delta");
         // Raw (un-trimmed) content — inter-token whitespace is significant.
+        // Structured Stage-1 streams must start with the tool-argument envelope;
+        // compatible providers that narrate before the forced tool call would
+        // otherwise flip the runtime extractor into plaintext passthrough.
         if (typeof delta.content === "string" && delta.content.length > 0) {
-          accumulated += delta.content;
-          yield delta.content;
+          if (!streamReplyToolArgs) {
+            accumulated += delta.content;
+            yield delta.content;
+          }
         }
         if (delta.tool_calls) {
           accumulateToolCallDeltas(toolAcc, delta.tool_calls);

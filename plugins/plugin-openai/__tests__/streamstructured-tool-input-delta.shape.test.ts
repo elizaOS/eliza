@@ -2,10 +2,10 @@
  * Shape tests for streamStructured tool-input-delta forwarding: structured
  * Stage-1 calls force the response envelope out as a native tool call, and the
  * AI SDK's `textStream` drops tool-input deltas — so with `streamStructured`
- * the handler must consume `fullStream` and forward both text-delta and
- * tool-input-delta parts. Mocked `ai` SDK (fresh stream objects per call via
- * mockImplementation — generators are single-use), no network; the live
- * trajectory evidence rides the PR.
+ * the handler must consume `fullStream` and forward only tool-input-delta parts.
+ * Mocked `ai` SDK (fresh stream objects per call via mockImplementation —
+ * generators are single-use), no network; the live trajectory evidence rides
+ * the PR.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -91,7 +91,7 @@ async function collect(stream: { textStream: AsyncIterable<string> }) {
 }
 
 describe("streamStructured tool-input-delta forwarding", () => {
-  it("streamStructured=true: tool-input deltas surface through textStream (with any text-deltas, in order)", async () => {
+  it("streamStructured=true: tool-input deltas stream while preceding text-deltas stay hidden", async () => {
     armToolForcedStream({ alsoText: true });
 
     const onStreamChunk = vi.fn();
@@ -109,8 +109,9 @@ describe("streamStructured tool-input-delta forwarding", () => {
 
     const chunks = await collect(stream);
 
-    expect(chunks).toEqual(["pre", '{"replyText":"', "hello", '"}']);
-    expect(onStreamChunk).toHaveBeenCalledTimes(4);
+    expect(chunks).toEqual(['{"replyText":"', "hello", '"}']);
+    expect(onStreamChunk).toHaveBeenCalledTimes(3);
+    expect(chunks.join("")).not.toContain("pre");
     // The authoritative envelope still arrives via the completed toolCalls.
     await expect(stream.toolCalls).resolves.toEqual([
       { toolName: "HANDLE_RESPONSE", input: { replyText: "hello" } },

@@ -665,6 +665,39 @@ describe("streamNativeChatCompletion — forced HANDLE_RESPONSE reply envelope",
     expect(visible.join("")).not.toContain("shouldRespond");
     expect(visible.join("")).not.toContain("contexts");
   });
+
+  it("hides provider prose that arrives before the forced tool-call envelope", async () => {
+    nextResponse = sseResponse([
+      dataFrame(contentDelta("pre")),
+      dataFrame(toolCallDelta("", { id: "call_1", name: "HANDLE_RESPONSE" })),
+      dataFrame(toolCallDelta('{"replyText":"hel')),
+      dataFrame(toolCallDelta('lo"}')),
+      "data: [DONE]\n\n",
+    ]);
+
+    const result = await streamNativeChatCompletion(
+      fakeRuntime(),
+      "RESPONSE_HANDLER" as never,
+      structuredParams(),
+      { modelName: "gpt-oss-120b", prompt: "hi" }
+    );
+
+    const chunks = await readStream(result);
+    expect(chunks.join("")).toBe('{"replyText":"hello"}');
+    expect(chunks.join("")).not.toContain("pre");
+
+    const visible: string[] = [];
+    const extractor = new ResponseSkeletonStreamExtractor({
+      skeleton: { spans: [], id: "test" },
+      streamFields: ["replyText"],
+      unordered: true,
+      onChunk: (chunk) => visible.push(chunk),
+    });
+    for (const chunk of chunks) extractor.push(chunk);
+    extractor.flush();
+
+    expect(visible.join("")).toBe("hello");
+  });
 });
 
 describe("resolveTextTimeoutMs", () => {
