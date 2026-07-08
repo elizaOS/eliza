@@ -49,9 +49,14 @@ const loggerError = mock(() => undefined);
 
 const claimWarmContainer = mock(async () => null);
 const listByOrganization = mock(async () => []);
+const sandboxDelete = mock(async () => undefined);
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
-  agentSandboxesRepository: { claimWarmContainer, listByOrganization },
+  agentSandboxesRepository: {
+    claimWarmContainer,
+    listByOrganization,
+    delete: sandboxDelete,
+  },
 }));
 
 mock.module("@/db/repositories/characters", () => ({
@@ -157,6 +162,8 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     triggerImmediate.mockClear();
     checkAgentCreditGate.mockClear();
     checkProvisioningWorkerHealth.mockClear();
+    checkProvisioningWorkerHealth.mockResolvedValue({ ok: true });
+    sandboxDelete.mockClear();
     prepareManagedElizaEnvironment.mockClear();
     loggerInfo.mockClear();
   });
@@ -186,6 +193,56 @@ describe("POST /api/v1/eliza/agents — reuse idempotency", () => {
     expect(enqueueAgentProvision).not.toHaveBeenCalled();
     expect(triggerImmediate).not.toHaveBeenCalled();
     expect(prepareManagedElizaEnvironment).not.toHaveBeenCalled();
+  });
+
+  test("#15516 Bug B: worker outage does NOT block the idempotent reuse path", async () => {
+    // Worker heartbeat is down — the old pre-create gate 503'd here even
+    // though the org's existing agent could be handed back with no worker.
+    checkProvisioningWorkerHealth.mockResolvedValue({
+      ok: false,
+      code: "worker_heartbeat_stale",
+      error: "provisioning worker heartbeat is stale",
+      status: 503,
+    } as never);
+    const agent = pendingAgent();
+    createAgent.mockResolvedValue({ agent, idempotent: true });
+
+    const res = await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { created: boolean };
+    expect(json.created).toBe(false);
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    expect(sandboxDelete).not.toHaveBeenCalled();
+  });
+
+  test("#15516 Bug B: worker outage on a FRESH create → 503 with the canonical body AND the pending row rolled back", async () => {
+    checkProvisioningWorkerHealth.mockResolvedValue({
+      ok: false,
+      code: "worker_heartbeat_stale",
+      error: "provisioning worker heartbeat is stale",
+      status: 503,
+    } as never);
+    const agent = { ...pendingAgent(), status: "pending" };
+    createAgent.mockResolvedValue({ agent, idempotent: false });
+
+    const res = await postCreate({
+      agentName: "alpha",
+      dockerImage: "ghcr.io/example/agent:latest",
+    });
+
+    expect(res.status).toBe(503);
+    const json = (await res.json()) as { success: boolean; code: string };
+    expect(json.success).toBe(false);
+    expect(json.code).toBe("worker_heartbeat_stale");
+    // No job enqueued, and the just-created pending row was rolled back so no
+    // orphan is left for the cleanup cron.
+    expect(enqueueAgentProvision).not.toHaveBeenCalled();
+    expect(sandboxDelete).toHaveBeenCalledTimes(1);
+    expect(sandboxDelete).toHaveBeenCalledWith(agent.id, "org-1");
   });
 
   test("fresh create (idempotent:false) still enqueues a job and returns 202", async () => {

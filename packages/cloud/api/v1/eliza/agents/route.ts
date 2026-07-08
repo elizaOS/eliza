@@ -366,17 +366,10 @@ app.post("/", async (c) => {
       );
     }
 
-    const workerHealth = await checkProvisioningWorkerHealth();
-    if (!workerHealth.ok) {
-      logger.warn("[agent-api] Agent creation blocked: worker unavailable", {
-        orgId: user.organization_id,
-        code: workerHealth.code,
-      });
-      return c.json(
-        provisioningWorkerFailureBody(workerHealth),
-        workerHealth.status,
-      );
-    }
+    // Worker health is deliberately NOT checked here — it moved to the
+    // enqueue site below so a worker-heartbeat gap can't block the idempotent
+    // reuse / shared-tier / warm-pool paths that don't need the worker at all
+    // (#15516 Bug B).
   }
 
   let created: Awaited<ReturnType<typeof elizaSandboxService.createAgent>>;
@@ -611,6 +604,33 @@ app.post("/", async (c) => {
     }
 
     // ── Async path (default) ──────────────────────────────────────────────
+    // Worker-health gate, checked HERE (immediately before the enqueue) and
+    // not before createAgent: only the enqueued provision job needs a live
+    // worker. Gating earlier blocked every path that works fine during a
+    // worker-heartbeat gap — the idempotent reuse of the org's existing agent
+    // (the #15516 Bug B server half: the backend's own reuse safety-net was
+    // unreachable during an outage, so clients fell into create→503 loops),
+    // shared-tier creates, non-eager creates, and warm-pool claims.
+    const workerHealth = await checkProvisioningWorkerHealth();
+    if (!workerHealth.ok) {
+      // Explicit rollback + return (not a throw): withOrphanCleanup only
+      // fires on throw, and throwing would change the wire shape clients
+      // already parse — this keeps the exact pre-reorder 503 body.
+      await agentSandboxesRepository.delete(agent.id, user.organization_id);
+      logger.warn(
+        "[agent-api] Agent provisioning blocked: worker unavailable (row rolled back)",
+        {
+          agentId: agent.id,
+          orgId: user.organization_id,
+          code: workerHealth.code,
+        },
+      );
+      return c.json(
+        provisioningWorkerFailureBody(workerHealth),
+        workerHealth.status,
+      );
+    }
+
     // `expectedUpdatedAt` is intentionally omitted: the row was just created
     // (and possibly touched by the managed-env update above), so there is no
     // concurrent handle to guard against — passing the stale create timestamp
