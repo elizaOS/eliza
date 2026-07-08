@@ -2510,6 +2510,9 @@ export async function handleConversationRoutes(
               state.runtime,
               conv.roomId,
               firstSeenAt,
+              // No pre-arrival slack: same-process clocks mean any reply
+              // persisted before this id's first arrival is a PRIOR turn's.
+              0,
             )
           : null;
       initSse(res);
@@ -2979,6 +2982,9 @@ export async function handleConversationRoutes(
               state.runtime,
               conv.roomId,
               firstSeenAt,
+              // No pre-arrival slack: same-process clocks mean any reply
+              // persisted before this id's first arrival is a PRIOR turn's.
+              0,
             )
           : null;
       if (persistedFirstReply) {

@@ -2020,6 +2020,13 @@ export async function getRecentVisibleAssistantMemoryTextSince(
   runtime: AgentRuntime,
   roomId: UUID,
   sinceMs: number,
+  // Pre-arrival slack. The boolean suppression callers keep the conservative
+  // 2s default (over-matching is safe when the answer is only "suppress").
+  // The dupe-RETURN callers pass 0: `sinceMs` (dedupe first-seen) and memory
+  // `createdAt` come from the same process clock, so any reply persisted
+  // before arrival belongs to a PREVIOUS turn — returning it would ship the
+  // prior turn's answer to a rapid-fire retry.
+  slackMs: number = 2000,
 ): Promise<string | null> {
   try {
     const recent = await runtime.getMemories({
@@ -2035,7 +2042,7 @@ export async function getRecentVisibleAssistantMemoryTextSince(
         return (
           memory.entityId === runtime.agentId &&
           Boolean(contentText) &&
-          createdAt >= sinceMs - 2000
+          createdAt >= sinceMs - slackMs
         );
       })
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0];
