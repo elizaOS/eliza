@@ -21,8 +21,14 @@
  *   - REDUNDANT  — a real dependency already covered by a co-listed `^build`.
  *                  Reported as info (the override could be simplified).
  *
- * Exits non-zero only on PHANTOM edges so it can gate CI / `verify` without
- * false-flagging correct dynamic-load edges.
+ * Separately, it runs Tarjan's SCC over the whole package.json workspace graph
+ * and fails on any dependency cycle — the transitive A->B->C->A shape included,
+ * not just direct A<->B pairs (the gap that let #15422 regress silently). A
+ * short, ratcheted allowlist keeps known pre-existing multi-node cycles green
+ * while they are driven to zero.
+ *
+ * Exits non-zero on PHANTOM edges or uncovered dependency cycles so it can gate
+ * CI / `verify` without false-flagging correct dynamic-load edges.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -154,7 +160,15 @@ const phantomTaskOverrides = [];
 const phantoms = [];
 const undeclared = [];
 const redundant = [];
-const directWorkspaceCycles = [];
+
+// Multi-node workspace cycles that predate full-SCC detection, kept green while
+// they are driven to zero (follow-up #15439). Each key is the cycle's members
+// sorted and joined with "|" — stable regardless of which edge or rotation the
+// finder reports. This is a ratchet, not an amnesty: a cycle NOT listed here
+// fails the audit, and new entries must never be added — fix the edge instead.
+const KNOWN_WORKSPACE_CYCLES = new Set([
+  "@elizaos/agent|@elizaos/app-core|@elizaos/plugin-inbox",
+]);
 
 const workspaceDepsByPackage = new Map();
 for (const [name, dir] of WORKSPACE_DIRS.entries()) {
@@ -166,16 +180,106 @@ for (const [name, dir] of WORKSPACE_DIRS.entries()) {
   }
   workspaceDepsByPackage.set(
     name,
-    new Set([...declaredDeps(pkg)].filter((dep) => WORKSPACE_DIRS.has(dep))),
+    new Set(
+      [...declaredDeps(pkg)].filter(
+        (dep) => WORKSPACE_DIRS.has(dep) && dep !== name,
+      ),
+    ),
   );
 }
-for (const [name, deps] of workspaceDepsByPackage.entries()) {
-  for (const dep of deps) {
-    if (name >= dep) continue;
-    if (workspaceDepsByPackage.get(dep)?.has(name)) {
-      directWorkspaceCycles.push(`${name} <-> ${dep}`);
+
+// Tarjan's strongly-connected-components over the package.json graph. Every SCC
+// with more than one member is a dependency cycle — including the transitive
+// A->B->C->A shape a pairwise A<->B scan misses, which is exactly how the
+// cloud-shared -> plugin-elizacloud -> ui -> cloud-shared cycle regressed
+// silently (#15422). Iterative (explicit stack) because the workspace graph is
+// deep enough that recursion risks a call-stack overflow on some Node builds.
+function findWorkspaceStronglyConnectedComponents(graph) {
+  let counter = 0;
+  const index = new Map();
+  const lowlink = new Map();
+  const onStack = new Set();
+  const tarjanStack = [];
+  const components = [];
+
+  for (const root of graph.keys()) {
+    if (index.has(root)) continue;
+    const work = [
+      { node: root, neighbors: [...(graph.get(root) ?? [])], i: 0 },
+    ];
+    while (work.length) {
+      const frame = work[work.length - 1];
+      const { node } = frame;
+      if (frame.i === 0) {
+        index.set(node, counter);
+        lowlink.set(node, counter);
+        counter++;
+        tarjanStack.push(node);
+        onStack.add(node);
+      }
+      if (frame.i < frame.neighbors.length) {
+        const next = frame.neighbors[frame.i];
+        frame.i++;
+        if (!graph.has(next)) continue;
+        if (!index.has(next)) {
+          work.push({
+            node: next,
+            neighbors: [...(graph.get(next) ?? [])],
+            i: 0,
+          });
+        } else if (onStack.has(next)) {
+          lowlink.set(node, Math.min(lowlink.get(node), index.get(next)));
+        }
+        continue;
+      }
+      if (lowlink.get(node) === index.get(node)) {
+        const component = [];
+        let w;
+        do {
+          w = tarjanStack.pop();
+          onStack.delete(w);
+          component.push(w);
+        } while (w !== node);
+        if (component.length > 1) components.push(component);
+      }
+      work.pop();
+      if (work.length) {
+        const parent = work[work.length - 1].node;
+        lowlink.set(parent, Math.min(lowlink.get(parent), lowlink.get(node)));
+      }
     }
   }
+  return components;
+}
+
+// Walk the lowest-sorted in-component out-edge from each node until a node
+// repeats, yielding one concrete, deterministic cycle path for the message.
+function describeCycle(component) {
+  const inComponent = new Set(component);
+  const path = [];
+  const seen = new Set();
+  let node = [...component].sort()[0];
+  while (!seen.has(node)) {
+    seen.add(node);
+    path.push(node);
+    node = [...(workspaceDepsByPackage.get(node) ?? [])]
+      .filter((dep) => inComponent.has(dep))
+      .sort()[0];
+  }
+  return [...path.slice(path.indexOf(node)), node];
+}
+
+const workspaceCycles = [];
+for (const component of findWorkspaceStronglyConnectedComponents(
+  workspaceDepsByPackage,
+)) {
+  const key = [...component].sort().join("|");
+  if (KNOWN_WORKSPACE_CYCLES.has(key)) continue;
+  workspaceCycles.push(
+    component.length === 2
+      ? `${[...component].sort().join(" <-> ")}`
+      : describeCycle(component).join(" -> "),
+  );
 }
 
 for (const [taskName, def] of Object.entries(tasks)) {
@@ -275,13 +379,13 @@ if (phantoms.length) {
   );
   process.exit(1);
 }
-if (directWorkspaceCycles.length) {
+if (workspaceCycles.length) {
   console.error(
-    `[audit-turbo-build-deps] ${directWorkspaceCycles.length} direct workspace package cycle(s):\n`,
+    `[audit-turbo-build-deps] ${workspaceCycles.length} workspace package dependency cycle(s):\n`,
   );
-  for (const cycle of directWorkspaceCycles) console.error(`  ✗ ${cycle}`);
+  for (const cycle of workspaceCycles) console.error(`  ✗ ${cycle}`);
   console.error(
-    "\nA direct package.json cycle makes Turbo build-order inference unstable.\nMove one edge behind a runtime dynamic import or remove it if production source does not import it.",
+    "\nA package.json dependency cycle makes Turbo build-order inference unstable\n(the whole cycle rebuilds as one unit). Break one edge: drop it if production\nsource never imports it, relocate the shared type/constant to a leaf package,\nor move a genuine runtime edge behind a dynamic import.",
   );
   process.exit(1);
 }
@@ -297,4 +401,6 @@ if (phantomTaskOverrides.length) {
 }
 console.log("[audit-turbo-build-deps] ✓ no phantom #build dependency edges");
 console.log("[audit-turbo-build-deps] ✓ no phantom pkg#task overrides");
-console.log("[audit-turbo-build-deps] ✓ no direct workspace package cycles");
+console.log(
+  "[audit-turbo-build-deps] ✓ no workspace package dependency cycles (outside the tracked baseline)",
+);
