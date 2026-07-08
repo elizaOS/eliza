@@ -707,6 +707,48 @@ export const containersEnv = {
       ? Math.min(6 * 60 * 60_000, Math.max(60_000, Math.floor(parsed)))
       : defaultMs;
   },
+
+  /**
+   * Cadence for the managed-agent image GC that removes old, unused refs from
+   * the configured default-agent repository. It is deliberately separate from
+   * the emergency high-water prune so large nodes shed superseded image tags
+   * before they ever cross the disk-full threshold. Default 24h. Clamped to
+   * [1h, 7d].
+   */
+  nodeDiskAgentImagePruneIntervalMs(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.NODE_DISK_AGENT_IMAGE_PRUNE_INTERVAL_MS);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    const defaultMs = 24 * 60 * 60_000;
+    return Number.isFinite(parsed)
+      ? Math.min(7 * 24 * 60 * 60_000, Math.max(60 * 60_000, Math.floor(parsed)))
+      : defaultMs;
+  },
+
+  /**
+   * Number of newest managed-agent image refs to preserve on each node even when
+   * unused. Keeping two refs gives operators the current image plus a quick
+   * rollback cushion while still pruning long-tail tag/digest buildup. Default
+   * 2. Clamped to [1, 10].
+   */
+  nodeDiskAgentImagePruneKeepNewest(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.NODE_DISK_AGENT_IMAGE_PRUNE_KEEP_NEWEST);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? Math.min(10, Math.max(1, Math.floor(parsed))) : 2;
+  },
+
+  /**
+   * Minimum age for an unused managed-agent image ref before stale-image GC may
+   * delete it. This avoids racing fresh deploys or rollback tags that landed
+   * shortly before the cleanup cycle. Default 7d. Clamped to [24h, 90d].
+   */
+  nodeDiskAgentImagePruneMaxAgeHours(): number {
+    const env = getCloudAwareEnv();
+    const raw = pick(env.NODE_DISK_AGENT_IMAGE_PRUNE_MAX_AGE_HOURS);
+    const parsed = raw ? Number(raw) : Number.NaN;
+    return Number.isFinite(parsed) ? Math.min(90 * 24, Math.max(24, Math.floor(parsed))) : 7 * 24;
+  },
 };
 
 /**

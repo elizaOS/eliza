@@ -19,6 +19,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
   buildReclaimCommand,
+  buildStaleAgentImagePruneCommand,
   cleanupNodeDisks,
   type DiskNode,
   type DiskUsage,
@@ -141,6 +142,38 @@ describe("buildReclaimCommand", () => {
   });
 });
 
+describe("buildStaleAgentImagePruneCommand", () => {
+  const cmd = buildStaleAgentImagePruneCommand({
+    repository: "ghcr.io/elizaos/eliza",
+    keepNewest: 2,
+    maxAgeHours: 168,
+  });
+
+  test("targets only the configured managed-agent image repository", () => {
+    expect(cmd).toContain("repo='ghcr.io/elizaos/eliza'");
+    expect(cmd).toContain('docker image ls "$repo"');
+    expect(cmd).not.toContain("docker image prune");
+    expect(cmd).not.toContain("--volumes");
+  });
+
+  test("preserves active image IDs and newest rollback refs", () => {
+    expect(cmd).toContain("docker ps -a --format '{{.Image}}'");
+    expect(cmd).toContain("grep -qxF");
+    expect(cmd).toContain("keep_newest=2");
+    expect(cmd).toContain("max_age_hours=168");
+  });
+
+  test("requires an explicit repository", () => {
+    expect(() =>
+      buildStaleAgentImagePruneCommand({
+        repository: " ",
+        keepNewest: 2,
+        maxAgeHours: 168,
+      }),
+    ).toThrow("repository is required");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // cleanupNodeDisks (orchestration over the mocked node-exec boundary)
 // ---------------------------------------------------------------------------
@@ -151,6 +184,7 @@ function fakeNode(
     usage?: DiskUsage | null;
     afterUsage?: DiskUsage | null;
     reclaimThrows?: boolean;
+    stalePruneThrows?: boolean;
   } = {},
 ): DiskNode {
   // Distinguish "explicitly null" (df read failed) from "not provided" — `??`
@@ -162,20 +196,35 @@ function fakeNode(
     if (overrides.reclaimThrows) throw new Error("reclaim failed over ssh");
     return afterUsage ?? null;
   });
+  const pruneStaleAgentImages = mock(async () => {
+    if (overrides.stalePruneThrows) throw new Error("stale image prune failed over ssh");
+  });
   return {
     node_id: overrides.node_id ?? "node-a",
     hostname: overrides.hostname ?? "10.0.0.1",
     status: overrides.status ?? "healthy",
     readDiskUsage,
     reclaim,
+    pruneStaleAgentImages,
   };
 }
 
-const cfg = (now: number, cooldown = new Map<string, number>()) => ({
+const cfg = (
+  now: number,
+  cooldown = new Map<string, number>(),
+  staleCooldown = new Map<string, number>(),
+) => ({
   pruneThresholdPct: 80,
   cooldownMs: 30 * 60_000,
   now: () => now,
   lastPrunedAt: cooldown,
+  staleAgentImagePrune: {
+    repository: "ghcr.io/elizaos/eliza",
+    keepNewest: 2,
+    maxAgeHours: 168,
+    intervalMs: 24 * 60 * 60_000,
+    lastPrunedAt: staleCooldown,
+  },
 });
 
 describe("cleanupNodeDisks", () => {
@@ -184,10 +233,13 @@ describe("cleanupNodeDisks", () => {
     const report = await cleanupNodeDisks([node], cfg(1_000_000));
 
     expect(node.reclaim).toHaveBeenCalledTimes(1);
+    expect(node.pruneStaleAgentImages).toHaveBeenCalledTimes(1);
     expect(report.pruned).toBe(1);
+    expect(report.staleAgentImagePruned).toBe(1);
     expect(report.nodesScanned).toBe(1);
     expect(report.details[0]).toMatchObject({
       action: "prune",
+      staleAgentImageAction: "prune",
       usedPercentBefore: 90,
       usedPercentAfter: 45,
       reclaimedPercent: 45,
@@ -199,8 +251,35 @@ describe("cleanupNodeDisks", () => {
     const report = await cleanupNodeDisks([node], cfg(1_000_000));
 
     expect(node.reclaim).not.toHaveBeenCalled();
+    expect(node.pruneStaleAgentImages).toHaveBeenCalledTimes(1);
     expect(report.pruned).toBe(0);
+    expect(report.staleAgentImagePruned).toBe(1);
     expect(report.details[0]?.action).toBe("skip_below_threshold");
+  });
+
+  test("skips stale agent image prune inside its interval", async () => {
+    const now = 5_000_000;
+    const staleCooldown = new Map<string, number>([["node-a", now - 60_000]]);
+    const node = fakeNode({ node_id: "node-a", usage: { usedPercent: 50 } });
+    const report = await cleanupNodeDisks([node], cfg(now, new Map(), staleCooldown));
+
+    expect(node.pruneStaleAgentImages).not.toHaveBeenCalled();
+    expect(report.staleAgentImagePruned).toBe(0);
+    expect(report.details[0]?.staleAgentImageAction).toBe("skip_interval");
+  });
+
+  test("continues to emergency reclaim when stale agent image prune fails", async () => {
+    const node = fakeNode({
+      usage: { usedPercent: 90 },
+      stalePruneThrows: true,
+    });
+    const report = await cleanupNodeDisks([node], cfg(1_000_000));
+
+    expect(node.pruneStaleAgentImages).toHaveBeenCalledTimes(1);
+    expect(node.reclaim).toHaveBeenCalledTimes(1);
+    expect(report.staleAgentImagePruneFailed).toBe(1);
+    expect(report.pruned).toBe(1);
+    expect(report.details[0]?.staleAgentImageAction).toBe("failed");
   });
 
   test("respects the cooldown: a node pruned recently is skipped even above threshold", async () => {

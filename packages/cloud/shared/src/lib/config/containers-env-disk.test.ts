@@ -12,6 +12,9 @@ const KEYS = [
   "NODE_DISK_PRUNE_THRESHOLD_PCT",
   "NODE_DISK_UNHEALTHY_THRESHOLD_PCT",
   "NODE_DISK_PRUNE_COOLDOWN_MS",
+  "NODE_DISK_AGENT_IMAGE_PRUNE_INTERVAL_MS",
+  "NODE_DISK_AGENT_IMAGE_PRUNE_KEEP_NEWEST",
+  "NODE_DISK_AGENT_IMAGE_PRUNE_MAX_AGE_HOURS",
 ] as const;
 
 const saved = new Map<string, string | undefined>();
@@ -79,5 +82,47 @@ describe("nodeDiskPruneCooldownMs", () => {
     expect(containersEnv.nodeDiskPruneCooldownMs()).toBe(60_000);
     setEnv({ NODE_DISK_PRUNE_COOLDOWN_MS: String(99 * 60 * 60_000) });
     expect(containersEnv.nodeDiskPruneCooldownMs()).toBe(6 * 60 * 60_000);
+  });
+});
+
+describe("nodeDiskAgentImagePruneIntervalMs", () => {
+  test("defaults to 24 hours when unset", () => {
+    setEnv({});
+    expect(containersEnv.nodeDiskAgentImagePruneIntervalMs()).toBe(24 * 60 * 60_000);
+  });
+
+  test("clamps to [1h, 7d]", () => {
+    setEnv({ NODE_DISK_AGENT_IMAGE_PRUNE_INTERVAL_MS: "1000" });
+    expect(containersEnv.nodeDiskAgentImagePruneIntervalMs()).toBe(60 * 60_000);
+    setEnv({ NODE_DISK_AGENT_IMAGE_PRUNE_INTERVAL_MS: String(30 * 24 * 60 * 60_000) });
+    expect(containersEnv.nodeDiskAgentImagePruneIntervalMs()).toBe(7 * 24 * 60 * 60_000);
+  });
+});
+
+describe("nodeDiskAgentImagePruneKeepNewest", () => {
+  test("defaults to keeping the current image plus one rollback ref", () => {
+    setEnv({});
+    expect(containersEnv.nodeDiskAgentImagePruneKeepNewest()).toBe(2);
+  });
+
+  test("clamps to [1, 10]", () => {
+    setEnv({ NODE_DISK_AGENT_IMAGE_PRUNE_KEEP_NEWEST: "0" });
+    expect(containersEnv.nodeDiskAgentImagePruneKeepNewest()).toBe(1);
+    setEnv({ NODE_DISK_AGENT_IMAGE_PRUNE_KEEP_NEWEST: "100" });
+    expect(containersEnv.nodeDiskAgentImagePruneKeepNewest()).toBe(10);
+  });
+});
+
+describe("nodeDiskAgentImagePruneMaxAgeHours", () => {
+  test("defaults to 7 days when unset", () => {
+    setEnv({});
+    expect(containersEnv.nodeDiskAgentImagePruneMaxAgeHours()).toBe(7 * 24);
+  });
+
+  test("clamps to [24h, 90d]", () => {
+    setEnv({ NODE_DISK_AGENT_IMAGE_PRUNE_MAX_AGE_HOURS: "1" });
+    expect(containersEnv.nodeDiskAgentImagePruneMaxAgeHours()).toBe(24);
+    setEnv({ NODE_DISK_AGENT_IMAGE_PRUNE_MAX_AGE_HOURS: String(365 * 24) });
+    expect(containersEnv.nodeDiskAgentImagePruneMaxAgeHours()).toBe(90 * 24);
   });
 });

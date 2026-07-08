@@ -43,6 +43,7 @@
  *      while a large pull is legitimately in flight.
  */
 
+import { imageRepo } from "../../db/utils/docker-image-ref";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { DockerSSHClient } from "./docker-ssh";
@@ -91,6 +92,12 @@ export interface DiskNode {
    * reclamation (re-read `df`), or null if the post-read failed.
    */
   reclaim(): Promise<DiskUsage | null>;
+  /**
+   * Prune stale, unused managed-agent image refs for the configured repository.
+   * This runs on a slower cadence than emergency disk reclaim so large nodes do
+   * not silently retain hundreds of GB of superseded runtime images.
+   */
+  pruneStaleAgentImages(command: string): Promise<void>;
 }
 
 export interface NodeDiskCleanupReport {
@@ -102,11 +109,16 @@ export interface NodeDiskCleanupReport {
   pruned: number;
   /** Nodes whose reclamation threw. */
   pruneFailed: number;
+  /** Nodes where the stale managed-agent image prune command ran. */
+  staleAgentImagePruned: number;
+  /** Nodes where stale managed-agent image pruning threw. */
+  staleAgentImagePruneFailed: number;
   /** Per-node detail for observability. */
   details: Array<{
     nodeId: string;
     hostname: string;
     action: DiskActionKind | "read_failed";
+    staleAgentImageAction?: "prune" | "skip_interval" | "failed";
     usedPercentBefore?: number;
     usedPercentAfter?: number;
     reclaimedPercent?: number;
@@ -253,6 +265,64 @@ export function buildReclaimCommand(): string {
   ].join("; ");
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+export interface StaleAgentImagePruneOptions {
+  repository: string;
+  keepNewest: number;
+  maxAgeHours: number;
+}
+
+/**
+ * Build the narrow stale-image GC command for the managed-agent image repo.
+ *
+ * This does NOT use a broad `docker image prune -a`; it only considers refs in
+ * the configured default-agent repository, preserves image IDs used by any
+ * container, keeps the newest refs as a rollback cushion, and then removes only
+ * refs older than the configured age floor.
+ */
+export function buildStaleAgentImagePruneCommand(options: StaleAgentImagePruneOptions): string {
+  const repository = options.repository.trim();
+  if (repository.length === 0) {
+    throw new Error("stale agent image prune repository is required");
+  }
+
+  const keepNewest = Math.max(1, Math.floor(options.keepNewest));
+  const maxAgeHours = Math.max(1, Math.floor(options.maxAgeHours));
+  const repo = shellSingleQuote(repository);
+
+  return [
+    `repo=${repo}`,
+    `keep_newest=${keepNewest}`,
+    `max_age_hours=${maxAgeHours}`,
+    'cutoff="$(date -u -d "$max_age_hours hours ago" +%s 2>/dev/null || true)"',
+    'if [ -n "$cutoff" ]; then tmp="$(mktemp)"',
+    'active="$(mktemp)"',
+    'trap \'rm -f "$tmp" "$active"\' EXIT',
+    "docker ps -a --format '{{.Image}}' | while IFS= read -r image; do " +
+      '[ -n "$image" ] && docker image inspect --format \'{{.Id}}\' "$image" 2>/dev/null || true; ' +
+      'done | sort -u > "$active"',
+    "docker image ls \"$repo\" --format '{{.Repository}}:{{.Tag}}' | while IFS= read -r ref; do " +
+      'case "$ref" in ""|*"<none>"*) continue;; esac; ' +
+      'id="$(docker image inspect --format \'{{.Id}}\' "$ref" 2>/dev/null || true)"; ' +
+      'created="$(docker image inspect --format \'{{.Created}}\' "$ref" 2>/dev/null || true)"; ' +
+      'created_epoch="$(date -u -d "$created" +%s 2>/dev/null || true)"; ' +
+      '[ -n "$id" ] && [ -n "$created_epoch" ] && printf "%s\\t%s\\t%s\\n" "$created_epoch" "$id" "$ref"; ' +
+      'done | sort -rn > "$tmp"',
+    "n=0",
+    "while IFS=\"$(printf '\\t')\" read -r created_epoch id ref; do " +
+      "n=$((n + 1)); " +
+      '[ "$n" -le "$keep_newest" ] && continue; ' +
+      '[ "$created_epoch" -ge "$cutoff" ] && continue; ' +
+      'grep -qxF "$id" "$active" && continue; ' +
+      'docker image rm -f "$ref" || true; ' +
+      'done < "$tmp"',
+    "fi",
+  ].join("; ");
+}
+
 /** `df -P` for the docker data root — POSIX one-data-line output. */
 function buildDfCommand(): string {
   // /var/lib/docker is the docker data root on the standard node layout; fall
@@ -271,10 +341,12 @@ function buildDfCommand(): string {
  * harmless). Kept module-local so the production wiring and the cycle share it.
  */
 const lastPrunedAtByNode = new Map<string, number>();
+const lastStaleAgentImagePrunedAtByNode = new Map<string, number>();
 
 /** Test seam: reset the in-process cooldown state. */
 export function __resetDiskCooldownStateForTests(): void {
   lastPrunedAtByNode.clear();
+  lastStaleAgentImagePrunedAtByNode.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -284,6 +356,10 @@ export function __resetDiskCooldownStateForTests(): void {
 export interface DiskCleanupConfig {
   pruneThresholdPct: number;
   cooldownMs: number;
+  staleAgentImagePrune?: StaleAgentImagePruneOptions & {
+    intervalMs: number;
+    lastPrunedAt?: Map<string, number>;
+  };
   /** Injected clock for deterministic tests. */
   now?: () => number;
   /**
@@ -304,12 +380,19 @@ export async function cleanupNodeDisks(
 ): Promise<NodeDiskCleanupReport> {
   const now = config.now ?? (() => Date.now());
   const cooldownStore = config.lastPrunedAt ?? lastPrunedAtByNode;
+  const staleImageStore =
+    config.staleAgentImagePrune?.lastPrunedAt ?? lastStaleAgentImagePrunedAtByNode;
+  const staleImageCommand = config.staleAgentImagePrune
+    ? buildStaleAgentImagePruneCommand(config.staleAgentImagePrune)
+    : null;
 
   const report: NodeDiskCleanupReport = {
     nodesScanned: 0,
     nodesSkipped: 0,
     pruned: 0,
     pruneFailed: 0,
+    staleAgentImagePruned: 0,
+    staleAgentImagePruneFailed: 0,
     details: [],
   };
 
@@ -334,13 +417,40 @@ export async function cleanupNodeDisks(
       continue;
     }
     report.nodesScanned += 1;
+    const nodeNow = now();
+    let staleAgentImageAction: "prune" | "skip_interval" | "failed" | undefined;
+
+    if (config.staleAgentImagePrune && staleImageCommand) {
+      const lastStalePrunedAt = staleImageStore.get(node.node_id) ?? null;
+      if (
+        lastStalePrunedAt !== null &&
+        nodeNow - lastStalePrunedAt < config.staleAgentImagePrune.intervalMs
+      ) {
+        staleAgentImageAction = "skip_interval";
+      } else {
+        try {
+          await node.pruneStaleAgentImages(staleImageCommand);
+          staleImageStore.set(node.node_id, nodeNow);
+          report.staleAgentImagePruned += 1;
+          staleAgentImageAction = "prune";
+        } catch (error) {
+          report.staleAgentImagePruneFailed += 1;
+          staleAgentImageAction = "failed";
+          logger.warn("[node-disk-manager] Stale agent image prune failed", {
+            nodeId: node.node_id,
+            hostname: node.hostname,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    }
 
     const action = decideDiskAction({
       usedPercent: usage.usedPercent,
       pruneThresholdPct: config.pruneThresholdPct,
       lastPrunedAt: cooldownStore.get(node.node_id) ?? null,
       cooldownMs: config.cooldownMs,
-      now: now(),
+      now: nodeNow,
     });
 
     if (action.kind !== "prune") {
@@ -348,6 +458,7 @@ export async function cleanupNodeDisks(
         nodeId: node.node_id,
         hostname: node.hostname,
         action: action.kind,
+        ...(staleAgentImageAction ? { staleAgentImageAction } : {}),
         usedPercentBefore: usage.usedPercent,
       });
       continue;
@@ -362,13 +473,14 @@ export async function cleanupNodeDisks(
 
     try {
       const after = await node.reclaim();
-      cooldownStore.set(node.node_id, now());
+      cooldownStore.set(node.node_id, nodeNow);
       report.pruned += 1;
       const reclaimed = after !== null ? usage.usedPercent - after.usedPercent : undefined;
       report.details.push({
         nodeId: node.node_id,
         hostname: node.hostname,
         action: "prune",
+        ...(staleAgentImageAction ? { staleAgentImageAction } : {}),
         usedPercentBefore: usage.usedPercent,
         ...(after !== null ? { usedPercentAfter: after.usedPercent } : {}),
         ...(reclaimed !== undefined ? { reclaimedPercent: reclaimed } : {}),
@@ -386,6 +498,7 @@ export async function cleanupNodeDisks(
         nodeId: node.node_id,
         hostname: node.hostname,
         action: "prune",
+        ...(staleAgentImageAction ? { staleAgentImageAction } : {}),
         usedPercentBefore: usage.usedPercent,
       });
       logger.warn("[node-disk-manager] Disk reclamation failed", {
@@ -462,6 +575,11 @@ export function buildDiskNode(node: SshNode): DiskNode {
         return null;
       }
     },
+    async pruneStaleAgentImages(command: string): Promise<void> {
+      const client = ssh();
+      await client.connect();
+      await client.exec(command, RECLAIM_TIMEOUT_MS);
+    },
   };
 }
 
@@ -490,5 +608,11 @@ export async function processNodeDiskCleanup(): Promise<NodeDiskCleanupReport> {
   return cleanupNodeDisks(diskNodes, {
     pruneThresholdPct: containersEnv.nodeDiskPruneThresholdPct(),
     cooldownMs: containersEnv.nodeDiskPruneCooldownMs(),
+    staleAgentImagePrune: {
+      repository: imageRepo(containersEnv.defaultAgentImage()),
+      keepNewest: containersEnv.nodeDiskAgentImagePruneKeepNewest(),
+      maxAgeHours: containersEnv.nodeDiskAgentImagePruneMaxAgeHours(),
+      intervalMs: containersEnv.nodeDiskAgentImagePruneIntervalMs(),
+    },
   });
 }
