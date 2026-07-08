@@ -13,8 +13,8 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import type { Stats } from "node:fs";
+import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -167,10 +167,24 @@ export function buildRunnerWorkspacePrunePlan(input: {
   let skippedFresh = 0;
 
   for (const workDir of workDirs) {
-    for (const child of readdirSync(workDir, { withFileTypes: true })) {
+    let children: ReturnType<typeof readdirSync>;
+    try {
+      children = readdirSync(workDir, { withFileTypes: true });
+    } catch {
+      // error-policy:J6 best-effort host cleanup; a racing runner dir can be retried on the next pass.
+      continue;
+    }
+
+    for (const child of children) {
       const childPath = path.join(workDir, child.name);
       if (!realPathInsideRoot(childPath, input.root)) continue;
-      const stat = lstatSync(childPath);
+      let stat: Stats;
+      try {
+        stat = lstatSync(childPath);
+      } catch {
+        // error-policy:J6 best-effort host cleanup; racing child deletes are harmless.
+        continue;
+      }
       const ageMs = input.now - stat.mtimeMs;
       if (ageMs < minAgeMs) {
         skippedFresh += 1;
@@ -255,6 +269,7 @@ function isMainModule(): boolean {
 
 if (isMainModule()) {
   main().catch((error) => {
+    // error-policy:J1 CLI boundary translates failures into a non-zero exit.
     console.error(
       "[prune-runner-workspaces] failed:",
       error instanceof Error ? error.message : String(error),

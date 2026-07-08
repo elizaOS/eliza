@@ -1,4 +1,7 @@
-// Exercises safe self-hosted runner workspace cleanup planning without touching real runner paths.
+/**
+ * Exercises safe self-hosted runner workspace cleanup planning without touching
+ * real runner paths.
+ */
 
 import { afterEach, describe, expect, it } from "bun:test";
 import {
