@@ -36,8 +36,13 @@ cache backend; `REDIS_RATE_LIMITING=false`. Pre-forward steps, serial:
 Findings: rate-limit is already a no-op in prod (not the hotspot). `shouldBlockUser`
 is an **unconditional uncached Postgres read** on every request. `reserveCredits`
 is a Postgres write. Post-response billing (`billUsage → reconcile → analytics →
-audit`) is **already** deferred via `executionCtx.waitUntil`
-(`settleOffResponsePath`); only the **upfront** reserve is synchronous.
+audit`) is deferred via `executionCtx.waitUntil` (`settleOffResponsePath`) on
+**both** response paths: the non-streaming handler defers the whole chain, and
+the streaming handler's `onFinish` hands its (first-call-wins, single-flight)
+settlement to the same seam — the AI SDK awaits `onFinish` before ending
+`fullStream`, so an inline-awaited chain would hold the final SSE frame +
+`[DONE]` hostage for the full write latency. Only the **upfront** reserve is
+synchronous.
 
 ## Goal
 

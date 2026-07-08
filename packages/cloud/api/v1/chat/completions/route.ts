@@ -1520,6 +1520,7 @@ export async function handleChatCompletionsPOST(
           billingSource,
           pooledCredential,
           useMonetizedAppBilling,
+          options.executionCtx,
         )
       : await handleNonStreamingRequest(
           model,
@@ -1829,6 +1830,7 @@ async function handleStreamingRequest(
   billingSource: PricingBillingSource,
   pooledCredential: PooledInferenceCredential | null,
   useMonetizedAppBilling: boolean,
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void },
 ) {
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
@@ -1907,8 +1909,20 @@ async function handleStreamingRequest(
     ...(experimentalOutput ? { output: experimentalOutput } : {}),
     ...(effectiveMaxTokens != null && { maxOutputTokens: effectiveMaxTokens }),
     ...cotOptions,
+    // Parity with the non-streaming path (#8759): the settlement chain below
+    // (billUsage → settleReservation → analytics → audit) is 5+ serial DB
+    // round-trips, and the AI SDK awaits onFinish before it ends fullStream —
+    // so awaiting the chain inline held the final SSE frame + [DONE] hostage
+    // for the full write latency (~8s measured in prod). Nothing the client
+    // receives depends on these writes (`text`/`usage` come from the provider
+    // result; the terminal usage frame is built from the stream's own finish
+    // part), so defer them via waitUntil. settleStreamingOnce is still invoked
+    // synchronously — the settlement promise is cached before onFinish
+    // returns, so the idempotent first-call-wins guarantee against a racing
+    // onAbort/onError is unchanged — and without an executionCtx (tests,
+    // non-Worker callers) the chain is awaited inline exactly as before.
     onFinish: async ({ text, usage }) => {
-      await settleStreamingOnce(async () => {
+      const settlement = settleStreamingOnce(async () => {
         try {
           const billingContext = buildChatBillingContext({
             user,
@@ -1980,6 +1994,9 @@ async function handleStreamingRequest(
           });
           return reconciliation;
         }
+      });
+      await settleOffResponsePath(executionCtx, async () => {
+        await settlement;
       });
     },
     onAbort: async ({
