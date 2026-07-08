@@ -300,12 +300,15 @@ async function gesture(
     slow = false,
     hold = false,
     steps = 12,
-    // Which handle to drag: the open-sheet grabber (default) or the collapsed
-    // pill — the pill→input→chat open paths must be driven from the pill itself.
-    target = "chat-sheet-grabber",
+    // Which handle to drag. When omitted, follow the live detent: the pill
+    // state unmounts the open-sheet grabber, so the gesture must start from the
+    // pill itself.
+    target,
   } = {},
 ) {
-  const b = await p.getByTestId(target).boundingBox();
+  const resolvedTarget =
+    target ?? ((await detent(p)) === "pill" ? "chat-pill" : "chat-sheet-grabber");
+  const b = await p.getByTestId(resolvedTarget).boundingBox();
   const cx = b.x + b.width / 2;
   const cy = b.y + b.height / 2;
   const targetY = (i) => cy - (up * i) / steps;
@@ -318,7 +321,7 @@ async function gesture(
     }
     if (!hold) await p.mouse.up();
   } else {
-    const drag = await touchDragHold(p, testIdSelector(target), 0, -up, {
+    const drag = await touchDragHold(p, testIdSelector(resolvedTarget), 0, -up, {
       steps,
       stepDelayMs: slow ? 28 : 0,
     });
