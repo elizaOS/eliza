@@ -549,6 +549,40 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA"
 
+      - name: Verify deployed API commit
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          API_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: |
+          set -euo pipefail
+          expected_commit="$GITHUB_SHA"
+          expected_environment="$DEPLOY_ENVIRONMENT"
+          health_url="${API_URL%/}/api/health"
+          for attempt in 1 2 3 4 5 6; do
+            tmp="$(mktemp)"
+            code="$(curl -sS -o "$tmp" -w '%{http_code}' -m 20 "$health_url" || echo "000")"
+            if [ "$code" = "200" ] && head -c 1 "$tmp" | grep -q '[{[]'; then
+              observed_commit="$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.commit || '')" "$tmp")"
+              observed_environment="$(node -e "const fs=require('fs'); const data=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(data.environment || '')" "$tmp")"
+              if [ "$observed_commit" = "$expected_commit" ] && [ "$observed_environment" = "$expected_environment" ]; then
+                echo "API health serves commit ${observed_commit} for ${observed_environment}."
+                rm -f "$tmp"
+                exit 0
+              fi
+              echo "API health attempt ${attempt}: commit=${observed_commit:-<missing>} environment=${observed_environment:-<missing>}, expected commit=${expected_commit} environment=${expected_environment}" >&2
+            else
+              echo "API health attempt ${attempt}: HTTP ${code} from ${health_url}" >&2
+              head -c 300 "$tmp" >&2 2>/dev/null || true
+              echo >&2
+            fi
+            rm -f "$tmp"
+            [ "$attempt" -lt 6 ] && sleep 10
+          done
+          echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
+          exit 1
+
       - name: Clean temp checkout
         if: always()
         working-directory: /tmp

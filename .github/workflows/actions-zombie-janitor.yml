@@ -1,7 +1,8 @@
 name: Actions Zombie Janitor
 
 # Reap zombie workflow runs (dead-runner `in_progress`, wedged `queued`,
-# stale `waiting`) that freeze org concurrency.
+# production deploy `pending` with zero jobs, stale `waiting`) that freeze org
+# concurrency or silently block deploys.
 #
 # WHY: when a self-hosted runner box dies, its runs stay `in_progress` until
 # the job timeout (6h default, up to 12h here) — and each one keeps holding
@@ -45,6 +46,10 @@ name: Actions Zombie Janitor
 #     idempotent; every candidate is re-verified live), and any queued backlog
 #     purges itself: each lane cancels superseded queued janitor ticks.
 #   - Wedged-queued reaping: own ticks queued >60 min, anything queued >12 h.
+#   - Production Cloud CF Deploy pending/zero-job reaping: a prod deploy that
+#     never instantiates a job is neither an approval gate nor a runner backlog;
+#     after 15 minutes the janitor force-cancels it and redispatches once
+#     (#15503/#15499).
 #   - actions/github-script instead of gh/jq — self-hosted boxes only need
 #     the runner-bundled Node.
 #
@@ -76,6 +81,8 @@ name: Actions Zombie Janitor
 #     runs GitHub failed to fail — hours-old queued runs can be legitimate
 #     freeze backlog that still executes once slots free, and cancelling a
 #     required PR check strands the PR red; tune down mid-incident if needed)
+#   ACTIONS_JANITOR_PENDING_ZERO_JOB_MINUTES — default 15 (production Cloud CF
+#     Deploy pending/zero-job zombie reap + one redispatch)
 #   ACTIONS_JANITOR_SELF_QUEUED_MINUTES    — default 60 (own stale ticks)
 #   ACTIONS_JANITOR_WAITING_MAX_AGE_HOURS  — default 48 (stale environment-gate
 #     reap; far above any sane approval latency, far below GitHub's 30-day
@@ -111,13 +118,14 @@ jobs:
     if: github.repository == 'elizaOS/eliza' && vars.ACTIONS_JANITOR_DISABLED != 'true'
     timeout-minutes: 10
     steps:
-      - name: Cancel zombie in_progress + wedged queued + stale waiting runs
+      - name: Cancel zombie in_progress + wedged queued + pending deploy + stale waiting runs
         uses: actions/github-script@v7
         env:
           MAX_AGE_MINUTES: ${{ vars.ACTIONS_JANITOR_MAX_AGE_MINUTES || '' }}
           LEGACY_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_MAX_AGE_HOURS || '' }}
           IDLE_MINUTES: ${{ vars.ACTIONS_JANITOR_IDLE_MINUTES || '90' }}
           QUEUED_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_QUEUED_MAX_AGE_HOURS || '24' }}
+          PENDING_ZERO_JOB_MINUTES: ${{ vars.ACTIONS_JANITOR_PENDING_ZERO_JOB_MINUTES || '15' }}
           SELF_QUEUED_MINUTES: ${{ vars.ACTIONS_JANITOR_SELF_QUEUED_MINUTES || '60' }}
           WAITING_MAX_AGE_HOURS: ${{ vars.ACTIONS_JANITOR_WAITING_MAX_AGE_HOURS || '48' }}
           EXEMPT_WORKFLOWS: ${{ vars.ACTIONS_JANITOR_EXEMPT_WORKFLOWS || 'ElizaOS Cuttlefish,ElizaOS OpenAgent E1 (RISC-V AI SoC)' }}
@@ -132,6 +140,7 @@ jobs:
                 120,
               idleMin: Number(process.env.IDLE_MINUTES) || 90,
               queuedMaxAgeMin: (Number(process.env.QUEUED_MAX_AGE_HOURS) || 24) * 60,
+              pendingZeroJobMin: Number(process.env.PENDING_ZERO_JOB_MINUTES) || 15,
               selfQueuedMin: Number(process.env.SELF_QUEUED_MINUTES) || 60,
               waitingMaxAgeMin: (Number(process.env.WAITING_MAX_AGE_HOURS) || 48) * 60,
               // Janitor lane jobs have timeout-minutes:10; an own-workflow run
@@ -183,6 +192,14 @@ jobs:
             const liveStatus = async (runId) => {
               try {
                 return (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId })).data.status;
+              } catch {
+                return null;
+              }
+            };
+
+            const liveRun = async (runId) => {
+              try {
+                return (await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId })).data;
               } catch {
                 return null;
               }
@@ -294,7 +311,67 @@ jobs:
               await reap(run, ageMin, ageMin, isSelf ? 'superseded janitor tick' : 'wedged queued');
             }
 
-            // ---- 3. stale waiting runs (unapproved environment gates) ----
+            // ---- 3. production deploy pending/zero-job zombies ----
+            // These runs never instantiate a job, so no environment approval,
+            // runner assignment, or job-level concurrency record exists for a
+            // human to inspect. Scope this to main->production Cloud CF Deploy:
+            // staging can legitimately sit behind active deploy work, while a
+            // production run with zero jobs and no active same-branch sibling is
+            // silent release blockage (#15503/#15499).
+            const activeCloudDeploy = new Map();
+            for (const status of ['in_progress', 'waiting']) {
+              const activeRuns = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner, repo, workflow_id: 'cloud-cf-deploy.yml', status, per_page: 100,
+              });
+              for (const run of activeRuns) {
+                activeCloudDeploy.set(`${run.head_branch || ''}:${status}`, run);
+              }
+            }
+            const pendingCloudDeploy = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner, repo, workflow_id: 'cloud-cf-deploy.yml', status: 'pending', per_page: 100,
+              created: createdBefore(cfg.pendingZeroJobMin),
+            });
+            core.info(`[${cfg.lane}] pending Cloud CF Deploy listed: ${pendingCloudDeploy.length}`);
+            for (const run of pendingCloudDeploy) {
+              if (run.id === context.runId) continue;
+              if (run.head_branch !== 'main') continue;
+              if (activeCloudDeploy.has('main:in_progress') || activeCloudDeploy.has('main:waiting')) {
+                core.info(`skip pending prod deploy ${run.id}: active same-branch deploy exists`);
+                continue;
+              }
+              const ageMin = minutesSince(run.created_at);
+              if (ageMin < cfg.pendingZeroJobMin) continue;
+              const live = await liveRun(run.id);
+              if (live?.status !== 'pending') {
+                core.info(`skip (list-stale, actually '${live?.status ?? 'missing'}'): ${run.id} ${run.name}`);
+                continue;
+              }
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner, repo, run_id: run.id, filter: 'latest', per_page: 100,
+              });
+              if (jobs.length > 0) {
+                core.info(`skip pending prod deploy ${run.id}: ${jobs.length} job(s) exist`);
+                continue;
+              }
+              await reap(run, ageMin, ageMin, 'production deploy pending with zero jobs');
+              if (run.actor?.login === 'github-actions[bot]') {
+                core.warning(`cancelled bot-dispatched pending prod deploy ${run.id}; not redispatching again`);
+                continue;
+              }
+              if (cfg.dryRun) {
+                core.info(`would redispatch Cloud CF Deploy production at ${run.head_branch}`);
+                rows.push([`${run.id}`, run.name, `${ageMin}`, `${ageMin}`, 'would redispatch production deploy (dry run)']);
+                continue;
+              }
+              await github.rest.actions.createWorkflowDispatch({
+                owner, repo, workflow_id: 'cloud-cf-deploy.yml', ref: 'main',
+                inputs: { environment: 'production', force: 'false' },
+              });
+              core.warning(`redispatched Cloud CF Deploy production after cancelling pending/zero-job run ${run.id}`);
+              rows.push([`${run.id}`, run.name, `${ageMin}`, `${ageMin}`, 'redispatched production deploy once']);
+            }
+
+            // ---- 4. stale waiting runs (unapproved environment gates) ----
             // A run `waiting` on an environment approval that never comes
             // holds its concurrency group until GitHub's 30-day auto-expiry;
             // with cancel-in-progress:false every later run of the group sits
