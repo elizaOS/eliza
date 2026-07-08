@@ -33,6 +33,10 @@ import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import {
+  loadVoiceAutoSendEnabled,
+  saveVoiceAutoSendEnabled,
+} from "../../state/persistence";
+import {
   DEFAULT_VOICE_CONTINUOUS_MODE,
   type VoiceAssistantSpeechTelemetry,
   type VoiceCaptureMode,
@@ -244,6 +248,18 @@ export function useChatVoiceController(options: {
   const [voiceSpeaker, setVoiceSpeaker] = useState<VoiceSpeakerMetadata | null>(
     null,
   );
+  // Auto-send-on-end-of-speech toggle (voice V2a). Device-local, persisted.
+  // Defaults OFF (review-then-send is the launch default per owner direction).
+  const [voiceAutoSendEnabled, setVoiceAutoSendEnabled] = useState<boolean>(
+    () => loadVoiceAutoSendEnabled(),
+  );
+  const toggleVoiceAutoSend = useCallback(() => {
+    setVoiceAutoSendEnabled((prev) => {
+      const next = !prev;
+      saveVoiceAutoSendEnabled(next);
+      return next;
+    });
+  }, []);
   const pendingVoiceTurnRef = useRef<PendingVoiceTurnState | null>(null);
   const suppressedAssistantSpeechRef = useRef<{
     messageId: string;
@@ -484,6 +500,12 @@ export function useChatVoiceController(options: {
     onTranscript: handleVoiceTranscript,
     onTranscriptPreview: handleVoiceTranscriptPreview,
     voiceConfig: effectiveVoiceConfig,
+    // Auto-send on end-of-speech (voice V2a). The hook arms a VAD auto-stop in
+    // compose mode when this is true; a detected end-of-turn that passes the
+    // reliability guards submits via onTranscript (same path as a manual PTT
+    // release). Defaults OFF. onAutoSend is telemetry-only here — the actual
+    // submit rides onTranscript, so we don't double-send.
+    autoSend: voiceAutoSendEnabled,
   });
   const {
     queueAssistantSpeech,
@@ -803,6 +825,8 @@ export function useChatVoiceController(options: {
     voice,
     voiceLatency,
     voiceSpeaker,
+    voiceAutoSendEnabled,
+    toggleVoiceAutoSend,
   };
 }
 

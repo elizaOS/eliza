@@ -202,6 +202,23 @@ export interface VoiceChatOptions {
   lang?: string;
   /** Saved voice configuration — switches TTS provider when set */
   voiceConfig?: VoiceConfig | null;
+  /**
+   * Auto-send on end-of-speech (voice V2a). When true, a COMPOSE-mode cloud
+   * voice turn that VAD detects as ended is finalized AND submitted
+   * automatically (subject to the reliability guards in
+   * `voice-autosend-config.ts`); when false (the DEFAULT), the turn fills the
+   * composer draft for review-then-send and the user submits manually. Owner
+   * direction: ship OFF by default, flip later once reliable. The caller reads
+   * the persisted `loadVoiceAutoSendEnabled()` toggle and passes it here.
+   */
+  autoSend?: boolean;
+  /**
+   * Called when an auto-send turn PASSES the reliability guards and should be
+   * submitted. The caller sends `text` as the user message (same path a manual
+   * PTT-release submit takes). Required for auto-send to actually send; without
+   * it, auto-send degrades to "finalize into the draft" (review mode).
+   */
+  onAutoSend?: (text: string, event: VoiceTranscriptEvent) => void;
 }
 
 export interface VoiceAssistantSpeechTelemetry {

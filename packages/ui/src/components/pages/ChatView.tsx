@@ -404,6 +404,8 @@ export function ChatView({
     voice,
     voiceLatency,
     voiceSpeaker,
+    voiceAutoSendEnabled,
+    toggleVoiceAutoSend,
   } = useChatVoiceController({
     agentVoiceMuted,
     chatFirstTokenReceived,
@@ -991,6 +993,8 @@ export function ChatView({
           assistantTtsQuality: voice.assistantTtsQuality,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
+          autoSendEnabled: voiceAutoSendEnabled,
+          onToggleAutoSend: toggleVoiceAutoSend,
         }}
         agentVoiceEnabled={!agentVoiceMuted}
         showAgentVoiceToggle={showComposerVoiceToggle}
@@ -1063,6 +1067,8 @@ export function ChatView({
           assistantTtsQuality: voice.assistantTtsQuality,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
+          autoSendEnabled: voiceAutoSendEnabled,
+          onToggleAutoSend: toggleVoiceAutoSend,
         }}
         agentVoiceEnabled={!agentVoiceMuted}
         showAgentVoiceToggle={showComposerVoiceToggle}

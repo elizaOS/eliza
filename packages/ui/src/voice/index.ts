@@ -80,6 +80,13 @@ export {
   DEFAULT_CLOUD_STT_SEGMENTER,
 } from "./cloud-stt-segmenter";
 export {
+  type AutoSendDecision,
+  type VoiceAutoSendConfig,
+  DEFAULT_VOICE_AUTOSEND,
+  evaluateAutoSend,
+} from "./voice-autosend-config";
+export { isVadDebugEnabled, vadDebug, type VadDebugEvent } from "./vad-debug";
+export {
   downmixAudioBufferToMono,
   type PlaybackAudioFrameEvent,
   PlaybackFramePump,

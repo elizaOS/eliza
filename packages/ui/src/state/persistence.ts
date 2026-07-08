@@ -1022,6 +1022,31 @@ export function saveWakeWordEnabled(value: boolean): void {
   }, undefined);
 }
 
+/* ── Voice auto-send persistence (voice V2a) ────────────────────────────── */
+// Device-local toggle for auto-send-on-end-of-speech: when ON, a composer voice
+// turn that VAD detects as ended is finalized AND sent automatically (gated by
+// the reliability guards in voice-autosend-config.ts); when OFF (the DEFAULT),
+// the turn fills the composer draft for review-then-send. Owner direction
+// (2026-07-07): ship auto-send OFF by default, flip the default later "only once
+// it works reliably." Stored device-local (not agent config) + read
+// synchronously on the capture gesture, the same dual-store pattern wake-word /
+// vad-auto-stop use below. Defaults FALSE.
+const VOICE_AUTOSEND_ENABLED_KEY = "eliza:voice:autosend-enabled";
+
+export function loadVoiceAutoSendEnabled(): boolean {
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(VOICE_AUTOSEND_ENABLED_KEY);
+    // Absent → FALSE (review-then-send is the launch default).
+    return stored === "true";
+  }, false);
+}
+
+export function saveVoiceAutoSendEnabled(value: boolean): void {
+  tryLocalStorage(() => {
+    shellLocalStorage.setItem(VOICE_AUTOSEND_ENABLED_KEY, String(value));
+  }, undefined);
+}
+
 /* ── VAD auto-stop persistence ──────────────────────────────────────────── */
 // Local mirror of the `vadAutoStop` voice setting (source of truth is the agent
 // config under `messages.voice`). Stored here too so the capture hot path

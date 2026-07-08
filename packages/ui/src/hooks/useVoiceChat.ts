@@ -57,6 +57,12 @@ import {
 import { createCloudSttSegmenter } from "../voice/cloud-stt-segmenter";
 import { CloudSttSessionStitcher } from "../voice/cloud-stt-stitcher";
 import {
+  DEFAULT_VOICE_AUTOSEND,
+  evaluateAutoSend,
+} from "../voice/voice-autosend-config";
+import { vadDebug } from "../voice/vad-debug";
+import { loadVadAutoStop } from "../state/persistence";
+import {
   PlaybackFramePump,
   type PlaybackFrameTap,
 } from "../voice/playback-frame-pump";
@@ -226,6 +232,11 @@ function shouldUseCloudAsr(config: VoiceConfig | null): boolean {
  */
 function shouldStreamCloudAsr(config: VoiceConfig | null): boolean {
   return shouldUseCloudAsr(config) && config?.asr?.streaming !== false;
+}
+
+/** UI monotonic clock (perf.now when available), for auto-send speech timing. */
+function nowMs(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 const ACTIVE_VOICE_SESSION_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
@@ -413,6 +424,20 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   interruptOnSpeechRef.current = options.interruptOnSpeech ?? true;
   const onUserSpeechInterruptRef = useRef(options.onUserSpeechInterrupt);
   onUserSpeechInterruptRef.current = options.onUserSpeechInterrupt;
+  // Auto-send on end-of-speech (voice V2a). Refs so the capture hot path +
+  // auto-stop callback read the live values without re-arming the recorder.
+  const autoSendRef = useRef(options.autoSend ?? false);
+  autoSendRef.current = options.autoSend ?? false;
+  const onAutoSendRef = useRef(options.onAutoSend);
+  onAutoSendRef.current = options.onAutoSend;
+  // Capture-start timestamp (UI monotonic) for the auto-send min-speech guard.
+  const captureStartMsRef = useRef<number | null>(null);
+  // Forward-ref to stopListening so the recorder's onAutoStop (wired at start,
+  // before stopListening is defined) can invoke it. Assigned just below the
+  // stopListening definition.
+  const stopListeningRef = useRef<
+    ((opts?: { submit?: boolean; autoSend?: boolean }) => Promise<void>) | null
+  >(null);
   const interruptSpeechRef = useRef<() => void>(() => {});
   const playbackFramePumpRef = useRef<PlaybackFramePump | null>(null);
 
@@ -1074,6 +1099,28 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let recorderOpts:
         | Parameters<typeof startLocalAsrRecorder>[0]
         | undefined;
+      // Auto-send on end-of-speech (voice V2a): in COMPOSE mode, when the
+      // persisted toggle is on, arm a VAD auto-stop detector so a detected
+      // end-of-turn finalizes AND (subject to the reliability guards) submits.
+      // Hands-free / passive modes already carry their own turn-end handling in
+      // the shell; auto-send here is the composer's PTT-replacement affordance.
+      // The user's tuned VAD `silenceMs` (loadVadAutoStop) wins over the default.
+      const autoSendActive = autoSendRef.current && mode === "compose";
+      if (autoSendActive) {
+        const persistedVad = loadVadAutoStop();
+        const autoStop = {
+          silenceMs: persistedVad.silenceMs ?? DEFAULT_VOICE_AUTOSEND.silenceMs,
+          speechRmsThreshold: persistedVad.speechRmsThreshold,
+        };
+        recorderOpts = {
+          ...(recorderOpts ?? {}),
+          autoStop,
+          onAutoStop: () => {
+            vadDebug("auto-stop", { mode, source: "cloud", autoSend: true });
+            void stopListeningRef.current?.({ autoSend: true });
+          },
+        };
+      }
       if (streaming) {
         teardownCloudStreamSession();
         const stitcher = new CloudSttSessionStitcher();
@@ -1089,6 +1136,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         cloudStreamDegradedRef.current = false;
         const { update, config } = createCloudSttSegmenter();
         recorderOpts = {
+          ...(recorderOpts ?? {}),
           segmenter: { update, config: { overlapMs: config.overlapMs } },
           onSegment: handleCloudStreamSegment,
         };
@@ -1096,6 +1144,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       try {
         const recorder = await startLocalAsrRecorder(recorderOpts);
         localAsrRecorderRef.current = recorder;
+        // Stamp capture-start for the auto-send min-speech guard.
+        captureStartMsRef.current = nowMs();
         sttBackendRef.current = "cloud";
         enabledRef.current = true;
         listeningModeRef.current = mode;
@@ -1328,9 +1378,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   );
 
   const stopListening = useCallback(
-    async (options?: { submit?: boolean }) => {
+    async (options?: { submit?: boolean; autoSend?: boolean }) => {
       const mode = listeningModeRef.current;
       if (mode === "idle") return;
+      // Auto-send request (voice V2a): VAD detected end-of-speech and auto-send
+      // is enabled. The actual submit decision is deferred until AFTER we have
+      // the final transcript so the reliability guards (min chars/words/speech)
+      // can reject accidental noise. Computed into the effective submit below.
+      const autoSendRequested = options?.autoSend === true;
+      const captureStartMs = captureStartMsRef.current;
+      const speechDurationMs =
+        captureStartMs != null ? Math.max(0, nowMs() - captureStartMs) : undefined;
 
       const submit = options?.submit === true;
       enabledRef.current = false;
@@ -1438,7 +1496,54 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         );
       }
 
-      finalizeRecognition(submit);
+      // Auto-send decision (voice V2a): if this stop was triggered by VAD
+      // end-of-speech with auto-send enabled, run the reliability guards against
+      // the resolved transcript (now in transcriptBufferRef) and only submit
+      // when it passes. A rejected turn falls through with submit=false, which
+      // leaves the transcript in the composer draft (via the preview already
+      // emitted) for review-then-send — nothing is lost.
+      let effectiveSubmit = submit;
+      if (autoSendRequested) {
+        const resolved = collapseWhitespace(transcriptBufferRef.current);
+        const decision = evaluateAutoSend(
+          resolved,
+          DEFAULT_VOICE_AUTOSEND,
+          speechDurationMs,
+        );
+        effectiveSubmit = decision.send;
+        if (decision.send) {
+          vadDebug("auto-send", {
+            chars: resolved.length,
+            speechMs: speechDurationMs,
+          });
+          // Notify the caller of an auto-send (telemetry / differentiation from
+          // a manual submit). The actual send still rides finalizeRecognition
+          // → onTranscript below, the same path a manual PTT-release submit uses.
+          const evtMode =
+            normalizeActiveVoiceSessionMode(listeningModeRef.current) ??
+            "compose";
+          onAutoSendRef.current?.(resolved, {
+            text: resolved,
+            mode: evtMode,
+            isFinal: true,
+            turn: latestTranscriptTurnRef.current ?? {
+              text: resolved,
+              mode: evtMode,
+              isFinal: true,
+            },
+            speaker: latestTranscriptTurnRef.current?.speaker,
+          });
+        } else {
+          vadDebug("auto-send-suppressed", {
+            reason: decision.reason,
+            chars: resolved.length,
+            speechMs: speechDurationMs,
+          });
+        }
+      }
+
+      captureStartMsRef.current = null;
+      finalizeRecognition(effectiveSubmit);
     },
     [
       applyTranscriptUpdate,
@@ -1448,6 +1553,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       transcribeLocalInferenceAudio,
     ],
   );
+
+  // Assign the forward-ref so onAutoStop (wired at capture start) can call the
+  // latest stopListening.
+  stopListeningRef.current = stopListening;
 
   const toggleListening = useCallback(() => {
     if (enabledRef.current && listeningModeRef.current === "compose") {

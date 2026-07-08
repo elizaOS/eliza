@@ -17,6 +17,8 @@ import {
   Square,
   Volume2,
   VolumeX,
+  Zap,
+  ZapOff,
 } from "lucide-react";
 // biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
 import * as React from "react";
@@ -113,6 +115,14 @@ export interface ChatComposerVoiceState {
   ) => void | Promise<void>;
   stopListening: (options?: { submit?: boolean }) => void | Promise<void>;
   supported: boolean;
+  /**
+   * Auto-send-on-end-of-speech state (voice V2a). When defined, the composer
+   * renders a compact in-flow toggle on the mic surface so the user can flip
+   * auto-send on/off without leaving the chat. Undefined = feature absent (the
+   * toggle isn't rendered). Persisted by the caller.
+   */
+  autoSendEnabled?: boolean;
+  onToggleAutoSend?: () => void;
 }
 
 export interface ChatComposerProps {
@@ -334,6 +344,47 @@ export function ChatComposer({
     void voice.startListening("compose");
   }, [isComposerLocked, shouldSuppressClick, voice]);
 
+  // Auto-send toggle (voice V2a) — a compact IN-FLOW control on the mic surface.
+  // Shared across the inline + default composer layouts. Rendered only while
+  // listening in compose mode (the moment it's relevant), so the user can flip
+  // auto-send on/off without leaving chat or digging into a settings page.
+  // Follows the existing design language: ghost icon button, token palette,
+  // lucide icons (Zap = auto-send on, ZapOff = review-then-send). Preference is
+  // persisted by the caller. ON = accented, OFF = muted — the same on/off visual
+  // grammar as the mic button. Absent (null) when the feature isn't wired.
+  const showAutoSendToggle =
+    voice.autoSendEnabled !== undefined &&
+    voice.onToggleAutoSend !== undefined &&
+    voice.isListening &&
+    voice.captureMode === "compose";
+  const autoSendOn = voice.autoSendEnabled === true;
+  const autoSendToggleTitle = autoSendOn
+    ? "Auto-send on: your voice sends when you stop speaking. Tap to review first."
+    : "Review-then-send: your voice fills the box to edit. Tap to auto-send.";
+  const inlineAutoSendToggle = showAutoSendToggle ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={`h-8 w-8 shrink-0 rounded-sm p-0 shadow-none transition-colors active:scale-95 pointer-coarse:min-h-touch pointer-coarse:min-w-touch ${
+        autoSendOn
+          ? "bg-accent/15 text-accent hover:bg-accent/25"
+          : "bg-bg text-muted hover:bg-bg hover:text-txt"
+      }`}
+      data-testid="chat-composer-autosend-toggle"
+      onClick={(e) => {
+        // Don't blur the composer / interrupt the hold.
+        e.preventDefault();
+        voice.onToggleAutoSend?.();
+      }}
+      onMouseDown={(e) => e.preventDefault()}
+      title={autoSendToggleTitle}
+      aria-label={autoSendToggleTitle}
+      aria-pressed={autoSendOn}
+    >
+      {autoSendOn ? <Zap className="h-4 w-4" /> : <ZapOff className="h-4 w-4" />}
+    </Button>
+  ) : null;
+
   if (isInline) {
     const inlineAttachButton =
       !isGameModal && !hideAttachButton ? (
@@ -469,7 +520,16 @@ export function ChatComposer({
       // Keep the mic (release) button mounted while a push-to-talk turn is held,
       // even after live STT text fills the draft — otherwise the composer swaps
       // to the send button mid-hold and pointer-release can no longer submit.
-      inlineMicButton
+      // The auto-send toggle rides alongside it (compose mode only) so the
+      // on/off control is in-flow, right where the user is speaking.
+      inlineAutoSendToggle ? (
+        <>
+          {inlineAutoSendToggle}
+          {inlineMicButton}
+        </>
+      ) : (
+        inlineMicButton
+      )
     ) : hasDraft ? (
       inlineSendButton
     ) : (
@@ -588,6 +648,8 @@ export function ChatComposer({
           <Mic className="h-6 w-6" />
         </Button>
       ) : null}
+
+      {!isInline && inlineAutoSendToggle ? inlineAutoSendToggle : null}
 
       <div className="relative min-w-0 flex-1">
         <Textarea
