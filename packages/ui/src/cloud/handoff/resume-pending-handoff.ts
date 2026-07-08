@@ -12,8 +12,8 @@ import {
   type CloudHandoffRetryDetail,
   dispatchCloudHandoffPhase,
 } from "../../events";
-import { loadPersistedActiveServer } from "../../state";
 import { runAgentSessionRecovery } from "../../state/agent-session-recovery-runner";
+import { loadPersistedActiveServer } from "../../state/persistence";
 import {
   clearPendingCloudHandoff,
   loadPendingCloudHandoff,

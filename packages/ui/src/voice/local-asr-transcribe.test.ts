@@ -18,8 +18,19 @@ vi.mock("../utils", () => ({
   resolveApiUrl: vi.fn((path: string) => `http://agent.local${path}`),
 }));
 
+// Drive the active-agent base so we can exercise both tiers: undefined
+// (dedicated — the pre-existing `/api/asr/cloud` path) and a shared-runtime
+// base (the new v1 `/api/v1/voice/stt` fallback). The real
+// sharedRuntimeVoiceOrigin logic runs against whatever this returns.
+vi.mock("../utils/eliza-globals", () => ({
+  getElizaApiBase: vi.fn<() => string | undefined>(() => undefined),
+}));
+
+import { getElizaApiBase } from "../utils/eliza-globals";
+
 const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);
 const resolveApiUrlMock = vi.mocked(resolveApiUrl);
+const getElizaApiBaseMock = vi.mocked(getElizaApiBase);
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return {
@@ -185,5 +196,81 @@ describe("transcribeCloudWav", () => {
     controller.abort();
     await expect(p).rejects.toThrow(/cancelled/);
     expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
+  });
+
+  // Regression guard: with no active base (dedicated tier), the target stays
+  // the container `/api/asr/cloud` route — byte-identical to pre-#15395.
+  it("targets /api/asr/cloud (raw WAV) for a dedicated agent (base unset)", async () => {
+    getElizaApiBaseMock.mockReturnValue(undefined);
+    fetchWithCsrfMock.mockResolvedValue(jsonResponse({ text: "dedicated" }));
+    const wav = new Uint8Array([82, 73, 70, 70]);
+
+    const text = await transcribeCloudWav(wav);
+
+    const [url, init] = fetchWithCsrfMock.mock.calls[0] ?? [];
+    expect(url).toBe("http://agent.local/api/asr/cloud");
+    expect((init?.headers as Record<string, string>)["Content-Type"]).toBe(
+      "audio/wav",
+    );
+    expect(init?.body).toBe(wav);
+    expect(text).toBe("dedicated");
+  });
+});
+
+describe("transcribeCloudWav (shared-tier fallback, #15395)", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("targets the v1 /api/v1/voice/stt route with a multipart `audio` File", async () => {
+    getElizaApiBaseMock.mockReturnValue(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/cad3c071",
+    );
+    fetchWithCsrfMock.mockResolvedValue(
+      jsonResponse({ transcript: "  shared hello " }),
+    );
+    const wav = new Uint8Array([82, 73, 70, 70]); // "RIFF"
+
+    const text = await transcribeCloudWav(wav);
+
+    const [url, init] = fetchWithCsrfMock.mock.calls[0] ?? [];
+    // Cloud-worker v1 origin derived from the shared-agent base.
+    expect(url).toBe("https://api.elizacloud.ai/api/v1/voice/stt");
+    expect(init?.method).toBe("POST");
+    // The dedicated raw-WAV path is NOT used — no resolveApiUrl(/api/asr/cloud).
+    expect(resolveApiUrlMock).not.toHaveBeenCalledWith("/api/asr/cloud");
+    // Multipart body with the WAV as the `audio` File the v1 route reads.
+    expect(init?.body).toBeInstanceOf(FormData);
+    const file = (init?.body as FormData).get("audio");
+    expect(file).toBeInstanceOf(File);
+    expect((file as File).type).toBe("audio/wav");
+    // Content-Type is left unset so the browser writes the multipart boundary.
+    expect(
+      (init?.headers as Record<string, string>)["Content-Type"],
+    ).toBeUndefined();
+    // v1 `{ transcript }` shape is parsed + trimmed.
+    expect(text).toBe("shared hello");
+  });
+
+  it("fails loud on a v1 empty transcript (no silent '' downgrade)", async () => {
+    getElizaApiBaseMock.mockReturnValue(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/abc",
+    );
+    fetchWithCsrfMock.mockResolvedValue(jsonResponse({ transcript: "   " }));
+    await expect(transcribeCloudWav(new Uint8Array([1]))).rejects.toThrow(
+      /empty transcript/,
+    );
+  });
+
+  it("surfaces a v1 non-2xx as a CloudSttError with the status", async () => {
+    getElizaApiBaseMock.mockReturnValue(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/abc",
+    );
+    fetchWithCsrfMock.mockResolvedValue(
+      jsonResponse({ error: "insufficient credits" }, false, 402),
+    );
+    await expect(transcribeCloudWav(new Uint8Array([1]))).rejects.toThrow(
+      /Cloud ASR 402/,
+    );
   });
 });

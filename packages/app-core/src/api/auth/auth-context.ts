@@ -19,8 +19,8 @@ import type {
   AuthSessionRow,
   AuthStore,
 } from "../../services/auth-store";
-import { getProvidedApiToken } from "../auth.js";
 import { findActiveSession, parseSessionCookie } from "./sessions.js";
+import { getProvidedApiToken } from "./tokens.js";
 
 export type AuthContextSource =
   | "cookie"
