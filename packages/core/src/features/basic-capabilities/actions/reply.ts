@@ -401,6 +401,11 @@ export const replyAction = {
 			thought,
 			text,
 			actions: ["REPLY"] as string[],
+			// #14873: every source of `text` above is genuine model voice —
+			// TEXT_LARGE output, planner-supplied `text`, or a prior model reply
+			// memory — so the humanness voice gate must deliver it untouched
+			// instead of double-voicing it with a blocking TEXT_SMALL call.
+			agentVoiced: true,
 		};
 
 		if (callback) {

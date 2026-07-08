@@ -570,6 +570,57 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("marks a genuine Stage-1 direct reply agentVoiced so gated transports skip the re-voice (#14873)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Direct answer.",
+				contexts: ["simple"],
+				replyText: "BTC is at $63,327 right now.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "btc price?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			// The Stage-1 replyText IS the model's own composed voice; the
+			// provenance flag is what lets `ensureAgentVoice` short-circuit at
+			// `sendMessageToTarget` instead of spending a blocking TEXT_SMALL
+			// re-voice on every chat turn.
+			expect(result.result.responseContent?.agentVoiced).toBe(true);
+			expect(result.result.responseMessages[0]?.content.agentVoiced).toBe(true);
+		}
+	});
+
+	it("leaves the hardcoded unusable-reply deferral unmarked so the voice gate still owns it (#14873)", async () => {
+		const runtime = makeRuntime([
+			stage1Response({ contexts: ["simple"], replyText: "I don't know." }),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ text: "What is 2+2?" }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			// The deferral is a hardcoded template, not model voice — it must NOT
+			// carry the provenance flag, so the humanness gate still rephrases it
+			// before it reaches a user.
+			expect(result.result.responseContent?.text).toBe(
+				"I'm not sure how to answer that.",
+			);
+			expect(result.result.responseContent?.agentVoiced).toBeUndefined();
+		}
+	});
+
 	it("keeps a valid-but-terse numeric Stage 1 reply without a second model call", async () => {
 		// A correct-but-terse numeric answer ("4") trips the low-quality heuristic
 		// but is worth keeping. There is no direct-reply regeneration path, so the

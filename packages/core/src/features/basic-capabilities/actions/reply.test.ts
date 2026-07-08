@@ -66,4 +66,29 @@ describe("REPLY action", () => {
 
 		expect(result?.text).toBe("plain reply");
 	});
+
+	it("marks the free-text reply agentVoiced so gated transports skip the re-voice (#14873)", async () => {
+		const runtime = createRuntime(
+			'{"thought":"answer","text":"model-composed reply"}',
+		);
+		const callback = vi.fn();
+
+		await replyAction.handler?.(
+			runtime,
+			createMessage(),
+			undefined,
+			undefined,
+			callback,
+		);
+
+		// The reply text is the TEXT_LARGE model's own composed voice; the
+		// provenance flag lets ensureAgentVoice pass it through untouched at
+		// sendMessageToTarget instead of double-voicing it.
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "model-composed reply",
+				agentVoiced: true,
+			}),
+		);
+	});
 });
