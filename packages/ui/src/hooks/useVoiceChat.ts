@@ -45,19 +45,13 @@ import { hasConfiguredApiKey } from "../voice";
 import {
   isLocalAsrCaptureSupported,
   type LocalAsrRecorder,
-  type LocalAsrSegment,
   startLocalAsrRecorder,
 } from "../voice/local-asr-capture";
 import {
   isLocalInferenceAsrReady,
-  transcribeCloudSegment,
   transcribeCloudWav,
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
-import { createCloudSttSegmenter } from "../voice/cloud-stt-segmenter";
-import { CloudSttSessionStitcher } from "../voice/cloud-stt-stitcher";
-import { passesAutoSendGuard } from "../voice/auto-send-guard";
-import { isVadDebugEnabled, vadDebug } from "../voice/vad-debug";
 import {
   PlaybackFramePump,
   type PlaybackFrameTap,
@@ -218,35 +212,11 @@ function shouldUseCloudAsr(config: VoiceConfig | null): boolean {
   return provider === "eliza-cloud" || provider === "openai";
 }
 
-/**
- * True when chunked-segment incremental transcription (voice V2a) should drive
- * the cloud capture. Requires the cloud ASR path AND that streaming isn't
- * explicitly opted out (`asr.streaming === false`). Defaults ON for cloud — the
- * live-transcript UX is the whole point of V2a — but it ALWAYS degrades to the
- * batch full-WAV path at stop() if segmentation produced nothing usable, so a
- * true here is a best-effort enablement, never a correctness dependency.
- */
-function shouldStreamCloudAsr(config: VoiceConfig | null): boolean {
-  return shouldUseCloudAsr(config) && config?.asr?.streaming !== false;
-}
-
 const ACTIVE_VOICE_SESSION_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
   "compose",
   "push-to-talk",
   "hands-free",
   "passive",
-]);
-
-// Modes whose finalized transcript is subject to the hands-free auto-send
-// toggle. `passive` (ambient) already auto-sends unconditionally (its own
-// path below), and `hands-free` opens/segments turns via the ambient loop; the
-// composer-surface auto-send switch governs the mic surfaces the user reviews
-// today: `compose` (tap-dictate) and `push-to-talk`. When auto-send is OFF a
-// finalized transcript for these modes fills the composer draft for review; when
-// ON (and the guard passes) it is sent immediately.
-const AUTO_SEND_ELIGIBLE_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
-  "compose",
-  "push-to-talk",
 ]);
 
 function normalizeActiveVoiceSessionMode(
@@ -325,21 +295,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // Refs — stable across renders, read from animation loop & callbacks
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const localAsrRecorderRef = useRef<LocalAsrRecorder | null>(null);
-  // Chunked-streaming cloud STT (voice V2a). Per-capture-turn session: a
-  // stitcher assembles ordered/seam-deduped segment transcripts into the live
-  // running transcript, plus bookkeeping to decide at stop() whether the
-  // streamed result is usable or we must fall back to the batch full-WAV path.
-  const cloudStreamStitcherRef = useRef<CloudSttSessionStitcher | null>(null);
-  const cloudStreamSessionIdRef = useRef<string | null>(null);
-  // In-flight segment POSTs for the active turn — awaited at stop() so a
-  // late-landing segment still contributes to the finalized transcript.
-  const cloudStreamInflightRef = useRef<Set<Promise<void>>>(new Set());
-  // Set true if ANY segment POST hard-fails after its retry (not just empty):
-  // signals stop() to distrust the partial stitch and prefer the batch WAV.
-  const cloudStreamDegradedRef = useRef(false);
-  // AbortController scoping all segment POSTs for the current turn (barge-in /
-  // teardown / suspend abort the in-flight segment uploads).
-  const cloudStreamAbortRef = useRef<AbortController | null>(null);
   const sttBackendRef = useRef<
     "browser" | "local-inference" | "cloud" | "talkmode" | null
   >(null);
@@ -425,11 +380,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   voiceConfigRef.current = effectiveVoiceConfig;
   const interruptOnSpeechRef = useRef(options.interruptOnSpeech ?? true);
   interruptOnSpeechRef.current = options.interruptOnSpeech ?? true;
-  // Hands-free auto-send toggle (voice auto-send lane). Default false (review).
-  // Read from a ref so the transcript funnel sees the latest value without
-  // re-creating the memoized `applyTranscriptUpdate` callback.
-  const autoSendRef = useRef(options.autoSend ?? false);
-  autoSendRef.current = options.autoSend ?? false;
   const onUserSpeechInterruptRef = useRef(options.onUserSpeechInterrupt);
   onUserSpeechInterruptRef.current = options.onUserSpeechInterrupt;
   const interruptSpeechRef = useRef<() => void>(() => {});
@@ -768,36 +718,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
 
-      // Ambient (`passive`) always auto-sends. The compose/PTT surfaces auto-send
-      // ONLY when the hands-free toggle is on AND the transcript clears the
-      // min-transcript reliability guard (never send empty/single-token/too-short
-      // noise). Otherwise the finalized transcript stays in the composer draft
-      // (via emitTranscriptPreview above) for the user to review + send.
-      const autoSendActive =
-        isFinal &&
-        autoSendRef.current &&
-        AUTO_SEND_ELIGIBLE_MODES.has(
-          mode as Exclude<VoiceSessionMode, "idle">,
-        );
-      let autoSendPassedGuard = false;
-      if (autoSendActive) {
-        const guard = passesAutoSendGuard({ transcript: nextText });
-        autoSendPassedGuard = guard.ok;
-        if (isVadDebugEnabled()) {
-          vadDebug({
-            event: "auto-send",
-            atMs:
-              typeof performance !== "undefined"
-                ? performance.now()
-                : Date.now(),
-            guardOk: guard.ok,
-            guardReason: guard.reason,
-            transcriptPreview: nextText.slice(0, 80),
-          });
-        }
-      }
-
-      if (isFinal && (mode === "passive" || autoSendPassedGuard)) {
+      if (isFinal && mode === "passive") {
         emitTranscript(nextText, {
           text: nextText,
           mode,
@@ -833,16 +754,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     sttBackendRef.current = null;
     enabledRef.current = false;
     listeningModeRef.current = "idle";
-    // Tear down any chunked-streaming session (voice V2a): abort in-flight
-    // segment POSTs + clear the stitcher so a superseded turn's late segment
-    // can't leak into the next capture. Inlined (refs only) so this stays a
-    // dependency-free reset used by the error/abort paths.
-    cloudStreamAbortRef.current?.abort();
-    cloudStreamAbortRef.current = null;
-    cloudStreamStitcherRef.current = null;
-    cloudStreamSessionIdRef.current = null;
-    cloudStreamInflightRef.current = new Set();
-    cloudStreamDegradedRef.current = false;
     setIsListening(false);
     setCaptureMode("idle");
     setInterimTranscript("");
@@ -1024,87 +935,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // recognizer is engine-dependent (and unreliable/absent on iOS PWA), so a
   // cloud config must not fall through to it. Reuses `localAsrRecorderRef` for
   // the mic recorder; `sttBackendRef` = "cloud" routes the stop-time transcribe.
-  // Tear down the current chunked-streaming session (voice V2a): abort in-flight
-  // segment POSTs and clear the stitcher/session refs. Idempotent.
-  const teardownCloudStreamSession = useCallback(() => {
-    cloudStreamAbortRef.current?.abort();
-    cloudStreamAbortRef.current = null;
-    cloudStreamStitcherRef.current = null;
-    cloudStreamSessionIdRef.current = null;
-    cloudStreamInflightRef.current = new Set();
-    cloudStreamDegradedRef.current = false;
-  }, []);
-
-  // Handle one mid-capture segment (voice V2a): POST it, stitch the result, and
-  // emit the running transcript as a NON-FINAL preview so the composer shows
-  // words appearing while the user speaks. Fire-and-forget from the audio
-  // thread; tracked in the in-flight set so stop() can await stragglers.
-  const handleCloudStreamSegment = useCallback(
-    (segment: LocalAsrSegment) => {
-      const stitcher = cloudStreamStitcherRef.current;
-      const sessionId = cloudStreamSessionIdRef.current;
-      const abort = cloudStreamAbortRef.current;
-      if (!stitcher || !sessionId || !abort) return;
-      // An empty-data final marker (silent trailing tail, WAV is header-only)
-      // finalizes the stitcher on the already-streamed content WITHOUT a doomed
-      // POST of a data-less WAV (the server's magic-number check would reject
-      // it). No network, just mark done.
-      if (segment.isFinal && segment.wav.length <= 44) {
-        const running = stitcher.push({ seq: segment.seq, text: "", isFinal: true });
-        if (running && listeningModeRef.current !== "idle") {
-          applyTranscriptUpdate(running, false, {
-            source: "cloud",
-            metadata: { source: "cloud" },
-          });
-        }
-        return;
-      }
-      const task = (async () => {
-        try {
-          const text = await transcribeCloudSegment(segment.wav, {
-            signal: abort.signal,
-            segment: {
-              sessionId,
-              seq: segment.seq,
-              isFinal: segment.isFinal,
-            },
-          });
-          // Ignore a result that landed after this session was torn down /
-          // superseded (a new capture started).
-          if (cloudStreamStitcherRef.current !== stitcher) return;
-          const running = stitcher.push({
-            seq: segment.seq,
-            text,
-            isFinal: segment.isFinal,
-          });
-          // Live preview only — NEVER a final here. The turn's real final is
-          // committed at stop() (streamed stitch or batch fallback), so a
-          // mid-utterance segment must not submit.
-          if (running && listeningModeRef.current !== "idle") {
-            applyTranscriptUpdate(running, false, {
-              source: "cloud",
-              metadata: { source: "cloud" },
-            });
-          }
-        } catch (err) {
-          // A cancelled POST (teardown / barge-in) is expected — not a degrade.
-          if (abort.signal.aborted) return;
-          // Any other hard failure after retry: distrust the partial stitch so
-          // stop() prefers the batch full-WAV transcription.
-          cloudStreamDegradedRef.current = true;
-          ttsDebug("asr:cloud:segment:error", {
-            seq: segment.seq,
-            message: err instanceof Error ? err.message : String(err),
-          });
-        }
-      })();
-      const inflight = cloudStreamInflightRef.current;
-      inflight.add(task);
-      void task.finally(() => inflight.delete(task));
-    },
-    [applyTranscriptUpdate],
-  );
-
   const startCloudRecognition = useCallback(
     async (mode: Exclude<VoiceCaptureMode, "idle">) => {
       if (!shouldUseCloudAsr(voiceConfigRef.current)) {
@@ -1115,34 +945,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       if (!isLocalAsrCaptureSupported()) {
         return false;
       }
-      // Chunked-streaming (voice V2a): stand up a fresh stitcher + segmenter and
-      // wire the recorder's onSegment sink. Guarded so a failure to construct
-      // the streaming path NEVER blocks capture — batch is always the fallback.
-      const streaming = shouldStreamCloudAsr(voiceConfigRef.current);
-      let recorderOpts:
-        | Parameters<typeof startLocalAsrRecorder>[0]
-        | undefined;
-      if (streaming) {
-        teardownCloudStreamSession();
-        const stitcher = new CloudSttSessionStitcher();
-        const sessionId =
-          typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID()
-            : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const abort = new AbortController();
-        cloudStreamStitcherRef.current = stitcher;
-        cloudStreamSessionIdRef.current = sessionId;
-        cloudStreamAbortRef.current = abort;
-        cloudStreamInflightRef.current = new Set();
-        cloudStreamDegradedRef.current = false;
-        const { update, config } = createCloudSttSegmenter();
-        recorderOpts = {
-          segmenter: { update, config: { overlapMs: config.overlapMs } },
-          onSegment: handleCloudStreamSegment,
-        };
-      }
       try {
-        const recorder = await startLocalAsrRecorder(recorderOpts);
+        const recorder = await startLocalAsrRecorder();
         localAsrRecorderRef.current = recorder;
         sttBackendRef.current = "cloud";
         enabledRef.current = true;
@@ -1153,11 +957,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return true;
       } catch {
         localAsrRecorderRef.current = null;
-        teardownCloudStreamSession();
         return false;
       }
     },
-    [handleCloudStreamSegment, teardownCloudStreamSession],
+    [],
   );
 
   const startBrowserRecognition = useCallback(
@@ -1420,64 +1223,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         // just doesn't submit rather than being transcribed by the wrong engine.
         const recorder = localAsrRecorderRef.current;
         localAsrRecorderRef.current = null;
-        // Snapshot the streaming session (voice V2a) BEFORE recorder.stop()
-        // flushes the terminal segment, so the tail POST is tracked here.
-        const stitcher = cloudStreamStitcherRef.current;
         if (recorder) {
           try {
-            // recorder.stop() flushes the final streaming segment (if any) as a
-            // side effect, then returns the full-utterance WAV for the batch
-            // fallback path.
             const audio = await recorder.stop();
-            const finalizeMode =
-              normalizeActiveVoiceSessionMode(mode) ??
-              normalizeActiveVoiceSessionMode(listeningModeRef.current) ??
-              "compose";
-            let committed = false;
-            if (stitcher) {
-              // Drain in-flight segment POSTs (including the just-flushed tail)
-              // so the stitched transcript is complete before we decide whether
-              // to trust it. Bounded implicitly by each segment's own
-              // per-attempt timeout inside transcribeCloudSegment.
-              await Promise.allSettled(
-                Array.from(cloudStreamInflightRef.current),
-              );
-              const running = stitcher.running.trim();
-              // Prefer the streamed stitch ONLY when it finalized cleanly and no
-              // segment hard-failed — otherwise the partial could be missing
-              // words, so fall through to the authoritative batch transcription.
-              if (
-                running &&
-                stitcher.isDone &&
-                !cloudStreamDegradedRef.current
-              ) {
-                applyTranscriptUpdate(running, true, {
-                  mode: finalizeMode,
-                  source: "cloud",
-                  metadata: { source: "cloud", streaming: true },
-                });
-                committed = true;
-              }
-            }
-            if (!committed) {
-              // Batch fallback (voice V2a graceful degrade): streaming was off,
-              // never finalized, degraded, or empty — transcribe the whole WAV.
-              const transcript = await transcribeCloudAudio(audio);
-              applyTranscriptUpdate(transcript, true, {
-                mode: finalizeMode,
-                source: "cloud",
-                metadata: { source: "cloud" },
-              });
-            }
+            const transcript = await transcribeCloudAudio(audio);
+            applyTranscriptUpdate(transcript, true, {
+              mode:
+                normalizeActiveVoiceSessionMode(mode) ??
+                normalizeActiveVoiceSessionMode(listeningModeRef.current) ??
+                "compose",
+              source: "cloud",
+              metadata: { source: "cloud" },
+            });
           } catch (error) {
             ttsDebug("asr:cloud:error", {
               message: error instanceof Error ? error.message : String(error),
             });
-          } finally {
-            teardownCloudStreamSession();
           }
-        } else {
-          teardownCloudStreamSession();
         }
       } else {
         recognitionRef.current?.stop();
@@ -1491,7 +1253,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     [
       applyTranscriptUpdate,
       finalizeRecognition,
-      teardownCloudStreamSession,
       transcribeCloudAudio,
       transcribeLocalInferenceAudio,
     ],

@@ -1068,33 +1068,6 @@ export function saveVadAutoStop(value: VadAutoStopValue): void {
   }, undefined);
 }
 
-/* ── Voice auto-send persistence ────────────────────────────────────────── */
-// Whether a finalized voice transcript is auto-sent hands-free (true) or filled
-// into the composer for the user to review + send (false). Mirrors the
-// `vadAutoStop`/`continuous-chat-mode` dual-store pattern: kept in localStorage
-// so the capture path reads it synchronously on the user gesture without an
-// async config fetch.
-//
-// DEFAULT IS `false` (composer review). Auto-send is implemented end-to-end but
-// ships default-off; it flips to default-on later once the min-transcript guard
-// proves reliable on-device. A `false` here is a deliberate launch choice, not a
-// capability gap.
-const VOICE_AUTO_SEND_KEY = "eliza:voice:auto-send";
-
-/** Load whether voice auto-send is enabled. Defaults to false (review). */
-export function loadVoiceAutoSend(): boolean {
-  return tryLocalStorage(() => {
-    const stored = localStorage.getItem(VOICE_AUTO_SEND_KEY);
-    return stored === null ? false : stored === "true";
-  }, false);
-}
-
-export function saveVoiceAutoSend(value: boolean): void {
-  tryLocalStorage(() => {
-    shellLocalStorage.setItem(VOICE_AUTO_SEND_KEY, String(value));
-  }, undefined);
-}
-
 /* ── Browser enabled persistence ────────────────────────────────────── */
 const BROWSER_ENABLED_KEY = "eliza:browser:enabled";
 
