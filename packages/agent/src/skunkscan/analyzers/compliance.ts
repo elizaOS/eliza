@@ -29,6 +29,52 @@ export function analyzeWalletCompliance(
   }
 
   return {
+sourcesChecked: [
+  {
+    name: "SkunkScan Internal Registry",
+    category: "internal_registry",
+    status: "connected",
+    coverage: [
+      "Known scam wallets",
+      "Known rug pulls",
+      "Known suspicious wallets",
+    ],
+    lastUpdatedAt: null,
+    notes: [
+      "Maintained by SkunkScan.",
+    ],
+  },
+  {
+    name: "Sanctions Provider",
+    category: "sanctions",
+    status: "planned",
+    coverage: [
+      "OFAC",
+      "EU",
+      "UK",
+      "UN",
+    ],
+    lastUpdatedAt: null,
+    notes: [
+      "External provider integration planned.",
+    ],
+  },
+  {
+    name: "Adverse Media Provider",
+    category: "adverse_media",
+    status: "planned",
+    coverage: [
+      "News",
+      "Law enforcement",
+      "Regulatory actions",
+    ],
+    lastUpdatedAt: null,
+    notes: [
+      "External provider integration planned.",
+    ],
+  },
+],
+    
     sanctionsStatus:
       matches.some((m) => m.type === "sanctions")
         ? "possible_match"
