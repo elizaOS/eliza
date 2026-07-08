@@ -12,12 +12,17 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  __getChatDedupeTtlMsForTests,
   __resetChatDedupeForTests,
   isDuplicateChatMessage,
   normalizeClientMessageId,
 } from "../chat-routes.ts";
 
-const TTL_MS = 30_000;
+const OLD_ARRIVAL_TTL_MS = 30_000;
+const DEFAULT_GENERATION_TIMEOUT_MS = 180_000;
+const RECONNECT_WAIT_TIMEOUT_MS = 30_000;
+const RECONNECT_SIGNAL_DEBOUNCE_MS = 400;
+const TTL_MS = __getChatDedupeTtlMsForTests();
 const SCOPE = "room-a";
 
 afterEach(() => {
@@ -69,6 +74,20 @@ describe("isDuplicateChatMessage", () => {
     // Each id is independently deduped.
     expect(isDuplicateChatMessage(SCOPE, "msg-a", now)).toBe(true);
     expect(isDuplicateChatMessage(SCOPE, "msg-b", now)).toBe(true);
+  });
+
+  it("covers the long-turn reconnect retry window that exceeded the old 30s arrival TTL", () => {
+    const now = 3_500_000;
+    const retryAfterLongTurn =
+      DEFAULT_GENERATION_TIMEOUT_MS +
+      RECONNECT_WAIT_TIMEOUT_MS +
+      RECONNECT_SIGNAL_DEBOUNCE_MS;
+
+    expect(isDuplicateChatMessage(SCOPE, "msg-long-turn", now)).toBe(false);
+    expect(retryAfterLongTurn).toBeGreaterThan(OLD_ARRIVAL_TTL_MS);
+    expect(
+      isDuplicateChatMessage(SCOPE, "msg-long-turn", now + retryAfterLongTurn),
+    ).toBe(true);
   });
 
   it("does not suppress the same id once the TTL has elapsed", () => {

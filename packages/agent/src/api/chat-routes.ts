@@ -182,12 +182,21 @@ const CLIENT_MESSAGE_ID_MAX_LENGTH = 128;
  *
  * Keyed by `${conversationOrUserScope}:${clientMessageId}` so a legitimately
  * identical message in a different conversation, or the same text re-sent after
- * the TTL, is NOT suppressed. Entries expire after `CHAT_DEDUPE_TTL_MS`; the map
- * stays bounded via an amortized sweep (at most once per TTL window) — the same
- * O(1)-check / amortized-eviction shape as the WS cache.
+ * the TTL, is NOT suppressed. The TTL must cover the full server generation
+ * window plus the client's reconnect retry wait; otherwise a retry after a long
+ * but successful turn can land after the arrival timestamp expires and start a
+ * second billed LLM turn. The map stays bounded via an amortized sweep (at most
+ * once per TTL window) — the same O(1)-check / amortized-eviction shape as the
+ * WS cache.
  */
 const chatSeenMessageIds = new Map<string, number>();
-const CHAT_DEDUPE_TTL_MS = 30_000;
+const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
+const CHAT_DEDUPE_RECONNECT_WAIT_MS = 30_000;
+const CHAT_DEDUPE_SETTLE_BUFFER_MS = 30_000;
+const CHAT_DEDUPE_TTL_MS =
+  resolveChatGenerationTimeoutMs() +
+  CHAT_DEDUPE_RECONNECT_WAIT_MS +
+  CHAT_DEDUPE_SETTLE_BUFFER_MS;
 let chatSeenLastSweepAt = 0;
 
 /** Normalize a raw body value into a usable idempotency key, or `null` when
@@ -278,6 +287,12 @@ export function getChatMessageIdFirstSeenAt(
 export function __resetChatDedupeForTests(): void {
   chatSeenMessageIds.clear();
   chatSeenLastSweepAt = 0;
+}
+
+/** Test-only: expose the configured dedupe window without freezing env policy
+ *  into the unit fixtures. */
+export function __getChatDedupeTtlMsForTests(): number {
+  return CHAT_DEDUPE_TTL_MS;
 }
 
 const ANDROID_LOCAL_DIRECT_CHAT_DENY_PATTERN =
@@ -1187,7 +1202,6 @@ function isNoProviderError(err: unknown): boolean {
 const NO_PROVIDER_CHAT_MESSAGE =
   "Connect an LLM provider to start chatting. Open Settings → Providers, " +
   "or choose Eliza Cloud during first-run setup.";
-const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 type SyntheticChatFailureKind =
   | ChatFailureKind

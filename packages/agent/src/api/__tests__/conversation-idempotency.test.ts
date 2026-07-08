@@ -68,6 +68,9 @@ const ROOM_ID = stringToUuid("room-1") as UUID;
 
 const STREAM_PATH = "/api/conversations/conv-1/messages/stream";
 const SEND_PATH = "/api/conversations/conv-1/messages";
+const DEFAULT_GENERATION_TIMEOUT_MS = 180_000;
+const RECONNECT_WAIT_TIMEOUT_MS = 30_000;
+const RECONNECT_SIGNAL_DEBOUNCE_MS = 400;
 
 interface MockResponseRecord {
   writes: string[];
@@ -314,6 +317,42 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toMatchObject({ type: "done", fullText: "" });
     expect(retry.record.ended).toBe(true);
+  });
+
+  it("SSE: a slow reconnect retry after a long completed turn is still suppressed", async () => {
+    const { state, handleMessage, createMemory } = createHarness();
+    const body = { text: "hello", clientMessageId: "sse-long-retry-1" };
+    const firstArrival = Date.now();
+    const nowSpy = vi.spyOn(Date, "now");
+
+    try {
+      nowSpy.mockReturnValue(firstArrival);
+      const first = await runRoute("POST", STREAM_PATH, state, body);
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const persistsAfterFirst = createMemory.mock.calls.length;
+      expect(persistsAfterFirst).toBeGreaterThan(0);
+      const firstDone = parseDataFrames(first.record).find(
+        (f) => f.type === "done",
+      );
+      expect(firstDone?.fullText).toBe("ok");
+
+      nowSpy.mockReturnValue(
+        firstArrival +
+          DEFAULT_GENERATION_TIMEOUT_MS +
+          RECONNECT_WAIT_TIMEOUT_MS +
+          RECONNECT_SIGNAL_DEBOUNCE_MS,
+      );
+      const retry = await runRoute("POST", STREAM_PATH, state, body);
+
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      expect(createMemory).toHaveBeenCalledTimes(persistsAfterFirst);
+      const retryFrames = parseDataFrames(retry.record);
+      expect(retryFrames).toHaveLength(1);
+      expect(retryFrames[0]).toMatchObject({ type: "done", fullText: "ok" });
+      expect(retry.record.ended).toBe(true);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("SSE: a retry after a disconnect-ABORTED first attempt re-runs the turn (no dead air)", async () => {
