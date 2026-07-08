@@ -14,7 +14,7 @@ const deleteWhere = mock((clause: SQL) => {
   return { returning };
 });
 const del = mock(() => ({ where: deleteWhere }));
-const dbWriteMock = new Proxy(realClient.dbWrite as Record<PropertyKey, unknown>, {
+const dbWriteMock = new Proxy(realClient.dbWrite as unknown as Record<PropertyKey, unknown>, {
   get(target, prop, receiver) {
     if (prop === "delete") return del;
     return Reflect.get(target, prop, receiver);
