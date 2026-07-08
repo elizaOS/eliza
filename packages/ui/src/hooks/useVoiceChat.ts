@@ -92,7 +92,6 @@ import {
   isAbortError,
   localePrefix,
   MAX_CACHED_SEGMENTS,
-  type MicLevel,
   matchesVoiceLocale,
   normalizeSpeechLocale,
   type QueueAssistantSpeechOptions,
@@ -121,8 +120,6 @@ import {
 
 export { nextIdleMouthOpen } from "../voice/voice-chat-playback";
 export type {
-  MicLevel,
-  MicLevelUnsubscribe,
   QueueAssistantSpeechOptions,
   VoiceAssistantSpeechTelemetry,
   VoiceCaptureMode,
@@ -453,45 +450,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       void tap.stop(options).catch(() => {
         /* best effort only */
       });
-    },
-    [],
-  );
-
-  // ── Live mic-level (waveform) subscription ─────────────────────────
-  // Ref-based fan-out so a ~30-60fps amplitude signal never re-renders React.
-  // The capture layer's rAF-coalesced onAudioLevel writes here; waveform
-  // consumers subscribe and mutate the DOM/canvas directly off the callback.
-  const micLevelListenersRef = useRef<Set<(level: MicLevel) => void>>(
-    new Set(),
-  );
-  // Deliver the latest level to every registered listener. Best-effort per
-  // listener: a throwing subscriber can't break capture or sibling listeners.
-  const emitMicLevel = useCallback((level: MicLevel): void => {
-    for (const listener of micLevelListenersRef.current) {
-      try {
-        listener(level);
-      } catch (err) {
-        // error-policy:J6 best-effort visualization sink — a throwing waveform
-        // subscriber must not stall the audio thread or starve sibling
-        // listeners; the level is a cosmetic amplitude signal with no state to
-        // recover, so swallow-and-continue is the intended contract here.
-        void err;
-      }
-    }
-  }, []);
-  // Stable subscribe fn (no deps) so consumers can register once in an effect
-  // and get an idempotent unsubscribe. Registration is inert until a
-  // PCM-capturing backend starts and begins pumping onAudioLevel.
-  const subscribeMicLevel = useCallback(
-    (listener: (level: MicLevel) => void): (() => void) => {
-      const listeners = micLevelListenersRef.current;
-      listeners.add(listener);
-      let active = true;
-      return () => {
-        if (!active) return;
-        active = false;
-        listeners.delete(listener);
-      };
     },
     [],
   );
@@ -1043,11 +1001,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
 
       try {
-        // Wire the waveform level sink (rAF-coalesced in the capture layer) so
-        // the local-inference mic surface drives the live amplitude bars.
-        const recorder = await startLocalAsrRecorder({
-          onAudioLevel: emitMicLevel,
-        });
+        const recorder = await startLocalAsrRecorder();
         localAsrRecorderRef.current = recorder;
         sttBackendRef.current = "local-inference";
         enabledRef.current = true;
@@ -1061,7 +1015,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return false;
       }
     },
-    [emitMicLevel],
+    [],
   );
 
   // Cloud STT: capture the SAME mono PCM16 WAV as the local-inference path and
@@ -1096,11 +1050,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       // POST of a data-less WAV (the server's magic-number check would reject
       // it). No network, just mark done.
       if (segment.isFinal && segment.wav.length <= 44) {
-        const running = stitcher.push({
-          seq: segment.seq,
-          text: "",
-          isFinal: true,
-        });
+        const running = stitcher.push({ seq: segment.seq, text: "", isFinal: true });
         if (running && listeningModeRef.current !== "idle") {
           applyTranscriptUpdate(running, false, {
             source: "cloud",
@@ -1192,13 +1142,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         };
       }
       try {
-        // Attach the waveform level sink regardless of streaming vs batch: both
-        // cloud sub-paths capture PCM via startLocalAsrRecorder, so the mic
-        // surface gets live amplitude either way.
-        const recorder = await startLocalAsrRecorder({
-          ...(recorderOpts ?? {}),
-          onAudioLevel: emitMicLevel,
-        });
+        const recorder = await startLocalAsrRecorder(recorderOpts);
         localAsrRecorderRef.current = recorder;
         sttBackendRef.current = "cloud";
         enabledRef.current = true;
@@ -1213,7 +1157,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return false;
       }
     },
-    [emitMicLevel, handleCloudStreamSegment, teardownCloudStreamSession],
+    [handleCloudStreamSegment, teardownCloudStreamSession],
   );
 
   const startBrowserRecognition = useCallback(
@@ -3144,6 +3088,5 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     unlockAudio,
     assistantTtsQuality,
     ttsError,
-    subscribeMicLevel,
   };
 }
