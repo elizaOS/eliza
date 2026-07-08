@@ -12,7 +12,7 @@ function toDisplayScore(
   label: string,
 ): WalletDisplayScore {
   const safeScore = Math.max(0, Math.min(100, rawScore));
-  const scoreOutOfTen = Number((safeScore / 10).toFixed(1));
+  const scoreOutOfTen = (safeScore / 10).toFixed(1);
 
   return {
     rawScore: safeScore,
