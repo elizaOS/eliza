@@ -2035,6 +2035,129 @@ describe("ElizaSandboxService.provision dedup + port-collision retry (LARP H2)",
     }
   });
 
+  test("same-repo stale docker_image pin is replaced with the configured fleet image on provision", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const configuredImage = "ghcr.io/elizaos/eliza:sha-current";
+    const row = {
+      ...provisioningReadyRow(),
+      docker_image: "ghcr.io/elizaos/eliza:sha-stale",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const finalRow: AgentSandbox = { ...row, status: "running", docker_image: configuredImage };
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") return finalRow;
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const create = mock(async () => providerHandle());
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create,
+      stop: mock(async () => {}),
+      checkHealth: async () => true,
+    } as SandboxProvider);
+
+    try {
+      const res = await runWithCloudBindings({ ELIZA_AGENT_IMAGE: configuredImage }, () =>
+        svc.provision(AGENT, ORG),
+      );
+      expect(res.success).toBe(true);
+      expect(create.mock.calls[0]?.[0]).toMatchObject({
+        dockerImage: configuredImage,
+      });
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
+  test("custom-repo docker_image pin is preserved on provision", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const configuredImage = "ghcr.io/elizaos/eliza:sha-current";
+    const customImage = "ghcr.io/example/custom-agent:stable";
+    const row = {
+      ...provisioningReadyRow(),
+      docker_image: customImage,
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lockSpy = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+      ...row,
+      status: "provisioning",
+    });
+    const backupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const finalRow: AgentSandbox = { ...row, status: "running" };
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => {
+        if (data.status === "running") return finalRow;
+        return { ...row, ...data };
+      },
+    );
+    const apiKeySpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const svc = new ElizaSandboxService();
+    const ensureStartedSpy = spyOn(
+      svc as unknown as { ensureRuntimeAgentStarted: () => Promise<unknown> },
+      "ensureRuntimeAgentStarted",
+    ).mockResolvedValue(null);
+    const create = mock(async () => providerHandle());
+    const getProviderSpy = spyOn(
+      svc as unknown as { getProvider: () => Promise<SandboxProvider> },
+      "getProvider",
+    ).mockResolvedValue({
+      create,
+      stop: mock(async () => {}),
+      checkHealth: async () => true,
+    } as SandboxProvider);
+
+    try {
+      const res = await runWithCloudBindings({ ELIZA_AGENT_IMAGE: configuredImage }, () =>
+        svc.provision(AGENT, ORG),
+      );
+      expect(res.success).toBe(true);
+      expect(create.mock.calls[0]?.[0]).toMatchObject({
+        dockerImage: customImage,
+      });
+    } finally {
+      findSpy.mockRestore();
+      lockSpy.mockRestore();
+      backupSpy.mockRestore();
+      updateSpy.mockRestore();
+      apiKeySpy.mockRestore();
+      ensureStartedSpy.mockRestore();
+      getProviderSpy.mockRestore();
+    }
+  });
+
   test("(4) a NON-unique post-create error → markError, NO retry (one create), failure", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const row = provisioningReadyRow();

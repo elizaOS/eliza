@@ -207,6 +207,18 @@ export function assertAgentImageAllowed(dockerImage: string | undefined): void {
   }
 }
 
+function resolveManagedProvisionDockerImage(
+  storedImage: string | null | undefined,
+): string | undefined {
+  const configuredImage = containersEnv.defaultAgentImageOverride();
+  if (!configuredImage) return storedImage ?? undefined;
+  // Same-repo managed pins are fleet image selections, not custom images; on
+  // reprovision they must follow the operator's current image so recovery does
+  // not replay an old broken sha tag forever.
+  if (!storedImage) return configuredImage;
+  return imageRepo(storedImage) === imageRepo(configuredImage) ? configuredImage : storedImage;
+}
+
 /**
  * Thrown when the post-create readiness probe could not REACH the container
  * (SSH transport unresolved), as distinct from the container being genuinely
@@ -1527,6 +1539,7 @@ export class ElizaSandboxService {
     // Solution: Retry loop catches unique constraint errors, cleans up ghost container, and retries.
     const MAX_PROVISION_ATTEMPTS = 3;
     let lastError: string = "Unknown error";
+    const provisionDockerImage = resolveManagedProvisionDockerImage(rec.docker_image);
 
     // Materialize the stored env for the container: BYO secrets are encrypted
     // at rest (#11332); compatibility plaintext values pass through unchanged. A
@@ -1596,7 +1609,7 @@ export class ElizaSandboxService {
             // SANDBOX_ROUTE_AGENT_ID injection).
             routeAgentId: rec.character_id ?? undefined,
             snapshotId: rec.snapshot_id ?? undefined,
-            dockerImage: rec.docker_image ?? undefined,
+            dockerImage: provisionDockerImage,
             container: containerLaunch,
           });
         }
