@@ -244,6 +244,11 @@ export interface Bindings {
   // executionCtx.waitUntil, keeping a cached balance gate (15s org-balance hint
   // + in-isolate refusal blocklist) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
   INFERENCE_DEFERRED_ADMISSION?: string;
+  // Tier-3 in-isolate decision caches (#9899): "true" enables the org
+  // rate-limit lease (convergent — leased requests are carried back into the
+  // Redis window), the 60s shouldBlockUser memo, and the 60s model-catalog
+  // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
+  INFERENCE_HOT_PATH_CACHES?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
   PLAYWRIGHT_TEST_AUTH?: string;

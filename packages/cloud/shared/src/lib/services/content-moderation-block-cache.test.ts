@@ -1,8 +1,9 @@
 /**
  * Unit tests for the Tier-3 in-isolate block-decision memo on
- * `contentModerationService.shouldBlockUser` (#9899). The admin service (the
- * per-request Postgres read being removed from the warm path) is mocked at the
- * module boundary so the tests can count authoritative reads.
+ * `contentModerationService.shouldBlockUser` (#9899), gated behind
+ * INFERENCE_HOT_PATH_CACHES. The admin service (the per-request Postgres read
+ * being removed from the warm path) is mocked at the module boundary so the
+ * tests can count authoritative reads.
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
@@ -31,8 +32,12 @@ const { contentModerationService, __clearShouldBlockUserCache } = await import(
   "./content-moderation"
 );
 
+const originalHotPathCaches = process.env.INFERENCE_HOT_PATH_CACHES;
+
 afterAll(() => {
   mock.module("./admin", () => adminActual);
+  if (originalHotPathCaches === undefined) delete process.env.INFERENCE_HOT_PATH_CACHES;
+  else process.env.INFERENCE_HOT_PATH_CACHES = originalHotPathCaches;
 });
 
 let n = 0;
@@ -40,10 +45,21 @@ const uid = () => `user-${++n}`;
 
 describe("shouldBlockUser memo (#9899 Tier-3)", () => {
   beforeEach(() => {
+    process.env.INFERENCE_HOT_PATH_CACHES = "true";
     __clearShouldBlockUserCache();
     dbReads = 0;
     blockedUsers = new Set();
     readShouldThrow = false;
+  });
+
+  test("INFERENCE_HOT_PATH_CACHES off = no memo: every check reads authoritatively (today's behavior)", async () => {
+    process.env.INFERENCE_HOT_PATH_CACHES = "false";
+    const user = uid();
+    expect(await contentModerationService.shouldBlockUser(user)).toBe(false);
+    blockedUsers.add(user);
+    // A ban is visible IMMEDIATELY with the flag off — nothing was memoized.
+    expect(await contentModerationService.shouldBlockUser(user)).toBe(true);
+    expect(dbReads).toBe(2);
   });
 
   test("memoizes both allowed and blocked decisions per user", async () => {

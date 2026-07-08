@@ -422,8 +422,11 @@ to PGlite and asserted (`inference-pending-charges-migration.test.ts`): table + 
 > Naming note: the a07084e9cbc two-tier numbering (Tier 1 = single-cache auth,
 > Tier 2 = optimistic billing) calls this work "Tier-3"; within this doc the DB
 > ledger above already holds the "Tier 3" heading as the *correctness* step, so
-> this section is the Tier-3 **latency** continuation. Flag:
-> `INFERENCE_DEFERRED_ADMISSION` (default OFF).
+> this section is the Tier-3 **latency** continuation. Two flags, both default
+> OFF, both required for zero-behavior-change rollback:
+> `INFERENCE_DEFERRED_ADMISSION` (billing admission) and
+> `INFERENCE_HOT_PATH_CACHES` (the in-isolate decision caches — orthogonal to
+> billing, so deliberately NOT coupled to the admission flag).
 
 Fresh measurement (2026-07-07): warm TTFB through the gateway is **1.6–1.8s**
 (3.2s cold) against a **0.15s** cerebras-direct provider call, with Tier-1/2
@@ -468,10 +471,15 @@ When `INFERENCE_DEFERRED_ADMISSION="true"` AND the request carries a Workers
 ### Safety envelope (what changed, honestly)
 
 - **402 window**: the hard gate moves from an authoritative in-transaction
-  balance read (db ledger) to the 15s hint + refusal blocklist. A broke org can
-  slip through for at most one hint TTL, every slipped request is still charged
-  (or recorded `uncollected`), and the 402 fires at worst **one request later
-  than today**. Same residual class as the Tier-2 KV gate.
+  balance read (db ledger) to the 15s hint + refusal blocklist. Serial traffic
+  402s one request later; the honest CONCURRENT bound is **every request
+  admitted within one 15s hint window (per org, fleet-wide — the hint is
+  shared) plus in-flight streams**. Every slipped request is still charged (or
+  recorded `uncollected`, DB CHECK ≥ 0), the first refused settle invalidates
+  hint + IAC + blocklists, and the org self-heals to the synchronous 402. On
+  the prod KV config this window is identical to Tier-2 today; the weakening
+  is only on `INFERENCE_BILLING_LEDGER="db"`. Same residual class as the
+  Tier-2 KV gate.
 - **Durability window**: the pending record now depends on `waitUntil`
   surviving until the admission write lands (typically < the provider call). An
   isolate crash in that window loses the record AND the settle — a
@@ -482,27 +490,38 @@ When `INFERENCE_DEFERRED_ADMISSION="true"` AND the request carries a Workers
   affiliate-marked requests (#12749), non-optimistic configs, requests without
   an `executionCtx`.
 
-### Cached decision gates
+### Cached decision gates (`INFERENCE_HOT_PATH_CACHES`, default OFF)
 
 - `enforceOrgRateLimit`: in-isolate 5s lease per (org, endpoint). Allowed
-  decisions are served locally up to min(remaining, the org's pro-rated
-  window share per TTL); denials are leased too (stops 429 hammering). Requests
-  served off a lease are not appended to the Redis window — approximate by
-  design, bounded per isolate per TTL.
+  decisions are served locally up to min(remaining, the org's pro-rated window
+  share per TTL); denials are leased too (stops 429 hammering). **Convergent,
+  not lossy**: every leased request is carried into the NEXT authoritative
+  check (`checkRateLimitRedis`'s `carriedCount` appends them to the sliding
+  window before counting) and the carry survives lease expiry, so a hot
+  isolate can exceed the org limit by at most ONE in-flight lease budget
+  before the window catches up and denies — sustained throughput converges to
+  the org limit (proven by the D1 convergence test). Residual: a carry lost to
+  isolate death is bounded ≤ one budget.
 - `shouldBlockUser`: in-isolate 60s memo; dropped locally on a recorded
-  violation / reset, other isolates age out within the TTL (same bound the 60s
-  Tier-1 IAC already accepts).
+  violation / reset, other isolates age out within the TTL — a banned user can
+  keep inferring for up to 60s per warm isolate, the same bound the 60s Tier-1
+  IAC already accepts for API-key auth. Flag off = the uncached read.
 - `getCachedGatewayModelById`: in-isolate 60s per-model memo in front of the
   SWR catalog read. Catalog data only ever ADDS reasoning capability, so a TTL
-  of staleness cannot regress the token floor.
+  of staleness cannot regress the token floor. Flag off = the SWR read;
+  the only unconditional micro-change is that Groq-native ids no longer fetch
+  the merged catalog they never used (output-identical, zero staleness).
 
 ### Rollout
 
-Same soak-then-cutover discipline: `INFERENCE_DEFERRED_ADMISSION="false"`
-everywhere = zero behavior change. To cut over: flip in staging with
-`INFERENCE_OPTIMISTIC_BILLING="true"`, watch `[InferenceBilling] deferred
+Same soak-then-cutover discipline: both flags `"false"` everywhere = zero
+behavior change. The two flags flip independently: `INFERENCE_HOT_PATH_CACHES`
+first (read-side caches, no billing semantics), then
+`INFERENCE_DEFERRED_ADMISSION` in staging with
+`INFERENCE_OPTIMISTIC_BILLING="true"`, watching `[InferenceBilling] deferred
 admission refused after forward` + uncollected logs and the sweep stats, then
-prod. Revert = flag off (Tier-2 synchronous admission is untouched underneath).
+prod. Revert = flags off (Tier-2 synchronous admission and all authoritative
+reads are untouched underneath).
 
 ### Tests (Tier 3 — latency)
 
@@ -510,7 +529,9 @@ prod. Revert = flag off (Tier-2 synchronous admission is untouched underneath).
 first-call-wins, refusal blocklist, flag parsing — real in-memory cache + real
 `debitInferenceCost` with the credits seam mocked);
 `rate-limit-org-lease.test.ts` (lease budget, per-key isolation, denial lease,
-authoritative fallback, zero-remaining no-lease);
+authoritative fallback with carried-count flush, zero-remaining no-lease,
+flag-off = authoritative-every-time, and the D1 convergence proof — a hot
+isolate driving 5× the limit is bounded to limit + one lease budget);
 `content-moderation-block-cache.test.ts` (memo, thrown-read-not-cached,
 invalidation); route-level `chat-completions-optimistic-billing.test.ts`
 Tier-3 block (waitUntil capture, no synchronous reserve on the warm path,

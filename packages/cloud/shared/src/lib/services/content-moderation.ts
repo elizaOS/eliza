@@ -15,10 +15,13 @@ import { hasBadWords, minimalBadWordsArray } from "expletives";
 import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
+import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
 
 /**
- * #9899 Tier-3: in-isolate memo of the per-user block decision. On the
- * non-API-key inference slow path `shouldBlockUser` is an uncached
+ * #9899 Tier-3: in-isolate memo of the per-user block decision, gated behind
+ * `INFERENCE_HOT_PATH_CACHES` (default OFF — flag off is byte-identical to the
+ * uncached read, so "rollback = flip the flag" holds). On the non-API-key
+ * inference slow path `shouldBlockUser` is an uncached
  * cross-provider Postgres read on EVERY request (~100-400ms from a CF Worker).
  * Block state is rare-change data, so a 60s TTL is the propagation bound for
  * a ban reaching a warm isolate — the same worst-case bound the Tier-1
@@ -570,6 +573,9 @@ class ContentModerationService {
    * request).
    */
   async shouldBlockUser(userId: string): Promise<boolean> {
+    if (!isHotPathCachesEnabled()) {
+      return adminService.shouldBlockUser(userId);
+    }
     const cached = shouldBlockCache.get(userId);
     if (cached !== null) return cached;
     const blocked = await adminService.shouldBlockUser(userId);

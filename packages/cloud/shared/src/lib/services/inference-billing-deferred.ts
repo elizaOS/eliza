@@ -29,14 +29,17 @@
  *      the fail-closed `debitInferenceCost` (uncollected → hint + IAC
  *      invalidation, same as Tier-2), records the org in the refusal blocklist,
  *      and drops the balance hint so the org's NEXT request takes the
- *      synchronous-reserve path (402 at worst one request later than today).
+ *      synchronous-reserve path (serial traffic 402s one request later;
+ *      concurrent worst case is the one 15s hint window described below).
  *
  * Safety envelope vs Tier-2:
  *   - The 402 gate moves from an authoritative in-transaction balance read to
- *     the 15s hint + 60s refusal blocklist — a broke org can slip through for
- *     at most that window, and every slipped request is still charged (or
- *     recorded uncollected) by the fallback debit. Bounded over-spend, never
- *     free-forever; identical in kind to the Tier-2 KV-gate residual.
+ *     the 15s hint + 60s refusal blocklist — the concurrent worst case is
+ *     every request admitted within one 15s hint window (per org, fleet-wide;
+ *     the hint is shared) plus in-flight streams, and every slipped request is
+ *     still charged (or recorded uncollected) by the fallback debit. Bounded
+ *     over-spend, never free-forever; identical in kind to the Tier-2 KV-gate
+ *     residual, and a zero-delta on the prod KV config.
  *   - The durable record now depends on `waitUntil` surviving until the
  *     admission write lands (typically < the provider call itself). An isolate
  *     crash in that window loses the pending record AND the settle, i.e. a

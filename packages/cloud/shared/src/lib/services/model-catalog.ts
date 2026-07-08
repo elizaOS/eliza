@@ -18,6 +18,7 @@ import {
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
+import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
 
 interface SWRCachedValue<T> {
   data: T;
@@ -113,7 +114,9 @@ export async function getCachedBitRouterModelById(modelId: string): Promise<Cata
 }
 
 /**
- * #9899 Tier-3: in-isolate memo of the per-model gateway lookup. The lookup
+ * #9899 Tier-3: in-isolate memo of the per-model gateway lookup, gated behind
+ * `INFERENCE_HOT_PATH_CACHES` (default OFF — flag off is byte-identical to the
+ * un-memoized lookup, so "rollback = flip the flag" holds). The lookup
  * runs on the inference pre-forward path (reasoning-parameter detection) and,
  * warm, still costs a shared-cache read of the FULL catalog per request. The
  * result only ever ADDS reasoning capability (modelUsesReasoningTokens ORs it
@@ -134,17 +137,20 @@ export function __clearGatewayModelMemo(): void {
 }
 
 export async function getCachedGatewayModelById(modelId: string): Promise<CatalogModel | null> {
-  const memoized = gatewayModelMemo.get(modelId);
-  if (memoized) return memoized.model;
+  const memoEnabled = isHotPathCachesEnabled();
+  if (memoEnabled) {
+    const memoized = gatewayModelMemo.get(modelId);
+    if (memoized) return memoized.model;
+  }
 
   if (isGroqNativeModel(modelId)) {
     const groqModel = getGroqCatalogModel(modelId);
-    gatewayModelMemo.set(modelId, { model: groqModel });
+    if (memoEnabled) gatewayModelMemo.set(modelId, { model: groqModel });
     return groqModel;
   }
 
   const models = await getCachedMergedModelCatalog();
   const model = findBitRouterCatalogModelById(models, modelId);
-  gatewayModelMemo.set(modelId, { model });
+  if (memoEnabled) gatewayModelMemo.set(modelId, { model });
   return model;
 }
