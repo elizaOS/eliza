@@ -1,7 +1,8 @@
 // Exercises cloud DB shared runtime history behavior with deterministic repository fixtures.
-import { describe, expect, mock, test } from "bun:test";
+import { afterAll, describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import * as realClient from "../client";
 
 // Capture the generated WHERE clause so we can assert the delete is scoped to a
 // single agent (every channel) and never a table-wide wipe.
@@ -13,11 +14,21 @@ const deleteWhere = mock((clause: SQL) => {
   return { returning };
 });
 const del = mock(() => ({ where: deleteWhere }));
+const dbWriteMock = new Proxy(realClient.dbWrite as Record<PropertyKey, unknown>, {
+  get(target, prop, receiver) {
+    if (prop === "delete") return del;
+    return Reflect.get(target, prop, receiver);
+  },
+});
 
 mock.module("../client", () => ({
-  dbRead: {},
-  dbWrite: { delete: del },
+  ...realClient,
+  dbWrite: dbWriteMock,
 }));
+
+afterAll(() => {
+  mock.module("../client", () => realClient);
+});
 
 describe("SharedRuntimeHistoryRepository.deleteByAgent", () => {
   test("deletes every channel row for the agent and returns the count", async () => {

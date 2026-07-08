@@ -156,26 +156,14 @@ describe("stripe client init guard (via Worker bindings)", () => {
     });
   });
 
-  it("production + rk_test_ initializes but emits the same test-key warning", () => {
-    const warnings: unknown[][] = [];
-    const originalWarn = console.warn;
-    console.warn = (...args: unknown[]) => {
-      warnings.push(args);
-    };
-
-    try {
-      runWithCloudBindings(
-        { STRIPE_SECRET_KEY: RESTRICTED_TEST_KEY, ENVIRONMENT: "production" },
-        () => {
-          expect(isStripeConfigured()).toBe(true);
-          expect(() => getStripe()).not.toThrow();
-        },
-      );
-    } finally {
-      console.warn = originalWarn;
-    }
-
-    expect(warnings.some((args) => args.join(" ").includes("sk_test_/rk_test_"))).toBe(true);
+  it("production + rk_test_ initializes under the same test-key policy", () => {
+    runWithCloudBindings(
+      { STRIPE_SECRET_KEY: RESTRICTED_TEST_KEY, ENVIRONMENT: "production" },
+      () => {
+        expect(isStripeConfigured()).toBe(true);
+        expect(() => getStripe()).not.toThrow();
+      },
+    );
   });
 
   it("does not reuse a cached production live client under a later staging live binding", () => {

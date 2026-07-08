@@ -1,7 +1,8 @@
 // Exercises cloud DB agent sandboxes behavior with deterministic repository fixtures.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL, SQLWrapper } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import * as realHelpers from "../helpers";
 
 let capturedWhere: SQL | undefined;
 
@@ -94,13 +95,33 @@ function makeTx() {
 const transaction = mock(async (fn: (tx: ReturnType<typeof makeTx>) => Promise<unknown>) =>
   fn(makeTx()),
 );
+let useRepositoryMocks = false;
+let useTransactionMock = false;
 
 const warnLog = mock((..._args: unknown[]) => {});
+const dbReadMock = new Proxy(realHelpers.dbRead as Record<PropertyKey, unknown>, {
+  get(target, prop, receiver) {
+    if (prop === "select" && useRepositoryMocks) return select;
+    return Reflect.get(target, prop, receiver);
+  },
+});
+const dbWriteMock = new Proxy(realHelpers.dbWrite as Record<PropertyKey, unknown>, {
+  get(target, prop, receiver) {
+    if (prop === "update" && useRepositoryMocks) return update;
+    if (prop === "transaction" && useTransactionMock) return transaction;
+    return Reflect.get(target, prop, receiver);
+  },
+});
 
 mock.module("../helpers", () => ({
-  dbRead: { select },
-  dbWrite: { update, transaction },
+  ...realHelpers,
+  dbRead: dbReadMock,
+  dbWrite: dbWriteMock,
 }));
+
+afterAll(() => {
+  mock.module("../helpers", () => realHelpers);
+});
 
 mock.module("../ensure-agent-sandbox-schema", () => ({
   ensureAgentSandboxSchema,
@@ -112,7 +133,13 @@ mock.module("../../lib/utils/logger", () => ({
 
 describe("AgentSandboxesRepository", () => {
   beforeEach(() => {
+    useRepositoryMocks = true;
     selectRows = [];
+  });
+
+  afterEach(() => {
+    useRepositoryMocks = false;
+    useTransactionMock = false;
   });
 
   test("allows sleeping agents to take the provisioning lock for wake", async () => {
@@ -504,6 +531,14 @@ describe("AgentSandboxesRepository", () => {
         updated_at: new Date("2026-07-07T12:00:00.000Z"),
       };
     }
+
+    beforeEach(() => {
+      useTransactionMock = true;
+    });
+
+    afterEach(() => {
+      useTransactionMock = false;
+    });
 
     test("the claim SELECT filters out null/empty node_id pool rows", async () => {
       userRowForClaim = pendingUserRow();

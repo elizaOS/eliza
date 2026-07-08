@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
+process.env.DATABASE_URL ||= "pglite://memory";
+process.env.TEST_DATABASE_URL ||= "pglite://memory";
+
+const realClient = await import("../../../db/client");
+
 const walletRecord = {
   id: "wallet-1",
   organization_id: "00000000-0000-4000-8000-0000000000aa",
@@ -17,25 +22,29 @@ const findFirst = mock(async (query: { where: unknown }) => {
 });
 const signMessage = mock(async () => ({ signature: "0xsigned" }));
 const setIfNotExists = mock(async () => true);
+const dbQueryMock = new Proxy(
+  (realClient.db as unknown as { query?: Record<PropertyKey, unknown> }).query ?? {},
+  {
+    get(target, prop, receiver) {
+      if (prop === "agentServerWallets") return { findFirst };
+      return Reflect.get(target, prop, receiver);
+    },
+  },
+);
+const dbMock = new Proxy(realClient.db as Record<PropertyKey, unknown>, {
+  get(target, prop, receiver) {
+    if (prop === "query") return dbQueryMock;
+    return Reflect.get(target, prop, receiver);
+  },
+});
 
 mock.module("viem", () => ({
   verifyMessage: mock(async () => true),
 }));
 
 mock.module("../../../db/client", () => ({
-  db: {
-    query: {
-      agentServerWallets: {
-        findFirst,
-      },
-    },
-  },
-  dbRead: {},
-  dbWrite: {},
-  getDbConnectionInfo: () => ({
-    url: "postgres://test",
-    source: "test",
-  }),
+  ...realClient,
+  db: dbMock,
 }));
 
 mock.module("../../cache/client", () => ({
