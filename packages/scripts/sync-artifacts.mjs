@@ -23,8 +23,10 @@ import { once } from "node:events";
 import {
   createWriteStream,
   existsSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,6 +38,8 @@ const MANIFEST = join(ROOT, "packages", "scripts", "artifacts-manifest.json");
 const MARKER = join(ROOT, ".eliza-artifacts-version");
 const log = (m) => console.log(`[sync-artifacts] ${m}`);
 const warn = (m) => console.warn(`[sync-artifacts] WARNING: ${m}`);
+const PROGRESS_INTERVAL_MS = 5000;
+const STALE_TMP_MAX_AGE_MS = 6 * 60 * 60_000;
 
 if (process.env.ELIZA_SKIP_ARTIFACT_SYNC === "1") {
   log("skipped (ELIZA_SKIP_ARTIFACT_SYNC=1)");
@@ -48,6 +52,8 @@ if (!existsSync(MANIFEST)) {
 
 const m = JSON.parse(readFileSync(MANIFEST, "utf8"));
 const { version, asset } = m;
+cleanupStaleTempArchives();
+
 if (existsSync(MARKER) && readFileSync(MARKER, "utf8").trim() === version) {
   log(`artifacts already at ${version}; nothing to do`);
   process.exit(0);
@@ -57,7 +63,6 @@ const url =
   asset.url ||
   `https://github.com/${asset.repo}/releases/download/${asset.tag}/${asset.name}`;
 const tmp = join(tmpdir(), `eliza-artifacts-${process.pid}.tar.gz`);
-const PROGRESS_INTERVAL_MS = 5000;
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -97,6 +102,37 @@ function progressStatus(received, total, startedAt) {
   }
   parts.push(`at ${formatBytes(bytesPerSecond)}/s`);
   return parts.join(" ");
+}
+
+function cleanupStaleTempArchives() {
+  const now = Date.now();
+  let removed = 0;
+  for (const entry of readdirSync(tmpdir())) {
+    if (!/^eliza-artifacts-\d+\.tar\.gz$/.test(entry)) continue;
+    const file = join(tmpdir(), entry);
+    let stat;
+    try {
+      stat = statSync(file);
+    } catch (err) {
+      // error-policy:J6 best-effort temp cleanup; a racing process may remove the file first.
+      warn(`could not stat stale temp archive ${file}: ${err.message}`);
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    if (now - stat.mtimeMs < STALE_TMP_MAX_AGE_MS) continue;
+    try {
+      rmSync(file, { force: true });
+      removed += 1;
+    } catch (err) {
+      // error-policy:J6 best-effort temp cleanup; failed cleanup must not block install.
+      warn(`could not remove stale temp archive ${file}: ${err.message}`);
+    }
+  }
+  if (removed > 0) {
+    log(
+      `removed ${removed} stale artifact temp archive${removed === 1 ? "" : "s"}`,
+    );
+  }
 }
 
 async function streamToFileWithProgress(response, dest, expectedBytes) {
