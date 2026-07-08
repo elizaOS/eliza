@@ -532,6 +532,10 @@ export async function runPollingBackend(
       cloudApiBase: decision.cloudApiBase,
       agentId: decision.agentId,
       cloudToken,
+      consumeRedirectInProcess: isCapacitorNative(),
+      onPairedInProcess: (apiToken) => {
+        client.setToken(apiToken);
+      },
       navigate: (url) => {
         if (typeof window !== "undefined") {
           window.location.assign(url);

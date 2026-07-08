@@ -48,6 +48,17 @@ function defaultNavigate(url: string): void {
   }
 }
 
+function shouldConsumePairRedirectInProcess(): boolean {
+  try {
+    const cap = (globalThis as Record<string, unknown>).Capacitor as
+      | { isNativePlatform?: () => boolean }
+      | undefined;
+    return Boolean(cap?.isNativePlatform?.());
+  } catch {
+    return false;
+  }
+}
+
 export function useAgentSessionRecovery(
   options: UseAgentSessionRecoveryOptions,
 ): AgentSessionRecoveryStatus {
@@ -97,6 +108,11 @@ export function useAgentSessionRecovery(
       cloudApiBase: decision.cloudApiBase,
       agentId: decision.agentId,
       cloudToken,
+      consumeRedirectInProcess: shouldConsumePairRedirectInProcess(),
+      onPairedInProcess: async (apiToken) => {
+        const { client } = await import("../api");
+        client.setToken(apiToken);
+      },
       navigate,
     })
       .then((result) => {

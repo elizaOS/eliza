@@ -23,10 +23,16 @@ import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import { savePendingCloudHandoff } from "../cloud/handoff/pending-handoff-store";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
+import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
 import { clearForceFreshFirstRun } from "../platform/first-run-reset";
-import { isAndroid, isDesktopPlatform, isIOS } from "../platform/init";
+import {
+  isAndroid,
+  isDesktopPlatform,
+  isIOS,
+  isNative,
+} from "../platform/init";
 import {
   addAgentProfile,
   createPersistedActiveServer,
@@ -226,7 +232,8 @@ async function pairDedicatedCloudAgentInCurrentWindow(opts: {
   cloudApiBase: string;
   agentId: string;
   cloudToken: string;
-}): Promise<void> {
+  containerBase?: string;
+}): Promise<"navigate" | "in-process"> {
   if (typeof window === "undefined") {
     throw new Error("Cloud agent sign-in requires a browser window.");
   }
@@ -234,6 +241,18 @@ async function pairDedicatedCloudAgentInCurrentWindow(opts: {
     cloudApiBase: opts.cloudApiBase,
     agentId: opts.agentId,
     cloudToken: opts.cloudToken,
+    consumeRedirectInProcess: isNative && !isDesktopPlatform(),
+    onPairedInProcess: (apiToken) => {
+      if (opts.containerBase) {
+        silentlyRepointToDedicated({
+          containerBase: opts.containerBase,
+          dedicatedAgentId: opts.agentId,
+          authToken: apiToken,
+        });
+      } else {
+        client.setToken(apiToken);
+      }
+    },
     navigate: (url) => {
       window.location.replace(url);
     },
@@ -241,6 +260,7 @@ async function pairDedicatedCloudAgentInCurrentWindow(opts: {
   if (!result.ok) {
     throw new Error(result.message);
   }
+  return result.mode;
 }
 
 function readSyncOnDeviceAgentBearer(): string | null {
@@ -486,11 +506,20 @@ export async function bindCloudAgent(
   if (selectedAgent.requiresAgentPairing) {
     ports.onStatus?.("Signing in to your cloud agent", "pairing");
     try {
-      await pairDedicatedCloudAgentInCurrentWindow({
+      const pairMode = await pairDedicatedCloudAgentInCurrentWindow({
         cloudApiBase,
         agentId: selectedAgent.agentId,
         cloudToken: authToken,
+        containerBase: cloudAgentApiBase,
       });
+      if (pairMode === "in-process") {
+        persistMobileRuntimeModeForServerTarget("elizacloud");
+        clearForceFreshFirstRun();
+        clearPersistedFirstRunState();
+        ports.onStatus?.(null);
+        ports.completeFirstRun("chat");
+        return { kind: "done" };
+      }
       return { kind: "handoff-started" };
     } catch (err) {
       return {
@@ -594,12 +623,14 @@ export async function bindCloudAgent(
           dedicatedAgentId,
           cloudApiBase,
           authToken,
-          onSwitch: async () =>
-            pairDedicatedCloudAgentInCurrentWindow({
+          onSwitch: async (containerBase) => {
+            await pairDedicatedCloudAgentInCurrentWindow({
               cloudApiBase,
               agentId: dedicatedAgentId,
               cloudToken: authToken,
-            }),
+              containerBase,
+            });
+          },
         });
       },
       () => {

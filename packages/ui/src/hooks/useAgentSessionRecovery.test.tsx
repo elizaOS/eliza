@@ -57,6 +57,7 @@ function cloudServer(agentId: string) {
 }
 
 afterEach(() => {
+  delete (globalThis as { Capacitor?: unknown }).Capacitor;
   vi.clearAllMocks();
 });
 
@@ -86,6 +87,34 @@ describe("useAgentSessionRecovery", () => {
       cloudApiBase: "https://elizacloud.ai",
       cloudToken: "steward.jwt.token",
     });
+  });
+
+  it("uses in-process pairing on native so the WebView stays on the app origin", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    mockCloudToken.mockReturnValue("steward.jwt.token");
+    mockActiveServer.mockReturnValue(cloudServer("agent-1"));
+    mockRunRecovery.mockReturnValue(new Promise(() => {}));
+
+    const statuses: string[] = [];
+    render(
+      <Probe
+        active
+        reason="remote_auth_required"
+        onStatus={(s) => statuses.push(s)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(statuses).toContain("recovering");
+    });
+    expect(mockRunRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consumeRedirectInProcess: true,
+        onPairedInProcess: expect.any(Function),
+      }),
+    );
   });
 
   it("stays idle (wall) when there is no cloud session", async () => {

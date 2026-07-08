@@ -29,9 +29,16 @@ const mocks = vi.hoisted(() => ({
     base.includes("/api/v1/eliza/agents/"),
   ),
   loadPersistedActiveServer: vi.fn((): Record<string, unknown> | null => null),
-  runAgentSessionRecovery: vi.fn(async () => ({
-    ok: true as const,
+  runAgentSessionRecovery: vi.fn<
+    (_opts?: unknown) => Promise<{
+      ok: true;
+      redirectUrl: string;
+      mode: "navigate" | "in-process";
+    }>
+  >(async (_opts?: unknown) => ({
+    ok: true,
     redirectUrl: "https://dedicated-1.elizacloud.ai/pair?token=pairing",
+    mode: "navigate",
   })),
   getCloudCompatAgent: vi.fn(async (_id: string) => ({
     success: true as boolean,
@@ -48,6 +55,7 @@ const mocks = vi.hoisted(() => ({
       message: "ok",
     },
   })),
+  silentlyRepointToDedicated: vi.fn(),
 }));
 
 vi.mock("../../api", () => ({
@@ -73,6 +81,10 @@ vi.mock("../../state/persistence", () => ({
 
 vi.mock("../../state/agent-session-recovery-runner", () => ({
   runAgentSessionRecovery: mocks.runAgentSessionRecovery,
+}));
+
+vi.mock("./silent-repoint", () => ({
+  silentlyRepointToDedicated: mocks.silentlyRepointToDedicated,
 }));
 
 import {
@@ -137,6 +149,7 @@ describe("resumePendingCloudHandoff", () => {
     mocks.runAgentSessionRecovery.mockResolvedValue({
       ok: true,
       redirectUrl: "https://dedicated-1.elizacloud.ai/pair?token=pairing",
+      mode: "navigate",
     });
     mocks.getCloudCompatAgent.mockResolvedValue({
       success: true,
@@ -157,6 +170,7 @@ describe("resumePendingCloudHandoff", () => {
     __resetResumeForTests();
   });
   afterEach(() => {
+    delete (globalThis as { Capacitor?: unknown }).Capacitor;
     window.localStorage.clear();
     vi.restoreAllMocks();
   });
@@ -183,16 +197,57 @@ describe("resumePendingCloudHandoff", () => {
       cloudApiBase: "https://elizacloud.ai",
       authToken: "cloud-token",
     });
-    expect(mocks.runAgentSessionRecovery).toHaveBeenCalledWith({
-      cloudApiBase: "https://elizacloud.ai",
-      agentId: "dedicated-1",
-      cloudToken: "cloud-token",
-      navigate: expect.any(Function),
-    });
+    expect(mocks.runAgentSessionRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cloudApiBase: "https://elizacloud.ai",
+        agentId: "dedicated-1",
+        cloudToken: "cloud-token",
+        navigate: expect.any(Function),
+      }),
+    );
     // Success terminal → the shared bridge row is deleted.
     expect(mocks.deleteSharedBridgeAgent).toHaveBeenCalledWith("shared-1", {
       cloudApiBase: "https://elizacloud.ai",
       authToken: "cloud-token",
+    });
+  });
+
+  it("native resume consumes the pair redirect in-process and repoints with the exchanged agent key", async () => {
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+    };
+    savePendingCloudHandoff(pending());
+    mocks.loadPersistedActiveServer.mockReturnValue(activeSharedServer());
+    mocks.runAgentSessionRecovery.mockImplementationOnce(async (opts) => {
+      (
+        opts as { onPairedInProcess?: (apiToken: string) => void }
+      ).onPairedInProcess?.("agent-api-key");
+      return {
+        ok: true as const,
+        redirectUrl: "https://dedicated-1.elizacloud.ai/pair?token=pairing",
+        mode: "in-process" as const,
+      };
+    });
+    mocks.startCloudAgentHandoff.mockImplementation(async (opts) => {
+      await (opts as { onSwitch?: (base: string) => Promise<void> }).onSwitch?.(
+        "https://dedicated-1.elizacloud.ai",
+      );
+      return { status: "switched" as const, imported: 1 };
+    });
+
+    expect(resumePendingCloudHandoff()).toBe(true);
+    await settle();
+
+    expect(mocks.runAgentSessionRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consumeRedirectInProcess: true,
+        onPairedInProcess: expect.any(Function),
+      }),
+    );
+    expect(mocks.silentlyRepointToDedicated).toHaveBeenCalledWith({
+      containerBase: "https://dedicated-1.elizacloud.ai",
+      dedicatedAgentId: "dedicated-1",
+      authToken: "agent-api-key",
     });
   });
 

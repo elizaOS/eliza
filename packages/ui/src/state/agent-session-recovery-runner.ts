@@ -1,21 +1,27 @@
 /**
  * Executes post-upgrade agent-session recovery (#15132): refresh a stale
- * dedicated-agent credential by re-running the cloud pairing exchange in the
- * CURRENT window, then land back on `/` re-paired.
+ * dedicated-agent credential by re-running the cloud pairing exchange.
  *
  * This reuses the exact server-side exchange that first-pairing and the
  * "Open Web UI" popup use, `POST /api/v1/eliza/agents/:id/pairing-token`
  * returns a one-time `<agent>/pair?token=…` `redirectUrl`; the agent's `/pair`
  * relay consumes the token, pins the fresh API key into sessionStorage + the
- * boot-config singleton, and redirects to `/`. Because the dead-end app is
- * ALREADY on the agent, we navigate the current window rather than opening a
- * popup (no popup-blocker dependency, no second tab).
+ * boot-config singleton, and redirects to `/`. Browser shells can still hand
+ * off to that relay. Capacitor native shells must not navigate their main
+ * WebView to the remote agent origin, because the native bridge is injected
+ * only for the app origin; those callers consume the returned `/pair` token
+ * in-process instead (#15483).
  *
  * SECURITY NOTE (auth-adjacent): no auth is bypassed or weakened. The pairing
  * token is minted server-side ONLY for a caller holding a valid cloud session;
  * an unauthenticated caller gets a 401/403 here and falls through to the
  * password wall exactly as before.
  */
+
+import {
+  exchangeCloudPairToken,
+  persistCloudPairApiToken,
+} from "../components/auth/CloudPairRelay";
 
 const MAX_PAIRING_WAIT_MS = 120_000;
 const DEFAULT_RETRY_AFTER_MS = 5_000;
@@ -31,7 +37,7 @@ interface PairingTokenResponse {
 }
 
 export type AgentSessionRecoveryResult =
-  | { ok: true; redirectUrl: string }
+  | { ok: true; redirectUrl: string; mode: "navigate" | "in-process" }
   | {
       ok: false;
       reason: "not-ready" | "unauthorized" | "error";
@@ -53,6 +59,18 @@ export interface RunAgentSessionRecoveryDeps {
   nowFn?: () => number;
   /** Navigate the current window to the `/pair` relay. Injected in tests. */
   navigate: (url: string) => void;
+  /**
+   * Consume the returned `/pair?token=…` exchange inside the current app origin
+   * instead of navigating to the remote relay. Required for Capacitor native
+   * WebViews, where remote-origin navigation loses the native bridge.
+   */
+  consumeRedirectInProcess?: boolean;
+  /** Injected pair-token exchange (tests). Defaults to CloudPairRelay's exchange. */
+  exchangePairToken?: (token: string) => Promise<string>;
+  /** Injected API-key persistence (tests). Defaults to CloudPairRelay's persistence. */
+  persistPairApiToken?: (apiToken: string) => void;
+  /** Optional callback after an in-process pair succeeds. */
+  onPairedInProcess?: (apiToken: string) => void | Promise<void>;
 }
 
 const realSleep = (ms: number) =>
@@ -78,6 +96,16 @@ function retryAfterMs(res: Response, data: PairingTokenResponse): number {
   return DEFAULT_RETRY_AFTER_MS;
 }
 
+function pairTokenFromRedirectUrl(redirectUrl: string): string | null {
+  try {
+    const parsed = new URL(redirectUrl);
+    if (parsed.pathname.replace(/\/+$/, "") !== "/pair") return null;
+    return parsed.searchParams.get("token")?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Poll the cloud pairing-token endpoint until it returns a `/pair` redirect,
  * then navigate the current window there. The `/pair` relay pins the fresh
@@ -94,6 +122,11 @@ export async function runAgentSessionRecovery(
     agentId,
     cloudToken,
     navigate,
+    consumeRedirectInProcess = false,
+    exchangePairToken = (token: string) =>
+      exchangeCloudPairToken(token, { cloudApiBase }),
+    persistPairApiToken = persistCloudPairApiToken,
+    onPairedInProcess,
     fetchFn = fetch,
     sleepFn = realSleep,
     nowFn = Date.now,
@@ -160,10 +193,33 @@ export async function runAgentSessionRecovery(
           message: "Pairing token returned an unsafe redirect URL",
         };
       }
+      if (consumeRedirectInProcess) {
+        const pairToken = pairTokenFromRedirectUrl(redirectUrl);
+        if (!pairToken) {
+          return {
+            ok: false,
+            reason: "error",
+            message: "Pairing token returned a redirect without a pair token",
+          };
+        }
+        try {
+          const apiToken = await exchangePairToken(pairToken);
+          persistPairApiToken(apiToken);
+          await onPairedInProcess?.(apiToken);
+          return { ok: true, redirectUrl, mode: "in-process" };
+        } catch (err) {
+          return {
+            ok: false,
+            reason: "error",
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }
+
       // Hand off to the /pair relay in the current window: it pins the fresh
       // credential and redirects to `/`, clearing the stale-credential 401 loop.
       navigate(redirectUrl);
-      return { ok: true, redirectUrl };
+      return { ok: true, redirectUrl, mode: "navigate" };
     }
 
     return {
