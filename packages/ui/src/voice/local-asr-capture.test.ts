@@ -121,6 +121,149 @@ describe("local ASR capture", () => {
   });
 });
 
+describe("startLocalAsrRecorder chunked-streaming segmenter (voice V2a)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Stand up a fake browser audio stack that lets us drive onaudioprocess with
+  // synthetic frames and capture the emitted segments.
+  function fakeAudioStack() {
+    const trackStop = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop: trackStop }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+
+    let onProcess: ((event: unknown) => void) | null = null;
+    const processor = {
+      set onaudioprocess(fn: ((event: unknown) => void) | null) {
+        onProcess = fn;
+      },
+      get onaudioprocess() {
+        return onProcess;
+      },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    class FakeAudioContext {
+      state = "running";
+      sampleRate = 16000;
+      resume = vi.fn().mockResolvedValue(undefined);
+      close = vi.fn().mockResolvedValue(undefined);
+      createMediaStreamSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
+      createScriptProcessor = vi.fn(() => processor);
+      createAnalyser = vi.fn(() => ({
+        fftSize: 0,
+        smoothingTimeConstant: 0,
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }));
+      destination = {};
+    }
+    vi.stubGlobal("window", {
+      AudioContext: FakeAudioContext,
+      setTimeout: (fn: () => void) => setTimeout(fn, 0),
+    });
+    return {
+      drive: (frame: Float32Array) => {
+        onProcess?.({
+          inputBuffer: {
+            length: frame.length,
+            numberOfChannels: 1,
+            getChannelData: () => frame,
+          },
+        });
+      },
+    };
+  }
+
+  it("emits mid-capture segments on boundaries and a final on stop", async () => {
+    const stack = fakeAudioStack();
+    const segments: { seq: number; isFinal: boolean; bytes: number }[] = [];
+    // A segmenter stub that cuts a boundary on every 3rd frame (deterministic).
+    let n = 0;
+    const recorder = await startLocalAsrRecorder({
+      segmenter: {
+        update: () => {
+          n += 1;
+          return { boundary: n % 3 === 0, speech: true };
+        },
+        config: { overlapMs: 0 },
+      },
+      onSegment: (s) =>
+        segments.push({ seq: s.seq, isFinal: s.isFinal, bytes: s.wav.length }),
+    });
+
+    // 6 loud frames → boundaries after frame 3 and frame 6 → 2 mid segments.
+    const loud = new Float32Array(320).fill(0.3);
+    for (let i = 0; i < 6; i += 1) stack.drive(loud);
+    expect(segments.filter((s) => !s.isFinal)).toHaveLength(2);
+    expect(segments.map((s) => s.seq)).toEqual([0, 1]);
+
+    await recorder.stop();
+    // The stop() flush emits the terminal segment (seq 2, isFinal).
+    const finals = segments.filter((s) => s.isFinal);
+    expect(finals).toHaveLength(1);
+    expect(finals[0]?.seq).toBe(2);
+  });
+
+  it("drops a silent mid-segment without consuming a seq", async () => {
+    const stack = fakeAudioStack();
+    const segments: { seq: number; isFinal: boolean }[] = [];
+    let n = 0;
+    const recorder = await startLocalAsrRecorder({
+      segmenter: {
+        update: () => {
+          n += 1;
+          return { boundary: n % 2 === 0, speech: true };
+        },
+        config: { overlapMs: 0 },
+      },
+      onSegment: (s) => segments.push({ seq: s.seq, isFinal: s.isFinal }),
+    });
+
+    const silent = new Float32Array(320).fill(0);
+    // Boundary on frame 2 over silence → dropped, no seq consumed.
+    stack.drive(silent);
+    stack.drive(silent);
+    expect(segments).toHaveLength(0);
+
+    // Now a real segment: boundary on frame 4 over speech → seq 0.
+    const loud = new Float32Array(320).fill(0.3);
+    stack.drive(loud);
+    stack.drive(loud);
+    expect(segments).toEqual([{ seq: 0, isFinal: false }]);
+
+    await recorder.stop();
+  });
+
+  it("emits a header-only final marker when the trailing tail is silent", async () => {
+    const stack = fakeAudioStack();
+    const segments: { seq: number; isFinal: boolean; bytes: number }[] = [];
+    const recorder = await startLocalAsrRecorder({
+      segmenter: {
+        update: () => ({ boundary: false, speech: false }),
+        config: { overlapMs: 0 },
+      },
+      onSegment: (s) =>
+        segments.push({ seq: s.seq, isFinal: s.isFinal, bytes: s.wav.length }),
+    });
+
+    // Feed only silence into the (never-cut) pending segment. On stop() the tail
+    // is silent, so the final marker is emitted as a header-only WAV (44 bytes)
+    // — the sink recognizes this and finalizes the stitcher without a POST.
+    const silent = new Float32Array(320).fill(0);
+    stack.drive(silent);
+    stack.drive(silent);
+    await recorder.stop();
+    const finals = segments.filter((s) => s.isFinal);
+    expect(finals).toHaveLength(1);
+    expect(finals[0]?.bytes).toBe(44); // RIFF header only, no PCM data
+  });
+});
+
 describe("startLocalAsrRecorder resume failure", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -37,13 +37,17 @@ import {
   isSilentWav,
   type LocalAsrAutoStopOptions,
   type LocalAsrRecorder,
+  type LocalAsrSegment,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
 import {
   isLocalInferenceAsrReady,
+  transcribeCloudSegment,
   transcribeCloudWav,
   transcribeLocalInferenceWav,
 } from "./local-asr-transcribe";
+import { createCloudSttSegmenter } from "./cloud-stt-segmenter";
+import { CloudSttSessionStitcher } from "./cloud-stt-stitcher";
 import {
   getSpeechRecognitionCtor,
   type SpeechRecognitionInstance,
@@ -126,6 +130,17 @@ export interface VoiceCaptureFactoryOptions {
    * and a manual stop must NOT submit a partial turn.
    */
   finalizeOnStop?: boolean;
+  /**
+   * Enable chunked-segment incremental transcription (voice V2a) for the CLOUD
+   * backend: POST short audio segments as the user speaks and emit the stitched
+   * running transcript as NON-FINAL `onTranscript` segments (live preview),
+   * finalizing on stop(). No-op for non-cloud backends. Defaults to `false`
+   * here (the ambient/desktop factory has no live composer surface by default);
+   * `useVoiceChat` drives the composer's streaming separately. Always degrades
+   * to the batch full-WAV transcription when segmentation is unsupported or a
+   * segment hard-fails.
+   */
+  cloudStreaming?: boolean;
 }
 
 export interface VoiceCaptureHandle {
@@ -223,7 +238,63 @@ export function createVoiceCapture(
     lang = "en-US",
     localAsrAutoStop,
     finalizeOnStop = false,
+    cloudStreaming = false,
   } = options;
+
+  // Chunked-streaming cloud STT session (voice V2a). Built per capture turn when
+  // cloudStreaming is on AND the resolved backend is cloud. Torn down on stop /
+  // dispose. Kept null otherwise (batch path unchanged).
+  let streamStitcher: CloudSttSessionStitcher | null = null;
+  let streamSessionId: string | null = null;
+  let streamAbort: AbortController | null = null;
+  let streamInflight: Set<Promise<void>> = new Set();
+  let streamDegraded = false;
+
+  function teardownStreamSession(): void {
+    streamAbort?.abort();
+    streamAbort = null;
+    streamStitcher = null;
+    streamSessionId = null;
+    streamInflight = new Set();
+    streamDegraded = false;
+  }
+
+  function handleStreamSegment(segment: LocalAsrSegment): void {
+    const stitcher = streamStitcher;
+    const sessionId = streamSessionId;
+    const abort = streamAbort;
+    if (!stitcher || !sessionId || !abort) return;
+    // Empty-data final marker (silent tail, header-only WAV): finalize without a
+    // doomed POST of a data-less WAV.
+    if (segment.isFinal && segment.wav.length <= 44) {
+      const running = stitcher.push({ seq: segment.seq, text: "", isFinal: true });
+      if (running) onTranscript({ text: running, final: false, backend: "cloud" });
+      return;
+    }
+    const task = (async () => {
+      try {
+        const text = await transcribeCloudSegment(segment.wav, {
+          signal: abort.signal,
+          segment: { sessionId, seq: segment.seq, isFinal: segment.isFinal },
+        });
+        if (streamStitcher !== stitcher) return; // superseded turn
+        const running = stitcher.push({
+          seq: segment.seq,
+          text,
+          isFinal: segment.isFinal,
+        });
+        // Live preview only — never final here; the turn's final commits at stop().
+        if (running) {
+          onTranscript({ text: running, final: false, backend: "cloud" });
+        }
+      } catch {
+        if (abort.signal.aborted) return; // expected on teardown/barge-in
+        streamDegraded = true; // distrust the partial stitch at stop()
+      }
+    })();
+    streamInflight.add(task);
+    void task.finally(() => streamInflight.delete(task));
+  }
   // Resolved on start() — the server-readiness probe is async, so the backend
   // choice is deferred from construction to the first start() call.
   let backendKind: VoiceCaptureBackend | null = null;
@@ -249,8 +320,33 @@ export function createVoiceCapture(
   // identical mic setup; the backends diverge only at stop() (which route the
   // WAV is POSTed to).
   async function startWavRecorder(): Promise<void> {
+    // Stand up the streaming session only for the cloud backend with streaming
+    // enabled. The local-inference backend keeps the batch path (free/offline;
+    // no felt-latency motivation to chunk).
+    const streamThisTurn = cloudStreaming && backendKind === "cloud";
+    let segmentWiring: Pick<
+      Parameters<typeof startLocalAsrRecorder>[0] & object,
+      "segmenter" | "onSegment"
+    > = {};
+    if (streamThisTurn) {
+      teardownStreamSession();
+      streamStitcher = new CloudSttSessionStitcher();
+      streamSessionId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      streamAbort = new AbortController();
+      streamInflight = new Set();
+      streamDegraded = false;
+      const { update, config } = createCloudSttSegmenter();
+      segmentWiring = {
+        segmenter: { update, config: { overlapMs: config.overlapMs } },
+        onSegment: handleStreamSegment,
+      };
+    }
     const next = await startLocalAsrRecorder({
       ...(localAsrAutoStop ? { autoStop: localAsrAutoStop } : {}),
+      ...segmentWiring,
       onAutoStop: () => {
         void stop();
       },
@@ -453,6 +549,9 @@ export function createVoiceCapture(
         // is free/offline, so it stays unguarded to avoid clipping quiet-mic
         // users whose real speech reads near the silence floor on-device.)
         if (kind === "cloud" && isSilentWav(wav)) {
+          // A silent tap: also discard any streaming session (its segments were
+          // silent too, so nothing to stitch/commit).
+          teardownStreamSession();
           setState("stopped");
           setState("idle");
           return;
@@ -462,13 +561,36 @@ export function createVoiceCapture(
           // attached so the transcript recorder can retain the audio. A ~15s
           // per-attempt timeout + one auto-retry (#voice-V4) rides inside
           // transcribeCloudWav so flaky cellular doesn't hard-fail the turn.
-          const text = await transcribeCloudWav(wav);
-          onTranscript({
-            text,
-            final: true,
-            backend: "cloud",
-            audioWav: wav,
-          });
+          let committed = false;
+          const stitcher = streamStitcher;
+          if (stitcher) {
+            // Drain in-flight segment POSTs (incl. the tail just flushed by
+            // recorder.stop()), then prefer the streamed stitch when it
+            // finalized cleanly with no hard-failed segment. Otherwise fall
+            // through to the authoritative batch transcription (V2a graceful
+            // degrade).
+            await Promise.allSettled(Array.from(streamInflight));
+            const running = stitcher.running.trim();
+            if (running && stitcher.isDone && !streamDegraded) {
+              onTranscript({
+                text: running,
+                final: true,
+                backend: "cloud",
+                audioWav: wav,
+              });
+              committed = true;
+            }
+          }
+          teardownStreamSession();
+          if (!committed) {
+            const text = await transcribeCloudWav(wav);
+            onTranscript({
+              text,
+              final: true,
+              backend: "cloud",
+              audioWav: wav,
+            });
+          }
         } else {
           const { text, words } = await transcribeLocalInferenceWav(wav);
           onTranscript({
@@ -523,6 +645,8 @@ export function createVoiceCapture(
       recorder.cancel();
       recorder = null;
     }
+    // Abort any in-flight streaming segment POSTs + clear the session (voice V2a).
+    teardownStreamSession();
     if (recognition) {
       try {
         recognition.abort();

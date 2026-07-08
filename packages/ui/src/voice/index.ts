@@ -59,10 +59,26 @@ export {
   type SpeakerResolver,
 } from "./jni-voice-pipeline";
 export {
+  type CloudSttSegmentMeta,
+  type TranscribeCloudSegmentOptions,
   type TranscribeWavOptions,
   type TranscribeWavResult,
+  encodeAsrSegmentHeader,
+  transcribeCloudSegment,
   transcribeLocalInferenceWav,
 } from "./local-asr-transcribe";
+export {
+  type CloudSttSegment,
+  CloudSttSessionStitcher,
+  seamOverlapWordCount,
+} from "./cloud-stt-stitcher";
+export {
+  type CloudSttSegmenterConfig,
+  type CloudSttSegmenterOptions,
+  type CloudSttSegmenterUpdate,
+  createCloudSttSegmenter,
+  DEFAULT_CLOUD_STT_SEGMENTER,
+} from "./cloud-stt-segmenter";
 export {
   downmixAudioBufferToMono,
   type PlaybackAudioFrameEvent,

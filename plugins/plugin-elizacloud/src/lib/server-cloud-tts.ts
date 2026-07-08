@@ -367,6 +367,20 @@ export async function handleCloudSttRoute(
       : "audio/wav";
   const filename = mime.includes("wav") ? "recording.wav" : "recording.bin";
 
+  // Chunked-streaming segment attribution (voice V2a, Phase 1). The client may
+  // POST intermediate segments with an `X-Asr-Segment` header. Phase 1 keeps
+  // this proxy STATELESS — each segment is a standalone WAV forwarded to the
+  // batch upstream unchanged; stitching is client-side. We forward the header
+  // downstream (passthrough only) so the segment stays attributable end-to-end
+  // and a future stateful upstream could group by it, but we hold NO session
+  // state here. A malformed / absent header is ignored (batch requests carry
+  // none).
+  const segmentHeaderRaw = req.headers["x-asr-segment"];
+  const segmentHeader =
+    typeof segmentHeaderRaw === "string" && segmentHeaderRaw.trim()
+      ? segmentHeaderRaw.trim().slice(0, 128)
+      : undefined;
+
   const cloudUrls = resolveCloudSttCandidateUrls();
   logger.debug(
     `[Cloud STT] proxying ${rawBody.length}B ${mime} to ${cloudUrls.length} candidate(s)`,
@@ -390,6 +404,8 @@ export async function handleCloudSttRoute(
         headers: {
           Authorization: `Bearer ${cloudApiKey}`,
           "x-api-key": cloudApiKey,
+          // Passthrough segment attribution (voice V2a); omitted for batch.
+          ...(segmentHeader ? { "X-Asr-Segment": segmentHeader } : {}),
         },
         body: form,
       });

@@ -32,9 +32,44 @@ export interface LocalAsrAutoStopOptions {
   isTtsEchoGateActive?: (nowMs: number) => boolean;
 }
 
+/**
+ * A segment cut mid-capture by the chunked-streaming segmenter (voice V2a).
+ * Carries the buffered-since-last-boundary audio (WAV-encoded, including the
+ * retained seam overlap) plus its monotonic `seq` and whether it is the
+ * terminal segment. The recorder produces these WHILE the user speaks; the
+ * caller POSTs each to the batch cloud STT endpoint and stitches the results.
+ */
+export interface LocalAsrSegment {
+  /** Monotonic 0-based segment index for this capture turn. */
+  seq: number;
+  /** Mono PCM16 WAV for the buffered-since-last-boundary audio (with overlap). */
+  wav: Uint8Array;
+  /** True for the terminal segment emitted at stop() (the post-speech tail). */
+  isFinal: boolean;
+}
+
 export interface LocalAsrRecorderOptions {
   autoStop?: LocalAsrAutoStopOptions;
   onAutoStop?: () => void;
+  /**
+   * Chunked-streaming segmenter (voice V2a). When BOTH `segmenter` and
+   * `onSegment` are supplied, the recorder cuts intermediate segments as the
+   * per-frame `segmenter` reports boundaries — encoding the frames buffered
+   * since the last boundary (plus an `overlapMs` audio tail carried from the
+   * previous segment for seam continuity) to a WAV and delivering it via
+   * `onSegment`. The full-utterance WAV returned by `stop()` is UNCHANGED, so a
+   * caller can always fall back to the batch path if streaming stitching fails.
+   * Absent → the recorder behaves exactly as before (batch-only).
+   */
+  segmenter?: {
+    update: (
+      pcm: Float32Array,
+      sampleTimeMs?: number,
+    ) => { boundary: boolean; speech: boolean };
+    config: { overlapMs: number };
+  };
+  /** Called (fire-and-forget) with each mid-capture segment when `segmenter` is set. */
+  onSegment?: (segment: LocalAsrSegment) => void;
 }
 
 /** Fully-resolved auto-stop config (every {@link LocalAsrAutoStopOptions} field set). */
@@ -427,6 +462,71 @@ export async function startLocalAsrRecorder(
   let autoStopRequested = false;
   const autoStopDetector = createLocalAsrAutoStopDetector(options.autoStop);
 
+  // Chunked-streaming (voice V2a) segmenter state. Active only when both a
+  // segmenter and an onSegment sink are supplied; otherwise the capture is
+  // batch-only and none of this runs.
+  const segmenter =
+    options.segmenter && options.onSegment ? options.segmenter : null;
+  const onSegment = segmenter ? options.onSegment : undefined;
+  const overlapMs = segmenter?.config.overlapMs ?? 0;
+  // Frames buffered since the last emitted segment boundary (the pending
+  // segment's audio). Reset (minus the retained overlap tail) at each boundary.
+  let segmentChunks: Float32Array[] = [];
+  let segmentSeq = 0;
+
+  /** Encode + emit the pending segment buffer as segment `segmentSeq`. */
+  const emitSegment = (isFinal: boolean): void => {
+    if (!onSegment) return;
+    const pcm = concatPcm(segmentChunks);
+    const silent = pcm.length === 0 || isSilentPcmAudio(pcm);
+    // Never POST an empty/near-silent NON-FINAL segment (mirrors the stop()
+    // silence guard): a mid-utterance boundary with no speech is dropped, not
+    // sent — no seq is consumed, so the stitcher's sequence stays contiguous.
+    if (silent && !isFinal) {
+      resetSegmentBuffer();
+      return;
+    }
+    // A silent FINAL tail (trailing silence after the last word) still needs a
+    // final marker so the stitcher finalizes on the content already streamed —
+    // otherwise a clean streamed utterance whose tail is quiet would never mark
+    // done and would always fall back to batch. Emit an empty-WAV final: the
+    // segment transcriber returns "" (empty segments are allowed), and the
+    // stitcher's applyContiguous flags done without appending words.
+    const wav = silent
+      ? encodeMonoPcm16Wav(new Float32Array(0), context.sampleRate)
+      : encodeMonoPcm16Wav(pcm, context.sampleRate);
+    const seq = segmentSeq;
+    segmentSeq += 1;
+    if (!isFinal) resetSegmentBuffer();
+    // Fire-and-forget: a slow/failed POST must not stall the audio thread.
+    try {
+      onSegment({ seq, wav, isFinal });
+    } catch {
+      // error-policy:J6 segment sink is best-effort; a throwing sink must not
+      // kill the capture. The stop() full-WAV batch path remains the fallback.
+    }
+  };
+
+  /**
+   * Reset the pending-segment buffer to the retained overlap tail (~overlapMs
+   * of the just-emitted audio) so the next segment shares a seam with this one
+   * — the stitcher dedups the overlapped words.
+   */
+  const resetSegmentBuffer = (): void => {
+    if (overlapMs <= 0) {
+      segmentChunks = [];
+      return;
+    }
+    const overlapSamples = Math.round((overlapMs / 1000) * context.sampleRate);
+    if (overlapSamples <= 0) {
+      segmentChunks = [];
+      return;
+    }
+    const whole = concatPcm(segmentChunks);
+    const start = Math.max(0, whole.length - overlapSamples);
+    segmentChunks = start < whole.length ? [whole.subarray(start)] : [];
+  };
+
   processor.onaudioprocess = (event) => {
     if (stopped) return;
     const input = event.inputBuffer;
@@ -447,6 +547,18 @@ export async function startLocalAsrRecorder(
     };
     if (autoStopUpdate.shouldBuffer) {
       chunks.push(mono);
+    }
+    // Chunked-streaming segmenter (voice V2a): buffer the pending segment and
+    // cut a boundary when it reports one. Runs independently of the auto-stop
+    // buffer gate — the segment buffer always accumulates the raw frame so a
+    // pause between clauses still carries into the seam overlap, while the
+    // full-utterance `chunks` obeys the existing VAD gate untouched.
+    if (segmenter) {
+      segmentChunks.push(mono);
+      const seg = segmenter.update(mono);
+      if (seg.boundary) {
+        emitSegment(false);
+      }
     }
     if (autoStopUpdate.shouldStop && !autoStopRequested && options.onAutoStop) {
       autoStopRequested = true;
@@ -489,6 +601,12 @@ export async function startLocalAsrRecorder(
     },
     async stop() {
       const sampleRate = context.sampleRate;
+      // Flush the terminal streaming segment (the post-speech tail) BEFORE
+      // tearing down, so the stitcher can finalize while the batch full-WAV is
+      // computed. No-op when streaming isn't active or the tail is silent.
+      if (segmenter && onSegment) {
+        emitSegment(true);
+      }
       await cleanup();
       const pcm = concatPcm(chunks);
       if (pcm.length === 0) {

@@ -1749,6 +1749,18 @@ export interface VoiceConfig {
     provider: AsrProvider;
     /** Optional override model id (e.g. `whisper-1` for OpenAI). */
     modelId?: string;
+    /**
+     * Chunked-segment incremental transcription (voice V2a). When enabled and
+     * the resolved backend is cloud, the capturer POSTs short audio segments as
+     * the user speaks and renders a live running transcript in the composer,
+     * instead of one batch POST at stop(). Defaults to ON for the cloud path
+     * (see `shouldStreamCloudAsr`); set `false` to force the batch path (e.g.
+     * on the credit-metered ElevenLabs upstream where per-segment reservations
+     * churn — see VOICE-STREAMING-DESIGN §2.4). Always degrades gracefully to
+     * batch when segmentation is unsupported/failing, so `false` is a hard
+     * opt-out, not a correctness requirement.
+     */
+    streaming?: boolean;
   };
 }
 
