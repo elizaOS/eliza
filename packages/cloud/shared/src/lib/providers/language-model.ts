@@ -330,6 +330,44 @@ function isCerebrasNativeModel(model: string): boolean {
 }
 
 /**
+ * A direct OpenAI-compatible upstream the pass-through streaming fast path
+ * (#15428) can pipe bytes from without any AI-SDK decode/re-encode. Cerebras
+ * only for now: it is the measured hot path, its chat surface is plain
+ * OpenAI-compat, and its `getLanguageModel` branch carries no behavior the
+ * pipe would lose (no OpenRouter on-error fallback — cerebras errors surface
+ * by design — and `withRateLimitFailFast` only removes retries the pipe never
+ * performs). OpenAI/Anthropic/OpenRouter are deliberately excluded: their
+ * branches add fallback middleware or non-OpenAI wire shapes that a byte pipe
+ * would silently drop.
+ */
+export interface PassthroughUpstream {
+  providerId: "cerebras-api";
+  /** Full chat-completions endpoint URL. */
+  url: string;
+  apiKey: string;
+  /** Model id to send upstream (normalized the same way getLanguageModel does). */
+  modelId: string;
+}
+
+/**
+ * Resolve the direct upstream for a pass-through streamed request, mirroring
+ * getLanguageModel's routing precedence (the cerebras-direct branch is checked
+ * before gateway routing). Null when the model is not cerebras-native or no
+ * platform key is configured — callers must fall through to the SDK path.
+ */
+export function resolvePassthroughUpstreamForModel(model: string): PassthroughUpstream | null {
+  if (!isCerebrasNativeModel(model)) return null;
+  const apiKey = getProviderKey("CEREBRAS_API_KEY");
+  if (!apiKey) return null;
+  return {
+    providerId: "cerebras-api",
+    url: "https://api.cerebras.ai/v1/chat/completions",
+    apiKey,
+    modelId: normalizeCerebrasModelId(model),
+  };
+}
+
+/**
  * Canonicalize a requested model id for pricing AND routing. Dedicated agents
  * emit decorated ids like "openai/gpt-oss-120b:nitro" / "openai/zai-glm-4.7:nitro"
  * for what are really the bare Cerebras models. Collapse those to the bare

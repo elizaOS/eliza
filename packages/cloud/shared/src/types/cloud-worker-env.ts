@@ -249,6 +249,13 @@ export interface Bindings {
   // Redis window), the 60s shouldBlockUser memo, and the 60s model-catalog
   // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
   INFERENCE_HOT_PATH_CACHES?: string;
+  // Pass-through streaming fast path (#15428): "true" pipes qualifying
+  // streamed chat completions (OpenAI-compatible direct upstream, no
+  // tools/response_format/web-search) byte-for-byte from the provider instead
+  // of decoding/re-encoding through the AI SDK; usage is metered from a teed
+  // branch and billed through the existing settle chain. Default off;
+  // rollback = flip off (the SDK path is untouched).
+  INFERENCE_PASSTHROUGH_STREAMING?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
   PLAYWRIGHT_TEST_AUTH?: string;

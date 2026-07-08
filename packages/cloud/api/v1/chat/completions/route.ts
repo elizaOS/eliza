@@ -56,6 +56,7 @@ import {
   isProviderConfigurationError,
   type PooledLanguageModelCredential,
   resolveAiProviderSource,
+  resolvePassthroughUpstreamForModel,
   resolvePooledDirectProviderForModel,
 } from "@/lib/providers/language-model";
 import {
@@ -99,6 +100,10 @@ import {
   createLedgerDebitSettler,
   resolveInferenceBillingLedger,
 } from "@/lib/services/inference-billing-ledger";
+import {
+  isPassthroughStreamingEnabled,
+  readPassthroughStreamTail,
+} from "@/lib/services/inference-passthrough";
 import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import {
   getTeamPoolRegistry,
@@ -1889,6 +1894,359 @@ async function settleStreamingAbortReservation(params: {
 }
 
 // ============================================================================
+// Pass-through Streaming Fast Path (#15428)
+// ============================================================================
+
+/**
+ * True when a streamed request needs NO gateway-side transformation, so the
+ * upstream's SSE bytes can be piped to the client verbatim. Deliberately
+ * conservative: anything the pipe cannot represent byte-for-byte (tool
+ * calling, response_format, provider-native web search, multimodal message
+ * parts) falls through to the streamText path unchanged.
+ *
+ * `stream_options.include_usage` must ALREADY be the client's contract: the
+ * billing meter needs the terminal usage frame, and a pipe cannot inject the
+ * frame upstream without the client also receiving it. plugin-elizacloud
+ * requests it on every streamed call, so the measured hot path qualifies; a
+ * client that did not opt in falls through rather than receiving frames it
+ * never asked for.
+ */
+function qualifiesForPassthroughStreaming(request: ChatRequest): boolean {
+  if (request.stream !== true) return false;
+  if (request.stream_options?.include_usage !== true) return false;
+  if (request.tools?.length) return false;
+  if (request.tool_choice !== undefined) return false;
+  if (request.response_format && request.response_format.type !== "text") {
+    return false;
+  }
+  if (request.webSearchEnabled === true) return false;
+  for (const message of request.messages) {
+    if (message.role === "tool") return false;
+    if (message.tool_calls?.length) return false;
+    if (message.tool_call_id !== undefined) return false;
+    if (message.content !== null && typeof message.content !== "string") {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Client-facing status for a pass-through upstream error response — the same
+ * classification getRecoverableProviderErrorStatus applies to AI-SDK errors:
+ * caller-fault statuses pass through; 401/403 are OUR provider-key state
+ * (never the caller's fault) and everything else means the upstream is
+ * unavailable, both surfaced as 503.
+ */
+function mapPassthroughUpstreamStatus(status: number): number {
+  if (status === 400 || status === 402 || status === 404 || status === 429) {
+    return status;
+  }
+  return 503;
+}
+
+function passthroughErrorResponse(status: number, message: string): Response {
+  return addCorsHeaders(
+    Response.json(
+      {
+        error: {
+          message,
+          type: openAiErrorTypeForStatus(status),
+          code: status,
+        },
+      },
+      { status },
+    ),
+  );
+}
+
+/**
+ * The pass-through streaming fast path (#15428): fetch the provider's
+ * chat/completions directly with `stream: true` and return the response body
+ * piped to the client byte-for-byte — no AI-SDK decode, no per-part
+ * processing, no SSE re-encode (the measured ~1.5s TTFB / ~5s total gateway
+ * overhead vs ~0.17s / ~0.6s direct). Billing parity comes from
+ * `response.body.tee()`: one branch goes to the client untouched while the
+ * other is read in the background (via the same settleOffResponsePath seam as
+ * the SDK path) to extract the terminal usage frame + delivered text for the
+ * EXISTING settle chain (billUsage → settleReservation → analytics → audit).
+ *
+ * Returns null when the fast path does not apply (flag off, non-qualifying
+ * request, no direct upstream) — callers fall through to streamText. Runs
+ * strictly AFTER auth + billing admission; it replaces only the provider
+ * forward + re-encode stage.
+ *
+ * Error semantics mirror the SDK path where the timing allows and are strictly
+ * fail-closed otherwise:
+ *   - upstream non-2xx / network failure BEFORE any bytes: full refund and an
+ *     OpenAI-shaped error response with the same status classification the SDK
+ *     path's terminal error chunk carries (surfaced pre-stream because the
+ *     pipe has not committed a 200 yet);
+ *   - in-stream upstream error frame without usage: full refund (onError
+ *     parity);
+ *   - client abort / upstream drop / timeout (no usage frame): estimate-based
+ *     partial settle of the delivered text (onAbort parity). Client disconnect
+ *     cancels the upstream fetch via AbortSignal pass-through.
+ */
+async function tryPassthroughStreamingRequest(params: {
+  model: string;
+  systemPrompt: string | undefined;
+  request: ChatRequest;
+  user: { id: string; organization_id: string };
+  apiKey: { id: string } | null;
+  affiliateCode: string | null;
+  idempotencyKey: string;
+  requestId: string;
+  appId: string | null;
+  startTime: number;
+  abortSignal: AbortSignal | undefined;
+  timeoutMs: number;
+  estimatedInputTokens: number;
+  settleReservation: (
+    actualCost: number,
+  ) => Promise<CreditReconciliationResult | null>;
+  effectiveMaxTokens: number | undefined;
+  billingSource: PricingBillingSource;
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+}): Promise<Response | null> {
+  const { model, request, settleReservation } = params;
+  if (!isPassthroughStreamingEnabled()) return null;
+  if (!qualifiesForPassthroughStreaming(request)) return null;
+  const upstream = resolvePassthroughUpstreamForModel(model);
+  if (!upstream) return null;
+
+  const provider = getProviderFromModel(model);
+  // Same param clamping as the SDK path, mapped back to the OpenAI wire names
+  // the upstream's chat/completions accepts.
+  const safeParams = getSafeModelParams(model, {
+    temperature: request.temperature,
+    topP: request.top_p,
+    frequencyPenalty: request.frequency_penalty,
+    presencePenalty: request.presence_penalty,
+    stopSequences: request.stop
+      ? Array.isArray(request.stop)
+        ? request.stop
+        : [request.stop]
+      : undefined,
+  });
+  const upstreamBody: Record<string, unknown> = {
+    model: upstream.modelId,
+    messages: request.messages,
+    stream: true,
+    // Qualification guarantees this is already the client's contract; stated
+    // explicitly so the billing meter's usage frame never depends on upstream
+    // defaults.
+    stream_options: { include_usage: true },
+  };
+  if (safeParams.temperature !== undefined) {
+    upstreamBody.temperature = safeParams.temperature;
+  }
+  if (safeParams.topP !== undefined) upstreamBody.top_p = safeParams.topP;
+  if (safeParams.frequencyPenalty !== undefined) {
+    upstreamBody.frequency_penalty = safeParams.frequencyPenalty;
+  }
+  if (safeParams.presencePenalty !== undefined) {
+    upstreamBody.presence_penalty = safeParams.presencePenalty;
+  }
+  if (safeParams.stopSequences?.length) {
+    upstreamBody.stop = safeParams.stopSequences;
+  }
+  if (params.effectiveMaxTokens != null) {
+    upstreamBody.max_tokens = params.effectiveMaxTokens;
+  }
+
+  // Client disconnect must cancel the upstream fetch (the meter then settles
+  // the delivered portion via its readError path); the route timeout keeps
+  // parity with the SDK path's streamText({ timeout }).
+  const signals: AbortSignal[] = [];
+  if (params.abortSignal) signals.push(params.abortSignal);
+  if (Number.isFinite(params.timeoutMs) && params.timeoutMs > 0) {
+    signals.push(AbortSignal.timeout(params.timeoutMs));
+  }
+
+  let upstreamResponse: Response;
+  try {
+    upstreamResponse = await fetch(upstream.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${upstream.apiKey}`,
+      },
+      body: JSON.stringify(upstreamBody),
+      ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
+    });
+  } catch (error) {
+    // Nothing was delivered — release the full hold, exactly like onError.
+    await settleReservation(0);
+    logger.error("[Chat Completions] Passthrough upstream fetch failed", {
+      model,
+      provider: upstream.providerId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return passthroughErrorResponse(503, "upstream provider request failed");
+  }
+
+  if (!upstreamResponse.ok || !upstreamResponse.body) {
+    await settleReservation(0);
+    const status = mapPassthroughUpstreamStatus(upstreamResponse.status);
+    // Caller-fault statuses echo the upstream's own error message (the same
+    // truth the SDK path surfaces via APICallError.message); everything else
+    // gets the generic form so upstream auth/infra detail never leaks to the
+    // caller (#13406 discipline).
+    let message = "upstream provider error";
+    if (status !== 503) {
+      const bodyText = await upstreamResponse.text().catch(() => "");
+      const upstreamMessage = getObjectValue(
+        getObjectValue(parseJsonObject(bodyText), "error"),
+        "message",
+      );
+      message =
+        typeof upstreamMessage === "string" && upstreamMessage.trim()
+          ? upstreamMessage
+          : `upstream provider returned ${upstreamResponse.status}`;
+    } else {
+      // error-policy:J6 best-effort teardown — release the upstream connection;
+      // the (auth/infra) body is intentionally unused.
+      await upstreamResponse.body?.cancel().catch(() => undefined);
+    }
+    logger.error("[Chat Completions] Passthrough upstream error status", {
+      model,
+      provider: upstream.providerId,
+      upstreamStatus: upstreamResponse.status,
+      mappedStatus: status,
+    });
+    return passthroughErrorResponse(status, message);
+  }
+
+  const [clientBranch, meterBranch] = upstreamResponse.body.tee();
+  const billingPrompt = buildChatPromptForBilling(request);
+
+  // Meter + settle on the teed branch, OFF the response path when a Workers
+  // executionCtx exists (the same seam the SDK path defers its settlement
+  // through); inline for tests / non-Worker callers — tee buffers the client
+  // branch, so inline draining never deadlocks the response.
+  await settleOffResponsePath(params.executionCtx, async () => {
+    const tail = await readPassthroughStreamTail(meterBranch);
+    if (tail.usage) {
+      // Success settle — the same chain, amounts, and record shapes as the SDK
+      // path's onFinish, fed by the provider-reported usage frame.
+      try {
+        const billingContext = buildChatBillingContext({
+          user: params.user,
+          apiKey: params.apiKey,
+          model,
+          provider,
+          billingSource: params.billingSource,
+          requestId: params.requestId,
+          appId: params.appId,
+          affiliateCode: params.affiliateCode,
+          streaming: true,
+        });
+        const billing = await billUsage(billingContext, tail.usage);
+        const reconciliation = await settleReservation(billing.totalCost);
+        const usageRecord = await recordUsageAnalytics(
+          billingContext,
+          billing,
+          {
+            type: "chat",
+            content: tail.deliveredText,
+            systemPrompt: params.systemPrompt,
+            prompt: billingPrompt,
+            latencyMs: Date.now() - params.startTime,
+          },
+        );
+        if (usageRecord) {
+          try {
+            await aiBillingRecordsService.record({
+              context: billingContext,
+              billing,
+              usageRecord,
+              idempotencyKey: params.idempotencyKey,
+              reconciliation,
+            });
+          } catch (auditError) {
+            logger.error("[Chat Completions] audit record failed (non-fatal)", {
+              error:
+                auditError instanceof Error
+                  ? auditError.message
+                  : String(auditError),
+            });
+          }
+        }
+        logger.info("[Chat Completions] Passthrough streaming complete", {
+          model,
+          durationMs: Date.now() - params.startTime,
+          inputTokens: billing.inputTokens,
+          outputTokens: billing.outputTokens,
+          totalCost: billing.totalCost,
+        });
+      } catch (error) {
+        // Same recovery as onFinish: release the hold. The settler is
+        // idempotent (first-call-wins), so a partial success above cannot be
+        // double-settled.
+        await settleReservation(0);
+        logger.error("[Chat Completions] Passthrough settle error", {
+          model,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    if (tail.sawErrorFrame && tail.readError === null) {
+      // Upstream reported an in-stream error and no usage — full refund, the
+      // same outcome as the SDK path's onError.
+      await settleReservation(0);
+      logger.error(
+        "[Chat Completions] Passthrough upstream in-stream error — reservation refunded",
+        { model },
+      );
+      return;
+    }
+
+    // No usage frame (client abort / upstream drop / timeout — or, degenerate,
+    // a normally-terminated stream whose provider omitted the frame): the
+    // estimate-based partial settle, identical to the SDK path's onAbort.
+    await settleStreamingAbortReservation({
+      model,
+      provider,
+      user: params.user,
+      apiKey: params.apiKey,
+      affiliateCode: params.affiliateCode,
+      appId: params.appId,
+      requestId: params.requestId,
+      idempotencyKey: params.idempotencyKey,
+      systemPrompt: params.systemPrompt,
+      prompt: billingPrompt,
+      startTime: params.startTime,
+      billingSource: params.billingSource,
+      estimatedInputTokens: params.estimatedInputTokens,
+      deliveredText: tail.deliveredText,
+      steps: [],
+      settleReservation,
+    });
+    logger.info(
+      "[Chat Completions] Passthrough stream ended without usage frame; settled from estimates",
+      { model, readAborted: tail.readError !== null, sawDone: tail.sawDone },
+    );
+  });
+
+  return addCorsHeaders(
+    new Response(clientBranch, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        // Observability marker: distinguishes the piped path in logs/latency
+        // probes without touching the SSE payload bytes.
+        "X-Eliza-Inference-Path": "passthrough",
+      },
+    }),
+  );
+}
+
+// ============================================================================
 // Streaming Handler
 // ============================================================================
 
@@ -1918,6 +2276,40 @@ async function handleStreamingRequest(
   useMonetizedAppBilling: boolean,
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
 ) {
+  // #15428 pass-through fast path: qualifying plain streamed chat against a
+  // direct OpenAI-compatible upstream pipes the provider bytes straight
+  // through (zero decode/re-encode) and meters a teed branch into the same
+  // billing chain. Anything the pipe cannot represent — pooled BYO keys,
+  // Anthropic CoT provider options, provider-native web search, tools,
+  // response_format, multimodal content — takes the streamText path below,
+  // which is byte-identical to today (and the only path when the flag is off).
+  if (
+    pooledCredential === null &&
+    Object.keys(cotOptions).length === 0 &&
+    Object.keys(webSearchOptions).length === 0
+  ) {
+    const passthroughResponse = await tryPassthroughStreamingRequest({
+      model,
+      systemPrompt,
+      request,
+      user,
+      apiKey,
+      affiliateCode,
+      idempotencyKey,
+      requestId,
+      appId,
+      startTime,
+      abortSignal,
+      timeoutMs,
+      estimatedInputTokens,
+      settleReservation,
+      effectiveMaxTokens,
+      billingSource,
+      executionCtx,
+    });
+    if (passthroughResponse) return passthroughResponse;
+  }
+
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
   const toolChoice = mapToolChoice(request.tool_choice);
@@ -2700,4 +3092,16 @@ export const __streamingCreditTestHooks = {
 
 export const __billingBranchTestHooks = {
   shouldUsePooledNoopReservation,
+} as const;
+
+/**
+ * Test-only seam for the pass-through streaming fast path (#15428): the
+ * qualification predicate and the upstream-status mapping, unit-tested
+ * directly; the pipe/tee/settle behavior itself is driven through
+ * `handleStreamingRequest` with a mocked global fetch in
+ * `__tests__/chat-completions-passthrough-streaming.test.ts`.
+ */
+export const __passthroughStreamingTestHooks = {
+  qualifiesForPassthroughStreaming,
+  mapPassthroughUpstreamStatus,
 } as const;
