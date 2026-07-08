@@ -22,6 +22,7 @@ import { analyzeWalletTrust } from "./analyzers/trust";
 import { analyzeInvestigationReplay } from "./analyzers/investigationReplay";
 import { analyzeWalletDisplayScores } from "./analyzers/display";
 import { analyzeExecutiveVerdict } from "./analyzers/executiveVerdict";
+import { analyzeWalletCustodyProfile } from "./analyzers/custody";
 import {
   SupportedChain,
   WalletBalance,
@@ -143,6 +144,12 @@ const relationships = analyzeWalletRelationships(
   funding,
 );
 
+const custodyProfile = analyzeWalletCustodyProfile(
+  activity,
+  funding,
+  relationships,
+);
+
 const trust = analyzeWalletTrust(
   age,
   activity,
@@ -216,6 +223,7 @@ relationships,
 caseSummary,
 display,
 executiveVerdict,
+custodyProfile,
 trust,
 investigationReplay,
 evidence,
