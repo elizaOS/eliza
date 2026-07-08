@@ -535,9 +535,10 @@ export async function startLocalAsrRecorder(
     // Fire-and-forget: a slow/failed POST must not stall the audio thread.
     try {
       onSegment({ seq, wav, isFinal });
-    } catch {
+    } catch (err) {
       // error-policy:J6 segment sink is best-effort; a throwing sink must not
       // kill the capture. The stop() full-WAV batch path remains the fallback.
+      void err;
     }
   };
 

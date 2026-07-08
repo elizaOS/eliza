@@ -36,8 +36,10 @@ function vadDebugEnabled(): boolean {
     const viteEnv = (import.meta as RuntimeImportMeta).env;
     if (truthy(String(viteEnv?.ELIZA_VOICE_VAD_DEBUG ?? ""))) return true;
     if (truthy(String(viteEnv?.VITE_ELIZA_VOICE_VAD_DEBUG ?? ""))) return true;
-  } catch {
-    /* no import.meta */
+  } catch (err) {
+    // error-policy:J6 import.meta is unavailable in some runtimes (CJS test
+    // environments); treat as "flag not set" rather than crashing the logger.
+    void err;
   }
   return false;
 }
