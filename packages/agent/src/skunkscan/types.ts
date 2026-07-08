@@ -224,6 +224,23 @@ export type WalletExecutiveVerdict = {
   suggestedAction: string;
 };
 
+export type WalletCustodyProfile = {
+  custodyType:
+    | "unknown"
+    | "likely_hosted"
+    | "likely_unhosted";
+
+  temperatureProfile:
+    | "unknown"
+    | "likely_hot"
+    | "likely_cold"
+    | "likely_warm";
+
+  confidence: "low" | "medium" | "high";
+  reasons: string[];
+  limitations: string[];
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -292,6 +309,7 @@ export type WalletInvestigationResult = {
   caseSummary?: WalletCaseSummary;
   display?: WalletDisplaySummary;
   executiveVerdict?: WalletExecutiveVerdict;
+  custodyProfile?: WalletCustodyProfile;
   trust?: WalletTrustSummary;
   investigationReplay?: WalletInvestigationReplayStep[];
   exposure?: WalletExposureSummary;
