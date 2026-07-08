@@ -99,13 +99,13 @@ let useRepositoryMocks = false;
 let useTransactionMock = false;
 
 const warnLog = mock((..._args: unknown[]) => {});
-const dbReadMock = new Proxy(realHelpers.dbRead as Record<PropertyKey, unknown>, {
+const dbReadMock = new Proxy(realHelpers.dbRead as unknown as Record<PropertyKey, unknown>, {
   get(target, prop, receiver) {
     if (prop === "select" && useRepositoryMocks) return select;
     return Reflect.get(target, prop, receiver);
   },
 });
-const dbWriteMock = new Proxy(realHelpers.dbWrite as Record<PropertyKey, unknown>, {
+const dbWriteMock = new Proxy(realHelpers.dbWrite as unknown as Record<PropertyKey, unknown>, {
   get(target, prop, receiver) {
     if (prop === "update" && useRepositoryMocks) return update;
     if (prop === "transaction" && useTransactionMock) return transaction;

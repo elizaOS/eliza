@@ -37,7 +37,12 @@ process.env.MOCK_REDIS = "1";
 
 import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
-import { apps } from "../../schemas/apps";
+import {
+  appDeploymentStatusEnum,
+  appReviewStatusEnum,
+  apps,
+  userDatabaseStatusEnum,
+} from "../../schemas/apps";
 import { organizations } from "../../schemas/organizations";
 import { paymentRequests } from "../../schemas/payment-requests";
 import { users } from "../../schemas/users";
@@ -138,7 +143,15 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
       return;
     }
     try {
-      const schema = { organizations, users, apps, paymentRequests };
+      const schema = {
+        organizations,
+        users,
+        apps,
+        paymentRequests,
+        appDeploymentStatusEnum,
+        appReviewStatusEnum,
+        userDatabaseStatusEnum,
+      };
       const { apply } = await pushSchema(schema as never, dbWrite as never);
       await apply();
     } catch (error) {
