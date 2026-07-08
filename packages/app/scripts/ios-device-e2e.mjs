@@ -34,6 +34,7 @@
  *     [--no-skip-appexes] [--skip-logs] [--require-chat]
  *     [--bundle-id <id>] [--output <dir>]
  */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,6 +56,8 @@ import {
 } from "./lib/device-e2e-bundle.mjs";
 import {
   buildDeviceDeployCommand,
+  buildDeviceFailureBootTraceCommand,
+  buildDeviceFailureScreenshotCommand,
   buildDeviceLogsCommand,
   buildDeviceSmokeCommand,
   planIosDeviceE2eSteps,
@@ -74,9 +77,75 @@ const fail = (message) => {
   process.exit(1);
 };
 
+let activeDeviceContext = null;
+
+function isNonEmptyFile(filePath) {
+  try {
+    return fs.statSync(filePath).isFile() && fs.statSync(filePath).size > 0;
+  } catch {
+    // error-policy:J3 Failure artifacts are optional diagnostics; absence is
+    // recorded in the command log rather than treated as a captured file.
+    return false;
+  }
+}
+
+function directFiles(dir) {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => path.join(dir, entry.name));
+}
+
+function writeFailureCommandLog({ failureDir, label, command, result }) {
+  const logPath = path.join(failureDir, `${label}.log`);
+  const status =
+    result.status === null
+      ? `signal ${result.signal}`
+      : `exit ${result.status}`;
+  fs.writeFileSync(
+    logPath,
+    [
+      `$ ${command.cmd} ${command.args.join(" ")}`,
+      `status: ${status}`,
+      "",
+      "stdout:",
+      result.stdout || "",
+      "",
+      "stderr:",
+      result.stderr || "",
+      "",
+      "error:",
+      result.error?.message || "",
+    ].join("\n"),
+  );
+  return logPath;
+}
+
+function captureFailureCommand({ failureDir, label, command, expectedFiles }) {
+  const before = new Set(directFiles(failureDir));
+  const expected = new Set(expectedFiles);
+  const result = spawnSync(command.cmd, command.args, {
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  const captured = expectedFiles.filter(isNonEmptyFile);
+  const after = directFiles(failureDir).filter((file) => !before.has(file));
+  const diagnosticLog = writeFailureCommandLog({
+    failureDir,
+    label,
+    command,
+    result,
+  });
+  const commandProducedUnexpectedFiles = after.filter(
+    (file) =>
+      file !== diagnosticLog && !expected.has(file) && isNonEmptyFile(file),
+  );
+  return [...captured, ...commandProducedUnexpectedFiles, diagnosticLog];
+}
+
 // Failure forensics for a chained-child step: the child script already wrote its
-// own artifacts into smoke/ or logs/; this records the cause so the triage
-// bundle names why the lane stopped.
+// own artifacts into smoke/ or logs/ when it reached those phases, and this adds
+// point-of-failure evidence from the physical phone when the host tools allow it.
 function captureDeviceFailure(bundle, step, error) {
   return captureFailureForensics(
     bundle,
@@ -84,7 +153,36 @@ function captureDeviceFailure(bundle, step, error) {
     ({ failureDir }) => {
       const causePath = path.join(failureDir, "failure-cause.txt");
       fs.writeFileSync(causePath, `${error?.message ?? error}\n`);
-      return [causePath];
+      const artifacts = [causePath];
+      if (!activeDeviceContext) return artifacts;
+
+      const screenshotPath = path.join(failureDir, "screen.png");
+      artifacts.push(
+        ...captureFailureCommand({
+          failureDir,
+          label: "screenshot-capture",
+          command: buildDeviceFailureScreenshotCommand({
+            deviceUdid: activeDeviceContext.udid,
+            outputFile: screenshotPath,
+          }),
+          expectedFiles: [screenshotPath],
+        }),
+      );
+
+      artifacts.push(
+        ...captureFailureCommand({
+          failureDir,
+          label: "boot-trace-capture",
+          command: buildDeviceFailureBootTraceCommand({
+            scriptsDir,
+            deviceId: activeDeviceContext.deviceId,
+            outputFile: path.join(failureDir, "boot-trace-run"),
+            bundleId: activeDeviceContext.bundleId,
+          }),
+          expectedFiles: [],
+        }),
+      );
+      return artifacts;
     },
     error,
   );
@@ -130,6 +228,12 @@ async function main() {
   // opts back in when per-appex profiles exist.
   const skipAppexes = !args["no-skip-appexes"];
   const bundleId = args["bundle-id"] || null;
+  activeDeviceContext = {
+    bundleId,
+    deviceId,
+    identifier: device.identifier,
+    udid: device.udid,
+  };
 
   const bundle = createDeviceE2eBundle({
     appDir: appRoot,

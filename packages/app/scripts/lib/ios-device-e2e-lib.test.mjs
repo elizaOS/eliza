@@ -10,6 +10,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildDeviceDeployCommand,
+  buildDeviceFailureBootTraceCommand,
+  buildDeviceFailureScreenshotCommand,
   buildDeviceLogsCommand,
   buildDeviceSmokeCommand,
   IOS_DEVICE_E2E_STEP_IDS,
@@ -121,5 +123,43 @@ describe("buildDeviceLogsCommand", () => {
     expect(() => buildDeviceLogsCommand({ scriptsDir, deviceId })).toThrow(
       /outputFile is required/,
     );
+  });
+});
+
+describe("buildDeviceFailureScreenshotCommand", () => {
+  it("uses idevicescreenshot against the physical device UDID", () => {
+    const { cmd, args } = buildDeviceFailureScreenshotCommand({
+      deviceUdid: deviceId,
+      outputFile: "/bundle/failure/screen.png",
+    });
+    expect(cmd).toBe("idevicescreenshot");
+    expect(args).toEqual(["--udid", deviceId, "/bundle/failure/screen.png"]);
+  });
+  it("throws without an output file", () => {
+    expect(() =>
+      buildDeviceFailureScreenshotCommand({ deviceUdid: deviceId }),
+    ).toThrow(/outputFile is required/);
+  });
+});
+
+describe("buildDeviceFailureBootTraceCommand", () => {
+  it("reuses the no-console boot-trace pull path for failure forensics", () => {
+    const { args } = buildDeviceFailureBootTraceCommand({
+      scriptsDir,
+      deviceId,
+      outputFile: "/bundle/failure/boot-trace-run",
+      bundleId: "ai.elizaos.app",
+    });
+    expect(args).toEqual([
+      path.join(scriptsDir, "ios-device-logs.mjs"),
+      "--device",
+      deviceId,
+      "--no-console",
+      "--pull-boot-trace",
+      "--output",
+      "/bundle/failure/boot-trace-run",
+      "--bundle-id",
+      "ai.elizaos.app",
+    ]);
   });
 });

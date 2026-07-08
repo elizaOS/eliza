@@ -165,3 +165,56 @@ export function buildDeviceLogsCommand({
   if (bundleId) args.push("--bundle-id", bundleId);
   return { cmd: "node", args };
 }
+
+/**
+ * Absolute argv for the physical-device screenshot used only after a lane step
+ * fails. Xcode's `devicectl` does not expose a screenshot subcommand on current
+ * runners, so this intentionally uses libimobiledevice's stable
+ * `idevicescreenshot` CLI when the host has it installed. The caller records a
+ * diagnostic artifact when the command is missing or the phone has no mounted
+ * developer disk image.
+ *
+ * @param {{ deviceUdid: string, outputFile: string }} opts
+ * @returns {{ cmd: string, args: string[] }}
+ */
+export function buildDeviceFailureScreenshotCommand({
+  deviceUdid,
+  outputFile,
+}) {
+  if (!deviceUdid)
+    throw new Error(
+      "buildDeviceFailureScreenshotCommand: deviceUdid is required",
+    );
+  if (!outputFile)
+    throw new Error(
+      "buildDeviceFailureScreenshotCommand: outputFile is required",
+    );
+  return {
+    cmd: "idevicescreenshot",
+    args: ["--udid", deviceUdid, outputFile],
+  };
+}
+
+/**
+ * Absolute node argv for the best-effort boot-trace pull used after a physical
+ * lane step fails. This reuses the supported `ios-device-logs.mjs` path rather
+ * than opening a debug console, because console attach kills the app on detach
+ * and SIGTRAPs full-Bun engine-host builds (#11515).
+ *
+ * @param {{ scriptsDir: string, deviceId: string, outputFile: string,
+ *           bundleId?: string | null }} opts
+ * @returns {{ cmd: string, args: string[] }}
+ */
+export function buildDeviceFailureBootTraceCommand({
+  scriptsDir,
+  deviceId,
+  outputFile,
+  bundleId = null,
+}) {
+  return buildDeviceLogsCommand({
+    scriptsDir,
+    deviceId,
+    outputFile,
+    bundleId,
+  });
+}
