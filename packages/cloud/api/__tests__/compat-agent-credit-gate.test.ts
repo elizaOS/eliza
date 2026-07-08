@@ -130,6 +130,20 @@ class AgentQuotaExceededError extends Error {
   }
 }
 
+class AgentImageNotAllowedError extends Error {
+  readonly image: string;
+  readonly reason: "not_allowlisted" | "not_digest_pinned";
+
+  constructor(image: string, reason: "not_allowlisted" | "not_digest_pinned") {
+    super(
+      `Docker image '${image}' is not in the managed-agent image allowlist.`,
+    );
+    this.name = "AgentImageNotAllowedError";
+    this.image = image;
+    this.reason = reason;
+  }
+}
+
 mock.module("../compat/_lib/auth", () => ({
   requireCompatAuth,
 }));
@@ -179,6 +193,7 @@ mock.module("@/lib/services/agent-billing-gate", () => ({
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
+  AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService: {
     getAgent,

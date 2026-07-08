@@ -92,8 +92,8 @@ class AgentImageNotAllowedError extends Error {
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
   elizaSandboxService: { createAgent, updateAgentEnvironment, listAgents },
-  AgentQuotaExceededError,
   AgentImageNotAllowedError,
+  AgentQuotaExceededError,
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({

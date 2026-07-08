@@ -1,6 +1,9 @@
 // Exercises cloud API agent orphan deletion behavior with deterministic Worker route fixtures.
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { AgentQuotaExceededError } from "@/lib/services/eliza-sandbox";
+import {
+  AgentImageNotAllowedError,
+  AgentQuotaExceededError,
+} from "@/lib/services/eliza-sandbox";
 
 /**
  * Regression test for the orphaned-`pending` sandbox bug.
@@ -72,9 +75,10 @@ mock.module("@/lib/services/eliza-managed-launch", () => ({
 }));
 
 mock.module("@/lib/services/eliza-sandbox", () => ({
-  // route.ts imports AgentQuotaExceededError at module top level; the whole
-  // module is replaced here, so it must be re-exported or the import is
+  // route.ts imports these errors at module top level; the whole
+  // module is replaced here, so they must be re-exported or the import is
   // undefined and route.ts fails to load (#11042).
+  AgentImageNotAllowedError,
   AgentQuotaExceededError,
   elizaSandboxService: {
     createAgent,
