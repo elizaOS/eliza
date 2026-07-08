@@ -521,7 +521,7 @@ INFERENCE_DEFERRED_ADMISSION = "false"
 # Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
 # leased requests are carried back into the Redis window), 60s shouldBlockUser
 # memo, 60s model-catalog memo. Default off; rollback = flip off.
-INFERENCE_HOT_PATH_CACHES = "false"
+INFERENCE_HOT_PATH_CACHES = "true"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
