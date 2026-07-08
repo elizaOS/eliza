@@ -61,7 +61,12 @@ mock.module("@/lib/providers/language-model", () => ({
 
 const INPUT_TOKEN_COST = 0.001;
 const OUTPUT_TOKEN_COST = 0.01;
+// When set, billUsage blocks until the gate resolves — lets the waitUntil-
+// parity tests hold the settlement chain open while the SSE body is read, to
+// prove the stream close does not wait on billing.
+let billUsageGate: Promise<void> | null = null;
 const billUsage = mock(async (_context: unknown, usage: unknown) => {
+  if (billUsageGate) await billUsageGate;
   const record =
     usage && typeof usage === "object"
       ? (usage as {
@@ -202,6 +207,7 @@ function callStreaming(
     } | null;
     signal?: AbortSignal;
     useMonetizedAppBilling?: boolean;
+    executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   } = {},
 ) {
   return handleStreamingRequest(
@@ -226,6 +232,7 @@ function callStreaming(
     "gateway" as never,
     options.pooledCredential ?? null,
     options.useMonetizedAppBilling ?? false,
+    options.executionCtx,
   );
 }
 
@@ -237,6 +244,7 @@ beforeEach(() => {
   poolRecordUse.mockClear();
   poolRecordProviderFailure.mockClear();
   streamTextImpl = null;
+  billUsageGate = null;
 });
 
 // Per-status OpenAI-compatible error.type the terminal chunk must carry —
@@ -628,5 +636,150 @@ describe("streaming chat — success settles once, no double-refund", () => {
     expect(ledger.balance).toBeCloseTo(ledger.startBalance - ACTUAL, 10);
     // The cached settle result is returned for the second call.
     expect(second).toBe(first);
+  });
+});
+
+describe("streaming chat — billing settles OFF the response path (waitUntil parity with non-stream, #8759)", () => {
+  const USAGE = { inputTokens: 2, outputTokens: 3, totalTokens: 5 };
+  const TEXT = "hello streamed world";
+  const EXPECTED_COST =
+    USAGE.inputTokens * INPUT_TOKEN_COST +
+    USAGE.outputTokens * OUTPUT_TOKEN_COST;
+
+  /**
+   * SDK-faithful stream: the AI SDK AWAITS onFinish before ending fullStream —
+   * that contract is exactly why an inline-awaited settlement chain held the
+   * final SSE frame + [DONE] hostage. Also captures onError so the deferral
+   * tests can fire a stray late error against the cached settlement.
+   */
+  function sdkFaithfulStream(): {
+    onError: () => Promise<unknown>;
+  } {
+    let capturedOnError:
+      | ((e: { error: unknown }) => Promise<unknown>)
+      | undefined;
+    streamTextImpl = (config) => {
+      capturedOnError = config.onError as typeof capturedOnError;
+      const onFinish = config.onFinish as (event: {
+        text: string;
+        usage: typeof USAGE;
+      }) => Promise<unknown>;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-delta", id: "text-1", text: TEXT };
+          await onFinish({ text: TEXT, usage: USAGE });
+          yield { type: "finish", finishReason: "stop", totalUsage: USAGE };
+        })(),
+      };
+    };
+    return {
+      onError: () =>
+        Promise.resolve(capturedOnError?.({ error: makeApiCallError(503) })),
+    };
+  }
+
+  test("final frame + [DONE] flush BEFORE the billing chain completes; the chain runs via waitUntil", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+
+    // Hold the settlement chain open at its first DB write (billUsage).
+    let releaseBilling!: () => void;
+    billUsageGate = new Promise<void>((resolve) => {
+      releaseBilling = resolve;
+    });
+
+    const waitUntilPromises: Promise<unknown>[] = [];
+    const executionCtx = {
+      waitUntil(promise: Promise<unknown>) {
+        waitUntilPromises.push(promise);
+      },
+    };
+
+    sdkFaithfulStream();
+    const res = await callStreaming(settle, { executionCtx });
+    // Reading the WHOLE body to [DONE] completes while billUsage is still
+    // gated — the regression under test (the ~8s billing tail) would hang
+    // this read until the chain finished.
+    const body = await res.text();
+    expect(body).toContain(TEXT);
+    expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+    expect(ledger.reconcileCalls).toBe(0); // nothing settled at stream close
+    expect(waitUntilPromises.length).toBe(1); // chain handed to waitUntil
+
+    releaseBilling();
+    await Promise.all(waitUntilPromises);
+
+    // The deferred chain ran exactly once, with the same amounts as before.
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - EXPECTED_COST, 10);
+    expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+    expect(aiBillingRecord).toHaveBeenCalledTimes(1);
+  });
+
+  test("deferred chain bills with EXACTLY the same args as the inline (no-executionCtx) path", async () => {
+    // Deferred variant.
+    const waitUntilPromises: Promise<unknown>[] = [];
+    sdkFaithfulStream();
+    const deferredRes = await callStreaming(async () => null, {
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    await deferredRes.text();
+    await Promise.all(waitUntilPromises);
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    const deferredCall = billUsage.mock.calls[0];
+
+    // Inline variant (tests / non-Worker fallback): same scenario, no ctx.
+    billUsage.mockClear();
+    sdkFaithfulStream();
+    const inlineRes = await callStreaming(async () => null, {});
+    await inlineRes.text();
+    expect(billUsage).toHaveBeenCalledTimes(1);
+
+    // Parity: billing context (streaming:true, ids, affiliate) + usage match.
+    expect(deferredCall).toEqual(billUsage.mock.calls[0]);
+  });
+
+  test("without executionCtx the chain settles inline by stream close (behavior unchanged)", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+
+    sdkFaithfulStream();
+    const res = await callStreaming(settle, {});
+    const body = await res.text();
+
+    expect(body.trimEnd().endsWith("data: [DONE]")).toBe(true);
+    expect(ledger.reconcileCalls).toBe(1); // settled before the body closed
+    expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
+  });
+
+  test("a stray late onError after a deferred onFinish cannot double-settle", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const waitUntilPromises: Promise<unknown>[] = [];
+
+    const stream = sdkFaithfulStream();
+    const res = await callStreaming(settle, {
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    await res.text();
+    // The settlement promise is cached synchronously inside onFinish, so an
+    // onError racing in BEFORE the deferred chain resolves observes the same
+    // settlement instead of issuing a refund.
+    await stream.onError();
+    await Promise.all(waitUntilPromises);
+
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
+    expect(ledger.balance).toBeCloseTo(ledger.startBalance - EXPECTED_COST, 10);
   });
 });

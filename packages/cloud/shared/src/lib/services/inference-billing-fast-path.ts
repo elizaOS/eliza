@@ -184,7 +184,7 @@ export async function writePendingInferenceCharge(
   }
 }
 
-interface DebitContext {
+export interface DebitContext {
   requestId: string;
   organizationId: string;
   userId: string;
@@ -197,11 +197,15 @@ interface DebitContext {
  * Debit an inference cost and refresh the org-balance hint. On a failed debit
  * (insufficient balance — the DB forbids negative) record the uncollected
  * amount and force the org back onto the safe path. Never throws.
+ *
+ * Exported for the deferred-admission settler (`inference-billing-deferred`),
+ * which uses it as the fail-closed fallback charge when a deferred durable
+ * admission resolves refused after the request already forwarded.
  */
-async function debitInferenceCost(
+export async function debitInferenceCost(
   ctx: DebitContext,
   amountUsd: number,
-  source: "inline" | "backstop",
+  source: "inline" | "backstop" | "deferred",
 ): Promise<void> {
   try {
     const result = await creditsService.deductCredits({

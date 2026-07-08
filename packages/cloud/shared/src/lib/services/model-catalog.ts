@@ -1,5 +1,6 @@
 // Coordinates cloud service model catalog behavior behind route handlers.
 import { cache } from "../cache/client";
+import { InMemoryLRUCache } from "../cache/in-memory-lru-cache";
 import { CacheKeys, CacheStaleTTL, CacheTTL } from "../cache/keys";
 import {
   type CatalogModel,
@@ -17,6 +18,7 @@ import {
 import { expandBitRouterModelIdCandidates } from "../providers/model-id-translation";
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
+import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
 
 interface SWRCachedValue<T> {
   data: T;
@@ -111,12 +113,44 @@ export async function getCachedBitRouterModelById(modelId: string): Promise<Cata
   return findBitRouterCatalogModelById(bitRouterModels, modelId);
 }
 
-export async function getCachedGatewayModelById(modelId: string): Promise<CatalogModel | null> {
-  const models = await getCachedMergedModelCatalog();
+/**
+ * #9899 Tier-3: in-isolate memo of the per-model gateway lookup, gated behind
+ * `INFERENCE_HOT_PATH_CACHES` (default OFF — flag off is byte-identical to the
+ * un-memoized lookup, so "rollback = flip the flag" holds). The lookup
+ * runs on the inference pre-forward path (reasoning-parameter detection) and,
+ * warm, still costs a shared-cache read of the FULL catalog per request. The
+ * result only ever ADDS reasoning capability (modelUsesReasoningTokens ORs it
+ * with name patterns), and the catalog itself is SWR-cached upstream, so a
+ * short in-isolate TTL cannot regress billing — a catalog change propagates
+ * within the TTL. Misses (model not in catalog) are memoized too, wrapped so
+ * a legitimate null is distinguishable from a cache miss.
+ */
+const GATEWAY_MODEL_MEMO_TTL_MS = 60_000;
+const gatewayModelMemo = new InMemoryLRUCache<{ model: CatalogModel | null }>(
+  512,
+  GATEWAY_MODEL_MEMO_TTL_MS,
+);
 
-  if (isGroqNativeModel(modelId)) {
-    return getGroqCatalogModel(modelId);
+/** Test hook: reset the per-model memo between tests. */
+export function __clearGatewayModelMemo(): void {
+  gatewayModelMemo.deleteByPrefix("");
+}
+
+export async function getCachedGatewayModelById(modelId: string): Promise<CatalogModel | null> {
+  const memoEnabled = isHotPathCachesEnabled();
+  if (memoEnabled) {
+    const memoized = gatewayModelMemo.get(modelId);
+    if (memoized) return memoized.model;
   }
 
-  return findBitRouterCatalogModelById(models, modelId);
+  if (isGroqNativeModel(modelId)) {
+    const groqModel = getGroqCatalogModel(modelId);
+    if (memoEnabled) gatewayModelMemo.set(modelId, { model: groqModel });
+    return groqModel;
+  }
+
+  const models = await getCachedMergedModelCatalog();
+  const model = findBitRouterCatalogModelById(models, modelId);
+  if (memoEnabled) gatewayModelMemo.set(modelId, { model });
+  return model;
 }

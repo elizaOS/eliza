@@ -239,6 +239,16 @@ export interface Bindings {
   // overdraw bound + exactly-once settle + age-ordered sweep); anything else
   // (default) keeps the KV backstop. Both still require INFERENCE_OPTIMISTIC_BILLING.
   INFERENCE_BILLING_LEDGER?: string;
+  // Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
+  // (ledger insert / KV pending charge) off the pre-forward critical path via
+  // executionCtx.waitUntil, keeping a cached balance gate (15s org-balance hint
+  // + in-isolate refusal blocklist) on-path. Requires INFERENCE_OPTIMISTIC_BILLING.
+  INFERENCE_DEFERRED_ADMISSION?: string;
+  // Tier-3 in-isolate decision caches (#9899): "true" enables the org
+  // rate-limit lease (convergent — leased requests are carried back into the
+  // Redis window), the 60s shouldBlockUser memo, and the 60s model-catalog
+  // memo. Separate from INFERENCE_DEFERRED_ADMISSION (orthogonal to billing).
+  INFERENCE_HOT_PATH_CACHES?: string;
   RATE_LIMIT_DISABLED?: string;
   RATE_LIMIT_MULTIPLIER?: string;
   PLAYWRIGHT_TEST_AUTH?: string;
