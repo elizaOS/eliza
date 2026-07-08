@@ -21,6 +21,7 @@ import { analyzeWalletRelationships } from "./analyzers/relationships";
 import { analyzeWalletTrust } from "./analyzers/trust";
 import { analyzeInvestigationReplay } from "./analyzers/investigationReplay";
 import { analyzeWalletDisplayScores } from "./analyzers/display";
+import { analyzeExecutiveVerdict } from "./analyzers/executiveVerdict";
 import {
   SupportedChain,
   WalletBalance,
@@ -190,6 +191,16 @@ const evidence = analyzeWalletEvidence(
   behavior,
 );
 
+const executiveVerdict = analyzeExecutiveVerdict(
+  display,
+  behavior,
+  caseSummary,
+  evidence,
+  exposure,
+  risk,
+  trust,
+);
+
         return {
           chain,
           address: walletAddress,
@@ -204,6 +215,7 @@ exposure,
 relationships,
 caseSummary,
 display,
+executiveVerdict,
 trust,
 investigationReplay,
 evidence,
