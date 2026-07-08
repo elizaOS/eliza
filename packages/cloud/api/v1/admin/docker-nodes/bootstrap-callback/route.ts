@@ -145,11 +145,17 @@ async function __hono_POST(request: Request) {
       // fingerprint-proven re-bootstrap (identityChanged && verified above);
       // otherwise the server-stored values are preserved verbatim so an
       // unauthenticated re-bootstrap caller cannot silently rewrite them.
+      //
+      // `capacity` is deliberately NOT written here: once a node exists, its
+      // slot count is operator-owned (set via the admin PATCH route or a direct
+      // DB tune). The callback default is sized for the small cpx32-class box
+      // it was born on, so re-writing it on every liveness re-bootstrap would
+      // silently reset a hand-tuned value (e.g. a 252 GB robot at capacity=24
+      // back to 8). Capacity is stamped only on the create path below.
       const updated = await dockerNodesRepository.update(existing.id, {
         hostname: identityChanged ? hostname : existing.hostname,
         ssh_port: identityChanged ? sshPort : existing.ssh_port,
         ssh_user: identityChanged ? sshUser : existing.ssh_user,
-        capacity,
         host_key_fingerprint: hasPinnedFingerprint
           ? existing.host_key_fingerprint
           : hostKeyFingerprint,

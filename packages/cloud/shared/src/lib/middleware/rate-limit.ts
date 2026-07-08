@@ -10,7 +10,8 @@
  */
 
 import type { RouteParams } from "../api/hono-next-style-params";
-import type { EndpointType } from "../services/org-rate-limits";
+import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
+import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
 import { getOrgRpmForEndpoint } from "../services/org-rate-limits";
 import { logger } from "../utils/logger";
 import { getRequestCookie } from "../utils/request-cookie";
@@ -309,6 +310,64 @@ export async function enforceMcpOrganizationRateLimit(
 }
 
 /**
+ * #9899 Tier-3: in-isolate decision lease for `enforceOrgRateLimit`, gated
+ * behind `INFERENCE_HOT_PATH_CACHES` (default OFF — flag off is byte-identical
+ * to the un-leased path). On CF Workers the authoritative check costs a
+ * per-request Redis client build + a TCP/TLS connect + a pipeline (plus a
+ * cache read for the org tier) — ~100-400ms of the measured inference warm
+ * floor. The lease serves repeat decisions for the same (org, endpoint) from
+ * isolate memory, bounded by a local budget, and falls back to the
+ * authoritative check the moment the budget is spent or the lease expires.
+ *
+ * CONVERGENT, not lossy: every leased request is counted. `localUsed` is
+ * carried into the NEXT authoritative check (`checkRateLimitRedis`'s
+ * `carriedCount` appends them to the sliding window before counting), and the
+ * carry survives lease expiry — entries are only replaced when their count has
+ * been handed to Redis. So a hot isolate can exceed the org limit by at most
+ * ONE in-flight lease budget (min(remaining, the org's pro-rated window share
+ * per TTL)) before the window catches up and denies; sustained throughput
+ * converges to the org limit. Residual: a carry is lost if the isolate dies
+ * (bounded ≤ one budget) or if Redis fails open on the flush (limits are
+ * fail-open then anyway). Denials are leased too, which stops a limited org
+ * from re-hammering Redis until the lease expires.
+ */
+const ORG_RATE_LIMIT_LEASE_TTL_MS = 5_000;
+const ORG_RATE_LIMIT_LEASE_MAX_KEYS = 4096;
+
+interface OrgRateLimitLease {
+  config: OrgRateLimitConfig;
+  result: RateLimitResult;
+  /**
+   * Requests this isolate served off the lease since the last Redis check.
+   * NOT dropped at expiry — flushed to Redis as `carriedCount` on the next
+   * authoritative check so the window converges to the true count.
+   */
+  localUsed: number;
+  /** Local allowance: min(remaining, pro-rated share of the window per TTL). */
+  localBudget: number;
+  expiresAt: number;
+}
+
+// A plain Map (not the TTL LRU): expiry must NOT delete an entry, because its
+// localUsed is the pending carry that keeps the Redis window honest.
+const orgRateLimitLeases = new Map<string, OrgRateLimitLease>();
+
+function evictSettledLeases(now: number): void {
+  if (orgRateLimitLeases.size < ORG_RATE_LIMIT_LEASE_MAX_KEYS) return;
+  for (const [key, lease] of orgRateLimitLeases) {
+    // Only entries with nothing left to flush are safe to drop.
+    if (lease.expiresAt <= now && lease.localUsed === 0) {
+      orgRateLimitLeases.delete(key);
+    }
+  }
+}
+
+/** Test hook: reset the org rate-limit decision leases between tests. */
+export function __clearOrgRateLimitLeases(): void {
+  orgRateLimitLeases.clear();
+}
+
+/**
  * Per-org tier-based rate limit. Returns a 429 `Response` when denied, or `null` when allowed.
  * Call INSIDE the handler AFTER auth — same pattern as enforceMcpOrganizationRateLimit.
  */
@@ -319,9 +378,51 @@ export async function enforceOrgRateLimit(
   // Mirror withRateLimit: skip when Redis is not configured (dev/staging)
   if (process.env.REDIS_RATE_LIMITING !== "true") return null;
 
-  const { windowMs, maxRequests } = await getOrgRpmForEndpoint(organizationId, endpointType);
+  const leaseEnabled = isHotPathCachesEnabled();
+  const leaseKey = `${organizationId}:${endpointType}`;
+  const now = Date.now();
+  // Read the lease even when the flag is off: a flag flip must still flush any
+  // pending carry into the window instead of orphaning it.
+  const lease = orgRateLimitLeases.get(leaseKey);
+
+  if (leaseEnabled && lease && lease.expiresAt > now) {
+    if (!lease.result.allowed) {
+      return rateLimitExceededResponse(
+        lease.result,
+        lease.config.maxRequests,
+        lease.config.windowMs,
+        "redis",
+      );
+    }
+    if (lease.localUsed < lease.localBudget) {
+      lease.localUsed++;
+      return null;
+    }
+    // Local budget spent — fall through to the authoritative check, which
+    // flushes localUsed into the window before deciding.
+  }
+
+  const config = await getOrgRpmForEndpoint(organizationId, endpointType);
+  const { windowMs, maxRequests } = config;
   const key = `org:${organizationId}:${endpointType}`;
-  const result = await checkRateLimitRedis(key, windowMs, maxRequests);
+  const carriedCount = lease?.localUsed ?? 0;
+  const result = await checkRateLimitRedis(key, windowMs, maxRequests, { carriedCount });
+  if (leaseEnabled) {
+    evictSettledLeases(now);
+    orgRateLimitLeases.set(leaseKey, {
+      config,
+      result,
+      localUsed: 0,
+      localBudget: Math.min(
+        result.remaining,
+        Math.ceil((maxRequests * ORG_RATE_LIMIT_LEASE_TTL_MS) / windowMs),
+      ),
+      expiresAt: now + ORG_RATE_LIMIT_LEASE_TTL_MS,
+    });
+  } else if (lease) {
+    // Flag flipped off: the carry above was just flushed — drop the entry.
+    orgRateLimitLeases.delete(leaseKey);
+  }
   if (result.allowed) return null;
   return rateLimitExceededResponse(result, maxRequests, windowMs, "redis");
 }

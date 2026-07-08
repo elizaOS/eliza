@@ -233,4 +233,197 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       conversationMessagesRef.current,
     );
   });
+
+  it("drops optimistic temp turns once the server reload carries the same user and assistant turn", async () => {
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [userMsg("persisted-1")] })
+      .mockResolvedValueOnce({
+        messages: [
+          userMsg("persisted-1"),
+          { ...userMsg("server-user"), text: "hello", timestamp: 20 },
+          {
+            ...assistantMsg("server-assistant"),
+            text: "hi there",
+            timestamp: 21,
+          },
+        ],
+      });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      userMsg("persisted-1"),
+      { ...userMsg("temp-100"), text: "hello", timestamp: 10 },
+      {
+        ...assistantMsg("temp-resp-100"),
+        text: "hi there",
+        timestamp: 11,
+      },
+    ];
+    setConversationMessages.mockClear();
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["persisted-1", "server-user", "server-assistant"]);
+    expect(
+      conversationMessagesRef.current.some((message) =>
+        message.id.startsWith("temp-"),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps an in-flight temp assistant when the server has only persisted the user turn", async () => {
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [userMsg("persisted-1")] })
+      .mockResolvedValueOnce({
+        messages: [
+          userMsg("persisted-1"),
+          { ...userMsg("server-user"), text: "hello", timestamp: 20 },
+        ],
+      });
+    const {
+      deps,
+      setConversationMessages,
+      conversationMessagesRef,
+      activeConversationIdRef,
+    } = makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      userMsg("persisted-1"),
+      { ...userMsg("temp-100"), text: "hello", timestamp: 10 },
+      {
+        ...assistantMsg("temp-resp-100"),
+        text: "partial stream",
+        timestamp: 11,
+      },
+    ];
+    setConversationMessages.mockClear();
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["persisted-1", "server-user", "temp-resp-100"]);
+  });
+
+  it("keeps a distinct repeated temp user message when only the earlier identical turn is persisted", async () => {
+    const firstUser = {
+      ...userMsg("server-user-1"),
+      text: "yes",
+      timestamp: 1_000,
+    };
+    const firstAssistant = {
+      ...assistantMsg("server-assistant-1"),
+      text: "ok",
+      timestamp: 2_000,
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [firstUser, firstAssistant] })
+      .mockResolvedValueOnce({ messages: [firstUser, firstAssistant] });
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      firstUser,
+      firstAssistant,
+      { ...userMsg("temp-21000"), text: "yes", timestamp: 21_000 },
+      {
+        ...assistantMsg("temp-resp-21000"),
+        text: "",
+        timestamp: 21_100,
+      },
+    ];
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "server-user-1",
+      "server-assistant-1",
+      "temp-21000",
+      "temp-resp-21000",
+    ]);
+  });
+
+  it("keeps an identical in-flight streamed assistant when only the repeated user turn has persisted", async () => {
+    const firstUser = {
+      ...userMsg("server-user-1"),
+      text: "ping",
+      timestamp: 1_000,
+    };
+    const firstAssistant = {
+      ...assistantMsg("server-assistant-1"),
+      text: "ok",
+      timestamp: 2_000,
+    };
+    const repeatedUser = {
+      ...userMsg("server-user-2"),
+      text: "ping",
+      timestamp: 21_000,
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [firstUser, firstAssistant] })
+      .mockResolvedValueOnce({
+        messages: [firstUser, firstAssistant, repeatedUser],
+      });
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      firstUser,
+      firstAssistant,
+      { ...userMsg("temp-21000"), text: "ping", timestamp: 21_000 },
+      {
+        ...assistantMsg("temp-resp-21000"),
+        text: "ok",
+        timestamp: 22_000,
+      },
+    ];
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "server-user-1",
+      "server-assistant-1",
+      "server-user-2",
+      "temp-resp-21000",
+    ]);
+  });
 });

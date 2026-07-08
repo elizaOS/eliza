@@ -1,5 +1,13 @@
 // Exercises cloud API tests dedicated agent proxy.test behavior with deterministic Worker route fixtures.
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
 
 /**
  * Security tests for the dedicated-agent unified-auth proxy. The single
@@ -51,16 +59,20 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 let captured: Request | null = null;
+// Per-test override for the origin fetch; null = the default instant-200 stub.
+let fetchImpl: ((request: Request) => Promise<Response>) | null = null;
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL) => {
-  captured = input instanceof Request ? input : new Request(input);
+  const request = input instanceof Request ? input : new Request(input);
+  captured = request;
+  if (fetchImpl) return fetchImpl(request);
   return new Response("ok", { status: 200 });
 }) as typeof fetch;
 afterAll(() => {
   globalThis.fetch = originalFetch;
 });
 
-const { handleDedicatedAgentProxy } = await import(
+const { handleDedicatedAgentProxy, __dedicatedProxyTestHooks } = await import(
   "../src/dedicated-agent-proxy"
 );
 
@@ -90,6 +102,7 @@ const runningDedicated = {
 
 beforeEach(() => {
   captured = null;
+  fetchImpl = null;
   authResult = "throw";
   sandboxResult = null;
   creditGateResult = { allowed: true, balance: 100 };
@@ -319,5 +332,108 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(captured).not.toBeNull(); // forwarded to the CP
+  });
+});
+
+/**
+ * Stream-aware origin timeout. The old `AbortSignal.timeout(30s)` on the whole
+ * fetch killed any body still flowing at t=30s — a >30s agent chat turn (or any
+ * long SSE stream) surfaced to the client as an unhandled TimeoutError
+ * (CF error 1101 / empty body) while the agent's reply persisted server-side.
+ * The timeout must gate the HEADERS phase only: once a response starts, the
+ * body flows for as long as the origin keeps it open, and a true
+ * headers-timeout becomes a structured, retryable 504 the client can read.
+ * Timeouts are shrunk to milliseconds via the test hook.
+ */
+describe("dedicated-agent-proxy — stream-aware origin timeout", () => {
+  const ORIGIN = "https://app-staging.elizacloud.ai";
+  const DEFAULT_TIMEOUT_MS = __dedicatedProxyTestHooks.originHeadersTimeoutMs;
+  const encoder = new TextEncoder();
+
+  beforeEach(() => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = runningDedicated;
+  });
+  afterEach(() => {
+    __dedicatedProxyTestHooks.setOriginHeadersTimeoutMs(DEFAULT_TIMEOUT_MS);
+  });
+
+  test("body still streaming PAST the headers timeout is not aborted — it completes", async () => {
+    __dedicatedProxyTestHooks.setOriginHeadersTimeoutMs(50);
+
+    fetchImpl = async (request) => {
+      // Headers arrive well inside the timeout…
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          // The regression detector: if the proxy leaves its abort timer armed
+          // after headers, the signal fires at t=50ms and errors the body
+          // mid-stream (the old whole-transfer AbortSignal.timeout behavior).
+          request.signal.addEventListener("abort", () => {
+            try {
+              controller.error(
+                request.signal.reason ?? new Error("aborted mid-stream"),
+              );
+            } catch {
+              // already closed — nothing to error
+            }
+          });
+          controller.enqueue(encoder.encode("first-chunk "));
+          // …but the body keeps flowing to 3x the headers timeout.
+          setTimeout(() => {
+            controller.enqueue(encoder.encode("late-chunk-past-timeout"));
+            controller.close();
+          }, 150);
+        },
+      });
+      return new Response(body, { status: 200 });
+    };
+
+    const r = makeRequest("cloud-token", ORIGIN);
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+    expect(res.status).toBe(200);
+    // Reading to completion is the assertion: the old behavior errors here.
+    const text = await res.text();
+    expect(text).toBe("first-chunk late-chunk-past-timeout");
+  });
+
+  test("origin exceeding the HEADERS timeout → structured 504 agent_timeout JSON, not a thrown TimeoutError", async () => {
+    __dedicatedProxyTestHooks.setOriginHeadersTimeoutMs(20);
+
+    // Origin never produces headers; a real fetch rejects when the signal aborts.
+    fetchImpl = (request) =>
+      new Promise<Response>((_resolve, reject) => {
+        request.signal.addEventListener("abort", () =>
+          reject(
+            request.signal.reason ??
+              new DOMException("The operation timed out.", "TimeoutError"),
+          ),
+        );
+      });
+
+    const r = makeRequest("cloud-token", ORIGIN);
+    // Old behavior: this await THROWS (client saw CF 1101 / empty body).
+    const res = await handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT);
+
+    expect(res.status).toBe(504);
+    expect(res.headers.get("Retry-After")).toBe("5");
+    // Browser-readable: CORS is backfilled on the error envelope (#15347).
+    expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    const body = (await res.json()) as { code?: string; success?: boolean };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe("agent_timeout");
+  });
+
+  test("non-timeout fetch failures still propagate (fail-closed pass-through untouched)", async () => {
+    __dedicatedProxyTestHooks.setOriginHeadersTimeoutMs(1_000);
+    fetchImpl = async () => {
+      throw new TypeError("connection refused");
+    };
+
+    const r = makeRequest("cloud-token", ORIGIN);
+    // Not a headers timeout → the error is NOT swallowed into a 504.
+    await expect(
+      handleDedicatedAgentProxy(r, ENV, urlOf(r), AGENT),
+    ).rejects.toThrow("connection refused");
   });
 });

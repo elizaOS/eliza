@@ -93,6 +93,16 @@ jobs:
       # is unset the reconcile loop skips it and preserves any hand-set value,
       # so this is a no-op until the operator sets the GH secret.
       SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
+      # Cloud database DSN for the provisioning worker + agent router. Same
+      # fallback chain as the migrator jobs (cloud-cf-deploy.yml /
+      # cloud-deploy-backend.yml) so the CP daemon always resolves the exact
+      # DB the Worker schema is migrated against. Before this, DATABASE_URL
+      # only lived hand-edited on the box: when staging moved Neon → Railway
+      # the CP silently kept polling the abandoned Neon DB for 3 weeks
+      # (#15160). Reconciled into /opt/eliza/cloud/.env.local with the same
+      # skip-when-unset semantics as HEADSCALE_* — an environment without any
+      # of these secrets keeps its current hand-set value.
+      DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -170,7 +180,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -296,19 +306,23 @@ jobs:
             sudo systemctl daemon-reload
             sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
 
-            # Reconcile Headscale wiring into the systemd EnvironmentFile so CI
-            # is the single source of truth and the box self-heals on every
-            # deploy. The daemon + cloud-shared read HEADSCALE_API_URL /
-            # HEADSCALE_PUBLIC_URL / HEADSCALE_API_KEY straight from process.env
-            # (headscale-client.ts, headscale-integration.ts,
-            # docker-sandbox-provider.ts), fed by EnvironmentFile=
-            # /opt/eliza/cloud/.env.local. The deploy's `git clean -e
-            # cloud/.env.local` preserves that file verbatim, so before this it
-            # was only ever hand-edited on the box and could drift to a stale
-            # headscale (the CP-box outage). Only rewrite a key when the CI value
-            # is non-empty — an unset GH var must never blank a working box (a
-            # blank HEADSCALE_API_KEY makes docker-sandbox-provider throw
-            # "HEADSCALE_API_KEY is not configured" when a route is required).
+            # Reconcile control-plane secrets (HEADSCALE_API_URL /
+            # HEADSCALE_PUBLIC_URL / HEADSCALE_API_KEY /
+            # SANDBOX_REGISTRY_REDIS_URL / DATABASE_URL) into the systemd
+            # EnvironmentFile so CI is the single source of truth and the box
+            # self-heals on every deploy. The daemon + cloud-shared read these
+            # straight from process.env (headscale-client.ts,
+            # headscale-integration.ts, docker-sandbox-provider.ts, the DB
+            # client), fed by EnvironmentFile=/opt/eliza/cloud/.env.local. The
+            # deploy's `git clean -e cloud/.env.local` preserves that file
+            # verbatim, so before this these keys were only ever hand-edited on
+            # the box and could drift to a stale headscale (the CP-box outage)
+            # or a stale database (#15160: the CP polled an abandoned Neon DB
+            # for 3 weeks after staging moved to Railway). Only rewrite a key
+            # when the CI value is non-empty — an unset GH var/secret must
+            # never blank a working box (a blank HEADSCALE_API_KEY makes
+            # docker-sandbox-provider throw "HEADSCALE_API_KEY is not
+            # configured" when a route is required).
             ENV_FILE=/opt/eliza/cloud/.env.local
             sudo touch "$ENV_FILE"
             # Pin this control-plane daemon to the AGENT lane. Unset, a single
@@ -326,7 +340,8 @@ jobs:
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
               "HEADSCALE_API_KEY=$HEADSCALE_API_KEY" \
-              "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL"; do
+              "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL" \
+              "DATABASE_URL=$DATABASE_URL"; do
               key="${kv%%=*}"
               val="${kv#*=}"
               [ -n "$val" ] || continue

@@ -82,6 +82,18 @@ export async function checkRateLimitRedis(
   key: string,
   windowMs: number,
   maxRequests: number,
+  options?: {
+    /**
+     * Requests already SERVED locally since the last authoritative check
+     * (#9899 Tier-3 in-isolate decision lease). They are appended to the
+     * sliding window here — BEFORE the count — so Redis converges to the true
+     * request count and a lease can never make the window under-count by more
+     * than the one in-flight local budget. Scored at `now`, which errs strict:
+     * they happened up to a lease-TTL ago, so they stay counted slightly
+     * longer than a live append would have.
+     */
+    carriedCount?: number;
+  },
 ): Promise<RateLimitResult> {
   const client = getRedisClient();
 
@@ -97,11 +109,21 @@ export async function checkRateLimitRedis(
   const now = Date.now();
   const windowStart = now - windowMs;
   const cacheKey = `${ENV_PREFIX}:ratelimit:${key}`;
+  const carriedCount = Math.max(0, Math.floor(options?.carriedCount ?? 0));
 
   try {
     const pipeline = client.pipeline();
 
     pipeline.zremrangebyscore(cacheKey, 0, windowStart);
+
+    // Backfill locally-served (leased) requests before the count so they gate
+    // this decision like any other member of the window.
+    for (let i = 0; i < carriedCount; i++) {
+      pipeline.zadd(cacheKey, {
+        score: now,
+        member: `${now}-carry${i}-${Math.random().toString(36).substring(7)}`,
+      });
+    }
 
     pipeline.zcard(cacheKey);
 
@@ -114,7 +136,7 @@ export async function checkRateLimitRedis(
 
     const results = await pipeline.exec();
 
-    const count = ((results[1] as number) || 0) as number;
+    const count = ((results[1 + carriedCount] as number) || 0) as number;
 
     const allowed = count < maxRequests;
     const remaining = Math.max(0, maxRequests - count - 1);

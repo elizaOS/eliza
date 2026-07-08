@@ -247,6 +247,24 @@ export async function runPlannerLoop(
 	const stageOneAnswerText = requireNonTerminalToolCall
 		? userSafeCapturedAnswerCandidate(params.stageOneReplyText)
 		: undefined;
+	// Per-turn required-tool miss budget (see
+	// PlannerLoopParams.requiredToolMissBudgetOverride). Honored ONLY when a
+	// shape-guarded Stage-1 answer is available to finish with: the reduced
+	// budget exists to surface that already-produced answer after one rejected
+	// planner reply instead of burning the full miss budget re-prompting
+	// (~13s of wasted iterations on the live vim-window shape). When Stage 1's
+	// text fails the answer-shape gate (ack/progress/unsafe), an early
+	// exhaustion could only ship a worse fallback — keep the full budget so
+	// the corrective retries still get their chance to convert the planner.
+	const effectiveMaxRequiredToolMisses =
+		stageOneAnswerText !== undefined &&
+		typeof params.requiredToolMissBudgetOverride === "number" &&
+		Number.isFinite(params.requiredToolMissBudgetOverride)
+			? Math.min(
+					config.maxRequiredToolMisses,
+					Math.max(0, Math.floor(params.requiredToolMissBudgetOverride)),
+				)
+			: config.maxRequiredToolMisses;
 
 	// Cumulative gross prompt-token counter, summed across every planner
 	// stage in this user turn. Tracked alongside the existing per-iter
@@ -422,7 +440,7 @@ export async function runPlannerLoop(
 						stageOneAnswerText ??
 						lastRejectedTerminalAnswerText;
 					if (
-						requiredToolMisses > config.maxRequiredToolMisses &&
+						requiredToolMisses > effectiveMaxRequiredToolMisses &&
 						capturedFinishText
 					) {
 						return finishWithCapturedRefusal({
@@ -434,7 +452,7 @@ export async function runPlannerLoop(
 					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
-						max: config.maxRequiredToolMisses,
+						max: effectiveMaxRequiredToolMisses,
 						observed: requiredToolMisses,
 					});
 					handleRequiredToolPlannerMiss({
@@ -613,7 +631,7 @@ export async function runPlannerLoop(
 						stageOneAnswerText ??
 						lastRejectedTerminalAnswerText;
 					if (
-						requiredToolMisses > config.maxRequiredToolMisses &&
+						requiredToolMisses > effectiveMaxRequiredToolMisses &&
 						capturedFinishText
 					) {
 						return finishWithCapturedRefusal({
@@ -625,7 +643,7 @@ export async function runPlannerLoop(
 					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
-						max: config.maxRequiredToolMisses,
+						max: effectiveMaxRequiredToolMisses,
 						observed: requiredToolMisses,
 					});
 					handleRequiredToolPlannerMiss({
@@ -3611,13 +3629,30 @@ function userSafeRefusalCandidate(
 	return candidate;
 }
 
+// Progress/ack reply openers shared with the message service's
+// looksLikeProgressOnlyReply classifier (services/message.ts). Single-sourced
+// HERE because message.ts imports from this module and the reverse import
+// would be a cycle. The two consumers deliberately extend it differently —
+// see PROGRESS_ONLY_ANSWER_REJECT below.
+export const PROGRESS_ONLY_REPLY_OPENERS_PATTERN =
+	"checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will";
+
 // Progress/ack-shaped openers that must never be surfaced as a final answer
 // from the required-tool exhaustion path: once the loop gives up, no further
 // tool work happens, so "Checking the price now." style text is a false
-// promise. Mirrors the message-service looksLikeProgressOnlyReply prefix set
-// (kept local — services/message.ts imports from this module, not vice versa).
-const PROGRESS_ONLY_ANSWER_REJECT =
-	/^(?:checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|opening|got it|okay|ok|on it|one moment|let me|i(?:'|’)ll|i will)\b/i;
+// promise. Extends the shared opener set with final-answer-only rejects
+// ("opening", "got it", "okay", "ok", "on it"): a bare acknowledgement must
+// never ship as the WHOLE turn here, but a reply beginning "Okay, …" is
+// routinely a legitimate finished answer for the message service's
+// classifier — widening that side would defeat its complete-direct-reply
+// valve. Exported so message.ts can apply the same answer-shape gate when
+// deciding whether a Stage-1 reply qualifies for the reduced view-overlap
+// miss budget (requiredToolMissBudget), keeping both sides of that handshake
+// on one vocabulary.
+export const PROGRESS_ONLY_ANSWER_REJECT = new RegExp(
+	`^(?:${PROGRESS_ONLY_REPLY_OPENERS_PATTERN}|opening|got it|okay|ok|on it)\\b`,
+	"i",
+);
 
 // Shape gate for surfacing an already-produced ANSWER — the Stage-1 replyText
 // or the planner's own explicit terminal reply the required-tool gate kept

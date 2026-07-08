@@ -80,6 +80,12 @@ import {
 } from "@/lib/services/credits";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import {
+  createDeferredAdmissionSettler,
+  type DeferredAdmissionOutcome,
+  isDeferredAdmissionEnabled,
+  isOrgAdmissionRefused,
+} from "@/lib/services/inference-billing-deferred";
+import {
   createOptimisticDebitSettler,
   getGateBalanceUsd,
   isOptimisticBackstopAvailable,
@@ -1309,7 +1315,87 @@ export async function handleChatCompletionsPOST(
       const useDbLedger =
         optimisticAllowedForRequest && resolveInferenceBillingLedger() === "db";
 
-      if (useDbLedger) {
+      // #9899 Tier-3: deferred admission. When enabled AND this request has a
+      // Workers executionCtx, the durable admission WRITE (ledger insert or KV
+      // pending charge) is started immediately but NOT awaited — it runs
+      // concurrently with the provider call under `waitUntil`, removing the
+      // largest remaining pre-forward round-trip (~100-400ms cross-provider
+      // Postgres for the ledger). The critical path keeps a CACHED 402 gate:
+      // the 15s org-balance hint + the in-isolate refusal blocklist. The
+      // settler awaits the admission before settling, so exactly-once
+      // reconciliation is preserved; a refused admission is charged directly
+      // by the fail-closed fallback debit (see inference-billing-deferred).
+      const deferAdmission =
+        optimisticAllowedForRequest &&
+        isDeferredAdmissionEnabled() &&
+        typeof options.executionCtx?.waitUntil === "function" &&
+        (useDbLedger || isOptimisticBackstopAvailable()) &&
+        !isOrgAdmissionRefused(user.organization_id);
+
+      if (deferAdmission) {
+        const { totalCost } = await calculateCost(
+          normalizedModel,
+          provider,
+          estimatedInputTokens,
+          estimatedOutputTokens,
+          billingSource,
+        );
+        const thresholdUsd = resolveSafeBalanceThresholdUsd();
+        const balanceUsd = await getGateBalanceUsd(user.organization_id);
+        if (
+          isOptimisticEligible({
+            enabled: true,
+            useAppCredits: false,
+            balanceUsd,
+            thresholdUsd,
+            estimatedCostUsd: totalCost,
+          })
+        ) {
+          const chargeCtx = {
+            requestId,
+            organizationId: user.organization_id,
+            userId: user.id,
+            apiKeyId: apiKey?.id ?? null,
+            model,
+            provider,
+            billingSource,
+          };
+          const admission: Promise<DeferredAdmissionOutcome> = useDbLedger
+            ? admitInferenceChargeViaLedger({
+                charge: chargeCtx,
+                estimatedCostUsd: totalCost,
+                thresholdUsd,
+              })
+            : writePendingInferenceCharge(
+                { ...chargeCtx, estimatedCostUsd: totalCost },
+                Date.now(),
+              ).then((persisted) => ({ admitted: persisted }));
+          // Both producers resolve (never reject) by contract, so this cannot
+          // surface an unhandled rejection through waitUntil. Registering the
+          // admission itself (not just the settle chain) guarantees the durable
+          // record lands even if the settle chain is dropped.
+          options.executionCtx?.waitUntil(admission);
+          reservation = creditsService.createAnonymousReservation();
+          const debitCtx = {
+            requestId,
+            organizationId: user.organization_id,
+            userId: user.id,
+            model,
+            provider,
+            billingSource,
+          };
+          optimisticSettler = createDeferredAdmissionSettler({
+            admission,
+            onAdmitted: useDbLedger
+              ? createLedgerDebitSettler(chargeCtx)
+              : createOptimisticDebitSettler(debitCtx),
+            fallback: debitCtx,
+          });
+          optimisticReady = true;
+        }
+      }
+
+      if (!optimisticReady && useDbLedger) {
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
@@ -1520,6 +1606,7 @@ export async function handleChatCompletionsPOST(
           billingSource,
           pooledCredential,
           useMonetizedAppBilling,
+          options.executionCtx,
         )
       : await handleNonStreamingRequest(
           model,
@@ -1829,6 +1916,7 @@ async function handleStreamingRequest(
   billingSource: PricingBillingSource,
   pooledCredential: PooledInferenceCredential | null,
   useMonetizedAppBilling: boolean,
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void },
 ) {
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
@@ -1907,8 +1995,20 @@ async function handleStreamingRequest(
     ...(experimentalOutput ? { output: experimentalOutput } : {}),
     ...(effectiveMaxTokens != null && { maxOutputTokens: effectiveMaxTokens }),
     ...cotOptions,
+    // Parity with the non-streaming path (#8759): the settlement chain below
+    // (billUsage → settleReservation → analytics → audit) is 5+ serial DB
+    // round-trips, and the AI SDK awaits onFinish before it ends fullStream —
+    // so awaiting the chain inline held the final SSE frame + [DONE] hostage
+    // for the full write latency (~8s measured in prod). Nothing the client
+    // receives depends on these writes (`text`/`usage` come from the provider
+    // result; the terminal usage frame is built from the stream's own finish
+    // part), so defer them via waitUntil. settleStreamingOnce is still invoked
+    // synchronously — the settlement promise is cached before onFinish
+    // returns, so the idempotent first-call-wins guarantee against a racing
+    // onAbort/onError is unchanged — and without an executionCtx (tests,
+    // non-Worker callers) the chain is awaited inline exactly as before.
     onFinish: async ({ text, usage }) => {
-      await settleStreamingOnce(async () => {
+      const settlement = settleStreamingOnce(async () => {
         try {
           const billingContext = buildChatBillingContext({
             user,
@@ -1980,6 +2080,9 @@ async function handleStreamingRequest(
           });
           return reconciliation;
         }
+      });
+      await settleOffResponsePath(executionCtx, async () => {
+        await settlement;
       });
     },
     onAbort: async ({

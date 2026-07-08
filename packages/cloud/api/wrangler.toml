@@ -154,6 +154,16 @@ SAFE_BALANCE_THRESHOLD = ""
 # (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
 # backstop (current). Off until soaked; cutover is an ops flip (#9899).
 INFERENCE_BILLING_LEDGER = ""
+# Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
+# (ledger insert / KV pending charge) off the pre-forward critical path via
+# executionCtx.waitUntil; the critical path keeps a cached 402 gate (15s
+# org-balance hint + in-isolate refusal blocklist). Requires
+# INFERENCE_OPTIMISTIC_BILLING. Off until soaked; cutover is an ops flip.
+INFERENCE_DEFERRED_ADMISSION = "false"
+# Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
+# leased requests are carried back into the Redis window), 60s shouldBlockUser
+# memo, 60s model-catalog memo. Default off; rollback = flip off.
+INFERENCE_HOT_PATH_CACHES = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -350,12 +360,22 @@ REDIS_RATE_LIMITING = "true"
 # SAFE_BALANCE_THRESHOLD (USD) empty/invalid -> +Inf -> every org takes the safe
 # synchronous-reserve path. The auth+moderation hot-path cache is the default now
 # (no flag); a cache miss falls back to the authoritative slow path.
-INFERENCE_OPTIMISTIC_BILLING = "false"
-SAFE_BALANCE_THRESHOLD = ""
+INFERENCE_OPTIMISTIC_BILLING = "true"
+SAFE_BALANCE_THRESHOLD = "5.00"
 # Optimistic-billing durable backstop: "db" = inference_pending_charges ledger
 # (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
 # backstop (current). Off until soaked; cutover is an ops flip (#9899).
 INFERENCE_BILLING_LEDGER = ""
+# Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
+# (ledger insert / KV pending charge) off the pre-forward critical path via
+# executionCtx.waitUntil; the critical path keeps a cached 402 gate (15s
+# org-balance hint + in-isolate refusal blocklist). Requires
+# INFERENCE_OPTIMISTIC_BILLING. Off until soaked; cutover is an ops flip.
+INFERENCE_DEFERRED_ADMISSION = "true"
+# Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
+# leased requests are carried back into the Redis window), 60s shouldBlockUser
+# memo, 60s model-catalog memo. Default off; rollback = flip off.
+INFERENCE_HOT_PATH_CACHES = "true"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -492,6 +512,16 @@ SAFE_BALANCE_THRESHOLD = "5.00"
 # (atomic overdraw bound + exactly-once settle + age-ordered sweep); "" = KV
 # backstop (current). Off until soaked; cutover is an ops flip (#9899).
 INFERENCE_BILLING_LEDGER = ""
+# Tier-3 deferred admission (#9899): "true" moves the durable admission WRITE
+# (ledger insert / KV pending charge) off the pre-forward critical path via
+# executionCtx.waitUntil; the critical path keeps a cached 402 gate (15s
+# org-balance hint + in-isolate refusal blocklist). Requires
+# INFERENCE_OPTIMISTIC_BILLING. Off until soaked; cutover is an ops flip.
+INFERENCE_DEFERRED_ADMISSION = "false"
+# Tier-3 in-isolate decision caches (#9899): org rate-limit lease (convergent;
+# leased requests are carried back into the Redis window), 60s shouldBlockUser
+# memo, 60s model-catalog memo. Default off; rollback = flip off.
+INFERENCE_HOT_PATH_CACHES = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"

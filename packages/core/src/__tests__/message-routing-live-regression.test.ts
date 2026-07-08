@@ -1229,3 +1229,156 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(routed.plan.candidateActions).toContain("VIEWS");
 	});
 });
+
+// Regression fence for the vim-window iteration burn (live trajectory,
+// 2026-07-07): "whats the best way to close a window in vim" — Stage 1
+// answered correctly on contexts=["simple"], but WINDOW is a view-surface
+// noun, so the view-SURFACE inference escalated the turn to tool-required and
+// the planner's correct answer was rejected four times (~13s of wasted
+// re-prompts) before the exhaustion rescue shipped the stage-1 answer (18.5s
+// total). The suppression valve deliberately does NOT widen to view-surface —
+// a genuine "open the settings window" ask needs the tool — so the fix caps
+// the escalated turn's required-tool miss budget to 0 instead: the rescue
+// fires after ONE rejected answer. The cap is stamped only on the exact
+// answered shape; acks, other inference kinds, and model-emitted candidates
+// keep the full corrective budget.
+describe("view-surface overlap miss-budget cap (vim-window shape)", () => {
+	const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "VIEWS",
+		similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "WHAT_VIEWS", "OPEN_SETTINGS"],
+		tags: [
+			"views",
+			"ui",
+			"window",
+			"panel",
+			"app",
+			"layout",
+			"view-capability",
+			"calendar",
+			"screen-time",
+			"todos",
+			"settings",
+		],
+	};
+	const replyAction: Pick<Action, "name" | "similes" | "tags"> = {
+		name: "REPLY",
+		similes: [],
+		tags: [],
+	};
+	const stageOneAnswered = (replyText: string, candidates: string[] = []) => ({
+		shouldRespond: "RESPOND" as const,
+		contexts: ["simple"],
+		intents: [],
+		replyText,
+		candidateActionNames: candidates,
+		facts: [],
+		relationships: [],
+		addressedTo: [],
+	});
+	const VIM_ANSWER =
+		"Use :q to close the current window, or Ctrl-w c to close a split.";
+
+	it("caps the miss budget on an answered turn escalated only by a view-surface overlap", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered(VIM_ANSWER),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "whats the best way to close a window in vim",
+			},
+		);
+
+		// The turn still escalates — the valve must not widen to view-surface —
+		// but it carries the per-turn cap so the planner rescue fires after one
+		// rejected answer.
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("VIEWS");
+		expect(routed.plan.reply).toBe(VIM_ANSWER);
+		expect(routed.plan.requiredToolMissBudget).toBe(0);
+	});
+
+	it("a genuine view-navigation ask keeps the full budget: the ack reply fails the answer shape", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Opening the settings panel."),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "open the settings panel",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("VIEWS");
+		expect(routed.plan.requiredToolMissBudget).toBeUndefined();
+	});
+
+	it("bare-noun voice navigation (view-navigation kind, #9950) keeps the full budget", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Which settings do you mean?"),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "settings",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("VIEWS");
+		expect(routed.plan.requiredToolMissBudget).toBeUndefined();
+	});
+
+	it("web-required turns keep the full budget", () => {
+		const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "WEB_FETCH",
+			similes: [],
+			tags: [],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Checking the price now."),
+			undefined,
+			{
+				actions: [replyAction, webAction],
+				messageText: "what is btc at rn?",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("WEB_FETCH");
+		expect(routed.plan.requiredToolMissBudget).toBeUndefined();
+	});
+
+	it("shell-required turns keep the full budget", () => {
+		const shellAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "SHELL",
+			similes: ["RUN_COMMAND", "TERMINAL"],
+			tags: [],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Checking."),
+			undefined,
+			{
+				actions: [replyAction, shellAction],
+				messageText: "show me disk usage on this server",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("SHELL");
+		expect(routed.plan.requiredToolMissBudget).toBeUndefined();
+	});
+
+	it("model-emitted candidates keep the full budget even on the answered shape", () => {
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered(VIM_ANSWER, ["VIEWS"]),
+			undefined,
+			{
+				actions: [replyAction, viewsAction],
+				messageText: "whats the best way to close a window in vim",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("VIEWS");
+		expect(routed.plan.requiredToolMissBudget).toBeUndefined();
+	});
+});

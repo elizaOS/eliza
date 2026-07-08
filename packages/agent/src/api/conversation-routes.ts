@@ -63,15 +63,17 @@ import {
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
+  getChatMessageIdFirstSeenAt,
+  getRecentVisibleAssistantMemoryTextSince,
   hasRecentVisibleAssistantMemorySince,
   initSse,
   isDuplicateChatMessage,
   normalizeAccountConnectRequest,
-  releaseChatMessageId,
   normalizeChatResponseText,
   persistAssistantConversationMemory,
   persistConversationMemory,
   readChatRequestPayload,
+  releaseChatMessageId,
   resolveNoResponseFallback,
   writeChatStatusSse,
   writeChatTokenSse,
@@ -2488,19 +2490,47 @@ export async function handleConversationRoutes(
     // auto-retry after a network blip (`ui/src/api/client-base.ts`), expecting
     // the server to de-dupe. A repeat within the TTL means the original request
     // already started this turn — do NOT run a second one (duplicate persisted
-    // reply + double billing). Emit the same terminal `done` shape as the
-    // "assistant reply already persisted" suppression branch below: the client
-    // drops its optimistic placeholder on an empty completed turn and then
-    // reconciles the thread from history, which carries the first attempt's
-    // reply. Requests without a clientMessageId are never treated as duplicates.
+    // reply + double billing). When the FIRST attempt's reply already
+    // persisted, return IT in the terminal `done` frame — the retry then
+    // delivers the same outcome as the original instead of an empty turn the
+    // client must repair from history. Only while the original is still
+    // mid-turn (nothing persisted since its recorded arrival) does the retry
+    // fall back to the empty ignored shape: the client drops its optimistic
+    // placeholder on an empty completed turn and reconciles from history once
+    // the first attempt lands. Requests without a clientMessageId are never
+    // treated as duplicates.
     if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
+      const firstSeenAt = getChatMessageIdFirstSeenAt(
+        conv.roomId,
+        clientMessageId ?? null,
+      );
+      const persistedFirstReply =
+        state.runtime && firstSeenAt !== null
+          ? await getRecentVisibleAssistantMemoryTextSince(
+              state.runtime,
+              conv.roomId,
+              firstSeenAt,
+              // No pre-arrival slack: same-process clocks mean any reply
+              // persisted before this id's first arrival is a PRIOR turn's.
+              0,
+            )
+          : null;
       initSse(res);
-      writeSseJson(res, {
-        type: "done",
-        fullText: "",
-        agentName: state.agentName,
-        noResponseReason: "ignored",
-      });
+      writeSseJson(
+        res,
+        persistedFirstReply
+          ? {
+              type: "done",
+              fullText: persistedFirstReply,
+              agentName: state.agentName,
+            }
+          : {
+              type: "done",
+              fullText: "",
+              agentName: state.agentName,
+              noResponseReason: "ignored",
+            },
+      );
       finishStreamResponse();
       return true;
     }
@@ -2934,16 +2964,38 @@ export async function handleConversationRoutes(
     } = chatPayload;
     // Idempotency contract (see the streaming twin above / `isDuplicateChatMessage`):
     // a retried send carrying the same clientMessageId within the TTL already
-    // ran this turn. Answer 200 with the ignored-turn success shape — the
-    // client maps `noResponseReason: "ignored"` to an empty reply — so the
-    // retry reads as success without starting a second LLM turn or persisting
-    // a duplicate assistant memory.
+    // ran this turn. When the first attempt's reply already persisted, answer
+    // 200 with THAT text (the normal success shape) so the retry delivers the
+    // original outcome; only while the original is still mid-turn does the
+    // retry answer with the ignored-turn shape — the client maps
+    // `noResponseReason: "ignored"` to an empty reply — so it still reads as
+    // success without starting a second LLM turn or persisting a duplicate
+    // assistant memory.
     if (isDuplicateChatMessage(conv.roomId, clientMessageId ?? null)) {
-      json(res, {
-        text: "",
-        agentName: state.agentName,
-        noResponseReason: "ignored",
-      });
+      const firstSeenAt = getChatMessageIdFirstSeenAt(
+        conv.roomId,
+        clientMessageId ?? null,
+      );
+      const persistedFirstReply =
+        state.runtime && firstSeenAt !== null
+          ? await getRecentVisibleAssistantMemoryTextSince(
+              state.runtime,
+              conv.roomId,
+              firstSeenAt,
+              // No pre-arrival slack: same-process clocks mean any reply
+              // persisted before this id's first arrival is a PRIOR turn's.
+              0,
+            )
+          : null;
+      if (persistedFirstReply) {
+        json(res, { text: persistedFirstReply, agentName: state.agentName });
+      } else {
+        json(res, {
+          text: "",
+          agentName: state.agentName,
+          noResponseReason: "ignored",
+        });
+      }
       return true;
     }
     // Hold the turn through the warming window (early API bind → runtime ready)

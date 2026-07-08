@@ -21,11 +21,39 @@ async function countRows(query: Promise<Array<{ count: number }>>): Promise<numb
 }
 
 /**
+ * agent_sandboxes statuses that mean the container should NOT be running. A
+ * container backing a row in one of these states is reapable just like one
+ * with no row at all: the lifecycle has decided this agent has no live
+ * container, so a leftover Docker process is a leak.
+ *
+ * `deletion_failed` is included deliberately — that state exists precisely
+ * because the delete-time container teardown did not succeed, so reaping it
+ * here is the recovery path. `deletion_pending` is NOT terminal: an
+ * agent_delete job is actively in flight and owns the teardown; reaping under
+ * it would race the worker.
+ */
+const TERMINAL_SANDBOX_STATUSES = new Set<string>([
+  "stopped",
+  "error",
+  "sleeping",
+  "deletion_failed",
+]);
+
+/**
  * Active compute slots on a Docker node.
  *
  * Stopped containers are intentionally excluded here because their Docker
  * process has been removed and `allocated_count` should represent live slot
  * pressure, not retained storage.
+ *
+ * The agent side excludes the same {@link TERMINAL_SANDBOX_STATUSES} the orphan
+ * reconciler uses to decide a container "should NOT be running" — a row in one
+ * of those states holds no live slot. Excluding only `('stopped','error')` here
+ * (the previous behaviour) left `sleeping`/`deletion_failed` rows inflating
+ * `allocated_count` above a node's real load, which made the autoscaler read
+ * bare-metal robots as full and bill new Hetzner-cloud nodes instead (#15378).
+ * `disconnected` is deliberately NOT excluded: it is non-terminal (the
+ * container is up but unreachable) and still occupies the slot.
  */
 export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<number> {
   const [containerCount, agentCount] = await Promise.all([
@@ -47,7 +75,10 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
         .where(
           and(
             eq(agentSandboxes.node_id, nodeId),
-            sql`${agentSandboxes.status} not in ('stopped','error')`,
+            sql`${agentSandboxes.status} not in (${sql.join(
+              [...TERMINAL_SANDBOX_STATUSES].map((status) => sql`${status}`),
+              sql`, `,
+            )})`,
           ),
         ),
     ),
@@ -74,25 +105,6 @@ export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<num
 // parses the id out of `agent-<id>`, and the agent terminal-status vocab (plus
 // the agent_sandboxes status query and a log tag).
 // ---------------------------------------------------------------------------
-
-/**
- * agent_sandboxes statuses that mean the container should NOT be running. A
- * container backing a row in one of these states is reapable just like one
- * with no row at all: the lifecycle has decided this agent has no live
- * container, so a leftover Docker process is a leak.
- *
- * `deletion_failed` is included deliberately — that state exists precisely
- * because the delete-time container teardown did not succeed, so reaping it
- * here is the recovery path. `deletion_pending` is NOT terminal: an
- * agent_delete job is actively in flight and owns the teardown; reaping under
- * it would race the worker.
- */
-const TERMINAL_SANDBOX_STATUSES = new Set<string>([
-  "stopped",
-  "error",
-  "sleeping",
-  "deletion_failed",
-]);
 
 /**
  * Extract the agent id from an `agent-<id>` container name, or null when the

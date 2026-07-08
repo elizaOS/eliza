@@ -41,6 +41,7 @@ import * as aiBillingActual from "@/lib/services/ai-billing";
 // files importing from these modules; afterAll restores them.
 import * as contentModerationActual from "@/lib/services/content-moderation";
 import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
+import * as billingDeferredActual from "@/lib/services/inference-billing-deferred";
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
 import * as billingLedgerActual from "@/lib/services/inference-billing-ledger";
 import * as modelCatalogActual from "@/lib/services/model-catalog";
@@ -62,17 +63,29 @@ let gateBalanceUsd = 100;
 let thresholdUsd = 5;
 let backstopPersists = true;
 let billingLedger: "kv" | "db" = "kv";
+let deferredEnabled = false;
+let ledgerAdmits = true;
+let reserveCreditsThrows: Error | null = null;
 
 // --- spies on the two terminal billing paths --------------------------------
 const writePendingInferenceCharge = mock(async () => backstopPersists);
-const reserveCredits = mock(async () => ({
-  reservedAmount: 0.015,
-  // not exercised — createCreditReservationSettler is stubbed to a no-op below
-  reconcile: async () => null,
+const reserveCredits = mock(async () => {
+  if (reserveCreditsThrows) throw reserveCreditsThrows;
+  return {
+    reservedAmount: 0.015,
+    // not exercised — createCreditReservationSettler is stubbed to a no-op below
+    reconcile: async () => null,
+  };
+});
+// Inner settlers are spies too so the Tier-3 tests can prove the settle chain
+// reaches the exactly-once settler AFTER the deferred admission resolves.
+const optimisticInnerSettler = mock(async (_actualCost: number) => null);
+const ledgerInnerSettler = mock(async (_actualCost: number) => null);
+const createOptimisticDebitSettler = mock(() => optimisticInnerSettler);
+const admitInferenceChargeViaLedger = mock(async () => ({
+  admitted: ledgerAdmits,
 }));
-const createOptimisticDebitSettler = mock(() => async () => null);
-const admitInferenceChargeViaLedger = mock(async () => ({ admitted: true }));
-const createLedgerDebitSettler = mock(() => async () => null);
+const createLedgerDebitSettler = mock(() => ledgerInnerSettler);
 const createCreditReservationSettler = mock(() => async () => null);
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
@@ -142,6 +155,13 @@ mock.module("@/lib/services/inference-billing-ledger", () => ({
   createLedgerDebitSettler,
 }));
 
+// Tier-3 deferred admission: only the env flag is a knob — the settler and the
+// refusal blocklist stay REAL (they are part of what is under test).
+mock.module("@/lib/services/inference-billing-deferred", () => ({
+  ...billingDeferredActual,
+  isDeferredAdmissionEnabled: () => deferredEnabled,
+}));
+
 // Synchronous reserve path — spied so we can prove it is the fallback.
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
@@ -192,6 +212,10 @@ afterAll(() => {
     "@/lib/services/inference-billing-ledger",
     () => billingLedgerActual,
   );
+  mock.module(
+    "@/lib/services/inference-billing-deferred",
+    () => billingDeferredActual,
+  );
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
 });
@@ -220,6 +244,18 @@ async function drive(affiliateCode?: string): Promise<void> {
   });
 }
 
+/** Tier-3 driver: same as `drive` but with a captured Workers executionCtx. */
+async function driveWithCtx(captured: Promise<unknown>[]): Promise<Response> {
+  return await handleChatCompletionsPOST(makeRequest(), {
+    skipOrgRateLimit: true,
+    executionCtx: {
+      waitUntil: (p: Promise<unknown>) => {
+        captured.push(p);
+      },
+    },
+  });
+}
+
 describe("chat/completions optimistic-billing route decision (#9899/#10066)", () => {
   beforeEach(() => {
     billingEnabled = true;
@@ -228,11 +264,17 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     thresholdUsd = 5;
     backstopPersists = true;
     billingLedger = "kv";
+    deferredEnabled = false;
+    ledgerAdmits = true;
+    reserveCreditsThrows = null;
+    billingDeferredActual.__clearDeferredAdmissionState();
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
     createOptimisticDebitSettler.mockClear();
+    optimisticInnerSettler.mockClear();
     admitInferenceChargeViaLedger.mockClear();
     createLedgerDebitSettler.mockClear();
+    ledgerInnerSettler.mockClear();
     createCreditReservationSettler.mockClear();
   });
 
@@ -328,5 +370,109 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
       [{ affiliateCode?: string | null }]
     >;
     expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
+  });
+
+  describe("Tier-3 deferred admission (#9899)", () => {
+    test("KV backend: admission moves to waitUntil, warm path does no synchronous reserve, settle chain still reaches the exactly-once settler", async () => {
+      deferredEnabled = true;
+      const captured: Promise<unknown>[] = [];
+
+      await driveWithCtx(captured);
+
+      // The durable write was started and handed to waitUntil — not awaited on
+      // the critical path (the critical path only read the cached gate).
+      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+      expect(captured).toHaveLength(1);
+      await expect(captured[0]).resolves.toEqual({ admitted: true });
+      // No synchronous reserve.
+      expect(reserveCredits).not.toHaveBeenCalled();
+      // The route's error path settled with 0 THROUGH the deferred settler,
+      // which awaited the admission then delegated to the exactly-once KV
+      // settler — reconciliation semantics preserved.
+      expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
+      expect(optimisticInnerSettler).toHaveBeenCalledTimes(1);
+      expect(optimisticInnerSettler).toHaveBeenCalledWith(0);
+    });
+
+    test("DB ledger backend: ledger admission is the deferred producer; ledger settler still settles", async () => {
+      deferredEnabled = true;
+      billingLedger = "db";
+      const captured: Promise<unknown>[] = [];
+
+      await driveWithCtx(captured);
+
+      expect(admitInferenceChargeViaLedger).toHaveBeenCalledTimes(1);
+      expect(captured).toHaveLength(1);
+      await expect(captured[0]).resolves.toEqual({ admitted: true });
+      expect(reserveCredits).not.toHaveBeenCalled();
+      expect(createLedgerDebitSettler).toHaveBeenCalledTimes(1);
+      expect(ledgerInnerSettler).toHaveBeenCalledTimes(1);
+      expect(ledgerInnerSettler).toHaveBeenCalledWith(0);
+      // The KV backstop was never touched on the db backend.
+      expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    });
+
+    test("no executionCtx → deferred path is inert; Tier-2 synchronous admission behavior is unchanged", async () => {
+      deferredEnabled = true;
+      await drive(); // no executionCtx
+      // Tier-2 KV branch ran (backstop written, optimistic settler wired) but
+      // nothing was handed to waitUntil — the admission was awaited inline.
+      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+      expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
+      expect(reserveCredits).not.toHaveBeenCalled();
+    });
+
+    test("402 still fires: a cached balance below threshold falls to the synchronous reserve and surfaces insufficient_credits", async () => {
+      deferredEnabled = true;
+      gateBalanceUsd = 2; // < threshold 5 → cached gate refuses the deferred path
+      const { InsufficientCreditsError } = await import(
+        "@/lib/services/ai-billing"
+      );
+      reserveCreditsThrows = new InsufficientCreditsError(0.05, 0.01);
+      const captured: Promise<unknown>[] = [];
+
+      const res = await driveWithCtx(captured);
+
+      expect(captured).toHaveLength(0); // nothing deferred for a broke org
+      expect(reserveCredits).toHaveBeenCalledTimes(1);
+      expect(res.status).toBe(402);
+      const body = (await res.json()) as {
+        error?: { code?: string; type?: string };
+      };
+      expect(body.error?.code).toBe("insufficient_credits");
+    });
+
+    test("a refused deferred admission blocklists the org: the NEXT request takes the synchronous reserve", async () => {
+      deferredEnabled = true;
+      backstopPersists = false; // deferred KV admission resolves { admitted: false }
+      const captured: Promise<unknown>[] = [];
+
+      await driveWithCtx(captured);
+      // First request took the deferred path (write attempted via waitUntil)…
+      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+      expect(captured).toHaveLength(1);
+      await expect(captured[0]).resolves.toEqual({ admitted: false });
+      // …and its settle(0) ran the refusal fallback (no exactly-once settler).
+      expect(optimisticInnerSettler).not.toHaveBeenCalled();
+      expect(reserveCredits).not.toHaveBeenCalled();
+
+      writePendingInferenceCharge.mockClear();
+      await driveWithCtx(captured);
+      // Blocklisted org skips the deferred path; the Tier-2 branch attempts the
+      // backstop synchronously, and (still non-durable) falls back to the
+      // synchronous reserve — never forwards on an un-recorded charge.
+      expect(captured).toHaveLength(1);
+      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+      expect(reserveCredits).toHaveBeenCalledTimes(1);
+    });
+
+    test("flag OFF leaves the executionCtx-carrying request on the Tier-2 synchronous admission", async () => {
+      deferredEnabled = false;
+      const captured: Promise<unknown>[] = [];
+      await driveWithCtx(captured);
+      expect(captured).toHaveLength(0);
+      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+      expect(reserveCredits).not.toHaveBeenCalled();
+    });
   });
 });

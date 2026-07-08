@@ -78,6 +78,123 @@ function isLocalPendingConversationMessage(
   return message.id.startsWith("temp-");
 }
 
+const LOCAL_TURN_MATCH_SLACK_MS = 60_000;
+
+function findMatchingServerMessageIndex(
+  serverMessages: ConversationMessage[],
+  localMessage: ConversationMessage,
+  usedIndexes: Set<number>,
+  options?: { afterIndex?: number },
+): number {
+  const text = localMessage.text.trim();
+  if (!text) return -1;
+  const minTimestamp = localMessage.timestamp - LOCAL_TURN_MATCH_SLACK_MS;
+  const maxTimestamp = localMessage.timestamp + LOCAL_TURN_MATCH_SLACK_MS;
+  const startIndex =
+    typeof options?.afterIndex === "number" ? options.afterIndex + 1 : 0;
+  let bestIndex = -1;
+  let bestTimestampDelta = Number.POSITIVE_INFINITY;
+  for (let index = startIndex; index < serverMessages.length; index += 1) {
+    if (usedIndexes.has(index)) continue;
+    const serverMessage = serverMessages[index];
+    if (!serverMessage || serverMessage.role !== localMessage.role) continue;
+    if (serverMessage.timestamp < minTimestamp) continue;
+    if (serverMessage.timestamp > maxTimestamp) continue;
+    if (serverMessage.text.trim() !== text) continue;
+    const timestampDelta = Math.abs(
+      serverMessage.timestamp - localMessage.timestamp,
+    );
+    if (timestampDelta < bestTimestampDelta) {
+      bestIndex = index;
+      bestTimestampDelta = timestampDelta;
+    }
+  }
+  return bestIndex;
+}
+
+function findNearestPriorLocalTempUser(
+  messages: ConversationMessage[],
+  fromIndex: number,
+): ConversationMessage | null {
+  for (let index = fromIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message) continue;
+    if (message.role === "user" && isLocalPendingConversationMessage(message)) {
+      return message;
+    }
+    if (message.role === "user") return null;
+  }
+  return null;
+}
+
+function resolvedLocalTempMessageIds(
+  serverMessages: ConversationMessage[],
+  currentMessages: ConversationMessage[],
+): Set<string> {
+  const resolvedIds = new Set<string>();
+  const serverIndexById = new Map<string, number>();
+  serverMessages.forEach((message, index) => {
+    serverIndexById.set(message.id, index);
+  });
+  const usedServerUserIndexes = new Set<number>();
+  const usedServerAssistantIndexes = new Set<number>();
+  currentMessages.forEach((message) => {
+    if (isLocalPendingConversationMessage(message)) return;
+    const serverIndex = serverIndexById.get(message.id);
+    if (typeof serverIndex !== "number") return;
+    if (message.role === "user") {
+      usedServerUserIndexes.add(serverIndex);
+    } else if (message.role === "assistant") {
+      usedServerAssistantIndexes.add(serverIndex);
+    }
+  });
+  const serverUserIndexByLocalId = new Map<string, number>();
+
+  currentMessages.forEach((message) => {
+    if (
+      message.role !== "user" ||
+      !isLocalPendingConversationMessage(message)
+    ) {
+      return;
+    }
+    const serverIndex = findMatchingServerMessageIndex(
+      serverMessages,
+      message,
+      usedServerUserIndexes,
+    );
+    if (serverIndex < 0) return;
+    usedServerUserIndexes.add(serverIndex);
+    serverUserIndexByLocalId.set(message.id, serverIndex);
+    resolvedIds.add(message.id);
+  });
+
+  currentMessages.forEach((message, index) => {
+    if (
+      message.role !== "assistant" ||
+      !isLocalPendingConversationMessage(message)
+    ) {
+      return;
+    }
+    const pairedUser = findNearestPriorLocalTempUser(currentMessages, index);
+    const matchedUserIndex = pairedUser
+      ? serverUserIndexByLocalId.get(pairedUser.id)
+      : undefined;
+    const serverIndex = findMatchingServerMessageIndex(
+      serverMessages,
+      message,
+      usedServerAssistantIndexes,
+      typeof matchedUserIndex === "number"
+        ? { afterIndex: matchedUserIndex }
+        : undefined,
+    );
+    if (serverIndex < 0) return;
+    usedServerAssistantIndexes.add(serverIndex);
+    resolvedIds.add(message.id);
+  });
+
+  return resolvedIds;
+}
+
 function mergeLocalPendingConversationMessages(
   serverMessages: ConversationMessage[],
   currentMessages: ConversationMessage[],
@@ -86,9 +203,15 @@ function mergeLocalPendingConversationMessages(
 ): ConversationMessage[] {
   if (loadedConversationId !== convId) return serverMessages;
   const serverIds = new Set(serverMessages.map((message) => message.id));
+  const resolvedTempIds = resolvedLocalTempMessageIds(
+    serverMessages,
+    currentMessages,
+  );
   const pendingMessages = currentMessages.filter(
     (message) =>
-      isLocalPendingConversationMessage(message) && !serverIds.has(message.id),
+      isLocalPendingConversationMessage(message) &&
+      !serverIds.has(message.id) &&
+      !resolvedTempIds.has(message.id),
   );
   if (pendingMessages.length === 0) return serverMessages;
   return [...serverMessages, ...pendingMessages];
