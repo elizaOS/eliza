@@ -1504,6 +1504,13 @@ declare module "./client-base" {
        * the bind decision.
        */
       knownAgents?: CloudCompatAgent[];
+      /**
+       * Return the Cloud REST adapter base (`/api/v1/eliza/agents/:id`) even
+       * when the agent also exposes a dedicated subdomain. First-run uses this
+       * for the default Steward-token flow; explicit dedicated handoff paths
+       * leave it off so they can still run the `/pair` exchange.
+       */
+      preferStewardAgentAdapter?: boolean;
       onProgress?: (status: string, detail?: string) => void;
       /**
        * Cold-boot wait tuning for a reused dedicated agent that is not yet
@@ -3322,6 +3329,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     forceCreate,
     preferSharedTier,
     knownAgents,
+    preferStewardAgentAdapter,
   } = options;
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
@@ -3401,12 +3409,14 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
           ...(onProgress ? { onProgress } : {}),
         });
       }
-      const apiBase = resolveCloudAgentApiBase({
-        bridgeUrl: agent.bridge_url,
-        webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
-        agentId: agent.agent_id,
-        cloudApiBase: resolvedCloudApiBase,
-      });
+      const apiBase = preferStewardAgentAdapter
+        ? buildCloudSharedAgentApiBase(resolvedCloudApiBase, agent.agent_id)
+        : resolveCloudAgentApiBase({
+            bridgeUrl: agent.bridge_url,
+            webUiUrl: agent.web_ui_url ?? agent.webUiUrl,
+            agentId: agent.agent_id,
+            cloudApiBase: resolvedCloudApiBase,
+          });
       onProgress?.("ready", "Connected to your agent");
       return {
         agentId: agent.agent_id,
@@ -3414,7 +3424,8 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         apiBase,
         bridgeUrl: agent.bridge_url,
         created: false,
-        requiresAgentPairing: isDedicatedCloudAgentBase(apiBase),
+        requiresAgentPairing:
+          !preferStewardAgentAdapter && isDedicatedCloudAgentBase(apiBase),
       };
     }
   }
@@ -3457,7 +3468,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     detailAgent?.web_ui_url || detailAgent?.bridge_url,
   );
   const apiBase =
-    isRunning && hasDedicatedUrl
+    !preferStewardAgentAdapter && isRunning && hasDedicatedUrl
       ? resolveCloudAgentApiBase({
           bridgeUrl: detailAgent.bridge_url,
           webUiUrl: detailAgent.web_ui_url ?? detailAgent.webUiUrl,
@@ -3478,7 +3489,8 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     // explicit `false` demotes to reuse; an absent flag (older worker) stays
     // `true` so the pre-existing create UX is unchanged.
     created: created.created !== false,
-    requiresAgentPairing: isDedicatedCloudAgentBase(apiBase),
+    requiresAgentPairing:
+      !preferStewardAgentAdapter && isDedicatedCloudAgentBase(apiBase),
   };
 };
 

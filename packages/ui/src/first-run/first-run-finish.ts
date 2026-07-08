@@ -525,6 +525,7 @@ export async function bindCloudAgent(
     ...(opts.preferAgentId ? { preferAgentId: opts.preferAgentId } : {}),
     ...(opts.forceCreate ? { forceCreate: true } : {}),
     ...(opts.knownAgents ? { knownAgents: opts.knownAgents } : {}),
+    preferStewardAgentAdapter: true,
     ...(getBootConfig().preferSharedCloudTier
       ? { preferSharedTier: true }
       : {}),

@@ -1,23 +1,17 @@
 /**
  * Gate for the first-run runtime chooser (the local / remote onboarding paths).
  *
- * The product onboards through Eliza Cloud only on web/desktop (#13377): the
- * chooser is OFF there by default, so onboarding is a single "sign in to
- * Eliza Cloud" step. Two Android exceptions bracket it: the Play-Store
- * cloud-locked variant can never enable the chooser (that build must not
- * expose a local backend regardless of developer overrides), and the local
- * sideload/system builds default it ON (#14390) — they ship the on-device
- * agent, and onboarding is the only thing allowed to start it. Elsewhere the
- * local and remote paths stay in-tree for development: a build can enable the
- * chooser with `VITE_ELIZA_ENABLE_RUNTIME_CHOOSER=1`, and tests or a running
- * shell can flip the localStorage override without a rebuild (explicit
+ * The product onboards through Eliza Cloud only by default (#13377/#15527): the
+ * chooser is OFF unless a developer/test build explicitly enables it. The
+ * Play-Store cloud-locked Android variant can never enable the chooser because
+ * that build must not expose a local backend regardless of developer overrides.
+ * The local and remote paths stay in-tree for development: a build can enable
+ * the chooser with `VITE_ELIZA_ENABLE_RUNTIME_CHOOSER=1`, and tests or a
+ * running shell can flip the localStorage override without a rebuild (explicit
  * "1"/"0" beats the build default).
  */
 
-import {
-  isAndroidCloudBuild,
-  isAndroidLocalSideloadBuild,
-} from "../platform/android-runtime";
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 
 /** localStorage override: "1" enables the chooser, "0" disables, unset defers to the build default. */
 export const RUNTIME_CHOOSER_OVERRIDE_STORAGE_KEY =
@@ -51,19 +45,15 @@ function readBuildDefault(): boolean {
 
 /**
  * Whether onboarding offers the full runtime chooser (cloud / local / remote).
- * False (the default on web/desktop/cloud builds) means cloud-only onboarding:
+ * False (the default on production builds) means cloud-only onboarding:
  * sign in to Eliza Cloud is the one and only path, and completing it completes
- * first-run. The Android local sideload/system builds default the chooser ON
- * (#14390): they ship the on-device agent as their whole point, and since the
- * fresh-install auto-start is gone (boot-gated on the onboarding choice), the
- * chooser is the only path that can ever start it — hiding it would strand the
- * build on a cloud-only flow. The explicit localStorage override still beats
- * this so tests/dev shells can force either mode.
+ * first-run. Development and test builds opt into the local/remote chooser via
+ * the Vite flag or the localStorage override; Android local sideloads no longer
+ * special-case the production default.
  */
 export function isRuntimeChooserEnabled(): boolean {
   if (isAndroidCloudBuild()) return false;
   const override = readOverride();
   if (override !== null) return override;
-  if (isAndroidLocalSideloadBuild()) return true;
   return readBuildDefault();
 }

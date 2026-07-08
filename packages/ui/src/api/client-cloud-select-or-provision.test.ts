@@ -153,6 +153,31 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.requiresAgentPairing).toBe(true);
   });
 
+  it("can reuse a dedicated agent through the Steward-token REST adapter without pairing", async () => {
+    const { client, getCloudCompatAgents } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "agent-dedicated",
+          web_ui_url: "https://agent-dedicated.elizacloud.ai",
+          webUiUrl: "https://agent-dedicated.elizacloud.ai",
+        }),
+      ],
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      preferStewardAgentAdapter: true,
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.apiBase).toBe(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-dedicated",
+    );
+    expect(result.requiresAgentPairing).toBe(false);
+  });
+
   it("does NOT provision when the list fetch throws (transient/network error)", async () => {
     const { client, getCloudCompatAgents, createCloudCompatAgent } =
       fakeClient();
@@ -500,5 +525,42 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.created).toBe(true);
     expect(result.apiBase).toContain("agent-warm.elizacloud.ai");
     expect(result.requiresAgentPairing).toBe(true);
+  });
+
+  it("keeps a warm newly-created agent on the Steward-token REST adapter when requested", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-warm",
+        agentName: "Eliza",
+        jobId: "",
+        status: "running",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-warm",
+        status: "running",
+        web_ui_url: "https://agent-warm.elizacloud.ai",
+        webUiUrl: "https://agent-warm.elizacloud.ai",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      preferStewardAgentAdapter: true,
+    });
+
+    expect(result.created).toBe(true);
+    expect(result.apiBase).toBe(
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-warm",
+    );
+    expect(result.requiresAgentPairing).toBe(false);
   });
 });

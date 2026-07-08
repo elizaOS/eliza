@@ -127,6 +127,9 @@ describe("bindCloudAgent clears the durable force-fresh flag on completion", () 
     expect(isForceFreshFirstRunEnabled()).toBe(false);
     // The shared-agent path must NOT POST /api/first-run.
     expect(clientMock.submitFirstRun).not.toHaveBeenCalled();
+    expect(clientMock.selectOrProvisionCloudAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ preferStewardAgentAdapter: true }),
+    );
   });
 
   it("is a no-op-safe clear when force-fresh was never armed (idempotent)", async () => {
