@@ -230,6 +230,19 @@ export function isRecoverableRemoteBase(args: {
 // api/client-cloud.ts and DIRECT_CLOUD_API_BASE in startup-phase-restore.ts.
 const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
 
+function sharedCloudAgentIdFromBase(base: string): string | null {
+  try {
+    const url = new URL(base);
+    const match = url.pathname
+      .replace(/\/bridge\/?$/, "")
+      .match(/\/api\/v1\/eliza\/agents\/([^/]+)\/?$/);
+    return match?.[1] ? decodeURIComponent(match[1]) : null;
+  } catch {
+    // error-policy:J3 malformed base — no id can be verified.
+    return null;
+  }
+}
+
 /**
  * A DEDICATED cloud agent base just 404'd on the first-run shell endpoints.
  * That 404 is ambiguous: it is the normal "no first-run shell on a cloud agent"
@@ -266,6 +279,32 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
     // A 404 is the positive "agent is gone" signal. Any other failure
     // (network blip, 5xx) is inconclusive — do not strand the user.
     return asApiLikeError(err)?.status === 404;
+  } finally {
+    client.setBaseUrl(priorBaseUrl || null);
+    if (!priorToken) client.setToken(null);
+  }
+}
+
+async function sharedCloudAgentIsMissingFromRunningSet(
+  base: string,
+): Promise<boolean> {
+  const agentId = sharedCloudAgentIdFromBase(base);
+  if (!agentId) return false;
+  if (!getCloudAuthToken(client)) return false;
+
+  const priorBaseUrl = client.getBaseUrl();
+  const priorToken = client.hasToken();
+  client.setBaseUrl(DIRECT_CLOUD_API_BASE);
+  try {
+    const res = await client.getCloudCompatAgents();
+    if (!res.success) return false;
+    return !res.data.some(
+      (agent) => agent.agent_id === agentId && agent.status === "running",
+    );
+  } catch {
+    // error-policy:J4 running-set verification is a recovery guard; an
+    // inconclusive control-plane read must not clear a potentially valid agent.
+    return false;
   } finally {
     client.setBaseUrl(priorBaseUrl || null);
     if (!priorToken) client.setToken(null);
@@ -887,6 +926,16 @@ export async function runPollingBackend(
             }
             if (ae?.status === 404) {
               if (isDirectCloudSharedAgentBase(client.getBaseUrl())) {
+                if (
+                  await sharedCloudAgentIsMissingFromRunningSet(
+                    client.getBaseUrl(),
+                  )
+                ) {
+                  recoverToAgentSelection(
+                    "saved shared cloud agent is missing from the running set",
+                  );
+                  return;
+                }
                 // Shared-runtime cloud bridge: no /api/first-run* shell
                 // endpoints exist (we provisioned it, so first-run IS done).
                 // Treat the 404 as complete and go to chat — the bridge serves
@@ -1102,6 +1151,14 @@ export async function runPollingBackend(
       }
       if (ae?.status === 404) {
         if (isDirectCloudSharedAgentBase(client.getBaseUrl())) {
+          if (
+            await sharedCloudAgentIsMissingFromRunningSet(client.getBaseUrl())
+          ) {
+            recoverToAgentSelection(
+              "saved shared cloud agent is missing from the running set",
+            );
+            return;
+          }
           // Shared-runtime cloud bridge: no /api/first-run* shell endpoints
           // exist (we provisioned it, so first-run IS done). Treat the 404 as
           // complete and go to chat — the bridge serves /api/conversations via

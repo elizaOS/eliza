@@ -83,6 +83,41 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
+  it("does not reuse a non-running existing agent; provisions from a confirmed no-running set", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [makeAgent({ status: "stopped" })],
+    });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "agent-new",
+        agentName: "Eliza",
+        jobId: "job-1",
+        status: "provisioning",
+        nodeId: null,
+        message: "",
+      },
+    });
+    (client.getCloudCompatAgent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "agent-new",
+        status: "provisioning",
+        web_ui_url: "https://agent-new.example.test",
+        webUiUrl: "https://agent-new.example.test",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(result.created).toBe(true);
+    expect(result.agentId).toBe("agent-new");
+    expect(createCloudCompatAgent).toHaveBeenCalledTimes(1);
+  });
+
   it("marks real dedicated Eliza Cloud agent subdomains as requiring pairing", async () => {
     const { client, getCloudCompatAgents } = fakeClient();
     getCloudCompatAgents.mockResolvedValue({

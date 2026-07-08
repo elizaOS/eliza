@@ -20,6 +20,7 @@ const clientMock = vi.hoisted(() => ({
   getFirstRunOptions: vi.fn(),
   getConfig: vi.fn(),
   getCloudCompatAgent: vi.fn(),
+  getCloudCompatAgents: vi.fn(),
   hasToken: vi.fn(),
   getBaseUrl: vi.fn(() => ""),
   setBaseUrl: vi.fn(),
@@ -155,6 +156,10 @@ beforeEach(() => {
   clientMock.getCloudCompatAgent.mockResolvedValue({
     success: true,
     data: { agent_id: "agent-123" },
+  });
+  clientMock.getCloudCompatAgents.mockResolvedValue({
+    success: true,
+    data: [{ agent_id: "agent-123", status: "running" }],
   });
   clientMock.hasToken.mockReturnValue(false);
   clientMock.getBaseUrl.mockReturnValue("");
@@ -864,6 +869,69 @@ describe("runPollingBackend", () => {
     expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+  });
+
+  it("routes a reclaimed shared cloud agent to agent selection instead of treating its 404 as healthy", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    const sharedBase =
+      "https://api.elizacloud.ai/api/v1/eliza/agents/shared-dead";
+    clientMock.getBaseUrl.mockReturnValue(sharedBase);
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+    clientMock.getAuthStatus.mockReset();
+    clientMock.getAuthStatus.mockRejectedValue(
+      Object.assign(new Error("Agent not found"), {
+        kind: "http",
+        status: 404,
+        path: "/api/auth/status",
+      }),
+    );
+    clientMock.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [{ agent_id: "dedicated-live", status: "running" }],
+    });
+
+    const staleSharedAgent = {
+      id: "cloud:shared-dead",
+      kind: "cloud" as const,
+      label: "Shared agent",
+      apiBase: sharedBase,
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: staleSharedAgent,
+      restoredActiveServer: staleSharedAgent,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getCloudCompatAgents).toHaveBeenCalledTimes(1);
+    expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(clientMock.setBaseUrl).toHaveBeenCalledWith(null);
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: false,

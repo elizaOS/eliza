@@ -65,6 +65,7 @@ import {
 import { resolveFirstRunLocalAgentApiBase } from "./runtime-target";
 
 const FIRST_RUN_AGENT_WAIT_MS = 180_000;
+const RUNNING_CLOUD_AGENT_STATUS = "running";
 
 // ── Injected ports — the store seams the finish logic needs ──────────────────
 
@@ -219,6 +220,14 @@ function canProbeCloudStatus(): boolean {
     return false;
   }
   return true;
+}
+
+function runningCloudAgents(
+  agents: readonly CloudCompatAgent[],
+): CloudCompatAgent[] {
+  return agents
+    .filter((agent) => agent.status === RUNNING_CLOUD_AGENT_STATUS)
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 
 async function getCloudStatusIfSupported() {
@@ -695,7 +704,30 @@ export async function listOrAutoProvisionCloudAgent(
   if (!authToken) {
     return { kind: "error", message: "Eliza Cloud authentication required." };
   }
-  return bindCloudAgent(sourceDraft, authToken, { forceCreate: false }, ports);
+  ports.onStatus?.("Finding your agents...", "listing");
+  const list = await client.getCloudCompatAgents();
+  if (!list.success) {
+    return {
+      kind: "error",
+      message:
+        list.error ||
+        "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
+    };
+  }
+  const running = runningCloudAgents(list.data);
+  if (running.length > 1) {
+    ports.onStatus?.(null);
+    return { kind: "pick-cloud-agent", agents: running };
+  }
+  return bindCloudAgent(
+    sourceDraft,
+    authToken,
+    {
+      forceCreate: false,
+      ...(running[0]?.agent_id ? { preferAgentId: running[0].agent_id } : {}),
+    },
+    ports,
+  );
 }
 
 // ── Router entry — validate + route by runtime ───────────────────────────────

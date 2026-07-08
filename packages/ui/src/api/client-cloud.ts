@@ -3281,11 +3281,10 @@ export async function waitForCloudAgentRunning(
 }
 
 /**
- * Pick which agent to reuse from a cloud agent list: a specific requested id if
- * it still exists and is not terminal-bad, else the most-recently-created
- * "running" agent, else the most recent non-terminal agent. Terminal failed
- * rows are not reusable for first-run; reusing them just replays their stale
- * restore/provisioning error forever.
+ * Pick which running agent to reuse from a cloud agent list: a specific
+ * requested id if it is running, else the most-recently-created running agent.
+ * Non-running rows are not reusable for first-run binding because a stale
+ * shared/dedicated pointer can otherwise be treated as healthy while chat 404s.
  */
 function pickPreferredCloudAgent(
   agents: CloudCompatAgent[],
@@ -3294,14 +3293,14 @@ function pickPreferredCloudAgent(
   if (!agents.length) return null;
   if (preferAgentId) {
     const exact = agents.find(
-      (a) => a.agent_id === preferAgentId && !isTerminalFailedCloudAgent(a),
+      (a) => a.agent_id === preferAgentId && a.status === "running",
     );
     if (exact) return exact;
   }
   const byNewest = agents
-    .filter((a) => !isTerminalFailedCloudAgent(a))
+    .filter((a) => a.status === "running")
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
-  return byNewest.find((a) => a.status === "running") ?? byNewest[0] ?? null;
+  return byNewest[0] ?? null;
 }
 
 ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
