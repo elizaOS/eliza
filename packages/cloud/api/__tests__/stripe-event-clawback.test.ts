@@ -34,8 +34,18 @@ const refundCredits = mock(async () => ({
   newBalance: 70,
 }));
 
+class TestInsufficientCreditsError extends Error {
+  required: number;
+
+  constructor(required: number) {
+    super("Insufficient credits");
+    this.required = required;
+  }
+}
+
 mock.module("@/db/helpers", () => ({
   dbRead: {},
+  dbWrite: {},
 }));
 mock.module("@/db/repositories/organizations", () => ({
   organizationsRepository: {},
@@ -55,6 +65,11 @@ mock.module("@/lib/services/app-charge-settlement", () => ({
 mock.module("@/lib/services/app-credits", () => ({
   appCreditsService: {},
 }));
+mock.module("@/lib/services/ai-billing", () => ({
+  InsufficientCreditsError: TestInsufficientCreditsError,
+  estimateInputTokens: mock(() => 0),
+}));
+
 mock.module("@/lib/services/credits", () => ({
   creditsService: {
     getTransactionByStripePaymentIntent,

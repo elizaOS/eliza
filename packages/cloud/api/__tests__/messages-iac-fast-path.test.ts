@@ -25,6 +25,7 @@ mock.module("@/lib/pricing", () => ({
   getProviderFromModel: () => "anthropic",
   getSafeModelParams: () => ({}),
   normalizeModelName: (model: string) => model,
+  modelUsesReasoningTokens: () => false,
 }));
 
 mock.module("@/lib/providers/anthropic-thinking", () => ({
@@ -68,6 +69,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 mock.module("@/lib/providers/language-model", () => ({
   canonicalizeCerebrasModelId: (model: string) => model,
   getLanguageModel: () => ({}) as never,
+  isProviderConfigurationError: () => false,
   resolveAiProviderSource: () => "bitrouter",
 }));
 
