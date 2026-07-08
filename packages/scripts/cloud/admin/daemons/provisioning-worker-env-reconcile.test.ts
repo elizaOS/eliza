@@ -7,11 +7,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Regression guard for #8756 (operator-step bug): the provisioning-worker
-// deploy workflow must reconcile SANDBOX_REGISTRY_REDIS_URL into the systemd
-// EnvironmentFile (/opt/eliza/cloud/.env.local). The daemon's consumer reads
-// it straight from process.env (docker-sandbox-provider.ts) fed by that file;
-// if the workflow doesn't write it, provisioned sandboxes never self-register
-// and Discord/Telegram inbound routing silently breaks.
+// deploy workflow must reconcile control-plane secrets into the systemd
+// EnvironmentFile (/opt/eliza/cloud/.env.local). The daemon's consumers read
+// them straight from process.env fed by that file; if the workflow doesn't
+// write them, provisioned sandboxes lose routing secrets or cannot decrypt
+// Worker-written encrypted environment variables.
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../../..");
@@ -22,6 +22,7 @@ const workflowPath = path.join(
 const workflow = readFileSync(workflowPath, "utf8");
 
 const ENV_KEY = "SANDBOX_REGISTRY_REDIS_URL";
+const FIELD_ENCRYPTION_KEY = "SECRETS_MASTER_KEY";
 
 // The reconcile loop runs the workflow's VERBATIM bash, which uses GNU
 // `sed -i "/^KEY=/d"` (no backup-suffix argument). BSD/macOS `sed -i` parses
@@ -71,6 +72,23 @@ describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring
     // The loop body iterates "KEY=$VALUE" entries; the entry for our key must
     // be present so the sed-delete + tee-append rewrites it into the file.
     expect(workflow).toContain(`"${ENV_KEY}=$${ENV_KEY}"`);
+  });
+
+  it("keeps the field-encryption root key in the same source/forward/reconcile path", () => {
+    expect(workflow).toContain(
+      `${FIELD_ENCRYPTION_KEY}: \${{ secrets.${FIELD_ENCRYPTION_KEY} }}`,
+    );
+    const envsLine = workflow
+      .split("\n")
+      .find(
+        (line) =>
+          line.trim().startsWith("envs:") &&
+          line.includes(FIELD_ENCRYPTION_KEY),
+      );
+    expect(envsLine).toBeDefined();
+    expect(workflow).toContain(
+      `"${FIELD_ENCRYPTION_KEY}=$${FIELD_ENCRYPTION_KEY}"`,
+    );
   });
 });
 

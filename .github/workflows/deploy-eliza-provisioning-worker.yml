@@ -103,6 +103,13 @@ jobs:
       # skip-when-unset semantics as HEADSCALE_* — an environment without any
       # of these secrets keeps its current hand-set value.
       DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+      # Field-encryption root secret used to unwrap per-org DEKs for encrypted
+      # agent environment variables. Must match the Cloudflare Worker secret:
+      # the Worker writes encrypted env vars, and this provisioning worker
+      # decrypts them while creating the agent container (#15385). Skip-empty
+      # reconcile semantics below preserve hand-set values until the secret is
+      # wired for an environment.
+      SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -180,7 +187,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL
+          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
@@ -308,12 +315,14 @@ jobs:
 
             # Reconcile control-plane secrets (HEADSCALE_API_URL /
             # HEADSCALE_PUBLIC_URL / HEADSCALE_API_KEY /
-            # SANDBOX_REGISTRY_REDIS_URL / DATABASE_URL) into the systemd
-            # EnvironmentFile so CI is the single source of truth and the box
-            # self-heals on every deploy. The daemon + cloud-shared read these
-            # straight from process.env (headscale-client.ts,
-            # headscale-integration.ts, docker-sandbox-provider.ts, the DB
-            # client), fed by EnvironmentFile=/opt/eliza/cloud/.env.local. The
+            # SANDBOX_REGISTRY_REDIS_URL / DATABASE_URL / SECRETS_MASTER_KEY)
+            # into the systemd EnvironmentFile so CI is the single source of
+            # truth and the box self-heals on every deploy. The daemon +
+            # cloud-shared read these straight from process.env
+            # (headscale-client.ts, headscale-integration.ts,
+            # docker-sandbox-provider.ts, the DB client, and encrypted
+            # environment-variable decrypt), fed by
+            # EnvironmentFile=/opt/eliza/cloud/.env.local. The
             # deploy's `git clean -e cloud/.env.local` preserves that file
             # verbatim, so before this these keys were only ever hand-edited on
             # the box and could drift to a stale headscale (the CP-box outage)
@@ -341,7 +350,8 @@ jobs:
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
               "HEADSCALE_API_KEY=$HEADSCALE_API_KEY" \
               "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL" \
-              "DATABASE_URL=$DATABASE_URL"; do
+              "DATABASE_URL=$DATABASE_URL" \
+              "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY"; do
               key="${kv%%=*}"
               val="${kv#*=}"
               [ -n "$val" ] || continue
