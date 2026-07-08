@@ -490,7 +490,7 @@ async function main() {
   // ELIZA_API_PORT is the app API. Overwriting ELIZA_PORT here would
   // collapse UI vs API in observability JSON and confuse tools that read env.
   if (actualPort !== port) {
-    console.error(
+    logger.error(
       `${getLogPrefix()} [CRITICAL] API bound to port ${actualPort} but orchestrator expected ${port}. ` +
         `Electrobun renderer has ELIZA_DESKTOP_API_BASE pointing at the wrong port. ` +
         `Kill the process using port ${port} or set ELIZA_API_PORT to a free port.`,
@@ -565,15 +565,14 @@ async function main() {
 // ── Global error handlers (match CLI behavior from run-main.ts) ──
 process.on("unhandledRejection", (reason) => {
   if (shouldIgnoreUnhandledRejection(reason)) {
-    console.warn(
+    logger.warn(
       `${getLogPrefix()} Provider credits appear exhausted; request failed without output. Top up credits and retry.`,
     );
     return;
   }
   // In dev mode (bun --watch), log but do NOT exit — let the watcher restart.
-  console.error(
-    `${getLogPrefix()} Unhandled rejection:`,
-    formatUncaughtError(reason),
+  logger.error(
+    `${getLogPrefix()} Unhandled rejection: ${formatUncaughtError(reason)}`,
   );
 });
 
