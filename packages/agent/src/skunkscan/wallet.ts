@@ -24,6 +24,7 @@ import { analyzeWalletDisplayScores } from "./analyzers/display";
 import { analyzeExecutiveVerdict } from "./analyzers/executiveVerdict";
 import { analyzeWalletCustodyProfile } from "./analyzers/custody";
 import { analyzeWalletCompliance } from "./analyzers/compliance";
+import { analyzeWalletTransactionRisk } from "./analyzers/transactionRisk";
 import { getWalletIntelligenceSources } from "./sources/registry";
 import {
   SupportedChain,
@@ -156,6 +157,15 @@ const complianceScreening = analyzeWalletCompliance(
   exposure,
 );
 
+const transactionRisk =
+  analyzeWalletTransactionRisk(
+    risk,
+    trust,
+    exposure,
+    complianceScreening,
+    caseSummary,
+  );
+
 const intelligenceSources =
   getWalletIntelligenceSources();
 
@@ -244,6 +254,7 @@ activity,
 age,
 funding,
 risk,
+transactionRisk,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
