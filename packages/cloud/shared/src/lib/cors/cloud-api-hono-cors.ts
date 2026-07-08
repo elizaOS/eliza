@@ -75,6 +75,7 @@ const PUBLIC_TOKEN_API_PATH_PREFIXES = [
   "/api/v1/models/",
 ];
 const PUBLIC_TOKEN_API_PATHS = new Set<string>([
+  "/api/auth/pair",
   "/api/v1/app-credits",
   "/api/v1/chat",
   "/api/v1/chat/completions",

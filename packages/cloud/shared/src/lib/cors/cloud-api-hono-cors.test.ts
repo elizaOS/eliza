@@ -18,6 +18,7 @@ function appWithCors() {
   app.use("*", corsMiddleware);
   app.get("/ping", (c) => c.json({ ok: true }));
   app.post("/ping", (c) => c.json({ ok: true }));
+  app.post("/api/auth/pair", (c) => c.json({ ok: true }));
   app.get("/api/v1/models", (c) => c.json({ ok: true }));
   app.post("/api/v1/chat/completions", (c) => c.json({ ok: true }));
   return app;
@@ -77,6 +78,7 @@ describe("isFirstPartyOrigin — Eliza app WebView origins", () => {
 describe("isPublicTokenApiPath", () => {
   test("recognizes explicit public token API paths", () => {
     expect(isPublicTokenApiPath("/api/v1/chat/completions")).toBe(true);
+    expect(isPublicTokenApiPath("/api/auth/pair")).toBe(true);
     expect(isPublicTokenApiPath("/api/v1/app-credits/balance")).toBe(true);
     expect(isPublicTokenApiPath("/api/v1/models/openai/gpt-oss-120b")).toBe(true);
     expect(isPublicTokenApiPath("/api/v1/twilio/connect")).toBe(false);
@@ -156,6 +158,21 @@ describe("corsMiddleware — third-party app origins (open, NO credentials)", ()
   test("does not allow wildcard CORS on session-capable non-public paths", async () => {
     const res = await req("OPTIONS", "https://malicious.apps.elizacloud.ai", true, "/ping");
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  test("allows hosted agent subdomains to exchange one-time Cloud pair tokens", async () => {
+    const res = await req(
+      "OPTIONS",
+      "https://23766030-c096-4a14-932a-a4e43c562432.elizacloud.ai",
+      true,
+      "/api/auth/pair",
+    );
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-credentials")).toBeNull();
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect((res.headers.get("access-control-allow-headers") || "").toLowerCase()).toContain(
+      "content-type",
+    );
   });
 });
 
