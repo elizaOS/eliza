@@ -539,7 +539,7 @@ INFERENCE_HOT_PATH_CACHES = "true"
 # web-search) byte-for-byte from the provider instead of decoding/re-encoding
 # through the AI SDK; usage is metered from a teed branch and billed through
 # the existing settle chain. Default off; rollback = flip off.
-INFERENCE_PASSTHROUGH_STREAMING = "false"
+INFERENCE_PASSTHROUGH_STREAMING = "true"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
