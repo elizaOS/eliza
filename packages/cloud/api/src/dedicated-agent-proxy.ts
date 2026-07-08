@@ -48,6 +48,24 @@ const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai";
 const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
 const RETRY_AFTER_SECONDS = 5;
 
+// The origin must produce response HEADERS within this window; the BODY then
+// streams untimed. Mutable only through __dedicatedProxyTestHooks so the
+// timeout paths are testable in milliseconds.
+let originHeadersTimeoutMs = 30_000;
+
+/**
+ * Test-only seam for the headers-phase timeout. The `__` prefix + `TestHooks`
+ * suffix mark it as non-public (same convention as the chat-completions route).
+ */
+export const __dedicatedProxyTestHooks = {
+  setOriginHeadersTimeoutMs(ms: number): void {
+    originHeadersTimeoutMs = ms;
+  },
+  get originHeadersTimeoutMs(): number {
+    return originHeadersTimeoutMs;
+  },
+} as const;
+
 function resolveOriginHost(env: Bindings): string {
   const raw = env.AGENT_ROUTER_ORIGIN_HOST?.trim().toLowerCase();
   return raw && raw.length > 0 ? raw : DEFAULT_AGENT_ROUTER_ORIGIN_HOST;
@@ -59,7 +77,7 @@ function resolveOriginHost(env: Bindings): string {
  * REPLACED with the agent's own `ELIZA_API_TOKEN` (so the container accepts it);
  * otherwise headers pass through unchanged and the container's own auth applies.
  */
-function proxyToOrigin(
+async function proxyToOrigin(
   request: Request,
   env: Bindings,
   url: URL,
@@ -83,16 +101,57 @@ function proxyToOrigin(
       targetUrl.searchParams.set("token", injectBearer);
     }
   }
+  // The timeout guards the HEADERS phase only. A blanket
+  // `AbortSignal.timeout(30s)` on the fetch aborted the WHOLE transfer, so any
+  // agent turn or SSE/WebSocket stream still flowing at t=30s was killed
+  // mid-body and the unhandled TimeoutError surfaced to the client as a
+  // CF 1101 / empty body — while the agent's reply persisted server-side. The
+  // timer is cleared the moment the Response object (headers) arrives, so an
+  // established stream flows for as long as the origin keeps it open; only an
+  // origin that never answers is aborted, and that is translated into a
+  // structured 504 the client can read instead of a thrown TimeoutError.
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(
+      new DOMException("origin response headers timed out", "TimeoutError"),
+    );
+  }, originHeadersTimeoutMs);
   const init: RequestInit = {
     method: request.method,
     headers,
     redirect: "manual",
-    signal: AbortSignal.timeout(30_000),
+    signal: controller.signal,
   };
   if (request.method !== "GET" && request.method !== "HEAD") {
     init.body = request.body;
   }
-  return fetch(new Request(targetUrl, init));
+  try {
+    return await fetch(new Request(targetUrl, init));
+  } catch (error) {
+    // error-policy:J1 boundary translation — the headers-phase timeout becomes
+    // a structured, retryable 504 instead of an unhandled TimeoutError (CF 1101).
+    if (!timedOut) throw error;
+    logger.warn("[dedicated-proxy] origin did not respond within timeout", {
+      host: targetUrl.hostname,
+      path: targetUrl.pathname,
+      timeoutMs: originHeadersTimeoutMs,
+    });
+    const response = Response.json(
+      {
+        success: false,
+        code: "agent_timeout",
+        error:
+          "Agent did not start responding in time. The agent may still be processing; retry shortly.",
+      },
+      { status: 504 },
+    );
+    response.headers.set("Retry-After", String(RETRY_AFTER_SECONDS));
+    return response;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 type Sandbox = NonNullable<
