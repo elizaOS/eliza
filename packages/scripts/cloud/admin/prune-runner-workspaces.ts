@@ -13,8 +13,8 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import type { Stats } from "node:fs";
+import { existsSync, lstatSync, readdirSync, rmSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
