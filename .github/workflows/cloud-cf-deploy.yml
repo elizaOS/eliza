@@ -535,11 +535,11 @@ jobs:
           SERVED_URL: ${{ steps.env.outputs.deploy_environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
         run: |
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs \
-            --run-sha "$GITHUB_SHA" \
-            --served-url "$SERVED_URL" \
-            --served-path /api/health \
-            $([ "$FORCE" = "true" ] && echo --force)
+          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL" --served-path /api/health)
+          if [ "$FORCE" = "true" ]; then
+            args+=(--force)
+          fi
+          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Workers
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
@@ -887,10 +887,11 @@ jobs:
           SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://elizacloud.ai' || 'https://staging.elizacloud.ai' }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
         run: |
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs \
-            --run-sha "$GITHUB_SHA" \
-            --served-url "$SERVED_URL" \
-            $([ "$FORCE" = "true" ] && echo --force)
+          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL")
+          if [ "$FORCE" = "true" ]; then
+            args+=(--force)
+          fi
+          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
@@ -1262,10 +1263,11 @@ jobs:
           SERVED_URL: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'https://app.elizacloud.ai' || 'https://app-staging.elizacloud.ai' }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
         run: |
-          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs \
-            --run-sha "$GITHUB_SHA" \
-            --served-url "$SERVED_URL" \
-            $([ "$FORCE" = "true" ] && echo --force)
+          args=(--run-sha "$GITHUB_SHA" --served-url "$SERVED_URL")
+          if [ "$FORCE" = "true" ]; then
+            args+=(--force)
+          fi
+          node packages/scripts/cloud/deploy-freshness-guard-cli.mjs "${args[@]}"
 
       - name: Deploy to Cloudflare Pages
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
