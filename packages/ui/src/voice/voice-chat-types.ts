@@ -257,6 +257,25 @@ export interface VoiceTtsError {
   atMs: number;
 }
 
+/**
+ * Live mic-input amplitude sample for waveform visualization. `rms` is the
+ * root-mean-square energy of the most recent PCM chunk (a smooth level, good
+ * for bar height); `peak` is the max absolute sample (a spikier signal, good
+ * for a "clip"/speech-onset cue). Both are in the raw PCM range [0, 1]. Mirrors
+ * the capture layer's `PcmAudioStats` so the same numbers the VAD gate uses
+ * drive the UI — no separate measurement.
+ */
+export interface MicLevel {
+  rms: number;
+  peak: number;
+}
+
+/**
+ * Unsubscribe handle returned by {@link VoiceChatState.subscribeMicLevel}.
+ * Idempotent: calling it more than once is a no-op.
+ */
+export type MicLevelUnsubscribe = () => void;
+
 export interface VoiceChatState {
   /** Whether voice input is currently active */
   isListening: boolean;
@@ -334,6 +353,20 @@ export interface VoiceChatState {
    * value.
    */
   ttsError?: VoiceTtsError | null;
+  /**
+   * Subscribe to live mic-input amplitude for waveform visualization. The
+   * listener fires (rAF-coalesced by the capture layer, ~30-60fps max) with the
+   * latest {@link MicLevel} while a PCM-capturing backend is listening
+   * (local-inference + eliza-cloud/openai WAV capture; NOT the browser
+   * SpeechRecognition or native TalkMode paths, which own no PCM stream).
+   * Returns an unsubscribe fn. Designed for ref/DOM-mutation consumers so a
+   * 30fps signal never re-renders React state. Optional on the interface so
+   * existing `VoiceChatState` mocks stay valid; `useVoiceChat` always returns a
+   * concrete function.
+   */
+  subscribeMicLevel?: (
+    listener: (level: MicLevel) => void,
+  ) => MicLevelUnsubscribe;
 }
 
 export interface SpeakTask {

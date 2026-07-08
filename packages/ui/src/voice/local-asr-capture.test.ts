@@ -422,3 +422,178 @@ describe("queryMicrophonePermission", () => {
     await expect(queryMicrophonePermission()).resolves.toBe("unknown");
   });
 });
+
+describe("startLocalAsrRecorder onAudioLevel (waveform level sink)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // Fake audio stack with an OPTIONAL requestAnimationFrame stub so we can drive
+  // both the synchronous (no rAF host) and the rAF-coalesced delivery paths.
+  function fakeAudioStack(opts?: { withRaf?: boolean }) {
+    const trackStop = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop: trackStop }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+
+    let onProcess: ((event: unknown) => void) | null = null;
+    const processor = {
+      set onaudioprocess(fn: ((event: unknown) => void) | null) {
+        onProcess = fn;
+      },
+      get onaudioprocess() {
+        return onProcess;
+      },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    class FakeAudioContext {
+      state = "running";
+      sampleRate = 16000;
+      resume = vi.fn().mockResolvedValue(undefined);
+      close = vi.fn().mockResolvedValue(undefined);
+      createMediaStreamSource = vi.fn(() => ({
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }));
+      createScriptProcessor = vi.fn(() => processor);
+      createAnalyser = vi.fn(() => ({
+        fftSize: 0,
+        smoothingTimeConstant: 0,
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+      }));
+      destination = {};
+    }
+
+    // rAF host: queue callbacks and flush on demand so coalescing is observable.
+    const rafQueue: FrameRequestCallback[] = [];
+    let rafId = 0;
+    const cancelled = new Set<number>();
+    const windowStub: Record<string, unknown> = {
+      AudioContext: FakeAudioContext,
+      setTimeout: (fn: () => void) => setTimeout(fn, 0),
+    };
+    if (opts?.withRaf) {
+      const raf = (cb: FrameRequestCallback): number => {
+        rafId += 1;
+        const id = rafId;
+        rafQueue.push((t) => {
+          if (!cancelled.has(id)) cb(t);
+        });
+        return id;
+      };
+      const caf = (id: number): void => {
+        cancelled.add(id);
+      };
+      windowStub.requestAnimationFrame = raf;
+      windowStub.cancelAnimationFrame = caf;
+      vi.stubGlobal("requestAnimationFrame", raf);
+      vi.stubGlobal("cancelAnimationFrame", caf);
+    }
+    vi.stubGlobal("window", windowStub);
+
+    return {
+      drive: (frame: Float32Array) => {
+        onProcess?.({
+          inputBuffer: {
+            length: frame.length,
+            numberOfChannels: 1,
+            getChannelData: () => frame,
+          },
+        });
+      },
+      flushRaf: () => {
+        const pending = rafQueue.splice(0, rafQueue.length);
+        for (const cb of pending) cb(performance.now());
+      },
+      pendingRaf: () => rafQueue.length,
+    };
+  }
+
+  it("emits rms/peak per chunk synchronously when no rAF host is present", async () => {
+    const stack = fakeAudioStack({ withRaf: false });
+    const levels: { rms: number; peak: number }[] = [];
+    const recorder = await startLocalAsrRecorder({
+      onAudioLevel: (level) => levels.push(level),
+    });
+
+    const loud = new Float32Array(320).fill(0.25);
+    stack.drive(loud);
+    stack.drive(loud);
+
+    expect(levels).toHaveLength(2);
+    expect(levels[0]?.peak).toBeCloseTo(0.25);
+    expect(levels[0]?.rms).toBeCloseTo(0.25);
+
+    await recorder.stop();
+  });
+
+  it("coalesces multiple chunks into ONE call per animation frame", async () => {
+    const stack = fakeAudioStack({ withRaf: true });
+    const levels: { rms: number; peak: number }[] = [];
+    const recorder = await startLocalAsrRecorder({
+      onAudioLevel: (level) => levels.push(level),
+    });
+
+    // Three chunks arrive before the frame fires → still only one scheduled cb.
+    stack.drive(new Float32Array(320).fill(0.1));
+    stack.drive(new Float32Array(320).fill(0.2));
+    stack.drive(new Float32Array(320).fill(0.3));
+    expect(levels).toHaveLength(0); // nothing delivered until the frame flushes
+    expect(stack.pendingRaf()).toBe(1); // coalesced to a single frame request
+
+    stack.flushRaf();
+    expect(levels).toHaveLength(1); // one delivery for the whole batch
+    // The delivered level is the LATEST chunk (0.3), not a stale earlier one.
+    expect(levels[0]?.peak).toBeCloseTo(0.3);
+
+    await recorder.stop();
+  });
+
+  it("does not deliver a level after teardown (cancels the pending frame)", async () => {
+    const stack = fakeAudioStack({ withRaf: true });
+    const levels: unknown[] = [];
+    const recorder = await startLocalAsrRecorder({
+      onAudioLevel: (level) => levels.push(level),
+    });
+
+    stack.drive(new Float32Array(320).fill(0.2));
+    expect(stack.pendingRaf()).toBe(1);
+
+    // Stop BEFORE the frame flushes → the pending flush is cancelled.
+    await recorder.stop();
+    stack.flushRaf();
+    expect(levels).toHaveLength(0);
+  });
+
+  it("swallows a throwing level sink without breaking capture", async () => {
+    const stack = fakeAudioStack({ withRaf: false });
+    const recorder = await startLocalAsrRecorder({
+      onAudioLevel: () => {
+        throw new Error("subscriber blew up");
+      },
+    });
+
+    // A throwing sink must not propagate out of onaudioprocess.
+    const loud = new Float32Array(320).fill(0.3);
+    expect(() => stack.drive(loud)).not.toThrow();
+
+    // Capture still works: stop() returns the buffered WAV.
+    const wav = await recorder.stop();
+    expect(wav.length).toBeGreaterThan(44);
+  });
+
+  it("runs zero level work when no onAudioLevel is supplied", async () => {
+    const stack = fakeAudioStack({ withRaf: true });
+    const recorder = await startLocalAsrRecorder();
+
+    // Without a sink, driving frames must not schedule any rAF work.
+    stack.drive(new Float32Array(320).fill(0.3));
+    expect(stack.pendingRaf()).toBe(0);
+
+    await recorder.stop();
+  });
+});

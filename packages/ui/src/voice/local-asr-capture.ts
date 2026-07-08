@@ -71,6 +71,18 @@ export interface LocalAsrRecorderOptions {
   };
   /** Called (fire-and-forget) with each mid-capture segment when `segmenter` is set. */
   onSegment?: (segment: LocalAsrSegment) => void;
+  /**
+   * Live mic-level sink for amplitude visualization (waveform UI). Invoked with
+   * the {@link PcmAudioStats} (`rms`/`peak`) already computed for the VAD gate —
+   * so this adds ZERO extra audio processing, just re-uses the per-chunk
+   * measurement. Delivery is rAF-coalesced to at most one call per animation
+   * frame (~30-60fps) so a fast `onaudioprocess` cadence (4096-sample frames at
+   * 16 kHz ≈ every 256ms, but browsers can batch faster) never floods the UI.
+   * Fire-and-forget: a throwing sink is swallowed and never stalls the audio
+   * thread. Absent → no level plumbing runs (the batch/segment paths are
+   * untouched).
+   */
+  onAudioLevel?: (level: PcmAudioStats) => void;
 }
 
 /** Fully-resolved auto-stop config (every {@link LocalAsrAutoStopOptions} field set). */
@@ -562,6 +574,54 @@ export async function startLocalAsrRecorder(
     segmentChunks = start < whole.length ? [whole.subarray(start)] : [];
   };
 
+  // Live mic-level (waveform) sink. Active only when a caller supplies
+  // `onAudioLevel`; otherwise none of this runs and the per-chunk
+  // `measurePcmAudio` for the level is skipped entirely (zero added cost). The
+  // latest measured stats are stashed and flushed to the sink at most once per
+  // animation frame (rAF-coalesced), so a fast onaudioprocess cadence can't
+  // flood the UI thread. `requestAnimationFrame` is unavailable in some non-DOM
+  // capture hosts (Node/tests) — fall back to a direct call so the sink still
+  // fires deterministically there.
+  const onAudioLevel = options.onAudioLevel;
+  const rafSchedule: ((cb: FrameRequestCallback) => number) | null =
+    onAudioLevel && typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : null;
+  const rafCancel: ((handle: number) => void) | null =
+    onAudioLevel && typeof cancelAnimationFrame === "function"
+      ? cancelAnimationFrame
+      : null;
+  let pendingLevel: PcmAudioStats | null = null;
+  let levelFrame = 0;
+  const flushLevel = (): void => {
+    levelFrame = 0;
+    const level = pendingLevel;
+    pendingLevel = null;
+    if (!level || !onAudioLevel) return;
+    try {
+      onAudioLevel(level);
+    } catch (err) {
+      // error-policy:J6 the level sink is best-effort visualization; a throwing
+      // subscriber must never kill capture or the audio thread.
+      void err;
+    }
+  };
+  const emitLevel = (mono: Float32Array): void => {
+    if (!onAudioLevel) return;
+    // Re-uses the same RMS/peak math the VAD gate already relies on; the extra
+    // pass is opt-in (only when a waveform sink is attached).
+    pendingLevel = measurePcmAudio(mono);
+    if (!rafSchedule) {
+      // No rAF host (tests / headless) — deliver synchronously so behavior is
+      // still observable and deterministic.
+      flushLevel();
+      return;
+    }
+    if (levelFrame === 0) {
+      levelFrame = rafSchedule(flushLevel);
+    }
+  };
+
   processor.onaudioprocess = (event) => {
     if (stopped) return;
     const input = event.inputBuffer;
@@ -595,6 +655,9 @@ export async function startLocalAsrRecorder(
         emitSegment(false);
       }
     }
+    // Waveform level: emit AFTER the VAD/segment work so a throwing sink never
+    // pre-empts the transcription-critical path. rAF-coalesced inside emitLevel.
+    emitLevel(mono);
     if (autoStopUpdate.shouldStop && !autoStopRequested && options.onAutoStop) {
       autoStopRequested = true;
       window.setTimeout(options.onAutoStop, 0);
@@ -607,6 +670,13 @@ export async function startLocalAsrRecorder(
   const cleanup = async () => {
     stopped = true;
     processor.onaudioprocess = null;
+    // Cancel any pending rAF-coalesced level flush so no level fires after
+    // teardown (the waveform component also unsubscribes on stop).
+    if (levelFrame !== 0 && rafCancel) {
+      rafCancel(levelFrame);
+    }
+    levelFrame = 0;
+    pendingLevel = null;
     try {
       analyser?.disconnect();
     } catch {

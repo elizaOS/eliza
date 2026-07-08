@@ -1001,6 +1001,7 @@ export function ChatView({
           assistantTtsQuality: voice.assistantTtsQuality,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
+          subscribeMicLevel: voice.subscribeMicLevel,
         }}
         agentVoiceEnabled={!agentVoiceMuted}
         showAgentVoiceToggle={showComposerVoiceToggle}
@@ -1073,6 +1074,7 @@ export function ChatView({
           assistantTtsQuality: voice.assistantTtsQuality,
           startListening: beginVoiceCapture,
           stopListening: endVoiceCapture,
+          subscribeMicLevel: voice.subscribeMicLevel,
         }}
         agentVoiceEnabled={!agentVoiceMuted}
         showAgentVoiceToggle={showComposerVoiceToggle}
