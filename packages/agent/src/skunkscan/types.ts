@@ -241,6 +241,19 @@ export type WalletCustodyProfile = {
   limitations: string[];
 };
 
+export type WalletComplianceScreeningSource = {
+  name: string;
+  category:
+    | "sanctions"
+    | "adverse_media"
+    | "internal_registry"
+    | "external_provider";
+  status: "connected" | "planned" | "unavailable";
+  coverage: string[];
+  lastUpdatedAt?: string | null;
+  notes: string[];
+};
+
 export type WalletComplianceScreeningSummary = {
   sanctionsStatus:
     | "not_screened"
@@ -255,7 +268,9 @@ export type WalletComplianceScreeningSummary = {
     | "confirmed_match";
 
   screeningConfidence: "low" | "medium" | "high";
-
+  
+  sourcesChecked: WalletComplianceScreeningSource[];
+  
   matches: {
     type: "sanctions" | "adverse_media";
     source: string;
