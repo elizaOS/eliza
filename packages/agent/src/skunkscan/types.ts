@@ -241,6 +241,32 @@ export type WalletCustodyProfile = {
   limitations: string[];
 };
 
+export type WalletComplianceScreeningSummary = {
+  sanctionsStatus:
+    | "not_screened"
+    | "no_match_in_connected_sources"
+    | "possible_match"
+    | "confirmed_match";
+
+  adverseMediaStatus:
+    | "not_screened"
+    | "no_match_in_connected_sources"
+    | "possible_match"
+    | "confirmed_match";
+
+  screeningConfidence: "low" | "medium" | "high";
+
+  matches: {
+    type: "sanctions" | "adverse_media";
+    source: string;
+    label: string;
+    confidence: "low" | "medium" | "high";
+    notes: string[];
+  }[];
+
+  limitations: string[];
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -310,6 +336,7 @@ export type WalletInvestigationResult = {
   display?: WalletDisplaySummary;
   executiveVerdict?: WalletExecutiveVerdict;
   custodyProfile?: WalletCustodyProfile;
+  complianceScreening?: WalletComplianceScreeningSummary;
   trust?: WalletTrustSummary;
   investigationReplay?: WalletInvestigationReplayStep[];
   exposure?: WalletExposureSummary;
