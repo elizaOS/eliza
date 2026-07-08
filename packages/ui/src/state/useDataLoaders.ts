@@ -92,6 +92,8 @@ function findMatchingServerMessageIndex(
   const maxTimestamp = localMessage.timestamp + LOCAL_TURN_MATCH_SLACK_MS;
   const startIndex =
     typeof options?.afterIndex === "number" ? options.afterIndex + 1 : 0;
+  let bestIndex = -1;
+  let bestTimestampDelta = Number.POSITIVE_INFINITY;
   for (let index = startIndex; index < serverMessages.length; index += 1) {
     if (usedIndexes.has(index)) continue;
     const serverMessage = serverMessages[index];
@@ -99,9 +101,15 @@ function findMatchingServerMessageIndex(
     if (serverMessage.timestamp < minTimestamp) continue;
     if (serverMessage.timestamp > maxTimestamp) continue;
     if (serverMessage.text.trim() !== text) continue;
-    return index;
+    const timestampDelta = Math.abs(
+      serverMessage.timestamp - localMessage.timestamp,
+    );
+    if (timestampDelta < bestTimestampDelta) {
+      bestIndex = index;
+      bestTimestampDelta = timestampDelta;
+    }
   }
-  return -1;
+  return bestIndex;
 }
 
 function findNearestPriorLocalTempUser(
@@ -124,7 +132,22 @@ function resolvedLocalTempMessageIds(
   currentMessages: ConversationMessage[],
 ): Set<string> {
   const resolvedIds = new Set<string>();
+  const serverIndexById = new Map<string, number>();
+  serverMessages.forEach((message, index) => {
+    serverIndexById.set(message.id, index);
+  });
   const usedServerUserIndexes = new Set<number>();
+  const usedServerAssistantIndexes = new Set<number>();
+  currentMessages.forEach((message) => {
+    if (isLocalPendingConversationMessage(message)) return;
+    const serverIndex = serverIndexById.get(message.id);
+    if (typeof serverIndex !== "number") return;
+    if (message.role === "user") {
+      usedServerUserIndexes.add(serverIndex);
+    } else if (message.role === "assistant") {
+      usedServerAssistantIndexes.add(serverIndex);
+    }
+  });
   const serverUserIndexByLocalId = new Map<string, number>();
 
   currentMessages.forEach((message) => {
@@ -145,7 +168,6 @@ function resolvedLocalTempMessageIds(
     resolvedIds.add(message.id);
   });
 
-  const usedServerAssistantIndexes = new Set<number>();
   currentMessages.forEach((message, index) => {
     if (
       message.role !== "assistant" ||

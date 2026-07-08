@@ -325,4 +325,105 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
       conversationMessagesRef.current.map((message) => message.id),
     ).toEqual(["persisted-1", "server-user", "temp-resp-100"]);
   });
+
+  it("keeps a distinct repeated temp user message when only the earlier identical turn is persisted", async () => {
+    const firstUser = {
+      ...userMsg("server-user-1"),
+      text: "yes",
+      timestamp: 1_000,
+    };
+    const firstAssistant = {
+      ...assistantMsg("server-assistant-1"),
+      text: "ok",
+      timestamp: 2_000,
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [firstUser, firstAssistant] })
+      .mockResolvedValueOnce({ messages: [firstUser, firstAssistant] });
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      firstUser,
+      firstAssistant,
+      { ...userMsg("temp-21000"), text: "yes", timestamp: 21_000 },
+      {
+        ...assistantMsg("temp-resp-21000"),
+        text: "",
+        timestamp: 21_100,
+      },
+    ];
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "server-user-1",
+      "server-assistant-1",
+      "temp-21000",
+      "temp-resp-21000",
+    ]);
+  });
+
+  it("keeps an identical in-flight streamed assistant when only the repeated user turn has persisted", async () => {
+    const firstUser = {
+      ...userMsg("server-user-1"),
+      text: "ping",
+      timestamp: 1_000,
+    };
+    const firstAssistant = {
+      ...assistantMsg("server-assistant-1"),
+      text: "ok",
+      timestamp: 2_000,
+    };
+    const repeatedUser = {
+      ...userMsg("server-user-2"),
+      text: "ping",
+      timestamp: 21_000,
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({ messages: [firstUser, firstAssistant] })
+      .mockResolvedValueOnce({
+        messages: [firstUser, firstAssistant, repeatedUser],
+      });
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    conversationMessagesRef.current = [
+      firstUser,
+      firstAssistant,
+      { ...userMsg("temp-21000"), text: "ping", timestamp: 21_000 },
+      {
+        ...assistantMsg("temp-resp-21000"),
+        text: "ok",
+        timestamp: 22_000,
+      },
+    ];
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "server-user-1",
+      "server-assistant-1",
+      "server-user-2",
+      "temp-resp-21000",
+    ]);
+  });
 });
