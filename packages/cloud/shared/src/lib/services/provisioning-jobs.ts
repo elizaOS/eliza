@@ -1670,6 +1670,31 @@ export class ProvisioningJobService {
     return result;
   }
 
+  /**
+   * One-shot startup recovery for jobs claimed by a previous worker process.
+   * Normal stale recovery deliberately waits longer than a full cold boot; on
+   * daemon replacement, rows claimed before this process started cannot still
+   * be owned by this process, so the singleton worker may make them retryable
+   * immediately instead of leaving agents stuck in `provisioning` until the
+   * cold-boot stale threshold expires.
+   */
+  async recoverInterruptedJobsOnStartup(
+    startedBefore: Date,
+    jobTypes: readonly ProvisioningJobType[] = Object.values(JOB_TYPES),
+  ): Promise<number> {
+    let totalRecovered = 0;
+
+    for (const jobType of jobTypes) {
+      const recovered = await jobsRepository.recoverInProgressJobsStartedBefore({
+        type: jobType,
+        startedBefore,
+      });
+      totalRecovered += recovered;
+    }
+
+    return totalRecovered;
+  }
+
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------

@@ -442,6 +442,64 @@ export class JobsRepository {
   }
 
   /**
+   * Recovers in-progress jobs that were already claimed before a replacement
+   * worker process started. This is intentionally separate from
+   * `recoverStaleJobs`: the stale threshold protects slow cold boots during
+   * normal operation, while daemon startup is the one point where the previous
+   * process is known to have been replaced by systemd and its claims need to be
+   * made visible again immediately.
+   */
+  async recoverInProgressJobsStartedBefore(filters: {
+    type: string;
+    organizationId?: string;
+    startedBefore: Date;
+    maxAttempts?: number;
+  }): Promise<number> {
+    const conditions = [
+      eq(jobs.type, filters.type),
+      eq(jobs.status, "in_progress"),
+      sql`${jobs.started_at} IS NOT NULL`,
+      lt(jobs.started_at, filters.startedBefore),
+    ];
+
+    if (filters.organizationId) {
+      conditions.push(eq(jobs.organization_id, filters.organizationId));
+    }
+
+    const interruptedJobs = await dbWrite
+      .select()
+      .from(jobs)
+      .where(and(...conditions));
+
+    let recoveredCount = 0;
+
+    for (const job of interruptedJobs) {
+      const newAttempts = (job.attempts || 0) + 1;
+      const maxAttempts = job.max_attempts ?? filters.maxAttempts ?? 3;
+      const isFailed = newAttempts >= maxAttempts;
+      const error = isFailed
+        ? `Job interrupted by worker restart ${newAttempts} times - max attempts reached`
+        : `Job interrupted by worker restart - recovered for retry (attempt ${newAttempts}/${maxAttempts})`;
+
+      await dbWrite
+        .update(jobs)
+        .set({
+          status: isFailed ? "failed" : "pending",
+          ...(await prepareJobPayload({ error }, job)),
+          attempts: newAttempts,
+          updated_at: new Date(),
+        })
+        .where(eq(jobs.id, job.id));
+
+      if (!isFailed) {
+        recoveredCount++;
+      }
+    }
+
+    return recoveredCount;
+  }
+
+  /**
    * Updates a job with partial data.
    * Generic update method for any job fields.
    *

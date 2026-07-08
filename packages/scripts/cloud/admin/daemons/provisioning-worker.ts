@@ -161,6 +161,7 @@ const DEFAULT_WATCHDOG_CONSECUTIVE_TICKS = 2;
  * instead of the 3 weeks it took to notice #15160.
  */
 const DEFAULT_DB_LIVENESS_MAX_AGE_HOURS = 24;
+const workerStartedAt = new Date();
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -571,6 +572,16 @@ async function processHeartbeatCycle(
 async function processRecoveryCycle(concurrency = 5): Promise<RecoveryResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processDisconnectedRecovery(concurrency);
+}
+
+async function processStartupInterruptedJobsRecoveryCycle(
+  config: ProvisioningWorkerConfig,
+): Promise<number> {
+  const { provisioningJobService } = await loadDeps();
+  return provisioningJobService.recoverInterruptedJobsOnStartup(
+    workerStartedAt,
+    config.jobTypes,
+  );
 }
 
 /**
@@ -1691,6 +1702,28 @@ async function main(): Promise<void> {
     "db liveness preflight",
     () => processDbLivenessCheckCycle(config),
     (assessment) => logJobsTableLiveness(logger, assessment),
+  );
+
+  // A systemd restart kills the previous singleton daemon, but any job it had
+  // already claimed remains `in_progress` until stale recovery sees the full
+  // cold-boot threshold. Recover only rows claimed before THIS process existed:
+  // normal in-cycle stale recovery keeps protecting legitimate slow cold boots,
+  // while deploy restarts immediately expose interrupted provisions to retry.
+  await runBoundedPhase(
+    logger,
+    "startup interrupted-job recovery",
+    () => processStartupInterruptedJobsRecoveryCycle(config),
+    (recovered) => {
+      if (recovered > 0) {
+        logger.info(
+          "[provisioning-worker] startup interrupted-job recovery complete",
+          {
+            recovered,
+            startedBefore: workerStartedAt.toISOString(),
+          },
+        );
+      }
+    },
   );
 
   // Apps (Product 2): arm the deploy backend when enabled (gated; no-op by default).

@@ -145,4 +145,47 @@ describe("jobsRepository.recoverStaleJobs", () => {
       error: "Job timed out - recovered for retry (attempt 1/3)",
     });
   });
+
+  test("recovers in-progress rows claimed before a replacement worker started", async () => {
+    if (!pgliteReady) return;
+    const interruptedJobId = "00000000-0000-4000-8000-000000030854";
+    const currentJobId = "00000000-0000-4000-8000-000000040854";
+
+    await seedJob({ id: interruptedJobId, maxAttempts: 3 });
+    await seedJob({ id: currentJobId, maxAttempts: 3 });
+    await dbWrite.execute(
+      `UPDATE jobs
+       SET started_at = NOW() + INTERVAL '1 minute'
+       WHERE id = '${currentJobId}';`,
+    );
+
+    const recovered = await repo.recoverInProgressJobsStartedBefore({
+      type: "agent_message",
+      startedBefore: new Date(),
+    });
+
+    expect(recovered).toBe(1);
+    const rows = await dbWrite
+      .select({
+        id: jobs.id,
+        status: jobs.status,
+        attempts: jobs.attempts,
+        error: jobs.error,
+      })
+      .from(jobs)
+      .orderBy(jobs.id);
+
+    const interrupted = rows.find((row) => row.id === interruptedJobId);
+    const current = rows.find((row) => row.id === currentJobId);
+    expect(interrupted).toMatchObject({
+      status: "pending",
+      attempts: 1,
+      error: "Job interrupted by worker restart - recovered for retry (attempt 1/3)",
+    });
+    expect(current).toMatchObject({
+      status: "in_progress",
+      attempts: 0,
+      error: null,
+    });
+  });
 });

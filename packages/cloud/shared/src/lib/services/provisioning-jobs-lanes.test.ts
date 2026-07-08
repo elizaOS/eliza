@@ -76,4 +76,26 @@ describe("processPendingJobs — lane scoping", () => {
       recoverSpy.mockRestore();
     }
   });
+
+  test("startup interrupted-job recovery is scoped to the daemon lane", async () => {
+    const recoverSpy = spyOn(
+      jobsRepository,
+      "recoverInProgressJobsStartedBefore",
+    ).mockResolvedValue(0);
+    const startedBefore = new Date("2026-07-08T12:00:00.000Z");
+    try {
+      await provisioningJobService.recoverInterruptedJobsOnStartup(startedBefore, AGENT_JOB_TYPES);
+
+      const recoveredTypes = recoverSpy.mock.calls.map((c) => c[0].type);
+      expect(new Set(recoveredTypes)).toEqual(new Set(AGENT_JOB_TYPES));
+      for (const appsType of APPS_JOB_TYPES) {
+        expect(recoveredTypes).not.toContain(appsType);
+      }
+      for (const call of recoverSpy.mock.calls) {
+        expect(call[0].startedBefore).toBe(startedBefore);
+      }
+    } finally {
+      recoverSpy.mockRestore();
+    }
+  });
 });
