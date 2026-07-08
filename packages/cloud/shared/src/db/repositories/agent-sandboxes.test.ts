@@ -127,6 +127,42 @@ describe("AgentSandboxesRepository", () => {
     expect(new PgDialect().sqlToQuery(capturedWhere).sql).toContain("'sleeping'");
   });
 
+  test("provisioning lock clears stale handles only when retrying permanent provision failures", async () => {
+    set.mockClear();
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().trySetProvisioning("e06bb509-6c52-4c33-a9f7-66addc43e8c8");
+
+    const capturedSet = set.mock.calls.at(-1)?.[0];
+    if (!capturedSet) throw new Error("trySetProvisioning did not build an update payload");
+
+    const handleColumns = [
+      "sandbox_id",
+      "bridge_url",
+      "health_url",
+      "node_id",
+      "container_name",
+      "bridge_port",
+      "web_ui_port",
+      "headscale_ip",
+    ] as const;
+
+    for (const column of handleColumns) {
+      const expression = capturedSet[column];
+      const sql =
+        expression && typeof expression === "object"
+          ? new PgDialect().sqlToQuery(expression as SQL).sql.toLowerCase()
+          : "";
+      expect(sql).toContain("case when");
+      expect(sql).toContain("status");
+      expect(sql).toContain("error_message");
+      expect(sql).toContain("provisioning permanently failed%");
+      expect(sql).toContain("then null");
+      expect(sql).toContain(`"${column}" end`);
+    }
+  });
+
   test("provisioning lock admits a running row ONLY when it has no container (re-provision unblock)", async () => {
     // Bug: a direct/shared provision inserts the row as `running` BEFORE any
     // container exists. If that provision crashes, the row is stuck at

@@ -709,15 +709,30 @@ export class AgentSandboxesRepository {
    * agent: the moment a container is created the provision path stamps
    * `container_name`/`sandbox_id`, so a live agent can NEVER satisfy this branch
    * and can NEVER have its lock taken from under it.
+   *
+   * Terminal provision failures are different from transport-unresolved
+   * `provisioning` retries: the old handle already failed every job attempt and
+   * must not be re-probed as the next wake/restart target. Clear only that
+   * permanent-failure handle while acquiring the new lock so a retry starts from
+   * provider.create with a fresh container record.
    */
   async trySetProvisioning(id: string): Promise<AgentSandbox | undefined> {
     await ensureAgentSandboxSchema();
+    const permanentProvisionFailure = sql`${agentSandboxes.status} = 'error' AND ${agentSandboxes.error_message} LIKE 'Provisioning permanently failed%'`;
     const [r] = await dbWrite
       .update(agentSandboxes)
       .set({
         status: "provisioning",
         updated_at: new Date(),
         error_message: null,
+        sandbox_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.sandbox_id} END`,
+        bridge_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_url} END`,
+        health_url: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.health_url} END`,
+        node_id: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.node_id} END`,
+        container_name: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.container_name} END`,
+        bridge_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.bridge_port} END`,
+        web_ui_port: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.web_ui_port} END`,
+        headscale_ip: sql`CASE WHEN ${permanentProvisionFailure} THEN NULL ELSE ${agentSandboxes.headscale_ip} END`,
       })
       .where(
         and(
