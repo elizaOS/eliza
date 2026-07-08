@@ -65,6 +65,32 @@ function chunkings(text: string): string[][] {
 	return plans;
 }
 
+function targetedLongChunkings(
+	text: string,
+	markers: readonly string[],
+): string[][] {
+	const points = new Set<number>([1, text.length - 1]);
+	for (const marker of markers) {
+		const start = text.indexOf(marker);
+		if (start === -1) continue;
+		for (const point of [
+			start,
+			start + 1,
+			start + marker.length - 1,
+			start + marker.length,
+			start + 512,
+			start + 513,
+		]) {
+			if (point > 0 && point < text.length) points.add(point);
+		}
+	}
+	return [
+		...Array.from(points, (point) => [text.slice(0, point), text.slice(point)]),
+		[...text],
+		[text],
+	];
+}
+
 interface Fixture {
 	name: string;
 	text: string;
@@ -79,6 +105,7 @@ interface Fixture {
 	rawPii: string[];
 	/** Whether streamed output must byte-equal the whole-buffer output (single/pre-seeded entries). */
 	equivalence: boolean;
+	chunkings?: (text: string) => string[][];
 }
 
 function secretSessionWith(
@@ -110,6 +137,13 @@ const PEM_KEY =
 // Basic, so this only redacts via the `basic-auth-header` detector's
 // `Authorization:` anchor — the anchor the streaming guard must hold intact.
 const BASIC_B64 = "dXNlcjpwYXNzd29yZDEyMw==";
+const LONG_ANCHORED_VALUE = Array.from(
+	{ length: 96 },
+	(_, i) => `tok${i.toString(36)}A1b2C3d4E5f6`,
+).join("");
+const LONG_BASIC_B64 = Buffer.from(
+	`guarded-stream-user:${LONG_ANCHORED_VALUE}`,
+).toString("base64");
 
 // A single valid NANP number in every separator format the detector accepts.
 // Every form except the paren/`+1` prefix is already held by the grouped-number
@@ -301,6 +335,64 @@ async function buildFixtures(): Promise<Fixture[]> {
 			rawPii: [],
 			equivalence: true,
 		},
+		{
+			name: "long HTTP Basic auth header (anchor more than opener window behind value)",
+			text: `Header Authorization: Basic ${LONG_BASIC_B64} end of line.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [LONG_BASIC_B64],
+			rawPii: [],
+			equivalence: true,
+			chunkings: (text) =>
+				targetedLongChunkings(text, [
+					"Authorization:",
+					"Basic ",
+					LONG_BASIC_B64,
+				]),
+		},
+		{
+			name: "long opaque Authorization Bearer header",
+			text: `Header Authorization: Bearer ${LONG_ANCHORED_VALUE} end of line.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [LONG_ANCHORED_VALUE],
+			rawPii: [],
+			equivalence: true,
+			chunkings: (text) =>
+				targetedLongChunkings(text, [
+					"Authorization:",
+					"Bearer ",
+					LONG_ANCHORED_VALUE,
+				]),
+		},
+		{
+			name: "long ENV colon assignment with separated value",
+			text: `Set LONG_SECRET: ${LONG_ANCHORED_VALUE} before deploy.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [LONG_ANCHORED_VALUE],
+			rawPii: [],
+			equivalence: true,
+			chunkings: (text) =>
+				targetedLongChunkings(text, ["LONG_SECRET:", LONG_ANCHORED_VALUE]),
+		},
+		{
+			name: "long JSON password field",
+			text: `Payload {"password": "${LONG_ANCHORED_VALUE}"} was sent.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [LONG_ANCHORED_VALUE],
+			rawPii: [],
+			equivalence: true,
+			chunkings: (text) =>
+				targetedLongChunkings(text, ['"password":', LONG_ANCHORED_VALUE]),
+		},
+		{
+			name: "long CLI password flag with separated value",
+			text: `Run deploy --password ${LONG_ANCHORED_VALUE} after rotation.`,
+			factory: async () => ({ secret: secretSessionWith(), pii: null }),
+			rawSecrets: [LONG_ANCHORED_VALUE],
+			rawPii: [],
+			equivalence: true,
+			chunkings: (text) =>
+				targetedLongChunkings(text, ["--password", LONG_ANCHORED_VALUE]),
+		},
 		...PHONE_FORMS.map((phone) => ({
 			name: `NANP phone (${phone})`,
 			text: `Please call ${phone} tomorrow morning.`,
@@ -376,7 +468,7 @@ describe("GuardedStreamScanner", () => {
 				).not.toContain(raw);
 			}
 
-			for (const chunks of chunkings(fx.text)) {
+			for (const chunks of (fx.chunkings ?? chunkings)(fx.text)) {
 				const { secret, pii } = await fx.factory();
 				const scanner = new GuardedStreamScanner({
 					secretSession: secret,

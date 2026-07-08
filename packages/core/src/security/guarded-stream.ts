@@ -91,7 +91,7 @@ const OPENER_PATTERNS: readonly RegExp[] = [
 
 /** Safety bound on the grouped-number left-walk; hitting it holds everything (safe). */
 const GROUPED_RUN_SCAN_LIMIT = 512;
-/** Trailing window scanned for an in-progress opener. */
+/** Trailing window scanned for an in-progress opener before the long-value fallback. */
 const OPENER_WINDOW = 512;
 /** Longest suffix probed when detecting a partial `-----BEGIN` armor marker. */
 const ARMOR_BEGIN = "-----BEGIN";
@@ -221,7 +221,7 @@ export class GuardedStreamScanner {
 			next = Math.min(next, this.groupedNumberRunStart(next));
 			next = Math.min(next, this.phoneRunStart(next));
 			next = Math.min(next, this.bip39RunStart(next));
-			next = Math.min(next, this.openerTailStart());
+			next = Math.min(next, this.openerTailStart(next));
 			next = Math.min(next, this.openArmorStart(next));
 			next = Math.min(next, this.knownTokenCrossingStart(next));
 			next = this.snapToWhitespace(next);
@@ -399,21 +399,37 @@ export class GuardedStreamScanner {
 	}
 
 	/**
-	 * If the trailing window ends with an in-progress secret opener
-	 * (`KEY=`, JSON field, `Bearer`/`Basic`, CLI flag), hold from the opener start.
-	 * Returns `pending.length` (no hold) when none match.
+	 * If the prefix ending at `cut` ends with an in-progress secret opener (`KEY=`,
+	 * JSON field, `Bearer`/`Basic`, CLI flag), hold from the opener start. The fast
+	 * path scans the bounded suffix; the long-token fallback extends left from the
+	 * current value token so a 512+ byte value cannot orphan its anchor before the
+	 * detector sees the complete assignment/header/flag.
 	 */
-	private openerTailStart(): number {
+	private openerTailStart(cut: number): number {
 		const p = this.pending;
-		const n = p.length;
-		const base = Math.max(0, n - OPENER_WINDOW);
-		const tail = p.slice(base);
-		let start = n;
-		for (const pattern of OPENER_PATTERNS) {
-			const match = pattern.exec(tail);
-			if (match) start = Math.min(start, base + match.index);
+		const end = Math.min(cut, p.length);
+		const matchStart = (base: number): number => {
+			const tail = p.slice(base, end);
+			let start = end;
+			for (const pattern of OPENER_PATTERNS) {
+				const match = pattern.exec(tail);
+				if (match) start = Math.min(start, base + match.index);
+			}
+			return start;
+		};
+
+		const base = Math.max(0, end - OPENER_WINDOW);
+		const tailStart = matchStart(base);
+		if (tailStart < end) return tailStart;
+
+		let runStart = end;
+		while (runStart > 0 && !isAsciiWhitespace(p.charCodeAt(runStart - 1))) {
+			runStart -= 1;
 		}
-		return start;
+		if (runStart >= base) return end;
+
+		const extendedBase = Math.max(0, runStart - OPENER_WINDOW);
+		return matchStart(extendedBase);
 	}
 
 	/**
