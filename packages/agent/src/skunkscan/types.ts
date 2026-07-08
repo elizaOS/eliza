@@ -254,6 +254,23 @@ export type WalletComplianceScreeningSource = {
   notes: string[];
 };
 
+export type WalletIntelligenceSource = {
+  id: string;
+  name: string;
+  category:
+    | "blockchain_provider"
+    | "price_provider"
+    | "metadata_provider"
+    | "label_registry"
+    | "protocol_registry"
+    | "exposure_registry"
+    | "compliance_provider";
+  status: "connected" | "planned" | "unavailable";
+  coverage: string[];
+  lastUpdatedAt?: string | null;
+  notes: string[];
+};
+
 export type WalletComplianceScreeningSummary = {
   sanctionsStatus:
     | "not_screened"
@@ -352,6 +369,7 @@ export type WalletInvestigationResult = {
   executiveVerdict?: WalletExecutiveVerdict;
   custodyProfile?: WalletCustodyProfile;
   complianceScreening?: WalletComplianceScreeningSummary;
+  intelligenceSources?: WalletIntelligenceSource[];
   trust?: WalletTrustSummary;
   investigationReplay?: WalletInvestigationReplayStep[];
   exposure?: WalletExposureSummary;
