@@ -20,6 +20,7 @@ import { analyzeWalletExposure } from "./analyzers/exposure";
 import { analyzeWalletRelationships } from "./analyzers/relationships";
 import { analyzeWalletTrust } from "./analyzers/trust";
 import { analyzeInvestigationReplay } from "./analyzers/investigationReplay";
+import { analyzeWalletDisplayScores } from "./analyzers/display";
 import {
   SupportedChain,
   WalletBalance,
@@ -149,6 +150,13 @@ const trust = analyzeWalletTrust(
   risk,
 );
 
+const display = analyzeWalletDisplayScores(
+  risk,
+  trust,
+  exposure,
+  whale,
+);
+
 const caseSummary = analyzeWalletCaseSummary(
   age,
   risk,
@@ -195,6 +203,7 @@ behavior,
 exposure,
 relationships,
 caseSummary,
+display,
 trust,
 investigationReplay,
 evidence,
