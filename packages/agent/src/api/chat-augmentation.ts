@@ -22,10 +22,16 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { buildAccessContext, parseJSONObjectFromText } from "@elizaos/core";
+import {
+  aliasRecallQuery,
+  buildAccessContext,
+  embedRecallQuery,
+  parseJSONObjectFromText,
+} from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
 import {
+  type DocumentSearchMode,
   type DocumentsServiceLike,
   getDocumentsService,
 } from "./documents-service-loader.ts";
@@ -86,6 +92,13 @@ const MAX_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS = 30_000;
 const MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 30_000;
 const CHAT_DOCUMENTS_RECOVERY_MODEL = "TEXT_LARGE";
 
+// Upper bound on the documents-table probe that classifies the corpus as
+// seed-only. The bundled seed set (default-documents.ts + the per-topic help
+// FAQ) is ~14 documents; a corpus at or above this cap cannot be seed-only, so
+// the probe treats hitting the cap as "user documents exist" without paging.
+const CHAT_DOCUMENTS_SEED_PROBE_LIMIT = 32;
+const SEED_DOCUMENT_ADDED_FROM = "default-seed";
+
 // Sentinel requester id for an unresolved/unauthenticated chat turn. It is the
 // nil UUID — guaranteed to be neither the agent nor any real owner — so the
 // scope-read filter resolves it to a least-privileged USER and strips every
@@ -139,6 +152,31 @@ function resolveRecoveryTimeoutMs(explicit?: number): number {
     "ELIZA_CHAT_DOCUMENT_RECOVERY_TIMEOUT_MS",
     DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
     MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
+  );
+}
+
+/**
+ * True when every document in the corpus is a bundled seed document
+ * (`metadata.addedFrom === "default-seed"` — the Eliza overview / Cloud basics
+ * / help-FAQ set from default-documents.ts). Character knowledge
+ * (`addedFrom: "character"`) and anything a user or the agent added count as a
+ * real corpus. Fails open to `false` (the full retrieval path) on a probe
+ * error or when the corpus is too large to be the seed set.
+ */
+async function corpusHasOnlySeedDocuments(
+  documents: DocumentsServiceLike,
+): Promise<boolean> {
+  const docs = await documents.getMemories({
+    tableName: "documents",
+    count: CHAT_DOCUMENTS_SEED_PROBE_LIMIT,
+  });
+  if (docs.length === 0 || docs.length >= CHAT_DOCUMENTS_SEED_PROBE_LIMIT) {
+    return false;
+  }
+  return docs.every(
+    (doc) =>
+      (doc.metadata as Record<string, unknown> | undefined)?.addedFrom ===
+      SEED_DOCUMENT_ADDED_FROM,
   );
 }
 
@@ -213,6 +251,35 @@ export async function maybeAugmentChatMessageWithDocuments(
   } catch {
     // Count failed — do not skip; let the normal search path run.
   }
+
+  // Classify the corpus: bundled seed docs only, or a real (user/agent-added)
+  // corpus. Agents whose only corpus is the default seed set — every default
+  // cloud agent — otherwise pay the hybrid search's blocking embed round-trip
+  // (~1.5-2.7s of gateway floor, the dominant pre-reply latency) on EVERY turn,
+  // and because hybrid similarity is max-normalized over the candidate set the
+  // top seed fragment almost always clears the relevance threshold, injecting
+  // help-FAQ snippets into unrelated turns. Seed-only corpora therefore search
+  // in keyword (BM25) mode: no embed round-trip, and the FAQ still surfaces on
+  // real term overlap (BM25 scores zero-overlap queries 0 → no injection). A
+  // probe failure falls open to the full hybrid path.
+  let seedOnlyCorpus = false;
+  try {
+    seedOnlyCorpus = await corpusHasOnlySeedDocuments(documents.service);
+  } catch (error) {
+    // error-policy:J4 a failed probe degrades to the FULL hybrid retrieval
+    // path (the pre-optimization behavior), never to a skipped or downgraded
+    // lookup — retrieval richness is preserved, only the latency win is lost.
+    runtime.logger.warn(
+      {
+        src: "api:chat-augmentation",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Seed-corpus probe failed; using the full hybrid document retrieval path",
+    );
+  }
+  const searchMode: DocumentSearchMode | undefined = seedOnlyCorpus
+    ? "keyword"
+    : undefined;
 
   const agentId = runtime.agentId as UUID;
 
@@ -313,7 +380,7 @@ export async function maybeAugmentChatMessageWithDocuments(
             },
           },
           { roomId: scopeRoomId },
-          undefined,
+          searchMode,
           accessContext,
           { turnMessageId },
         )) ?? [],
@@ -462,8 +529,16 @@ export async function maybeAugmentChatMessageWithDocuments(
     // indexed, or — on hosts forced onto zero/low-dim embeddings, e.g. cloud
     // agents pinned to local gte-small — nothing ever clears retrieval), the
     // recovery call is guaranteed to match nothing too: it just burns one full
-    // generate-text round-trip on every plain-chat turn. Skip it.
-    if (relevantMatches.length === 0 && initialMatches.matches.length > 0) {
+    // generate-text round-trip on every plain-chat turn. Skip it. Seed-only
+    // corpora skip recovery outright: it exists to find user documents
+    // referenced obliquely ("the uploaded file"); with no user documents the
+    // rephrased queries can only re-match the same bundled FAQ the direct
+    // search already scored.
+    if (
+      !seedOnlyCorpus &&
+      relevantMatches.length === 0 &&
+      initialMatches.matches.length > 0
+    ) {
       const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
       // Run the recovered-query searches concurrently. Each is an independent
       // embedding round-trip (~1.5s); awaiting them one at a time was the bulk
@@ -529,23 +604,44 @@ export async function maybeAugmentChatMessageWithDocuments(
     })
     .join("\n\n");
 
+  const augmentedText = [
+    "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+    "If the answer appears verbatim in the contextual documents, repeat it exactly.",
+    "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
+    "",
+    "<contextual_documents>",
+    contextualDocuments,
+    "</contextual_documents>",
+    "",
+    "<user_request>",
+    userPrompt,
+    "</user_request>",
+  ].join("\n");
+
+  // The rewrite changes the text every in-run recall caller (TTFT prefetch,
+  // relevant-conversations, FACTS) presents to the shared per-turn embed cache,
+  // which would miss and issue a second serial embed round-trip (~1.5-2.7s of
+  // gateway floor) for a query polluted by the injected snippets. Warm the
+  // clean-prompt embed (a cache hit when the hybrid search above already
+  // embedded it; a fresh fire-and-forget round-trip on the keyword/seed-only
+  // path, overlapping the turn instead of blocking it) and alias the envelope
+  // text onto it, so the whole turn shares one embed of what the user actually
+  // asked. `embedRecallQuery` registers its in-flight promise synchronously,
+  // so the alias below always finds it.
+  if (turnMessageId) {
+    void embedRecallQuery(runtime, userPrompt, { messageId: turnMessageId });
+    aliasRecallQuery(runtime, {
+      messageId: turnMessageId,
+      sourceText: userPrompt,
+      aliasText: augmentedText,
+    });
+  }
+
   return {
     ...message,
     content: {
       ...(message.content as Content),
-      text: [
-        "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
-        "If the answer appears verbatim in the contextual documents, repeat it exactly.",
-        "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
-        "",
-        "<contextual_documents>",
-        contextualDocuments,
-        "</contextual_documents>",
-        "",
-        "<user_request>",
-        userPrompt,
-        "</user_request>",
-      ].join("\n"),
+      text: augmentedText,
     },
   };
 }

@@ -55,7 +55,7 @@ export { documentAction, documentActions } from "./actions";
 export type { Bm25Document, Bm25Options, Bm25Score } from "./bm25";
 export { bm25Scores, normalizeBm25Scores, tokenize } from "./bm25";
 export { documentsProvider } from "./provider";
-export { embedRecallQuery } from "./recall-embed";
+export { aliasRecallQuery, embedRecallQuery } from "./recall-embed";
 export type { SearchMode } from "./service";
 export { DocumentService } from "./service";
 export * from "./types";

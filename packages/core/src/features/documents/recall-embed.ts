@@ -30,6 +30,16 @@
  * attributed to the wrong turn (worst case: a cache miss, never a wrong vector).
  * A caller with neither key (background/non-turn) embeds directly, uncached.
  *
+ * **Alias keys for rewritten prompts.** Document augmentation rewrites the
+ * turn's `content.text` into a contextual-documents envelope AFTER the recall
+ * embed of the clean user prompt already ran. Every in-run recall caller then
+ * presents the envelope text, whose normalized key would miss the cached
+ * vector and issue a second, serial embed round-trip for the same turn.
+ * `aliasRecallQuery` lets the rewriter declare both texts equivalent for this
+ * turn's recall, mapping the envelope key onto the clean-prompt vector — which
+ * is also the semantically correct recall query (the user's request, not the
+ * injected document context).
+ *
  * **Fail-open on error only.** A failed embed (the model handler rejects — e.g.
  * its own request timeout aborts, or the provider errors) returns `null`; the
  * caller falls open to keyword/BM25 recall (or, for callers with no keyword
@@ -169,9 +179,28 @@ export async function embedRecallQuery(
 	// Dedupe concurrent identical embeds to a single in-flight round-trip.
 	let pending = cache?.inFlight.get(normalized);
 	if (!pending) {
-		pending = runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: queryText,
-		}) as Promise<number[]>;
+		try {
+			// Promise.resolve guards a model handler that returns a bare value (or
+			// nothing); the catch guards one that throws synchronously. Both are the
+			// same failure as a rejected embed and must fail OPEN here — several
+			// callers (the augmentation warm, the message-service prefetch) invoke
+			// this fire-and-forget, so a rejection escaping this async fn would
+			// surface as an unhandled rejection instead of degraded recall.
+			pending = Promise.resolve(
+				runtime.useModel(ModelType.TEXT_EMBEDDING, {
+					text: queryText,
+				}) as Promise<number[]>,
+			);
+		} catch (error) {
+			logger.debug(
+				{
+					src: "core:documents:recall-embed",
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Recall-query embed threw synchronously; failing open to keyword recall",
+			);
+			return null;
+		}
 		cache?.inFlight.set(normalized, pending);
 		// Populate the per-turn result cache so a later identical query in the same
 		// turn reuses this vector instead of issuing a new call, and clear the
@@ -192,7 +221,10 @@ export async function embedRecallQuery(
 	}
 
 	try {
-		return await pending;
+		const vector = await pending;
+		// A handler that resolved to a non-array (e.g. undefined) failed to embed;
+		// report that as the fail-open null, not a garbage value.
+		return Array.isArray(vector) ? vector : null;
 	} catch (error) {
 		logger.debug(
 			{
@@ -203,4 +235,77 @@ export async function embedRecallQuery(
 		);
 		return null;
 	}
+}
+
+/**
+ * Declare `aliasText` equivalent to `sourceText` for this turn's recall: any
+ * recall caller presenting `aliasText` resolves to `sourceText`'s vector from
+ * the per-turn cache instead of issuing its own embed round-trip.
+ *
+ * The one producer is document augmentation: after it rewrites the turn's
+ * message text into the contextual-documents envelope, the in-run recall
+ * callers (TTFT prefetch, relevant-conversations, FACTS) all present the
+ * envelope text. Without the alias each turn with a document match pays a
+ * second serial embed for a query that is strictly WORSE (the injected
+ * document snippets drown the user's request); with it, one embed of the clean
+ * prompt serves the whole turn.
+ *
+ * The alias joins an in-flight source embed rather than waiting for it, so it
+ * can be registered synchronously right after a fire-and-forget
+ * `embedRecallQuery` warm of the source text. When the source was never
+ * embedded (or its embed failed), this is a no-op and alias-text callers embed
+ * directly — the fail-open contract is unchanged.
+ */
+export function aliasRecallQuery(
+	runtime: IAgentRuntime,
+	options: { messageId?: string; sourceText: string; aliasText: string },
+): void {
+	const sourceKey = normalizeQuery(options.sourceText);
+	const aliasKey = normalizeQuery(options.aliasText);
+	if (!sourceKey || !aliasKey || sourceKey === aliasKey) {
+		return;
+	}
+
+	let runId: string;
+	try {
+		runId = runtime.getCurrentRunId();
+	} catch {
+		// No active run (the pre-run augmentation caller): key by messageId, the
+		// same fallback embedRecallQuery uses, so both resolve one slot.
+		runId = "";
+	}
+	if (runId === "" && options.messageId === undefined) {
+		// No turn key at all — nothing is cached for this caller, so there is no
+		// slot to alias into.
+		return;
+	}
+
+	const cache = getTurnCache(runtime, runId, options.messageId);
+	const resolved = cache.results.get(sourceKey);
+	if (resolved) {
+		cache.results.set(aliasKey, resolved);
+		return;
+	}
+
+	const pending = cache.inFlight.get(sourceKey);
+	if (!pending) {
+		return;
+	}
+	// Mirror embedRecallQuery's in-flight bookkeeping under the alias key so a
+	// concurrent alias-text caller joins the source round-trip instead of
+	// starting its own.
+	cache.inFlight.set(aliasKey, pending);
+	void pending
+		.then((vector) => {
+			if (Array.isArray(vector) && vector.length > 0) {
+				cache.results.set(aliasKey, vector);
+			}
+		})
+		.catch(() => {
+			// Swallow: the source caller logs + fails open; an alias-text caller
+			// awaiting this shared promise fails open through its own catch.
+		})
+		.finally(() => {
+			cache.inFlight.delete(aliasKey);
+		});
 }

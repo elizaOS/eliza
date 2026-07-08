@@ -1,15 +1,18 @@
 /**
- * Unit tests for `embedRecallQuery`: it returns the embedding on success, fails
- * open to `null` on an embed error (never throwing onto the reply path), and
- * caches/dedupes identical normalized recall queries within a turn (including
- * across providers). Runs against `createMockRuntime` with a synchronous fake
- * embed model — deterministic, no live LLM.
+ * Unit tests for `embedRecallQuery` + `aliasRecallQuery`: the embed returns the
+ * vector on success, fails open to `null` on an embed error (never throwing
+ * onto the reply path), and caches/dedupes identical normalized recall queries
+ * within a turn (including across providers); the alias maps a rewritten
+ * (document-augmented) prompt onto the clean prompt's cached or in-flight
+ * vector so a rewrite never costs a second per-turn embed. Runs against
+ * `createMockRuntime` with a synchronous fake embed model — deterministic, no
+ * live LLM.
  */
 import { describe, expect, test } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
 import type { IAgentRuntime } from "../../types";
 import { ModelType } from "../../types";
-import { embedRecallQuery } from "./recall-embed.ts";
+import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 
 const RUN_A = "11111111-1111-1111-1111-111111111111";
 const RUN_B = "22222222-2222-2222-2222-222222222222";
@@ -68,6 +71,24 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 			embed: async () => {
 				throw new Error("embeddings endpoint 500");
 			},
+		});
+		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+	});
+
+	test("a SYNCHRONOUSLY-throwing model handler also fails open — fire-and-forget callers never see an unhandled rejection", async () => {
+		const runtime = createMockRuntime({
+			getCurrentRunId: () => RUN_A,
+			useModel: () => {
+				throw new Error("no TEXT_EMBEDDING handler registered");
+			},
+		});
+		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
+	});
+
+	test("a handler resolving to a non-array fails open to null, not a garbage value", async () => {
+		const runtime = createMockRuntime({
+			getCurrentRunId: () => RUN_A,
+			useModel: () => Promise.resolve(undefined),
 		});
 		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
 	});
@@ -361,6 +382,167 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		await embedRecallQuery(runtime, "background query");
 		await embedRecallQuery(runtime, "background query");
 		expect(calls.count).toBe(2);
+	});
+
+	test("aliasRecallQuery maps a rewritten prompt onto a RESOLVED clean-prompt vector — the in-run envelope caller issues zero new embeds", async () => {
+		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+			0.6, 0.7,
+		]);
+
+		// Pre-run document augmentation embeds the clean user prompt…
+		const clean = await embedRecallQuery(
+			runtime,
+			"what is the refund policy?",
+			{
+				messageId: MSG_A,
+			},
+		);
+		expect(clean).toEqual([0.6, 0.7]);
+		expect(calls.count).toBe(1);
+
+		// …then rewrites the message into the contextual-documents envelope and
+		// declares the two texts equivalent for this turn's recall.
+		const envelope =
+			"Answer the user request using the contextual documents below…\n<user_request>\nwhat is the refund policy?\n</user_request>";
+		aliasRecallQuery(runtime, {
+			messageId: MSG_A,
+			sourceText: "what is the refund policy?",
+			aliasText: envelope,
+		});
+
+		// In-run recall callers (prefetch / relevant-conversations / FACTS) present
+		// the envelope text: same vector, no second round-trip.
+		setRun(RUN_A);
+		const inRun = await embedRecallQuery(runtime, envelope, {
+			messageId: MSG_A,
+		});
+		expect(inRun).toEqual([0.6, 0.7]);
+		const composeTime = await embedRecallQuery(runtime, envelope);
+		expect(composeTime).toEqual([0.6, 0.7]);
+		expect(calls.count).toBe(1);
+	});
+
+	test("aliasRecallQuery joins an IN-FLIGHT source embed — alias registered synchronously after a fire-and-forget warm still shares the one round-trip", async () => {
+		let resolveEmbed: ((v: number[]) => void) | undefined;
+		const { runtime, calls, setRun } = makeControllableRuntime(
+			() =>
+				new Promise<number[]>((resolve) => {
+					resolveEmbed = resolve;
+				}),
+		);
+
+		// Fire-and-forget warm of the clean prompt (the keyword/seed-only path:
+		// no search embed preceded it), alias registered immediately while the
+		// embed is still in flight.
+		const warm = embedRecallQuery(runtime, "clean prompt", {
+			messageId: MSG_A,
+		});
+		aliasRecallQuery(runtime, {
+			messageId: MSG_A,
+			sourceText: "clean prompt",
+			aliasText: "envelope wrapping the clean prompt",
+		});
+		expect(calls.count).toBe(1);
+
+		// The in-run envelope caller joins the shared in-flight promise.
+		setRun(RUN_A);
+		const inRun = embedRecallQuery(
+			runtime,
+			"envelope wrapping the clean prompt",
+			{
+				messageId: MSG_A,
+			},
+		);
+		expect(calls.count).toBe(1);
+
+		resolveEmbed?.([0.8]);
+		await expect(warm).resolves.toEqual([0.8]);
+		await expect(inRun).resolves.toEqual([0.8]);
+		expect(calls.count).toBe(1);
+
+		// Once resolved, later envelope callers hit the result cache.
+		await expect(
+			embedRecallQuery(runtime, "envelope wrapping the clean prompt"),
+		).resolves.toEqual([0.8]);
+		expect(calls.count).toBe(1);
+	});
+
+	test("aliasRecallQuery is a safe no-op when the source was never embedded — the alias-text caller embeds directly (fail-open unchanged)", async () => {
+		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+			0.2,
+		]);
+		aliasRecallQuery(runtime, {
+			messageId: MSG_A,
+			sourceText: "never embedded",
+			aliasText: "envelope text",
+		});
+		setRun(RUN_A);
+		const vec = await embedRecallQuery(runtime, "envelope text", {
+			messageId: MSG_A,
+		});
+		expect(vec).toEqual([0.2]);
+		expect(calls.count).toBe(1);
+	});
+
+	test("aliasRecallQuery does not cache a FAILED source embed under the alias: the alias caller joins the in-flight failure, fails open, then re-embeds fresh", async () => {
+		let shouldFail = true;
+		const { runtime, calls, setRun } = makeControllableRuntime(async () => {
+			if (shouldFail) {
+				throw new Error("embeddings endpoint 500");
+			}
+			return [0.9];
+		});
+
+		const warm = embedRecallQuery(runtime, "clean prompt", {
+			messageId: MSG_A,
+		});
+		aliasRecallQuery(runtime, {
+			messageId: MSG_A,
+			sourceText: "clean prompt",
+			aliasText: "envelope text",
+		});
+		setRun(RUN_A);
+		// Joins the shared (failing) in-flight promise → fails open to null.
+		const joined = embedRecallQuery(runtime, "envelope text", {
+			messageId: MSG_A,
+		});
+		await expect(warm).resolves.toBeNull();
+		await expect(joined).resolves.toBeNull();
+		expect(calls.count).toBe(1);
+
+		await yieldMacrotask();
+
+		// Nothing poisoned the cache: the next envelope caller re-embeds fresh.
+		shouldFail = false;
+		await expect(
+			embedRecallQuery(runtime, "envelope text", { messageId: MSG_A }),
+		).resolves.toEqual([0.9]);
+		expect(calls.count).toBe(2);
+	});
+
+	test("aliasRecallQuery no-ops on identical normalized texts and on callers with no turn key", async () => {
+		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+			0.5,
+		]);
+		await embedRecallQuery(runtime, "same text", { messageId: MSG_A });
+		expect(calls.count).toBe(1);
+
+		// Identical normalized source/alias: nothing to map.
+		aliasRecallQuery(runtime, {
+			messageId: MSG_A,
+			sourceText: "same text",
+			aliasText: "  SAME   text ",
+		});
+		setRun(RUN_A);
+		await embedRecallQuery(runtime, "same text", { messageId: MSG_A });
+		expect(calls.count).toBe(1);
+
+		// No run + no messageId: no slot exists to alias into; must not throw.
+		setRun(null);
+		aliasRecallQuery(runtime, {
+			sourceText: "same text",
+			aliasText: "other text",
+		});
 	});
 
 	test("in-flight dedupe spans the pre-run/in-run boundary: a pre-run embed and an in-run adopt of the same messageId share one round-trip", async () => {
