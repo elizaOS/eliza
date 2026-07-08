@@ -51,6 +51,12 @@ import {
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
+import {
+  CloudHostedAgentAuthNotice,
+  CloudPairRelay,
+  getCloudPairTokenFromLocation,
+  isElizaCloudHostedLocation,
+} from "./components/auth/CloudPairRelay";
 import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
@@ -2176,6 +2182,8 @@ export function App() {
       : undefined;
   const overlayAppSurfaceActive = Boolean(resolvedOverlayApp);
   const contextMenu = useContextMenu();
+  const cloudPairToken = getCloudPairTokenFromLocation();
+  const isElizaCloudHosted = isElizaCloudHostedLocation();
 
   useSecretsManagerShortcut();
 
@@ -2595,6 +2603,19 @@ export function App() {
     );
   }
 
+  // Hosted Cloud agent handoff: `/pair?token=X` must never fall through to the
+  // local password auth screen. The server-side relay owns the happy path, but
+  // this protects stale/edge-hosted SPA fallbacks by exchanging the token in the
+  // browser and then reloading the agent root with the paired API key pinned.
+  if (cloudPairToken) {
+    return (
+      <BugReportProvider value={bugReport}>
+        <CloudPairRelay token={cloudPairToken} />
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
   // Self-driving voice round-trip test screen — runs the real STT->agent->TTS
   // loop against a known phrase and reports PASS/FAIL with no human in the loop.
   // Self-contained (its own ElizaClient + AudioContext); no app chrome / gate.
@@ -2716,6 +2737,14 @@ export function App() {
         return (
           <BugReportProvider value={bugReport}>
             <StartupScreen />
+            <BugReportModal />
+          </BugReportProvider>
+        );
+      }
+      if (isElizaCloudHosted) {
+        return (
+          <BugReportProvider value={bugReport}>
+            <CloudHostedAgentAuthNotice />
             <BugReportModal />
           </BugReportProvider>
         );
