@@ -75,6 +75,7 @@ mock.module("../credits", () => ({
   // Must mirror the real export — app-credits.ts imports it for the $0-estimate
   // floor; a missing export would break the module link under this mock.
   MIN_RESERVATION: 0.000001,
+  APP_CHAT_RESERVATION_SETTLEMENT_MARKER: "app_chat_reservation_v1",
   creditsService: {
     addCredits,
     reserveAndDeductCredits,
