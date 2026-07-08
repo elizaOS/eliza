@@ -211,6 +211,19 @@ export type WalletDisplaySummary = {
   whale: WalletDisplayScore;
 };
 
+export type WalletExecutiveVerdict = {
+  verdict: "low_risk" | "review" | "investigate" | "high_risk";
+  headline: string;
+  riskDisplay: string;
+  trustDisplay: string;
+  exposureDisplay: string;
+  profile: string;
+  recommendation: WalletCaseSummary["recommendation"];
+  confidence: "low" | "medium" | "high";
+  why: string[];
+  suggestedAction: string;
+};
+
 export type WalletActivitySummary = {
   recentTransactionCount: number;
   failedTransactionCount: number;
@@ -278,6 +291,7 @@ export type WalletInvestigationResult = {
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
   display?: WalletDisplaySummary;
+  executiveVerdict?: WalletExecutiveVerdict;
   trust?: WalletTrustSummary;
   investigationReplay?: WalletInvestigationReplayStep[];
   exposure?: WalletExposureSummary;
