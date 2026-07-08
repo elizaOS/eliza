@@ -34,6 +34,7 @@ import {
   useComposerPaste,
 } from "../../../chat/composer-core";
 import { usePushToTalk } from "../../../hooks/usePushToTalk";
+import { isVoiceTargetResolvableForActiveAgent } from "../../../voice/shared-runtime-voice";
 import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
@@ -177,7 +178,14 @@ export function ChatComposer({
 
   const isGameModal = variant === "game-modal";
   const isInline = layout === "inline";
-  const showVoiceButton = isGameModal || voice.supported;
+  // Cheap shared-tier guard (#15395): hide the mic only when voice capture is
+  // supported by the client BUT the active agent is a shared-tier agent whose
+  // v1 voice fallback target is unresolvable — i.e. a button that would 404 on
+  // every press. Dedicated tier and resolvable shared tier keep the button
+  // (isVoiceTargetResolvableForActiveAgent returns true for both), so this is a
+  // no-op in the normal case, not a redesign of voice gating.
+  const showVoiceButton =
+    isGameModal || (voice.supported && isVoiceTargetResolvableForActiveAgent());
   const hasDraft = chatInput.trim().length > 0 || chatPendingImagesCount > 0;
   const shouldShowStopButton = chatSending && !hasDraft;
   const actionButtonTitle = shouldShowStopButton

@@ -99,6 +99,23 @@ jobs:
         run: |
           bun install --no-frozen-lockfile
 
+      - name: Cache Turbo build outputs
+        # The turbo build below is the single biggest pre-docker cost (~5-6
+        # min from cold). Nothing persisted turbo's local task cache between
+        # runs, so every push rebuilt every filtered package from scratch.
+        # Keying on the commit SHA (with a prefix restore-key) restores the
+        # most recent cache and saves an updated one each run, so a typical
+        # source commit only rebuilds the packages it actually touched.
+        # The key prefix is workflow-specific: entries here are produced
+        # under NODE_ENV=production, which turbo does not hash, so they must
+        # not be replayed into other workflows' builds.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: .turbo/cache
+          key: turbo-agent-image-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-agent-image-${{ runner.os }}-
+
       - name: Apply postinstall patches
         # Belt-and-suspenders for the postinstall path: even with
         # `bun install` (postinstall enabled), the silent fallback that
@@ -149,6 +166,13 @@ jobs:
             --filter=@elizaos/plugin-wallet \
             --filter=@elizaos/plugin-workflow \
             --filter=@elizaos/plugin-x402
+
+      - name: Prune stale Turbo cache entries
+        # actions/cache restores + re-saves the whole cache dir, so without a
+        # prune the tarball grows by every commit's changed-package outputs
+        # forever. tar preserves mtimes, so age-based deletion bounds it:
+        # entries untouched for two weeks are long since superseded.
+        run: find .turbo/cache -type f -mtime +14 -delete 2>/dev/null || true
 
       - name: Normalize plugin dist for Node ESM
         # MUST run AFTER the Turbo build above. Some package builds still emit
@@ -232,8 +256,23 @@ jobs:
           tags: ${{ steps.image.outputs.name }}:ci-boot-verify
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Registry-backed build cache (checked first), with the old GHA
+          # cache kept as a read-only fallback. The GHA backend shares one
+          # repo-wide 10GB budget with every other workflow; this image's
+          # mode=max cache is multi-GB per run, so it was evicted before the
+          # next develop push — recent runs show ZERO cached layers while
+          # still spending 4+ min per run exporting a cache nothing ever
+          # read (which is also why cache-to no longer writes to gha). The
+          # ghcr :buildcache ref persists indefinitely and dedupes by blob
+          # digest, so stable layers (apt/tailscale/yt-dlp/tsx base, and the
+          # manifest-keyed runtime-deps npm closure) hit reliably and the
+          # per-run cache export only uploads blobs ghcr doesn't already
+          # have. image-manifest+oci-mediatypes make the cache manifest a
+          # ghcr-compatible OCI artifact.
+          cache-from: |
+            type=registry,ref=${{ steps.image.outputs.name }}:buildcache
+            type=gha
+          cache-to: type=registry,ref=${{ steps.image.outputs.name }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
 
       - name: Verify image boots (real agent entrypoint)
         # Runs the production entrypoint (node --import

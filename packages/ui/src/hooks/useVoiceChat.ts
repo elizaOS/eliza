@@ -57,6 +57,10 @@ import {
   type PlaybackFrameTap,
 } from "../voice/playback-frame-pump";
 import {
+  currentSharedRuntimeVoiceOrigin,
+  sharedRuntimeTtsUrl,
+} from "../voice/shared-runtime-voice";
+import {
   collapseWhitespace,
   nextIdleMouthOpen,
   normalizeCacheText,
@@ -1703,7 +1707,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         try {
           const apiToken = getElizaApiToken()?.trim() ?? "";
           const dbg = task.debugUtteranceContext;
-          res = await fetchWithCsrf(resolveApiUrl("/api/tts/cloud"), {
+          // Shared-tier fallback (#15395): a shared-runtime agent has no
+          // `/api/tts/cloud` container route (404s), so target the cloud API
+          // worker's provider-agnostic v1 TTS route instead. Same `{ text }`
+          // JSON body, same audio-bytes response — no adaptation needed beyond
+          // the URL. Dedicated-tier agents keep `/api/tts/cloud` unchanged
+          // (sharedTtsOrigin is null for them).
+          const sharedTtsOrigin = currentSharedRuntimeVoiceOrigin();
+          const ttsTarget = sharedTtsOrigin
+            ? sharedRuntimeTtsUrl(sharedTtsOrigin)
+            : resolveApiUrl("/api/tts/cloud");
+          res = await fetchWithCsrf(ttsTarget, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

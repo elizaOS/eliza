@@ -14,6 +14,12 @@
 
 import { fetchWithCsrf } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
+import {
+  buildSharedRuntimeSttBody,
+  currentSharedRuntimeVoiceOrigin,
+  parseSharedRuntimeSttResponse,
+  sharedRuntimeSttUrl,
+} from "./shared-runtime-voice";
 
 export interface TranscribeWavOptions {
   /** Forwarded to `fetch` so callers can cancel an in-flight transcription. */
@@ -184,17 +190,32 @@ export async function transcribeCloudWav(
         callerSignal.addEventListener("abort", onCallerAbort, { once: true });
     }
     try {
-      const res = await fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "audio/wav",
-          Accept: "application/json",
-        },
-        // A Uint8Array is a valid BufferSource body; the cast bridges the DOM
-        // lib's stricter `ArrayBuffer` generic on BodyInit (runtime accepts it).
-        body: audio as BodyInit,
-        signal: timeoutController.signal,
-      });
+      // Shared-tier fallback (#15395): a shared-runtime agent has no
+      // `/api/asr/cloud` container route (404s), so target the cloud API
+      // worker's provider-agnostic v1 STT route instead — multipart `audio`
+      // File in, `{ transcript }` out. Dedicated-tier agents keep the raw-WAV
+      // `/api/asr/cloud` proxy path unchanged (sharedOrigin is null for them).
+      const sharedOrigin = currentSharedRuntimeVoiceOrigin();
+      const res = sharedOrigin
+        ? await fetchWithCsrf(sharedRuntimeSttUrl(sharedOrigin), {
+            method: "POST",
+            // No explicit Content-Type: the browser sets the multipart boundary.
+            headers: { Accept: "application/json" },
+            body: buildSharedRuntimeSttBody(audio),
+            signal: timeoutController.signal,
+          })
+        : await fetchWithCsrf(resolveApiUrl("/api/asr/cloud"), {
+            method: "POST",
+            headers: {
+              "Content-Type": "audio/wav",
+              Accept: "application/json",
+            },
+            // A Uint8Array is a valid BufferSource body; the cast bridges the
+            // DOM lib's stricter `ArrayBuffer` generic on BodyInit (runtime
+            // accepts it).
+            body: audio as BodyInit,
+            signal: timeoutController.signal,
+          });
       if (!res.ok) {
         // error-policy:J6 the error body is diagnostic-only; a failed read must
         // not mask the HTTP status the error below already carries.
@@ -205,11 +226,19 @@ export async function transcribeCloudWav(
         );
       }
       // error-policy:J3 unparseable body falls through to the empty-transcript
-      // throw (terminal — a bad body won't parse on a retry either).
+      // throw (terminal — a bad body won't parse on a retry either). The v1
+      // shared route returns `{ transcript }`; the dedicated proxy returns
+      // `{ text }` — both are handled (shared via parseSharedRuntimeSttResponse,
+      // dedicated via the `text` read).
       const parsed = (await res.json().catch(() => null)) as {
         text?: unknown;
+        transcript?: unknown;
       } | null;
-      const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+      const text = sharedOrigin
+        ? parseSharedRuntimeSttResponse(parsed)
+        : typeof parsed?.text === "string"
+          ? parsed.text.trim()
+          : "";
       if (!text) {
         throw new CloudSttError("Cloud ASR returned an empty transcript", {
           retryable: false,
