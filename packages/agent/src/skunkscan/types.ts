@@ -354,6 +354,20 @@ export type WalletRiskSummary = {
   reasons: string[];
 };
 
+export type WalletTransactionRiskSummary = {
+  assessmentType: "wallet_context";
+  score: number;
+  level: "low" | "medium" | "high";
+  displayScore: string;
+  recommendation:
+    | "allow"
+    | "review"
+    | "investigate"
+    | "high_risk";
+  reasons: string[];
+  limitations: string[];
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -381,6 +395,7 @@ export type WalletInvestigationResult = {
   age?: WalletAgeSummary;
   funding?: WalletFundingSummary;
   risk?: WalletRiskSummary;
+  transactionRisk?: WalletTransactionRiskSummary;
   summary: string;
   warnings: string[];
 };
