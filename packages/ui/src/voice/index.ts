@@ -80,6 +80,23 @@ export {
   DEFAULT_CLOUD_STT_SEGMENTER,
 } from "./cloud-stt-segmenter";
 export {
+  AUTO_SEND_GUARD,
+  END_OF_SPEECH_VAD,
+  type AutoSendGuardParams,
+  type EndOfSpeechVadParams,
+} from "./vad-params";
+export {
+  type AutoSendGuardInput,
+  type AutoSendGuardResult,
+  type AutoSendRejectReason,
+  passesAutoSendGuard,
+} from "./auto-send-guard";
+export {
+  isVadDebugEnabled,
+  vadDebug,
+  type VadDecisionDetail,
+} from "./vad-debug";
+export {
   downmixAudioBufferToMono,
   type PlaybackAudioFrameEvent,
   PlaybackFramePump,

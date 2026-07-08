@@ -6,6 +6,7 @@ import {
   DEFAULT_POST_TTS_COOLDOWN_MS,
   isTtsEchoGateActive as sharedTtsEchoGateActive,
 } from "./tts-playback-activity";
+import { isVadDebugEnabled, vadDebug } from "./vad-debug";
 
 export interface LocalAsrRecorder {
   stop(): Promise<Uint8Array>;
@@ -255,6 +256,9 @@ export function createLocalAsrAutoStopDetector(
   let firstSpeechAtMs: number | null = null;
   let lastSpeechAtMs: number | null = null;
   let stopped = false;
+  // Dev/QA VAD tracing (behind ELIZA_VOICE_VAD_DEBUG): emit speech-start once so
+  // an on-device QA build can see WHEN the turn began vs where the cutoff fired.
+  let loggedSpeechStart = false;
 
   return (pcm: Float32Array, sampleTimeMs = nowMs()) => {
     if (stopped) return { shouldBuffer: false, shouldStop: false };
@@ -279,8 +283,27 @@ export function createLocalAsrAutoStopDetector(
     if (speechDetected) {
       if (firstSpeechAtMs === null) firstSpeechAtMs = sampleTimeMs;
       lastSpeechAtMs = sampleTimeMs;
+      if (isVadDebugEnabled() && !loggedSpeechStart) {
+        loggedSpeechStart = true;
+        vadDebug({
+          event: "speech-start",
+          atMs: sampleTimeMs,
+          rms: stats.rms,
+          peak: stats.peak,
+          echoGated: gateMultiplier !== 1,
+        });
+      }
       if (sampleTimeMs - firstSpeechAtMs >= config.maxSpeechMs) {
         stopped = true;
+        if (isVadDebugEnabled()) {
+          vadDebug({
+            event: "auto-stop",
+            atMs: sampleTimeMs,
+            speechMs: sampleTimeMs - firstSpeechAtMs,
+            trigger: "maxSpeechMs",
+            echoGated: gateMultiplier !== 1,
+          });
+        }
         return { shouldBuffer: true, shouldStop: true };
       }
       return { shouldBuffer: true, shouldStop: false };
@@ -297,6 +320,17 @@ export function createLocalAsrAutoStopDetector(
       silenceDurationMs >= config.silenceMs
     ) {
       stopped = true;
+      if (isVadDebugEnabled()) {
+        vadDebug({
+          event: "speech-end",
+          atMs: sampleTimeMs,
+          speechMs: speechDurationMs,
+          silenceMs: silenceDurationMs,
+          // The trailing-silence threshold triggered this end-of-turn cutoff.
+          trigger: "silenceMs",
+          echoGated: gateMultiplier !== 1,
+        });
+      }
       return { shouldBuffer: false, shouldStop: true };
     }
 

@@ -16,6 +16,20 @@ vi.mock("../api/csrf-client", () => ({
 vi.mock("../voice/local-asr-capture", () => ({
   isLocalAsrCaptureSupported: vi.fn(),
   startLocalAsrRecorder: vi.fn(),
+  // The V2a segmenter + auto-send guard (via vad-params) read these constants at
+  // module load through voice/index.ts → useVoiceChat; the mock must surface them
+  // or the whole hook import fails.
+  DEFAULT_LOCAL_ASR_AUTO_STOP: {
+    startGraceMs: 250,
+    minSpeechMs: 180,
+    silenceMs: 650,
+    maxSpeechMs: 12_000,
+    speechRmsThreshold: 0.003,
+    speechPeakThreshold: 0.012,
+  },
+  measurePcmAudio: () => ({ rms: 0, peak: 0 }),
+  POST_TTS_ECHO_THRESHOLD_MULTIPLIER: 4,
+  isSilentWav: () => false,
 }));
 
 const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);

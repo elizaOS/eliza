@@ -53,7 +53,9 @@ import { loadOlderConversationMessages } from "../../state/load-older-conversati
 import { usePtySessions } from "../../state/PtySessionsContext.hooks";
 import {
   loadContinuousChatMode,
+  loadVoiceAutoSend,
   saveContinuousChatMode,
+  saveVoiceAutoSend,
 } from "../../state/persistence";
 import { deriveAgentReady } from "../../state/types";
 import type { TranslateFn } from "../../types";
@@ -319,6 +321,13 @@ export function ChatView({
     },
     [],
   );
+  // Hands-free voice auto-send (voice auto-send lane). Owned here alongside the
+  // continuous-chat mode; the in-flow toggle lives on the composer mic surface.
+  const [voiceAutoSend, setVoiceAutoSend] = useState<boolean>(loadVoiceAutoSend);
+  const handleVoiceAutoSendChange = useCallback((next: boolean) => {
+    setVoiceAutoSend(next);
+    saveVoiceAutoSend(next);
+  }, []);
 
   useEffect(() => {
     if (isGameModal || typeof window === "undefined") return;
@@ -421,6 +430,7 @@ export function ChatView({
     setState,
     uiLanguage,
     continuousMode: continuousChatMode,
+    autoSend: voiceAutoSend,
     onServerTurnAbort: interruptActiveChatPipeline,
   });
   // Stop any in-flight voice playback when the user switches conversations.
@@ -1076,6 +1086,8 @@ export function ChatView({
         onToggleAgentVoice={() =>
           setState("chatAgentVoiceMuted", !agentVoiceMuted)
         }
+        autoSend={voiceAutoSend}
+        onToggleAutoSend={handleVoiceAutoSendChange}
       />
     </ChatComposerShell>
   );

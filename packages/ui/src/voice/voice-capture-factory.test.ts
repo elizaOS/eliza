@@ -21,6 +21,18 @@ vi.mock("./local-asr-capture", () => ({
   isLocalAsrCaptureSupported: vi.fn(),
   isSilentWav: vi.fn(),
   startLocalAsrRecorder: vi.fn(),
+  // The V2a segmenter (cloud-stt-segmenter, imported by this factory) reads
+  // these at module load; the mock must surface them or the factory import fails.
+  DEFAULT_LOCAL_ASR_AUTO_STOP: {
+    startGraceMs: 250,
+    minSpeechMs: 180,
+    silenceMs: 650,
+    maxSpeechMs: 12_000,
+    speechRmsThreshold: 0.003,
+    speechPeakThreshold: 0.012,
+  },
+  measurePcmAudio: () => ({ rms: 0, peak: 0 }),
+  POST_TTS_ECHO_THRESHOLD_MULTIPLIER: 4,
 }));
 
 vi.mock("./local-asr-transcribe", () => ({

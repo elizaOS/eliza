@@ -196,6 +196,13 @@ export function useChatVoiceController(options: {
   /** Caller owns continuous-chat mode (persistence + UI toggle). Defaults to off. */
   continuousMode?: VoiceContinuousMode;
   /**
+   * Hands-free voice auto-send (voice auto-send lane). Caller owns the persisted
+   * value + the in-flow mic-surface toggle. When true, a finalized compose/PTT
+   * transcript that clears the min-transcript guard is sent immediately instead
+   * of filling the composer draft for review. Defaults to false (review).
+   */
+  autoSend?: boolean;
+  /**
    * Abort the in-flight server generation for the active turn. Wired to the
    * chat pipeline's narrow interrupt (relay `POST /api/turns/:roomId/abort` +
    * local stream abort) so a voice barge-in stops the server work, not just the
@@ -222,6 +229,7 @@ export function useChatVoiceController(options: {
     setState,
     uiLanguage,
     continuousMode = DEFAULT_VOICE_CONTINUOUS_MODE,
+    autoSend = false,
     onServerTurnAbort,
   } = options;
   const onServerTurnAbortRef = useRef(onServerTurnAbort);
@@ -479,6 +487,7 @@ export function useChatVoiceController(options: {
     cloudConnected: cloudVoiceAvailable,
     interruptOnSpeech: true,
     onUserSpeechInterrupt: handleBargeIn,
+    autoSend,
     lang: mapUiLanguageToSpeechLocale(uiLanguage),
     onPlaybackStart: handleVoicePlaybackStart,
     onTranscript: handleVoiceTranscript,

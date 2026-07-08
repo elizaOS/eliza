@@ -198,6 +198,17 @@ export interface VoiceChatOptions {
    * triggers during TTS).
    */
   onUserSpeechInterrupt?: () => void;
+  /**
+   * Hands-free auto-send (voice auto-send lane). When `true`, a finalized
+   * transcript from an ACTIVE capture mode (compose / push-to-talk) that clears
+   * the min-transcript reliability guard is sent to the agent immediately
+   * (`onTranscript`), skipping composer review. When `false` (DEFAULT), a
+   * finalized transcript only fills the composer draft (`onTranscriptPreview`)
+   * for the user to review + send. `passive` (ambient hands-free) already auto-
+   * sends regardless of this flag — this switch governs the compose/PTT surface.
+   * A transcript that fails the guard NEVER auto-sends even when this is true.
+   */
+  autoSend?: boolean;
   /** Language for speech recognition (default: "en-US") */
   lang?: string;
   /** Saved voice configuration — switches TTS provider when set */

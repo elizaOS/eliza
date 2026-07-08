@@ -56,6 +56,8 @@ import {
 } from "../voice/local-asr-transcribe";
 import { createCloudSttSegmenter } from "../voice/cloud-stt-segmenter";
 import { CloudSttSessionStitcher } from "../voice/cloud-stt-stitcher";
+import { passesAutoSendGuard } from "../voice/auto-send-guard";
+import { isVadDebugEnabled, vadDebug } from "../voice/vad-debug";
 import {
   PlaybackFramePump,
   type PlaybackFrameTap,
@@ -235,6 +237,18 @@ const ACTIVE_VOICE_SESSION_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
   "passive",
 ]);
 
+// Modes whose finalized transcript is subject to the hands-free auto-send
+// toggle. `passive` (ambient) already auto-sends unconditionally (its own
+// path below), and `hands-free` opens/segments turns via the ambient loop; the
+// composer-surface auto-send switch governs the mic surfaces the user reviews
+// today: `compose` (tap-dictate) and `push-to-talk`. When auto-send is OFF a
+// finalized transcript for these modes fills the composer draft for review; when
+// ON (and the guard passes) it is sent immediately.
+const AUTO_SEND_ELIGIBLE_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
+  "compose",
+  "push-to-talk",
+]);
+
 function normalizeActiveVoiceSessionMode(
   mode: unknown,
 ): Exclude<VoiceSessionMode, "idle"> | null {
@@ -411,6 +425,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   voiceConfigRef.current = effectiveVoiceConfig;
   const interruptOnSpeechRef = useRef(options.interruptOnSpeech ?? true);
   interruptOnSpeechRef.current = options.interruptOnSpeech ?? true;
+  // Hands-free auto-send toggle (voice auto-send lane). Default false (review).
+  // Read from a ref so the transcript funnel sees the latest value without
+  // re-creating the memoized `applyTranscriptUpdate` callback.
+  const autoSendRef = useRef(options.autoSend ?? false);
+  autoSendRef.current = options.autoSend ?? false;
   const onUserSpeechInterruptRef = useRef(options.onUserSpeechInterrupt);
   onUserSpeechInterruptRef.current = options.onUserSpeechInterrupt;
   const interruptSpeechRef = useRef<() => void>(() => {});
@@ -749,7 +768,36 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       }
 
-      if (isFinal && mode === "passive") {
+      // Ambient (`passive`) always auto-sends. The compose/PTT surfaces auto-send
+      // ONLY when the hands-free toggle is on AND the transcript clears the
+      // min-transcript reliability guard (never send empty/single-token/too-short
+      // noise). Otherwise the finalized transcript stays in the composer draft
+      // (via emitTranscriptPreview above) for the user to review + send.
+      const autoSendActive =
+        isFinal &&
+        autoSendRef.current &&
+        AUTO_SEND_ELIGIBLE_MODES.has(
+          mode as Exclude<VoiceSessionMode, "idle">,
+        );
+      let autoSendPassedGuard = false;
+      if (autoSendActive) {
+        const guard = passesAutoSendGuard({ transcript: nextText });
+        autoSendPassedGuard = guard.ok;
+        if (isVadDebugEnabled()) {
+          vadDebug({
+            event: "auto-send",
+            atMs:
+              typeof performance !== "undefined"
+                ? performance.now()
+                : Date.now(),
+            guardOk: guard.ok,
+            guardReason: guard.reason,
+            transcriptPreview: nextText.slice(0, 80),
+          });
+        }
+      }
+
+      if (isFinal && (mode === "passive" || autoSendPassedGuard)) {
         emitTranscript(nextText, {
           text: nextText,
           mode,
