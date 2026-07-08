@@ -24,6 +24,7 @@ import { analyzeWalletDisplayScores } from "./analyzers/display";
 import { analyzeExecutiveVerdict } from "./analyzers/executiveVerdict";
 import { analyzeWalletCustodyProfile } from "./analyzers/custody";
 import { analyzeWalletCompliance } from "./analyzers/compliance";
+import { getWalletIntelligenceSources } from "./sources/registry";
 import {
   SupportedChain,
   WalletBalance,
@@ -155,6 +156,9 @@ const complianceScreening = analyzeWalletCompliance(
   exposure,
 );
 
+const intelligenceSources =
+  getWalletIntelligenceSources();
+
 const trust = analyzeWalletTrust(
   age,
   activity,
@@ -230,6 +234,7 @@ display,
 executiveVerdict,
 custodyProfile,
 complianceScreening,
+intelligenceSources,
 trust,
 investigationReplay,
 evidence,
