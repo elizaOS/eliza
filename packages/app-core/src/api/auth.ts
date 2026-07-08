@@ -24,7 +24,11 @@ import {
   findActiveSession,
   verifyCsrfToken,
 } from "./auth/sessions.js";
-import { tokenMatches } from "./auth/tokens.js";
+import {
+  extractHeaderValue,
+  getProvidedApiToken,
+  tokenMatches,
+} from "./auth/tokens.js";
 import { isTrustedLocalRequest } from "./compat-route-shared.js";
 import { sendJsonError } from "./response.js";
 
@@ -34,7 +38,11 @@ export {
   ensureSessionForRequest,
   type ResolvedAuthContext,
 } from "./auth/auth-context.js";
-export { tokenMatches } from "./auth/tokens.js";
+export {
+  extractHeaderValue,
+  getProvidedApiToken,
+  tokenMatches,
+} from "./auth/tokens.js";
 
 export interface CompatStateLike {
   current:
@@ -43,51 +51,11 @@ export interface CompatStateLike {
 }
 
 /**
- * Normalise a potentially multi-valued HTTP header into a single string.
- * Returns `null` when the header is absent or empty.
- */
-export function extractHeaderValue(
-  value: string | string[] | undefined,
-): string | null {
-  if (typeof value === "string") return value;
-  return Array.isArray(value) && typeof value[0] === "string" ? value[0] : null;
-}
-
-/**
  * Read the configured API token from env (`ELIZA_API_TOKEN` / `ELIZA_API_TOKEN`).
  * Returns `null` when no token is configured (open access).
  */
 export function getCompatApiToken(): string | null {
   return resolveApiToken(process.env);
-}
-
-/**
- * Extract the API token from an incoming request.
- *
- * Checks (in order):
- *   1. `Authorization: Bearer <token>`
- *   2. `x-eliza-token`
- *   3. `x-elizaos-token`
- *   4. `x-api-key` / `x-api-token`
- */
-export function getProvidedApiToken(
-  req: Pick<http.IncomingMessage, "headers">,
-): string | null {
-  const authHeader = extractHeaderValue(req.headers.authorization)
-    ?.slice(0, 1024)
-    ?.trim();
-  if (authHeader) {
-    const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
-    if (match?.[1]) return match[1].trim();
-  }
-
-  const headerToken =
-    extractHeaderValue(req.headers["x-eliza-token"]) ??
-    extractHeaderValue(req.headers["x-elizaos-token"]) ??
-    extractHeaderValue(req.headers["x-api-key"]) ??
-    extractHeaderValue(req.headers["x-api-token"]);
-
-  return headerToken?.trim() || null;
 }
 
 /**
