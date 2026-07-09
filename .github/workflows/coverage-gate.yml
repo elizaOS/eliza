@@ -59,7 +59,7 @@ jobs:
               | while IFS= read -r file; do
                   [ -f "$file" ] || continue
                   case "$file" in
-                    *.e2e.test.*|*.live.test.*) continue ;;
+                    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) continue ;;
                   esac
                   if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
                     continue
@@ -77,7 +77,7 @@ jobs:
               | while IFS= read -r file; do
                   [ -f "$file" ] || continue
                   case "$file" in
-                    *.e2e.test.*|*.live.test.*) continue ;;
+                    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) continue ;;
                   esac
                   if grep -Eq "from ['\"]@playwright/test['\"]|require\\(['\"]@playwright/test['\"]\\)" "$file"; then
                     continue
