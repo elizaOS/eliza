@@ -150,6 +150,41 @@ import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ConversationNav, ShellController } from "./useShellController";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 
+/**
+ * Wraps a pull-gesture binding so `pressed` tracks whether a pointer is held on
+ * the bound element — set on pointerdown, cleared on every terminal (up, cancel,
+ * lost-capture). A drag handle that unmounts under a captured pointer drops the
+ * capture (Chromium fires pointercancel/lostpointercapture on the dead node and
+ * the gesture's settle never runs); the consumer reads this ref in the element's
+ * MOUNT gate so the handle stays alive across the whole press, closing the
+ * window between pointerdown and the integrator's first frame where a stray
+ * re-render would otherwise unmount it.
+ */
+function withPressLatch(
+  binding: PullGestureBinding,
+  pressed: React.MutableRefObject<boolean>,
+): PullGestureBinding {
+  return {
+    onPointerDown: (event) => {
+      pressed.current = true;
+      binding.onPointerDown(event);
+    },
+    onPointerMove: binding.onPointerMove,
+    onPointerUp: (event) => {
+      pressed.current = false;
+      binding.onPointerUp(event);
+    },
+    onPointerCancel: (event) => {
+      pressed.current = false;
+      binding.onPointerCancel(event);
+    },
+    onLostPointerCapture: (event) => {
+      pressed.current = false;
+      binding.onLostPointerCapture(event);
+    },
+  };
+}
+
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
   commands: [],
@@ -1453,6 +1488,23 @@ export function ContinuousChatOverlay({
   // the morph keeps the pill↔input crossfade from stranding both bars visible.
   const settleDragRef = React.useRef<(() => void) | null>(null);
   const draggingRef = React.useRef(false);
+  // A pointer is pressed on the open-sheet grabber / the maximize-restore strip
+  // RIGHT NOW. Each gates ITS element's mount (below) so the handle survives any
+  // re-render between the pointerdown and the gesture's first integrated frame.
+  // The mount gates otherwise keep an element alive only once `draggingRef` /
+  // `restoreDragging` go live — which happens on that first frame, not the press
+  // — leaving a window where a re-render (a late settle landing under a loaded
+  // main thread) unmounts the element UNDER the captured pointer. Chromium then
+  // fires pointercancel + lostpointercapture on the dead node and the gesture's
+  // release never runs its settle: the grabber drag dies mid-morph, and worse,
+  // the restore strip strands `restoreDragging`/`draggingRef` true (freezing the
+  // sheet's settle springs — the desktop-held FULL→bottom drain then reads the
+  // corrupted sheet and never engages, stuck at scale 1.00). Held deliberately
+  // OUT of the settle-suppression guards (unlike `draggingRef`): they only keep
+  // the element mounted, and the browser guarantees a pointerup/cancel/lostcapture
+  // terminal for every press, so they clear without a fragile per-callback web.
+  const grabberPressRef = React.useRef(false);
+  const restorePressRef = React.useRef(false);
   // Peak RAW (pre-clamp) pull height reached during the current upward drag
   // (#13531). The visible `threadHeight` is rubber-band-clamped at `openH`, so a
   // deliberate over-pull past FULL is invisible to a `threadHeight.get()` read on
@@ -4477,6 +4529,12 @@ export function ContinuousChatOverlay({
       }
     },
   });
+  // Latch a press on the open-sheet grabber so its mount gate can't drop the
+  // captured pointer between pointerdown and the integrator's first frame.
+  const grabberBinding = React.useMemo(
+    () => withPressLatch(pullBinding, grabberPressRef),
+    [pullBinding],
+  );
 
   // Top-20% pull-down-to-restore (#13531). While maximized (full-bleed) there is
   // no SheetGrabber; this binding drives an invisible grab strip over the top
@@ -4604,6 +4662,15 @@ export function ContinuousChatOverlay({
     // and break the next open. Settle it like any other release.
     onCancel: settleRestore,
   });
+  // Latch a press on the restore strip. Without this the strip can unmount under
+  // its own captured pointer the instant the drag drops full-bleed (before
+  // `restoreDragging` has re-mounted it), stranding the release: `settleRestore`
+  // never runs, so `restoreDragging`/`draggingRef` stay true and freeze the
+  // sheet — the corrupted state the desktop-held drain leg then trips over.
+  const restoreZoneBinding = React.useMemo(
+    () => withPressLatch(maximizeRestoreBinding, restorePressRef),
+    [maximizeRestoreBinding],
+  );
 
   // NOTE: outside pointerdown only drops the keyboard. Outside TAP collapse is
   // handled by the document-level tap detector above so drag gestures can still
@@ -4818,19 +4885,23 @@ export function ContinuousChatOverlay({
         className="pointer-events-none relative flex w-full flex-col items-center"
       >
         {!firstRunOpen &&
-        ((!fullBleed && !restoreDragging) || draggingRef.current) ? (
+        ((!fullBleed && !restoreDragging) ||
+          draggingRef.current ||
+          grabberPressRef.current) ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
           // while a restore drag is in flight (so the strip keeps the pointer
           // capture through the un-maximize) — EXCEPT while a grabber drag is
-          // live: a MID-DRAG commit (pill or maximize) must not unmount or
-          // disable the element holding the pointer capture, or the gesture dies
-          // at the exact moment it commits. Onboarding hides the grabber
-          // entirely: it is pinned, undismissable, and sign-in-first.
+          // live OR merely pressed: a MID-DRAG commit (pill or maximize) must not
+          // unmount or disable the element holding the pointer capture, or the
+          // gesture dies at the exact moment it commits. `grabberPressRef` widens
+          // that window back to the pointerdown, before the integrator's first
+          // frame flips `draggingRef`. Onboarding hides the grabber entirely: it
+          // is pinned, undismissable, and sign-in-first.
           <SheetGrabber
             open={sheetOpen}
             onOpen={openFromGrabber}
             onClose={collapse}
-            binding={pullBinding}
+            binding={grabberBinding}
             // The handle stays QUIET while the mic is recording — the composer
             // mic/voice glyphs already carry the "capture is hot" pulse right
             // next to the user's attention; a second pulsing bar above them
@@ -5061,9 +5132,10 @@ export function ContinuousChatOverlay({
                 over the top bar fall THROUGH to this strip. Keyboard-operable
                 (Enter/Space/ArrowDown restore) so the gesture-only affordance
                 stays WCAG 2.1.1 operable. */}
-            {(fullBleed || restoreDragging) && !pinnedOpen ? (
+            {(fullBleed || restoreDragging || restorePressRef.current) &&
+            !pinnedOpen ? (
               <button
-                {...maximizeRestoreBinding}
+                {...restoreZoneBinding}
                 type="button"
                 data-testid="chat-maximize-restore-zone"
                 aria-label="drag down to exit full screen"
