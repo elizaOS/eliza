@@ -51,6 +51,7 @@ function seed(
 afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -98,6 +99,9 @@ describe("BackgroundView", () => {
 
   it("uploading an image sets an image config", async () => {
     const setBackgroundConfig = vi.fn();
+    const uploadBackgroundImage = vi
+      .spyOn(client, "uploadBackgroundImage")
+      .mockResolvedValue({ url: "/api/media/test-background" });
     seed({ setBackgroundConfig });
     render(<BackgroundView />);
     const input =
@@ -106,10 +110,15 @@ describe("BackgroundView", () => {
     const file = new File(["x"], "x.png", { type: "image/png" });
     fireEvent.change(input as HTMLInputElement, { target: { files: [file] } });
     await waitFor(() =>
+      expect(uploadBackgroundImage).toHaveBeenCalledWith(
+        "data:image/jpeg;base64,ZZZ",
+      ),
+    );
+    await waitFor(() =>
       expect(setBackgroundConfig).toHaveBeenCalledWith({
         mode: "image",
         color: "#ef5a1f",
-        imageUrl: "data:image/jpeg;base64,ZZZ",
+        imageUrl: "/api/media/test-background",
       }),
     );
   });

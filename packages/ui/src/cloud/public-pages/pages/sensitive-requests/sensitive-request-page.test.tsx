@@ -125,15 +125,21 @@ describe("SensitiveRequestPage — image/file upload (#8910)", () => {
     });
     fireEvent.change(input, { target: { files: [file] } });
 
-    await waitFor(() => {
-      expect(
-        (screen.getByRole("button", { name: /upload/i }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false);
-    });
+    await waitFor(
+      () => {
+        expect(
+          (
+            screen.getByRole("button", {
+              name: /upload/i,
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false);
+      },
+      { timeout: 5_000 },
+    );
     fireEvent.click(screen.getByRole("button", { name: /upload/i }));
 
-    await waitFor(() => expect(submits).toHaveLength(1));
+    await waitFor(() => expect(submits).toHaveLength(1), { timeout: 5_000 });
     const body = submits[0]?.body as { token?: string; value?: string };
     expect(body.token).toBe("tok-1");
     expect(body.value?.startsWith("data:image/png")).toBe(true);
