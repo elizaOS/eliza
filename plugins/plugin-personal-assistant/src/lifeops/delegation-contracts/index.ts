@@ -8,6 +8,11 @@
  * embedding policy decisions in transport adapters.
  */
 
+import type {
+  ApprovalQueue,
+  ApprovalRequest,
+} from "../approval-queue.types.js";
+
 export type DelegationAutonomyLevel =
   | "draft_only"
   | "approval_gated"
@@ -159,6 +164,24 @@ export interface DelegationEvaluation {
     readonly matchedTripwire: string | null;
     readonly reason: string;
   };
+}
+
+export interface DelegationContractRepository {
+  listDelegationContracts(
+    agentId: string,
+    options?: {
+      readonly statuses?: LifeOpsDelegationContractRecord["status"][];
+      readonly activeAtIso?: string;
+    },
+  ): Promise<LifeOpsDelegationContractRecord[]>;
+  upsertDelegationContract(
+    record: LifeOpsDelegationContractRecord,
+  ): Promise<void>;
+}
+
+export interface DelegationInboundProcessingResult {
+  readonly evaluations: readonly DelegationEvaluation[];
+  readonly enqueuedApprovals: readonly ApprovalRequest[];
 }
 
 export function createLifeOpsDelegationContractRecord(
@@ -480,4 +503,74 @@ export function evaluateDelegationContract(input: {
       reason: "turn is in bounds for delegated handling",
     },
   };
+}
+
+function approvalExpiryFrom(nowIso: string): Date {
+  return new Date(parseTime(nowIso, "nowIso") + 24 * 60 * 60 * 1_000);
+}
+
+function shouldPersistEvaluation(evaluation: DelegationEvaluation): boolean {
+  return (
+    evaluation.outcome === "in_bounds" ||
+    evaluation.outcome === "escalate_owner" ||
+    evaluation.outcome === "holding_reply_due"
+  );
+}
+
+/**
+ * Runtime-facing processor for connector turns. Transport adapters supply the
+ * normalized turn; this function owns the contract-policy fanout, persistence,
+ * and approval-queue handoff so connectors do not learn LifeOps delegation
+ * rules.
+ */
+export async function processDelegationInboundTurn(input: {
+  readonly agentId: string;
+  readonly turn: DelegationInboundTurn;
+  readonly nowIso: string;
+  readonly repository: DelegationContractRepository;
+  readonly approvalQueue: ApprovalQueue;
+  readonly approvalExpiresAt?: Date;
+}): Promise<DelegationInboundProcessingResult> {
+  const contracts = await input.repository.listDelegationContracts(
+    input.agentId,
+    {
+      statuses: ["active"],
+      activeAtIso: input.turn.receivedAt,
+    },
+  );
+  const evaluations: DelegationEvaluation[] = [];
+  const enqueuedApprovals: ApprovalRequest[] = [];
+  for (const contract of contracts) {
+    const evaluation = evaluateDelegationContract({
+      contract,
+      turn: input.turn,
+      nowIso: input.nowIso,
+    });
+    if (evaluation.outcome === "out_of_scope") {
+      continue;
+    }
+    evaluations.push(evaluation);
+    if (evaluation.draftIntent) {
+      enqueuedApprovals.push(
+        await input.approvalQueue.enqueue({
+          requestedBy: evaluation.draftIntent.requestedBy,
+          subjectUserId: evaluation.draftIntent.subjectUserId,
+          action: evaluation.draftIntent.action,
+          payload: evaluation.draftIntent.payload,
+          channel: evaluation.draftIntent.channel,
+          reason: evaluation.draftIntent.reason,
+          expiresAt:
+            input.approvalExpiresAt ?? approvalExpiryFrom(input.nowIso),
+        }),
+      );
+    }
+    if (shouldPersistEvaluation(evaluation)) {
+      await input.repository.upsertDelegationContract({
+        ...contract,
+        state: evaluation.contract.state,
+        updatedAt: input.nowIso,
+      });
+    }
+  }
+  return { evaluations, enqueuedApprovals };
 }

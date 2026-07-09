@@ -7,10 +7,12 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
+import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import {
   createLifeOpsDelegationContractRecord,
   type DelegationContract,
   evaluateDelegationContract,
+  processDelegationInboundTurn,
   renderDelegationContractsProviderText,
 } from "../src/lifeops/delegation-contracts/index.js";
 import { LifeOpsRepository } from "../src/lifeops/index.js";
@@ -298,4 +300,105 @@ describe("delegation contract repository", () => {
     });
     expect(result.data?.delegationContracts).toHaveLength(1);
   });
+
+  it("turns a delegated sender-class SLA into one real pending approval", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repo = new LifeOpsRepository(runtime);
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    await repo.upsertDelegationContract(
+      createLifeOpsDelegationContractRecord({
+        ...vendorContract({
+          contractId: "delegation:board-sla",
+          objective: "Board member holding reply",
+          scope: {
+            kind: "sender_class",
+            channel: "email",
+            senderClass: "board_member",
+          },
+          tripwires: [],
+          sla: {
+            holdingReplyAfterMinutes: 60,
+            subjectPrefix: "Re:",
+            holdingReplyBody:
+              "Thanks, I have this and will come back with a proper answer shortly.",
+          },
+        }),
+        agentId: runtime.agentId,
+        metadata: { policy: "board-member-one-hour-hold" },
+      }),
+    );
+
+    const processed = await processDelegationInboundTurn({
+      agentId: runtime.agentId,
+      repository: repo,
+      approvalQueue: queue,
+      nowIso: "2026-07-06T18:05:00.000Z",
+      turn: {
+        channel: "email",
+        threadId: "thread-board-1",
+        sender: "Dana Board",
+        senderClass: "board_member",
+        senderEmail: "dana@board.example",
+        subject: "Quarterly update",
+        text: "Can you send the latest numbers?",
+        receivedAt: "2026-07-06T17:00:00.000Z",
+      },
+    });
+
+    expect(processed.evaluations.map((entry) => entry.outcome)).toEqual([
+      "holding_reply_due",
+    ]);
+    expect(processed.enqueuedApprovals).toHaveLength(1);
+    expect(processed.enqueuedApprovals[0]).toMatchObject({
+      state: "pending",
+      requestedBy: "delegation-contracts",
+      subjectUserId: "owner-1",
+      action: "send_email",
+      channel: "email",
+      reason: "SLA holding reply for delegated Board member holding reply",
+      payload: {
+        action: "send_email",
+        to: ["dana@board.example"],
+        subject: "Re: Quarterly update",
+        body: "Thanks, I have this and will come back with a proper answer shortly.",
+        threadId: "thread-board-1",
+      },
+    });
+
+    const saved = await repo.getDelegationContract(
+      runtime.agentId,
+      "delegation:board-sla",
+    );
+    expect(saved?.state?.holdingReplyQueuedAt).toBe("2026-07-06T18:05:00.000Z");
+
+    const replayed = await processDelegationInboundTurn({
+      agentId: runtime.agentId,
+      repository: repo,
+      approvalQueue: queue,
+      nowIso: "2026-07-06T18:10:00.000Z",
+      turn: {
+        channel: "email",
+        threadId: "thread-board-1",
+        sender: "Dana Board",
+        senderClass: "board_member",
+        senderEmail: "dana@board.example",
+        subject: "Quarterly update",
+        text: "Can you send the latest numbers?",
+        receivedAt: "2026-07-06T17:00:00.000Z",
+      },
+    });
+
+    expect(replayed.evaluations).toHaveLength(1);
+    expect(replayed.evaluations[0]?.outcome).toBe("in_bounds");
+    expect(replayed.enqueuedApprovals).toHaveLength(0);
+    const pending = await queue.list({
+      subjectUserId: "owner-1",
+      state: "pending",
+      action: "send_email",
+      limit: 10,
+    });
+    expect(pending).toHaveLength(1);
+  }, 60_000);
 });
