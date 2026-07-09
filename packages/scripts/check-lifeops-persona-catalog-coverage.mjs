@@ -49,6 +49,7 @@ const VALID_TIERS = new Set(["T1", "T2", "T3", "T4"]);
 const VALID_SURFACES = new Set(["lifeops-bench", "scenario-runner"]);
 const VALID_STATUSES = new Set(["planned", "authored", "verified"]);
 const JSON_MODE = process.argv.includes("--json");
+const UNVERIFIED_MODE = process.argv.includes("--unverified");
 
 function toPosix(value) {
   return value.replace(/\\/g, "/");
@@ -185,6 +186,8 @@ function summarize() {
     const entries = Array.isArray(catalog.scenarios) ? catalog.scenarios : [];
     let authored = 0;
     let verified = 0;
+    const unverified = [];
+    const unverifiedBySurface = {};
     for (const [index, entry] of entries.entries()) {
       const where = `${fileName}:scenarios[${index}]`;
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -217,7 +220,20 @@ function summarize() {
           errors.push(`${where}: ${surface} id "${id}" was not found`);
         }
       }
-      if (status === "verified") verified += 1;
+      if (status === "verified") {
+        verified += 1;
+      } else if (status === "authored") {
+        unverified.push({
+          id,
+          tier,
+          surface,
+          notes:
+            typeof entry.notes === "string" && entry.notes.trim().length > 0
+              ? entry.notes.trim()
+              : null,
+        });
+        unverifiedBySurface[surface] = (unverifiedBySurface[surface] ?? 0) + 1;
+      }
     }
     packs.push({
       file: fileName,
@@ -225,6 +241,9 @@ function summarize() {
       target: expectedTarget,
       authored,
       verified,
+      unverified: unverified.length,
+      unverifiedBySurface,
+      unverifiedRows: unverified,
     });
   }
 
@@ -238,6 +257,23 @@ function main() {
   const result = summarize();
   if (JSON_MODE) {
     console.log(JSON.stringify(result, null, 2));
+  } else if (UNVERIFIED_MODE) {
+    console.log("LifeOps persona scenario unverified rows");
+    for (const pack of result.packs.filter((entry) => entry.unverified > 0)) {
+      const bySurface = Object.entries(pack.unverifiedBySurface)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([surface, count]) => `${surface}:${count}`)
+        .join(", ");
+      console.log(
+        `${pack.pack.padEnd(2)} ${String(pack.unverified).padStart(2)}/${String(pack.authored).padEnd(2)} unverified (${bySurface}) ${pack.file}`,
+      );
+      for (const row of pack.unverifiedRows) {
+        console.log(`   - ${row.id} [${row.tier}, ${row.surface}]`);
+      }
+    }
+    console.log(
+      `Total: ${result.authored - result.verified}/${result.authored} authored rows still need verification`,
+    );
   } else {
     console.log("LifeOps persona scenario catalog coverage");
     for (const pack of result.packs) {
