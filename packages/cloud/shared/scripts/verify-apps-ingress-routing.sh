@@ -5,7 +5,7 @@
 # ingress provisioner, and that removing the route stops routing. Plain HTTP
 # (no domain/TLS; on-demand TLS is validated on real infra). No mocks.
 #   bash packages/cloud/shared/scripts/verify-apps-ingress-routing.sh
-set -uo pipefail
+set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1 # -> packages/cloud/shared
 NET=apps-ing-net
 APP=apps-ing-app
@@ -35,6 +35,15 @@ for _ in $(seq 1 25); do
   curl -fsS -H "Origin: http://localhost:$ADMIN_PORT" "http://localhost:$ADMIN_PORT/config/" >/dev/null 2>&1 && break
   sleep 1
 done
+curl -fsS -H "Origin: http://localhost:$ADMIN_PORT" "http://localhost:$ADMIN_PORT/config/" >/dev/null
+
+echo "=== origin-less admin request is rejected ==="
+ADMIN_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' "http://localhost:$ADMIN_PORT/config/")
+if [ "$ADMIN_STATUS" = 403 ]; then
+  check ok "Caddy admin origin enforcement rejects an origin-less request"
+else
+  check fail "Caddy admin origin enforcement" "expected 403, got $ADMIN_STATUS"
+fi
 
 echo "=== sample app (http-echo) co-located in Caddy's netns (mirrors loopback-only publish) ==="
 # In prod the container publishes to 127.0.0.1:hostPort and the node-local Caddy
@@ -48,7 +57,12 @@ bun -e "import{addAppRoute}from'./src/lib/services/apps-ingress-provisioner';awa
 echo "route posted"
 
 echo "=== request with the app's Host header -> reaches the app ==="
-RESP=$(curl -s -H "Host: $HOST" "http://localhost:$PROXY_PORT/")
+RESP=""
+for _ in $(seq 1 20); do
+  RESP=$(curl -sS -H "Host: $HOST" "http://localhost:$PROXY_PORT/")
+  echo "$RESP" | grep -q "ROUTED-TO-APP" && break
+  sleep 0.25
+done
 echo "response: $RESP"
 echo "$RESP" | grep -q "ROUTED-TO-APP" &&
   check ok "Host: $HOST reverse-proxied to the app container (real Caddy admin-API route)" ||

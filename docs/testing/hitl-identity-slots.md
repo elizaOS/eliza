@@ -38,7 +38,7 @@ separate account provisioning instead of by env key names.
 | `slack.bot` | slack | bot | single/slotless | n/a | n/a | SLACK_BOT_TOKEN<br>SLACK_APP_TOKEN | n/a |
 | `slack.user-token` | slack | user-client | single/slotless | n/a | n/a | SLACK_USER_TOKEN | n/a |
 | `signal.desktop-bridge` | signal | local-bridge | single/slotless | n/a | n/a | n/a | n/a |
-| `signal.cli` | signal | user-client | single/slotless | n/a | n/a | SIGNAL_ACCOUNT_NUMBER<br>SIGNAL_HTTP_URL<br>SIGNAL_CLI_PATH | A signal-cli binary can be present but unrunnable (e.g. built for a newer JRE); the data-dir requirement keeps an unregistered install skipping instead of red. |
+| `signal.cli` | signal | user-client | single/slotless | n/a | n/a | SIGNAL_ACCOUNT_NUMBER<br>SIGNAL_HTTP_URL<br>SIGNAL_CLI_PATH | Availability runs `--version` and the read-only `listAccounts`; the live probe also verifies the configured account is among the linked accounts. |
 | `whatsapp.cloud-api` | whatsapp | api-key | single/slotless | n/a | n/a | ELIZA_WHATSAPP_ACCESS_TOKEN<br>ELIZA_WHATSAPP_PHONE_NUMBER_ID | ELIZA_WHATSAPP_* and bare WHATSAPP_* spellings are write-aliased by the dashboard; either satisfies the probe. |
 | `imessage.macos` | imessage | local-bridge | single/slotless | n/a | n/a | n/a | n/a |
 | `imessage.bluebubbles` | imessage | local-bridge | single/slotless | n/a | n/a | BLUEBUBBLES_SERVER_URL<br>BLUEBUBBLES_PASSWORD | An installed-but-stopped server is 'available' (row shows, probe reports connection refused with the start hint); the password lives in the server's config.db. |

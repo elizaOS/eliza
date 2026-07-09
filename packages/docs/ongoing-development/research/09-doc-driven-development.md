@@ -1,5 +1,11 @@
 # Doc-driven development + evidence-driven acceptance (process)
 
+> Historical implementation record, captured during the 2026-07-04 process
+> migration. Statements about working-tree state and missing files describe the
+> branch at that time; the current operating contract lives in
+> [`../README.md`](../README.md), [`../mvp/MVP.md`](../mvp/MVP.md), and the
+> repository root `AGENTS.md`.
+
 ## Summary
 
 We are converging the repo into one MVP: the **LifeOps Personal Assistant**

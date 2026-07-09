@@ -444,7 +444,7 @@ export const CONNECTOR_PATHS = [
     probeEndpoint:
       "local install/link status only — Signal Desktop's DB is SQLCipher-encrypted and is not a credential source",
     availability: {
-      type: "any-of",
+      type: "all-of",
       specs: [
         {
           type: "dir-exists",
@@ -491,17 +491,23 @@ export const CONNECTOR_PATHS = [
               reason: "signal-cli not in PATH",
             },
             {
-              type: "dir-exists",
-              path: "~/.local/share/signal-cli",
-              reason:
-                "no registered signal-cli account (~/.local/share/signal-cli missing)",
+              type: "command-ok",
+              command: "signal-cli",
+              args: ["--version"],
+              reason: "signal-cli is installed but not runnable",
+            },
+            {
+              type: "command-ok",
+              command: "signal-cli",
+              args: ["listAccounts"],
+              reason: "no linked Signal account",
             },
           ],
         },
       ],
     },
     notes:
-      "A signal-cli binary can be present but unrunnable (e.g. built for a newer JRE); the data-dir requirement keeps an unregistered install skipping instead of red.",
+      "Availability executes the read-only listAccounts command: an installed-but-unrunnable binary and a runnable client with no linked account remain distinct skip states.",
   }),
 
   // --- WhatsApp -----------------------------------------------------------------------

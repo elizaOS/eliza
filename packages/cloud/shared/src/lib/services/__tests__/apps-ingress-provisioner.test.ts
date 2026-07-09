@@ -92,6 +92,40 @@ describe("addAppRoute", () => {
     ).rejects.toThrow("add-route failed (500) for abc12345.apps.elizacloud.ai via 127.0.0.1:2019");
   });
 
+  test("preserves a route POST transport failure as the typed error cause", async () => {
+    const transportError = new Error("caddy post timeout");
+    const fetchImpl: IngressFetch = async (_url, init) => {
+      if (init.method === "POST") throw transportError;
+      return { ok: true, status: 200, text: async () => "" };
+    };
+
+    await expect(
+      addAppRoute({ hostname: HOST, hostPort: 28123, adminBase: ADMIN, fetchImpl }),
+    ).rejects.toMatchObject({
+      code: "CADDY_ADMIN_MUTATION_FAILED",
+      cause: transportError,
+      context: { operation: "add-route" },
+    });
+  });
+
+  test("surfaces an unreadable Caddy rejection body with its original cause", async () => {
+    const bodyError = new Error("response stream aborted");
+    const fetchImpl: IngressFetch = async (_url, init) => ({
+      ok: init.method === "DELETE",
+      status: init.method === "DELETE" ? 200 : 500,
+      text: async () => {
+        throw bodyError;
+      },
+    });
+
+    await expect(
+      addAppRoute({ hostname: HOST, hostPort: 28123, adminBase: ADMIN, fetchImpl }),
+    ).rejects.toMatchObject({
+      code: "CADDY_ADMIN_RESPONSE_READ_FAILED",
+      cause: bodyError,
+    });
+  });
+
   test("fails before POST when stale-route deletion has a transport failure", async () => {
     const calls: Array<{ url: string; method: string }> = [];
     const fetchImpl: IngressFetch = async (url, init) => {
@@ -178,5 +212,20 @@ describe("removeAppRoute", () => {
     await expect(removeAppRoute({ hostname: HOST, adminBase: ADMIN, fetchImpl })).rejects.toThrow(
       "remove-route failed (500) for abc12345.apps.elizacloud.ai via 127.0.0.1:2019",
     );
+  });
+
+  test("preserves a removal transport failure as the typed error cause", async () => {
+    const transportError = new Error("caddy delete timeout");
+    const fetchImpl: IngressFetch = async () => {
+      throw transportError;
+    };
+
+    await expect(
+      removeAppRoute({ hostname: HOST, adminBase: ADMIN, fetchImpl }),
+    ).rejects.toMatchObject({
+      code: "CADDY_ADMIN_MUTATION_FAILED",
+      cause: transportError,
+      context: { operation: "remove-route" },
+    });
   });
 });

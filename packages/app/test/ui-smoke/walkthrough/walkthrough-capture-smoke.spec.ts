@@ -15,6 +15,7 @@ import {
   installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
+  seedFirstRunCompleteBeforeLoad,
 } from "../helpers";
 
 const CHAT_COMPOSER_SELECTOR =
@@ -247,9 +248,7 @@ test.describe("walkthrough capture smoke", () => {
     await captureState(page, testInfo, "walkthrough-01-onboarding.png");
 
     firstRun.setComplete(true);
-    await page.evaluate(() => {
-      localStorage.setItem("eliza:first-run-complete", "1");
-    });
+    await seedFirstRunCompleteBeforeLoad(page);
     await openAppPath(page, "/chat");
     const overlay = page.getByTestId("continuous-chat-overlay");
     await expect(overlay).toBeVisible({ timeout: 60_000 });
