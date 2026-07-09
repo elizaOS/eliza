@@ -1,4 +1,4 @@
-// Exercises tests lifeops catalog coverage.test automation behavior against the real MVP scenario ledgers.
+// Exercises the catalog coverage reporter against the real MVP scenario ledgers.
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
@@ -40,6 +40,25 @@ describe("LifeOps persona catalog coverage", () => {
         surface: "scenario-runner",
       }),
     );
+
+    const e1 = report.packs.find(
+      (pack: { pack: string }) => pack.pack === "E1",
+    );
+    expect(e1).toMatchObject({
+      target: 28,
+      authored: 29,
+      overTarget: 1,
+    });
+  });
+
+  test("default summary separates planning targets from authored-row counts", () => {
+    const output = runCoverage();
+    expect(output).toContain("E1 29 authored (target 28, +1)");
+    expect(output).toContain("F1 35 authored (target 32, +3)");
+    expect(output).toContain(
+      "Total: 296 authored (target 292), 146/296 verified, 150 unverified",
+    );
+    expect(output).not.toContain("296/292 authored");
   });
 
   test("--unverified prints a board-triage list without hiding surface blockers", () => {

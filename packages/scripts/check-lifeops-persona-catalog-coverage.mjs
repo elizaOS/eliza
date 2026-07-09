@@ -241,6 +241,7 @@ function summarize() {
       target: expectedTarget,
       authored,
       verified,
+      overTarget: Math.max(0, authored - expectedTarget),
       unverified: unverified.length,
       unverifiedBySurface,
       unverifiedRows: unverified,
@@ -278,11 +279,11 @@ function main() {
     console.log("LifeOps persona scenario catalog coverage");
     for (const pack of result.packs) {
       console.log(
-        `${pack.pack.padEnd(2)} ${pack.authored}/${pack.target} authored, ${pack.verified}/${pack.authored} verified (${pack.file})`,
+        `${pack.pack.padEnd(2)} ${pack.authored} authored (target ${pack.target}${pack.overTarget > 0 ? `, +${pack.overTarget}` : ""}), ${pack.verified}/${pack.authored} verified (${pack.file})`,
       );
     }
     console.log(
-      `Total: ${result.authored}/${result.target} authored, ${result.verified}/${result.target} verified`,
+      `Total: ${result.authored} authored (target ${result.target}), ${result.verified}/${result.authored} verified, ${result.authored - result.verified} unverified`,
     );
   }
   if (result.errors.length > 0) {
