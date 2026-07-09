@@ -165,9 +165,9 @@ export async function getCurrentUserFromRequest(
     if (user.organization_id) {
       void trackSessionActivity(user.id, user.organization_id, stewardToken);
       // Opportunistic self-heal for accounts that predate mint-at-provision
-      // (or whose mint failed): idempotent and swallows its own errors, so
-      // fire-and-forget is safe here.
-      void apiKeysService.ensureUserHasApiKey(user.id, user.organization_id);
+      // (or whose mint failed). Awaited on Workers: an un-awaited promise may
+      // be cancelled as soon as the response is returned.
+      await apiKeysService.ensureUserHasApiKey(user.id, user.organization_id);
       // Self-heal a missing default Eliza character: its only create site is
       // the one-time new-user signup branch in steward-sync, where a failed
       // create is swallowed so the signup itself survives — without this

@@ -147,9 +147,10 @@ export async function runWithSignupGrantIpCap(
 export async function runWithSignupGrantIpCapDetailed(
   ip: string | undefined,
   grant: (tx?: DbTransaction) => Promise<void>,
+  existingTx?: DbTransaction,
 ): Promise<SignupGrantDecision> {
   if (!ip) {
-    await grant();
+    await grant(existingTx);
     return { granted: true };
   }
 
@@ -157,7 +158,7 @@ export async function runWithSignupGrantIpCapDetailed(
   const cap = FREE_GRANT_IP_LIMITS.MAX_FREE_GRANTS_PER_IP_DAILY;
   const dayAgo = new Date(Date.now() - windowHours * 60 * 60 * 1000);
 
-  return await dbWrite.transaction(async (tx) => {
+  const run = async (tx: DbTransaction): Promise<SignupGrantDecision> => {
     // Serialize same-IP grant attempts: the lock is held for the whole
     // transaction, so a concurrent racer blocks here until we commit our grant
     // row (released on commit), then re-reads the count below and sees it.
@@ -220,5 +221,7 @@ export async function runWithSignupGrantIpCapDetailed(
 
     await grant(tx);
     return { granted: true };
-  });
+  };
+
+  return existingTx ? await run(existingTx) : await dbWrite.transaction(run);
 }

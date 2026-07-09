@@ -22,6 +22,7 @@ export type ApiErrorCode =
   | "agent_quota_exceeded"
   | "agent_image_not_allowed"
   | "agent_image_not_digest_pinned"
+  | "service_unavailable"
   | "internal_error";
 
 export interface ApiErrorOptions {

@@ -80,6 +80,12 @@ function sanitizeCliLoginReturnTo(value: string | null): string | null {
   }
 }
 
+function resolveCliLoginMessageTargetOrigin(returnTo: string | null): string {
+  if (typeof window === "undefined") return "https://elizacloud.ai";
+  if (!returnTo) return window.location.origin;
+  return new URL(returnTo).origin;
+}
+
 function getPageState({
   authenticated,
   completion,
@@ -198,7 +204,7 @@ export default function CliLoginPage() {
         const data = (await response.json()) as { keyPrefix: string };
         window.opener?.postMessage(
           { type: "eliza-cloud-auth-complete", sessionId },
-          "*",
+          resolveCliLoginMessageTargetOrigin(launchReturnTo),
         );
         if (launchReturnTo) {
           setCompletion({ status: "redirecting" });

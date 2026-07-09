@@ -4,15 +4,18 @@
  * handling are consistent. WHY one path: avoids drift between SIWE/topup/wallet-auth.
  */
 
+import { eq } from "drizzle-orm";
 import { getAddress } from "viem";
+import type { DbTransaction } from "../../db/client";
+import { writeTransaction } from "../../db/helpers";
 import type { Organization } from "../../db/repositories/organizations";
-import { organizationsRepository } from "../../db/repositories/organizations";
 import type { UserWithOrganization } from "../../db/repositories/users";
 import { usersRepository } from "../../db/repositories/users";
+import { organizations } from "../../db/schemas/organizations";
+import { users } from "../../db/schemas/users";
 import { getClientIp } from "../runtime/request-context";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
-import { organizationsService } from "./organizations";
 import {
   runWithSignupGrantIpCapDetailed,
   type SignupGrantWithheldReason,
@@ -54,6 +57,7 @@ async function grantWalletSignupCredits(params: {
   chain: "evm" | "solana";
   idempotencyKey: string;
   requireInitialCredits: boolean;
+  db?: DbTransaction;
 }): Promise<InitialCreditGrantMetadata> {
   if (params.amount <= 0) {
     return { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
@@ -64,16 +68,20 @@ async function grantWalletSignupCredits(params: {
   // concurrent same-IP signups cannot each pass the cap before any commits.
   const signupIp = getClientIp();
   try {
-    const decision = await runWithSignupGrantIpCapDetailed(signupIp, async (tx) => {
-      await creditsService.addCredits({
-        organizationId: params.organizationId,
-        amount: params.amount,
-        description: "Wallet sign-up bonus",
-        stripePaymentIntentId: params.idempotencyKey,
-        metadata: { type: "wallet_signup", chain: params.chain, ip_address: signupIp },
-        db: tx,
-      });
-    });
+    const decision = await runWithSignupGrantIpCapDetailed(
+      signupIp,
+      async (tx) => {
+        await creditsService.addCredits({
+          organizationId: params.organizationId,
+          amount: params.amount,
+          description: "Wallet sign-up bonus",
+          stripePaymentIntentId: params.idempotencyKey,
+          metadata: { type: "wallet_signup", chain: params.chain, ip_address: signupIp },
+          db: tx,
+        });
+      },
+      params.db,
+    );
     return {
       initialCreditsGranted: decision.granted,
       initialFreeCreditsUsd: decision.granted ? params.amount : 0,
@@ -130,6 +138,69 @@ export async function grantInitialCreditsToWalletAccount(params: {
   return grantResult;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (error.message.includes("unique") || error.message.includes("duplicate"))
+  );
+}
+
+async function findOrgBySlugForWrite(
+  tx: DbTransaction,
+  slug: string,
+): Promise<Organization | null> {
+  return (
+    (await tx.query.organizations.findFirst({
+      where: eq(organizations.slug, slug),
+    })) ?? null
+  );
+}
+
+async function createOrFindWalletOrg(params: {
+  tx: DbTransaction;
+  slug: string;
+  name: string;
+}): Promise<Organization> {
+  const [created] = await params.tx
+    .insert(organizations)
+    .values({
+      name: params.name,
+      slug: params.slug,
+      credit_balance: "0.00",
+    })
+    .onConflictDoNothing()
+    .returning();
+  const org = created ?? (await findOrgBySlugForWrite(params.tx, params.slug));
+  if (!org) {
+    throw new Error("Organization creation failed and could not find existing org");
+  }
+  return org;
+}
+
+async function findEvmUserForWrite(
+  tx: DbTransaction,
+  normalizedAddress: string,
+): Promise<UserWithOrganization | null> {
+  return (
+    (await tx.query.users.findFirst({
+      where: eq(users.wallet_address, normalizedAddress),
+      with: { organization: true },
+    })) ?? null
+  );
+}
+
+async function findSolanaUserForWrite(
+  tx: DbTransaction,
+  address: string,
+): Promise<UserWithOrganization | null> {
+  return (
+    (await tx.query.users.findFirst({
+      where: eq(users.wallet_address, address),
+      with: { organization: true },
+    })) ?? null
+  );
+}
+
 /**
  * Find user by wallet, or create org + user and return.
  * Address can be any case; stored and slug use lowercase.
@@ -159,63 +230,66 @@ export async function findOrCreateUserByWalletAddress(
 
   /* WHY slug wallet-${normalized}: consistent with topup and SIWE; lowercase for unique indexing. */
   const slug = `wallet-${normalized}`;
-  let org: Organization | null = (await organizationsRepository.findBySlug(slug)) ?? null;
-  if (!org) {
-    try {
-      org = await organizationsService.create({
-        name: `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
-        slug,
-        credit_balance: "0.00",
-      });
-    } catch (e) {
-      // error-policy:J3 unique-violation race recovery — retry only the expected
-      // concurrent org-create collision; all other creation failures propagate.
-      const isUniqueViolation =
-        e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
-      if (!isUniqueViolation) throw e;
-
-      org = (await organizationsRepository.findBySlug(slug)) ?? null;
-      if (!org) {
-        throw new Error("Organization creation failed and could not find existing org");
-      }
-    }
-  }
-  const initialCreditGrant =
-    grantInitialCredits && INITIAL_FREE_CREDITS > 0
-      ? await grantWalletSignupCredits({
-          organizationId: org.id,
-          amount: INITIAL_FREE_CREDITS,
-          chain: "evm",
-          idempotencyKey: `wallet-signup:evm:${normalized}`,
-          requireInitialCredits,
-        })
-      : { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
-
   try {
-    const created = await usersRepository.create({
-      steward_user_id: `wallet:evm:${normalized}`,
-      wallet_address: normalized,
-      wallet_chain_type: "evm",
-      wallet_verified: true,
-      organization_id: org.id,
-      // The signup creates this org for the wallet — its creator manages it
-      // (matches the anonymous-migration path in session.ts). Without this the
-      // sole member of a fresh wallet org is a plain "member" and can never
-      // invite teammates or manage the org they own.
-      role: "owner",
+    return await writeTransaction(async (tx) => {
+      const racedExisting = await findEvmUserForWrite(tx, normalized);
+      if (racedExisting) {
+        return { user: racedExisting, isNewAccount: false };
+      }
+
+      const org = await createOrFindWalletOrg({
+        tx,
+        slug,
+        name: `Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
+      });
+      const initialCreditGrant =
+        grantInitialCredits && INITIAL_FREE_CREDITS > 0
+          ? await grantWalletSignupCredits({
+              organizationId: org.id,
+              amount: INITIAL_FREE_CREDITS,
+              chain: "evm",
+              idempotencyKey: `wallet-signup:evm:${normalized}`,
+              requireInitialCredits,
+              db: tx,
+            })
+          : { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
+
+      const [created] = await tx
+        .insert(users)
+        .values({
+          steward_user_id: `wallet:evm:${normalized}`,
+          wallet_address: normalized,
+          wallet_chain_type: "evm",
+          wallet_verified: true,
+          organization_id: org.id,
+          // The signup creates this org for the wallet — its creator manages it
+          // (matches the anonymous-migration path in session.ts). Without this the
+          // sole member of a fresh wallet org is a plain "member" and can never
+          // invite teammates or manage the org they own.
+          role: "owner",
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (!created) {
+        const raced = await findEvmUserForWrite(tx, normalized);
+        if (!raced) {
+          throw new Error("User creation conflicted but could not find existing wallet user");
+        }
+        return { user: raced, isNewAccount: false };
+      }
+
+      const user: UserWithOrganization = { ...created, organization: org };
+      return {
+        user,
+        isNewAccount: true,
+        ...initialCreditGrant,
+      };
     });
-    const user: UserWithOrganization = { ...created, organization: org };
-    return {
-      user,
-      isNewAccount: true,
-      ...initialCreditGrant,
-    };
   } catch (e) {
     // error-policy:J3 unique-violation race recovery — the losing concurrent
     // signup returns the winner's row; missing re-fetch rethrows the original.
-    const isUniqueViolation =
-      e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
-    if (!isUniqueViolation) throw e;
+    if (!isUniqueViolation(e)) throw e;
     const raced = await usersService.getByWalletAddressWithOrganization(address);
     if (!raced) throw e;
     return { user: raced, isNewAccount: false };
@@ -252,60 +326,63 @@ export async function findOrCreateSolanaUserByWalletAddress(
   }
 
   const slug = `wallet-solana-${address}`;
-  let org: Organization | null = (await organizationsRepository.findBySlug(slug)) ?? null;
-  if (!org) {
-    try {
-      org = await organizationsService.create({
-        name: `Solana Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
-        slug,
-        credit_balance: "0.00",
-      });
-    } catch (e) {
-      // error-policy:J3 unique-violation race recovery — retry only the expected
-      // concurrent org-create collision; all other creation failures propagate.
-      const isUniqueViolation =
-        e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
-      if (!isUniqueViolation) throw e;
-
-      org = (await organizationsRepository.findBySlug(slug)) ?? null;
-      if (!org) {
-        throw new Error("Organization creation failed and could not find existing Solana org");
-      }
-    }
-  }
-  const initialCreditGrant =
-    grantInitialCredits && INITIAL_FREE_CREDITS > 0
-      ? await grantWalletSignupCredits({
-          organizationId: org.id,
-          amount: INITIAL_FREE_CREDITS,
-          chain: "solana",
-          idempotencyKey: `wallet-signup:solana:${address}`,
-          requireInitialCredits,
-        })
-      : { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
-
   try {
-    const created = await usersRepository.create({
-      steward_user_id: `wallet:solana:${address}`,
-      wallet_address: address,
-      wallet_chain_type: "solana",
-      wallet_verified: true,
-      organization_id: org.id,
-      // Creator of the fresh wallet org manages it — see the EVM path above.
-      role: "owner",
+    return await writeTransaction(async (tx) => {
+      const racedExisting = await findSolanaUserForWrite(tx, address);
+      if (racedExisting) {
+        return { user: racedExisting, isNewAccount: false };
+      }
+
+      const org = await createOrFindWalletOrg({
+        tx,
+        slug,
+        name: `Solana Wallet ${address.slice(0, 6)}...${address.slice(-4)}`,
+      });
+      const initialCreditGrant =
+        grantInitialCredits && INITIAL_FREE_CREDITS > 0
+          ? await grantWalletSignupCredits({
+              organizationId: org.id,
+              amount: INITIAL_FREE_CREDITS,
+              chain: "solana",
+              idempotencyKey: `wallet-signup:solana:${address}`,
+              requireInitialCredits,
+              db: tx,
+            })
+          : { initialCreditsGranted: false, initialFreeCreditsUsd: 0 };
+
+      const [created] = await tx
+        .insert(users)
+        .values({
+          steward_user_id: `wallet:solana:${address}`,
+          wallet_address: address,
+          wallet_chain_type: "solana",
+          wallet_verified: true,
+          organization_id: org.id,
+          // Creator of the fresh wallet org manages it — see the EVM path above.
+          role: "owner",
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (!created) {
+        const raced = await findSolanaUserForWrite(tx, address);
+        if (!raced) {
+          throw new Error("User creation conflicted but could not find existing Solana user");
+        }
+        return { user: raced, isNewAccount: false };
+      }
+
+      const user: UserWithOrganization = { ...created, organization: org };
+      return {
+        user,
+        isNewAccount: true,
+        ...initialCreditGrant,
+      };
     });
-    const user: UserWithOrganization = { ...created, organization: org };
-    return {
-      user,
-      isNewAccount: true,
-      ...initialCreditGrant,
-    };
   } catch (e) {
     // error-policy:J3 unique-violation race recovery — the losing concurrent
     // signup returns the winner's row; missing re-fetch rethrows the original.
-    const isUniqueViolation =
-      e instanceof Error && (e.message.includes("unique") || e.message.includes("duplicate"));
-    if (!isUniqueViolation) throw e;
+    if (!isUniqueViolation(e)) throw e;
     const raced = await usersRepository.findBySolanaWalletAddressWithOrganization(address);
     if (!raced) throw e;
     return { user: raced, isNewAccount: false };

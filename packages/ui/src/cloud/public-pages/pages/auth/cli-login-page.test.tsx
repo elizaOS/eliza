@@ -186,7 +186,7 @@ describe("CliLoginPage", () => {
     );
     expect(postMessage).toHaveBeenCalledWith(
       { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
-      "*",
+      window.location.origin,
     );
     expect(screen.getByRole("button", { name: "Close window" })).toBeTruthy();
     expect(
@@ -211,6 +211,11 @@ describe("CliLoginPage", () => {
     apiFetchMock.mockResolvedValue({
       json: async () => ({ keyPrefix: "ek_live_abc" }),
     });
+    const postMessage = vi.fn();
+    Object.defineProperty(window, "opener", {
+      value: { postMessage },
+      configurable: true,
+    });
     const replace = stubLocationReplace();
     const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
 
@@ -220,6 +225,10 @@ describe("CliLoginPage", () => {
       expect(replace).toHaveBeenCalledWith(
         "http://localhost:2138/chat?firstRun=1",
       ),
+    );
+    expect(postMessage).toHaveBeenCalledWith(
+      { type: "eliza-cloud-auth-complete", sessionId: "sess-1" },
+      "http://localhost:2138",
     );
     expect(closeSpy).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Returning to app")).toBeTruthy();

@@ -110,6 +110,28 @@ function trackApiKeyUsage(c: AppContext, id: string, increment: () => Promise<vo
   }
 }
 
+async function validateApiKeyOrServiceUnavailable(
+  apiKey: string,
+): Promise<
+  Awaited<ReturnType<typeof import("../services/api-keys").apiKeysService.validateApiKey>>
+> {
+  const { apiKeysService } = await import("../services/api-keys");
+  try {
+    return await apiKeysService.validateApiKey(apiKey);
+  } catch (error) {
+    // error-policy:J1 boundary translation — API key storage is a dependency
+    // boundary. A backend outage must not be reported as invalid credentials.
+    logger.error("[Auth] API key validation backend unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new ApiError(
+      503,
+      "service_unavailable",
+      "API key validation is temporarily unavailable. Please retry.",
+    );
+  }
+}
+
 function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {
   return {
     PLAYWRIGHT_TEST_AUTH:
@@ -238,7 +260,7 @@ export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<
 
   if (apiKey) {
     const { apiKeysService } = await import("../services/api-keys");
-    const validated = await apiKeysService.validateApiKey(apiKey);
+    const validated = await validateApiKeyOrServiceUnavailable(apiKey);
     if (!validated) throw AuthenticationError("Invalid or expired API key");
     if (!validated.is_active) throw ForbiddenError("API key is inactive");
     if (validated.expires_at && new Date(validated.expires_at) < new Date()) {
@@ -275,7 +297,7 @@ export async function requireUserOrApiKey(c: AppContext): Promise<AuthedUser> {
 
   if (apiKey) {
     const { apiKeysService } = await import("../services/api-keys");
-    const validated = await apiKeysService.validateApiKey(apiKey);
+    const validated = await validateApiKeyOrServiceUnavailable(apiKey);
     if (!validated) throw AuthenticationError("Invalid or expired API key");
     if (!validated.is_active) throw ForbiddenError("API key is inactive");
     if (validated.expires_at && new Date(validated.expires_at) < new Date()) {

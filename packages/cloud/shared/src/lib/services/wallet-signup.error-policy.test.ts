@@ -24,7 +24,37 @@ mock.module("../../db/repositories/organizations", () => ({
   organizationsRepository: { findBySlug: (s: string) => findBySlug(s) },
 }));
 mock.module("../../db/repositories/users", () => ({
-  usersRepository: { create: (i: { organization_id: string; role: string }) => userCreate(i) },
+  usersRepository: {
+    create: (i: { organization_id: string; role: string }) => userCreate(i),
+    findBySolanaWalletAddressWithOrganization: (a: string) => getByWallet(a),
+  },
+}));
+mock.module("../../db/helpers", () => ({
+  writeTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+    fn({
+      query: {
+        organizations: {
+          findFirst: () => findBySlug("wallet-slug"),
+        },
+        users: {
+          findFirst: () => getByWallet(EVM_ADDRESS),
+        },
+      },
+      insert: () => ({
+        values: (input: { slug?: string; organization_id?: string; role?: string }) => ({
+          onConflictDoNothing: () => ({
+            returning: async () => {
+              if (input.slug) {
+                const org = await orgCreate(input);
+                return org ? [org] : [];
+              }
+              const user = await userCreate(input as { organization_id: string; role: string });
+              return user ? [user] : [];
+            },
+          }),
+        }),
+      }),
+    }),
 }));
 mock.module("./organizations", () => ({
   organizationsService: { create: (i: unknown) => orgCreate(i) },
@@ -63,9 +93,7 @@ beforeEach(() => {
   // Sensible defaults; individual tests override.
   getByWallet = async () => null;
   findBySlug = async () => null;
-  orgCreate = async () => {
-    throw new Error("orgCreate not configured");
-  };
+  orgCreate = async () => null;
   userCreate = async () => {
     throw new Error("userCreate not configured");
   };
@@ -104,14 +132,11 @@ describe("wallet-signup fail-closed error policy", () => {
     ).rejects.toThrow("connection terminated unexpectedly");
   });
 
-  test("unique-violation on org create is a DESIGNED race recovery to the winning org", async () => {
+  test("org create conflict is a DESIGNED race recovery to the winning org", async () => {
     const racedOrg = { id: "org-raced", slug: "wallet-slug" };
-    let slugCalls = 0;
     getByWallet = async () => null;
-    findBySlug = async () => (slugCalls++ === 0 ? null : racedOrg);
-    orgCreate = async () => {
-      throw new Error("duplicate key value violates unique constraint");
-    };
+    findBySlug = async () => racedOrg;
+    orgCreate = async () => null;
     userCreate = async (input) => ({
       id: "user-1",
       organization_id: input.organization_id,
@@ -140,7 +165,7 @@ describe("wallet-signup fail-closed error policy", () => {
     ).rejects.toThrow("deadlock detected");
   });
 
-  test("user-create unique-violation with unrecoverable re-fetch RETHROWS (never fabricates a user)", async () => {
+  test("user-create conflict with unrecoverable re-fetch RETHROWS (never fabricates a user)", async () => {
     const org = { id: "org-1", slug: "wallet-slug" };
     // Both the initial lookup and the post-race re-fetch return null: the race
     // handler must not invent a user, it must rethrow the original error.
