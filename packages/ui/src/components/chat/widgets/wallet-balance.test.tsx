@@ -242,8 +242,11 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     expect(text).toContain("$3,000.00");
   });
 
-  it("shows BTC/SOL/ETH default rows when balances fail but prices load", async () => {
-    getWalletBalances.mockRejectedValue(new Error("balances 503"));
+  it("keeps the last-good rows when a later balance refresh fails", async () => {
+    vi.useFakeTimers();
+    getWalletBalances
+      .mockResolvedValueOnce({ evm: null, solana: null })
+      .mockRejectedValue(new Error("balances 503"));
     getWalletMarketOverview.mockResolvedValue(
       overview([
         { symbol: "BTC", priceUsd: 64000, change24hPct: 1.2 },
@@ -253,10 +256,14 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     );
 
     render(<WalletBalanceWidget />);
-
-    await waitFor(() =>
-      expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy(),
-    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByTestId("chat-widget-wallet-prices")).toBeTruthy();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(getWalletBalances).toHaveBeenCalledTimes(2);
     expect(
       screen.getAllByTestId(/^wallet-price-row-/).map((r) => r.dataset.testid),
     ).toEqual([
@@ -264,6 +271,20 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
       "wallet-price-row-SOL",
       "wallet-price-row-ETH",
     ]);
+  });
+
+  it("does not render no-holdings defaults when balances are unavailable", async () => {
+    getWalletBalances.mockRejectedValue(new Error("balances 503"));
+    getWalletMarketOverview.mockResolvedValue(
+      overview([
+        { symbol: "BTC", priceUsd: 64000, change24hPct: 1.2 },
+        { symbol: "ETH", priceUsd: 3000, change24hPct: -0.5 },
+        { symbol: "SOL", priceUsd: 150, change24hPct: 2.1 },
+      ]),
+    );
+    const { container } = render(<WalletBalanceWidget />);
+    await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
+    await waitFor(() => expect(container.firstChild).toBeNull());
   });
 
   it("refreshes prices on the 60s visibility-gated interval (#14344)", async () => {
@@ -348,20 +369,6 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     getWalletMarketOverview.mockRejectedValue(new Error("overview 503"));
     const { container } = render(<WalletBalanceWidget />);
     await waitFor(() => expect(getWalletMarketOverview).toHaveBeenCalled());
-    await waitFor(() => expect(container.firstChild).toBeNull());
-  });
-
-  it("does not render no-holdings defaults when balances are unavailable", async () => {
-    getWalletBalances.mockRejectedValue(new Error("balances 503"));
-    getWalletMarketOverview.mockResolvedValue(
-      overview([
-        { symbol: "BTC", priceUsd: 64000 },
-        { symbol: "SOL", priceUsd: 150 },
-        { symbol: "ETH", priceUsd: 3000 },
-      ]),
-    );
-    const { container } = render(<WalletBalanceWidget />);
-    await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
     await waitFor(() => expect(container.firstChild).toBeNull());
   });
 });

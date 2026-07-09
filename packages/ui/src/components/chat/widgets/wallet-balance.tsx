@@ -3,13 +3,13 @@
  * showing crypto **unit prices only** - never the amount held or the holding
  * value (#10706). Tapping opens the wallet view.
  *
- * Two states, always visible once prices load (#14344): when the user holds ≥1
- * priced token worth ≥ $1, the top-3 held by holding value; otherwise the
- * tracked BTC/SOL/ETH default rows (back-filled from trending movers if the
+ * Two states once both wallet balances and prices load (#14344): when the user
+ * holds ≥1 priced token worth ≥ $1, the top-3 held by holding value; otherwise
+ * the tracked BTC/SOL/ETH default rows (back-filled from trending movers if the
  * overview is partial). Prices refresh on a 60s document-visibility-gated
- * interval - no polling while the app is backgrounded. It self-hides only when
- * prices are unavailable (both endpoints down / never loaded): the home surface
- * shows no error chrome; the wallet view owns error state (J4).
+ * interval - no polling while the app is backgrounded. It self-hides when
+ * either response is unavailable because unknown holdings are not an empty
+ * wallet; the wallet view owns the explicit error state (J4).
  */
 
 import type { WalletBalancesResponse } from "@elizaos/shared";
@@ -35,7 +35,7 @@ const REFRESH_INTERVAL_MS = 60_000;
 
 const DEFAULT_SPAN = "col-span-2 row-span-1";
 
-type RefreshResult<T> = { ok: true; value: T } | { ok: false; error: unknown };
+type RefreshResult<T> = { ok: true; value: T } | { ok: false };
 
 /** Format a unit price: more decimals for sub-dollar assets, 2 for the rest. */
 function formatPrice(priceUsd: number): string {
@@ -101,11 +101,10 @@ export function WalletBalanceWidget(
           ok: true,
           value,
         }))
-        .catch<RefreshResult<WalletBalancesResponse>>((error) => ({
+        .catch<RefreshResult<WalletBalancesResponse>>(() => ({
           // error-policy:J4 balances unavailable means holdings are unknown; do
           // not fabricate "empty wallet" default rows.
           ok: false,
-          error,
         })),
       client
         .getWalletMarketOverview()
@@ -118,10 +117,9 @@ export function WalletBalanceWidget(
           RefreshResult<
             Awaited<ReturnType<typeof client.getWalletMarketOverview>>
           >
-        >((error) => ({
+        >(() => ({
           // error-policy:J4 overview failure ⇒ no prices at all ⇒ widget hides
           ok: false,
-          error,
         })),
     ]);
     if (!activeRef.current || seq !== refreshSeqRef.current) return;
