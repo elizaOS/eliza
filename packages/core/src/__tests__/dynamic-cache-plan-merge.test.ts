@@ -72,6 +72,17 @@ describe("mergeProviderOptionsWithCachePlan", () => {
 		expect(result.openrouter).toBeDefined();
 	});
 
+	it("does not mutate the base, caller, or cache-plan inputs", () => {
+		const base = { agentName: "Bot" };
+		const caller = { anthropic: { thinking: { type: "enabled" } } };
+		const plan = { anthropic: { cacheControl: { type: "ephemeral" } } };
+		const snapshots = structuredClone({ base, caller, plan });
+
+		mergeProviderOptionsWithCachePlan(base, caller, plan);
+
+		expect({ base, caller, plan }).toEqual(snapshots);
+	});
+
 	it("plan scalar value wins over caller and base on key collision", () => {
 		const result = mergeProviderOptionsWithCachePlan(
 			{ agentName: "RealBot" },
