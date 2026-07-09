@@ -19,9 +19,13 @@ function issue(number: number, labels: string[]) {
   };
 }
 
-function projectItem(number: number, status: string) {
+function projectItem(
+  number: number,
+  status: string,
+  repository = "elizaOS/eliza",
+) {
   return {
-    content: { number, title: `Issue ${number}` },
+    content: { number, repository, title: `Issue ${number}` },
     status,
   };
 }
@@ -88,6 +92,23 @@ describe("MVP board readiness audit", () => {
       expect.objectContaining({
         type: "missing-project-item",
         number: 14351,
+      }),
+    );
+  });
+
+  test("does not match project items from a different repository by number", () => {
+    const report = board.auditMvpBoardReadiness(
+      [issue(14747, ["mvp", "needs-shaw"])],
+      {
+        items: [projectItem(14747, "Needs human review", "elizaOS/other-repo")],
+      },
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.violations).toContainEqual(
+      expect.objectContaining({
+        type: "missing-project-item",
+        number: 14747,
       }),
     );
   });

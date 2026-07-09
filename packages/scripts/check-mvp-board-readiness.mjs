@@ -131,10 +131,28 @@ function projectItemNumber(item) {
   return item.content?.number ?? item.number ?? null;
 }
 
-function normalizeProjectItems(payload) {
+function normalizeRepository(value) {
+  if (typeof value !== "string" || value.length === 0) return null;
+  const githubPrefix = "https://github.com/";
+  const normalized = value.startsWith(githubPrefix)
+    ? value.slice(githubPrefix.length)
+    : value;
+  return normalized.replace(/\.git$/, "").toLowerCase();
+}
+
+function projectItemRepository(item) {
+  return normalizeRepository(
+    item.content?.repository ?? item.repository ?? item.content?.url,
+  );
+}
+
+function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
   const items = Array.isArray(payload) ? payload : (payload.items ?? []);
   const byNumber = new Map();
+  const expectedRepo = normalizeRepository(repo);
   for (const item of items) {
+    const itemRepo = projectItemRepository(item);
+    if (expectedRepo && itemRepo && itemRepo !== expectedRepo) continue;
     const number = projectItemNumber(item);
     if (typeof number === "number") {
       byNumber.set(number, item);
@@ -143,8 +161,11 @@ function normalizeProjectItems(payload) {
   return byNumber;
 }
 
-export function auditMvpBoardReadiness(issues, projectPayload) {
-  const projectItems = normalizeProjectItems(projectPayload);
+export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
+  const projectItems = normalizeProjectItems(
+    projectPayload,
+    options.repo ?? DEFAULT_REPO,
+  );
   const violations = [];
   const rows = [];
 
@@ -240,7 +261,9 @@ async function main() {
   const projectPayload = args.projectJson
     ? readJson(args.projectJson)
     : fetchProjectItems(args.projectOwner, args.projectNumber);
-  const report = auditMvpBoardReadiness(issues, projectPayload);
+  const report = auditMvpBoardReadiness(issues, projectPayload, {
+    repo: args.repo,
+  });
 
   process.stdout.write(
     args.json ? `${JSON.stringify(report, null, 2)}\n` : formatText(report),
