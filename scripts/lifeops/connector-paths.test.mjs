@@ -470,6 +470,10 @@ test("signal.cli scenario: installed-but-unrunnable CLI skips distinctly", () =>
       commandInPath: (command) => command === "signal-cli",
       runCommand: (_command, args) => ({
         ok: args[0] === "--version" || args[0] === "listAccounts",
+        stdout:
+          args[0] === "listAccounts"
+            ? "Number: +15551234567\n"
+            : "signal-cli 0.13\n",
       }),
     }),
   );
@@ -495,10 +499,38 @@ test("Signal Desktop and signal-cli unavailability shapes stay distinct", () => 
     cli,
     fakeCtx({
       commandInPath: () => true,
-      runCommand: (_command, args) => ({ ok: args[0] === "--version" }),
+      runCommand: (_command, args) => ({
+        ok: args[0] === "--version" || args[0] === "listAccounts",
+        stdout: args[0] === "listAccounts" ? "" : "signal-cli 0.13\n",
+      }),
     }),
   );
   assert.match(noAccount.reason, /no linked Signal account/);
+});
+
+test("command-output-nonempty requires both success and actual stdout", () => {
+  const spec = {
+    type: "command-output-nonempty",
+    command: "signal-cli",
+    args: ["listAccounts"],
+    reason: "no linked account",
+  };
+  assert.deepEqual(
+    checkAvailability(
+      spec,
+      fakeCtx({ runCommand: () => ({ ok: true, stdout: "" }) }),
+    ),
+    { available: false, reason: "no linked account" },
+  );
+  assert.deepEqual(
+    checkAvailability(
+      spec,
+      fakeCtx({
+        runCommand: () => ({ ok: true, stdout: "Number: +15551234567\n" }),
+      }),
+    ),
+    { available: true, reason: null },
+  );
 });
 
 test("oauth-app-dependent rows skip with an explanatory reason until an app is configured", () => {

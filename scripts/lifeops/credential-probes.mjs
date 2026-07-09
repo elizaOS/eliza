@@ -456,6 +456,7 @@ export async function probeSignal(
   const accounts = String(listed.stdout ?? "")
     .split(/\r?\n/)
     .map((line) => line.trim())
+    .map((line) => line.replace(/^Number:\s*/i, ""))
     .filter((line) => /^\+\d{6,}$|^u:[A-Za-z0-9_.-]+$/.test(line));
   if (accounts.length === 0) return fail("signal", "no linked Signal account");
   const selected = e("SIGNAL_ACCOUNT_NUMBER");
