@@ -392,13 +392,17 @@ boot_verify() {
     local pattern
     # Optional-plugin load failures are non-fatal BY DESIGN (plugin-resolver
     # catches them and boot continues): their warn text embeds the loader error
-    # ("Optional plugin X failed to load: Cannot find package ..." and the
-    # "Failed plugins: X (...)" summary), which would false-match the crash
-    # signatures below and kill a healthy boot. Filter those lines out before
-    # scanning; a REAL boot crash still trips the signatures on its own lines
-    # and is additionally caught by the container-exit and health-probe gates.
+    # ("Optional plugin X failed to load: Cannot find package ...",
+    # "Could not load plugin X: Cannot find package ..." — the resolver's other
+    # message shape, which false-killed the main image build when
+    # plugin-task-coordinator hit the @elizaos/ui -> @capacitor/core import
+    # leak — and the "Failed plugins: X (...)" summary), which would
+    # false-match the crash signatures below and kill a healthy boot. Filter
+    # those lines out before scanning; a REAL boot crash still trips the
+    # signatures on its own lines and is additionally caught by the
+    # container-exit and health-probe gates.
     local filtered_file="$SMOKE_ARTIFACT_DIR/container-scan.log"
-    grep -viE 'Optional plugin .* failed to load|Failed plugins:' "$logs_file" >"$filtered_file" 2>/dev/null || cp "$logs_file" "$filtered_file" 2>/dev/null || true
+    grep -viE 'Optional plugin .* failed to load|Could not load plugin|skipped after [0-9]+ms: module unavailable|Failed plugins:' "$logs_file" >"$filtered_file" 2>/dev/null || cp "$logs_file" "$filtered_file" 2>/dev/null || true
     for pattern in "${BOOT_CRASH_PATTERNS[@]}"; do
       if grep -qiF "$pattern" "$filtered_file" 2>/dev/null; then
         printf '%s' "$pattern"
