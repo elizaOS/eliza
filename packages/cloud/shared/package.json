@@ -25,7 +25,7 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "node ../../shared/scripts/generate-keywords.mjs --target ts && tsgo --noEmit",
     "check:tenant-scope": "bun scripts/check-tenant-scope.ts",
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
     "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",

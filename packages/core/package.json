@@ -123,7 +123,7 @@
 		"test:watch": "node ../scripts/run-vitest.mjs",
 		"lint": "bunx @biomejs/biome check --write ./src",
 		"lint:check": "bunx @biomejs/biome check ./src",
-		"typecheck": "tsgo --noEmit -p ./tsconfig.json",
+		"typecheck": "node ../shared/scripts/generate-keywords.mjs --target ts && tsgo --noEmit -p ./tsconfig.json",
 		"format": "bunx @biomejs/biome format --write ./src",
 		"format:check": "bunx @biomejs/biome format ./src"
 	},
