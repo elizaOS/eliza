@@ -24,6 +24,7 @@ import * as React from "react";
 
 import { usePendant } from "../../pendant/usePendant";
 import type { PendantStatus } from "../../pendant/pendant-connection";
+import type { PendantConnectStep } from "../../pendant/connect-timeout";
 import { Button } from "../ui/button";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
 
@@ -47,6 +48,29 @@ function statusLabel(status: PendantStatus): string {
       return "Transcribing…";
     case "error":
       return "Connection error";
+  }
+}
+
+/** Short human label for the in-flight connect step (shown while connecting). */
+function connectStepLabel(step: PendantConnectStep): string | null {
+  switch (step) {
+    case "gatt-connect":
+      return "linking GATT";
+    case "audio-service":
+      return "finding audio service";
+    case "codec-read":
+      return "reading codec";
+    case "decoder-init":
+      return "loading decoder";
+    case "audio-char":
+      return "finding audio channel";
+    case "start-notifications":
+      return "subscribing to audio";
+    case "battery":
+      return "reading battery";
+    case "idle":
+    case "done":
+      return null;
   }
 }
 
@@ -107,6 +131,15 @@ export function PendantSettingsCard(): React.ReactElement {
             >
               {statusLabel(state.status)}
             </span>
+            {state.status === "connecting" &&
+            connectStepLabel(state.connectStep) ? (
+              <span
+                className="font-mono text-2xs text-muted/80"
+                data-testid="pendant-connect-step"
+              >
+                {connectStepLabel(state.connectStep)}…
+              </span>
+            ) : null}
             {state.status === "hearing" ? (
               <Radio
                 className="size-4 animate-pulse text-accent"

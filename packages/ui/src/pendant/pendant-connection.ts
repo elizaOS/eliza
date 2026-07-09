@@ -31,6 +31,12 @@ import {
 } from "../voice/local-asr-capture";
 import { transcribeLocalInferenceWav } from "../voice/local-asr-transcribe";
 import {
+  DEFAULT_STEP_TIMEOUT_MS,
+  isStepTimeout,
+  type PendantConnectStep,
+  withStepTimeout,
+} from "./connect-timeout";
+import {
   createPendantAudioDecoder,
   type PendantAudioDecoder,
 } from "./opus-frame-decoder";
@@ -60,6 +66,11 @@ export type PendantStatus =
 
 export interface PendantState {
   status: PendantStatus;
+  /**
+   * Which connect step is in flight while `status === "connecting"` (surfaced
+   * in the UI as small mono text so a stall is diagnosable, not a dead hang).
+   */
+  connectStep: PendantConnectStep;
   /** Human-readable device name from the BLE advertisement, when known. */
   deviceName: string | null;
   /** Battery percent (0-100) from the standard BAS, or null if unread. */
@@ -83,6 +94,8 @@ export interface PendantConnectionOptions {
   vadSilenceMs?: number;
   /** VAD RMS speech threshold. */
   vadSpeechRmsThreshold?: number;
+  /** Per-step connect timeout (ms). Defaults to {@link DEFAULT_STEP_TIMEOUT_MS}. */
+  stepTimeoutMs?: number;
 }
 
 /** True when the browser exposes the Web Bluetooth API. */
@@ -136,6 +149,7 @@ export class PendantConnection {
 
   private state: PendantState = {
     status: "idle",
+    connectStep: "idle",
     deviceName: null,
     batteryPercent: null,
     codecId: null,
@@ -176,7 +190,7 @@ export class PendantConnection {
     this.batteryChar = null;
     this.reassembler.reset();
     if (this.state.status !== "error") {
-      this.patch({ status: "idle", deviceName: this.state.deviceName });
+      this.patch({ status: "idle", connectStep: "idle", deviceName: this.state.deviceName });
     }
   };
 
@@ -205,6 +219,44 @@ export class PendantConnection {
     this.sawSpeech = false;
   }
 
+  /** Per-step timeout for the connect sequence (ms). */
+  private get stepTimeoutMs(): number {
+    return this.opts.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+  }
+
+  /**
+   * Advance the UI trace + console log for a connect step, then run its awaited
+   * work under a step-named timeout so a hung Web Bluetooth op lands in a real
+   * error ("timed out at ...") instead of hanging "connecting" forever.
+   */
+  private async step<T>(
+    name: PendantConnectStep,
+    work: () => PromiseLike<T>,
+  ): Promise<T> {
+    this.patch({ connectStep: name });
+    const t0 =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+    // eslint-disable-next-line no-console
+    console.info(`[pendant] step:${name} …`);
+    try {
+      const result = await withStepTimeout(name, work(), this.stepTimeoutMs);
+      const t1 =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      // eslint-disable-next-line no-console
+      console.info(`[pendant] step:${name} ok (${Math.round(t1 - t0)}ms)`);
+      return result;
+    } catch (err) {
+      const t1 =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[pendant] step:${name} FAILED (${Math.round(t1 - t0)}ms):`,
+        err instanceof Error ? err.message : err,
+      );
+      throw err;
+    }
+  }
+
   /** Request a device, connect GATT, subscribe to audio + battery. */
   async connect(): Promise<void> {
     if (!isWebBluetoothAvailable()) {
@@ -212,7 +264,7 @@ export class PendantConnection {
       return;
     }
     try {
-      this.patch({ status: "requesting", error: null });
+      this.patch({ status: "requesting", connectStep: "idle", error: null });
       const bluetooth = (navigator as Navigator & { bluetooth: Bluetooth }).bluetooth;
       const device = await bluetooth.requestDevice({
         // Accept by advertised name prefix ("Friend" today, "eliza" soon) AND
@@ -224,51 +276,121 @@ export class PendantConnection {
         optionalServices: [OMI_AUDIO_SERVICE_UUID, BATTERY_SERVICE_UUID],
       });
       this.device = device;
-      this.patch({ status: "connecting", deviceName: device.name ?? "omi pendant" });
-
+      this.patch({
+        status: "connecting",
+        connectStep: "gatt-connect",
+        deviceName: device.name ?? "omi pendant",
+      });
       device.addEventListener("gattserverdisconnected", this.onDisconnected);
-      const server = await device.gatt?.connect();
-      if (!server) throw new Error("GATT server unavailable");
 
-      // Audio service + characteristics.
-      const audioService = await server.getPrimaryService(OMI_AUDIO_SERVICE_UUID);
-      const codecId = await this.readCodec(audioService);
-      this.decoder = await createPendantAudioDecoder(codecId);
-      await this.decoder.ready;
+      // Run the GATT bring-up with one automatic retry: macOS Chrome frequently
+      // hangs `getPrimaryService` (and occasionally `startNotifications`) on the
+      // FIRST attempt when service discovery races the fresh connect. A full
+      // disconnect + reconnect almost always clears it, so a single step-timeout
+      // triggers exactly one clean retry before we surface an error.
+      try {
+        await this.bringUpGatt(device);
+      } catch (err) {
+        if (!isStepTimeout(err)) throw err;
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[pendant] ${err.message} — disconnecting and retrying once`,
+        );
+        this.partialTeardown();
+        // Give CoreBluetooth a beat to fully drop the link before reconnecting.
+        await new Promise((r) => setTimeout(r, 400));
+        this.patch({ status: "connecting", connectStep: "gatt-connect" });
+        await this.bringUpGatt(device);
+      }
 
-      this.audioChar = await audioService.getCharacteristic(OMI_AUDIO_DATA_CHAR_UUID);
-      this.reassembler.reset();
-      this.resetDetector();
-      this.audioChar.addEventListener("characteristicvaluechanged", this.onAudioNotify);
-      await this.audioChar.startNotifications();
-
-      // Battery (best-effort — not all builds expose it).
-      await this.subscribeBattery(server);
-
-      this.patch({ status: "listening", codecId });
+      this.patch({ status: "listening", connectStep: "done" });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to connect to pendant";
       // Tear down anything a partial setup left live so a failed connect never
       // leaks a GATT link, active notifications, listeners, or the decoder.
-      this.cleanupListeners();
-      try {
-        this.device?.gatt?.disconnect();
-      } catch {
-        /* best-effort */
-      }
-      this.decoder?.free();
-      this.decoder = null;
-      this.audioChar = null;
-      this.batteryChar = null;
+      this.partialTeardown();
+      this.device?.removeEventListener("gattserverdisconnected", this.onDisconnected);
       this.device = null;
-      this.reassembler.reset();
       // A user cancelling the chooser throws NotFoundError — treat as idle, not error.
       if (err instanceof DOMException && err.name === "NotFoundError") {
-        this.patch({ status: "idle", error: null });
+        this.patch({ status: "idle", connectStep: "idle", error: null });
         return;
       }
-      this.patch({ status: "error", error: message });
+      this.patch({ status: "error", connectStep: "idle", error: message });
     }
+  }
+
+  /**
+   * One attempt at the full GATT bring-up: connect → audio service → codec →
+   * decoder → audio characteristic → notifications → battery. Every await is
+   * wrapped in a step-named timeout via {@link step}. Idempotent enough to be
+   * called twice (the retry path) as long as {@link partialTeardown} ran between
+   * attempts.
+   */
+  private async bringUpGatt(device: BluetoothDevice): Promise<void> {
+    const server = await this.step("gatt-connect", async () => {
+      const s = await device.gatt?.connect();
+      if (!s) throw new Error("GATT server unavailable");
+      return s;
+    });
+
+    const audioService = await this.step("audio-service", () =>
+      server.getPrimaryService(OMI_AUDIO_SERVICE_UUID),
+    );
+
+    const codecId = await this.step("codec-read", () =>
+      this.readCodec(audioService),
+    );
+
+    this.decoder = await this.step("decoder-init", async () => {
+      // The opus wasm is inlined in the decoder module, but the dynamic import
+      // still resolves a lazy JS chunk from the static /assets/ dist. If that
+      // fetch 404s the await would hang, so surface it as a named failure.
+      try {
+        const dec = await createPendantAudioDecoder(codecId);
+        await dec.ready;
+        return dec;
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(`audio decoder failed to load: ${detail}`);
+      }
+    });
+
+    this.audioChar = await this.step("audio-char", () =>
+      audioService.getCharacteristic(OMI_AUDIO_DATA_CHAR_UUID),
+    );
+
+    this.reassembler.reset();
+    this.resetDetector();
+    const audioChar = this.audioChar;
+    audioChar.addEventListener("characteristicvaluechanged", this.onAudioNotify);
+    await this.step("start-notifications", () => audioChar.startNotifications());
+
+    // Battery (best-effort — not all builds expose it; never fatal).
+    await this.step("battery", () => this.subscribeBattery(server));
+
+    this.patch({ codecId });
+  }
+
+  /**
+   * Release everything a partial/failed connect left live — listeners, the GATT
+   * link, the decoder, and refs — WITHOUT touching status or the disconnected
+   * listener (so a retry can re-run cleanly, and the terminal catch can set the
+   * final status). Safe to call more than once.
+   */
+  private partialTeardown(): void {
+    this.audioChar?.removeEventListener("characteristicvaluechanged", this.onAudioNotify);
+    this.batteryChar?.removeEventListener("characteristicvaluechanged", this.onBatteryNotify);
+    try {
+      this.device?.gatt?.disconnect();
+    } catch {
+      /* best-effort */
+    }
+    this.decoder?.free();
+    this.decoder = null;
+    this.audioChar = null;
+    this.batteryChar = null;
+    this.reassembler.reset();
   }
 
   private async readCodec(
@@ -403,7 +525,7 @@ export class PendantConnection {
     this.batteryChar = null;
     this.device = null;
     this.reassembler.reset();
-    this.patch({ status: "idle", batteryPercent: null, codecId: null });
+    this.patch({ status: "idle", connectStep: "idle", batteryPercent: null, codecId: null });
   }
 }
 

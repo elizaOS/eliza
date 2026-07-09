@@ -32,6 +32,7 @@ export interface UsePendantResult {
 
 const INITIAL_STATE: PendantState = {
   status: isWebBluetoothAvailable() ? "idle" : "unsupported",
+  connectStep: "idle",
   deviceName: null,
   batteryPercent: null,
   codecId: null,
