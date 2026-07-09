@@ -19,6 +19,22 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 /** Timeout for health checks (ms) */
 const HEALTH_TIMEOUT_MS = 5_000;
 
+async function readHeadscaleErrorBody(
+  resp: Response,
+  method: string,
+  path: string,
+): Promise<string> {
+  try {
+    return await resp.text();
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow; an unreadable upstream body is part of the failure.
+    throw new Error(
+      `Headscale API ${method} ${path} failed: ${resp.status} ${resp.statusText}; error body could not be read`,
+      { cause: error },
+    );
+  }
+}
+
 /**
  * Pre-auth key TTL window (ms): how long a freshly-created key stays valid for a
  * container to boot AND finish VPN enrollment. 10 min proved too tight on slow
@@ -318,7 +334,7 @@ export class HeadscaleClient {
     const resp = await fetch(url, init);
 
     if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
+      const text = await readHeadscaleErrorBody(resp, method, path);
       // Log raw body at debug level only — don't leak it into error messages
       logger.debug(`[headscale] API error body for ${method} ${path}:`, {
         body: text,

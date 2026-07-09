@@ -1,6 +1,8 @@
 // Exercises headscale client behavior with deterministic cloud-shared lib fixtures.
-import { afterEach, describe, expect, it } from "vitest";
-import { resolvePreAuthTtlMs } from "./headscale-client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HeadscaleClient, resolvePreAuthTtlMs } from "./headscale-client";
+
+const originalFetch = globalThis.fetch;
 
 /**
  * The headscale pre-auth key TTL gates the provisioning-E2E reachable path: the
@@ -33,5 +35,42 @@ describe("resolvePreAuthTtlMs (headscale pre-auth key TTL)", () => {
       process.env.HEADSCALE_PREAUTH_TTL_MIN = bad;
       expect(resolvePreAuthTtlMs()).toBe(60 * 60 * 1000);
     }
+  });
+});
+
+describe("HeadscaleClient upstream errors", () => {
+  beforeEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("preserves unreadable Headscale error bodies as the thrown cause", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      return {
+        ok: false,
+        status: 502,
+        statusText: "Bad Gateway",
+        text: async () => {
+          throw new Error("body stream failed");
+        },
+        headers: new Headers(),
+      } as Response;
+    }) as typeof fetch;
+
+    const client = new HeadscaleClient({
+      apiUrl: "https://headscale.example",
+      apiKey: "secret",
+      user: "1",
+    });
+
+    await expect(client.createPreAuthKey()).rejects.toMatchObject({
+      message:
+        "Headscale API POST /api/v1/preauthkey failed: 502 Bad Gateway; error body could not be read",
+      cause: expect.objectContaining({ message: "body stream failed" }),
+    });
   });
 });
