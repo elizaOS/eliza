@@ -92,7 +92,7 @@ describe("addAppRoute", () => {
     ).rejects.toThrow("add-route failed (500) for abc12345.apps.elizacloud.ai via 127.0.0.1:2019");
   });
 
-  test("logs stale-route delete failure but still POSTs the replacement route", async () => {
+  test("fails before POST when stale-route deletion has a transport failure", async () => {
     const calls: Array<{ url: string; method: string }> = [];
     const fetchImpl: IngressFetch = async (url, init) => {
       calls.push({ url, method: init.method });
@@ -102,14 +102,53 @@ describe("addAppRoute", () => {
       return { ok: true, status: 201, text: async () => "" };
     };
 
-    await addAppRoute({
-      hostname: HOST,
-      hostPort: 28123,
-      adminBase: ADMIN,
-      fetchImpl,
+    await expect(
+      addAppRoute({
+        hostname: HOST,
+        hostPort: 28123,
+        adminBase: ADMIN,
+        fetchImpl,
+      }),
+    ).rejects.toMatchObject({
+      code: "CADDY_ADMIN_MUTATION_FAILED",
+      context: { operation: "replace-route-delete" },
     });
 
+    expect(calls.map((call) => call.method)).toEqual(["DELETE"]);
+  });
+
+  test("fails before POST when Caddy rejects stale-route deletion", async () => {
+    const { calls, fetchImpl } = recordingFetch((_url, method) => ({
+      ok: method !== "DELETE",
+      status: method === "DELETE" ? 403 : 201,
+    }));
+
+    await expect(
+      addAppRoute({ hostname: HOST, hostPort: 28123, adminBase: ADMIN, fetchImpl }),
+    ).rejects.toThrow(
+      "replace-route-delete failed (403) for abc12345.apps.elizacloud.ai via 127.0.0.1:2019",
+    );
+
+    expect(calls.map((call) => call.method)).toEqual(["DELETE"]);
+  });
+
+  test("continues to POST when the stale route is already absent", async () => {
+    const { calls, fetchImpl } = recordingFetch((_url, method) => ({
+      ok: method === "POST",
+      status: method === "DELETE" ? 404 : 201,
+    }));
+
+    await addAppRoute({ hostname: HOST, hostPort: 28123, adminBase: ADMIN, fetchImpl });
+
     expect(calls.map((call) => call.method)).toEqual(["DELETE", "POST"]);
+  });
+
+  test("rejects a malformed admin base before making a request", async () => {
+    const { calls, fetchImpl } = recordingFetch(() => ({ ok: true, status: 200 }));
+    await expect(
+      addAppRoute({ hostname: HOST, hostPort: 28123, adminBase: "not a URL", fetchImpl }),
+    ).rejects.toBeInstanceOf(TypeError);
+    expect(calls).toHaveLength(0);
   });
 });
 
