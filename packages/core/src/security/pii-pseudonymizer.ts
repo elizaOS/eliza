@@ -372,8 +372,12 @@ function escapeRegExp(input: string): string {
  *    cannot drop a real occurrence.
  *
  * Returns `null` when there is nothing to replace.
+ *
+ * Exported for the corpus pseudonym map ({@link ./pii-pseudonym-map}), which
+ * needs the exact same longest-first boundary-aware pass for its corpus-wide
+ * alias substitution. Not part of the security barrel's public API.
  */
-function compileReplacer(
+export function compileReplacer(
 	pairs: { from: string; to: string }[],
 ): { regex: RegExp; map: Map<string, string> } | null {
 	if (pairs.length === 0) return null;
@@ -394,8 +398,12 @@ function compileReplacer(
  * Mint a candidate surrogate for `kind` at a given probe `attempt`. Pure
  * function of `(salt, kind, value, attempt)` so the mapping is deterministic and
  * reproducible; `attempt` is advanced by the caller on a collision.
+ *
+ * Exported for the corpus pseudonym map ({@link ./pii-pseudonym-map}), which
+ * extends this per-session minting to a corpus-persistent map keyed by entity
+ * cluster (#14805). Not part of the security barrel's public API.
  */
-function mintSurrogate(
+export function mintSurrogate(
 	salt: string,
 	kind: string,
 	value: string,
