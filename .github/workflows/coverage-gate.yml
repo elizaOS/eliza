@@ -1,11 +1,10 @@
 name: coverage-gate
 
 # SOC2 CC4.1 — track unit-test coverage on changed files. ENFORCED (issue #9943):
-# a PR that changes a source file AND a Bun-native test which exercises it at
-# below the line-coverage floor fails this gate. Source-only / docs-only / no-Bun-
-# test PRs are not gated (the changed file simply never appears in the lcov, so
-# there is nothing to fail). This bounds the blast radius to genuinely
-# under-tested changes.
+# a PR that changes source under packages/plugins/apps must change at least one
+# unit test that can emit coverage, and changed source files that appear in LCOV
+# must clear the line-coverage floor. Docs-only and test-only PRs do not spend
+# coverage time.
 #
 # The per-package coverage floors live in the shared base vitest config
 # (packages/test/vitest/default.config.ts, sourced from coverage-policy.mjs) and
@@ -16,7 +15,7 @@ name: coverage-gate
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
       - "packages/**"
       - "plugins/**"
@@ -51,9 +50,9 @@ jobs:
           {
             echo 'files<<EOF'
             git diff --name-only "$BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
-              | grep -vE '(^|/)(__tests__|test|tests)/' || true
+              | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$' || true
             echo 'EOF'
-            echo 'tests<<EOF'
+            echo 'bun_tests<<EOF'
             git diff --name-only "$BASE" "$HEAD" -- \
               '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
               '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
@@ -63,19 +62,38 @@ jobs:
                     *.e2e.test.*|*.live.test.*) continue ;;
                   esac
                   if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
-                    echo "Skipping Vitest-only test in Bun coverage gate: $file" >&2
                     continue
                   fi
                   echo "$file"
                 done
             echo 'EOF'
+            echo 'vitest_tests<<EOF'
+            git diff --name-only "$BASE" "$HEAD" -- \
+              '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
+              '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
+              | while IFS= read -r file; do
+                  [ -f "$file" ] || continue
+                  case "$file" in
+                    *.e2e.test.*|*.live.test.*) continue ;;
+                  esac
+                  if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
+                    echo "$file"
+                  fi
+                done
+            echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Require changed tests for changed source
+        if: steps.changed.outputs.files != '' && steps.changed.outputs.bun_tests == '' && steps.changed.outputs.vitest_tests == ''
+        run: |
+          echo "Changed source files require at least one changed Bun or Vitest unit test:"
+          printf '%s\n' "${{ steps.changed.outputs.files }}"
+          exit 1
+
       - name: Setup Bun workspace
-        if: steps.changed.outputs.tests != ''
+        if: steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != ''
         # Keep dependency setup behind the changed-test check so docs-only and
-        # no-Bun-test PRs spend no CI time and are never gated (the gate only runs
-        # when a changed Bun-native test exists).
+        # test-free source PRs either skip or fail before spending setup time.
         uses: ./.github/actions/setup-bun-workspace
         with:
           install-native-deps: "false"
@@ -83,33 +101,47 @@ jobs:
           setup-python: "false"
 
       - name: Run changed Bun tests with coverage
-        if: steps.changed.outputs.tests != ''
+        if: steps.changed.outputs.bun_tests != ''
         run: |
           cat > "$RUNNER_TEMP/changed-tests.txt" <<'EOF'
-          ${{ steps.changed.outputs.tests }}
+          ${{ steps.changed.outputs.bun_tests }}
           EOF
           mapfile -t changed_tests < <(grep -v '^$' "$RUNNER_TEMP/changed-tests.txt" || true)
           if [ "${#changed_tests[@]}" -eq 0 ]; then
             echo "no changed Bun-native test files; skipping coverage run"
             exit 0
           fi
-          bun test "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage
+          bun test "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun
         env:
           # Tests must produce coverage/lcov.info. If a package emits to a
           # different path, surface it here.
-          BUN_COVERAGE_DIR: coverage
+          BUN_COVERAGE_DIR: coverage/bun
+
+      - name: Run changed Vitest tests with coverage
+        if: steps.changed.outputs.vitest_tests != ''
+        run: |
+          cat > "$RUNNER_TEMP/changed-vitest-tests.txt" <<'EOF'
+          ${{ steps.changed.outputs.vitest_tests }}
+          EOF
+          mapfile -t changed_tests < <(grep -v '^$' "$RUNNER_TEMP/changed-vitest-tests.txt" || true)
+          if [ "${#changed_tests[@]}" -eq 0 ]; then
+            echo "no changed Vitest test files; skipping coverage run"
+            exit 0
+          fi
+          bunx vitest run "${changed_tests[@]}" --coverage --coverage.reporter=lcov --coverage.reportsDirectory=coverage/vitest
 
       - name: Apply coverage gate (enforced)
-        if: steps.changed.outputs.tests != ''
+        if: steps.changed.outputs.files != '' && (steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != '')
         env:
           COVERAGE_GATE_ENFORCE: "1"   # enforced (issue #9943)
         run: |
-          if [ ! -f coverage/lcov.info ]; then
-            echo "no coverage/lcov.info produced; skipping gate"
-            exit 0
+          mapfile -t lcov_files < <(find coverage -name lcov.info -type f | sort)
+          if [ "${#lcov_files[@]}" -eq 0 ]; then
+            echo "changed tests ran but no coverage/lcov.info files were produced"
+            exit 1
           fi
           awk \
             -v changed="${{ steps.changed.outputs.files }}" \
             -v threshold=50 \
             -f scripts/security/coverage-gate.awk \
-            coverage/lcov.info
+            "${lcov_files[@]}"

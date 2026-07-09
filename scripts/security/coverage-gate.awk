@@ -3,7 +3,7 @@
 # Parses LCOV output and computes per-file line coverage. Compares against a
 # changed-files list and prints a summary. Exit code is non-zero only when
 # enforcement is enabled (COVERAGE_GATE_ENFORCE=1) and any changed file is
-# below the threshold (default 70%).
+# missing from the LCOV report or below the threshold (default 70%).
 #
 # Usage:
 #   awk -v changed="$CHANGED_FILES" -v threshold=70 \
@@ -57,7 +57,11 @@ BEGIN {
 
 END {
   if (changed_count == 0) {
-    print "no changed files matched the LCOV report (nothing to gate)"
+    print "no changed files matched the LCOV report"
+    if (changed != "" && ENVIRON["COVERAGE_GATE_ENFORCE"] == "1") {
+      print "coverage gate FAILED (changed source missing from LCOV)"
+      exit 1
+    }
     exit 0
   }
   avg = changed_sum / changed_count
