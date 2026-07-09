@@ -1,50 +1,48 @@
 /**
- * Pendant insights — the client transport.
+ * Cancellable browser transport for the tenant-scoped pendant insight route.
  *
- * Thin, cancellable wrapper over `POST /api/pendant/insights`. Kept separate from
- * the scheduler so the scheduler can be tested with a fake client (no fetch) and
- * so a future non-HTTP adapter (e.g. an in-process runtime call on native) can
- * satisfy the same {@link InsightsClient} interface without touching scheduling.
+ * Request and response boundaries are schema-validated. Transport, body-read,
+ * JSON, and schema failures remain explicit so malformed model/server output can
+ * never masquerade as a healthy empty rollup.
  */
 
 import {
   type PendantInsightSegmentInput,
   type PendantInsights,
+  type PendantInsightsProvenance,
   PostPendantInsightsResponseSchema,
 } from "@elizaos/shared";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils/asset-url";
 
-/** A skip is a legitimate "nothing to generate", not a failure to retry. */
 export type InsightsClientResult =
-  | { ok: true; insights: PendantInsights }
+  | {
+      ok: true;
+      insights: PendantInsights;
+      provenance: PendantInsightsProvenance;
+    }
   | { ok: false; skipped: true; reason: string }
   | { ok: false; skipped: false; error: string };
 
 export interface RequestInsightsInput {
+  sessionId: string;
   segments: PendantInsightSegmentInput[];
   priorSummary?: string;
   maxTranscriptChars?: number;
-  /** Cancels the in-flight request (e.g. on pendant disconnect). */
   signal?: AbortSignal;
 }
 
-/**
- * The adapter interface the scheduler depends on. Implement this to back the
- * scheduler with something other than the default HTTP route (tests, native).
- */
 export interface InsightsClient {
   requestInsights(input: RequestInsightsInput): Promise<InsightsClientResult>;
 }
 
-/** Default HTTP-backed client against the agent route. */
 export class HttpInsightsClient implements InsightsClient {
   async requestInsights(
     input: RequestInsightsInput,
   ): Promise<InsightsClientResult> {
-    let res: Response;
+    let response: Response;
     try {
-      res = await fetchWithCsrf(resolveApiUrl("/api/pendant/insights"), {
+      response = await fetchWithCsrf(resolveApiUrl("/api/pendant/insights"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -52,6 +50,7 @@ export class HttpInsightsClient implements InsightsClient {
         },
         body: JSON.stringify({
           enabled: true,
+          sessionId: input.sessionId,
           segments: input.segments,
           ...(input.priorSummary ? { priorSummary: input.priorSummary } : {}),
           ...(input.maxTranscriptChars
@@ -61,7 +60,7 @@ export class HttpInsightsClient implements InsightsClient {
         signal: input.signal,
       });
     } catch (err) {
-      // Aborted fetch surfaces as an AbortError — a cancellation, not a failure.
+      // error-policy:J1 fetch boundary distinguishes user cancellation from a transport failure.
       if (input.signal?.aborted || (err as Error)?.name === "AbortError") {
         return { ok: false, skipped: true, reason: "cancelled" };
       }
@@ -72,16 +71,36 @@ export class HttpInsightsClient implements InsightsClient {
       };
     }
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
+    let bodyText: string;
+    try {
+      bodyText = await response.text();
+    } catch (err) {
+      // error-policy:J1 response boundary surfaces an unreadable body as failure.
       return {
         ok: false,
         skipped: false,
-        error: `insights ${res.status}: ${body.slice(0, 200)}`,
+        error: `failed to read insights response: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        skipped: false,
+        error: `insights ${response.status}: ${bodyText.slice(0, 200)}`,
       };
     }
 
-    const raw = await res.json().catch(() => null);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(bodyText);
+    } catch (err) {
+      // error-policy:J3 server JSON is untrusted input and malformed data is an explicit invalid result.
+      return {
+        ok: false,
+        skipped: false,
+        error: `invalid pendant insights JSON: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
     const parsed = PostPendantInsightsResponseSchema.safeParse(raw);
     if (!parsed.success) {
       return {
@@ -95,6 +114,10 @@ export class HttpInsightsClient implements InsightsClient {
     if (!parsed.data.ok) {
       return { ok: false, skipped: true, reason: parsed.data.reason };
     }
-    return { ok: true, insights: parsed.data.insights };
+    return {
+      ok: true,
+      insights: parsed.data.insights,
+      provenance: parsed.data.provenance,
+    };
   }
 }

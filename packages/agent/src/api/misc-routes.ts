@@ -20,6 +20,7 @@ import {
   isLocalCodeExecutionAllowed,
   logger,
   ModelType,
+  type UUID,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {

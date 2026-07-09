@@ -22,9 +22,15 @@ import {
 export interface InsightSourceSegment {
   /** Stable segment id (see {@link makePendantSegmentId}). */
   id: string;
+  /** Canonical server-authoritative session owning this segment. */
+  sessionId: string;
   /** Ordinal within the session (for range + deterministic id derivation). */
   ordinal: number;
+  /** Session-sync revision for late ASR/diarization patches. */
+  revision?: number;
   text: string;
+  /** Anonymous/session-local speaker cluster id. Null means unknown. */
+  speakerId?: string | null;
   speakerLabel?: string;
   /** Epoch ms this segment was captured (0/undefined if unknown). */
   atMs?: number;
@@ -210,13 +216,17 @@ export function makeSourceSegment(args: {
   sessionId: string;
   ordinal: number;
   text: string;
+  speakerId?: string | null;
   speakerLabel?: string;
   atMs?: number;
 }): InsightSourceSegment {
   return {
     id: makePendantSegmentId(args.sessionId, args.ordinal, args.text),
+    sessionId: args.sessionId,
     ordinal: args.ordinal,
+    revision: 0,
     text: args.text,
+    ...(args.speakerId !== undefined ? { speakerId: args.speakerId } : {}),
     ...(args.speakerLabel ? { speakerLabel: args.speakerLabel } : {}),
     ...(args.atMs ? { atMs: args.atMs } : {}),
   };

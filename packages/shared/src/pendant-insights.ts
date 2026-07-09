@@ -10,10 +10,9 @@
  * is defined exactly once and the producer/consumer cannot drift.
  *
  * Design notes:
- * - Insights REFERENCE transcript segments by their stable {@link
- *   import("./transcripts.js").TranscriptSegment.id}, never by index, so a rollup
- *   stays valid as new segments append. `sourceSegmentIds` on each item is the
- *   evidence link back into the transcript.
+ * - Insights reference canonical session-sync segment ids, never text hashes or
+ *   array indexes. A late ASR/diarization revision therefore patches the same
+ *   source identity instead of orphaning an earlier insight citation.
  * - The wire schema is VERSIONED (`schemaVersion`). Parsers accept current v1
  *   records plus unversioned v1 records written before the discriminator was
  *   added, and fail closed (drop, not crash) on unknown explicit versions.
@@ -39,18 +38,19 @@ export const INSIGHT_CONFIDENCE_MAX = 1;
 // ---------------------------------------------------------------------------
 
 /**
- * Prefix for pendant-derived segment IDs. Segment IDs are the join key between a
- * transcript segment and every insight that cites it, so they MUST be stable and
- * deterministic for a given (session, ordinal, text) — a re-run over the same
- * accumulated audio yields identical IDs, which makes dedupe + backward-compatible
- * merges possible.
+ * Prefix retained for callers that recognize pendant-derived ids. Canonical ids
+ * are emitted by session-sync as `<sessionId>:segment:<ordinal>`.
  */
 export const PENDANT_SEGMENT_ID_PREFIX = "pseg";
 
+/** Prompt-safe subset used by generated session-sync ids (`session_<uuid>`). */
+export const PENDANT_SAFE_SESSION_ID_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9._:-]{0,239}$/;
+
 /**
- * Deterministic FNV-1a 32-bit hash (browser- + node-safe, no crypto dep). Used to
- * fold segment text into the segment id so two segments with the same ordinal but
- * different text never collide, while identical content re-hashes identically.
+ * Deterministic FNV-1a 32-bit hash (browser- + node-safe, no crypto dep). The
+ * scheduler uses it only for recent normalized-text dedupe; canonical segment
+ * identity deliberately does not depend on mutable transcript text.
  */
 export function fnv1a32(input: string): string {
   let hash = 0x811c9dc5;
@@ -64,30 +64,40 @@ export function fnv1a32(input: string): string {
 }
 
 /**
- * Build a deterministic, collision-resistant segment id from a session id, the
- * segment's ordinal within that session, and its text. Same inputs → same id, so
- * insight `sourceSegmentIds` stay valid across regenerations over the same window.
+ * Build the canonical session-sync segment id from session id + ordinal. Text is
+ * deliberately not part of the identity: ASR and diarization revisions patch a
+ * segment in place and all insight provenance must remain attached to it.
  *
- * Shape: `pseg_<session-label>_<session-hash>_<ordinal>_<text-hash>`.
- * The session hash prevents sanitized/truncated labels from colliding.
+ * The optional text argument is accepted for source compatibility with the
+ * Phase-2 prototype, but no longer affects identity.
  */
 export function makePendantSegmentId(
   sessionId: string,
   ordinal: number,
-  text: string,
+  _text?: string,
 ): string {
-  const safeSession =
-    sessionId.replace(/[^A-Za-z0-9]+/g, "").slice(0, 24) || "session";
+  if (!PENDANT_SAFE_SESSION_ID_PATTERN.test(sessionId)) {
+    throw new TypeError("pendant session id must be prompt-safe");
+  }
   const safeOrdinal = Math.max(0, Math.floor(ordinal));
-  return `${PENDANT_SEGMENT_ID_PREFIX}_${safeSession}_${fnv1a32(sessionId)}_${safeOrdinal}_${fnv1a32(text)}`;
+  return `${sessionId}:segment:${safeOrdinal}`;
 }
 
-/** True only for the deterministic pendant segment-id wire shape. */
+/** True only for the canonical session-sync segment-id wire shape. */
 export function isPendantSegmentId(value: unknown): value is string {
   return (
     typeof value === "string" &&
-    /^pseg_[A-Za-z0-9]{1,24}_[0-9a-f]{8}_\d+_[0-9a-f]{8}$/.test(value)
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,239}:segment:(0|[1-9]\d*)$/.test(value)
   );
+}
+
+/** Verify that a segment id is canonical for one exact session + ordinal. */
+export function isPendantSegmentIdFor(
+  value: unknown,
+  sessionId: string,
+  ordinal: number,
+): value is string {
+  return value === makePendantSegmentId(sessionId, ordinal);
 }
 
 // ---------------------------------------------------------------------------

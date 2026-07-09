@@ -92,7 +92,11 @@ export {
   type RequestInsightsInput,
 } from "./insights-client";
 export {
+  type InsightsFreshness,
   type InsightsSchedulerOptions,
+  type InsightsSchedulerSegmentInput,
+  type InsightsSchedulerState,
+  type InsightsSchedulerStatus,
   normalizeForDedupe,
   PendantInsightsScheduler,
 } from "./insights-scheduler";
