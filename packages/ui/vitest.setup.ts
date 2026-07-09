@@ -44,6 +44,36 @@ if (typeof Element !== "undefined") {
   }
 }
 
+// Real browsers stamp events on the same monotonic clock `performance.now()`
+// reads (a DOMHighResTimeStamp relative to timeOrigin); jsdom stamps them with
+// epoch wall-clock milliseconds from its own internal clock instead. Gesture
+// code measures velocity from `event.timeStamp` (use-pull-gesture's eventTime
+// prefers it over a handler-dispatch `performance.now()`, which real devices
+// can delay), so under unbridged jsdom a test cannot slow a drag down by
+// mocking `performance.now` — the epoch stamps make every synchronous pointer
+// sequence read as a millisecond-long flick. Bridge the clocks: an Event's
+// timeStamp is captured from `performance.now()` (mocked or real) on first
+// read — which for dispatched events is inside the handler, i.e. dispatch
+// time — then memoized so one event keeps one stable timestamp. A clock
+// mocked to exactly 0 maps to the smallest positive double: react-dom's
+// synthetic-event layer replaces a falsy native timeStamp with the epoch
+// `Date.now()` (`event.timeStamp || Date.now()`), which would re-poison the
+// bridged clock; the subnormal is truthy yet arithmetically identical to 0.
+if (typeof Event !== "undefined") {
+  const eventTimeStamps = new WeakMap<Event, number>();
+  Object.defineProperty(Event.prototype, "timeStamp", {
+    configurable: true,
+    get(this: Event): number {
+      let stamp = eventTimeStamps.get(this);
+      if (stamp === undefined) {
+        stamp = performance.now() || Number.MIN_VALUE;
+        eventTimeStamps.set(this, stamp);
+      }
+      return stamp;
+    },
+  });
+}
+
 // Node ≥25 ships a Web Storage `localStorage`/`sessionStorage` global that is
 // non-functional without `--localstorage-file` (its methods are missing) and
 // SHADOWS jsdom's Storage — even `window.localStorage` resolves to it here, so

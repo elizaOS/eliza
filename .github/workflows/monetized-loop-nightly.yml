@@ -131,7 +131,20 @@ jobs:
           )"
           rc=$?
           set -e
-          if [ "$rc" -ne 0 ] || [ "$status_code" = "401" ] || [ "$status_code" = "403" ] || [ -z "$status_code" ]; then
+          if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Cloud API rejected CLOUD_E2E_API_KEY with HTTP $status_code; refresh the ci-hetzner-e2e environment secret."
+            {
+              echo "### Monetized loop nightly blocked by rejected Cloud API credential"
+              echo ""
+              echo "Cloud API rejected \`CLOUD_E2E_API_KEY\` with HTTP \`$status_code\` before the real-Hetzner monetized loop."
+              echo ""
+              echo "Refresh \`CLOUD_E2E_API_KEY\` / \`ELIZACLOUD_API_KEY\` in the \`ci-hetzner-e2e\` environment, or check the staging API-key lookup path."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          if [ "$rc" -ne 0 ] || [ -z "$status_code" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Cloud API auth preflight failed (rc=$rc status=$status_code); skipping monetized-loop nightly."
             {
@@ -146,7 +159,30 @@ jobs:
             fi
             exit 0
           fi
-          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+          if [ "${status_code#5}" != "$status_code" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Cloud API auth preflight returned HTTP $status_code; skipping monetized-loop nightly before provisioning."
+            {
+              echo "### Monetized loop nightly skipped"
+              echo ""
+              echo "Cloud API auth preflight against \`$MONETIZED_LOOP_BASE_URL\` returned HTTP \`$status_code\` before provisioning Hetzner capacity."
+              echo ""
+              echo "Check staging Cloud API availability before re-running."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [ "${status_code#2}" != "$status_code" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::error::Unexpected Cloud API auth preflight response: status=$status_code"
+          exit 1
 
       - name: Run monetized full loop + example-apps showcase (real Hetzner)
         if: steps.secret_config.outputs.configured == 'true' && steps.cloud_auth.outputs.ready == 'true'

@@ -455,6 +455,58 @@ function readIosDefaultsString(udid, domain, key) {
   return null;
 }
 
+function readIosFullBunSmokeDiagnostics(udid, domain) {
+  const dataContainer = tryExec(
+    "xcrun",
+    ["simctl", "get_app_container", udid, domain, "data"],
+    { allowFailure: true },
+  );
+  const plist = dataContainer
+    ? path.join(dataContainer, "Library", "Preferences", `${domain}.plist`)
+    : null;
+  let plistData = null;
+  if (plist && fs.existsSync(plist)) {
+    const json = tryExec("plutil", ["-convert", "json", "-o", "-", plist], {
+      allowFailure: true,
+    });
+    if (json) {
+      try {
+        plistData = JSON.parse(json);
+      } catch {
+        plistData = null;
+      }
+    }
+  }
+  const keys = [
+    IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+    IOS_FULL_BUN_SMOKE_RESULT_KEY,
+    IOS_FULL_BUN_PREWARM_RESULT_KEY,
+  ].map((key) => {
+    const nativeKey = `CapacitorStorage.${key}`;
+    const plistValue = plistData?.[nativeKey];
+    return [
+      key,
+      {
+        nativeKey,
+        plistValue: typeof plistValue === "string" ? plistValue : null,
+        defaultsValue: tryExec(
+          "xcrun",
+          ["simctl", "spawn", udid, "defaults", "read", domain, nativeKey],
+          { allowFailure: true },
+        ),
+      },
+    ];
+  });
+  return {
+    udid,
+    domain,
+    dataContainer: dataContainer || null,
+    plist,
+    plistExists: Boolean(plist && fs.existsSync(plist)),
+    keys: Object.fromEntries(keys),
+  };
+}
+
 function deleteIosDefaultsKey(udid, domain, key) {
   const dataContainer = tryExec(
     "xcrun",
@@ -640,8 +692,20 @@ function preseedIosFullBunSmoke(udid, id) {
   );
   writeIosDefaultsString(udid, id, IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
   flushIosPreferencesCache(udid);
+  const diagnostics = readIosFullBunSmokeDiagnostics(udid, id);
+  const requestReadback =
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_REQUEST_KEY]?.defaultsValue ??
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_REQUEST_KEY]?.plistValue;
+  const resultReadback =
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_RESULT_KEY]?.defaultsValue ??
+    diagnostics.keys[IOS_FULL_BUN_SMOKE_RESULT_KEY]?.plistValue;
+  if (requestReadback !== "1" || !resultReadback) {
+    throw new Error(
+      `iOS full Bun smoke preseed was not readable from native defaults: ${JSON.stringify(diagnostics)}`,
+    );
+  }
   console.log(
-    `[local-chat-smoke] Requested in-app iOS full Bun backend smoke for ${id}.`,
+    `[local-chat-smoke] Requested in-app iOS full Bun backend smoke for ${id}; native defaults readback succeeded.`,
   );
 }
 
@@ -1533,8 +1597,9 @@ async function verifyIosFullBunSmoke(context) {
   }
 
   const screenshot = takeIosScreenshot(context.udid, "ios-full-bun-timeout");
+  const diagnostics = readIosFullBunSmokeDiagnostics(context.udid, id);
   throw new Error(
-    `iOS full Bun smoke did not complete in time. Last result: ${lastRaw || "<none>"}${screenshot ? ` Screenshot: ${screenshot}` : ""}`,
+    `iOS full Bun smoke did not complete in time. Last result: ${lastRaw || "<none>"} Diagnostics: ${JSON.stringify(diagnostics)}${screenshot ? ` Screenshot: ${screenshot}` : ""}`,
   );
 }
 

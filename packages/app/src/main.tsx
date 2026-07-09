@@ -1704,9 +1704,13 @@ async function withIosFullBunSmokeTimeout<T>(
 async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   if (iosFullBunSmokeStarted) return true;
   let requested = false;
+  let requestSource: "localStorage" | "preferences" | null = null;
   try {
     requested =
       window.localStorage.getItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY) === "1";
+    if (requested) {
+      requestSource = "localStorage";
+    }
   } catch {
     // error-policy:J3 unavailable storage reads as "not requested"; the
     // Preferences read below still serves the simulator harness
@@ -1716,6 +1720,9 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     if (!requested) {
       requested =
         (await boundedPreferenceGet(IOS_FULL_BUN_SMOKE_REQUEST_KEY)) === "1";
+      if (requested) {
+        requestSource = "preferences";
+      }
     }
   } catch {
     // error-policy:J4 Preferences unavailable — keep the localStorage
@@ -1741,6 +1748,11 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   await writeIosFullBunSmokeResult({
     ok: false,
     phase: "running",
+    step: "request-observed",
+    requestSource,
+    location: window.location.href,
+    hasNativeRequest:
+      typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function",
     startedAt: new Date().toISOString(),
   });
 

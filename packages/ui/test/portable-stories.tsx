@@ -16,7 +16,15 @@
 import { composeStories } from "@storybook/react";
 import { cleanup, render } from "@testing-library/react";
 import type { ComponentType, ReactElement, ReactNode } from "react";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { TooltipProvider } from "../src/components/ui/tooltip";
 
 /** Polyfill the jsdom gaps that recharts / embla / Radix touch on mount. */
@@ -81,7 +89,21 @@ export function smokeStoryModules(
     ((node: ReactNode) => <TooltipProvider>{node}</TooltipProvider>);
   const skip = new Set(options.skip ?? []);
 
-  beforeAll(installJsdomUiPolyfills);
+  beforeAll(() => {
+    installJsdomUiPolyfills();
+    // This smoke is offline (no backend behind jsdom), but components still
+    // fire real on-mount fetches whose socket errors settle on the network's
+    // schedule — on a loaded CI worker that can be AFTER vitest tore down the
+    // file's jsdom environment, where the late setState makes react-dom read
+    // the deleted `window` and the file fails with an unhandled
+    // "window is not defined" rejection. Keep every request forever-pending
+    // instead: components render their designed loading state and no
+    // settlement can ever fire after unmount/teardown.
+    vi.stubGlobal("fetch", () => new Promise<Response>(() => {}));
+  });
+  afterAll(() => {
+    vi.unstubAllGlobals();
+  });
   afterEach(cleanup);
 
   const entries = Object.entries(modules);

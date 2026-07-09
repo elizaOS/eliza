@@ -2804,7 +2804,14 @@ export class ElizaSandboxService {
       );
     }
     // Parse envelope; cloud-agent returns valid JSON-RPC on both 200 and 500.
-    const body = (await res.json().catch(() => null)) as {
+    const body = (await res.json().catch((error) => {
+      logger.warn("[agent-sandbox] Failed to parse native bridge JSON-RPC body", {
+        agentId: rec.id,
+        status: res.status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    })) as {
       jsonrpc?: string;
       id?: unknown;
       result?: { text?: string };

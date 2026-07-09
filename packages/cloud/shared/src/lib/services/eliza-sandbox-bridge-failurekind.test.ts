@@ -13,8 +13,9 @@
  * fabricated generic fallback. Real ladder methods; only the sandbox-side HTTP
  * boundary (fetch) is stubbed.
  */
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
+import { logger } from "../utils/logger";
 import { ElizaSandboxService } from "./eliza-sandbox";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox-bridge";
 import { ElizaSandboxBridgeService } from "./eliza-sandbox-bridge";
@@ -136,6 +137,43 @@ describe("ElizaSandboxService native bridge failureKind propagation", () => {
     expect(response.result?.transport).toBe("native-jsonrpc");
     expect(response.result?.fallback).toBeUndefined();
     expect(paths).toEqual(["/bridge"]);
+  });
+
+  test("malformed native JSON-RPC body is logged before the ladder falls through", async () => {
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    const paths: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const path = new URL(url).pathname;
+      paths.push(path);
+      if (path === "/bridge") {
+        return {
+          status: 502,
+          json: async () => {
+            throw new Error("invalid json");
+          },
+        } as Response;
+      }
+      return new Response("not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const response = await makeHostServiceSender().bridgeMessageSend(rec, rpc);
+
+      expect(response.result?.fallback).toBe(true);
+      expect(response.result?.transport).toBe("fallback");
+      expect(paths).toContain("/bridge");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[agent-sandbox] Failed to parse native bridge JSON-RPC body",
+        expect.objectContaining({
+          agentId: "sandbox-1",
+          status: 502,
+          error: "invalid json",
+        }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 

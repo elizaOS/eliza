@@ -424,6 +424,16 @@ describe("App wallpaper-grant invariant — manifest gates the wallpaper (#13452
       "requestAnimationFrame",
       vi.fn(() => 1),
     );
+    // No backend serves this suite, yet mounted pages (e.g. AutomationsFeed)
+    // fire real on-mount fetches; their socket errors can settle after vitest
+    // tears down the file's jsdom environment, where the late setState makes
+    // react-dom read the deleted `window` (unhandled teardown rejection on
+    // loaded CI workers). Forever-pending requests keep every page in its
+    // designed loading state with nothing left to settle after teardown.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
     window.history.replaceState(null, "", "/views");
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     window.addEventListener("error", swallow);
