@@ -192,6 +192,7 @@ import { runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
+import { isIosCloudOnboardingComplete } from "./ios-cloud-onboarding-smoke-result";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -1201,12 +1202,13 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
     );
 
     await writeIosCloudOnboardingSmokeResult({
-      ok:
-        Boolean(home) &&
-        Boolean(composer) &&
-        onboardingHidden &&
-        cloudActiveServer &&
-        firstRunPostCount === 1,
+      ok: isIosCloudOnboardingComplete({
+        homeVisible: Boolean(home),
+        composerVisible: Boolean(composer),
+        onboardingHidden,
+        cloudActiveServer,
+        firstRunPostCount,
+      }),
       phase: "complete",
       mode: request.mode,
       finishedAt: new Date().toISOString(),

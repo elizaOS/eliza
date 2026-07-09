@@ -2,8 +2,7 @@
  * Verifies the generated Android cloud activity preserves native guards that
  * are required after local-runtime sources are stripped from the build.
  */
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, expect, it } from "vitest";
 import { cloudSafeMainActivityJava } from "./run-mobile-build.mjs";
 
 describe("cloudSafeMainActivityJava", () => {
@@ -16,7 +15,7 @@ describe("cloudSafeMainActivityJava", () => {
       "getBridge().registerPlugin(SafePushNotificationsPlugin.class);",
     );
 
-    assert.ok(bridgeCreation >= 0);
-    assert.ok(safeRegistration > bridgeCreation);
+    expect(bridgeCreation).toBeGreaterThanOrEqual(0);
+    expect(safeRegistration).toBeGreaterThan(bridgeCreation);
   });
 });
