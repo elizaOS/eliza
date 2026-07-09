@@ -11,6 +11,7 @@
  * scaffolding, no shared network, no NET_ADMIN.
  */
 
+import { logger } from "../utils/logger";
 import {
   ambassadorName,
   buildEnsureAmbassadorCmds,
@@ -69,6 +70,10 @@ export interface ProvisionedAppContainer {
 function defaultExtractContainerId(stdout: string): string {
   const last = stdout.trim().split("\n").pop()?.trim() ?? "";
   return last;
+}
+
+function describeAppContainerError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -133,7 +138,15 @@ export class AppContainerProvider {
     // `docker ps` probe is best-effort — on failure we fall back to the blind
     // pick (no worse than before). Re-pick a few times if the first collides.
     const usedPorts = parseUsedHostPorts(
-      await this.deps.ssh.exec("docker ps --format '{{.Ports}}'").catch(() => ""),
+      await this.deps.ssh.exec("docker ps --format '{{.Ports}}'").catch((error) => {
+        // error-policy:J4 explicit user-facing degrade; provisioning can still attempt the allocated port, but route-discovery failure must be observable.
+        logger.warn("[AppContainerProvider] Failed to read published host ports", {
+          appId: params.appId,
+          containerName: params.containerName,
+          error: describeAppContainerError(error),
+        });
+        return "";
+      }),
     );
     let hostPort = await this.deps.allocateHostPort();
     for (let attempt = 0; attempt < 20 && usedPorts.has(hostPort); attempt++) {
@@ -153,9 +166,14 @@ export class AppContainerProvider {
     // create --name` fail with 'name already in use'. Remove it first (no-op when
     // absent). Mirrors `executeContainerUpgrade`/`provider.delete`; self-heals
     // regardless of which deploy route enqueued this provision.
-    await this.deps.ssh
-      .exec(`docker rm -f ${shellQuote(params.containerName)}`)
-      .catch(() => undefined);
+    await this.deps.ssh.exec(`docker rm -f ${shellQuote(params.containerName)}`).catch((error) => {
+      // error-policy:J6 best-effort teardown; a missing/stale container must not block the replacement create, but failed cleanup stays visible.
+      logger.warn("[AppContainerProvider] Failed to remove stale app container before create", {
+        appId: params.appId,
+        containerName: params.containerName,
+        error: describeAppContainerError(error),
+      });
+    });
 
     const stdout = await this.deps.ssh.exec(createCmd);
     const containerId = (this.deps.extractContainerId ?? defaultExtractContainerId)(stdout);
