@@ -325,10 +325,10 @@ async function main() {
     );
   }
 
+  const minIssues = parseNonNegativeInteger(args.minIssues, "--min-issues");
   const issues = args.issuesJson
     ? readJson(args.issuesJson)
     : fetchOpenProjectIssues(args.repo, args.projectOwner, args.projectNumber);
-  const minIssues = parseNonNegativeInteger(args.minIssues, "--min-issues");
   const projectPayload = args.projectJson
     ? readJson(args.projectJson)
     : args.issuesOnly
