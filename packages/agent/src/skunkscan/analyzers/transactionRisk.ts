@@ -69,9 +69,11 @@ export function analyzeWalletTransactionRisk(
 
   return {
     assessmentType: "wallet_context",
-    score,
+    rawScore: score,
+    maxScore: 100,
     level,
     displayScore: `${(score / 10).toFixed(1)} / 10`,
+    maxDisplayScore: 10,
     recommendation,
     reasons,
     limitations,
