@@ -96,6 +96,41 @@ describe("MVP board readiness audit", () => {
     );
   });
 
+  test("issues-only mode skips project violations but keeps blocker violations", () => {
+    const report = board.auditMvpBoardReadiness(
+      [issue(14351, ["mvp", "needs-shaw"]), issue(14749, ["mvp"])],
+      { items: [] },
+      { projectCheckSkipped: true },
+    );
+
+    expect(report.ok).toBe(false);
+    expect(report.projectCheckSkipped).toBe(true);
+    expect(report.violations).toEqual([
+      expect.objectContaining({
+        type: "missing-blocker-label",
+        number: 14749,
+      }),
+    ]);
+    expect(
+      report.violations.some(
+        (violation: { type: string }) =>
+          violation.type === "missing-project-item",
+      ),
+    ).toBe(false);
+  });
+
+  test("issues-only mode passes when all open MVP issues have blockers", () => {
+    const report = board.auditMvpBoardReadiness(
+      [issue(14351, ["mvp", "needs-shaw"])],
+      { items: [] },
+      { projectCheckSkipped: true },
+    );
+
+    expect(report.ok).toBe(true);
+    expect(report.projectCheckSkipped).toBe(true);
+    expect(report.rows[0].projectCheckSkipped).toBe(true);
+  });
+
   test("does not match project items from a different repository by number", () => {
     const report = board.auditMvpBoardReadiness(
       [issue(14747, ["mvp", "needs-shaw"])],

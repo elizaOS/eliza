@@ -25,6 +25,7 @@ function usage() {
 
 Options:
   --json          Print machine-readable report.
+  --issues-only   Skip Project status lookup and check only open MVP blocker labels.
   --no-fail      Exit 0 even when violations are found.`;
 }
 
@@ -35,11 +36,14 @@ function parseArgs(argv) {
     projectNumber: DEFAULT_PROJECT_NUMBER,
     json: false,
     fail: true,
+    issuesOnly: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") {
       out.json = true;
+    } else if (arg === "--issues-only") {
+      out.issuesOnly = true;
     } else if (arg === "--no-fail") {
       out.fail = false;
     } else if (arg === "--help" || arg === "-h") {
@@ -167,6 +171,7 @@ function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
 }
 
 export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
+  const projectCheckSkipped = options.projectCheckSkipped ?? false;
   const projectItems = normalizeProjectItems(
     projectPayload,
     options.repo ?? DEFAULT_REPO,
@@ -186,6 +191,7 @@ export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
       labels,
       blockerLabels,
       projectStatus: status,
+      projectCheckSkipped,
     };
     rows.push(row);
 
@@ -196,6 +202,10 @@ export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
         title: issue.title,
         message: `#${issue.number} is open+mvp but has neither needs-human nor needs-shaw`,
       });
+    }
+
+    if (projectCheckSkipped) {
+      continue;
     }
 
     if (!projectItem) {
@@ -225,6 +235,7 @@ export function auditMvpBoardReadiness(issues, projectPayload, options = {}) {
     ok: violations.length === 0,
     issueCount: issues.length,
     blockerCount: rows.filter((row) => row.blockerLabels.length > 0).length,
+    projectCheckSkipped,
     requiredBlockedStatus: REQUIRED_BLOCKED_STATUS,
     violations,
     rows,
@@ -236,8 +247,11 @@ function formatText(report) {
     `MVP board readiness: ${report.ok ? "PASS" : "FAIL"}`,
     `Open MVP issues: ${report.issueCount}`,
     `Blocked issues: ${report.blockerCount}`,
-    `Required blocked status: ${report.requiredBlockedStatus}`,
+    `Project status check: ${report.projectCheckSkipped ? "SKIPPED" : "checked"}`,
   ];
+  if (!report.projectCheckSkipped) {
+    lines.push(`Required blocked status: ${report.requiredBlockedStatus}`);
+  }
   if (report.violations.length > 0) {
     lines.push("", "Violations:");
     for (const violation of report.violations) {
@@ -254,10 +268,12 @@ async function main() {
     return;
   }
   if (
-    (args.issuesJson && !args.projectJson) ||
+    (args.issuesJson && !args.projectJson && !args.issuesOnly) ||
     (!args.issuesJson && args.projectJson)
   ) {
-    throw new Error("--issues-json and --project-json must be passed together");
+    throw new Error(
+      "--issues-json and --project-json must be passed together unless --issues-only is used",
+    );
   }
 
   const issues = args.issuesJson
@@ -265,9 +281,12 @@ async function main() {
     : fetchOpenMvpIssues(args.repo);
   const projectPayload = args.projectJson
     ? readJson(args.projectJson)
-    : fetchProjectItems(args.projectOwner, args.projectNumber);
+    : args.issuesOnly
+      ? { items: [] }
+      : fetchProjectItems(args.projectOwner, args.projectNumber);
   const report = auditMvpBoardReadiness(issues, projectPayload, {
     repo: args.repo,
+    projectCheckSkipped: args.issuesOnly,
   });
 
   process.stdout.write(
