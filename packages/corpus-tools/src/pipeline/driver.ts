@@ -6,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
+import type { FileHandle } from "node:fs/promises";
 import path from "node:path";
 import {
   assertScrubStateTransition,
@@ -300,12 +301,37 @@ async function loadLedger(ledgerPath: string): Promise<LedgerState> {
   }
 }
 
-async function appendLedgerRecord(
-  ledgerPath: string,
-  record: ScrubLedgerRecord,
-): Promise<void> {
-  await fs.mkdir(path.dirname(ledgerPath), { recursive: true });
-  await fs.appendFile(ledgerPath, `${JSON.stringify(record)}\n`);
+/**
+ * Appends ledger records through one long-lived O_APPEND file handle. The
+ * driver awaits every record before executing the next message, so each write
+ * must be an individually-durable syscall — but `fs.appendFile` per record
+ * costs an open/write/close round-trip (plus the mkdir the old code repeated),
+ * which at corpus scale (messages x stages appends) dominated the run's wall
+ * time. A persistent handle keeps the per-record crash-resume granularity at
+ * one write() each. Callers must close() on every exit path.
+ */
+class ScrubLedgerWriter {
+  private handle: FileHandle | undefined;
+  private readonly ledgerPath: string;
+
+  constructor(ledgerPath: string) {
+    this.ledgerPath = ledgerPath;
+  }
+
+  async append(record: ScrubLedgerRecord): Promise<void> {
+    if (!this.handle) {
+      await fs.mkdir(path.dirname(this.ledgerPath), { recursive: true });
+      this.handle = await fs.open(this.ledgerPath, "a");
+    }
+    await this.handle.write(`${JSON.stringify(record)}\n`);
+  }
+
+  async close(): Promise<void> {
+    if (!this.handle) return;
+    const handle = this.handle;
+    this.handle = undefined;
+    await handle.close();
+  }
 }
 
 async function readMessages(targetPath: string): Promise<CorpusMessage[]> {
@@ -459,31 +485,36 @@ export function defaultScrubStages(): ScrubStageDefinition[] {
   return SCRUB_STAGE_NAMES.map(defaultStage);
 }
 
-function hasGreenSecretsRecord(
+/**
+ * Message ids with a green (non-tombstone, >=swapped) secrets record for this
+ * ruleset. Built once per off-device stage rather than scanned per message:
+ * the per-message ledger walk was O(messages x ledger records) and dominated
+ * large runs. Snapshotting at stage entry is equivalent because a rewrite/llm
+ * stage only ever appends records for its own stage, never new secrets ones.
+ */
+function greenSecretsMessageIds(
   ledger: LedgerState,
-  messageId: string,
   rulesetVersion: string,
-): boolean {
+): Set<string> {
+  const ids = new Set<string>();
   for (const record of ledger.byKey.values()) {
     if (
-      record.messageId === messageId &&
       record.stage === "secrets" &&
       record.rulesetVersion === rulesetVersion &&
       !record.tombstone &&
       record.output &&
       scrubStateRank[record.output.scrubState] >= scrubStateRank.swapped
     ) {
-      return true;
+      ids.add(record.messageId);
     }
   }
-  return false;
+  return ids;
 }
 
 function assertSecretsGate(
   stage: ScrubStageName,
   message: CorpusMessage,
-  ledger: LedgerState,
-  rulesetVersion: string,
+  greenSecrets: ReadonlySet<string> | undefined,
 ): void {
   if (!isOffDeviceStage(stage)) return;
   if (scrubStateRank[message.scrubState] < scrubStateRank.swapped) {
@@ -491,7 +522,7 @@ function assertSecretsGate(
       `refusing ${stage} before secrets stage for message ${message.id}`,
     );
   }
-  if (!hasGreenSecretsRecord(ledger, message.id, rulesetVersion)) {
+  if (!greenSecrets?.has(message.id)) {
     throw new Error(
       `refusing ${stage}: message ${message.id} lacks a green secrets ledger entry`,
     );
@@ -584,6 +615,7 @@ export async function runScrubPipeline(
   const ledger = options.resume
     ? await loadLedger(ledgerPath)
     : { recordsRead: 0, byKey: new Map<string, ScrubLedgerRecord>() };
+  const ledgerWriter = new ScrubLedgerWriter(ledgerPath);
   let recordsWritten = 0;
   let stageExecutions = 0;
   const knownSecrets = {
@@ -613,189 +645,208 @@ export async function runScrubPipeline(
     replacements: PiiSweepReplacement[];
   }[] = [];
 
-  for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
-    const stage = stages[stageIndex];
-    const report = stageReports[stageIndex];
-    const nextMessages: CorpusMessage[] = [];
-    const rewritePlan =
-      stage.name === "rewrite"
-        ? buildRewritePlan(messages, { hashSalt: options.rulesetVersion })
+  try {
+    for (let stageIndex = 0; stageIndex < stages.length; stageIndex += 1) {
+      const stage = stages[stageIndex];
+      const report = stageReports[stageIndex];
+      const nextMessages: CorpusMessage[] = [];
+      const rewritePlan =
+        stage.name === "rewrite"
+          ? buildRewritePlan(messages, { hashSalt: options.rulesetVersion })
+          : undefined;
+      const greenSecrets = isOffDeviceStage(stage.name)
+        ? greenSecretsMessageIds(ledger, options.rulesetVersion)
         : undefined;
-    clusterExemplars.clear();
+      clusterExemplars.clear();
 
-    for (const message of messages) {
-      if (
-        scrubStateRank[message.scrubState] > scrubStateRank[stage.targetState]
-      ) {
-        report.alreadyComplete += 1;
-        nextMessages.push(stableCloneMessage(message));
-        continue;
-      }
-      const inputHash = sha256Json(message);
-      const clusterKey = clusterKeyFor(message, options.mode);
-      const isClusterExemplar = !clusterExemplars.has(clusterKey);
-      clusterExemplars.add(clusterKey);
-      const key = stageKey({
-        inputHash,
-        stage: stage.name,
-        stageVersion: stage.version,
-        rulesetVersion: options.rulesetVersion,
-      });
-      const existing = ledger.byKey.get(key);
-      if (existing) {
-        report.ledgerHits += 1;
-        if (existing.tombstone) {
-          report.tombstoned += 1;
+      for (const message of messages) {
+        if (
+          scrubStateRank[message.scrubState] > scrubStateRank[stage.targetState]
+        ) {
+          report.alreadyComplete += 1;
+          nextMessages.push(stableCloneMessage(message));
           continue;
         }
-        if (!existing.output) {
-          throw new Error(`ledger record ${key} is missing output snapshot`);
-        }
-        nextMessages.push(stableCloneMessage(existing.output));
-        continue;
-      }
-
-      if (options.dryRun) {
-        report.executed += 1;
-        nextMessages.push(stableCloneMessage(message));
-        continue;
-      }
-
-      if (
-        options.maxStageExecutions !== undefined &&
-        stageExecutions >= options.maxStageExecutions
-      ) {
-        throw new Error(
-          `simulated interruption after ${stageExecutions} stage executions`,
-        );
-      }
-
-      assertSecretsGate(stage.name, message, ledger, options.rulesetVersion);
-      const result = await stage.run(message, {
-        stage: stage.name,
-        mode: options.mode,
-        rulesetVersion: options.rulesetVersion,
-        inputHash,
-        markerKey: key,
-        clusterKey,
-        isClusterExemplar,
-        knownSecrets,
-        rewritePlan,
-        piiSweepEngine: options.piiSweepEngine,
-      });
-      stageExecutions += 1;
-      report.executed += 1;
-      const cost = costOf(result.cost);
-      report.llmCalls += cost.llmCalls;
-      report.inputTokens += cost.inputTokens;
-      report.outputTokens += cost.outputTokens;
-      report.estimatedUsd += cost.estimatedUsd;
-      if (
-        result.metadata &&
-        typeof result.metadata === "object" &&
-        "candidateCount" in result.metadata &&
-        typeof result.metadata.candidateCount === "number"
-      ) {
-        report.candidateCount =
-          (report.candidateCount ?? 0) + result.metadata.candidateCount;
-      }
-      if (
-        result.metadata &&
-        typeof result.metadata === "object" &&
-        "secretReplacementCount" in result.metadata &&
-        typeof result.metadata.secretReplacementCount === "number"
-      ) {
-        report.secretReplacementCount =
-          (report.secretReplacementCount ?? 0) +
-          result.metadata.secretReplacementCount;
-      }
-      if (
-        result.metadata &&
-        typeof result.metadata === "object" &&
-        "rewriteReplacementCount" in result.metadata &&
-        typeof result.metadata.rewriteReplacementCount === "number"
-      ) {
-        report.rewriteReplacementCount =
-          (report.rewriteReplacementCount ?? 0) +
-          result.metadata.rewriteReplacementCount;
-      }
-      if (
-        result.metadata &&
-        typeof result.metadata === "object" &&
-        "rewriteSkipped" in result.metadata &&
-        typeof result.metadata.rewriteSkipped === "number"
-      ) {
-        report.rewriteSkipped =
-          (report.rewriteSkipped ?? 0) + result.metadata.rewriteSkipped;
-      }
-      if (
-        result.metadata &&
-        typeof result.metadata === "object" &&
-        "piiSpanCount" in result.metadata &&
-        typeof result.metadata.piiSpanCount === "number"
-      ) {
-        report.piiSpanCount =
-          (report.piiSpanCount ?? 0) + result.metadata.piiSpanCount;
-      }
-      if (
-        stage.name === "llm" &&
-        result.metadata &&
-        typeof result.metadata === "object" &&
-        "piiSweepReplacements" in result.metadata &&
-        Array.isArray(result.metadata.piiSweepReplacements)
-      ) {
-        piiSweepRows.push({
-          messageId: message.id,
-          replacements: result.metadata
-            .piiSweepReplacements as PiiSweepReplacement[],
+        const inputHash = sha256Json(message);
+        const clusterKey = clusterKeyFor(message, options.mode);
+        const isClusterExemplar = !clusterExemplars.has(clusterKey);
+        clusterExemplars.add(clusterKey);
+        const key = stageKey({
+          inputHash,
+          stage: stage.name,
+          stageVersion: stage.version,
+          rulesetVersion: options.rulesetVersion,
         });
+        const existing = ledger.byKey.get(key);
+        if (existing) {
+          report.ledgerHits += 1;
+          if (existing.tombstone) {
+            report.tombstoned += 1;
+            continue;
+          }
+          if (!existing.output) {
+            throw new Error(`ledger record ${key} is missing output snapshot`);
+          }
+          nextMessages.push(stableCloneMessage(existing.output));
+          continue;
+        }
+
+        if (options.dryRun) {
+          report.executed += 1;
+          nextMessages.push(stableCloneMessage(message));
+          continue;
+        }
+
+        if (
+          options.maxStageExecutions !== undefined &&
+          stageExecutions >= options.maxStageExecutions
+        ) {
+          throw new Error(
+            `simulated interruption after ${stageExecutions} stage executions`,
+          );
+        }
+
+        assertSecretsGate(stage.name, message, greenSecrets);
+        const result = await stage.run(message, {
+          stage: stage.name,
+          mode: options.mode,
+          rulesetVersion: options.rulesetVersion,
+          inputHash,
+          markerKey: key,
+          clusterKey,
+          isClusterExemplar,
+          knownSecrets,
+          rewritePlan,
+          piiSweepEngine: options.piiSweepEngine,
+        });
+        stageExecutions += 1;
+        report.executed += 1;
+        const cost = costOf(result.cost);
+        report.llmCalls += cost.llmCalls;
+        report.inputTokens += cost.inputTokens;
+        report.outputTokens += cost.outputTokens;
+        report.estimatedUsd += cost.estimatedUsd;
+        if (
+          result.metadata &&
+          typeof result.metadata === "object" &&
+          "candidateCount" in result.metadata &&
+          typeof result.metadata.candidateCount === "number"
+        ) {
+          report.candidateCount =
+            (report.candidateCount ?? 0) + result.metadata.candidateCount;
+        }
+        if (
+          result.metadata &&
+          typeof result.metadata === "object" &&
+          "secretReplacementCount" in result.metadata &&
+          typeof result.metadata.secretReplacementCount === "number"
+        ) {
+          report.secretReplacementCount =
+            (report.secretReplacementCount ?? 0) +
+            result.metadata.secretReplacementCount;
+        }
+        if (
+          result.metadata &&
+          typeof result.metadata === "object" &&
+          "rewriteReplacementCount" in result.metadata &&
+          typeof result.metadata.rewriteReplacementCount === "number"
+        ) {
+          report.rewriteReplacementCount =
+            (report.rewriteReplacementCount ?? 0) +
+            result.metadata.rewriteReplacementCount;
+        }
+        if (
+          result.metadata &&
+          typeof result.metadata === "object" &&
+          "rewriteSkipped" in result.metadata &&
+          typeof result.metadata.rewriteSkipped === "number"
+        ) {
+          report.rewriteSkipped =
+            (report.rewriteSkipped ?? 0) + result.metadata.rewriteSkipped;
+        }
+        if (
+          result.metadata &&
+          typeof result.metadata === "object" &&
+          "piiSpanCount" in result.metadata &&
+          typeof result.metadata.piiSpanCount === "number"
+        ) {
+          report.piiSpanCount =
+            (report.piiSpanCount ?? 0) + result.metadata.piiSpanCount;
+        }
+        if (
+          stage.name === "llm" &&
+          result.metadata &&
+          typeof result.metadata === "object" &&
+          "piiSweepReplacements" in result.metadata &&
+          Array.isArray(result.metadata.piiSweepReplacements)
+        ) {
+          piiSweepRows.push({
+            messageId: message.id,
+            replacements: result.metadata
+              .piiSweepReplacements as PiiSweepReplacement[],
+          });
+        }
+        const output = result.tombstone ? undefined : result.message;
+        if (!result.tombstone && !output) {
+          throw new Error(
+            `stage ${stage.name} returned neither message nor tombstone`,
+          );
+        }
+        // One serialization feeds the output hash, the forward copy, and the
+        // ledger snapshot; the two parses keep the copies independent. The
+        // per-message-per-stage loop is hot enough at corpus scale that the
+        // three separate stringify passes this replaces were measurable.
+        let outputHash: string;
+        let outputClone: CorpusMessage | undefined;
+        if (output) {
+          assertScrubStateTransition(message.scrubState, output.scrubState);
+          const outputJson = JSON.stringify(output);
+          outputHash = createHash("sha256").update(outputJson).digest("hex");
+          nextMessages.push(JSON.parse(outputJson) as CorpusMessage);
+          outputClone = JSON.parse(outputJson) as CorpusMessage;
+        } else {
+          report.tombstoned += 1;
+          outputHash = sha256Json({ tombstone: true });
+        }
+        const record: ScrubLedgerRecord = {
+          markerKey: key,
+          messageId: message.id,
+          stage: stage.name,
+          stageVersion: stage.version,
+          rulesetVersion: options.rulesetVersion,
+          inputHash,
+          outputHash,
+          tombstone: result.tombstone === true,
+          clusterKey,
+          isClusterExemplar,
+          cost,
+          output: outputClone,
+        };
+        ledger.byKey.set(key, record);
+        await ledgerWriter.append(record);
+        recordsWritten += 1;
       }
-      const output = result.tombstone ? undefined : result.message;
-      if (!result.tombstone && !output) {
-        throw new Error(
-          `stage ${stage.name} returned neither message nor tombstone`,
-        );
+      messages = nextMessages;
+      if (!options.dryRun && stage.name === "mine") {
+        const artifacts = await minePiiCandidates(messages, {
+          hashSalt: options.rulesetVersion,
+        });
+        mineArtifactPaths = await writeMineArtifacts(stateDir, artifacts);
+        report.candidateCount = artifacts.candidates.length;
       }
-      if (output) {
-        assertScrubStateTransition(message.scrubState, output.scrubState);
-        nextMessages.push(stableCloneMessage(output));
-      } else {
-        report.tombstoned += 1;
+      if (!options.dryRun && stage.name === "llm") {
+        piiSweepArtifacts = {
+          classificationPath: await writePiiSweepClassification(
+            stateDir,
+            piiSweepRows,
+          ),
+        };
       }
-      const record: ScrubLedgerRecord = {
-        markerKey: key,
-        messageId: message.id,
-        stage: stage.name,
-        stageVersion: stage.version,
-        rulesetVersion: options.rulesetVersion,
-        inputHash,
-        outputHash: sha256Json(output ?? { tombstone: true }),
-        tombstone: result.tombstone === true,
-        clusterKey,
-        isClusterExemplar,
-        cost,
-        output: output ? stableCloneMessage(output) : undefined,
-      };
-      ledger.byKey.set(key, record);
-      await appendLedgerRecord(ledgerPath, record);
-      recordsWritten += 1;
     }
-    messages = nextMessages;
-    if (!options.dryRun && stage.name === "mine") {
-      const artifacts = await minePiiCandidates(messages, {
-        hashSalt: options.rulesetVersion,
-      });
-      mineArtifactPaths = await writeMineArtifacts(stateDir, artifacts);
-      report.candidateCount = artifacts.candidates.length;
-    }
-    if (!options.dryRun && stage.name === "llm") {
-      piiSweepArtifacts = {
-        classificationPath: await writePiiSweepClassification(
-          stateDir,
-          piiSweepRows,
-        ),
-      };
-    }
+  } finally {
+    // The interruption/error paths must release the handle too; every record
+    // already awaited its write, so nothing is lost by closing here.
+    await ledgerWriter.close();
   }
 
   if (!options.dryRun) {

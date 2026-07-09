@@ -201,7 +201,14 @@ describe("scrub pipeline driver", () => {
     ).toBe(true);
   });
 
-  it("fast-track reduces newsletter LLM calls by at least 10x", async () => {
+  // 12,000 real stage executions (1,000 messages x 6 stages x 2 runs), each
+  // awaiting its durable ledger write, plus two whole-corpus PII mines: ~1s on
+  // an idle dev box, but shared CI runners have shown >2.5x slowdown under
+  // parallel-suite load, so the default 5s budget flaked. The efficiency
+  // contract lives in the llmCalls assertions, not wall time.
+  it("fast-track reduces newsletter LLM calls by at least 10x", {
+    timeout: 15_000,
+  }, async () => {
     const deepDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "corpus-scrub-deep-"),
     );
