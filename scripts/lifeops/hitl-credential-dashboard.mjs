@@ -875,6 +875,20 @@ const PAGE_HTML = `<!doctype html>
   .toast { position: fixed; bottom: 16px; right: 16px; background: var(--panel-2); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; font-size: 12px; max-width: 460px; display: none; z-index: 10; }
   .toast.error { border-left-color: var(--red); }
   .meta { font-size: 11px; color: var(--dim); font-family: var(--mono); }
+  @media (max-width: 700px) {
+    header { padding: 12px; }
+    main { padding: 14px 10px 40px; }
+    .links { width: 100%; flex-wrap: wrap; }
+    .target-toggle { align-items: flex-start; flex-direction: column; }
+    .slot { min-width: 0; width: 100%; }
+    .field { grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+    .field .name { grid-column: 1 / -1; }
+    .field input { grid-column: 1 / 3; min-width: 0; }
+    .field button { grid-column: 3; }
+    .path-head .spacer { display: none; }
+    .path-head button, .path-head a.btn { margin-top: 4px; }
+    .uri-box { max-width: 100%; overflow-wrap: anywhere; }
+  }
 </style>
 </head>
 <body>
