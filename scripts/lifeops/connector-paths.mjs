@@ -298,11 +298,8 @@ export const CONNECTOR_PATHS = [
     group: "telegram",
     kind: "user-client",
     label: "Telegram user client (future gramjs)",
-    requiredAll: [
-      "TELEGRAM_API_ID",
-      "TELEGRAM_API_HASH",
-      "TELEGRAM_USER_SESSION",
-    ],
+    requiredAll: ["TELEGRAM_API_ID", "TELEGRAM_API_HASH"],
+    requiredAny: ["TELEGRAM_OWNER_SESSION", "TELEGRAM_USER_SESSION"],
     probeId: null,
     probeEndpoint:
       "gramjs getMe over the string session (not yet wired in-repo)",
@@ -311,8 +308,9 @@ export const CONNECTOR_PATHS = [
       specs: [
         {
           type: "env-present",
-          names: ["TELEGRAM_USER_SESSION"],
-          reason: "no gramjs string session in env",
+          names: ["TELEGRAM_OWNER_SESSION", "TELEGRAM_USER_SESSION"],
+          reason:
+            "no owner gramjs string session in env (TELEGRAM_OWNER_SESSION)",
         },
         {
           type: "file-exists",
@@ -322,7 +320,7 @@ export const CONNECTOR_PATHS = [
       ],
     },
     notes:
-      "Documented ahead of a gramjs integration; Telegram Desktop's tdata is proprietary/encrypted and is not a credential source.",
+      "Documented ahead of a gramjs integration; TELEGRAM_OWNER_SESSION is the owner-scoped key required by the HITL issue, while TELEGRAM_USER_SESSION remains a temporary read alias. Telegram Desktop's tdata is proprietary/encrypted and is not a credential source.",
   }),
 
   // --- Discord --------------------------------------------------------------------

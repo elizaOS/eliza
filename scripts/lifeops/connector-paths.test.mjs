@@ -209,6 +209,32 @@ test("google owner/agent rows use oauth requestedRole, never invented env slots"
   }
 });
 
+test("telegram user-client gates on the owner session key with a legacy alias", () => {
+  const path = byId("telegram.user-client");
+  assert.deepEqual(path.requiredAll, ["TELEGRAM_API_ID", "TELEGRAM_API_HASH"]);
+  assert.deepEqual(path.requiredAny, [
+    "TELEGRAM_OWNER_SESSION",
+    "TELEGRAM_USER_SESSION",
+  ]);
+  assert.match(path.notes, /TELEGRAM_OWNER_SESSION/);
+
+  const missing = checkAvailability(path.availability, fakeCtx());
+  assert.equal(missing.available, false);
+  assert.match(missing.reason, /TELEGRAM_OWNER_SESSION/);
+
+  const ownerSession = checkAvailability(
+    path.availability,
+    fakeCtx({ env: { TELEGRAM_OWNER_SESSION: "session" } }),
+  );
+  assert.equal(ownerSession.available, true);
+
+  const legacySession = checkAvailability(
+    path.availability,
+    fakeCtx({ env: { TELEGRAM_USER_SESSION: "session" } }),
+  );
+  assert.equal(legacySession.available, true);
+});
+
 test("x agent slot is a separate real account, permanently skipped with the matrix reason", () => {
   const path = byId("x.agent-account");
   assert.equal(path.rolesVia, "separate-real-accounts");
