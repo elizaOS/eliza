@@ -40,6 +40,8 @@ import {
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
 import { runShell } from "../services/shell-execution-router.ts";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.ts";
+import { handlePendantInsightsRoutes } from "./pendant-insights-routes.ts";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
@@ -194,6 +196,8 @@ export interface MiscRouteContext {
   state: {
     config: ElizaConfig;
     runtime: AgentRuntime | null;
+    adminEntityId?: UUID | null;
+    chatUserId?: UUID | null;
     agentState: string;
     agentName: string;
     shellEnabled: boolean | undefined;
@@ -262,6 +266,38 @@ export async function handleMiscRoutes(
     }
     ipGeoCache = { value, fetchedAt: Date.now() };
     json(res, value);
+    return true;
+  }
+
+  // ── POST /api/pendant/insights ───────────────────────────────────────
+  // Structured rollup over accumulated pendant transcript segments, generated
+  // via the agent's own runtime model. Resolve the canonical owner lazily just
+  // like chat/conversation routes so a fresh default server is not spuriously 401.
+  const pendantAdminEntityId =
+    pathname === "/api/pendant/insights"
+      ? resolveClientChatAdminEntityId({
+          runtime: state.runtime,
+          config: state.config,
+          agentName: state.agentName,
+          adminEntityId: state.adminEntityId ?? null,
+          chatUserId: state.chatUserId ?? null,
+        })
+      : (state.adminEntityId ?? null);
+  if (
+    await handlePendantInsightsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      state: {
+        runtime: state.runtime,
+        adminEntityId: pendantAdminEntityId,
+      },
+      json,
+      error,
+      readJsonBody,
+    })
+  ) {
     return true;
   }
 

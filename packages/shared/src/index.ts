@@ -279,6 +279,8 @@ export * from "./local-inference/index.js";
 export * from "./loopback-trust.js";
 export * from "./meeting-artifacts.js";
 export * from "./meetings.js";
+export * from "./pendant-insights.js";
+export * from "./pendant-insights-prompt.js";
 export * from "./platform/eliza-os.js";
 export * from "./platform/is-native-server.js";
 export * from "./process-guards.js";

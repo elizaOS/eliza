@@ -85,3 +85,14 @@ export {
   usePendant,
 } from "./usePendant";
 export { WebBluetoothPendantTransport } from "./web-bluetooth-transport";
+export {
+  HttpInsightsClient,
+  type InsightsClient,
+  type InsightsClientResult,
+  type RequestInsightsInput,
+} from "./insights-client";
+export {
+  type InsightsSchedulerOptions,
+  normalizeForDedupe,
+  PendantInsightsScheduler,
+} from "./insights-scheduler";
