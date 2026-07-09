@@ -10,11 +10,13 @@ import {
   activeWordIndex,
   flattenTranscriptWords,
   summarizeTranscript,
+  TRANSCRIPT_FRAGMENT_MAX_CHARS,
   type Transcript,
   type TranscriptSegment,
   type TranscriptWord,
   transcriptCapturePrivacyState,
   transcriptDurationMs,
+  transcriptKnowledgeFragments,
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
@@ -392,5 +394,95 @@ describe("validateAsrWordTimings", () => {
   it("skips the upper-bound check when no duration is given", () => {
     const words: TranscriptWord[] = [{ text: "a", startMs: 0, endMs: 9_999 }];
     expect(validateAsrWordTimings(words).ok).toBe(true);
+  });
+});
+
+describe("transcriptKnowledgeFragments", () => {
+  it("carries exact time anchors and segment ids per fragment", () => {
+    const fragments = transcriptKnowledgeFragments(segs);
+    // Small transcript packs into one fragment.
+    expect(fragments).toHaveLength(1);
+    const [f] = fragments;
+    expect(f.text).toBe("Alice: hello there\nBob: hi\nAlice: bye");
+    expect(f.metadata.segmentIds).toEqual(["s1", "s2", "s3"]);
+    expect(f.metadata.startMs).toBe(0);
+    expect(f.metadata.endMs).toBe(2600);
+    expect(f.metadata.speakerLabels).toEqual(["Alice", "Bob"]);
+  });
+
+  it("splits on segment boundaries only — never inside a segment", () => {
+    // Lines are 18 / 7 / 10 chars; a 10-char budget forces one per fragment
+    // ("Bob: hi" + "Alice: bye" would need 18 chars joined).
+    const fragments = transcriptKnowledgeFragments(segs, 10);
+    expect(fragments).toHaveLength(3);
+    expect(fragments[0].text).toBe("Alice: hello there");
+    expect(fragments[0].metadata).toMatchObject({
+      segmentIds: ["s1"],
+      startMs: 0,
+      endMs: 1000,
+      speakerLabels: ["Alice"],
+    });
+    expect(fragments[1].text).toBe("Bob: hi");
+    expect(fragments[1].metadata).toMatchObject({
+      segmentIds: ["s2"],
+      startMs: 1200,
+      endMs: 2000,
+    });
+    expect(fragments[2].metadata).toMatchObject({
+      segmentIds: ["s3"],
+      startMs: 2100,
+      endMs: 2600,
+    });
+  });
+
+  it("keeps an oversized single segment as its own fragment", () => {
+    const long: TranscriptSegment = {
+      id: "big",
+      startMs: 0,
+      endMs: 60_000,
+      text: "x".repeat(3 * TRANSCRIPT_FRAGMENT_MAX_CHARS),
+      words: [],
+    };
+    const fragments = transcriptKnowledgeFragments([long, segs[1]]);
+    expect(fragments).toHaveLength(2);
+    expect(fragments[0].text).toBe(long.text);
+    expect(fragments[0].metadata.segmentIds).toEqual(["big"]);
+    // Unlabeled segment omits speakerLabels entirely.
+    expect(fragments[0].metadata.speakerLabels).toBeUndefined();
+  });
+
+  it("joined fragments reproduce transcriptPlainText exactly", () => {
+    const many: TranscriptSegment[] = Array.from({ length: 40 }, (_, i) => ({
+      id: `s${i}`,
+      speakerLabel: i % 2 === 0 ? "Alice" : "Bob",
+      startMs: i * 1000,
+      endMs: i * 1000 + 900,
+      text: `utterance number ${i} with some padding text to fill space`,
+      words: [],
+    }));
+    const fragments = transcriptKnowledgeFragments(many, 200);
+    expect(fragments.length).toBeGreaterThan(1);
+    expect(fragments.map((f) => f.text).join("\n")).toBe(
+      transcriptPlainText(many),
+    );
+    // Anchors are monotonic and within the covered segments.
+    for (const f of fragments) {
+      expect(f.metadata.endMs).toBeGreaterThanOrEqual(f.metadata.startMs);
+      expect(f.text.length).toBeLessThanOrEqual(200 + 60); // one oversized line max
+    }
+    const starts = fragments.map((f) => f.metadata.startMs);
+    expect([...starts].sort((a, b) => a - b)).toEqual(starts);
+  });
+
+  it("skips empty-text segments and returns [] for an empty transcript", () => {
+    expect(transcriptKnowledgeFragments([])).toEqual([]);
+    const withEmpty: TranscriptSegment[] = [
+      { id: "e1", startMs: 0, endMs: 100, text: "   ", words: [] },
+      segs[1],
+    ];
+    const fragments = transcriptKnowledgeFragments(withEmpty);
+    expect(fragments).toHaveLength(1);
+    expect(fragments[0].metadata.segmentIds).toEqual(["s2"]);
+    expect(fragments[0].metadata.startMs).toBe(1200);
   });
 });

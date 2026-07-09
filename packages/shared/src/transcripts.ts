@@ -266,6 +266,93 @@ export function transcriptPlainText(
     .join("\n");
 }
 
+/**
+ * One pre-chunked knowledge fragment produced by segment-boundary grouping:
+ * the speaker-labeled text of a run of consecutive segments plus the time
+ * anchors that map the fragment back into the recording (#14806). The
+ * `metadata` rides verbatim onto the stored FRAGMENT memory's jsonb metadata,
+ * so a search hit can seek the stored audio and the PII pipeline can project a
+ * text span onto a timestamp span.
+ */
+export interface TranscriptFragmentInput {
+  text: string;
+  metadata: {
+    /** Ids of the segments this fragment covers, in transcript order. */
+    segmentIds: string[];
+    /** Ms from audio start of the first covered segment. */
+    startMs: number;
+    /** Ms from audio start of the last covered segment's end. */
+    endMs: number;
+    /** Distinct speaker labels across the covered segments (omitted if none). */
+    speakerLabels?: string[];
+  };
+}
+
+/**
+ * Character budget per knowledge fragment — mirrors the documents pipeline's
+ * DEFAULT_CHUNK_TOKEN_SIZE (500 tokens) at its own ~4 chars/token estimate, so
+ * segment-boundary fragments embed at the same granularity as split chunks.
+ */
+export const TRANSCRIPT_FRAGMENT_MAX_CHARS = 2000;
+
+/**
+ * Group segments into knowledge fragments on segment boundaries — never
+ * splitting inside a segment — so every fragment carries an exact
+ * `startMs`/`endMs` time range. Greedy packing: consecutive segments join a
+ * fragment until adding the next speaker-labeled line would exceed `maxChars`
+ * (a single oversized segment still becomes its own fragment). Empty-text
+ * segments are skipped, matching {@link transcriptPlainText}, so the fragments
+ * joined with `\n` reproduce the mirrored document body exactly.
+ */
+export function transcriptKnowledgeFragments(
+  segments: ReadonlyArray<TranscriptSegment>,
+  maxChars = TRANSCRIPT_FRAGMENT_MAX_CHARS,
+): TranscriptFragmentInput[] {
+  const fragments: TranscriptFragmentInput[] = [];
+  let lines: string[] = [];
+  let group: TranscriptSegment[] = [];
+  let chars = 0;
+
+  const flush = () => {
+    if (group.length === 0) return;
+    const labels: string[] = [];
+    for (const s of group) {
+      if (s.speakerLabel && !labels.includes(s.speakerLabel)) {
+        labels.push(s.speakerLabel);
+      }
+    }
+    fragments.push({
+      text: lines.join("\n"),
+      metadata: {
+        segmentIds: group.map((s) => s.id),
+        startMs: Math.min(...group.map((s) => s.startMs)),
+        endMs: Math.max(...group.map((s) => s.endMs)),
+        ...(labels.length > 0 ? { speakerLabels: labels } : {}),
+      },
+    });
+    lines = [];
+    group = [];
+    chars = 0;
+  };
+
+  for (const segment of segments) {
+    const text = segment.text.trim();
+    if (!text) continue;
+    const line = segment.speakerLabel
+      ? `${segment.speakerLabel}: ${text}`
+      : text;
+    // +1 for the joining newline when the group already has a line.
+    const added = line.length + (group.length > 0 ? 1 : 0);
+    if (group.length > 0 && chars + added > maxChars) flush();
+    lines.push(line);
+    group.push(segment);
+    chars += group.length > 1 ? line.length + 1 : line.length;
+  }
+  flush();
+
+  return fragments;
+}
+
 /** A one-line preview of the transcript text, capped to `max` chars. */
 export function transcriptPreview(
   segments: ReadonlyArray<TranscriptSegment>,

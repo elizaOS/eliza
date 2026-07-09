@@ -158,6 +158,19 @@ describe("MeetingTranscriptWriter — record shape golden", () => {
       textBacked: true,
       transcriptId: writer.transcriptId,
     });
+    // Segment-boundary fragments carry startMs/endMs anchors (#14806) so a
+    // knowledge search hit can seek the stored audio at the matching offset.
+    expect(fake.documents[0].fragments).toEqual([
+      {
+        text: "Jill: hello there\nBob: hi jill",
+        metadata: {
+          segmentIds: ["s1", "s2"],
+          startMs: 0,
+          endMs: 3_000,
+          speakerLabels: ["Jill", "Bob"],
+        },
+      },
+    ]);
     expect(readBack?.knowledgeDocumentId).toBeTypeOf("string");
   });
 
