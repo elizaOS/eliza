@@ -30,6 +30,78 @@ export const LEDGER_PATH = join(ROOT, "docs/testing/hitl-ledger.json");
 export const FRESH_DAYS = 7;
 export const STALE_DAYS = 30;
 const DAY_MS = 86_400_000;
+const LEDGER_KEYS = new Set(["version", "updatedAt", "entries"]);
+const ENTRY_KEYS = new Set([
+  "pathId",
+  "lastSuccessAt",
+  "lastRunAt",
+  "lane",
+  "commit",
+  "counts",
+]);
+const OUTCOME_KEYS = new Set([
+  "pathId",
+  "ok",
+  "at",
+  "lane",
+  "commit",
+  "counts",
+]);
+const COUNT_KEYS = new Set(["passed", "failed", "skipped"]);
+const SECRET_SHAPED_KEY_PATTERN =
+  /(token|secret|password|credential|private[_-]?key|api[_-]?key|auth)/i;
+
+function assertNoUnknownKeys(label, object, allowed) {
+  for (const key of Object.keys(object)) {
+    if (SECRET_SHAPED_KEY_PATTERN.test(key)) {
+      throw new Error(
+        `hitl-ledger(${label}): secret-shaped field '${key}' is forbidden`,
+      );
+    }
+    if (!allowed.has(key)) {
+      throw new Error(`hitl-ledger(${label}): unknown field '${key}'`);
+    }
+  }
+}
+
+function assertCounts(counts, label) {
+  if (!counts || typeof counts !== "object" || Array.isArray(counts)) {
+    throw new Error(`hitl-ledger(${label}): counts must be an object`);
+  }
+  assertNoUnknownKeys(`${label}.counts`, counts, COUNT_KEYS);
+  for (const key of COUNT_KEYS) {
+    if (!Number.isInteger(counts[key]) || counts[key] < 0) {
+      throw new Error(
+        `hitl-ledger(${label}): counts.${key} must be a non-negative integer`,
+      );
+    }
+  }
+}
+
+function assertIsoOrNull(value, label) {
+  if (value === null) return;
+  if (typeof value !== "string" || Number.isNaN(Date.parse(value))) {
+    throw new Error(`hitl-ledger(${label}): timestamp must be ISO or null`);
+  }
+}
+
+function assertLedgerEntry(pathId, entry) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    throw new Error(`hitl-ledger(${pathId}): entry must be an object`);
+  }
+  assertNoUnknownKeys(pathId, entry, ENTRY_KEYS);
+  if (entry.pathId !== pathId) {
+    throw new Error(
+      `hitl-ledger(${pathId}): entry.pathId must match its ledger key`,
+    );
+  }
+  assertIsoOrNull(entry.lastSuccessAt, `${pathId}.lastSuccessAt`);
+  assertIsoOrNull(entry.lastRunAt, `${pathId}.lastRunAt`);
+  if (typeof entry.lane !== "string" || typeof entry.commit !== "string") {
+    throw new Error(`hitl-ledger(${pathId}): lane and commit are required`);
+  }
+  assertCounts(entry.counts, pathId);
+}
 
 /**
  * Read the ledger, or the empty shape when the file does not exist yet. A
@@ -49,6 +121,10 @@ export function readLedger(path = LEDGER_PATH) {
     throw new Error(
       `hitl-ledger: malformed ledger at ${path} — restore it from git history rather than regenerating`,
     );
+  }
+  assertNoUnknownKeys("root", parsed, LEDGER_KEYS);
+  for (const [pathId, entry] of Object.entries(parsed.entries)) {
+    assertLedgerEntry(pathId, entry);
   }
   return {
     version: parsed.version ?? 1,
@@ -81,6 +157,7 @@ export function freshness(lastSuccessAt, now = Date.now()) {
 
 function assertOutcome(outcome) {
   const { pathId, ok, at, lane, commit, counts } = outcome;
+  assertNoUnknownKeys("outcome", outcome, OUTCOME_KEYS);
   if (typeof pathId !== "string" || pathId.length === 0) {
     throw new Error("hitl-ledger: outcome.pathId must be a non-empty string");
   }
@@ -93,13 +170,7 @@ function assertOutcome(outcome) {
   if (typeof lane !== "string" || typeof commit !== "string") {
     throw new Error(`hitl-ledger(${pathId}): lane and commit are required`);
   }
-  for (const key of ["passed", "failed", "skipped"]) {
-    if (!Number.isInteger(counts?.[key]) || counts[key] < 0) {
-      throw new Error(
-        `hitl-ledger(${pathId}): counts.${key} must be a non-negative integer`,
-      );
-    }
-  }
+  assertCounts(counts, pathId);
 }
 
 function atomicWrite(path, content) {

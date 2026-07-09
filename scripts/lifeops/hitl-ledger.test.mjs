@@ -89,6 +89,27 @@ test("readLedger: malformed ledger throws (committed evidence, not a cache)", ()
   assert.throws(() => readLedger(path), /malformed ledger/);
 });
 
+test("readLedger: committed entries are schema-checked and secret-shaped fields are rejected", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hitl-ledger-"));
+  const path = join(dir, "ledger.json");
+  recordOutcome(outcome(), path);
+  const parsed = JSON.parse(readFileSync(path, "utf8"));
+
+  parsed.entries["telegram.bot"].token = "xoxb-secret-value";
+  writeFileSync(path, JSON.stringify(parsed), "utf8");
+  assert.throws(() => readLedger(path), /secret-shaped field 'token'/);
+
+  delete parsed.entries["telegram.bot"].token;
+  parsed.entries["telegram.bot"].operatorEmail = "owner@example.com";
+  writeFileSync(path, JSON.stringify(parsed), "utf8");
+  assert.throws(() => readLedger(path), /unknown field 'operatorEmail'/);
+
+  delete parsed.entries["telegram.bot"].operatorEmail;
+  parsed.entries["telegram.bot"].counts.retried = 1;
+  writeFileSync(path, JSON.stringify(parsed), "utf8");
+  assert.throws(() => readLedger(path), /unknown field 'retried'/);
+});
+
 // --- recordOutcome upsert semantics ----------------------------------------------
 
 test("recordOutcome: creates the ledger and stamps the success entry", () => {
@@ -203,6 +224,22 @@ test("recordOutcome: rejects malformed outcomes before touching the file", () =>
         path,
       ),
     /counts\.passed/,
+  );
+  assert.throws(
+    () => recordOutcome(outcome({ token: "xoxb-secret-value" }), path),
+    /secret-shaped field 'token'/,
+  );
+  assert.throws(
+    () => recordOutcome(outcome({ notes: "operator said it passed" }), path),
+    /unknown field 'notes'/,
+  );
+  assert.throws(
+    () =>
+      recordOutcome(
+        outcome({ counts: { passed: 1, failed: 0, skipped: 0, retried: 1 } }),
+        path,
+      ),
+    /unknown field 'retried'/,
   );
   assert.deepEqual(readdirSync(dir), [], "no file created on rejected input");
 });
