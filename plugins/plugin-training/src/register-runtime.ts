@@ -5,8 +5,13 @@
  * host must call this at agent boot — the plugin does not auto-enable. Cron
  * registration is skipped when `ELIZA_DISABLE_TRAINING_CRONS` is set.
  */
-import type { AgentRuntime, Service } from "@elizaos/core";
-import { logger, OptimizedPromptService } from "@elizaos/core";
+import type { AgentRuntime, PipelineHookSpec, Service } from "@elizaos/core";
+import {
+  applyOptimizedProviderSelection,
+  logger,
+  OptimizedPromptService,
+  resolveOptimizedContextConfigForRuntime,
+} from "@elizaos/core";
 import { registerSkillScoringCron } from "./core/skill-scoring-cron.js";
 import { registerTrajectoryExportCron } from "./core/trajectory-export-cron.js";
 import { registerTrainingConfigService } from "./services/training-config-service.js";
@@ -21,6 +26,37 @@ function trainingCronRegistrationDisabled(): boolean {
     return false;
   }
   return ["1", "true", "yes"].includes(raw.trim().toLowerCase());
+}
+
+export const OPTIMIZED_CONTEXT_CONFIG_HOOK_ID =
+  "training:optimized-context-config";
+
+export function registerOptimizedContextConfigHook(
+  runtime: AgentRuntime,
+): void {
+  runtime.unregisterPipelineHook(OPTIMIZED_CONTEXT_CONFIG_HOOK_ID);
+  const spec: PipelineHookSpec = {
+    id: OPTIMIZED_CONTEXT_CONFIG_HOOK_ID,
+    phase: "compose_state_providers",
+    position: 25,
+    mutatesPrimary: true,
+    handler: (hookRuntime, ctx) => {
+      if (ctx.phase !== "compose_state_providers") return;
+      if (ctx.onlyInclude) return;
+      const contextConfig =
+        resolveOptimizedContextConfigForRuntime(
+          hookRuntime,
+          "context_routing",
+        ) ??
+        resolveOptimizedContextConfigForRuntime(hookRuntime, "action_planner");
+      if (!contextConfig) return;
+      ctx.providers.current = applyOptimizedProviderSelection(
+        ctx.providers.current,
+        contextConfig,
+      );
+    },
+  };
+  runtime.registerPipelineHook(spec);
 }
 
 export async function registerTrainingRuntimeHooks(
@@ -51,6 +87,8 @@ export async function registerTrainingRuntimeHooks(
       `[eliza] OptimizedPromptService registration failed: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+
+  registerOptimizedContextConfigHook(runtime);
 
   const skipCronRegistration = trainingCronRegistrationDisabled();
   if (skipCronRegistration) {
