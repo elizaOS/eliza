@@ -85,6 +85,35 @@ export type NormalizedBridgeMessage = {
   metadata?: Record<string, unknown>;
 };
 
+export type BridgeMessageResult = {
+  text: string;
+  failureKind?: string;
+};
+
+type BridgeCallbackContent = {
+  text?: unknown;
+  failureKind?: unknown;
+};
+
+export function appendBridgeCallbackContent(
+  result: BridgeMessageResult,
+  content: BridgeCallbackContent,
+): BridgeMessageResult {
+  if (typeof content.text === "string") result.text += content.text;
+  if (
+    !result.failureKind &&
+    typeof content.failureKind === "string" &&
+    content.failureKind.trim()
+  ) {
+    result.failureKind = content.failureKind.trim();
+  }
+  return result;
+}
+
+export function bridgeResultText(result: BridgeMessageResult): string {
+  return result.text || "(no response)";
+}
+
 export function normalizeBridgeMessage(
   params?: BridgeRpcParams,
 ): NormalizedBridgeMessage {
@@ -155,11 +184,11 @@ export interface CloudAgentConfig {
 }
 
 interface AgentRuntime {
-  processMessage: (params: BridgeRpcParams) => Promise<string>;
+  processMessage: (params: BridgeRpcParams) => Promise<BridgeMessageResult>;
   processMessageStream: (
     params: BridgeRpcParams,
     onChunk: (chunk: string) => void,
-  ) => Promise<string>;
+  ) => Promise<BridgeMessageResult>;
   getMemories: () => Array<Record<string, unknown>>;
   getConfig: () => Record<string, unknown>;
 }
@@ -397,7 +426,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       };
 
       agentRuntime = {
-        processMessage: async (params: BridgeRpcParams): Promise<string> => {
+        processMessage: async (
+          params: BridgeRpcParams,
+        ): Promise<BridgeMessageResult> => {
           const { normalized, entityId, roomId, channelType } =
             await ensureBridgeContext(params);
           const message = createMessageMemory({
@@ -418,12 +449,15 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             },
           });
 
-          let responseText = "";
+          const response: BridgeMessageResult = { text: "" };
           await runtime.messageService?.handleMessage(
             runtime,
             message,
             async (content) => {
-              if (content.text) responseText += content.text;
+              appendBridgeCallbackContent(
+                response,
+                content as BridgeCallbackContent,
+              );
               return [];
             },
           );
@@ -438,17 +472,25 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           });
           state.memories.push({
             role: "assistant",
-            text: responseText,
+            text: bridgeResultText(response),
             timestamp: Date.now(),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
           });
           trimMemories();
 
-          return responseText || "(no response)";
+          return {
+            text: bridgeResultText(response),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
+          };
         },
         processMessageStream: async (
           params: BridgeRpcParams,
           onChunk: (chunk: string) => void,
-        ): Promise<string> => {
+        ): Promise<BridgeMessageResult> => {
           const { normalized, entityId, roomId, channelType } =
             await ensureBridgeContext(params);
           const message = createMessageMemory({
@@ -469,14 +511,18 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             },
           });
 
-          let responseText = "";
+          const response: BridgeMessageResult = { text: "" };
           await runtime.messageService?.handleMessage(
             runtime,
             message,
             async (content) => {
-              if (content.text) {
-                responseText += content.text;
-                onChunk(content.text);
+              const previousTextLength = response.text.length;
+              appendBridgeCallbackContent(
+                response,
+                content as BridgeCallbackContent,
+              );
+              if (response.text.length > previousTextLength) {
+                onChunk(response.text.slice(previousTextLength));
               }
               return [];
             },
@@ -492,12 +538,20 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           });
           state.memories.push({
             role: "assistant",
-            text: responseText,
+            text: bridgeResultText(response),
             timestamp: Date.now(),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
           });
           trimMemories();
 
-          return responseText || "(no response)";
+          return {
+            text: bridgeResultText(response),
+            ...(response.failureKind
+              ? { failureKind: response.failureKind }
+              : {}),
+          };
         },
         getMemories: () => state.memories,
         getConfig: () => state.config,
@@ -507,7 +561,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
     } else {
       logger.warn("@elizaos/core not available, running in echo mode");
       agentRuntime = {
-        processMessage: async (params: BridgeRpcParams): Promise<string> => {
+        processMessage: async (
+          params: BridgeRpcParams,
+        ): Promise<BridgeMessageResult> => {
           const normalized = normalizeBridgeMessage(params);
           state.memories.push({
             role: "user",
@@ -523,12 +579,12 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             timestamp: Date.now(),
           });
           trimMemories();
-          return reply;
+          return { text: reply };
         },
         processMessageStream: async (
           params: BridgeRpcParams,
           onChunk: (chunk: string) => void,
-        ): Promise<string> => {
+        ): Promise<BridgeMessageResult> => {
           const normalized = normalizeBridgeMessage(params);
           state.memories.push({
             role: "user",
@@ -545,7 +601,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             timestamp: Date.now(),
           });
           trimMemories();
-          return reply;
+          return { text: reply };
         },
         getMemories: () => state.memories,
         getConfig: () => state.config,
@@ -700,14 +756,18 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
 
       sendEvent("connected", { rpcId: rpc.id, timestamp: Date.now() });
 
-      await agentRuntime.processMessageStream(
+      const response = await agentRuntime.processMessageStream(
         rpc.params ?? {},
         (chunk: string) => {
           sendEvent("chunk", { text: chunk });
         },
       );
 
-      sendEvent("done", { rpcId: rpc.id, timestamp: Date.now() });
+      sendEvent("done", {
+        rpcId: rpc.id,
+        timestamp: Date.now(),
+        ...(response.failureKind ? { failureKind: response.failureKind } : {}),
+      });
       res.end();
       return;
     }
@@ -743,17 +803,23 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           );
           return;
         }
-        const responseText = await agentRuntime.processMessage(
-          rpc.params ?? {},
-        );
+        const response = await agentRuntime.processMessage(rpc.params ?? {});
         res.writeHead(200);
         res.end(
           JSON.stringify({
             jsonrpc: "2.0",
             id: rpc.id,
             result: {
-              text: responseText,
-              metadata: { timestamp: Date.now() },
+              text: response.text,
+              ...(response.failureKind
+                ? { failureKind: response.failureKind }
+                : {}),
+              metadata: {
+                timestamp: Date.now(),
+                ...(response.failureKind
+                  ? { failureKind: response.failureKind }
+                  : {}),
+              },
             },
           }),
         );
