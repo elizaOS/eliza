@@ -117,7 +117,9 @@ jobs:
             echo "no changed Bun-native test files; skipping coverage run"
             exit 0
           fi
-          bun test "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun
+          # This lane runs before workspace builds, so package defaults point at
+          # absent dist files; source exports keep changed tests self-contained.
+          bun test --conditions=eliza-source "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun
         env:
           # Tests must produce coverage/lcov.info. If a package emits to a
           # different path, surface it here.
