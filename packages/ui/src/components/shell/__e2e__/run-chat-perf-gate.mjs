@@ -121,6 +121,7 @@ async function drag(p, selector, dx, dy, { steps = 14, stepMs = 16 } = {}) {
         new PointerEvent("pointerdown", {
           pointerId: 1,
           pointerType: "touch",
+          isPrimary: true,
           clientX: cx,
           clientY: cy,
           bubbles: true,
@@ -138,6 +139,7 @@ async function drag(p, selector, dx, dy, { steps = 14, stepMs = 16 } = {}) {
           new PointerEvent("pointermove", {
             pointerId: 1,
             pointerType: "touch",
+            isPrimary: true,
             clientX: x,
             clientY: y,
             bubbles: true,
@@ -153,6 +155,7 @@ async function drag(p, selector, dx, dy, { steps = 14, stepMs = 16 } = {}) {
         new PointerEvent("pointerup", {
           pointerId: 1,
           pointerType: "touch",
+          isPrimary: true,
           clientX: x,
           clientY: y,
           bubbles: true,
