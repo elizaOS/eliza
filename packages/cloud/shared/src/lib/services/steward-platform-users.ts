@@ -26,6 +26,20 @@ type StewardPlatformUserResponse =
       error?: string;
     };
 
+async function readStewardPlatformUserResponse(
+  response: Response,
+): Promise<StewardPlatformUserResponse> {
+  try {
+    return (await response.json()) as StewardPlatformUserResponse;
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow; malformed Steward responses are upstream failures, not absent payloads.
+    throw new Error(
+      `Steward /platform/users returned ${response.status} and its JSON body could not be parsed`,
+      { cause: error },
+    );
+  }
+}
+
 export function getStewardApiUrl(): string {
   return resolveServerStewardApiUrlFromEnv(getCloudAwareEnv());
 }
@@ -42,6 +56,7 @@ export function isStewardPlatformConfigured(): boolean {
   try {
     return getStewardPlatformKey().length > 0;
   } catch {
+    // error-policy:J4 explicit availability probe; callers use false to hide Steward-only flows when config is absent.
     return false;
   }
 }
@@ -64,9 +79,9 @@ export async function provisionStewardPlatformUser(
     signal: AbortSignal.timeout(10_000),
   });
 
-  const payload = (await response.json().catch(() => null)) as StewardPlatformUserResponse | null;
+  const payload = await readStewardPlatformUserResponse(response);
 
-  if (!response.ok || !payload?.ok) {
+  if (!response.ok || !payload.ok) {
     const errorMessage =
       payload && "error" in payload && typeof payload.error === "string"
         ? payload.error
