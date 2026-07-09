@@ -168,7 +168,16 @@ export async function resolveImageRef(
   let imageAllowed = isCodingContainerImageAllowed(image, allowlist);
   if (!imageAllowed && app.organizationId) {
     const lookup = deps.orgImageNamespaces ?? getOrgImageNamespaces;
-    const orgNamespaces = await lookup(app.organizationId).catch(() => []);
+    let orgNamespaces: string[];
+    try {
+      orgNamespaces = await lookup(app.organizationId);
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow; a failed namespace lookup is an internal authorization failure, not "no grant".
+      throw new Error(
+        `Failed to resolve app deploy image namespaces for organization ${app.organizationId} while deploying app ${app.id}`,
+        { cause: error },
+      );
+    }
     imageAllowed = isCodingContainerImageAllowed(image, orgNamespaces);
   }
   if (!imageAllowed) {

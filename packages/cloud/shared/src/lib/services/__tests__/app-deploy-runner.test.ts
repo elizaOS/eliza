@@ -268,7 +268,7 @@ describe("resolveImageRef: per-org namespace extension", () => {
     expect(called).toBe(false);
   });
 
-  test("a throwing lookup fails CLOSED (deny), never propagates", async () => {
+  test("a throwing lookup fails closed with the lookup failure preserved", async () => {
     const deps = depsWithOrgNamespaces(async () => {
       throw new Error("db down");
     });
@@ -278,7 +278,11 @@ describe("resolveImageRef: per-org namespace extension", () => {
         organizationId: "org-1",
         metadata: { imageTag: ORG_IMAGE },
       }),
-    ).rejects.toThrow(/is not permitted/);
+    ).rejects.toMatchObject({
+      message:
+        "Failed to resolve app deploy image namespaces for organization org-1 while deploying app app-1",
+      cause: expect.objectContaining({ message: "db down" }),
+    });
   });
 
   test("an env-allowlisted image never consults the org lookup (fast path)", async () => {
