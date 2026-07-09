@@ -163,11 +163,10 @@ jobs:
       - name: Test realness ratchet
         run: bun run audit:test-realness
 
-      # Per-plugin mock-LLM e2e coverage. Warn-first (--dry-run exits 0) while
-      # the backlog is burned down; flip to enforcing (drop --dry-run, allowlist
-      # justified N/A) once plugins carry a withMockLlmRuntime e2e. (#8801)
-      - name: Per-plugin e2e coverage (warn-only)
-        run: node packages/scripts/lint-lane-coverage.mjs --dry-run
+      # Per-plugin mock-LLM e2e coverage. The seeded allowlist carries
+      # historical debt; new unsuppressed gaps fail the main gate (#13620).
+      - name: Per-plugin e2e coverage
+        run: node packages/scripts/lint-lane-coverage.mjs
 
   # Build job
   build:
