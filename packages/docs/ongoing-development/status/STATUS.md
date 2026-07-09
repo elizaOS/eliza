@@ -13,23 +13,22 @@ Run the board, readiness, and evidence analyses from one immutable payload:
 bun run mvp:closeout-audit -- --json --output /tmp/mvp-closeout.json
 ```
 
-Snapshot at `2026-07-09T20:33:48.499Z`:
+Snapshot at `2026-07-09T21:01:35.577Z`:
 
 - Snapshot integrity: **PASS**
 - MVP readiness: **NOT READY**
-- Project items: 198, including 197 issue cards
+- Project items: 199, including 198 issue cards
 - Open issue cards: 37
-- Closed issue cards: 160
+- Closed issue cards: 161
 - Open not Done: 37
 - Human-gated: 33
 - Agent-actionable: 4
 - Closed not Done: #14708, #14714, #14724, #14782
 - Readiness/evidence issue-set parity: 37 / 37, zero missing or extra
 
-The four actionable rows are #13406, #13631, #15753, and #15758. Three
-blocker-labeled rows have non-human board status and therefore fail readiness:
-#14793, #14797, and #14864. A blocker label does not make an active
-`In progress` row complete.
+The four actionable rows are #13406, #13631, #15753, and #15758. All 33
+human-gated rows are in `Needs human review`; readiness remains false because
+the two umbrella trackers and two active closeout fixes have no blocker label.
 
 ## Evidence Coverage
 
@@ -77,9 +76,9 @@ blocker-labeled rows have non-human board status and therefore fail readiness:
 | #14786 | Needs human review | needs-shaw |
 | #14789 | Needs human review | needs-shaw |
 | #14792 | Needs human review | needs-human, needs-shaw |
-| #14793 | In progress | needs-human, needs-shaw; status mismatch |
-| #14797 | In progress | needs-human, needs-shaw; status mismatch |
-| #14864 | In progress | needs-shaw; status mismatch |
+| #14793 | Needs human review | needs-human, needs-shaw |
+| #14797 | Needs human review | needs-human, needs-shaw |
+| #14864 | Needs human review | needs-shaw |
 | #14871 | Needs human review | needs-shaw |
 | #14872 | Needs human review | needs-shaw |
 | #14874 | Needs human review | needs-shaw |
