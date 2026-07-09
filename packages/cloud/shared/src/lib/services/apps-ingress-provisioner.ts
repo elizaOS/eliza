@@ -15,6 +15,7 @@
  * `scripts/verify-apps-ingress-routing.sh`.
  */
 
+import { logger } from "../utils/logger";
 import {
   type AppRouteInput,
   buildCaddyAddRouteUrl,
@@ -73,7 +74,14 @@ export async function addAppRoute(opts: AddRouteOpts): Promise<void> {
   await fetchImpl(buildCaddyRouteByIdUrl(opts.adminBase, routeId), {
     method: "DELETE",
     signal: AbortSignal.timeout(timeoutMs),
-  }).catch(() => undefined);
+  }).catch((error) => {
+    // error-policy:J4 stale-route cleanup failure must not block the replacement route.
+    logger.warn("[apps-ingress] stale route delete failed before add-route", {
+      routeId,
+      hostname: opts.hostname,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   const res = await fetchImpl(buildCaddyAddRouteUrl(opts.adminBase, opts.server), {
     method: "POST",

@@ -231,7 +231,19 @@ async function createPaymentRequirements(
   const now = Math.floor(Date.now() / 1000);
   let facilitatorCaller: string | null = null;
   if (scheme === "exact_permit") {
-    await x402FacilitatorService.initialize();
+    // Reached with a configured X402_RECIPIENT_ADDRESS (recipient resolution
+    // then skips facilitator init), so this initialize() needs its own guard.
+    try {
+      await x402FacilitatorService.initialize();
+    } catch (error) {
+      // error-policy:J1 boundary translation; topup quotes report unavailable
+      // x402 configuration instead of letting setup failures become Worker 500s.
+      logger.error("[x402] Failed to initialize facilitator for exact_permit signer", error);
+      return {
+        error: "x402 facilitator signer is not configured",
+        status: 503,
+      };
+    }
     facilitatorCaller = x402FacilitatorService.getSignerAddress();
     if (!facilitatorCaller) {
       return {

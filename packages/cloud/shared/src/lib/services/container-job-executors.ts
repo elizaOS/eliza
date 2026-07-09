@@ -149,7 +149,15 @@ export async function executeContainerProvision(
     const endpoint = deriveAppPublicUrl(containerId);
     if (endpoint && deps.onRouteAdded) {
       const extraHostnames = deps.listVerifiedAppHostnames
-        ? await deps.listVerifiedAppHostnames(row.appId).catch(() => [] as string[])
+        ? await deps.listVerifiedAppHostnames(row.appId).catch((error) => {
+            // error-policy:J4 custom domains are additive; the primary app route stays explicit.
+            logger.warn("[ContainerExecutor] custom-domain lookup failed during route-add", {
+              containerId,
+              appId: row.appId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return [] as string[];
+          })
         : [];
       await deps.onRouteAdded({
         hostname: endpoint.hostname,
@@ -203,7 +211,14 @@ export async function executeContainerDelete(
   // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
   const endpoint = deriveAppPublicUrl(containerId);
   if (endpoint && deps.onRouteRemoved) {
-    await deps.onRouteRemoved({ hostname: endpoint.hostname }).catch(() => undefined);
+    await deps.onRouteRemoved({ hostname: endpoint.hostname }).catch((error) => {
+      // error-policy:J6 route removal is teardown best-effort; reconciler sweeps orphans.
+      logger.warn("[ContainerExecutor] route removal failed during container delete", {
+        containerId,
+        hostname: endpoint.hostname,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
   await deps.store.markDeleted(containerId);
 }

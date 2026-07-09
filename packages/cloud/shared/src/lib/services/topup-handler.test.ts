@@ -103,3 +103,38 @@ test("topup quote returns x402_not_configured when facilitator setup fails", asy
   expect(initialize).toHaveBeenCalledTimes(1);
   expect(getSignerAddress).not.toHaveBeenCalled();
 });
+
+test("exact_permit quote fails closed when facilitator setup fails despite a configured recipient", async () => {
+  initialize.mockClear();
+  getSignerAddress.mockClear();
+
+  const handler = createTopupHandler({
+    amount: 10,
+    getSourceId: (walletAddress, paymentId) => `${walletAddress}:${paymentId}`,
+  });
+
+  // A configured recipient skips facilitator init during recipient resolution,
+  // so a bsc (exact_permit) quote reaches the signer-init call — the second,
+  // separately guarded initialize() on the quote path.
+  const response = await handler(
+    new Request("https://api.example.test/api/v1/topup/10", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: "0x1111111111111111111111111111111111111111",
+      }),
+    }),
+    {
+      X402_RECIPIENT_ADDRESS: "0x2222222222222222222222222222222222222222",
+      X402_NETWORK: "bsc",
+    },
+  );
+
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({
+    success: false,
+    code: "x402_not_configured",
+  });
+  expect(initialize).toHaveBeenCalledTimes(1);
+  expect(getSignerAddress).not.toHaveBeenCalled();
+});
