@@ -878,6 +878,7 @@ export const PATH_PROBES = {
   "elizacloud.api-key": probeElizaCloud,
   "github.gh-cli": probeGithubGhCli,
   "github.pat": probeGithubPats,
+  "github.device-oauth": probeGithubGhCli,
   "github.user-oauth": probeGithubOauthApp,
   "google.oauth-owner": probeGoogle,
   "google.oauth-agent": probeGoogle,

@@ -62,6 +62,10 @@ import {
 } from "./credential-probes.mjs";
 import { HOME_ENV_PATH, loadLayeredEnv, writeSecret } from "./env-layers.mjs";
 import {
+  pollGitHubDeviceLogin,
+  startGitHubDeviceLogin,
+} from "./github-device-login.mjs";
+import {
   freshness,
   LEDGER_PATH,
   readLedger,
@@ -544,6 +548,35 @@ async function handleGhToken(body) {
   return { ...persistEnvVar(key, token, target), source: "gh CLI keyring" };
 }
 
+async function handleGitHubDeviceStart(body) {
+  const target = parseTarget(body);
+  const layered = loadLayeredEnv();
+  const clientId = layered.values.GITHUB_OAUTH_CLIENT_ID;
+  if (typeof clientId !== "string" || clientId.trim().length === 0) {
+    throw new HttpError(
+      409,
+      "GitHub device login needs owner setup: GITHUB_OAUTH_CLIENT_ID is absent or device flow is not registered",
+    );
+  }
+  return startGitHubDeviceLogin({ clientId, target });
+}
+
+async function handleGitHubDevicePoll(body) {
+  if (typeof body?.flowId !== "string" || body.flowId.length === 0) {
+    throw new HttpError(400, "flowId is required");
+  }
+  const result = await pollGitHubDeviceLogin({ flowId: body.flowId });
+  if (result.status !== "complete") return result;
+  const saved = persistEnvVar("GITHUB_TOKEN", result.token, result.target);
+  return {
+    status: "complete",
+    key: saved.key,
+    masked: saved.masked,
+    target: saved.target,
+    scope: result.scope,
+  };
+}
+
 async function handleSiweLogin(body) {
   const target = parseTarget(body);
   const layered = loadLayeredEnv();
@@ -729,6 +762,20 @@ async function handle(req, res) {
   }
   if (req.method === "POST" && url.pathname === "/api/oneclick/gh-token") {
     sendJson(res, 200, await handleGhToken(await readJsonBody(req)));
+    return;
+  }
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/oneclick/github-device/start"
+  ) {
+    sendJson(res, 200, await handleGitHubDeviceStart(await readJsonBody(req)));
+    return;
+  }
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/oneclick/github-device/poll"
+  ) {
+    sendJson(res, 200, await handleGitHubDevicePoll(await readJsonBody(req)));
     return;
   }
   if (req.method === "POST" && url.pathname === "/api/oneclick/siwe") {
@@ -954,6 +1001,36 @@ const PAGE_HTML = `<!doctype html>
         }));
       });
       controls.push(gh);
+    }
+    if (oc && oc.type === 'github-device') {
+      var device = el('button', null, 'Login with GitHub');
+      device.title = oc.detail;
+      device.addEventListener('click', function () {
+        function wait(seconds) {
+          return new Promise(function (resolve) { setTimeout(resolve, seconds * 1000); });
+        }
+        function poll(flowId, seconds) {
+          return wait(seconds).then(function () {
+            return api('POST', '/api/oneclick/github-device/poll', { flowId: flowId });
+          }).then(function (payload) {
+            if (payload.status === 'pending') return poll(flowId, payload.retryAfterSeconds);
+            toast('GitHub login complete: saved ' + payload.key + ' = ' + payload.masked + ' → ' + payload.target, false);
+            return payload;
+          });
+        }
+        busyRun(device, 'starting…', api('POST', '/api/oneclick/github-device/start', { target: saveTarget() }).then(function (payload) {
+          var box = el('p', 'uri-box');
+          box.appendChild(document.createTextNode('Code: ' + payload.userCode + ' · '));
+          var link = el('a', null, payload.verificationUri);
+          link.href = payload.verificationUri; link.target = '_blank'; link.rel = 'noreferrer';
+          box.appendChild(link);
+          card.appendChild(box);
+          window.open(payload.verificationUri, '_blank', 'noopener,noreferrer');
+          device.textContent = 'waiting for GitHub…';
+          return poll(payload.flowId, payload.intervalSeconds);
+        }));
+      });
+      controls.push(device);
     }
     if (oc && oc.type === 'siwe') {
       var siwe = el('button', null, 'Login with Eliza Cloud');
