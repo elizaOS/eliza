@@ -235,7 +235,16 @@ export class ManagedAgentDiscordService {
         organizationId: params.organizationId,
         userId: sandbox.user_id,
       });
-      void provisioningJobService.triggerImmediate().catch(() => {});
+      // The restart job is already enqueued; triggerImmediate only nudges the
+      // daemon to pick it up now. A failed nudge delays restart to the next poll.
+      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      void provisioningJobService.triggerImmediate().catch((err) =>
+        logger.warn("[managed-discord] provisioning triggerImmediate nudge failed", {
+          agentId: sandbox.id,
+          organizationId: params.organizationId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
       restarted = true;
     }
 
@@ -288,7 +297,16 @@ export class ManagedAgentDiscordService {
         organizationId: params.organizationId,
         userId: sandbox.user_id,
       });
-      void provisioningJobService.triggerImmediate().catch(() => {});
+      // The restart job is already enqueued; triggerImmediate only nudges the
+      // daemon to pick it up now. A failed nudge delays restart to the next poll.
+      // error-policy:J7 nudge failure only delays an already-enqueued restart; logged, not fatal.
+      void provisioningJobService.triggerImmediate().catch((err) =>
+        logger.warn("[managed-discord] provisioning triggerImmediate nudge failed", {
+          agentId: sandbox.id,
+          organizationId: params.organizationId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
       restarted = true;
     }
 

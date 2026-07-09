@@ -422,6 +422,22 @@ describe("ingress route hooks", () => {
     });
   });
 
+  test("delete still marks the container deleted when route removal fails", async () => {
+    await withBase("apps.elizacloud.ai", async () => {
+      const { events, store } = fakeStore();
+      const { provider } = fakeProvider();
+      await executeContainerDelete(job({ containerId: "container-1", organizationId: "org-1" }), {
+        provider,
+        store,
+        onRouteRemoved: async () => {
+          throw new Error("caddy admin unavailable");
+        },
+      });
+
+      expect(events).toContainEqual({ op: "deleted", id: "container-1" });
+    });
+  });
+
   test("no base domain -> no route call (ingress not configured)", async () => {
     await withBase(undefined, async () => {
       const { store } = fakeStore();
