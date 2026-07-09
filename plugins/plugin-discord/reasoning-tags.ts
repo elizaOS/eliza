@@ -9,12 +9,19 @@ const REASONING_TAGS = [
 	"reflection",
 	"thought",
 	"antthinking",
+	// Native model tool-call syntax (glm/qwen-family `<tool_call>`, gemini-style
+	// `<function_call>`): a model that drifts out of the eliza response grammar
+	// mid-turn emits these as visible text (observed live: "…Let me try the
+	// weather action.<tool_call>get_weather" delivered verbatim). They are
+	// machine syntax, never user-facing prose — strip them like reasoning tags.
+	"tool_call",
+	"function_call",
 ] as const;
 
 const SELF_CLOSING_ARTIFACTS_RE =
 	/<(?:STOP|END|end_turn|eot_id)\s*\/?>|<\|(?:end|stop|im_end|eot_id)\|>/gi;
 const QUICK_TAG_RE =
-	/<\/?(?:thinking|reasoning|reflection|thought|antthinking|final|STOP|END|end_turn)\b|<\|(?:end|stop|im_end)/i;
+	/<\/?(?:thinking|reasoning|reflection|thought|antthinking|tool_call|function_call|final|STOP|END|end_turn)\b|<\|(?:end|stop|im_end)/i;
 const CODE_BLOCK_RE = /```[\s\S]*?```/g;
 const CODE_BLOCK_SENTINEL_PREFIX = "\x00CB";
 
