@@ -6,7 +6,6 @@ import { logger } from "@elizaos/logger";
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
-  ArrowDown,
   AudioLines,
   Camera,
   Captions,
@@ -919,19 +918,28 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
   return data;
 }
 
-const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE: ShellMessage = {
-  id: "first-run:cloud-signin-fallback",
-  role: "assistant",
-  source: "first_run",
-  createdAt: 0,
-  content: [
-    "Hi — I'm Eliza.",
-    "",
-    "[CHOICE:first-run id=runtime]",
-    "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
-    "[/CHOICE]",
-  ].join("\n"),
-};
+const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES: ShellMessage[] = [
+  {
+    id: "first-run:greeting-fallback",
+    role: "assistant",
+    source: "first_run",
+    createdAt: 0,
+    content: "Hi, I'm Eliza.",
+  },
+  {
+    id: "first-run:cloud-signin-fallback",
+    role: "assistant",
+    source: "first_run",
+    createdAt: 1,
+    content: [
+      "Let's get you signed in.",
+      "",
+      "[CHOICE:first-run id=runtime]",
+      "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+      "[/CHOICE]",
+    ].join("\n"),
+  },
+];
 const FIRST_RUN_SIGN_IN_FALLBACK_DELAY_MS = 600;
 
 function isFirstRunShellMessage(m: ShellMessage): boolean {
@@ -948,13 +956,19 @@ function selectFirstRunDisplayMessages(
 ): ShellMessage[] {
   const firstRunMessages = messages.filter(isFirstRunShellMessage);
   if (firstRunMessages.length === 0) {
-    return showFallback ? [FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE] : [];
+    return showFallback ? FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES : [];
   }
 
   const latest = firstRunMessages.at(-1);
   if (!latest) return [];
 
   const previous = firstRunMessages.at(-2);
+  if (
+    previous?.id === "first-run:greeting" &&
+    latest.id === "first-run:cloud-oauth"
+  ) {
+    return [previous, latest];
+  }
   if (
     previous?.id === "first-run:appearance" &&
     latest.id === "first-run:tutorial"
@@ -1695,11 +1709,7 @@ export function ContinuousChatOverlay({
   // (pre-paint — the thread never flashes at the top), a NEW line re-pins with
   // a smooth glide while the reader rests at the bottom, streaming growth
   // follows in a single rAF, and a reader who scrolled up is never yanked.
-  const {
-    scrollRef: threadRef,
-    atBottom: threadAtBottom,
-    jumpToLatest,
-  } = useThreadAutoScroll<HTMLDivElement>({
+  const threadRef = useThreadAutoScroll<HTMLDivElement>({
     growthKey: `${visibleMessages.length}:${lastId ?? ""}:${lastContent.length}`,
     lineKey: lastId ?? "",
     enabled: threadPresented,
@@ -5283,18 +5293,14 @@ export function ContinuousChatOverlay({
                       className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
                     />
                   ) : null}
-                  {/* `mt-auto` keeps the latest line at the bottom (nearest the
-                  input) until the thread overflows, then it scrolls. During
-                  onboarding only the current first-run turn is displayed, so
-                  keep short setup cards centered while letting tall cards grow
-                  past the viewport so the scrollport owns the overflow. */}
+                  {/* Normal chat keeps the latest line near the composer. First-run
+                  starts at the top of the transcript so the opening prompt reads
+                  like the first turn in a conversation. */}
                   <div
                     ref={threadContentRef}
                     className={cn(
-                      "flex flex-col pb-3 pt-1",
-                      !firstRunOpen && "mt-auto",
-                      firstRunOpen &&
-                        "min-h-full shrink-0 justify-center pb-[18vh] pt-0",
+                      "flex flex-col",
+                      firstRunOpen ? "shrink-0 pt-8" : "mt-auto pb-3 pt-1",
                     )}
                   >
                     {/* Top sentinel for infinite upward scroll (#13532, #14279):
@@ -5384,20 +5390,6 @@ export function ContinuousChatOverlay({
                     </AnimatePresence>
                   </div>
                 </motion.div>
-                {sheetOpen && hasThread && !threadAtBottom ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={jumpToLatest}
-                    aria-label="jump to latest message"
-                    data-testid="chat-jump-to-latest"
-                    className="absolute bottom-3 left-1/2 z-[3] flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border-strong bg-surface/95 px-3 text-xs font-medium text-txt shadow-lg transition-colors hover:bg-bg-hover"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-                    <span>Jump to latest</span>
-                  </Button>
-                ) : null}
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just

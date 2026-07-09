@@ -27,6 +27,9 @@ describe("turnStatusLabel", () => {
       turnStatusLabel({ kind: "running_action", actionName: "SEND_MESSAGE" }),
     ).toBe("Running Send message");
     expect(
+      turnStatusLabel({ kind: "running_action", actionName: "REPLY" }),
+    ).toBe("Replying");
+    expect(
       turnStatusLabel({ kind: "running_tool", toolName: "WEB_SEARCH" }),
     ).toBe("Using Web search");
     expect(turnStatusLabel({ kind: "running_tool" })).toBe("Using a tool");

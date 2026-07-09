@@ -19,7 +19,7 @@
  *       Full matrix: CHAT_SHEET_STATE_MATRIX.md.
  *   - AUTOSCROLL, per input type: tail follows at bottom, a single >80px
  *       streamed growth remains pinned, reading-scrollback is not yanked, and
- *       jump-to-latest re-pins the transcript.
+ *       scrollback remains stable without extra floating controls.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
  *       mic press→recording · voice speaking→mute toggle · responding typing
@@ -1276,17 +1276,10 @@ async function runAutoScrollSuite(p, pointer, tag) {
     `[${pointer}] AUTOSCROLL preserves reading scrollback on growth (${Math.round(readerPosition?.scrollTop ?? 0)} → ${Math.round(afterScrollbackGrowth?.scrollTop ?? 0)})`,
   );
   assert(
-    await p.getByTestId("chat-jump-to-latest").isVisible(),
-    `[${pointer}] AUTOSCROLL shows jump-to-latest while reader is above bottom`,
+    (await p.getByTestId("chat-jump-to-latest").count()) === 0,
+    `[${pointer}] AUTOSCROLL leaves scrollback free of floating controls`,
   );
-  await p.getByTestId("chat-jump-to-latest").click();
-  await waitForThreadBottom(p);
-  const afterJump = await threadScrollState(p);
-  assert(
-    !!afterJump && afterJump.bottomDelta <= 18,
-    `[${pointer}] AUTOSCROLL jump-to-latest re-pins to bottom (delta=${Math.round(afterJump?.bottomDelta ?? -1)})`,
-  );
-  await snap(p, `${tag}-autoscroll-jump-repinned`);
+  await snap(p, `${tag}-autoscroll-scrollback`);
 }
 
 console.log(`\nCHAT-SHEET E2E using Playwright ${browserName}`);
@@ -1939,7 +1932,7 @@ try {
     });
   }
 
-  // ===== AUTOSCROLL + JUMP-TO-LATEST (mouse + real touch, #13690) =====
+  // ===== AUTOSCROLL + SCROLLBACK (mouse + real touch, #13690) =====
   {
     const p = await browser.newPage({ viewport: { width: 1180, height: 820 } });
     attachConsole(p, sink);

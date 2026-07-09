@@ -757,6 +757,56 @@ describe("useChatSend streaming-frame coalescing (text + status + tool)", () => 
     // Status is cleared to null when the turn settles.
     expect(setStatusSpy).toHaveBeenLastCalledWith(null);
   });
+
+  it("settles the visible reply before a slow post-turn history reload", async () => {
+    const historyReload = deferred<LoadConversationMessagesResult>();
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+        _channelType: string,
+        _signal: AbortSignal,
+        _images: unknown,
+        _metadata: unknown,
+        onStatus: (s: ChatTurnStatus) => void,
+      ) => {
+        onStatus({ kind: "running_action", actionName: "REPLY" });
+        onToken("Done", "Done");
+        return { text: "Done", completed: true };
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.loadConversationMessages = vi.fn(() => historyReload.promise);
+    const setSendingSpy = deps.setChatSending as ReturnType<typeof vi.fn>;
+    const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    act(() => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+    });
+
+    await vi.waitFor(() => {
+      expect(deps.loadConversationMessages).toHaveBeenCalledWith("conv-1");
+    });
+
+    // The response text is already visible, so history reconciliation must not
+    // keep the turn spinner/status alive while its request is still pending.
+    expect(setStatusSpy).toHaveBeenLastCalledWith(null);
+    expect(setSendingSpy).toHaveBeenLastCalledWith(false);
+
+    await act(async () => {
+      historyReload.resolve({ ok: true });
+      await sendPromise;
+    });
+  });
 });
 
 function httpStatusError(status: number, message = "Error"): Error {

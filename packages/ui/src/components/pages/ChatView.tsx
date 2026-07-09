@@ -537,7 +537,7 @@ export function ChatView({
   // (smooth glide). The transcript is unmounted on the terminal/inbox branches,
   // so gate the engine there: the false→true edge on return re-pins instantly
   // instead of flashing at the top.
-  const { scrollRef: messagesRef } = useThreadAutoScroll<HTMLDivElement>({
+  const messagesRef = useThreadAutoScroll<HTMLDivElement>({
     growthKey: `${displayedCount}:${lastDisplayed?.id ?? ""}:${lastDisplayed?.text.length ?? 0}`,
     lineKey: lastDisplayed?.id ?? "",
     enabled: !activeTerminalSessionId && !inboxChat,

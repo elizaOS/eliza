@@ -1542,6 +1542,15 @@ export function useChatSend(deps: UseChatSendDeps) {
           });
         }
 
+        // The stream result is the user-visible end of this turn. History
+        // reconciliation can continue below, but it must not leave a completed
+        // reply looking active. Keep the busy state when another turn is queued.
+        setServerTurnStatus(null);
+        setChatFirstTokenReceived(false);
+        if (chatSendQueueRef.current.length === 0) {
+          setChatSending(false);
+        }
+
         // Action callbacks can persist additional assistant turns that are not
         // mirrored by the optimistic streaming draft in local state.
         if (activeConversationIdRef.current === convId) {

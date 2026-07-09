@@ -80,7 +80,7 @@ describe("ChatSurface", () => {
         id: "first-run:greeting",
         role: "assistant",
         content: [
-          "Hi — I'm Eliza. Sign in to Eliza Cloud and I'll get you set up.",
+          "Hi, I'm Eliza. Sign in to Eliza Cloud and I'll get you set up.",
           "",
           "[CHOICE:first-run id=runtime]",
           "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
@@ -279,19 +279,7 @@ describe("ChatSurface", () => {
     ).toBe(true);
   });
 
-  it("hides the jump-to-latest control while resting at the bottom", () => {
-    const messages: ShellMessage[] = [
-      { id: "u", role: "user", content: "Hi", createdAt: 0 },
-      { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
-    ];
-    render(
-      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
-    );
-    // jsdom reports zero geometry → the reader counts as at-bottom → no control.
-    expect(screen.queryByTestId("chat-surface-jump-to-latest")).toBeNull();
-  });
-
-  it("reveals a jump-to-latest control when scrolled up and snaps to the bottom on click", () => {
+  it("does not cover the transcript with a scrollback control", () => {
     const messages: ShellMessage[] = [
       { id: "u", role: "user", content: "Hi", createdAt: 0 },
       { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
@@ -302,7 +290,7 @@ describe("ChatSurface", () => {
     const scroller = screen
       .getByTestId("shell-chat-surface")
       .querySelector(".overflow-y-auto") as HTMLDivElement;
-    // Stub a tall, scrolled-up scroller so `atBottom` reads false.
+    // Stub a tall, scrolled-up scroller.
     Object.defineProperty(scroller, "scrollHeight", {
       configurable: true,
       get: () => 2000,
@@ -323,10 +311,8 @@ describe("ChatSurface", () => {
       top = opts.top ?? top;
     }) as HTMLElement["scrollTo"];
     fireEvent.scroll(scroller);
-    const jump = screen.getByTestId("chat-surface-jump-to-latest");
-    expect(jump).toBeTruthy();
-    fireEvent.click(jump);
-    expect(scroller.scrollTop).toBe(2000);
+    expect(screen.queryByTestId("chat-surface-jump-to-latest")).toBeNull();
+    expect(scroller.scrollTop).toBe(100);
   });
 
   it("marks the conversation list as a polite aria-live region for streaming announcements", () => {

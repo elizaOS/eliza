@@ -273,7 +273,7 @@ describe("ChoiceWidget — pick an option", () => {
     expect(onChoose).toHaveBeenCalledWith("__first_run__:runtime:cloud");
   });
 
-  it("single-option first-run CTA is a bare primary button — no collapsible shell, no '1 options' chip, no chevron (#15144)", () => {
+  it("single-option first-run CTA is a bare neutral button — no collapsible shell, no '1 options' chip, no chevron (#15144)", () => {
     const onChoose = vi.fn();
     render(
       <ChoiceWidget
@@ -294,11 +294,11 @@ describe("ChoiceWidget — pick an option", () => {
     expect(screen.queryByText("1 options")).toBeNull();
     expect(screen.queryByLabelText("Collapse")).toBeNull();
 
-    // Primary (accent) button, full width — the one obvious CTA. Exact class
-    // match: "bg-bg-accent" (the washed secondary token) contains the
-    // substring "bg-accent", so a toContain would false-pass.
+    // Neutral white button, full width — the one obvious CTA without turning
+    // the first chat message into an orange promotional card.
     const signIn = screen.getByTestId("choice-__first_run__:runtime:cloud");
-    expect(signIn.className.split(/\s+/)).toContain("bg-accent");
+    expect(signIn.className.split(/\s+/)).toContain("bg-white");
+    expect(signIn.className.split(/\s+/)).toContain("text-[#101216]");
     expect(signIn.className.split(/\s+/)).toContain("w-full");
 
     // After the tap: locked but NOT washed out, with no redundant status line.

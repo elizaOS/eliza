@@ -111,6 +111,9 @@ export function turnStatusLabel(status: ChatTurnStatus): string {
     case "streaming":
       return "Replying";
     case "running_action":
+      if (status.actionName?.trim().toUpperCase() === "REPLY") {
+        return "Replying";
+      }
       return status.actionName
         ? `Running ${humanizeStatusName(status.actionName)}`
         : "Working";

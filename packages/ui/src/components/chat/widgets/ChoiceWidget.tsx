@@ -92,8 +92,8 @@ export const ChoiceWidget = memo(function ChoiceWidget({
   // A single-action first-run prompt ("Sign in to Eliza Cloud") is a CTA, not
   // a choice: wrapped in the collapsible shell it read as a dropdown with one
   // entry (header + "1 options" chip + chevron) and its secondary chip washed
-  // out on the dark cloud surface (#15144). Render it as one full-width
-  // primary button — no shell, no count chip, no chevron, and no redundant
+  // out on the dark cloud surface (#15144). Render it as a compact primary
+  // button — no shell, no count chip, and no redundant
   // selected-status line after tap.
   const soleOption =
     firstRun && !allowCustom && options.length === 1 ? options[0] : null;
@@ -101,14 +101,14 @@ export const ChoiceWidget = memo(function ChoiceWidget({
     const isSelected = selected?.value === soleOption.value;
     return (
       <div
-        className="my-2 flex min-w-0 flex-col items-stretch gap-2"
+        className="flex w-full max-w-[13.5rem] min-w-0 flex-col items-stretch gap-1 self-start"
         data-choice-id={id}
         data-choice-scope={scope}
         data-testid={`choice-shell-${id}`}
       >
         <Button
           type="button"
-          variant="default"
+          variant="surface"
           size="default"
           disabled={selected !== null}
           aria-label={soleOption.label}
@@ -116,7 +116,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
           data-testid={`choice-${soleOption.value}`}
           // The locked (selected) state stays at full opacity: it is the
           // confirmation the user just acted on, not a faded leftover.
-          className="h-11 w-full justify-center px-4 text-sm font-medium disabled:opacity-100"
+          className="h-10 w-full justify-center rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-[14px] font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
           onClick={() => handleChoose(soleOption)}
         >
           <span className="inline-flex items-center gap-2">

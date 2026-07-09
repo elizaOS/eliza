@@ -880,7 +880,13 @@ export const ChatMessage = memo(function ChatMessage({
               </div>
             </div>
           ) : null}
-          <div data-chat-selectable="true">
+          <div
+            data-chat-selectable="true"
+            className={cn(
+              isFirstRun &&
+                "flex w-full flex-col gap-4 whitespace-normal text-[17px] leading-relaxed text-white",
+            )}
+          >
             {renderContent?.(message, renderContext) ??
               children ??
               message.text}
@@ -906,12 +912,10 @@ export const ChatMessage = memo(function ChatMessage({
     const bubbleExtraClassName = cn(
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
-      // First-run greeting: normal chat messages float on the sheet's shared
-      // glass panel, but onboarding has no panel behind them, so the hairline
-      // edge alone reads as a faint line on black. Give the greeting a subtle
-      // frosted fill + slightly stronger edge so it reads as a proper, sleek
-      // bubble on the opaque onboarding backdrop.
-      isFirstRun && "border-white/25 bg-white/[0.06]",
+      // Give first-run the same conversational bubble structure as chat, with
+      // enough room and contrast for its full-width next-step action.
+      isFirstRun &&
+        "w-full border-white/20 bg-white/[0.07] px-4 py-3.5 sm:px-5 sm:py-4",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -939,8 +943,10 @@ export const ChatMessage = memo(function ChatMessage({
             the turn's side (#10713). */}
         <div
           className={cn(
-            "flex max-w-[80%] flex-col gap-1",
-            isUser ? "items-end" : "items-start",
+            "flex flex-col gap-1",
+            isFirstRun
+              ? "max-w-[22rem] items-start"
+              : cn("max-w-[80%]", isUser ? "items-end" : "items-start"),
           )}
         >
           {bubbleInteractive ? (
