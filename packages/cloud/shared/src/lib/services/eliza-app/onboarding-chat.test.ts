@@ -10,6 +10,7 @@ const findOrCreateByPhone = mock();
 const linkPhoneToUser = mock();
 const generateText = mock();
 const launchManagedElizaAgent = mock();
+const loggerWarn = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 const REAL_CLOUD_BINDINGS = { ...realCloudBindings };
 
@@ -41,6 +42,12 @@ mock.module("../../cache/client", () => ({
 mock.module("../../runtime/cloud-bindings", () => ({
   ...REAL_CLOUD_BINDINGS,
   getCloudAwareEnv: mock(() => cloudEnv),
+}));
+
+mock.module("../../utils/logger", () => ({
+  logger: {
+    warn: loggerWarn,
+  },
 }));
 
 mock.module("@ai-sdk/openai", () => ({
@@ -101,6 +108,7 @@ describe("runOnboardingChat", () => {
     linkPhoneToUser.mockResolvedValue({ success: true });
     generateText.mockReset();
     launchManagedElizaAgent.mockReset();
+    loggerWarn.mockReset();
     cloudEnv = {};
   });
 
@@ -950,6 +958,54 @@ describe("runOnboardingChat", () => {
         });
         expect(third.handoffComplete).toBe(true);
         expect(rememberCalls).toBe(2);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("a failed remember error body read is logged without fabricating handoff success", async () => {
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = mock(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+        return {
+          ok: false,
+          status: 502,
+          text: mock(async () => {
+            throw new Error("body stream broke");
+          }),
+        } as Response;
+      }) as typeof fetch;
+
+      try {
+        ensureElizaAppProvisioning.mockResolvedValue({
+          status: "running",
+          agentId: "agent-1",
+          bridgeUrl: "https://agent-1.example",
+          sandbox: { id: "agent-1", status: "running", bridge_url: "https://agent-1.example" },
+        });
+        launchManagedElizaAgent.mockResolvedValue({
+          appUrl: "https://app.elizacloud.ai/dashboard/agents/agent-1",
+          connection: { apiBase: "https://agent-1.example", token: "agent-token" },
+        });
+
+        const result = await runOnboardingChat({
+          message: "My name is Sam",
+          platform: "blooio",
+          platformUserId: PHONE,
+          sessionId: PLATFORM_SESSION,
+          trustedPlatformIdentity: true,
+          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+        });
+
+        expect(result.handoffComplete).toBe(false);
+        expect(result.session.handoffCopiedAt).toBeUndefined();
+        expect(loggerWarn).toHaveBeenCalledWith(
+          "[eliza-app onboarding] failed to read remember error body",
+          expect.objectContaining({
+            agentId: "agent-1",
+            status: 502,
+            error: "body stream broke",
+          }),
+        );
       } finally {
         globalThis.fetch = originalFetch;
       }

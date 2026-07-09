@@ -6251,7 +6251,15 @@ export class ElizaSandboxService {
       signal: AbortSignal.timeout(SNAPSHOT_RESTORE_TIMEOUT_MS),
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
+      // error-policy:J6 best-effort read of the restore error body to enrich
+      // the error we throw next; a failed body read must not mask the status.
+      const text = await res.text().catch((error) => {
+        logger.warn("[agent-sandbox] Failed to read restore error body", {
+          status: res.status,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return "";
+      });
       throw new Error(`State restore failed: HTTP ${res.status} ${text.slice(0, 200)}`);
     }
   }

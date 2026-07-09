@@ -535,10 +535,17 @@ async function resolveExistingPath(
     config,
     rawPath ?? config.containerWorkspaceRoot,
   );
+  // Containment is decided lexically before the filesystem is probed: an
+  // out-of-workspace request must 403 whether or not its target exists, so
+  // the 403/404 split never becomes an existence oracle for host paths
+  // (and the answer stops depending on the runner host's filesystem layout).
+  ensureInsideRoot(nodePath.resolve(config.workspaceRoot), resolved.fsPath);
   const real = await realpath(resolved.fsPath).catch(() => {
     throw new HttpError(404, "Path not found");
   });
   const root = await realpath(config.workspaceRoot);
+  // Re-check after symlink resolution: a link inside the workspace must not
+  // escape it.
   ensureInsideRoot(root, real);
   return { fsPath: real, containerPath: resolved.containerPath };
 }

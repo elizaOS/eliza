@@ -551,7 +551,14 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
     if (!rememberResponse.ok) {
       // error-policy:J6 best-effort read of the error body to enrich the error
       // we throw next; a failed body read must not mask the non-ok status.
-      const body = await rememberResponse.text().catch(() => "");
+      const body = await rememberResponse.text().catch((error) => {
+        logger.warn("[eliza-app onboarding] failed to read remember error body", {
+          agentId: session.agentId,
+          status: rememberResponse.status,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return "";
+      });
       throw new Error(`memory copy failed (${rememberResponse.status}) ${body.slice(0, 200)}`);
     }
 

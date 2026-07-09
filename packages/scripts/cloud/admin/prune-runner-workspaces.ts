@@ -71,9 +71,14 @@ export function parseRunnerWorkspacePruneArgs(
     }
   }
 
-  const root = path.resolve(
-    flags.get("root") ?? env.RUNNER_WORKSPACE_ROOT ?? DEFAULT_ROOT,
-  );
+  const rawRoot =
+    flags.get("root") ?? env.RUNNER_WORKSPACE_ROOT ?? DEFAULT_ROOT;
+  // Runner hosts are Linux; keep POSIX-absolute roots verbatim so parsing
+  // behaves identically when this suite runs on win32 CI, where path.resolve
+  // would drive-qualify "/opt/..." into "D:\opt\...".
+  const root = rawRoot.startsWith("/")
+    ? path.posix.normalize(rawRoot)
+    : path.resolve(rawRoot);
   const minAgeRaw =
     flags.get("min-age-hours") ??
     env.RUNNER_WORKSPACE_MIN_AGE_HOURS ??

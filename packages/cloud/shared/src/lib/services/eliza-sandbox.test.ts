@@ -316,6 +316,56 @@ describe("ElizaSandboxService state restore auth", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0].headers).toEqual({ "Content-Type": "application/json" });
   });
+
+  test("logs restore error body read failures before throwing the restore status", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
+    globalThis.fetch = mock(async () => {
+      return {
+        ok: false,
+        status: 502,
+        text: mock(async () => {
+          throw new Error("restore body stream broke");
+        }),
+      } as Response;
+    });
+
+    try {
+      await expect(
+        (
+          new ElizaSandboxService() as unknown as {
+            pushState: (
+              bridgeUrl: string,
+              state: {
+                memories: unknown[];
+                config: Record<string, unknown>;
+                workspaceFiles: object;
+              },
+              options?: { trusted?: boolean },
+            ) => Promise<void>;
+          }
+        ).pushState(
+          "https://runtime.example",
+          {
+            memories: [],
+            config: {},
+            workspaceFiles: {},
+          },
+          { trusted: true },
+        ),
+      ).rejects.toThrow("State restore failed: HTTP 502");
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[agent-sandbox] Failed to read restore error body",
+        expect.objectContaining({
+          status: 502,
+          error: "restore body stream broke",
+        }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
 
 describe("ElizaSandboxService bridge status", () => {
