@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 //
-// Boot parallelization of the restoring-session phase: (1) the cloud restore
-// overlaps the apiBase backfill lookup with the Steward-token refresh (both
-// network round-trips run concurrently; client mutations still land base →
+// Boot parallelization of the restoring-session phase: (1) a cloud restore
+// derives the dedicated per-agent base synchronously from the persisted id —
+// no backfill network lookup — and routes the client while the Steward-token
+// refresh round-trip is still in flight (client mutations still land base →
 // token), and (2) a desktop local restore issues ONE runtime-mode RPC shared
 // by the agent-autostart gate and the embedded-local target reclassification.
 // Real restore module under test; only the network / desktop-bridge
@@ -70,7 +71,7 @@ function makeDeps(): RestoringSessionDeps {
   };
 }
 
-describe("cloud restore overlaps backfill and Steward-token refresh", () => {
+describe("cloud restore routes the client without waiting on the Steward refresh", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
   const realFetch = globalThis.fetch;
   const pendingRequests: Array<{
@@ -104,11 +105,12 @@ describe("cloud restore overlaps backfill and Steward-token refresh", () => {
     vi.restoreAllMocks();
   });
 
-  it("dispatches the Steward refresh while the backfill agent lookup is still in flight", async () => {
+  it("sets the id-derived dedicated base while the Steward refresh is still in flight", async () => {
     // A near-expiry stored JWT forces the refresh POST…
     localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(30));
     const fresh = makeJwt(3600);
-    // …and a MISSING apiBase forces backfill's network lookup for the agent.
+    // …and a MISSING apiBase forces the backfill, which derives the dedicated
+    // `<agentId>.elizacloud.ai` base purely from the persisted id.
     const restored: PersistedActiveServer = {
       id: "cloud:agent-123",
       kind: "cloud",
@@ -121,44 +123,37 @@ describe("cloud restore overlaps backfill and Steward-token refresh", () => {
       clientRef,
     });
 
-    // BOTH network calls must be observable while NEITHER has resolved —
-    // that is the concurrency this change introduces. (Serial code would
-    // hold the refresh until the agent lookup settles.)
+    // The startup-latency contract: while the refresh POST is observable and
+    // UNRESOLVED, the client base must already be routed — base routing is
+    // never serialized behind the refresh round-trip.
     await vi.waitFor(() => {
       expect(
         pendingRequests.some((r) => r.url.includes("steward-refresh")),
       ).toBe(true);
-      expect(
-        pendingRequests.some(
-          (r) => r.url.includes("agent") && !r.url.includes("steward"),
-        ),
-      ).toBe(true);
+      expect(clientRef.setBaseUrl).toHaveBeenCalledTimes(1);
     });
+    // The backfill is derivation-only: the refresh POST is the sole network
+    // round-trip in the whole cloud restore (no agent lookup to wait behind).
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(clientRef.setBaseUrl).toHaveBeenLastCalledWith(
+      "https://agent-123.elizacloud.ai",
+    );
+    // Token routing DOES wait for the refresh (fresh credential or nothing).
+    expect(clientRef.setToken).not.toHaveBeenCalled();
 
-    // Settle both: the agent lookup fails (backfill then derives the base
-    // from the persisted id) and the refresh succeeds.
+    // Settle the refresh; the restore completes with the fresh token.
     for (const req of pendingRequests) {
-      if (req.url.includes("steward-refresh")) {
-        req.resolve({
-          ok: true,
-          status: 200,
-          json: async () => ({ token: fresh }),
-        } as unknown as Response);
-      } else {
-        req.resolve({
-          ok: false,
-          status: 500,
-          json: async () => ({}),
-        } as unknown as Response);
-      }
+      req.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ token: fresh }),
+      } as unknown as Response);
     }
     await done;
 
     // Same terminal state as the serial code: id-derived per-agent base,
     // refreshed Steward token, base set before token.
     expect(clientRef.setBaseUrl).toHaveBeenCalledTimes(1);
-    const base = clientRef.setBaseUrl.mock.calls[0][0] as string;
-    expect(base).toContain("agent-123");
     expect(clientRef.setToken).toHaveBeenLastCalledWith(fresh);
     expect(clientRef.setBaseUrl.mock.invocationCallOrder[0]).toBeLessThan(
       clientRef.setToken.mock.invocationCallOrder.at(-1) as number,

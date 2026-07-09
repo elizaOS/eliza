@@ -8,10 +8,15 @@
 
 import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../../utils/cloud-agent-base";
 
-/** Control-plane hosts minus the API origins (api. / api-staging.) — the API
- * origins never serve the UI shell. */
+/** Control-plane hosts minus the API origins (api. / api-staging.), which
+ * never serve the UI shell, and minus the app hosts (app. / app-staging.),
+ * which serve the agent chat app — not the console. The app hosts sit in
+ * ELIZA_CLOUD_CONTROL_PLANE_HOSTS only so per-agent `<id>.elizacloud.ai`
+ * detection doesn't misread them as dedicated agent subdomains; classifying
+ * them as apex here would stop the agent app from ever booting on them (see
+ * AppCatchAllRoute) and send their post-login default to /dashboard. */
 export const APEX_UI_CONTROL_PLANE_HOSTS = new Set(
-  [...ELIZA_CLOUD_CONTROL_PLANE_HOSTS].filter((h) => !/^api[.-]/.test(h)),
+  [...ELIZA_CLOUD_CONTROL_PLANE_HOSTS].filter((h) => !/^(api|app)[.-]/.test(h)),
 );
 
 export function isApexControlPlaneHost(): boolean {
