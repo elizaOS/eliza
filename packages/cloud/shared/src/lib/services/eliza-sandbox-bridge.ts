@@ -89,6 +89,7 @@ export interface BridgeServiceDeps {
 }
 
 const DEFAULT_CENTRAL_SERVER_ID = "00000000-0000-0000-0000-000000000000";
+const BRIDGE_FAILURE_RESULT_FIELDS = ["failureKind", "fallback"] as const;
 
 class BridgeRouteUnavailableError extends Error {
   constructor(
@@ -407,7 +408,10 @@ export class ElizaSandboxBridgeService {
     for (const attempt of attempts) {
       try {
         const response = await attempt();
-        if (this.bridgeResponseHasText(response)) {
+        if (this.bridgeResponseIsFailure(response)) {
+          return response;
+        }
+        if (this.bridgeResponseHasUsableText(response)) {
           return response;
         }
         lastResponse = response;
@@ -429,6 +433,7 @@ export class ElizaSandboxBridgeService {
         id: rpc.id,
         result: {
           text: fallbackText,
+          transport: "bridge_no_reply_fallback",
           fallback: true,
           reason: "agent_no_reply",
         },
@@ -446,6 +451,16 @@ export class ElizaSandboxBridgeService {
 
   private bridgeResponseHasText(response: BridgeResponse): boolean {
     return typeof response.result?.text === "string" && response.result.text.trim().length > 0;
+  }
+
+  private bridgeResponseHasUsableText(response: BridgeResponse): boolean {
+    return this.bridgeResponseHasText(response) && !this.bridgeResponseIsFailure(response);
+  }
+
+  private bridgeResponseIsFailure(response: BridgeResponse): boolean {
+    const result = response.result;
+    if (!result) return false;
+    return BRIDGE_FAILURE_RESULT_FIELDS.some((field) => result[field] !== undefined);
   }
 
   private async bridgeConversationMessageSend(
@@ -478,6 +493,8 @@ export class ElizaSandboxBridgeService {
       id: rpc.id,
       result: {
         text: this.extractBridgeMessageText(body) ?? "",
+        transport: "conversation",
+        ...(typeof body.failureKind === "string" ? { failureKind: body.failureKind } : {}),
         agentName: typeof body.agentName === "string" ? body.agentName : undefined,
         conversationId,
       },
@@ -535,6 +552,7 @@ export class ElizaSandboxBridgeService {
       id: rpc.id,
       result: {
         text: agentText ?? "",
+        transport: "central_channel",
         accepted: true,
         runtimeAgentId: runtimeAgent.id,
         agentName: runtimeAgent.name,
@@ -570,6 +588,7 @@ export class ElizaSandboxBridgeService {
       id: rpc.id,
       result: {
         text: this.extractOpenAiChatCompletionText(body) ?? "",
+        transport: "openai_chat_completion",
         model: typeof body.model === "string" ? body.model : undefined,
         completionId: typeof body.id === "string" ? body.id : undefined,
       },

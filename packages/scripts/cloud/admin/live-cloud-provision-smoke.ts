@@ -58,6 +58,51 @@ function describeBody(body: unknown): string {
   return JSON.stringify(parts);
 }
 
+const CANNED_FAILURE_REPLY_PATTERNS = [
+  /\bprovider issue\b/i,
+  /\bi don't have a reply for that\b/i,
+  /\bbeing rate-limited\b/i,
+  /\binsufficient credits\b/i,
+  /\bconnect an llm provider\b/i,
+  /\bagent runtime is online, but no model response was produced\b/i,
+] as const;
+
+function assertRealBridgeReply(message: JsonObject, token: string): string {
+  if (message.fallback === true) {
+    throw new Error(
+      `Bridge returned fabricated fallback text: ${JSON.stringify(message).slice(0, 500)}`,
+    );
+  }
+  if (typeof message.failureKind === "string" && message.failureKind) {
+    throw new Error(
+      `Bridge returned chat failureKind=${message.failureKind}: ${JSON.stringify(
+        message,
+      ).slice(0, 500)}`,
+    );
+  }
+
+  const reply = typeof message.text === "string" ? message.text.trim() : "";
+  if (!reply) {
+    throw new Error(
+      `Bridge message send failed: ${JSON.stringify(message).slice(0, 500)}`,
+    );
+  }
+  const canned = CANNED_FAILURE_REPLY_PATTERNS.find((pattern) =>
+    pattern.test(reply),
+  );
+  if (canned) {
+    throw new Error(
+      `Bridge returned canned failure reply (${canned.source}): ${reply.slice(0, 300)}`,
+    );
+  }
+  if (!reply.includes(token)) {
+    throw new Error(
+      `Bridge reply did not echo required token ${token}: ${reply.slice(0, 300)}`,
+    );
+  }
+  return reply;
+}
+
 async function requestJson(
   path: string,
   init: RequestInit = {},
@@ -414,19 +459,21 @@ async function assertBridge(): Promise<void> {
     throw new Error(`Bridge heartbeat failed: ${describeBody(heartbeat)}`);
   }
 
+  const token = `cloud-smoke-pong-${runId}`;
   const message = await jsonRpc("message.send", {
-    text: `Please reply with the exact words: cloud smoke pong ${runId}`,
+    text:
+      "You are part of an automated cloud smoke test. " +
+      `Reply with one short sentence that contains the token ${token}.`,
     roomId: `cloud-smoke-room-${runId}`,
     userId: `cloud-smoke-user-${runId}`,
     mode: "simple",
   });
-  const reply = typeof message.text === "string" ? message.text.trim() : "";
-  if (!reply) {
-    throw new Error(
-      `Bridge message send failed: ${JSON.stringify(message).slice(0, 500)}`,
-    );
-  }
-  console.log(`[smoke] bridge reply ${reply.length} chars`);
+  const reply = assertRealBridgeReply(message, token);
+  console.log(
+    `[smoke] bridge reply ${reply.length} chars via ${String(
+      message.transport ?? "unknown",
+    )}`,
+  );
 }
 
 function parseSseBlock(

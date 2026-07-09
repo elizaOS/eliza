@@ -44,10 +44,34 @@ interface BridgeChatEnvelope {
     text?: unknown;
     fallback?: unknown;
     reason?: unknown;
+    failureKind?: unknown;
+    transport?: unknown;
     agentName?: unknown;
     conversationId?: unknown;
   };
   error?: { code?: number; message?: string };
+}
+
+const CANNED_FAILURE_REPLY_PATTERNS = [
+  /\bprovider issue\b/i,
+  /\bi don't have a reply for that\b/i,
+  /\bbeing rate-limited\b/i,
+  /\binsufficient credits\b/i,
+  /\bconnect an llm provider\b/i,
+  /\bagent runtime is online, but no model response was produced\b/i,
+] as const;
+
+function rejectCannedFailureReply(reply: string): void {
+  const matched = CANNED_FAILURE_REPLY_PATTERNS.find((pattern) =>
+    pattern.test(reply),
+  );
+  if (!matched) return;
+  throw new Error(
+    `Bridge returned a canned failure reply (${matched.source}): ${reply.slice(
+      0,
+      300,
+    )}`,
+  );
 }
 
 async function sendChatTurn(
@@ -103,12 +127,25 @@ async function sendChatTurn(
       )}) — the agent produced no real reply`,
     );
   }
+  if (typeof result.failureKind === "string" && result.failureKind) {
+    throw new Error(
+      `Bridge returned chat failureKind=${result.failureKind} via ${String(
+        result.transport ?? "unknown transport",
+      )}: ${JSON.stringify(result).slice(0, 300)}`,
+    );
+  }
   const reply = typeof result.text === "string" ? result.text.trim() : "";
   if (!reply) {
     throw new Error(
       `Bridge reply was empty: ${JSON.stringify(result).slice(0, 300)}`,
     );
   }
+  rejectCannedFailureReply(reply);
+  console.log(
+    `[hetzner-e2e-chat] bridge transport: ${String(
+      result.transport ?? "unknown",
+    )}`,
+  );
   return reply;
 }
 
@@ -165,10 +202,11 @@ async function main(): Promise<void> {
           `(${reply.length} chars, token echoed: ${echoedToken}): ${reply.slice(0, 300)}`,
       );
       if (!echoedToken) {
-        // A live model occasionally paraphrases; a real non-fallback reply
-        // still proves the chat path. Surface the miss for the run log.
-        console.log(
-          `::warning::[hetzner-e2e-chat] reply did not echo token ${token} — real reply accepted, but inspect the run if this recurs.`,
+        throw new Error(
+          `Bridge reply did not echo required token ${token}: ${reply.slice(
+            0,
+            300,
+          )}`,
         );
       }
       return;
