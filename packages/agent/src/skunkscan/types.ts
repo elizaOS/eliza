@@ -356,9 +356,11 @@ export type WalletRiskSummary = {
 
 export type WalletTransactionRiskSummary = {
   assessmentType: "wallet_context";
-  score: number;
+  rawScore: number;
+  maxScore: 100;
   level: "low" | "medium" | "high";
   displayScore: string;
+  maxDisplayScore: 10;
   recommendation:
     | "allow"
     | "review"
