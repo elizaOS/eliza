@@ -523,6 +523,44 @@ export function resolveDynamicPromptStreamFields(
 		.map((row) => row.field);
 }
 
+/**
+ * Merges provider options from three sources: a base object (e.g. `{ agentName }`),
+ * optional caller-supplied options, and a cache-plan's options. Caller fields take
+ * precedence over base; plan fields take precedence over caller on key collision, but
+ * named provider sub-objects (e.g. `anthropic`, `openai`) are merged one level deep so
+ * caller-specific fields like `anthropic.thinking` survive alongside plan additions like
+ * `anthropic.cacheControl`.
+ *
+ * Exported so tests can import and exercise the real function rather than maintaining a
+ * hand-copied mirror that cannot catch regressions in this code path.
+ */
+export function mergeProviderOptionsWithCachePlan(
+	base: Record<string, JsonValue | object | undefined>,
+	callerOptions: Record<string, JsonValue | object | undefined> | undefined,
+	planOptions: Record<string, JsonValue | object | undefined>,
+): Record<string, JsonValue | object | undefined> {
+	const merged: Record<string, JsonValue | object | undefined> = {
+		...base,
+		...(callerOptions ?? {}),
+	};
+	for (const [key, planValue] of Object.entries(planOptions)) {
+		const existing = merged[key];
+		merged[key] =
+			existing != null &&
+			typeof existing === "object" &&
+			!Array.isArray(existing) &&
+			planValue != null &&
+			typeof planValue === "object" &&
+			!Array.isArray(planValue)
+				? {
+						...(existing as Record<string, unknown>),
+						...(planValue as Record<string, unknown>),
+					}
+				: planValue;
+	}
+	return merged;
+}
+
 function resolveResponseSkeletonStreamFields(
 	skeleton: ResponseSkeleton | undefined,
 ): string[] {
@@ -6894,40 +6932,24 @@ ${section_end}`;
 				segmentHashes: _dynamicPrefixHashes.map((e) => e.segmentHash),
 				promptSegments: segments,
 			});
-			// Deep-merge caller-supplied providerOptions with the cache plan so neither
-			// set of fields is overwritten. One-level merge for named provider sub-objects
-			// (e.g. anthropic, openai) preserves caller fields like anthropic.thinking
-			// alongside plan-added fields like cacheControl.
+			// Deep-merge caller-supplied providerOptions with the cache plan. See
+			// mergeProviderOptionsWithCachePlan for the full merging semantics.
 			const _rawCallerProviderOptions = (params as { providerOptions?: unknown }).providerOptions;
-			const _callerProviderOptions: Record<string, unknown> =
+			const _callerProviderOptions =
 				_rawCallerProviderOptions != null &&
 				typeof _rawCallerProviderOptions === "object" &&
 				!Array.isArray(_rawCallerProviderOptions)
-					? (_rawCallerProviderOptions as Record<string, unknown>)
-					: {};
+					? (_rawCallerProviderOptions as Record<string, JsonValue | object | undefined>)
+					: undefined;
 			const _planProviderOptions = (_dynamicCachePlan.providerOptions ?? {}) as Record<
 				string,
-				unknown
+				JsonValue | object | undefined
 			>;
-			const _mergedProviderOptions: Record<string, unknown> = {
-				agentName: this.character.name,
-				..._callerProviderOptions,
-			};
-			for (const [_pKey, _pValue] of Object.entries(_planProviderOptions)) {
-				const _pExisting = _mergedProviderOptions[_pKey];
-				_mergedProviderOptions[_pKey] =
-					_pExisting != null &&
-					typeof _pExisting === "object" &&
-					!Array.isArray(_pExisting) &&
-					_pValue != null &&
-					typeof _pValue === "object" &&
-					!Array.isArray(_pValue)
-						? {
-								...(_pExisting as Record<string, unknown>),
-								...(_pValue as Record<string, unknown>),
-							}
-						: _pValue;
-			}
+			const _mergedProviderOptions = mergeProviderOptionsWithCachePlan(
+				{ agentName: this.character.name },
+				_callerProviderOptions,
+				_planProviderOptions,
+			);
 			const modelParams = {
 				...params,
 				prompt,
