@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 184
+- **Registered runtime actions:** 186
 
 ## Actions
 
@@ -452,6 +452,7 @@ section drifts from source.
 - `PRIORITIZE` — `plugins/plugin-personal-assistant/src/actions/prioritize.ts`
 - `PROBE_PLUGIN_CONFIG_REQUIREMENTS` — `packages/core/src/features/plugin-config/actions/probe-plugin-config-requirements.ts`
 - `PROXY_STATUS` — `plugins/plugin-anthropic-proxy/src/actions/proxy-status.action.ts`
+- `REDACT_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `REGENERATE_APP_API_KEY` — `plugins/plugin-cloud-apps/src/actions/regenerate-app-api-key.ts`
 - `RESOLVE_REFERENT` — `plugins/plugin-personal-assistant/src/actions/resolve-referent.ts`
 - `RESOLVE_REQUEST` — `plugins/plugin-personal-assistant/src/actions/resolve-request.ts`
@@ -473,6 +474,7 @@ section drifts from source.
 - `SET_AD_CAMPAIGN_DAYPARTING` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
 - `SET_FOLLOWUP_THRESHOLD` — `plugins/plugin-personal-assistant/src/followup/actions/setFollowupThreshold.ts`
 - `SETTINGS` — `packages/agent/src/actions/settings-actions.ts`, `plugins/plugin-app-control/src/actions/settings.ts`
+- `SHARE_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `SHELL` — `plugins/plugin-coding-tools/src/actions/bash.ts`
 - `SKILL` — `plugins/plugin-agent-skills/src/actions/skill.ts`
 - `SMARTGLASSES_CONTROL` — `plugins/plugin-facewear/src/actions/facewear-control.ts`
