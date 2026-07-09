@@ -1,4 +1,6 @@
-// Persists docker nodes records for cloud services through the shared DB boundary.
+/**
+ * Persists Docker node records for cloud scheduling and control-plane health.
+ */
 import { and, asc, eq, sql } from "drizzle-orm";
 import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";
@@ -10,6 +12,33 @@ import {
 } from "../schemas/docker-nodes";
 
 export type { DockerNode, DockerNodeStatus, NewDockerNode };
+
+function currentDeploymentEnvironment(): string | null {
+  const env = typeof process !== "undefined" ? process.env.ENVIRONMENT?.trim() : undefined;
+  return env ? env : null;
+}
+
+export function stampDockerNodeEnvironmentMetadata(
+  metadata: Record<string, unknown> | null | undefined,
+  environment: string | null = currentDeploymentEnvironment(),
+): Record<string, unknown> {
+  const base =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata) ? { ...metadata } : {};
+  const existing = base.environment;
+  if (!environment || (typeof existing === "string" && existing.trim().length > 0)) {
+    return base;
+  }
+  return { ...base, environment };
+}
+
+function currentEnvironmentPredicate() {
+  const environment = currentDeploymentEnvironment();
+  if (!environment) return sql`TRUE`;
+  return sql`(
+    COALESCE(${dockerNodes.metadata}->>'environment', '') = ''
+    OR ${dockerNodes.metadata}->>'environment' = ${environment}
+  )`;
+}
 
 export class DockerNodesRepository {
   // ============================================================================
@@ -24,7 +53,7 @@ export class DockerNodesRepository {
     return dbRead
       .select()
       .from(dockerNodes)
-      .where(eq(dockerNodes.enabled, true))
+      .where(and(eq(dockerNodes.enabled, true), currentEnvironmentPredicate()))
       .orderBy(asc(dockerNodes.node_id));
   }
 
@@ -54,6 +83,7 @@ export class DockerNodesRepository {
         and(
           eq(dockerNodes.enabled, true),
           eq(dockerNodes.status, "healthy"),
+          currentEnvironmentPredicate(),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
         ),
       )

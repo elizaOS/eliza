@@ -46,7 +46,7 @@ import { fileURLToPath } from "node:url";
 // drag in the Drizzle / plugin-sql DB stack.
 async function loadDeps() {
   const [
-    { dockerNodesRepository },
+    { dockerNodesRepository, stampDockerNodeEnvironmentMetadata },
     { ensureRegistryAccess },
     dockerUtils,
     { DockerSSHClient },
@@ -60,6 +60,7 @@ async function loadDeps() {
   ]);
   return {
     dockerNodesRepository,
+    stampDockerNodeEnvironmentMetadata,
     ensureRegistryAccess,
     buildEnsureNetworkCmd: dockerUtils.buildEnsureNetworkCmd,
     shellQuote: dockerUtils.shellQuote,
@@ -258,6 +259,7 @@ async function main(): Promise<void> {
 
   const {
     dockerNodesRepository,
+    stampDockerNodeEnvironmentMetadata,
     ensureRegistryAccess,
     buildEnsureNetworkCmd,
     shellQuote,
@@ -358,11 +360,11 @@ async function main(): Promise<void> {
           existing,
           capturedFingerprint,
         ),
-        metadata: {
+        metadata: stampDockerNodeEnvironmentMetadata({
           ...((existing.metadata as Record<string, unknown>) ?? {}),
           provider: "operator-onboarded",
           lastOnboardedAt: new Date().toISOString(),
-        },
+        }),
       });
       summary.push(`docker_nodes row updated (${args.nodeId})`);
     } else {
@@ -380,10 +382,10 @@ async function main(): Promise<void> {
           null,
           capturedFingerprint,
         ),
-        metadata: {
+        metadata: stampDockerNodeEnvironmentMetadata({
           provider: "operator-onboarded",
           onboardedAt: new Date().toISOString(),
-        },
+        }),
       });
       summary.push(`docker_nodes row created (${args.nodeId})`);
     }

@@ -1,8 +1,13 @@
-// Owns container-control-plane index mutations that Cloudflare Workers cannot run.
+/**
+ * Owns container-control-plane index mutations that Cloudflare Workers cannot run.
+ */
 import { timingSafeEqual } from "node:crypto";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@elizaos/cloud-shared/db/repositories/characters";
-import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import {
+  dockerNodesRepository,
+  stampDockerNodeEnvironmentMetadata,
+} from "@elizaos/cloud-shared/db/repositories/docker-nodes";
 import type { DockerNode } from "@elizaos/cloud-shared/db/schemas/docker-nodes";
 import {
   envelope,
@@ -607,7 +612,7 @@ async function mirrorControlPlaneNodes(nodes: DockerNode[]): Promise<void> {
       last_health_check: node.last_health_check,
       ssh_user: node.ssh_user,
       host_key_fingerprint: node.host_key_fingerprint,
-      metadata: node.metadata,
+      metadata: stampDockerNodeEnvironmentMetadata(node.metadata),
     };
 
     const existing = await dockerNodesRepository.findByNodeId(node.node_id);

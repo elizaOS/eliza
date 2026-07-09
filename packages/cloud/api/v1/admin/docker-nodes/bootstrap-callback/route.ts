@@ -1,4 +1,6 @@
-// Handles admin cloud API v1 admin docker nodes bootstrap callback route traffic with privileged auth expectations.
+/**
+ * Registers Docker node bootstrap callbacks from provisioned control-plane hosts.
+ */
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -27,7 +29,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { dockerNodesRepository } from "@/db/repositories/docker-nodes";
+import {
+  dockerNodesRepository,
+  stampDockerNodeEnvironmentMetadata,
+} from "@/db/repositories/docker-nodes";
 import { logger } from "@/lib/utils/logger";
 
 const callbackSchema = z.object({
@@ -160,10 +165,10 @@ async function __hono_POST(request: Request) {
           ? existing.host_key_fingerprint
           : hostKeyFingerprint,
         status: "unknown",
-        metadata: {
+        metadata: stampDockerNodeEnvironmentMetadata({
           ...((existing.metadata as Record<string, unknown>) ?? {}),
           lastBootstrapAt: new Date().toISOString(),
-        },
+        }),
       });
       logger.info(
         "[admin/docker-nodes/bootstrap-callback] re-bootstrapped existing node",
@@ -193,10 +198,10 @@ async function __hono_POST(request: Request) {
       status: "unknown",
       allocated_count: 0,
       host_key_fingerprint: hostKeyFingerprint,
-      metadata: {
+      metadata: stampDockerNodeEnvironmentMetadata({
         provider: "operator-provisioned",
         bootstrappedAt: new Date().toISOString(),
-      },
+      }),
     });
     logger.info("[admin/docker-nodes/bootstrap-callback] registered new node", {
       nodeId,
