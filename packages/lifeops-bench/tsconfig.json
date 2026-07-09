@@ -9,7 +9,10 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@elizaos/vault": ["../vault/src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts"]
 }
