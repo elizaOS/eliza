@@ -10,6 +10,7 @@
 import type { Context, MiddlewareHandler } from "hono";
 import type { AppContext, AppEnv, Bindings } from "../../types/cloud-worker-env";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
+import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import { logger } from "../utils/logger";
 
 export interface RateLimitConfig {
@@ -155,6 +156,92 @@ interface LocalFallbackBucket {
 
 const redisUnavailableFallbackBuckets = new Map<string, LocalFallbackBucket>();
 
+const HONO_RATE_LIMIT_LEASE_TTL_MS = 5_000;
+const HONO_RATE_LIMIT_LEASE_MAX_KEYS = 4096;
+
+interface HonoRateLimitLease {
+  result: CheckResult;
+  localUsed: number;
+  localBudget: number;
+  expiresAt: number;
+  flushToken?: symbol;
+}
+
+const honoRateLimitLeases = new Map<string, HonoRateLimitLease>();
+
+function honoLeaseKey(key: string, config: RateLimitConfig): string {
+  return `${key}:${config.windowMs}:${config.maxRequests}`;
+}
+
+function evictSettledHonoLeases(now: number): void {
+  if (honoRateLimitLeases.size < HONO_RATE_LIMIT_LEASE_MAX_KEYS) return;
+  for (const [key, lease] of honoRateLimitLeases) {
+    if (lease.expiresAt <= now && lease.localUsed === 0) {
+      honoRateLimitLeases.delete(key);
+    }
+  }
+}
+
+function startHonoLeaseFlush(leaseKey: string): {
+  lease?: HonoRateLimitLease;
+  carriedCount: number;
+  flushToken: symbol;
+  ownsLeaseFlush: boolean;
+} {
+  const lease = honoRateLimitLeases.get(leaseKey);
+  const flushToken = Symbol(leaseKey);
+  if (!lease || lease.flushToken) {
+    return { lease, carriedCount: 0, flushToken, ownsLeaseFlush: false };
+  }
+  const carriedCount = lease.localUsed;
+  lease.localUsed = 0;
+  lease.flushToken = flushToken;
+  return { lease, carriedCount, flushToken, ownsLeaseFlush: true };
+}
+
+function restoreHonoLeaseCarry(
+  lease: HonoRateLimitLease | undefined,
+  flushToken: symbol,
+  carriedCount: number,
+): void {
+  if (!lease || lease.flushToken !== flushToken) return;
+  lease.localUsed += carriedCount;
+  lease.flushToken = undefined;
+}
+
+function publishHonoLease(opts: {
+  leaseKey: string;
+  lease?: HonoRateLimitLease;
+  flushToken: symbol;
+  ownsLeaseFlush: boolean;
+  result: CheckResult;
+  config: RateLimitConfig;
+  now: number;
+  enabled: boolean;
+}): void {
+  const { leaseKey, lease, flushToken, ownsLeaseFlush, result, config, now, enabled } = opts;
+  if (!enabled) {
+    if (lease && ownsLeaseFlush && lease.flushToken === flushToken) {
+      honoRateLimitLeases.delete(leaseKey);
+    }
+    return;
+  }
+
+  evictSettledHonoLeases(now);
+  const currentLease = honoRateLimitLeases.get(leaseKey);
+  if (!lease || (ownsLeaseFlush && currentLease === lease && lease.flushToken === flushToken)) {
+    honoRateLimitLeases.set(leaseKey, {
+      result,
+      localUsed: lease && currentLease === lease ? lease.localUsed : 0,
+      localBudget: Math.min(
+        result.remaining,
+        Math.ceil((config.maxRequests * HONO_RATE_LIMIT_LEASE_TTL_MS) / config.windowMs),
+      ),
+      expiresAt: now + HONO_RATE_LIMIT_LEASE_TTL_MS,
+    });
+  }
+}
+
 function resolvedFallbackConfig(
   config: RateLimitConfig,
 ): { namespace: string; windowMs: number; maxRequests: number } | null {
@@ -219,8 +306,13 @@ export async function checkUpstash(
   key: string,
   windowMs: number,
   maxRequests: number,
+  options?: { carriedCount?: number },
 ): Promise<CheckResult> {
   const fullKey = `ratelimit:${key}`;
+  const carriedCount = Math.max(0, Math.floor(options?.carriedCount ?? 0));
+  for (let i = 0; i < carriedCount; i++) {
+    await redis.incr(fullKey);
+  }
   const count = await redis.incr(fullKey);
   let ttl = count === 1 ? null : await redis.pttl(fullKey);
   if (count === 1 || ttl === null || ttl < 0) {
@@ -283,6 +375,38 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
     let result: CheckResult;
     let policy = "redis";
     let headersConfig = effectiveConfig;
+    const leaseEnabled = isHotPathCachesEnabled(env);
+    const leaseKey = honoLeaseKey(key, effectiveConfig);
+    const now = Date.now();
+    const lease = honoRateLimitLeases.get(leaseKey);
+
+    if (leaseEnabled && lease && lease.expiresAt > now) {
+      if (!lease.result.allowed) {
+        result = lease.result;
+        const headers = rateLimitHeaders(headersConfig, result, "redis-lease");
+        return c.json(
+          {
+            success: false,
+            error: "Too many requests",
+            code: "rate_limit_exceeded" as const,
+            message: `Rate limit exceeded. Maximum ${headersConfig.maxRequests} requests per ${Math.ceil(
+              headersConfig.windowMs / 1000,
+            )} seconds.`,
+            retryAfter: result.retryAfter,
+          },
+          429,
+          { ...headers, "Retry-After": String(result.retryAfter ?? 60) },
+        );
+      }
+      if (!lease.flushToken && lease.localUsed < lease.localBudget) {
+        lease.localUsed++;
+        await next();
+        applyRateLimitHeaders(c, rateLimitHeaders(headersConfig, lease.result, "redis-lease"));
+        return;
+      }
+    }
+
+    const flush = startHonoLeaseFlush(leaseKey);
 
     try {
       result = await checkUpstash(
@@ -290,8 +414,20 @@ export function rateLimit(config: RateLimitConfig): MiddlewareHandler<AppEnv> {
         key,
         effectiveConfig.windowMs,
         effectiveConfig.maxRequests,
+        { carriedCount: flush.carriedCount },
       );
+      publishHonoLease({
+        leaseKey,
+        lease: flush.lease,
+        flushToken: flush.flushToken,
+        ownsLeaseFlush: flush.ownsLeaseFlush,
+        result,
+        config: effectiveConfig,
+        now,
+        enabled: leaseEnabled,
+      });
     } catch (error) {
+      restoreHonoLeaseCarry(flush.lease, flush.flushToken, flush.carriedCount);
       const message = error instanceof Error ? error.message : String(error);
       if (effectiveConfig.redisUnavailableFallback) {
         logger.warn("[RateLimit] Redis unavailable; using local fallback limiter", {
@@ -372,3 +508,4 @@ export const RateLimitPresets = {
 export { getDefaultKey, getIpKey, getRequestIp };
 export const _multiplier = multiplier;
 export const _resetRedisUnavailableFallbackBuckets = () => redisUnavailableFallbackBuckets.clear();
+export const _resetHonoRateLimitLeases = () => honoRateLimitLeases.clear();

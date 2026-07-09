@@ -14,8 +14,9 @@
 
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
-type StringEnv = Record<string, string | undefined>;
+type EnvLike = Record<string, unknown>;
 
-export function isHotPathCachesEnabled(env: StringEnv = getCloudAwareEnv()): boolean {
-  return (env.INFERENCE_HOT_PATH_CACHES ?? "").trim() === "true";
+export function isHotPathCachesEnabled(env: EnvLike = getCloudAwareEnv()): boolean {
+  const flag = env.INFERENCE_HOT_PATH_CACHES;
+  return typeof flag === "string" && flag.trim() === "true";
 }
