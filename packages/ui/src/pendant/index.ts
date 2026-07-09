@@ -89,4 +89,11 @@ export {
   type UsePendantResult,
   usePendant,
 } from "./usePendant";
+export {
+  createPendantSessionSyncClient,
+  PendantSessionSyncClient,
+  type PendantSessionSyncClientOptions,
+  PendantSessionSyncError,
+  type QueuedPendantMutation,
+} from "./session-sync-client";
 export { WebBluetoothPendantTransport } from "./web-bluetooth-transport";
