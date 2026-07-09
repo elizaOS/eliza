@@ -139,11 +139,10 @@ describe("birdeye proxy — internal failures propagate through the J1 boundary"
   });
 });
 
-describe("birdeye proxy — money-path debit fallback (money-path-flagged, left as-is)", () => {
-  // The `deductCredits(...).catch(() => null)` on the billing path currently
-  // maps BOTH a designed insufficient-balance (`success: false`) AND an internal
-  // debit failure to the same 402. This conflation is flagged money-path-flagged
-  // and intentionally left untouched by #13415; this test pins the two shapes.
+describe("birdeye proxy — money-path debit failures stay distinct", () => {
+  // Designed insufficient balance is a user-facing 402. A thrown debit failure
+  // is an internal ledger failure and must go through the route boundary as a
+  // structured 5xx, never the same 402 as a legitimate empty balance.
   test("designed insufficient balance returns 402", async () => {
     deductCredits.mockResolvedValue({ success: false });
     const res = await handleBirdeyeMarketDataProxyGet(
@@ -154,11 +153,14 @@ describe("birdeye proxy — money-path debit fallback (money-path-flagged, left 
     expect(body.error).toContain("Insufficient credits");
   });
 
-  test("an internal debit failure is currently also mapped to 402 (flagged)", async () => {
+  test("an internal debit failure surfaces as a structured 5xx", async () => {
     deductCredits.mockRejectedValue(new Error("credits ledger write failed"));
     const res = await handleBirdeyeMarketDataProxyGet(
       makeContext("defi/price", { BIRDEYE_API_KEY: "key" }),
     );
-    expect(res.status).toBe(402);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { success: boolean; error: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("An unexpected error occurred");
   });
 });

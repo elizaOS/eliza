@@ -56,22 +56,20 @@ export async function handleBirdeyeMarketDataProxyGet(c: Context<AppEnv>): Promi
     }
 
     const cost = await getServiceMethodCost("market-data", pricedMethod);
-    const deductResult = await creditsService
-      .deductCredits({
-        organizationId: organization_id,
-        amount: cost,
-        description: `API proxy: market-data — ${pricedMethod}`,
-        metadata: {
-          type: "proxy_market-data",
-          service: "market-data",
-          provider: "birdeye",
-          method: pricedMethod,
-          path: pathStr,
-        },
-      })
-      .catch(() => null);
+    const deductResult = await creditsService.deductCredits({
+      organizationId: organization_id,
+      amount: cost,
+      description: `API proxy: market-data — ${pricedMethod}`,
+      metadata: {
+        type: "proxy_market-data",
+        service: "market-data",
+        provider: "birdeye",
+        method: pricedMethod,
+        path: pathStr,
+      },
+    });
 
-    if (deductResult === null || !deductResult.success) {
+    if (!deductResult.success) {
       return c.json(
         {
           error: "Insufficient credits",

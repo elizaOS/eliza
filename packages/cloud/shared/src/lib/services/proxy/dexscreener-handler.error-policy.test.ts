@@ -143,13 +143,10 @@ describe("dexscreener proxy fail-closed boundary", () => {
   });
 });
 
-describe("dexscreener proxy — money-path debit fallback (money-path-flagged, left as-is)", () => {
-  // The `deductCredits(...).catch(() => null)` on the billing path maps BOTH a
-  // designed insufficient-balance (`success: false`) AND an internal debit
-  // failure (thrown) to the same 402. That conflation sits on the credit-debit
-  // money path, is flagged money-path-flagged, and is intentionally left
-  // untouched by #13415; these tests pin the two shapes so any future change is
-  // deliberate.
+describe("dexscreener proxy — money-path debit failures stay distinct", () => {
+  // Designed insufficient balance is a user-facing 402. A thrown debit failure
+  // is an internal ledger failure and must go through the route boundary as a
+  // structured 5xx, never the same 402 as a legitimate empty balance.
   test("designed insufficient balance returns 402", async () => {
     deductCredits.mockResolvedValue({ success: false });
 
@@ -160,12 +157,15 @@ describe("dexscreener proxy — money-path debit fallback (money-path-flagged, l
     expect(body.error).toContain("Insufficient credits");
   });
 
-  test("an internal debit failure is currently also mapped to 402 (flagged)", async () => {
+  test("an internal debit failure surfaces as a structured 5xx", async () => {
     deductCredits.mockRejectedValue(new Error("credits ledger write failed"));
 
     const res = await handleDexscreenerProxyGet(makeContext("latest/dex/pairs/x"));
 
-    expect(res.status).toBe(402);
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as { success: boolean; error: string };
+    expect(body.success).toBe(false);
+    expect(body.error).toBe("An unexpected error occurred");
   });
 });
 

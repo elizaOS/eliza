@@ -34,21 +34,19 @@ export async function handleDexscreenerProxyGet(c: Context<AppEnv>): Promise<Res
     const { organization_id } = user;
 
     const cost = await getServiceMethodCost("dexscreener", "getRequest");
-    const deductResult = await creditsService
-      .deductCredits({
-        organizationId: organization_id,
-        amount: cost,
-        description: "API proxy: dexscreener — getRequest",
-        metadata: {
-          type: "proxy_dexscreener",
-          service: "dexscreener",
-          method: "getRequest",
-          path: pathStr,
-        },
-      })
-      .catch(() => null);
+    const deductResult = await creditsService.deductCredits({
+      organizationId: organization_id,
+      amount: cost,
+      description: "API proxy: dexscreener — getRequest",
+      metadata: {
+        type: "proxy_dexscreener",
+        service: "dexscreener",
+        method: "getRequest",
+        path: pathStr,
+      },
+    });
 
-    if (deductResult === null || !deductResult.success) {
+    if (!deductResult.success) {
       return c.json(
         {
           error: "Insufficient credits",
