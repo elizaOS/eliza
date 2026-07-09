@@ -39,6 +39,10 @@ import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
+	redactTranscriptAction,
+	shareTranscriptAction,
+} from "./actions/transcript-permissioning.js";
+import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
 } from "./actions/transcription-control.js";
@@ -1119,6 +1123,8 @@ export const localInferencePlugin: Plugin = {
 		localInferenceManagementAction,
 		generateMediaAction,
 		identifySpeakerAction,
+		redactTranscriptAction,
+		shareTranscriptAction,
 		startTranscriptionAction,
 		stopTranscriptionAction,
 	],
