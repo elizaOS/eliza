@@ -64,7 +64,7 @@ interface OcrRecord extends OcrResult {
   path: string;
 }
 
-interface TriageEntry {
+export interface TriageEntry {
   slug: string;
   viewport: string;
   path: string;
@@ -74,6 +74,21 @@ interface TriageEntry {
   /** DOM audit passed (good/needs-eyeball) but the pixels are broken — the caught bug. */
   regression: boolean;
   text: string;
+}
+
+export interface TriageSummary {
+  total: number;
+  verified: number;
+  broken: number;
+  needsEyeball: number;
+  regressions: number;
+  knownRegressions: number;
+  newRegressions: number;
+}
+
+export interface TriageResult {
+  summary: TriageSummary;
+  entries: TriageEntry[];
 }
 
 function parseArgs(argv: string[]): Record<string, string> {
@@ -166,8 +181,8 @@ function viewportOf(path: string): string {
   return basename(dirname(path));
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
+  const args = parseArgs(argv);
   const auditDir = args["audit-dir"] ?? "aesthetic-audit-output";
   const outPath = args.out ?? join(auditDir, "ocr-triage.json");
 
@@ -294,14 +309,17 @@ async function main() {
     }
   }
   console.log(`\n[ocr-triage] wrote ${outPath}`);
-  process.exitCode = newRegressions.length > 0 ? 1 : 0;
+  return { summary, entries };
 }
 
 // Auto-run only as a CLI entrypoint (`bun scripts/ocr-triage.ts …`). When a test
 // imports this module for `authorizedShots`, `import.meta.main` is false so the
 // triage does not fire and call `process.exit` out from under the test runner.
 if (import.meta.main) {
-  main()
+  runOcrTriage(process.argv.slice(2))
+    .then(({ summary }) => {
+      process.exitCode = summary.newRegressions > 0 ? 1 : 0;
+    })
     .catch((e) => {
       // error-policy:J1 CLI boundary — surface the failure and exit non-zero.
       console.error("[ocr-triage]", e);

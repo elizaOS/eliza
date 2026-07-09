@@ -19,7 +19,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { authorizedShots, type ReportEntry } from "../../scripts/ocr-triage";
+import {
+  authorizedShots,
+  type ReportEntry,
+  runOcrTriage,
+} from "../../scripts/ocr-triage";
 
 // Changed-file coverage invokes Vitest from the repository root while the
 // package script invokes it from `packages/app`. Vitest gives `import.meta.url`
@@ -146,7 +150,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     }
   }
 
-  it("triages exactly the report rows and drops a stale PNG + stale OCR record", () => {
+  it("triages exactly the report rows and drops a stale PNG + stale OCR record", async () => {
     for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
     writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
     // Salt the directory with a retired-view PNG and its stale OCR record — the
@@ -160,6 +164,20 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
       ].join("\n"),
     );
+
+    const result = await runOcrTriage([
+      "--audit-dir",
+      dir,
+      "--ocr",
+      join(dir, "ocr.ndjson"),
+      "--out",
+      join(dir, "ocr-triage.json"),
+    ]);
+    expect(result.summary.total).toBe(CURRENT_ROWS.length);
+    expect(result.entries.map((entry) => entry.slug).sort()).toEqual([
+      "builtin-chat",
+      "builtin-phone",
+    ]);
 
     const { status, stderr } = run();
     expect(stderr).toBe("");
@@ -179,7 +197,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     );
   });
 
-  it("exits non-zero when a report row's screenshot is missing", () => {
+  it("exits non-zero when a report row's screenshot is missing", async () => {
     shot(dir, "desktop-landscape", "builtin-chat");
     // builtin-phone.png absent → incomplete capture.
     writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
@@ -187,6 +205,16 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       ocrLine("desktop-landscape", "builtin-chat", "Chat messages"),
     );
+    await expect(
+      runOcrTriage([
+        "--audit-dir",
+        dir,
+        "--ocr",
+        join(dir, "ocr.ndjson"),
+        "--out",
+        join(dir, "ocr-triage.json"),
+      ]),
+    ).rejects.toThrow(/builtin-phone::desktop-landscape has no screenshot/);
     const { status, stderr } = run();
     expect(status).not.toBe(0);
     expect(stderr).toMatch(
