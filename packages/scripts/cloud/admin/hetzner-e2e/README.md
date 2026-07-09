@@ -1,10 +1,12 @@
 # Hetzner Agent E2E
 
 Nightly end-to-end smoke that provisions a real Hetzner cpx11 server,
-deploys a trivial agent via the Eliza Cloud staging API, runs a single
-bridge-ping healthcheck, and tears everything down. A reaper workflow
-sweeps any servers older than 60 minutes every half hour as a safety
-net.
+deploys a trivial agent via the Eliza Cloud staging API, runs a
+bridge-ping healthcheck plus one real chat turn (a `message.send`
+JSON-RPC through the production Worker bridge path, requiring a
+non-fallback assistant reply), and tears everything down. A reaper
+workflow sweeps any servers older than 60 minutes every half hour as a
+safety net.
 
 The workflow gracefully skips when secrets are unset, so it can land
 on `develop` and be activated later by adding secrets. Once secrets
@@ -74,6 +76,9 @@ intend to create a real billable server.
 - `hetzner-e2e-wait-ready.ts` — SSH-poll for cloud-init + Docker
 - `hetzner-e2e-deploy-agent.ts` — create + provision a trivial agent
 - `hetzner-e2e-healthcheck.ts` — single `status.get` bridge ping
+- `hetzner-e2e-chat.ts` — one real `message.send` chat turn; fails on
+  empty or bridge-fabricated (`fallback: true`) replies so "provisioned
+  but chat dead-ends" regressions (#15347) go red
 - `hetzner-e2e-teardown.ts` — delete the server (idempotent, falls
   back to label sweep if state artifact missing)
 - `hetzner-e2e-reaper.ts` — list+delete servers older than 60min

@@ -2,8 +2,9 @@ name: Hetzner Agent E2E
 
 # Nightly end-to-end smoke that provisions a fresh Hetzner cpx11 server,
 # waits for cloud-init, deploys a trivial agent via the Eliza Cloud
-# staging API, runs a single bridge-ping healthcheck, then tears
-# everything down. Gracefully skips when the required secrets are
+# staging API, runs a bridge-ping healthcheck plus one REAL chat turn
+# (message.send through the production bridge path — #15603 A3), then
+# tears everything down. Gracefully skips when the required secrets are
 # unset (so this workflow can land on develop and be activated later).
 #
 # Required secrets / config (GitHub environment: ci-hetzner-e2e):
@@ -348,6 +349,14 @@ jobs:
       - name: Healthcheck
         if: steps.provision.outputs.provisioned == 'true'
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-healthcheck.ts
+
+      # A real user-message round-trip through the same Worker bridge path a
+      # production chat takes. status.get alone lets "provisioned but chat
+      # dead-ends" regressions (#15347) pass the nightly. Failure here fails
+      # the deploy job; the teardown job runs regardless (needs+always()).
+      - name: Chat turn
+        if: steps.provision.outputs.provisioned == 'true'
+        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-chat.ts
 
       - name: Upload state artifact
         if: always() && steps.provision.outputs.provisioned == 'true'
