@@ -77,6 +77,8 @@ export type WalletEvidenceItem = {
 export type WalletExposureSummary = {
   exposureScore: number;
   exposureLevel: "none" | "low" | "medium" | "high";
+  evidenceConfidence: "low" | "medium" | "high";
+  confidence: "low" | "medium" | "high";
   hasKnownScamExposure: boolean;
   hasKnownRugPullExposure: boolean;
   hasKnownSuspiciousExposure: boolean;
