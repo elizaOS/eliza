@@ -23,7 +23,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { createApprovalQueue } from "../approval-queue.js";
-import type { ApprovalRequest } from "../approval-queue.types.js";
+import type {
+  ApprovalEnqueueInput,
+  ApprovalRequest,
+} from "../approval-queue.types.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
   analyzeMeetingGhostTranscript,
@@ -40,10 +43,56 @@ export interface RunMeetingGhostInput {
 
 export interface MeetingGhostRunResult {
   readonly analysis: MeetingGhostAnalysis;
-  /** Approval requests created in the queue (follow-ups then calendar deadlines). */
+  /**
+   * Approval requests for this run (follow-ups then calendar deadlines). A
+   * retry returns matching existing requests instead of duplicating owner prompts.
+   */
   readonly enqueued: readonly ApprovalRequest[];
   /** Commitment ledger ids persisted for extracted transcript commitments. */
   readonly commitmentLedgerIds: readonly string[];
+}
+
+function stablePayloadJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stablePayloadJson).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stablePayloadJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sameApprovalRequest(
+  request: ApprovalRequest,
+  input: ApprovalEnqueueInput,
+): boolean {
+  return (
+    request.requestedBy === input.requestedBy &&
+    request.subjectUserId === input.subjectUserId &&
+    request.action === input.action &&
+    request.channel === input.channel &&
+    request.reason === input.reason &&
+    stablePayloadJson(request.payload) === stablePayloadJson(input.payload)
+  );
+}
+
+async function enqueueOrReuseApproval(
+  queue: ReturnType<typeof createApprovalQueue>,
+  request: ApprovalEnqueueInput,
+): Promise<ApprovalRequest> {
+  const existing = await queue.list({
+    subjectUserId: request.subjectUserId,
+    state: null,
+    action: request.action,
+    limit: 500,
+  });
+  const match = existing.find((entry) => sameApprovalRequest(entry, request));
+  if (match) return match;
+  return queue.enqueue(request);
 }
 
 /**
@@ -70,7 +119,7 @@ export async function runMeetingGhostForTranscript(
   const queue = createApprovalQueue(runtime, { agentId: input.agentId });
   const enqueued: ApprovalRequest[] = [];
   for (const request of requests) {
-    enqueued.push(await queue.enqueue(request));
+    enqueued.push(await enqueueOrReuseApproval(queue, request));
   }
 
   const adapter = (runtime as { adapter?: { db?: unknown } }).adapter;

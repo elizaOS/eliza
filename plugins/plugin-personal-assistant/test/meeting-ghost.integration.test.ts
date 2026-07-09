@@ -193,6 +193,61 @@ describe("meeting-ghost consumer (real approval queue)", () => {
       ]),
     );
 
+    const rerun = await runMeetingGhostForTranscript(runtime, {
+      agentId: runtime.agentId,
+      owner: {
+        ownerUserId: "owner-mtg-1",
+        ownerDisplayName: "Shaw",
+        requestedBy: "meeting-ghost",
+        careAbouts: ["launch date"],
+        calendarId: "primary",
+        approvalExpiresAt,
+      },
+      transcript: {
+        meetingId: "ops-sync-integration",
+        title: "Ops Sync",
+        startedAt: "2026-07-06T16:00:00.000Z",
+        attendees: [
+          { name: "Ava", email: "ava@example.com" },
+          { name: "Ben", email: "ben@example.com" },
+        ],
+        segments: [
+          seg("Ava", 0, "Morning, nothing blocking on my side."),
+          seg(
+            "Mira",
+            60_000,
+            "Ava will send the launch-date rollback plan by 2026-07-10.",
+          ),
+          seg(
+            "Mira",
+            120_000,
+            "Ben is going to update the public calendar by 2026-07-10.",
+          ),
+        ],
+      },
+    });
+    expect(rerun.enqueued.map((request) => request.id).sort()).toEqual(
+      result.enqueued.map((request) => request.id).sort(),
+    );
+    const pendingAfterRerun = await queue.list({
+      subjectUserId: "owner-mtg-1",
+      state: "pending",
+      action: null,
+      limit: 20,
+    });
+    expect(pendingAfterRerun).toHaveLength(pending.length);
+    const ledgerRowsAfterRerun = await repo.listCommitmentLedgerRecords(
+      runtime.agentId,
+      {
+        source: "transcript",
+      },
+    );
+    expect(
+      ledgerRowsAfterRerun.filter((row) =>
+        row.sourceKey.startsWith("ops-sync-integration:"),
+      ),
+    ).toHaveLength(2);
+
     const firstEmail = result.enqueued.find((r) => r.action === "send_email");
     if (!firstEmail) throw new Error("expected a send_email approval");
     const approved = await queue.approve(firstEmail.id, {
