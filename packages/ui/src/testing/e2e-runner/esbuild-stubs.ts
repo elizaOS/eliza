@@ -65,8 +65,73 @@ export function stubNodeBuiltins(): Plugin {
         return null;
       });
       build.onLoad({ filter: /.*/, namespace: "node-stub" }, () => ({
-        contents:
-          "const n=()=>noop;const noop=new Proxy(n,{get:()=>noop});module.exports=noop;",
+        contents: `function anyfn() { return anyfn; }
+export default anyfn;
+export const createRequire = () => anyfn;
+export const homedir = anyfn;
+export const tmpdir = anyfn;
+export const platform = anyfn;
+export const isAbsolute = anyfn;
+export const join = anyfn;
+export const resolve = anyfn;
+export const dirname = anyfn;
+export const basename = anyfn;
+export const extname = anyfn;
+export const sep = "/";
+export const createHash = () => ({ update: () => ({ digest: () => "" }) });
+export const randomBytes = anyfn;
+export const randomUUID = () => "00000000-0000-0000-0000-000000000000";
+export const Buffer = {
+  from: () => ({}),
+  isBuffer: () => false,
+  alloc: () => ({}),
+  byteLength: () => 0,
+};
+export const promises = {};
+export const existsSync = () => false;
+export const readFileSync = anyfn;
+export const writeFileSync = anyfn;
+export const mkdirSync = anyfn;
+export const readdirSync = () => [];
+export const statSync = anyfn;
+export const realpathSync = anyfn;
+export const renameSync = anyfn;
+export const unlinkSync = anyfn;
+export const EventEmitter = class {};
+export const fileURLToPath = anyfn;
+export const pathToFileURL = anyfn;
+export const lookup = anyfn;
+export const request = anyfn;
+export const createHmac = () => ({ update: () => ({ digest: () => "" }) });
+export const timingSafeEqual = () => false;
+export const createCipheriv = anyfn;
+export const createDecipheriv = anyfn;
+export const pbkdf2Sync = anyfn;
+export const scryptSync = anyfn;
+export const execFile = anyfn;
+export const exec = anyfn;
+export const promisify = () => anyfn;
+export const readFile = anyfn;
+export const readlink = anyfn;
+export const rename = anyfn;
+export const rm = anyfn;
+export const symlink = anyfn;
+export const unlink = anyfn;
+export const writeFile = anyfn;
+export const mkdir = anyfn;
+export const stat = anyfn;
+export const readdir = () => [];
+export const isIP = () => 0;
+export const statfsSync = anyfn;
+export const cp = anyfn;
+export class AsyncLocalStorage {
+  run(_store, fn, ...args) {
+    return fn(...args);
+  }
+  getStore() {
+    return undefined;
+  }
+}`,
         loader: "js",
       }));
     },
