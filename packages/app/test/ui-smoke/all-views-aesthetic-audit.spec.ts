@@ -3,7 +3,7 @@
  * the real renderer fixture.
  */
 import { readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
@@ -900,6 +900,17 @@ test.describe("all-views aesthetic audit (#8796)", () => {
   const outputDir =
     process.env.ELIZA_AUDIT_APP_DIR ??
     path.join(process.cwd(), "aesthetic-audit-output");
+
+  // Provenance guard (#15790): every run starts from an empty, dedicated output
+  // directory. Screenshots and report.json left by an earlier capture would
+  // otherwise linger — the report-authoritative OCR triage never reads them, but
+  // a stale contact-sheet/manual-review file is still misleading evidence. The
+  // walk runs single-worker (workers:1, fullyParallel:false), so a one-shot wipe
+  // here cannot race a sibling worker's already-written shots.
+  test.beforeAll(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+    await mkdir(outputDir, { recursive: true });
+  });
 
   // Coverage guard: the audit must walk EVERY built-in view. Fails on a phantom
   // key, a path drift, or any distinct navigation route the audit doesn't cover —

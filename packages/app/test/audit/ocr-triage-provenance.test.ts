@@ -1,0 +1,183 @@
+/**
+ * Provenance regression guard for the app-audit OCR triage (#15790). Proves the
+ * triage is scoped to the current `report.json` and can never fold a screenshot
+ * left behind by an earlier capture into the result. Two layers: pure-function
+ * tests of `authorizedShots` (the selection invariant), and an end-to-end run of
+ * the real `scripts/ocr-triage.ts` CLI over a fixture directory salted with a
+ * stale PNG and a stale OCR record — the exact shape that produced the bug where
+ * 240 report rows were triaged against 379 globbed PNGs.
+ */
+import { execFileSync } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { authorizedShots, type ReportEntry } from "../../scripts/ocr-triage";
+
+// Vitest runs from the package root (`vitest run --config vitest.config.ts`),
+// so the CLI under test resolves from cwd — `import.meta.url` is a virtual,
+// non-file URL under the vitest transform pipeline.
+const APP_DIR = process.cwd();
+const CLI = join(APP_DIR, "scripts", "ocr-triage.ts");
+
+/** Minimal valid 1×1 PNG — enough for `existsSync`; the CLI OCR comes from ndjson. */
+const PNG_1x1 = Buffer.from(
+  "89504e470d0a1a0a0000000d494844520000000100000001080600000" +
+    "01f15c4890000000d49444154789c62000100000500010d0a2db40000" +
+    "000049454e44ae426082",
+  "hex",
+);
+
+function shot(dir: string, viewport: string, slug: string): void {
+  const vp = join(dir, viewport);
+  mkdirSync(vp, { recursive: true });
+  writeFileSync(join(vp, `${slug}.png`), PNG_1x1);
+}
+
+function ocrLine(viewport: string, slug: string, text: string): string {
+  return JSON.stringify({
+    path: join(viewport, `${slug}.png`),
+    ok: true,
+    text,
+    lines: text.split("\n").filter(Boolean),
+    words: text.split(/\s+/).filter(Boolean).length,
+    meanConfidence: 1,
+  });
+}
+
+// Slugs with no VIEW_EXPECTATIONS so the OCR verdict cannot confound the gate
+// exit code — this test asserts provenance (which rows are triaged), not verdict.
+const CURRENT_ROWS: ReportEntry[] = [
+  { slug: "builtin-chat", viewport: "desktop-landscape", verdict: "good" },
+  { slug: "builtin-phone", viewport: "desktop-landscape", verdict: "good" },
+];
+const STALE_SLUG = "plugin-social-alpha-gui";
+
+describe("authorizedShots (report-authoritative selection)", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "ocr-authz-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("selects exactly one shot per report row", () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    const shots = authorizedShots(dir, CURRENT_ROWS);
+    expect(shots.map((s) => s.key).sort()).toEqual([
+      "builtin-chat::desktop-landscape",
+      "builtin-phone::desktop-landscape",
+    ]);
+  });
+
+  it("ignores a stale PNG that no current row names", () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    // A retired view left behind by an earlier capture (the #15790 symptom).
+    shot(dir, "desktop-landscape", STALE_SLUG);
+    const shots = authorizedShots(dir, CURRENT_ROWS);
+    expect(shots).toHaveLength(CURRENT_ROWS.length);
+    expect(shots.some((s) => s.slug.includes("social-alpha"))).toBe(false);
+  });
+
+  it("fails fast when a report row has no screenshot", () => {
+    shot(dir, "desktop-landscape", "builtin-chat");
+    // builtin-phone.png intentionally absent.
+    expect(() => authorizedShots(dir, CURRENT_ROWS)).toThrow(
+      /builtin-phone::desktop-landscape has no screenshot/,
+    );
+  });
+
+  it("fails fast on a duplicate report row", () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    expect(() =>
+      authorizedShots(dir, [...CURRENT_ROWS, CURRENT_ROWS[0]]),
+    ).toThrow(/duplicate report row builtin-chat::desktop-landscape/);
+  });
+
+  it("fails fast on an empty report", () => {
+    expect(() => authorizedShots(dir, [])).toThrow(/lists no views/);
+  });
+});
+
+describe("ocr-triage CLI (end-to-end provenance)", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "ocr-cli-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  function run(): { status: number; stderr: string } {
+    try {
+      execFileSync(
+        "bun",
+        [
+          CLI,
+          "--audit-dir",
+          dir,
+          "--ocr",
+          join(dir, "ocr.ndjson"),
+          "--out",
+          join(dir, "ocr-triage.json"),
+        ],
+        { cwd: APP_DIR, encoding: "utf8", stdio: "pipe" },
+      );
+      return { status: 0, stderr: "" };
+    } catch (e) {
+      const err = e as { status?: number; stderr?: string };
+      return { status: err.status ?? 1, stderr: err.stderr ?? "" };
+    }
+  }
+
+  it("triages exactly the report rows and drops a stale PNG + stale OCR record", () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
+    // Salt the directory with a retired-view PNG and its stale OCR record — the
+    // pre-fix glob would have OCR'd this and reported it as a current failure.
+    shot(dir, "desktop-landscape", STALE_SLUG);
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      [
+        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
+        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+        ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+      ].join("\n"),
+    );
+
+    const { status, stderr } = run();
+    expect(stderr).toBe("");
+    expect(status).toBe(0);
+
+    const out = JSON.parse(
+      readFileSync(join(dir, "ocr-triage.json"), "utf8"),
+    ) as { summary: { total: number }; entries: { slug: string }[] };
+    // OCR row count equals the DOM report row count — provenance holds.
+    expect(out.summary.total).toBe(CURRENT_ROWS.length);
+    expect(out.entries.map((e) => e.slug).sort()).toEqual([
+      "builtin-chat",
+      "builtin-phone",
+    ]);
+    expect(out.entries.some((e) => e.slug.includes("social-alpha"))).toBe(
+      false,
+    );
+  });
+
+  it("exits non-zero when a report row's screenshot is missing", () => {
+    shot(dir, "desktop-landscape", "builtin-chat");
+    // builtin-phone.png absent → incomplete capture.
+    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      ocrLine("desktop-landscape", "builtin-chat", "Chat messages"),
+    );
+    const { status, stderr } = run();
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(
+      /builtin-phone::desktop-landscape has no screenshot/,
+    );
+  });
+});
