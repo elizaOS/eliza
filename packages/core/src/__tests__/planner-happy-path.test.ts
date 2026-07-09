@@ -11,7 +11,10 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
+import {
+	runV5MessageRuntimeStage1,
+	wrapSingleTurnVisibleCallback,
+} from "../services/message";
 import type {
 	Action,
 	ActionResult,
@@ -611,6 +614,90 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
 			);
 		}
+	});
+
+	it("suppresses planner echo after an action callback is voice-rewritten", async () => {
+		const rawPayload = '{"status":"ok","taskId":"abc123"}';
+		const rewritten = "I created the task and kept its ID handy: abc123.";
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const action = makeMockAction({
+			name: "CREATE_TASK",
+			parameters: [],
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: rawPayload }, "CREATE_TASK");
+				return {
+					success: true,
+					text: rawPayload,
+					data: { actionName: "CREATE_TASK" },
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["CREATE_TASK"],
+						thought: "Creating the task needs a tool.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Creating the task.",
+						toolCalls: [{ id: "call-1", name: "CREATE_TASK", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({ response: rewritten }),
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The action callback already told the user.",
+						messageToUser: rewritten,
+					}),
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("create that task"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("create that task"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+		});
+
+		expect(delivered).toEqual([rewritten]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(getCalls(runtime).map((c) => c.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.TEXT_SMALL,
+			ModelType.RESPONSE_HANDLER,
+		]);
 	});
 
 	it("records terminal task failure separately from evaluator failures", async () => {

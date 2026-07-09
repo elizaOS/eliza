@@ -6236,6 +6236,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	state: State;
 	responseId: UUID;
 	callback?: HandlerCallback;
+	deliveredVisibleTexts?: Set<string>;
 	plannerLoopConfig?: PlannerLoopParams["config"];
 	onResponseHandlerEarlyReply?: (
 		event: ResponseHandlerEarlyReplyEvent,
@@ -7205,22 +7206,13 @@ export async function runV5MessageRuntimeStage1(args: {
 			);
 
 		// Track visible text an action already delivered to the user through the
-		// callback during this planner run. An action that both emits its own
-		// user-facing callback AND leaves the planner to emit a `finalMessage`
-		// duplicating that text would otherwise deliver the same string twice (the
-		// action reply, then an identical "simple" planner reply). This mirrors the
-		// early-reply dedup below — the planner reply is suppressed only when it is
-		// an exact (normalized) repeat of what the user already saw.
-		const deliveredVisibleTexts = new Set<string>();
+		// callback during this planner run. The set is populated by the outer
+		// instrumented callback after voice rewrite / verbosity shaping, so it
+		// matches the string the connector actually sent.
+		const deliveredVisibleTexts =
+			args.deliveredVisibleTexts ?? new Set<string>();
 		const recordingCallback: HandlerCallback | undefined = args.callback
-			? async (content, ...rest) => {
-					if (typeof content?.text === "string" && content.text.trim()) {
-						deliveredVisibleTexts.add(
-							normalizeVisibleTextForDuplicateCheck(content.text),
-						);
-					}
-					return args.callback?.(content, ...rest) ?? [];
-				}
+			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
 			: undefined;
 
 		let plannerResult: PlannerLoopResult;
@@ -8468,15 +8460,22 @@ export function wrapSingleTurnVisibleCallback(
 		},
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
 	callback?: HandlerCallback,
+	recordDeliveredVisibleText?: (text: string) => void,
 ): HandlerCallback | undefined {
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
+	const deliver = async (response: Content, actionName?: string) => {
+		if (typeof response?.text === "string" && response.text.trim()) {
+			recordDeliveredVisibleText?.(response.text);
+		}
+		return callback(response, actionName);
+	};
 	// The character-voice rewrite spends a TEXT_SMALL call per action callback and
 	// restyles the delivered text. Deterministic harnesses (the scenario runner)
 	// assert the raw action-callback contract and strict-fixture every model call,
 	// so they opt out via ACTION_CALLBACK_VOICE_REWRITE=false; production turns
 	// leave it on by default.
-	if (!actionCallbackVoiceRewriteEnabled(fullRuntime)) return callback;
+	if (!actionCallbackVoiceRewriteEnabled(fullRuntime)) return deliver;
 	const voiceActionReply = async (
 		response: Content,
 		actionName?: string,
@@ -8514,7 +8513,7 @@ export function wrapSingleTurnVisibleCallback(
 
 	if (typeof fullRuntime.getService !== "function") {
 		return async (response, actionName) =>
-			callback(await voiceActionReply(response, actionName), actionName);
+			deliver(await voiceActionReply(response, actionName), actionName);
 	}
 	// Resolve verbosity once per turn — cheap because PersonalityStore is
 	// in-memory. Returning the original callback when no override is set
@@ -8522,7 +8521,7 @@ export function wrapSingleTurnVisibleCallback(
 	const store = getPersonalityStore(fullRuntime);
 	if (!store) {
 		return async (response, actionName) =>
-			callback(await voiceActionReply(response, actionName), actionName);
+			deliver(await voiceActionReply(response, actionName), actionName);
 	}
 	const userSlot =
 		message.entityId && message.entityId !== fullRuntime.agentId
@@ -8532,7 +8531,7 @@ export function wrapSingleTurnVisibleCallback(
 	const verbosity = userSlot?.verbosity ?? globalSlot?.verbosity ?? null;
 	if (verbosity !== "terse") {
 		return async (response, actionName) =>
-			callback(await voiceActionReply(response, actionName), actionName);
+			deliver(await voiceActionReply(response, actionName), actionName);
 	}
 
 	const wrapped: HandlerCallback = async (response, actionName) => {
@@ -8553,7 +8552,7 @@ export function wrapSingleTurnVisibleCallback(
 				response = { ...response, text: result.text };
 			}
 		}
-		return callback(response, actionName);
+		return deliver(response, actionName);
 	};
 	return wrapped;
 }
@@ -9175,10 +9174,17 @@ export class DefaultMessageService implements IMessageService {
 					...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
 				};
 
+				const deliveredVisibleTexts = new Set<string>();
+				const recordDeliveredVisibleText = (text: string) => {
+					deliveredVisibleTexts.add(
+						normalizeVisibleTextForDuplicateCheck(text),
+					);
+				};
 				const instrumentedCallback = wrapSingleTurnVisibleCallback(
 					runtime,
 					message,
 					callback,
+					recordDeliveredVisibleText,
 				);
 
 				// Set up timeout monitoring
@@ -9355,6 +9361,7 @@ export class DefaultMessageService implements IMessageService {
 										runtime,
 										message,
 										instrumentedCallback,
+										deliveredVisibleTexts,
 										responseId,
 										runId,
 										startTime,
@@ -9481,6 +9488,7 @@ export class DefaultMessageService implements IMessageService {
 		runtime: IAgentRuntime,
 		message: Memory,
 		callback: HandlerCallback | undefined,
+		deliveredVisibleTexts: Set<string>,
 		responseId: UUID,
 		runId: UUID,
 		startTime: number,
@@ -9961,6 +9969,7 @@ export class DefaultMessageService implements IMessageService {
 						state,
 						responseId,
 						...(callback ? { callback } : {}),
+						deliveredVisibleTexts,
 						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 					}),
 					runtime.applyPipelineHooks(
