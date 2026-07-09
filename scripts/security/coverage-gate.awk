@@ -15,8 +15,26 @@ BEGIN {
   # Split changed files into a lookup table.
   n = split(changed, parts, "\n")
   for (i = 1; i <= n; i++) {
-    if (parts[i] != "") changed_map[parts[i]] = 1
+    if (parts[i] != "") {
+      gsub(/\\/, "/", parts[i])
+      changed_map[parts[i]] = 1
+    }
   }
+}
+
+function path_matches_lcov(current_path, changed_path,    current_len, changed_len, prefix_len) {
+  gsub(/\\/, "/", current_path)
+  gsub(/\\/, "/", changed_path)
+  if (current_path == changed_path) return 1
+
+  current_len = length(current_path)
+  changed_len = length(changed_path)
+  if (current_len <= changed_len) return 0
+
+  prefix_len = current_len - changed_len
+  return \
+    substr(current_path, prefix_len + 1) == changed_path && \
+    substr(current_path, prefix_len, 1) == "/"
 }
 
 /^SF:/ {
@@ -39,11 +57,12 @@ BEGIN {
 /^end_of_record/ {
   if (lines_found > 0) {
     pct = (lines_hit / lines_found) * 100
-    # Check if this file is in changed list (suffix match, since lcov paths
-    # may be absolute and the changed list is relative).
+    # Check if this file is in changed list. LCOV paths may be absolute while
+    # the changed list is repo-relative, so accept only exact path-segment
+    # suffixes; raw substring matching lets foo.ts pass via foo.tsx.
     matched = ""
     for (cf in changed_map) {
-      if (index(current, cf) > 0) { matched = cf; break }
+      if (path_matches_lcov(current, cf)) { matched = cf; break }
     }
     if (matched != "") {
       changed_count++
