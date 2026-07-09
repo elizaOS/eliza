@@ -22,18 +22,30 @@ const BASE_EVIDENCE = [
     label: "Issue/PR closeout summary",
     reason:
       "Every MVP row needs an inline GitHub comment naming what changed, what was verified, and what remains human-owned.",
+    collectionHints: [
+      "gh issue view <issue> --repo elizaOS/eliza --comments",
+      "gh issue comment <issue> --repo elizaOS/eliza --body-file <review.md>",
+    ],
   },
   {
     id: "logs",
     label: "Relevant structured logs",
     reason:
       "The closeout standard requires the real client/server path to be observable instead of inferred from code.",
+    collectionHints: [
+      "bun run test:matrix:review",
+      "bun run --cwd packages/app test:e2e:record:review",
+    ],
   },
   {
     id: "domain-artifacts",
     label: "Domain artifacts",
     reason:
       "The issue should show the records, files, memories, scheduled tasks, or generated artifacts that prove the workflow ran.",
+    collectionHints: [
+      "Attach the generated DB rows, memories, scheduled tasks, files, or connector artifacts inline in the issue.",
+      "Include before/after identifiers or hashes so reviewers can tie artifacts to the run.",
+    ],
   },
 ];
 
@@ -59,6 +71,10 @@ const RULES = [
       label: "Before/after screenshots with OCR and color heuristics",
       reason:
         "UI/app work must prove the rendered state, readable text, palette, and obvious layout defects on desktop and mobile.",
+      collectionHints: [
+        "bun run --cwd packages/app audit:app:verify",
+        "bun run --cwd packages/app mvp:visual-verify -- --strict --require-baseline-states",
+      ],
     },
     matches: ({ text, labels }) =>
       labels.has("ui") ||
@@ -74,6 +90,10 @@ const RULES = [
       label: "MP4 walkthrough",
       reason:
         "User-facing flows need a human-reviewable recording of the real journey, including transitions and error/empty states.",
+      collectionHints: [
+        "bun run test:matrix:review",
+        "bun run --cwd packages/app test:e2e:record:review",
+      ],
     },
     matches: ({ text, labels }) =>
       labels.has("ui") ||
@@ -88,6 +108,10 @@ const RULES = [
       label: "Per-device screenshots, recording, logs, and status JSON",
       reason:
         "Device-gated MVP rows must prove the installed app and platform bridge behavior, not a desktop browser surrogate.",
+      collectionHints: [
+        "bun run --cwd packages/app capture:ios-sim",
+        "bun run --cwd packages/app capture:android-emu",
+      ],
     },
     matches: ({ text }) =>
       hasAnyToken(text, ["device", "ios", "android", "ipad", "sim", "emu"]),
@@ -99,6 +123,10 @@ const RULES = [
       label: "Audio sample, transcript, and latency/quality numbers",
       reason:
         "Voice rows need audible proof plus measured ASR/TTS behavior so success is not judged by a text-only path.",
+      collectionHints: [
+        "bun run --cwd packages/app-core voice:latency-report",
+        "Attach the captured audio sample, transcript, and measured TTS/STT latency.",
+      ],
     },
     matches: ({ text, labels }) =>
       labels.has("voice") ||
@@ -111,6 +139,10 @@ const RULES = [
       label: "Live-LLM scenario trajectory report",
       reason:
         "Agent, scenario, planner, memory, and persona behavior must be proven with model inputs and outputs, not mocks.",
+      collectionHints: [
+        "packages/scenario-runner/bin/eliza-scenarios run <scenario> --report <out>",
+        "Open the JSON report and run viewer, then attach the reviewed trajectory summary.",
+      ],
     },
     matches: ({ text, labels }) =>
       labels.has("testing") ||
@@ -133,6 +165,10 @@ const RULES = [
         "Connector dispatch or import transcript with credential-safe logs",
       reason:
         "Connector and corpus rows need the real external/channel boundary exercised or a named owner-owned credential blocker.",
+      collectionHints: [
+        "Run the connector import/dispatch against the real credentialed service.",
+        "Attach redacted request/response logs plus the resulting message, import, or dispatch artifact.",
+      ],
     },
     matches: ({ text, labels }) =>
       labels.has("connector") ||
@@ -155,6 +191,10 @@ const RULES = [
       label: "Security/redaction proof and negative-path evidence",
       reason:
         "Security, PII, permissioning, and privacy rows need leak checks, denial paths, and fail-closed behavior.",
+      collectionHints: [
+        "Run the positive path and denial path with representative private data.",
+        "Attach redacted logs showing no secret/PII leak and the explicit deny or unavailable state.",
+      ],
     },
     matches: ({ text, labels }) =>
       labels.has("security") ||
@@ -176,6 +216,10 @@ const RULES = [
       label: "ScheduledTask/ledger state before and after",
       reason:
         "Reminder, follow-up, watcher, and obligation rows must show structural task records and completion/escalation state.",
+      collectionHints: [
+        "Capture ScheduledTask records before and after the run.",
+        "Attach the task, ledger, completion, and escalation state that proves the scheduler path fired.",
+      ],
     },
     matches: ({ text }) =>
       hasAnyToken(text, [
@@ -415,8 +459,23 @@ function formatText(report) {
   return `${lines.join("\n")}\n`;
 }
 
+function formatCollectionHint(hint) {
+  return /^(bun|gh|node|packages\/|ELIZA_|npm|pnpm|yarn)\b/.test(hint)
+    ? `\`${hint}\``
+    : hint;
+}
+
 function formatChecklistItem(evidence) {
-  return `- [ ] **${evidence.label}** (\`${evidence.id}\`) — ${evidence.reason}`;
+  const lines = [
+    `- [ ] **${evidence.label}** (\`${evidence.id}\`) — ${evidence.reason}`,
+  ];
+  if (evidence.collectionHints?.length > 0) {
+    lines.push("  - Collection hints:");
+    for (const hint of evidence.collectionHints) {
+      lines.push(`    - ${formatCollectionHint(hint)}`);
+    }
+  }
+  return lines.join("\n");
 }
 
 export function formatMarkdown(report) {

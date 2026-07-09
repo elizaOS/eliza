@@ -36,6 +36,13 @@ function evidenceIds(row: { evidence: Array<{ id: string }> }) {
   return row.evidence.map((evidence) => evidence.id);
 }
 
+function evidenceById(
+  row: { evidence: Array<{ id: string; collectionHints?: string[] }> },
+  id: string,
+) {
+  return row.evidence.find((evidence) => evidence.id === id);
+}
+
 describe("MVP evidence matrix", () => {
   test("adds visual, walkthrough, and device proof for device onboarding UI rows", () => {
     const report = matrix.buildEvidenceMatrix(
@@ -65,6 +72,13 @@ describe("MVP evidence matrix", () => {
         "device-artifact-bundle",
       ]),
     );
+    expect(
+      evidenceById(report.rows[0], "visual-screenshots-ocr-color")
+        ?.collectionHints,
+    ).toContain("bun run --cwd packages/app audit:app:verify");
+    expect(
+      evidenceById(report.rows[0], "device-artifact-bundle")?.collectionHints,
+    ).toContain("bun run --cwd packages/app capture:ios-sim");
   });
 
   test("adds live model, connector, and security proof for corpus and permissioning rows", () => {
@@ -163,8 +177,18 @@ describe("MVP evidence matrix", () => {
     expect(markdown).toContain(
       "- [ ] **Before/after screenshots with OCR and color heuristics** (`visual-screenshots-ocr-color`)",
     );
+    expect(markdown).toContain("  - Collection hints:");
+    expect(markdown).toContain(
+      "    - `bun run --cwd packages/app audit:app:verify`",
+    );
     expect(markdown).toContain(
       "- [ ] **Per-device screenshots, recording, logs, and status JSON** (`device-artifact-bundle`)",
+    );
+    expect(markdown).toContain(
+      "    - `bun run --cwd packages/app capture:android-emu`",
+    );
+    expect(markdown).toContain(
+      "    - Attach the generated DB rows, memories, scheduled tasks, files, or connector artifacts inline in the issue.",
     );
   });
 
