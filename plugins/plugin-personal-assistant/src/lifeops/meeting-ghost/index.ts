@@ -5,11 +5,11 @@
  * `TranscriptSegment[]` that `@elizaos/plugin-meetings`' pipeline `finalize()`
  * produces) plus owner context, this module derives the deterministic
  * post-meeting shape LifeOps acts on: decisions, care-about hits, extracted
- * commitments, a short digest, and — the part that leaves the module —
- * owner-approval requests as `ApprovalEnqueueInput[]` that feed
- * `ApprovalQueue.enqueue()` directly (no re-mapping at the call site). The
+ * commitments, commitment-ledger rows, a short digest, and — the part that
+ * leaves the module — owner-approval requests as `ApprovalEnqueueInput[]` that
+ * feed `ApprovalQueue.enqueue()` directly (no re-mapping at the call site). The
  * scheduled-task consumer that runs this on a real transcript and routes the
- * approvals lives in `./consumer.ts`.
+ * side effects lives in `./consumer.ts`.
  *
  * It is deliberately pure so tests can pin care-about filtering and commitment
  * extraction against a realistic diarized fixture without mocking connectors.
@@ -22,6 +22,8 @@ import type {
   ApprovalEnqueueInput,
   ApprovalPayload,
 } from "../approval-queue.types.js";
+import type { LifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
+import { createLifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
 
 export interface MeetingGhostAttendee {
   readonly name: string;
@@ -82,6 +84,7 @@ export interface MeetingGhostAnalysis {
   readonly meetingId: string;
   readonly decisions: readonly MeetingGhostDecision[];
   readonly commitments: readonly MeetingGhostCommitment[];
+  readonly commitmentLedgerRecords: readonly LifeOpsCommitmentLedgerRecord[];
   readonly careHits: readonly MeetingGhostCareHit[];
   /** Ready to feed `ApprovalQueue.enqueue()` directly. */
   readonly followUpApprovals: readonly ApprovalEnqueueInput[];
@@ -248,6 +251,12 @@ function parseDueDate(
   return null;
 }
 
+function dueDateToLedgerDueAt(dueDate: string | null): string | null {
+  if (!dueDate) return null;
+  const due = new Date(`${dueDate}T17:00:00.000Z`);
+  return Number.isNaN(due.getTime()) ? null : due.toISOString();
+}
+
 function parseCommitment(
   transcript: MeetingGhostTranscript,
   segment: TranscriptSegment,
@@ -352,7 +361,37 @@ function buildDigestLines(
   return lines.slice(0, 3);
 }
 
+export function createMeetingGhostCommitmentLedgerRecord(input: {
+  readonly agentId: string;
+  readonly transcript: MeetingGhostTranscript;
+  readonly commitment: MeetingGhostCommitment;
+}): LifeOpsCommitmentLedgerRecord {
+  return createLifeOpsCommitmentLedgerRecord({
+    agentId: input.agentId,
+    source: "transcript",
+    sourceKey: `${input.transcript.meetingId}:${input.commitment.id}`,
+    kind: "commitment",
+    summary: input.commitment.what,
+    counterparty: input.commitment.who,
+    dueAt: dueDateToLedgerDueAt(input.commitment.dueDate),
+    confidence: input.commitment.dueDate ? 0.86 : 0.78,
+    metadata: {
+      meetingId: input.transcript.meetingId,
+      meetingTitle: input.transcript.title,
+      meetingStartedAt: input.transcript.startedAt,
+      commitmentId: input.commitment.id,
+      sourceText: input.commitment.sourceText,
+      sourceOffsetMs: input.commitment.sourceOffsetMs,
+      dueText: input.commitment.dueText,
+      recipientEmail: input.commitment.recipientEmail,
+    },
+    createdAt: input.transcript.startedAt,
+    updatedAt: input.transcript.startedAt,
+  });
+}
+
 export function analyzeMeetingGhostTranscript(input: {
+  readonly agentId?: string;
   readonly transcript: MeetingGhostTranscript;
   readonly owner: MeetingGhostOwnerContext;
 }): MeetingGhostAnalysis {
@@ -395,11 +434,21 @@ export function analyzeMeetingGhostTranscript(input: {
       buildCalendarIntent(input.transcript, input.owner, commitment),
     )
     .filter((entry): entry is MeetingGhostCalendarIntent => entry !== null);
+  const commitmentLedgerRecords = input.agentId
+    ? commitments.map((commitment) =>
+        createMeetingGhostCommitmentLedgerRecord({
+          agentId: input.agentId,
+          transcript: input.transcript,
+          commitment,
+        }),
+      )
+    : [];
 
   return {
     meetingId: input.transcript.meetingId,
     decisions,
     commitments,
+    commitmentLedgerRecords,
     careHits,
     followUpApprovals,
     calendarIntents,

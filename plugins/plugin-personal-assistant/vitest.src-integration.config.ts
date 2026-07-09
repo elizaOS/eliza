@@ -18,9 +18,10 @@
 // plugin barrel (its `@elizaos/core` string alias breaks the `/node` subpath
 // import that `@elizaos/plugin-x`'s dist pulls in), and the package's
 // test:integration script only names two test/ files there — so the pause
-// test never ran anywhere before this wiring. Approval-queue integration specs
-// are included by name for the same reason: they boot the real PGlite runtime
-// and need this package's first-party source aliases instead of dist entries.
+// test never ran anywhere before this wiring. Approval-queue and meeting-ghost
+// integration specs are included by name for the same reason: they boot the
+// real PGlite runtime and need this package's first-party source aliases
+// instead of dist entries.
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,6 +47,7 @@ export default defineConfig({
       `${packageRootFromRepo}/test/global-pause.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue.integration.test.ts`,
       `${packageRootFromRepo}/test/approval-queue-notify-error.integration.test.ts`,
+      `${packageRootFromRepo}/test/meeting-ghost.integration.test.ts`,
       `${packageRootFromRepo}/test/resolve-referent-action.integration.test.ts`,
     ],
     exclude: [

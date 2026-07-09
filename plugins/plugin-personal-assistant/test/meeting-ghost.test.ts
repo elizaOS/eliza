@@ -14,7 +14,10 @@
 
 import type { TranscriptSegment } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
-import { analyzeMeetingGhostTranscript } from "../src/lifeops/meeting-ghost/index.js";
+import {
+  analyzeMeetingGhostTranscript,
+  createMeetingGhostCommitmentLedgerRecord,
+} from "../src/lifeops/meeting-ghost/index.js";
 
 const approvalExpiresAt = new Date("2026-07-06T20:00:00.000Z");
 
@@ -161,6 +164,72 @@ describe("meeting ghost transcript analysis", () => {
         sourceOffsetMs: 360_000,
       }),
     ]);
+  });
+
+  it("normalizes transcript commitments into ledger rows with meeting provenance", () => {
+    const analysis = analyzeMeetingGhostTranscript({
+      agentId: "agent-meeting-1",
+      owner: {
+        ownerUserId: "owner-1",
+        ownerDisplayName: "Shaw",
+        requestedBy: "meeting-ghost",
+        careAbouts: ["launch date"],
+        calendarId: "primary",
+        approvalExpiresAt,
+      },
+      transcript: {
+        meetingId: "ops-sync-2026-07-06",
+        title: "Ops Sync",
+        startedAt: "2026-07-06T16:00:00.000Z",
+        attendees: [{ name: "Ava", email: "ava@example.com" }],
+        segments: [
+          seg(
+            "Mira",
+            240_000,
+            "Ava will send the launch-date rollback plan by Friday.",
+          ),
+        ],
+      },
+    });
+
+    expect(analysis.commitmentLedgerRecords).toHaveLength(1);
+    expect(analysis.commitmentLedgerRecords[0]).toMatchObject({
+      agentId: "agent-meeting-1",
+      source: "transcript",
+      sourceKey: `ops-sync-2026-07-06:${analysis.commitments[0].id}`,
+      kind: "commitment",
+      summary: "send the launch-date rollback plan",
+      counterparty: "Ava",
+      dueAt: "2026-07-10T17:00:00.000Z",
+      confidence: 0.86,
+      status: "open",
+      scheduledTaskId: null,
+      metadata: {
+        meetingId: "ops-sync-2026-07-06",
+        meetingTitle: "Ops Sync",
+        meetingStartedAt: "2026-07-06T16:00:00.000Z",
+        commitmentId: analysis.commitments[0].id,
+        sourceText: "Ava will send the launch-date rollback plan by Friday.",
+        sourceOffsetMs: 240_000,
+        dueText: "Friday",
+        recipientEmail: "ava@example.com",
+      },
+      createdAt: "2026-07-06T16:00:00.000Z",
+      updatedAt: "2026-07-06T16:00:00.000Z",
+    });
+
+    const rebuilt = createMeetingGhostCommitmentLedgerRecord({
+      agentId: "agent-meeting-1",
+      transcript: {
+        meetingId: "ops-sync-2026-07-06",
+        title: "Ops Sync",
+        startedAt: "2026-07-06T16:00:00.000Z",
+        attendees: [{ name: "Ava", email: "ava@example.com" }],
+        segments: [],
+      },
+      commitment: analysis.commitments[0],
+    });
+    expect(rebuilt.id).toBe(analysis.commitmentLedgerRecords[0].id);
   });
 
   it("emits canonical ApprovalEnqueueInput follow-ups ready for the approval queue", () => {

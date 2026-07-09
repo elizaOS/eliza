@@ -23,6 +23,7 @@ import { createRealTestRuntime } from "../../../packages/test/helpers/real-runti
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import type { ApprovalQueue } from "../src/lifeops/approval-queue.types.js";
 import { runMeetingGhostForTranscript } from "../src/lifeops/meeting-ghost/consumer.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { personalAssistantPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
@@ -144,6 +145,7 @@ describe("meeting-ghost consumer (real approval queue)", () => {
     // Two commitments → two follow-up emails + two dated calendar deadlines.
     expect(result.analysis.commitments).toHaveLength(2);
     expect(result.enqueued).toHaveLength(4);
+    expect(result.commitmentLedgerIds).toHaveLength(2);
     expect(result.enqueued.every((r) => r.state === "pending")).toBe(true);
 
     const actions = result.enqueued.map((r) => r.action).sort();
@@ -162,6 +164,34 @@ describe("meeting-ghost consumer (real approval queue)", () => {
       limit: 20,
     });
     expect(pending.length).toBeGreaterThanOrEqual(4);
+
+    const repo = new LifeOpsRepository(runtime);
+    const ledgerRows = await repo.listCommitmentLedgerRecords(runtime.agentId, {
+      source: "transcript",
+    });
+    const meetingRows = ledgerRows.filter((row) =>
+      row.sourceKey.startsWith("ops-sync-integration:"),
+    );
+    expect(meetingRows).toHaveLength(2);
+    expect(meetingRows.map((row) => row.summary).sort()).toEqual([
+      "send the launch-date rollback plan",
+      "update the public calendar",
+    ]);
+    expect(meetingRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          counterparty: "Ava",
+          dueAt: "2026-07-10T17:00:00.000Z",
+          status: "open",
+          metadata: expect.objectContaining({
+            meetingId: "ops-sync-integration",
+            meetingTitle: "Ops Sync",
+            sourceText:
+              "Ava will send the launch-date rollback plan by 2026-07-10.",
+          }),
+        }),
+      ]),
+    );
 
     const firstEmail = result.enqueued.find((r) => r.action === "send_email");
     if (!firstEmail) throw new Error("expected a send_email approval");
