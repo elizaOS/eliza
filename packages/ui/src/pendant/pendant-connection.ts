@@ -25,6 +25,7 @@
  * both paths.
  */
 
+import { ElizaError, logger } from "@elizaos/core";
 import {
   createLocalAsrAutoStopDetector,
   encodeMonoPcm16Wav,
@@ -283,24 +284,30 @@ export class PendantConnection {
     this.patch({ connectStep: name });
     const t0 =
       typeof performance !== "undefined" ? performance.now() : Date.now();
-    // eslint-disable-next-line no-console
-    console.info(`[pendant] step:${name} …`);
+    logger.info(`[PendantConnection] step:${name} …`);
     try {
       const result = await withStepTimeout(name, work(), this.stepTimeoutMs);
       const t1 =
         typeof performance !== "undefined" ? performance.now() : Date.now();
-      // eslint-disable-next-line no-console
-      console.info(`[pendant] step:${name} ok (${Math.round(t1 - t0)}ms)`);
+      logger.info(
+        `[PendantConnection] step:${name} ok (${Math.round(t1 - t0)}ms)`,
+      );
       return result;
-    } catch (err) {
+    } catch (cause) {
       const t1 =
         typeof performance !== "undefined" ? performance.now() : Date.now();
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[pendant] step:${name} FAILED (${Math.round(t1 - t0)}ms):`,
-        err instanceof Error ? err.message : err,
+      logger.warn(
+        { cause },
+        `[PendantConnection] step:${name} failed (${Math.round(t1 - t0)}ms)`,
       );
-      throw err;
+      if (isStepTimeout(cause)) throw cause;
+      // error-policy:J2 Step context identifies which BLE boundary failed.
+      throw new ElizaError(`Pendant connection failed during ${name}.`, {
+        code: "PENDANT_CONNECT_STEP_FAILED",
+        cause,
+        context: { step: name },
+        severity: "ephemeral",
+      });
     }
   }
 
@@ -341,10 +348,11 @@ export class PendantConnection {
       try {
         await this.bringUp(transport);
       } catch (err) {
+        // error-policy:J4 A timed-out first GATT discovery gets one visible bounded retry.
         if (!isStepTimeout(err)) throw err;
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[pendant] ${err.message} — disconnecting and retrying once`,
+        logger.warn(
+          { error: err },
+          `[PendantConnection] ${err.message} — disconnecting and retrying once`,
         );
         await this.partialTeardown();
         // Give the stack a beat to fully drop the link before reconnecting.
@@ -361,6 +369,7 @@ export class PendantConnection {
 
       this.patch({ status: "listening", connectStep: "done" });
     } catch (err) {
+      // error-policy:J4 The connection boundary translates failures into the typed UI state.
       const typedError = classifyPendantConnectionError(err);
       // Tear down anything a partial setup left live so a failed connect never
       // leaks a GATT link, active notifications, or the decoder.
@@ -442,7 +451,9 @@ export class PendantConnection {
         error: null,
         typedError: null,
       });
-    } catch {
+    } catch (error) {
+      // error-policy:J4 A failed reconnect remains visible and advances the bounded retry state.
+      logger.warn({ error }, "[PendantConnection] Reconnect attempt failed");
       await this.partialTeardown();
       this.transport = null;
       this.patch({ status: "reconnecting", connectStep: "idle" });
@@ -488,9 +499,14 @@ export class PendantConnection {
         const dec = await createPendantAudioDecoder(codecId);
         await dec.ready;
         return dec;
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        throw new Error(`audio decoder failed to load: ${detail}`);
+      } catch (cause) {
+        // error-policy:J2 Decoder initialization context is preserved for the UI boundary.
+        throw new ElizaError("Pendant audio decoder failed to load.", {
+          code: "PENDANT_AUDIO_DECODER_INIT_FAILED",
+          cause,
+          context: { codecId },
+          severity: "fatal",
+        });
       }
     });
 
@@ -520,8 +536,12 @@ export class PendantConnection {
     this.intentionalDisconnect = true;
     try {
       await this.transport?.disconnect();
-    } catch {
-      /* best-effort */
+    } catch (error) {
+      // error-policy:J6 Partial-connect teardown must continue releasing local decoder state.
+      logger.debug(
+        { error },
+        "[PendantConnection] Partial transport teardown failed",
+      );
     }
     this.intentionalDisconnect = wasIntentional;
     this.releaseConnectionRefs();
@@ -551,7 +571,22 @@ export class PendantConnection {
           droppedPackets: this.state.droppedPackets + frame.droppedBefore,
         });
       }
-      const pcm = this.decoder.decodeFrame(frame.data);
+      let pcm: Float32Array;
+      try {
+        pcm = this.decoder.decodeFrame(frame.data);
+      } catch (error) {
+        // error-policy:J4 A corrupt frame is counted and surfaced without killing ambient capture.
+        const typedError = createPendantError(
+          "connection",
+          error instanceof Error ? error.message : "Audio frame decode failed.",
+        );
+        this.patch({
+          droppedPackets: this.state.droppedPackets + 1,
+          error: typedError.message,
+          typedError,
+        });
+        continue;
+      }
       if (pcm.length === 0) continue;
       this.feedVad(pcm);
     }
@@ -639,10 +674,12 @@ export class PendantConnection {
       };
       this.patch({ lastTranscript: text, error: null, typedError: null });
       this.commitSegment(resolvedSegment);
-    } catch {
+    } catch (error) {
+      // error-policy:J4 Failed ASR becomes an explicit failed transcript segment.
       // ASR failure is non-fatal for ambient capture, but it must stay visible
       // so the transcript surface does not look healthy while segments drop.
       const typedError = createPendantError("asr-failed");
+      logger.warn({ error }, "[PendantConnection] Ambient ASR segment failed");
       this.patch({ error: typedError.message, typedError });
       this.commitSegment({
         ...segment,
@@ -701,8 +738,12 @@ export class PendantConnection {
     }
     try {
       await this.transport?.disconnect();
-    } catch {
-      /* already disconnected */
+    } catch (error) {
+      // error-policy:J6 User-requested teardown still releases local state after transport loss.
+      logger.debug(
+        { error },
+        "[PendantConnection] Transport already disconnected",
+      );
     }
     this.releaseConnectionRefs();
     this.transport = null;

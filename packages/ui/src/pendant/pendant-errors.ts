@@ -34,6 +34,22 @@ export class PendantPermissionDeniedError extends Error {
   }
 }
 
+/** Walk native `Error.cause` links without looping on malformed error objects. */
+export function pendantErrorCauseChain(error: unknown): unknown[] {
+  const chain: unknown[] = [];
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (current !== undefined) {
+    if (typeof current === "object" && current !== null) {
+      if (seen.has(current)) break;
+      seen.add(current);
+    }
+    chain.push(current);
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return chain;
+}
+
 export function createPendantError(
   code: PendantErrorCode,
   detail?: string,
@@ -92,12 +108,18 @@ export function createPendantError(
 export function classifyPendantConnectionError(
   err: unknown,
 ): PendantTypedError {
+  const chain = pendantErrorCauseChain(err);
   if (
-    err instanceof PendantPermissionDeniedError ||
-    (err instanceof DOMException && err.name === "NotAllowedError")
+    chain.some(
+      (cause) =>
+        cause instanceof PendantPermissionDeniedError ||
+        (cause instanceof DOMException && cause.name === "NotAllowedError"),
+    )
   ) {
     return createPendantError("permission-denied");
   }
-  const detail = err instanceof Error ? err.message : undefined;
+  const detail = chain.findLast(
+    (cause): cause is Error => cause instanceof Error,
+  )?.message;
   return createPendantError("connection", detail);
 }

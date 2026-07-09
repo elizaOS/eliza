@@ -17,17 +17,21 @@
  * (non-silent tone recovered at the correct sample rate).
  */
 
+import { ElizaError, logger } from "@elizaos/core";
 import {
   OMI_CODEC,
-  type OmiCodecId,
   OMI_OPUS_CHANNELS,
   OMI_OPUS_SAMPLE_RATE_HZ,
+  type OmiCodecId,
 } from "./omi-protocol";
 
 /** Minimal shape of the `opus-decoder` main-thread decoder we rely on. */
 interface OpusDecoderLike {
   ready: Promise<void>;
-  decodeFrame(frame: Uint8Array): { channelData: Float32Array[]; samplesDecoded: number };
+  decodeFrame(frame: Uint8Array): {
+    channelData: Float32Array[];
+    samplesDecoded: number;
+  };
   free(): void;
   reset(): Promise<void>;
 }
@@ -35,7 +39,7 @@ interface OpusDecoderLike {
 export interface PendantAudioDecoder {
   /** Resolves once the underlying codec is ready to decode. */
   readonly ready: Promise<void>;
-  /** Decode one wire frame → mono Float32 PCM @ 16 kHz. Empty on failure. */
+  /** Decode one wire frame → mono Float32 PCM @ 16 kHz. */
   decodeFrame(frame: Uint8Array): Float32Array;
   /** Release native resources. */
   free(): void;
@@ -61,9 +65,11 @@ export async function createPendantAudioDecoder(
   if (codecId === OMI_CODEC.MU_LAW_8K) {
     return createMuLawDecoder();
   }
-  // Unknown codec — default to Opus (the DK1 firmware default) rather than
-  // silently dropping audio; if it's wrong the decoder simply yields nothing.
-  return createOpusDecoder();
+  throw new ElizaError("Pendant reported an unsupported audio codec.", {
+    code: "PENDANT_AUDIO_CODEC_UNSUPPORTED",
+    context: { codecId },
+    severity: "fatal",
+  });
 }
 
 async function createOpusDecoder(): Promise<PendantAudioDecoder> {
@@ -84,19 +90,29 @@ async function createOpusDecoder(): Promise<PendantAudioDecoder> {
     ready: Promise.resolve(),
     decodeFrame(frame: Uint8Array): Float32Array {
       if (frame.length === 0) return EMPTY;
-      try {
-        const result = decoder.decodeFrame(frame);
-        return result.channelData[0] ?? EMPTY;
-      } catch {
-        // A corrupt/partial frame must not kill the stream — drop it.
-        return EMPTY;
+      const result = decoder.decodeFrame(frame);
+      const channel = result.channelData[0];
+      if (!channel) {
+        throw new ElizaError(
+          "Pendant Opus decoder returned no audio channel.",
+          {
+            code: "PENDANT_AUDIO_DECODE_FAILED",
+            context: { frameBytes: frame.byteLength },
+            severity: "ephemeral",
+          },
+        );
       }
+      return channel;
     },
     free() {
       try {
         decoder.free();
-      } catch {
-        /* already freed */
+      } catch (error) {
+        // error-policy:J6 Decoder release is best-effort after the stream has stopped.
+        logger.debug(
+          { error },
+          "[PendantAudioDecoder] Decoder was already released",
+        );
       }
     },
   };
@@ -108,7 +124,11 @@ function createPcm16Decoder(): PendantAudioDecoder {
     decodeFrame(frame: Uint8Array): Float32Array {
       const sampleCount = frame.length >> 1;
       if (sampleCount === 0) return EMPTY;
-      const view = new DataView(frame.buffer, frame.byteOffset, sampleCount * 2);
+      const view = new DataView(
+        frame.buffer,
+        frame.byteOffset,
+        sampleCount * 2,
+      );
       const out = new Float32Array(sampleCount);
       for (let i = 0; i < sampleCount; i++) {
         out[i] = view.getInt16(i * 2, true) / 0x8000;

@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+/** Pendant audio decoding coverage uses non-WASM codecs for deterministic tests. */
 
-import { createPendantAudioDecoder } from "./opus-frame-decoder";
+import { describe, expect, it } from "vitest";
 import { OMI_CODEC } from "./omi-protocol";
+import { createPendantAudioDecoder } from "./opus-frame-decoder";
 
 describe("createPendantAudioDecoder (non-Opus paths, no wasm)", () => {
   it("decodes little-endian int16 PCM to normalized Float32", async () => {

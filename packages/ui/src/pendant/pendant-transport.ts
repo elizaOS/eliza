@@ -24,6 +24,7 @@
  */
 
 import type { OmiCodecId } from "./omi-protocol";
+import { pendantErrorCauseChain } from "./pendant-errors";
 
 /** A raw BLE notification payload, windowed to exactly the notified bytes. */
 export type PendantNotification = Uint8Array;
@@ -99,8 +100,11 @@ export class PendantUserCancelledError extends Error {
 }
 
 /** True when an error is a user-cancelled device chooser (→ land in idle). */
-export function isUserCancelled(err: unknown): err is PendantUserCancelledError {
-  if (err instanceof PendantUserCancelledError) return true;
-  // Web Bluetooth surfaces a cancelled chooser as DOMException NotFoundError.
-  return err instanceof DOMException && err.name === "NotFoundError";
+export function isUserCancelled(err: unknown): boolean {
+  return pendantErrorCauseChain(err).some(
+    (cause) =>
+      cause instanceof PendantUserCancelledError ||
+      // Web Bluetooth surfaces a cancelled chooser as DOMException NotFoundError.
+      (cause instanceof DOMException && cause.name === "NotFoundError"),
+  );
 }

@@ -113,11 +113,29 @@ export function PendantTranscriptView(): React.ReactElement {
     () => createLocalOptimisticPendantTranscriptSessionAdapter(),
     [],
   );
+  const initialCache = React.useMemo(() => {
+    try {
+      return { session: sessionAdapter.load(), error: null as string | null };
+    } catch (error) {
+      // error-policy:J4 A blocked or corrupt cache renders an explicit unavailable state.
+      return {
+        session: {
+          segments: [],
+          updatedAt: null,
+          clearedThrough: null,
+        },
+        error:
+          error instanceof Error
+            ? error.message
+            : "Pendant transcript cache is unavailable.",
+      };
+    }
+  }, [sessionAdapter]);
   const [session, dispatchSession] = React.useReducer(
     pendantTranscriptSessionReducer,
-    undefined,
-    () => sessionAdapter.load(),
+    initialCache.session,
   );
+  const [cacheError, setCacheError] = React.useState(initialCache.error);
   const [showTimings, setShowTimings] = React.useState(false);
   const { scrollRef, atBottom, jumpToLatest } =
     useThreadAutoScroll<HTMLDivElement>({
@@ -133,8 +151,18 @@ export function PendantTranscriptView(): React.ReactElement {
   });
 
   React.useEffect(() => {
-    sessionAdapter.save(session);
-  }, [session, sessionAdapter]);
+    if (cacheError) return;
+    try {
+      sessionAdapter.save(session);
+    } catch (error) {
+      // error-policy:J4 Persistence failures stay visible instead of reading as saved.
+      setCacheError(
+        error instanceof Error
+          ? error.message
+          : "Pendant transcript cache could not be saved.",
+      );
+    }
+  }, [cacheError, session, sessionAdapter]);
 
   const live = isPendantLiveStatus(state.status);
   const frozen = !live && session.segments.length > 0;
@@ -262,10 +290,20 @@ export function PendantTranscriptView(): React.ReactElement {
               size="sm"
               onClick={() => {
                 const at = Date.now();
-                sessionAdapter.clear(at);
-                dispatchSession({ type: "clear", at });
+                try {
+                  sessionAdapter.clear(at);
+                  dispatchSession({ type: "clear", at });
+                  setCacheError(null);
+                } catch (error) {
+                  // error-policy:J4 Clear failures preserve the visible cache/error state.
+                  setCacheError(
+                    error instanceof Error
+                      ? error.message
+                      : "Pendant transcript cache could not be cleared.",
+                  );
+                }
               }}
-              disabled={session.segments.length === 0}
+              disabled={session.segments.length === 0 && !cacheError}
               data-testid="pendant-transcript-clear"
             >
               <Trash2 className="size-4" aria-hidden />
@@ -306,6 +344,15 @@ export function PendantTranscriptView(): React.ReactElement {
               {errorMessage}
             </div>
           ) : null}
+          {cacheError ? (
+            <div
+              role="alert"
+              className="mt-3 border-l-2 border-danger bg-danger/10 px-3 py-2 text-sm text-danger"
+              data-testid="pendant-transcript-cache-error"
+            >
+              {cacheError}
+            </div>
+          ) : null}
         </header>
 
         <div className="relative min-h-0 flex-1">
@@ -315,7 +362,18 @@ export function PendantTranscriptView(): React.ReactElement {
             aria-live="polite"
             data-testid="pendant-transcript-feed"
           >
-            {session.segments.length === 0 ? (
+            {cacheError && session.segments.length === 0 ? (
+              <div className="flex h-full items-center justify-center px-6 text-center">
+                <div className="max-w-md">
+                  <p className="text-sm font-medium text-danger">
+                    Transcript cache unavailable
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted">
+                    Reset the local cache to retry storage access.
+                  </p>
+                </div>
+              </div>
+            ) : session.segments.length === 0 ? (
               <div className="flex h-full items-center justify-center px-6 text-center">
                 <div className="max-w-md">
                   <p className="text-sm font-medium text-txt-strong">

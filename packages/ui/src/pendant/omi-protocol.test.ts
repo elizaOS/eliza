@@ -1,3 +1,5 @@
+/** Omi packet reassembly coverage exercises ordering, loss, and codec metadata. */
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,7 +9,11 @@ import {
 } from "./omi-protocol";
 
 /** Build an omi notification: [idLSB, idMSB, frameIndex, ...payload]. */
-function notif(packetIndex: number, frameIndex: number, payload: number[]): Uint8Array {
+function notif(
+  packetIndex: number,
+  frameIndex: number,
+  payload: number[],
+): Uint8Array {
   const buf = new Uint8Array(OMI_PACKET_HEADER_SIZE + payload.length);
   buf[0] = packetIndex & 0xff;
   buf[1] = (packetIndex >> 8) & 0xff;

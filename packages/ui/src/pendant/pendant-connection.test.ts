@@ -1,5 +1,3 @@
-// @vitest-environment jsdom
-
 /**
  * PendantConnection drives an injected PendantTransport through the connect
  * sequence and the transport-agnostic audio pipeline. We inject a fake transport
@@ -8,6 +6,8 @@
  * This proves the transport abstraction is clean: the SAME connection logic
  * works for Web Bluetooth and native BLE — only the injected transport differs.
  */
+
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { OMI_CODEC, type OmiCodecId } from "./omi-protocol";

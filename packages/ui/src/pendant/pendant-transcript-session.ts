@@ -6,6 +6,7 @@
  * server-backed session source while defaulting to browser localStorage.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type {
   PendantAsrWord,
   PendantTranscriptSegmentDetail,
@@ -61,6 +62,11 @@ export interface PendantTranscriptSessionAdapter {
   clear(at: number): PendantTranscriptSessionState;
   subscribe?(listener: PendantTranscriptSessionListener): () => void;
 }
+
+type PendantTranscriptStorage = Pick<
+  Storage,
+  "getItem" | "setItem" | "removeItem"
+>;
 
 export const EMPTY_PENDANT_TRANSCRIPT_SESSION: PendantTranscriptSessionState = {
   segments: [],
@@ -152,13 +158,37 @@ export function parsePendantTranscriptSession(
   value: unknown,
 ): PendantTranscriptSessionState {
   if (!value || typeof value !== "object") {
-    return EMPTY_PENDANT_TRANSCRIPT_SESSION;
+    throw new ElizaError(
+      "Pendant transcript cache has an invalid root value.",
+      {
+        code: "PENDANT_TRANSCRIPT_CACHE_INVALID",
+        context: { expected: "object" },
+        severity: "ephemeral",
+      },
+    );
   }
   const state = value as PersistedPendantTranscriptSessionShape;
   if (!Array.isArray(state.segments)) {
-    return EMPTY_PENDANT_TRANSCRIPT_SESSION;
+    throw new ElizaError(
+      "Pendant transcript cache is missing its segment collection.",
+      {
+        code: "PENDANT_TRANSCRIPT_CACHE_INVALID",
+        context: { field: "segments" },
+        severity: "ephemeral",
+      },
+    );
   }
-  const segments = state.segments.filter(isSegment).map((segment) => {
+  if (!state.segments.every(isSegment)) {
+    throw new ElizaError(
+      "Pendant transcript cache contains an invalid segment.",
+      {
+        code: "PENDANT_TRANSCRIPT_CACHE_INVALID",
+        context: { field: "segments" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const segments = state.segments.map((segment) => {
     const status = segment.status === "dropped" ? "failed" : segment.status;
     return {
       id: segment.id,
@@ -184,43 +214,76 @@ export function parsePendantTranscriptSession(
   };
 }
 
-export function loadPendantTranscriptSession(
-  storage?: Pick<Storage, "getItem">,
-): PendantTranscriptSessionState {
-  if (!storage && typeof window !== "undefined") {
-    try {
-      storage = window.localStorage;
-    } catch {
-      return EMPTY_PENDANT_TRANSCRIPT_SESSION;
-    }
+function resolveTranscriptStorage(
+  storage?: PendantTranscriptStorage,
+): PendantTranscriptStorage {
+  if (storage) return storage;
+  if (typeof window === "undefined") {
+    throw new ElizaError(
+      "Pendant transcript cache is unavailable outside a browser window.",
+      {
+        code: "PENDANT_TRANSCRIPT_STORAGE_UNAVAILABLE",
+        severity: "ephemeral",
+      },
+    );
   }
-  if (!storage) return EMPTY_PENDANT_TRANSCRIPT_SESSION;
   try {
-    const raw = storage.getItem(PENDANT_TRANSCRIPT_STORAGE_KEY);
-    if (!raw) return EMPTY_PENDANT_TRANSCRIPT_SESSION;
-    return parsePendantTranscriptSession(JSON.parse(raw));
-  } catch {
-    return EMPTY_PENDANT_TRANSCRIPT_SESSION;
+    return window.localStorage;
+  } catch (cause) {
+    // error-policy:J2 Preserve the browser's storage denial as the causal error.
+    throw new ElizaError("Pendant transcript cache is unavailable.", {
+      code: "PENDANT_TRANSCRIPT_STORAGE_UNAVAILABLE",
+      cause,
+      severity: "ephemeral",
+    });
   }
+}
+
+export function loadPendantTranscriptSession(
+  storage?: PendantTranscriptStorage,
+): PendantTranscriptSessionState {
+  const resolvedStorage = resolveTranscriptStorage(storage);
+  let raw: string | null;
+  try {
+    raw = resolvedStorage.getItem(PENDANT_TRANSCRIPT_STORAGE_KEY);
+  } catch (cause) {
+    // error-policy:J2 Keep storage access failures distinct from a valid empty cache.
+    throw new ElizaError("Pendant transcript cache could not be read.", {
+      code: "PENDANT_TRANSCRIPT_STORAGE_READ_FAILED",
+      cause,
+      severity: "ephemeral",
+    });
+  }
+  if (!raw) return EMPTY_PENDANT_TRANSCRIPT_SESSION;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (cause) {
+    // error-policy:J3 Malformed persisted JSON is an explicit invalid cache signal.
+    throw new ElizaError("Pendant transcript cache contains malformed JSON.", {
+      code: "PENDANT_TRANSCRIPT_CACHE_INVALID",
+      cause,
+      severity: "ephemeral",
+    });
+  }
+  return parsePendantTranscriptSession(parsed);
 }
 
 export function savePendantTranscriptSession(
   state: PendantTranscriptSessionState,
-  storage?: Pick<Storage, "setItem" | "removeItem">,
+  storage?: PendantTranscriptStorage,
 ): void {
-  if (!storage && typeof window !== "undefined") {
-    try {
-      storage = window.localStorage;
-    } catch {
-      return;
-    }
-  }
-  if (!storage) return;
+  const resolvedStorage = resolveTranscriptStorage(storage);
   if (state.segments.length === 0) {
     try {
-      storage.removeItem(PENDANT_TRANSCRIPT_STORAGE_KEY);
-    } catch {
-      return;
+      resolvedStorage.removeItem(PENDANT_TRANSCRIPT_STORAGE_KEY);
+    } catch (cause) {
+      // error-policy:J2 Cache deletion failures must remain observable to the view.
+      throw new ElizaError("Pendant transcript cache could not be cleared.", {
+        code: "PENDANT_TRANSCRIPT_STORAGE_CLEAR_FAILED",
+        cause,
+        severity: "ephemeral",
+      });
     }
     return;
   }
@@ -229,27 +292,24 @@ export function savePendantTranscriptSession(
     segments: state.segments.slice(-MAX_PERSISTED_PENDANT_TRANSCRIPT_SEGMENTS),
   };
   try {
-    storage.setItem(
+    resolvedStorage.setItem(
       PENDANT_TRANSCRIPT_STORAGE_KEY,
       JSON.stringify(persistedState),
     );
-  } catch {
-    return;
+  } catch (cause) {
+    // error-policy:J2 Cache write failures must remain observable to the view.
+    throw new ElizaError("Pendant transcript cache could not be saved.", {
+      code: "PENDANT_TRANSCRIPT_STORAGE_WRITE_FAILED",
+      cause,
+      severity: "ephemeral",
+    });
   }
 }
 
 export function createLocalOptimisticPendantTranscriptSessionAdapter(
-  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+  storage?: PendantTranscriptStorage,
 ): PendantTranscriptSessionAdapter {
-  const resolveStorage = () => {
-    if (storage) return storage;
-    if (typeof window === "undefined") return undefined;
-    try {
-      return window.localStorage;
-    } catch {
-      return undefined;
-    }
-  };
+  const resolveStorage = () => resolveTranscriptStorage(storage);
   return {
     kind: "local-optimistic-cache",
     load: () => loadPendantTranscriptSession(resolveStorage()),

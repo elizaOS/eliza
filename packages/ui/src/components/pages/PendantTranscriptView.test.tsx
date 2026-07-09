@@ -1,9 +1,9 @@
-// @vitest-environment jsdom
-
 /**
  * Pendant transcript view states are rendered against mocked pendant transport
  * and scrolling hooks so the component contract stays deterministic in jsdom.
  */
+
+// @vitest-environment jsdom
 
 import {
   act,
@@ -130,6 +130,19 @@ describe("PendantTranscriptView", () => {
     ).toBe(false);
   });
 
+  it("renders cache corruption as error instead of a healthy empty feed", () => {
+    localStorage.setItem(PENDANT_TRANSCRIPT_STORAGE_KEY, "{not json");
+
+    render(<PendantTranscriptView />);
+
+    expect(screen.getByTestId("pendant-transcript-cache-error")).toBeTruthy();
+    expect(screen.getByText("Transcript cache unavailable")).toBeTruthy();
+    expect(screen.queryByText("No transcript segments yet")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Clear local view\/cache/ }),
+    ).toBeTruthy();
+  });
+
   it("shows pause while connected and calls pause", () => {
     setPendantState({
       status: "connected",
@@ -185,7 +198,9 @@ describe("PendantTranscriptView", () => {
     render(<PendantTranscriptView />);
 
     expect(screen.getByText("hello world")).toBeTruthy();
-    expect(screen.getByText("Local offline cache · this device only")).toBeTruthy();
+    expect(
+      screen.getByText("Local offline cache · this device only"),
+    ).toBeTruthy();
     expect(screen.queryByTitle("0-500ms")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Show timings/ }));
     expect(screen.getByText("hello").getAttribute("title")).toBe("0-500ms");

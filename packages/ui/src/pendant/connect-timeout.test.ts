@@ -1,3 +1,5 @@
+/** Connect-step deadlines are tested with deterministic fake timers. */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

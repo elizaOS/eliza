@@ -28,6 +28,7 @@
  * import target is injectable for tests via {@link NativeBleTransportDeps}.
  */
 
+import { ElizaError, logger } from "@elizaos/core";
 import {
   BATTERY_LEVEL_CHAR_UUID_128,
   BATTERY_SERVICE_UUID_128,
@@ -136,6 +137,7 @@ export class NativeBlePendantTransport implements PendantTransport {
         optionalServices: [OMI_AUDIO_SERVICE_UUID, BATTERY_SERVICE_UUID_128],
       });
     } catch (err) {
+      // error-policy:J3 Native chooser cancellation becomes an explicit typed signal.
       // The plugin rejects a dismissed chooser / no-selection — normalize to the
       // shared cancelled error so the caller lands in idle, not error.
       if (isNativeCancel(err)) throw new PendantUserCancelledError();
@@ -161,7 +163,12 @@ export class NativeBlePendantTransport implements PendantTransport {
         OMI_AUDIO_CODEC_CHAR_UUID,
       );
       return value.getUint8(0) as OmiCodecId;
-    } catch {
+    } catch (error) {
+      // error-policy:J4 Older DK1 firmware omits the optional codec characteristic.
+      logger.debug(
+        { error },
+        "[NativeBlePendantTransport] Codec characteristic unavailable; using DK1 Opus default",
+      );
       // Codec characteristic missing/unreadable → assume the DK1 Opus default.
       return OMI_CODEC.OPUS_16K;
     }
@@ -170,7 +177,12 @@ export class NativeBlePendantTransport implements PendantTransport {
   async startAudio(listener: PendantAudioListener): Promise<void> {
     const client = this.client;
     const deviceId = this.deviceId;
-    if (!client || !deviceId) throw new Error("pendant not connected");
+    if (!client || !deviceId) {
+      throw new ElizaError("Pendant audio started without a BLE connection.", {
+        code: "PENDANT_BLE_NOT_CONNECTED",
+        severity: "fatal",
+      });
+    }
     await client.startNotifications(
       deviceId,
       OMI_AUDIO_SERVICE_UUID,
@@ -186,9 +198,7 @@ export class NativeBlePendantTransport implements PendantTransport {
     this.audioSubscribed = true;
   }
 
-  async startBattery(
-    listener: PendantBatteryListener,
-  ): Promise<number | null> {
+  async startBattery(listener: PendantBatteryListener): Promise<number | null> {
     const client = this.client;
     const deviceId = this.deviceId;
     if (!client || !deviceId) return null;
@@ -207,7 +217,12 @@ export class NativeBlePendantTransport implements PendantTransport {
       );
       this.batterySubscribed = true;
       return percent;
-    } catch {
+    } catch (error) {
+      // error-policy:J4 Battery telemetry is optional and renders as unavailable.
+      logger.debug(
+        { error },
+        "[NativeBlePendantTransport] Battery service unavailable",
+      );
       // No battery service — leave batteryPercent null.
       return null;
     }
@@ -228,8 +243,12 @@ export class NativeBlePendantTransport implements PendantTransport {
             OMI_AUDIO_SERVICE_UUID,
             OMI_AUDIO_DATA_CHAR_UUID,
           );
-        } catch {
-          /* already gone */
+        } catch (error) {
+          // error-policy:J6 Notification teardown continues after a lost BLE link.
+          logger.debug(
+            { error },
+            "[NativeBlePendantTransport] Audio notifications already stopped",
+          );
         }
       }
       if (this.batterySubscribed) {
@@ -239,14 +258,22 @@ export class NativeBlePendantTransport implements PendantTransport {
             BATTERY_SERVICE_UUID_128,
             BATTERY_LEVEL_CHAR_UUID_128,
           );
-        } catch {
-          /* already gone */
+        } catch (error) {
+          // error-policy:J6 Notification teardown continues after a lost BLE link.
+          logger.debug(
+            { error },
+            "[NativeBlePendantTransport] Battery notifications already stopped",
+          );
         }
       }
       try {
         await client.disconnect(deviceId);
-      } catch {
-        /* already disconnected */
+      } catch (error) {
+        // error-policy:J6 Local transport state must clear after a remote disconnect.
+        logger.debug(
+          { error },
+          "[NativeBlePendantTransport] Device already disconnected",
+        );
       }
     }
     this.audioSubscribed = false;

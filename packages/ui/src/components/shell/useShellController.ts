@@ -31,6 +31,10 @@ import {
   type VoiceControlEventDetail,
 } from "../../events";
 import { useViewEvent } from "../../hooks/useViewEvent";
+import {
+  PENDANT_VOICE_TRANSCRIPT_EVENT,
+  type PendantVoiceTranscriptDetail,
+} from "../../pendant/pendant-connection";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import {
   useChatComposer,
@@ -71,10 +75,6 @@ import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
 } from "../../voice/voice-chat-types";
-import {
-  PENDANT_VOICE_TRANSCRIPT_EVENT,
-  type PendantVoiceTranscriptDetail,
-} from "../../pendant/pendant-connection";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
 import { useHomeModelStatus } from "../local-inference/useHomeModelStatus";

@@ -1,8 +1,8 @@
-// @vitest-environment jsdom
-
 /**
  * Pendant transcript session reducer and local-storage persistence coverage.
  */
+
+// @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
 import {
@@ -377,11 +377,13 @@ describe("pendant transcript session storage", () => {
   it.each([
     "QuotaExceededError",
     "SecurityError",
-  ])("does not throw when storage rejects a setItem write with %s", (errorName) => {
+  ])("surfaces a setItem failure with %s", (errorName) => {
     const storage = new ThrowingSetStorage(errorName);
     const state = sessionWithSegments(1);
 
-    expect(() => savePendantTranscriptSession(state, storage)).not.toThrow();
+    expect(() => savePendantTranscriptSession(state, storage)).toThrow(
+      "Pendant transcript cache could not be saved.",
+    );
     expect(loadPendantTranscriptSession(storage)).toEqual(
       EMPTY_PENDANT_TRANSCRIPT_SESSION,
     );
@@ -390,15 +392,15 @@ describe("pendant transcript session storage", () => {
   it.each([
     "SecurityError",
     "UnknownError",
-  ])("falls back to an empty session when getItem throws %s", (errorName) => {
+  ])("surfaces a getItem failure with %s", (errorName) => {
     const storage = new ThrowingGetStorage(errorName);
 
-    expect(loadPendantTranscriptSession(storage)).toEqual(
-      EMPTY_PENDANT_TRANSCRIPT_SESSION,
+    expect(() => loadPendantTranscriptSession(storage)).toThrow(
+      "Pendant transcript cache could not be read.",
     );
   });
 
-  it("falls back to an empty session when window.localStorage access throws", () => {
+  it("surfaces a blocked window.localStorage getter", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -408,8 +410,8 @@ describe("pendant transcript session storage", () => {
     });
 
     try {
-      expect(loadPendantTranscriptSession()).toEqual(
-        EMPTY_PENDANT_TRANSCRIPT_SESSION,
+      expect(() => loadPendantTranscriptSession()).toThrow(
+        "Pendant transcript cache is unavailable.",
       );
     } finally {
       if (descriptor) {
@@ -418,7 +420,7 @@ describe("pendant transcript session storage", () => {
     }
   });
 
-  it("does not throw when save resolves a blocked window.localStorage getter", () => {
+  it("keeps blocked adapter storage observable", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
     Object.defineProperty(window, "localStorage", {
       configurable: true,
@@ -431,9 +433,15 @@ describe("pendant transcript session storage", () => {
       const state = sessionWithSegments(1);
       const adapter = createLocalOptimisticPendantTranscriptSessionAdapter();
 
-      expect(() => savePendantTranscriptSession(state)).not.toThrow();
-      expect(() => adapter.save(state)).not.toThrow();
-      expect(adapter.load()).toEqual(EMPTY_PENDANT_TRANSCRIPT_SESSION);
+      expect(() => savePendantTranscriptSession(state)).toThrow(
+        "Pendant transcript cache is unavailable.",
+      );
+      expect(() => adapter.save(state)).toThrow(
+        "Pendant transcript cache is unavailable.",
+      );
+      expect(() => adapter.load()).toThrow(
+        "Pendant transcript cache is unavailable.",
+      );
     } finally {
       if (descriptor) {
         Object.defineProperty(window, "localStorage", descriptor);
@@ -441,11 +449,11 @@ describe("pendant transcript session storage", () => {
     }
   });
 
-  it("falls back to an empty session for malformed storage", () => {
+  it("surfaces malformed storage as invalid", () => {
     const storage = new MemoryStorage();
     storage.setItem(PENDANT_TRANSCRIPT_STORAGE_KEY, "{not json");
-    expect(loadPendantTranscriptSession(storage)).toEqual(
-      EMPTY_PENDANT_TRANSCRIPT_SESSION,
+    expect(() => loadPendantTranscriptSession(storage)).toThrow(
+      "Pendant transcript cache contains malformed JSON.",
     );
   });
 });

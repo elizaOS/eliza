@@ -1,8 +1,8 @@
-// @vitest-environment jsdom
-
 /**
  * Pendant transcript segment event helpers preserve local ASR word timing.
  */
+
+// @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
 import {

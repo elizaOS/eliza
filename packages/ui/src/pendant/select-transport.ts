@@ -26,14 +26,7 @@ import {
 
 /** True when running inside the packaged native Android shell. */
 export function isNativeAndroid(): boolean {
-  try {
-    return (
-      Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android"
-    );
-  } catch {
-    // Capacitor absent (plain web / test env) → not native.
-    return false;
-  }
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 }
 
 /**

@@ -32,7 +32,6 @@ function setWebBluetooth(available: boolean): void {
       requestDevice: () => Promise.resolve({}),
     };
   } else {
-    // biome-ignore lint/performance/noDelete: test teardown of a stubbed global.
     delete (navigator as unknown as { bluetooth?: unknown }).bluetooth;
   }
 }

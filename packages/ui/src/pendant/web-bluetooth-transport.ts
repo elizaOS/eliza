@@ -15,6 +15,7 @@
  * PWA (there the native transport is used instead).
  */
 
+import { ElizaError, logger } from "@elizaos/core";
 import {
   BATTERY_LEVEL_CHAR_UUID,
   BATTERY_SERVICE_UUID,
@@ -80,7 +81,10 @@ export class WebBluetoothPendantTransport implements PendantTransport {
 
   async requestAndConnect(): Promise<{ deviceName: string | null }> {
     if (!isWebBluetoothAvailable()) {
-      throw new Error("Web Bluetooth is not available in this browser.");
+      throw new ElizaError("Web Bluetooth is not available in this browser.", {
+        code: "PENDANT_WEB_BLUETOOTH_UNAVAILABLE",
+        severity: "fatal",
+      });
     }
     const bluetooth = (navigator as Navigator & { bluetooth: Bluetooth })
       .bluetooth;
@@ -96,6 +100,7 @@ export class WebBluetoothPendantTransport implements PendantTransport {
         optionalServices: [OMI_AUDIO_SERVICE_UUID, BATTERY_SERVICE_UUID],
       });
     } catch (err) {
+      // error-policy:J3 Browser chooser cancellation becomes an explicit typed signal.
       // A user cancelling the chooser throws NotFoundError — normalize it.
       if (err instanceof DOMException && err.name === "NotFoundError") {
         throw new PendantUserCancelledError();
@@ -106,7 +111,12 @@ export class WebBluetoothPendantTransport implements PendantTransport {
     device.addEventListener("gattserverdisconnected", this.onGattDisconnected);
 
     const server = await device.gatt?.connect();
-    if (!server) throw new Error("GATT server unavailable");
+    if (!server) {
+      throw new ElizaError("Pendant GATT server is unavailable.", {
+        code: "PENDANT_GATT_SERVER_UNAVAILABLE",
+        severity: "fatal",
+      });
+    }
     this.server = server;
     this.audioService = await server.getPrimaryService(OMI_AUDIO_SERVICE_UUID);
 
@@ -122,7 +132,12 @@ export class WebBluetoothPendantTransport implements PendantTransport {
       );
       const value = await codecChar.readValue();
       return value.getUint8(0) as OmiCodecId;
-    } catch {
+    } catch (error) {
+      // error-policy:J4 Older DK1 firmware omits the optional codec characteristic.
+      logger.debug(
+        { error },
+        "[WebBluetoothPendantTransport] Codec characteristic unavailable; using DK1 Opus default",
+      );
       // Codec characteristic missing/unreadable → assume the DK1 Opus default.
       return OMI_CODEC.OPUS_16K;
     }
@@ -130,7 +145,12 @@ export class WebBluetoothPendantTransport implements PendantTransport {
 
   async startAudio(listener: PendantAudioListener): Promise<void> {
     const audioService = this.audioService;
-    if (!audioService) throw new Error("audio service not connected");
+    if (!audioService) {
+      throw new ElizaError("Pendant audio service is not connected.", {
+        code: "PENDANT_AUDIO_SERVICE_NOT_CONNECTED",
+        severity: "fatal",
+      });
+    }
     this.audioListener = listener;
     const audioChar = await audioService.getCharacteristic(
       OMI_AUDIO_DATA_CHAR_UUID,
@@ -143,16 +163,13 @@ export class WebBluetoothPendantTransport implements PendantTransport {
     await audioChar.startNotifications();
   }
 
-  async startBattery(
-    listener: PendantBatteryListener,
-  ): Promise<number | null> {
+  async startBattery(listener: PendantBatteryListener): Promise<number | null> {
     const server = this.server;
     if (!server) return null;
     this.batteryListener = listener;
     try {
-      const batteryService = await server.getPrimaryService(
-        BATTERY_SERVICE_UUID,
-      );
+      const batteryService =
+        await server.getPrimaryService(BATTERY_SERVICE_UUID);
       const batteryChar = await batteryService.getCharacteristic(
         BATTERY_LEVEL_CHAR_UUID,
       );
@@ -165,7 +182,12 @@ export class WebBluetoothPendantTransport implements PendantTransport {
       );
       await batteryChar.startNotifications();
       return percent;
-    } catch {
+    } catch (error) {
+      // error-policy:J4 Battery telemetry is optional and renders as unavailable.
+      logger.debug(
+        { error },
+        "[WebBluetoothPendantTransport] Battery service unavailable",
+      );
       // No battery service — leave batteryPercent null.
       return null;
     }
@@ -190,13 +212,21 @@ export class WebBluetoothPendantTransport implements PendantTransport {
     );
     try {
       await this.audioChar?.stopNotifications();
-    } catch {
-      /* already gone */
+    } catch (error) {
+      // error-policy:J6 Notification teardown continues after a lost BLE link.
+      logger.debug(
+        { error },
+        "[WebBluetoothPendantTransport] Audio notifications already stopped",
+      );
     }
     try {
       this.device?.gatt?.disconnect();
-    } catch {
-      /* already disconnected */
+    } catch (error) {
+      // error-policy:J6 Local transport state must clear after a remote disconnect.
+      logger.debug(
+        { error },
+        "[WebBluetoothPendantTransport] Device already disconnected",
+      );
     }
     this.audioListener = null;
     this.batteryListener = null;

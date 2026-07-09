@@ -58,8 +58,7 @@ export const OMI_AUDIO_CODEC_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
 export const BATTERY_SERVICE_UUID = "battery_service"; // 0x180F short name
 export const BATTERY_LEVEL_CHAR_UUID = "battery_level"; // 0x2A19 short name
 /** Full 128-bit Battery Service UUID (0x180F) — for the native BLE plugin. */
-export const BATTERY_SERVICE_UUID_128 =
-  "0000180f-0000-1000-8000-00805f9b34fb";
+export const BATTERY_SERVICE_UUID_128 = "0000180f-0000-1000-8000-00805f9b34fb";
 /** Full 128-bit Battery Level char UUID (0x2A19) — for the native BLE plugin. */
 export const BATTERY_LEVEL_CHAR_UUID_128 =
   "00002a19-0000-1000-8000-00805f9b34fb";
@@ -132,7 +131,8 @@ export class OmiFrameReassembler {
     if (this.lastUnwrapped === null) return raw;
     const prevRaw = this.lastUnwrapped & 0xffff;
     let delta = raw - prevRaw;
-    if (delta < -0x8000) delta += 0x10000; // forward wrap
+    if (delta < -0x8000)
+      delta += 0x10000; // forward wrap
     else if (delta > 0x8000) delta -= 0x10000; // (defensive) backward wrap
     return this.lastUnwrapped + delta;
   }

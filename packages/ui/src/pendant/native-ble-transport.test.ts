@@ -7,19 +7,17 @@
  * cancelled chooser, and cleans up on disconnect.
  */
 import { describe, expect, it, vi } from "vitest";
-
+import {
+  type BleClientLike,
+  NativeBlePendantTransport,
+} from "./native-ble-transport";
 import {
   BATTERY_LEVEL_CHAR_UUID_128,
-  BATTERY_SERVICE_UUID_128,
   OMI_AUDIO_CODEC_CHAR_UUID,
   OMI_AUDIO_DATA_CHAR_UUID,
   OMI_AUDIO_SERVICE_UUID,
   OMI_CODEC,
 } from "./omi-protocol";
-import {
-  type BleClientLike,
-  NativeBlePendantTransport,
-} from "./native-ble-transport";
 import { PendantUserCancelledError } from "./pendant-transport";
 
 /** Build a DataView over the given bytes. */
@@ -67,7 +65,7 @@ function makeMockClient(opts: MockClientOptions = {}): {
       }
       throw new Error(`unexpected read ${service}/${char}`);
     }),
-    startNotifications: vi.fn(async (_id, service, char, cb) => {
+    startNotifications: vi.fn(async (_id, _service, char, cb) => {
       if (char === OMI_AUDIO_DATA_CHAR_UUID) audioCallbacks.push(cb);
       else if (char === BATTERY_LEVEL_CHAR_UUID_128) batteryCallbacks.push(cb);
     }),
