@@ -43,13 +43,14 @@ on:
       api-level:
         description: "Android emulator API level"
         default: "34"
-  # Reachable on a PR, but only when explicitly opted in with the `ci:device`
-  # label (issue #9943) — booting an emulator is slow/heavy, so we never burn a
-  # runner on every PR. The pr-device-smoke job below is gated on that label and
-  # runs a MINIMAL slice (build + install + WebView attach + onboarding→home +
-  # one host-backed chat turn); the full dispatch matrix above is unchanged.
+  # Reachable on normal develop PRs and release-promotion PRs, but only when
+  # explicitly opted in with the `ci:device` label (issue #9943) — booting an
+  # emulator is slow/heavy, so we never burn a runner on every PR. The
+  # pr-device-smoke job below is gated on that label and runs a MINIMAL slice
+  # (build + install + WebView attach + onboarding→home + one host-backed chat
+  # turn); the full dispatch matrix above is unchanged.
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     types: [opened, synchronize, reopened, labeled]
 
 concurrency:
