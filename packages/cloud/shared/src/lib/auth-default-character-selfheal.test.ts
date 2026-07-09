@@ -66,12 +66,20 @@ mock.module("./services/users", () => ({
     upsertStewardIdentity: async () => undefined,
   },
 }));
-// The user already has their default API key, isolating the character heal.
+// Records the API-key heal and settles on a LATER tick: if session resolution
+// void-fired it instead of awaiting, `apiKeyHealSettled` would still be false
+// when getCurrentUserFromRequest resolves (the Workers cancellation hazard).
+let apiKeyHealCalls: Array<[string, string]> = [];
+let apiKeyHealSettled = false;
 mock.module("./services/api-keys", () => ({
   apiKeysService: {
     listByOrganization: async () => [{ user_id: "user-1" }],
     create: async () => ({ id: "key-1" }),
-    ensureUserHasApiKey: async () => undefined,
+    ensureUserHasApiKey: async (userId: string, organizationId: string) => {
+      apiKeyHealCalls.push([userId, organizationId]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      apiKeyHealSettled = true;
+    },
     validateApiKey: async () => null,
     incrementUsageDebounced: () => undefined,
   },
@@ -126,5 +134,21 @@ describe("session-resolution default-character self-heal", () => {
     expect(characterCreateCalls[0].name).toBe("Eliza");
     expect(characterCreateCalls[0].user_id).toBe("user-1");
     expect(characterCreateCalls[0].organization_id).toBe("org-1");
+  });
+
+  test("the default API-key self-heal is AWAITED, not void-fired (Workers cancels un-awaited promises)", async () => {
+    apiKeyHealCalls = [];
+    apiKeyHealSettled = false;
+
+    const request = new Request("http://localhost/api/anything", {
+      headers: { cookie: "steward-token=tok-abc" },
+    });
+
+    const user = await getCurrentUserFromRequest(request);
+    expect(user?.id).toBe("user-1");
+
+    expect(apiKeyHealCalls).toEqual([["user-1", "org-1"]]);
+    // Settles on a later tick: only an awaited call can have completed here.
+    expect(apiKeyHealSettled).toBe(true);
   });
 });

@@ -88,7 +88,7 @@ describe("inference_pending_charges migration applies to a real DB (#9899)", () 
       await dbWrite.execute(`DROP TABLE IF EXISTS inference_pending_charges`);
     } catch (error) {
       pgliteReady = false;
-      console.warn("[migration] PGlite unavailable, skipping DB apply:", error);
+      console.warn("[migration] PGlite unavailable, failing DB apply:", error);
     }
   }, 60000);
 
@@ -97,7 +97,7 @@ describe("inference_pending_charges migration applies to a real DB (#9899)", () 
   });
 
   it("applies cleanly and creates the table, PK, and both partial indexes", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await applyMigration();
 
     const cols = await dbWrite.execute(
@@ -130,7 +130,7 @@ describe("inference_pending_charges migration applies to a real DB (#9899)", () 
   }, 60000);
 
   it("is idempotent — re-applying the same file is a no-op (no duplicate-object error)", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await applyMigration(); // second time
     const t = await dbWrite.execute(
       `SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = 'inference_pending_charges'`,

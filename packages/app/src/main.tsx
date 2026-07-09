@@ -413,6 +413,7 @@ const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
 const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
+let cameraBridgeResponderStop: (() => void) | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
 let mobileAgentTunnelListener: PluginListenerHandle | null = null;
 let mobileAgentTunnelStartPromise: Promise<void> | null = null;
@@ -3506,6 +3507,17 @@ async function initializeMobileDeviceBridge(): Promise<void> {
           );
         },
       });
+      // The on-device agent (Bun) can't reach ElizaCamera; serve its file-drop
+      // camera-capture requests from the WebView, which owns the plugin. Only
+      // needed on Android local/hybrid — the exact modes that run an on-device
+      // agent — and started once per session.
+      if (isAndroid && !cameraBridgeResponderStop) {
+        const { startCameraBridgeResponder } = await import(
+          "./camera-bridge-responder"
+        );
+        cameraBridgeResponderStop = startCameraBridgeResponder();
+        console.info(`${APP_LOG_PREFIX} Camera bridge responder started`);
+      }
     } catch (error) {
       // error-policy:J4 optional native module — absence logged, app degrades
       console.warn(

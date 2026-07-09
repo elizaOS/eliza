@@ -84,6 +84,17 @@ const cloudInfraTests = path.join(
   "infra",
   "tests",
 );
+// The deployable cloud services (agent-server, container-control-plane,
+// operator, gateways, coding-remote-runner, _common) carry bun:test suites,
+// and cloud-tests.yml triggers on `packages/cloud/services/**` — but this
+// runner never swept them, and container-control-plane/operator had no `test`
+// script either, so their suites (the H4 fail-closed token gate, the #12268
+// annotation-corruption proof) executed in NO CI lane: a services change went
+// green without its tests running (#15603). Sweep the whole directory. The
+// gateway suites also run in their dedicated workflows
+// (cloud-gateway-discord/-webhook); they are self-contained bun:test files,
+// so the duplicate coverage here is cheap and keeps this gate layout-proof.
+const cloudServicesRoot = path.join(repoRoot, "packages", "cloud", "services");
 
 // Fail loud if a test root is missing. `bun test <nonexistent-dir>` exits 0 with
 // no tests run, so a stale path (e.g. after a package move) turns this gate into
@@ -116,6 +127,7 @@ const testRoots = {
   cloudScriptsTests,
   cloudRoutingTests,
   cloudInfraTests,
+  cloudServicesRoot,
 };
 const missing = Object.entries(testRoots)
   .filter(([, dir]) => !existsSync(dir))
@@ -142,6 +154,19 @@ if (cloudApiUnitTests.length === 0) {
   process.exit(1);
 }
 
+const cloudServicesTests = walkTests(cloudServicesRoot, EXCLUDED_DIRS).sort();
+
+// Same fail-loud guard as cloud/api: if a reorg moves the services suites,
+// this gate must break instead of silently running zero services tests.
+if (cloudServicesTests.length === 0) {
+  console.error(
+    `[test:cloud] no cloud/services tests found under ${cloudServicesRoot} — ` +
+      "the gate would silently run zero services tests. Update packages/scripts/test-cloud-run.mjs " +
+      "to match the current package layout.",
+  );
+  process.exit(1);
+}
+
 // The full unit set is ~700 files. bun's `--isolate` gives each file a fresh
 // global but keeps ONE process, so JS heap plus external (pglite/WASM) memory
 // accumulates monotonically across the whole run — RSS climbs past 7 GB. On the
@@ -158,6 +183,7 @@ const allTestFiles = [
   ...walkTests(cloudScriptsTests, EXCLUDED_DIRS),
   ...walkTests(cloudRoutingTests, EXCLUDED_DIRS),
   ...walkTests(cloudInfraTests, EXCLUDED_DIRS),
+  ...cloudServicesTests,
 ];
 if (allTestFiles.length === 0) {
   console.error(

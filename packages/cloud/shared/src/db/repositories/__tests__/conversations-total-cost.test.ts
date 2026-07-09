@@ -25,7 +25,7 @@
  * the guard fires INSIDE the transaction — rolling back both the message insert
  * and the stats update atomically — instead of committing a poisoned total,
  * while a legitimate $0 / well-formed cost still accumulates. DB cases
- * self-skip if PGlite is unavailable.
+ * fail if PGlite is unavailable.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -185,7 +185,7 @@ describe("addMessageWithSequence total_cost accumulator", () => {
   test(
     "healthy row: accumulates a well-formed cost and bumps message_count",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       await seedConversation(CONV_HEALTHY, "1.25");
 
       await conversationsRepository.addMessageWithSequence(CONV_HEALTHY, {
@@ -205,7 +205,7 @@ describe("addMessageWithSequence total_cost accumulator", () => {
   test(
     "missing per-message cost is a legitimate $0 contribution (preserves `cost || 0` semantics)",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       // reuse the healthy conversation: total is 2.00, add a costless message.
       await conversationsRepository.addMessageWithSequence(CONV_HEALTHY, {
         role: "user",
@@ -223,7 +223,7 @@ describe("addMessageWithSequence total_cost accumulator", () => {
   test(
     "corrupt stored total_cost ('NaN'::numeric) FAILS CLOSED and rolls back — no message, no poison",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       await seedConversation(CONV_CORRUPT, "NaN"); // Postgres NUMERIC can hold NaN.
       // Sanity: the stored value really reads back as the string "NaN".
       const before = await readStats(CONV_CORRUPT);
@@ -252,7 +252,7 @@ describe("addMessageWithSequence total_cost accumulator", () => {
   test(
     "non-finite per-message cost FAILS CLOSED and rolls back — no message, healthy total untouched",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       await seedConversation(CONV_BADCOST, "5.00");
 
       // A caller cost of "NaN" (or "Infinity") would have produced

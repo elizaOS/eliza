@@ -3,8 +3,9 @@
 Nightly end-to-end smoke that provisions a real Hetzner cpx11 server,
 deploys a trivial agent via the Eliza Cloud staging API, runs a
 bridge-ping healthcheck plus one real chat turn (a `message.send`
-JSON-RPC through the production Worker bridge path, requiring a
-non-fallback assistant reply), and tears everything down. A reaper
+JSON-RPC through the production Worker bridge path, requiring a reply
+that echoes a per-run proof token and carries no fabrication flag),
+and tears everything down. A reaper
 workflow sweeps any servers older than 60 minutes every half hour as a
 safety net.
 
@@ -76,9 +77,14 @@ intend to create a real billable server.
 - `hetzner-e2e-wait-ready.ts` — SSH-poll for cloud-init + Docker
 - `hetzner-e2e-deploy-agent.ts` — create + provision a trivial agent
 - `hetzner-e2e-healthcheck.ts` — single `status.get` bridge ping
-- `hetzner-e2e-chat.ts` — one real `message.send` chat turn; fails on
-  empty or bridge-fabricated (`fallback: true`) replies so "provisioned
-  but chat dead-ends" regressions (#15347) go red
+- `hetzner-e2e-chat.ts` — one real `message.send` chat turn, judged by
+  `../bridge-reply-verdict.ts` (#15616): the reply must echo the
+  per-run proof token within the retry budget and must not be
+  bridge-fabricated (`fallback: true`), runtime-canned (`failureKind`,
+  known canned strings), or an `[echo]` parroting — so "provisioned
+  but chat dead-ends" regressions (#15347) go red. Logs which bridge
+  rung (conversation REST / OpenAI-compat / central-channel / …)
+  produced the reply
 - `hetzner-e2e-teardown.ts` — delete the server (idempotent, falls
   back to label sweep if state artifact missing)
 - `hetzner-e2e-reaper.ts` — list+delete servers older than 60min

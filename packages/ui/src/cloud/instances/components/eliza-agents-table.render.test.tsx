@@ -3,11 +3,15 @@
 /**
  * ElizaAgentsTable per-row view model (#13916): the desktop table and mobile
  * card render one derived row, so the shared derivation owns runtime labels,
- * action availability, and Web UI reachability.
+ * action availability, and Web UI reachability. Also covers the deactivate
+ * (sleep) / reactivate (wake) affordances (#15603): availability derivation,
+ * the sleeping row rendering as a designed non-error state with a Reactivate
+ * action, and the deactivate confirm dialog's billing-transparency copy.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   deriveAgentRow,
@@ -101,6 +105,11 @@ describe("ElizaAgentsTable per-row view model", () => {
         canonical_web_ui_url: null,
       }).runtimeKind,
     ).toBe("notProvisioned");
+    // Deactivation releases the container (sandbox_id cleared) but the agent
+    // remains an established sandbox — never "Not provisioned".
+    expect(
+      derive({ status: "sleeping", sandbox_id: null }).runtimeKind,
+    ).toBe("sandbox");
   });
 
   it("hides standalone Web UI for shared rows even when the API returns a URL", () => {
@@ -133,6 +142,99 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(vm.busy).toBe(true);
     expect(vm.canStart).toBe(false);
     expect(vm.canStop).toBe(false);
+  });
+
+  it("offers Deactivate only for running dedicated rows and Reactivate only for sleeping rows", () => {
+    const runningDedicated = derive({ status: "running" });
+    expect(runningDedicated.canSleep).toBe(true);
+    expect(runningDedicated.canWake).toBe(false);
+
+    // Shared-runtime agents have no dedicated compute to free.
+    const runningShared = derive({
+      status: "running",
+      execution_tier: "shared",
+    });
+    expect(runningShared.canSleep).toBe(false);
+
+    const sleeping = derive({ status: "sleeping" });
+    expect(sleeping.canWake).toBe(true);
+    expect(sleeping.canSleep).toBe(false);
+    // A deactivated agent is a settled, designed state — not a resumable
+    // stop and not startable through the provision path.
+    expect(sleeping.canStart).toBe(false);
+    expect(sleeping.canStop).toBe(false);
+
+    // Both affordances yield to in-flight work.
+    const busySleeping = derive({ status: "sleeping" }, { active: true });
+    expect(busySleeping.canWake).toBe(false);
+    const busyRunning = derive(
+      { status: "running" },
+      { actionInProgress: "00000000-1111-2222-3333-444444444444" },
+    );
+    expect(busyRunning.canSleep).toBe(false);
+  });
+
+  it("renders a sleeping row as a designed state with a Reactivate action and zero-cost badge", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable
+          sandboxes={[row({ status: "sleeping", canonical_web_ui_url: null })]}
+        />
+      </QueryClientProvider>,
+    );
+
+    // The raw lifecycle state is shown (muted styling), never an error render.
+    expect(screen.getAllByText("sleeping").length).toBeGreaterThanOrEqual(1);
+    // Reactivate replaces the resume/suspend affordances for this state.
+    expect(
+      screen.getAllByRole("button", { name: "Reactivate agent" }).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.queryByRole("button", { name: "Deactivate agent" }),
+    ).toBeNull();
+    // Billing transparency on the card itself: an explicit $0.00/hr.
+    expect(screen.getAllByText("$0.00/hr").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("requires a billing-transparency confirm before deactivating", async () => {
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable sandboxes={[row({ status: "running" })]} />
+      </QueryClientProvider>,
+    );
+
+    const [deactivate] = screen.getAllByRole("button", {
+      name: "Deactivate agent",
+    });
+    await user.click(deactivate);
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByText(/stops consuming hourly credits/),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(/encrypted backup — nothing is deleted/),
+    ).toBeTruthy();
+    expect(within(dialog).getByText(/reactivate it anytime/i)).toBeTruthy();
+
+    // Cancel is a real exit: no job fired, dialog gone.
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("keeps the empty Agents page connected to the Eliza app create flow", () => {

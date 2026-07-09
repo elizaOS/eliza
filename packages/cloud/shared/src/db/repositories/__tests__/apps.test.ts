@@ -12,7 +12,7 @@
  * Run:
  *   bun test packages/cloud/shared/src/db/repositories/__tests__/apps.test.ts
  *
- * Self-skips LOUDLY if PGlite / drizzle-kit `pushSchema` cannot apply the schema
+ * Fails LOUDLY if PGlite / drizzle-kit `pushSchema` cannot apply the schema
  * here (the repo cannot be driven against a real DB) — it never silently passes.
  */
 
@@ -24,7 +24,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 // DB — and running drizzle-kit `pushSchema` against that shared connection both
 // crashes the bun test runner ("Pulling schema from database…" → hard exit) AND
 // would mutate the shared schema other suites depend on. Detect that here and
-// self-skip LOUDLY below (the file's stated contract: never silently pass).
+// fail LOUDLY below (the file's stated contract: never silently pass).
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
   AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
@@ -97,7 +97,7 @@ beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
     console.warn(
-      "[apps.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite self-skips — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
+      "[apps.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite fails — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
     );
     return;
   }
@@ -128,7 +128,7 @@ beforeAll(async () => {
     pgliteReady = false;
     // Loud skip: a real DB is required for these assertions; never pass silently.
     console.error(
-      "[apps.test] PGlite/pushSchema unavailable — cannot drive AppsRepository against a real DB. Skipping all cases.",
+      "[apps.test] PGlite/pushSchema unavailable — cannot drive AppsRepository against a real DB. Failing all cases.",
       error,
     );
   }
@@ -157,7 +157,7 @@ async function createApp(
 
 describe("AppsRepository.create + reads", () => {
   test("create returns a persisted App with id/slug/api_key_id; reads find it", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const apiKeyId = crypto.randomUUID();
 
@@ -190,7 +190,7 @@ describe("AppsRepository.create + reads", () => {
   });
 
   test("reads for non-existent identifiers return undefined", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     expect(await appsRepository.findById(FRESH_UUID)).toBeUndefined();
     // Malformed (non-UUID) id short-circuits to undefined before hitting the DB.
     expect(await appsRepository.findById("not-a-uuid")).toBeUndefined();
@@ -201,7 +201,7 @@ describe("AppsRepository.create + reads", () => {
 
 describe("AppsRepository.update", () => {
   test("update returns the merged App and a fresh read reflects the change", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const created = await createApp({
       name: "Before",
@@ -231,12 +231,12 @@ describe("AppsRepository.update", () => {
   });
 
   test("update of a non-existent id returns undefined", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     expect(await appsRepository.update(FRESH_UUID, { name: "ghost" })).toBeUndefined();
   });
 
   test("update evicts the service read-cache (fresh read returns NEW value, not stale)", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const created = await createApp({
       name: "Cache Warm",
@@ -260,7 +260,7 @@ describe("AppsRepository.update", () => {
 
 describe("AppsRepository.delete", () => {
   test("delete removes the row (findById -> undefined) and evicts the cache", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const created = await createApp({
       name: "To Delete",
@@ -281,7 +281,7 @@ describe("AppsRepository.delete", () => {
 
 describe("AppsRepository.listByOrganization", () => {
   test("returns only that org's apps, ordered updated_at DESC, respecting limit/offset", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const orgA = await seedOrg();
     const orgB = await seedOrg();
     const userA = await seedUser(orgA);
@@ -348,7 +348,7 @@ describe("AppsRepository.listByOrganization", () => {
 
 describe("App-auth attribution grants", () => {
   test("connectUser upgrades an existing analytics-created app user to an OAuth grant", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const appOrg = await seedOrg();
     const callerOrg = await seedOrg();
     const appOwner = await seedUser(appOrg);
@@ -381,7 +381,7 @@ describe("App-auth attribution grants", () => {
   });
 
   test("monetized X-App-Id inference attribution is public to authenticated callers", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const appOrg = await seedOrg();
     const callerOrg = await seedOrg();
     const appOwner = await seedUser(appOrg);
@@ -442,7 +442,7 @@ describe("App-auth attribution grants", () => {
 
 describe("AppsRepository.listAll", () => {
   test("filters by is_active / is_approved", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
 
     const active = await createApp({
@@ -480,7 +480,7 @@ describe("AppsRepository.listAll", () => {
 
 describe("AppsRepository.checkNameAvailability", () => {
   test("available for a fresh name", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const result = await appsRepository.checkNameAvailability(uniq("Totally Fresh Name"));
     expect(result.available).toBe(true);
     expect(result.conflictType).toBeUndefined();
@@ -488,7 +488,7 @@ describe("AppsRepository.checkNameAvailability", () => {
   });
 
   test("taken (app slug) -> available:false + slug + conflictType 'app'", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     // Create an app whose slug equals slug("Taken Brand Name").
     await createApp({
@@ -505,7 +505,7 @@ describe("AppsRepository.checkNameAvailability", () => {
   });
 
   test("subdomain-collision path -> available:false + conflictType 'subdomain'", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const anchor = await createApp({
       name: "Anchor For Subdomain",
@@ -526,7 +526,7 @@ describe("AppsRepository.checkNameAvailability", () => {
 
 describe("jsonb + scalar round-trips", () => {
   test("metadata { viewKind, foo } persists and reads back through the jsonb column", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const created = await createApp({
       name: "View Deploy App",
@@ -550,7 +550,7 @@ describe("jsonb + scalar round-trips", () => {
   });
 
   test("affiliate_code + app_url round-trip", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const affiliateCode = uniq("aff");
     const created = await createApp({
@@ -581,7 +581,7 @@ describe("jsonb + scalar round-trips", () => {
 
 describe("AppsService.isNameAvailable", () => {
   test("taken name -> available:false + a suggestedName", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     await createApp({
       name: "Service Taken",
@@ -599,7 +599,7 @@ describe("AppsService.isNameAvailable", () => {
   });
 
   test("available name -> available:true and no suggestedName", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const result = await appsService.isNameAvailable(uniq("Service Fresh Name"));
     expect(result.available).toBe(true);
     expect(result.suggestedName).toBeUndefined();
@@ -608,7 +608,7 @@ describe("AppsService.isNameAvailable", () => {
 
 describe("AppsService.create organization cap", () => {
   test("treats malformed cap values as invalid and falls back to the default", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1abc";
     try {
@@ -638,7 +638,7 @@ describe("AppsService.create organization cap", () => {
   });
 
   test("rejects before API key creation when the org is already at the configured app cap", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "1";
     try {
@@ -676,7 +676,7 @@ describe("AppsService.create organization cap", () => {
   });
 
   test("allows creation below the configured cap and persists the generated API key", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "2";
     try {
@@ -707,7 +707,7 @@ describe("AppsService.create organization cap", () => {
   });
 
   test("cleans up the generated API key when the transactional cap check rejects", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const previousLimit = process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG;
     const originalCreateIfBelowLimit = appsRepository.createIfOrganizationBelowLimit;
     process.env.ELIZA_CLOUD_MAX_APPS_PER_ORG = "25";
@@ -745,7 +745,7 @@ describe("AppsService.create organization cap", () => {
 
 describe("AppAnalyticsService session analytics from app_requests", () => {
   test("groups real pageview rows into sessions and ordered funnel steps", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const app = await createApp({
       name: "Session Analytics App",

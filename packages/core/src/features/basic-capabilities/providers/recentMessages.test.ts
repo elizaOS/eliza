@@ -440,6 +440,70 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).not.toContain("User: message 9");
 	});
 
+	it("deepens same-room history for recall-referential questions", async () => {
+		const memories = [
+			makeMemory("msg-1", USER_ID, "whats 23 times 19?", "discord", 1000),
+			makeMemory("msg-2", AGENT_ID, "23 times 19 is 437.", "discord", 2000),
+			makeMemory("msg-3", USER_ID, "capital of france?", "discord", 3000),
+			makeMemory("msg-4", AGENT_ID, "Paris.", "discord", 4000),
+			makeMemory(
+				"msg-5",
+				USER_ID,
+				"write a haiku about speed",
+				"discord",
+				5000,
+			),
+			makeMemory(
+				"msg-6",
+				AGENT_ID,
+				"Quick wind / bright road",
+				"discord",
+				6000,
+			),
+			makeMemory(
+				"msg-7",
+				USER_ID,
+				"python one-liner for reverse string",
+				"discord",
+				7000,
+			),
+			makeMemory("msg-8", AGENT_ID, "s[::-1]", "discord", 8000),
+			makeMemory("msg-9", USER_ID, "bitcoin price?", "discord", 9000),
+			makeMemory(
+				"msg-10",
+				AGENT_ID,
+				"I need live data for that.",
+				"discord",
+				10_000,
+			),
+		];
+		const runtime = makeRuntime(memories, { conversationLength: 4 });
+
+		const result = await recentMessagesProvider.get(
+			runtime,
+			makeMemory(
+				"current",
+				USER_ID,
+				"what did i ask you to compute in my last math question?",
+				"discord",
+				11_000,
+			),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(runtime.getMemories).toHaveBeenCalledWith(
+			expect.objectContaining({
+				limit: 50,
+				roomId: ROOM_ID,
+				tableName: "messages",
+			}),
+		);
+		const recentMessages = result.data?.recentMessages as Memory[];
+		expect(recentMessages.map((memory) => memory.id)).toContain("msg-1");
+		expect(result.text).toContain("User: whats 23 times 19?");
+		expect(result.text).toContain("User: bitcoin price?");
+	});
+
 	it("skips the cross-room interactions fetch on the first compose of a turn", async () => {
 		const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
 		const memories = [

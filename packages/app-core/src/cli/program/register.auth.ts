@@ -333,6 +333,8 @@ export interface DevWalletLoginResult {
   isNewAccount?: boolean;
   organizationId?: string | null;
   savedTo?: string | null;
+  /** Set when persisting the key to the config was requested but FAILED. */
+  saveError?: string;
   message?: string;
 }
 
@@ -455,6 +457,7 @@ export async function runDevWalletLogin(
 
   // 4. Persist (default) so the local agent routes to Eliza Cloud.
   let savedTo: string | null = null;
+  let saveError: string | undefined;
   if (params.save !== false) {
     try {
       const { resolveConfigPath, loadConfig, saveConfig } = await import(
@@ -472,10 +475,26 @@ export async function runDevWalletLogin(
       saveConfig(configPath, config);
       savedTo = configPath;
     } catch (err) {
+      // error-policy:J4 explicit user-facing degrade — the key was minted and
+      // is still returned/printed, but a failed persist must be LOUD: a muted
+      // aside here left users believing the agent was cloud-connected while
+      // every boot ran without ELIZAOS_CLOUD_API_KEY.
+      saveError = err instanceof Error ? err.message : String(err);
       log(
-        theme.muted(
-          `(could not persist key to config: ${err instanceof Error ? err.message : String(err)})`,
+        theme.error(
+          `WARNING: failed to save ELIZAOS_CLOUD_API_KEY to the eliza config: ${saveError}`,
         ),
+      );
+      log(
+        theme.error(
+          "Your API key was NOT saved — the agent will not use Eliza Cloud until you save it.",
+        ),
+      );
+      log(
+        `${theme.muted("Save it manually with:")} ${theme.command(`export ELIZAOS_CLOUD_API_KEY=${apiKey}`)}`,
+      );
+      log(
+        `${theme.muted("or re-run")} ${theme.command("eliza auth dev-login")} ${theme.muted("after fixing the config path above.")}`,
       );
     }
   }
@@ -487,6 +506,7 @@ export async function runDevWalletLogin(
     isNewAccount: verified.isNewAccount,
     organizationId: orgId,
     savedTo,
+    ...(saveError !== undefined ? { saveError } : {}),
   };
 }
 
@@ -549,8 +569,15 @@ export function registerAuthCommand(program: Command) {
               `${theme.success("✓")} saved ELIZAOS_CLOUD_API_KEY to ${theme.command(result.savedTo)} — the agent will use Eliza Cloud`,
             );
           } else {
+            // A failed persist restates the loud warning runDevWalletLogin
+            // already printed, so it cannot scroll past unnoticed; --no-save
+            // keeps the neutral hint.
             console.log(
-              `${theme.muted("→")} not saved (use without --no-save to persist, or export ELIZAOS_CLOUD_API_KEY=<key>)`,
+              result.saveError
+                ? theme.error(
+                    `✗ ELIZAOS_CLOUD_API_KEY was NOT saved (${result.saveError}) — save it manually (see above)`,
+                  )
+                : `${theme.muted("→")} not saved (use without --no-save to persist, or export ELIZAOS_CLOUD_API_KEY=<key>)`,
             );
           }
         });

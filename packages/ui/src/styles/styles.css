@@ -507,4 +507,27 @@ kbd {
     /* biome-ignore lint/complexity/noImportantStyles: reduced-motion accessibility override must win the cascade. */
     scroll-behavior: auto !important;
   }
+
+  /*
+   * Functional loading indicators must KEEP animating under reduced-motion.
+   * The universal reset above collapses every animation to 0.01ms — correct for
+   * decorative motion, but it also freezes spinners and progress bars, which
+   * then read as "hung / broken" and strip the user of loading feedback.
+   * Reduced-motion (WCAG 2.3.3) targets non-essential decorative/large motion,
+   * not essential status indicators — so re-enable the small rotational loaders.
+   * Keep this list tight: only genuinely functional in-place loaders belong here.
+   */
+  /* biome-ignore lint/style/noDescendingSpecificity: must re-win over the universal reset above. */
+  .animate-spin,
+  /* biome-ignore lint/style/noDescendingSpecificity: match Tailwind's arbitrary-variant spin utility too. */
+  [class~="animate-spin"],
+  /* biome-ignore lint/style/noDescendingSpecificity: native + ARIA progress indicators. */
+  [role="progressbar"],
+  /* biome-ignore lint/style/noDescendingSpecificity: sonner toast loading bar. */
+  .sonner-loading-bar {
+    /* biome-ignore lint/complexity/noImportantStyles: must override the universal reduced-motion reset. */
+    animation-duration: 1s !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must override the universal reduced-motion reset. */
+    animation-iteration-count: infinite !important;
+  }
 }

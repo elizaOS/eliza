@@ -169,7 +169,7 @@ describe("StewardKmsAdapter", () => {
     }
   });
 
-  it("throws KmsError on non-2xx Steward responses", async () => {
+  it("throws KmsError carrying the HTTP status on non-2xx Steward responses", async () => {
     const adapter = new StewardKmsAdapter({
       baseUrl: "https://steward.example.test",
       tokenProvider: async () => "token-1",
@@ -178,6 +178,16 @@ describe("StewardKmsAdapter", () => {
 
     await expect(adapter.getPublicKey(keyId)).rejects.toThrow(KmsError);
     await expect(adapter.getPublicKey(keyId)).rejects.toThrow("missing key");
+    // The status must be structured, not just message text: downstream
+    // classification (backup verifier key-unavailable) depends on it.
+    const error = await adapter.getPublicKey(keyId).then(
+      () => {
+        throw new Error("expected getPublicKey to reject");
+      },
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(KmsError);
+    expect((error as KmsError).status).toBe(404);
   });
 
   it("throws KmsError on malformed Steward responses", async () => {

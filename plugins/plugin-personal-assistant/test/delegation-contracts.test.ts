@@ -6,11 +6,18 @@
  * connector events.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  createLifeOpsDelegationContractRecord,
   type DelegationContract,
   evaluateDelegationContract,
+  renderDelegationContractsProviderText,
 } from "../src/lifeops/delegation-contracts/index.js";
+import { LifeOpsRepository } from "../src/lifeops/index.js";
+import {
+  createLifeOpsTestRuntime,
+  type RealTestRuntimeResult,
+} from "./helpers/runtime.ts";
 
 function vendorContract(
   overrides: Partial<DelegationContract> = {},
@@ -193,5 +200,69 @@ describe("delegation contract evaluator", () => {
     expect(suppressed.audit.reason).toBe(
       "owner replied before the holding-reply SLA elapsed",
     );
+  });
+});
+
+describe("delegation contract repository", () => {
+  let runtimeResult: RealTestRuntimeResult | null = null;
+
+  afterEach(async () => {
+    await runtimeResult?.cleanup();
+    runtimeResult = null;
+  });
+
+  it("persists active thread contracts and their evaluator state", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repo = new LifeOpsRepository(runtime);
+    const record = createLifeOpsDelegationContractRecord({
+      ...vendorContract(),
+      agentId: runtime.agentId,
+      metadata: { sourceThread: "gmail:thread-vendor-1" },
+    });
+
+    await repo.upsertDelegationContract(record);
+
+    const rows = await repo.listDelegationContracts(runtime.agentId, {
+      statuses: ["active"],
+      activeAtIso: "2026-07-06T16:30:00.000Z",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      contractId: "delegation:vendor-thread",
+      status: "active",
+      autonomyLevel: "approval_gated",
+      metadata: { sourceThread: "gmail:thread-vendor-1" },
+    });
+    expect(renderDelegationContractsProviderText(rows)).toContain(
+      "Handle the vendor renewal thread",
+    );
+
+    const evaluated = evaluateDelegationContract({
+      contract: rows[0],
+      nowIso: "2026-07-06T16:45:00.000Z",
+      turn: {
+        channel: "email",
+        threadId: "thread-vendor-1",
+        sender: "Riley Vendor",
+        senderEmail: "riley@vendor.example",
+        subject: "Renewal",
+        text: "The price is too high; we need a discount.",
+        receivedAt: "2026-07-06T16:42:00.000Z",
+      },
+    });
+
+    await repo.upsertDelegationContract({
+      ...rows[0],
+      state: evaluated.contract.state,
+      updatedAt: "2026-07-06T16:45:00.000Z",
+    });
+
+    const reloaded = await repo.getDelegationContract(
+      runtime.agentId,
+      "delegation:vendor-thread",
+    );
+    expect(reloaded?.state?.escalatedAt).toBe("2026-07-06T16:42:00.000Z");
   });
 });

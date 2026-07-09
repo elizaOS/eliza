@@ -30,7 +30,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
 // PGlite isolation harness (mirrors agent-billing-reactivation.test.ts): the
-// wiring suite self-skips LOUDLY against a shared non-PGlite Postgres.
+// wiring suite fails LOUDLY against a shared non-PGlite Postgres.
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
   AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
@@ -104,7 +104,7 @@ describe("AgentBillingRepository.getOrganizationCreditBalance fail-closed wiring
     if (!CAN_USE_ISOLATED_PGLITE) {
       pgliteReady = false;
       console.warn(
-        "[agent-billing-numeric.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite wiring suite self-skips — pushSchema against a shared connection crashes the bun runner and would mutate the shared schema. Parser suite above still runs.",
+        "[agent-billing-numeric.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite wiring suite fails — pushSchema against a shared connection crashes the bun runner and would mutate the shared schema. Parser suite above still runs.",
       );
       return;
     }
@@ -122,7 +122,7 @@ describe("AgentBillingRepository.getOrganizationCreditBalance fail-closed wiring
   }, PGLITE_TIMEOUT);
 
   beforeEach(async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await dbWrite.delete(organizations);
   });
 
@@ -131,7 +131,7 @@ describe("AgentBillingRepository.getOrganizationCreditBalance fail-closed wiring
   });
 
   test("a real credit_balance read routes through the parser (healthy path)", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const [org] = await dbWrite
       .insert(organizations)
       .values({ name: "Billing Org", slug: uniq("org"), credit_balance: "123.450000" })
@@ -143,7 +143,7 @@ describe("AgentBillingRepository.getOrganizationCreditBalance fail-closed wiring
   });
 
   test("a genuinely-missing org returns null — NOT a fabricated 0", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const balance = await agentBillingRepository.getOrganizationCreditBalance(
       "00000000-0000-0000-0000-000000000000",
     );
@@ -151,7 +151,7 @@ describe("AgentBillingRepository.getOrganizationCreditBalance fail-closed wiring
   });
 
   test("an explicit zero balance reads as 0, distinguishable from a missing org's null", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const [org] = await dbWrite
       .insert(organizations)
       .values({ name: "Depleted Org", slug: uniq("org"), credit_balance: "0" })

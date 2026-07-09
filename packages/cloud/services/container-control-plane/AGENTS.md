@@ -43,9 +43,13 @@ bun run --cwd packages/cloud/services/container-control-plane start      # bun r
 bun run --cwd packages/cloud/services/container-control-plane dev        # --watch
 bun run --cwd packages/cloud/services/container-control-plane typecheck  # tsgo --noEmit
 bun run --cwd packages/cloud/services/container-control-plane lint       # biome check
+bun run --cwd packages/cloud/services/container-control-plane test       # bun test (src/*.test.ts)
 ```
 
-There are no tests in this package.
+Tests are colocated bun:test files under `src/` (e.g.
+`src/require-internal-token.test.ts`, the H4 fail-closed token-gate proof).
+They run in the PR-lane cloud sweep (`bun run test:cloud` via
+`packages/scripts/test-cloud-run.mjs`) and in the workspace `test` script.
 
 ## Conventions / gotchas
 

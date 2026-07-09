@@ -6,7 +6,6 @@ import {
   type BackupChainNode,
   requireBackupDelta,
   requireBackupStateData,
-  resolveBackupChain,
   selectPrunableBackupIds,
 } from "../../lib/services/agent-backup-diff";
 import { AGENT_MANAGED_DISCORD_KEY } from "../../lib/services/eliza-agent-config";
@@ -52,6 +51,19 @@ const EMPTY_BACKUP_STATE: AgentSandboxBackup["state_data"] = {
   config: {},
   workspaceFiles: {},
 };
+const MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH = 100;
+const MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES = 128 * 1024 * 1024;
+
+async function getStoredBackupById(
+  backupId: string,
+): Promise<StoredAgentSandboxBackup | undefined> {
+  const [row] = await dbRead
+    .select()
+    .from(agentSandboxBackups)
+    .where(eq(agentSandboxBackups.id, backupId))
+    .limit(1);
+  return row;
+}
 
 async function backupOrganizationId(sandboxRecordId: string): Promise<string> {
   const [sandbox] = await dbWrite
@@ -1321,11 +1333,7 @@ export class AgentSandboxesRepository {
   }
 
   async getBackupById(backupId: string): Promise<AgentSandboxBackup | undefined> {
-    const [r] = await dbRead
-      .select()
-      .from(agentSandboxBackups)
-      .where(eq(agentSandboxBackups.id, backupId))
-      .limit(1);
+    const r = await getStoredBackupById(backupId);
     return r ? await hydrateAgentSandboxBackup(r) : undefined;
   }
 
@@ -1369,27 +1377,46 @@ export class AgentSandboxesRepository {
    * here so incrementals are transparently materialized.
    */
   async getReconstructedBackupState(backupId: string): Promise<AgentBackupStateData | undefined> {
-    const target = await this.getBackupById(backupId);
-    if (!target) return undefined;
-    if (target.backup_kind !== "incremental") {
-      return requireBackupStateData(target.state_data, target.id);
+    const targetStored = await getStoredBackupById(backupId);
+    if (!targetStored) return undefined;
+    const chain: AgentSandboxBackup[] = [];
+    const seen = new Set<string>();
+    let chainBytes = 0;
+    let cursor: StoredAgentSandboxBackup | undefined = targetStored;
+    while (cursor) {
+      if (seen.has(cursor.id)) throw new Error(`Backup chain cycle at ${cursor.id}`);
+      seen.add(cursor.id);
+      if (cursor.sandbox_record_id !== targetStored.sandbox_record_id) {
+        throw new Error(`Backup chain row ${cursor.id} crosses sandbox boundary`);
+      }
+      chainBytes +=
+        cursor.size_bytes ?? Buffer.byteLength(JSON.stringify(cursor.state_data), "utf8");
+      if (chainBytes > MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES) {
+        throw new Error(
+          `Backup chain for ${backupId} exceeds ${MAX_RECONSTRUCTED_BACKUP_CHAIN_BYTES} bytes`,
+        );
+      }
+      chain.push(await hydrateAgentSandboxBackup(cursor));
+      if (cursor.backup_kind === "full") break;
+      if (!cursor.parent_backup_id) {
+        throw new Error(`Incremental backup ${cursor.id} has no parent`);
+      }
+      if (chain.length > MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH) {
+        throw new Error(
+          `Backup chain for ${backupId} exceeds ${MAX_RECONSTRUCTED_BACKUP_CHAIN_DEPTH} rows`,
+        );
+      }
+      const parentBackupId = cursor.parent_backup_id;
+      cursor = await getStoredBackupById(parentBackupId);
+      if (!cursor) throw new Error(`Backup chain references missing backup ${parentBackupId}`);
     }
-    const all = await this.listBackups(target.sandbox_record_id, 1000);
-    const nodes: BackupChainNode[] = all.map((b) => ({
-      id: b.id,
-      backupKind: b.backup_kind,
-      parentBackupId: b.parent_backup_id,
-      createdAtMs: b.created_at.getTime(),
-    }));
-    const byId = new Map(all.map((b) => [b.id, b]));
+    chain.reverse();
     let state: AgentBackupStateData | undefined;
-    for (const id of resolveBackupChain(nodes, backupId)) {
-      const row = byId.get(id);
-      if (!row) throw new Error(`Backup chain row ${id} vanished mid-reconstruct`);
+    for (const row of chain) {
       if (row.backup_kind === "full") {
         state = requireBackupStateData(row.state_data, row.id);
       } else {
-        if (!state) throw new Error(`Incremental ${id} reached before a full backup`);
+        if (!state) throw new Error(`Incremental ${row.id} reached before a full backup`);
         state = applyBackupDelta(state, requireBackupDelta(row.state_data, row.id));
       }
     }

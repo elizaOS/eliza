@@ -204,8 +204,11 @@ export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown" | "pre-
  * sampled. Verification decrypts the stored payload with the CURRENT KMS keys
  * and checks content/manifest hashes — it exists because staging silently ran
  * an ephemeral KMS for weeks and every backup was undecryptable (#15310).
+ * `errored` means the verifier itself hit infrastructure breakage (object
+ * storage / KMS transport / oversize payload) and could not judge the backup;
+ * the row is re-attempted on the normal re-verify cadence (#15626).
  */
-export type AgentBackupVerificationStatus = "verified" | "failed";
+export type AgentBackupVerificationStatus = "verified" | "failed" | "errored";
 
 /**
  * Whether a backup row stores the agent's complete state (`full`) or only the
@@ -332,10 +335,13 @@ export const agentSandboxBackups = pgTable(
     content_hash: text("content_hash"),
     /**
      * Restorability-verification stamp (see `AgentBackupVerificationStatus`).
-     * `verified_at` records the last verification ATTEMPT (success or failure)
-     * and drives the re-verify sampling interval; `verification_error` carries
-     * the classified failure (`key-unavailable: …`, `decrypt-failed: …`) so an
-     * operator can tell a KMS misconfig from bit-rot without re-running it.
+     * `verified_at` records the last verification ATTEMPT (success, failure,
+     * or verifier infra error) and drives the re-verify sampling interval;
+     * `verification_error` carries the classified failure
+     * (`key-unavailable: …`, `decrypt-failed: …`) so an operator can tell a
+     * KMS misconfig from bit-rot without re-running it. For `errored` rows it
+     * is `infra-error[N]: …`, where N is the row's consecutive-attempt error
+     * streak (persisted here so it survives daemon restarts).
      */
     verification_status: text("verification_status").$type<AgentBackupVerificationStatus>(),
     verified_at: timestamp("verified_at", { withTimezone: true }),
@@ -345,6 +351,14 @@ export const agentSandboxBackups = pgTable(
   (table) => ({
     sandbox_record_idx: index("agent_sandbox_backups_sandbox_idx").on(table.sandbox_record_id),
     created_at_idx: index("agent_sandbox_backups_created_at_idx").on(table.created_at),
+    // Serves the newest-backup-per-sandbox access pattern: the verifier's
+    // `DISTINCT ON (sandbox_record_id) … ORDER BY sandbox_record_id,
+    // created_at DESC` sampler plus listBackups/getLatestBackup (#15626,
+    // migration 0174).
+    sandbox_latest_idx: index("agent_sandbox_backups_sandbox_latest_idx").on(
+      table.sandbox_record_id,
+      table.created_at.desc(),
+    ),
     parent_backup_idx: index("agent_sandbox_backups_parent_idx").on(table.parent_backup_id),
   }),
 );

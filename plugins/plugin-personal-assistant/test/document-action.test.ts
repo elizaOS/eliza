@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
     trigger: task.trigger,
     state: { status: "scheduled", followupCount: 0 },
   })),
+  upsertCommitmentLedgerRecord: vi.fn(async () => undefined),
   apply: vi.fn(async (taskId: string, verb: string) => ({
     taskId,
     state: {
@@ -77,6 +78,12 @@ vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
   }),
 }));
 
+vi.mock("../src/lifeops/repository.js", () => ({
+  LifeOpsRepository: class {
+    upsertCommitmentLedgerRecord = mocks.upsertCommitmentLedgerRecord;
+  },
+}));
+
 import {
   __resetDocumentStoreForTests,
   ownerDocumentsAction,
@@ -91,6 +98,7 @@ function makeRuntime(): IAgentRuntime {
       error: () => undefined,
       debug: () => undefined,
     },
+    adapter: { db: { execute: vi.fn() } },
   } as unknown as IAgentRuntime;
 }
 
@@ -122,6 +130,7 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
     __resetDocumentStoreForTests();
     mocks.enqueue.mockClear();
     mocks.schedule.mockClear();
+    mocks.upsertCommitmentLedgerRecord.mockClear();
     mocks.apply.mockClear();
   });
 
@@ -211,6 +220,18 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         atIso: "2026-05-15T17:00:00.000Z",
       });
       expect(scheduleArg.subject).toEqual({ kind: "document", id: docId });
+      expect(mocks.upsertCommitmentLedgerRecord).toHaveBeenCalledTimes(1);
+      expect(mocks.upsertCommitmentLedgerRecord.mock.calls[0][0]).toMatchObject(
+        {
+          source: "document",
+          sourceKey: docId,
+          kind: "commitment",
+          summary: "Partnership NDA deadline",
+          counterparty: "entity-alice-001",
+          dueAt: "2026-05-15T17:00:00.000Z",
+          status: "tracked",
+        },
+      );
     });
 
     it("returns a clear error when deadline is missing", async () => {
@@ -279,6 +300,17 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         trigger: { atIso: string };
       };
       expect(scheduleArg.trigger.atIso).toBe("2026-06-01T17:00:00.000Z");
+      expect(mocks.upsertCommitmentLedgerRecord).toHaveBeenCalledTimes(1);
+      expect(mocks.upsertCommitmentLedgerRecord.mock.calls[0][0]).toMatchObject(
+        {
+          source: "document",
+          sourceKey: docId,
+          summary: "Vendor SOW deadline",
+          kind: "renewal",
+          dueAt: "2026-06-01T17:00:00.000Z",
+          status: "tracked",
+        },
+      );
     });
 
     it("errors when documentRequestId is missing", async () => {

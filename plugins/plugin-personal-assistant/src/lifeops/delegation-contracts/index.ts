@@ -85,6 +85,20 @@ export interface DelegationContract {
   readonly sla?: DelegationSlaPolicy;
 }
 
+export type DelegationContractStatus =
+  | "active"
+  | "paused"
+  | "completed"
+  | "revoked"
+  | "expired";
+
+export interface LifeOpsDelegationContractRecord extends DelegationContract {
+  readonly agentId: string;
+  readonly status: DelegationContractStatus;
+  readonly metadata: Record<string, unknown>;
+  readonly updatedAt: string;
+}
+
 export interface DelegationInboundTurn {
   readonly channel: DelegationChannel;
   readonly threadId: string;
@@ -145,6 +159,44 @@ export interface DelegationEvaluation {
     readonly matchedTripwire: string | null;
     readonly reason: string;
   };
+}
+
+export function createLifeOpsDelegationContractRecord(
+  input: DelegationContract & {
+    readonly agentId: string;
+    readonly status?: DelegationContractStatus;
+    readonly metadata?: Record<string, unknown>;
+    readonly updatedAt?: string;
+  },
+): LifeOpsDelegationContractRecord {
+  return {
+    ...input,
+    status: input.status ?? "active",
+    metadata: input.metadata ?? {},
+    updatedAt: input.updatedAt ?? input.createdAt,
+  };
+}
+
+export function renderDelegationContractsProviderText(
+  contracts: readonly LifeOpsDelegationContractRecord[],
+): string {
+  const active = contracts.filter((contract) => contract.status === "active");
+  if (active.length === 0) return "";
+  const lines = active.slice(0, 5).map((contract) => {
+    const scope =
+      contract.scope.kind === "thread"
+        ? `${contract.scope.channel} thread ${contract.scope.threadId}`
+        : `${contract.scope.channel} sender class ${contract.scope.senderClass}`;
+    const tripwires = contract.tripwires
+      .map((tripwire) => tripwire.label)
+      .join(", ");
+    const tripwireText = tripwires.length > 0 ? tripwires : "no tripwire";
+    return `- ${contract.contractId}: ${contract.objective}; scope=${scope}; autonomy=${contract.autonomyLevel}; escalate on ${tripwireText}; expires ${contract.expiresAt}`;
+  });
+  if (active.length > 5) {
+    lines.push(`(+${active.length - 5} more active delegation contracts)`);
+  }
+  return ["Active delegation contracts:", ...lines].join("\n");
 }
 
 function normalize(value: string): string {

@@ -1,3 +1,10 @@
 @import "tailwindcss";
+/* Wallet-modal vendor styles. steward-wallet-providers.tsx is CSS-import-free
+   by design (its dist must stay Node-loadable), so this host CSS entry owns
+   them: without these imports the RainbowKit connect modal (EVM no-wallet
+   fallback) and the Solana wallet-adapter modal render unstyled — the Solana
+   modal is invisible black-on-black at the document tail (#15600). */
+@import "@rainbow-me/rainbowkit/styles.css";
+@import "@solana/wallet-adapter-react-ui/styles.css";
 @import "../styles/base.css";
 @import "../styles/tailwind-theme.css";

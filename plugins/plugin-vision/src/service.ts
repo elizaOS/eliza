@@ -39,6 +39,11 @@ import {
   parseVisionDataImageUrl,
 } from "./image-input";
 import { resolveArbiterFromRuntime } from "./lifecycle";
+import {
+  getMobileCameraSource,
+  registerMobileCameraSource,
+} from "./mobile/capacitor-camera";
+import { FileBridgeCameraSource } from "./mobile/file-bridge-camera";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
 import { getTestImage } from "./test-input";
@@ -415,6 +420,14 @@ export class VisionService extends Service {
     available: boolean;
     tool: string;
   }> {
+    // A registered mobile camera source (Android CameraX / iOS AVFoundation via
+    // the Capacitor bridge) captures in-process — it replaces the desktop CLI
+    // tools entirely. On a phone there is no imagesnap/fswebcam/ffmpeg, so this
+    // is the only working capture path there.
+    if (getMobileCameraSource()) {
+      return { available: true, tool: "mobile-bridge" };
+    }
+
     const platform = process.platform;
 
     try {
@@ -440,6 +453,16 @@ export class VisionService extends Service {
 
   private async initialize(): Promise<void> {
     try {
+      // On the Android on-device agent there is no desktop camera CLI and no
+      // in-process Capacitor bridge, so register the file-drop camera source
+      // that relays capture requests to the WebView's ElizaCamera. Gated on the
+      // mobile platform env ElizaAgentService sets; a no-op everywhere else.
+      // Static imports (not dynamic) so the source is in the mobile agent
+      // bundle — a code-split chunk can't be loaded there (no filesystem).
+      if (process.env.ELIZA_MOBILE_PLATFORM === "android") {
+        registerMobileCameraSource(new FileBridgeCameraSource());
+      }
+
       // Initialize the ggml YOLOv8 object detector when object detection is
       // enabled. There is no pose backend yet — pose detection falls through
       // to the heuristic path (detectPeopleFromMotion).
@@ -2103,6 +2126,13 @@ export class VisionService extends Service {
   }
 
   private async listCameras(): Promise<CameraInfo[]> {
+    // Mobile bridge (if registered) enumerates the phone's cameras; the desktop
+    // CLI probes below don't exist on Android/iOS.
+    const mobileSource = getMobileCameraSource();
+    if (mobileSource) {
+      return mobileSource.listCameras();
+    }
+
     const platform = process.platform;
 
     try {
@@ -2182,6 +2212,14 @@ export class VisionService extends Service {
       id: info.id,
       name: info.name,
       capture: async () => {
+        // Mobile: the registered bridge captures a JPEG in-process (no temp
+        // file, no CLI tool). Preferred over the desktop paths below whenever a
+        // source is registered — on a phone it is the only one that works.
+        const mobileSource = getMobileCameraSource();
+        if (mobileSource) {
+          return mobileSource.captureJpeg();
+        }
+
         const tempFile = path.join(
           process.cwd(),
           `temp_capture_${Date.now()}.jpg`,

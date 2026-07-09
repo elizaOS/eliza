@@ -351,6 +351,34 @@ export const lifeCommitmentLedger = appLifeopsPgSchema.table(
   ],
 );
 
+export const lifeDelegationContracts = appLifeopsPgSchema.table(
+  "life_delegation_contracts",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    status: text("status").notNull().default("active"),
+    objective: text("objective").notNull(),
+    scopeJson: text("scope_json").notNull(),
+    autonomyLevel: text("autonomy_level").notNull(),
+    tripwiresJson: text("tripwires_json").notNull().default("[]"),
+    ownerUserId: text("owner_user_id").notNull(),
+    requestedBy: text("requested_by").notNull(),
+    slaJson: text("sla_json"),
+    stateJson: text("state_json").notNull().default("{}"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    expiresAt: text("expires_at").notNull(),
+  },
+  (t) => [
+    index("idx_life_delegation_agent_status_expires").on(
+      t.agentId,
+      t.status,
+      t.expiresAt,
+    ),
+  ],
+);
+
 // Finance tables (life_payment_*, life_subscription_*) moved to
 // @elizaos/plugin-finances under pgSchema("app_finances"). PA no longer creates
 // them in app_lifeops; the finances plugin owns + migrates them. PA's raw
@@ -1633,6 +1661,7 @@ export const lifeOpsSchema = {
   lifeReminderAttempts,
   lifeAuditEvents,
   lifeCommitmentLedger,
+  lifeDelegationContracts,
   lifeEmailUnsubscribes,
   lifeActivitySignals,
   lifeHealthMetricSamples,

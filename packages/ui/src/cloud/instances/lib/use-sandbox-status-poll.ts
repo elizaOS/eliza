@@ -15,6 +15,7 @@ export type SandboxStatus =
   | "provisioning"
   | "running"
   | "stopped"
+  | "sleeping"
   | "disconnected"
   | "error";
 
@@ -25,7 +26,12 @@ export interface SandboxStatusResult {
   isLoading: boolean;
 }
 
-const TERMINAL_STATES = new Set<SandboxStatus>(["running", "stopped", "error"]);
+const TERMINAL_STATES = new Set<SandboxStatus>([
+  "running",
+  "stopped",
+  "sleeping",
+  "error",
+]);
 const ACTIVE_STATES = new Set<SandboxStatus>(["pending", "provisioning"]);
 const MAX_CONSECUTIVE_ERRORS = 5;
 

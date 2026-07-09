@@ -1,6 +1,9 @@
 /**
  * Compact cost indicator shown next to agent status in the table.
  * Shows the hourly rate and monthly estimate for a given agent state.
+ * Sleeping (deactivated) agents render an explicit $0.00/hr: the hourly
+ * billing cron only charges running/stopped-with-backup rows, so "no badge"
+ * would hide the very fact deactivation exists to communicate.
  */
 
 "use client";
@@ -21,12 +24,15 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
   const t = useT();
   const isRunning = status === "running" || status === "provisioning";
   const isIdle = status === "stopped" || status === "disconnected";
+  const isSleeping = status === "sleeping";
 
-  if (!isRunning && !isIdle) return null;
+  if (!isRunning && !isIdle && !isSleeping) return null;
 
   const rate = isRunning
     ? AGENT_PRICING.RUNNING_HOURLY_RATE
-    : AGENT_PRICING.IDLE_HOURLY_RATE;
+    : isIdle
+      ? AGENT_PRICING.IDLE_HOURLY_RATE
+      : 0;
 
   return (
     <Tooltip>
@@ -39,17 +45,37 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
         </span>
       </TooltipTrigger>
       <TooltipContent className="bg-neutral-900 border-white/10 text-xs">
-        <p className="font-medium text-white mb-0.5">
-          {isRunning
-            ? t("cloud.containers.costBadge.active", { defaultValue: "Active" })
-            : t("cloud.containers.costBadge.idle", {
-                defaultValue: "Idle",
-              })}{" "}
-          {t("cloud.containers.costBadge.agent", { defaultValue: "agent" })}
-        </p>
-        <p className="text-white/60">
-          {formatHourlyRate(rate)} · {formatMonthlyEstimate(rate)}
-        </p>
+        {isSleeping ? (
+          <>
+            <p className="font-medium text-white mb-0.5">
+              {t("cloud.containers.costBadge.deactivated", {
+                defaultValue: "Deactivated agent",
+              })}
+            </p>
+            <p className="text-white/60">
+              {t("cloud.containers.costBadge.deactivatedDetail", {
+                defaultValue:
+                  "Not running — no hourly cost. Data is kept in an encrypted backup.",
+              })}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="font-medium text-white mb-0.5">
+              {isRunning
+                ? t("cloud.containers.costBadge.active", {
+                    defaultValue: "Active",
+                  })
+                : t("cloud.containers.costBadge.idle", {
+                    defaultValue: "Idle",
+                  })}{" "}
+              {t("cloud.containers.costBadge.agent", { defaultValue: "agent" })}
+            </p>
+            <p className="text-white/60">
+              {formatHourlyRate(rate)} · {formatMonthlyEstimate(rate)}
+            </p>
+          </>
+        )}
       </TooltipContent>
     </Tooltip>
   );

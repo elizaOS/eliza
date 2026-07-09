@@ -104,12 +104,12 @@ afterAll(async () => {
 
 describe("jobsRepository.recoverStaleJobs", () => {
   beforeEach(async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await dbWrite.execute("DELETE FROM jobs;");
   });
 
   test("uses each stale row's max_attempts instead of a caller-wide fallback", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const singleAttemptJobId = "00000000-0000-4000-8000-000000010854";
     const retryableJobId = "00000000-0000-4000-8000-000000020854";
     await seedJob({ id: singleAttemptJobId, maxAttempts: 1 });
@@ -147,7 +147,7 @@ describe("jobsRepository.recoverStaleJobs", () => {
   });
 
   test("recovers in-progress rows claimed before a replacement worker started", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const interruptedJobId = "00000000-0000-4000-8000-000000030854";
     const currentJobId = "00000000-0000-4000-8000-000000040854";
 

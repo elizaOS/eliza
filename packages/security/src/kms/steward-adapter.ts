@@ -163,10 +163,14 @@ export class StewardKmsAdapter implements KmsClient {
           : isRecord(parsed) && typeof parsed.message === "string"
             ? parsed.message
             : text.trim();
+      // Carry the HTTP status so consumers (e.g. the backup restorability
+      // verifier) can classify a 404 as key-unavailable instead of treating
+      // it as opaque infrastructure breakage.
       throw new KmsError(
         `Steward KMS ${method} ${path} failed (${response.status}${
           response.statusText ? ` ${response.statusText}` : ""
         })${message ? `: ${message}` : ""}`,
+        response.status,
       );
     }
 

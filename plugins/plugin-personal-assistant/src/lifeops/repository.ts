@@ -116,6 +116,13 @@ import type {
   LifeOpsCommitmentSource,
   LifeOpsCommitmentStatus,
 } from "./commitments/index.js";
+import type {
+  DelegationAutonomyLevel,
+  DelegationScope,
+  DelegationSlaPolicy,
+  DelegationTripwire,
+  LifeOpsDelegationContractRecord,
+} from "./delegation-contracts/index.js";
 import {
   createConnectorAccountPrivacyPolicy,
   deriveConnectorAccountId,
@@ -639,6 +646,41 @@ function parseCommitmentLedgerRecord(
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseDelegationContractRecord(
+  row: Record<string, unknown>,
+): LifeOpsDelegationContractRecord {
+  const scope = parseJsonValue<DelegationScope | null>(row.scope_json, null);
+  if (!scope) {
+    throw new Error("[LifeOpsRepository] delegation contract missing scope.");
+  }
+  const tripwires = parseJsonValue<readonly DelegationTripwire[]>(
+    row.tripwires_json,
+    [],
+  );
+  const sla = parseJsonValue<DelegationSlaPolicy | null>(row.sla_json, null);
+  const state = parseJsonRecord(row.state_json);
+  return {
+    contractId: toText(row.id),
+    agentId: toText(row.agent_id),
+    status: toText(
+      row.status,
+      "active",
+    ) as LifeOpsDelegationContractRecord["status"],
+    objective: toText(row.objective),
+    scope,
+    autonomyLevel: toText(row.autonomy_level) as DelegationAutonomyLevel,
+    tripwires,
+    ownerUserId: toText(row.owner_user_id),
+    requestedBy: toText(row.requested_by),
+    state: state as NonNullable<LifeOpsDelegationContractRecord["state"]>,
+    ...(sla ? { sla } : {}),
+    metadata: parseJsonRecord(row.metadata_json),
+    createdAt: toText(row.created_at),
+    updatedAt: toText(row.updated_at),
+    expiresAt: toText(row.expires_at),
   };
 }
 
@@ -3571,6 +3613,92 @@ export class LifeOpsRepository {
         ORDER BY due_at ASC NULLS LAST, created_at ASC`,
     );
     return rows.map(parseCommitmentLedgerRecord);
+  }
+
+  async upsertDelegationContract(
+    record: LifeOpsDelegationContractRecord,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_delegation_contracts (
+        id, agent_id, status, objective, scope_json, autonomy_level,
+        tripwires_json, owner_user_id, requested_by, sla_json, state_json,
+        metadata_json, created_at, updated_at, expires_at
+      ) VALUES (
+        ${sqlQuote(record.contractId)},
+        ${sqlQuote(record.agentId)},
+        ${sqlQuote(record.status)},
+        ${sqlQuote(record.objective)},
+        ${sqlJson(record.scope)},
+        ${sqlQuote(record.autonomyLevel)},
+        ${sqlJson(record.tripwires)},
+        ${sqlQuote(record.ownerUserId)},
+        ${sqlQuote(record.requestedBy)},
+        ${record.sla ? sqlJson(record.sla) : "NULL"},
+        ${sqlJson(record.state ?? {})},
+        ${sqlJson(record.metadata)},
+        ${sqlQuote(record.createdAt)},
+        ${sqlQuote(record.updatedAt)},
+        ${sqlQuote(record.expiresAt)}
+      )
+      ON CONFLICT(id)
+      DO UPDATE SET
+        status = EXCLUDED.status,
+        objective = EXCLUDED.objective,
+        scope_json = EXCLUDED.scope_json,
+        autonomy_level = EXCLUDED.autonomy_level,
+        tripwires_json = EXCLUDED.tripwires_json,
+        owner_user_id = EXCLUDED.owner_user_id,
+        requested_by = EXCLUDED.requested_by,
+        sla_json = EXCLUDED.sla_json,
+        state_json = EXCLUDED.state_json,
+        metadata_json = EXCLUDED.metadata_json,
+        updated_at = EXCLUDED.updated_at,
+        expires_at = EXCLUDED.expires_at`,
+    );
+  }
+
+  async getDelegationContract(
+    agentId: string,
+    contractId: string,
+  ): Promise<LifeOpsDelegationContractRecord | null> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_delegation_contracts
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(contractId)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseDelegationContractRecord(row) : null;
+  }
+
+  async listDelegationContracts(
+    agentId: string,
+    filter: {
+      statuses?: LifeOpsDelegationContractRecord["status"][];
+      activeAtIso?: string;
+    } = {},
+  ): Promise<LifeOpsDelegationContractRecord[]> {
+    const clauses = [`agent_id = ${sqlQuote(agentId)}`];
+    if (filter.statuses?.length) {
+      clauses.push(
+        `status IN (${filter.statuses.map((status) => sqlQuote(status)).join(", ")})`,
+      );
+    }
+    if (filter.activeAtIso) {
+      clauses.push(`created_at <= ${sqlQuote(filter.activeAtIso)}`);
+      clauses.push(`expires_at >= ${sqlQuote(filter.activeAtIso)}`);
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_delegation_contracts
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY expires_at ASC, created_at ASC`,
+    );
+    return rows.map(parseDelegationContractRecord);
   }
 
   // ---------------------------------------------------------------------

@@ -836,6 +836,8 @@ export function nativeModuleStubPlugin(
           // if a web/desktop path ever called it, so every method throws.
           return [
             "const mobileOnly = (prop) => () => { throw new Error('@capacitor/filesystem.' + String(prop) + ' is mobile-only; not available in this build.'); };",
+            "export const Directory = Object.freeze({ Documents: 'DOCUMENTS', Data: 'DATA', Library: 'LIBRARY', Cache: 'CACHE', External: 'EXTERNAL', ExternalStorage: 'EXTERNAL_STORAGE' });",
+            "export const Encoding = Object.freeze({ UTF8: 'utf8', ASCII: 'ascii', UTF16: 'utf16' });",
             "export const Filesystem = new Proxy({}, { get: (_, prop) => mobileOnly(prop) });",
             "export default Filesystem;",
           ].join("\n");

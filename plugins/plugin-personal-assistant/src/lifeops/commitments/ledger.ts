@@ -52,6 +52,18 @@ export interface CommitmentExtractionInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface DocumentObligationInput {
+  agentId: string;
+  documentId: string;
+  title: string;
+  deadline: string;
+  observedAt: string;
+  note?: string | null;
+  counterparty?: string | null;
+  scheduledTaskId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CommitmentRegretAuditItem {
   record: LifeOpsCommitmentLedgerRecord;
   score: number;
@@ -143,6 +155,21 @@ function classifyKind(text: string): LifeOpsCommitmentKind {
   return "commitment";
 }
 
+function classifyDocumentObligationKind(text: string): LifeOpsCommitmentKind {
+  if (/\b(renew|renewal|auto-renew|term|msa|sow|contract)\b/i.test(text)) {
+    return "renewal";
+  }
+  if (/\b(warranty|guarantee|return window|rma)\b/i.test(text)) {
+    return "warranty";
+  }
+  if (
+    /\b(file|filing|submit|tax|court|compliance|license|permit)\b/i.test(text)
+  ) {
+    return "filing";
+  }
+  return "commitment";
+}
+
 function firstCommitmentSentence(text: string): string | null {
   for (const part of text.split(/(?<=[.!?])\s+/)) {
     const sentence = normalizeText(part);
@@ -208,6 +235,33 @@ export function extractCommitmentLedgerRecords(
       },
     }),
   ];
+}
+
+export function createDocumentObligationLedgerRecord(
+  input: DocumentObligationInput,
+): LifeOpsCommitmentLedgerRecord {
+  const text = normalizeText(`${input.title} ${input.note ?? ""}`);
+  const kind = classifyDocumentObligationKind(text);
+  return createLifeOpsCommitmentLedgerRecord({
+    agentId: input.agentId,
+    source: "document",
+    sourceKey: input.documentId,
+    kind,
+    summary: `${input.title} deadline`,
+    counterparty: input.counterparty?.trim() || null,
+    dueAt: input.deadline,
+    confidence: kind === "commitment" ? 0.76 : 0.9,
+    status: input.scheduledTaskId ? "tracked" : "open",
+    scheduledTaskId: input.scheduledTaskId ?? null,
+    metadata: {
+      ...(input.metadata ?? {}),
+      observedAt: input.observedAt,
+      documentTitle: input.title,
+      ...(input.note ? { noteSha256: sha16(input.note) } : {}),
+    },
+    createdAt: input.observedAt,
+    updatedAt: input.observedAt,
+  });
 }
 
 export function buildCommitmentRegretAudit(

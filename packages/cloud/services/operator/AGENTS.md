@@ -43,7 +43,7 @@ bun run --cwd packages/cloud/services/operator lint         # biome check .
 bun run --cwd packages/cloud/services/operator lint:fix     # biome check --write .
 bun run --cwd packages/cloud/services/operator build        # node ./scripts/build.mjs (pepr build)
 bun run --cwd packages/cloud/services/operator dev          # bunx pepr dev (needs a cluster)
-bun test --cwd packages/cloud/services/operator             # capabilities/__tests__ (bun:test)
+bun run --cwd packages/cloud/services/operator test         # bun test — capabilities/__tests__; also swept by the PR-lane `bun run test:cloud`
 ```
 
 `deploy:local` runs `pepr build` (with `ELIZA_OPERATOR_SKIP_CRD_REGISTER=1`)

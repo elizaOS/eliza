@@ -3,10 +3,22 @@
  * ephemeral Ethereum wallet, sign the SIWE challenge, and exchange it for a
  * cloud API key with no browser/OAuth. A fixed private key plus a mocked fetch
  * keep the suite offline and deterministic; covers the mint-without-save happy
- * path, a transient nonce-failure retry, and a verify rejection.
+ * path, a transient nonce-failure retry, a verify rejection, and the loud
+ * failed-persist warning (config write throws → saveError + manual-save
+ * instructions, never a silent muted aside).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runDevWalletLogin } from "./register.auth";
+
+// The persist path dynamically imports these; the throwing saveConfig drives
+// the failed-persist test (the other tests run with save:false and never reach it).
+vi.mock("./register.setup", () => ({
+  resolveConfigPath: () => "/nonexistent/eliza/eliza.json",
+  loadConfig: () => ({}),
+  saveConfig: () => {
+    throw new Error("EACCES: permission denied");
+  },
+}));
 
 const FIXED_PK =
   "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d";
@@ -114,5 +126,29 @@ describe("auth dev-login (SIWE wallet)", () => {
     });
     expect(result.ok).toBe(false);
     expect(result.message).toContain("verify failed (401)");
+  });
+
+  it("a failed key persist is LOUD: warns, returns saveError, and prints manual-save instructions", async () => {
+    const lines: string[] = [];
+    const result = await runDevWalletLogin({
+      privateKey: FIXED_PK,
+      // save defaults to true → the mocked saveConfig throws EACCES.
+      log: (line) => lines.push(line),
+      fetchImpl: mockFetch(),
+    });
+
+    // The mint itself still succeeds and the key is returned.
+    expect(result.ok).toBe(true);
+    expect(result.apiKey).toBe("eliza_devkey_TESTKEY");
+    // The failure is a first-class result field, not a swallowed aside.
+    expect(result.savedTo).toBeNull();
+    expect(result.saveError).toContain("EACCES: permission denied");
+    // And the user is told, loudly, with a copy-pasteable remedy.
+    const output = lines.join("\n");
+    expect(output).toContain("WARNING: failed to save ELIZAOS_CLOUD_API_KEY");
+    expect(output).toContain("NOT saved");
+    expect(output).toContain(
+      "export ELIZAOS_CLOUD_API_KEY=eliza_devkey_TESTKEY",
+    );
   });
 });

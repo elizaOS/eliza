@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildCommitmentRegretAudit,
+  createDocumentObligationLedgerRecord,
   createLifeOpsCommitmentLedgerRecord,
   extractCommitmentLedgerRecords,
   LifeOpsRepository,
@@ -107,6 +108,47 @@ describe("commitment ledger extraction and audit", () => {
     ]);
     expect(audit.items[0]?.reasons).toContain("no scheduled tracker");
     expect(audit.items[0]?.reasons).toContain("due inside audit horizon");
+  });
+
+  it("normalizes document contract deadlines as tracked renewal obligations", () => {
+    const record = createDocumentObligationLedgerRecord({
+      agentId: AGENT_ID,
+      documentId: "doc-acme-sow",
+      title: "Acme vendor SOW contract renewal",
+      deadline: "2026-09-01T17:00:00.000Z",
+      observedAt: OBSERVED_AT,
+      counterparty: "Acme",
+      scheduledTaskId: "task-renewal-60d",
+      metadata: { documentKind: "approval" },
+    });
+
+    expect(record).toMatchObject({
+      source: "document",
+      sourceKey: "doc-acme-sow",
+      kind: "renewal",
+      summary: "Acme vendor SOW contract renewal deadline",
+      counterparty: "Acme",
+      dueAt: "2026-09-01T17:00:00.000Z",
+      confidence: 0.9,
+      status: "tracked",
+      scheduledTaskId: "task-renewal-60d",
+    });
+  });
+
+  it("normalizes warranty documents without inventing a tracker", () => {
+    const record = createDocumentObligationLedgerRecord({
+      agentId: AGENT_ID,
+      documentId: "doc-laptop-warranty",
+      title: "Laptop warranty return window",
+      deadline: "2026-07-31T17:00:00.000Z",
+      observedAt: OBSERVED_AT,
+    });
+
+    expect(record).toMatchObject({
+      kind: "warranty",
+      status: "open",
+      scheduledTaskId: null,
+    });
   });
 });
 

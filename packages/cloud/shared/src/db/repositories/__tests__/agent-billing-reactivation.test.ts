@@ -10,7 +10,7 @@
  *
  * Harness mirrors `repositories/__tests__/apps.test.ts`: drizzle-kit `pushSchema`
  * generates the EXACT DDL from the real schema objects and applies it to the same
- * PGlite connection the repository queries through. Self-skips LOUDLY (never
+ * PGlite connection the repository queries through. Fails LOUDLY (never
  * silently passes) when a shared non-PGlite Postgres is the ambient DATABASE_URL.
  */
 
@@ -99,7 +99,7 @@ beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
     console.warn(
-      "[agent-billing-reactivation.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite self-skips — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
+      "[agent-billing-reactivation.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite fails — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
     );
     return;
   }
@@ -110,14 +110,14 @@ beforeAll(async () => {
   } catch (error) {
     pgliteReady = false;
     console.error(
-      "[agent-billing-reactivation.test] PGlite/pushSchema unavailable — cannot drive AgentBillingRepository against a real DB. Skipping all cases.",
+      "[agent-billing-reactivation.test] PGlite/pushSchema unavailable — cannot drive AgentBillingRepository against a real DB. Failing all cases.",
       error,
     );
   }
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  if (!pgliteReady) return;
+  expect(pgliteReady).toBe(true);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
@@ -130,7 +130,7 @@ afterAll(async () => {
 
 describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
   test("a suspended running agent is EXCLUDED from the billable set until reactivated", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const sandboxId = await seedSandbox(organizationId, userId, "suspended");
 
@@ -156,7 +156,7 @@ describe("AgentBillingRepository.reactivateSandboxBillingAfterFunding", () => {
   });
 
   test("an EXEMPT agent is never forced into billing by reactivation", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const sandboxId = await seedSandbox(organizationId, userId, "exempt");
 

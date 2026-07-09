@@ -4,10 +4,19 @@
  * Loaded only behind {@link ConditionalWalletProviders}'s lazy boundary so the
  * heavy wallet vendor chunks never enter the entry bundle.
  *
- * NOTE: RainbowKit's stylesheet (`@rainbow-me/rainbowkit/styles.css`) is NOT
- * imported here — the app shell owns CSS and this module is `index.ts`-free by
- * design; the host/cloud-ui CSS entry must `@import` the RainbowKit styles for
- * the modal to render styled.
+ * NOTE: no stylesheet is imported here — the app shell owns CSS and this
+ * module is `index.ts`-free by design. The wallet modal styles (RainbowKit's
+ * `styles.css` and `@solana/wallet-adapter-react-ui/styles.css`) are
+ * `@import`ed by `cloud-ui/index.css`; without them both modals render
+ * unstyled (#15600).
+ *
+ * NOTE: `@wagmi/connectors` reaches its wallet SDKs (`@metamask/connect-evm`,
+ * `@walletconnect/ethereum-provider`, `@coinbase/wallet-sdk`, …) through
+ * dynamic imports of *optional* peer deps. Any peer missing from the install
+ * is compiled by Vite into a stub that throws
+ * `Could not resolve "<pkg>" imported by "@wagmi/connectors"` at click time
+ * (#15600 — MetaMask). package.json therefore declares `@metamask/connect-evm`
+ * even though no source file imports it (guarded by wallet-connector-deps.test.ts).
  */
 
 import { BRAND_COLORS } from "@elizaos/shared/brand";

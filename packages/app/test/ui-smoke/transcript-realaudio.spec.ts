@@ -1132,20 +1132,6 @@ test("VIEWER + TRANSCRIPTS + KNOWLEDGE: every transcript surface action works", 
   await undo.click();
   await expect(editor).toHaveValue(loadedText, { timeout: 10_000 });
 
-  // Save audio -> triggers a download.
-  const dlBeforeAudio = (await probe()).downloads;
-  await page.getByTestId("transcript-save-audio").click();
-  await expect
-    .poll(async () => (await probe()).downloads)
-    .toBeGreaterThan(dlBeforeAudio);
-
-  // Share audio -> invokes navigator.share (file or url path).
-  const shareBeforeAudio = (await probe()).shared;
-  await page.getByTestId("transcript-share-audio").click();
-  await expect
-    .poll(async () => (await probe()).shared)
-    .toBeGreaterThan(shareBeforeAudio);
-
   // Save text -> triggers a download (anchor with `download`).
   const dlBeforeText = (await probe()).downloads;
   await page.getByTestId("transcript-save-to-files").click();
@@ -1153,12 +1139,26 @@ test("VIEWER + TRANSCRIPTS + KNOWLEDGE: every transcript surface action works", 
     .poll(async () => (await probe()).downloads)
     .toBeGreaterThan(dlBeforeText);
 
-  // Share text -> invokes navigator.share.
+  // Share opens the permission sheet. The UI prepares an explicit agent-action
+  // request, defaulting to redacted access instead of sharing raw transcript
+  // text through the browser share sheet.
   const shareBefore = (await probe()).shared;
   await page.getByTestId("transcript-share").click();
+  await expect(page.getByTestId("transcript-share-panel")).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(
+    page.getByTestId("transcript-share-mode-redacted"),
+  ).toBeVisible();
+  await page.getByTestId("transcript-share-target").fill("viewer-entity");
+  await page.getByTestId("transcript-share-prepare").click();
   await expect
     .poll(async () => (await probe()).shared)
     .toBeGreaterThan(shareBefore);
+  await expect(page.getByTestId("transcript-share-notice")).toContainText(
+    /agent still has to confirm|Request copied/i,
+    { timeout: 5_000 },
+  );
 
   // Copy -> writes the transcript text to the (stubbed) clipboard. Last of the
   // non-closing actions, because its label flip reflows the row.

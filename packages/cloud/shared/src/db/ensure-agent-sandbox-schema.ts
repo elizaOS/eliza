@@ -70,6 +70,11 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
   `);
 
   await dbWrite.execute(sql`
+    CREATE INDEX IF NOT EXISTS "agent_sandbox_backups_sandbox_latest_idx"
+      ON "agent_sandbox_backups" ("sandbox_record_id", "created_at" DESC)
+  `);
+
+  await dbWrite.execute(sql`
     INSERT INTO "organizations" ("id", "name", "slug", "credit_balance", "is_active")
     VALUES (
       ${WARM_POOL_ORG_ID},

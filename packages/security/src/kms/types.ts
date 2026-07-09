@@ -70,9 +70,17 @@ export interface KmsClient {
 }
 
 export class KmsError extends Error {
-  constructor(message: string) {
+  /**
+   * HTTP status from the KMS backend when the failure was an HTTP response
+   * (e.g. Steward). Lets callers distinguish key-not-found (404) from
+   * transport/server breakage without parsing the message.
+   */
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
     super(message);
     this.name = "KmsError";
+    if (status !== undefined) this.status = status;
   }
 }
 

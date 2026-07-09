@@ -35,6 +35,8 @@ import type {
 import { logger } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
+import { createDocumentObligationLedgerRecord } from "../lifeops/commitments/index.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import type {
   ScheduledTaskRunnerHandle,
   ScheduledTaskTrigger,
@@ -301,6 +303,38 @@ async function scheduleDeadlineTask(
   return task.taskId;
 }
 
+async function persistDocumentObligation(
+  scope: RunnerScope,
+  doc: DocumentRequest,
+  scheduledTaskId: string | undefined,
+): Promise<void> {
+  if (!doc.deadline) return;
+  const adapter = (scope.runtime as { adapter?: { db?: unknown } }).adapter;
+  if (!adapter?.db) {
+    logger.debug(
+      `[OWNER_DOCUMENTS] commitment ledger unavailable for ${doc.id}; runtime has no SQL adapter`,
+    );
+    return;
+  }
+  const record = createDocumentObligationLedgerRecord({
+    agentId: scope.agentId,
+    documentId: doc.id,
+    title: doc.title,
+    deadline: doc.deadline,
+    observedAt: doc.updatedAt,
+    counterparty: doc.requesteeEntityId ?? null,
+    scheduledTaskId: scheduledTaskId ?? null,
+    metadata: {
+      documentKind: doc.kind,
+      documentStatus: doc.status,
+    },
+    ...(doc.note ? { note: doc.note } : {}),
+  });
+  await new LifeOpsRepository(scope.runtime).upsertCommitmentLedgerRecord(
+    record,
+  );
+}
+
 // ── Subaction handlers ───────────────────────────────────
 
 async function handleRequestSignature(
@@ -354,6 +388,7 @@ async function handleRequestSignature(
   // before the owner approves. The watcher metadata carries the documentId
   // so escalators can branch on document state.
   const scheduledTaskId = await scheduleDeadlineTask(scope, doc);
+  await persistDocumentObligation(scope, doc, scheduledTaskId);
 
   const saved = saveDocument(scope.runtime, {
     ...doc,
@@ -405,6 +440,7 @@ async function handleRequestApproval(
   };
 
   const scheduledTaskId = await scheduleDeadlineTask(scope, doc);
+  await persistDocumentObligation(scope, doc, scheduledTaskId);
   const saved = saveDocument(scope.runtime, {
     ...doc,
     ...(scheduledTaskId ? { scheduledTaskId } : {}),
@@ -447,6 +483,7 @@ async function handleTrackDeadline(
   });
   if (!patched) return notFound(documentRequestId, subaction);
   const scheduledTaskId = await scheduleDeadlineTask(scope, patched);
+  await persistDocumentObligation(scope, patched, scheduledTaskId);
   const next = patchDocument(scope.runtime, documentRequestId, {
     ...(scheduledTaskId ? { scheduledTaskId } : {}),
   });

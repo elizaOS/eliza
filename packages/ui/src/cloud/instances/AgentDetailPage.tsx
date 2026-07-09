@@ -121,6 +121,10 @@ export default function AgentDetailPage() {
   const isRunningish =
     agent.status === "running" || agent.status === "provisioning";
   const isIdle = agent.status === "stopped" || agent.status === "disconnected";
+  // Deactivated (sleeping) agents are skipped by the hourly billing cron
+  // entirely — show an explicit $0.00/hr instead of a blank so the "stop the
+  // burn" promise of deactivation is visible where the burn was shown.
+  const isSleeping = agent.status === "sleeping";
   const adminDetails = agent.adminDetails;
   const isDockerBacked = adminDetails?.isDockerBacked ?? false;
   const showConnect = !!agent.webUiUrl && agent.status === "running";
@@ -221,13 +225,22 @@ export default function AgentDetailPage() {
               ? formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)
               : isIdle
                 ? formatHourlyRate(AGENT_PRICING.IDLE_HOURLY_RATE)
-                : "—"}
+                : isSleeping
+                  ? formatHourlyRate(0)
+                  : "—"}
           </p>
           {(isRunningish || isIdle) && (
             <p className="text-2xs text-muted tabular-nums">
               {isRunningish
                 ? formatMonthlyEstimate(AGENT_PRICING.RUNNING_HOURLY_RATE)
                 : formatMonthlyEstimate(AGENT_PRICING.IDLE_HOURLY_RATE)}
+            </p>
+          )}
+          {isSleeping && (
+            <p className="text-2xs text-muted">
+              {t("cloud.agents.detail.deactivatedNoCost", {
+                defaultValue: "Deactivated — no hourly cost",
+              })}
             </p>
           )}
         </div>

@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
-// Drives cloud admin cloud admin live cloud provision smoke automation with explicit environment and CI invariants.
+// Live provisioning smoke against a deployed cloud stack: disposable identity,
+// agent create/provision, bridge + stream chat turns (classifyBridgeReply
+// rejects canned/fabricated failure replies and requires a per-run proof
+// token, #15616), pairing token, and delete.
 
 import { randomBytes } from "node:crypto";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
@@ -8,6 +11,7 @@ import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
+import { classifyBridgeReply } from "./bridge-reply-verdict";
 import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
@@ -403,6 +407,39 @@ async function assertAgentRunning(): Promise<void> {
   }
 }
 
+/**
+ * Retry `attempt` until it resolves or the deadline passes; a fresh
+ * provision's model path can be cold, and a live model occasionally
+ * paraphrases the proof token out of its first reply.
+ */
+async function retryChatTurn<T>(
+  label: string,
+  attempt: () => Promise<T>,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let attempts = 0;
+  let lastFailure = "no attempt completed";
+  while (Date.now() < deadline) {
+    attempts += 1;
+    try {
+      return await attempt();
+    } catch (error) {
+      // error-policy:J1 retry boundary — each failed attempt is logged and the
+      // loop fails loudly at the deadline with the last observed failure.
+      lastFailure = error instanceof Error ? error.message : String(error);
+      console.log(
+        `[smoke] ${label} attempt ${attempts} failed: ${lastFailure}`,
+      );
+    }
+    if (Date.now() + pollIntervalMs >= deadline) break;
+    await sleep(pollIntervalMs);
+  }
+  throw new Error(
+    `${label} never produced a real reply within ${timeoutMs}ms ` +
+      `(${attempts} attempt${attempts === 1 ? "" : "s"}). Last failure: ${lastFailure}`,
+  );
+}
+
 async function assertBridge(): Promise<void> {
   const status = await jsonRpc("status.get");
   if (status.ready !== true) {
@@ -414,19 +451,27 @@ async function assertBridge(): Promise<void> {
     throw new Error(`Bridge heartbeat failed: ${describeBody(heartbeat)}`);
   }
 
-  const message = await jsonRpc("message.send", {
-    text: `Please reply with the exact words: cloud smoke pong ${runId}`,
-    roomId: `cloud-smoke-room-${runId}`,
-    userId: `cloud-smoke-user-${runId}`,
-    mode: "simple",
-  });
-  const reply = typeof message.text === "string" ? message.text.trim() : "";
-  if (!reply) {
-    throw new Error(
-      `Bridge message send failed: ${JSON.stringify(message).slice(0, 500)}`,
+  // Token phrased without quotes or "exact words:" so it can never match the
+  // bridge's fallback-text extraction patterns and be fabricated back at us.
+  const token = `cloud-smoke-pong-${runId}`;
+  await retryChatTurn("bridge chat turn", async () => {
+    const message = await jsonRpc("message.send", {
+      text: `Reply with one short sentence that contains the token ${token}.`,
+      roomId: `cloud-smoke-room-${runId}`,
+      userId: `cloud-smoke-user-${runId}`,
+      mode: "simple",
+    });
+    const verdict = classifyBridgeReply(message, token);
+    if (!verdict.ok) {
+      throw new Error(
+        `${verdict.reason} (transport: ${verdict.transport})` +
+          (verdict.reply ? ` — reply: ${verdict.reply.slice(0, 200)}` : ""),
+      );
+    }
+    console.log(
+      `[smoke] bridge reply ${verdict.reply.length} chars (transport: ${verdict.transport}, token echoed)`,
     );
-  }
-  console.log(`[smoke] bridge reply ${reply.length} chars`);
+  });
 }
 
 function parseSseBlock(
@@ -484,6 +529,16 @@ function extractSseText(event: string, data: JsonObject | null): string {
 
 async function assertStreamReply(): Promise<void> {
   if (!agentId) throw new Error("Agent not initialized");
+  // Token phrased without quotes or "exact words:" — the stream path has its
+  // own no-reply fabrication (an SSE frame indistinguishable from a real
+  // reply), so the proof token missing from the fabricated text is the only
+  // reliable tell (#15616).
+  const token = `cloud-stream-pong-${runId}`;
+  await retryChatTurn("stream chat turn", () => streamChatTurn(token));
+}
+
+async function streamChatTurn(token: string): Promise<void> {
+  if (!agentId) throw new Error("Agent not initialized");
   const response = await requestStream(
     `/api/v1/eliza/agents/${agentId}/stream`,
     {
@@ -493,7 +548,7 @@ async function assertStreamReply(): Promise<void> {
         id: `stream-${Date.now()}`,
         method: "message.send",
         params: {
-          text: `Please reply with the exact words: cloud stream smoke pong ${runId}`,
+          text: `Reply with one short sentence that contains the token ${token}.`,
           roomId: `cloud-smoke-stream-room-${runId}`,
           mode: "simple",
         },
@@ -545,7 +600,14 @@ async function assertStreamReply(): Promise<void> {
       `Stream did not return assistant text${sawDone ? "" : " before timeout"}`,
     );
   }
-  console.log(`[smoke] stream reply ${trimmed.length} chars`);
+  // SSE frames carry no fallback/failureKind flags, so judge the accumulated
+  // text: canned failure strings, echo-mode replies, and a missing proof
+  // token all reject.
+  const verdict = classifyBridgeReply({ text: trimmed }, token);
+  if (!verdict.ok) {
+    throw new Error(`${verdict.reason} — reply: ${trimmed.slice(0, 200)}`);
+  }
+  console.log(`[smoke] stream reply ${trimmed.length} chars (token echoed)`);
 }
 
 async function assertPairingToken(): Promise<void> {

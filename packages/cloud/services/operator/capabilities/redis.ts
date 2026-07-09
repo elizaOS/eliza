@@ -8,7 +8,12 @@ const AGENT_ROUTING_TTL_SECONDS = 30 * 24 * 3600;
 let client: Redis | null = null;
 
 function createMockRedis(): Redis {
-  const requireCJS = createRequire(`${process.cwd()}/package.json`);
+  // Resolve ioredis-mock from THIS module's location, not the process cwd:
+  // the cloud test lane (packages/scripts/test-cloud-run.mjs) runs bun test
+  // from a staging directory where a cwd-based require can't see the
+  // operator's node_modules. The mock branch is test-only (MOCK_REDIS=1), so
+  // the pepr/esbuild CJS bundle never executes it in production.
+  const requireCJS = createRequire(import.meta.url);
   // biome-ignore lint/suspicious/noExplicitAny: ESM/CJS interop with ioredis-mock
   const mod = requireCJS("ioredis-mock") as any;
   const Ctor = mod?.default ?? mod;

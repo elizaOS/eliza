@@ -11,7 +11,7 @@
  *
  * Harness mirrors `__tests__/agent-billing-reactivation.test.ts`: drizzle-kit
  * `pushSchema` applies the exact DDL from the real schema objects to the same
- * PGlite connection the repository queries through. Self-skips LOUDLY (never
+ * PGlite connection the repository queries through. Fails LOUDLY (never
  * silently passes) when a shared non-PGlite Postgres is the ambient DATABASE_URL.
  */
 
@@ -96,7 +96,7 @@ beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
     console.warn(
-      "[agent-sandboxes-fleet-candidate-repo.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite self-skips — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
+      "[agent-sandboxes-fleet-candidate-repo.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite isolation suite fails — drizzle-kit pushSchema against a shared connection crashes the bun runner and would mutate the shared schema.",
     );
     return;
   }
@@ -107,14 +107,14 @@ beforeAll(async () => {
   } catch (error) {
     pgliteReady = false;
     console.error(
-      "[agent-sandboxes-fleet-candidate-repo.test] PGlite/pushSchema unavailable — cannot drive AgentSandboxesRepository against a real DB. Skipping all cases.",
+      "[agent-sandboxes-fleet-candidate-repo.test] PGlite/pushSchema unavailable — cannot drive AgentSandboxesRepository against a real DB. Failing all cases.",
       error,
     );
   }
 }, PGLITE_TIMEOUT);
 
 beforeEach(async () => {
-  if (!pgliteReady) return;
+  expect(pgliteReady).toBe(true);
   await dbWrite.delete(agentSandboxes);
 });
 
@@ -124,7 +124,7 @@ afterAll(async () => {
 
 describe("fleet candidate selection matches default image by repo (#15101)", () => {
   test("listRunningWithDigestOtherThan selects same-repo agents pinned to a different tag/digest", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
 
     // Same repo, older tag — this is the row the pre-fix full-ref compare wrongly skipped.
@@ -164,7 +164,7 @@ describe("fleet candidate selection matches default image by repo (#15101)", () 
   });
 
   test("a registry port in the repo is not mistaken for a tag", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const targetImage = "ghcr.io:443/elizaos/eliza-agent:prod";
 
@@ -187,7 +187,7 @@ describe("fleet candidate selection matches default image by repo (#15101)", () 
   });
 
   test("listRollbackEligibleForDigest matches same-repo agents by repo, excludes custom", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
 
     // Rollback-eligible: on the current digest, has a previous digest, same repo
@@ -221,7 +221,7 @@ describe("fleet candidate selection matches default image by repo (#15101)", () 
 
 describe("imageRepoSql matches imageRepo across ref shapes (#15101)", () => {
   test("SQL normalization agrees with the JS guard for every ref shape", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const { imageRepo, imageRepoSql } = await import("../../utils/docker-image-ref");
     const cases = [
       "ghcr.io/elizaos/eliza-agent:prod",

@@ -24,6 +24,8 @@ describe("processBackupVerificationCycle (daemon phase wiring)", () => {
       verified: 2,
       failed: 1,
       errored: 0,
+      oversizeSkipped: 0,
+      budgetDeferred: 0,
       escalated: false,
       failures: [
         {

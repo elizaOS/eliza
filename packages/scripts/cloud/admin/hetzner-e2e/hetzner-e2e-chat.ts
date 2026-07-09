@@ -8,21 +8,27 @@
  * chat dead-ends" regressions (#15347) pass the nightly — this step closes
  * that gap by requiring an actual assistant reply. Exit 0 = the agent replied.
  *
- * The bridge fabricates `result.text` with `fallback: true` /
- * `reason: "agent_no_reply"` when the runtime is reachable but produced no
- * reply — exactly the dead-end this step exists to catch — so a fallback
- * reply is treated as a failure, never a pass. Attempts retry until
- * HETZNER_E2E_CHAT_TIMEOUT_MS (default 240s) to absorb a cold model path
- * right after provisioning.
+ * The runtime answers HTTP 200 with canned text (`failureKind` set) when its
+ * model path is dead, and the bridge fabricates text (`fallback: true`) when
+ * the runtime produced no reply — exactly the dead-ends this step exists to
+ * catch (#15616). classifyBridgeReply rejects both, rejects known canned
+ * strings from pre-`failureKind` runtimes, and requires the per-run proof
+ * token in the reply — so a pass means a live model round-tripped THIS
+ * message. Attempts retry until HETZNER_E2E_CHAT_TIMEOUT_MS (default 240s) to
+ * absorb a cold model path and the occasional paraphrase that drops the token.
+ * The success log names which bridge rung (conversation REST, OpenAI-compat,
+ * central-channel, …) replied, so a conversation-route-only regression cannot
+ * hide behind a fallback rung.
  */
 
 import { randomBytes } from "node:crypto";
+import { classifyBridgeReply } from "../bridge-reply-verdict";
 import { readState } from "./state-file";
 
 const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
 const DEFAULT_TIMEOUT_MS = 240_000;
 const RETRY_DELAY_MS = 5_000;
-// Per-attempt cap: the Worker's bridge tries up to three inner transports at
+// Per-attempt cap: the Worker's bridge tries up to four inner transports at
 // 60-120s each, so a single POST can legitimately take minutes.
 const ATTEMPT_TIMEOUT_MS = 130_000;
 
@@ -40,13 +46,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 interface BridgeChatEnvelope {
-  result?: {
-    text?: unknown;
-    fallback?: unknown;
-    reason?: unknown;
-    agentName?: unknown;
-    conversationId?: unknown;
-  };
+  result?: Record<string, unknown>;
   error?: { code?: number; message?: string };
 }
 
@@ -56,7 +56,8 @@ async function sendChatTurn(
   agentId: string,
   prompt: string,
   roomId: string,
-): Promise<string> {
+  token: string,
+): Promise<{ reply: string; transport: string }> {
   const response = await fetch(
     `${baseUrl}/api/v1/eliza/agents/${agentId}/bridge`,
     {
@@ -92,24 +93,14 @@ async function sendChatTurn(
       `Chat JSON-RPC error: ${JSON.stringify(body.error).slice(0, 300)}`,
     );
   }
-  const result = body.result;
-  if (!result || typeof result !== "object") {
-    throw new Error(`Chat response missing result: ${text.slice(0, 300)}`);
-  }
-  if (result.fallback === true) {
+  const verdict = classifyBridgeReply(body.result, token);
+  if (!verdict.ok) {
     throw new Error(
-      `Bridge returned fabricated fallback text (reason: ${String(
-        result.reason ?? "unknown",
-      )}) — the agent produced no real reply`,
+      `${verdict.reason} (transport: ${verdict.transport})` +
+        (verdict.reply ? ` — reply: ${verdict.reply.slice(0, 200)}` : ""),
     );
   }
-  const reply = typeof result.text === "string" ? result.text.trim() : "";
-  if (!reply) {
-    throw new Error(
-      `Bridge reply was empty: ${JSON.stringify(result).slice(0, 300)}`,
-    );
-  }
-  return reply;
+  return { reply: verdict.reply, transport: verdict.transport };
 }
 
 async function main(): Promise<void> {
@@ -152,25 +143,18 @@ async function main(): Promise<void> {
   while (Date.now() < deadline) {
     attempt += 1;
     try {
-      const reply = await sendChatTurn(
+      const { reply, transport } = await sendChatTurn(
         baseUrl,
         apiKey,
         agentId,
         prompt,
         roomId,
+        token,
       );
-      const echoedToken = reply.includes(token);
       console.log(
         `[hetzner-e2e-chat] agent replied on attempt ${attempt} ` +
-          `(${reply.length} chars, token echoed: ${echoedToken}): ${reply.slice(0, 300)}`,
+          `(${reply.length} chars, transport: ${transport}, token echoed): ${reply.slice(0, 300)}`,
       );
-      if (!echoedToken) {
-        // A live model occasionally paraphrases; a real non-fallback reply
-        // still proves the chat path. Surface the miss for the run log.
-        console.log(
-          `::warning::[hetzner-e2e-chat] reply did not echo token ${token} — real reply accepted, but inspect the run if this recurs.`,
-        );
-      }
       return;
     } catch (error) {
       // error-policy:J1 retry boundary — each failed attempt is logged and the
@@ -185,7 +169,7 @@ async function main(): Promise<void> {
   }
 
   throw new Error(
-    `Agent ${agentId} never produced a real chat reply within ${timeoutMs}ms ` +
+    `Agent ${agentId} never produced a real chat reply echoing ${token} within ${timeoutMs}ms ` +
       `(${attempt} attempt${attempt === 1 ? "" : "s"}). Last failure: ${lastFailure}`,
   );
 }

@@ -38,6 +38,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsgo --noEmit",
+    "test": "bun test",
     "build": "node ./scripts/build.mjs",
     "clean": "rm -rf dist",
     "dev": "bunx pepr dev",

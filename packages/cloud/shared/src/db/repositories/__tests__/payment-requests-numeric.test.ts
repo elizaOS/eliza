@@ -27,7 +27,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
 // PGlite isolation harness (mirrors agent-billing-numeric.test.ts): the wiring
-// suite self-skips LOUDLY against a shared non-PGlite Postgres.
+// suite fails LOUDLY against a shared non-PGlite Postgres.
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
   AMBIENT_DATABASE_URL === "" || AMBIENT_DATABASE_URL.startsWith("pglite");
@@ -138,7 +138,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
     if (!CAN_USE_ISOLATED_PGLITE) {
       pgliteReady = false;
       console.warn(
-        "[payment-requests-numeric.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite wiring suite self-skips — pushSchema against a shared connection crashes the bun runner and would mutate the shared schema. Parser suite above still runs.",
+        "[payment-requests-numeric.test] DATABASE_URL is a non-PGlite Postgres (shared CI DB); this in-process-PGlite wiring suite fails — pushSchema against a shared connection crashes the bun runner and would mutate the shared schema. Parser suite above still runs.",
       );
       return;
     }
@@ -164,7 +164,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
   }, PGLITE_TIMEOUT);
 
   beforeEach(async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await dbWrite.delete(paymentRequests);
     await dbWrite.delete(organizations);
   });
@@ -182,7 +182,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
   };
 
   test("a real amount_cents read routes through the parser (healthy path)", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const orgId = await seedOrg();
     const created = await repo.createPaymentRequest({
       organizationId: orgId,
@@ -200,7 +200,7 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
   });
 
   test("a large-but-safe amount round-trips without precision loss", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const orgId = await seedOrg();
     // 9,999,999,999,99 cents (~$100B) — well within safe-integer range but far
     // larger than a typical charge; proves the bigint read stays exact.
@@ -219,13 +219,13 @@ describe("PaymentRequestsRepository.getPaymentRequest fail-closed wiring", () =>
   });
 
   test("a genuinely-missing request returns null — NOT a fabricated row", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const fetched = await repo.getPaymentRequest("00000000-0000-0000-0000-000000000000");
     expect(fetched).toBeNull();
   });
 
   test("an explicit zero amount reads as 0 (distinguishable from a missing row's null)", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     const orgId = await seedOrg();
     const created = await repo.createPaymentRequest({
       organizationId: orgId,

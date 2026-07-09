@@ -1533,6 +1533,8 @@ async function runInfraMaintenanceCycle(
             verified: summary.verified,
             failed: summary.failed,
             errored: summary.errored,
+            oversizeSkipped: summary.oversizeSkipped,
+            budgetDeferred: summary.budgetDeferred,
             escalated: summary.escalated,
           },
         );

@@ -138,11 +138,20 @@ export async function grantInitialCreditsToWalletAccount(params: {
   return grantResult;
 }
 
+/**
+ * Unique-violation detection that survives driver wrapping: drizzle raises
+ * `DrizzleQueryError` whose message is the failed SQL, with the Postgres error
+ * underneath as `cause` — a top-level message check alone misses it. Walks the
+ * cause chain for the SQLSTATE (23505) and the message shapes.
+ */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.message.includes("unique") || error.message.includes("duplicate"))
-  );
+  let current: unknown = error;
+  for (let depth = 0; current instanceof Error && depth < 5; depth += 1) {
+    if ((current as Error & { code?: unknown }).code === "23505") return true;
+    if (current.message.includes("unique") || current.message.includes("duplicate")) return true;
+    current = current.cause;
+  }
+  return false;
 }
 
 async function findOrgBySlugForWrite(

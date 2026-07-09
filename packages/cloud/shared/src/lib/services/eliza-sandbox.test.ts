@@ -435,6 +435,7 @@ describe("ElizaSandboxService shared runtime bridge", () => {
             model: "none",
             degraded: true,
             runtime: "shared",
+            transport: "shared-runtime",
           },
         });
         expect(historyGetSpy).toHaveBeenCalled();

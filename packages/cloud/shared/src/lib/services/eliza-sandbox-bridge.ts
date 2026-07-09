@@ -431,6 +431,7 @@ export class ElizaSandboxBridgeService {
           text: fallbackText,
           fallback: true,
           reason: "agent_no_reply",
+          transport: "fallback",
         },
       };
     }
@@ -444,8 +445,28 @@ export class ElizaSandboxBridgeService {
     };
   }
 
+  // Deliberately text-only: a runtime-side canned failure reply (result carries
+  // `failureKind`, e.g. "provider issue" / credits-depleted text from
+  // packages/agent chat routes) still short-circuits the ladder. Production
+  // consumers (agent-gateway connectors, provisioning jobs, the REST adapters)
+  // surface that designed failure text to end users; falling through would
+  // replace it with the fabricated generic fallback and add up to ~50s of
+  // central-channel polling per failed turn. Strict callers (the e2e chat
+  // scripts) reject on the propagated `failureKind` instead (#15616).
   private bridgeResponseHasText(response: BridgeResponse): boolean {
     return typeof response.result?.text === "string" && response.result.text.trim().length > 0;
+  }
+
+  /**
+   * The agent runtime's conversation route answers HTTP 200 with canned text
+   * plus a `failureKind` discriminator when the model path is dead (provider
+   * issue, rate limit, credit exhaustion, no provider). Surface it so callers
+   * can tell a genuine model reply from a canned failure (#15616).
+   */
+  private extractBridgeFailureKind(body: Record<string, unknown>): string | undefined {
+    return typeof body.failureKind === "string" && body.failureKind.trim()
+      ? body.failureKind.trim()
+      : undefined;
   }
 
   private async bridgeConversationMessageSend(
@@ -473,6 +494,7 @@ export class ElizaSandboxBridgeService {
     }
 
     const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const failureKind = this.extractBridgeFailureKind(body);
     return {
       jsonrpc: "2.0",
       id: rpc.id,
@@ -480,6 +502,8 @@ export class ElizaSandboxBridgeService {
         text: this.extractBridgeMessageText(body) ?? "",
         agentName: typeof body.agentName === "string" ? body.agentName : undefined,
         conversationId,
+        transport: "conversation-rest",
+        ...(failureKind ? { failureKind } : {}),
       },
     };
   }
@@ -539,6 +563,7 @@ export class ElizaSandboxBridgeService {
         runtimeAgentId: runtimeAgent.id,
         agentName: runtimeAgent.name,
         channelId,
+        transport: "central-channel",
         messageId:
           typeof data.id === "string" ? data.id : typeof body.id === "string" ? body.id : undefined,
       },
@@ -572,6 +597,7 @@ export class ElizaSandboxBridgeService {
         text: this.extractOpenAiChatCompletionText(body) ?? "",
         model: typeof body.model === "string" ? body.model : undefined,
         completionId: typeof body.id === "string" ? body.id : undefined,
+        transport: "openai-compat",
       },
     };
   }

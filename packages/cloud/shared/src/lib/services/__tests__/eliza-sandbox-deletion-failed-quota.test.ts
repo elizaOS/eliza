@@ -11,7 +11,7 @@
  * flipped to `deletion_failed` exactly as the AGENT_DELETE permanent-failure
  * writeback does (provisioning-jobs.ts): status + error_message + error_count.
  *
- * Self-skips LOUDLY if PGlite/pushSchema is unavailable (never silently passes).
+ * Fails LOUDLY if PGlite/pushSchema is unavailable (never silently passes).
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -117,9 +117,7 @@ async function seedOrgAtCap(): Promise<{ orgId: string; userId: string; ids: str
 beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
-    console.warn(
-      "[eliza-sandbox-deletion-failed-quota.test] non-PGlite DATABASE_URL; self-skipping.",
-    );
+    console.warn("[eliza-sandbox-deletion-failed-quota.test] non-PGlite DATABASE_URL; failing.");
     return;
   }
   try {
@@ -132,7 +130,7 @@ beforeAll(async () => {
   } catch (error) {
     pgliteReady = false;
     console.error(
-      "[eliza-sandbox-deletion-failed-quota.test] PGlite/pushSchema unavailable — skipping.",
+      "[eliza-sandbox-deletion-failed-quota.test] PGlite/pushSchema unavailable — failing.",
       error,
     );
   }
@@ -146,7 +144,7 @@ describe("deletion_failed frees the org's quota slot (#15603 C8)", () => {
   test(
     "org at capacity with one deletion_failed row can mint a replacement; the stuck row stays for ops",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const { orgId, userId, ids } = await seedOrgAtCap();
       const svc = new ElizaSandboxService();
 
@@ -174,7 +172,7 @@ describe("deletion_failed frees the org's quota slot (#15603 C8)", () => {
   test(
     "the NORMAL reuse path never resurrects a deletion_failed row — it mints a fresh agent instead",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const { orgId, userId, ids } = await seedOrgAtCap();
       const svc = new ElizaSandboxService();
 
@@ -201,7 +199,7 @@ describe("deletion_failed frees the org's quota slot (#15603 C8)", () => {
   test(
     "a re-armed delete (deletion_failed -> deletion_pending) still frees the slot mid-recovery",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const { orgId, userId, ids } = await seedOrgAtCap();
       const svc = new ElizaSandboxService();
 
@@ -227,7 +225,7 @@ describe("deletion_failed frees the org's quota slot (#15603 C8)", () => {
   test(
     "coding-container path shares the exclusion: deletion_failed frees a slot there too",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -265,7 +263,7 @@ describe("the exclusion cannot be gamed into unbounded live containers", () => {
   test(
     "genuinely-running rows still hold their slot: org at cap of running agents is refused",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const { orgId, userId, ids } = await seedOrgAtCap();
       const svc = new ElizaSandboxService();
 
@@ -290,7 +288,7 @@ describe("the exclusion cannot be gamed into unbounded live containers", () => {
   test(
     "one deletion_failed row frees exactly ONE slot: the replacement fills it and the next create is refused with the live count",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const { orgId, userId, ids } = await seedOrgAtCap();
       const svc = new ElizaSandboxService();
 

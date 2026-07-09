@@ -859,6 +859,13 @@ jobs:
       - name: Per-plugin keyless e2e coverage self-test
         run: bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts
 
+      # #15616: pass/fail classifier for the live cloud chat smokes
+      # (hetzner-e2e-chat, live-cloud-provision-smoke). packages/scripts is
+      # outside workspace test discovery, so keep this explicit or canned
+      # failure replies can silently start passing the nightly again.
+      - name: Bridge chat-reply verdict classifier
+        run: bun test packages/scripts/cloud/admin/bridge-reply-verdict.test.ts
+
       - name: Per-plugin keyless e2e coverage gate
         run: bun run audit:e2e-coverage
 

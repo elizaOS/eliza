@@ -23,7 +23,7 @@
  * eliza-sandbox-create-idempotency.test.ts; this file proves the behavioral
  * quota semantics end-to-end on real SQL.
  *
- * Self-skips LOUDLY if PGlite/pushSchema is unavailable (never silently passes).
+ * Fails LOUDLY if PGlite/pushSchema is unavailable (never silently passes).
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -87,9 +87,7 @@ async function setAgentStatus(agentId: string, status: AgentSandboxStatus): Prom
 beforeAll(async () => {
   if (!CAN_USE_ISOLATED_PGLITE) {
     pgliteReady = false;
-    console.warn(
-      "[eliza-sandbox-coding-container-quota.test] non-PGlite DATABASE_URL; self-skipping.",
-    );
+    console.warn("[eliza-sandbox-coding-container-quota.test] non-PGlite DATABASE_URL; failing.");
     return;
   }
   try {
@@ -102,7 +100,7 @@ beforeAll(async () => {
   } catch (error) {
     pgliteReady = false;
     console.error(
-      "[eliza-sandbox-coding-container-quota.test] PGlite/pushSchema unavailable — skipping.",
+      "[eliza-sandbox-coding-container-quota.test] PGlite/pushSchema unavailable — failing.",
       error,
     );
   }
@@ -116,7 +114,7 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
   test(
     "the distinct-image DoS is dead: 6 distinct-image creates at cap 3 → exactly 3 rows, surplus throw AgentQuotaExceededError",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -151,7 +149,7 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
   test(
     "same-image retry at the cap reuses the active row (idempotent, no throw)",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -188,7 +186,7 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
   test(
     "unset cap stays uncapped (trusted internal callers) — mints past any ceiling",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -212,7 +210,7 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
   test(
     "quota is per-org: org A at the cap does not block org B",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgA = await seedOrg();
       const userA = await seedUser(orgA);
       const orgB = await seedOrg();
@@ -247,7 +245,7 @@ describe("createCodingContainerAgent — per-org quota (#11023)", () => {
   test(
     "createAgent (forceCreate) and createCodingContainerAgent share ONE per-org ceiling",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -295,7 +293,7 @@ describe("suspend/sleep quota residual (#11023 F3)", () => {
   test(
     "stopped + sleeping rows still hold their quota slot: both capped create paths throw",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -344,7 +342,7 @@ describe("suspend/sleep quota residual (#11023 F3)", () => {
   test(
     "the create→suspend→create loop is dead: the NORMAL reuse path throws when every existing agent is suspended/sleeping",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -385,7 +383,7 @@ describe("suspend/sleep quota residual (#11023 F3)", () => {
   test(
     "reuse semantics unchanged: at the cap a LIVE agent is still handed back (never a suspended row, never a throw)",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();
@@ -421,7 +419,7 @@ describe("suspend/sleep quota residual (#11023 F3)", () => {
   test(
     "terminal states stay excluded: error / deletion_pending rows free their quota slot",
     async () => {
-      if (!pgliteReady) return;
+      expect(pgliteReady).toBe(true);
       const orgId = await seedOrg();
       const userId = await seedUser(orgId);
       const svc = new ElizaSandboxService();

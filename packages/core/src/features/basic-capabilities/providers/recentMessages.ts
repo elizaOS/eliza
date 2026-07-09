@@ -45,6 +45,7 @@ import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
 // Get text content from centralized specs
 const spec = requireProviderSpec("RECENT_MESSAGES");
 const MAX_RECENT_MESSAGES_LOOKBACK = 50;
+const RECALL_REFERENTIAL_MESSAGES_LOOKBACK = 50;
 const MAX_RECENT_INTERACTIONS = 20;
 const MAX_COMPACT_LEDGER_CHARS = 4000;
 const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
@@ -66,6 +67,13 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"no_response",
 	"transient_failure",
 ]);
+const RECALL_REFERENTIAL_PATTERNS = [
+	/\bwhat\s+(?:did|was|were)\s+(?:i|we|you)\b.*\b(?:ask|say|tell|compute|calculate|mention|discuss|talk(?:ed)?\s+about)\b/i,
+	/\b(?:my|our|the)\s+(?:last|previous|prior|earlier)\b.*\b(?:question|request|message|ask|thing|calculation|math|topic)\b/i,
+	/\b(?:last|previous|prior|earlier)\s+(?:math|calculation|question|request|message)\b/i,
+	/\b(?:earlier|previously|before)\b.*\b(?:i|we|you)\s+(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
+	/\b(?:remind me|recall|remember)\b.*\b(?:what|when|which)\b.*\b(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
+];
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
@@ -189,6 +197,11 @@ function normalizeDialogueText(memory: Memory): string {
 	return typeof memory.content.text === "string"
 		? memory.content.text.replace(/\s+/g, " ").trim()
 		: "";
+}
+
+function isRecallReferentialMessage(memory: Memory): boolean {
+	const text = normalizeDialogueText(memory);
+	return RECALL_REFERENTIAL_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
@@ -358,10 +371,13 @@ export const recentMessagesProvider: Provider = {
 	): Promise<ProviderResult> => {
 		try {
 			const { roomId } = message;
-			const conversationLength = Math.min(
+			const configuredConversationLength = Math.min(
 				runtime.getConversationLength(),
 				MAX_RECENT_MESSAGES_LOOKBACK,
 			);
+			const conversationLength = isRecallReferentialMessage(message)
+				? RECALL_REFERENTIAL_MESSAGES_LOOKBACK
+				: configuredConversationLength;
 
 			// The cross-room interactions fetch (identity-cluster expansion, a
 			// rooms query per identity, then a 20-row pull across every other

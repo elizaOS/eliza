@@ -32,12 +32,14 @@ const ensureAgentSandboxSchema = mock(async () => {});
 // `where` captures the clause into the shared `capturedWhere` so a test can
 // assert on the generated SQL, mirroring the write-side capture above.
 let selectRows: unknown[] = [];
+let selectRowBatches: unknown[][] = [];
 
 function chainableRows(): unknown[] & {
   limit: () => unknown[];
   orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
 } {
-  const rows = [...selectRows] as unknown[] & {
+  const sourceRows = selectRowBatches.length > 0 ? selectRowBatches.shift() : selectRows;
+  const rows = [...(sourceRows ?? [])] as unknown[] & {
     limit: () => unknown[];
     orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
   };
@@ -135,6 +137,9 @@ describe("AgentSandboxesRepository", () => {
   beforeEach(() => {
     useRepositoryMocks = true;
     selectRows = [];
+    selectRowBatches = [];
+    select.mockClear();
+    selectWhere.mockClear();
   });
 
   afterEach(() => {
@@ -453,6 +458,9 @@ describe("AgentSandboxesRepository", () => {
         backup_kind: "full",
         parent_backup_id: null,
         content_hash: "hash",
+        verification_status: null,
+        verified_at: null,
+        verification_error: null,
         created_at: createdAt,
       });
 
@@ -490,6 +498,9 @@ describe("AgentSandboxesRepository", () => {
         backup_kind: "full",
         parent_backup_id: null,
         content_hash: "hash",
+        verification_status: null,
+        verified_at: null,
+        verification_error: null,
         created_at: new Date("2026-06-20T00:00:00.000Z"),
       },
     ];
@@ -503,6 +514,77 @@ describe("AgentSandboxesRepository", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe("55555555-5555-4555-8555-555555555555");
     expect(rows[0]?.snapshot_type).toBe("auto");
+  });
+
+  test("incremental reconstruction walks only the target chain sequentially", async () => {
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+    const { diffBackupState, computeStateHash } = await import(
+      "../../lib/services/agent-backup-diff"
+    );
+
+    const sandboxId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+    const fullId = "11111111-1111-4111-8111-111111111111";
+    const incrementalId = "22222222-2222-4222-8222-222222222222";
+    const baseState = {
+      memories: [{ role: "user", text: "base", timestamp: 1 }],
+      config: { mood: "steady" },
+      workspaceFiles: { "notes.txt": "base" },
+    };
+    const nextState = {
+      memories: [
+        { role: "user", text: "base", timestamp: 1 },
+        { role: "assistant", text: "next", timestamp: 2 },
+      ],
+      config: { mood: "awake" },
+      workspaceFiles: { "notes.txt": "next" },
+    };
+    const createdAt = new Date("2026-07-09T00:00:00.000Z");
+
+    selectRowBatches = [
+      [
+        {
+          id: incrementalId,
+          sandbox_record_id: sandboxId,
+          snapshot_type: "auto",
+          state_data: diffBackupState(baseState, nextState),
+          state_data_storage: "inline",
+          state_data_key: null,
+          size_bytes: 256,
+          backup_kind: "incremental",
+          parent_backup_id: fullId,
+          content_hash: computeStateHash(nextState),
+          verification_status: null,
+          verified_at: null,
+          verification_error: null,
+          created_at: createdAt,
+        },
+      ],
+      [
+        {
+          id: fullId,
+          sandbox_record_id: sandboxId,
+          snapshot_type: "auto",
+          state_data: baseState,
+          state_data_storage: "inline",
+          state_data_key: null,
+          size_bytes: 256,
+          backup_kind: "full",
+          parent_backup_id: null,
+          content_hash: computeStateHash(baseState),
+          verification_status: null,
+          verified_at: null,
+          verification_error: null,
+          created_at: createdAt,
+        },
+      ],
+    ];
+
+    const reconstructed = await new AgentSandboxesRepository().getReconstructedBackupState(
+      incrementalId,
+    );
+
+    expect(reconstructed).toEqual(nextState);
+    expect(selectWhere).toHaveBeenCalledTimes(2);
   });
 
   // C1c attribution guard (audit §C1c): claimWarmContainer must NEVER mint a

@@ -4,7 +4,16 @@
  */
 "use client";
 
+import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
+import { formatHourlyRate } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
   Badge,
   BulkDeleteDialog,
   BulkSelectionBar,
@@ -39,10 +48,12 @@ import {
   ExternalLink,
   FileText,
   Loader2,
+  Moon,
   Pause,
   Play,
   Search,
   Server,
+  Sun,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -231,7 +242,11 @@ function getRuntimeKind(
   if (
     sb.sandbox_id ||
     sb.status === "running" ||
-    sb.status === "provisioning"
+    sb.status === "provisioning" ||
+    // A deactivated (sleeping) agent released its container but is still an
+    // established sandbox with a restorable backup — "Not provisioned" would
+    // misread as never-set-up.
+    sb.status === "sleeping"
   ) {
     return "sandbox";
   }
@@ -254,6 +269,11 @@ interface AgentRowViewModel {
   busy: boolean;
   canStart: boolean;
   canStop: boolean;
+  /** Deactivate (sleep): only a running dedicated agent has compute to free —
+   * shared-runtime rows have no container, so the endpoint would no-op. */
+  canSleep: boolean;
+  /** Reactivate (wake): offered exactly for the sleeping (deactivated) state. */
+  canWake: boolean;
   hasStandaloneWebUi: boolean;
   runtimeKind: ReturnType<typeof getRuntimeKind>;
 }
@@ -277,6 +297,9 @@ export function deriveAgentRow(
       ["stopped", "error", "pending", "disconnected"].includes(displayStatus) &&
       !busy,
     canStop: displayStatus === "running" && !busy,
+    canSleep:
+      displayStatus === "running" && sb.execution_tier !== "shared" && !busy,
+    canWake: displayStatus === "sleeping" && !busy,
     hasStandaloneWebUi:
       displayStatus === "running" &&
       sb.execution_tier !== "shared" &&
@@ -430,6 +453,9 @@ export function ElizaAgentsTable({
   const queryClient = useQueryClient();
   const [deleteIds, setDeleteIds] = useState<string[] | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  // Deactivate (sleep) needs a billing-transparency confirm before the job is
+  // enqueued; the row Moon button stages the id here and the dialog confirms.
+  const [deactivateId, setDeactivateId] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(
     new Set(),
@@ -816,6 +842,85 @@ export function ElizaAgentsTable({
     });
   }
 
+  /** Deactivate = the `sleep` lifecycle action: durable encrypted backup, then
+   * container + compute slot released, so hourly billing stops entirely. Fired
+   * from the confirm dialog only — never directly from the row button. */
+  function handleSleep(id: string) {
+    return runAgentJob(id, {
+      request: () =>
+        apiWithStatus<AgentJobEnvelope>(`/api/v1/eliza/agents/${id}/sleep`, {
+          method: "POST",
+        }),
+      optimisticStatus: "sleeping",
+      labels: {
+        jobAction: t("cloud.elizaAgentsTable.agentDeactivation", {
+          defaultValue: "Agent deactivation",
+        }),
+        inProgress: t("cloud.elizaAgentsTable.deactivateInProgress", {
+          defaultValue: "Deactivation already in progress",
+        }),
+        failed: t("cloud.elizaAgentsTable.deactivateFailed", {
+          defaultValue: "Deactivate failed",
+        }),
+        queued: t("cloud.elizaAgentsTable.deactivateQueued", {
+          defaultValue: "Deactivation queued — saving an encrypted backup",
+        }),
+        alreadyDone: t("cloud.elizaAgentsTable.alreadyDeactivated", {
+          defaultValue: "Agent is already deactivated",
+        }),
+      },
+      onError: (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(
+          t("cloud.elizaAgentsTable.failedToDeactivate", {
+            message,
+            defaultValue: "Failed to deactivate agent: {{message}}",
+          }),
+        );
+      },
+    });
+  }
+
+  /** Reactivate = the `wake` lifecycle action: re-provisions compute and
+   * restores the encrypted backup. Can take minutes — the tracked job keeps
+   * the row in its in-progress state until the poll sees completion. */
+  function handleWake(id: string) {
+    return runAgentJob(id, {
+      request: () =>
+        apiWithStatus<AgentJobEnvelope>(`/api/v1/eliza/agents/${id}/wake`, {
+          method: "POST",
+        }),
+      optimisticStatus: "provisioning",
+      labels: {
+        jobAction: t("cloud.elizaAgentsTable.agentReactivation", {
+          defaultValue: "Agent reactivation",
+        }),
+        inProgress: t("cloud.elizaAgentsTable.reactivateInProgress", {
+          defaultValue: "Reactivation already in progress",
+        }),
+        failed: t("cloud.elizaAgentsTable.reactivateFailed", {
+          defaultValue: "Reactivate failed",
+        }),
+        queued: t("cloud.elizaAgentsTable.reactivateQueued", {
+          defaultValue:
+            "Reactivation queued — restoring from backup (this can take a few minutes)",
+        }),
+        alreadyDone: t("cloud.elizaAgentsTable.alreadyRunning", {
+          defaultValue: "Agent is already running",
+        }),
+      },
+      onError: (err) => {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.error(
+          t("cloud.elizaAgentsTable.failedToReactivate", {
+            message,
+            defaultValue: "Failed to reactivate agent: {{message}}",
+          }),
+        );
+      },
+    });
+  }
+
   /**
    * Delete one or many agents. Rows leave the list immediately and their ids
    * are tombstoned so the eventually-consistent list API can't resurrect them
@@ -1009,6 +1114,11 @@ export function ElizaAgentsTable({
               <SelectItem value="stopped">
                 {t("cloud.elizaAgentsTable.stopped", {
                   defaultValue: "Stopped",
+                })}
+              </SelectItem>
+              <SelectItem value="sleeping">
+                {t("cloud.elizaAgentsTable.deactivatedFilter", {
+                  defaultValue: "Deactivated",
                 })}
               </SelectItem>
               <SelectItem value="disconnected">
@@ -1315,6 +1425,58 @@ export function ElizaAgentsTable({
                             </Tooltip>
                           )}
 
+                          {vm.canWake && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  type="button"
+                                  aria-label={t(
+                                    "cloud.elizaAgentsTable.reactivateAgent",
+                                    { defaultValue: "Reactivate agent" },
+                                  )}
+                                  onClick={() => handleWake(sb.id)}
+                                  disabled={busy}
+                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
+                                >
+                                  <Sun className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-card border-border">
+                                {t("cloud.elizaAgentsTable.reactivateAgent", {
+                                  defaultValue: "Reactivate agent",
+                                })}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
+                          {vm.canSleep && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  type="button"
+                                  aria-label={t(
+                                    "cloud.elizaAgentsTable.deactivateAgent",
+                                    { defaultValue: "Deactivate agent" },
+                                  )}
+                                  onClick={() =>
+                                    !busy && setDeactivateId(sb.id)
+                                  }
+                                  disabled={busy}
+                                  className="inline-flex size-touch items-center justify-center text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
+                                >
+                                  <Moon className="h-4 w-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent className="bg-card border-border">
+                                {t("cloud.elizaAgentsTable.deactivateAgent", {
+                                  defaultValue: "Deactivate agent",
+                                })}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
@@ -1457,6 +1619,42 @@ export function ElizaAgentsTable({
                       </Button>
                     )}
 
+                    {vm.canWake && (
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        aria-label={t(
+                          "cloud.elizaAgentsTable.reactivateAgent",
+                          {
+                            defaultValue: "Reactivate agent",
+                          },
+                        )}
+                        onClick={() => handleWake(sb.id)}
+                        disabled={busy}
+                        className="min-h-touch px-3 text-status-success hover:bg-status-success-bg transition-colors disabled:opacity-30"
+                      >
+                        <Sun className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+
+                    {vm.canSleep && (
+                      <Button
+                        variant="ghost"
+                        type="button"
+                        aria-label={t(
+                          "cloud.elizaAgentsTable.deactivateAgent",
+                          {
+                            defaultValue: "Deactivate agent",
+                          },
+                        )}
+                        onClick={() => !busy && setDeactivateId(sb.id)}
+                        disabled={busy}
+                        className="min-h-touch px-3 text-muted hover:text-txt-strong hover:bg-bg-hover transition-colors disabled:opacity-30"
+                      >
+                        <Moon className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+
                     <Button
                       variant="ghost"
                       type="button"
@@ -1523,6 +1721,71 @@ export function ElizaAgentsTable({
           handleDelete(deleteIds)
         }
       />
+
+      {/* Deactivate confirm — the non-destructive counterpart to delete. The
+          copy is shared with the detail page's dialog (same flat i18n keys) so
+          the billing-transparency story reads identically on both surfaces. */}
+      <AlertDialog
+        open={deactivateId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeactivateId(null);
+        }}
+      >
+        <AlertDialogContent className="bg-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-txt-strong">
+              {t("cloud.containers.agentActions.deactivateTitle", {
+                defaultValue: "Deactivate this agent?",
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted">
+              <span className="block">
+                {t("cloud.containers.agentActions.deactivateBody1", {
+                  defaultValue:
+                    "Your agent stops running and stops consuming hourly credits (currently {{rate}} while running).",
+                  rate: formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE),
+                })}
+              </span>
+              <span className="block mt-2">
+                {t("cloud.containers.agentActions.deactivateBody2", {
+                  defaultValue:
+                    "All of its data is saved in an encrypted backup — nothing is deleted.",
+                })}
+              </span>
+              <span className="block mt-2">
+                {t("cloud.containers.agentActions.deactivateBody3", {
+                  defaultValue:
+                    "You can reactivate it anytime. Reactivation restores the backup and can take a few minutes.",
+                })}
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-border bg-transparent text-txt hover:bg-surface">
+              {t("cloud.elizaAgentsTable.cancel", { defaultValue: "Cancel" })}
+            </AlertDialogCancel>
+            <Button
+              type="button"
+              disabled={
+                deactivateId !== null &&
+                (poller.isActive(deactivateId) ||
+                  actionInProgress === deactivateId)
+              }
+              onClick={() => {
+                if (!deactivateId) return;
+                const id = deactivateId;
+                setDeactivateId(null);
+                void handleSleep(id);
+              }}
+            >
+              <Moon className="h-4 w-4" />
+              {t("cloud.containers.agentActions.deactivateConfirm", {
+                defaultValue: "Yes, deactivate",
+              })}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TooltipProvider>
   );
 }

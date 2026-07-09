@@ -42,18 +42,18 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  if (!pgliteReady) return;
+  expect(pgliteReady).toBe(true);
   await dbWrite.execute(sql`DELETE FROM anonymous_sessions`);
 });
 
 afterAll(async () => {
-  if (!pgliteReady) return;
+  expect(pgliteReady).toBe(true);
   await dbWrite.execute(sql`DROP TABLE IF EXISTS anonymous_sessions`);
 });
 
 describe("AnonymousSessionsRepository free-message reservations", () => {
   test("reserves a message slot atomically at the configured limit", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
 
     const sessionId = "00000000-0000-4000-8000-000000000101";
     await dbWrite.execute(sql`
@@ -88,7 +88,7 @@ describe("AnonymousSessionsRepository free-message reservations", () => {
   });
 
   test("refunds a reserved slot without underflowing the counter", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
 
     const sessionId = "00000000-0000-4000-8000-000000000102";
     await dbWrite.execute(sql`

@@ -67,30 +67,30 @@ afterAll(async () => {
 
 describe("hasUnrefundedDomainPurchase", () => {
   beforeEach(async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await dbWrite.execute(`DELETE FROM credit_transactions;`);
   });
 
   test("no transactions → false", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     expect(await repo.hasUnrefundedDomainPurchase(ORG_A, "example.com")).toBe(false);
   });
 
   test("an unrefunded domain_purchase debit → true", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await addTxn(ORG_A, "debit", { type: "domain_purchase", domain: "example.com" });
     expect(await repo.hasUnrefundedDomainPurchase(ORG_A, "example.com")).toBe(true);
   });
 
   test("debit fully refunded → false", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await addTxn(ORG_A, "debit", { type: "domain_purchase", domain: "example.com" });
     await addTxn(ORG_A, "refund", { type: "domain_purchase_refund", domain: "example.com" });
     expect(await repo.hasUnrefundedDomainPurchase(ORG_A, "example.com")).toBe(false);
   });
 
   test("re-purchased after a refund (debits > refunds) → true", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await addTxn(ORG_A, "debit", { type: "domain_purchase", domain: "example.com" });
     await addTxn(ORG_A, "refund", { type: "domain_purchase_refund", domain: "example.com" });
     await addTxn(ORG_A, "debit", { type: "domain_purchase", domain: "example.com" });
@@ -98,14 +98,14 @@ describe("hasUnrefundedDomainPurchase", () => {
   });
 
   test("a different org's purchase does not grant ownership", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await addTxn(ORG_A, "debit", { type: "domain_purchase", domain: "example.com" });
     // Org B never bought example.com — must be denied (cross-tenant guard).
     expect(await repo.hasUnrefundedDomainPurchase(ORG_B, "example.com")).toBe(false);
   });
 
   test("a purchase of a different domain does not match", async () => {
-    if (!pgliteReady) return;
+    expect(pgliteReady).toBe(true);
     await addTxn(ORG_A, "debit", { type: "domain_purchase", domain: "other.com" });
     expect(await repo.hasUnrefundedDomainPurchase(ORG_A, "example.com")).toBe(false);
   });

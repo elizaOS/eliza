@@ -1212,6 +1212,13 @@
       "when": 1781914800000,
       "tag": "0173_agent_backup_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1782001200000,
+      "tag": "0174_agent_backup_latest_index",
+      "breakpoints": true
     }
   ]
 }

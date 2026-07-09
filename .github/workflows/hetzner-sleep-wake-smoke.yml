@@ -7,8 +7,26 @@ name: Hetzner Sleep-Wake Smoke
 # runner filesystem standing in for S3/R2 (CI has HCLOUD + SSH, not R2) — the
 # point is to authentically exercise the provision -> capture state ->
 # DESTROY THE BOX -> provision a NEW box -> restore -> verify cycle end to end.
+#
+# Secret gating mirrors hetzner-e2e.yml: on schedule/push, missing or rejected
+# HCLOUD_TOKEN_CI / SSH secrets skip cleanly (exit 0 + loud warning and step
+# summary) so the nightly run can't crash-loop red on forks or stale tokens;
+# a manual workflow_dispatch still fails loudly so an operator sees the
+# broken secret.
+#
+# Required secrets (GitHub environment: ci-hetzner-e2e):
+#   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
+#   CI_SSH_PRIVATE_KEY     - OpenSSH private key (matches the public key
+#                            uploaded to Hetzner)
+#   CI_SSH_PUBLIC_KEY_ID   - Numeric Hetzner SSH key id for the above
 
 on:
+  schedule:
+    # 06:00 UTC nightly — an hour before hetzner-e2e's 07:00 slot. Both
+    # workflows share the `hetzner-e2e` concurrency group (no cancel), so a
+    # long sleep-wake run queues the agent e2e instead of racing it for the
+    # CI project's server quota.
+    - cron: '0 6 * * *'
   workflow_dispatch:
   push:
     branches: [claude/hetzner-provision-smoke]
@@ -35,35 +53,184 @@ jobs:
       HETZNER_E2E_LOCATION: nbg1
       SSH_OPTS: -i /tmp/ci_ssh_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o BatchMode=yes
     steps:
-      - name: Check secrets
+      - name: Check secret configuration
+        id: secret_config
         run: |
-          for s in HCLOUD_TOKEN_CI CI_SSH_PRIVATE_KEY CI_SSH_PUBLIC_KEY_ID; do
-            [ -z "${!s}" ] && { echo "::error::missing $s"; exit 1; }
-          done; echo ok
+          missing=()
+          [ -z "$HCLOUD_TOKEN_CI" ] && missing+=("HCLOUD_TOKEN_CI")
+          [ -z "$CI_SSH_PRIVATE_KEY" ] && missing+=("CI_SSH_PRIVATE_KEY")
+          [ -z "$CI_SSH_PUBLIC_KEY_ID" ] && missing+=("CI_SSH_PUBLIC_KEY_ID")
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Missing secrets: ${missing[*]}; skipping Hetzner sleep-wake smoke."
+            {
+              echo "### Hetzner sleep-wake smoke skipped"
+              echo ""
+              echo "Missing secrets in GitHub environment \`ci-hetzner-e2e\`:"
+              for s in "${missing[@]}"; do echo "- \`$s\`"; done
+              echo ""
+              echo "See \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` for setup."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Manual dispatch requires all hetzner-e2e secrets."
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+      - name: Checkout
+        if: steps.secret_config.outputs.configured == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Bun
+        if: steps.secret_config.outputs.configured == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: canary
+
       - name: Install deps
+        if: steps.secret_config.outputs.configured == 'true'
         run: bun install --no-save --ignore-scripts
 
       - name: Ensure generated shared i18n data
+        if: steps.secret_config.outputs.configured == 'true'
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
+      - name: Check Hetzner API token
+        id: hcloud_auth
+        if: steps.secret_config.outputs.configured == 'true'
+        run: |
+          set +e
+          response="$(
+            bun -e '
+              const response = await fetch("https://api.hetzner.cloud/v1/ssh_keys?per_page=1", {
+                headers: {
+                  authorization: `Bearer ${process.env.HCLOUD_TOKEN_CI ?? ""}`,
+                  accept: "application/json",
+                  "user-agent": "hetzner-sleep-wake-preflight/1.0",
+                },
+                signal: AbortSignal.timeout(30_000),
+              });
+              const text = await response.text();
+              console.log(JSON.stringify({ status: response.status, body: text.slice(0, 500) }));
+            '
+          )"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Hetzner API token preflight could not reach api.hetzner.cloud; skipping sleep-wake smoke."
+            {
+              echo "### Hetzner sleep-wake smoke skipped"
+              echo ""
+              echo "Hetzner API token preflight could not reach \`api.hetzner.cloud\` before provisioning capacity."
+              echo ""
+              echo "\`\`\`json"
+              echo "$response"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          status_code="$(printf '%s' "$response" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const data = JSON.parse(Buffer.concat(chunks).toString() || "{}"); console.log(data.status ?? "");')"
+          if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Hetzner rejected HCLOUD_TOKEN_CI with HTTP $status_code; skipping sleep-wake smoke before provisioning."
+            {
+              echo "### Hetzner sleep-wake smoke skipped"
+              echo ""
+              echo "Hetzner rejected \`HCLOUD_TOKEN_CI\` with HTTP \`$status_code\` before provisioning capacity."
+              echo ""
+              echo "Refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` environment, or confirm the Hetzner project is still active."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [ "${status_code#2}" != "$status_code" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${status_code#5}" != "$status_code" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Hetzner API token preflight returned HTTP $status_code; skipping sleep-wake smoke before provisioning."
+            {
+              echo "### Hetzner sleep-wake smoke skipped"
+              echo ""
+              echo "Hetzner API token preflight returned HTTP \`$status_code\` before provisioning capacity."
+              echo ""
+              echo "\`\`\`json"
+              echo "$response"
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          echo "::error::Unexpected Hetzner API token preflight response: $response"
+          exit 1
+
       - name: Write SSH key
+        if: steps.secret_config.outputs.configured == 'true' && steps.hcloud_auth.outputs.ready == 'true'
         run: |
           printf '%s\n' "$CI_SSH_PRIVATE_KEY" > /tmp/ci_ssh_key
           chmod 600 /tmp/ci_ssh_key
 
       # ── Provision box A + boot ──────────────────────────────────────────
       - name: Provision box A
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
+        id: provision_a
+        if: steps.secret_config.outputs.configured == 'true' && steps.hcloud_auth.outputs.ready == 'true'
+        run: |
+          log=/tmp/hetzner-sleep-wake-provision.log
+          set +e
+          bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "provisioned=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A rejected / expired / read-only HCLOUD_TOKEN_CI (or a deactivated
+          # project) surfaces as HTTP 401/403 when CREATING the server — the
+          # read-only preflight above can pass while this write fails. That is
+          # an operator secret problem, not a code regression: warn + skip on
+          # push/schedule, fail loudly on manual dispatch (same policy as
+          # hetzner-e2e.yml).
+          if grep -qE "Hetzner rejected the token|missing_token|permission denied|HTTP 401|HTTP 403|status: 401|status: 403" "$log"; then
+            echo "provisioned=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Hetzner rejected HCLOUD_TOKEN_CI (HTTP 401/403); skipping sleep-wake smoke. Refresh the token in the ci-hetzner-e2e environment."
+            {
+              echo "### Hetzner sleep-wake smoke skipped"
+              echo ""
+              echo "Hetzner rejected \`HCLOUD_TOKEN_CI\` (HTTP 401/403 \`missing_token\` / permission denied) when creating the server."
+              echo ""
+              echo "The token may be read-only or expired for writes. Refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` environment with a read-write CI token, or confirm the project is active."
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+          # Any other provision failure is real — surface it (red).
+          echo "provisioned=false" >> "$GITHUB_OUTPUT"
+          exit "$rc"
+
       - name: Wait A ready
+        if: steps.provision_a.outputs.provisioned == 'true'
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
 
       # ── Write agent state on A, then BACK IT UP off-box ─────────────────
       - name: Write + back up agent state from A
+        if: steps.provision_a.outputs.provisioned == 'true'
         run: |
           IP_A=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_A=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
           echo "box A: id=$ID_A ip=$IP_A"
@@ -79,6 +246,7 @@ jobs:
 
       # ── SLEEP: de-provision (destroy) box A ─────────────────────────────
       - name: Sleep — de-provision (destroy) box A
+        if: steps.provision_a.outputs.provisioned == 'true'
         run: |
           bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts
           ID_A=$(cat /tmp/box-a-id)
@@ -88,10 +256,13 @@ jobs:
 
       # ── WAKE: re-provision a NEW box B + restore from backup ────────────
       - name: Wake — re-provision box B
+        if: steps.provision_a.outputs.provisioned == 'true'
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
       - name: Wait B ready
+        if: steps.provision_a.outputs.provisioned == 'true'
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-wait-ready.ts
       - name: Restore backup onto B + verify state survived
+        if: steps.provision_a.outputs.provisioned == 'true'
         run: |
           IP_B=$(jq -r .ip "$HETZNER_E2E_STATE_FILE"); ID_B=$(jq -r .id "$HETZNER_E2E_STATE_FILE")
           ID_A=$(cat /tmp/box-a-id)
@@ -104,6 +275,14 @@ jobs:
           ssh $SSH_OPTS root@"$IP_B" "grep -q orbital-mango-4417 /root/agent-state-restored.json" \
             && echo "PASS: agent state survived sleep(destroy A) -> wake(new box B) -> restore"
 
+      # Runs whenever provisioning was ATTEMPTED (success or failure — a failed
+      # create can still leak a server), and skips only when provisioning never
+      # started. DEPLOY_PROVISIONED lets the teardown script distinguish "dead
+      # token, nothing was provisioned, nothing can leak" (soft-skip) from
+      # "dead token but a server exists" (hard fail so the leak is never
+      # silent) — same contract as hetzner-e2e.yml's teardown job.
       - name: Teardown box B (always)
-        if: always()
+        if: always() && steps.provision_a.outcome != 'skipped'
+        env:
+          DEPLOY_PROVISIONED: ${{ steps.provision_a.outputs.provisioned }}
         run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-teardown.ts

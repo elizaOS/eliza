@@ -1,13 +1,16 @@
 /**
  * API-key auth boundary coverage keeps storage outages distinct from invalid
- * credentials so clients retry instead of prompting users to rotate good keys.
+ * credentials so clients retry instead of prompting users to rotate good keys:
+ * a validateApiKey THROW (datastore down) must map to 503 on BOTH guards, while
+ * a null return (genuinely invalid key) stays a 401.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-const validateApiKey = mock(async () => {
+let validateBehavior: () => Promise<unknown> = async () => {
   throw new Error("database unavailable");
-});
+};
+const validateApiKey = mock(() => validateBehavior());
 
 mock.module("../services/api-keys", () => ({
   apiKeysService: {
@@ -38,7 +41,7 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
-const { requireUserOrApiKey } = await import("./workers-hono-auth");
+const { requireUserOrApiKey, requireUserOrApiKeyWithOrg } = await import("./workers-hono-auth");
 
 function contextWithApiKey(apiKey: string) {
   const state = new Map<string, unknown>();
@@ -54,6 +57,12 @@ function contextWithApiKey(apiKey: string) {
   };
 }
 
+beforeEach(() => {
+  validateBehavior = async () => {
+    throw new Error("database unavailable");
+  };
+});
+
 describe("Workers API-key auth", () => {
   test("returns a service-unavailable error when API-key storage throws", async () => {
     await expect(
@@ -62,6 +71,35 @@ describe("Workers API-key auth", () => {
       status: 503,
       code: "service_unavailable",
       message: "API key validation is temporarily unavailable. Please retry.",
+    });
+  });
+
+  test("requireUserOrApiKeyWithOrg maps the same storage throw to 503", async () => {
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "service_unavailable",
+    });
+  });
+
+  test("a null validation result stays 401 invalid-key on requireUserOrApiKey", async () => {
+    validateBehavior = async () => null;
+    await expect(
+      requireUserOrApiKey(contextWithApiKey("eliza_bad_key") as never),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "authentication_required",
+    });
+  });
+
+  test("a null validation result stays 401 invalid-key on requireUserOrApiKeyWithOrg", async () => {
+    validateBehavior = async () => null;
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_bad_key") as never),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "authentication_required",
     });
   });
 });

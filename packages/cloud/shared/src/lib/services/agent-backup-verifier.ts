@@ -25,7 +25,18 @@
  * alert channels as the daemon heartbeat monitor
  * (`provisioning-worker-health-monitor.ts`). When a cycle's failure rate
  * crosses the escalation threshold — the fleet-wide signature of a KMS
- * misconfiguration — a separate, louder alert fires.
+ * misconfiguration — a separate, louder alert fires, gated by a minimum
+ * sample floor so a 1-of-1 cycle cannot page as "systemic".
+ *
+ * Verifier-infrastructure errors (DB/object-storage/KMS transport breakage)
+ * are stamped `errored` with the attempt timestamp so a persistently-broken
+ * row cannot occupy the head of the nulls-first sampler forever (#15626); a
+ * row that keeps erroring across consecutive attempts raises its own alert.
+ * Incremental chains are reconstructed here chain-only and sequentially —
+ * NOT via the repository's `getReconstructedBackupState`, which hydrates and
+ * decrypts every retained backup in parallel for the restore path — and all
+ * decryption in a cycle is capped by a byte budget so a pathological sandbox
+ * cannot OOM the provisioning daemon.
  *
  * Manifest hashing here intentionally mirrors the producer in
  * `packages/agent/src/services/agent-backup.ts` (canonical sorted-key JSON →
@@ -46,6 +57,7 @@ import {
   type AgentBackupFileEntry,
   type AgentBackupFileSet,
   type AgentBackupManifest,
+  type AgentBackupPlainStateData,
   type AgentBackupStateData,
   type AgentBackupStoredStateData,
   agentSandboxBackups,
@@ -53,7 +65,14 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { getObjectText, shouldUseObjectStorage } from "../storage/object-store";
 import { logger } from "../utils/logger";
-import { computeStateHash, requireBackupStateData } from "./agent-backup-diff";
+import {
+  applyBackupDelta,
+  type BackupChainNode,
+  computeStateHash,
+  requireBackupDelta,
+  requireBackupStateData,
+  resolveBackupChain,
+} from "./agent-backup-diff";
 import {
   type DaemonHealthAlert,
   sendProvisioningWorkerAlert,
@@ -84,11 +103,39 @@ export interface BackupVerifierConfig {
    * fails signature of a KMS misconfiguration, #15310).
    */
   escalationThresholdPct: number;
+  /**
+   * `BACKUP_VERIFICATION_MIN_SYSTEMIC_SAMPLE` — the systemic escalation only
+   * fires when at least this many backups were sampled in the cycle. A single
+   * bad backup in a 1-row cycle is 100% "failure rate" but not a fleet-wide
+   * signature; per-row failure alerts still fire regardless of sample size.
+   */
+  minSystemicSample: number;
+  /**
+   * `BACKUP_VERIFICATION_MAX_DECRYPT_BYTES` — total stored-payload bytes the
+   * verifier may download+decrypt in one cycle. Bounds daemon memory: a cycle
+   * stops sampling when the budget runs out (deferred rows are re-sampled
+   * first next cycle), and a single payload larger than the whole budget is
+   * stamped `errored` as a bounded skip instead of being decrypted at all.
+   */
+  maxDecryptBytesPerCycle: number;
+  /**
+   * `BACKUP_VERIFICATION_ERRORED_ALERT_STREAK` — alert when the same backup
+   * row hits a verifier-infrastructure error this many verification attempts
+   * in a row. Infra errors are not stamped `failed` (the backup may be fine),
+   * so without this a row stuck behind broken storage/KMS transport would
+   * never surface anywhere but the logs.
+   */
+  erroredAlertStreak: number;
 }
 
 const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_REVERIFY_HOURS = 24;
 const DEFAULT_ESCALATION_PCT = 50;
+const DEFAULT_MIN_SYSTEMIC_SAMPLE = 5;
+const DEFAULT_MAX_DECRYPT_BYTES = 256 * 1024 * 1024;
+const DEFAULT_ERRORED_ALERT_STREAK = 3;
+/** Matches the repository's historical retained-backups lookup cap. */
+const CHAIN_LOOKUP_LIMIT = 1000;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -113,6 +160,18 @@ export function readBackupVerifierConfig(
     escalationThresholdPct: parsePositiveInt(
       env.BACKUP_VERIFICATION_ESCALATION_PCT,
       DEFAULT_ESCALATION_PCT,
+    ),
+    minSystemicSample: parsePositiveInt(
+      env.BACKUP_VERIFICATION_MIN_SYSTEMIC_SAMPLE,
+      DEFAULT_MIN_SYSTEMIC_SAMPLE,
+    ),
+    maxDecryptBytesPerCycle: parsePositiveInt(
+      env.BACKUP_VERIFICATION_MAX_DECRYPT_BYTES,
+      DEFAULT_MAX_DECRYPT_BYTES,
+    ),
+    erroredAlertStreak: parsePositiveInt(
+      env.BACKUP_VERIFICATION_ERRORED_ALERT_STREAK,
+      DEFAULT_ERRORED_ALERT_STREAK,
     ),
   };
 }
@@ -144,6 +203,12 @@ export interface BackupVerificationFailure {
 export interface BackupVerificationResult {
   ok: boolean;
   failure?: BackupVerificationFailure;
+  /**
+   * Set when the row was not verified because the cycle's decrypt byte budget
+   * could not cover it (bounded skip, #15626). Mutually exclusive with
+   * `failure`: a skip says nothing about the backup's health.
+   */
+  skipped?: BackupVerificationSkip;
   checks: {
     /** The stored payload decrypted under the current KMS keys. */
     decrypted: boolean;
@@ -163,6 +228,17 @@ export function classifyCryptoError(error: unknown): BackupVerificationFailure |
   if (!(error instanceof Error)) return null;
   if (error.name === "KeyNotFoundError" || /key not found/i.test(error.message)) {
     return { kind: "key-unavailable", message: error.message };
+  }
+  // The steward backend reports a missing key as a generic KmsError with an
+  // HTTP 404 — same #15310 signature as the memory backend's
+  // KeyNotFoundError, so it must classify the same way instead of falling
+  // through to unstamped infra-error. Message match is the fallback for
+  // KmsError instances serialized without the structured status.
+  if (error.name === "KmsError") {
+    const status = (error as { status?: unknown }).status;
+    if (status === 404 || /failed \(404[\s)]/.test(error.message)) {
+      return { kind: "key-unavailable", message: error.message };
+    }
   }
   if (error.name === "AeadError" || /AEAD decrypt failed/i.test(error.message)) {
     return { kind: "decrypt-failed", message: error.message };
@@ -351,15 +427,73 @@ export function verifyManifestIntegrity(manifest: AgentBackupManifest): string[]
 // =============================================================================
 
 /**
- * Resolve the stored (still-encrypted) payload for a backup row. Inline rows
- * carry it in `state_data`; offloaded rows fetch from object storage. Throws
- * when the daemon host has NO object storage configured — that is verifier
+ * True for the S3/R2 "object does not exist" error family (AWS SDK v3 throws
+ * `NoSuchKey` from GetObject, `NotFound` from HeadObject, both HTTP 404). The
+ * daemon path's `getObjectText` throws these instead of returning null, and a
+ * lost payload is a broken BACKUP (stamped + alerted), not verifier breakage.
+ */
+function isObjectStorageMissingError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  if (error.name === "NoSuchKey" || error.name === "NotFound") return true;
+  const meta = (error as { $metadata?: { httpStatusCode?: number } }).$metadata;
+  return meta?.httpStatusCode === 404;
+}
+
+/**
+ * Byte budget shared by every download+decrypt in one verification cycle.
+ * Charged with the STORED payload size (ciphertext ≈ plaintext for AES-GCM),
+ * measured before decrypting, so the bound holds even for payloads that would
+ * fail to decrypt.
+ */
+export interface DecryptBudget {
+  totalBytes: number;
+  usedBytes: number;
+}
+
+export function createDecryptBudget(totalBytes: number): DecryptBudget {
+  return { totalBytes, usedBytes: 0 };
+}
+
+type BudgetCharge = "ok" | BackupVerificationSkipReason;
+
+function chargeBudget(budget: DecryptBudget, bytes: number): BudgetCharge {
+  // Distinguish "this payload can NEVER fit" (permanent — stamp it so it
+  // stops being sampled) from "this cycle's budget is spent" (transient —
+  // defer to the next cycle's fresh budget).
+  if (bytes > budget.totalBytes) return "payload-exceeds-cycle-budget";
+  if (budget.usedBytes + bytes > budget.totalBytes) return "cycle-budget-exhausted";
+  budget.usedBytes += bytes;
+  return "ok";
+}
+
+export type BackupVerificationSkipReason =
+  | "payload-exceeds-cycle-budget"
+  | "cycle-budget-exhausted";
+
+export interface BackupVerificationSkip {
+  reason: BackupVerificationSkipReason;
+  requiredBytes: number;
+  budgetBytes: number;
+}
+
+/**
+ * Resolve the stored (still-encrypted) payload for a backup row plus its
+ * stored byte size (for budget accounting). Inline rows carry it in
+ * `state_data`; offloaded rows fetch from object storage. Throws when the
+ * daemon host has NO object storage configured — that is verifier
  * infrastructure breakage, not a bad backup, and must not stamp a failure.
  */
 async function resolveStoredPayload(
   row: StoredAgentSandboxBackup,
-): Promise<{ payload: AgentBackupStoredStateData } | { failure: BackupVerificationFailure }> {
-  if (row.state_data_storage !== "r2") return { payload: row.state_data };
+): Promise<
+  { payload: AgentBackupStoredStateData; bytes: number } | { failure: BackupVerificationFailure }
+> {
+  if (row.state_data_storage !== "r2") {
+    return {
+      payload: row.state_data,
+      bytes: Buffer.byteLength(JSON.stringify(row.state_data), "utf8"),
+    };
+  }
   if (!row.state_data_key) {
     return {
       failure: { kind: "payload-missing", message: "r2-stored backup has no state_data_key" },
@@ -370,7 +504,22 @@ async function resolveStoredPayload(
       "backup payload is in object storage but no object storage is configured on this host",
     );
   }
-  const raw = await getObjectText(row.state_data_key);
+  let raw: string | null;
+  try {
+    raw = await getObjectText(row.state_data_key);
+  } catch (error) {
+    if (isObjectStorageMissingError(error)) {
+      return {
+        failure: {
+          kind: "payload-missing",
+          message: `object storage has no payload for ${row.state_data_key}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        },
+      };
+    }
+    throw error;
+  }
   if (raw === null) {
     return {
       failure: {
@@ -380,7 +529,10 @@ async function resolveStoredPayload(
     };
   }
   try {
-    return { payload: JSON.parse(raw) as AgentBackupStoredStateData };
+    return {
+      payload: JSON.parse(raw) as AgentBackupStoredStateData,
+      bytes: Buffer.byteLength(raw, "utf8"),
+    };
   } catch (error) {
     return {
       failure: {
@@ -392,16 +544,124 @@ async function resolveStoredPayload(
 }
 
 /**
+ * Reconstruct the full state for an incremental backup by walking ONLY its
+ * parent chain, one member at a time. Deliberately not the repository's
+ * `getReconstructedBackupState`: that hydrates (downloads + decrypts) every
+ * retained backup of the sandbox in parallel, which is fine for a one-off
+ * restore but multiplied by the verifier's batch it can OOM the provisioning
+ * daemon (#15626). Non-chain backups are never fetched; each member's payload
+ * is charged against the cycle budget before it is decrypted and is released
+ * before the next member loads. `targetPlain` is the sampled row's
+ * already-decrypted (and already-charged) payload, applied as the final delta.
+ */
+async function reconstructIncrementalStateSequential(
+  row: StoredAgentSandboxBackup,
+  targetPlain: AgentBackupPlainStateData,
+  budget: DecryptBudget,
+): Promise<
+  | { state: AgentBackupStateData }
+  | { failure: BackupVerificationFailure }
+  | { skipped: BackupVerificationSkip }
+> {
+  const metadata = await agentSandboxesRepository.listBackupMetadata(
+    row.sandbox_record_id,
+    CHAIN_LOOKUP_LIMIT,
+  );
+  const nodes: BackupChainNode[] = metadata.map((b) => ({
+    id: b.id,
+    backupKind: b.backup_kind,
+    parentBackupId: b.parent_backup_id,
+    createdAtMs: b.created_at.getTime(),
+  }));
+  let chain: string[];
+  try {
+    chain = resolveBackupChain(nodes, row.id);
+  } catch (error) {
+    const classified = classifyChainError(error);
+    if (classified) return { failure: classified };
+    throw error;
+  }
+
+  let state: AgentBackupStateData | undefined;
+  for (const memberId of chain) {
+    let plain: AgentBackupPlainStateData;
+    if (memberId === row.id) {
+      plain = targetPlain;
+    } else {
+      const [member] = await dbRead
+        .select()
+        .from(agentSandboxBackups)
+        .where(eq(agentSandboxBackups.id, memberId))
+        .limit(1);
+      if (!member) {
+        return {
+          failure: {
+            kind: "chain-broken",
+            message: `backup chain row ${memberId} vanished mid-reconstruct`,
+          },
+        };
+      }
+      const resolved = await resolveStoredPayload(member);
+      if ("failure" in resolved) return { failure: resolved.failure };
+      const charge = chargeBudget(budget, resolved.bytes);
+      if (charge !== "ok") {
+        return {
+          skipped: {
+            reason: charge,
+            requiredBytes: resolved.bytes,
+            budgetBytes: budget.totalBytes,
+          },
+        };
+      }
+      if (isEncryptedAgentBackupStateData(resolved.payload)) {
+        try {
+          plain = await decryptAgentBackupStateData(member.id, resolved.payload);
+        } catch (error) {
+          const classified = classifyCryptoError(error);
+          if (classified) return { failure: classified };
+          throw error;
+        }
+      } else {
+        plain = resolved.payload;
+      }
+    }
+    try {
+      // resolveBackupChain guarantees the chain starts at the base full
+      // backup; every later member is a delta.
+      state =
+        state === undefined
+          ? requireBackupStateData(plain, memberId)
+          : applyBackupDelta(state, requireBackupDelta(plain, memberId));
+    } catch (error) {
+      return {
+        failure: {
+          kind: "chain-broken",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+  }
+  if (!state) {
+    return { failure: { kind: "chain-broken", message: "backup chain resolved empty" } };
+  }
+  return { state };
+}
+
+/**
  * Verify one stored backup row end to end: fetch payload → decrypt with the
- * real KMS → reconstruct the full state (chain replay for incrementals) →
- * validate `content_hash` and manifest hashes. Read-only against backup
- * storage; never touches agent state. Throws only on verifier-infrastructure
- * errors (DB/storage unreachable) — every backup-is-broken condition returns a
- * classified failure instead.
+ * real KMS → reconstruct the full state (sequential chain-only replay for
+ * incrementals) → validate `content_hash` and manifest hashes. Read-only
+ * against backup storage; never touches agent state. Throws only on
+ * verifier-infrastructure errors (DB/storage unreachable) — every
+ * backup-is-broken condition returns a classified failure, and a payload the
+ * cycle's decrypt budget cannot cover returns a `skipped` result.
  */
 export async function verifyBackupRestorability(
   row: StoredAgentSandboxBackup,
+  opts: { budget?: DecryptBudget } = {},
 ): Promise<BackupVerificationResult> {
+  const budget =
+    opts.budget ?? createDecryptBudget(readBackupVerifierConfig().maxDecryptBytesPerCycle);
   const checks = { decrypted: false, contentHashChecked: false, manifestChecked: false };
   const fail = (failure: BackupVerificationFailure): BackupVerificationResult => ({
     ok: false,
@@ -411,6 +671,14 @@ export async function verifyBackupRestorability(
 
   const resolved = await resolveStoredPayload(row);
   if ("failure" in resolved) return fail(resolved.failure);
+  const charge = chargeBudget(budget, resolved.bytes);
+  if (charge !== "ok") {
+    return {
+      ok: false,
+      skipped: { reason: charge, requiredBytes: resolved.bytes, budgetBytes: budget.totalBytes },
+      checks,
+    };
+  }
 
   // Decrypt the sampled row itself. This is the check that would have caught
   // #15310: it exercises the CURRENT KMS against ciphertext written earlier.
@@ -431,21 +699,16 @@ export async function verifyBackupRestorability(
   checks.decrypted = true;
 
   // Reconstruct the full state a restore would apply. Incremental rows replay
-  // their parent chain through the repository (decrypting every ancestor —
-  // exactly the work a real restore performs, minus the container).
+  // their parent chain sequentially, fetching and decrypting ONLY chain
+  // members under the cycle's byte budget.
   let state: AgentBackupStateData;
   if (row.backup_kind === "incremental") {
-    try {
-      const reconstructed = await agentSandboxesRepository.getReconstructedBackupState(row.id);
-      if (!reconstructed) {
-        return fail({ kind: "chain-broken", message: "backup vanished during reconstruction" });
-      }
-      state = reconstructed;
-    } catch (error) {
-      const classified = classifyChainError(error);
-      if (classified) return fail(classified);
-      throw error;
+    const reconstructed = await reconstructIncrementalStateSequential(row, plain, budget);
+    if ("failure" in reconstructed) return fail(reconstructed.failure);
+    if ("skipped" in reconstructed) {
+      return { ok: false, skipped: reconstructed.skipped, checks };
     }
+    state = reconstructed.state;
   } else {
     try {
       state = requireBackupStateData(plain, row.id);
@@ -498,14 +761,46 @@ export interface BackupVerificationCycleSummary {
   sampled: number;
   verified: number;
   failed: number;
-  /** Verifier-infrastructure errors — logged, NOT stamped as backup failures. */
+  /**
+   * Verifier-infrastructure errors — stamped `errored` (never `failed`) with
+   * the attempt timestamp so they cannot starve the sampler; alerted when the
+   * same row keeps erroring.
+   */
   errored: number;
+  /** Rows whose payload can never fit the cycle decrypt budget (stamped `errored`). */
+  oversizeSkipped: number;
+  /**
+   * Rows deferred because this cycle's decrypt budget ran out mid-sample.
+   * Not stamped: the nulls-first ordering re-samples them first next cycle.
+   */
+  budgetDeferred: number;
   escalated: boolean;
   failures: BackupVerificationFailureRecord[];
 }
 
 const FAILURE_ALERT_DEDUP_KEY = "agent-backup-verification-failure";
 const SYSTEMIC_ALERT_DEDUP_KEY = "agent-backup-verification-systemic";
+const ERRORED_ALERT_DEDUP_KEY = "agent-backup-verification-errored";
+
+/**
+ * `verification_error` prefix for infra-error stamps. The bracketed integer is
+ * the row's consecutive-attempt error streak, persisted on the row itself so
+ * the streak survives daemon restarts without another column; it resets the
+ * moment an attempt reaches a real verified/failed outcome.
+ */
+const INFRA_ERROR_STREAK_PATTERN = /^infra-error\[(\d+)\]/;
+
+function consecutiveInfraErrorStreak(row: StoredAgentSandboxBackup): number {
+  if (row.verification_status !== "errored" || !row.verification_error) return 0;
+  const match = INFRA_ERROR_STREAK_PATTERN.exec(row.verification_error);
+  // An `errored` stamp without a parseable counter still proves one prior
+  // errored attempt.
+  return match ? Number.parseInt(match[1], 10) : 1;
+}
+
+function formatInfraError(streak: number, message: string): string {
+  return `infra-error[${streak}]: ${message}`;
+}
 
 /**
  * Sample the newest backup per agent that has not been verified within the
@@ -532,6 +827,8 @@ export async function runBackupVerificationCycle(
     verified: 0,
     failed: 0,
     errored: 0,
+    oversizeSkipped: 0,
+    budgetDeferred: 0,
     escalated: false,
     failures: [],
   };
@@ -555,24 +852,101 @@ export async function runBackupVerificationCycle(
     .orderBy(sql`${latest.verified_at} asc nulls first`, latest.created_at)
     .limit(config.batchSize);
 
+  const budget = createDecryptBudget(config.maxDecryptBytesPerCycle);
+
+  // Stamp an infra-error attempt: status `errored` (never `failed` — the
+  // backup itself may be healthy), attempt timestamp so the nulls-first
+  // sampler moves on, and a persisted consecutive-attempt streak that raises
+  // its own alert once it crosses the configured threshold.
+  const stampInfraError = async (row: StoredAgentSandboxBackup, message: string) => {
+    const streak = consecutiveInfraErrorStreak(row) + 1;
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        verification_status: "errored",
+        verified_at: now,
+        verification_error: formatInfraError(streak, message),
+      })
+      .where(eq(agentSandboxBackups.id, row.id));
+    if (streak >= config.erroredAlertStreak) {
+      await alert({
+        title: `agent backup verification has errored ${streak} consecutive attempts`,
+        message:
+          "The restorability verifier keeps hitting infrastructure errors on the same backup " +
+          "row (object storage / KMS transport / DB), so the backup can be neither confirmed " +
+          "restorable nor stamped failed. Fix the verifier-side breakage; the row retries " +
+          "every re-verify interval.",
+        details: {
+          backupId: row.id,
+          sandboxRecordId: row.sandbox_record_id,
+          streak,
+          error: message,
+        },
+        dedupKey: ERRORED_ALERT_DEDUP_KEY,
+      });
+    }
+    return streak;
+  };
+
   for (const row of candidates) {
-    summary.sampled += 1;
     let result: BackupVerificationResult;
     try {
-      result = await verifyBackupRestorability(row);
+      result = await verifyBackupRestorability(row, { budget });
     } catch (error) {
       // error-policy:J7 diagnostics-must-not-kill-the-loop — verifier infra
-      // breakage (DB/object-storage unreachable) is logged loudly but must not
+      // breakage (DB/object-storage unreachable) is logged loudly and stamped
+      // `errored` (with attempt timestamp + streak alerting) but must not
       // stamp a healthy backup as failed nor abort the rest of the batch.
+      summary.sampled += 1;
       summary.errored += 1;
-      logger.error("[AgentBackupVerifier] verification errored (infrastructure, not stamped)", {
+      const message = error instanceof Error ? error.message : String(error);
+      const streak = await stampInfraError(row, message);
+      logger.error("[AgentBackupVerifier] verification errored (infrastructure, stamped errored)", {
         backupId: row.id,
         sandboxRecordId: row.sandbox_record_id,
-        error: error instanceof Error ? error.message : String(error),
+        erroredStreak: streak,
+        error: message,
       });
       continue;
     }
 
+    if (result.skipped) {
+      if (result.skipped.reason === "cycle-budget-exhausted") {
+        // Transient: the rest of the batch waits for the next cycle's fresh
+        // budget; unstamped rows stay at the head of the nulls-first order.
+        summary.budgetDeferred += 1;
+        logger.warn(
+          "[AgentBackupVerifier] cycle decrypt budget exhausted; deferring remaining sample",
+          {
+            backupId: row.id,
+            sandboxRecordId: row.sandbox_record_id,
+            requiredBytes: result.skipped.requiredBytes,
+            budgetBytes: result.skipped.budgetBytes,
+            usedBytes: budget.usedBytes,
+          },
+        );
+        break;
+      }
+      // payload-exceeds-cycle-budget: this row can NEVER verify under the
+      // configured budget — a bounded skip stamped `errored` so it cannot
+      // wedge the sampler, with streak alerting to surface the misfit config.
+      summary.sampled += 1;
+      summary.oversizeSkipped += 1;
+      const message =
+        `stored payload of ${result.skipped.requiredBytes} bytes exceeds ` +
+        `BACKUP_VERIFICATION_MAX_DECRYPT_BYTES=${result.skipped.budgetBytes}`;
+      const streak = await stampInfraError(row, message);
+      logger.error("[AgentBackupVerifier] backup payload exceeds the cycle decrypt budget", {
+        backupId: row.id,
+        sandboxRecordId: row.sandbox_record_id,
+        requiredBytes: result.skipped.requiredBytes,
+        budgetBytes: result.skipped.budgetBytes,
+        erroredStreak: streak,
+      });
+      continue;
+    }
+
+    summary.sampled += 1;
     await dbWrite
       .update(agentSandboxBackups)
       .set({
@@ -623,8 +997,14 @@ export async function runBackupVerificationCycle(
       dedupKey: FAILURE_ALERT_DEDUP_KEY,
     });
 
+    // The systemic page needs both a high failure RATE and a meaningful
+    // sample: 1 bad row out of 1 sampled is 100% but says nothing fleet-wide.
+    // Per-row failure alerting above is unaffected by the floor.
     const failurePct = (summary.failed / summary.sampled) * 100;
-    if (failurePct >= config.escalationThresholdPct) {
+    if (
+      summary.sampled >= config.minSystemicSample &&
+      failurePct >= config.escalationThresholdPct
+    ) {
       summary.escalated = true;
       const keyUnavailable = summary.failures.filter((f) => f.kind === "key-unavailable").length;
       await alert({

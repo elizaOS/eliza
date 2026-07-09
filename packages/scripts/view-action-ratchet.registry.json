@@ -167,6 +167,11 @@
     "requestMeetingBot": { "action": "JOIN_MEETING" },
     "stopMeeting": { "action": "LEAVE_MEETING" },
     "createTranscript": { "action": "START_TRANSCRIPTION" },
+    "shareTranscript": { "action": "SHARE_TRANSCRIPT" },
+    "revokeTranscriptShare": {
+      "action": "SHARE_TRANSCRIPT",
+      "note": "SHARE_TRANSCRIPT owns transcript grant management; revoke is the inverse operation on the same permission surface"
+    },
     "updatePlugin": {
       "action": "PLUGIN",
       "note": "agent-rendered plugin card in chat MessageContent; PLUGIN is the enable/configure twin"

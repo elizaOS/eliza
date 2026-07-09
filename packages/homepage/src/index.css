@@ -1183,4 +1183,19 @@ article {
     /* biome-ignore lint/complexity/noImportantStyles: Reduced-motion overrides must win over component animations and transitions. */
     scroll-behavior: auto !important;
   }
+
+  /*
+   * Functional loading indicators must continue animating under reduced motion.
+   * The universal reset above suppresses decorative motion, but a frozen
+   * in-place spinner or progress bar reads as a stalled load rather than an
+   * accessibility accommodation.
+   */
+  .animate-spin,
+  [class~="animate-spin"],
+  [role="progressbar"] {
+    /* biome-ignore lint/complexity/noImportantStyles: must override the universal reduced-motion reset. */
+    animation-duration: 1s !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must override the universal reduced-motion reset. */
+    animation-iteration-count: infinite !important;
+  }
 }

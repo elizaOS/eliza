@@ -85,6 +85,82 @@ import {
 
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 
+// Filler tokens carrying no answer content — two single-fact replies differing
+// only in these words are the same fact reworded.
+const NUMERIC_FACT_STOPWORDS = new Set<string>([
+	"the",
+	"is",
+	"are",
+	"was",
+	"at",
+	"of",
+	"to",
+	"in",
+	"on",
+	"for",
+	"it",
+	"its",
+	"that",
+	"this",
+	"and",
+	"currently",
+	"current",
+	"now",
+	"right",
+	"about",
+	"approximately",
+	"around",
+	"price",
+	"priced",
+	"cost",
+	"costs",
+	"value",
+	"trading",
+	"worth",
+	"usd",
+	"dollars",
+]);
+
+// Only guard short single-fact replies; longer output can restate context while
+// adding new information.
+const NUMERIC_FACT_MAX_LEN = 160;
+
+/**
+ * Significant tokens of a short numeric single-fact reply (a number plus its
+ * subject), or null when the reply is long or carries no number. Two replies
+ * whose token sets are in a subset relationship are the same fact reworded —
+ * the tool-turn double where an action relays the raw value ("$61,883 USD") and
+ * the planner restates it as a sentence ("Bitcoin is currently priced at
+ * $61,883 USD"). The connector is the one point every delivery converges, so
+ * catching it here covers the multiple independent runtime delivery paths that
+ * #15601's exact-text reservation cannot (the two texts differ). Conservative:
+ * requires a number, so only single-fact answers (prices, counts, temps) are
+ * ever collapsed; additive replies carry new numbers/entities and pass.
+ */
+export function numericFactSignatureTokens(text: string): Set<string> | null {
+	const trimmed = text.trim();
+	if (trimmed.length === 0 || trimmed.length > NUMERIC_FACT_MAX_LEN) return null;
+	const tokens = trimmed
+		.toLowerCase()
+		.replace(/[^a-z0-9., ]+/g, " ")
+		.split(/\s+/)
+		.map((token) => token.replace(/^[.,]+/, "").replace(/[.,]+$/, ""))
+		.filter(
+			(token) =>
+				token.length > 0 &&
+				(/[0-9]/.test(token) || token.length >= 4) &&
+				!NUMERIC_FACT_STOPWORDS.has(token),
+		);
+	const set = new Set(tokens);
+	const hasNumber = [...set].some((token) => /[0-9]/.test(token));
+	return hasNumber && set.size > 0 ? set : null;
+}
+
+export function isSubsetOrEqual(a: Set<string>, b: Set<string>): boolean {
+	for (const token of a) if (!b.has(token)) return false;
+	return true;
+}
+
 export function resolveGenerationTimeoutMs(
 	timeoutSetting: unknown,
 	fallbackSetting: unknown,
@@ -1325,24 +1401,45 @@ export class MessageManager {
 						const dedupKey = `${content.inReplyTo}::${textContent.replace(/\s+/g, " ").trim()}`;
 						const callbackDedup = message as DiscordMessage & {
 							_elizaSentReplyKeys?: Set<string>;
+							_elizaSentFactSignatures?: Array<Set<string>>;
 						};
 						callbackDedup._elizaSentReplyKeys ??= new Set();
-						if (callbackDedup._elizaSentReplyKeys.has(dedupKey)) {
+						callbackDedup._elizaSentFactSignatures ??= [];
+						// Paraphrase/subset guard (#15585): a short numeric single-fact
+						// reply that restates one already sent for this inbound message —
+						// even in different words or as the bare value — is a redundant
+						// second bubble the exact-text key above cannot catch.
+						// Directional: suppress only when the NEW reply adds nothing over
+						// an already-sent one (its tokens ⊆ a prior's). This drops the
+						// bare-value/paraphrase second bubble while always letting a
+						// genuinely-additive follow-up (which carries a token the prior
+						// lacks) through, regardless of delivery order.
+						const factSignature = numericFactSignatureTokens(textContent);
+						const repeatsPriorFact =
+							factSignature !== null &&
+							callbackDedup._elizaSentFactSignatures.some((prior) =>
+								isSubsetOrEqual(factSignature, prior),
+							);
+						if (callbackDedup._elizaSentReplyKeys.has(dedupKey) || repeatsPriorFact) {
 							this.runtime.logger.debug(
 								{
 									src: "plugin:discord",
 									agentId: this.runtime.agentId,
 									messageId: message.id,
+									reason: repeatsPriorFact ? "fact-signature" : "identical-text",
 									textPreview: textContent
 										.replace(/\s+/g, " ")
 										.trim()
 										.slice(0, 200),
 								},
-								"Suppressing duplicate callback reply with identical text",
+								"Suppressing duplicate callback reply",
 							);
 							return [];
 						}
 						callbackDedup._elizaSentReplyKeys.add(dedupKey);
+						if (factSignature !== null) {
+							callbackDedup._elizaSentFactSignatures.push(factSignature);
+						}
 					}
 
 					const outboundDedupe = beginDiscordOutboundDelivery({

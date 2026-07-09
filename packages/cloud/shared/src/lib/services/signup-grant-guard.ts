@@ -143,6 +143,16 @@ export async function runWithSignupGrantIpCap(
  * Detailed variant of `runWithSignupGrantIpCap` for signup routes that must
  * tell the caller whether a $0 new org means "empty balance" or "welcome
  * bonus withheld by anti-sybil policy".
+ *
+ * With `existingTx` (the atomic wallet-signup transaction) the count + grant
+ * run in a SAVEPOINT inside it, not directly on it: a failed grant statement
+ * would otherwise abort the enclosing Postgres transaction, so the caller's
+ * designed continue-without-bonus degrade (`grantWalletSignupCredits`'s J4
+ * catch) could never work — the subsequent user insert would fail with
+ * "current transaction is aborted" and the whole signup would break for an
+ * optional bonus. An advisory xact lock acquired inside the savepoint is held
+ * until the OUTER transaction commits, which still upholds (in fact
+ * strengthens) the per-IP serialization this guard needs.
  */
 export async function runWithSignupGrantIpCapDetailed(
   ip: string | undefined,
@@ -150,7 +160,14 @@ export async function runWithSignupGrantIpCapDetailed(
   existingTx?: DbTransaction,
 ): Promise<SignupGrantDecision> {
   if (!ip) {
-    await grant(existingTx);
+    if (existingTx) {
+      // Savepoint even without a cap check so a failing grant stays containable.
+      return await existingTx.transaction(async (tx) => {
+        await grant(tx);
+        return { granted: true };
+      });
+    }
+    await grant();
     return { granted: true };
   }
 
@@ -223,5 +240,7 @@ export async function runWithSignupGrantIpCapDetailed(
     return { granted: true };
   };
 
-  return existingTx ? await run(existingTx) : await dbWrite.transaction(run);
+  // `existingTx.transaction(run)` opens a savepoint; `dbWrite.transaction(run)`
+  // opens a top-level transaction. Either way `run` sees a rollback-able tx.
+  return existingTx ? await existingTx.transaction(run) : await dbWrite.transaction(run);
 }

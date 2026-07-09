@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { Server } from "../crd/generated/server-v1alpha1";
-import { getPreviousAgentIds } from "../reconciler";
+import { getPreviousAgentIds } from "../previous-agents";
 
 function serverWithAnnotation(value: string | undefined): Server {
   return {
