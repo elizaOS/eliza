@@ -95,6 +95,8 @@ type GenerateTextParamsWithAttachments = GenerateTextParams & {
     anthropic?: {
       cacheControl?: AnthropicCacheControl;
       cacheSystem?: boolean;
+      cacheBreakpoints?: unknown[];
+      maxBreakpoints?: number;
     };
   };
 };
@@ -294,6 +296,34 @@ function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
 
 type AnthropicCacheBreakpoint = { segmentIndex: number; cacheControl: AnthropicCacheControl };
 
+// Extends the AI SDK TextPart shape with provider-metadata so the AI SDK can forward
+// cache_control directives to the wire without losing the type guarantee on type/text.
+type CacheableTextPart = {
+  type: "text";
+  text: string;
+  providerOptions?: Record<string, unknown>;
+};
+
+function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBreakpoint {
+  return (
+    isRecord(value) &&
+    typeof value.segmentIndex === "number" &&
+    Number.isInteger(value.segmentIndex) &&
+    value.segmentIndex >= 0 &&
+    isRecord(value.cacheControl) &&
+    value.cacheControl.type === "ephemeral"
+  );
+}
+
+function readAnthropicCacheBreakpoints(
+  anthropicOptions: Record<string, unknown> | undefined,
+  maxBreakpoints: number,
+): AnthropicCacheBreakpoint[] {
+  const raw = anthropicOptions?.cacheBreakpoints;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isAnthropicCacheBreakpoint).slice(0, maxBreakpoints);
+}
+
 /**
  * Builds user content as multiple text blocks (one per prompt segment) so that
  * Anthropic cache_control breakpoints can be applied at the segment level, up to
@@ -304,7 +334,7 @@ type AnthropicCacheBreakpoint = { segmentIndex: number; cacheControl: AnthropicC
 function buildSegmentedPromptUserContent(
   promptSegments: Array<{ content: string; stable?: boolean }>,
   cacheBreakpoints: AnthropicCacheBreakpoint[],
-): UserContent {
+): CacheableTextPart[] {
   if (cacheBreakpoints.length === 0) {
     return promptSegments.map((seg) => ({ type: "text" as const, text: seg.content }));
   }
@@ -318,7 +348,7 @@ function buildSegmentedPromptUserContent(
         type: "text" as const,
         text: seg.content,
         providerOptions: { anthropic: { cacheControl: cc } },
-      } as unknown as { type: "text"; text: string };
+      };
     }
     return { type: "text" as const, text: seg.content };
   });
@@ -568,13 +598,16 @@ function buildGenerateParams(
       : undefined;
   const shouldInjectMessageLevelCache = Boolean(cacheSystemMessage);
 
-  // Collect cacheBreakpoints for per-segment user-content injection (Fix 3).
+  // Collect cacheBreakpoints for per-segment user-content injection.
   // Only used on the prompt-only path (no messages) together with promptSegments.
-  const cacheBreakpoints: AnthropicCacheBreakpoint[] = Array.isArray(
-    anthropicOptions?.cacheBreakpoints,
-  )
-    ? (anthropicOptions.cacheBreakpoints as AnthropicCacheBreakpoint[])
-    : [];
+  // maxBreakpoints caps the number of slots used (Anthropic allows up to 3 user-content).
+  const maxBreakpoints =
+    typeof anthropicOptions?.maxBreakpoints === "number" &&
+    Number.isInteger(anthropicOptions.maxBreakpoints) &&
+    anthropicOptions.maxBreakpoints >= 0
+      ? anthropicOptions.maxBreakpoints
+      : 3;
+  const cacheBreakpoints = readAnthropicCacheBreakpoints(anthropicOptions, maxBreakpoints);
   const promptSegments = Array.isArray(
     (paramsWithAttachments as { promptSegments?: unknown }).promptSegments,
   )
@@ -615,7 +648,7 @@ function buildGenerateParams(
                 // additional breakpoints under Anthropic's four-block cap).
                 content:
                   promptSegments.length > 0 && cacheBreakpoints.length > 0 && !userContent
-                    ? buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints)
+                    ? (buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints) as UserContent)
                     : (userContent ?? buildUserContent(paramsWithAttachments)),
               },
             ],

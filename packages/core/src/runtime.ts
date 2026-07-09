@@ -6894,15 +6894,46 @@ ${section_end}`;
 				segmentHashes: _dynamicPrefixHashes.map((e) => e.segmentHash),
 				promptSegments: segments,
 			});
+			// Deep-merge caller-supplied providerOptions with the cache plan so neither
+			// set of fields is overwritten. One-level merge for named provider sub-objects
+			// (e.g. anthropic, openai) preserves caller fields like anthropic.thinking
+			// alongside plan-added fields like cacheControl.
+			const _rawCallerProviderOptions = (params as { providerOptions?: unknown }).providerOptions;
+			const _callerProviderOptions: Record<string, unknown> =
+				_rawCallerProviderOptions != null &&
+				typeof _rawCallerProviderOptions === "object" &&
+				!Array.isArray(_rawCallerProviderOptions)
+					? (_rawCallerProviderOptions as Record<string, unknown>)
+					: {};
+			const _planProviderOptions = (_dynamicCachePlan.providerOptions ?? {}) as Record<
+				string,
+				unknown
+			>;
+			const _mergedProviderOptions: Record<string, unknown> = {
+				agentName: this.character.name,
+				..._callerProviderOptions,
+			};
+			for (const [_pKey, _pValue] of Object.entries(_planProviderOptions)) {
+				const _pExisting = _mergedProviderOptions[_pKey];
+				_mergedProviderOptions[_pKey] =
+					_pExisting != null &&
+					typeof _pExisting === "object" &&
+					!Array.isArray(_pExisting) &&
+					_pValue != null &&
+					typeof _pValue === "object" &&
+					!Array.isArray(_pValue)
+						? {
+								...(_pExisting as Record<string, unknown>),
+								...(_pValue as Record<string, unknown>),
+							}
+						: _pValue;
+			}
 			const modelParams = {
 				...params,
 				prompt,
 				responseFormat: params.responseFormat ?? { type: "json_object" },
 				promptSegments: segments,
-				providerOptions: {
-					agentName: this.character.name,
-					..._dynamicCachePlan.providerOptions,
-				},
+				providerOptions: _mergedProviderOptions,
 				...(extractor
 					? {
 							onStreamChunk: (chunk: string) => {
