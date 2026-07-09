@@ -1276,6 +1276,9 @@ export class AgentSandboxesRepository {
         backup_kind: agentSandboxBackups.backup_kind,
         parent_backup_id: agentSandboxBackups.parent_backup_id,
         content_hash: agentSandboxBackups.content_hash,
+        verification_status: agentSandboxBackups.verification_status,
+        verified_at: agentSandboxBackups.verified_at,
+        verification_error: agentSandboxBackups.verification_error,
         created_at: agentSandboxBackups.created_at,
       })
       .from(agentSandboxBackups)

@@ -57,6 +57,8 @@ type WorkerWithTimeout =
   typeof import("@elizaos/cloud-shared/lib/utils/with-timeout").withTimeout;
 type WorkerProcessNodeDiskCleanup =
   typeof import("@elizaos/cloud-shared/lib/services/node-disk-manager").processNodeDiskCleanup;
+type WorkerRunBackupVerificationCycle =
+  typeof import("@elizaos/cloud-shared/lib/services/agent-backup-verifier").runBackupVerificationCycle;
 
 interface PreflightKmsClient {
   getOrCreateKey(keyId: string): Promise<unknown>;
@@ -86,6 +88,7 @@ interface WorkerDeps {
   reconcileOrphanAppContainersOnNodes: WorkerReconcileOrphanAppContainers;
   withTimeout: WorkerWithTimeout;
   processNodeDiskCleanup: WorkerProcessNodeDiskCleanup;
+  runBackupVerificationCycle: WorkerRunBackupVerificationCycle;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -244,6 +247,7 @@ async function loadDeps(): Promise<WorkerDeps> {
       ),
       import("@elizaos/cloud-shared/lib/utils/with-timeout"),
       import("@elizaos/cloud-shared/lib/services/node-disk-manager"),
+      import("@elizaos/cloud-shared/lib/services/agent-backup-verifier"),
     ]).then(
       ([
         jobsModule,
@@ -260,6 +264,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         appOrphanReconcilerModule,
         withTimeoutModule,
         nodeDiskManagerModule,
+        backupVerifierModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
@@ -279,6 +284,8 @@ async function loadDeps(): Promise<WorkerDeps> {
           appOrphanReconcilerModule.reconcileOrphanAppContainersOnNodes,
         withTimeout: withTimeoutModule.withTimeout,
         processNodeDiskCleanup: nodeDiskManagerModule.processNodeDiskCleanup,
+        runBackupVerificationCycle:
+          backupVerifierModule.runBackupVerificationCycle,
       }),
     );
   }
@@ -679,6 +686,25 @@ async function processNodeDiskCleanupCycle(): Promise<NodeDiskCleanupSummary> {
     pruned: report.pruned,
     pruneFailed: report.pruneFailed,
   };
+}
+
+/**
+ * Verify a bounded sample of stored agent backups is actually RESTORABLE with
+ * the current KMS keys (#15603 B5): decrypt the newest backup per agent,
+ * replay incremental chains, validate content/manifest hashes, stamp the
+ * outcome, and page on failure. Exists because staging ran a memory KMS for
+ * weeks and every backup rotted undecryptable until restores failed (#15310) —
+ * the startup preflight refuses that config going forward, but only this cycle
+ * proves the backups already on disk still decrypt. Read-only against backup
+ * storage; batch/interval/escalation are env-tunable in the verifier service
+ * (`BACKUP_VERIFICATION_*`, on by default). Exported for the daemon-phase
+ * wiring test.
+ */
+export async function processBackupVerificationCycle(): Promise<
+  Awaited<ReturnType<WorkerRunBackupVerificationCycle>>
+> {
+  const { runBackupVerificationCycle } = await loadDeps();
+  return runBackupVerificationCycle();
 }
 
 /**
@@ -1484,6 +1510,32 @@ async function runInfraMaintenanceCycle(
           pruned: summary.pruned,
           pruneFailed: summary.pruneFailed,
         });
+      }
+    },
+  );
+
+  // Backup restorability verification (#15603 B5). Off the watchdog critical
+  // path like every infra phase; self-gated by BACKUP_VERIFICATION_ENABLED and
+  // bounded to a small batch per sweep, so the KMS decrypts + object-storage
+  // reads it performs cannot starve node maintenance. Failures alert through
+  // the same ops channels as the daemon heartbeat monitor.
+  await runBoundedPhase(
+    logger,
+    "backup verification cycle",
+    () => processBackupVerificationCycle(),
+    (summary) => {
+      if (summary.sampled > 0 || summary.errored > 0) {
+        logger.info(
+          "[provisioning-worker] backup verification cycle complete",
+          {
+            event: "backup_verification.cycle",
+            sampled: summary.sampled,
+            verified: summary.verified,
+            failed: summary.failed,
+            errored: summary.errored,
+            escalated: summary.escalated,
+          },
+        );
       }
     },
   );

@@ -199,6 +199,15 @@ export type AgentSandboxPoolStatus = "unclaimed";
 export type AgentBackupSnapshotType = "auto" | "manual" | "pre-shutdown" | "pre-upgrade";
 
 /**
+ * Outcome of the last restorability verification pass over a backup row
+ * (`agent-backup-verifier.ts`). `null`/unset means the row has never been
+ * sampled. Verification decrypts the stored payload with the CURRENT KMS keys
+ * and checks content/manifest hashes — it exists because staging silently ran
+ * an ephemeral KMS for weeks and every backup was undecryptable (#15310).
+ */
+export type AgentBackupVerificationStatus = "verified" | "failed";
+
+/**
  * Whether a backup row stores the agent's complete state (`full`) or only the
  * delta against `parent_backup_id` (`incremental`). Restoring an incremental
  * backup replays its parent chain back to the nearest `full` backup. See
@@ -321,6 +330,16 @@ export const agentSandboxBackups = pgTable(
     parent_backup_id: uuid("parent_backup_id"),
     /** sha256 of the reconstructed full state, for integrity verification. */
     content_hash: text("content_hash"),
+    /**
+     * Restorability-verification stamp (see `AgentBackupVerificationStatus`).
+     * `verified_at` records the last verification ATTEMPT (success or failure)
+     * and drives the re-verify sampling interval; `verification_error` carries
+     * the classified failure (`key-unavailable: …`, `decrypt-failed: …`) so an
+     * operator can tell a KMS misconfig from bit-rot without re-running it.
+     */
+    verification_status: text("verification_status").$type<AgentBackupVerificationStatus>(),
+    verified_at: timestamp("verified_at", { withTimezone: true }),
+    verification_error: text("verification_error"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

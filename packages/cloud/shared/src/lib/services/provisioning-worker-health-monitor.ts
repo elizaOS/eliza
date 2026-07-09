@@ -40,10 +40,18 @@ const ALERT_PAGERDUTY_KEY_ENV = "PROVISIONING_ALERT_PAGERDUTY_KEY";
  */
 export const HEARTBEAT_MAX_AGE_MS = PROVISIONING_WORKER_HEARTBEAT_TTL_S * 1000;
 
-interface DaemonHealthAlert {
+/**
+ * Ops alert payload for daemon-domain failures. Also emitted by the backup
+ * restorability verifier (`agent-backup-verifier.ts`), which shares this
+ * module's alert channels; `dedupKey` keeps each failure domain a separate
+ * PagerDuty incident instead of collapsing into the heartbeat one.
+ */
+export interface DaemonHealthAlert {
   title: string;
   message: string;
   details: Record<string, unknown>;
+  /** PagerDuty dedup key. Defaults to the daemon-heartbeat incident key. */
+  dedupKey?: string;
 }
 
 /**
@@ -98,7 +106,7 @@ export async function sendProvisioningWorkerAlert(alert: DaemonHealthAlert): Pro
         body: JSON.stringify({
           routing_key: pagerDutyKey,
           event_action: "trigger",
-          dedup_key: "provisioning-worker-unhealthy",
+          dedup_key: alert.dedupKey ?? "provisioning-worker-unhealthy",
           payload: {
             summary: `[elizaOS Provisioning] ${alert.title}`,
             severity: "critical",
