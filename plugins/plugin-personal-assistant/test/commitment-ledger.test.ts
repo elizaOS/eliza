@@ -11,6 +11,7 @@ import {
   createLifeOpsCommitmentLedgerRecord,
   extractCommitmentLedgerRecords,
   LifeOpsRepository,
+  trackDocumentObligationArtifact,
 } from "../src/lifeops/index.js";
 import {
   createLifeOpsTestRuntime,
@@ -208,6 +209,79 @@ describe("commitment ledger repository", () => {
     expect(tracked).toMatchObject({
       status: "tracked",
       scheduledTaskId: "st_deck_followup",
+    });
+  });
+
+  it("tracks a standing document guarantee with one ledger row and one watcher", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repo = new LifeOpsRepository(runtime);
+
+    const first = await trackDocumentObligationArtifact(runtime, {
+      agentId: runtime.agentId,
+      documentId: "doc-acme-msa",
+      title: "Acme MSA contract renewal",
+      deadline: "2026-09-01T17:00:00.000Z",
+      observedAt: OBSERVED_AT,
+      counterparty: "Acme",
+      note: "Renewal notice must go out 60 days before term end.",
+      metadata: { standingGuaranteeId: "guarantee-renewals" },
+    });
+
+    expect(first.record).toMatchObject({
+      source: "document",
+      sourceKey: "doc-acme-msa",
+      kind: "renewal",
+      status: "tracked",
+      scheduledTaskId: first.task.taskId,
+    });
+    expect(first.task).toMatchObject({
+      kind: "watcher",
+      trigger: { kind: "once", atIso: "2026-09-01T17:00:00.000Z" },
+      subject: { kind: "document", id: "doc-acme-msa" },
+      idempotencyKey:
+        "commitment-ledger:document:doc-acme-msa:deadline:2026-09-01T17:00:00.000Z",
+    });
+
+    const replay = await trackDocumentObligationArtifact(runtime, {
+      agentId: runtime.agentId,
+      documentId: "doc-acme-msa",
+      title: "Acme MSA contract renewal",
+      deadline: "2026-09-01T17:00:00.000Z",
+      observedAt: OBSERVED_AT,
+      counterparty: "Acme",
+      note: "Renewal notice must go out 60 days before term end.",
+      metadata: { standingGuaranteeId: "guarantee-renewals" },
+    });
+
+    expect(replay.task.taskId).toBe(first.task.taskId);
+    expect(replay.record.id).toBe(first.record.id);
+
+    const rows = await repo.listCommitmentLedgerRecords(runtime.agentId, {
+      source: "document",
+      statuses: ["tracked"],
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      id: first.record.id,
+      scheduledTaskId: first.task.taskId,
+      metadata: {
+        standingGuaranteeId: "guarantee-renewals",
+      },
+    });
+
+    const persistedTask = await repo.getScheduledTask(
+      runtime.agentId,
+      first.task.taskId,
+    );
+    expect(persistedTask).toMatchObject({
+      idempotencyKey:
+        "commitment-ledger:document:doc-acme-msa:deadline:2026-09-01T17:00:00.000Z",
+      metadata: {
+        commitmentLedgerId: first.record.id,
+        standingGuarantee: true,
+      },
     });
   });
 });
