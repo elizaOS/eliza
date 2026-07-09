@@ -3,8 +3,8 @@
  * Per-auth-path live-lane driver for the LifeOps HITL validation run (#11632).
  *
  * Env resolution is the layered load shared with the HITL dashboard
- * (env-layers.mjs: process.env > repo .env > main-checkout .env >
- * ~/.eliza/.env), hydrated into process.env once at startup so readiness
+ * (env-layers.mjs: process.env > repo .env > ~/.eliza/.env), hydrated into
+ * process.env once at startup so readiness
  * checks here and the spawned suites see exactly what the dashboard rows show.
  * Env var NAMES are printed for readiness; env var VALUES are never logged.
  *

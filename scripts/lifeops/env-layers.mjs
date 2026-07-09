@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 /**
  * Layered .env resolution for the LifeOps HITL credential tooling (#11632).
- * Credentials can live in four places on an operator machine, and this module
- * is the single arbiter of which one wins: process.env > the checkout's own
- * .env > the main checkout's .env (only when running inside a linked git
- * worktree — discovered via `git rev-parse --git-common-dir`) > ~/.eliza/.env.
+ * Credentials can live in three places on an operator machine, and this module
+ * is the single arbiter of which one wins: process.env > the current repo's
+ * .env > ~/.eliza/.env.
  * The HITL dashboard and lane drivers consume loadLayeredEnv()/listPresent()
  * so a probe sees the same value a paste-and-save produced, no matter which
  * worktree the operator happens to be in.
@@ -18,7 +17,6 @@
  * display-safe surface is listPresent(), which only reports presence and the
  * winning source layer.
  */
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -36,7 +34,7 @@ const ROOT = resolve(new URL("../..", import.meta.url).pathname);
 export const HOME_ENV_PATH = join(homedir(), ".eliza", ".env");
 
 /** Precedence order, highest first; the values of the `sources` map. */
-export const ENV_LAYER_SOURCES = ["process", "repo", "main", "home"];
+export const ENV_LAYER_SOURCES = ["process", "repo", "home"];
 
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -117,62 +115,18 @@ export function upsertEnvContent(existingText, entries) {
 }
 
 /**
- * Decide whether a checkout is a linked git worktree from the raw
- * `git rev-parse --git-dir --git-common-dir` outputs. In a linked worktree the
- * git dir is `<main>/.git/worktrees/<name>` while the common dir is
- * `<main>/.git`, so when the two resolve differently the main checkout root is
- * the parent of the common dir. In the main checkout both resolve to the same
- * `.git`, and this returns null (the "main" layer is simply absent).
- */
-export function resolveMainCheckoutRoot({
-  gitDir,
-  gitCommonDir,
-  worktreeRoot,
-}) {
-  if (!gitDir || !gitCommonDir) return null;
-  const resolvedGitDir = resolve(worktreeRoot, gitDir);
-  const resolvedCommonDir = resolve(worktreeRoot, gitCommonDir);
-  if (resolvedGitDir === resolvedCommonDir) return null;
-  return dirname(resolvedCommonDir);
-}
-
-// --- filesystem/git boundary ---------------------------------------------------
-
-/**
- * Discover the main checkout root for a linked worktree, or null when the
- * directory is the main checkout itself or not a git checkout at all. rev-parse
- * failures (git missing, not a repo) intentionally read as "no main layer"
- * rather than an error: the layered load degrades to repo + home.
- */
-export function discoverMainCheckoutRoot(worktreeRoot = ROOT) {
-  const result = spawnSync(
-    "git",
-    ["rev-parse", "--git-dir", "--git-common-dir"],
-    {
-      cwd: worktreeRoot,
-      encoding: "utf8",
-      timeout: 10_000,
-    },
-  );
-  if (result.error || result.status !== 0) return null;
-  const [gitDir, gitCommonDir] = result.stdout.trim().split(/\r?\n/);
-  return resolveMainCheckoutRoot({ gitDir, gitCommonDir, worktreeRoot });
-}
-
-/**
  * Load and merge every env layer. Returns:
  *   values  — merged KEY -> value (real secrets; never render these),
- *   sources — KEY -> 'process' | 'repo' | 'main' | 'home' (winning layer),
+ *   sources — KEY -> 'process' | 'repo' | 'home' (winning layer),
  *   layers  — [{ source, path, exists }] for display ("loaded from ...").
  * All roots/paths are injectable for tests; by default the repo root is this
- * checkout and the main root is git-discovered.
+ * checkout.
  */
 export function loadLayeredEnv(options = {}) {
   const {
     processEnv = process.env,
     repoRoot = ROOT,
     homeEnvPath = HOME_ENV_PATH,
-    mainRoot = discoverMainCheckoutRoot(options.repoRoot ?? ROOT),
   } = options;
   const filePaths = [];
   const pushUnique = (source, path) => {
@@ -181,9 +135,6 @@ export function loadLayeredEnv(options = {}) {
     }
   };
   pushUnique("repo", join(repoRoot, ".env"));
-  if (mainRoot && resolve(mainRoot) !== resolve(repoRoot)) {
-    pushUnique("main", join(mainRoot, ".env"));
-  }
   pushUnique("home", homeEnvPath);
   const layers = [
     { source: "process", path: null, exists: true, values: processEnv },
@@ -255,35 +206,41 @@ function atomicWriteEnvFile(path, content) {
 }
 
 /**
- * Upsert one KEY=value into the chosen layer file — 'home' (~/.eliza/.env,
- * created on first save; the default because it survives worktree churn) or
- * 'repo' (this checkout's .env). Atomic tmp+rename write, mode 600. Also sets
- * the key on processEnv so probes running in the same process observe the save
- * immediately. Values must be single-line; multi-line values would corrupt the
- * dotenv format and are rejected.
+ * Upsert one KEY=value into the chosen layer file — scope 'home'
+ * (~/.eliza/.env, created on first save; the default because it survives
+ * worktree churn) or 'repo' (this checkout's .env). Atomic tmp+rename write,
+ * mode 600. Also sets the key on processEnv so probes running in the same
+ * process observe the save immediately. Values must be single-line; multi-line
+ * values would corrupt the dotenv format and are rejected.
  */
-export function saveEnvVar(key, value, target = "home", options = {}) {
+export function writeSecret(key, value, options = {}) {
   const {
+    scope = "home",
     repoRoot = ROOT,
     homeEnvPath = HOME_ENV_PATH,
     processEnv = process.env,
   } = options;
   if (typeof key !== "string" || !ENV_KEY_PATTERN.test(key)) {
-    throw new Error(`saveEnvVar: invalid env key ${JSON.stringify(key)}`);
+    throw new Error(`writeSecret: invalid env key ${JSON.stringify(key)}`);
   }
   if (typeof value !== "string" || /[\r\n]/.test(value)) {
-    throw new Error(`saveEnvVar(${key}): value must be a single-line string`);
+    throw new Error(`writeSecret(${key}): value must be a single-line string`);
   }
-  if (target !== "home" && target !== "repo") {
+  if (scope !== "home" && scope !== "repo") {
     throw new Error(
-      `saveEnvVar(${key}): target must be "home" or "repo", got ${JSON.stringify(target)}`,
+      `writeSecret(${key}): scope must be "home" or "repo", got ${JSON.stringify(scope)}`,
     );
   }
-  const path = target === "home" ? homeEnvPath : join(repoRoot, ".env");
+  const path = scope === "home" ? homeEnvPath : join(repoRoot, ".env");
   const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
   atomicWriteEnvFile(path, upsertEnvContent(existing, { [key]: value }));
   processEnv[key] = value;
-  return { key, target, path };
+  return { key, scope, path };
+}
+
+export function saveEnvVar(key, value, target = "home", options = {}) {
+  const saved = writeSecret(key, value, { ...options, scope: target });
+  return { key: saved.key, target: saved.scope, path: saved.path };
 }
 
 // --- CLI: presence/source inspection (never prints values) -------------------

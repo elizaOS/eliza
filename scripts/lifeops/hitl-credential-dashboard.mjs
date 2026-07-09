@@ -9,8 +9,8 @@
  * Google/X roles ride OAuth metadata or separate real accounts per the
  * owner-agent matrix doc) — those slots feed matrix states 2/3/6.
  *
- * Presence is resolved through the layered env (process.env > worktree .env >
- * main-checkout .env > ~/.eliza/.env, env-layers.mjs); every field shows its
+ * Presence is resolved through the layered env (process.env > repo .env >
+ * ~/.eliza/.env, env-layers.mjs); every field shows its
  * winning source layer and the page header prints the resolved layer file
  * paths. Saves default to ~/.eliza/.env (survives worktree churn; atomic
  * tmp+rename, mode 600) with a per-save toggle for the repo .env, and never
@@ -60,7 +60,7 @@ import {
   redactSecrets,
   registerRedactionEnv,
 } from "./credential-probes.mjs";
-import { HOME_ENV_PATH, loadLayeredEnv, saveEnvVar } from "./env-layers.mjs";
+import { HOME_ENV_PATH, loadLayeredEnv, writeSecret } from "./env-layers.mjs";
 import {
   freshness,
   LEDGER_PATH,
@@ -224,7 +224,7 @@ function rememberProbes(results) {
 
 // --- env saves (layered, never via process.env) ---------------------------------
 
-// saveEnvVar mirrors writes into the processEnv it is handed; giving it a
+// writeSecret mirrors writes into the processEnv it is handed; giving it a
 // scratch object keeps the real process.env pristine so the per-layer source
 // badges stay truthful — probes read the merged layered env instead.
 const SAVE_SCRATCH_ENV = {};
@@ -259,7 +259,8 @@ function persistEnvVar(key, value, target) {
   const aliases = WRITE_ALIASES[key] ?? [];
   const paths = new Set();
   for (const name of [key, ...aliases]) {
-    const saved = saveEnvVar(name, trimmed, target, {
+    const saved = writeSecret(name, trimmed, {
+      scope: target,
       processEnv: SAVE_SCRATCH_ENV,
     });
     paths.add(saved.path);

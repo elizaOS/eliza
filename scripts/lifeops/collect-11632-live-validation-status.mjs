@@ -10,8 +10,8 @@
  * derives its model gate from the model group), so the CLI body only runs when
  * this file is the entrypoint (import.meta.main). As an entrypoint it hydrates
  * process.env from the layered load shared with the HITL dashboard and lane
- * driver (env-layers.mjs: process.env > repo .env > main-checkout .env >
- * ~/.eliza/.env), so all three surfaces report the same readiness. The HITL
+ * driver (env-layers.mjs: process.env > repo .env > ~/.eliza/.env), so all
+ * three surfaces report the same readiness. The HITL
  * dashboard renders per-auth-path rows from connector-paths.mjs instead.
  */
 import { spawnSync } from "node:child_process";
