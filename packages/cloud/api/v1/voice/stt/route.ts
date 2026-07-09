@@ -41,6 +41,7 @@ import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import { resolveWhisperSttModel } from "./whisper-model";
+import { parseWhisperTimestamps } from "./whisper-timestamps";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 
@@ -197,6 +198,13 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       const whisperModel = resolveWhisperSttModel(env.WHISPER_STT_MODEL);
       form.append("model", whisperModel);
       if (languageCode) form.append("language", languageCode);
+      // verbose_json + word/segment granularities (#14806): downstream
+      // consumers (transcript fragments, PII audio redaction) need ms spans,
+      // and a server that ignores these OpenAI-spec fields still returns
+      // `text`, so the plain-transcript contract is unchanged.
+      form.append("response_format", "verbose_json");
+      form.append("timestamp_granularities[]", "word");
+      form.append("timestamp_granularities[]", "segment");
       const whisperResponse = await fetch(
         `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
         { method: "POST", body: form },
@@ -213,11 +221,22 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       }
       const whisperJson = (await whisperResponse.json()) as { text?: string };
       const transcript = (whisperJson.text ?? "").trim();
+      const { segments, words, dropped } = parseWhisperTimestamps(whisperJson);
+      if (dropped > 0) {
+        logger.warn(
+          `[Voice STT API] Dropped ${dropped} malformed timestamp entries from Whisper verbose_json`,
+        );
+      }
       const whisperDuration = Date.now() - whisperStart;
       logger.info(
-        `[Voice STT API] Whisper (${whisperModel}) completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}"`,
+        `[Voice STT API] Whisper (${whisperModel}) completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}" (${segments?.length ?? 0} segments, ${words?.length ?? 0} words timed)`,
       );
-      return Response.json({ transcript, duration_ms: whisperDuration });
+      return Response.json({
+        transcript,
+        duration_ms: whisperDuration,
+        ...(segments ? { segments } : {}),
+        ...(words ? { words } : {}),
+      });
     }
 
     const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
