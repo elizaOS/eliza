@@ -111,6 +111,8 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "GENERATE_MEDIA",
     "IDENTIFY_SPEAKER",
     "LOCAL_INFERENCE",
+    "REDACT_TRANSCRIPT",
+    "SHARE_TRANSCRIPT",
     "START_TRANSCRIPTION",
     "STOP_TRANSCRIPTION",
   ],
@@ -206,6 +208,10 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // New on-device transcription actions; no deterministic keyless scenario yet.
   "START_TRANSCRIPTION",
   "STOP_TRANSCRIPTION",
+  // Transcript permissioning actions (#15606); no deterministic keyless
+  // scenario yet.
+  "REDACT_TRANSCRIPT",
+  "SHARE_TRANSCRIPT",
   // New workflow code-eval action (#8914); no deterministic keyless scenario yet.
   "EVAL_CODE",
   // App-control agent/model switchers + settings surface; dispatched through

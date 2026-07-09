@@ -7,6 +7,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterAll, describe, expect, it } from "vitest";
+import { resolveFfmpegBinary } from "../ffmpeg-binaries.ts";
 import {
   extractKeyframes,
   ffmpegAvailable,
@@ -21,13 +22,18 @@ const dir = makeTmpDir();
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const hasFfmpeg = await ffmpegAvailable();
+// The availability gate above resolves env → PATH → bundled ffmpeg-static, so
+// the fixture must spawn the same resolved binary — a bare "ffmpeg" fails on
+// runners where only the bundled static binary exists.
+const ffmpeg = await resolveFfmpegBinary();
+const ffmpegBin = ffmpeg.available ? ffmpeg.bin : "ffmpeg";
 
 /**
  * Build a 2-scene .mp4: 1s of solid red then 1s of solid blue, concatenated so
  * ffmpeg's scene detector sees exactly one hard cut between two colour blocks.
  */
 async function makeTwoSceneVideo(out: string): Promise<void> {
-  await execFileAsync("ffmpeg", [
+  await execFileAsync(ffmpegBin, [
     "-hide_banner",
     "-loglevel",
     "error",

@@ -222,6 +222,7 @@ describe("ElizaSandboxService shared runtime billing", () => {
           model: "gpt-oss-120b",
           degraded: false,
           runtime: "shared",
+          transport: "shared-runtime",
         },
       });
       expect(reserveCredits).toHaveBeenCalledWith(
