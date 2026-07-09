@@ -6,6 +6,15 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { dispatchRoute as dispatchApiRoute } from "../../../plugins/plugin-capacitor-bridge/src/type-shims/agent-api.ts";
+import {
+  configFileExists,
+  dispatchRoute as dispatchRootRoute,
+  hasPersistedFirstRunState,
+  loadElizaConfig,
+  saveElizaConfig,
+  startEliza,
+} from "../../../plugins/plugin-capacitor-bridge/src/type-shims/agent-root.ts";
 
 const repoRoot = resolve(import.meta.dir, "../../..");
 
@@ -34,4 +43,20 @@ test("bridge typecheck uses the same agent shims as declaration builds", () => {
   expect(
     bridgePackage.devDependencies["@elizaos/plugin-anthropic"],
   ).toBeUndefined();
+});
+
+test("type-only bridge shims fail fast if runtime resolution reaches them", () => {
+  const guards = [
+    dispatchApiRoute,
+    dispatchRootRoute,
+    startEliza,
+    configFileExists,
+    loadElizaConfig,
+    saveElizaConfig,
+    hasPersistedFirstRunState,
+  ];
+
+  for (const guard of guards) {
+    expect(() => guard({} as never)).toThrow("Type shim only");
+  }
 });
