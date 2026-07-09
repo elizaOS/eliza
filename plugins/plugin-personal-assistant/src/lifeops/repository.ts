@@ -3922,6 +3922,7 @@ export class LifeOpsRepository {
       }
       LifeOpsRepository.telemetryMirrorFailures.delete(signal.agentId);
     } catch (error) {
+      // error-policy:J7 telemetry mirror diagnostics must not block the durable signal row
       const nextCount =
         (LifeOpsRepository.telemetryMirrorFailures.get(signal.agentId) ?? 0) +
         1;
@@ -3938,6 +3939,20 @@ export class LifeOpsRepository {
           "[lifeops] Telemetry mirror failed for activity signal.",
         );
       }
+      this.runtime.reportError(
+        "lifeops.repository.telemetry-mirror",
+        new ElizaError("Telemetry mirror failed for activity signal.", {
+          code: "LIFEOPS_ACTIVITY_SIGNAL_TELEMETRY_MIRROR_FAILED",
+          context: {
+            agentId: signal.agentId,
+            source: signal.source,
+            platform: signal.platform,
+            consecutiveFailures: nextCount,
+          },
+          cause: error,
+          severity: "ephemeral",
+        }),
+      );
     }
   }
 
