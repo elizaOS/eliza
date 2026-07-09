@@ -343,6 +343,11 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "inbox.summarize-inboxes",
   "linear.search-issues",
   "local-inference.start-transcription",
+  // Transcript permissioning (#14779): keyless proof that SHARE_TRANSCRIPT
+  // routes message -> planner -> TranscriptStore and that the disclosure
+  // predicate serves the redacted variant to a non-privileged colleague while
+  // an admin keeps the untouched original. Added here in the same commit.
+  "local-inference.transcript-permissioning",
   "meetings.get-transcript",
   "music.routing-status",
   "nostr.search-posts",
