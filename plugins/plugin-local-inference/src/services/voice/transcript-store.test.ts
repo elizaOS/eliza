@@ -434,6 +434,42 @@ describe("TranscriptStore", () => {
 			expect(variantMeta.redactedBy).toBe(VIEWER);
 		});
 
+		it("keeps seeded redacted variant ids scoped to the original transcript", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			const firstId = "00000000-0000-4000-8000-000000000101";
+			const secondId = "00000000-0000-4000-8000-000000000202";
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({ id: firstId }),
+			});
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({ id: secondId }),
+			});
+
+			const first = await store.createRedactedVariant({
+				originalId: firstId as UUID,
+				seed: "same-seed",
+				nowMs: 3000,
+			});
+			const second = await store.createRedactedVariant({
+				originalId: secondId as UUID,
+				seed: "same-seed",
+				nowMs: 3000,
+			});
+
+			expect(first.id).not.toBe(second.id);
+			expect((rt.rows.get(firstId) as Memory).metadata).toMatchObject({
+				redactedVariantId: first.id,
+			});
+			expect((rt.rows.get(secondId) as Memory).metadata).toMatchObject({
+				redactedVariantId: second.id,
+			});
+		});
+
 		it("adds and replaces transcript share grants on the original row", async () => {
 			const rt = fakeRuntime();
 			const store = new TranscriptStore(rt);

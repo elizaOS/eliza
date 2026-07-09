@@ -377,7 +377,7 @@ export class TranscriptStore {
 		const variantId =
 			existingVariantId ??
 			(stringToUuid(
-				`transcript-redaction:${input.seed ?? input.originalId}`,
+				`transcript-redaction:${input.originalId}:${input.seed ?? ""}`,
 			) as UUID);
 		const nowMs = input.nowMs ?? Date.now();
 		const variant = {
