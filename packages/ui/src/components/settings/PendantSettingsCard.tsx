@@ -183,8 +183,8 @@ export function PendantSettingsCard(): React.ReactElement {
 
       {!supported ? (
         <SettingsRow
-          label="Requires desktop Chrome or Android Chrome"
-          description="Web Bluetooth isn't available on iOS Safari. On iPhone the pendant connects through the native app instead."
+          label="Bluetooth pendant not available here"
+          description="Connect from the Android app, desktop Chrome, or Android Chrome. Web Bluetooth isn't available on iOS Safari — use the native app there instead."
         />
       ) : null}
 

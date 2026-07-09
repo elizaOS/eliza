@@ -47,9 +47,22 @@ export const OMI_AUDIO_DATA_CHAR_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
 /** Codec-type characteristic — `read` returns one byte (`CODEC_ID`). */
 export const OMI_AUDIO_CODEC_CHAR_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
 
-/** Standard Bluetooth Battery Service (0x180F) + Battery Level (0x2A19). */
+/**
+ * Standard Bluetooth Battery Service (0x180F) + Battery Level (0x2A19).
+ *
+ * Web Bluetooth accepts the SIG short names; the Capacitor plugin
+ * (`@capacitor-community/bluetooth-le`) requires FULL 128-bit UUIDs, so we keep
+ * both forms. The 128-bit forms are the SIG base UUID with the 16-bit id in the
+ * high word (`0000XXXX-0000-1000-8000-00805f9b34fb`).
+ */
 export const BATTERY_SERVICE_UUID = "battery_service"; // 0x180F short name
 export const BATTERY_LEVEL_CHAR_UUID = "battery_level"; // 0x2A19 short name
+/** Full 128-bit Battery Service UUID (0x180F) — for the native BLE plugin. */
+export const BATTERY_SERVICE_UUID_128 =
+  "0000180f-0000-1000-8000-00805f9b34fb";
+/** Full 128-bit Battery Level char UUID (0x2A19) — for the native BLE plugin. */
+export const BATTERY_LEVEL_CHAR_UUID_128 =
+  "00002a19-0000-1000-8000-00805f9b34fb";
 
 /** Codec ids the firmware may report from the codec characteristic. */
 export const OMI_CODEC = {

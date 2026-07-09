@@ -103,6 +103,7 @@
     "capture:windows-desktop": "node scripts/capture-windows-desktop.mjs"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "8.2.0",
     "@capacitor/android": "8.3.4",
     "@capacitor/app": "8.1.0",
     "@capacitor/background-runner": "^3.0.0",
