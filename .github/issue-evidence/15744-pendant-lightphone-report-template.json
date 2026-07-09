@@ -1,0 +1,48 @@
+{
+  "issue": "https://github.com/elizaOS/eliza/issues/15744",
+  "generatedAt": "replace-with-run-timestamp",
+  "checkpoints": [
+    {
+      "id": "lp3-physical-device-and-apk",
+      "proof": "physical",
+      "status": "unverified",
+      "artifacts": [],
+      "notes": "Device model/build/API/ABI, local APK SHA256/package/version/signing, installed package version/signing, installed base.apk SHA256."
+    },
+    {
+      "id": "lp3-physical-bluetooth-permissions",
+      "proof": "physical",
+      "status": "unverified",
+      "artifacts": [],
+      "notes": "Read-only Bluetooth/Nearby permission evidence from dumpsys/appops. No pm grant or UX permission auto-accept."
+    },
+    {
+      "id": "lp3-physical-launch-and-capture",
+      "proof": "physical",
+      "status": "unverified",
+      "artifacts": [],
+      "notes": "Launch ai.elizaos.app, capture bounded filtered logcat, UIAutomator hierarchy, screenshots, screen recording, getprop/settings metadata."
+    },
+    {
+      "id": "desktop-sol-dev-browser-evidence",
+      "proof": "supplemental",
+      "status": "unverified",
+      "artifacts": [],
+      "notes": "Playwright browser logs, network/HAR/trace, screenshots/video, storage key names plus bounded/redacted transcript/session values from an explicit sol-dev URL and explicit issue-evidence output directory."
+    },
+    {
+      "id": "desktop-sol-dev-manual-web-bluetooth",
+      "proof": "physical",
+      "status": "unverified",
+      "artifacts": [],
+      "notes": "Manual Web Bluetooth chooser and physical pairing proof. Browser automation must not mark this pass without artifacts."
+    },
+    {
+      "id": "supplemental-emulation",
+      "proof": "supplemental",
+      "status": "unverified",
+      "artifacts": [],
+      "notes": "Deterministic permission denied, Bluetooth unavailable/off, disconnect/reconnect, ASR failure, refresh/process-style recovery. Not physical proof."
+    }
+  ]
+}
