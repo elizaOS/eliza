@@ -5,10 +5,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const matrix = await import(
   new URL("../audit-mvp-evidence-matrix.mjs", import.meta.url).href
 );
+const scriptPath = new URL("../audit-mvp-evidence-matrix.mjs", import.meta.url)
+  .pathname;
 
 function issue(number: number, title: string, labels: string[], body = "") {
   return {
@@ -159,6 +165,7 @@ describe("MVP evidence matrix", () => {
       "### #14358 [onboarding] Device e2e for iOS sim + Android emu",
     );
     expect(markdown).toContain("- Project status: Needs human review");
+    expect(markdown).toContain("| Project status source | project |");
     expect(markdown).toContain("- Blocker labels: needs-human");
     expect(markdown).toContain(
       "- [ ] **Before/after screenshots with OCR and color heuristics** (`visual-screenshots-ocr-color`)",
@@ -184,5 +191,45 @@ describe("MVP evidence matrix", () => {
       url: "https://github.com/elizaOS/eliza/issues/14783",
       labels: [{ name: "mvp" }, { name: "needs-shaw" }],
     });
+  });
+
+  test("CLI no-project mode writes markdown without Project GraphQL data", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-evidence-matrix-"));
+    const issuesJson = join(dir, "issues.json");
+    const output = join(dir, "checklist.md");
+    writeFileSync(
+      issuesJson,
+      JSON.stringify([
+        issue(14358, "[onboarding] Device e2e for iOS sim + Android emu", [
+          "mvp",
+          "ui",
+          "needs-human",
+        ]),
+      ]),
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--issues-json",
+        issuesJson,
+        "--no-project",
+        "--markdown",
+        "--output",
+        output,
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe("");
+    const markdown = readFileSync(output, "utf8");
+    expect(markdown).toContain("| Project status source | omitted |");
+    expect(markdown).toContain("- Project status: not loaded (--no-project)");
+    expect(markdown).toContain(
+      "- [ ] **Before/after screenshots with OCR and color heuristics** (`visual-screenshots-ocr-color`)",
+    );
   });
 });

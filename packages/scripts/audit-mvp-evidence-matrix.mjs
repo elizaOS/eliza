@@ -197,7 +197,9 @@ function usage() {
   return `Usage:
   node packages/scripts/audit-mvp-evidence-matrix.mjs [--json]
   node packages/scripts/audit-mvp-evidence-matrix.mjs --markdown [--output mvp-evidence.md]
+  node packages/scripts/audit-mvp-evidence-matrix.mjs --no-project --markdown [--output mvp-evidence.md]
   node packages/scripts/audit-mvp-evidence-matrix.mjs --issues-json issues.json --project-json project.json [--json]
+  node packages/scripts/audit-mvp-evidence-matrix.mjs --issues-json issues.json --no-project [--json]
 
 Options:
   --repo <owner/repo>             GitHub repo for live mode (default: ${DEFAULT_REPO}).
@@ -366,11 +368,12 @@ function evidenceCounts(rows) {
   return Object.fromEntries([...counts.entries()].sort());
 }
 
-export function buildEvidenceMatrix(issues, projectPayload, options = {}) {
+export function buildEvidenceMatrix(issues, projectPayload = {}, options = {}) {
   const statusByNumber = projectStatusByNumber(
     projectPayload,
     options.repo ?? DEFAULT_REPO,
   );
+  const projectStatusSource = options.projectStatusSource ?? "project";
   const rows = issues
     .map((issue) => ({
       ...issue,
@@ -381,6 +384,7 @@ export function buildEvidenceMatrix(issues, projectPayload, options = {}) {
   const humanGated = rows.filter((row) => row.blockerLabels.length > 0);
   const agentActionable = rows.filter((row) => row.blockerLabels.length === 0);
   return {
+    projectStatusSource,
     counts: {
       openMvpIssues: rows.length,
       humanGated: humanGated.length,
@@ -397,6 +401,7 @@ function formatText(report) {
     "LifeOps MVP evidence matrix",
     `open MVP issues: ${report.counts.openMvpIssues}`,
     `human-gated: ${report.counts.humanGated}; agent-actionable: ${report.counts.agentActionable}`,
+    `project-status source: ${report.projectStatusSource}`,
     "",
     "Evidence coverage:",
   ];
@@ -419,6 +424,13 @@ function formatChecklistItem(evidence) {
   return `- [ ] **${evidence.label}** (\`${evidence.id}\`) — ${evidence.reason}`;
 }
 
+function projectStatusLabel(row, report) {
+  if (row.projectStatus) return row.projectStatus;
+  if (report.projectStatusSource === "omitted")
+    return "not loaded (--no-project)";
+  return "unset";
+}
+
 export function formatMarkdown(report) {
   const lines = [
     "# LifeOps MVP Evidence Checklist",
@@ -428,6 +440,7 @@ export function formatMarkdown(report) {
     `| Open MVP issues | ${report.counts.openMvpIssues} |`,
     `| Human/owner-gated | ${report.counts.humanGated} |`,
     `| Agent-actionable | ${report.counts.agentActionable} |`,
+    `| Project status source | ${report.projectStatusSource} |`,
     "",
     "## Evidence Category Coverage",
     "",
@@ -452,7 +465,7 @@ export function formatMarkdown(report) {
       row.blockerLabels.length > 0 ? row.blockerLabels.join(", ") : "none";
     lines.push(`### #${row.number} ${row.title}`);
     lines.push("");
-    lines.push(`- Project status: ${row.projectStatus ?? "unset"}`);
+    lines.push(`- Project status: ${projectStatusLabel(row, report)}`);
     lines.push(`- Blocker labels: ${blockers}`);
     if (row.url) lines.push(`- Issue: ${row.url}`);
     lines.push("");
@@ -481,11 +494,16 @@ async function main() {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  if (
-    (args.issuesJson && !args.projectJson) ||
-    (!args.issuesJson && args.projectJson)
-  ) {
-    throw new Error("--issues-json and --project-json must be passed together");
+  if (args.noProject && args.projectJson) {
+    throw new Error("--no-project cannot be combined with --project-json");
+  }
+  if (!args.noProject && args.issuesJson && !args.projectJson) {
+    throw new Error(
+      "--issues-json requires --project-json unless --no-project is passed",
+    );
+  }
+  if (!args.issuesJson && args.projectJson) {
+    throw new Error("--project-json requires --issues-json");
   }
 
   const issues = args.issuesJson
@@ -508,6 +526,7 @@ async function main() {
         ]);
   const report = buildEvidenceMatrix(issues, projectPayload, {
     repo: args.repo,
+    projectStatusSource: args.noProject ? "omitted" : "project",
   });
   const output = formatReport(report, args);
   if (args.output) {
