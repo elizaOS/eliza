@@ -74,6 +74,36 @@ const projectItems = [
   },
 ];
 
+const restOpenIssues = [
+  {
+    number: 10,
+    title: "Needs owner device",
+    html_url: "https://github.com/elizaOS/eliza/issues/10",
+    labels: [{ name: "mvp" }, { name: "needs-human" }],
+  },
+  {
+    number: 11,
+    title: "Ready for agent",
+    html_url: "https://github.com/elizaOS/eliza/issues/11",
+    labels: [{ name: "mvp" }, { name: "testing" }],
+  },
+  {
+    number: 12,
+    title: "Different lane",
+    html_url: "https://github.com/elizaOS/eliza/issues/12",
+    labels: [{ name: "testing" }],
+  },
+];
+
+const restClosedIssues = [
+  {
+    number: 13,
+    title: "Closed MVP row",
+    html_url: "https://github.com/elizaOS/eliza/issues/13",
+    labels: ["mvp"],
+  },
+];
+
 describe("audit-mvp-project-board", () => {
   test("summarizeMvpBoard separates stale, human-gated, and actionable rows", () => {
     const summary = board.summarizeMvpBoard({
@@ -124,6 +154,46 @@ describe("audit-mvp-project-board", () => {
       expect.objectContaining({ type: "agent-actionable-open", count: 1 }),
       expect.objectContaining({ type: "open-done", count: 1 }),
     ]);
+  });
+
+  test("summarizeMvpIssuesOnly reports partial label state without project buckets", () => {
+    const summary = board.summarizeMvpIssuesOnly({
+      openIssues: restOpenIssues,
+      closedIssues: restClosedIssues,
+    });
+
+    expect(summary.projectCheckSkipped).toBe(true);
+    expect(summary.counts).toEqual({
+      openMvpIssues: 2,
+      closedMvpIssues: 1,
+      humanGated: 1,
+      agentActionable: 1,
+    });
+    expect(summary.humanGated.map((issue) => issue.number)).toEqual([10]);
+    expect(summary.agentActionable.map((issue) => issue.number)).toEqual([11]);
+    expect(board.strictViolations(summary)).toEqual([
+      expect.objectContaining({
+        type: "agent-actionable-open",
+        message: "1 open MVP issue(s) are not human-gated",
+      }),
+    ]);
+  });
+
+  test("formatSummary makes issues-only Project status omission explicit", () => {
+    const text = board.formatSummary(
+      board.summarizeMvpIssuesOnly({
+        openIssues: restOpenIssues,
+        closedIssues: restClosedIssues,
+      }),
+    );
+
+    expect(text).toContain("Project status check: SKIPPED (--issues-only)");
+    expect(text).toContain(
+      "open MVP issues: 2 (1 human-gated, 1 agent-actionable)",
+    );
+    expect(text).toContain("Open MVP issues not human-gated");
+    expect(text).toContain("#11 — Ready for agent");
+    expect(text).not.toContain("closed-not-Done");
   });
 
   test("CLI fixture mode exits non-zero in strict mode and prints JSON violations", () => {
@@ -209,6 +279,83 @@ describe("audit-mvp-project-board", () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe("");
     const parsed = JSON.parse(result.stdout);
+    expect(parsed.strictViolations).toEqual([]);
+    expect(parsed.counts.humanGated).toBe(1);
+  });
+
+  test("CLI issues-only fixture mode skips project data and fails only actionable open MVP issues", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-board-audit-issues-only-"));
+    const openJson = join(dir, "open.json");
+    const closedJson = join(dir, "closed.json");
+    writeFileSync(openJson, JSON.stringify(restOpenIssues));
+    writeFileSync(closedJson, JSON.stringify(restClosedIssues));
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--issues-only",
+        "--open-json",
+        openJson,
+        "--closed-json",
+        closedJson,
+        "--json",
+        "--strict",
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("strict failed");
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.projectCheckSkipped).toBe(true);
+    expect(parsed.strictViolations).toEqual([
+      expect.objectContaining({ type: "agent-actionable-open", count: 1 }),
+    ]);
+    expect(parsed.strictViolations).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "closed-not-done" }),
+        expect.objectContaining({ type: "open-done" }),
+      ]),
+    );
+  });
+
+  test("CLI issues-only fixture mode exits zero when all open MVP issues are human-gated", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-board-audit-issues-clean-"));
+    const openJson = join(dir, "open.json");
+    const closedJson = join(dir, "closed.json");
+    writeFileSync(
+      openJson,
+      JSON.stringify([
+        {
+          number: 10,
+          title: "Needs owner device",
+          html_url: "https://github.com/elizaOS/eliza/issues/10",
+          labels: [{ name: "mvp" }, { name: "needs-shaw" }],
+        },
+      ]),
+    );
+    writeFileSync(closedJson, JSON.stringify(restClosedIssues));
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--issues-only",
+        "--open-json",
+        openJson,
+        "--closed-json",
+        closedJson,
+        "--json",
+        "--strict",
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.projectCheckSkipped).toBe(true);
     expect(parsed.strictViolations).toEqual([]);
     expect(parsed.counts.humanGated).toBe(1);
   });
