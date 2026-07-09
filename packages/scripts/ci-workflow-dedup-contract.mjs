@@ -159,6 +159,15 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     ["main"],
     "ci.yaml PR branches",
   );
+  assertIncludes(
+    ci,
+    "node packages/scripts/lint-lane-coverage.mjs",
+    "ci.yaml enforces lane coverage",
+  );
+  assert(
+    !ci.includes("lint-lane-coverage.mjs --dry-run"),
+    "ci.yaml lane coverage must be enforced, not warn-only (#13620)",
+  );
 
   // test.yml is the develop POST-MERGE orchestrator (#14194): develop `push`
   // only, and it must NOT carry a `pull_request` or `merge_group` trigger, or
@@ -196,6 +205,15 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     ),
     ["develop"],
     "develop-pr.yml PR branches",
+  );
+  assertIncludes(
+    developPr,
+    "node packages/scripts/lint-lane-coverage.mjs",
+    "develop-pr.yml enforces lane coverage",
+  );
+  assert(
+    !developPr.includes("lint-lane-coverage.mjs --dry-run"),
+    "develop-pr.yml lane coverage must be enforced, not warn-only (#13620)",
   );
 
   // scenario-pr.yml follows the same pre/post-merge split as test.yml: the
