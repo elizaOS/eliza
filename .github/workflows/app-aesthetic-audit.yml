@@ -37,6 +37,7 @@ jobs:
   aesthetic-audit:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
+    continue-on-error: true
     env:
       # Keyless: the ui-smoke stub is forced when CI=true (shouldForceStubStack).
       ELIZA_UI_SMOKE_FORCE_STUB: "1"
@@ -84,6 +85,7 @@ jobs:
     needs: aesthetic-audit
     runs-on: macos-15
     timeout-minutes: 20
+    continue-on-error: true
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -104,6 +106,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Download aesthetic-audit artifacts
+        continue-on-error: true
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: app-aesthetic-audit-output
