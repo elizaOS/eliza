@@ -39,6 +39,8 @@ import {
   ApprovalStateTransitionError,
   ApprovalTransitionConflictError,
 } from "../lifeops/approval-queue.types.js";
+import { extractCommitmentLedgerRecords } from "../lifeops/commitments/index.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedBookTravel } from "./book-travel.js";
 import { dispatchApprovedSignatureRequest } from "./document.js";
@@ -221,6 +223,58 @@ function approvalChannelToCrossChannelSend(
   }
 }
 
+async function persistSentMailCommitments(args: {
+  runtime: IAgentRuntime;
+  request: ApprovalRequest;
+  sentAt: Date;
+}): Promise<void> {
+  if (args.request.action !== "send_email") return;
+  const payload = args.request.payload;
+  if (payload.action !== "send_email") return;
+  const adapter = (args.runtime as { adapter?: { db?: unknown } }).adapter;
+  if (!adapter?.db) {
+    logger.debug(
+      `[approval] commitment ledger unavailable for sent email approval ${args.request.id}; runtime has no SQL adapter`,
+    );
+    return;
+  }
+
+  const records = extractCommitmentLedgerRecords({
+    agentId: args.runtime.agentId,
+    source: "sent_mail",
+    sourceKey: `approval:${args.request.id}`,
+    text: payload.body,
+    observedAt: args.sentAt.toISOString(),
+    counterparty: payload.to.join(", ") || null,
+    metadata: {
+      approvalRequestId: args.request.id,
+      subject: payload.subject,
+      to: payload.to,
+      cc: payload.cc,
+      bcc: payload.bcc,
+      replyToMessageId: payload.replyToMessageId,
+    },
+  });
+  if (records.length === 0) return;
+
+  const repository = new LifeOpsRepository(args.runtime);
+  try {
+    for (const record of records) {
+      await repository.upsertCommitmentLedgerRecord(record);
+    }
+  } catch (error) {
+    // error-policy:J7 the sent email is already committed externally; report the
+    // projection failure without making the approval retriable and duplicating mail.
+    logger.warn(
+      `[approval] failed to project sent email approval ${args.request.id} into commitment ledger`,
+      error,
+    );
+    args.runtime.reportError?.("lifeops:commitment-ledger:sent-mail", error, {
+      requestId: args.request.id,
+    });
+  }
+}
+
 export async function executeApprovedRequest(args: {
   runtime: IAgentRuntime;
   queue: ApprovalQueue;
@@ -261,6 +315,11 @@ export async function executeApprovedRequest(args: {
       });
     }
     const done = await args.queue.markDone(args.request.id);
+    await persistSentMailCommitments({
+      runtime: args.runtime,
+      request: args.request,
+      sentAt: done.updatedAt,
+    });
     const text =
       payload.to.length > 0
         ? `Approved and sent email to ${payload.to.join(", ")}.`
