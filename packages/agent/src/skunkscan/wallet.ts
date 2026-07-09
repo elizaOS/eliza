@@ -157,15 +157,6 @@ const complianceScreening = analyzeWalletCompliance(
   exposure,
 );
 
-const transactionRisk =
-  analyzeWalletTransactionRisk(
-    risk,
-    trust,
-    exposure,
-    complianceScreening,
-    caseSummary,
-  );
-
 const intelligenceSources =
   getWalletIntelligenceSources();
 
@@ -191,6 +182,15 @@ const caseSummary = analyzeWalletCaseSummary(
   defi,
   behavior,
 );
+
+const transactionRisk =
+  analyzeWalletTransactionRisk(
+    risk,
+    trust,
+    exposure,
+    complianceScreening,
+    caseSummary,
+  );
 
 const investigationReplay = analyzeInvestigationReplay(
   portfolio,
