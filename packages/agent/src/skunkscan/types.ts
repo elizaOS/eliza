@@ -385,6 +385,30 @@ export type WalletSmartMoneySummary = {
   limitations: string[];
 };
 
+export type WalletInvestigationReport = {
+  generatedAt: string;
+
+  reportVersion: string;
+
+  executiveSummary: string;
+
+  overallRecommendation:
+    | "allow"
+    | "review"
+    | "investigate"
+    | "high_risk";
+
+  highlights: string[];
+
+  investigationScope: {
+    blockchain: SupportedChain;
+    investigatedAddress: string;
+    investigationType: "wallet_screening";
+  };
+
+  disclaimer: string;
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -414,6 +438,7 @@ export type WalletInvestigationResult = {
   risk?: WalletRiskSummary;
   transactionRisk?: WalletTransactionRiskSummary;
   smartMoney?: WalletSmartMoneySummary;
+  investigationReport?: WalletInvestigationReport;
   summary: string;
   warnings: string[];
 };
