@@ -11,7 +11,7 @@
 import * as React from "react";
 
 import {
-  isWebBluetoothAvailable,
+  isPendantSupported,
   PendantConnection,
   type PendantConnectionOptions,
   type PendantState,
@@ -31,7 +31,7 @@ export interface UsePendantResult {
 }
 
 const INITIAL_STATE: PendantState = {
-  status: isWebBluetoothAvailable() ? "idle" : "unsupported",
+  status: isPendantSupported() ? "idle" : "unsupported",
   connectStep: "idle",
   deviceName: null,
   batteryPercent: null,
@@ -49,7 +49,7 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
   const optionsRef = React.useRef(options);
   optionsRef.current = options;
 
-  const supported = React.useMemo(() => isWebBluetoothAvailable(), []);
+  const supported = React.useMemo(() => isPendantSupported(), []);
 
   const connect = React.useCallback(() => {
     if (connectionRef.current) return;

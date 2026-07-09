@@ -9,6 +9,7 @@
 export {
   connectPendant,
   dispatchPendantVoiceTranscript,
+  isPendantSupported,
   isWebBluetoothAvailable,
   PendantConnection,
   PENDANT_VOICE_TRANSCRIPT_EVENT,
@@ -17,6 +18,19 @@ export {
   type PendantStatus,
   type PendantVoiceTranscriptDetail,
 } from "./pendant-connection";
+export {
+  type PendantTransport,
+  PendantUserCancelledError,
+} from "./pendant-transport";
+export {
+  isNativeAndroid,
+  selectPendantTransport,
+} from "./select-transport";
+export { WebBluetoothPendantTransport } from "./web-bluetooth-transport";
+export {
+  type BleClientLike,
+  NativeBlePendantTransport,
+} from "./native-ble-transport";
 export {
   OMI_AUDIO_SERVICE_UUID,
   OMI_AUDIO_DATA_CHAR_UUID,
