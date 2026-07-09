@@ -291,6 +291,13 @@ function isCapacitorNativeRuntime(): boolean {
   return Boolean(capacitor?.isNativePlatform?.());
 }
 
+function canUseMountedStewardLoginSurface(): boolean {
+  if (isCapacitorNativeRuntime()) {
+    return hasUsableStoredStewardToken();
+  }
+  return hasUsableStoredStewardToken() || hasStewardLoginLauncher();
+}
+
 function originsMatch(left: string, right: string): boolean {
   try {
     return new URL(left).origin === new URL(right).origin;
@@ -718,11 +725,14 @@ export function useCloudState({
         }
       }
 
-      // Cloud = Steward everywhere (DECISIONS.md D3). When the shell-router has
-      // mounted the Steward provider it registers a launcher; drive the in-app
-      // Steward sign-in (passkey / email / OAuth / wallet) instead of the
-      // legacy device-code browser window. Same identity on web (same-origin
-      // cookie + localStorage JWT) and native (Bearer-from-localStorage).
+      // Cloud = Steward where the current surface can complete it. When the
+      // shell-router has mounted the Steward provider it registers a launcher;
+      // web/desktop can drive the in-app Steward sign-in (passkey / email /
+      // OAuth / wallet) instead of the legacy device-code browser window.
+      // Capacitor native cannot use Steward's browser WebAuthn surface without
+      // a native bridge, so native only takes this branch for a still-usable
+      // stored token and otherwise falls through to the external device-code
+      // flow.
       //
       // Only take this branch when it can complete on THIS click: a still-usable
       // stored token (launchStewardLogin short-circuits on it) or a mounted
@@ -732,7 +742,7 @@ export function useCloudState({
       // click dead-ended on an error and only the second click (token now gone)
       // reached the working device-code flow. Instead, drain the stale token
       // below and fall through to the device-code flow on the same click.
-      if (hasUsableStoredStewardToken() || hasStewardLoginLauncher()) {
+      if (canUseMountedStewardLoginSurface()) {
         closePrePoppedWindow();
         try {
           await launchStewardLogin();

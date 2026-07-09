@@ -17,9 +17,17 @@ import {
   readCloudLoginPending,
 } from "../first-run/first-run-cloud-resume";
 import { CLOUD_LOGIN_POPUP_NAME } from "./cloud-login-launch";
+import { registerStewardLoginLauncher } from "./cloud-steward-login";
 import { useCloudState } from "./useCloudState";
 
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
+const globalWithPlatform = globalThis as typeof globalThis & {
+  Capacitor?: { isNativePlatform?: () => boolean };
+};
 
 function makeParams() {
   return {
@@ -34,10 +42,6 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
   let cloudLoginSpy: ReturnType<typeof vi.spyOn>;
   let cloudLoginDirectSpy: ReturnType<typeof vi.spyOn>;
   let cloudLoginPollDirectSpy: ReturnType<typeof vi.spyOn>;
-  const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
-    window,
-    "location",
-  );
 
   beforeEach(() => {
     localStorage.clear();
@@ -69,6 +73,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
   afterEach(() => {
     localStorage.clear();
+    delete globalWithPlatform.Capacitor;
     vi.restoreAllMocks();
     if (originalLocationDescriptor) {
       Object.defineProperty(window, "location", originalLocationDescriptor);
@@ -430,6 +435,73 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       unmount();
       vi.clearAllTimers();
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bypasses a registered Steward launcher on Capacitor native and uses external direct device-code polling", async () => {
+    vi.useFakeTimers();
+    globalWithPlatform.Capacitor = { isNativePlatform: () => true };
+    const launcher = vi.fn(async () => ({ token: "launcher-token" }));
+    const unregister = registerStewardLoginLauncher(launcher);
+    const popup = {
+      closed: false,
+      close: vi.fn(() => {
+        (popup as { closed: boolean }).closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api.elizacloud.ai",
+      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-native",
+      sessionId: "sess-native",
+    });
+    cloudLoginPollDirectSpy.mockResolvedValue({
+      status: "authenticated",
+      token: "native-session-token",
+      userId: "user-native",
+    });
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      let login: Promise<void> = Promise.resolve();
+      await act(async () => {
+        login = result.current.handleCloudLogin(popup);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(launcher).not.toHaveBeenCalled();
+      expect(cloudLoginDirectSpy).toHaveBeenCalledWith(
+        "https://api.elizacloud.ai",
+      );
+      expect(popup.location.href).toBe(
+        "https://elizacloud.ai/auth/cli-login?session=sess-native",
+      );
+      expect(result.current.elizaCloudLoginFallbackUrl).toBe(
+        "https://elizacloud.ai/auth/cli-login?session=sess-native",
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+        await login;
+      });
+
+      expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
+        "https://api.elizacloud.ai",
+        "sess-native",
+      );
+      expect(localStorage.getItem("steward_session_token")).toBe(
+        "native-session-token",
+      );
+
+      unmount();
+      vi.clearAllTimers();
+    } finally {
+      unregister();
       vi.useRealTimers();
     }
   });
