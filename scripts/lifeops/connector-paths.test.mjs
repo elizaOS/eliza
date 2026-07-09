@@ -7,6 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import {
   appBase,
@@ -48,6 +49,45 @@ function markdownCells(row) {
     .split("|")
     .slice(1, -1)
     .map((cell) => cell.replaceAll("__ESCAPED_PIPE__", "|").trim());
+}
+
+const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+const IDENTITY_SLOT_CATALOG = resolve(
+  ROOT,
+  "docs/testing/hitl-identity-slots.md",
+);
+
+function slotModel(path) {
+  if (path.rolesVia === "env-slots") return "env slots";
+  if (path.rolesVia === "oauth-requested-role") return "OAuth requestedRole";
+  if (path.rolesVia === "separate-real-accounts")
+    return "separate real account";
+  return "single/slotless";
+}
+
+function markdownList(values) {
+  return values.length > 0 ? values.join("<br>") : "n/a";
+}
+
+function parseIdentitySlotCatalog() {
+  const rows = new Map();
+  const text = readFileSync(IDENTITY_SLOT_CATALOG, "utf8");
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.startsWith("| `")) continue;
+    const cells = markdownCells(line);
+    const id = cells[0]?.replace(/^`|`$/g, "");
+    assert.equal(cells.length, 8, `${id} row must have 8 columns`);
+    rows.set(id, {
+      family: cells[1],
+      kind: cells[2],
+      slotModel: cells[3],
+      ownerVars: cells[4],
+      agentVars: cells[5],
+      gateVars: cells[6],
+      notes: cells[7],
+    });
+  }
+  return rows;
 }
 
 // --- registry shape ------------------------------------------------------------
@@ -182,6 +222,37 @@ test("kinds are constrained to the declared vocabulary", () => {
       CONNECTOR_PATH_KINDS.includes(path.kind),
       `${path.id} kind ${path.kind}`,
     );
+  }
+});
+
+test("identity-slot catalog is in lockstep with every connector path", () => {
+  const rows = parseIdentitySlotCatalog();
+  assert.deepEqual(
+    [...rows.keys()].sort(),
+    CONNECTOR_PATHS.map((path) => path.id).sort(),
+  );
+  for (const path of CONNECTOR_PATHS) {
+    const row = rows.get(path.id);
+    assert.ok(row, `missing identity-slot catalog row for ${path.id}`);
+    assert.equal(row.family, path.family, `${path.id} family drift`);
+    assert.equal(row.kind, path.kind, `${path.id} kind drift`);
+    assert.equal(row.slotModel, slotModel(path), `${path.id} slot model drift`);
+    assert.equal(
+      row.ownerVars,
+      markdownList(path.ownerVars),
+      `${path.id} owner vars drift`,
+    );
+    assert.equal(
+      row.agentVars,
+      markdownList(path.agentVars),
+      `${path.id} agent vars drift`,
+    );
+    assert.equal(
+      row.gateVars,
+      markdownList([...path.requiredAll, ...path.requiredAny]),
+      `${path.id} gate vars drift`,
+    );
+    assert.ok(row.notes.length > 0, `${path.id} notes cell must not be blank`);
   }
 });
 
