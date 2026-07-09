@@ -368,6 +368,23 @@ export type WalletTransactionRiskSummary = {
   limitations: string[];
 };
 
+export type WalletSmartMoneySummary = {
+  isSmartMoneyCandidate: boolean;
+  smartMoneyScore: number;
+  displayScore: string;
+  level: "none" | "low" | "medium" | "high";
+  confidence: "low" | "medium" | "high";
+  profile:
+    | "unknown"
+    | "professional_trader"
+    | "active_defi_participant"
+    | "long_term_investor"
+    | "liquidity_provider"
+    | "whale_participant";
+  positiveSignals: string[];
+  limitations: string[];
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -396,6 +413,7 @@ export type WalletInvestigationResult = {
   funding?: WalletFundingSummary;
   risk?: WalletRiskSummary;
   transactionRisk?: WalletTransactionRiskSummary;
+  smartMoney?: WalletSmartMoneySummary;
   summary: string;
   warnings: string[];
 };
