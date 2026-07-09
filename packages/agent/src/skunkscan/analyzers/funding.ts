@@ -15,6 +15,7 @@ export function analyzeWalletFunding(
       fundingAmountSol: null,
       fundingSourceType: "unknown",
       fundingSourceLabel: null,
+      evidenceConfidence: "low",
       confidence: "low",
       notes: ["No first transaction details were available."],
     };
@@ -36,6 +37,7 @@ export function analyzeWalletFunding(
       fundingAmountSol: null,
       fundingSourceType: "unknown",
       fundingSourceLabel: null,
+      evidenceConfidence: "medium",
       confidence: "low",
       notes: [
         "No incoming SOL funding transfer was detected in the first known transaction.",
@@ -72,6 +74,7 @@ export function analyzeWalletFunding(
     fundingAmountSol: incomingFundingTransfer.amountSol,
     fundingSourceType,
     fundingSourceLabel,
+    evidenceConfidence: "high",
     confidence,
     notes: [
       "Initial funding source was inferred from the first known incoming SOL transfer.",
