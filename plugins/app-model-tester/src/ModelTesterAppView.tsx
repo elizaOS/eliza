@@ -341,7 +341,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
 
-      <div className="chat-native-scrollbar flex-1 overflow-y-auto px-3 pb-32 pt-2 sm:px-5">
+      <div className="chat-native-scrollbar eliza-continuous-chat-scroll mb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1rem)] flex-1 overflow-y-auto px-3 pt-2 pb-4 pe-[calc(var(--eliza-continuous-chat-side-clearance,0px)+0.75rem)] sm:px-5">
         <div className="mx-auto flex max-w-5xl flex-col gap-3">
           <section className="py-2">
             <div className="grid grid-cols-3 gap-2">
