@@ -54,7 +54,7 @@ function expectStaleEdgeFollowup() {
 }
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "g2-cadence-watcher-due",
   title:
     "G2 cadence watcher emits a relationship follow-up for stale friend edge",
@@ -77,27 +77,29 @@ export default scenario({
       actionName: "SCHEDULED_TASKS",
       text: "Create a stale relationship follow-up for Zane.",
       options: {
-        action: "create",
-        kind: "followup",
-        subjectKind: "relationship",
-        subjectId: "rel-g2-zane",
-        priority: "medium",
-        promptInstructions:
-          "Reconnect with Zane after a stale eight-month relationship cadence gap.",
-        trigger: {
-          kind: "once",
-          runAt: "2025-11-06T00:00:00.000Z",
+        parameters: {
+          action: "create",
+          kind: "followup",
+          subjectKind: "relationship",
+          subjectId: "rel-g2-zane",
+          priority: "medium",
+          promptInstructions:
+            "Reconnect with Zane after a stale eight-month relationship cadence gap.",
+          trigger: {
+            kind: "once",
+            atIso: "2025-11-06T00:00:00.000Z",
+          },
+          completionCheck: {
+            kind: "subject_updated",
+            followupAfterMinutes: 1,
+          },
+          metadata: {
+            pack: "G2",
+            cadenceDays: 180,
+            lastInteractionIso: "2025-11-06T00:00:00.000Z",
+          },
+          idempotencyKey: "g2-zane-stale-edge-followup",
         },
-        completionCheck: {
-          kind: "subject_updated",
-          followupAfterMinutes: 0,
-        },
-        metadata: {
-          pack: "G2",
-          cadenceDays: 180,
-          lastInteractionIso: "2025-11-06T00:00:00.000Z",
-        },
-        idempotencyKey: "g2-zane-stale-edge-followup",
       },
     },
     {
@@ -107,10 +109,12 @@ export default scenario({
       actionName: "SCHEDULED_TASKS",
       text: "List overdue relationship follow-ups.",
       options: {
-        action: "list",
-        kind: "followup",
-        subjectKind: "relationship",
-        dueWindow: "overdue",
+        parameters: {
+          action: "list",
+          kind: "followup",
+          subjectKind: "relationship",
+          dueWindow: "overdue",
+        },
       },
     },
   ],

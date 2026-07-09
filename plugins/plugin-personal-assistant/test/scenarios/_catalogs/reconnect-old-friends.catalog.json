@@ -39,7 +39,8 @@
       "pack": "G2",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored"
+      "status": "verified",
+      "notes": "Verified 2026-07-09 under the strict deterministic proxy: /tmp/eliza-14784-g2-cadence/report.json passed 1/1, viewer at /tmp/eliza-14784-g2-cadence/run/viewer/index.html, native export at /tmp/eliza-14784-g2-cadence/native.jsonl. The run proves SCHEDULED_TASKS create/list succeeded for a relationship-scoped followup subject, trigger.atIso, cadence metadata, and structural dueWindow=overdue filtering."
     },
     {
       "id": "g2.reconnect.respect_recent_silence",

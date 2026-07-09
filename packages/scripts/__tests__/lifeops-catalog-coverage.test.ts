@@ -62,7 +62,7 @@ describe("LifeOps persona catalog coverage", () => {
     expect(output).toContain("E1 29 authored (target 28, +1)");
     expect(output).toContain("F1 35 authored (target 32, +3)");
     expect(output).toContain(
-      "Total: 296 authored (target 292), 147/296 verified, 149 unverified",
+      "Total: 296 authored (target 292), 148/296 verified, 148 unverified",
     );
     expect(output).not.toContain("296/292 authored");
   });
@@ -76,7 +76,7 @@ describe("LifeOps persona catalog coverage", () => {
       "J1 10/10 unverified (lifeops-bench:3, scenario-runner:7)",
     );
     expect(output).toContain(
-      "Total: 149/296 authored rows still need verification",
+      "Total: 148/296 authored rows still need verification",
     );
   });
 

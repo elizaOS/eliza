@@ -327,6 +327,9 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // structural proof that overdue relationship follow-up cadence uses
   // SCHEDULED_TASKS fields rather than prompt text.
   "g1-followup-cadence-reset",
+  // LifeOps persona pack G2 (reconnect-old-friends, #14784). Keyless
+  // structural proof for relationship-cadence follow-up creation.
+  "g2-cadence-watcher-due",
   "goals.owner-goals-create",
   "health.owner-health-status",
   "hyperliquid.perpetual-market-status",
