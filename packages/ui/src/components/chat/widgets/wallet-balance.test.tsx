@@ -282,9 +282,14 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
         { symbol: "SOL", priceUsd: 150, change24hPct: 2.1 },
       ]),
     );
-    const { container } = render(<WalletBalanceWidget />);
+    render(<WalletBalanceWidget />);
     await waitFor(() => expect(getWalletBalances).toHaveBeenCalled());
-    await waitFor(() => expect(container.firstChild).toBeNull());
+    const unavailable = await screen.findByTestId(
+      "chat-widget-wallet-unavailable",
+    );
+    expect(unavailable.textContent).toContain("Wallet");
+    expect(unavailable.textContent).toContain("Unavailable");
+    expect(screen.queryAllByTestId(/^wallet-price-row-/)).toHaveLength(0);
   });
 
   it("refreshes prices on the 60s visibility-gated interval (#14344)", async () => {
@@ -363,12 +368,13 @@ describe("WalletBalanceWidget (price-only, #10706)", () => {
     ).toContain("$70,000.00");
   });
 
-  it("hides (no error chrome) when the overview is unavailable", async () => {
-    // Overview down → no prices at all → the widget self-hides on the home.
+  it("renders unavailable when the overview cannot load", async () => {
     getWalletBalances.mockResolvedValue({ evm: null, solana: null });
     getWalletMarketOverview.mockRejectedValue(new Error("overview 503"));
-    const { container } = render(<WalletBalanceWidget />);
+    render(<WalletBalanceWidget />);
     await waitFor(() => expect(getWalletMarketOverview).toHaveBeenCalled());
-    await waitFor(() => expect(container.firstChild).toBeNull());
+    expect(
+      await screen.findByTestId("chat-widget-wallet-unavailable"),
+    ).toBeTruthy();
   });
 });

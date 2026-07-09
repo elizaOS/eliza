@@ -186,7 +186,7 @@ try {
 
   // Market prices alone cannot prove whether the wallet has holdings.
   await page.goto(`file://${htmlPath}?state=unavailable`);
-  await page.waitForSelector('[data-testid="wallet-state-label"]', {
+  await page.waitForSelector('[data-testid="chat-widget-wallet-unavailable"]', {
     timeout: 8000,
   });
   await page.waitForTimeout(100);
@@ -198,6 +198,9 @@ try {
     `UNAVAILABLE state shows no fabricated default rows (got ${unavailableRows})`,
   );
   await page.screenshot({ path: join(outDir, "wallet-unavailable.png") });
+  await page
+    .locator('[data-testid="chat-widget-wallet-unavailable"]')
+    .screenshot({ path: join(outDir, "wallet-unavailable-card.png") });
   console.log("  📸 wallet-unavailable.png");
 
   assert(errors.length === 0, `no page errors (${errors.length})`);
@@ -225,9 +228,9 @@ const visualStates = [
   {
     state: "unavailable",
     image: "wallet-unavailable.png",
-    ocrImages: ["wallet-unavailable.png"],
-    present: ["UNAVAILABLE", "holdings unknown"],
-    absent: ["Wallet", "BTC", "SOL", "ETH", "USDC"],
+    ocrImages: ["wallet-unavailable.png", "wallet-unavailable-card.png"],
+    present: ["UNAVAILABLE", "holdings unknown", "Wallet"],
+    absent: ["BTC", "SOL", "ETH", "USDC"],
   },
 ];
 const visualAnalysis = [];
