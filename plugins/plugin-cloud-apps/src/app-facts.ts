@@ -109,10 +109,7 @@ export async function recordAppDeployFact(
       await runtime.updateMemory({
         id: existing.id,
         content: { text, type: "fact" },
-        metadata: {
-          ...(existing.metadata ?? {}),
-          ...metadata,
-        } as Memory["metadata"],
+        metadata,
       });
       return { written: true, updated: true, memoryId: existing.id };
     }
