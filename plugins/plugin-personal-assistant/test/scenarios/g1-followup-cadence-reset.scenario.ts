@@ -56,7 +56,7 @@ function expectRelationshipFollowupCreatedAndListed() {
 }
 
 export default scenario({
-  lane: "live-only",
+  lane: "pr-deterministic",
   id: "g1-followup-cadence-reset",
   title: "G1 overdue communication cadence uses relationship follow-up tasks",
   domain: "lifeops.relationships",
@@ -81,27 +81,29 @@ export default scenario({
       actionName: "SCHEDULED_TASKS",
       text: "Track an overdue reply follow-up for the Mira relationship thread.",
       options: {
-        action: "create",
-        kind: "followup",
-        subjectKind: "relationship",
-        subjectId: "rel-g1-mira",
-        priority: "high",
-        promptInstructions:
-          "Follow up with Mira about the overdue reply after the owner approves a concise repair draft.",
-        trigger: {
-          kind: "once",
-          runAt: "2026-06-14T00:00:00.000Z",
+        parameters: {
+          action: "create",
+          kind: "followup",
+          subjectKind: "relationship",
+          subjectId: "rel-g1-mira",
+          priority: "high",
+          promptInstructions:
+            "Follow up with Mira about the overdue reply after the owner approves a concise repair draft.",
+          trigger: {
+            kind: "once",
+            atIso: "2026-06-14T00:00:00.000Z",
+          },
+          completionCheck: {
+            kind: "subject_updated",
+            followupAfterMinutes: 1,
+          },
+          metadata: {
+            pack: "G1",
+            relationship: "Mira",
+            cadenceDays: 14,
+          },
+          idempotencyKey: "g1-overdue-comms-mira-followup",
         },
-        completionCheck: {
-          kind: "subject_updated",
-          followupAfterMinutes: 0,
-        },
-        metadata: {
-          pack: "G1",
-          relationship: "Mira",
-          cadenceDays: 14,
-        },
-        idempotencyKey: "g1-overdue-comms-mira-followup",
       },
       assertResponse(text: string) {
         if (!/scheduled|already scheduled/i.test(text)) {
@@ -116,9 +118,11 @@ export default scenario({
       actionName: "SCHEDULED_TASKS",
       text: "List overdue follow-up tasks.",
       options: {
-        action: "list",
-        kind: "followup",
-        dueWindow: "overdue",
+        parameters: {
+          action: "list",
+          kind: "followup",
+          dueWindow: "overdue",
+        },
       },
       assertResponse(text: string) {
         if (!/scheduled item|match/i.test(text)) {

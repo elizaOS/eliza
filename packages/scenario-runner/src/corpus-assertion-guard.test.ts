@@ -323,6 +323,10 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "facewear.smartglasses-status",
   "finances.owner-finances-dashboard",
   "form.restore-stashed",
+  // LifeOps persona pack G1 (overdue-comms-apology, #14783). Keyless
+  // structural proof that overdue relationship follow-up cadence uses
+  // SCHEDULED_TASKS fields rather than prompt text.
+  "g1-followup-cadence-reset",
   "goals.owner-goals-create",
   "health.owner-health-status",
   "hyperliquid.perpetual-market-status",

@@ -74,8 +74,8 @@
       "pack": "G1",
       "tier": "T3",
       "surface": "scenario-runner",
-      "status": "authored",
-      "notes": "SCEN-H: once a draft is approved or sent, reset the follow-up cadence structurally."
+      "status": "verified",
+      "notes": "SCEN-H: once a draft is approved or sent, reset the follow-up cadence structurally. Verified 2026-07-09 under the strict deterministic proxy: /tmp/eliza-14783-g1-followup-pass/report.json passed 1/1, viewer at /tmp/eliza-14783-g1-followup-pass/run/viewer/index.html, native export at /tmp/eliza-14783-g1-followup-pass/native.jsonl. The run proves SCHEDULED_TASKS create/list succeeded with a relationship-scoped followup subject, trigger.atIso, and structural dueWindow=overdue filtering."
     },
     {
       "id": "g1.overdue_comms.stale_thread_archive",

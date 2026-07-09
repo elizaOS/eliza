@@ -33,11 +33,11 @@ describe("LifeOps persona catalog coverage", () => {
     );
     expect(g1).toMatchObject({
       authored: 10,
-      verified: 0,
-      unverified: 10,
+      verified: 1,
+      unverified: 9,
       unverifiedBySurface: {
         "lifeops-bench": 6,
-        "scenario-runner": 4,
+        "scenario-runner": 3,
       },
     });
     expect(g1.unverifiedRows).toContainEqual(
@@ -62,7 +62,7 @@ describe("LifeOps persona catalog coverage", () => {
     expect(output).toContain("E1 29 authored (target 28, +1)");
     expect(output).toContain("F1 35 authored (target 32, +3)");
     expect(output).toContain(
-      "Total: 296 authored (target 292), 146/296 verified, 150 unverified",
+      "Total: 296 authored (target 292), 147/296 verified, 149 unverified",
     );
     expect(output).not.toContain("296/292 authored");
   });
@@ -70,13 +70,13 @@ describe("LifeOps persona catalog coverage", () => {
   test("--unverified prints a board-triage list without hiding surface blockers", () => {
     const output = runCoverage("--unverified");
     expect(output).toContain(
-      "G1 10/10 unverified (lifeops-bench:6, scenario-runner:4)",
+      "G1  9/10 unverified (lifeops-bench:6, scenario-runner:3)",
     );
     expect(output).toContain(
       "J1 10/10 unverified (lifeops-bench:3, scenario-runner:7)",
     );
     expect(output).toContain(
-      "Total: 150/296 authored rows still need verification",
+      "Total: 149/296 authored rows still need verification",
     );
   });
 
