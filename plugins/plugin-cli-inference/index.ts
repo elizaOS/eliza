@@ -267,13 +267,9 @@ function parseTimeout(value: string | undefined): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-/**
- * Optional operator-pinned binary path for the cold CLI backends. The warm SDK
- * sessions already honor `ELIZA_CLI_CLAUDE_BIN` / `ELIZA_CLI_CODEX_BIN`; the
- * cold `claude`/`codex` spawn paths must honor the same pin so a deploy whose
- * CLI lives outside the SOC2 launcher allowlist (e.g. a container image) can
- * still use them. Empty/whitespace reads as unset → allowlisted PATH lookup.
- */
+// One binary setting covers both warm and cold backends so container images can
+// pin executables outside the launcher allowlist. Blank settings retain the
+// allowlisted PATH lookup used by unmanaged installations.
 function resolveBinaryPin(runtime: IAgentRuntime, key: string): string | undefined {
   const value = getSetting(runtime, key)?.trim();
   return value ? value : undefined;

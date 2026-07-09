@@ -444,9 +444,7 @@ describe("models map gating (large-tier only)", () => {
           params: unknown
         ) => Promise<string>
       >;
-      // ELIZA_CLI_CLAUDE_BIN pins the binary so `resolveSafeBinary` never probes
-      // the real filesystem (CI runners have no allowlisted claude install); the
-      // spawn itself goes through the mocked seam.
+      // A configured pin keeps model routing independent of the host's CLI layout.
       const runtime = {
         getSetting: (key: string) =>
           key === "ELIZA_CHAT_VIA_CLI"
@@ -459,6 +457,7 @@ describe("models map gating (large-tier only)", () => {
       await expect(models.TEXT_LARGE(runtime, { prompt: "hello" })).resolves.toBe("from claude");
 
       const argv = calls[0].argv;
+      expect(argv[0]).toBe(FAKE_CLAUDE);
       expect(argv[argv.indexOf("--model") + 1]).toBe("claude-opus-4-8");
     } finally {
       restore();
@@ -511,8 +510,7 @@ describe("models map gating (large-tier only)", () => {
           params: unknown
         ) => Promise<string>
       >;
-      // Same binary pin as the cold-handler test above: keeps the test hermetic
-      // on boxes without an allowlisted claude install.
+      // The planner and response handlers share the same operator-pinned executable.
       const runtime = {
         getSetting: (key: string) =>
           key === "ELIZA_CHAT_VIA_CLI"
@@ -527,6 +525,37 @@ describe("models map gating (large-tier only)", () => {
         "NONE"
       );
       expect(calls).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("routes cold Codex model handlers through the configured binary", async () => {
+    const { calls, fn } = recordingSpawn({
+      stdout: '{"type":"agent_message","message":"from codex"}',
+    });
+    const restore = __setCodexSpawn(fn);
+    try {
+      const models = buildModels({ ELIZA_CHAT_VIA_CLI: "codex" }) as Record<
+        string,
+        (
+          runtime: { getSetting: (key: string) => string | undefined },
+          params: unknown
+        ) => Promise<string>
+      >;
+      const runtime = {
+        getSetting: (key: string) =>
+          key === "ELIZA_CHAT_VIA_CLI"
+            ? "codex"
+            : key === "ELIZA_CLI_CODEX_BIN"
+              ? FAKE_CODEX
+              : undefined,
+      };
+
+      await expect(models.TEXT_LARGE(runtime, { prompt: "hello" })).resolves.toBe("from codex");
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0].argv[0]).toBe(FAKE_CODEX);
     } finally {
       restore();
     }

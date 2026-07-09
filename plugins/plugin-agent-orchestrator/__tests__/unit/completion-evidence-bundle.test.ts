@@ -240,9 +240,8 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
     acp.emit(sessionId, "task_complete", {
       response: "Added caching and verified it works.",
     });
-    // The verify chain is fire-and-forget off the event bridge and includes a
-    // real thread-pool fs op (the child-trajectory readdir), so a fixed flush
-    // count races it on loaded machines — wait for the verifier call instead.
+    // Verification crosses the event bridge and a thread-pool filesystem read,
+    // so the verifier call is the stable synchronization point under runner load.
     await waitFor(() => prompts.length > 0, { label: "verifier prompted" });
 
     expect(prompts).toHaveLength(1);
@@ -286,10 +285,8 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
       response:
         "Done — deployed to https://claimed-but-not-probed.example.com/",
     });
-    // Deterministic wait (not a fixed flush count): with no mirrored change set
-    // this path also runs the synchronous git capture fallback before the
-    // readdir, and on oversubscribed CI runners two timer ticks lose that race
-    // (develop run 28999744769 failed exactly here with prompts = []).
+    // This path also captures the git change set before reading child trajectories;
+    // synchronize on the resulting verifier call instead of scheduler timing.
     await waitFor(() => prompts.length > 0, { label: "verifier prompted" });
 
     expect(prompts).toHaveLength(1);
