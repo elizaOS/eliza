@@ -51,6 +51,8 @@
     "test:e2e:android:local": "node scripts/android-e2e.mjs --skip-route-coverage",
     "test:e2e:android:routes": "node scripts/android-e2e.mjs --skip-local-chat",
     "test:e2e:android:assistant": "node scripts/android-assistant-verify.mjs --require-device --json",
+    "lp3:wearable": "node scripts/lp3-wearable-operator.mjs",
+    "test:lp3-wearable-operator": "node --test scripts/lp3-wearable-operator.test.mjs",
     "test:e2e:android:onboarding": "ELIZA_ANDROID_BACKEND=host ELIZA_ANDROID_REQUIRE_AGENT=1 bunx playwright test --config playwright.android.config.ts test/android/onboarding-to-home.android.spec.ts",
     "test:e2e:android:cloud-onboarding": "ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run build:android:cloud:debug && bun run install:android:adb && ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 ELIZA_ANDROID_ALLOW_FIRST_RUN=1 bunx playwright test --config playwright.android.config.ts test/android/cloud-onboarding.android.spec.ts",
     "test:e2e:android:native-plugin-view": "ELIZA_ANDROID_BACKEND=${ELIZA_ANDROID_BACKEND:-host} ELIZA_ANDROID_REQUIRE_AGENT=${ELIZA_ANDROID_REQUIRE_AGENT:-1} bunx playwright test --config playwright.android.config.ts test/android/native-plugin-view-smoke.android.spec.ts",
