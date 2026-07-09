@@ -28,11 +28,19 @@ jobs:
     timeout-minutes: 30
 
     permissions:
+      actions: read
       contents: write
 
     steps:
-      - name: Checkout
+      - name: Checkout (with the llama.cpp fork submodule)
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          # The elizavoice JNI wrapper compiles against the omnivoice headers
+          # inside plugins/plugin-local-inference/native/llama.cpp — the staged
+          # fused lib exports the fused-voice ABI, so the headers must be
+          # checked out or build:android fails at [elizavoice-jni] (#15540).
+          submodules: recursive
+          show-progress: false
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -64,6 +72,68 @@ jobs:
 
       - name: Install dependencies
         run: bun install
+
+      # Gradle's copyForkLlamaLib hard-requires the fused inference lib for
+      # arm64-v8a (libelizainference.so + its backend .so siblings) and fails
+      # the whole APK build without it (#15540). CI has no ~/.eliza staging
+      # and no NDK cross-compile here — the fused libs are built by the
+      # build-llama-ffi-android workflow — so stage green artifacts built from
+      # this checkout's exact llama.cpp pin and point
+      # ELIZA_MTP_ANDROID_LIBDIR{,_X86_64} at them.
+      - name: Stage fused inference libs (from build-llama-ffi-android)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          producer_inputs=(
+            "plugins/plugin-local-inference/native/llama.cpp"
+            ".github/workflows/build-llama-ffi-android.yml"
+            "packages/app-core/scripts/aosp/compile-libllama.mjs"
+            "packages/app-core/scripts/aosp/compile-libllama-paths.mjs"
+          )
+          run_id=""
+          while IFS=$'\t' read -r candidate source_sha; do
+            compatible=true
+            for path in "${producer_inputs[@]}"; do
+              local_sha=$(git rev-parse "HEAD:$path")
+              source_sha_for_path=$(gh api "repos/${{ github.repository }}/contents/$path?ref=$source_sha" \
+                --jq '.sha // empty' 2>/dev/null || true)
+              if [ "$source_sha_for_path" != "$local_sha" ]; then
+                compatible=false
+                break
+              fi
+            done
+            if [ "$compatible" = true ]; then
+              run_id="$candidate"
+              break
+            fi
+          done < <(gh api "repos/${{ github.repository }}/actions/workflows/build-llama-ffi-android.yml/runs?status=success&per_page=20" \
+            --jq '.workflow_runs[] | [.id, .head_sha] | @tsv')
+          if [ -z "$run_id" ]; then
+            echo "::error::no successful build-llama-ffi-android run matches this checkout's native producer inputs — build that workflow first" >&2
+            exit 1
+          fi
+          echo "staging fused libs from input-compatible build-llama-ffi-android run $run_id"
+          stage="$RUNNER_TEMP/elizainference"
+          mkdir -p "$stage/arm64" "$stage/x86_64"
+          gh run download "$run_id" -R "${{ github.repository }}" \
+            -n libelizainference-android-arm64-vulkan-fused -D "$stage/arm64"
+          # x86_64 is optional: gradle skips absent non-arm64 ABIs.
+          gh run download "$run_id" -R "${{ github.repository }}" \
+            -n libelizainference-android-x86_64-cpu-fused -D "$stage/x86_64" || true
+          arm64_so=$(find "$stage/arm64" -name libelizainference.so | head -1)
+          if [ -z "$arm64_so" ]; then
+            echo "::error::arm64 artifact downloaded but contains no libelizainference.so" >&2
+            find "$stage/arm64" -type f | head -20 >&2
+            exit 1
+          fi
+          echo "ELIZA_MTP_ANDROID_LIBDIR=$(dirname "$arm64_so")" >> "$GITHUB_ENV"
+          x86_so=$(find "$stage/x86_64" -name libelizainference.so 2>/dev/null | head -1 || true)
+          if [ -n "$x86_so" ]; then
+            echo "ELIZA_MTP_ANDROID_LIBDIR_X86_64=$(dirname "$x86_so")" >> "$GITHUB_ENV"
+          fi
+          echo "arm64 libdir contents:"
+          ls -la "$(dirname "$arm64_so")"
 
       - name: Prepare Android platform
         working-directory: ${{ env.APP_DIR }}
