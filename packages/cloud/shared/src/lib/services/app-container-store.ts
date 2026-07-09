@@ -1,64 +1,24 @@
 /**
- * AppContainerStore (Apps / Product 2) — the integration backing for the
- * {@link AppContainerStore} read/write seam declared in
- * `container-job-executors.ts`. It adapts the apps-lane executor's container
- * view onto 2AM's `containers` table via `containersRepository`, so the executor
- * itself never imports that schema/repo (decoupled per the seam's intent).
- *
- * IMPEDANCE MAP — the executor's AppContainerRow vs the `containers` columns:
- *   AppContainerRow.id              -> containers.id
- *   AppContainerRow.appId           -> containers.project_name  (the deploy
- *                                       orchestrator sets project_name = appId)
- *   AppContainerRow.containerName   -> containers.name
- *   AppContainerRow.image           -> containers.image_tag
- *   AppContainerRow.port            -> containers.port
- *   AppContainerRow.organizationId  -> containers.organization_id
- *   AppContainerRow.userId          -> containers.user_id
- *   AppContainerRow.environmentVars -> containers.environment_vars (jsonb;
- *                                       carries the per-tenant DATABASE_URL)
- *
- * markRunning persists {hostContainerId, hostPort, network}. The `containers`
- * table has NO dedicated columns for these (2AM's 2026-05-17 schema), so they
- * are merged into `containers.metadata` (the only free-form jsonb sink). When
- * 2AM's #8273 lands and ALTERs the schema, prefer real columns if it adds them;
- * until then `metadata` is canonical for host placement. We also stamp
- * `last_deployed_at` on success for the deploy-status poll.
- *
- * STATUS VOCAB (containers.ContainerStatus): pending | building | deploying |
- *   running | stopped | failed | deleting | deleted. We use:
- *     markRunning -> "running", markError -> "failed", markDeleted -> "deleted".
- *   ("deleted" is the terminal, non-quota-counting state — the quota readers
- *   exclude only `deleting`/`deleted`, so a retired row stops counting against
- *   the org's container cap. App containers carry no `volume_path`, so the
- *   active_project_volume_unique index never applies to them.)
- *
- * SERVER + NODE: this is a plain DB adapter (no `pg`), but it is wired into the
- * node daemon's container-executor deps (the daemon runs the provision against a
- * real worker node). `getById` uses a non-org-scoped read (the executor only has
- * the container id from the job payload; the repo's findById/update are
- * org-scoped, so we read the org from the row first, then call org-scoped update).
+ * Adapts app-container executor state transitions onto the shared `containers` table.
+ * The executor consumes this boundary without importing database concerns. Host
+ * placement stays in metadata because the schema has no dedicated host columns,
+ * while terminal `deleted` status is required to release organization quota.
  */
 
 import { eq } from "drizzle-orm";
-import { dbRead } from "../../db/helpers";
+import { dbRead, dbWrite } from "../../db/helpers";
 import { containersRepository } from "../../db/repositories/containers";
 import { containers } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
+import {
+  findAppContainerRowById,
+  findDeletingAppContainerRows,
+  type ProjectableContainerRow,
+} from "./app-container-store-queries";
 import { deriveAppPublicUrl } from "./app-url";
 import type { AppContainerRow, AppContainerStore } from "./container-job-executors";
 
-/** The `containers` columns the executor's view projects from (structural). */
-export interface ProjectableContainerRow {
-  id: string;
-  name: string;
-  project_name: string;
-  image_tag: string | null;
-  port: number;
-  organization_id: string;
-  user_id: string;
-  environment_vars: Record<string, string> | null;
-  metadata: Record<string, unknown> | null;
-}
+export type { ProjectableContainerRow } from "./app-container-store-queries";
 
 /**
  * Project a `containers` row onto the executor's {@link AppContainerRow}. Pure,
@@ -109,13 +69,16 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     // The executor only has the container id (from the job payload), but the
     // repo's findById is org-scoped. Read by primary key directly to recover the
     // full row (incl. organization_id), then project onto AppContainerRow.
-    const [row] = await dbRead
-      .select()
-      .from(containers)
-      .where(eq(containers.id, containerId))
-      .limit(1);
+    const row = await findAppContainerRowById(dbRead, containerId);
     if (!row) return null;
     return mapContainerRowToAppContainerRow(row);
+  }
+
+  async findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]> {
+    // A recovered legacy job is consumed once, so replica lag must not turn a
+    // real deleting row into a terminal no-op.
+    const rows = await findDeletingAppContainerRows(dbWrite, organizationId);
+    return rows.map(mapContainerRowToAppContainerRow);
   }
 
   async markRunning(

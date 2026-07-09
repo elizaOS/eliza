@@ -1,4 +1,4 @@
-// Exercises container job service behavior with deterministic cloud-shared lib fixtures.
+/** Exercises container-job dispatch and persistence through deterministic queue seams. */
 import { describe, expect, test } from "bun:test";
 import type { AppContainerProvider } from "../app-container-provider";
 import type {
@@ -32,6 +32,9 @@ function fakeDeps() {
   const store: AppContainerStore = {
     async getById() {
       return ROW;
+    },
+    async findDeletingByOrganization() {
+      return [ROW];
     },
     async markRunning() {},
     async markDeleted() {
@@ -133,5 +136,15 @@ describe("ContainerJobEnqueuer", () => {
     ]);
     expect(inserts[0].data).toMatchObject({ containerId: "c1", userId: "u1" });
     expect(inserts[2].data).toMatchObject({ image: "ghcr.io/x:2" });
+  });
+
+  test("rejects an undefined runtime container id before writing a delete job", async () => {
+    const { inserts, writer } = fakeWriter();
+    const enqueuer = new ContainerJobEnqueuer(writer);
+    const malformed = { containerId: "placeholder", organizationId: "o1" };
+    Object.defineProperty(malformed, "containerId", { value: undefined });
+
+    expect(() => enqueuer.enqueueDelete(malformed)).toThrow("persistence");
+    expect(inserts).toHaveLength(0);
   });
 });

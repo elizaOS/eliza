@@ -3,18 +3,19 @@
  * provisioning daemon runs for app containers. Kept as a standalone, fully
  * dependency-injected module so the dispatch + state transitions are
  * unit-testable with fakes; the integration into `provisioning-jobs.ts` is a
- * thin set of `case JOB_TYPES.CONTAINER_*` arms that delegate here (appended,
- * never replacing the AGENT_* arms).
+ * thin set of `case JOB_TYPES.CONTAINER_*` arms that delegate here.
  *
  * Decoupled from 2AM's `containers` table: it reads/writes app container rows
  * through an injected {@link AppContainerStore}, so it never imports that schema
  * or repo directly.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 import type { AppContainerProvider } from "./app-container-provider";
 import { deriveAppPublicUrl } from "./app-url";
 import {
+  isContainerDeleteJobData,
   type JobLike,
   readContainerDeleteJobData,
   readContainerLogsJobData,
@@ -40,6 +41,7 @@ export interface AppContainerRow {
 /** Read/write seam for app container state (over the `containers` table). */
 export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
+  findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]>;
   markRunning(
     containerId: string,
     info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
@@ -205,22 +207,75 @@ export async function executeContainerDelete(
   job: JobLike,
   deps: ContainerExecutorDeps,
 ): Promise<void> {
-  const { containerId } = readContainerDeleteJobData(job);
-  const row = await deps.store.getById(containerId);
-  if (row) await deps.provider.delete(row.containerName);
-  // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
-  const endpoint = deriveAppPublicUrl(containerId);
-  if (endpoint && deps.onRouteRemoved) {
-    await deps.onRouteRemoved({ hostname: endpoint.hostname }).catch((error) => {
-      // error-policy:J6 route removal is teardown best-effort; reconciler sweeps orphans.
-      logger.warn("[ContainerExecutor] route removal failed during container delete", {
-        containerId,
-        hostname: endpoint.hostname,
-        error: error instanceof Error ? error.message : String(error),
-      });
+  let targets: Array<{ id: string; row: AppContainerRow | null }>;
+  if (isContainerDeleteJobData(job.data)) {
+    const row = await deps.store.getById(job.data.containerId);
+    if (row && row.organizationId !== job.data.organizationId) {
+      throw new ElizaError(
+        `Container delete job ${job.id} organization does not own ${job.data.containerId}`,
+        {
+          code: "CONTAINER_DELETE_ORGANIZATION_MISMATCH",
+          context: {
+            jobId: job.id,
+            containerId: job.data.containerId,
+            jobOrganizationId: job.data.organizationId,
+            containerOrganizationId: row.organizationId,
+          },
+          severity: "fatal",
+        },
+      );
+    }
+    targets = [{ id: job.data.containerId, row }];
+  } else {
+    const organizationId = recoverableDeleteOrganizationId(job);
+    const rows = await deps.store.findDeletingByOrganization(organizationId);
+    targets = rows.map((row) => ({ id: row.id, row }));
+    logger.warn("[ContainerExecutor] recovering malformed container delete job", {
+      jobId: job.id,
+      organizationId,
+      recoveredContainers: rows.map((row) => row.id),
     });
   }
-  await deps.store.markDeleted(containerId);
+
+  for (const { id, row } of targets) {
+    if (row) {
+      try {
+        await deps.provider.delete(row.containerName);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/no such container/i.test(message)) throw error;
+        // error-policy:J6 another teardown worker already removed the target; the terminal DB transition still must complete.
+        logger.info("[ContainerExecutor] container already absent during delete", {
+          containerId: id,
+          containerName: row.containerName,
+        });
+      }
+    }
+    // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
+    const endpoint = deriveAppPublicUrl(id);
+    if (endpoint && deps.onRouteRemoved) {
+      await deps.onRouteRemoved({ hostname: endpoint.hostname }).catch((error) => {
+        // error-policy:J6 route removal is teardown best-effort; reconciler sweeps orphans.
+        logger.warn("[ContainerExecutor] route removal failed during container delete", {
+          containerId: id,
+          hostname: endpoint.hostname,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+    await deps.store.markDeleted(id);
+  }
+}
+
+function recoverableDeleteOrganizationId(job: JobLike): string {
+  if (typeof job.data !== "object" || job.data === null) {
+    return readContainerDeleteJobData(job).organizationId;
+  }
+  const organizationId = Reflect.get(job.data, "organizationId");
+  if (typeof organizationId !== "string" || organizationId.trim().length === 0) {
+    return readContainerDeleteJobData(job).organizationId;
+  }
+  return organizationId;
 }
 
 export async function executeContainerRestart(

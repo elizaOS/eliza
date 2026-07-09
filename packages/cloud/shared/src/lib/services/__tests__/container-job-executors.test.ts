@@ -1,4 +1,4 @@
-// Exercises container job executors behavior with deterministic cloud-shared lib fixtures.
+/** Exercises container lifecycle transitions through deterministic provider and store seams. */
 import { describe, expect, test } from "bun:test";
 import type { AppContainerProvider, ProvisionedAppContainer } from "../app-container-provider";
 import {
@@ -26,6 +26,9 @@ function fakeStore(row: AppContainerRow | null = ROW) {
   const store: AppContainerStore = {
     async getById() {
       return row;
+    },
+    async findDeletingByOrganization() {
+      return row ? [row] : [];
     },
     async markRunning(id, info) {
       events.push({ op: "running", id, info });
@@ -268,6 +271,74 @@ describe("executeContainerDelete / restart / logs", () => {
     });
     expect(calls.find((c) => c.op === "delete")?.arg).toBe("app-nubilio");
     expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("delete completes the terminal transition when its row is already absent", async () => {
+    const { events, store } = fakeStore(null);
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ containerId: "container-1", organizationId: "org-1" }), {
+      provider,
+      store,
+    });
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("an org-only legacy job recovers rows already marked for deletion", async () => {
+    const { events, store } = fakeStore();
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), {
+      provider,
+      store,
+    });
+
+    expect(calls.find((call) => call.op === "delete")?.arg).toBe("app-nubilio");
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("a repeated legacy job is an idempotent no-op after recovery", async () => {
+    const { events, store } = fakeStore(null);
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), {
+      provider,
+      store,
+    });
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  test("recovery completes the DB transition when another worker removed Docker first", async () => {
+    const { events, store } = fakeStore();
+    const { provider } = fakeProvider({
+      async delete() {
+        throw new Error("No such container: app-nubilio");
+      },
+    });
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), {
+      provider,
+      store,
+    });
+
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("a valid delete job cannot target another organization's row", async () => {
+    const { store } = fakeStore({ ...ROW, organizationId: "org-2" });
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerDelete(job({ containerId: "container-1", organizationId: "org-1" }), {
+        provider,
+        store,
+      }),
+    ).rejects.toThrow("does not own");
+    expect(calls).toEqual([]);
   });
 
   test("restart restarts by container name", async () => {
