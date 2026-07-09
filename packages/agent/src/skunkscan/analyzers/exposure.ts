@@ -3,6 +3,10 @@ import {
   WalletExposureSummary,
   WalletFundingSummary,
 } from "../types";
+import {
+  buildConfidenceInput,
+  confidenceLevelFromScore,
+} from "../confidence/framework";
 
 export function analyzeWalletExposure(
   walletAddress: string,
@@ -70,6 +74,39 @@ export function analyzeWalletExposure(
           ? "low"
           : "none";
 
+  const evidenceConfidenceInput = buildConfidenceInput([
+    {
+      condition: Boolean(walletAddress),
+      score: 30,
+      reason: "Investigated wallet address was available.",
+    },
+    {
+      condition: funding.evidenceConfidence === "high",
+      score: 30,
+      reason: "Funding evidence confidence is high.",
+    },
+    {
+      condition: funding.evidenceConfidence === "medium",
+      score: 20,
+      reason: "Funding evidence confidence is medium.",
+    },
+    {
+      condition: true,
+      score: 25,
+      reason: "Static exposure registry was checked.",
+    },
+    {
+      condition: matches.length > 0,
+      score: 15,
+      reason: "Exposure match was identified.",
+    },
+  ]);
+
+  const confidence =
+    matches.length > 0
+      ? confidenceLevelFromScore(evidenceConfidenceInput.score)
+      : "medium";
+
   const notes =
     matches.length === 0
       ? [
@@ -82,6 +119,10 @@ export function analyzeWalletExposure(
   return {
     exposureScore,
     exposureLevel,
+    evidenceConfidence: confidenceLevelFromScore(
+      evidenceConfidenceInput.score,
+    ),
+    confidence,
     hasKnownScamExposure,
     hasKnownRugPullExposure,
     hasKnownSuspiciousExposure,
