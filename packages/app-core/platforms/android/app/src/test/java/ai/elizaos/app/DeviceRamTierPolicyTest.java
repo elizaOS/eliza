@@ -1,6 +1,6 @@
 /**
  * JVM unit tests for the device RAM-tier policy (#14390): marketed-GB recovery
- * from raw totalMem readings and the 8 GB on-device-agent floor, pinned against
+ * from raw totalMem readings and the 4/8 GB agent floors, pinned against
  * real observed device readings.
  */
 package ai.elizaos.app;
@@ -53,10 +53,19 @@ public class DeviceRamTierPolicyTest {
     }
 
     @Test
+    public void hybridAgentFloorIsFourMarketedGb() {
+        assertFalse(DeviceRamTierPolicy.allowsHybridAgent(gib(2.8)));
+        assertTrue(DeviceRamTierPolicy.allowsHybridAgent(kb(3_747_844)));
+        assertTrue(DeviceRamTierPolicy.allowsHybridAgent(gib(5.7)));
+    }
+
+    @Test
     public void unreadableTotalMemFailsOpenForAnExplicitLocalChoice() {
         // The only mode that consults this gate is an explicit user "local"
         // choice; a probe failure must not brick it.
         assertTrue(DeviceRamTierPolicy.allowsLocalAgent(0L));
         assertTrue(DeviceRamTierPolicy.allowsLocalAgent(-1L));
+        assertTrue(DeviceRamTierPolicy.allowsHybridAgent(0L));
+        assertTrue(DeviceRamTierPolicy.allowsHybridAgent(-1L));
     }
 }

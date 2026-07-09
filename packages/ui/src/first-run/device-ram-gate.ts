@@ -33,7 +33,6 @@ import { clearPersistedLocalRuntimeCommitment } from "./revert-local-runtime-com
 
 interface ElizaNativeRamBridge {
   getDeviceTotalRamMb?: () => number;
-  isLocalAgentRamFloorExempt?: () => boolean;
 }
 
 /** The synchronous Android bridge read, or null off-Android / unavailable. */
@@ -51,25 +50,6 @@ function readSyncDeviceTotalRamMb(): number | null {
     // error-policy:J4 native-bridge probe — no sync bridge means this shell
     // doesn't expose it; the async snapshot probe still runs.
     return null;
-  }
-}
-
-/**
- * Whether native flags this as a curated on-device-agent floor-exempt device
- * (the LP3). Synchronous, same JavascriptInterface as the RAM read so the tier
- * gate resolves the same on the sync peek and the async resolve. Absent bridge
- * (older shell / iOS / web) → false, i.e. the generic RAM floor applies.
- */
-function readSyncLocalAgentRamFloorExempt(): boolean {
-  try {
-    const bridge = (
-      globalThis as typeof globalThis & { ElizaNative?: ElizaNativeRamBridge }
-    ).ElizaNative;
-    return bridge?.isLocalAgentRamFloorExempt?.() === true;
-  } catch {
-    // error-policy:J4 native-bridge probe — no bridge means no exemption; the
-    // generic RAM floor governs.
-    return false;
   }
 }
 
@@ -98,7 +78,6 @@ export function peekDeviceRamTierAssessment(): DeviceRamTierAssessment | null {
   if (syncMb !== null) {
     cachedAssessment = classifyDeviceRamTier(
       marketedRamGbFromTotalRamMb(syncMb),
-      readSyncLocalAgentRamFloorExempt(),
     );
     return cachedAssessment;
   }
@@ -117,7 +96,6 @@ export async function resolveDeviceRamTierAssessment(): Promise<DeviceRamTierAss
       const snapshot = await getDeviceResourceSnapshot();
       const assessment = classifyDeviceRamTier(
         marketedRamGbFromTotalRamMb(snapshot?.totalRamMb ?? null),
-        readSyncLocalAgentRamFloorExempt(),
       );
       cachedAssessment = assessment;
       return assessment;
@@ -139,7 +117,11 @@ export async function assertDeviceRamTierAllowsLocalRuntime(
   localInference: string,
 ): Promise<void> {
   const assessment = await resolveDeviceRamTierAssessment();
-  if (!assessment.allowsLocalAgent) {
+  const allowsSelectedRuntime =
+    localInference === "cloud-inference"
+      ? assessment.allowsHybridAgent
+      : assessment.allowsLocalAgent;
+  if (!allowsSelectedRuntime) {
     throw new Error(
       `This device can't run the on-device agent: ${assessment.reason}. Pick "Eliza Cloud (managed)" instead.`,
     );
@@ -166,7 +148,11 @@ export function enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot(): boolean {
   const mode = readPersistedMobileRuntimeMode();
   if (mode !== "local" && mode !== "cloud-hybrid") return false;
   const assessment = peekDeviceRamTierAssessment();
-  if (!assessment || assessment.allowsLocalAgent) return false;
+  const allowed =
+    mode === "cloud-hybrid"
+      ? assessment?.allowsHybridAgent
+      : assessment?.allowsLocalAgent;
+  if (!assessment || allowed) return false;
   const cleared = clearPersistedLocalRuntimeCommitment();
   logger.warn(
     { mode, marketedRamGb: assessment.marketedRamGb, ...cleared },

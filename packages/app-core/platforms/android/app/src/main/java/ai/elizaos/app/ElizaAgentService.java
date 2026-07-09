@@ -3902,30 +3902,15 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Curated stock-Android devices proven to sustain the on-device agent
-     * below the generic {@link DeviceRamTierPolicy} marketed-RAM floor.
-     *
-     * <p>This is deliberately NARROWER than {@link #isBrandedDevice}: it lifts
-     * the RAM floor for {@link #start} only, and does NOT imply the device "is
-     * the agent". A floor-exempt device still honours the user's runtime choice
-     * — a cloud-only pick is respected and the agent does not auto-start (see
-     * {@link #shouldAutoStartForRuntimeMode}, which gates on branding, not this).
-     *
-     * <p>The Light Phone III (manufacturer {@code "Light"}) is a curated,
-     * single-purpose minimalist phone where Eliza is the intended agent. Its
-     * stock LightOS ROM leaves {@code ro.elizaos.product} unset and it ships
-     * ~6 GB RAM. The 8 GB floor exists to stop a 4 GB device wedging boot AND to
-     * keep local MODELS from OOMing; hybrid (cloud-inference) mode mmaps no
-     * local model, and 6 GB is verified sufficient for the agent runtime, so the
-     * LP3 is exempted here rather than forced cloud-only (elizaOS/eliza#14390).
-     *
-     * <p>Package-visible so {@link ElizaNativeBridge} can mirror it to the
-     * renderer's sync RAM gate ({@code device-ram-tier.ts}) — one allowlist,
-     * read on both sides.
+     * Whether the selected persisted mode clears its matching RAM floor. The
+     * cloud-hybrid mode loads no local model, so it uses the 4 GB runtime-only
+     * floor; every other local start retains the 8 GB floor.
      */
-    static boolean isLocalAgentRamFloorExemptDevice() {
-        String manufacturer = android.os.Build.MANUFACTURER;
-        return manufacturer != null && manufacturer.equalsIgnoreCase("Light");
+    static boolean allowsAgentStartForRuntimeMode(String mode, long totalMemBytes) {
+        String trimmed = mode == null ? null : mode.trim();
+        return "cloud-hybrid".equals(trimmed)
+            ? DeviceRamTierPolicy.allowsHybridAgent(totalMemBytes)
+            : DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes);
     }
 
     private static String readRuntimeMode(Context context) {
@@ -3954,24 +3939,25 @@ public class ElizaAgentService extends Service {
      * Start the foreground service (safe to call repeatedly).
      *
      * <p>Throws {@link IllegalStateException} on a stock device below the
-     * {@link DeviceRamTierPolicy} RAM floor (#14390): every start affordance
+     * matching {@link DeviceRamTierPolicy} RAM floor (#14390): every start affordance
      * — the onboarding finish via the Agent Capacitor plugin, the startup
      * poll's revive request, the boot receiver — funnels here, so this is the
      * one fail-loud backstop against a disallowed mode wedging boot. The
      * renderer surfaces the rejection as the onboarding/startup error it
-     * already renders; branded devices ARE the agent and are exempt, as are
-     * curated floor-exempt devices (the LP3 — see
-     * {@link #isLocalAgentRamFloorExemptDevice}).
+     * already renders; branded devices ARE the agent and remain exempt.
      */
     public static void start(Context context) {
         long totalMemBytes = readDeviceTotalMemBytes(context);
+        String mode = readRuntimeMode(context);
         if (!isBrandedDevice()
-                && !isLocalAgentRamFloorExemptDevice()
-                && !DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes)) {
+                && !allowsAgentStartForRuntimeMode(mode, totalMemBytes)) {
+            int requiredRamGb = "cloud-hybrid".equals(mode == null ? null : mode.trim())
+                ? DeviceRamTierPolicy.HYBRID_AGENT_MIN_MARKETED_RAM_GB
+                : DeviceRamTierPolicy.LOCAL_AGENT_MIN_MARKETED_RAM_GB;
             throw new IllegalStateException(
                 "This device (~" + DeviceRamTierPolicy.marketedRamGb(totalMemBytes)
                 + " GB RAM) is below the "
-                + DeviceRamTierPolicy.LOCAL_AGENT_MIN_MARKETED_RAM_GB
+                + requiredRamGb
                 + " GB floor for the on-device agent; use cloud mode");
         }
         Intent intent = new Intent(context, ElizaAgentService.class);
