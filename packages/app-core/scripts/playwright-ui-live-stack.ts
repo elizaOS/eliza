@@ -244,6 +244,38 @@ function resolveBunCommand(): string {
   return process.platform === "win32" ? "bun.exe" : "bun";
 }
 
+/**
+ * NODE_OPTIONS with the `--conditions=eliza-source` token removed, for build
+ * subprocesses that must resolve workspace packages through their normal
+ * (dist/browser) exports rather than source.
+ *
+ * The Playwright runner exports `NODE_OPTIONS=--conditions=eliza-source` so its
+ * spec collector resolves app-core/agent source on a fresh `--ignore-scripts`
+ * install (run-ui-playwright.mjs, #15764). That condition must NOT reach the
+ * Vite renderer build: `node vite.js build` loads `vite.config.ts` under node's
+ * native ESM/type-stripping loader, which — unlike tsx — does not rewrite
+ * `.js`→`.ts` import specifiers. Under `eliza-source` a package like
+ * `@elizaos/cloud-routing` resolves to `src/index.ts`, whose internal
+ * `import "./features.js"` has no on-disk match, and the whole build dies at
+ * config load (#15759). The renderer build resolves those packages via Vite's
+ * own bundler/aliases and their built dist, so it never needs the condition.
+ */
+function nodeOptionsWithoutElizaSource(): string {
+  const tokens = (process.env.NODE_OPTIONS ?? "").split(/\s+/).filter(Boolean);
+  const kept = tokens.filter((token, index) => {
+    if (token === "--conditions=eliza-source") return false;
+    // Also handle the space-separated `--conditions eliza-source` form.
+    if (token === "--conditions" && tokens[index + 1] === "eliza-source") {
+      return false;
+    }
+    if (token === "eliza-source" && tokens[index - 1] === "--conditions") {
+      return false;
+    }
+    return true;
+  });
+  return kept.join(" ");
+}
+
 function resolveExecutableFromPath(command: string): string | null {
   const pathValue = process.env.PATH ?? process.env.Path ?? "";
   if (!pathValue) return null;
@@ -819,6 +851,10 @@ async function ensureUiDistReady(): Promise<void> {
     cwd: APP_DIR,
     env: {
       ...process.env,
+      // The renderer build resolves workspace packages via Vite/dist, not the
+      // Playwright collector's `eliza-source` condition; leaving it in leaks
+      // into `node vite.js build`'s config load and kills it (#15759).
+      NODE_OPTIONS: nodeOptionsWithoutElizaSource(),
       FORCE_COLOR: "0",
       VITE_ELIZA_RENDER_TELEMETRY: "1",
       // ui-smoke serves the dist locally and never ships it, so skip the
@@ -966,6 +1002,10 @@ async function ensureLiveStackOptionalViewPluginsReady(): Promise<void> {
       cwd: pluginDir,
       env: {
         ...process.env,
+        // Same reason as the renderer build: a plugin's own build must resolve
+        // through dist/Vite, not the collector's `eliza-source` condition
+        // (#15759).
+        NODE_OPTIONS: nodeOptionsWithoutElizaSource(),
         FORCE_COLOR: "0",
       },
       stdio: ["ignore", "pipe", "pipe"],

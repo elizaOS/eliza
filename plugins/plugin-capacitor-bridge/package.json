@@ -51,7 +51,7 @@
 		"format": "bunx @biomejs/biome format --write .",
 		"format:check": "bunx @biomejs/biome format .",
 		"test": "vitest run --config vitest.config.ts",
-		"typecheck": "tsgo --noEmit"
+		"typecheck": "tsgo --noEmit -p tsconfig.build.json"
 	},
 	"dependencies": {
 		"@elizaos/core": "workspace:*",

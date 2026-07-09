@@ -9,6 +9,17 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    "paths": {
+      "@elizaos/agent/runtime/core-plugins": [
+        "../agent/dist/runtime/core-plugins.d.ts"
+      ],
+      "@elizaos/agent/runtime/plugin-types": [
+        "../agent/dist/runtime/plugin-types.d.ts"
+      ],
+      "@elizaos/plugin-local-inference/runtime": [
+        "../../plugins/plugin-local-inference/dist/runtime/index.d.ts"
+      ]
+    },
     "types": ["node"]
   },
   "include": ["src/**/*.ts"]

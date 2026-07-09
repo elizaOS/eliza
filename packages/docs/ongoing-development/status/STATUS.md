@@ -2,95 +2,98 @@
 
 Current snapshot of the LifeOps Personal Assistant MVP closeout. Live task truth
 is [project board 15](https://github.com/orgs/elizaOS/projects/15); this file
-records the latest human-readable audit result and the commands that produced
-it. See [`../mvp/MVP.md`](../mvp/MVP.md) for scope and acceptance bar.
+records one atomic audit result. See [MVP.md](../mvp/MVP.md) for scope and the
+[coordination guide](../README.md) for evidence mechanics.
 
-## Board State
+## Atomic Audit
 
-Latest checks against Project 15:
+Run the board, readiness, and evidence analyses from one immutable payload:
 
 ```bash
-bun run audit:mvp-board -- --json
-bun run mvp:board-readiness -- --json
-bun run mvp:evidence-matrix -- --json
+bun run mvp:closeout-audit -- --json --output /tmp/mvp-closeout.json
 ```
 
-Result:
+Snapshot at `2026-07-09T21:01:35.577Z`:
 
-- Project issues: 194
-- MVP issues: 162
-- Open MVP issues not Done: 26
-- Human-gated open MVP issues: 26
-- Agent-actionable open MVP issues: 0
-- Open issues already marked Done: 0
-- Closed MVP issues not marked Done: #14724, #14714, #14708, #14355, #14782
+- Snapshot integrity: **PASS**
+- MVP readiness: **NOT READY**
+- Project items: 199, including 198 issue cards
+- Open issue cards: 37
+- Closed issue cards: 161
+- Open not Done: 37
+- Human-gated: 33
+- Agent-actionable: 4
+- Closed not Done: #14708, #14714, #14724, #14782
+- Readiness/evidence issue-set parity: 37 / 37, zero missing or extra
 
-The readiness audit passes: every open MVP issue has `needs-human` and/or
-`needs-shaw` and is in Project 15 with status `Needs human review`. The closed
-not-Done rows remain visible because board final-Done authority is human-owned.
+The four actionable rows are #13406, #13631, #15753, and #15758. All 33
+human-gated rows are in `Needs human review`; readiness remains false because
+the two umbrella trackers and two active closeout fixes have no blocker label.
 
-## Evidence Matrix Summary
+## Evidence Coverage
 
-`bun run mvp:evidence-matrix -- --json` currently expects the following proof
-types across the 26 open MVP rows:
-
-| Evidence type | Count |
+| Evidence type | Issues |
 | --- | ---: |
-| issue-closeout-summary | 26 |
-| logs | 26 |
-| domain-artifacts | 26 |
-| live-llm-trajectory | 22 |
-| connector-dispatch-proof | 18 |
-| security-redaction-proof | 13 |
-| walkthrough-video | 12 |
-| voice-audio-latency | 9 |
-| visual-screenshots-ocr-color | 8 |
-| device-artifact-bundle | 7 |
-| scheduled-task-state | 5 |
+| issue-closeout-summary | 37 |
+| logs | 37 |
+| domain-artifacts | 37 |
+| live-llm-trajectory | 33 |
+| connector-dispatch-proof | 23 |
+| security-redaction-proof | 16 |
+| walkthrough-video | 15 |
+| voice-audio-latency | 12 |
+| device-artifact-bundle | 10 |
+| scheduled-task-state | 10 |
+| visual-screenshots-ocr-color | 9 |
 
-## Open MVP Rows
+## Open Rows
 
-Every row below is open because the remaining proof requires owner credentials,
-hardware/device access, live connector access, live model review, or explicit
-owner decision/sign-off.
-
-| Issue | Remaining gate | Expected evidence |
+| Issue | Project status | Gate |
 | --- | --- | --- |
-| #14336 | needs-human | issue-closeout-summary, logs, domain-artifacts, walkthrough-video, device-artifact-bundle, live-llm-trajectory |
-| #14351 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof |
-| #14358 | needs-human | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, device-artifact-bundle, live-llm-trajectory, security-redaction-proof |
-| #14374 | needs-human | issue-closeout-summary, logs, domain-artifacts, walkthrough-video, voice-audio-latency, scheduled-task-state |
-| #14747 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, walkthrough-video, voice-audio-latency, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof, scheduled-task-state |
-| #14749 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, voice-audio-latency, live-llm-trajectory, security-redaction-proof |
-| #14754 | needs-human | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, device-artifact-bundle |
-| #14755 | needs-human | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, device-artifact-bundle, voice-audio-latency, live-llm-trajectory, connector-dispatch-proof |
-| #14756 | needs-human | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, device-artifact-bundle |
-| #14757 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, device-artifact-bundle, voice-audio-latency, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof |
-| #14758 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof |
-| #14759 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof |
-| #14760 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, voice-audio-latency, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof |
-| #14761 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof |
-| #14762 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof |
-| #14763 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof |
-| #14769 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof |
-| #14772 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, connector-dispatch-proof, security-redaction-proof |
-| #14773 | needs-human, needs-shaw | issue-closeout-summary, logs, domain-artifacts, voice-audio-latency, live-llm-trajectory, connector-dispatch-proof, security-redaction-proof |
-| #14777 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, device-artifact-bundle, live-llm-trajectory, security-redaction-proof |
-| #14779 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, walkthrough-video, voice-audio-latency, live-llm-trajectory, security-redaction-proof |
-| #14783 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof, scheduled-task-state |
-| #14784 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, visual-screenshots-ocr-color, walkthrough-video, live-llm-trajectory, connector-dispatch-proof, scheduled-task-state |
-| #14785 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof |
-| #14786 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, voice-audio-latency, live-llm-trajectory, connector-dispatch-proof |
-| #14789 | needs-shaw | issue-closeout-summary, logs, domain-artifacts, live-llm-trajectory, connector-dispatch-proof, scheduled-task-state |
+| #13406 | Ready | agent-actionable |
+| #13631 | Ready | agent-actionable |
+| #14336 | Needs human review | needs-human |
+| #14358 | Needs human review | needs-human |
+| #14374 | Needs human review | needs-human |
+| #14747 | Needs human review | needs-shaw |
+| #14749 | Needs human review | needs-shaw |
+| #14754 | Needs human review | needs-human |
+| #14755 | Needs human review | needs-human |
+| #14756 | Needs human review | needs-human |
+| #14757 | Needs human review | needs-human, needs-shaw |
+| #14758 | Needs human review | needs-human, needs-shaw |
+| #14759 | Needs human review | needs-human, needs-shaw |
+| #14760 | Needs human review | needs-human, needs-shaw |
+| #14761 | Needs human review | needs-human, needs-shaw |
+| #14762 | Needs human review | needs-human, needs-shaw |
+| #14763 | Needs human review | needs-human, needs-shaw |
+| #14769 | Needs human review | needs-human, needs-shaw |
+| #14772 | Needs human review | needs-human, needs-shaw |
+| #14773 | Needs human review | needs-human, needs-shaw |
+| #14777 | Needs human review | needs-shaw |
+| #14779 | Needs human review | needs-shaw |
+| #14785 | Needs human review | needs-shaw |
+| #14786 | Needs human review | needs-shaw |
+| #14789 | Needs human review | needs-shaw |
+| #14792 | Needs human review | needs-human, needs-shaw |
+| #14793 | Needs human review | needs-human, needs-shaw |
+| #14797 | Needs human review | needs-human, needs-shaw |
+| #14864 | Needs human review | needs-shaw |
+| #14871 | Needs human review | needs-shaw |
+| #14872 | Needs human review | needs-shaw |
+| #14874 | Needs human review | needs-shaw |
+| #14875 | Needs human review | needs-shaw |
+| #14876 | Needs human review | needs-shaw |
+| #14877 | Needs human review | needs-shaw |
+| #15753 | In progress | agent-actionable |
+| #15758 | In progress | agent-actionable |
 
-## Coordination
+Per-row proof requirements are in the atomic report's `evidence.rows`; they are
+derived from the same issue set shown above. The active coordination thread is
+[Discussion #14407](https://github.com/orgs/elizaOS/discussions/14407).
 
-The active coordination thread is
-[#14407](https://github.com/orgs/elizaOS/discussions/14407). The latest thread
-review before this snapshot reported zero code-tractable unaddressed rows; this
-snapshot updates that claim with the current board counts, the read-only
-readiness audit, and the evidence matrix introduced after that discussion post.
-
-When a milestone warrants a new snapshot, copy this file to
-`status/YYYY-MM-DD.md`, update the counts from the commands above, and keep the
-live board as the source of truth.
+When a milestone warrants a new snapshot, run the atomic command once, manually
+review its integrity, parity, readiness violations, and evidence counts, then
+copy this file to `status/YYYY-MM-DD.md`. Never compose a snapshot from
+independent live commands because rate limits and board mutations can produce a
+partial or internally inconsistent result.

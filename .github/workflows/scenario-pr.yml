@@ -847,17 +847,24 @@ jobs:
       # plugin routes covered/exempt, view ship-gates intact, zero blocking gaps.
       # The advisory cycle is complete, so the ratchets (route-manifest lockstep,
       # zero-test plugins, no-blocking-gaps) now fail the build on regression.
+      # `--conditions=eliza-source`: inventory.ts scans plugin SOURCE and reaches
+      # plugin-commands/src → @elizaos/core, which under bun's default `bun`
+      # export condition resolves to unbuilt dist on this --ignore-scripts install.
+      # The source condition resolves those workspace packages to src (same as the
+      # matrix-report step below), so the gate runs before build:core (#15759).
       - name: E2E coverage ship-gate
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
-        run: bun test packages/scripts/__tests__/e2e-coverage.test.ts
+        run: bun test --conditions=eliza-source packages/scripts/__tests__/e2e-coverage.test.ts
 
       # Per-plugin keyless-e2e coverage gate (issue #8801). The surface matrix
       # above proves app-facing routes/views; this ratchet proves each plugin
       # with user-facing capabilities has a deterministic, credential-free
       # scenario or an explicit baseline entry.
+      # Source condition for the same reason as the ship-gate step: this test
+      # imports inventory.ts, which resolves plugin source → @elizaos/core (#15759).
       - name: Per-plugin keyless e2e coverage self-test
-        run: bun test packages/scripts/e2e-coverage/check-e2e-coverage.test.ts
+        run: bun test --conditions=eliza-source packages/scripts/e2e-coverage/check-e2e-coverage.test.ts
 
       # #15616: pass/fail classifier for the live cloud chat smokes
       # (hetzner-e2e-chat, live-cloud-provision-smoke). packages/scripts is

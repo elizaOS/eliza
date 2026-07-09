@@ -61,7 +61,7 @@ test("Signal CLI probe runs version and listAccounts before passing", async () =
         calls.push([command, ...args]);
         return args[0] === "--version"
           ? { status: 0, stdout: "signal-cli 0.13.20\n" }
-          : { status: 0, stdout: "+15551234567\n" };
+          : { status: 0, stdout: "Number: +15551234567\n" };
       },
     },
   );

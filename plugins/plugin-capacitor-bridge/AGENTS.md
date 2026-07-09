@@ -82,7 +82,7 @@ All scripts are in this package's `package.json`.
 bun run --cwd plugins/plugin-capacitor-bridge build           # tsup build (runs check:android-manifest first)
 bun run --cwd plugins/plugin-capacitor-bridge check:android-manifest  # validate AndroidManifest.xml
 bun run --cwd plugins/plugin-capacitor-bridge dev             # tsup --watch
-bun run --cwd plugins/plugin-capacitor-bridge typecheck       # tsc --noEmit
+bun run --cwd plugins/plugin-capacitor-bridge typecheck       # tsgo against the mobile-boundary build config
 bun run --cwd plugins/plugin-capacitor-bridge lint            # biome check --write --unsafe
 bun run --cwd plugins/plugin-capacitor-bridge lint:check      # biome check (read-only)
 bun run --cwd plugins/plugin-capacitor-bridge format          # biome format --write

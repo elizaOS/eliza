@@ -89,6 +89,11 @@ import {
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
+import {
+  formatWakeRestoreIntegrityError,
+  runWakeRestoreIntegrityGate,
+  type WakeRestoreIntegrityFailure,
+} from "./wake-restore-integrity";
 
 export interface CreateAgentParams {
   organizationId: string;
@@ -259,6 +264,18 @@ export type ProvisionResult =
        */
       retryable?: boolean;
     };
+
+/**
+ * Restore-source override for `provision()`. `from-backup` restores a specific
+ * backup (validated upstream by the wake integrity gate) instead of the latest,
+ * and disables the unrecoverable-snapshot degrade-to-fresh-boot; `fresh-boot`
+ * skips the restore entirely. Both exist only for the explicit wake escape
+ * hatches (#15603 B6) — every other provision caller omits this and keeps the
+ * default latest-backup auto-restore.
+ */
+export type ProvisionRestoreOverride =
+  | { kind: "from-backup"; backupId: string }
+  | { kind: "fresh-boot" };
 
 export type DeleteAgentResult =
   | { success: true; deletedSandbox: AgentSandbox }
@@ -1475,7 +1492,21 @@ export class ElizaSandboxService {
 
   // Provision
 
-  async provision(agentId: string, orgId: string): Promise<ProvisionResult> {
+  /**
+   * `restoreOverride` narrows step 5's backup restore for callers that have
+   * already decided the restore source — today only `executeWake` (#15603 B6):
+   * `from-backup` restores a specific validated backup and NEVER degrades an
+   * unrecoverable restore error to a fresh boot (the caller explicitly opted
+   * into that restore point), `fresh-boot` skips the restore entirely (the
+   * caller explicitly accepted the data loss). Omitted (every other caller):
+   * latest-backup auto-restore with the designed unrecoverable-snapshot
+   * degrade, byte-identical to the historical behavior.
+   */
+  async provision(
+    agentId: string,
+    orgId: string,
+    restoreOverride?: ProvisionRestoreOverride,
+  ): Promise<ProvisionResult> {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
 
@@ -1792,16 +1823,44 @@ export class ElizaSandboxService {
         let restoreState: Awaited<
           ReturnType<typeof agentSandboxesRepository.getReconstructedBackupState>
         >;
-        try {
-          backup = await agentSandboxesRepository.getLatestBackup(rec.id);
-          restoreState = backup
-            ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
-            : undefined;
-        } catch (error) {
-          if (!isUnrecoverableSnapshotError(error)) throw error;
-          await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
+        if (restoreOverride?.kind === "fresh-boot") {
+          // Explicit opt-in (wake forceFreshBoot): the caller accepted the
+          // data loss, so no backup is read, degraded, or pruned — the stored
+          // chain stays intact for a later explicit restore.
           backup = undefined;
           restoreState = undefined;
+          logger.warn("[agent-sandbox] Backup restore skipped: explicit fresh boot requested", {
+            agentId: rec.id,
+          });
+        } else {
+          try {
+            backup =
+              restoreOverride?.kind === "from-backup"
+                ? await agentSandboxesRepository.getBackupById(restoreOverride.backupId)
+                : await agentSandboxesRepository.getLatestBackup(rec.id);
+            if (restoreOverride?.kind === "from-backup") {
+              // Cross-sandbox ids are rejected here as defense in depth; the
+              // wake gate and route already enforce ownership.
+              if (!backup || backup.sandbox_record_id !== rec.id) {
+                throw new Error(
+                  `Restore backup ${restoreOverride.backupId} not found for this agent`,
+                );
+              }
+            }
+            restoreState = backup
+              ? await agentSandboxesRepository.getReconstructedBackupState(backup.id)
+              : undefined;
+          } catch (error) {
+            // An explicitly-requested backup must NEVER silently degrade to a
+            // fresh boot — the caller opted into THAT restore point, so a
+            // failure here fails the provision (retryable by the wake job)
+            // instead of booting empty (#15603 B6).
+            if (restoreOverride?.kind === "from-backup") throw error;
+            if (!isUnrecoverableSnapshotError(error)) throw error;
+            await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
+            backup = undefined;
+            restoreState = undefined;
+          }
         }
         if (restoreState) {
           try {
@@ -1825,6 +1884,11 @@ export class ElizaSandboxService {
                   backupId: backup?.id,
                 },
               );
+            } else if (restoreOverride?.kind === "from-backup") {
+              // Same no-silent-fresh-boot rule as the fetch above: an explicit
+              // restore point that cannot be pushed fails the provision rather
+              // than degrading (#15603 B6).
+              throw error;
             } else if (isUnrecoverableSnapshotError(error)) {
               await this.degradeUnrecoverableSnapshot(rec.id, backup?.id, error);
             } else {
@@ -4256,9 +4320,13 @@ export class ElizaSandboxService {
     return prov.success ? { success: true, backup } : { success: false, error: prov.error };
   }
 
-  async listBackups(agentId: string, orgId: string): Promise<AgentSandboxBackupMetadata[]> {
+  async listBackups(
+    agentId: string,
+    orgId: string,
+    limit?: number,
+  ): Promise<AgentSandboxBackupMetadata[]> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    return rec ? agentSandboxesRepository.listBackupMetadata(rec.id) : [];
+    return rec ? agentSandboxesRepository.listBackupMetadata(rec.id, limit) : [];
   }
 
   // Heartbeat
@@ -5062,18 +5130,32 @@ export class ElizaSandboxService {
   /**
    * Daemon-side handler for the `agent_wake` job — the inverse of sleep.
    *
-   * Provisions a fresh container (claiming a warm-pool slot when available)
-   * and relies on `provision()`'s built-in latest-backup restoration to
-   * rehydrate the agent's state. Idempotent: waking an already-running agent
-   * is a no-op.
+   * The backup being restored IS the sleeping agent's entire durable state
+   * (sleep already discarded the compute identity), so before provisioning
+   * anything the wake runs the restore-integrity gate (#15603 B6): the backup
+   * the restore will apply must decrypt, chain-replay, and hash-verify. A
+   * failed gate fails the wake with a typed, user-legible error and leaves
+   * the sandbox `sleeping` — never a silent fresh boot. The explicit escape
+   * hatches are `opts.restoreBackupId` (wake from an older validated backup)
+   * and `opts.forceFreshBoot` (boot empty, accepting the data loss); both are
+   * opt-ins surfaced on the wake route, never defaults.
+   *
+   * On a clean gate, provisions a fresh container (claiming a warm-pool slot
+   * when available) and restores the validated backup. Idempotent: waking an
+   * already-running agent is a no-op.
    */
   async executeWake(
     agentId: string,
     orgId: string,
+    opts?: { restoreBackupId?: string; forceFreshBoot?: boolean },
   ): Promise<{
     success: boolean;
     reprovisioned: boolean;
     restoredBackupId?: string;
+    /** True when the wake deliberately booted empty via `forceFreshBoot`. */
+    freshBoot?: boolean;
+    /** Structured gate failure; set exactly when the wake was blocked by the integrity gate. */
+    integrityFailure?: WakeRestoreIntegrityFailure;
     error?: string;
   }> {
     // Primary read: a replica-lagged "Agent not found" must not no-op a wake.
@@ -5083,18 +5165,76 @@ export class ElizaSandboxService {
     if (rec.status === "running" && rec.bridge_url) {
       return { success: true, reprovisioned: false };
     }
+    if (opts?.restoreBackupId && opts?.forceFreshBoot) {
+      // The route rejects this combination; enforced here too so a hand-crafted
+      // job row cannot smuggle an ambiguous instruction past the gate.
+      return {
+        success: false,
+        reprovisioned: false,
+        error: "restoreBackupId and forceFreshBoot are mutually exclusive",
+      };
+    }
 
-    const latest = await agentSandboxesRepository.getLatestBackup(rec.id);
-    const provisionResult = await this.provision(agentId, orgId);
+    if (opts?.forceFreshBoot) {
+      logger.warn("[agent-sandbox] Wake with explicit forceFreshBoot: restore skipped by user", {
+        agentId,
+      });
+      const provisionResult = await this.provision(agentId, orgId, { kind: "fresh-boot" });
+      if (!provisionResult.success) {
+        return { success: false, reprovisioned: true, error: provisionResult.error };
+      }
+      logger.info("[agent-sandbox] Wake complete (explicit fresh boot)", { agentId });
+      return { success: true, reprovisioned: true, freshBoot: true };
+    }
+
+    // Gate BEFORE any compute side effect: on failure nothing has been
+    // provisioned or torn down, so the row simply stays `sleeping`.
+    const gate = await runWakeRestoreIntegrityGate({
+      sandboxRecordId: rec.id,
+      agentName: rec.agent_name,
+      requestedBackupId: opts?.restoreBackupId,
+    });
+    if (!gate.ok) {
+      return {
+        success: false,
+        reprovisioned: false,
+        error: formatWakeRestoreIntegrityError(gate.failure),
+        integrityFailure: gate.failure,
+      };
+    }
+
+    // Restore through provision's explicit from-backup path whenever the gate
+    // validated a concrete backup — including the default (latest) wake. The
+    // override disables provision's unrecoverable-snapshot degrade, so a
+    // restore failure FAILS the provision (retryable, chain preserved) instead
+    // of booting empty and pruning every backup. That degrade is designed for
+    // a running agent losing volatile session state; on a wake the backup IS
+    // the agent, and the fresh-stamp gate path never touches the stored bytes,
+    // so provision's restore is the first real read. `gate.backupId` is null
+    // only when there is nothing to restore (no-backup) or the kill switch
+    // reverted the wake to the ungated legacy latest-backup behavior.
+    const restoreOverride: ProvisionRestoreOverride | undefined = gate.backupId
+      ? { kind: "from-backup", backupId: gate.backupId }
+      : undefined;
+    // Kill-switch wakes keep the pre-gate report shape: provision auto-restores
+    // the latest backup, so name its id (metadata read only — no eager decrypt
+    // of a possibly-corrupt envelope on the deliberately-ungated path).
+    const restoredBackupId =
+      gate.verification === "disabled" && !gate.backupId
+        ? (await agentSandboxesRepository.getLatestStoredBackup(rec.id))?.id
+        : (gate.backupId ?? undefined);
+
+    const provisionResult = await this.provision(agentId, orgId, restoreOverride);
     if (!provisionResult.success) {
       return { success: false, reprovisioned: true, error: provisionResult.error };
     }
 
     logger.info("[agent-sandbox] Wake complete", {
       agentId,
-      restoredBackupId: latest?.id,
+      restoredBackupId,
+      verification: gate.verification,
     });
-    return { success: true, reprovisioned: true, restoredBackupId: latest?.id };
+    return { success: true, reprovisioned: true, restoredBackupId };
   }
 
   /**

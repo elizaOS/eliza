@@ -24,6 +24,7 @@ import {
 import { MusicService } from "../service";
 import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { ProgressiveMessage } from "../utils/progressiveMessage";
+import { selectedContextMatches } from "../utils/selectedContextMatches";
 import { mergedOptions, requireMusicConfirmation } from "./confirmation";
 import { MUSIC_PLAYER_ACTION_DOCS } from "./music-player-action-docs";
 
@@ -112,34 +113,6 @@ function failureResult(
 }
 
 const PLAY_AUDIO_CONTEXTS = ["media", "automation"] as const;
-function selectedContextMatches(
-  state: State | undefined,
-  contexts: readonly string[],
-): boolean {
-  const selected = new Set<string>();
-  const collect = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    for (const item of value) {
-      if (typeof item === "string") selected.add(item);
-    }
-  };
-  collect(
-    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  collect(
-    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  const contextObject = (state?.data as Record<string, unknown> | undefined)
-    ?.contextObject as
-    | {
-        trajectoryPrefix?: { selectedContexts?: unknown };
-        metadata?: { selectedContexts?: unknown };
-      }
-    | undefined;
-  collect(contextObject?.trajectoryPrefix?.selectedContexts);
-  collect(contextObject?.metadata?.selectedContexts);
-  return contexts.some((context) => selected.has(context));
-}
 
 /**
  * Extract Spotify track/album/playlist info from URL

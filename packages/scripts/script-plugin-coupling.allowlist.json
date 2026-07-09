@@ -59,6 +59,7 @@
     "file": "packages/scripts/e2e-coverage/manifest.ts",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
+      "plugins/plugin-birdclaw",
       "plugins/plugin-bluebubbles",
       "plugins/plugin-browser",
       "plugins/plugin-calendar",
@@ -71,19 +72,18 @@
       "plugins/plugin-github",
       "plugins/plugin-hyperliquid",
       "plugins/plugin-imessage",
+      "plugins/plugin-inbox",
       "plugins/plugin-local-inference",
+      "plugins/plugin-meetings",
       "plugins/plugin-music",
       "plugins/plugin-polymarket",
       "plugins/plugin-scheduling",
-      "plugins/plugin-shopify",
       "plugins/plugin-signal",
-      "plugins/plugin-social-alpha",
       "plugins/plugin-telegram",
       "plugins/plugin-training",
       "plugins/plugin-wallet",
       "plugins/plugin-whatsapp",
-      "plugins/plugin-workflow",
-      "plugins/plugin-xr"
+      "plugins/plugin-workflow"
     ],
     "reason": "maps each route-wiring plugin to its e2e coverage artifacts; every routed plugin needs an entry or exemption"
   },

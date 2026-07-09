@@ -13,6 +13,7 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
+import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
@@ -530,6 +531,16 @@ describe("ElizaSandboxService wake", () => {
         parent_backup_id: null,
         content_hash: null,
         created_at: now,
+        verification_status: null,
+        verified_at: null,
+        verification_error: null,
+      };
+      // The wake restore-integrity gate (#15603 B6) verifies the STORED row
+      // before provision runs; a plaintext inline full backup with no
+      // content_hash passes verification for real (legacy-row passthrough).
+      const storedBackup: StoredAgentSandboxBackup = {
+        ...backup,
+        state_data: { memories: [], config: {}, workspaceFiles: {} },
       };
       const provider: SandboxProvider = {
         create: mock(async () => ({
@@ -562,6 +573,9 @@ describe("ElizaSandboxService wake", () => {
       const originalFindByIdAndOrgForWrite = agentSandboxesRepository.findByIdAndOrgForWrite;
       const originalTrySetProvisioning = agentSandboxesRepository.trySetProvisioning;
       const originalGetLatestBackup = agentSandboxesRepository.getLatestBackup;
+      const originalGetBackupById = agentSandboxesRepository.getBackupById;
+      const originalGetLatestStoredBackup = agentSandboxesRepository.getLatestStoredBackup;
+      const originalStampBackupVerification = agentSandboxesRepository.stampBackupVerification;
       const originalGetReconstructedBackupState =
         agentSandboxesRepository.getReconstructedBackupState;
       agentSandboxesRepository.findByIdAndOrg = mock(async () => sleepingSandbox);
@@ -574,6 +588,11 @@ describe("ElizaSandboxService wake", () => {
         status: "provisioning",
       }));
       agentSandboxesRepository.getLatestBackup = mock(async () => backup);
+      // The wake hands provision the gate-validated backup as an explicit
+      // from-backup override, so provision fetches it by id, not "latest".
+      agentSandboxesRepository.getBackupById = mock(async () => backup);
+      agentSandboxesRepository.getLatestStoredBackup = mock(async () => storedBackup);
+      agentSandboxesRepository.stampBackupVerification = mock(async () => {});
       agentSandboxesRepository.getReconstructedBackupState = mock(async () => ({
         memories: [],
         config: {},
@@ -613,12 +632,214 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.findByIdAndOrgForWrite = originalFindByIdAndOrgForWrite;
         agentSandboxesRepository.trySetProvisioning = originalTrySetProvisioning;
         agentSandboxesRepository.getLatestBackup = originalGetLatestBackup;
+        agentSandboxesRepository.getBackupById = originalGetBackupById;
+        agentSandboxesRepository.getLatestStoredBackup = originalGetLatestStoredBackup;
+        agentSandboxesRepository.stampBackupVerification = originalStampBackupVerification;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
         createForAgentSpy.mockRestore();
         updateSpy.mockRestore();
       }
     },
   );
+});
+
+// The from-backup override contract (#15603 B6), exercised through the REAL
+// provision() restore step: an explicitly-requested backup must NEVER degrade
+// to a fresh boot or prune the chain — the provision fails (retryable by the
+// wake job) with every backup intact. Repository reads/writes are stubbed at
+// the seam and the provider/runtime fetches are fakes, but the restore errors
+// are genuine (real AEAD decrypt failure, real HTTP restore rejection) and the
+// code under test is provision()'s own catch ladder, not a stand-in.
+describe("ElizaSandboxService provision — from-backup override (#15603 B6)", () => {
+  const FROM_BACKUP_ID = "44444444-4444-4444-8444-444444444444";
+
+  function sleepingSandboxRec(): AgentSandbox {
+    return {
+      ...customSandbox(),
+      status: "sleeping",
+      sandbox_id: null,
+      bridge_url: null,
+      health_url: null,
+      node_id: null,
+      container_name: null,
+      bridge_port: null,
+      web_ui_port: null,
+      headscale_ip: null,
+    };
+  }
+
+  function backupRow(sandboxRecordId: string): AgentSandboxBackup {
+    return {
+      id: FROM_BACKUP_ID,
+      sandbox_record_id: sandboxRecordId,
+      snapshot_type: "pre-shutdown",
+      state_data: { memories: [], config: {}, workspaceFiles: {} },
+      state_data_storage: "inline",
+      state_data_key: null,
+      size_bytes: 2,
+      backup_kind: "full",
+      parent_backup_id: null,
+      content_hash: null,
+      created_at: new Date("2026-06-04T12:05:00.000Z"),
+      verification_status: "verified",
+      verified_at: new Date("2026-06-04T12:05:00.000Z"),
+      verification_error: null,
+    };
+  }
+
+  async function armFromBackupProvision(opts: {
+    backupSandboxRecordId?: string;
+    reconstructError?: Error;
+    restoreHttpStatus?: number;
+  }) {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = sleepingSandboxRec();
+    const backup = backupRow(opts.backupSandboxRecordId ?? rec.id);
+    const provider: SandboxProvider = {
+      create: mock(async () => ({
+        sandboxId: "agent-e06bb509",
+        bridgeUrl: "https://runtime.example",
+        healthUrl: "https://runtime.example/health",
+        metadata: {
+          nodeId: "node-1",
+          containerName: "agent-e06bb509",
+          bridgePort: 21060,
+          webUiPort: 3000,
+        },
+      })),
+      stop: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+      const url = fetchUrl(input);
+      if (url === "https://runtime.example/api/agents") {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      if (url === "https://runtime.example/api/restore" && opts.restoreHttpStatus) {
+        return Response.json({ error: "restore rejected" }, { status: opts.restoreHttpStatus });
+      }
+      return Response.json({ ok: true });
+    });
+    const originals = {
+      findByIdAndOrg: agentSandboxesRepository.findByIdAndOrg,
+      findById: agentSandboxesRepository.findById,
+      trySetProvisioning: agentSandboxesRepository.trySetProvisioning,
+      getBackupById: agentSandboxesRepository.getBackupById,
+      getReconstructedBackupState: agentSandboxesRepository.getReconstructedBackupState,
+    };
+    agentSandboxesRepository.findByIdAndOrg = mock(async () => rec);
+    agentSandboxesRepository.findById = mock(async () => rec);
+    agentSandboxesRepository.trySetProvisioning = mock(async () => ({
+      ...rec,
+      status: "provisioning",
+    }));
+    const getBackupByIdMock = mock(async () => backup);
+    agentSandboxesRepository.getBackupById = getBackupByIdMock;
+    const reconstructMock = mock(async () => {
+      if (opts.reconstructError) throw opts.reconstructError;
+      return { memories: [], config: {}, workspaceFiles: {} };
+    });
+    agentSandboxesRepository.getReconstructedBackupState = reconstructMock;
+    const createForAgentSpy = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+      id: "22222222-2222-4222-8222-222222222222",
+      plainKey: "eliza_test_agent_key",
+      prefix: "eliza_test",
+    });
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, data) => ({ ...rec, ...data, updated_at: rec.updated_at }),
+    );
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups");
+    return {
+      svc: new ElizaSandboxService(provider),
+      rec,
+      provider,
+      getBackupByIdMock,
+      reconstructMock,
+      updateSpy,
+      pruneSpy,
+      restore: () => {
+        agentSandboxesRepository.findByIdAndOrg = originals.findByIdAndOrg;
+        agentSandboxesRepository.findById = originals.findById;
+        agentSandboxesRepository.trySetProvisioning = originals.trySetProvisioning;
+        agentSandboxesRepository.getBackupById = originals.getBackupById;
+        agentSandboxesRepository.getReconstructedBackupState =
+          originals.getReconstructedBackupState;
+        createForAgentSpy.mockRestore();
+        updateSpy.mockRestore();
+        pruneSpy.mockRestore();
+      },
+    };
+  }
+
+  test("an unreconstructable explicit backup FAILS the provision — no fresh boot, no prune", async () => {
+    // A REAL AeadError: without the override this exact error is classified
+    // unrecoverable and degrades to a fresh boot + pruneBackups(rec.id, 0).
+    const aead = await realAeadDecryptError();
+    const h = await armFromBackupProvision({ reconstructError: aead });
+    try {
+      const result = await h.svc.provision(h.rec.id, h.rec.organization_id, {
+        kind: "from-backup",
+        backupId: FROM_BACKUP_ID,
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected provision failure");
+      expect(result.error).toBe(aead.message);
+      // The degrade path never fired: the chain survives for the retry.
+      expect(h.pruneSpy).not.toHaveBeenCalled();
+      // The row is flipped out of `running` (markError), and the half-built
+      // container is torn down per the post-create-failure convention.
+      expect(h.updateSpy).toHaveBeenCalledWith(
+        h.rec.id,
+        expect.objectContaining({ status: "error" }),
+      );
+      expect(h.provider.stop).toHaveBeenCalled();
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("a restore push the runtime rejects FAILS a from-backup provision (custom-image 404 skip stays 404-only)", async () => {
+    const h = await armFromBackupProvision({ restoreHttpStatus: 500 });
+    try {
+      const result = await h.svc.provision(h.rec.id, h.rec.organization_id, {
+        kind: "from-backup",
+        backupId: FROM_BACKUP_ID,
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected provision failure");
+      expect(result.error).toContain("State restore failed: HTTP 500");
+      expect(h.pruneSpy).not.toHaveBeenCalled();
+      expect(h.updateSpy).toHaveBeenCalledWith(
+        h.rec.id,
+        expect.objectContaining({ status: "error" }),
+      );
+    } finally {
+      h.restore();
+    }
+  });
+
+  test("a backup belonging to another sandbox is rejected in provision (defense in depth behind the gate)", async () => {
+    const h = await armFromBackupProvision({
+      backupSandboxRecordId: "55555555-5555-4555-8555-555555555555",
+    });
+    try {
+      const result = await h.svc.provision(h.rec.id, h.rec.organization_id, {
+        kind: "from-backup",
+        backupId: FROM_BACKUP_ID,
+      });
+
+      expect(result.success).toBe(false);
+      if (result.success) throw new Error("expected provision failure");
+      expect(result.error).toBe(`Restore backup ${FROM_BACKUP_ID} not found for this agent`);
+      // Rejected before any state was read or touched.
+      expect(h.reconstructMock).not.toHaveBeenCalled();
+      expect(h.pruneSpy).not.toHaveBeenCalled();
+    } finally {
+      h.restore();
+    }
+  });
 });
 
 describe("ElizaSandboxService sleep", () => {

@@ -497,7 +497,7 @@ export const CONNECTOR_PATHS = [
               reason: "signal-cli is installed but not runnable",
             },
             {
-              type: "command-ok",
+              type: "command-output-nonempty",
               command: "signal-cli",
               args: ["listAccounts"],
               reason: "no linked Signal account",
@@ -868,7 +868,10 @@ export function defaultAvailabilityCtx() {
         encoding: "utf8",
         timeout: 10_000,
       });
-      return { ok: !result.error && result.status === 0 };
+      return {
+        ok: !result.error && result.status === 0,
+        stdout: result.stdout ?? "",
+      };
     },
   };
 }
@@ -923,6 +926,19 @@ export function checkAvailability(spec, ctx = defaultAvailabilityCtx()) {
             reason:
               spec.reason ?? `${spec.command} ${spec.args.join(" ")} failed`,
           };
+    case "command-output-nonempty": {
+      const result = ctx.runCommand(spec.command, spec.args);
+      return result.ok &&
+        typeof result.stdout === "string" &&
+        result.stdout.trim().length > 0
+        ? ok
+        : {
+            available: false,
+            reason:
+              spec.reason ??
+              `${spec.command} ${spec.args.join(" ")} returned no output`,
+          };
+    }
     case "platform":
       return ctx.platform === spec.platform
         ? ok
@@ -1015,6 +1031,7 @@ function validateAvailabilitySpec(spec, id, problems) {
     "file-exists",
     "command-in-path",
     "command-ok",
+    "command-output-nonempty",
     "platform",
   ];
   if (!known.includes(spec.type)) {

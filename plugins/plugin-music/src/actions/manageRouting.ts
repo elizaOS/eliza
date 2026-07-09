@@ -15,6 +15,7 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { AudioRouter, AudioRoutingMode, ZoneManager } from "../router";
+import { selectedContextMatches } from "../utils/selectedContextMatches";
 
 type RoutingCommand =
   | { action: "set_mode"; mode: AudioRoutingMode }
@@ -58,34 +59,6 @@ interface MusicRoutingService extends Service {
 }
 
 const ROUTING_CONTEXTS = ["media", "automation", "settings"] as const;
-function selectedContextMatches(
-  state: State | undefined,
-  contexts: readonly string[],
-): boolean {
-  const selected = new Set<string>();
-  const collect = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    for (const item of value) {
-      if (typeof item === "string") selected.add(item);
-    }
-  };
-  collect(
-    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  collect(
-    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  const contextObject = (state?.data as Record<string, unknown> | undefined)
-    ?.contextObject as
-    | {
-        trajectoryPrefix?: { selectedContexts?: unknown };
-        metadata?: { selectedContexts?: unknown };
-      }
-    | undefined;
-  collect(contextObject?.trajectoryPrefix?.selectedContexts);
-  collect(contextObject?.metadata?.selectedContexts);
-  return contexts.some((context) => selected.has(context));
-}
 
 async function emit(
   callback: HandlerCallback | undefined,

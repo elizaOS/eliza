@@ -14,6 +14,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { selectedContextMatches } from "../utils/selectedContextMatches";
 import { mergedOptions } from "./confirmation";
 import {
   downloadMusicExamples,
@@ -133,35 +134,6 @@ export function readExplicitMusicLibraryOp(
     normalizeMusicLibraryOp(options.action) ??
     normalizeMusicLibraryOp(options.subaction)
   );
-}
-
-function selectedContextMatches(
-  state: State | undefined,
-  contexts: readonly string[],
-): boolean {
-  const selected = new Set<string>();
-  const collect = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    for (const item of value) {
-      if (typeof item === "string") selected.add(item);
-    }
-  };
-  collect(
-    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  collect(
-    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  const contextObject = (state?.data as Record<string, unknown> | undefined)
-    ?.contextObject as
-    | {
-        trajectoryPrefix?: { selectedContexts?: unknown };
-        metadata?: { selectedContexts?: unknown };
-      }
-    | undefined;
-  collect(contextObject?.trajectoryPrefix?.selectedContexts);
-  collect(contextObject?.metadata?.selectedContexts);
-  return contexts.some((context) => selected.has(context));
 }
 
 export async function inferMusicLibraryOp(

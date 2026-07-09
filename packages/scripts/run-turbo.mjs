@@ -1,7 +1,11 @@
 #!/usr/bin/env node
-// Drives repo automation run turbo with explicit CLI and CI behavior.
+/**
+ * Runs Turbo with repository-wide safeguards shared by local and CI commands.
+ * Typecheck prerequisites are materialized before Turbo hashes or schedules the
+ * graph so package-specific task overrides cannot race generated declarations.
+ */
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -57,6 +61,42 @@ if (process.env.RUN_TURBO_LOCKFILE_CHECK_ONLY === "1") {
   process.exit(0);
 }
 
+const rawTurboArgs = process.argv.slice(2);
+const rawRunIndex = rawTurboArgs.indexOf("run");
+const taskAndOptionArgs =
+  rawRunIndex === -1 ? [] : rawTurboArgs.slice(rawRunIndex + 1);
+const firstOptionIndex = taskAndOptionArgs.findIndex((arg) =>
+  arg.startsWith("-"),
+);
+const requestedTasks =
+  firstOptionIndex === -1
+    ? taskAndOptionArgs
+    : taskAndOptionArgs.slice(0, firstOptionIndex);
+
+if (requestedTasks.includes("typecheck")) {
+  const generator = process.env.RUN_TURBO_KEYWORD_GENERATOR
+    ? path.resolve(process.env.RUN_TURBO_KEYWORD_GENERATOR)
+    : path.join(repoRoot, "packages/shared/scripts/generate-keywords.mjs");
+  const result = spawnSync(process.execPath, [generator, "--target", "ts"], {
+    cwd: repoRoot,
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    console.error(
+      `[run-turbo] Failed to generate typecheck prerequisites: ${result.error.message}`,
+    );
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
+
+if (process.env.RUN_TURBO_PREPARE_CHECK_ONLY === "1") {
+  process.exit(0);
+}
+
 // Every `node_modules` from repoRoot up to the filesystem root. A git worktree
 // (e.g. `.claude/worktrees/<name>`) has no `node_modules` of its own and shares
 // the parent checkout's via node's ancestor resolution — so turbo lives several
@@ -88,7 +128,7 @@ const turboPackageBin =
     .map((nm) => path.join(nm, "turbo/bin/turbo"))
     .find((candidate) => fs.existsSync(candidate)) ??
   path.join(repoRoot, "node_modules/turbo/bin/turbo");
-const turboArgs = process.argv.slice(2);
+const turboArgs = rawTurboArgs;
 
 if (!turboArgs.some((arg) => arg === "--ui" || arg.startsWith("--ui="))) {
   turboArgs.unshift("--ui=stream");

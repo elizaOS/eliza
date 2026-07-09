@@ -9,6 +9,8 @@
 import { logger } from "@elizaos/logger";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "../config/boot-config";
+import { shellLocalStorage } from "../surface-realm-channel";
+import { ELIZA_CLOUD_CONTROL_PLANE_HOSTS } from "../utils/cloud-agent-base";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
@@ -322,15 +324,14 @@ describe("Cloud active server persistence", () => {
     });
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const setItemSpy = vi
-      .spyOn(Storage.prototype, "setItem")
+      .spyOn(shellLocalStorage, "setItem")
       .mockImplementation(() => {
         throw new DOMException("quota exceeded", "QuotaExceededError");
       });
 
     try {
-      // A failed persist must not throw (callers treat it as best-effort) but
-      // must surface a diagnostic — previously this was swallowed silently, so
-      // a lost freshly-recovered apiBase re-triggered backfill on every boot.
+      // Callers treat device persistence as best-effort, but its failure must
+      // stay observable because losing a recovered apiBase retriggers backfill.
       expect(() => savePersistedActiveServer(server)).not.toThrow();
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy.mock.calls[0]?.[0]).toMatch(
@@ -340,5 +341,90 @@ describe("Cloud active server persistence", () => {
       setItemSpy.mockRestore();
       warnSpy.mockRestore();
     }
+  });
+
+  describe("control-plane host set anti-drift (#15740)", () => {
+    it("canonical control-plane host set includes the staging hosts", () => {
+      expect(ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has("staging.elizacloud.ai")).toBe(
+        true,
+      );
+      expect(
+        ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has("api-staging.elizacloud.ai"),
+      ).toBe(true);
+    });
+
+    it("never persists any canonical control-plane host as a runtime apiBase", () => {
+      for (const host of ELIZA_CLOUD_CONTROL_PLANE_HOSTS) {
+        const server = createPersistedActiveServer({
+          kind: "cloud",
+          apiBase: `https://${host}/`,
+          accessToken: "cloud-token",
+        });
+        expect(
+          server.apiBase,
+          `bare control-plane origin for ${host} must not be persisted`,
+        ).toBeUndefined();
+      }
+    });
+
+    it("drops a staging control-plane origin without an agent id", () => {
+      const server = createPersistedActiveServer({
+        kind: "cloud",
+        apiBase: "https://staging.elizacloud.ai/",
+        accessToken: "cloud-token",
+      });
+      expect(server.apiBase).toBeUndefined();
+      expect(server.accessToken).toBe("cloud-token");
+    });
+  });
+
+  describe("repair of persisted control-plane origins (#15740)", () => {
+    it("repairs and re-persists a stored bare staging origin on load", () => {
+      localStorage.setItem(
+        "elizaos:active-server",
+        JSON.stringify({
+          id: "cloud:https://staging.elizacloud.ai",
+          kind: "cloud",
+          label: "Eliza Cloud",
+          apiBase: "https://staging.elizacloud.ai",
+          accessToken: "cloud-token",
+        }),
+      );
+
+      const restored = loadPersistedActiveServer();
+      expect(restored?.apiBase).toBeUndefined();
+      expect(restored?.accessToken).toBe("cloud-token");
+
+      const rawAfter = JSON.parse(
+        localStorage.getItem("elizaos:active-server") ?? "null",
+      );
+      expect(rawAfter).not.toBeNull();
+      expect(rawAfter.apiBase).toBeUndefined();
+      expect(rawAfter.accessToken).toBe("cloud-token");
+
+      expect(loadPersistedActiveServer()?.apiBase).toBeUndefined();
+    });
+
+    it("leaves a concrete per-agent cloud base untouched (no spurious repair)", () => {
+      const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+      try {
+        savePersistedActiveServer(
+          createPersistedActiveServer({
+            kind: "cloud",
+            id: "cloud:agent-xyz",
+            label: "Demo Agent",
+            apiBase: "https://agent-xyz.example.test/",
+            accessToken: "cloud-token",
+          }),
+        );
+        setItemSpy.mockClear();
+
+        const restored = loadPersistedActiveServer();
+        expect(restored?.apiBase).toBe("https://agent-xyz.example.test");
+        expect(setItemSpy).not.toHaveBeenCalled();
+      } finally {
+        setItemSpy.mockRestore();
+      }
+    });
   });
 });

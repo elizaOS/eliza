@@ -3,13 +3,11 @@
  * showing crypto **unit prices only** - never the amount held or the holding
  * value (#10706). Tapping opens the wallet view.
  *
- * Two states, always visible once prices load (#14344): when the user holds ≥1
- * priced token worth ≥ $1, the top-3 held by holding value; otherwise the
- * tracked BTC/SOL/ETH default rows (back-filled from trending movers if the
- * overview is partial). Prices refresh on a 60s document-visibility-gated
- * interval - no polling while the app is backgrounded. It self-hides only when
- * prices are unavailable (both endpoints down / never loaded): the home surface
- * shows no error chrome; the wallet view owns error state (J4).
+ * Three states keep loading, unavailable data, and confirmed holdings distinct.
+ * Once balances and prices load, the widget shows either the top-3 held tokens
+ * worth ≥ $1 or tracked BTC/SOL/ETH defaults for a confirmed-empty wallet.
+ * Prices refresh on a 60s document-visibility-gated interval; an unavailable
+ * first load renders a compact route to the wallet's detailed error state.
  */
 
 import type { WalletBalancesResponse } from "@elizaos/shared";
@@ -34,6 +32,13 @@ import {
 const REFRESH_INTERVAL_MS = 60_000;
 
 const DEFAULT_SPAN = "col-span-2 row-span-1";
+
+type RefreshResult<T> = { ok: true; value: T } | { ok: false };
+
+type WalletDisplayState =
+  | { status: "loading" }
+  | { status: "unavailable" }
+  | { status: "ready"; holdings: PricedHolding[] };
 
 /** Format a unit price: more decimals for sub-dollar assets, 2 for the rest. */
 function formatPrice(priceUsd: number): string {
@@ -63,8 +68,9 @@ export function WalletBalanceWidget(
   props: Partial<WidgetProps>,
 ): React.JSX.Element | null {
   const spanClassName = props.spanClassName ?? DEFAULT_SPAN;
-  const [holdings, setHoldings] = useState<PricedHolding[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [displayState, setDisplayState] = useState<WalletDisplayState>({
+    status: "loading",
+  });
   const nav = useWidgetNavigation();
   // Auth gate (#11084): the widget mounts before the auth probe resolves, so
   // fetching stays dormant until the session is authenticated.
@@ -82,33 +88,62 @@ export function WalletBalanceWidget(
   useEffect(() => {
     if (authenticated) return;
     refreshSeqRef.current += 1;
-    setHoldings(null);
-    setLoading(true);
+    setDisplayState({ status: "loading" });
   }, [authenticated]);
 
   // Prices (BTC/SOL/ETH + trending) come from the market-overview endpoint;
   // balances decide the held-vs-default branch. Both are fetched together and
-  // best-effort (J4): a null overview means prices are unavailable → hide; a
-  // null balances alone still shows the default rows.
+  // best-effort (J4): either unavailable response hides the initial tile rather
+  // than presenting an unknown wallet as an empty wallet.
   const refresh = useCallback(async () => {
     refreshSeqRef.current += 1;
     const seq = refreshSeqRef.current;
-    const [balances, overview] = await Promise.all([
-      // error-policy:J4 balances failure ⇒ no held rows; default rows still show
-      (client.getWalletBalances() as Promise<WalletBalancesResponse>).catch(
-        () => null,
-      ),
-      // error-policy:J4 overview failure ⇒ no prices at all ⇒ widget hides
-      client.getWalletMarketOverview().catch(() => null),
+    const [balancesResult, overviewResult] = await Promise.all([
+      (client.getWalletBalances() as Promise<WalletBalancesResponse>)
+        .then<RefreshResult<WalletBalancesResponse>>((value) => ({
+          ok: true,
+          value,
+        }))
+        .catch<RefreshResult<WalletBalancesResponse>>(() => ({
+          // error-policy:J4 balances unavailable means holdings are unknown; do
+          // not fabricate "empty wallet" default rows.
+          ok: false,
+        })),
+      client
+        .getWalletMarketOverview()
+        .then<
+          RefreshResult<
+            Awaited<ReturnType<typeof client.getWalletMarketOverview>>
+          >
+        >((value) => ({ ok: true, value }))
+        .catch<
+          RefreshResult<
+            Awaited<ReturnType<typeof client.getWalletMarketOverview>>
+          >
+        >(() => ({
+          // error-policy:J4 overview failure ⇒ no prices at all ⇒ widget hides
+          ok: false,
+        })),
     ]);
     if (!activeRef.current || seq !== refreshSeqRef.current) return;
-    const held = selectPricedHoldings(balances, overview?.prices);
-    const next = held.length > 0 ? held : selectDefaultPriceRows(overview);
-    // A failed refresh (next empty) keeps the last-good rows so a transient
-    // outage does not flicker the tile out; only a first load with no prices
-    // resolves to empty (→ hidden).
-    setHoldings((prev) => (next.length > 0 ? next : (prev ?? [])));
-    setLoading(false);
+    if (!overviewResult.ok || !balancesResult.ok) {
+      // A transient failure keeps a prior ready state. On first load, J4
+      // requires a visible unavailable state rather than loading forever or
+      // fabricating an empty wallet.
+      setDisplayState((previous) =>
+        previous.status === "ready" ? previous : { status: "unavailable" },
+      );
+      return;
+    }
+    const held = selectPricedHoldings(
+      balancesResult.value,
+      overviewResult.value.prices,
+    );
+    setDisplayState({
+      status: "ready",
+      holdings:
+        held.length > 0 ? held : selectDefaultPriceRows(overviewResult.value),
+    });
   }, []);
 
   useEffect(() => {
@@ -128,7 +163,7 @@ export function WalletBalanceWidget(
   if (!authenticated) return null;
 
   // First load pending: a quiet placeholder keeps the grid cell stable.
-  if (loading && holdings == null) {
+  if (displayState.status === "loading") {
     return (
       <div
         data-testid="chat-widget-wallet-balance-loading"
@@ -138,9 +173,26 @@ export function WalletBalanceWidget(
     );
   }
 
-  // Prices unavailable (overview never loaded / both endpoints down) → render
-  // nothing rather than error chrome on the home surface (J4).
-  if (!holdings || holdings.length === 0) return null;
+  if (displayState.status === "unavailable") {
+    return (
+      <Button
+        data-testid="chat-widget-wallet-unavailable"
+        aria-label="Wallet data unavailable. Open wallet."
+        onClick={() => nav.openView("/wallet", "wallet")}
+        variant="ghost"
+        className={`${spanClassName} ${HOME_WIDGET_SOLID_TILE_CLASS} items-center justify-between gap-3 px-3 py-2.5 font-normal transition-[background-color,border-color,opacity] hover:border-[color:color-mix(in_srgb,var(--brand-white)_34%,var(--brand-black))] hover:bg-[var(--brand-black)] hover:opacity-90`}
+      >
+        <span className="flex items-center gap-2 text-xs text-[color:color-mix(in_srgb,var(--brand-white)_68%,transparent)] [&>svg]:h-3.5 [&>svg]:w-3.5">
+          <Wallet />
+          Wallet
+        </span>
+        <span className="text-xs text-[var(--brand-white)]">Unavailable</span>
+      </Button>
+    );
+  }
+
+  const { holdings } = displayState;
+  if (holdings.length === 0) return null;
 
   return (
     <Button
