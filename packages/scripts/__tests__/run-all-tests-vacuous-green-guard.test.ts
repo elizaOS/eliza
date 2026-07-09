@@ -7,7 +7,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -82,6 +82,33 @@ const SKIPPABLE_EMPTY_PACKAGE_DIR = join(
   "packages",
   "__run_all_tests_genuinely_no_tests__",
 );
+
+function rootScript(name) {
+  const rootPackage = JSON.parse(
+    readFileSync(join(repoRoot, "package.json"), "utf8"),
+  );
+  const script = rootPackage.scripts?.[name];
+  if (typeof script !== "string") {
+    throw new Error(`missing root package script ${name}`);
+  }
+  return script;
+}
+
+describe("root test lane min-task wiring (#13620)", () => {
+  for (const [scriptName, floor] of [
+    ["test", 200],
+    ["test:server", 8],
+    ["test:client", 3],
+    ["test:plugins", 100],
+    ["test:e2e", 20],
+    ["test:live", 100],
+    ["test:e2e:live", 20],
+  ]) {
+    test(`${scriptName} arms the run-all-tests vacuous-green floor`, () => {
+      expect(rootScript(scriptName)).toContain(`--min-tasks=${floor}`);
+    });
+  }
+});
 
 describe("run-all-tests --min-tasks vacuous-green guard", () => {
   test(
