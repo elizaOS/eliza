@@ -6,12 +6,14 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  createLocalOptimisticPendantTranscriptSessionAdapter,
   EMPTY_PENDANT_TRANSCRIPT_SESSION,
   loadPendantTranscriptSession,
   MAX_PERSISTED_PENDANT_TRANSCRIPT_SEGMENTS,
   PENDANT_TRANSCRIPT_STORAGE_KEY,
   type PendantTranscriptSegment,
   type PendantTranscriptSessionState,
+  parsePendantTranscriptSession,
   pendantTranscriptSessionReducer,
   savePendantTranscriptSession,
 } from "./pendant-transcript-session";
@@ -63,6 +65,7 @@ function segment(id: number): PendantTranscriptSegment {
     endedAt: id + 1,
     durationMs: 1,
     words: [],
+    warning: null,
   };
 }
 
@@ -118,14 +121,45 @@ describe("pendantTranscriptSessionReducer", () => {
     ]);
   });
 
-  it("records dropped segments without fabricating text", () => {
+  it("removes silence-discarded pending segments without visible gravel", () => {
+    const pending = pendantTranscriptSessionReducer(
+      EMPTY_PENDANT_TRANSCRIPT_SESSION,
+      {
+        type: "segment",
+        detail: {
+          id: "seg-2",
+          status: "pending",
+          startedAt: 5_000,
+          endedAt: 5_500,
+          durationMs: 500,
+        },
+      },
+    );
+    const state = pendantTranscriptSessionReducer(pending, {
+      type: "segment",
+      detail: {
+        id: "seg-2",
+        status: "discarded",
+        discardReason: "silence",
+        startedAt: 5_000,
+        endedAt: 5_500,
+        durationMs: 500,
+      },
+    });
+
+    expect(state.segments).toEqual([]);
+  });
+
+  it("records ASR failures as quiet visible failed segments", () => {
     const state = pendantTranscriptSessionReducer(
       EMPTY_PENDANT_TRANSCRIPT_SESSION,
       {
         type: "segment",
         detail: {
           id: "seg-2",
-          status: "dropped",
+          status: "failed",
+          failureReason: "asr-failed",
+          warning: "Could not transcribe this segment.",
           startedAt: 5_000,
           endedAt: 5_500,
           durationMs: 500,
@@ -135,9 +169,10 @@ describe("pendantTranscriptSessionReducer", () => {
 
     expect(state.segments[0]).toMatchObject({
       id: "seg-2",
-      status: "dropped",
+      status: "failed",
       text: "",
       words: [],
+      warning: "Could not transcribe this segment.",
     });
   });
 
@@ -175,7 +210,7 @@ describe("pendantTranscriptSessionReducer", () => {
       type: "segment",
       detail: {
         id: "seg-stale",
-        status: "dropped",
+        status: "failed",
         startedAt: 1_000,
         endedAt: 2_000,
         durationMs: 1_000,
@@ -246,6 +281,25 @@ describe("pendant transcript session storage", () => {
     expect(loadPendantTranscriptSession(storage)).toEqual(state);
   });
 
+  it("exposes localStorage through the local optimistic cache adapter seam", () => {
+    const storage = new MemoryStorage();
+    const adapter =
+      createLocalOptimisticPendantTranscriptSessionAdapter(storage);
+    const state = sessionWithSegments(1);
+
+    expect(adapter.kind).toBe("local-optimistic-cache");
+    adapter.save(state);
+    expect(adapter.load()).toEqual(state);
+
+    const cleared = adapter.clear(42);
+    expect(cleared).toEqual({
+      segments: [],
+      updatedAt: 42,
+      clearedThrough: 42,
+    });
+    expect(adapter.load()).toEqual(EMPTY_PENDANT_TRANSCRIPT_SESSION);
+  });
+
   it("loads older persisted sessions that do not carry clear metadata", () => {
     const storage = new MemoryStorage();
     storage.setItem(
@@ -259,6 +313,42 @@ describe("pendant transcript session storage", () => {
     expect(loadPendantTranscriptSession(storage)).toEqual({
       segments: [segment(1)],
       updatedAt: 2,
+      clearedThrough: null,
+    });
+  });
+
+  it("normalizes legacy dropped rows from a wider persisted JSON shape", () => {
+    expect(
+      parsePendantTranscriptSession({
+        segments: [
+          {
+            id: "legacy-dropped",
+            status: "dropped",
+            text: "",
+            startedAt: 10,
+            endedAt: 20,
+            durationMs: 10,
+            words: [],
+            extraLegacyField: { ignored: true },
+          },
+        ],
+        updatedAt: 20,
+        clearedThrough: "missing in old rows",
+      }),
+    ).toEqual({
+      segments: [
+        {
+          id: "legacy-dropped",
+          status: "failed",
+          text: "",
+          startedAt: 10,
+          endedAt: 20,
+          durationMs: 10,
+          words: [],
+          warning: "Could not transcribe this segment.",
+        },
+      ],
+      updatedAt: 20,
       clearedThrough: null,
     });
   });
@@ -321,6 +411,29 @@ describe("pendant transcript session storage", () => {
       expect(loadPendantTranscriptSession()).toEqual(
         EMPTY_PENDANT_TRANSCRIPT_SESSION,
       );
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(window, "localStorage", descriptor);
+      }
+    }
+  });
+
+  it("does not throw when save resolves a blocked window.localStorage getter", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("storage blocked", "SecurityError");
+      },
+    });
+
+    try {
+      const state = sessionWithSegments(1);
+      const adapter = createLocalOptimisticPendantTranscriptSessionAdapter();
+
+      expect(() => savePendantTranscriptSession(state)).not.toThrow();
+      expect(() => adapter.save(state)).not.toThrow();
+      expect(adapter.load()).toEqual(EMPTY_PENDANT_TRANSCRIPT_SESSION);
     } finally {
       if (descriptor) {
         Object.defineProperty(window, "localStorage", descriptor);

@@ -16,6 +16,7 @@ import {
   type PendantConnectionOptions,
   type PendantState,
 } from "./pendant-connection";
+import { isPendantLiveStatus } from "./pendant-status";
 import type { PendantTranscriptSegmentDetail } from "./transcript-segment-event";
 
 export interface UsePendantOptions {
@@ -43,11 +44,13 @@ const INITIAL_STATE: PendantState = {
   lastTranscript: null,
   droppedPackets: 0,
   error: null,
+  typedError: null,
   paused: false,
 };
 
 export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
   const [state, setState] = React.useState<PendantState>(INITIAL_STATE);
+  const stateRef = React.useRef<PendantState>(INITIAL_STATE);
   const connectionRef = React.useRef<PendantConnection | null>(null);
   // Keep the latest options in a ref so connect() always reads fresh values
   // without re-creating the callback (which would churn the button identity).
@@ -56,10 +59,25 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
 
   const supported = React.useMemo(() => isPendantSupported(), []);
 
+  const setPendantState = React.useCallback((next: PendantState) => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
   const connect = React.useCallback(() => {
-    if (connectionRef.current) return;
+    const existing = connectionRef.current;
+    const currentStatus = stateRef.current.status;
+    const busy =
+      currentStatus === "requesting" ||
+      currentStatus === "connecting" ||
+      currentStatus === "reconnecting";
+    if (existing && (busy || isPendantLiveStatus(currentStatus))) return;
+    if (existing) {
+      void existing.connect();
+      return;
+    }
     const opts: PendantConnectionOptions = {
-      onState: setState,
+      onState: setPendantState,
       onTranscript: optionsRef.current.onTranscript,
       onSegment: optionsRef.current.onSegment,
       vadSilenceMs: optionsRef.current.vadSilenceMs,
@@ -68,7 +86,7 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
     const conn = new PendantConnection(opts);
     connectionRef.current = conn;
     void conn.connect();
-  }, []);
+  }, [setPendantState]);
 
   const disconnect = React.useCallback(() => {
     const conn = connectionRef.current;

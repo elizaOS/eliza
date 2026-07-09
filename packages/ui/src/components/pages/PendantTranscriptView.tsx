@@ -1,9 +1,9 @@
 /**
  * Realtime local transcript surface for the omi pendant.
  *
- * It owns a Phase 1 browser-local session: connect BLE, show pending/resolved/
- * dropped ASR segments, persist them across refresh, and pause ambient capture
- * without disconnecting the pendant or stopping battery updates.
+ * It owns a Phase 1 browser-local optimistic cache: connect BLE, show pending,
+ * resolved, and failed ASR segments, persist them across refresh, and pause
+ * ambient capture without disconnecting the pendant or stopping battery updates.
  */
 
 import {
@@ -16,16 +16,20 @@ import {
   Mic,
   Pause,
   Play,
+  Timer,
   Trash2,
 } from "lucide-react";
 import * as React from "react";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { cn } from "../../lib/utils";
 import {
-  loadPendantTranscriptSession,
+  isPendantLiveStatus,
+  pendantStatusLabel,
+} from "../../pendant/pendant-status";
+import {
+  createLocalOptimisticPendantTranscriptSessionAdapter,
   type PendantTranscriptSegment,
   pendantTranscriptSessionReducer,
-  savePendantTranscriptSession,
 } from "../../pendant/pendant-transcript-session";
 import { usePendant } from "../../pendant/usePendant";
 import { Button } from "../ui/button";
@@ -42,29 +46,21 @@ function formatClock(ms: number): string {
   return CLOCK_FORMATTER.format(ms);
 }
 
-function isLiveStatus(status: string): boolean {
-  return (
-    status === "connected" ||
-    status === "listening" ||
-    status === "hearing" ||
-    status === "transcribing" ||
-    status === "paused"
-  );
-}
-
 function SegmentRow({
   segment,
+  showTimings,
 }: {
   segment: PendantTranscriptSegment;
+  showTimings: boolean;
 }): React.ReactElement {
   const pending = segment.status === "pending";
-  const dropped = segment.status === "dropped";
+  const failed = segment.status === "failed";
   return (
     <article
       className={cn(
         "border-b border-border px-4 py-4",
         pending && "text-muted",
-        dropped && "text-muted/70",
+        failed && "text-muted/80",
       )}
       data-testid={`pendant-segment-${segment.status}`}
     >
@@ -74,12 +70,14 @@ function SegmentRow({
       </div>
       {pending ? (
         <p className="text-sm leading-6">Transcribing...</p>
-      ) : dropped ? (
-        <p className="text-sm leading-6">Dropped before transcript</p>
+      ) : failed ? (
+        <p className="text-sm leading-6">
+          {segment.warning ?? "Could not transcribe this segment."}
+        </p>
       ) : (
         <p className="text-base leading-7 text-txt">{segment.text}</p>
       )}
-      {segment.words.length > 0 ? (
+      {showTimings && segment.words.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-1.5">
           {segment.words.map((word) => (
             <span
@@ -111,11 +109,16 @@ function BatteryDisplay({
 }
 
 export function PendantTranscriptView(): React.ReactElement {
+  const sessionAdapter = React.useMemo(
+    () => createLocalOptimisticPendantTranscriptSessionAdapter(),
+    [],
+  );
   const [session, dispatchSession] = React.useReducer(
     pendantTranscriptSessionReducer,
     undefined,
-    () => loadPendantTranscriptSession(),
+    () => sessionAdapter.load(),
   );
+  const [showTimings, setShowTimings] = React.useState(false);
   const { scrollRef, atBottom, jumpToLatest } =
     useThreadAutoScroll<HTMLDivElement>({
       growthKey: `${session.segments.length}:${
@@ -130,11 +133,18 @@ export function PendantTranscriptView(): React.ReactElement {
   });
 
   React.useEffect(() => {
-    savePendantTranscriptSession(session);
-  }, [session]);
+    sessionAdapter.save(session);
+  }, [session, sessionAdapter]);
 
-  const live = isLiveStatus(state.status);
-  const busy = state.status === "requesting" || state.status === "connecting";
+  const live = isPendantLiveStatus(state.status);
+  const frozen = !live && session.segments.length > 0;
+  const busy =
+    state.status === "requesting" ||
+    state.status === "connecting" ||
+    state.status === "reconnecting";
+  const hasTimings = session.segments.some(
+    (segment) => segment.words.length > 0,
+  );
   const pendingCount = session.segments.filter(
     (segment) => segment.status === "pending",
   ).length;
@@ -143,8 +153,10 @@ export function PendantTranscriptView(): React.ReactElement {
   ).length;
   const errorMessage =
     state.status === "error"
-      ? (state.error ?? "Pendant transcript connection failed.")
-      : state.error;
+      ? (state.typedError?.message ??
+        state.error ??
+        "Pendant transcript connection failed.")
+      : (state.typedError?.message ?? state.error);
 
   return (
     <ShellViewAgentSurface viewId="pendant-transcript">
@@ -180,7 +192,13 @@ export function PendantTranscriptView(): React.ReactElement {
                 ) : (
                   <Bluetooth className="size-4" aria-hidden />
                 )}
-                {state.paused ? "Paused" : live ? "Recording" : "Idle"}
+                {state.paused
+                  ? "Paused"
+                  : state.status === "reconnecting"
+                    ? "Reconnecting"
+                    : live
+                      ? "Recording"
+                      : "Idle"}
               </span>
               <BatteryDisplay percent={state.batteryPercent} />
             </div>
@@ -236,23 +254,49 @@ export function PendantTranscriptView(): React.ReactElement {
                 ) : (
                   <Bluetooth className="size-4" aria-hidden />
                 )}
-                {busy ? "Connecting..." : "Connect"}
+                {busy ? pendantStatusLabel(state.status) : "Connect"}
               </Button>
             )}
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => dispatchSession({ type: "clear", at: Date.now() })}
+              onClick={() => {
+                const at = Date.now();
+                sessionAdapter.clear(at);
+                dispatchSession({ type: "clear", at });
+              }}
               disabled={session.segments.length === 0}
               data-testid="pendant-transcript-clear"
             >
               <Trash2 className="size-4" aria-hidden />
-              Clear
+              Clear local view/cache
             </Button>
+            {hasTimings ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowTimings((visible) => !visible)}
+                data-testid="pendant-transcript-toggle-timings"
+              >
+                <Timer className="size-4" aria-hidden />
+                {showTimings ? "Hide timings" : "Show timings"}
+              </Button>
+            ) : null}
             <span className="text-xs text-muted">
               {resolvedCount} resolved · {pendingCount} pending
             </span>
+            <span className="text-xs text-muted">
+              Local offline cache · this device only
+            </span>
           </div>
+          {frozen ? (
+            <div
+              className="mt-3 border-l-2 border-border bg-bg-muted px-3 py-2 text-sm text-muted"
+              data-testid="pendant-transcript-frozen"
+            >
+              Feed frozen - reconnect the pendant to resume live capture.
+            </div>
+          ) : null}
           {errorMessage ? (
             <div
               role="alert"
@@ -285,7 +329,11 @@ export function PendantTranscriptView(): React.ReactElement {
               </div>
             ) : (
               session.segments.map((segment) => (
-                <SegmentRow key={segment.id} segment={segment} />
+                <SegmentRow
+                  key={segment.id}
+                  segment={segment}
+                  showTimings={showTimings}
+                />
               ))
             )}
           </div>

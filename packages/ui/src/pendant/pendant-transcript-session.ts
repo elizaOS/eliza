@@ -1,9 +1,9 @@
 /**
- * Reducer and browser persistence for a local pendant transcript session.
+ * Reducer and offline optimistic cache for a local pendant transcript view.
  *
- * The session is intentionally UI-local in Phase 1: it stores VAD/ASR segments,
- * pending placeholders, resolved text, dropped turns, and local word timings
- * across refresh without adding durable transcript records.
+ * This cache is not an authoritative session store and clearing it is not
+ * server deletion. The adapter seam is intentionally shaped like the future
+ * server-backed session source while defaulting to browser localStorage.
  */
 
 import type {
@@ -17,12 +17,27 @@ export const MAX_PERSISTED_PENDANT_TRANSCRIPT_SEGMENTS = 500;
 
 export interface PendantTranscriptSegment {
   id: string;
-  status: "pending" | "resolved" | "dropped";
+  status: "pending" | "resolved" | "failed";
   text: string;
   startedAt: number;
   endedAt: number;
   durationMs: number;
   words: PendantAsrWord[];
+  warning: string | null;
+}
+
+type PersistedPendantTranscriptSegment = Omit<
+  PendantTranscriptSegment,
+  "status" | "warning"
+> & {
+  status: PendantTranscriptSegment["status"] | "dropped";
+  warning?: string | null;
+};
+
+interface PersistedPendantTranscriptSessionShape {
+  segments?: unknown;
+  updatedAt?: unknown;
+  clearedThrough?: unknown;
 }
 
 export interface PendantTranscriptSessionState {
@@ -35,6 +50,18 @@ export type PendantTranscriptSessionAction =
   | { type: "segment"; detail: PendantTranscriptSegmentDetail }
   | { type: "clear"; at: number };
 
+export type PendantTranscriptSessionListener = (
+  state: PendantTranscriptSessionState,
+) => void;
+
+export interface PendantTranscriptSessionAdapter {
+  readonly kind: "local-optimistic-cache" | "server-authoritative";
+  load(): PendantTranscriptSessionState;
+  save(state: PendantTranscriptSessionState): void;
+  clear(at: number): PendantTranscriptSessionState;
+  subscribe?(listener: PendantTranscriptSessionListener): () => void;
+}
+
 export const EMPTY_PENDANT_TRANSCRIPT_SESSION: PendantTranscriptSessionState = {
   segments: [],
   updatedAt: null,
@@ -46,12 +73,18 @@ function segmentFromDetail(
 ): PendantTranscriptSegment {
   return {
     id: detail.id,
-    status: detail.status,
+    status:
+      detail.status === "resolved"
+        ? "resolved"
+        : detail.status === "failed"
+          ? "failed"
+          : "pending",
     text: detail.text?.trim() ?? "",
     startedAt: detail.startedAt,
     endedAt: detail.endedAt,
     durationMs: detail.durationMs,
     words: detail.words ?? [],
+    warning: detail.warning ?? null,
   };
 }
 
@@ -72,6 +105,15 @@ export function pendantTranscriptSessionReducer(
   ) {
     return state;
   }
+  if (action.detail.status === "discarded") {
+    return {
+      segments: state.segments.filter(
+        (segment) => segment.id !== action.detail.id,
+      ),
+      updatedAt: action.detail.endedAt,
+      clearedThrough: state.clearedThrough,
+    };
+  }
   const nextSegment = segmentFromDetail(action.detail);
   const existingIndex = state.segments.findIndex(
     (segment) => segment.id === nextSegment.id,
@@ -89,13 +131,14 @@ export function pendantTranscriptSessionReducer(
   };
 }
 
-function isSegment(value: unknown): value is PendantTranscriptSegment {
+function isSegment(value: unknown): value is PersistedPendantTranscriptSegment {
   if (!value || typeof value !== "object") return false;
-  const segment = value as Partial<PendantTranscriptSegment>;
+  const segment = value as Record<string, unknown>;
   return (
     typeof segment.id === "string" &&
     (segment.status === "pending" ||
       segment.status === "resolved" ||
+      segment.status === "failed" ||
       segment.status === "dropped") &&
     typeof segment.text === "string" &&
     typeof segment.startedAt === "number" &&
@@ -111,11 +154,28 @@ export function parsePendantTranscriptSession(
   if (!value || typeof value !== "object") {
     return EMPTY_PENDANT_TRANSCRIPT_SESSION;
   }
-  const state = value as Partial<PendantTranscriptSessionState>;
+  const state = value as PersistedPendantTranscriptSessionShape;
   if (!Array.isArray(state.segments)) {
     return EMPTY_PENDANT_TRANSCRIPT_SESSION;
   }
-  const segments = state.segments.filter(isSegment);
+  const segments = state.segments.filter(isSegment).map((segment) => {
+    const status = segment.status === "dropped" ? "failed" : segment.status;
+    return {
+      id: segment.id,
+      status,
+      text: segment.text,
+      startedAt: segment.startedAt,
+      endedAt: segment.endedAt,
+      durationMs: segment.durationMs,
+      words: segment.words,
+      warning:
+        typeof segment.warning === "string"
+          ? segment.warning
+          : segment.status === "dropped"
+            ? "Could not transcribe this segment."
+            : null,
+    };
+  });
   return {
     segments: segments.slice(-MAX_PERSISTED_PENDANT_TRANSCRIPT_SEGMENTS),
     updatedAt: typeof state.updatedAt === "number" ? state.updatedAt : null,
@@ -146,12 +206,15 @@ export function loadPendantTranscriptSession(
 
 export function savePendantTranscriptSession(
   state: PendantTranscriptSessionState,
-  storage:
-    | Pick<Storage, "setItem" | "removeItem">
-    | undefined = typeof window === "undefined"
-    ? undefined
-    : window.localStorage,
+  storage?: Pick<Storage, "setItem" | "removeItem">,
 ): void {
+  if (!storage && typeof window !== "undefined") {
+    try {
+      storage = window.localStorage;
+    } catch {
+      return;
+    }
+  }
   if (!storage) return;
   if (state.segments.length === 0) {
     try {
@@ -173,4 +236,31 @@ export function savePendantTranscriptSession(
   } catch {
     return;
   }
+}
+
+export function createLocalOptimisticPendantTranscriptSessionAdapter(
+  storage?: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+): PendantTranscriptSessionAdapter {
+  const resolveStorage = () => {
+    if (storage) return storage;
+    if (typeof window === "undefined") return undefined;
+    try {
+      return window.localStorage;
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    kind: "local-optimistic-cache",
+    load: () => loadPendantTranscriptSession(resolveStorage()),
+    save: (state) => savePendantTranscriptSession(state, resolveStorage()),
+    clear: (at) => {
+      const state = pendantTranscriptSessionReducer(
+        EMPTY_PENDANT_TRANSCRIPT_SESSION,
+        { type: "clear", at },
+      );
+      savePendantTranscriptSession(state, resolveStorage());
+      return state;
+    },
+  };
 }

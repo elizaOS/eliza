@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 /**
  * PendantConnection drives an injected PendantTransport through the connect
  * sequence and the transport-agnostic audio pipeline. We inject a fake transport
@@ -92,7 +94,7 @@ import type { PendantTranscriptSegmentDetail } from "./transcript-segment-event"
 
 /** A fully controllable fake transport implementing the interface. */
 class FakeTransport implements PendantTransport {
-  readonly kind = "web-bluetooth" as const;
+  readonly kind: PendantTransport["kind"];
   audioListener: PendantAudioListener | null = null;
   batteryListener: PendantBatteryListener | null = null;
   disconnectedHandler: (() => void) | null = null;
@@ -100,13 +102,16 @@ class FakeTransport implements PendantTransport {
 
   constructor(
     private readonly opts: {
+      kind?: PendantTransport["kind"];
       deviceName?: string | null;
       codec?: OmiCodecId;
       battery?: number | null;
       requestThrows?: unknown;
       startAudioThrows?: unknown;
     } = {},
-  ) {}
+  ) {
+    this.kind = opts.kind ?? "web-bluetooth";
+  }
 
   async requestAndConnect(): Promise<{ deviceName: string | null }> {
     if (this.opts.requestThrows !== undefined) throw this.opts.requestThrows;
@@ -166,6 +171,7 @@ afterEach(() => {
   asrControl.calls = 0;
   asrControl.resolvers = [];
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe("PendantConnection connect orchestration", () => {
@@ -228,46 +234,75 @@ describe("PendantConnection connect orchestration", () => {
     });
     await conn.connect();
     expect(conn.getState().status).toBe("error");
-    expect(conn.getState().error).toBe("boom");
+    expect(conn.getState().error).toBe("Pendant connection failed: boom");
+    expect(conn.getState().typedError?.code).toBe("connection");
     expect(transport.disconnectCalls).toBeGreaterThan(0);
   });
 
-  it("runs the audio pipeline: notification → transcript dispatched", async () => {
+  it("classifies permission denial separately from generic connect errors", async () => {
+    const transport = new FakeTransport({
+      requestThrows: new DOMException("denied", "NotAllowedError"),
+    });
+    const { onState } = collectStates();
+    const conn = new PendantConnection({
+      onState,
+      createTransport: () => transport,
+    });
+    await conn.connect();
+
+    expect(conn.getState().status).toBe("error");
+    expect(conn.getState().typedError?.code).toBe("permission-denied");
+    expect(conn.getState().typedError?.category).toBe("permission");
+    expect(conn.getState().error).toContain("Nearby Devices permission is off");
+  });
+
+  it("runs one canonical commit: resolved segment before VOICE_DM, exactly once", async () => {
     const transport = new FakeTransport({});
     const { onState } = collectStates();
     const transcripts: string[] = [];
     const segments: PendantTranscriptSegmentDetail[] = [];
+    const eventOrder: string[] = [];
+    const voiceListener = vi.fn(() => eventOrder.push("voice"));
+    window.addEventListener("eliza:pendant:voice-transcript", voiceListener);
     const conn = new PendantConnection({
       onState,
       createTransport: () => transport,
-      onTranscript: (t) => transcripts.push(t),
-      onSegment: (detail) => segments.push(detail),
+      onTranscript: (t) => {
+        eventOrder.push("callback");
+        transcripts.push(t);
+      },
+      onSegment: (detail) => {
+        eventOrder.push(detail.status);
+        segments.push(detail);
+      },
     });
-    await conn.connect();
-    expect(transport.audioListener).toBeTruthy();
+    try {
+      await conn.connect();
+      expect(transport.audioListener).toBeTruthy();
 
-    // Feed a frame that buffers, then a frame that stops → finalize → ASR.
-    forceStop = false;
-    // 4-byte-headed notification: header (3) + 1 payload byte → one frame.
-    transport.audioListener?.(new Uint8Array([0, 0, 0, 42]));
-    forceStop = true;
-    transport.audioListener?.(new Uint8Array([1, 0, 0, 43]));
+      emitStoppedUtterance(transport, 0);
+      await flushMicrotasks();
 
-    // Let the finalizing chain flush.
-    await new Promise((r) => setTimeout(r, 0));
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(transcripts).toEqual(["hello world"]);
-    expect(conn.getState().lastTranscript).toBe("hello world");
-    expect(segments.map((segment) => segment.status)).toEqual([
-      "pending",
-      "resolved",
-    ]);
-    expect(segments[1]?.words).toEqual([
-      { text: "hello", startMs: 0, endMs: 80 },
-      { text: "world", startMs: 90, endMs: 120 },
-    ]);
-    expect(segments[1]?.durationMs).toBeGreaterThan(0);
+      expect(transcripts).toEqual(["hello world"]);
+      expect(voiceListener).toHaveBeenCalledTimes(1);
+      expect(conn.getState().lastTranscript).toBe("hello world");
+      expect(segments.map((segment) => segment.status)).toEqual([
+        "pending",
+        "resolved",
+      ]);
+      expect(eventOrder).toEqual(["pending", "resolved", "voice", "callback"]);
+      expect(segments[1]?.text).toBe("hello world");
+      expect(segments[1]?.words).toEqual([
+        { text: "hello", startMs: 0, endMs: 80 },
+        { text: "world", startMs: 90, endMs: 120 },
+      ]);
+      expect(segments[1]?.durationMs).toBeGreaterThan(0);
+    } finally {
+      window.removeEventListener(
+        "eliza:pendant:voice-transcript",
+        voiceListener,
+      );
+    }
   });
 
   it("emits each pending segment before waiting behind prior ASR work", async () => {
@@ -335,9 +370,10 @@ describe("PendantConnection connect orchestration", () => {
     expect(asrControl.calls).toBe(0);
     expect(segments.map((segment) => segment.status)).toEqual([
       "pending",
-      "dropped",
+      "discarded",
     ]);
     expect(segments[1]?.id).toBe(segments[0]?.id);
+    expect(segments[1]?.discardReason).toBe("silence");
   });
 
   it("drops ASR failures with a visible warning, keeps listening, and clears it on success", async () => {
@@ -360,14 +396,15 @@ describe("PendantConnection connect orchestration", () => {
     expect(transcripts).toEqual([]);
     expect(segments.map((segment) => segment.status)).toEqual([
       "pending",
-      "dropped",
+      "failed",
     ]);
     expect(segments[1]?.id).toBe(segments[0]?.id);
+    expect(segments[1]?.failureReason).toBe("asr-failed");
+    expect(segments[1]?.warning).toBe("Could not transcribe this segment.");
     expect(conn.getState().status).toBe("listening");
     expect(conn.getState().paused).toBe(false);
-    expect(conn.getState().error).toBe(
-      "Pendant ASR failed: ASR route unavailable",
-    );
+    expect(conn.getState().typedError?.code).toBe("asr-failed");
+    expect(conn.getState().error).toBe("Could not transcribe this segment.");
 
     asrControl.mode = "immediate";
     emitStoppedUtterance(transport, 2);
@@ -376,7 +413,7 @@ describe("PendantConnection connect orchestration", () => {
     expect(transcripts).toEqual(["hello world"]);
     expect(segments.map((segment) => segment.status)).toEqual([
       "pending",
-      "dropped",
+      "failed",
       "pending",
       "resolved",
     ]);
@@ -463,42 +500,124 @@ describe("PendantConnection connect orchestration", () => {
     expect(conn.getState().status).toBe("listening");
   });
 
-  it("a remote disconnect returns to idle and releases the decoder", async () => {
+  it("reconnects once after a native remote disconnect and preserves the session state", async () => {
+    vi.useFakeTimers();
+    const firstTransport = new FakeTransport({ kind: "native-ble" });
+    const secondTransport = new FakeTransport({
+      kind: "native-ble",
+      deviceName: "omi return",
+    });
+    const { onState } = collectStates();
+    const transports = [firstTransport, secondTransport];
+    const conn = new PendantConnection({
+      onState,
+      createTransport: () => transports.shift() ?? null,
+      reconnectDelayMs: 10,
+    });
+    await conn.connect();
+    expect(conn.getState().status).toBe("listening");
+
+    firstTransport.disconnectedHandler?.();
+    expect(conn.getState().status).toBe("reconnecting");
+    expect(conn.getState().typedError?.code).toBe("pendant-lost");
+
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(conn.getState().status).toBe("listening");
+    expect(conn.getState().deviceName).toBe("omi return");
+    expect(conn.getState().typedError).toBeNull();
+  });
+
+  it("exhausts bounded native reconnect attempts into typed pendant-lost state", async () => {
+    vi.useFakeTimers();
+    const firstTransport = new FakeTransport({ kind: "native-ble" });
+    const { onState } = collectStates();
+    let factoryCalls = 0;
+    const conn = new PendantConnection({
+      onState,
+      createTransport: () => {
+        factoryCalls += 1;
+        return factoryCalls === 1
+          ? firstTransport
+          : new FakeTransport({
+              kind: "native-ble",
+              startAudioThrows: new Error("still gone"),
+            });
+      },
+      reconnectDelayMs: 5,
+      reconnectMaxAttempts: 2,
+    });
+    await conn.connect();
+    firstTransport.disconnectedHandler?.();
+
+    await vi.advanceTimersByTimeAsync(5);
+    await vi.advanceTimersByTimeAsync(5);
+    await vi.advanceTimersByTimeAsync(5);
+
+    expect(conn.getState().status).toBe("error");
+    expect(conn.getState().typedError?.code).toBe("reconnect-exhausted");
+  });
+
+  it("does not timer-reconnect web bluetooth after a remote disconnect", async () => {
+    vi.useFakeTimers();
+    const transport = new FakeTransport({ kind: "web-bluetooth" });
+    const { onState } = collectStates();
+    let factoryCalls = 0;
+    const conn = new PendantConnection({
+      onState,
+      createTransport: () => {
+        factoryCalls += 1;
+        return transport;
+      },
+      reconnectDelayMs: 5,
+    });
+    await conn.connect();
+
+    transport.disconnectedHandler?.();
+    await vi.advanceTimersByTimeAsync(20);
+
+    expect(factoryCalls).toBe(1);
+    expect(conn.getState().status).toBe("error");
+    expect(conn.getState().typedError?.code).toBe("pendant-lost");
+    expect(conn.getState().typedError?.recoverable).toBe(true);
+    expect(conn.getState().paused).toBe(false);
+  });
+
+  it("does not pause while native reconnect is pending", async () => {
+    vi.useFakeTimers();
+    const transport = new FakeTransport({ kind: "native-ble" });
+    const { onState } = collectStates();
+    const conn = new PendantConnection({
+      onState,
+      createTransport: () => transport,
+      reconnectDelayMs: 50,
+    });
+    await conn.connect();
+
+    transport.disconnectedHandler?.();
+    conn.pause();
+
+    expect(conn.getState().status).toBe("reconnecting");
+    expect(conn.getState().paused).toBe(false);
+  });
+
+  it("does not reconnect after an intentional disconnect", async () => {
+    vi.useFakeTimers();
     const transport = new FakeTransport({});
     const { onState } = collectStates();
     const conn = new PendantConnection({
       onState,
       createTransport: () => transport,
+      reconnectDelayMs: 5,
     });
     await conn.connect();
-    expect(conn.getState().status).toBe("listening");
 
+    await conn.disconnect();
     transport.disconnectedHandler?.();
-    expect(conn.getState().status).toBe("idle");
-  });
-
-  it("a remote disconnect while paused clears paused state before reconnect", async () => {
-    const firstTransport = new FakeTransport({});
-    const secondTransport = new FakeTransport({});
-    const { onState } = collectStates();
-    let nextTransport = firstTransport;
-    const conn = new PendantConnection({
-      onState,
-      createTransport: () => nextTransport,
-    });
-    await conn.connect();
-    conn.pause();
-    expect(conn.getState().paused).toBe(true);
-
-    firstTransport.disconnectedHandler?.();
+    await vi.advanceTimersByTimeAsync(20);
 
     expect(conn.getState().status).toBe("idle");
-    expect(conn.getState().paused).toBe(false);
-
-    nextTransport = secondTransport;
-    await conn.connect();
-    expect(conn.getState().status).toBe("listening");
-    expect(conn.getState().paused).toBe(false);
+    expect(conn.getState().typedError).toBeNull();
   });
 
   it("explicit disconnect tears the transport down and resets state", async () => {

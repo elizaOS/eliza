@@ -1,10 +1,8 @@
 /**
  * Ambient-transcription segment events for the pendant transcript surface.
  *
- * The voice path still emits finalized text on `PENDANT_VOICE_TRANSCRIPT_EVENT`
- * so chat can send a spoken VOICE_DM. This channel is a passive transcript feed:
- * it announces each VAD utterance as pending, then resolves it with text and
- * word timings or drops it when no usable ASR result exists.
+ * The voice path derives from the same resolved commit this feed emits, so the
+ * transcript row and VOICE_DM send cannot drift into separate objects.
  */
 
 /** Custom window event carrying an ambient-transcript segment lifecycle update. */
@@ -12,7 +10,14 @@ export const PENDANT_TRANSCRIPT_SEGMENT_EVENT =
   "eliza:pendant:transcript-segment" as const;
 
 /** Lifecycle state of one ambient utterance segment. */
-export type PendantSegmentStatus = "pending" | "resolved" | "dropped";
+export type PendantSegmentStatus =
+  | "pending"
+  | "resolved"
+  | "discarded"
+  | "failed";
+
+export type PendantSegmentDiscardReason = "silence";
+export type PendantSegmentFailureReason = "asr-failed";
 
 export interface PendantAsrWord {
   text: string;
@@ -34,6 +39,12 @@ export interface PendantTranscriptSegmentDetail {
   durationMs: number;
   /** Local ASR word timings normalized relative to this segment start. */
   words?: PendantAsrWord[];
+  /** Invisible discard reason; silence removes the pending row. */
+  discardReason?: PendantSegmentDiscardReason;
+  /** Quiet visible failure reason. */
+  failureReason?: PendantSegmentFailureReason;
+  /** User-facing warning for visible failed segments. */
+  warning?: string;
 }
 
 export function normalizePendantAsrWords(

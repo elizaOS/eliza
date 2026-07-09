@@ -1,0 +1,103 @@
+/**
+ * Typed pendant failure contracts for connection, permission, and ASR paths.
+ *
+ * UI surfaces keep rendering a human message, but recovery logic keys off these
+ * stable codes instead of raw exception strings.
+ */
+
+export type PendantErrorCode =
+  | "permission-denied"
+  | "pendant-lost"
+  | "reconnect-exhausted"
+  | "asr-failed"
+  | "connection"
+  | "generic";
+
+export type PendantRecoveryCategory =
+  | "permission"
+  | "reconnect"
+  | "transcription"
+  | "connection"
+  | "generic";
+
+export interface PendantTypedError {
+  code: PendantErrorCode;
+  category: PendantRecoveryCategory;
+  message: string;
+  recoverable: boolean;
+}
+
+export class PendantPermissionDeniedError extends Error {
+  constructor(message = "Nearby Devices permission is off.") {
+    super(message);
+    this.name = "PendantPermissionDeniedError";
+  }
+}
+
+export function createPendantError(
+  code: PendantErrorCode,
+  detail?: string,
+): PendantTypedError {
+  switch (code) {
+    case "permission-denied":
+      return {
+        code,
+        category: "permission",
+        message:
+          "Nearby Devices permission is off. Eliza can't find the pendant until it is enabled.",
+        recoverable: true,
+      };
+    case "pendant-lost":
+      return {
+        code,
+        category: "reconnect",
+        message:
+          "Pendant connection was lost. Reconnecting while keeping this transcript session open.",
+        recoverable: true,
+      };
+    case "reconnect-exhausted":
+      return {
+        code,
+        category: "reconnect",
+        message:
+          "Pendant connection was lost and reconnect attempts were exhausted.",
+        recoverable: true,
+      };
+    case "asr-failed":
+      return {
+        code,
+        category: "transcription",
+        message: "Could not transcribe this segment.",
+        recoverable: true,
+      };
+    case "connection":
+      return {
+        code,
+        category: "connection",
+        message: detail
+          ? `Pendant connection failed: ${detail}`
+          : "Pendant connection failed.",
+        recoverable: true,
+      };
+    case "generic":
+      return {
+        code,
+        category: "generic",
+        message: detail ?? "Pendant failed.",
+        recoverable: true,
+      };
+  }
+}
+
+export function classifyPendantConnectionError(
+  err: unknown,
+): PendantTypedError {
+  if (
+    err instanceof PendantPermissionDeniedError ||
+    (err instanceof DOMException && err.name === "NotAllowedError")
+  ) {
+    return createPendantError("permission-denied");
+  }
+  const detail = err instanceof Error ? err.message : undefined;
+  return createPendantError("connection", detail);
+}

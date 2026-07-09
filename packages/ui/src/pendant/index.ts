@@ -32,16 +32,31 @@ export {
   PendantConnection,
   type PendantConnectionOptions,
   type PendantState,
-  type PendantStatus,
   type PendantVoiceTranscriptDetail,
 } from "./pendant-connection";
 export {
+  classifyPendantConnectionError,
+  createPendantError,
+  type PendantErrorCode,
+  PendantPermissionDeniedError,
+  type PendantRecoveryCategory,
+  type PendantTypedError,
+} from "./pendant-errors";
+export {
+  isPendantLiveStatus,
+  type PendantStatus,
+  pendantConnectStepLabel,
+  pendantStatusLabel,
+} from "./pendant-status";
+export {
+  createLocalOptimisticPendantTranscriptSessionAdapter,
   EMPTY_PENDANT_TRANSCRIPT_SESSION,
   loadPendantTranscriptSession,
   MAX_PERSISTED_PENDANT_TRANSCRIPT_SEGMENTS,
   PENDANT_TRANSCRIPT_STORAGE_KEY,
   type PendantTranscriptSegment,
   type PendantTranscriptSessionAction,
+  type PendantTranscriptSessionAdapter,
   type PendantTranscriptSessionState,
   pendantTranscriptSessionReducer,
   savePendantTranscriptSession,
@@ -59,6 +74,8 @@ export {
   normalizePendantAsrWords,
   PENDANT_TRANSCRIPT_SEGMENT_EVENT,
   type PendantAsrWord,
+  type PendantSegmentDiscardReason,
+  type PendantSegmentFailureReason,
   type PendantSegmentStatus,
   type PendantTranscriptSegmentDetail,
 } from "./transcript-segment-event";

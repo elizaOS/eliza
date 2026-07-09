@@ -46,6 +46,12 @@ import {
   createPendantAudioDecoder,
   type PendantAudioDecoder,
 } from "./opus-frame-decoder";
+import {
+  classifyPendantConnectionError,
+  createPendantError,
+  type PendantTypedError,
+} from "./pendant-errors";
+import type { PendantStatus } from "./pendant-status";
 import type { PendantTransport } from "./pendant-transport";
 import { isUserCancelled } from "./pendant-transport";
 import { isPendantSupported, selectPendantTransport } from "./select-transport";
@@ -54,18 +60,6 @@ import {
   normalizePendantAsrWords,
   type PendantTranscriptSegmentDetail,
 } from "./transcript-segment-event";
-
-export type PendantStatus =
-  | "unsupported"
-  | "idle"
-  | "requesting"
-  | "connecting"
-  | "connected"
-  | "listening" // audio frames arriving, VAD idle (no speech yet)
-  | "hearing" // VAD sees speech in the current utterance
-  | "transcribing"
-  | "paused" // ambient capture paused by the user (frames ignored)
-  | "error";
 
 export interface PendantState {
   status: PendantStatus;
@@ -86,6 +80,8 @@ export interface PendantState {
   droppedPackets: number;
   /** Last connection failure or non-fatal ASR warning shown in the transcript UI. */
   error: string | null;
+  /** Stable typed error contract for recovery logic and UI state. */
+  typedError: PendantTypedError | null;
   /**
    * True while ambient capture is paused. When paused, audio frames are still
    * received (the BLE link stays up + battery still updates) but are dropped
@@ -105,7 +101,7 @@ export interface PendantConnectionOptions {
   vadSpeechRmsThreshold?: number;
   /**
    * Called for each ambient-transcript segment as it moves through its
-   * lifecycle (pending → resolved/dropped). Distinct from {@link onTranscript},
+   * lifecycle (pending → resolved/failed/discarded). Distinct from {@link onTranscript},
    * which only fires on a resolved turn (and drives the VOICE_DM send). The
    * transcript surface listens to this for interim state; if omitted the
    * segment window events are still dispatched globally.
@@ -119,6 +115,10 @@ export interface PendantConnectionOptions {
    * Bluetooth elsewhere.
    */
   createTransport?: () => PendantTransport | null;
+  /** Maximum spontaneous mid-session reconnect attempts. */
+  reconnectMaxAttempts?: number;
+  /** Delay between spontaneous mid-session reconnect attempts. */
+  reconnectDelayMs?: number;
 }
 
 /** Custom window event the shell listens for to route a pendant turn to chat. */
@@ -127,11 +127,6 @@ export const PENDANT_VOICE_TRANSCRIPT_EVENT =
 
 export interface PendantVoiceTranscriptDetail {
   text: string;
-}
-
-function formatPendantAsrError(err: unknown): string {
-  const detail = err instanceof Error ? err.message : String(err);
-  return `Pendant ASR failed: ${detail}`;
 }
 
 /** Dispatch a finalized pendant transcript for the shell to send as VOICE_DM. */
@@ -175,6 +170,9 @@ export class PendantConnection {
 
   /** Ambient capture paused by the user (frames dropped before the VAD). */
   private paused = false;
+  private reconnectAttempts = 0;
+  private intentionalDisconnect = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Tie-breaker for segment ids that already include wall-clock timing. */
   private segmentSeq = 0;
   private state: PendantState = {
@@ -186,6 +184,7 @@ export class PendantConnection {
     lastTranscript: null,
     droppedPackets: 0,
     error: null,
+    typedError: null,
     paused: false,
   };
 
@@ -201,22 +200,23 @@ export class PendantConnection {
   };
 
   private readonly onDisconnected = (): void => {
-    // A remote disconnect (device powered off / out of range) must release the
-    // decoder and reset refs — not just detach — so we don't leak the wasm
-    // decoder until an explicit disconnect() that may never come.
-    this.decoder?.free();
-    this.decoder = null;
-    this.reassembler.reset();
-    this.paused = false;
-    this.resetDetector();
-    if (this.state.status !== "error") {
+    const transport = this.transport;
+    if (!transport) return;
+    this.releaseConnectionRefs();
+    if (this.intentionalDisconnect || this.state.status === "error") return;
+    if (transport.kind === "web-bluetooth") {
+      const typedError = createPendantError("pendant-lost");
+      this.transport = null;
       this.patch({
-        status: "idle",
+        status: "error",
         connectStep: "idle",
-        deviceName: this.state.deviceName,
+        error: typedError.message,
+        typedError,
         paused: false,
       });
+      return;
     }
+    this.beginReconnect();
   };
 
   constructor(private readonly opts: PendantConnectionOptions) {
@@ -239,6 +239,15 @@ export class PendantConnection {
     this.opts.onSegment?.(detail);
   }
 
+  private commitSegment(detail: PendantTranscriptSegmentDetail): void {
+    this.emitSegment(detail);
+    if (detail.status !== "resolved") return;
+    const text = detail.text?.trim() ?? "";
+    if (!text) return;
+    dispatchPendantVoiceTranscript(text);
+    this.opts.onTranscript?.(text);
+  }
+
   private resetDetector(): void {
     this.detector = createLocalAsrAutoStopDetector({
       silenceMs: this.opts.vadSilenceMs,
@@ -252,6 +261,14 @@ export class PendantConnection {
   /** Per-step timeout for the connect sequence (ms). */
   private get stepTimeoutMs(): number {
     return this.opts.stepTimeoutMs ?? DEFAULT_STEP_TIMEOUT_MS;
+  }
+
+  private get reconnectMaxAttempts(): number {
+    return this.opts.reconnectMaxAttempts ?? 3;
+  }
+
+  private get reconnectDelayMs(): number {
+    return this.opts.reconnectDelayMs ?? 750;
   }
 
   /**
@@ -294,14 +311,26 @@ export class PendantConnection {
       this.patch({
         status: "unsupported",
         error: "Bluetooth is not available in this environment.",
+        typedError: createPendantError(
+          "connection",
+          "Bluetooth is not available in this environment.",
+        ),
       });
       return;
     }
+    this.clearReconnectTimer();
+    this.intentionalDisconnect = false;
+    this.reconnectAttempts = 0;
     this.transport = transport;
     transport.onDisconnected(this.onDisconnected);
 
     try {
-      this.patch({ status: "requesting", connectStep: "idle", error: null });
+      this.patch({
+        status: "requesting",
+        connectStep: "idle",
+        error: null,
+        typedError: null,
+      });
 
       // Run the full bring-up with one automatic retry: macOS Chrome frequently
       // hangs `getPrimaryService` (and occasionally `startNotifications`) on the
@@ -332,19 +361,102 @@ export class PendantConnection {
 
       this.patch({ status: "listening", connectStep: "done" });
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to connect to pendant";
+      const typedError = classifyPendantConnectionError(err);
       // Tear down anything a partial setup left live so a failed connect never
       // leaks a GATT link, active notifications, or the decoder.
       await this.partialTeardown();
       this.transport = null;
       // A user cancelling the chooser is idle, not error.
       if (isUserCancelled(err)) {
-        this.patch({ status: "idle", connectStep: "idle", error: null });
+        this.patch({
+          status: "idle",
+          connectStep: "idle",
+          error: null,
+          typedError: null,
+        });
         return;
       }
-      this.patch({ status: "error", connectStep: "idle", error: message });
+      this.patch({
+        status: "error",
+        connectStep: "idle",
+        error: typedError.message,
+        typedError,
+      });
     }
+  }
+
+  private beginReconnect(): void {
+    const typedError = createPendantError("pendant-lost");
+    this.patch({
+      status: "reconnecting",
+      connectStep: "idle",
+      error: typedError.message,
+      typedError,
+      paused: false,
+    });
+    this.scheduleReconnectAttempt();
+  }
+
+  private scheduleReconnectAttempt(): void {
+    this.clearReconnectTimer();
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.reconnectOnce();
+    }, this.reconnectDelayMs);
+  }
+
+  private async reconnectOnce(): Promise<void> {
+    if (this.intentionalDisconnect || this.state.status !== "reconnecting") {
+      return;
+    }
+    if (this.reconnectAttempts >= this.reconnectMaxAttempts) {
+      const typedError = createPendantError("reconnect-exhausted");
+      this.patch({
+        status: "error",
+        connectStep: "idle",
+        error: typedError.message,
+        typedError,
+      });
+      return;
+    }
+    this.reconnectAttempts += 1;
+    const transport = (this.opts.createTransport ?? selectPendantTransport)();
+    if (!transport) {
+      const typedError = createPendantError("reconnect-exhausted");
+      this.patch({
+        status: "error",
+        connectStep: "idle",
+        error: typedError.message,
+        typedError,
+      });
+      return;
+    }
+    this.transport = transport;
+    transport.onDisconnected(this.onDisconnected);
+    try {
+      await this.bringUp(transport, "reconnecting");
+      this.reconnectAttempts = 0;
+      this.patch({
+        status: "listening",
+        connectStep: "done",
+        error: null,
+        typedError: null,
+      });
+    } catch {
+      await this.partialTeardown();
+      this.transport = null;
+      this.patch({ status: "reconnecting", connectStep: "idle" });
+      this.scheduleReconnectAttempt();
+    }
+  }
+
+  private isPauseableStatus(): boolean {
+    return (
+      this.state.status === "connected" ||
+      this.state.status === "listening" ||
+      this.state.status === "hearing" ||
+      this.state.status === "transcribing"
+    );
   }
 
   /**
@@ -354,12 +466,15 @@ export class PendantConnection {
    * connect (Web Bluetooth couples them behind one gesture; native scans then
    * connects) so the trace is identical across platforms.
    */
-  private async bringUp(transport: PendantTransport): Promise<void> {
+  private async bringUp(
+    transport: PendantTransport,
+    status: "connecting" | "reconnecting" = "connecting",
+  ): Promise<void> {
     const { deviceName } = await this.step("gatt-connect", () =>
       transport.requestAndConnect(),
     );
     this.patch({
-      status: "connecting",
+      status,
       deviceName: deviceName ?? "omi pendant",
     });
 
@@ -401,14 +516,29 @@ export class PendantConnection {
    * once.
    */
   private async partialTeardown(): Promise<void> {
+    const wasIntentional = this.intentionalDisconnect;
+    this.intentionalDisconnect = true;
     try {
       await this.transport?.disconnect();
     } catch {
       /* best-effort */
     }
+    this.intentionalDisconnect = wasIntentional;
+    this.releaseConnectionRefs();
+  }
+
+  private releaseConnectionRefs(): void {
     this.decoder?.free();
     this.decoder = null;
     this.reassembler.reset();
+    this.paused = false;
+    this.resetDetector();
+  }
+
+  private clearReconnectTimer(): void {
+    if (!this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
   }
 
   private handleNotification(notification: Uint8Array): void {
@@ -488,7 +618,11 @@ export class PendantConnection {
       off += c.length;
     }
     if (isSilentPcmAudio(pcm)) {
-      this.emitSegment({ ...segment, status: "dropped" });
+      this.commitSegment({
+        ...segment,
+        status: "discarded",
+        discardReason: "silence",
+      });
       return;
     }
 
@@ -497,20 +631,25 @@ export class PendantConnection {
     this.patch({ status: "transcribing" });
     try {
       const { text, words } = await transcribeLocalInferenceWav(wav);
-      dispatchPendantVoiceTranscript(text);
-      this.patch({ lastTranscript: text, error: null });
-      this.emitSegment({
+      const resolvedSegment: PendantTranscriptSegmentDetail = {
         ...segment,
         status: "resolved",
         text,
         words: normalizePendantAsrWords(words, segment.durationMs),
-      });
-      this.opts.onTranscript?.(text);
-    } catch (err) {
+      };
+      this.patch({ lastTranscript: text, error: null, typedError: null });
+      this.commitSegment(resolvedSegment);
+    } catch {
       // ASR failure is non-fatal for ambient capture, but it must stay visible
       // so the transcript surface does not look healthy while segments drop.
-      this.patch({ error: formatPendantAsrError(err) });
-      this.emitSegment({ ...segment, status: "dropped" });
+      const typedError = createPendantError("asr-failed");
+      this.patch({ error: typedError.message, typedError });
+      this.commitSegment({
+        ...segment,
+        status: "failed",
+        failureReason: "asr-failed",
+        warning: typedError.message,
+      });
     } finally {
       // Return to the ambient listening state (or hearing if speech already
       // resumed while we were transcribing).
@@ -529,6 +668,7 @@ export class PendantConnection {
   /** Pause ambient capture without disconnecting BLE or battery notifications. */
   pause(): void {
     if (this.paused) return;
+    if (!this.transport || !this.decoder || !this.isPauseableStatus()) return;
     this.paused = true;
     this.reassembler.reset();
     this.resetDetector();
@@ -549,6 +689,8 @@ export class PendantConnection {
 
   /** Tear down: stop notifications, disconnect GATT, free the decoder. */
   async disconnect(): Promise<void> {
+    this.intentionalDisconnect = true;
+    this.clearReconnectTimer();
     // Flush the final in-flight frame (no following packet will close it) so a
     // trailing utterance still gets transcribed on a clean disconnect.
     if (this.decoder) {
@@ -562,18 +704,18 @@ export class PendantConnection {
     } catch {
       /* already disconnected */
     }
-    this.decoder?.free();
-    this.decoder = null;
+    this.releaseConnectionRefs();
     this.transport = null;
-    this.reassembler.reset();
-    this.paused = false;
     this.patch({
       status: "idle",
       connectStep: "idle",
       batteryPercent: null,
       codecId: null,
+      error: null,
+      typedError: null,
       paused: false,
     });
+    this.intentionalDisconnect = false;
   }
 }
 
@@ -586,6 +728,7 @@ export async function connectPendant(
   return conn;
 }
 
+export type { PendantStatus } from "./pendant-status";
 export { isPendantSupported } from "./select-transport";
 // Re-export for existing importers that pulled availability from this module.
 export { isWebBluetoothAvailable } from "./web-bluetooth-transport";

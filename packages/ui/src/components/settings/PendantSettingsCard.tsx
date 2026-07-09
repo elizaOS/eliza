@@ -21,70 +21,14 @@ import {
   Radio,
 } from "lucide-react";
 import type * as React from "react";
-import type { PendantConnectStep } from "../../pendant/connect-timeout";
-import type { PendantStatus } from "../../pendant/pendant-connection";
+import {
+  isPendantLiveStatus,
+  pendantConnectStepLabel,
+  pendantStatusLabel,
+} from "../../pendant/pendant-status";
 import { usePendant } from "../../pendant/usePendant";
 import { Button } from "../ui/button";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
-
-function statusLabel(status: PendantStatus): string {
-  switch (status) {
-    case "unsupported":
-      return "Not supported in this browser";
-    case "idle":
-      return "Not connected";
-    case "requesting":
-      return "Choose a device…";
-    case "connecting":
-      return "Connecting…";
-    case "connected":
-      return "Connected";
-    case "listening":
-      return "Listening";
-    case "hearing":
-      return "Hearing you…";
-    case "transcribing":
-      return "Transcribing…";
-    case "paused":
-      return "Paused";
-    case "error":
-      return "Connection error";
-  }
-}
-
-/** Short human label for the in-flight connect step (shown while connecting). */
-function connectStepLabel(step: PendantConnectStep): string | null {
-  switch (step) {
-    case "gatt-connect":
-      return "linking GATT";
-    case "audio-service":
-      return "finding audio service";
-    case "codec-read":
-      return "reading codec";
-    case "decoder-init":
-      return "loading decoder";
-    case "audio-char":
-      return "finding audio channel";
-    case "start-notifications":
-      return "subscribing to audio";
-    case "battery":
-      return "reading battery";
-    case "idle":
-    case "done":
-      return null;
-  }
-}
-
-/** Whether the pendant is in any live/connected phase. */
-function isLive(status: PendantStatus): boolean {
-  return (
-    status === "connected" ||
-    status === "listening" ||
-    status === "hearing" ||
-    status === "transcribing" ||
-    status === "paused"
-  );
-}
 
 function BatteryBadge({ percent }: { percent: number }): React.ReactElement {
   const Icon = percent <= 20 ? BatteryLow : BatteryMedium;
@@ -101,8 +45,11 @@ function BatteryBadge({ percent }: { percent: number }): React.ReactElement {
 
 export function PendantSettingsCard(): React.ReactElement {
   const { state, supported, connect, disconnect } = usePendant();
-  const live = isLive(state.status);
-  const busy = state.status === "requesting" || state.status === "connecting";
+  const live = isPendantLiveStatus(state.status);
+  const busy =
+    state.status === "requesting" ||
+    state.status === "connecting" ||
+    state.status === "reconnecting";
 
   const StatusIcon = !supported
     ? BluetoothOff
@@ -131,15 +78,16 @@ export function PendantSettingsCard(): React.ReactElement {
               }
               data-testid="pendant-status"
             >
-              {statusLabel(state.status)}
+              {pendantStatusLabel(state.status)}
             </span>
-            {state.status === "connecting" &&
-            connectStepLabel(state.connectStep) ? (
+            {(state.status === "connecting" ||
+              state.status === "reconnecting") &&
+            pendantConnectStepLabel(state.connectStep) ? (
               <span
                 className="font-mono text-2xs text-muted/80"
                 data-testid="pendant-connect-step"
               >
-                {connectStepLabel(state.connectStep)}…
+                {pendantConnectStepLabel(state.connectStep)}...
               </span>
             ) : null}
             {state.status === "hearing" ? (
@@ -195,7 +143,7 @@ export function PendantSettingsCard(): React.ReactElement {
           label="Error"
           description={
             <span className="text-danger" data-testid="pendant-error">
-              {state.error}
+              {state.typedError?.message ?? state.error}
             </span>
           }
         />
