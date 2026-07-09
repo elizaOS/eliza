@@ -434,16 +434,18 @@ export function analyzeMeetingGhostTranscript(input: {
       buildCalendarIntent(input.transcript, input.owner, commitment),
     )
     .filter((entry): entry is MeetingGhostCalendarIntent => entry !== null);
-  const agentId = input.agentId;
-  const commitmentLedgerRecords = agentId
-    ? commitments.map((commitment) =>
+  const commitmentLedgerRecords: LifeOpsCommitmentLedgerRecord[] = [];
+  if (input.agentId) {
+    for (const commitment of commitments) {
+      commitmentLedgerRecords.push(
         createMeetingGhostCommitmentLedgerRecord({
-          agentId,
+          agentId: input.agentId,
           transcript: input.transcript,
           commitment,
         }),
-      )
-    : [];
+      );
+    }
+  }
 
   return {
     meetingId: input.transcript.meetingId,
