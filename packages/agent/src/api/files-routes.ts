@@ -23,7 +23,7 @@ function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {
 
 /**
  * GET /api/files — list stored files (newest first), selected per viewer
- * (#14781): the single-owner boundary and OWNER/ADMIN-rank viewers see the
+ * (#14778): the single-owner boundary and OWNER/ADMIN-rank viewers see the
  * whole store; USER/GUEST viewers get the designed restricted state.
  */
 export const filesListRoute: Route = {

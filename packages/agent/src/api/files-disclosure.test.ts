@@ -1,5 +1,5 @@
 /**
- * Contract for the Files-list per-viewer selection (#14781): OWNER/agent see
+ * Contract for the Files-list per-viewer selection (#14778): OWNER/agent see
  * the whole store; USER/GUEST get the designed restricted state (empty +
  * `restricted: true`), never a healthy-empty fabrication. Pure use-case.
  */

@@ -1,5 +1,5 @@
 /**
- * Per-viewer selection for the Files list DTO (#14781) — the use-case the
+ * Per-viewer selection for the Files list DTO (#14778) — the use-case the
  * `/api/files` route delegates to, so no disclosure computation lives in the
  * route layer. Stored files are raw content-addressed blobs with NO reference
  * metadata of their own (doctrine #8876 AD1: no file table, no per-blob ACL),
