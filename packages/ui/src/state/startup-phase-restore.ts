@@ -113,6 +113,7 @@ async function backfillCloudApiBase(
   const agentId = recoverCloudAgentId(active);
   const pending = loadPendingCloudHandoff();
   const isPendingSharedRuntime =
+    getBootConfig().preferSharedCloudTier === true &&
     Boolean(pending && agentId === pending.sharedAgentId) &&
     active.apiBase === pending?.sharedApiBase;
   const shouldRepair =
