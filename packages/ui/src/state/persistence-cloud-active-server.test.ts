@@ -343,15 +343,7 @@ describe("Cloud active server persistence", () => {
     }
   });
 
-  // #15740 config-drift family (same as #15731): persistence.ts hand-copied the
-  // control-plane host set and it drifted — the copy was missing the staging
-  // hosts, so on staging.elizacloud.ai / api-staging the bare id-less origin was
-  // classified as a concrete per-agent base and PERSISTED, then restored on
-  // reload so every /api/* call 404'd ("Backend Unreachable").
   describe("control-plane host set anti-drift (#15740)", () => {
-    // The canonical set is the single source of truth. Assert it still contains
-    // the staging hosts so a future edit to cloud-agent-base can't silently
-    // reintroduce the drift that this fix imports away.
     it("canonical control-plane host set includes the staging hosts", () => {
       expect(ELIZA_CLOUD_CONTROL_PLANE_HOSTS.has("staging.elizacloud.ai")).toBe(
         true,
@@ -361,11 +353,6 @@ describe("Cloud active server persistence", () => {
       ).toBe(true);
     });
 
-    // The behavioral anti-drift assertion: because persistence.ts now imports
-    // the canonical set, EVERY control-plane host it recognizes is dropped as a
-    // runtime apiBase. Drive it through createPersistedActiveServer for every
-    // host in the canonical set — the bare origin must never be persisted. This
-    // fails if the local hand-copy is ever reintroduced and drifts again.
     it("never persists any canonical control-plane host as a runtime apiBase", () => {
       for (const host of ELIZA_CLOUD_CONTROL_PLANE_HOSTS) {
         const server = createPersistedActiveServer({
@@ -380,10 +367,7 @@ describe("Cloud active server persistence", () => {
       }
     });
 
-    // The regression proper: a staging bare origin (the exact host missing from
-    // the drifted copy) must be dropped. Pre-fix this was persisted as a
-    // concrete base and wedged the staging PWA.
-    it("drops the staging bare control-plane origin (the drifted-away host)", () => {
+    it("drops a staging control-plane origin without an agent id", () => {
       const server = createPersistedActiveServer({
         kind: "cloud",
         apiBase: "https://staging.elizacloud.ai/",
@@ -394,11 +378,7 @@ describe("Cloud active server persistence", () => {
     });
   });
 
-  // Self-heal: a user who already hit #15740 has the bare staging origin sitting
-  // in localStorage. Loading must repair it AND write the repaired record back
-  // so the wedge is permanently cleared without the user clearing storage — the
-  // difference between "fixed for new sessions" and "fixed for Shadow's phone".
-  describe("self-heal of already-persisted bad control-plane origin (#15740)", () => {
+  describe("repair of persisted control-plane origins (#15740)", () => {
     it("repairs and re-persists a stored bare staging origin on load", () => {
       localStorage.setItem(
         "elizaos:active-server",
@@ -415,8 +395,6 @@ describe("Cloud active server persistence", () => {
       expect(restored?.apiBase).toBeUndefined();
       expect(restored?.accessToken).toBe("cloud-token");
 
-      // The write-back happened: the raw stored value no longer carries the bare
-      // origin, so a second load (or any other reader) is already clean.
       const rawAfter = JSON.parse(
         localStorage.getItem("elizaos:active-server") ?? "null",
       );
@@ -424,7 +402,6 @@ describe("Cloud active server persistence", () => {
       expect(rawAfter.apiBase).toBeUndefined();
       expect(rawAfter.accessToken).toBe("cloud-token");
 
-      // Idempotent: loading again yields the same repaired record.
       expect(loadPersistedActiveServer()?.apiBase).toBeUndefined();
     });
 
@@ -444,7 +421,6 @@ describe("Cloud active server persistence", () => {
 
         const restored = loadPersistedActiveServer();
         expect(restored?.apiBase).toBe("https://agent-xyz.example.test");
-        // No write-back for a healthy record.
         expect(setItemSpy).not.toHaveBeenCalled();
       } finally {
         setItemSpy.mockRestore();
