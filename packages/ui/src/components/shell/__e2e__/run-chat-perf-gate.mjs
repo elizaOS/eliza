@@ -53,26 +53,15 @@ const FRAME_BUDGET_OPTIONS = {
   droppedFrameRatio: 0.25, // >25% frames over budget = visible jank
   reportOnLongTask: false, // long tasks are noisy on shared CI runners
 };
-// The streaming windows re-render the tail turn once per animation frame by
-// design (a token batch per rAF), so their dropped-frame ratio tracks MACHINE
-// LOAD, not code health: the same build measured ~20% median dropped on an
-// idle box, 26.8–27.8% on loaded ubuntu CI runners, and ~40% on a saturated
-// dev box — while the p95 stayed pinned at the one-dropped-frame vsync floor
-// (33.4ms, far under the 2.5× budget) in every observation: busy, not janky.
-// No static ratio threshold separates those healthy states from a regression,
-// so the ratio is judged as a DELTA over an in-run ambient baseline (an
-// identical rAF window driving ZERO tokens, sampled on the same machine
-// seconds earlier). Healthy streaming adds ≤ ~22pp over ambient in the worst
-// measured case; a genuine regression — an unmemoized widget re-rendering the
-// thread on every token — doubles nearly every frame (delta far past 50pp)
-// and also trips the untouched p95-factor, widget-remount, CLS, and
-// zero-outside-chat-reflow gates. droppedFrameRatio here is that ALLOWED
-// DELTA, not an absolute ratio.
+// Streaming intentionally updates once per animation frame, making its dropped
+// ratio sensitive to runner contention. Pair each streaming window with an
+// immediately preceding zero-token window so the gate measures incremental work.
 const FRAME_GATE_STREAMING = {
   p95BudgetFactor: 2.5,
-  droppedFrameRatio: 0.3,
   reportOnLongTask: false,
 };
+const STREAMING_DROP_DELTA_BUDGET = 0.3;
+const STREAMING_DROP_ABSOLUTE_CEILING = 0.7;
 const STABILITY_BUDGET = { maxCls: 0.1, flashMinDelta: 0.2 };
 
 // Install the shared layout-shift observer + a rAF frame sampler BEFORE the app
@@ -412,53 +401,45 @@ await runBrowserFixtureE2E(
     // per animation frame — a sustained stream, not a burst) entirely in the page
     // so the rAF cadence is real, then harvests the SAME real frame + shift +
     // reflow entries and feeds them to the SAME shared detector.
-    // Ambient-load baseline: the SAME 120-tick rAF pump with ZERO tokens
-    // driven, harvested with the SAME sampler. Frames dropped here are pure
-    // machine load (co-tenant CI processes, GC), so the streaming ratio is
-    // gated on its delta over this, not on an absolute number.
-    await page.evaluate(() => {
-      window.__ELIZA_PERF_FRAMES__ = [];
-    });
-    await page.evaluate(
-      () =>
-        new Promise((resolve) => {
-          let ticks = 0;
-          const pump = () => {
-            ticks += 1;
-            if (ticks >= 120) {
-              resolve(undefined);
-              return;
-            }
-            requestAnimationFrame(pump);
-          };
-          requestAnimationFrame(pump);
-        }),
-    );
-    await page.waitForTimeout(120);
-    const baselineSummary = summarizeFrameSamples(
-      await page.evaluate(() => window.__ELIZA_PERF_FRAMES__ ?? []),
-    );
-    const baselineRatio = baselineSummary.sampleCount
-      ? baselineSummary.droppedFrames / baselineSummary.sampleCount
-      : 0;
-    check(
-      baselineSummary.sampleCount > 20,
-      `ambient baseline window captured a meaningful frame window (${baselineSummary.sampleCount} frames)`,
-    );
-    // Absolute ceiling so a fully saturated machine can never mask a
-    // pathological regression behind an equally pathological baseline.
-    const streamingDropBudget = Math.min(
-      0.85,
-      baselineRatio + FRAME_GATE_STREAMING.droppedFrameRatio,
-    );
-    console.log(
-      `stream ambient baseline: dropped ${(baselineRatio * 100).toFixed(1)}% of ${baselineSummary.sampleCount} frames | ` +
-        `streaming drop budget ${(streamingDropBudget * 100).toFixed(1)}%`,
-    );
-
     const streamWindows = [];
     const reflowAll = [];
     for (let w = 0; w < STREAM_WINDOWS; w += 1) {
+      // Interleaving controls for load changes during the run; one early sample
+      // cannot represent a later window on a shared runner.
+      await page.evaluate(() => {
+        window.__ELIZA_PERF_FRAMES__ = [];
+      });
+      await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            let ticks = 0;
+            const pump = () => {
+              ticks += 1;
+              if (ticks >= 120) {
+                resolve(undefined);
+                return;
+              }
+              requestAnimationFrame(pump);
+            };
+            requestAnimationFrame(pump);
+          }),
+      );
+      await page.waitForTimeout(120);
+      const baselineSummary = summarizeFrameSamples(
+        await page.evaluate(() => window.__ELIZA_PERF_FRAMES__ ?? []),
+      );
+      const baselineRatio = baselineSummary.sampleCount
+        ? baselineSummary.droppedFrames / baselineSummary.sampleCount
+        : 0;
+      check(
+        baselineSummary.sampleCount > 20,
+        `ambient window ${w + 1} captured a meaningful frame window (${baselineSummary.sampleCount} frames)`,
+      );
+      const streamingDropBudget = Math.min(
+        STREAMING_DROP_ABSOLUTE_CEILING,
+        baselineRatio + STREAMING_DROP_DELTA_BUDGET,
+      );
+
       await page.evaluate(() => {
         window.__ELIZA_PERF_FRAMES__ = [];
         window.__ELIZA_LAYOUT_SHIFTS__ = [];
@@ -495,11 +476,21 @@ await runBrowserFixtureE2E(
         droppedFrameRatio: streamingDropBudget,
       });
       const stability = summarizeStability(shifts, [], STABILITY_BUDGET);
-      streamWindows.push({ summary, droppedRatio, flagged, cls: stability.cls });
+      streamWindows.push({
+        summary,
+        baselineRatio,
+        droppedRatio,
+        droppedDelta: droppedRatio - baselineRatio,
+        flagged,
+        cls: stability.cls,
+      });
       reflowAll.push(...reflow);
       console.log(
-        `stream window ${w + 1}/${STREAM_WINDOWS}: frames ${summary.sampleCount} | fps ${summary.fps.toFixed(1)} | ` +
-          `p95 ${summary.p95FrameMs.toFixed(1)}ms | dropped ${summary.droppedFrames}/${summary.sampleCount} | flagged ${flagged}`,
+        `stream window ${w + 1}/${STREAM_WINDOWS}: ambient ${(baselineRatio * 100).toFixed(1)}% | ` +
+          `frames ${summary.sampleCount} | fps ${summary.fps.toFixed(1)} | p95 ${summary.p95FrameMs.toFixed(1)}ms | ` +
+          `dropped ${summary.droppedFrames}/${summary.sampleCount} (${(droppedRatio * 100).toFixed(1)}%, ` +
+          `delta ${((droppedRatio - baselineRatio) * 100).toFixed(1)}pp) | ` +
+          `budget ${(streamingDropBudget * 100).toFixed(1)}% | flagged ${flagged}`,
       );
       // Each window must carry a meaningful sample or the median is noise.
       check(
@@ -511,12 +502,15 @@ await runBrowserFixtureE2E(
     const outsideChatShifts = reflowAll.filter((s) => s.outsideChat);
     const budgetMs = streamWindows[0].summary.budgetMs;
     const medianP95 = medianNumber(streamWindows.map((s) => s.summary.p95FrameMs));
+    const medianBaselineRatio = medianNumber(streamWindows.map((s) => s.baselineRatio));
     const medianDroppedRatio = medianNumber(streamWindows.map((s) => s.droppedRatio));
+    const medianDroppedDelta = medianNumber(streamWindows.map((s) => s.droppedDelta));
     const medianCls = medianNumber(streamWindows.map((s) => s.cls));
     const flaggedCount = streamWindows.filter((s) => s.flagged).length;
     console.log(
       `\nstream median: p95 ${medianP95.toFixed(1)}ms (budget ${(budgetMs * FRAME_GATE_STREAMING.p95BudgetFactor).toFixed(1)}ms) | ` +
-        `dropped ${(medianDroppedRatio * 100).toFixed(1)}% | cls ${medianCls.toFixed(4)} | ` +
+        `ambient ${(medianBaselineRatio * 100).toFixed(1)}% | dropped ${(medianDroppedRatio * 100).toFixed(1)}% | ` +
+        `delta ${(medianDroppedDelta * 100).toFixed(1)}pp | cls ${medianCls.toFixed(4)} | ` +
         `flagged ${flaggedCount}/${STREAM_WINDOWS} windows | reflow ${reflowAll.length} outside-chat ${outsideChatShifts.length}\n`,
     );
 
@@ -531,10 +525,14 @@ await runBrowserFixtureE2E(
     );
 
     check(
-      medianDroppedRatio <= streamingDropBudget,
+      medianDroppedDelta <= STREAMING_DROP_DELTA_BUDGET,
+      `median streaming dropped-frame delta ${(medianDroppedDelta * 100).toFixed(1)}pp within ` +
+        `${(STREAMING_DROP_DELTA_BUDGET * 100).toFixed(0)}pp allowance`,
+    );
+    check(
+      medianDroppedRatio <= STREAMING_DROP_ABSOLUTE_CEILING,
       `median streaming dropped-frame ratio ${(medianDroppedRatio * 100).toFixed(1)}% within ` +
-        `${(streamingDropBudget * 100).toFixed(1)}% (ambient ${(baselineRatio * 100).toFixed(1)}% + ` +
-        `${(FRAME_GATE_STREAMING.droppedFrameRatio * 100).toFixed(0)}pp allowance)`,
+        `${(STREAMING_DROP_ABSOLUTE_CEILING * 100).toFixed(0)}% absolute ceiling`,
     );
     check(
       medianP95 <= budgetMs * FRAME_GATE_STREAMING.p95BudgetFactor,
