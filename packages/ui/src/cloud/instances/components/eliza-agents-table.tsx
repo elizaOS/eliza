@@ -759,6 +759,7 @@ export function ElizaAgentsTable({
       toast.success(labels.alreadyDone);
       void refreshData();
     } catch (err) {
+      void refreshData();
       onError(err);
     } finally {
       setActionInProgress(null);
@@ -857,7 +858,7 @@ export function ElizaAgentsTable({
           defaultValue: "Agent deactivation",
         }),
         inProgress: t("cloud.elizaAgentsTable.deactivateInProgress", {
-          defaultValue: "Deactivation already in progress",
+          defaultValue: "Agent provisioning is still in progress",
         }),
         failed: t("cloud.elizaAgentsTable.deactivateFailed", {
           defaultValue: "Deactivate failed",
@@ -1749,13 +1750,13 @@ export function ElizaAgentsTable({
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
-                    "All of its data is saved in an encrypted backup — nothing is deleted.",
+                    "Before deactivation, Eliza saves an encrypted backup. If the backup cannot be saved, the agent stays running and billing continues.",
                 })}
               </span>
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody3", {
                   defaultValue:
-                    "You can reactivate it anytime. Reactivation restores the backup and can take a few minutes.",
+                    "Reactivation restores the backup and can take a few minutes; it requires available credits.",
                 })}
               </span>
             </AlertDialogDescription>

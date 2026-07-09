@@ -302,7 +302,7 @@ export function ElizaAgentActions({
             >
               {t("cloud.containers.agentActions.deactivatedPanel", {
                 defaultValue:
-                  "This agent is deactivated. It is not running and is not consuming hourly credits; its data is kept in an encrypted backup. Reactivate it anytime.",
+                  "This agent is deactivated. It is not running and is not consuming hourly credits; its data is kept in an encrypted backup. Reactivation restores the backup and requires available credits.",
               })}
             </p>
           </div>
@@ -544,13 +544,13 @@ export function ElizaAgentActions({
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
-                    "All of its data is saved in an encrypted backup — nothing is deleted.",
+                    "Before deactivation, Eliza saves an encrypted backup. If the backup cannot be saved, the agent stays running and billing continues.",
                 })}
               </span>
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody3", {
                   defaultValue:
-                    "You can reactivate it anytime. Reactivation restores the backup and can take a few minutes.",
+                    "Reactivation restores the backup and can take a few minutes; it requires available credits.",
                 })}
               </span>
             </AlertDialogDescription>

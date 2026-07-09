@@ -20,6 +20,11 @@ interface AgentCostBadgeProps {
   status: string;
 }
 
+function formatBadgeHourlyRate(rate: number, isIdle: boolean) {
+  if (isIdle && rate > 0 && rate < 0.01) return "<$0.01/hr";
+  return formatHourlyRate(rate);
+}
+
 export function AgentCostBadge({ status }: AgentCostBadgeProps) {
   const t = useT();
   const isRunning = status === "running" || status === "provisioning";
@@ -33,6 +38,7 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
     : isIdle
       ? AGENT_PRICING.IDLE_HOURLY_RATE
       : 0;
+  const hourlyRateLabel = formatBadgeHourlyRate(rate, isIdle);
 
   return (
     <Tooltip>
@@ -41,7 +47,7 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
           <span
             className={`inline-block size-1 rounded-full ${isRunning ? "bg-green-500/60" : "bg-white/40"}`}
           />
-          {formatHourlyRate(rate)}
+          {hourlyRateLabel}
         </span>
       </TooltipTrigger>
       <TooltipContent className="bg-neutral-900 border-white/10 text-xs">
@@ -72,7 +78,7 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
               {t("cloud.containers.costBadge.agent", { defaultValue: "agent" })}
             </p>
             <p className="text-white/60">
-              {formatHourlyRate(rate)} · {formatMonthlyEstimate(rate)}
+              {hourlyRateLabel} · {formatMonthlyEstimate(rate)}
             </p>
           </>
         )}

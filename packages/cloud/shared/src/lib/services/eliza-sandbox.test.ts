@@ -571,6 +571,55 @@ describe("ElizaSandboxService wake", () => {
   );
 });
 
+describe("ElizaSandboxService sleep", () => {
+  test("aborts deactivation when no durable backup can be created or found", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const rec = customSandbox();
+    const provider: SandboxProvider = {
+      create: mock(async () => ({
+        sandboxId: "agent-e06bb509",
+        bridgeUrl: "https://runtime.example",
+        healthUrl: "https://runtime.example/health",
+      })),
+      stop: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+    globalThis.fetch = mock(async () => {
+      throw new Error("snapshot unavailable");
+    });
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      rec,
+    );
+    const latestBackupSpy = spyOn(agentSandboxesRepository, "getLatestBackup").mockResolvedValue(
+      undefined,
+    );
+    const createBackupSpy = spyOn(agentSandboxesRepository, "createBackup");
+    const updateSpy = spyOn(agentSandboxesRepository, "update");
+
+    try {
+      const result = await new ElizaSandboxService(provider).executeSleep(
+        rec.id,
+        rec.organization_id,
+      );
+
+      expect(result).toEqual({
+        success: false,
+        containerRemoved: false,
+        error:
+          "Unable to create or find a durable backup before deactivation; agent was left running.",
+      });
+      expect(provider.stop).not.toHaveBeenCalled();
+      expect(createBackupSpy).not.toHaveBeenCalled();
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      latestBackupSpy.mockRestore();
+      createBackupSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+});
+
 // C1b attribution guard (audit §C1b/§C5): provision() must NOT flip a docker-
 // backed sandbox to `running` when the provider handle carries no durable
 // node_id (metadata shape drift, or an empty-string nodeId). Such a row would be

@@ -107,9 +107,9 @@ describe("ElizaAgentsTable per-row view model", () => {
     ).toBe("notProvisioned");
     // Deactivation releases the container (sandbox_id cleared) but the agent
     // remains an established sandbox — never "Not provisioned".
-    expect(
-      derive({ status: "sleeping", sandbox_id: null }).runtimeKind,
-    ).toBe("sandbox");
+    expect(derive({ status: "sleeping", sandbox_id: null }).runtimeKind).toBe(
+      "sandbox",
+    );
   });
 
   it("hides standalone Web UI for shared rows even when the API returns a URL", () => {
@@ -174,7 +174,7 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(busyRunning.canSleep).toBe(false);
   });
 
-  it("renders a sleeping row as a designed state with a Reactivate action and zero-cost badge", () => {
+  it("renders sleeping and idle rates without conflating deactivated and idle billing", () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -185,7 +185,13 @@ describe("ElizaAgentsTable per-row view model", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <ElizaAgentsTable
-          sandboxes={[row({ status: "sleeping", canonical_web_ui_url: null })]}
+          sandboxes={[
+            row({ status: "sleeping", canonical_web_ui_url: null }),
+            row({
+              id: "00000000-1111-2222-3333-555555555555",
+              status: "stopped",
+            }),
+          ]}
         />
       </QueryClientProvider>,
     );
@@ -201,6 +207,9 @@ describe("ElizaAgentsTable per-row view model", () => {
     ).toBeNull();
     // Billing transparency on the card itself: an explicit $0.00/hr.
     expect(screen.getAllByText("$0.00/hr").length).toBeGreaterThanOrEqual(1);
+    // Idle agents still bill at a low hourly rate, so they must not visually
+    // collapse to the deactivated zero-cost badge.
+    expect(screen.getAllByText("<$0.01/hr").length).toBeGreaterThanOrEqual(1);
   });
 
   it("requires a billing-transparency confirm before deactivating", async () => {
@@ -228,9 +237,11 @@ describe("ElizaAgentsTable per-row view model", () => {
       within(dialog).getByText(/stops consuming hourly credits/),
     ).toBeTruthy();
     expect(
-      within(dialog).getByText(/encrypted backup — nothing is deleted/),
+      within(dialog).getByText(/if the backup cannot be saved/i),
     ).toBeTruthy();
-    expect(within(dialog).getByText(/reactivate it anytime/i)).toBeTruthy();
+    expect(
+      within(dialog).getByText(/requires available credits/i),
+    ).toBeTruthy();
 
     // Cancel is a real exit: no job fired, dialog gone.
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));

@@ -80,7 +80,10 @@ export type AgentSandboxStatus =
   | "provisioning"
   | "running"
   | "stopped"
+  | "sleeping"
   | "disconnected"
+  | "deletion_pending"
+  | "deletion_failed"
   | "error";
 
 export type AgentDatabaseStatus = "none" | "provisioning" | "ready" | "error";

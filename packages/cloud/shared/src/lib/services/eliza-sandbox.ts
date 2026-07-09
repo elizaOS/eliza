@@ -4933,9 +4933,8 @@ export class ElizaSandboxService {
    * `agent_suspend` (which keeps the row's `sandbox_id` + managed DB for an
    * in-place resume), sleep frees the compute identity entirely:
    *   1. Capture a durable backup. A live `/api/snapshot` pull when the agent
-   *      is reachable, otherwise the agent's persisted config, otherwise the
-   *      latest existing backup — a restore point ALWAYS exists before we
-   *      destroy compute, so sleep never loses recoverable state.
+   *      is reachable, otherwise the latest existing backup. If neither exists,
+   *      sleep fails and leaves compute running so missing state is observable.
    *   2. Stop + drop the container (the provider `stop` removes it from the
    *      node).
    *   3. Clear the compute identity (`sandbox_id`, `node_id`, `container_name`,
@@ -4981,7 +4980,7 @@ export class ElizaSandboxService {
         });
         backupId = backup.id;
       } catch (error) {
-        logger.warn("[agent-sandbox] Sleep snapshot fetch failed; using fallback", {
+        logger.warn("[agent-sandbox] Sleep snapshot fetch failed; checking latest durable backup", {
           agentId,
           error: error instanceof Error ? error.message : String(error),
         });
@@ -4992,16 +4991,16 @@ export class ElizaSandboxService {
       if (existing) {
         backupId = existing.id;
       } else {
-        const fallback: AgentBackupStateData = {
-          memories: [],
-          config: (rec.agent_config as Record<string, unknown> | null) ?? {},
-          workspaceFiles: {},
+        logger.error("[agent-sandbox] Sleep aborted: no durable backup available", {
+          agentId,
+          sandboxRecordId: rec.id,
+        });
+        return {
+          success: false,
+          containerRemoved: false,
+          error:
+            "Unable to create or find a durable backup before deactivation; agent was left running.",
         };
-        const sizeBytes = Buffer.byteLength(JSON.stringify(fallback), "utf-8");
-        const backup = await agentSandboxesRepository.createBackup(
-          await this.buildBackupInput(rec.id, "pre-shutdown", fallback, sizeBytes),
-        );
-        backupId = backup.id;
       }
     }
 
