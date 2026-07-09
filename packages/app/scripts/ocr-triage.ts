@@ -18,8 +18,14 @@
  * an issue; the gate exits non-zero only on a regression NOT in that baseline —
  * the same ratchet posture as the aesthetic audit's verdict-debt map, so a known
  * bug stays visible without wedging CI while a NEW pixel-broken render fails it.
+ *
+ * Provenance (#15790): the OCR set is defined by THIS run's `report.json`, not by
+ * whatever PNGs happen to sit in the audit dir. `resolveAuditScreenshots` maps
+ * every report row to exactly one existing screenshot; a stale PNG for a
+ * since-removed view is ignored, and a missing/duplicate row fails loudly — so
+ * OCR and DOM-report row counts are identical by construction.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
@@ -33,6 +39,11 @@ import {
   ocrImage,
   resolveOcrEngine,
 } from "./mvp-visual-verify/ocr.mjs";
+import {
+  type AuditReportRow,
+  resolveAuditScreenshots,
+  selectOcrRecordsForShots,
+} from "./ocr-triage-lib";
 
 /**
  * Slugs whose healthy render legitimately OCRs to little or no text: wallpaper
@@ -45,13 +56,6 @@ const BLANK_EXEMPT_SLUGS = new Set<string>([
   "builtin-background",
   "plugin-focus-gui",
 ]);
-
-interface ReportEntry {
-  slug: string;
-  viewport: string;
-  viewType?: "gui" | "tui";
-  verdict?: string;
-}
 
 interface OcrRecord extends OcrResult {
   path: string;
@@ -74,18 +78,6 @@ function parseArgs(argv: string[]): Record<string, string> {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a.startsWith("--")) out[a.slice(2)] = argv[++i] ?? "";
-  }
-  return out;
-}
-
-function listPngs(dir: string): string[] {
-  const out: string[] = [];
-  for (const viewport of readdirSync(dir, { withFileTypes: true })) {
-    if (!viewport.isDirectory()) continue;
-    const vp = join(dir, viewport.name);
-    for (const f of readdirSync(vp)) {
-      if (f.endsWith(".png")) out.push(join(vp, f));
-    }
   }
   return out;
 }
@@ -137,19 +129,26 @@ async function main() {
   );
 
   const reportPath = join(auditDir, "report.json");
-  const report: ReportEntry[] = existsSync(reportPath)
+  const report: AuditReportRow[] = existsSync(reportPath)
     ? JSON.parse(readFileSync(reportPath, "utf8"))
     : [];
-  const reportByKey = new Map<string, ReportEntry>();
+  const reportByKey = new Map<string, AuditReportRow>();
   for (const r of report) reportByKey.set(`${r.slug}::${r.viewport}`, r);
 
-  const pngs = listPngs(auditDir);
+  // Provenance (#15790): OCR exactly the screenshots this run's report names —
+  // one per row, no stale extras. `resolveAuditScreenshots` throws on a missing
+  // or duplicate row, so a broken capture fails here rather than laundering old
+  // pixels into a "current" verdict.
+  const shots = resolveAuditScreenshots(report, auditDir);
   const ocr: OcrRecord[] = args.ocr
-    ? readFileSync(args.ocr, "utf8")
-        .split("\n")
-        .filter((l) => l.trim())
-        .map((l) => JSON.parse(l) as OcrRecord)
-    : await runPackagedOcr(pngs);
+    ? selectOcrRecordsForShots(
+        shots,
+        readFileSync(args.ocr, "utf8")
+          .split("\n")
+          .filter((l) => l.trim())
+          .map((l) => JSON.parse(l) as OcrRecord),
+      )
+    : await runPackagedOcr(shots.map((s) => s.path));
 
   const entries: TriageEntry[] = [];
   for (const rec of ocr) {

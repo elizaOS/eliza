@@ -3,7 +3,7 @@
  * the real renderer fixture.
  */
 import { readFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
@@ -900,6 +900,17 @@ test.describe("all-views aesthetic audit (#8796)", () => {
   const outputDir =
     process.env.ELIZA_AUDIT_APP_DIR ??
     path.join(process.cwd(), "aesthetic-audit-output");
+
+  // Provenance (#15790): each run starts from an empty dedicated output dir, so
+  // a screenshot for a since-removed view can never survive into the next
+  // capture and be re-read as a current failure by the OCR triage (which scopes
+  // its screenshot set to this run's report.json). The suite runs workers:1 /
+  // fullyParallel:false, so this fires exactly once before any view writes a
+  // screenshot — no worker can wipe another worker's output mid-run.
+  test.beforeAll(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+    await mkdir(outputDir, { recursive: true });
+  });
 
   // Coverage guard: the audit must walk EVERY built-in view. Fails on a phantom
   // key, a path drift, or any distinct navigation route the audit doesn't cover —
