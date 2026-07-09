@@ -22,6 +22,8 @@ function usage() {
   return `Usage:
   node packages/scripts/check-mvp-board-readiness.mjs [--repo owner/repo] [--project-owner org] [--project-number n]
   node packages/scripts/check-mvp-board-readiness.mjs --issues-json issues.json --project-json project-items.json
+  node packages/scripts/check-mvp-board-readiness.mjs --issues-json issues.json --issues-only [--json]
+  node packages/scripts/check-mvp-board-readiness.mjs --issues-only [--json]
 
 Options:
   --json          Print machine-readable report.
