@@ -949,11 +949,25 @@ export class SwarmCoordinatorService
     // the verdict ("App verification passed."). Ceding it to the router would
     // drop it entirely, so synthesis must stay its poster even on a
     // router-owned session.
+    // Observability for the cede decision: when synthesis double-posts next to
+    // the router relay, the answer is always one of these four gates — log them
+    // so a live incident is diagnosable from the log instead of a code dive.
+    const cedeGates = {
+      routerOwnedEvent: ROUTER_OWNED_TERMINAL_EVENTS.has(event),
+      customValidator: isCustomValidatorResult(record),
+      hasRouterOrigin: sessionHasRouterOrigin(meta),
+      routerActive: this.isRouterActive(),
+    };
+    logger.debug(
+      `[SwarmCoordinatorService] cede decision (sessionId=${sessionId}, event=${event}, ` +
+        `routerOwnedEvent=${cedeGates.routerOwnedEvent}, customValidator=${cedeGates.customValidator}, ` +
+        `hasRouterOrigin=${cedeGates.hasRouterOrigin}, routerActive=${cedeGates.routerActive})`,
+    );
     if (
-      ROUTER_OWNED_TERMINAL_EVENTS.has(event) &&
-      !isCustomValidatorResult(record) &&
-      sessionHasRouterOrigin(meta) &&
-      this.isRouterActive()
+      cedeGates.routerOwnedEvent &&
+      !cedeGates.customValidator &&
+      cedeGates.hasRouterOrigin &&
+      cedeGates.routerActive
     ) {
       this.routerCededTerminalSessions.add(sessionId);
       return;
