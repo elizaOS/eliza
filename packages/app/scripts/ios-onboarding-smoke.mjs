@@ -20,6 +20,7 @@ import {
   DEFAULT_HOST_AGENT_PORT,
   startDeviceE2eHostAgent,
 } from "./lib/host-agent.mjs";
+import { assertIosMixedContentSmokeResult } from "./lib/ios-mixed-content-smoke-contract.mjs";
 import {
   assertCandidateIosAppRendererFresh,
   assertInstalledIosAppRendererFresh,
@@ -580,41 +581,7 @@ async function main() {
       log(`liveness reply OK: ${JSON.stringify(result.livenessReply)}`);
     }
     const mixedContentResult = await pollMixedContentResult(udid, appId);
-    if (
-      !String(mixedContentResult.webViewOrigin).startsWith("https://localhost")
-    ) {
-      throw new Error(
-        `iOS mixed-content smoke did not run from https://localhost: ${JSON.stringify(mixedContentResult)}`,
-      );
-    }
-    if (mixedContentResult.mixedContentWouldBlockWebSocket !== true) {
-      throw new Error(
-        `iOS mixed-content smoke did not prove an insecure ws:// would be mixed content: ${JSON.stringify(mixedContentResult)}`,
-      );
-    }
-    if (
-      !Array.isArray(mixedContentResult.webSocketConstructorCalls) ||
-      mixedContentResult.webSocketConstructorCalls.length !== 0
-    ) {
-      throw new Error(
-        `iOS mixed-content smoke attempted a WebSocket: ${JSON.stringify(mixedContentResult.webSocketConstructorCalls)}`,
-      );
-    }
-    if (mixedContentResult.connectionState?.state !== "connected") {
-      throw new Error(
-        `iOS mixed-content smoke was not connected-over-REST: ${JSON.stringify(mixedContentResult.connectionState)}`,
-      );
-    }
-    if (mixedContentResult.lostBackendOverlayAbsent !== true) {
-      throw new Error(
-        `iOS mixed-content smoke found the lost backend overlay: ${JSON.stringify(mixedContentResult)}`,
-      );
-    }
-    if (mixedContentResult.restHealth?.ok !== true) {
-      throw new Error(
-        `iOS mixed-content smoke REST health failed: ${JSON.stringify(mixedContentResult.restHealth)}`,
-      );
-    }
+    assertIosMixedContentSmokeResult(mixedContentResult);
     defaultsWriteString(
       udid,
       appId,
