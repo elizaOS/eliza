@@ -1,3 +1,10 @@
+/**
+ * Context-selection predicate shared by music action validators.
+ *
+ * The planner and older callers expose selected contexts through different
+ * state slots, so this helper keeps action routing consistent without each
+ * handler duplicating the compatibility scan.
+ */
 import { CONTEXT_ROUTING_STATE_KEY, type State } from "@elizaos/core";
 
 interface ContextRoutingState {
