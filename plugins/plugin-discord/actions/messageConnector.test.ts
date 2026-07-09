@@ -34,6 +34,9 @@ function createRuntime() {
 			warn: vi.fn(),
 			error: vi.fn(),
 		},
+		ensureConnection: vi.fn().mockResolvedValue(undefined),
+		createMemory: vi.fn().mockImplementation(async (memory) => memory.id),
+		getMemoryById: vi.fn().mockResolvedValue(null),
 		getRoom: vi.fn(),
 		getEntityById: vi.fn(),
 		getRelationships: vi.fn().mockResolvedValue([]),
@@ -341,5 +344,76 @@ describe("Discord message connector adapter", () => {
 			reply: { messageReference: "1506947499212935208" },
 			files: undefined,
 		});
+	});
+
+	it("suppresses identical connector sends that race the inbound callback", async () => {
+		const runtime = Object.assign(createRuntime(), {
+			getRoom: vi.fn().mockResolvedValue({
+				channelId: "222222222222222223",
+			}),
+		});
+		const send = vi.fn(async (options: unknown) => ({
+			id: `44444444444444444${send.mock.calls.length}`,
+			content:
+				typeof options === "object" && options
+					? String((options as { content?: string }).content ?? "")
+					: String(options ?? ""),
+			attachments: { size: 0 },
+			url: "https://discord.com/channels/111/223/444",
+			createdTimestamp: 123,
+		}));
+		const channel = {
+			id: "222222222222222223",
+			name: "general",
+			guild: { id: "111111111111111111", name: "Eliza" },
+			isTextBased: () => true,
+			isVoiceBased: () => false,
+			send,
+		};
+		const client = {
+			isReady: () => true,
+			channels: { fetch: vi.fn().mockResolvedValue(channel) },
+			user: {
+				id: "999999999999999999",
+				username: "bot",
+				displayName: "Bot",
+			},
+		};
+		const accountPool = new DiscordAccountClientPool();
+		accountPool.set({
+			accountId: DEFAULT_ACCOUNT_ID,
+			account: { id: DEFAULT_ACCOUNT_ID, token: "token", enabled: true },
+			client,
+			settings: {},
+			dynamicChannelIds: new Set<string>(),
+			clientReadyPromise: null,
+			loginFailed: false,
+		} as never);
+		const service = createDiscordConnectorTestService({
+			runtime,
+			accountPool,
+			defaultAccountId: DEFAULT_ACCOUNT_ID,
+			getChannelType: vi.fn().mockResolvedValue("GROUP"),
+		});
+		const target = {
+			source: "discord",
+			roomId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		};
+		const content = {
+			text: "Bitcoin is currently at $61,984 USD.",
+			inReplyTo: "1506947499212935209",
+		};
+
+		await service.handleSendMessage(runtime, target, content);
+		await service.handleSendMessage(runtime, target, content);
+
+		expect(send).toHaveBeenCalledOnce();
+		expect(runtime.logger.debug).toHaveBeenCalledWith(
+			expect.objectContaining({
+				src: "plugin:discord",
+				channelId: "222222222222222223",
+			}),
+			"Suppressing duplicate Discord connector delivery",
+		);
 	});
 });

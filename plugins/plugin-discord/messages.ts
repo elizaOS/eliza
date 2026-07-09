@@ -190,6 +190,10 @@ const ACTIVE_TASK_AGENT_STATUSES = new Set([
 	"blocked",
 	"tool_running",
 ]);
+const DISCORD_OUTBOUND_DEDUPE_WINDOW_MS = 2000;
+const DISCORD_OUTBOUND_DEDUPE_MAX_KEYS = 512;
+
+const recentOutboundDiscordDeliveries = new Map<string, number>();
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
@@ -244,6 +248,117 @@ export function shouldSuppressTimeoutForInFlightDispatchForTests({
 	responseDispatchInFlight: boolean;
 }): boolean {
 	return generationTimedOut && responseDispatchInFlight;
+}
+
+export interface DiscordOutboundDeliveryReservation {
+	commit(): void;
+	release(): void;
+}
+
+export type BeginDiscordOutboundDeliveryResult =
+	| { kind: "duplicate" }
+	| { kind: "deliver"; reservation: DiscordOutboundDeliveryReservation };
+
+export interface DiscordOutboundDeliveryParams {
+	accountId?: string;
+	channelId: string;
+	replyToMessageId?: string;
+	text?: string;
+	attachmentUrls?: readonly string[];
+	now?: number;
+	windowMs?: number;
+	state?: Map<string, number>;
+}
+
+function normalizeOutboundText(text: string | undefined): string {
+	return typeof text === "string"
+		? text.replace(/\s+/g, " ").trim().toLowerCase()
+		: "";
+}
+
+function outboundAttachmentIdentity(
+	attachmentUrls: readonly string[] | undefined,
+): string {
+	return attachmentUrls?.filter(Boolean).sort().join(",") ?? "";
+}
+
+function pruneOutboundDedupeState(
+	state: Map<string, number>,
+	now: number,
+	windowMs: number,
+): void {
+	for (const [key, timestamp] of state) {
+		if (now - Math.abs(timestamp) > windowMs) {
+			state.delete(key);
+		}
+	}
+	if (state.size <= DISCORD_OUTBOUND_DEDUPE_MAX_KEYS) return;
+	const overflow = state.size - DISCORD_OUTBOUND_DEDUPE_MAX_KEYS;
+	let removed = 0;
+	for (const key of state.keys()) {
+		if (removed >= overflow) break;
+		state.delete(key);
+		removed += 1;
+	}
+}
+
+/**
+ * Reserve one outbound Discord delivery. Discord can receive the same logical
+ * tool-backed answer through the inbound response callback and the generic
+ * message-connector send path in the same event-loop burst; this guard shares a
+ * short process-local window across both paths so the first REST send wins.
+ */
+export function beginDiscordOutboundDelivery(
+	params: DiscordOutboundDeliveryParams,
+): BeginDiscordOutboundDeliveryResult {
+	const text = normalizeOutboundText(params.text);
+	const attachments = outboundAttachmentIdentity(params.attachmentUrls);
+	if (!text && !attachments) {
+		return {
+			kind: "deliver",
+			reservation: { commit() {}, release() {} },
+		};
+	}
+
+	const now = params.now ?? Date.now();
+	const windowMs = params.windowMs ?? DISCORD_OUTBOUND_DEDUPE_WINDOW_MS;
+	const state = params.state ?? recentOutboundDiscordDeliveries;
+	const key = [
+		params.accountId ?? "default",
+		params.channelId,
+		params.replyToMessageId ?? "",
+		attachments,
+		text,
+	].join("\u0000");
+
+	pruneOutboundDedupeState(state, now, windowMs);
+	const previous = state.get(key);
+	if (
+		previous !== undefined &&
+		Math.abs(now - Math.abs(previous)) <= windowMs
+	) {
+		return { kind: "duplicate" };
+	}
+
+	state.set(key, -now);
+	let settled = false;
+	return {
+		kind: "deliver",
+		reservation: {
+			commit() {
+				if (settled) return;
+				settled = true;
+				state.set(key, now);
+			},
+			release() {
+				if (settled) return;
+				settled = true;
+				if (state.get(key) === -now) {
+					state.delete(key);
+				}
+			},
+		},
+	};
 }
 
 /**
@@ -1102,6 +1217,7 @@ export class MessageManager {
 			statusReactions?.setThinking();
 
 			const callback: HandlerCallback = async (content: Content) => {
+				let outboundReservation: DiscordOutboundDeliveryReservation | undefined;
 				try {
 					const pendingAttachmentCount = Array.isArray(content.attachments)
 						? content.attachments.filter((media) => Boolean(media?.url)).length
@@ -1229,6 +1345,37 @@ export class MessageManager {
 						callbackDedup._elizaSentReplyKeys.add(dedupKey);
 					}
 
+					const outboundDedupe = beginDiscordOutboundDelivery({
+						accountId: this.accountId,
+						channelId: channel.id,
+						replyToMessageId:
+							outboundReplyToMessageId ??
+							(typeof content.inReplyTo === "string"
+								? content.inReplyTo
+								: undefined),
+						text: textContent,
+						attachmentUrls: content.attachments
+							?.map((media) => media.url)
+							.filter((url): url is string => typeof url === "string"),
+					});
+					if (outboundDedupe.kind === "duplicate") {
+						this.runtime.logger.debug(
+							{
+								src: "plugin:discord",
+								agentId: this.runtime.agentId,
+								channelId: channel.id,
+								messageId: message.id,
+								textPreview: textContent
+									.replace(/\s+/g, " ")
+									.trim()
+									.slice(0, 200),
+							},
+							"Suppressing duplicate Discord outbound delivery",
+						);
+						return [];
+					}
+					outboundReservation = outboundDedupe.reservation;
+
 					const files: AttachmentBuilder[] = [];
 					if (content.attachments && content.attachments.length > 0) {
 						for (const media of content.attachments) {
@@ -1340,6 +1487,10 @@ export class MessageManager {
 							"Discord response callback completed without sending any messages",
 						);
 					}
+					if (messages.length > 0) {
+						outboundReservation.commit();
+						outboundReservation = undefined;
+					}
 
 					const memories: Memory[] = [];
 					for (const m of messages) {
@@ -1409,6 +1560,7 @@ export class MessageManager {
 
 					return memories;
 				} catch (error) {
+					outboundReservation?.release();
 					this.runtime.logger.error(
 						{
 							src: "plugin:discord",

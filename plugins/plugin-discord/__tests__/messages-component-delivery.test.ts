@@ -72,7 +72,7 @@ function makeRuntime(
 				_message: Memory,
 				callback: (content: Content) => Promise<unknown>,
 			) => {
-				await callback(replyContent);
+				await callback(structuredClone(replyContent));
 			},
 		},
 	} as unknown as ICompatRuntime;
@@ -90,9 +90,13 @@ function makeSentMessage(id: string, options: CapturedSend) {
 	};
 }
 
-function makeInbound(channel: unknown, authorId: string): DiscordMessage {
+function makeInbound(
+	channel: unknown,
+	authorId: string,
+	messageId = "666000000000000000",
+): DiscordMessage {
 	return {
-		id: "666000000000000000",
+		id: messageId,
 		content: "which one?",
 		createdTimestamp: Date.now(),
 		author: {
@@ -224,7 +228,9 @@ describe("Discord outbound component delivery (#14527)", () => {
 			DISCORD_DRAFT_STREAMING: "true",
 		});
 		const manager = new MessageManager(makeDiscordService(client), runtime);
-		await manager.handleMessage(makeInbound(channel, "555000111222333444"));
+		await manager.handleMessage(
+			makeInbound(channel, "555000111222333444", "666000000000000001"),
+		);
 
 		expect(errors).toEqual([]);
 		expect(channelSends).toHaveLength(1);

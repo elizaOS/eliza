@@ -142,7 +142,12 @@ import {
 	resolveDiscordRuntimeEntityId,
 	resolveElizaOwnerEntityId,
 } from "./identity";
-import { createDiscordMessageMemoryOnce, MessageManager } from "./messages";
+import {
+	beginDiscordOutboundDelivery,
+	createDiscordMessageMemoryOnce,
+	type DiscordOutboundDeliveryReservation,
+	MessageManager,
+} from "./messages";
 import type {
 	BuildMemoryFromMessageOptions,
 	ChannelHistoryOptions,
@@ -1582,6 +1587,7 @@ export class DiscordService extends Service implements IDiscordService {
 		target: TargetInfo,
 		content: Content,
 	): Promise<Memory | undefined> {
+		let outboundReservation: DiscordOutboundDeliveryReservation | undefined;
 		// Resolve the connector account this outbound message must use.
 		// Priority: explicit target.accountId > this service instance's default.
 		// `Content.metadata` is intentionally NOT consulted because it may be
@@ -1701,6 +1707,36 @@ export class DiscordService extends Service implements IDiscordService {
 					const outboundReplyToMessageId =
 						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
+						const outboundDedupe = beginDiscordOutboundDelivery({
+							accountId,
+							channelId: targetChannel.id,
+							replyToMessageId:
+								outboundReplyToMessageId ??
+								(typeof content.inReplyTo === "string"
+									? content.inReplyTo
+									: undefined),
+							text: textContent,
+							attachmentUrls: content.attachments
+								?.map((media) => media.url)
+								.filter((url): url is string => typeof url === "string"),
+						});
+						if (outboundDedupe.kind === "duplicate") {
+							runtime.logger.debug(
+								{
+									src: "plugin:discord",
+									agentId: runtime.agentId,
+									channelId: targetChannel.id,
+									accountId,
+									textPreview: textContent
+										.replace(/\s+/g, " ")
+										.trim()
+										.slice(0, 200),
+								},
+								"Suppressing duplicate Discord connector delivery",
+							);
+							return;
+						}
+						outboundReservation = outboundDedupe.reservation;
 						if (textContent) {
 							const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
 							if (chunks.length > 1) {
@@ -1756,7 +1792,13 @@ export class DiscordService extends Service implements IDiscordService {
 							});
 							sentMessages.push(sent);
 						}
+						if (sentMessages.length > 0) {
+							outboundReservation.commit();
+							outboundReservation = undefined;
+						}
 					} else {
+						outboundReservation?.release();
+						outboundReservation = undefined;
 						runtime.logger.warn("No text content or attachments provided");
 					}
 
@@ -1858,6 +1900,7 @@ export class DiscordService extends Service implements IDiscordService {
 				);
 			}
 		} catch (error) {
+			outboundReservation?.release();
 			runtime.logger.error(
 				`Error sending message to ${JSON.stringify(target)}: ${error instanceof Error ? error.message : String(error)}`,
 			);
