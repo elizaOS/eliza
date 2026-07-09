@@ -244,8 +244,11 @@ async function __hono_POST(
             jobId: enqueueResult.job.id,
             status: enqueueResult.job.status,
             previousStatus: agent.status,
-            restoreBackupId: restoreBackupId ?? null,
-            forceFreshBoot: forceFreshBoot ?? false,
+            // The params the in-flight job will actually apply — a reused job
+            // keeps its own params, and a conflicting request 409s in the
+            // enqueue instead of silently echoing values that were dropped.
+            restoreBackupId: enqueueResult.appliedRestoreBackupId,
+            forceFreshBoot: enqueueResult.appliedForceFreshBoot,
             message: enqueueResult.created
               ? "Wake job created. Poll the job endpoint for status."
               : "Wake is already in progress.",

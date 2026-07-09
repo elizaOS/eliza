@@ -515,9 +515,112 @@ describe("executeWake with the restore-integrity gate", () => {
       reprovisioned: true,
       restoredBackupId: backupId,
     });
-    // Default wake keeps provision's latest-backup auto-restore (no override).
-    expect(provisionCalls).toEqual([undefined]);
+    // The default wake restores through provision's explicit from-backup path:
+    // the override pins the restore to the gate-validated backup AND disables
+    // provision's unrecoverable-snapshot degrade, so a restore failure fails
+    // the provision instead of booting empty and pruning the chain.
+    expect(provisionCalls).toEqual([{ kind: "from-backup", backupId }]);
     expect((await readBackupRow(backupId)).verification_status).toBe("verified");
+  });
+
+  test("no backups at all: wake boots fresh with no restore override and reports no restored backup", async () => {
+    const { sandboxId, orgId } = await seedSandbox();
+    const { svc, provisionCalls } = makeService();
+
+    const result = await svc.executeWake(sandboxId, orgId);
+
+    expect(result).toEqual({ success: true, reprovisioned: true });
+    expect(provisionCalls).toEqual([undefined]);
+  });
+
+  test("gate pass on a fresh stamp cannot boot empty: a failed restore fails the wake, sandbox stays sleeping, chain is NOT pruned", async () => {
+    const { sandboxId, orgId } = await seedSandbox();
+    const olderId = await seedFullBackup(
+      sandboxId,
+      sampleState("wake-restore-fail-older"),
+      new Date(NOW.getTime() - 6 * 3_600_000),
+    );
+    const latestId = await seedFullBackup(sandboxId, sampleState("wake-restore-fail"), NOW);
+    await stampRow(latestId, "verified", new Date(NOW.getTime() - 3_600_000));
+    // Rot AFTER the stamp: the gate passes on the stamp alone (never touches
+    // bytes), so provision's restore is the FIRST real read of this envelope —
+    // exactly the path where an ungated default wake degraded to a fresh boot
+    // and pruned every backup.
+    await corruptBackupCiphertext(latestId);
+
+    const svc = new ElizaSandboxService();
+    const provisionCalls: Array<ProvisionRestoreOverride | undefined> = [];
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups");
+    const provisionSpy = spyOn(svc, "provision").mockImplementation(
+      async (_agentId: string, _orgId: string, restoreOverride?: ProvisionRestoreOverride) => {
+        provisionCalls.push(restoreOverride);
+        // The real from-backup contract (locked by the provision-level suite in
+        // eliza-sandbox.test.ts): the restore failure fails the provision —
+        // retryable by the wake job — and never degrades or prunes.
+        return {
+          success: false as const,
+          error: "Failed to decrypt backup state: AEAD decrypt failed",
+        };
+      },
+    );
+
+    try {
+      const result = await svc.executeWake(sandboxId, orgId);
+
+      // The daemon handler throws on success:false, so the wake JOB fails.
+      expect(result.success).toBe(false);
+      expect(result.reprovisioned).toBe(true);
+      expect(result.error).toContain("AEAD decrypt failed");
+      expect(provisionCalls).toEqual([{ kind: "from-backup", backupId: latestId }]);
+      expect(await readSandboxStatus(sandboxId)).toBe("sleeping");
+      expect(pruneSpy).not.toHaveBeenCalled();
+      // The whole retention set survives for the restoreBackupId retry.
+      await readBackupRow(latestId);
+      await readBackupRow(olderId);
+
+      // A provision that THROWS mid-restore propagates — the wake job fails
+      // loudly rather than fabricating a wake result.
+      provisionSpy.mockImplementation(async () => {
+        throw new Error("Failed to decrypt backup state: AEAD decrypt failed");
+      });
+      await expect(svc.executeWake(sandboxId, orgId)).rejects.toThrow("AEAD decrypt failed");
+      expect(await readSandboxStatus(sandboxId)).toBe("sleeping");
+      expect(pruneSpy).not.toHaveBeenCalled();
+      await readBackupRow(latestId);
+      await readBackupRow(olderId);
+    } finally {
+      pruneSpy.mockRestore();
+      provisionSpy.mockRestore();
+    }
+  });
+
+  test("kill switch: wake reverts to the ungated legacy restore and still reports the latest backup id", async () => {
+    const { sandboxId, orgId } = await seedSandbox();
+    const backupId = await seedFullBackup(sandboxId, sampleState("wake-kill-switch"), NOW);
+    // Corrupt bytes prove the disabled path touches NOTHING: no verification,
+    // and the reported id comes from stored metadata, never an eager decrypt.
+    await corruptBackupCiphertext(backupId);
+    const { svc, provisionCalls } = makeService();
+
+    const prevEnv = process.env.WAKE_RESTORE_INTEGRITY_ENABLED;
+    process.env.WAKE_RESTORE_INTEGRITY_ENABLED = "0";
+    try {
+      const result = await svc.executeWake(sandboxId, orgId);
+
+      // Pre-gate report shape: the legacy wake always named the latest backup.
+      expect(result).toEqual({
+        success: true,
+        reprovisioned: true,
+        restoredBackupId: backupId,
+      });
+      // No override: provision keeps its own latest-backup auto-restore with
+      // the designed degrade — the kill switch restores legacy behavior whole.
+      expect(provisionCalls).toEqual([undefined]);
+      expect((await readBackupRow(backupId)).verification_status).toBeNull();
+    } finally {
+      if (prevEnv === undefined) delete process.env.WAKE_RESTORE_INTEGRITY_ENABLED;
+      else process.env.WAKE_RESTORE_INTEGRITY_ENABLED = prevEnv;
+    }
   });
 
   test("corrupted latest: wake FAILS, provision never runs, sandbox stays sleeping, error names the older valid backup", async () => {

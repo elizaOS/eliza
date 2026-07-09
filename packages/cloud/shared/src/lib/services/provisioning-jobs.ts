@@ -31,6 +31,7 @@ import {
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
 import { jobs } from "../../db/schemas/jobs";
+import { ApiError } from "../api/cloud-worker-errors";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
@@ -618,6 +619,14 @@ export interface EnqueueAgentSleepResult {
 export interface EnqueueAgentWakeResult {
   job: Job;
   created: boolean;
+  /**
+   * The restore params the in-flight job will ACTUALLY apply — the existing
+   * job's own data when an active wake was reused, never the caller's request.
+   * The wake route echoes these so a reused enqueue cannot misreport a
+   * restoreBackupId/forceFreshBoot that was silently not applied (#15603 B6).
+   */
+  appliedRestoreBackupId: string | null;
+  appliedForceFreshBoot: boolean;
 }
 
 export interface EnqueueAgentRestartResult {
@@ -680,6 +689,14 @@ interface LifecycleJobOptions<TData extends object> {
    * provision's `expectedUpdatedAt` race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
+  /**
+   * Called with the hydrated existing job when an active pending/in_progress
+   * job of the same type would be reused instead of inserting a new row.
+   * Throw to refuse the enqueue — reuse silently DROPS the caller's job data,
+   * so operation-changing params (wake's restoreBackupId/forceFreshBoot) must
+   * either match the in-flight job or be rejected loudly (#15603 B6).
+   */
+  validateReuse?: (existing: Job) => void;
   /**
    * Called inside the transaction after the "no existing job" check
    * and before the new job is inserted. Used by delete to flip the
@@ -947,11 +964,13 @@ export class ProvisioningJobService {
       };
 
       if (existing) {
+        const hydrated = await hydrateJob(existing);
+        opts.validateReuse?.(hydrated);
         logger.info(`[provisioning-jobs] Reusing active ${opts.logName} job`, {
           jobId: existing.id,
           ...logFields,
         });
-        return { job: await hydrateJob(existing), created: false };
+        return { job: hydrated, created: false };
       }
 
       await opts.beforeInsert?.(tx, sandbox);
@@ -1236,7 +1255,7 @@ export class ProvisioningJobService {
     restoreBackupId?: string;
     forceFreshBoot?: boolean;
   }): Promise<EnqueueAgentWakeResult> {
-    return this.enqueueLifecycleJob<AgentWakeJobData>({
+    const result = await this.enqueueLifecycleJob<AgentWakeJobData>({
       jobType: JOB_TYPES.AGENT_WAKE,
       jobData: {
         agentId: params.agentId,
@@ -1254,7 +1273,41 @@ export class ProvisioningJobService {
       // Fresh provision (~60-90s) + state restore.
       estimatedDurationMs: 90_000,
       logName: "agent_wake",
+      // Reusing an in-flight wake keeps ITS params and drops the caller's. A
+      // bare retry ("wake me") may ride whatever is already running, but a
+      // request that names a restore point or forces a fresh boot is a
+      // DIFFERENT operation — the integrity gate's own failure message tells
+      // the user to retry with restoreBackupId, and silently reusing the very
+      // job that just failed the gate would discard that choice (#15603 B6).
+      validateReuse: (existing) => {
+        if (params.restoreBackupId === undefined && !params.forceFreshBoot) return;
+        const active = readAgentWakeJobData(existing);
+        const sameParams =
+          (active.restoreBackupId ?? null) === (params.restoreBackupId ?? null) &&
+          (active.forceFreshBoot ?? false) === (params.forceFreshBoot ?? false);
+        if (sameParams) return;
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          `A wake job (${existing.id}) is already ${existing.status} for this agent with ` +
+            "different restore parameters; wait for it to finish (poll " +
+            `/api/v1/jobs/${existing.id}) and retry.`,
+          {
+            conflictingJobId: existing.id,
+            activeRestoreBackupId: active.restoreBackupId ?? null,
+            activeForceFreshBoot: active.forceFreshBoot ?? false,
+            requestedRestoreBackupId: params.restoreBackupId ?? null,
+            requestedForceFreshBoot: params.forceFreshBoot ?? false,
+          },
+        );
+      },
     });
+    const applied = readAgentWakeJobData(result.job);
+    return {
+      ...result,
+      appliedRestoreBackupId: applied.restoreBackupId ?? null,
+      appliedForceFreshBoot: applied.forceFreshBoot ?? false,
+    };
   }
 
   /**

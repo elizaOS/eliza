@@ -5203,21 +5203,38 @@ export class ElizaSandboxService {
       };
     }
 
-    const provisionResult = await this.provision(
-      agentId,
-      orgId,
-      opts?.restoreBackupId ? { kind: "from-backup", backupId: opts.restoreBackupId } : undefined,
-    );
+    // Restore through provision's explicit from-backup path whenever the gate
+    // validated a concrete backup — including the default (latest) wake. The
+    // override disables provision's unrecoverable-snapshot degrade, so a
+    // restore failure FAILS the provision (retryable, chain preserved) instead
+    // of booting empty and pruning every backup. That degrade is designed for
+    // a running agent losing volatile session state; on a wake the backup IS
+    // the agent, and the fresh-stamp gate path never touches the stored bytes,
+    // so provision's restore is the first real read. `gate.backupId` is null
+    // only when there is nothing to restore (no-backup) or the kill switch
+    // reverted the wake to the ungated legacy latest-backup behavior.
+    const restoreOverride: ProvisionRestoreOverride | undefined = gate.backupId
+      ? { kind: "from-backup", backupId: gate.backupId }
+      : undefined;
+    // Kill-switch wakes keep the pre-gate report shape: provision auto-restores
+    // the latest backup, so name its id (metadata read only — no eager decrypt
+    // of a possibly-corrupt envelope on the deliberately-ungated path).
+    const restoredBackupId =
+      gate.verification === "disabled" && !gate.backupId
+        ? (await agentSandboxesRepository.getLatestStoredBackup(rec.id))?.id
+        : (gate.backupId ?? undefined);
+
+    const provisionResult = await this.provision(agentId, orgId, restoreOverride);
     if (!provisionResult.success) {
       return { success: false, reprovisioned: true, error: provisionResult.error };
     }
 
     logger.info("[agent-sandbox] Wake complete", {
       agentId,
-      restoredBackupId: gate.backupId ?? undefined,
+      restoredBackupId,
       verification: gate.verification,
     });
-    return { success: true, reprovisioned: true, restoredBackupId: gate.backupId ?? undefined };
+    return { success: true, reprovisioned: true, restoredBackupId };
   }
 
   /**
