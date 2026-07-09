@@ -67,6 +67,20 @@ public final class ElizaNativeBridge {
         return info.totalMem > 0 ? info.totalMem / 1_048_576L : -1L;
     }
 
+    /**
+     * Whether this device is exempt from the on-device-agent RAM floor (#14390)
+     * as a curated agent target (the Light Phone III). Mirrors
+     * {@link ElizaAgentService#isLocalAgentRamFloorExemptDevice} so the
+     * renderer's boot-time RAM-tier gate ({@code device-ram-tier.ts}) can offer
+     * the hybrid runtime on a device that clears the floor by allowlist rather
+     * than by raw RAM. Synchronous like {@link #getDeviceTotalRamMb} — the gate
+     * runs before the Capacitor plugin executor is trustworthy.
+     */
+    @JavascriptInterface
+    public boolean isLocalAgentRamFloorExempt() {
+        return ElizaAgentService.isLocalAgentRamFloorExemptDevice();
+    }
+
     @JavascriptInterface
     public String getAndroidVirtualization() {
         return AndroidVirtualizationBridge.probeJson(appContext);

@@ -72,6 +72,12 @@ export function marketedRamGbFromTotalRamMb(
  */
 export function classifyDeviceRamTier(
   marketedRamGb: number | null,
+  // Curated devices (the LP3) that clear the on-device-agent floor by allowlist
+  // rather than by raw RAM — mirrors the native
+  // ElizaAgentService.isLocalAgentRamFloorExemptDevice via the ElizaNative
+  // bridge. Lifts ONLY the local-agent floor (hybrid/cloud-inference runs with
+  // no local model mmap); the 12 GB local-MODELS floor still applies normally.
+  ramFloorExempt = false,
 ): DeviceRamTierAssessment {
   if (marketedRamGb === null || !Number.isFinite(marketedRamGb)) {
     return {
@@ -83,7 +89,7 @@ export function classifyDeviceRamTier(
       reason: "device memory could not be determined",
     };
   }
-  if (marketedRamGb < LOCAL_AGENT_MIN_MARKETED_RAM_GB) {
+  if (marketedRamGb < LOCAL_AGENT_MIN_MARKETED_RAM_GB && !ramFloorExempt) {
     return {
       tier: "cloud-only",
       marketedRamGb,

@@ -3851,6 +3851,33 @@ public class ElizaAgentService extends Service {
         return !readSystemProperty("ro.elizaos.product").isEmpty();
     }
 
+    /**
+     * Curated stock-Android devices proven to sustain the on-device agent
+     * below the generic {@link DeviceRamTierPolicy} marketed-RAM floor.
+     *
+     * <p>This is deliberately NARROWER than {@link #isBrandedDevice}: it lifts
+     * the RAM floor for {@link #start} only, and does NOT imply the device "is
+     * the agent". A floor-exempt device still honours the user's runtime choice
+     * — a cloud-only pick is respected and the agent does not auto-start (see
+     * {@link #shouldAutoStartForRuntimeMode}, which gates on branding, not this).
+     *
+     * <p>The Light Phone III (manufacturer {@code "Light"}) is a curated,
+     * single-purpose minimalist phone where Eliza is the intended agent. Its
+     * stock LightOS ROM leaves {@code ro.elizaos.product} unset and it ships
+     * ~6 GB RAM. The 8 GB floor exists to stop a 4 GB device wedging boot AND to
+     * keep local MODELS from OOMing; hybrid (cloud-inference) mode mmaps no
+     * local model, and 6 GB is verified sufficient for the agent runtime, so the
+     * LP3 is exempted here rather than forced cloud-only (elizaOS/eliza#14390).
+     *
+     * <p>Package-visible so {@link ElizaNativeBridge} can mirror it to the
+     * renderer's sync RAM gate ({@code device-ram-tier.ts}) — one allowlist,
+     * read on both sides.
+     */
+    static boolean isLocalAgentRamFloorExemptDevice() {
+        String manufacturer = android.os.Build.MANUFACTURER;
+        return manufacturer != null && manufacturer.equalsIgnoreCase("Light");
+    }
+
     private static String readRuntimeMode(Context context) {
         try {
             return context
@@ -3882,11 +3909,15 @@ public class ElizaAgentService extends Service {
      * poll's revive request, the boot receiver — funnels here, so this is the
      * one fail-loud backstop against a disallowed mode wedging boot. The
      * renderer surfaces the rejection as the onboarding/startup error it
-     * already renders; branded devices ARE the agent and are exempt.
+     * already renders; branded devices ARE the agent and are exempt, as are
+     * curated floor-exempt devices (the LP3 — see
+     * {@link #isLocalAgentRamFloorExemptDevice}).
      */
     public static void start(Context context) {
         long totalMemBytes = readDeviceTotalMemBytes(context);
-        if (!isBrandedDevice() && !DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes)) {
+        if (!isBrandedDevice()
+                && !isLocalAgentRamFloorExemptDevice()
+                && !DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes)) {
             throw new IllegalStateException(
                 "This device (~" + DeviceRamTierPolicy.marketedRamGb(totalMemBytes)
                 + " GB RAM) is below the "

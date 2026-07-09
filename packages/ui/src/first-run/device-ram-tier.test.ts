@@ -54,6 +54,24 @@ describe("classifyDeviceRamTier", () => {
     }
   });
 
+  it("lifts the agent floor for a floor-exempt device (LP3) but keeps the local-models floor", () => {
+    // A curated exempt device below 8 GB (the LP3 at ~6 GB) may run the
+    // on-device agent (hybrid/cloud-inference — no local model mmap) but still
+    // may not run local MODELS, which are gated by the unchanged 12 GB floor.
+    for (const gb of [4, 6, 7]) {
+      const a = classifyDeviceRamTier(gb, true);
+      expect(a.tier).toBe("no-local-models");
+      expect(a.allowsLocalAgent).toBe(true);
+      expect(a.allowsLocalModels).toBe(false);
+      expect(a.marketedRamGb).toBe(gb);
+    }
+    // The exemption never downgrades a device that already clears a floor:
+    // a 16 GB exempt device is still fully unrestricted.
+    expect(classifyDeviceRamTier(16, true).tier).toBe("full-local");
+    // And it does not fabricate capability from an unreadable total.
+    expect(classifyDeviceRamTier(null, true).tier).toBe("unknown");
+  });
+
   it("allows the agent but blocks on-device models on 8-11 GB", () => {
     for (const gb of [8, 10, 11]) {
       const a = classifyDeviceRamTier(gb);
