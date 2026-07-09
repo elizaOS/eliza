@@ -633,6 +633,44 @@ export class JobsRepository {
   }
 
   /**
+   * Requeues a job after a transient worker-side ambiguity without consuming
+   * its finite retry budget. This is for cases where the job left the target
+   * resource in a recoverable in-between state and a later worker pass should
+   * re-check/adopt that state instead of counting it as a failed attempt.
+   */
+  async retryLaterWithoutIncrementingAttempts(
+    id: string,
+    error: string,
+    delayMs: number,
+  ): Promise<Job | undefined> {
+    const job = await this.findById(id);
+    if (!job) return undefined;
+
+    const scheduledFor = new Date(Date.now() + delayMs);
+    const payload = await prepareJobPayload(
+      { error },
+      {
+        id: job.id,
+        organization_id: job.organization_id,
+        created_at: job.created_at,
+      },
+    );
+
+    const [updated] = await dbWrite
+      .update(jobs)
+      .set({
+        status: "pending",
+        ...payload,
+        updated_at: new Date(),
+        scheduled_for: scheduledFor,
+      })
+      .where(eq(jobs.id, id))
+      .returning();
+
+    return updated ? await hydrateJob(updated) : undefined;
+  }
+
+  /**
    * Deletes a job.
    *
    * @param id - Job ID to delete.

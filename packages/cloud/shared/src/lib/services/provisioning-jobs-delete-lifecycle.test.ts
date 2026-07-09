@@ -33,7 +33,13 @@ function makeJob(type: ProvisioningJobType, extraData: Record<string, unknown> =
     id: "44444444-4444-4444-8444-444444444444",
     type,
     status: "in_progress",
-    data: { agentId: AGENT, organizationId: ORG, userId: USER, ...extraData },
+    data: {
+      agentId: AGENT,
+      organizationId: ORG,
+      userId: USER,
+      agentName: "Test Agent",
+      ...extraData,
+    },
     data_storage: "inline",
     data_key: null,
     agent_id: AGENT,
@@ -74,6 +80,10 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
   const updateStatusSpy = spyOn(jobsRepository, "updateStatus").mockResolvedValue(undefined);
   const updateSpy = spyOn(jobsRepository, "update").mockResolvedValue(undefined as never);
   const incrementSpy = spyOn(jobsRepository, "incrementAttempt").mockResolvedValue(undefined);
+  const retryLaterSpy = spyOn(
+    jobsRepository,
+    "retryLaterWithoutIncrementingAttempts",
+  ).mockResolvedValue(undefined);
   return {
     job,
     claimSpy,
@@ -81,12 +91,14 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
     updateStatusSpy,
     updateSpy,
     incrementSpy,
+    retryLaterSpy,
     restore() {
       claimSpy.mockRestore();
       recoverSpy.mockRestore();
       updateStatusSpy.mockRestore();
       updateSpy.mockRestore();
       incrementSpy.mockRestore();
+      retryLaterSpy.mockRestore();
     },
   };
 }
@@ -132,6 +144,56 @@ describe("ProvisioningJobService — Agent-not-found is a terminal no-op", () =>
       }
     });
   }
+});
+
+describe("ProvisioningJobService — retryable readiness transport does not burn attempts", () => {
+  test("agent_provision retryable false-negative is requeued without terminal failure", async () => {
+    const ctx = withClaimedJob(JOB_TYPES.AGENT_PROVISION);
+    const svcSpy = spyOn(elizaSandboxService, "provision").mockResolvedValue({
+      success: false,
+      retryable: true,
+      error: "readiness probe transport_unresolved",
+      sandboxRecord: {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: USER,
+        status: "provisioning",
+      },
+    } as never);
+
+    try {
+      const res = await provisioningJobService.processPendingJobs(1, {
+        jobTypes: [JOB_TYPES.AGENT_PROVISION],
+      });
+
+      expect(res.claimed).toBe(1);
+      expect(res.succeeded).toBe(0);
+      expect(res.retried).toBe(1);
+      expect(res.failed).toBe(0);
+      expect(ctx.updateSpy).toHaveBeenCalledWith(
+        ctx.job.id,
+        expect.objectContaining({
+          result: expect.objectContaining({
+            cloudAgentId: AGENT,
+            status: "provisioning",
+            error: "readiness probe transport_unresolved",
+          }),
+        }),
+      );
+      expect(ctx.retryLaterSpy).toHaveBeenCalledTimes(1);
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[0]).toBe(ctx.job.id);
+      expect(ctx.retryLaterSpy.mock.calls[0]?.[1]).toBe("readiness probe transport_unresolved");
+      expect(ctx.incrementSpy).not.toHaveBeenCalled();
+      expect(ctx.updateStatusSpy).not.toHaveBeenCalledWith(
+        ctx.job.id,
+        "completed",
+        expect.anything(),
+      );
+    } finally {
+      svcSpy.mockRestore();
+      ctx.restore();
+    }
+  });
 });
 
 describe("ProvisioningJobService — auto snapshot of an idle agent is a terminal SKIP", () => {

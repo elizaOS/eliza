@@ -739,6 +739,7 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
   JOB_TYPES.AGENT_UPGRADE,
   JOB_TYPES.AGENT_DOWNGRADE,
 ]);
+const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
 
 /**
  * Per-job execution timeout for the `withTimeout(executeJob(job), …)` wrap,
@@ -830,6 +831,13 @@ export class UpgradeFailedError extends Error {
     this.name = "UpgradeFailedError";
     this.rolledBack = opts.rolledBack;
     this.toDigest = opts.toDigest;
+  }
+}
+
+class RetryableProvisionTransportError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RetryableProvisionTransportError";
   }
 }
 
@@ -1649,6 +1657,7 @@ export class ProvisioningJobService {
     const result: ProcessingResult = {
       claimed: 0,
       succeeded: 0,
+      retried: 0,
       failed: 0,
       errors: [],
     };
@@ -1731,9 +1740,25 @@ export class ProvisioningJobService {
         );
         result.succeeded++;
       } catch (err) {
-        result.failed++;
         const errorMsg = err instanceof Error ? err.message : String(err);
         result.errors.push({ jobId: job.id, error: errorMsg });
+
+        if (err instanceof RetryableProvisionTransportError) {
+          result.retried++;
+          await jobsRepository.retryLaterWithoutIncrementingAttempts(
+            job.id,
+            errorMsg,
+            PROVISION_TRANSPORT_RETRY_DELAY_MS,
+          );
+          logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
+            jobId: job.id,
+            delayMs: PROVISION_TRANSPORT_RETRY_DELAY_MS,
+            error: errorMsg,
+          });
+          continue;
+        }
+
+        result.failed++;
 
         // When retries are exhausted (permanent failure) the dependent
         // status row must flip too — and it must flip ATOMICALLY with the
@@ -2836,6 +2861,9 @@ export class ProvisioningJobService {
           error: provResult.error,
         }),
       });
+      if (provResult.retryable) {
+        throw new RetryableProvisionTransportError(provResult.error);
+      }
       throw new Error(provResult.error);
     }
 
@@ -3292,6 +3320,7 @@ export interface RecoveryResult {
 export interface ProcessingResult {
   claimed: number;
   succeeded: number;
+  retried: number;
   failed: number;
   errors: Array<{ jobId: string; error: string }>;
 }
