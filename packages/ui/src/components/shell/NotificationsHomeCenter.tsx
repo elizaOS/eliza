@@ -210,7 +210,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 }
 .eliza-notif-pull-reveal {
   transform-origin: top center;
-  will-change: opacity, transform;
 }
 .eliza-notif-row.eliza-notif-pull-reveal {
   animation: none;
