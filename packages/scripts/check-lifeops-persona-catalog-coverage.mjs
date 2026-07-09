@@ -50,9 +50,20 @@ const VALID_SURFACES = new Set(["lifeops-bench", "scenario-runner"]);
 const VALID_STATUSES = new Set(["planned", "authored", "verified"]);
 const JSON_MODE = process.argv.includes("--json");
 const UNVERIFIED_MODE = process.argv.includes("--unverified");
+const REQUIRE_VERIFIED = process.argv.includes("--require-verified");
+const PACK_FILTER = readOption("--pack")?.toUpperCase();
 
 function toPosix(value) {
   return value.replace(/\\/g, "/");
+}
+
+function readOption(name) {
+  const equalsPrefix = `${name}=`;
+  const inline = process.argv.find((arg) => arg.startsWith(equalsPrefix));
+  if (inline) return inline.slice(equalsPrefix.length);
+  const index = process.argv.indexOf(name);
+  if (index === -1) return null;
+  return process.argv[index + 1] ?? null;
 }
 
 function readJson(file) {
@@ -176,8 +187,17 @@ function summarize() {
   const lifeOpsBenchIds = loadLifeOpsBenchIds();
   const errors = [];
   const packs = [];
+  const expectedCatalogs = PACK_FILTER
+    ? EXPECTED_CATALOGS.filter(([, pack]) => pack === PACK_FILTER)
+    : EXPECTED_CATALOGS;
 
-  for (const [fileName, expectedPack, expectedTarget] of EXPECTED_CATALOGS) {
+  if (PACK_FILTER && expectedCatalogs.length === 0) {
+    errors.push(
+      `--pack ${PACK_FILTER} did not match a known LifeOps persona pack`,
+    );
+  }
+
+  for (const [fileName, expectedPack, expectedTarget] of expectedCatalogs) {
     const file = path.join(CATALOG_DIR, fileName);
     const catalog = readJson(file);
     errors.push(
@@ -246,6 +266,20 @@ function summarize() {
       unverifiedBySurface,
       unverifiedRows: unverified,
     });
+  }
+  if (REQUIRE_VERIFIED) {
+    for (const pack of packs) {
+      if (pack.authored < pack.target) {
+        errors.push(
+          `${pack.pack}: ${pack.authored}/${pack.target} authored; --require-verified requires the pack target to be fully authored`,
+        );
+      }
+      if (pack.verified < pack.authored) {
+        errors.push(
+          `${pack.pack}: ${pack.verified}/${pack.authored} verified; --require-verified requires every authored row to be verified`,
+        );
+      }
+    }
   }
 
   const target = packs.reduce((sum, pack) => sum + pack.target, 0);
