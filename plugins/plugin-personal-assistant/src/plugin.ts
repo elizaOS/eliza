@@ -189,6 +189,7 @@ import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
+import { delegationContractsProvider } from "./providers/delegation-contracts.js";
 // LifeOps core providers
 import { firstRunProvider } from "./providers/first-run.js";
 import { ftuGoalProvider } from "./providers/ftu-goal.js";
@@ -690,6 +691,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     roomPolicyProvider,
     lifeOpsProvider,
     pendingApprovalsProvider,
+    delegationContractsProvider,
     pendingPromptsProvider,
     workThreadsProvider,
     recentTaskStatesProvider,
@@ -1370,6 +1372,7 @@ export {
   type WorkThreadStatus,
   type WorkThreadStore,
 } from "./lifeops/work-threads/index.js";
+export { delegationContractsProvider } from "./providers/delegation-contracts.js";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";
 export type { FtuGoalAffordance } from "./providers/ftu-goal.js";

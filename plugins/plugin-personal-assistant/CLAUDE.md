@@ -57,6 +57,7 @@ The plugin is opt-in; add `@elizaos/plugin-personal-assistant` to the agent's pl
 | `ftuGoal` | `src/providers/ftu-goal.ts` | Post-first-run goal-discovery affordance; silent once the owner's primary goal is known |
 | `roomPolicy` | `src/providers/room-policy.ts` | Per-room handoff/policy state |
 | `lifeops` | `src/providers/lifeops.ts` | Aggregated owner context for assistant planning |
+| `delegationContracts` | `src/providers/delegation-contracts.ts` | Active delegation contracts for thread ownership, tripwires, and sender-class SLAs |
 | `pendingPrompts` | `src/providers/pending-prompts.ts` | Pending questions waiting for owner input |
 | `workThreads` | `src/providers/work-threads.ts` | Active work-thread state |
 | `recentTaskStates` | `src/providers/recent-task-states.ts` | Recent scheduled-task execution results |

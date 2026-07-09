@@ -14,6 +14,7 @@ import {
   renderDelegationContractsProviderText,
 } from "../src/lifeops/delegation-contracts/index.js";
 import { LifeOpsRepository } from "../src/lifeops/index.js";
+import { delegationContractsProvider } from "../src/providers/delegation-contracts.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -264,5 +265,37 @@ describe("delegation contract repository", () => {
       "delegation:vendor-thread",
     );
     expect(reloaded?.state?.escalatedAt).toBe("2026-07-06T16:42:00.000Z");
+  });
+
+  it("surfaces active contracts to the planner provider", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repo = new LifeOpsRepository(runtime);
+    await repo.upsertDelegationContract(
+      createLifeOpsDelegationContractRecord({
+        ...vendorContract(),
+        agentId: runtime.agentId,
+        metadata: { sourceThread: "gmail:thread-vendor-1" },
+      }),
+    );
+
+    const result = await delegationContractsProvider.get(
+      runtime,
+      {
+        entityId: "owner-entity-1",
+        roomId: "room-1",
+        content: { text: "new vendor reply" },
+      } as never,
+      {} as never,
+    );
+
+    expect(result.text).toContain("Active delegation contracts:");
+    expect(result.text).toContain("Handle the vendor renewal thread");
+    expect(result.values).toMatchObject({
+      activeDelegationContractCount: 1,
+      activeDelegationContractIds: ["delegation:vendor-thread"],
+    });
+    expect(result.data?.delegationContracts).toHaveLength(1);
   });
 });

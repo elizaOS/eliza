@@ -76,6 +76,7 @@ export type {
 export {
   BrowserBridgePluginService,
   browserBridgeProvider,
+  delegationContractsProvider,
   ensureLifeOpsSchedulerTask,
   executeLifeOpsSchedulerTask,
   handleLifeOpsRoutes,
