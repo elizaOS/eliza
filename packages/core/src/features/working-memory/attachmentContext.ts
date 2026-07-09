@@ -9,18 +9,28 @@
  * Consumed by readAttachmentAction.ts; the `_data`/`_mimeType`/`_createdAt` fields
  * are inline-transport and ordering extensions carried alongside `Media`.
  */
+import { buildAccessContext } from "../../access-context.ts";
+import {
+	parseArtifactShareGrants,
+	resolveArtifactDisclosure,
+	selectDisclosedArtifactUrl,
+} from "../../access-control/artifact-disclosure.ts";
 import { describeImageCached } from "../../media/index.ts";
 import {
+	type AccessContext,
 	ContentType,
 	type IAgentRuntime,
 	type Media,
 	type Memory,
+	type MemoryScope,
+	type UUID,
 } from "../../types/index.ts";
 
 type AttachmentWithInlineData = Media & {
 	_data?: string;
 	_mimeType?: string;
 	_createdAt?: number;
+	redacted?: true;
 };
 
 type ReadAttachmentResult = {
@@ -56,6 +66,95 @@ function attachmentStoredContent(attachment: Media): string {
 		)
 		.join("\n\n")
 		.trim();
+}
+
+const MEMORY_SCOPES: ReadonlySet<string> = new Set<MemoryScope>([
+	"global",
+	"shared",
+	"room",
+	"private",
+	"owner-private",
+	"user-private",
+	"agent-private",
+]);
+
+function attachmentMessageScope(memory: Memory): MemoryScope {
+	const rawScope = (memory.metadata as Record<string, unknown> | undefined)
+		?.scope;
+	if (rawScope === undefined) return "room";
+	return typeof rawScope === "string" && MEMORY_SCOPES.has(rawScope)
+		? (rawScope as MemoryScope)
+		: "owner-private";
+}
+
+async function buildAttachmentAccessContext(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<AccessContext | undefined> {
+	const agentId = runtime.agentId as UUID | undefined;
+	if (!agentId || !message.entityId || message.entityId === agentId) {
+		return undefined;
+	}
+	try {
+		return await buildAccessContext(runtime, message);
+	} catch (error) {
+		// error-policy:J3 access-context resolution is an auth boundary input;
+		// failure degrades to requester-only USER disclosure, never unrestricted.
+		runtime.logger?.warn(
+			{
+				src: "attachment-context",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Access-context resolution failed; falling back to requester-only attachment disclosure",
+		);
+		return { requesterEntityId: message.entityId as UUID };
+	}
+}
+
+function selectAttachmentForRequester(
+	memory: Memory,
+	attachment: AttachmentWithInlineData,
+	accessContext: AccessContext | undefined,
+	agentId: UUID | undefined,
+): AttachmentWithInlineData | null {
+	if (!accessContext || !agentId) return attachment;
+	const metadata = memory.metadata as Record<string, unknown> | undefined;
+	const scopedTo = metadata?.scopedToEntityId;
+	const addedBy = metadata?.addedBy;
+	const disclosure = resolveArtifactDisclosure(
+		{
+			scope: attachmentMessageScope(memory),
+			scopedEntityId:
+				typeof scopedTo === "string"
+					? (scopedTo as UUID)
+					: typeof addedBy === "string"
+						? (addedBy as UUID)
+						: memory.entityId,
+			grants: parseArtifactShareGrants(metadata),
+		},
+		accessContext,
+		agentId,
+	);
+	const selected = selectDisclosedArtifactUrl(disclosure, {
+		fullUrl: attachment.url,
+		redactedUrl: attachment.redactedUrl,
+	});
+	if (!selected) return null;
+	if (!selected.redacted) return attachment;
+	const {
+		description: _description,
+		text: _text,
+		thumbnailUrl: _thumbnailUrl,
+		_data,
+		_mimeType,
+		notProcessed: _notProcessed,
+		...rest
+	} = attachment;
+	return {
+		...rest,
+		url: selected.url,
+		redacted: true,
+	};
 }
 
 async function describeImageAttachment(
@@ -98,10 +197,16 @@ async function readableAttachmentContent(
 export async function listConversationAttachments(
 	runtime: IAgentRuntime,
 	message: Memory,
+	options: { maxLookback?: number } = {},
 ): Promise<AttachmentWithInlineData[]> {
 	const currentMessageAttachments = (message.content.attachments ??
 		[]) as AttachmentWithInlineData[];
-	const conversationLength = runtime.getConversationLength();
+	const conversationLength =
+		typeof options.maxLookback === "number"
+			? Math.min(runtime.getConversationLength(), options.maxLookback)
+			: runtime.getConversationLength();
+	const accessContext = await buildAttachmentAccessContext(runtime, message);
+	const agentId = runtime.agentId as UUID | undefined;
 	const recentMessages = await runtime.getMemories({
 		roomId: message.roomId,
 		count: conversationLength,
@@ -114,10 +219,18 @@ export async function listConversationAttachments(
 		!Array.isArray(recentMessages) ||
 		recentMessages.length === 0
 	) {
-		return currentMessageAttachments.map((attachment) => ({
-			...attachment,
-			_createdAt: message.createdAt ?? Date.now(),
-		}));
+		return currentMessageAttachments
+			.map((attachment) =>
+				selectAttachmentForRequester(
+					message,
+					{ ...attachment, _createdAt: message.createdAt ?? Date.now() },
+					accessContext,
+					agentId,
+				),
+			)
+			.filter((attachment): attachment is AttachmentWithInlineData =>
+				Boolean(attachment),
+			);
 	}
 
 	const attachmentsById = new Map<string, AttachmentWithInlineData>();
@@ -137,7 +250,13 @@ export async function listConversationAttachments(
 	};
 
 	for (const attachment of currentMessageAttachments) {
-		rememberAttachment(attachment, message.createdAt ?? Date.now());
+		const selected = selectAttachmentForRequester(
+			message,
+			attachment,
+			accessContext,
+			agentId,
+		);
+		if (selected) rememberAttachment(selected, message.createdAt ?? Date.now());
 	}
 
 	for (const recentMessage of recentMessages) {
@@ -145,7 +264,13 @@ export async function listConversationAttachments(
 			[]) as AttachmentWithInlineData[];
 		const createdAt = recentMessage.createdAt ?? Date.now();
 		for (const attachment of messageAttachments) {
-			rememberAttachment(attachment, createdAt);
+			const selected = selectAttachmentForRequester(
+				recentMessage,
+				attachment,
+				accessContext,
+				agentId,
+			);
+			if (selected) rememberAttachment(selected, createdAt);
 		}
 	}
 
@@ -228,12 +353,18 @@ export async function readAttachmentRecords(
 		[]) as AttachmentWithInlineData[];
 	if (currentAttachments.length > 0) {
 		const createdAt = message.createdAt ?? Date.now();
+		const attachments = await listConversationAttachments(runtime, message);
+		const currentIds = new Set(
+			currentAttachments.map((attachment) => attachment.id),
+		);
 		return Promise.all(
-			currentAttachments.map(async (attachment) => ({
-				attachment: { ...attachment, _createdAt: createdAt },
-				content: await readableAttachmentContent(runtime, attachment),
-				autoSelected: true,
-			})),
+			attachments
+				.filter((attachment) => currentIds.has(attachment.id))
+				.map(async (attachment) => ({
+					attachment: { ...attachment, _createdAt: createdAt },
+					content: await readableAttachmentContent(runtime, attachment),
+					autoSelected: true,
+				})),
 		);
 	}
 

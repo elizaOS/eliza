@@ -16,6 +16,8 @@ import {
 import { attachmentsProvider } from "./attachments.ts";
 
 const roomId = "00000000-0000-0000-0000-000000000001" as UUID;
+const agentId = "00000000-0000-0000-0000-0000000000a9" as UUID;
+const userId = "00000000-0000-0000-0000-000000000002" as UUID;
 
 function attachmentMemory(createdAt = 1): Memory {
 	return {
@@ -44,25 +46,63 @@ function makeRuntime(
 	options: { hasImageDescriptionModel?: boolean } = {},
 ): IAgentRuntime {
 	return {
+		agentId,
 		getConversationLength: () => 20,
 		getMemories: async () => recentMessages,
+		getRoom: async () => null,
 		getModel: (modelType: string) =>
 			options.hasImageDescriptionModel &&
 			modelType === ModelType.IMAGE_DESCRIPTION
 				? async () => ({ title: "", description: "" })
 				: undefined,
+		logger: { warn: () => undefined },
 	} as unknown as IAgentRuntime;
 }
 
 function makeMessage(content: Partial<Memory["content"]>): Memory {
 	return {
 		id: "00000000-0000-0000-0000-000000000012" as UUID,
-		entityId: "00000000-0000-0000-0000-000000000003" as UUID,
+		entityId: userId,
 		roomId,
 		createdAt: 2,
 		content: {
 			text: "can you try this?",
 			...content,
+		},
+	} as Memory;
+}
+
+function ownerPrivateAttachmentMemory(granted = false): Memory {
+	return {
+		...attachmentMemory(1),
+		metadata: {
+			scope: "owner-private",
+			share: granted
+				? {
+						grants: [
+							{
+								entityId: userId,
+								mode: "redacted",
+							},
+						],
+					}
+				: undefined,
+		},
+		content: {
+			text: "private image",
+			attachments: [
+				{
+					id: "private-image",
+					url: "https://example.test/private-original.jpg",
+					redactedUrl: "https://example.test/private-redacted.jpg",
+					thumbnailUrl: "https://example.test/private-thumb.jpg",
+					title: "Private Image",
+					source: "Image",
+					contentType: "image",
+					text: "original visible text",
+					description: "original description",
+				},
+			],
 		},
 	} as Memory;
 }
@@ -211,6 +251,29 @@ describe("attachmentsProvider", () => {
 			}),
 		);
 
+		expect(result.text).toContain("Stored Content: none");
+	});
+
+	it("omits owner-private recent attachments from model prompt context without a grant", async () => {
+		const result = await attachmentsProvider.get(
+			makeRuntime([ownerPrivateAttachmentMemory(false)]),
+			makeMessage({ text: "can you inspect the image attachment?" }),
+		);
+
+		expect(result.text).toBe("");
+		expect(result.data?.visibleAttachments).toEqual([]);
+	});
+
+	it("renders only the redacted URL for a redacted attachment grant", async () => {
+		const result = await attachmentsProvider.get(
+			makeRuntime([ownerPrivateAttachmentMemory(true)]),
+			makeMessage({ text: "can you inspect the image attachment?" }),
+		);
+
+		expect(result.text).toContain("private-image");
+		expect(result.text).toContain("https://example.test/private-redacted.jpg");
+		expect(result.text).not.toContain("private-original");
+		expect(result.text).not.toContain("private-thumb");
 		expect(result.text).toContain("Stored Content: none");
 	});
 });

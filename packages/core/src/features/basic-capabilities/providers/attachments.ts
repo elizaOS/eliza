@@ -25,6 +25,7 @@ import {
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../../../types/message-source.ts";
 import { addHeader } from "../../../utils.ts";
+import { listConversationAttachments } from "../../working-memory/attachmentContext.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ATTACHMENTS");
@@ -34,42 +35,6 @@ const ATTACHMENT_REFERENCE_RE =
 	/\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b|https?:\/\/\S+/iu;
 const ATTACHMENT_INSPECTION_RE =
 	/\b(?:what|see|view|look(?:ing)?(?:\s+at)?|read|open|inspect|analy[sz]e|describe|summari[sz]e|transcribe|ocr|shown?|showing|contains?|content|find|found|anything|result|results|thoughts?|think|opinion|take)\b/iu;
-
-type AttachmentWithCreatedAt = Media & {
-	_createdAt?: number;
-};
-
-function mergeConversationAttachments(
-	message: Memory,
-	recentMessages: Memory[] | null | undefined,
-): AttachmentWithCreatedAt[] {
-	const attachmentsById = new Map<string, AttachmentWithCreatedAt>();
-
-	const rememberAttachment = (attachment: Media, createdAt: number): void => {
-		const existing = attachmentsById.get(attachment.id);
-		if (existing && (existing._createdAt ?? 0) >= createdAt) {
-			return;
-		}
-		attachmentsById.set(attachment.id, {
-			...attachment,
-			_createdAt: createdAt,
-		});
-	};
-
-	for (const attachment of message.content.attachments ?? []) {
-		rememberAttachment(attachment, message.createdAt ?? Date.now());
-	}
-
-	for (const recentMessage of recentMessages ?? []) {
-		for (const attachment of recentMessage.content.attachments ?? []) {
-			rememberAttachment(attachment, recentMessage.createdAt ?? Date.now());
-		}
-	}
-
-	return Array.from(attachmentsById.values()).sort(
-		(left, right) => (right._createdAt ?? 0) - (left._createdAt ?? 0),
-	);
-}
 
 /**
  * Render an attachment URL for the prompt without dumping raw bytes into
@@ -105,7 +70,7 @@ function messageTextForAttachmentRelevance(message: Memory): string {
 
 function shouldRenderAttachmentPromptText(
 	message: Memory,
-	allAttachments: readonly AttachmentWithCreatedAt[],
+	allAttachments: readonly Media[],
 ): boolean {
 	if (allAttachments.length === 0) return false;
 	if ((message.content.attachments ?? []).length > 0) return true;
@@ -131,22 +96,12 @@ export const attachmentsProvider: Provider = {
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
-			const { roomId } = message;
-			const conversationLength = Math.min(
-				runtime.getConversationLength(),
-				MAX_ATTACHMENT_MEMORY_LOOKBACK,
-			);
-
-			const recentMessagesData = await runtime.getMemories({
-				roomId,
-				limit: conversationLength,
-				unique: false,
-				tableName: "messages",
-			});
-
-			const allAttachments = mergeConversationAttachments(
+			const allAttachments = await listConversationAttachments(
+				runtime,
 				message,
-				Array.isArray(recentMessagesData) ? recentMessagesData : [],
+				{
+					maxLookback: MAX_ATTACHMENT_MEMORY_LOOKBACK,
+				},
 			);
 			const visibleAttachments = allAttachments.slice(
 				0,
