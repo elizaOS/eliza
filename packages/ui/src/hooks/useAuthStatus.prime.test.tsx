@@ -7,7 +7,7 @@
 // test; only global fetch (the network boundary) is stubbed. The shared
 // module snapshot is reset per test via the __resetAuthStatusForTests seam.
 
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetAuthStatusForTests,
@@ -40,7 +40,17 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // React 19 schedules render work as a macrotask (setImmediate /
+    // MessageChannel): any work still queued when vitest tears down this
+    // file's jsdom environment makes react-dom's performWorkUntilDeadline
+    // dereference the deleted `window` and fail the lane as an unhandled
+    // exception. Unmount every rendered hook and drain the scheduler while
+    // the window is still live, before the network stub is removed.
+    cleanup();
+    await act(async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+    });
     globalThis.fetch = realFetch;
     vi.restoreAllMocks();
     __resetAuthStatusForTests();

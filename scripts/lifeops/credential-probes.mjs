@@ -390,34 +390,85 @@ async function probeTwilio(e) {
     : fail("twilio", `account HTTP ${r.status}: ${errorSnippet(r)}`);
 }
 
-async function probeSignal(e) {
+export async function probeSignal(
+  e,
+  { fetchJsonFn = fetchJson, spawnSyncFn = spawnSync } = {},
+) {
   const httpUrl = e("SIGNAL_HTTP_URL");
   if (httpUrl) {
-    const r = await fetchJson(`${httpUrl.replace(/\/+$/, "")}/v1/about`);
-    return r.httpOk
-      ? pass(
-          "signal",
-          `signal-cli-rest-api reachable (versions: ${JSON.stringify(r.body?.versions ?? r.body?.version ?? "?")})`,
-        )
-      : fail("signal", `GET /v1/about HTTP ${r.status}: ${errorSnippet(r)}`);
+    const base = httpUrl.replace(/\/+$/, "");
+    const about = await fetchJsonFn(`${base}/v1/about`);
+    if (!about.httpOk) {
+      return fail(
+        "signal",
+        `GET /v1/about HTTP ${about.status}: ${errorSnippet(about)}`,
+      );
+    }
+    const accounts = await fetchJsonFn(`${base}/v1/accounts`);
+    if (!accounts.httpOk) {
+      return fail(
+        "signal",
+        `GET /v1/accounts HTTP ${accounts.status}: ${errorSnippet(accounts)}`,
+      );
+    }
+    if (!Array.isArray(accounts.body)) {
+      return fail("signal", "GET /v1/accounts returned a non-array body");
+    }
+    if (accounts.body.length === 0) {
+      return fail("signal", "no linked Signal account");
+    }
+    const selected = e("SIGNAL_ACCOUNT_NUMBER");
+    if (selected && !accounts.body.includes(selected)) {
+      return fail(
+        "signal",
+        `configured account ${maskTail(selected)} is not linked (${accounts.body.length} other account(s))`,
+      );
+    }
+    return pass(
+      "signal",
+      `signal-cli-rest-api reachable; ${accounts.body.length} linked account(s)${selected ? `; configured ${maskTail(selected)} present` : ""}`,
+    );
   }
   const cliPath = e("SIGNAL_CLI_PATH");
   if (!cliPath && !e("SIGNAL_ACCOUNT_NUMBER"))
     return missing("signal", "SIGNAL_HTTP_URL or SIGNAL_CLI_PATH");
   const command = cliPath ?? "signal-cli";
-  const result = spawnSync(command, ["--version"], {
+  const version = spawnSyncFn(command, ["--version"], {
     encoding: "utf8",
     timeout: PROBE_TIMEOUT_MS,
   });
-  return result.status === 0
-    ? pass(
-        "signal",
-        `${command} --version ok: ${(result.stdout ?? "").split("\n")[0].trim()}`,
-      )
-    : fail(
-        "signal",
-        `${command} --version failed (status=${result.status ?? "spawn-error"}${result.error ? `, ${result.error.code ?? result.error.message}` : ""})`,
-      );
+  if (version.status !== 0) {
+    return fail(
+      "signal",
+      `${command} --version failed (status=${version.status ?? "spawn-error"}${version.error ? `, ${version.error.code ?? version.error.message}` : ""})`,
+    );
+  }
+  const listed = spawnSyncFn(command, ["listAccounts"], {
+    encoding: "utf8",
+    timeout: PROBE_TIMEOUT_MS,
+  });
+  if (listed.status !== 0) {
+    return fail(
+      "signal",
+      `${command} listAccounts failed (status=${listed.status ?? "spawn-error"}${listed.error ? `, ${listed.error.code ?? listed.error.message}` : ""})`,
+    );
+  }
+  const accounts = String(listed.stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^\+\d{6,}$|^u:[A-Za-z0-9_.-]+$/.test(line));
+  if (accounts.length === 0) return fail("signal", "no linked Signal account");
+  const selected = e("SIGNAL_ACCOUNT_NUMBER");
+  if (selected && !accounts.includes(selected)) {
+    return fail(
+      "signal",
+      `configured account ${maskTail(selected)} is not linked (${accounts.length} other account(s))`,
+    );
+  }
+  return pass(
+    "signal",
+    `${command} ${(version.stdout ?? "").split("\n")[0].trim()}; ${accounts.length} linked account(s)${selected ? `; configured ${maskTail(selected)} present` : ""}`,
+  );
 }
 
 // --- model providers (per-key path probes + family aggregate) ----------------

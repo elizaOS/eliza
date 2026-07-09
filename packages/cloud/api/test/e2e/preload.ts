@@ -23,6 +23,7 @@ import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
+import { ensureFixtureSandbox } from "./fixture-sandbox";
 
 for (const envPath of [
   resolve("../../.env"),
@@ -135,19 +136,13 @@ async function ensureTestUser({
   const sandboxes = await agentSandboxesRepository.listByOrganization(
     organization.id,
   );
-  if (sandboxes.length === 0) {
-    await agentSandboxesRepository.create({
-      organization_id: organization.id,
-      user_id: user.id,
-      sandbox_id: `${slug}-sandbox`,
-      status: "running",
-      agent_name: `${slug} test agent`,
-      bridge_url: "http://127.0.0.1:65535",
-      health_url: "http://127.0.0.1:65535/health",
-      database_status: "ready",
-      environment_vars: {},
-    });
-  }
+  await ensureFixtureSandbox({
+    slug,
+    organizationId: organization.id,
+    userId: user.id,
+    sandboxes,
+    repository: agentSandboxesRepository,
+  });
 
   await apiKeysService.deactivateUserKeysByName(user.id, "playwright-e2e");
   const { plainKey } = await apiKeysService.create({
