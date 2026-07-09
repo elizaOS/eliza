@@ -108,6 +108,8 @@ export type WalletRelationship = {
 export type WalletRelationshipSummary = {
   relationshipCount: number;
   relationships: WalletRelationship[];
+  evidenceConfidence: "low" | "medium" | "high";
+  confidence: "low" | "medium" | "high";
   notes: string[];
 };
 
