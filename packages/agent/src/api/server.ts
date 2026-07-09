@@ -62,6 +62,7 @@ import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
+import { handlePendantSessionRoutes } from "./pendant-session-routes.ts";
 import { handlePluginDirectoryRoutes } from "./plugin-directory-routes.ts";
 
 // `@elizaos/plugin-browser` and `@elizaos/plugin-x402` load lazily: X402 only
@@ -3348,6 +3349,22 @@ async function handleRequest(
       broadcastWs: state.broadcastWs ?? undefined,
       broadcastWsToClientId: state.broadcastWsToClientId ?? undefined,
       runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ── Pendant session sync routes (/api/pendant/sessions/*) ───────────────
+  if (
+    await handlePendantSessionRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      state,
+      readJsonBody,
+      json,
     })
   ) {
     return;

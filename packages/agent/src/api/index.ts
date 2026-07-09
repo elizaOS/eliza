@@ -57,6 +57,7 @@ export * from "./memory-bounds.ts";
 export * from "./memory-routes.ts";
 export * from "./models-routes.ts";
 export * from "./parse-action-block.ts";
+export * from "./pendant-session-routes.ts";
 export * from "./permission-request-prompt.ts";
 export * from "./permissions-routes.ts";
 export * from "./plugin-validation.ts";

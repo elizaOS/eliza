@@ -29,6 +29,7 @@ export * from "./inbox-routes.js";
 export * from "./memory-routes.js";
 export * from "./misc-routes.js";
 export * from "./page-scope.js";
+export * from "./pendant-session-sync.js";
 export * from "./permissions.js";
 export * from "./permissions-routes.js";
 export * from "./personal-assistant.js";
