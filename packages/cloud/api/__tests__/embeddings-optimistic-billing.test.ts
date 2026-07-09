@@ -34,6 +34,7 @@ import * as pricingActual from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
+import * as billingDeferredActual from "@/lib/services/inference-billing-deferred";
 import * as fastPathActual from "@/lib/services/inference-billing-fast-path";
 import * as ledgerActual from "@/lib/services/inference-billing-ledger";
 import * as usageActual from "@/lib/services/usage";
@@ -58,6 +59,7 @@ let gateBalanceUsd = 100;
 let thresholdUsd = 5;
 let backstopPersists = true;
 let billingLedger = "kv"; // anything but "db" → the KV backstop branch
+let deferredEnabled = false;
 
 // --- spies on the two terminal billing paths --------------------------------
 const writePendingInferenceCharge = mock(
@@ -70,7 +72,9 @@ const reserveCredits = mock(async () => ({
   reservedAmount: 0,
   reconcile: async () => undefined,
 }));
-const createOptimisticDebitSettler = mock(() => async () => undefined);
+const optimisticInnerSettler = mock(async (_actualCost: number) => null);
+const ledgerInnerSettler = mock(async (_actualCost: number) => null);
+const createOptimisticDebitSettler = mock(() => optimisticInnerSettler);
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver.
 mock.module("@/lib/services/inference-auth-context", () => ({
@@ -125,12 +129,19 @@ mock.module("@/lib/services/inference-billing-fast-path", () => ({
 const admitInferenceChargeViaLedger = mock(
   async () => ({ admitted: true }) as never,
 );
-const createLedgerDebitSettler = mock(() => async () => undefined);
+const createLedgerDebitSettler = mock(() => ledgerInnerSettler);
 mock.module("@/lib/services/inference-billing-ledger", () => ({
   ...ledgerActual,
   resolveInferenceBillingLedger: () => billingLedger,
   admitInferenceChargeViaLedger,
   createLedgerDebitSettler,
+}));
+
+// Tier-3 deferred admission: keep the settler/refusal behavior real and only
+// control the flag so the route exercises the same ordering as production.
+mock.module("@/lib/services/inference-billing-deferred", () => ({
+  ...billingDeferredActual,
+  isDeferredAdmissionEnabled: () => deferredEnabled,
 }));
 
 // Synchronous reserve path — spied so we can prove it is the fallback. billUsage
@@ -193,6 +204,10 @@ afterAll(() => {
     () => fastPathActual,
   );
   mock.module("@/lib/services/inference-billing-ledger", () => ledgerActual);
+  mock.module(
+    "@/lib/services/inference-billing-deferred",
+    () => billingDeferredActual,
+  );
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
   mock.module("@/lib/services/usage", () => usageActual);
   mock.module("ai", () => aiActual);
@@ -237,11 +252,15 @@ describe("POST /api/v1/embeddings optimistic-billing route decision (#9899/#1010
     thresholdUsd = 5;
     backstopPersists = true;
     billingLedger = "kv";
+    deferredEnabled = false;
+    billingDeferredActual.__clearDeferredAdmissionState();
     writePendingInferenceCharge.mockClear();
     reserveCredits.mockClear();
     createOptimisticDebitSettler.mockClear();
+    optimisticInnerSettler.mockClear();
     admitInferenceChargeViaLedger.mockClear();
     createLedgerDebitSettler.mockClear();
+    ledgerInnerSettler.mockClear();
   });
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
@@ -423,5 +442,66 @@ describe("POST /api/v1/embeddings optimistic-billing route decision (#9899/#1010
       [{ affiliateCode?: string | null }]
     >;
     expect(reserveCalls[0]?.[0]?.affiliateCode).toBe("PARTNER1000");
+  });
+
+  describe("Tier-3 deferred admission (#9899)", () => {
+    test("KV backend starts admission under waitUntil and settles through the exactly-once settler", async () => {
+      deferredEnabled = true;
+      const { ctx, scheduled } = makeExecutionCtx();
+
+      const res = await post(
+        { model: "text-embedding-3-small", input: "hi" },
+        ctx,
+      );
+
+      expect(res.status).toBe(200);
+      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+      expect(scheduled).toHaveLength(2);
+      await expect(scheduled[0]).resolves.toEqual({ admitted: true });
+      await Promise.all(scheduled);
+      expect(reserveCredits).not.toHaveBeenCalled();
+      expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
+      expect(optimisticInnerSettler).toHaveBeenCalledTimes(1);
+      expect(optimisticInnerSettler).toHaveBeenCalledWith(BACKSTOP_COST);
+    });
+
+    test("DB ledger backend defers admission once and skips the synchronous ledger branch", async () => {
+      deferredEnabled = true;
+      billingLedger = "db";
+      const { ctx, scheduled } = makeExecutionCtx();
+
+      const res = await post(
+        { model: "text-embedding-3-small", input: "hi" },
+        ctx,
+      );
+
+      expect(res.status).toBe(200);
+      expect(admitInferenceChargeViaLedger).toHaveBeenCalledTimes(1);
+      expect(scheduled).toHaveLength(2);
+      await expect(scheduled[0]).resolves.toEqual({ admitted: true });
+      await Promise.all(scheduled);
+      expect(reserveCredits).not.toHaveBeenCalled();
+      expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+      expect(createLedgerDebitSettler).toHaveBeenCalledTimes(1);
+      expect(ledgerInnerSettler).toHaveBeenCalledTimes(1);
+      expect(ledgerInnerSettler).toHaveBeenCalledWith(BACKSTOP_COST);
+    });
+
+    test("executionCtx without waitUntil leaves the existing Tier-2 admission path unchanged", async () => {
+      deferredEnabled = true;
+
+      const res = await post(
+        {
+          model: "text-embedding-3-small",
+          input: "hi",
+        },
+        {} as ExecutionContext,
+      );
+
+      expect(res.status).toBe(200);
+      expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+      expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
+      expect(reserveCredits).not.toHaveBeenCalled();
+    });
   });
 });

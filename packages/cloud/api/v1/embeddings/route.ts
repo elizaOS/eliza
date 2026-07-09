@@ -37,6 +37,12 @@ import {
 } from "@/lib/services/ai-billing";
 import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
 import {
+  createDeferredAdmissionSettler,
+  type DeferredAdmissionOutcome,
+  isDeferredAdmissionEnabled,
+  isOrgAdmissionRefused,
+} from "@/lib/services/inference-billing-deferred";
+import {
   createOptimisticDebitSettler,
   getGateBalanceUsd,
   isOptimisticBackstopAvailable,
@@ -120,20 +126,19 @@ app.post("/", async (c) => {
       apiKeyId = c.get("apiKeyId") ?? null;
     }
 
-    if (user.organization_id) {
-      const orgRateLimited = await enforceOrgRateLimit(
-        user.organization_id,
-        "embeddings",
-      );
-      if (orgRateLimited) return orgRateLimited;
-    }
+    const orgRateLimitPromise = user.organization_id
+      ? enforceOrgRateLimit(user.organization_id, "embeddings")
+      : Promise.resolve(null);
 
     // Guard a malformed/empty body to a 400 instead of a 500 (mirrors the agents
     // routes). An unguarded parse throws a SyntaxError that failureResponse maps
     // to 500 on this always-on agent-recall hot path.
-    const request = (await c.req
+    const requestPromise = c.req
       .json()
-      .catch(() => null)) as EmbeddingsRequest | null;
+      .catch(() => null) as Promise<EmbeddingsRequest | null>;
+    const orgRateLimited = await orgRateLimitPromise;
+    if (orgRateLimited) return orgRateLimited;
+    const request = await requestPromise;
 
     if (!request?.model || !request.input) {
       return c.json(
@@ -254,7 +259,85 @@ app.post("/", async (c) => {
       optimisticAllowedForRequest &&
       resolveInferenceBillingLedger() === "db";
 
-    if (useDbLedger) {
+    // #9899 Tier-3 deferred admission: with a Workers executionCtx, start the
+    // durable ledger/KV admission write now and let it run under waitUntil while
+    // the provider call is in flight. The response path keeps only the cached
+    // balance/refusal gate; the post-response settler awaits admission before
+    // delegating to the existing exactly-once ledger/KV settler.
+    const deferAdmission =
+      !!orgId &&
+      optimisticAllowedForRequest &&
+      isDeferredAdmissionEnabled() &&
+      typeof c.executionCtx?.waitUntil === "function" &&
+      (useDbLedger || isOptimisticBackstopAvailable()) &&
+      !isOrgAdmissionRefused(orgId);
+
+    if (deferAdmission) {
+      const { totalCost: backstopEstimateUsd } = await calculateCost(
+        model,
+        provider,
+        estimatedInputTokens,
+        0,
+        billingSource,
+      );
+      const thresholdUsd = resolveSafeBalanceThresholdUsd();
+      const balanceUsd = await getGateBalanceUsd(orgId);
+      const useOptimistic = isOptimisticEligible({
+        enabled: true,
+        useAppCredits: false,
+        balanceUsd,
+        thresholdUsd,
+        estimatedCostUsd: backstopEstimateUsd,
+      });
+      if (useOptimistic) {
+        const chargeCtx = {
+          requestId,
+          organizationId: orgId,
+          userId: user.id,
+          apiKeyId,
+          model,
+          provider,
+          billingSource: billingSource ?? "",
+        };
+        const admission: Promise<DeferredAdmissionOutcome> = useDbLedger
+          ? admitInferenceChargeViaLedger({
+              charge: chargeCtx,
+              estimatedCostUsd: backstopEstimateUsd,
+              thresholdUsd,
+            })
+          : writePendingInferenceCharge(
+              { ...chargeCtx, estimatedCostUsd: backstopEstimateUsd },
+              Date.now(),
+            ).then((persisted) => ({ admitted: persisted }));
+        c.executionCtx?.waitUntil(admission);
+
+        const debitCtx = {
+          requestId,
+          organizationId: orgId,
+          userId: user.id,
+          model,
+          provider,
+          billingSource: billingSource ?? "",
+        };
+        const deferredSettler = createDeferredAdmissionSettler({
+          admission,
+          onAdmitted: useDbLedger
+            ? createLedgerDebitSettler(chargeCtx)
+            : createOptimisticDebitSettler(debitCtx),
+          fallback: debitCtx,
+        });
+        reservation = {
+          reservedAmount: 0,
+          reservationTransactionId: null,
+          reconcile: async (actualCost: number) => {
+            await deferredSettler(actualCost);
+          },
+        };
+        optimisticReady = true;
+      }
+    }
+
+    if (!optimisticReady && useDbLedger) {
       const { totalCost: backstopEstimateUsd } = await calculateCost(
         model,
         provider,
