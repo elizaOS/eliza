@@ -1,13 +1,5 @@
 /**
- * Integration coverage for interactive widget markers on the v5 reply path
- * (#14658, #14659), driven through `runV5MessageRuntimeStage1` with real
- * action handlers and a queued canned-model runtime (no live model, no DB).
- * Pins the three delivery channels end to end against the shared interaction
- * grammar that every render boundary (dashboard, Discord, Telegram) parses:
- * an action's callback-emitted [CHOICE] block reaches the connector callback
- * verbatim, an action's `verifiedUserFacing` [CHOICE] payload beats evaluator
- * paraphrase as the turn's final message, and a model-authored [FORM]
- * messageToUser survives the evaluator boundary and reply sanitizers intact.
+ * Exercises callback, verified-payload, and evaluator widget-marker delivery through stage 1 with deterministic fixtures (#14658, #14659).
  */
 import { describe, expect, it, vi } from "vitest";
 import { parseInteractionBlocks } from "../messaging/interactions/parse";
