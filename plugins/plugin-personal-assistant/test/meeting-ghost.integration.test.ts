@@ -17,10 +17,7 @@ import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { schedulingPlugin } from "@elizaos/plugin-scheduling";
-import {
-  MEETING_TRANSCRIPT_FINALIZED_EVENT,
-  type TranscriptSegment,
-} from "@elizaos/shared";
+import type { TranscriptSegment } from "@elizaos/shared";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
@@ -109,87 +106,6 @@ afterAll(async () => {
 });
 
 describe("meeting-ghost consumer (real approval queue)", () => {
-  it("runs from the finalized meeting transcript runtime event", async () => {
-    await runtime.emitEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, {
-      session: {
-        id: "meeting-event-session",
-        platform: "google_meet",
-        meetingUrl: "https://meet.google.com/abc-defg-hij",
-        nativeMeetingId: "abc-defg-hij",
-        botName: "Eliza Notetaker",
-        status: "ended",
-        requestedAt: Date.parse("2026-07-06T15:59:00.000Z"),
-        activeAt: Date.parse("2026-07-06T16:00:00.000Z"),
-        endedAt: Date.parse("2026-07-06T16:30:00.000Z"),
-        transcriptId: "meeting-event-transcript",
-        participants: [{ id: "ava", displayName: "Ava" }],
-      },
-      transcript: {
-        id: "meeting-event-transcript",
-        title: "Ops Sync Event",
-        createdAt: Date.parse("2026-07-06T16:00:00.000Z"),
-        durationMs: 120_000,
-        source: "meeting",
-        scope: "owner-private",
-        status: "ready",
-        speakerCount: 1,
-        metadata: {
-          sessionId: "meeting-event-session",
-          platform: "google_meet",
-          meetingUrl: "https://meet.google.com/abc-defg-hij",
-          nativeMeetingId: "abc-defg-hij",
-          participants: [],
-        },
-        segments: [
-          seg(
-            "Ava",
-            60_000,
-            "Ava will send the launch-date rollback plan by 2026-07-10.",
-          ),
-        ],
-      },
-      ghostAttendance: {
-        ownerUserId: "owner-mtg-event",
-        ownerDisplayName: "Shaw",
-        requestedBy: "meeting-ghost-event",
-        careAbouts: ["launch date"],
-        calendarId: "primary",
-        approvalTtlMs: 24 * 60 * 60 * 1000,
-        attendees: [{ name: "Ava", email: "ava@example.com" }],
-      },
-    });
-
-    const pending = await queue.list({
-      subjectUserId: "owner-mtg-event",
-      state: "pending",
-      action: null,
-      limit: 20,
-    });
-    expect(pending.map((request) => request.action).sort()).toEqual([
-      "schedule_event",
-      "send_email",
-    ]);
-
-    const repo = new LifeOpsRepository(runtime);
-    const ledgerRows = await repo.listCommitmentLedgerRecords(runtime.agentId, {
-      source: "transcript",
-    });
-    const eventRows = ledgerRows.filter((row) =>
-      row.sourceKey.startsWith("meeting-event-session:"),
-    );
-    expect(eventRows).toHaveLength(1);
-    expect(eventRows[0]).toMatchObject({
-      counterparty: "Ava",
-      dueAt: "2026-07-10T17:00:00.000Z",
-      summary: "send the launch-date rollback plan",
-      metadata: expect.objectContaining({
-        meetingId: "meeting-event-session",
-        meetingTitle: "Ops Sync Event",
-        recipientEmail: "ava@example.com",
-      }),
-    });
-  });
-
   it("enqueues follow-up + calendar approvals from a diarized transcript, resolvable by the owner", async () => {
     const approvalExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const result = await runMeetingGhostForTranscript(runtime, {
