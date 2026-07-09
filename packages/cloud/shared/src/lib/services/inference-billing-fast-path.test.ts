@@ -9,7 +9,7 @@
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 // --- Controllable credits + api-keys seams ----------------------------------
 interface DeductCall {
@@ -69,6 +69,7 @@ const {
 } = await import("./inference-billing-fast-path");
 const { cache } = await import("../cache/client");
 const { CacheKeys } = await import("../cache/keys");
+const { logger } = await import("../utils/logger");
 const { readOrgBalanceHint, writeOrgBalanceHint } = await import("./inference-auth-cache");
 
 // Mirror of the module-private sweep-lock key (kept as a literal so a rename is
@@ -355,6 +356,29 @@ describe("sweepStalePendingInferenceCharges", () => {
     // Entry is untouched, so the next (unlocked) sweep still settles it.
     expect(await cache.get(CacheKeys.inference.pendingCharge(input.requestId))).not.toBeNull();
     await cache.del(SWEEP_LOCK_KEY);
+  });
+
+  test("logs sweep-lock release failure without failing the completed sweep", async () => {
+    const originalDel = cache.del.bind(cache);
+    const warn = spyOn(logger, "warn").mockImplementation(() => undefined as never);
+    const del = spyOn(cache, "del").mockImplementation(async (key: string) => {
+      if (key === SWEEP_LOCK_KEY) {
+        throw new Error("kv delete unavailable");
+      }
+      return originalDel(key);
+    });
+
+    try {
+      const stats = await sweepStalePendingInferenceCharges({ now: 10_000_000 });
+      expect(stats.locked).toBe(false);
+      expect(
+        warn.mock.calls.some(([message]) => String(message).includes("failed to release")),
+      ).toBe(true);
+    } finally {
+      del.mockRestore();
+      warn.mockRestore();
+      await cache.del(SWEEP_LOCK_KEY);
+    }
   });
 });
 

@@ -393,6 +393,12 @@ export async function sweepStalePendingInferenceCharges(opts?: {
     }
     return stats;
   } finally {
-    await cache.del(SWEEP_LOCK_KEY).catch(() => {});
+    await cache.del(SWEEP_LOCK_KEY).catch((error) => {
+      // error-policy:J6 lock release is teardown; failure delays the next sweep until TTL expiry.
+      logger.warn("[InferenceBilling] failed to release pending-charge sweep lock", {
+        lockKey: SWEEP_LOCK_KEY,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
 }
