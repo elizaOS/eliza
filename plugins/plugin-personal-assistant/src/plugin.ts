@@ -116,6 +116,7 @@ import {
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
+import { handleDelegationInboundMessage } from "./lifeops/delegation-contracts/inbound-event.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
 import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
 import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
@@ -758,6 +759,10 @@ const rawPersonalAssistantPlugin: Plugin = {
       detachInboundScan(
         "question-followup-cancel",
         handleOwnerMessageForQuestionFollowup,
+      ),
+      detachInboundScan(
+        "delegation-contract-inbound",
+        handleDelegationInboundMessage,
       ),
     ],
     // Agent reply ends with a question the owner never answers → seed a
