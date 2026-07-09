@@ -135,9 +135,16 @@ export interface CreateAgentParams {
  * must not mint fresh agents (and fresh managed DBs) past the ceiling
  * (#11023 residual). Terminal/deletion states (`error`, `disconnected`,
  * `deletion_pending`, `deletion_failed`) hold no reusable resources and stay
- * excluded. Intentionally BROADER than the reuse-guard SELECTs, which must
- * keep returning only a LIVE agent — handing back a stopped/sleeping row
- * would silently turn an idempotent create into an implicit resume.
+ * excluded. `deletion_failed` in particular must not count (#15603): the
+ * delete exhausted its retries — usually a node fault, not the user's — and
+ * counting it would lock the org out of a replacement until ops intervene. A
+ * container that survived the failed teardown is reclaimed independently of
+ * this count (`reEnqueueFailedDeletions` re-arms the delete; the orphan
+ * reconciler treats `deletion_failed` as reapable), and a user cannot drive a
+ * row into that state on demand, so the freed slot stays bounded. Intentionally
+ * BROADER than the reuse-guard SELECTs, which must keep returning only a LIVE
+ * agent — handing back a stopped/sleeping row would silently turn an
+ * idempotent create into an implicit resume.
  */
 const QUOTA_COUNTED_STATUSES: AgentSandboxStatus[] = [
   "pending",

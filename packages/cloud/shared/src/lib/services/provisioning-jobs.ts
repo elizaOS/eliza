@@ -3062,13 +3062,14 @@ export class ProvisioningJobService {
    *
    * `deletion_failed` is otherwise a dead-end: the agent_delete job exhausted
    * its retries (e.g. the core was down for a deploy), so the row sits forever
-   * — visible to ops but never auto-recovered, and still counting against the
-   * org's agent capacity. This low-frequency sweep finds rows that have been
-   * `deletion_failed` longer than `minAgeMs` and enqueues a FRESH agent_delete
-   * for each. `enqueueAgentDeleteOnce` is idempotent (it dedups an in-flight
-   * delete and re-flips the row to `deletion_pending`), so a node that has
-   * since come back will finally drop the container + row. `minAgeMs` keeps
-   * this from fighting the live retry loop right after a failure.
+   * — visible to ops but never auto-recovered, and any container that survived
+   * the failed teardown keeps leaking on its node. This low-frequency sweep
+   * finds rows that have been `deletion_failed` longer than `minAgeMs` and
+   * enqueues a FRESH agent_delete for each. `enqueueAgentDeleteOnce` is
+   * idempotent (it dedups an in-flight delete and re-flips the row to
+   * `deletion_pending`), so a node that has since come back will finally drop
+   * the container + row. `minAgeMs` keeps this from fighting the live retry
+   * loop right after a failure.
    *
    * Circuit-breaker: a permanently-dead node would otherwise be re-armed every
    * sweep forever. Each exhausted agent_delete bumps the sandbox's `error_count`
@@ -3077,9 +3078,13 @@ export class ProvisioningJobService {
    * `event: "deletion.abandoned_candidate"` for ops to investigate (the
    * container likely needs a manual node-level teardown) rather than looping.
    *
-   * NOTE (follow-up): capacity accounting still counts `deletion_failed` rows
-   * until they are actually removed; excluding them from capacity is a separate
-   * change in the agent-creation path.
+   * Capacity: `deletion_failed`/`deletion_pending` rows do NOT count toward the
+   * org's agent ceiling (`QUOTA_COUNTED_STATUSES` in eliza-sandbox.ts), so a
+   * stuck delete never blocks the org from creating a replacement. This sweep —
+   * together with the orphan-container reconciler, which treats
+   * `deletion_failed` as reapable — is what eventually reclaims the container
+   * behind that freed slot, so the exclusion cannot compound into unbounded
+   * live containers.
    */
   async reEnqueueFailedDeletions(params?: {
     minAgeMs?: number;
