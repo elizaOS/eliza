@@ -707,6 +707,7 @@ export class MeetingService extends Service {
   ): Promise<void> {
     if (!transcript || session.status !== "ended") return;
     const payload: EventPayload & MeetingTranscriptFinalizedPayload = {
+      runtime: this.runtime,
       session: dto,
       transcript,
       ...(session.ghostAttendance
