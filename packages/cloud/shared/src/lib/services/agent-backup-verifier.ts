@@ -30,8 +30,10 @@
  *
  * Verifier-infrastructure errors (DB/object-storage/KMS transport breakage)
  * are stamped `errored` with the attempt timestamp so a persistently-broken
- * row cannot occupy the head of the nulls-first sampler forever (#15626); a
- * row that keeps erroring across consecutive attempts raises its own alert.
+ * row cannot occupy the head of the nulls-first sampler forever (#15626).
+ * Two alerts cover them: a cycle-level alert whenever a sweep hit infra
+ * errors (immediate signal that the verifier host is broken), and a per-row
+ * alert when the SAME row keeps erroring across consecutive attempts.
  * Incremental chains are reconstructed here chain-only and sequentially —
  * NOT via the repository's `getReconstructedBackupState`, which hydrates and
  * decrypts every retained backup in parallel for the restore path — and all
@@ -121,9 +123,8 @@ export interface BackupVerifierConfig {
   /**
    * `BACKUP_VERIFICATION_ERRORED_ALERT_STREAK` — alert when the same backup
    * row hits a verifier-infrastructure error this many verification attempts
-   * in a row. Infra errors are not stamped `failed` (the backup may be fine),
-   * so without this a row stuck behind broken storage/KMS transport would
-   * never surface anywhere but the logs.
+   * in a row. The cycle-level infra alert says "this sweep hit errors"; this
+   * one says "this specific backup has been unverifiable for N attempts".
    */
   erroredAlertStreak: number;
 }
@@ -229,19 +230,35 @@ export function classifyCryptoError(error: unknown): BackupVerificationFailure |
   if (error.name === "KeyNotFoundError" || /key not found/i.test(error.message)) {
     return { kind: "key-unavailable", message: error.message };
   }
-  // The steward backend reports a missing key as a generic KmsError with an
-  // HTTP 404 — same #15310 signature as the memory backend's
-  // KeyNotFoundError, so it must classify the same way instead of falling
-  // through to unstamped infra-error. Message match is the fallback for
-  // KmsError instances serialized without the structured status.
-  if (error.name === "KmsError") {
-    const status = (error as { status?: unknown }).status;
-    if (status === 404 || /failed \(404[\s)]/.test(error.message)) {
-      return { kind: "key-unavailable", message: error.message };
-    }
+  // The steward backend reports a missing key as a generic KmsError carrying
+  // the HTTP status — same #15310 signature as the memory backend's
+  // KeyNotFoundError. Message text is the fallback for errors serialized
+  // without the structured status.
+  const kmsShaped = error as { status?: unknown; $metadata?: { httpStatusCode?: unknown } };
+  const maybeStatus = kmsShaped.status ?? kmsShaped.$metadata?.httpStatusCode;
+  if (
+    error.name === "KmsError" &&
+    (maybeStatus === 404 || /\b404\b|not found/i.test(error.message))
+  ) {
+    return { kind: "key-unavailable", message: error.message };
   }
   if (error.name === "AeadError" || /AEAD decrypt failed/i.test(error.message)) {
     return { kind: "decrypt-failed", message: error.message };
+  }
+  return null;
+}
+
+function classifyMissingObjectPayload(error: unknown): BackupVerificationFailure | null {
+  if (!(error instanceof Error)) return null;
+  const maybeStatus = (error as { $metadata?: { httpStatusCode?: unknown }; status?: unknown })
+    .$metadata?.httpStatusCode;
+  if (
+    error.name === "NoSuchKey" ||
+    error.name === "NotFound" ||
+    maybeStatus === 404 ||
+    /no such key|not found/i.test(error.message)
+  ) {
+    return { kind: "payload-missing", message: error.message };
   }
   return null;
 }
@@ -250,6 +267,8 @@ export function classifyCryptoError(error: unknown): BackupVerificationFailure |
 function classifyChainError(error: unknown): BackupVerificationFailure | null {
   const crypto = classifyCryptoError(error);
   if (crypto) return crypto;
+  const missingPayload = classifyMissingObjectPayload(error);
+  if (missingPayload) return missingPayload;
   if (!(error instanceof Error)) return null;
   if (/payload not found|missing state_data_key/i.test(error.message)) {
     return { kind: "payload-missing", message: error.message };
@@ -427,19 +446,6 @@ export function verifyManifestIntegrity(manifest: AgentBackupManifest): string[]
 // =============================================================================
 
 /**
- * True for the S3/R2 "object does not exist" error family (AWS SDK v3 throws
- * `NoSuchKey` from GetObject, `NotFound` from HeadObject, both HTTP 404). The
- * daemon path's `getObjectText` throws these instead of returning null, and a
- * lost payload is a broken BACKUP (stamped + alerted), not verifier breakage.
- */
-function isObjectStorageMissingError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  if (error.name === "NoSuchKey" || error.name === "NotFound") return true;
-  const meta = (error as { $metadata?: { httpStatusCode?: number } }).$metadata;
-  return meta?.httpStatusCode === 404;
-}
-
-/**
  * Byte budget shared by every download+decrypt in one verification cycle.
  * Charged with the STORED payload size (ciphertext ≈ plaintext for AES-GCM),
  * measured before decrypting, so the bound holds even for payloads that would
@@ -508,13 +514,14 @@ async function resolveStoredPayload(
   try {
     raw = await getObjectText(row.state_data_key);
   } catch (error) {
-    if (isObjectStorageMissingError(error)) {
+    const missingPayload = classifyMissingObjectPayload(error);
+    if (missingPayload) {
+      // Name the lost key: the stamped verification_error is an operator's
+      // only lead when triaging which object vanished.
       return {
         failure: {
           kind: "payload-missing",
-          message: `object storage has no payload for ${row.state_data_key}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          message: `object storage has no payload for ${row.state_data_key}: ${missingPayload.message}`,
         },
       };
     }
@@ -763,8 +770,8 @@ export interface BackupVerificationCycleSummary {
   failed: number;
   /**
    * Verifier-infrastructure errors — stamped `errored` (never `failed`) with
-   * the attempt timestamp so they cannot starve the sampler; alerted when the
-   * same row keeps erroring.
+   * the attempt timestamp so they cannot starve the sampler; alerted at cycle
+   * level, and per-row once the same row keeps erroring.
    */
   errored: number;
   /** Rows whose payload can never fit the cycle decrypt budget (stamped `errored`). */
@@ -779,8 +786,9 @@ export interface BackupVerificationCycleSummary {
 }
 
 const FAILURE_ALERT_DEDUP_KEY = "agent-backup-verification-failure";
+const ERROR_ALERT_DEDUP_KEY = "agent-backup-verification-error";
 const SYSTEMIC_ALERT_DEDUP_KEY = "agent-backup-verification-systemic";
-const ERRORED_ALERT_DEDUP_KEY = "agent-backup-verification-errored";
+const PERSISTENT_ERROR_ALERT_DEDUP_KEY = "agent-backup-verification-persistent-error";
 
 /**
  * `verification_error` prefix for infra-error stamps. The bracketed integer is
@@ -857,7 +865,8 @@ export async function runBackupVerificationCycle(
   // Stamp an infra-error attempt: status `errored` (never `failed` — the
   // backup itself may be healthy), attempt timestamp so the nulls-first
   // sampler moves on, and a persisted consecutive-attempt streak that raises
-  // its own alert once it crosses the configured threshold.
+  // a per-row alert once it crosses the configured threshold (the cycle-level
+  // infra alert at the end of the sweep covers the immediate signal).
   const stampInfraError = async (row: StoredAgentSandboxBackup, message: string) => {
     const streak = consecutiveInfraErrorStreak(row) + 1;
     await dbWrite
@@ -882,7 +891,7 @@ export async function runBackupVerificationCycle(
           streak,
           error: message,
         },
-        dedupKey: ERRORED_ALERT_DEDUP_KEY,
+        dedupKey: PERSISTENT_ERROR_ALERT_DEDUP_KEY,
       });
     }
     return streak;
@@ -901,7 +910,7 @@ export async function runBackupVerificationCycle(
       summary.errored += 1;
       const message = error instanceof Error ? error.message : String(error);
       const streak = await stampInfraError(row, message);
-      logger.error("[AgentBackupVerifier] verification errored (infrastructure, stamped errored)", {
+      logger.error("[AgentBackupVerifier] verification errored (infrastructure)", {
         backupId: row.id,
         sandboxRecordId: row.sandbox_record_id,
         erroredStreak: streak,
@@ -1025,6 +1034,21 @@ export async function runBackupVerificationCycle(
         dedupKey: SYSTEMIC_ALERT_DEDUP_KEY,
       });
     }
+  }
+
+  if (summary.errored > 0) {
+    await alert({
+      title: `${summary.errored}/${summary.sampled} sampled agent backups could not be verified`,
+      message:
+        "Backup verification hit infrastructure errors. Rows were stamped with " +
+        "verified_at so they do not permanently wedge the sampler head; inspect " +
+        "verification_error for the exact infra failure and fix the verifier host.",
+      details: {
+        sampled: summary.sampled,
+        errored: summary.errored,
+      },
+      dedupKey: ERROR_ALERT_DEDUP_KEY,
+    });
   }
 
   return summary;
