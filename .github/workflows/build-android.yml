@@ -34,6 +34,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
+      # The elizavoice-jni gradle build validates that the staged
+      # libelizainference.so's fused-voice ABI matches the omnivoice FFI header
+      # in the llama.cpp fork submodule. That submodule is not checked out by
+      # the default checkout, so init just that one path (shallow) rather than
+      # pulling every submodule (opencode/electrobun aren't needed here).
+      - name: Check out llama.cpp omnivoice headers
+        run: |
+          git submodule update --init --depth 1 \
+            plugins/plugin-local-inference/native/llama.cpp
+          test -f plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include/eliza-inference-ffi.h \
+            || { echo "::error::omnivoice FFI header still missing after submodule init"; exit 1; }
+
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
