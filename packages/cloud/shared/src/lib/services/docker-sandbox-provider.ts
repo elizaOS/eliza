@@ -1437,7 +1437,12 @@ export class DockerSandboxProvider implements SandboxProvider {
 
       await ssh
         .exec(`docker rm -f ${shellQuote(containerName)}`, DOCKER_CMD_TIMEOUT_MS)
-        .catch(() => {});
+        .catch((cleanupErr) => {
+          // error-policy:J6 provision rollback cleanup is best-effort; the original failure still rethrows.
+          logger.warn(
+            `[docker-sandbox] Failed to remove container ${containerName} after provision failure: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        });
 
       // Rollback allocated_count on failure. This is the only place the slot
       // reserved by incrementAllocated() is released after a failed provision,

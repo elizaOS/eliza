@@ -89,7 +89,12 @@ export async function withRetry<T>(
 
       if (!response.ok) {
         // error-policy:J6 best-effort error-body read; the HTTP failure still surfaces via the thrown status error below
-        const errorBody = await response.text().catch(() => "");
+        const errorBody = await response.text().catch((error) => {
+          logger.warn(
+            `[${platform}] Failed to read non-ok response body: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          return "";
+        });
         throw new Error(`${platform} API error ${response.status}: ${errorBody}`);
       }
 

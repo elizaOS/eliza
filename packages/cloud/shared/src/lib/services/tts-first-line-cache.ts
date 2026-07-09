@@ -398,7 +398,12 @@ export class CloudFirstLineCacheService {
     }
 
     // LRU eviction is best-effort — kicked off in the background.
-    void this.maybeEvict(input.scope).catch(() => undefined);
+    void this.maybeEvict(input.scope).catch((err) => {
+      // error-policy:J7 cache eviction diagnostics must not fail the synthesis write path.
+      logger.warn?.(
+        `[tts-first-line-cache] background eviction failed for scope ${input.scope}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
 
     return true;
   }
@@ -434,7 +439,12 @@ export class CloudFirstLineCacheService {
       try {
         await dbWrite.delete(ttsFirstLineCache).where(eq(ttsFirstLineCache.id, row.id));
         if (bucket) {
-          await bucket.delete(row.blobKey).catch(() => undefined);
+          await bucket.delete(row.blobKey).catch((err) => {
+            // error-policy:J6 manifest deletion already evicted the entry; orphaned blobs are swept separately.
+            logger.warn?.(
+              `[tts-first-line-cache] blob delete failed during eviction for ${row.blobKey}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
         }
         runningTotal -= Number(row.byteSize);
         removed++;
