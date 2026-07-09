@@ -9,6 +9,7 @@
  */
 import { execFileSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -20,10 +21,13 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { authorizedShots, type ReportEntry } from "../../scripts/ocr-triage";
 
-// Vitest runs from the package root (`vitest run --config vitest.config.ts`),
-// so the CLI under test resolves from cwd — `import.meta.url` is a virtual,
-// non-file URL under the vitest transform pipeline.
-const APP_DIR = process.cwd();
+// Changed-file coverage invokes Vitest from the repository root while the
+// package script invokes it from `packages/app`. Vitest gives `import.meta.url`
+// a virtual scheme, so select between those two documented cwd contracts by
+// probing for the CLI rather than assuming the package-root invocation.
+const APP_DIR = existsSync(join(process.cwd(), "scripts", "ocr-triage.ts"))
+  ? process.cwd()
+  : join(process.cwd(), "packages", "app");
 const CLI = join(APP_DIR, "scripts", "ocr-triage.ts");
 
 /** Minimal valid 1×1 PNG — enough for `existsSync`; the CLI OCR comes from ndjson. */
