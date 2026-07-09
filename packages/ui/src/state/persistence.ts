@@ -26,7 +26,10 @@ import {
 import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
 import { shellLocalStorage } from "../surface-realm-channel";
-import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
+import {
+  ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
+  normalizeDirectCloudSharedAgentApiBase,
+} from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import {
   type BackgroundConfig,
@@ -1181,12 +1184,17 @@ export interface PersistedActiveServer {
 }
 
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
-const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
-  "api.elizacloud.ai",
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-]);
+// Control-plane host set is the single canonical export from
+// utils/cloud-agent-base (mirrors cloud/shell/apex-host.ts). A hand-copied
+// duplicate here drifted: it was missing the staging hosts, so on
+// staging.elizacloud.ai / api-staging the bare id-less control-plane origin was
+// classified as a concrete per-agent base and PERSISTED as the active server.
+// On reload/foreground it was restored and every agent /api/* call concatenated
+// to `.../agents/api/...` -> 404 "Backend Unreachable". Importing the canonical
+// set also makes the load path (normalizePersistedActiveServer ->
+// isElizaCloudControlPlaneApiBase) self-heal an already-persisted bare staging
+// origin: it is now recognized and dropped on the next load, un-wedging existing
+// users without them clearing storage. See #15740 (config-drift family: #15731).
 
 function trimPersistedValue(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -1322,13 +1330,49 @@ function normalizePersistedActiveServer(
   };
 }
 
+/**
+ * True when the raw persisted record carried a control-plane apiBase that
+ * normalization dropped — i.e. an already-wedged user whose stored active server
+ * still points at the bare id-less control-plane origin (the #15740 staging bug
+ * before the canonical host set was imported here). Used to decide whether to
+ * write the repaired record back so storage is permanently un-wedged rather than
+ * repaired-in-memory on every load.
+ */
+function persistedRecordNeedsControlPlaneRepair(
+  raw: unknown,
+  normalized: PersistedActiveServer | null,
+): boolean {
+  if (!normalized) return false;
+  const record = asRecord(raw);
+  if (!record) return false;
+  const rawApiBase = normalizeApiBase(record.apiBase);
+  // A repair is needed only when the stored record had a control-plane apiBase
+  // (which normalization strips) but the normalized record now has none.
+  return (
+    !!rawApiBase &&
+    isElizaCloudControlPlaneApiBase(rawApiBase) &&
+    normalized.apiBase === undefined
+  );
+}
+
 export function loadPersistedActiveServer(): PersistedActiveServer | null {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(ACTIVE_SERVER_STORAGE_KEY);
     if (!stored) {
       return null;
     }
-    return normalizePersistedActiveServer(JSON.parse(stored));
+    const raw = JSON.parse(stored);
+    const normalized = normalizePersistedActiveServer(raw);
+    // Self-heal: a user who hit #15740 has the bare control-plane origin still in
+    // localStorage. normalizePersistedActiveServer already drops it in-memory
+    // (now that the canonical staging host set is imported), but the stale value
+    // lingers on disk and re-triggers the repair every boot. Write the repaired
+    // record back once so the wedge is permanently cleared without the user
+    // having to clear storage.
+    if (persistedRecordNeedsControlPlaneRepair(raw, normalized) && normalized) {
+      savePersistedActiveServer(normalized);
+    }
+    return normalized;
   }, null);
 }
 
