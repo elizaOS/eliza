@@ -348,9 +348,9 @@ async function runMode({ udid, appId, mode, privateKey }) {
         `iOS cloud onboarding ${mode} completed with ok=false: ${JSON.stringify(result)}`,
       );
     }
-    if (result.firstRunPostCount !== 1) {
+    if (result.firstRunPostCount !== 0) {
       throw new Error(
-        `iOS cloud onboarding ${mode} expected exactly one /api/first-run POST, got ${result.firstRunPostCount}`,
+        `iOS cloud onboarding ${mode} must not POST app-shell first-run state to a direct Cloud agent, got ${result.firstRunPostCount}`,
       );
     }
     if (mode === "tap" && result.signInGreetingVisible !== true) {

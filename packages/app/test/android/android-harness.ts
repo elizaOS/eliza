@@ -224,7 +224,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         await page.addInitScript(
           (args: { seed: Record<string, string>; allowFirstRun: boolean }) => {
             const globalObject = globalThis as typeof globalThis & {
-              process?: { env?: Record<string, string> };
+              process?: {
+                cwd?: () => string;
+                env?: Record<string, string>;
+              };
               __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
               __ELIZAOS_UI_APP_STORE__?: {
                 value?: {
@@ -233,6 +236,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
               };
             };
             globalObject.process ??= {};
+            globalObject.process.cwd ??= () => "/";
             globalObject.process.env ??= {};
             globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
             globalObject.process.env.NODE_ENV = "test";
@@ -255,7 +259,10 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
             allowFirstRun: boolean;
           }) => {
             const globalObject = globalThis as typeof globalThis & {
-              process?: { env?: Record<string, string> };
+              process?: {
+                cwd?: () => string;
+                env?: Record<string, string>;
+              };
               __ELIZA_RENDER_TELEMETRY_ENABLED__?: boolean;
               __ELIZAOS_UI_APP_STORE__?: {
                 value?: {
@@ -264,6 +271,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
               };
             };
             globalObject.process ??= {};
+            globalObject.process.cwd ??= () => "/";
             globalObject.process.env ??= {};
             globalObject.process.env.VITE_ELIZA_RENDER_TELEMETRY = "1";
             globalObject.process.env.NODE_ENV = "test";

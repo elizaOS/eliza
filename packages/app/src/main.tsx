@@ -1206,7 +1206,9 @@ async function runIosCloudOnboardingSmokeIfRequested(): Promise<boolean> {
         Boolean(composer) &&
         onboardingHidden &&
         cloudActiveServer &&
-        firstRunPostCount === 1,
+        // Direct Cloud agent bases intentionally omit app-shell setup routes;
+        // completion against them must not issue a guaranteed-404 POST.
+        firstRunPostCount === 0,
       phase: "complete",
       mode: request.mode,
       finishedAt: new Date().toISOString(),

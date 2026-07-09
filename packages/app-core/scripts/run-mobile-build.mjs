@@ -5492,7 +5492,7 @@ function cloudBrandUserAgentMarkerLines() {
     .join("\n");
 }
 
-function cloudSafeMainActivityJava(androidPackage) {
+export function cloudSafeMainActivityJava(androidPackage) {
   return `package ${androidPackage};
 
 import android.os.Build;
@@ -5532,6 +5532,10 @@ ${cloudBrandUserAgentMarkerLines()}
         }
 
         super.onCreate(savedInstanceState);
+
+        if (getBridge() != null) {
+            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
+        }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
