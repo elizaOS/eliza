@@ -25,6 +25,7 @@ const parseEventLogs = mock(() => [
     },
   },
 ]);
+const getSecret = mock(async () => null as string | null);
 
 mock.module("@solana/kit", () => ({
   createKeyPairSignerFromBytes: mock(() => ({ address: "solana-signer" })),
@@ -85,6 +86,12 @@ mock.module("viem/chains", () => ({
   sepolia: {},
 }));
 
+mock.module("../secrets", () => ({
+  secretsService: {
+    get: getSecret,
+  },
+}));
+
 const { x402FacilitatorService } = await import("../x402-facilitator");
 
 type MutableFacilitator = {
@@ -102,6 +109,27 @@ type MutableFacilitator = {
     }
   >;
 };
+
+function resetFacilitatorInitialization(): MutableFacilitator & {
+  initializing: Promise<void> | null;
+} {
+  const service = x402FacilitatorService as unknown as MutableFacilitator & {
+    initializing: Promise<void> | null;
+    svmScheme: unknown;
+    enabledSolanaNetworks: string[];
+    solanaNetworks: Record<string, unknown>;
+  };
+  service.initialized = false;
+  service.initializing = null;
+  service.account = null;
+  service.enabledNetworks = [];
+  service.clients = new Map();
+  service.networks = {};
+  service.svmScheme = null;
+  service.enabledSolanaNetworks = [];
+  service.solanaNetworks = {};
+  return service;
+}
 
 function paymentPayload(authorizationValue: string) {
   return {
@@ -140,6 +168,70 @@ const requirements = {
 // the platform recipient here so the legitimate settle tests below pass the
 // guard; the attacker test uses a DIFFERENT payTo that is not platform-owned.
 process.env.X402_RECIPIENT_ADDRESS = PAY_TO;
+
+test("initialize fails closed when the EVM facilitator secret read fails", async () => {
+  const previousNetworks = process.env.X402_NETWORKS;
+  const previousFacilitatorKey = process.env.FACILITATOR_PRIVATE_KEY;
+  const previousX402FacilitatorKey = process.env.X402_FACILITATOR_PRIVATE_KEY;
+  resetFacilitatorInitialization();
+  getSecret.mockReset();
+  getSecret.mockRejectedValue(new Error("secrets store unavailable"));
+  process.env.X402_NETWORKS = "base";
+  process.env.FACILITATOR_PRIVATE_KEY =
+    "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  delete process.env.X402_FACILITATOR_PRIVATE_KEY;
+
+  try {
+    await expect(x402FacilitatorService.initialize()).rejects.toMatchObject({
+      message: "[x402-facilitator] Failed to read FACILITATOR_PRIVATE_KEY from secrets service",
+      cause: expect.objectContaining({ message: "secrets store unavailable" }),
+    });
+    expect(getSecret).toHaveBeenCalledWith("system", "FACILITATOR_PRIVATE_KEY");
+  } finally {
+    resetFacilitatorInitialization();
+    getSecret.mockReset();
+    getSecret.mockResolvedValue(null);
+    if (previousNetworks === undefined) delete process.env.X402_NETWORKS;
+    else process.env.X402_NETWORKS = previousNetworks;
+    if (previousFacilitatorKey === undefined) delete process.env.FACILITATOR_PRIVATE_KEY;
+    else process.env.FACILITATOR_PRIVATE_KEY = previousFacilitatorKey;
+    if (previousX402FacilitatorKey === undefined) delete process.env.X402_FACILITATOR_PRIVATE_KEY;
+    else process.env.X402_FACILITATOR_PRIVATE_KEY = previousX402FacilitatorKey;
+  }
+});
+
+test("initialize fails closed when the Solana facilitator secret read fails", async () => {
+  const previousNetworks = process.env.X402_NETWORKS;
+  const previousSolanaKey = process.env.X402_SOLANA_FACILITATOR_PRIVATE_KEY;
+  resetFacilitatorInitialization();
+  getSecret.mockReset();
+  getSecret.mockImplementation(async (_scope, keyName) => {
+    if (keyName === "FACILITATOR_PRIVATE_KEY") return null;
+    throw new Error("solana secret read failed");
+  });
+  process.env.X402_NETWORKS = "solana-devnet";
+  process.env.X402_SOLANA_FACILITATOR_PRIVATE_KEY = `[${Array.from(
+    { length: 64 },
+    (_, i) => i,
+  ).join(",")}]`;
+
+  try {
+    await expect(x402FacilitatorService.initialize()).rejects.toMatchObject({
+      message:
+        "[x402-facilitator] Failed to read X402_SOLANA_FACILITATOR_PRIVATE_KEY from secrets service",
+      cause: expect.objectContaining({ message: "solana secret read failed" }),
+    });
+    expect(getSecret).toHaveBeenCalledWith("system", "X402_SOLANA_FACILITATOR_PRIVATE_KEY");
+  } finally {
+    resetFacilitatorInitialization();
+    getSecret.mockReset();
+    getSecret.mockResolvedValue(null);
+    if (previousNetworks === undefined) delete process.env.X402_NETWORKS;
+    else process.env.X402_NETWORKS = previousNetworks;
+    if (previousSolanaKey === undefined) delete process.env.X402_SOLANA_FACILITATOR_PRIVATE_KEY;
+    else process.env.X402_SOLANA_FACILITATOR_PRIVATE_KEY = previousSolanaKey;
+  }
+});
 
 function primeEvmFacilitator() {
   process.env.X402_RECIPIENT_ADDRESS = PAY_TO;

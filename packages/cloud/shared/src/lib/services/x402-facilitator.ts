@@ -1503,23 +1503,34 @@ class X402FacilitatorService {
   }
 
   private async loadSolanaFacilitatorKey(): Promise<string | null> {
+    let secretsService: Awaited<typeof import("./secrets")>["secretsService"] | null | undefined;
     try {
-      const { secretsService } = await import("./secrets");
-      if (secretsService) {
-        for (const keyName of [
-          "X402_SOLANA_FACILITATOR_PRIVATE_KEY",
-          "SOLANA_FACILITATOR_PRIVATE_KEY",
-          "SOLANA_PAYOUT_PRIVATE_KEY",
-        ]) {
-          const key = await secretsService.get("system", keyName).catch(() => null);
-          if (key) {
-            logger.info(`[x402-facilitator] Loaded ${keyName} from secrets service`);
-            return key;
-          }
+      ({ secretsService } = await import("./secrets"));
+    } catch {
+      // error-policy:J4 local/dev degrade; the optional encrypted secrets module is not available in all runtimes.
+      secretsService = null;
+    }
+
+    if (secretsService) {
+      for (const keyName of [
+        "X402_SOLANA_FACILITATOR_PRIVATE_KEY",
+        "SOLANA_FACILITATOR_PRIVATE_KEY",
+        "SOLANA_PAYOUT_PRIVATE_KEY",
+      ]) {
+        let key: string | null;
+        try {
+          key = await secretsService.get("system", keyName);
+        } catch (error) {
+          // error-policy:J2 context-adding rethrow; a secrets read failure must not masquerade as an absent key.
+          throw new Error(`[x402-facilitator] Failed to read ${keyName} from secrets service`, {
+            cause: error,
+          });
+        }
+        if (key) {
+          logger.info(`[x402-facilitator] Loaded ${keyName} from secrets service`);
+          return key;
         }
       }
-    } catch {
-      // Secrets service not available, fall through
     }
 
     const env = getCloudAwareEnv();
@@ -1538,18 +1549,30 @@ class X402FacilitatorService {
    */
   private async loadFacilitatorKey(): Promise<string | null> {
     // Try secrets service first (production)
+    let secretsService: Awaited<typeof import("./secrets")>["secretsService"] | null | undefined;
     try {
-      const { secretsService } = await import("./secrets");
-      if (secretsService) {
-        // Try org-level facilitator key
-        const key = await secretsService.get("system", "FACILITATOR_PRIVATE_KEY").catch(() => null);
-        if (key) {
-          logger.info("[x402-facilitator] Loaded key from secrets service (encrypted)");
-          return key;
-        }
-      }
+      ({ secretsService } = await import("./secrets"));
     } catch {
-      // Secrets service not available, fall through
+      // error-policy:J4 local/dev degrade; the optional encrypted secrets module is not available in all runtimes.
+      secretsService = null;
+    }
+
+    if (secretsService) {
+      // Try org-level facilitator key.
+      let key: string | null;
+      try {
+        key = await secretsService.get("system", "FACILITATOR_PRIVATE_KEY");
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow; a secrets read failure must not masquerade as an absent key.
+        throw new Error(
+          "[x402-facilitator] Failed to read FACILITATOR_PRIVATE_KEY from secrets service",
+          { cause: error },
+        );
+      }
+      if (key) {
+        logger.info("[x402-facilitator] Loaded key from secrets service (encrypted)");
+        return key;
+      }
     }
 
     // Fallback to environment variable (development)
