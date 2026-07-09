@@ -9,7 +9,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AgentRuntime } from "@elizaos/core";
 import { TUI } from "@elizaos/tui";
-import { VirtualTerminal } from "@elizaos/tui/testing";
+// The published @elizaos/tui build must ship the ./testing export for these
+// render tests to run; when it does not (npm 2.0.0-alpha.77 dropped it —
+// see elizaOS/eliza#15814), skip with a visible reason instead of failing
+// module resolution for the whole file.
+const tuiTesting = await import("@elizaos/tui/testing").catch(() => null);
+const { VirtualTerminal } = (tuiTesting ?? {}) as typeof import("@elizaos/tui/testing");
+const describeIfTuiTesting = tuiTesting ? describe : describe.skip;
 import chalk from "chalk";
 import { useStore } from "../lib/store.js";
 import { ChatPane } from "./ChatPane.js";
@@ -44,7 +50,7 @@ afterEach(() => {
   chalk.level = prevChalkLevel;
 });
 
-describe("chat input-history recall (#11294)", () => {
+describeIfTuiTesting("chat input-history recall (#11294)", () => {
   test("a submitted prompt is recalled by the up-arrow", async () => {
     const { chatPane } = makeScreen(80);
     chatPane.syncFocus(true);

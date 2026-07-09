@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { type AgentRuntime, stringToUuid } from "@elizaos/core";
 import { TUI, visibleWidth } from "@elizaos/tui";
-import { VirtualTerminal } from "@elizaos/tui/testing";
+// The published @elizaos/tui build must ship the ./testing export for these
+// render tests to run; when it does not (npm 2.0.0-alpha.77 dropped it —
+// see elizaOS/eliza#15814), skip with a visible reason instead of failing
+// module resolution for the whole file.
+const tuiTesting = await import("@elizaos/tui/testing").catch(() => null);
+const { VirtualTerminal } = (tuiTesting ?? {}) as typeof import("@elizaos/tui/testing");
+const describeIfTuiTesting = tuiTesting ? describe : describe.skip;
 import { useStore } from "../lib/store.js";
 import { ChatPane } from "./ChatPane.js";
 import { MainScreen } from "./MainScreen.js";
@@ -106,7 +112,7 @@ afterEach(() => {
   resetChatStore();
 });
 
-describe("eliza-code TUI at cockpit phone width", () => {
+describeIfTuiTesting("eliza-code TUI at cockpit phone width", () => {
   test("MainScreen never emits a line wider than the terminal (would crash the TUI)", () => {
     const { chatPane, mainScreen } = makeScreen(PHONE_COLS);
     // Chat focused → the help footer renders along with real message content,
