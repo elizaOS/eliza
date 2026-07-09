@@ -112,4 +112,20 @@ describe("MVP board readiness audit", () => {
       }),
     );
   });
+
+  test("normalizes REST issue rows for the live issue inventory", () => {
+    expect(
+      board.normalizeRestIssue({
+        number: 14351,
+        title: "Verify shift rotation",
+        html_url: "https://github.com/elizaOS/eliza/issues/14351",
+        labels: [{ name: "mvp" }, { name: "needs-shaw" }],
+      }),
+    ).toEqual({
+      number: 14351,
+      title: "Verify shift rotation",
+      url: "https://github.com/elizaOS/eliza/issues/14351",
+      labels: [{ name: "mvp" }, { name: "needs-shaw" }],
+    });
+  });
 });

@@ -167,4 +167,22 @@ describe("MVP evidence matrix", () => {
       "- [ ] **Per-device screenshots, recording, logs, and status JSON** (`device-artifact-bundle`)",
     );
   });
+
+  test("normalizes REST issue rows from GitHub without pull request fields", () => {
+    expect(
+      matrix.normalizeRestIssue({
+        number: 14783,
+        title: "[scenarios] Pack G1",
+        body: "Evidence body",
+        html_url: "https://github.com/elizaOS/eliza/issues/14783",
+        labels: [{ name: "mvp" }, { name: "needs-shaw" }],
+      }),
+    ).toEqual({
+      number: 14783,
+      title: "[scenarios] Pack G1",
+      body: "Evidence body",
+      url: "https://github.com/elizaOS/eliza/issues/14783",
+      labels: [{ name: "mvp" }, { name: "needs-shaw" }],
+    });
+  });
 });

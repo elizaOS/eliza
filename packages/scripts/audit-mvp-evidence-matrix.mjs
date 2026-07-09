@@ -205,6 +205,7 @@ Options:
   --project-number <number>      GitHub Project number for live mode (default: ${DEFAULT_PROJECT_NUMBER}).
   --limit <n>                    GitHub issue/project limit (default: ${DEFAULT_LIMIT}).
   --markdown                     Print a GitHub-ready evidence checklist.
+  --no-project                   Skip Project status lookup when GitHub GraphQL is rate-limited.
   --output <file>                Write the selected format to a file.`;
 }
 
@@ -216,6 +217,7 @@ function parseArgs(argv) {
     limit: DEFAULT_LIMIT,
     json: false,
     markdown: false,
+    noProject: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -223,6 +225,8 @@ function parseArgs(argv) {
       out.json = true;
     } else if (arg === "--markdown") {
       out.markdown = true;
+    } else if (arg === "--no-project") {
+      out.noProject = true;
     } else if (arg === "--help" || arg === "-h") {
       out.help = true;
     } else if (
@@ -255,6 +259,30 @@ function readJson(file) {
 
 function ghJson(args) {
   return JSON.parse(execFileSync("gh", args, { encoding: "utf8" }));
+}
+
+export function normalizeRestIssue(issue) {
+  return {
+    number: issue.number,
+    title: issue.title,
+    body: issue.body ?? "",
+    url: issue.html_url ?? issue.url,
+    labels: labelNames(issue).map((name) => ({ name })),
+  };
+}
+
+function fetchOpenMvpIssuesRest(repo, limit) {
+  const pages = ghJson([
+    "api",
+    "--paginate",
+    "--slurp",
+    `repos/${repo}/issues?state=open&labels=mvp&per_page=100`,
+  ]);
+  return pages
+    .flat()
+    .filter((issue) => !issue.pull_request)
+    .slice(0, Number(limit))
+    .map(normalizeRestIssue);
 }
 
 function labelNames(issue) {
@@ -462,33 +490,22 @@ async function main() {
 
   const issues = args.issuesJson
     ? readJson(args.issuesJson)
-    : ghJson([
-        "issue",
-        "list",
-        "--repo",
-        args.repo,
-        "--state",
-        "open",
-        "--label",
-        "mvp",
-        "--limit",
-        args.limit,
-        "--json",
-        "number,title,body,labels,url",
-      ]);
+    : fetchOpenMvpIssuesRest(args.repo, args.limit);
   const projectPayload = args.projectJson
     ? readJson(args.projectJson)
-    : ghJson([
-        "project",
-        "item-list",
-        args.projectNumber,
-        "--owner",
-        args.projectOwner,
-        "--limit",
-        args.limit,
-        "--format",
-        "json",
-      ]);
+    : args.noProject
+      ? { items: [] }
+      : ghJson([
+          "project",
+          "item-list",
+          args.projectNumber,
+          "--owner",
+          args.projectOwner,
+          "--limit",
+          args.limit,
+          "--format",
+          "json",
+        ]);
   const report = buildEvidenceMatrix(issues, projectPayload, {
     repo: args.repo,
   });

@@ -90,21 +90,26 @@ function ghJson(args) {
   return output ? JSON.parse(output) : null;
 }
 
+export function normalizeRestIssue(issue) {
+  return {
+    number: issue.number,
+    title: issue.title,
+    url: issue.html_url ?? issue.url,
+    labels: labelNames(issue).map((name) => ({ name })),
+  };
+}
+
 function fetchOpenMvpIssues(repo) {
   return ghJson([
-    "issue",
-    "list",
-    "--repo",
-    repo,
-    "--state",
-    "open",
-    "--label",
-    "mvp",
-    "--limit",
-    "300",
-    "--json",
-    "number,title,labels,url",
-  ]);
+    "api",
+    "--paginate",
+    "--slurp",
+    `repos/${repo}/issues?state=open&labels=mvp&per_page=100`,
+  ])
+    .flat()
+    .filter((issue) => !issue.pull_request)
+    .slice(0, 300)
+    .map(normalizeRestIssue);
 }
 
 function fetchProjectItems(projectOwner, projectNumber) {
