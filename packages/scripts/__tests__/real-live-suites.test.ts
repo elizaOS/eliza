@@ -20,6 +20,7 @@
 
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -62,6 +63,44 @@ function owningPackageDir(file: string): string {
 }
 
 describe("real/live guarded-suite manifest (#9310 §E)", () => {
+  test("discovery ignores nested agent worktree directories", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "real-live-discovery-"));
+    try {
+      const realSuite = path.join(
+        root,
+        "packages",
+        "core",
+        "live.real.test.ts",
+      );
+      const nestedCodexSuite = path.join(
+        root,
+        ".codex-worktrees",
+        "branch",
+        "packages",
+        "core",
+        "duplicate.real.test.ts",
+      );
+      const nestedCodexPrSuite = path.join(
+        root,
+        ".codex-pr-worktrees",
+        "pr-1",
+        "packages",
+        "core",
+        "duplicate.live.test.ts",
+      );
+      for (const file of [realSuite, nestedCodexSuite, nestedCodexPrSuite]) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, "describe.skip('guarded', () => {});\n");
+      }
+
+      expect(discoverGuardedRealLiveFiles(root)).toEqual([
+        "packages/core/live.real.test.ts",
+      ]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("manifest matches the on-disk guarded set (no drift)", () => {
     const drift = diffRealLiveManifest(discoverGuardedRealLiveFiles(repoRoot));
     expect(

@@ -49,6 +49,8 @@ const DISCOVERY_SKIP_DIRS = new Set([
   ".git",
   ".turbo",
   ".claude",
+  ".codex-pr-worktrees",
+  ".codex-worktrees",
   "coverage",
   "dist",
   "node_modules",
