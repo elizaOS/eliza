@@ -160,11 +160,21 @@
     },
     "./brand": {
       "types": "./dist/brand/index.d.ts",
+      "eliza-source": {
+        "types": "./src/brand/index.ts",
+        "import": "./src/brand/index.ts",
+        "default": "./src/brand/index.ts"
+      },
       "import": "./dist/brand/index.js",
       "default": "./dist/brand/index.js"
     },
     "./brand-classic": {
       "types": "./dist/brand-classic/index.d.ts",
+      "eliza-source": {
+        "types": "./src/brand-classic/index.ts",
+        "import": "./src/brand-classic/index.ts",
+        "default": "./src/brand-classic/index.ts"
+      },
       "import": "./dist/brand-classic/index.js",
       "default": "./dist/brand-classic/index.js"
     },
