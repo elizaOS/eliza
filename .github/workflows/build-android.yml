@@ -65,6 +65,47 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # The APK requires the fused inference lib: the :app:copyForkLlamaLib
+      # gradle task hard-errors when arm64-v8a has neither a configured lib dir
+      # nor a pre-staged jniLibs set — which is why this workflow was red on
+      # every bare CI runner (#15540). Pull the newest green artifact from
+      # build-llama-ffi-android (the canonical cross-compile of
+      # libelizainference.so) and point the gradle task at it via
+      # ELIZA_MTP_ANDROID_LIBDIR.
+      - name: Resolve latest green libelizainference build
+        id: ffi_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" \
+            --workflow build-llama-ffi-android.yml --branch develop \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful build-llama-ffi-android run on develop — cannot stage libelizainference.so. Fix that workflow first (#15540)."
+            exit 1
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Using libelizainference artifacts from run $run_id"
+
+      - name: Download fused inference lib (arm64-v8a)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: libelizainference-android-arm64-vulkan-fused
+          run-id: ${{ steps.ffi_run.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ffi-libs/android-arm64-vulkan-fused
+
+      - name: Stage fused inference lib for gradle
+        run: |
+          libdir="$GITHUB_WORKSPACE/ffi-libs/android-arm64-vulkan-fused/arm64-v8a"
+          if [ ! -f "$libdir/libelizainference.so" ]; then
+            echo "::error::Downloaded artifact lacks arm64-v8a/libelizainference.so (layout changed?)"
+            find "$GITHUB_WORKSPACE/ffi-libs" -maxdepth 3 -type f | head -20
+            exit 1
+          fi
+          echo "ELIZA_MTP_ANDROID_LIBDIR=$libdir" >> "$GITHUB_ENV"
+          ls -la "$libdir"
+
       - name: Prepare Android platform
         working-directory: ${{ env.APP_DIR }}
         run: bun run build:android
