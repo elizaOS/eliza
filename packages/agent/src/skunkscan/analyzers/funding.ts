@@ -1,6 +1,10 @@
 import { ParsedWalletTransaction } from "../parsers/transaction";
 import { SupportedChain, WalletFundingSummary } from "../types";
 import { lookupWalletLabel } from "../labels/labelEngine";
+import {
+  buildConfidenceInput,
+  confidenceLevelFromScore,
+} from "../confidence/framework";
 
 export function analyzeWalletFunding(
   chain: SupportedChain,
@@ -30,6 +34,24 @@ export function analyzeWalletFunding(
   );
 
   if (!incomingFundingTransfer) {
+    const evidenceConfidenceInput = buildConfidenceInput([
+      {
+        condition: Boolean(firstTransaction.signature),
+        score: 30,
+        reason: "First known transaction signature was available.",
+      },
+      {
+        condition: typeof firstTransaction.timestamp === "number",
+        score: 20,
+        reason: "First known transaction timestamp was available.",
+      },
+      {
+        condition: firstTransaction.nativeTransfers.length > 0,
+        score: 20,
+        reason: "Native transfer data was available.",
+      },
+    ]);
+
     return {
       firstFundingTransaction: firstTransaction.signature,
       firstFundingAt: firstTransaction.timestamp,
@@ -37,7 +59,9 @@ export function analyzeWalletFunding(
       fundingAmountSol: null,
       fundingSourceType: "unknown",
       fundingSourceLabel: null,
-      evidenceConfidence: "medium",
+      evidenceConfidence: confidenceLevelFromScore(
+        evidenceConfidenceInput.score,
+      ),
       confidence: "low",
       notes: [
         "No incoming SOL funding transfer was detected in the first known transaction.",
@@ -60,6 +84,34 @@ export function analyzeWalletFunding(
           ? "program"
           : "wallet";
 
+  const evidenceConfidenceInput = buildConfidenceInput([
+    {
+      condition: Boolean(firstTransaction.signature),
+      score: 20,
+      reason: "First known transaction signature was available.",
+    },
+    {
+      condition: typeof firstTransaction.timestamp === "number",
+      score: 15,
+      reason: "First known transaction timestamp was available.",
+    },
+    {
+      condition: Boolean(incomingFundingTransfer.from),
+      score: 25,
+      reason: "Funding wallet was identified.",
+    },
+    {
+      condition: incomingFundingTransfer.amountSol !== null,
+      score: 20,
+      reason: "Funding amount was identified.",
+    },
+    {
+      condition: Boolean(fundingSourceLabel),
+      score: 20,
+      reason: "Funding source label was identified.",
+    },
+  ]);
+
   const confidence =
     fundingSourceLabel?.confidence === "high"
       ? "high"
@@ -74,7 +126,9 @@ export function analyzeWalletFunding(
     fundingAmountSol: incomingFundingTransfer.amountSol,
     fundingSourceType,
     fundingSourceLabel,
-    evidenceConfidence: "high",
+    evidenceConfidence: confidenceLevelFromScore(
+      evidenceConfidenceInput.score,
+    ),
     confidence,
     notes: [
       "Initial funding source was inferred from the first known incoming SOL transfer.",
