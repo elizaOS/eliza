@@ -240,8 +240,9 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
     acp.emit(sessionId, "task_complete", {
       response: "Added caching and verified it works.",
     });
-    await flush();
-    await flush();
+    // Verification crosses the event bridge and a thread-pool filesystem read,
+    // so the verifier call is the stable synchronization point under runner load.
+    await waitFor(() => prompts.length > 0, { label: "verifier prompted" });
 
     expect(prompts).toHaveLength(1);
     const [prompt] = prompts;
@@ -284,8 +285,9 @@ describe("completion-evidence bundle assembly + trajectory persistence", () => {
       response:
         "Done — deployed to https://claimed-but-not-probed.example.com/",
     });
-    await flush();
-    await flush();
+    // This path also captures the git change set before reading child trajectories;
+    // synchronize on the resulting verifier call instead of scheduler timing.
+    await waitFor(() => prompts.length > 0, { label: "verifier prompted" });
 
     expect(prompts).toHaveLength(1);
     const [prompt] = prompts;

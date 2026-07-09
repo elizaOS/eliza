@@ -38,6 +38,8 @@ export interface FakeRuntime {
   entities: Array<Record<string, unknown>>;
   broadcasts: object[];
   documents: Array<Record<string, unknown>>;
+  events: Array<{ event: string | string[]; payload: unknown }>;
+  reportedErrors: Array<{ scope: string; error: unknown; context?: unknown }>;
   settings: Record<string, string>;
 }
 
@@ -49,6 +51,12 @@ export function makeFakeRuntime(): FakeRuntime {
   const entities: Array<Record<string, unknown>> = [];
   const broadcasts: object[] = [];
   const documents: Array<Record<string, unknown>> = [];
+  const events: Array<{ event: string | string[]; payload: unknown }> = [];
+  const reportedErrors: Array<{
+    scope: string;
+    error: unknown;
+    context?: unknown;
+  }> = [];
   const settings: Record<string, string> = {};
 
   const connectorSetup = {
@@ -94,6 +102,12 @@ export function makeFakeRuntime(): FakeRuntime {
       memories.set(patch.id, { ...existing, ...patch });
       return true;
     },
+    emitEvent: async (event: string | string[], payload: unknown) => {
+      events.push({ event, payload });
+    },
+    reportError: (scope: string, error: unknown, context?: unknown) => {
+      reportedErrors.push({ scope, error, context });
+    },
   } as unknown as IAgentRuntime;
 
   return {
@@ -105,6 +119,8 @@ export function makeFakeRuntime(): FakeRuntime {
     entities,
     broadcasts,
     documents,
+    events,
+    reportedErrors,
     settings,
   };
 }

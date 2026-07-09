@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Evidence expectation matrix for open LifeOps MVP issues. The board can show
- * that a row is human-gated, but closeout still needs a concrete proof contract
+ * Evidence expectation matrix for active LifeOps MVP project issues. The board
+ * can show that a row is human-gated, but closeout still needs a concrete proof contract
  * per issue so screenshots, videos, logs, trajectories, and domain artifacts do
  * not collapse into a vague "needs review" bucket.
  */
@@ -317,18 +317,21 @@ export function normalizeRestIssue(issue) {
   };
 }
 
-function fetchOpenMvpIssuesRest(repo, limit) {
-  const pages = ghJson([
-    "api",
-    "--paginate",
-    "--slurp",
-    `repos/${repo}/issues?state=open&labels=mvp&per_page=100`,
+function fetchOpenProjectIssues(repo, projectOwner, projectNumber, limit) {
+  return ghJson([
+    "issue",
+    "list",
+    "--repo",
+    repo,
+    "--state",
+    "open",
+    "--search",
+    `project:${projectOwner}/${projectNumber}`,
+    "--limit",
+    limit,
+    "--json",
+    "number,title,body,url,labels",
   ]);
-  return pages
-    .flat()
-    .filter((issue) => !issue.pull_request)
-    .slice(0, Number(limit))
-    .map(normalizeRestIssue);
 }
 
 function labelNames(issue) {
@@ -419,6 +422,12 @@ export function buildEvidenceMatrix(issues, projectPayload = {}, options = {}) {
   );
   const projectStatusSource = options.projectStatusSource ?? "project";
   const rows = issues
+    .filter(
+      (issue) =>
+        projectStatusSource === "omitted" ||
+        (statusByNumber.has(issue.number) &&
+          statusByNumber.get(issue.number) !== "Done"),
+    )
     .map((issue) => ({
       ...issue,
       projectStatus: statusByNumber.get(issue.number) ?? null,
@@ -430,7 +439,7 @@ export function buildEvidenceMatrix(issues, projectPayload = {}, options = {}) {
   return {
     projectStatusSource,
     counts: {
-      openMvpIssues: rows.length,
+      activeProjectIssues: rows.length,
       humanGated: humanGated.length,
       agentActionable: agentActionable.length,
     },
@@ -443,7 +452,7 @@ export function buildEvidenceMatrix(issues, projectPayload = {}, options = {}) {
 function formatText(report) {
   const lines = [
     "LifeOps MVP evidence matrix",
-    `open MVP issues: ${report.counts.openMvpIssues}`,
+    `active Project 15 issues: ${report.counts.activeProjectIssues}`,
     `human-gated: ${report.counts.humanGated}; agent-actionable: ${report.counts.agentActionable}`,
     `project-status source: ${report.projectStatusSource}`,
     "",
@@ -496,7 +505,7 @@ export function formatMarkdown(report) {
     "",
     "| Metric | Count |",
     "| --- | ---: |",
-    `| Open MVP issues | ${report.counts.openMvpIssues} |`,
+    `| Active Project 15 issues | ${report.counts.activeProjectIssues} |`,
     `| Human/owner-gated | ${report.counts.humanGated} |`,
     `| Agent-actionable | ${report.counts.agentActionable} |`,
     `| Project status source | ${report.projectStatusSource} |`,
@@ -567,7 +576,12 @@ async function main() {
 
   const issues = args.issuesJson
     ? readJson(args.issuesJson)
-    : fetchOpenMvpIssuesRest(args.repo, args.limit);
+    : fetchOpenProjectIssues(
+        args.repo,
+        args.projectOwner,
+        args.projectNumber,
+        args.limit,
+      );
   const projectPayload = args.projectJson
     ? readJson(args.projectJson)
     : args.noProject

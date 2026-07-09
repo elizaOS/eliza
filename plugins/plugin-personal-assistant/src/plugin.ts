@@ -9,6 +9,7 @@
  * default packs into a runnable Eliza plugin; it owns no domain logic itself.
  */
 import {
+  type EventPayload,
   EventType,
   getDefaultTriageService,
   type IAgentRuntime,
@@ -52,10 +53,12 @@ import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
   IPermissionsRegistry,
+  MeetingTranscriptFinalizedPayload,
   PermissionState,
   Platform,
   Prober,
 } from "@elizaos/shared";
+import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
@@ -101,6 +104,7 @@ import {
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
+import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import {
   createChannelRegistry,
@@ -113,6 +117,8 @@ import {
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
+import { createDelegationInboundMessageHandler } from "./lifeops/delegation-contracts/inbound-event.js";
+import { processDelegationInboundTurn } from "./lifeops/delegation-contracts/index.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
 import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
 import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
@@ -124,6 +130,7 @@ import {
   registerDefaultPromptPack,
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
+import { handleMeetingTranscriptFinalized } from "./lifeops/meeting-ghost/event-handler.js";
 import {
   createOwnerSendPolicy,
   registerOwnerSendApprovalWorker,
@@ -206,6 +213,13 @@ import {
   ensureBlockRuleReconcileTask,
   registerBlockRuleReconcilerWorker,
 } from "./website-blocker/chat-integration/index.js";
+
+const handleDelegationInboundMessage = createDelegationInboundMessageHandler({
+  createRepository: (runtime) => new LifeOpsRepository(runtime),
+  createApprovalQueue: (runtime) =>
+    createApprovalQueue(runtime, { agentId: runtime.agentId }),
+  processTurn: processDelegationInboundTurn,
+});
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
@@ -755,6 +769,10 @@ const rawPersonalAssistantPlugin: Plugin = {
         "question-followup-cancel",
         handleOwnerMessageForQuestionFollowup,
       ),
+      detachInboundScan(
+        "delegation-contract-inbound",
+        handleDelegationInboundMessage,
+      ),
     ],
     // Agent reply ends with a question the owner never answers → seed a
     // once-fired follow-up whose fire-time admission is the model moment
@@ -769,6 +787,12 @@ const rawPersonalAssistantPlugin: Plugin = {
     _pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    runtime.registerEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, async (payload) =>
+      handleMeetingTranscriptFinalized(
+        payload as EventPayload & MeetingTranscriptFinalizedPayload,
+      ),
+    );
+
     // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
     // to the matching Mockoon environment on localhost. No-op otherwise.
     const mockoonApplied = applyMockoonEnvOverrides();

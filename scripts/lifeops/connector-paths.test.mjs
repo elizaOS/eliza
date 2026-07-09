@@ -511,6 +511,19 @@ test("github.gh-cli requires gh in PATH and an authenticated keyring", () => {
   assert.equal(authed.available, true);
 });
 
+test("github device login is a designed owner-setup state until a client id exists", () => {
+  const path = byId("github.device-oauth");
+  assert.equal(path.oneClick.type, "github-device");
+  const missing = checkAvailability(path.availability, fakeCtx());
+  assert.equal(missing.available, false);
+  assert.match(missing.reason, /needs owner setup/);
+  const configured = checkAvailability(
+    path.availability,
+    fakeCtx({ env: { GITHUB_OAUTH_CLIENT_ID: "device-client" } }),
+  );
+  assert.equal(configured.available, true);
+});
+
 // --- evaluation output safety ---------------------------------------------------------
 
 test("evaluateConnectorPaths emits env names and reasons, never env values", () => {

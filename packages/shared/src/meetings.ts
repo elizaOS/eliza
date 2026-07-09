@@ -12,7 +12,7 @@
  * integration and post-hoc artifacts remain the OAuth surfaces.
  */
 
-import type { TranscriptSegment } from "./transcripts.js";
+import type { Transcript, TranscriptSegment } from "./transcripts.js";
 
 /** Platforms an agent can attend. Browser-bot: meet/teams/zoom. Native RX: discord. */
 export type MeetingPlatform = "google_meet" | "teams" | "zoom" | "discord";
@@ -67,6 +67,20 @@ export const DEFAULT_MEETING_AUTO_LEAVE: MeetingAutoLeaveConfig = {
 /** Default upper bound for a browser-bot meeting session: 60 minutes. */
 export const DEFAULT_MEETING_MAX_DURATION_MS = 60 * 60 * 1000;
 
+/**
+ * Owner-side context for post-meeting "ghost attendance" processing. Meeting
+ * capture owns the transcript; LifeOps owns what to do with it for the owner.
+ */
+export interface MeetingGhostAttendanceContext {
+  ownerUserId: string;
+  ownerDisplayName: string;
+  requestedBy?: string;
+  careAbouts: string[];
+  calendarId?: string;
+  approvalTtlMs?: number;
+  attendees?: Array<{ name: string; email?: string }>;
+}
+
 /** Input contract to start a bot (the request side of POST /api/meetings). */
 export interface MeetingJoinRequest {
   platform: MeetingPlatform;
@@ -85,6 +99,11 @@ export interface MeetingJoinRequest {
   maxDurationMs?: number;
   /** Calendar event that prompted the join, when auto-joined. */
   calendarEventId?: string;
+  /**
+   * Optional LifeOps post-processing context: when present, a finalized
+   * transcript can be analyzed as a meeting the owner skipped.
+   */
+  ghostAttendance?: MeetingGhostAttendanceContext;
 }
 
 /** Metering state exposed so routes/UI can prove a meeting is spend-bounded. */
@@ -163,6 +182,16 @@ export interface MeetingStatusEvent {
 }
 
 export type MeetingWsEvent = MeetingTranscriptEvent | MeetingStatusEvent;
+
+/** Runtime event emitted when a meeting transcript is finalized and readable. */
+export const MEETING_TRANSCRIPT_FINALIZED_EVENT =
+  "meeting.transcript.finalized";
+
+export interface MeetingTranscriptFinalizedPayload {
+  session: MeetingSession;
+  transcript: Transcript;
+  ghostAttendance?: MeetingGhostAttendanceContext;
+}
 
 /** Result of parsing a user-supplied meeting URL. */
 export interface ParsedMeetingUrl {

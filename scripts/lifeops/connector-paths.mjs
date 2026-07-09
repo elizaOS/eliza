@@ -64,7 +64,13 @@ export function resolveDeepLink(pathEntry, env = process.env) {
   return `${appBase(env)}${oneClick.hrefPath}`;
 }
 
-const ONE_CLICK_TYPES = ["gh-token", "deep-link", "shell", "siwe"];
+const ONE_CLICK_TYPES = [
+  "gh-token",
+  "github-device",
+  "deep-link",
+  "shell",
+  "siwe",
+];
 const ROLES_VIA = [
   "env-slots",
   "oauth-requested-role",
@@ -207,6 +213,28 @@ export const CONNECTOR_PATHS = [
     availability: { type: "always" },
     notes:
       "OWNER label maps to plugin-github role 'user', AGENT to 'agent' (plugins/plugin-github/src/accounts.ts); GITHUB_ACCOUNTS JSON and character.settings.github.accounts are the multi-account forms; GITHUB_TOKEN stays the ownerless legacy single token.",
+  }),
+  definePath({
+    id: "github.device-oauth",
+    family: "github",
+    kind: "user-oauth",
+    label: "GitHub OAuth device login",
+    requiredAll: ["GITHUB_OAUTH_CLIENT_ID"],
+    optional: ["GITHUB_TOKEN"],
+    probeId: "github",
+    probeEndpoint:
+      "POST https://github.com/login/device/code, then GET https://api.github.com/user with the acquired token",
+    oneClick: {
+      type: "github-device",
+      detail:
+        "Display GitHub's short device code, confirm it on github.com, and save the returned token without exposing it to the browser",
+    },
+    availability: {
+      type: "env-all",
+      names: ["GITHUB_OAUTH_CLIENT_ID"],
+      reason:
+        "needs owner setup: no GitHub OAuth client id with device flow enabled (GITHUB_OAUTH_CLIENT_ID)",
+    },
   }),
   definePath({
     id: "github.user-oauth",
