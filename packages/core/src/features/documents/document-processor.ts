@@ -36,6 +36,7 @@ import { generateText } from "./llm.ts";
 import type {
 	DocumentFragmentMemoryMetadata,
 	DocumentMemoryMetadata,
+	PreChunkedFragmentInput,
 } from "./types.ts";
 import {
 	convertPdfToTextFromBuffer,
@@ -103,6 +104,7 @@ export async function processFragmentsSynchronously({
 	worldId,
 	documentTitle,
 	documentMetadata,
+	fragments,
 }: {
 	runtime: IAgentRuntime;
 	documentId: UUID;
@@ -114,20 +116,39 @@ export async function processFragmentsSynchronously({
 	worldId?: UUID;
 	documentTitle?: string;
 	documentMetadata?: Record<string, unknown>;
+	/**
+	 * Pre-chunked fragments from a producer that owns its chunk boundaries
+	 * (e.g. transcript segment groups carrying startMs/endMs anchors, #14806).
+	 * When present these are stored verbatim instead of splitting
+	 * `fullDocumentText`; each fragment's metadata merges onto the stored
+	 * FRAGMENT memory.
+	 */
+	fragments?: PreChunkedFragmentInput[];
 }): Promise<number> {
 	if (!fullDocumentText || fullDocumentText.trim() === "") {
 		logger.warn(`No text content available for document ${documentId}`);
 		return 0;
 	}
 
-	const chunks = await splitDocumentIntoChunks(fullDocumentText);
+	let chunks: string[];
+	let fragmentMetadatas: Array<Record<string, unknown> | undefined> | undefined;
+	if (fragments) {
+		validatePreChunkedFragments(fragments, documentId);
+		chunks = fragments.map((f) => f.text);
+		fragmentMetadatas = fragments.map((f) => f.metadata);
+		logger.info(
+			`Using ${chunks.length} producer-supplied pre-chunked fragments`,
+		);
+	} else {
+		chunks = await splitDocumentIntoChunks(fullDocumentText);
 
-	if (chunks.length === 0) {
-		logger.warn(`No chunks generated for document ${documentId}`);
-		return 0;
+		if (chunks.length === 0) {
+			logger.warn(`No chunks generated for document ${documentId}`);
+			return 0;
+		}
+
+		logger.info(`Split into ${chunks.length} chunks`);
 	}
-
-	logger.info(`Split into ${chunks.length} chunks`);
 
 	const providerLimits = await getProviderRateLimits(runtime);
 	const CONCURRENCY_LIMIT = providerLimits.maxConcurrentRequests || 30;
@@ -141,6 +162,7 @@ export async function processFragmentsSynchronously({
 		runtime,
 		documentId,
 		chunks,
+		fragmentMetadatas,
 		fullDocumentText,
 		contentType,
 		agentId,
@@ -264,10 +286,61 @@ async function splitDocumentIntoChunks(
 	return splitChunks(documentText, tokenChunkSize, tokenChunkOverlap);
 }
 
+/**
+ * Reject malformed producer-supplied fragments before anything is persisted —
+ * a fragment with empty text or an inverted/non-finite time anchor would
+ * silently poison search results and the PII span projection built on top of
+ * the anchors, so the whole batch fails fast instead.
+ */
+function validatePreChunkedFragments(
+	fragments: PreChunkedFragmentInput[],
+	documentId: UUID,
+): void {
+	if (fragments.length === 0) {
+		throw new Error(
+			`Pre-chunked fragments for document ${documentId} must be non-empty when provided`,
+		);
+	}
+	fragments.forEach((fragment, index) => {
+		if (!fragment.text || fragment.text.trim() === "") {
+			throw new Error(
+				`Pre-chunked fragment ${index} for document ${documentId} has empty text`,
+			);
+		}
+		const { startMs, endMs } = (fragment.metadata ?? {}) as {
+			startMs?: unknown;
+			endMs?: unknown;
+		};
+		for (const [key, value] of [
+			["startMs", startMs],
+			["endMs", endMs],
+		] as const) {
+			if (
+				value !== undefined &&
+				(typeof value !== "number" || !Number.isFinite(value) || value < 0)
+			) {
+				throw new Error(
+					`Pre-chunked fragment ${index} for document ${documentId} has invalid ${key}: ${String(value)}`,
+				);
+			}
+		}
+		if (
+			typeof startMs === "number" &&
+			typeof endMs === "number" &&
+			endMs < startMs
+		) {
+			throw new Error(
+				`Pre-chunked fragment ${index} for document ${documentId} has endMs ${endMs} before startMs ${startMs}`,
+			);
+		}
+	});
+}
+
 async function processAndSaveFragments({
 	runtime,
 	documentId,
 	chunks,
+	fragmentMetadatas,
 	fullDocumentText,
 	contentType,
 	agentId,
@@ -283,6 +356,8 @@ async function processAndSaveFragments({
 	runtime: IAgentRuntime;
 	documentId: UUID;
 	chunks: string[];
+	/** Per-chunk producer metadata, indexed like `chunks` (pre-chunked path). */
+	fragmentMetadatas?: Array<Record<string, unknown> | undefined>;
 	fullDocumentText: string;
 	contentType?: string;
 	agentId: UUID;
@@ -351,8 +426,12 @@ async function processAndSaveFragments({
 					typeof documentMetadata?.source === "string"
 						? documentMetadata.source
 						: "upload";
+				// Producer metadata (time anchors etc.) sits between the inherited
+				// document metadata and the structural fields, so it can annotate a
+				// fragment but never corrupt type/documentId/position.
 				const fragmentMetadata: DocumentFragmentMemoryMetadata = {
 					...(documentMetadata ?? {}),
+					...(fragmentMetadatas?.[originalChunkIndex] ?? {}),
 					type: MemoryType.FRAGMENT,
 					documentId,
 					position: originalChunkIndex,

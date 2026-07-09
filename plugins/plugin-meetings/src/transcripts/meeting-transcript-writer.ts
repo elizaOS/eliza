@@ -47,6 +47,7 @@ import {
   type Transcript,
   type TranscriptSegment,
   transcriptDurationMs,
+  transcriptKnowledgeFragments,
   transcriptPlainText,
   transcriptPreview,
   transcriptSpeakerCount,
@@ -86,6 +87,7 @@ interface DocumentsLike {
     scope?: string;
     addedFrom?: string;
     metadata?: Record<string, unknown>;
+    fragments?: Array<{ text: string; metadata?: Record<string, unknown> }>;
   }): Promise<{ storedDocumentMemoryId: UUID }>;
 }
 
@@ -402,6 +404,9 @@ export class MeetingTranscriptWriter {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 64) || "transcript";
+    // Segment-boundary fragments carrying startMs/endMs anchors (#14806);
+    // `content` non-empty above guarantees at least one fragment.
+    const fragments = transcriptKnowledgeFragments(transcript.segments);
     try {
       const res = await documents.addDocument({
         worldId: this.input.worldId,
@@ -413,6 +418,7 @@ export class MeetingTranscriptWriter {
         content,
         scope: transcript.scope,
         addedFrom: "runtime-internal",
+        ...(fragments.length > 0 ? { fragments } : {}),
         metadata: {
           source: TRANSCRIPT_DOCUMENT_TAG,
           tags: [TRANSCRIPT_DOCUMENT_TAG],

@@ -71,4 +71,24 @@ describe("transcriptKnowledgePayload", () => {
 		expect(p.metadata.mediaUrl).toBeUndefined();
 		expect(p.filename).toBe("transcript.txt");
 	});
+
+	it("carries segment-boundary fragments with time anchors (#14806)", () => {
+		const p = transcriptKnowledgePayload(transcript);
+		// Small transcript → one fragment covering both segments; its text is
+		// exactly the mirrored body so search hits match what a human reads.
+		expect(p.fragments).toHaveLength(1);
+		expect(p.fragments[0].text).toBe(p.content);
+		expect(p.fragments[0].metadata).toEqual({
+			segmentIds: ["s1", "s2"],
+			startMs: 0,
+			endMs: 2000,
+			speakerLabels: ["Alice", "Bob"],
+		});
+	});
+
+	it("yields no fragments for an empty transcript", () => {
+		const p = transcriptKnowledgePayload({ ...transcript, segments: [] });
+		expect(p.fragments).toEqual([]);
+		expect(p.content).toBe("");
+	});
 });

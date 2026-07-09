@@ -14,8 +14,15 @@
  * and `addedFrom` to call `DocumentService.addDocument`.
  */
 
-import type { Transcript, TranscriptScope } from "@elizaos/shared/transcripts";
-import { transcriptPlainText } from "@elizaos/shared/transcripts";
+import type {
+	Transcript,
+	TranscriptFragmentInput,
+	TranscriptScope,
+} from "@elizaos/shared/transcripts";
+import {
+	transcriptKnowledgeFragments,
+	transcriptPlainText,
+} from "@elizaos/shared/transcripts";
 
 /** The documents-store fields derived from a transcript (sans runtime UUIDs). */
 export interface TranscriptKnowledgePayload {
@@ -27,6 +34,12 @@ export interface TranscriptKnowledgePayload {
 	scope: TranscriptScope;
 	/** Metadata merged onto the document — tags + the link back to the record. */
 	metadata: Record<string, unknown>;
+	/**
+	 * Segment-boundary pre-chunked fragments with startMs/endMs time anchors
+	 * (#14806) — stored via the documents `fragments` seam so a search hit can
+	 * seek the stored audio instead of opening the player at t=0.
+	 */
+	fragments: TranscriptFragmentInput[];
 }
 
 /** Tag every mirrored transcript carries so it's filterable as a transcript. */
@@ -78,5 +91,6 @@ export function transcriptKnowledgePayload(
 		contentType: "text/plain",
 		scope: transcript.scope,
 		metadata,
+		fragments: transcriptKnowledgeFragments(transcript.segments),
 	};
 }

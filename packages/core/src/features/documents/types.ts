@@ -135,6 +135,20 @@ export interface TextGenerationOptions {
 	autoCacheContextualRetrieval?: boolean;
 }
 
+/**
+ * One pre-chunked fragment supplied by a producer that owns its own chunk
+ * boundaries — e.g. transcript producers grouping on segment boundaries so
+ * every fragment carries an exact `startMs`/`endMs` time range (#14806). The
+ * optional `metadata` merges onto the stored FRAGMENT memory's jsonb metadata
+ * (after the document-level metadata, before the structural fragment fields,
+ * so a producer can add anchors but never corrupt `type`/`documentId`/
+ * `position`).
+ */
+export interface PreChunkedFragmentInput {
+	text: string;
+	metadata?: Record<string, unknown>;
+}
+
 export interface AddDocumentOptions {
 	agentId?: UUID;
 	worldId: UUID;
@@ -150,6 +164,12 @@ export interface AddDocumentOptions {
 	addedByRole?: DocumentAddedByRole;
 	addedFrom?: DocumentAddedFrom;
 	metadata?: Record<string, unknown>;
+	/**
+	 * Pre-chunked fragments to store instead of running the token splitter over
+	 * `content`. When present, exactly these fragments are embedded + persisted
+	 * (positions follow array order).
+	 */
+	fragments?: PreChunkedFragmentInput[];
 }
 declare module "../../types/service.ts" {
 	interface ServiceTypeRegistry {

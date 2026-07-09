@@ -712,6 +712,7 @@ export class DocumentService extends Service {
 		addedByRole,
 		addedFrom,
 		metadata,
+		fragments,
 	}: AddDocumentOptions): Promise<{
 		clientDocumentId: string;
 		storedDocumentMemoryId: UUID;
@@ -875,6 +876,7 @@ export class DocumentService extends Service {
 				documentTitle: originalFilename,
 				documentMetadata:
 					(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+				fragments,
 			});
 
 			logger.debug(
