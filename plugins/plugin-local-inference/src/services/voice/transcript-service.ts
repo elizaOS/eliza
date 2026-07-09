@@ -37,6 +37,7 @@ interface DocumentsLike {
 		scope?: TranscriptScope;
 		addedFrom?: string;
 		metadata?: Record<string, unknown>;
+		fragments?: Array<{ text: string; metadata?: Record<string, unknown> }>;
 	}): Promise<{ storedDocumentMemoryId: UUID }>;
 }
 
@@ -193,6 +194,12 @@ export class TranscriptService {
 				scope: payload.scope,
 				addedFrom: "runtime-internal",
 				metadata: payload.metadata,
+				// Segment-boundary fragments carrying startMs/endMs anchors (#14806);
+				// empty when the transcript has no non-empty segments (the documents
+				// seam rejects an explicitly-empty fragments array).
+				...(payload.fragments.length > 0
+					? { fragments: payload.fragments }
+					: {}),
 			});
 			return res.storedDocumentMemoryId;
 		} catch (err) {

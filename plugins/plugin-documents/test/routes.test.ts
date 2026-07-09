@@ -7,11 +7,13 @@ import {
 } from "../src/routes.js";
 
 const addDocument = vi.fn();
+const searchDocuments = vi.fn();
 
 vi.mock("@elizaos/agent/api/documents-service-loader", () => ({
   getDocumentsService: vi.fn(async () => ({
     service: {
       addDocument,
+      searchDocuments,
     },
   })),
   getDocumentsServiceTimeoutMs: vi.fn(() => 0),
@@ -135,6 +137,61 @@ describe("document routes", () => {
       error: "content and filename must be non-empty strings",
     });
     expect(addDocument).not.toHaveBeenCalled();
+  });
+
+  it("projects transcript time anchors (transcriptId/startMs/endMs) on search hits", async () => {
+    searchDocuments.mockResolvedValueOnce([
+      {
+        id: "frag-anchored",
+        similarity: 0.9,
+        content: { text: "Alice: hello there" },
+        metadata: {
+          type: "fragment",
+          documentId: "doc-1",
+          position: 0,
+          transcriptId: "t-1",
+          startMs: 61_000,
+          endMs: 62_500,
+          title: "standup",
+        },
+      },
+      {
+        id: "frag-plain",
+        similarity: 0.8,
+        content: { text: "plain document chunk" },
+        metadata: {
+          type: "fragment",
+          documentId: "doc-2",
+          position: 3,
+          title: "notes",
+        },
+      },
+    ]);
+    const { ctx, res } = buildCtx({
+      method: "GET",
+      pathname: "/api/documents/search",
+    });
+    ctx.url = new URL("http://localhost/api/documents/search?q=hello");
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    expect(res.statusCode).toBe(200);
+    const body = res.body as {
+      results: Array<Record<string, unknown>>;
+    };
+    expect(body.results).toHaveLength(2);
+    // Anchored transcript fragment carries the deep-link fields.
+    expect(body.results[0]).toMatchObject({
+      id: "frag-anchored",
+      documentId: "doc-1",
+      transcriptId: "t-1",
+      startMs: 61_000,
+      endMs: 62_500,
+    });
+    // Non-transcript fragments carry no anchor keys at all.
+    expect(body.results[1].transcriptId).toBeUndefined();
+    expect(body.results[1].startMs).toBeUndefined();
+    expect(body.results[1].endMs).toBeUndefined();
   });
 
   it("rejects image uploads that would otherwise store placeholder text", async () => {

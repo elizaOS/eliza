@@ -829,6 +829,16 @@ export async function handleDocumentsRoutes(
           ),
           documentProvenance: meta ? getDocumentProvenance(meta) : undefined,
           position: meta?.position,
+          // Transcript time anchors (#14806): present only on fragments the
+          // segment-boundary producers wrote, so a hit can deep-link the
+          // player at the matching audio offset instead of t=0.
+          ...(typeof meta?.transcriptId === "string"
+            ? { transcriptId: meta.transcriptId }
+            : {}),
+          ...(typeof meta?.startMs === "number"
+            ? { startMs: meta.startMs }
+            : {}),
+          ...(typeof meta?.endMs === "number" ? { endMs: meta.endMs } : {}),
         };
       });
 

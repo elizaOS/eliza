@@ -522,6 +522,36 @@ async function emit(
 	await callback?.(content);
 }
 
+/** Render ms-from-audio-start as `m:ss` / `h:mm:ss` for a human-readable anchor. */
+function formatMsClock(ms: number): string {
+	const totalSeconds = Math.floor(ms / 1000);
+	const seconds = totalSeconds % 60;
+	const minutes = Math.floor(totalSeconds / 60) % 60;
+	const hours = Math.floor(totalSeconds / 3600);
+	const mmss = `${minutes}:${String(seconds).padStart(2, "0")}`;
+	return hours > 0
+		? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+		: mmss;
+}
+
+/**
+ * Time-anchor prefix for a search hit that came from a transcript fragment
+ * (#14806) — surfaces WHERE in the recording the match sits, so the agent can
+ * cite it and downstream consumers can seek the audio.
+ */
+function transcriptAnchorPrefix(
+	metadata: Record<string, unknown> | undefined,
+): string {
+	const startMs = metadata?.startMs;
+	const endMs = metadata?.endMs;
+	if (typeof startMs !== "number" || !Number.isFinite(startMs)) return "";
+	const end =
+		typeof endMs === "number" && Number.isFinite(endMs)
+			? `–${formatMsClock(endMs)}`
+			: "";
+	return `[${formatMsClock(startMs)}${end}] `;
+}
+
 async function handleSearch(
 	service: DocumentService,
 	message: Memory,
@@ -557,7 +587,10 @@ async function handleSearch(
 		visible.length === 0
 			? `I couldn't find any documents matching "${query}".`
 			: `Found ${visible.length} document fragment(s) for "${query}":\n\n${visible
-					.map((item, index) => `${index + 1}. ${item.content.text ?? ""}`)
+					.map(
+						(item, index) =>
+							`${index + 1}. ${transcriptAnchorPrefix(item.metadata)}${item.content.text ?? ""}`,
+					)
 					.join("\n\n")}`;
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "search", {
