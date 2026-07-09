@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-pii-guard",
   "description": "Local NER model recognizer for the runtime's PII pseudonymization layer. Supplies a distilbert-NER (person / org / location) recognizer via @huggingface/transformers (transformers.js v3, onnxruntime-node CPU) behind the @elizaos/core PiiEntityRecognizer seam.",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.3-beta.10",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",

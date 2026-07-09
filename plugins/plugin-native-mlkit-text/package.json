@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-mlkit-text",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.3-beta.10",
   "description": "Android ML Kit text recognition Capacitor plugin for elizaOS OCR.",
   "keywords": [
     "ocr",

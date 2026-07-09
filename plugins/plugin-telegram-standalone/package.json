@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-telegram-standalone",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.3-beta.10",
   "description": "Opt-in standalone Telegram polling bot for Eliza (gate ELIZA_TELEGRAM_STANDALONE_BOT) — a minimal Telegraf long-poll connector that routes inbound messages through the runtime message service",
   "type": "module",
   "main": "dist/index.js",

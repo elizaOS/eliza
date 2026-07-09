@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/auth",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.3-beta.10",
   "description": "Leaf auth package for Eliza agents: account credential storage, OAuth/subscription flows, direct-API-key probing, and refresh coordination. Sits below @elizaos/agent and @elizaos/app-core so both consume it without a dependency cycle.",
   "type": "module",
   "license": "MIT",

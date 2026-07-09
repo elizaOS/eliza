@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-e2b-sandbox",
-  "version": "1.0.0",
+  "version": "2.0.3-beta.10",
   "description": "E2B (e2b.dev) cloud sandbox backend for the elizaOS remote capability router — registers the E2B sandbox factory service so the router can route filesystem/terminal/git into a vendor sandbox.",
   "type": "module",
   "main": "dist/index.js",

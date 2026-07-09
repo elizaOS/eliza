@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-cloud-apps",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.3-beta.10",
   "description": "Read-core agent plugin for Eliza Cloud Apps — answer \"what apps do I have?\" and \"tell me about app X\" across every connector",
   "type": "module",
   "main": "dist/index.js",

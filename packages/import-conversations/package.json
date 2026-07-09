@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/import-conversations",
-  "version": "2.0.4",
+  "version": "2.0.3-beta.10",
   "description": "Import prior AI conversation history (ChatGPT / Claude / Hermes / OpenClaw exports) into elizaOS as searchable, scoped knowledge.",
   "type": "module",
   "sideEffects": false,

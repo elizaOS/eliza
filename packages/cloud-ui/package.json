@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-ui",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.3-beta.10",
   "description": "Eliza Cloud product UI — dashboard, billing, approvals, and account surfaces that self-register into @elizaos/ui's cloud-route + settings-section registries. Cloud-free builds never import this package, so the whole product surface stays out of the agent app with no build-config stubs.",
   "type": "module",
   "license": "MIT",

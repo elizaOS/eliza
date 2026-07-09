@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-facewear",
-	"version": "2.0.3-beta.7",
+	"version": "2.0.3-beta.10",
 	"type": "module",
 	"description": "Even Realities G1/G2 smartglasses control, display, microphone, bridge Wi-Fi setup, and diagnostics.",
 	"main": "./dist/index.js",

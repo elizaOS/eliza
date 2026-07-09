@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-pty",
-  "version": "1.0.0",
+  "version": "2.0.3-beta.10",
   "description": "Interactive PTY terminal service for elizaOS — registers PTY_SERVICE so the app's web terminal can drive a real interactive CLI (eliza-code on Eliza Cloud/cerebras)",
   "type": "module",
   "main": "dist/index.js",
