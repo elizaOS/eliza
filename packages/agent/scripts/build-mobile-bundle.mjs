@@ -494,15 +494,6 @@ const optionalPluginStubs = {
   "@elizaos/plugin-agent-orchestrator": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
-  // AOSP-only companion, reached via a lazy `import(...)` gated on
-  // ELIZA_LOCAL_LLAMA (getAospLocalInferenceApi in local-inference-routes +
-  // agent cli). It is not a declared dependency (present only on AOSP
-  // images), so the stock mobile bundle must stub it or Bun.build fails to
-  // resolve it. The gate never fires on stock, so the stub is never invoked.
-  "@elizaos/plugin-aosp-local-inference": path.join(
-    stubsDir,
-    "null-plugin.cjs",
-  ),
   // NOTE: @elizaos/plugin-commands is intentionally NOT stubbed. Its only
   // dependency is `@elizaos/core` (workspace:*), so it does not drag an
   // incompatible core into the bundle, and `api/commands-routes.ts` imports the

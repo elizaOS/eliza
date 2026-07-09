@@ -35,6 +35,10 @@ const DEAD_GLOBALS = [
 describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
   const binSource = read("bin.ts");
   const androidSource = read("runtime/android-app-plugins.ts");
+  const mobileBuildScript = readFileSync(
+    path.resolve(agentSrc, "..", "scripts", "build-mobile-bundle.mjs"),
+    "utf8",
+  );
 
   it("removes every write-only plugin-pinning global", () => {
     const haystack = `${binSource}\n${androidSource}`;
@@ -53,6 +57,12 @@ describe("mobile bundle anchors (no write-only globalThis pinning)", () => {
     );
     expect(binSource).toContain(
       '"@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"',
+    );
+  });
+
+  it("does not null-stub the AOSP local-inference bootstrap package", () => {
+    expect(mobileBuildScript).not.toMatch(
+      /"@elizaos\/plugin-aosp-local-inference"\s*:\s*path\.join\(\s*stubsDir\s*,\s*"null-plugin\.cjs"\s*\)/,
     );
   });
 });
