@@ -5,7 +5,9 @@ name: Hetzner Agent E2E
 # staging API, runs a bridge-ping healthcheck plus one REAL chat turn
 # (message.send through the production bridge path — #15603 A3), then
 # tears everything down. Gracefully skips when the required secrets are
-# unset (so this workflow can land on develop and be activated later).
+# unset (so this workflow can land on develop and be activated later), but a
+# configured secret that is rejected by Hetzner or the Cloud API is a red
+# workflow: green-by-dead-credential is indistinguishable from a real pass.
 #
 # Required secrets / config (GitHub environment: ci-hetzner-e2e):
 #   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
@@ -149,18 +151,15 @@ jobs:
           status_code="$(printf '%s' "$response" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const data = JSON.parse(Buffer.concat(chunks).toString() || "{}"); console.log(data.status ?? "");')"
           if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Cloud API rejected CLOUD_E2E_API_KEY with HTTP $status_code; skipping Hetzner E2E before provisioning."
+            echo "::error::Cloud API rejected CLOUD_E2E_API_KEY with HTTP $status_code; refresh the ci-hetzner-e2e environment secret."
             {
-              echo "### Hetzner E2E skipped"
+              echo "### Hetzner E2E blocked by rejected Cloud API credential"
               echo ""
               echo "Cloud API rejected \`CLOUD_E2E_API_KEY\` with HTTP \`$status_code\` before provisioning Hetzner capacity."
               echo ""
               echo "Refresh the \`CLOUD_E2E_API_KEY\` / \`ELIZACLOUD_API_KEY\` secret in the \`ci-hetzner-e2e\` environment, or check the staging API-key lookup path."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
 
           if [ "${status_code#2}" != "$status_code" ]; then
@@ -233,18 +232,15 @@ jobs:
           status_code="$(printf '%s' "$response" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const data = JSON.parse(Buffer.concat(chunks).toString() || "{}"); console.log(data.status ?? "");')"
           if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Hetzner rejected HCLOUD_TOKEN_CI with HTTP $status_code; skipping Hetzner E2E before provisioning."
+            echo "::error::Hetzner rejected HCLOUD_TOKEN_CI with HTTP $status_code; refresh the ci-hetzner-e2e environment secret."
             {
-              echo "### Hetzner E2E skipped"
+              echo "### Hetzner E2E blocked by rejected Hetzner credential"
               echo ""
               echo "Hetzner rejected \`HCLOUD_TOKEN_CI\` with HTTP \`$status_code\` before provisioning capacity."
               echo ""
               echo "Refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` environment, or confirm the Hetzner project is still active."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
 
           if [ "${status_code#2}" != "$status_code" ]; then
@@ -289,23 +285,20 @@ jobs:
           # A rejected / expired / read-only HCLOUD_TOKEN_CI (or a deactivated project)
           # surfaces as HTTP 401/403 missing_token / "permission denied" when CREATING the
           # server — the read-only token preflight above can pass while this write fails.
-          # That is an operator secret problem, not a code regression, so treat it like a
-          # missing secret: warn + skip on push/schedule, but still fail loudly on a manual
-          # workflow_dispatch so an operator-triggered run surfaces the bad token.
+          # That is an operator secret problem, not a code regression, but the
+          # token is configured and rejected. Fail red for every event so the
+          # nightly cannot look healthy while real-infra coverage is disabled.
           if grep -qE "Hetzner rejected the token|missing_token|permission denied|HTTP 401|HTTP 403|status: 401|status: 403" "$log"; then
             echo "provisioned=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Hetzner rejected HCLOUD_TOKEN_CI (HTTP 401/403); skipping Hetzner E2E. Refresh the token in the ci-hetzner-e2e environment."
+            echo "::error::Hetzner rejected HCLOUD_TOKEN_CI (HTTP 401/403); refresh the token in the ci-hetzner-e2e environment."
             {
-              echo "### Hetzner E2E skipped"
+              echo "### Hetzner E2E blocked by rejected Hetzner credential"
               echo ""
               echo "Hetzner rejected \`HCLOUD_TOKEN_CI\` (HTTP 401/403 \`missing_token\` / permission denied) when creating the server."
               echo ""
               echo "The token may be read-only or expired for writes. Refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` environment with a read-write CI token, or confirm the project is active."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
           # Any other provision failure is real — surface it (red).
           echo "provisioned=false" >> "$GITHUB_OUTPUT"

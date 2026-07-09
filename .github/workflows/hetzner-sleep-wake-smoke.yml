@@ -8,11 +8,11 @@ name: Hetzner Sleep-Wake Smoke
 # point is to authentically exercise the provision -> capture state ->
 # DESTROY THE BOX -> provision a NEW box -> restore -> verify cycle end to end.
 #
-# Secret gating mirrors hetzner-e2e.yml: on schedule/push, missing or rejected
-# HCLOUD_TOKEN_CI / SSH secrets skip cleanly (exit 0 + loud warning and step
-# summary) so the nightly run can't crash-loop red on forks or stale tokens;
-# a manual workflow_dispatch still fails loudly so an operator sees the
-# broken secret.
+# Secret gating mirrors hetzner-e2e.yml: missing HCLOUD_TOKEN_CI / SSH secrets
+# skip cleanly (exit 0 + loud warning and step summary) so forks and inactive
+# environments stay quiet. A configured credential that Hetzner rejects is red
+# for every event: otherwise the real-infra nightly can look healthy while it
+# never exercised anything.
 #
 # Required secrets (GitHub environment: ci-hetzner-e2e):
 #   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
@@ -139,18 +139,15 @@ jobs:
           status_code="$(printf '%s' "$response" | bun -e 'const chunks=[]; for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk)); const data = JSON.parse(Buffer.concat(chunks).toString() || "{}"); console.log(data.status ?? "");')"
           if [ "$status_code" = "401" ] || [ "$status_code" = "403" ]; then
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Hetzner rejected HCLOUD_TOKEN_CI with HTTP $status_code; skipping sleep-wake smoke before provisioning."
+            echo "::error::Hetzner rejected HCLOUD_TOKEN_CI with HTTP $status_code; refresh the ci-hetzner-e2e environment secret."
             {
-              echo "### Hetzner sleep-wake smoke skipped"
+              echo "### Hetzner sleep-wake smoke blocked by rejected Hetzner credential"
               echo ""
               echo "Hetzner rejected \`HCLOUD_TOKEN_CI\` with HTTP \`$status_code\` before provisioning capacity."
               echo ""
               echo "Refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` environment, or confirm the Hetzner project is still active."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
 
           if [ "${status_code#2}" != "$status_code" ]; then
@@ -202,23 +199,19 @@ jobs:
           # A rejected / expired / read-only HCLOUD_TOKEN_CI (or a deactivated
           # project) surfaces as HTTP 401/403 when CREATING the server — the
           # read-only preflight above can pass while this write fails. That is
-          # an operator secret problem, not a code regression: warn + skip on
-          # push/schedule, fail loudly on manual dispatch (same policy as
-          # hetzner-e2e.yml).
+          # an operator secret problem, not a code regression, but it must fail
+          # red so a scheduled run cannot look green while the token is dead.
           if grep -qE "Hetzner rejected the token|missing_token|permission denied|HTTP 401|HTTP 403|status: 401|status: 403" "$log"; then
             echo "provisioned=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Hetzner rejected HCLOUD_TOKEN_CI (HTTP 401/403); skipping sleep-wake smoke. Refresh the token in the ci-hetzner-e2e environment."
+            echo "::error::Hetzner rejected HCLOUD_TOKEN_CI (HTTP 401/403); refresh the token in the ci-hetzner-e2e environment."
             {
-              echo "### Hetzner sleep-wake smoke skipped"
+              echo "### Hetzner sleep-wake smoke blocked by rejected Hetzner credential"
               echo ""
               echo "Hetzner rejected \`HCLOUD_TOKEN_CI\` (HTTP 401/403 \`missing_token\` / permission denied) when creating the server."
               echo ""
               echo "The token may be read-only or expired for writes. Refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` environment with a read-write CI token, or confirm the project is active."
             } >> "$GITHUB_STEP_SUMMARY"
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              exit 1
-            fi
-            exit 0
+            exit 1
           fi
           # Any other provision failure is real — surface it (red).
           echo "provisioned=false" >> "$GITHUB_OUTPUT"
