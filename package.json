@@ -200,6 +200,7 @@
     "test:e2e:live": "TEST_LANE=post-merge node packages/scripts/run-all-tests.mjs --only=e2e --no-cloud",
     "lifeops:hitl": "node scripts/lifeops/hitl-credential-dashboard.mjs",
     "mvp:board-readiness": "node packages/scripts/check-mvp-board-readiness.mjs",
+    "mvp:evidence-matrix": "node packages/scripts/audit-mvp-evidence-matrix.mjs",
     "lifeops:verify-cerebras": "bun --bun plugins/plugin-personal-assistant/scripts/verify-cerebras-wiring.ts",
     "bench:personality": "bun --bun packages/benchmarks/personality-bench/src/runner.ts",
     "bench:personality:calibrate": "bun run --cwd packages/benchmarks/personality-bench calibrate",
