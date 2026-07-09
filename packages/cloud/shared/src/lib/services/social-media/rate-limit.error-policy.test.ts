@@ -12,16 +12,22 @@
  * it deterministic `Response` objects.
  */
 
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+
+const warn = mock(() => undefined);
 
 mock.module("../../utils/logger", () => ({
-  logger: { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} },
+  logger: { warn, info: () => {}, error: () => {}, debug: () => {} },
 }));
 
 const { withRetry, isRateLimitResponse, createRateLimitError } = await import("./rate-limit");
 
 afterEach(() => {
   mock.restore();
+});
+
+beforeEach(() => {
+  warn.mockClear();
 });
 
 const NO_WAIT = { platform: "twitter" as const, maxRetries: 0, baseDelayMs: 0 };
@@ -31,6 +37,23 @@ describe("withRetry — internal failure propagates vs designed-empty passes thr
     const fn = async () => new Response("boom", { status: 500 });
     const parser = async (r: Response) => r.json();
     await expect(withRetry(fn, parser, NO_WAIT)).rejects.toThrow("twitter API error 500: boom");
+  });
+
+  it("logs failed error-body reads without clobbering the HTTP status failure", async () => {
+    const fn = async () =>
+      ({
+        ok: false,
+        status: 503,
+        text: async () => {
+          throw new Error("body stream locked");
+        },
+      }) as Response;
+    const parser = async (r: Response) => r.json();
+
+    await expect(withRetry(fn, parser, NO_WAIT)).rejects.toThrow("twitter API error 503:");
+    expect(warn.mock.calls.some(([message]) => String(message).includes("Failed to read"))).toBe(
+      true,
+    );
   });
 
   it("throws a typed RateLimitError after 429 exhaustion (fail-closed, not empty)", async () => {
