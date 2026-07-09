@@ -101,7 +101,7 @@ export async function recordAppDeployFact(
     kind: "durable" as const,
     confidence: 1,
     deployedAt: new Date().toISOString(),
-  };
+  } satisfies Memory["metadata"];
 
   try {
     const existing = await findExistingDeployFact(runtime, message, app.id);
@@ -109,10 +109,7 @@ export async function recordAppDeployFact(
       await runtime.updateMemory({
         id: existing.id,
         content: { text, type: "fact" },
-        metadata: {
-          ...(existing.metadata ?? {}),
-          ...metadata,
-        } as Memory["metadata"],
+        metadata,
       });
       return { written: true, updated: true, memoryId: existing.id };
     }
