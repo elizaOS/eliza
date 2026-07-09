@@ -9,11 +9,13 @@
  */
 
 import type {
+	ArtifactShareGrantMode,
 	Route,
 	RouteHandlerContext,
 	RouteHandlerResult,
 	UUID,
 } from "@elizaos/core";
+import { isAdminRank } from "@elizaos/core";
 import {
 	type MeetingArtifact,
 	type Transcript,
@@ -28,10 +30,15 @@ import {
 	TranscriptService,
 	type TranscriptServiceRuntime,
 } from "../services/voice/transcript-service.js";
+import { TranscriptStore } from "../services/voice/transcript-store.js";
 import { persistTranscriptAudioWav } from "./transcript-audio-store.js";
 
 function service(ctx: RouteHandlerContext): TranscriptService {
 	return new TranscriptService(ctx.runtime as TranscriptServiceRuntime);
+}
+
+function store(ctx: RouteHandlerContext): TranscriptStore {
+	return new TranscriptStore(ctx.runtime as TranscriptServiceRuntime);
 }
 
 /** The body a recording session POSTs to create a transcript record. */
@@ -137,6 +144,17 @@ const deleteRoute: Route = {
 	path: "/api/transcripts/:id",
 	rawPath: true,
 	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		if (transcript.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot be deleted" },
+			};
+		}
 		await service(ctx).delete(ctx.params.id as UUID);
 		return { status: 200, body: { ok: true } };
 	},
@@ -151,6 +169,11 @@ export interface UpdateTranscriptRequest {
 	segments?: TranscriptSegment[];
 }
 
+export interface ShareTranscriptRequest {
+	entityId?: UUID;
+	mode?: ArtifactShareGrantMode;
+}
+
 const updateRoute: Route = {
 	type: "PUT",
 	path: "/api/transcripts/:id",
@@ -162,6 +185,17 @@ const updateRoute: Route = {
 		}
 		if (body.segments !== undefined && !Array.isArray(body.segments)) {
 			return { status: 400, body: { error: "segments must be an array" } };
+		}
+		const existing = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!existing) return { status: 404, body: { error: "not found" } };
+		if (existing.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot be edited" },
+			};
 		}
 		const agentId = ctx.runtime.agentId as UUID;
 		const updated = await service(ctx).update(ctx.params.id as UUID, {
@@ -222,10 +256,108 @@ const createRoute: Route = {
 	},
 };
 
+const shareRoute: Route = {
+	type: "POST",
+	path: "/api/transcripts/:id/share",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const body = (ctx.body ?? {}) as ShareTranscriptRequest;
+		const entityId =
+			typeof body.entityId === "string" && body.entityId.trim().length > 0
+				? (body.entityId.trim() as UUID)
+				: null;
+		const mode = body.mode ?? "redacted";
+		if (!entityId) {
+			return { status: 400, body: { error: "entityId is required" } };
+		}
+		if (mode !== "full" && mode !== "redacted") {
+			return { status: 400, body: { error: "mode must be full or redacted" } };
+		}
+		if (mode === "full" && !isAdminRank(ctx.accessContext?.role)) {
+			return {
+				status: 403,
+				body: { error: "full transcript sharing requires ADMIN" },
+			};
+		}
+
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		if (transcript.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot be re-shared" },
+			};
+		}
+
+		let variantId: string | undefined;
+		const transcriptStore = store(ctx);
+		if (mode === "redacted") {
+			const variant = await transcriptStore.createRedactedVariant({
+				originalId: ctx.params.id as UUID,
+				redactedBy: ctx.accessContext?.requesterEntityId,
+			});
+			variantId = variant.id;
+		}
+		await transcriptStore.share({
+			transcriptId: ctx.params.id as UUID,
+			entityId,
+			mode,
+			grantedBy: ctx.accessContext?.requesterEntityId,
+			grantedAtMs: Date.now(),
+		});
+		return {
+			status: 200,
+			body: {
+				ok: true,
+				transcriptId: ctx.params.id,
+				entityId,
+				mode,
+				...(variantId ? { variantId } : {}),
+			},
+		};
+	},
+};
+
+const revokeShareRoute: Route = {
+	type: "DELETE",
+	path: "/api/transcripts/:id/share/:entityId",
+	rawPath: true,
+	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
+		const transcript = await service(ctx).get(
+			ctx.params.id as UUID,
+			ctx.accessContext,
+		);
+		if (!transcript) return { status: 404, body: { error: "not found" } };
+		if (transcript.redacted) {
+			return {
+				status: 403,
+				body: { error: "redacted transcript views cannot revoke grants" },
+			};
+		}
+		await store(ctx).revokeShare({
+			transcriptId: ctx.params.id as UUID,
+			entityId: ctx.params.entityId as UUID,
+		});
+		return {
+			status: 200,
+			body: {
+				ok: true,
+				transcriptId: ctx.params.id,
+				entityId: ctx.params.entityId,
+			},
+		};
+	},
+};
+
 export const transcriptsRoutes: Route[] = [
 	listRoute,
 	createRoute,
 	getRoute,
+	shareRoute,
+	revokeShareRoute,
 	updateRoute,
 	deleteRoute,
 ];

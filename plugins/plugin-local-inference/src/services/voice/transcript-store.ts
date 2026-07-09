@@ -89,6 +89,11 @@ export interface ShareTranscriptGrantInput {
 	grantedAtMs?: number;
 }
 
+export interface RevokeTranscriptGrantInput {
+	transcriptId: UUID;
+	entityId: UUID;
+}
+
 /** Pull the stored {@link Transcript} back out of a memory row (parses the
  *  JSON blob; a corrupt/legacy row yields null and is skipped by the list). */
 function rowToTranscript(row: Memory): Transcript | null {
@@ -475,6 +480,35 @@ export class TranscriptStore {
 				source: TRANSCRIPT_METADATA_TYPE,
 				share: {
 					grants: mergedGrant(grants, nextGrant),
+				} as unknown as JsonObject,
+			} as MemoryMetadata,
+		});
+		if (!ok) {
+			throw new Error(`transcript ${input.transcriptId} not found`);
+		}
+	}
+
+	/** Remove one per-entity share grant from the original transcript row. */
+	async revokeShare(input: RevokeTranscriptGrantInput): Promise<void> {
+		const row = await this.runtime.getMemoryById(input.transcriptId);
+		if (!row) {
+			throw new Error(`transcript ${input.transcriptId} not found`);
+		}
+		if (redactionOriginalId(row)) {
+			throw new Error(
+				"share grants must be revoked from the original transcript",
+			);
+		}
+		const metadata = row.metadata as Record<string, unknown> | undefined;
+		const grants = parseArtifactShareGrants(metadata);
+		const ok = await this.runtime.updateMemory({
+			id: input.transcriptId,
+			metadata: {
+				...(metadata ?? {}),
+				type: "custom",
+				source: TRANSCRIPT_METADATA_TYPE,
+				share: {
+					grants: grants.filter((grant) => grant.entityId !== input.entityId),
 				} as unknown as JsonObject,
 			} as MemoryMetadata,
 		});

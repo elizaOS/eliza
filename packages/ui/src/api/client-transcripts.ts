@@ -1,10 +1,11 @@
 /**
- * Transcript API client methods (#8789) — list / get / create / delete over
- * `/api/transcripts`. Declaration-merged onto `ElizaClient` (the side-effect
- * import in `client.ts` installs the prototype methods), matching the other
- * `client-*` domain modules.
+ * Transcript API client methods (#8789) — list / get / create / update /
+ * delete plus permission grants over `/api/transcripts`. Declaration-merged
+ * onto `ElizaClient` (the side-effect import in `client.ts` installs the
+ * prototype methods), matching the other `client-*` domain modules.
  */
 
+import type { ArtifactShareGrantMode } from "@elizaos/core";
 import type {
   Transcript,
   TranscriptScope,
@@ -39,6 +40,25 @@ export interface TranscriptUpdateInput {
   segments?: TranscriptSegment[];
 }
 
+export interface TranscriptShareInput {
+  entityId: string;
+  mode: ArtifactShareGrantMode;
+}
+
+export interface TranscriptShareResult {
+  ok: boolean;
+  transcriptId: string;
+  entityId: string;
+  mode: ArtifactShareGrantMode;
+  variantId?: string;
+}
+
+export interface TranscriptRevokeShareResult {
+  ok: boolean;
+  transcriptId: string;
+  entityId: string;
+}
+
 declare module "./client-base" {
   interface ElizaClient {
     listTranscripts(
@@ -53,6 +73,14 @@ declare module "./client-base" {
       input: TranscriptUpdateInput,
     ): Promise<{ transcript: Transcript }>;
     deleteTranscript(id: string): Promise<{ ok: boolean }>;
+    shareTranscript(
+      id: string,
+      input: TranscriptShareInput,
+    ): Promise<TranscriptShareResult>;
+    revokeTranscriptShare(
+      id: string,
+      entityId: string,
+    ): Promise<TranscriptRevokeShareResult>;
   }
 }
 
@@ -99,4 +127,28 @@ ElizaClient.prototype.deleteTranscript = async function (
   return this.fetch(`/api/transcripts/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+};
+
+ElizaClient.prototype.shareTranscript = async function (
+  this: ElizaClient,
+  id: string,
+  input: TranscriptShareInput,
+) {
+  return this.fetch(`/api/transcripts/${encodeURIComponent(id)}/share`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+};
+
+ElizaClient.prototype.revokeTranscriptShare = async function (
+  this: ElizaClient,
+  id: string,
+  entityId: string,
+) {
+  return this.fetch(
+    `/api/transcripts/${encodeURIComponent(id)}/share/${encodeURIComponent(
+      entityId,
+    )}`,
+    { method: "DELETE" },
+  );
 };

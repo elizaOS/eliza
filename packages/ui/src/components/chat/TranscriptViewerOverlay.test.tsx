@@ -12,16 +12,29 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MessageAttachment } from "../../api/client-types-chat";
+import { RoleProvider } from "../../hooks/useRole";
 
-const { getTranscript, updateTranscript, deleteTranscript } = vi.hoisted(
-  () => ({
-    getTranscript: vi.fn(),
-    updateTranscript: vi.fn(),
-    deleteTranscript: vi.fn(),
-  }),
-);
+const {
+  getTranscript,
+  updateTranscript,
+  deleteTranscript,
+  shareTranscript,
+  revokeTranscriptShare,
+} = vi.hoisted(() => ({
+  getTranscript: vi.fn(),
+  updateTranscript: vi.fn(),
+  deleteTranscript: vi.fn(),
+  shareTranscript: vi.fn(),
+  revokeTranscriptShare: vi.fn(),
+}));
 vi.mock("../../api", () => ({
-  client: { getTranscript, updateTranscript, deleteTranscript },
+  client: {
+    getTranscript,
+    updateTranscript,
+    deleteTranscript,
+    shareTranscript,
+    revokeTranscriptShare,
+  },
 }));
 const { navigateBrowserPath } = vi.hoisted(() => ({
   navigateBrowserPath: vi.fn(),
@@ -31,6 +44,7 @@ vi.mock("../../app-navigate-view", () => ({ navigateBrowserPath }));
 import {
   segmentsFromEditedText,
   TranscriptViewerOverlay,
+  type TranscriptViewerOverlayProps,
   withTranscriptMarker,
 } from "./TranscriptViewerOverlay";
 
@@ -53,6 +67,21 @@ function transcriptAttachment(): MessageAttachment {
     text: "hello world",
     transcriptId: "00000000-0000-0000-0000-000000000abc",
   };
+}
+
+function renderOverlay(
+  role: "GUEST" | "USER" | "ADMIN" | "OWNER",
+  props: Partial<TranscriptViewerOverlayProps> = {},
+) {
+  return render(
+    <RoleProvider role={role}>
+      <TranscriptViewerOverlay
+        attachment={transcriptAttachment()}
+        onClose={() => {}}
+        {...props}
+      />
+    </RoleProvider>,
+  );
 }
 
 describe("segmentsFromEditedText", () => {
@@ -89,6 +118,8 @@ describe("TranscriptViewerOverlay", () => {
     getTranscript.mockReset();
     updateTranscript.mockReset();
     deleteTranscript.mockReset();
+    shareTranscript.mockReset();
+    revokeTranscriptShare.mockReset();
     navigateBrowserPath.mockReset();
     getTranscript.mockResolvedValue({
       transcript: {
@@ -96,10 +127,22 @@ describe("TranscriptViewerOverlay", () => {
         title: "My Recording",
         segments: [SEG("hello world")],
         audioUrl: "/api/media/abc123.wav",
+        scope: "owner-private",
       },
     });
     updateTranscript.mockResolvedValue({ transcript: {} });
     deleteTranscript.mockResolvedValue({ ok: true });
+    shareTranscript.mockResolvedValue({
+      ok: true,
+      transcriptId: "00000000-0000-0000-0000-000000000abc",
+      entityId: "99999999-9999-9999-9999-999999999999",
+      mode: "redacted",
+    });
+    revokeTranscriptShare.mockResolvedValue({
+      ok: true,
+      transcriptId: "00000000-0000-0000-0000-000000000abc",
+      entityId: "99999999-9999-9999-9999-999999999999",
+    });
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
@@ -200,26 +243,101 @@ describe("TranscriptViewerOverlay", () => {
     );
   });
 
-  it("does NOT report 'Copied' when the clipboard is unavailable and the Share fallback also fails", async () => {
-    // No Clipboard API and no Web Share API — Share falls back to copy, which
-    // then has nothing to write to.
-    Object.assign(navigator, { clipboard: undefined, share: undefined });
-    render(
-      <TranscriptViewerOverlay
-        attachment={transcriptAttachment()}
-        onClose={() => {}}
-      />,
-    );
+  it("opens the permission sheet and grants redacted transcript access", async () => {
+    renderOverlay("USER");
     await waitFor(() => screen.getByTestId("transcript-text"));
     fireEvent.click(screen.getByTestId("transcript-share"));
+    expect(screen.getByTestId("transcript-share-sheet")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("transcript-share-entity"), {
+      target: { value: "99999999-9999-9999-9999-999999999999" },
+    });
+    fireEvent.click(screen.getByTestId("transcript-grant-share"));
     await waitFor(() =>
-      expect(screen.getByTestId("transcript-copy").textContent).toMatch(
-        /failed/i,
+      expect(shareTranscript).toHaveBeenCalledWith(
+        "00000000-0000-0000-0000-000000000abc",
+        {
+          entityId: "99999999-9999-9999-9999-999999999999",
+          mode: "redacted",
+        },
       ),
     );
-    expect(screen.getByTestId("transcript-copy").textContent).not.toContain(
-      "Copied",
+    expect(screen.getByTestId("transcript-share-success").textContent).toMatch(
+      /redacted/i,
     );
+  });
+
+  it("revokes transcript access for the entered recipient", async () => {
+    renderOverlay("USER");
+    await waitFor(() => screen.getByTestId("transcript-text"));
+    fireEvent.click(screen.getByTestId("transcript-share"));
+    fireEvent.change(screen.getByTestId("transcript-share-entity"), {
+      target: { value: "99999999-9999-9999-9999-999999999999" },
+    });
+    fireEvent.click(screen.getByTestId("transcript-revoke-share"));
+    await waitFor(() =>
+      expect(revokeTranscriptShare).toHaveBeenCalledWith(
+        "00000000-0000-0000-0000-000000000abc",
+        "99999999-9999-9999-9999-999999999999",
+      ),
+    );
+    expect(screen.getByTestId("transcript-share-success").textContent).toMatch(
+      /revoked/i,
+    );
+  });
+
+  it("keeps full transcript sharing behind the admin role gate", async () => {
+    renderOverlay("USER");
+    await waitFor(() => screen.getByTestId("transcript-text"));
+    fireEvent.click(screen.getByTestId("transcript-share"));
+    expect(screen.queryByTestId("transcript-share-mode-full")).toBeNull();
+    cleanup();
+
+    renderOverlay("ADMIN");
+    await waitFor(() => screen.getByTestId("transcript-text"));
+    fireEvent.click(screen.getByTestId("transcript-share"));
+    fireEvent.click(screen.getByTestId("transcript-share-mode-full"));
+    fireEvent.change(screen.getByTestId("transcript-share-entity"), {
+      target: { value: "99999999-9999-9999-9999-999999999999" },
+    });
+    fireEvent.click(screen.getByTestId("transcript-grant-share"));
+    await waitFor(() =>
+      expect(shareTranscript).toHaveBeenCalledWith(
+        "00000000-0000-0000-0000-000000000abc",
+        {
+          entityId: "99999999-9999-9999-9999-999999999999",
+          mode: "full",
+        },
+      ),
+    );
+    cleanup();
+
+    renderOverlay("OWNER");
+    await waitFor(() => screen.getByTestId("transcript-text"));
+    fireEvent.click(screen.getByTestId("transcript-share"));
+    expect(screen.getByTestId("transcript-share-mode-full")).toBeTruthy();
+  });
+
+  it("renders redacted transcript views as read-only and unshareable", async () => {
+    getTranscript.mockResolvedValueOnce({
+      transcript: {
+        id: "00000000-0000-0000-0000-000000000abc",
+        title: "Redacted Recording",
+        segments: [SEG("[EMAIL]")],
+        scope: "owner-private",
+        redacted: true,
+      },
+    });
+    renderOverlay("USER");
+    await waitFor(() => screen.getByTestId("transcript-text"));
+
+    expect(screen.getByTestId("transcript-privacy-badge").textContent).toMatch(
+      /redacted/i,
+    );
+    expect(screen.queryByTestId("transcript-edit")).toBeNull();
+    expect(screen.queryByTestId("transcript-delete")).toBeNull();
+    expect(
+      (screen.getByTestId("transcript-share") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("cancel closes without persisting", async () => {

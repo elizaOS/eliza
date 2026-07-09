@@ -22,6 +22,7 @@ const WORLD = "00000000-0000-0000-0000-0000000000ww" as UUID;
 const ROOM = "11111111-1111-1111-1111-111111111111" as UUID;
 const ENTITY = "22222222-2222-2222-2222-222222222222" as UUID;
 const OTHER_ENTITY = "33333333-3333-3333-3333-333333333333" as UUID;
+const THIRD_ENTITY = "44444444-4444-4444-4444-444444444444" as UUID;
 
 const segments: TranscriptSegment[] = [
 	{
@@ -95,6 +96,12 @@ const adminAccess = (requesterEntityId: UUID): AccessContext => ({
 	requesterEntityId,
 	worldId: WORLD,
 	role: "ADMIN",
+});
+
+const ownerAccess = (requesterEntityId: UUID): AccessContext => ({
+	requesterEntityId,
+	worldId: WORLD,
+	role: "OWNER",
 });
 
 describe("buildTranscriptFromRequest", () => {
@@ -557,5 +564,167 @@ describe("transcripts routes", () => {
 		expect(
 			(strangerList.body as { transcripts: unknown[] }).transcripts,
 		).toEqual([]);
+	});
+
+	it("shares and revokes redacted transcript access through the real routes (#14782)", async () => {
+		const { runtime } = fakeRuntime();
+		const post = handlerFor("POST", "/api/transcripts");
+		const share = handlerFor("POST", "/api/transcripts/:id/share");
+		const revoke = handlerFor("DELETE", "/api/transcripts/:id/share/:entityId");
+		const get = handlerFor("GET", "/api/transcripts/:id");
+		const update = handlerFor("PUT", "/api/transcripts/:id");
+		const del = handlerFor("DELETE", "/api/transcripts/:id");
+
+		const created = await post(
+			ctx({
+				runtime: runtime as never,
+				body: {
+					title: "Benefits",
+					roomId: ROOM,
+					entityId: ENTITY,
+					scope: "owner-private",
+					segments: [
+						{
+							id: "s1",
+							speakerLabel: "Alice",
+							startMs: 0,
+							endMs: 1000,
+							text: "Bob email bob@example.com",
+							words: [],
+						},
+					],
+				},
+			}),
+		);
+		const transcriptId = (created.body as { transcript: { id: string } })
+			.transcript.id;
+
+		const shared = await share(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: adminAccess(ENTITY),
+				body: { entityId: OTHER_ENTITY, mode: "redacted" },
+			}),
+		);
+		expect(shared.status).toBe(200);
+		expect(shared.body).toMatchObject({
+			ok: true,
+			transcriptId,
+			entityId: OTHER_ENTITY,
+			mode: "redacted",
+		});
+
+		const fullShareByUser = await share(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(ENTITY),
+				body: { entityId: OTHER_ENTITY, mode: "full" },
+			}),
+		);
+		expect(fullShareByUser.status).toBe(403);
+
+		const fullShareByOwner = await share(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: ownerAccess(ENTITY),
+				body: { entityId: THIRD_ENTITY, mode: "full" },
+			}),
+		);
+		expect(fullShareByOwner.status).toBe(200);
+		expect(fullShareByOwner.body).toMatchObject({
+			ok: true,
+			transcriptId,
+			entityId: THIRD_ENTITY,
+			mode: "full",
+		});
+		expect(
+			"variantId" in (fullShareByOwner.body as Record<string, unknown>),
+		).toBe(false);
+
+		const fullViewerGet = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(THIRD_ENTITY),
+			}),
+		);
+		expect(fullViewerGet.status).toBe(200);
+		expect(
+			(fullViewerGet.body as { transcript: { redacted?: true } }).transcript
+				.redacted,
+		).toBeUndefined();
+
+		const viewerGet = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(OTHER_ENTITY),
+			}),
+		);
+		expect(viewerGet.status).toBe(200);
+		expect(
+			(viewerGet.body as { transcript: { redacted?: true } }).transcript
+				.redacted,
+		).toBe(true);
+
+		const resharedByRedactedViewer = await share(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(OTHER_ENTITY),
+				body: { entityId: ENTITY, mode: "redacted" },
+			}),
+		);
+		expect(resharedByRedactedViewer.status).toBe(403);
+
+		const editedByRedactedViewer = await update(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(OTHER_ENTITY),
+				body: {
+					segments: [
+						{
+							id: "s1",
+							speakerLabel: "Alice",
+							startMs: 0,
+							endMs: 1000,
+							text: "mutated",
+							words: [],
+						},
+					],
+				},
+			}),
+		);
+		expect(editedByRedactedViewer.status).toBe(403);
+
+		const deletedByRedactedViewer = await del(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(OTHER_ENTITY),
+			}),
+		);
+		expect(deletedByRedactedViewer.status).toBe(403);
+
+		const revoked = await revoke(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId, entityId: OTHER_ENTITY },
+				accessContext: adminAccess(ENTITY),
+			}),
+		);
+		expect(revoked.status).toBe(200);
+		const hidden = await get(
+			ctx({
+				runtime: runtime as never,
+				params: { id: transcriptId },
+				accessContext: access(OTHER_ENTITY),
+			}),
+		);
+		expect(hidden.status).toBe(404);
 	});
 });
