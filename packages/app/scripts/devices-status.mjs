@@ -33,6 +33,7 @@ import {
   readRendererManifest,
   rendererManifestPathFromAppPath,
 } from "./lib/ios-renderer-stamp.mjs";
+import { analyzeScreenshot, closeOcrEngines } from "./lib/visual-qa.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(scriptDir, "..");
@@ -249,6 +250,7 @@ async function writeEvidenceArtifacts({ outputDir, rows, table, generatedAt }) {
       table: "devices-status.txt",
       json: "devices-status.json",
       screenshot: "devices-status.jpg",
+      visualQa: "devices-status.qa.json",
     },
   };
   writeFileSync(path.join(absoluteDir, "devices-status.txt"), `${table}\n`);
@@ -265,6 +267,19 @@ async function writeEvidenceArtifacts({ outputDir, rows, table, generatedAt }) {
   await sharp(Buffer.from(svg))
     .jpeg({ quality: 92 })
     .toFile(path.join(absoluteDir, "devices-status.jpg"));
+  const screenshotPath = path.join(absoluteDir, "devices-status.jpg");
+  const visualQa = await analyzeScreenshot(screenshotPath, {
+    expect: {
+      state: "devices-status",
+      require_text: ["PLATFORM", "VERDICT"],
+      forbid_text: ["undefined", "NaN", "[object Object]"],
+      max_blue_fraction: 0.02,
+    },
+  });
+  writeFileSync(
+    path.join(absoluteDir, "devices-status.qa.json"),
+    `${JSON.stringify(visualQa, null, 2)}\n`,
+  );
   return absoluteDir;
 }
 
@@ -296,8 +311,12 @@ const isDirectRun =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isDirectRun) {
-  main().catch((error) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+  main()
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    })
+    .finally(() => {
+      closeOcrEngines();
+    });
 }
