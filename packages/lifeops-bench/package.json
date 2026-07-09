@@ -16,6 +16,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@elizaos/vault": "workspace:*",
     "dotenv": "^17.2.3",
     "zod": "^4.4.3"
   },
