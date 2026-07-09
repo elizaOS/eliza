@@ -448,7 +448,7 @@ test("any-of aggregates all branch reasons; all-of reports the first failure", (
   assert.deepEqual(allOf, { available: false, reason: "blocker" });
 });
 
-test("signal.cli scenario: installed-but-unregistered CLI skips with the account reason", () => {
+test("signal.cli scenario: installed-but-unrunnable CLI skips distinctly", () => {
   const spec = byId("signal.cli").availability;
   // This machine's GROUND state: signal-cli in PATH, no data dir, no REST URL.
   const broken = checkAvailability(
@@ -456,22 +456,49 @@ test("signal.cli scenario: installed-but-unregistered CLI skips with the account
     fakeCtx({ commandInPath: (command) => command === "signal-cli" }),
   );
   assert.equal(broken.available, false);
-  assert.match(broken.reason, /registered signal-cli account/);
+  assert.match(broken.reason, /installed but not runnable/);
   // REST bridge configured -> available regardless of the local CLI.
   const viaRest = checkAvailability(
     spec,
     fakeCtx({ env: { SIGNAL_HTTP_URL: "http://x" } }),
   );
   assert.equal(viaRest.available, true);
-  // CLI in PATH plus a registered data dir -> available.
+  // CLI in PATH plus a successful read-only account listing -> available.
   const registered = checkAvailability(
     spec,
     fakeCtx({
       commandInPath: (command) => command === "signal-cli",
-      existsSync: (path) => path === "/Users/op/.local/share/signal-cli",
+      runCommand: (_command, args) => ({
+        ok: args[0] === "--version" || args[0] === "listAccounts",
+      }),
     }),
   );
   assert.equal(registered.available, true);
+});
+
+test("Signal Desktop and signal-cli unavailability shapes stay distinct", () => {
+  const desktop = byId("signal.desktop-bridge").availability;
+  const absent = checkAvailability(desktop, fakeCtx());
+  assert.equal(absent.available, false);
+  assert.equal(absent.reason, "Signal Desktop not installed");
+  const noProfile = checkAvailability(
+    desktop,
+    fakeCtx({ existsSync: (path) => path === "/Applications/Signal.app" }),
+  );
+  assert.equal(noProfile.available, false);
+  assert.equal(noProfile.reason, "no Signal Desktop profile directory");
+
+  const cli = byId("signal.cli").availability;
+  const noBinary = checkAvailability(cli, fakeCtx());
+  assert.match(noBinary.reason, /signal-cli not in PATH/);
+  const noAccount = checkAvailability(
+    cli,
+    fakeCtx({
+      commandInPath: () => true,
+      runCommand: (_command, args) => ({ ok: args[0] === "--version" }),
+    }),
+  );
+  assert.match(noAccount.reason, /no linked Signal account/);
 });
 
 test("oauth-app-dependent rows skip with an explanatory reason until an app is configured", () => {
