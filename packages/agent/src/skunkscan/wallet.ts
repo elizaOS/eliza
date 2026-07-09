@@ -27,6 +27,7 @@ import { analyzeWalletCompliance } from "./analyzers/compliance";
 import { analyzeWalletTransactionRisk } from "./analyzers/transactionRisk";
 import { analyzeWalletSmartMoney } from "./analyzers/smartMoney";
 import { analyzeInvestigationReport } from "./analyzers/investigationReport";
+import { analyzeInvestigationNarrative } from "./analyzers/investigationNarrative";
 import { getWalletIntelligenceSources } from "./sources/registry";
 import {
   SupportedChain,
@@ -247,6 +248,13 @@ const investigationReport =
     caseSummary,
   );
 
+const investigationNarrative =
+  analyzeInvestigationNarrative(
+    executiveVerdict,
+    caseSummary,
+    trust,
+  );
+        
         return {
           chain,
           address: walletAddress,
@@ -277,6 +285,7 @@ risk,
 transactionRisk,
 smartMoney,
 investigationReport,
+investigationNarrative,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
