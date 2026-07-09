@@ -21,11 +21,28 @@
  * evaluates what is stored. Default-matrix ratification is tracked in #14777 —
  * revisit the ordering below if D4/D5 land differently.
  */
-import type { AccessContext, MemoryScope, UUID } from "../types";
+import type {
+	AccessContext,
+	ArtifactShareMetadata,
+	MemoryScope,
+	UUID,
+} from "../types";
 import { actorFromAccessContext, canReadScope } from "./filter";
 
 /** What a viewer's DTO may contain for one artifact. */
 export type ArtifactDisclosure = "full" | "redacted" | "none";
+
+/** Full and redacted artifact references carried by a DTO-capable record. */
+export interface ArtifactVariantReferences<TFull, TRedacted = TFull> {
+	full: TFull;
+	redacted?: TRedacted | null;
+}
+
+/** The concrete reference a disclosure DTO should emit. */
+export interface ResolvedArtifactVariant<T> {
+	disclosure: Exclude<ArtifactDisclosure, "none">;
+	value: T;
+}
 
 /** Per-viewer grant mode an owner can attach to an artifact reference. */
 export type ArtifactShareGrantMode = "full" | "redacted";
@@ -41,6 +58,19 @@ export interface ArtifactShareGrant {
 	grantedAtMs?: number;
 }
 
+/** Room roster captured with a share so later disclosure can be replayed. */
+export interface ArtifactShareRoomSnapshot {
+	roomId: UUID;
+	entityIds: UUID[];
+	atMs: number;
+}
+
+/** Typed share metadata parsed from a record's jsonb metadata. */
+export interface ParsedArtifactShareMetadata {
+	grants: ArtifactShareGrant[];
+	roomSnapshot?: ArtifactShareRoomSnapshot;
+}
+
 const UUID_PATTERN =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -51,34 +81,70 @@ const UUID_PATTERN =
  */
 // error-policy:J3 untrusted-input sanitizing — stored jsonb is untyped at rest;
 // invalid grant entries yield an explicit empty result, never a fake grant.
+export function parseArtifactShareMetadata(
+	metadata: unknown,
+): ParsedArtifactShareMetadata {
+	if (!metadata || typeof metadata !== "object") return { grants: [] };
+	const share = (metadata as { share?: unknown }).share;
+	if (!share || typeof share !== "object") return { grants: [] };
+	const grants = (share as { grants?: unknown }).grants;
+	const out: ArtifactShareGrant[] = [];
+	if (Array.isArray(grants)) {
+		for (const entry of grants) {
+			if (!entry || typeof entry !== "object") continue;
+			const g = entry as Record<string, unknown>;
+			const entityId = typeof g.entityId === "string" ? g.entityId : "";
+			const mode = g.mode;
+			if (!UUID_PATTERN.test(entityId)) continue;
+			if (mode !== "full" && mode !== "redacted") continue;
+			out.push({
+				entityId: entityId as UUID,
+				mode,
+				...(typeof g.grantedBy === "string" && UUID_PATTERN.test(g.grantedBy)
+					? { grantedBy: g.grantedBy as UUID }
+					: {}),
+				...(typeof g.grantedAtMs === "number"
+					? { grantedAtMs: g.grantedAtMs }
+					: {}),
+			});
+		}
+	}
+	const roomSnapshot = parseArtifactShareRoomSnapshot(
+		(share as { roomSnapshot?: unknown }).roomSnapshot,
+	);
+	return {
+		grants: out,
+		...(roomSnapshot ? { roomSnapshot } : {}),
+	};
+}
+
 export function parseArtifactShareGrants(
 	metadata: unknown,
 ): ArtifactShareGrant[] {
-	if (!metadata || typeof metadata !== "object") return [];
-	const share = (metadata as { share?: unknown }).share;
-	if (!share || typeof share !== "object") return [];
-	const grants = (share as { grants?: unknown }).grants;
-	if (!Array.isArray(grants)) return [];
-	const out: ArtifactShareGrant[] = [];
-	for (const entry of grants) {
-		if (!entry || typeof entry !== "object") continue;
-		const g = entry as Record<string, unknown>;
-		const entityId = typeof g.entityId === "string" ? g.entityId : "";
-		const mode = g.mode;
-		if (!UUID_PATTERN.test(entityId)) continue;
-		if (mode !== "full" && mode !== "redacted") continue;
-		out.push({
-			entityId: entityId as UUID,
-			mode,
-			...(typeof g.grantedBy === "string" && UUID_PATTERN.test(g.grantedBy)
-				? { grantedBy: g.grantedBy as UUID }
-				: {}),
-			...(typeof g.grantedAtMs === "number"
-				? { grantedAtMs: g.grantedAtMs }
-				: {}),
-		});
-	}
-	return out;
+	return parseArtifactShareMetadata(metadata).grants;
+}
+
+function parseArtifactShareRoomSnapshot(
+	value: unknown,
+): ArtifactShareRoomSnapshot | undefined {
+	if (!value || typeof value !== "object") return undefined;
+	const snapshot = value as Record<string, unknown>;
+	const roomId = typeof snapshot.roomId === "string" ? snapshot.roomId : "";
+	if (!UUID_PATTERN.test(roomId)) return undefined;
+	const atMs = snapshot.atMs;
+	if (typeof atMs !== "number") return undefined;
+	const entityIds = snapshot.entityIds;
+	if (!Array.isArray(entityIds)) return undefined;
+	const validEntityIds = entityIds.filter(
+		(entityId): entityId is UUID =>
+			typeof entityId === "string" && UUID_PATTERN.test(entityId),
+	);
+	if (validEntityIds.length !== entityIds.length) return undefined;
+	return {
+		roomId: roomId as UUID,
+		entityIds: validEntityIds,
+		atMs,
+	};
 }
 
 /** The disclosure-relevant fields of one artifact-referencing record. */
@@ -89,6 +155,8 @@ export interface ArtifactDisclosureRecord {
 	scopedEntityId?: UUID;
 	/** Parsed share grants from the record's metadata. */
 	grants?: readonly ArtifactShareGrant[];
+	/** Full typed share metadata when callers already carry the parsed contract. */
+	share?: ParsedArtifactShareMetadata | ArtifactShareMetadata;
 }
 
 /**
@@ -117,11 +185,37 @@ export function resolveArtifactDisclosure(
 	if (ctx.requesterEntityId === agentId) return "full";
 	const actor = actorFromAccessContext(ctx, agentId);
 	if (actor.role !== "USER") return "full";
-	const grant = record.grants?.find(
-		(g) => g.entityId === ctx.requesterEntityId,
-	);
+	const grants = record.grants ?? record.share?.grants;
+	const grant = grants?.find((g) => g.entityId === ctx.requesterEntityId);
 	if (grant) return grant.mode === "full" ? "full" : "redacted";
 	return canReadScope(record.scope, record.scopedEntityId, actor)
 		? "full"
 		: "none";
+}
+
+/** Boolean artifact predicate for disclosure points that only need allow/deny. */
+export function canAccessArtifact(
+	record: ArtifactDisclosureRecord,
+	ctx: AccessContext | undefined,
+	agentId: UUID,
+): boolean {
+	return resolveArtifactDisclosure(record, ctx, agentId) !== "none";
+}
+
+/**
+ * Select the concrete full/redacted reference for a DTO after the caller has
+ * resolved disclosure. A redacted grant never falls back to full bytes; if no
+ * redacted variant exists the artifact is omitted until the variant writer
+ * catches up.
+ */
+export function selectArtifactVariant<TFull, TRedacted = TFull>(
+	disclosure: ArtifactDisclosure,
+	references: ArtifactVariantReferences<TFull, TRedacted>,
+): ResolvedArtifactVariant<TFull | TRedacted> | null {
+	if (disclosure === "none") return null;
+	if (disclosure === "full") {
+		return { disclosure: "full", value: references.full };
+	}
+	if (references.redacted == null) return null;
+	return { disclosure: "redacted", value: references.redacted };
 }

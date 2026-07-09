@@ -41,6 +41,31 @@ export type MemoryScope =
 	| "user-private"
 	| "agent-private";
 
+/** One entity-specific grant stored on the artifact's referencing record. */
+export interface ArtifactShareGrantMetadata {
+	entityId: UUID;
+	mode: "full" | "redacted";
+	grantedBy?: UUID;
+	grantedAtMs?: number;
+}
+
+/** Participant roster captured when a room-level artifact share is granted. */
+export interface ArtifactShareRoomSnapshotMetadata {
+	roomId: UUID;
+	entityIds: UUID[];
+	atMs: number;
+}
+
+/**
+ * Share metadata rides on the referencing record, never on the sha256 media
+ * object, so each artifact reference can choose full vs redacted disclosure
+ * without adding a file table or changing the pre-auth byte serve path.
+ */
+export interface ArtifactShareMetadata {
+	grants?: ArtifactShareGrantMetadata[];
+	roomSnapshot?: ArtifactShareRoomSnapshotMetadata;
+}
+
 /**
  * Base interface for all memory metadata types.
  */
@@ -51,6 +76,7 @@ export interface BaseMetadata {
 	scope?: MemoryScope;
 	timestamp?: number;
 	tags?: string[];
+	share?: ArtifactShareMetadata;
 }
 
 export interface DocumentMetadata {
@@ -460,6 +486,7 @@ interface MemoryMetadataBase {
 	scope?: MemoryScope;
 	timestamp?: number;
 	platformMessageId?: string;
+	share?: ArtifactShareMetadata;
 }
 
 export type MemoryMetadata = (
