@@ -338,6 +338,16 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // structural proof for relationship-cadence follow-up creation.
   "g2-cadence-watcher-due",
   "goals.owner-goals-create",
+  // LifeOps knowledge-graph capture pack H2 (#14786). Keyless direct-action
+  // scenarios that drive the REAL ENTITY set_relationship / merge subactions and
+  // read the captured primitive back off the per-agent RelationshipStore /
+  // EntityStore (`eliza_knowledge_graph` service), asserting persisted rows
+  // rather than the scripted action arguments. Registered here in the same
+  // commit that flips their lane to pr-deterministic.
+  "h2-audit-trail-survives-restart",
+  "h2-conflicting-fact-resolution",
+  "h2-identity-merge-uses-engine",
+  "h2-relationship-update-live",
   "health.owner-health-status",
   "hyperliquid.perpetual-market-status",
   "inbox.summarize-inboxes",
