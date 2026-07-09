@@ -22,9 +22,11 @@ import {
   DEFAULT_MEETING_AUTO_LEAVE,
   DEFAULT_MEETING_MAX_DURATION_MS,
   MEETING_PLATFORM_LABELS,
+  MEETING_TRANSCRIPT_FINALIZED_EVENT,
   type MeetingAutoLeaveConfig,
   type MeetingBillingState,
   type MeetingEndReason,
+  type MeetingGhostAttendanceContext,
   type MeetingJoinRequest,
   type MeetingParticipant,
   type MeetingPlatform,
@@ -33,7 +35,10 @@ import {
   parseMeetingUrl,
   parsePositiveInteger,
 } from "@elizaos/shared";
-import type { TranscriptSegment } from "@elizaos/shared/transcripts";
+import type {
+  Transcript,
+  TranscriptSegment,
+} from "@elizaos/shared/transcripts";
 import { MeetingEventEmitter } from "./events.js";
 import { resolveMeetingRuntimeSupport } from "./platform-support.js";
 import { MeetingTranscriptWriter } from "./transcripts/meeting-transcript-writer.js";
@@ -109,6 +114,7 @@ interface InternalSession {
   readonly pipeline: MeetingPipelineInstance;
   readonly writer: MeetingTranscriptWriter;
   readonly billing?: MeetingBillingSession;
+  readonly ghostAttendance?: MeetingGhostAttendanceContext;
   billingFinalized?: Promise<void>;
   /** Confirmed segments accumulated from pipeline updates (live view state). */
   confirmedSegments: TranscriptSegment[];
@@ -292,6 +298,9 @@ export class MeetingService extends Service {
       pipeline,
       writer,
       ...(billing ? { billing } : {}),
+      ...(request.ghostAttendance
+        ? { ghostAttendance: request.ghostAttendance }
+        : {}),
       confirmedSegments: [],
       done: Promise.resolve(),
     };
@@ -619,6 +628,7 @@ export class MeetingService extends Service {
     errorMessage: string | undefined,
   ): Promise<void> {
     let segments: TranscriptSegment[];
+    let finalizedTranscript: Transcript | null = null;
     try {
       segments = await session.pipeline.finalize();
     } catch (err) {
@@ -633,7 +643,7 @@ export class MeetingService extends Service {
     }
 
     try {
-      await session.writer.finalize({
+      finalizedTranscript = await session.writer.finalize({
         segments,
         endReason,
         participants: session.participants,
@@ -678,6 +688,7 @@ export class MeetingService extends Service {
       },
       "[MeetingService] session finished",
     );
+    await this.emitTranscriptFinalized(session, dto, finalizedTranscript);
 
     // Evict the heavy session: dropping the pipeline (retained PCM),
     // writer, and roster arrays lets them be garbage-collected. Only the DTO
@@ -685,6 +696,29 @@ export class MeetingService extends Service {
     // the durable data.
     this.sessions.delete(session.id);
     this.terminated.set(session.id, dto);
+  }
+
+  private async emitTranscriptFinalized(
+    session: InternalSession,
+    dto: MeetingSession,
+    transcript: Transcript | null,
+  ): Promise<void> {
+    if (!transcript || session.status !== "ended") return;
+    try {
+      await this.runtime.emitEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, {
+        session: dto,
+        transcript,
+        ...(session.ghostAttendance
+          ? { ghostAttendance: session.ghostAttendance }
+          : {}),
+        source: "plugin-meetings",
+      });
+    } catch (err) {
+      this.runtime.reportError("MeetingService.transcriptFinalizedEvent", err, {
+        sessionId: session.id,
+        transcriptId: transcript.id,
+      });
+    }
   }
 
   private async reconcileBillingOnce(

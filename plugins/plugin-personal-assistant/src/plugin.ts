@@ -9,6 +9,7 @@
  * default packs into a runnable Eliza plugin; it owns no domain logic itself.
  */
 import {
+  type EventPayload,
   EventType,
   getDefaultTriageService,
   type IAgentRuntime,
@@ -52,10 +53,12 @@ import { remoteDesktopPlugin } from "@elizaos/plugin-remote-desktop";
 import { XDmAdapter } from "@elizaos/plugin-x/lifeops-message-adapter";
 import type {
   IPermissionsRegistry,
+  MeetingTranscriptFinalizedPayload,
   PermissionState,
   Platform,
   Prober,
 } from "@elizaos/shared";
+import { MEETING_TRANSCRIPT_FINALIZED_EVENT } from "@elizaos/shared";
 import { blockAction } from "./actions/block.js";
 import { briefAction } from "./actions/brief.js";
 import { calendarAction } from "./actions/calendar.js";
@@ -124,6 +127,7 @@ import {
   registerDefaultPromptPack,
   registerMultilingualPromptRegistry,
 } from "./lifeops/i18n/prompt-registry.js";
+import { handleMeetingTranscriptFinalized } from "./lifeops/meeting-ghost/event-handler.js";
 import {
   createOwnerSendPolicy,
   registerOwnerSendApprovalWorker,
@@ -769,6 +773,12 @@ const rawPersonalAssistantPlugin: Plugin = {
     _pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
   ) => {
+    runtime.registerEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, async (payload) =>
+      handleMeetingTranscriptFinalized(
+        payload as EventPayload & MeetingTranscriptFinalizedPayload,
+      ),
+    );
+
     // When LIFEOPS_USE_MOCKOON=1, redirect every external connector base URL
     // to the matching Mockoon environment on localhost. No-op otherwise.
     const mockoonApplied = applyMockoonEnvOverrides();

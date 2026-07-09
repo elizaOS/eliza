@@ -3,7 +3,10 @@
  * single-bot-per-meeting enforcement, roster, transcript persistence, and
  * listing. Deterministic: fake runtime plus scripted adapter/pipeline.
  */
-import { DEFAULT_MEETING_MAX_DURATION_MS } from "@elizaos/shared";
+import {
+  DEFAULT_MEETING_MAX_DURATION_MS,
+  MEETING_TRANSCRIPT_FINALIZED_EVENT,
+} from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {
@@ -489,6 +492,65 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect((fake.documents[0].metadata as { tags: string[] }).tags).toContain(
       "transcript",
     );
+  });
+
+  it("emits the finalized transcript event with ghost-attendance context", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { fake, service, pipelines } = makeService([adapter]);
+    const dto = await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+      ghostAttendance: {
+        ownerUserId: "owner-1",
+        ownerDisplayName: "Shaw",
+        requestedBy: "owner-1",
+        careAbouts: ["launch date"],
+        calendarId: "primary",
+        attendees: [{ name: "Ava", email: "ava@example.com" }],
+      },
+    });
+    await adapter.started;
+
+    pipelines[0].finalSegments = [
+      segment(
+        "s1",
+        "Ava",
+        "Ava will send the launch-date rollback plan by Friday.",
+        0,
+        2_000,
+      ),
+    ];
+    pipelines[0].audioWav = null;
+
+    adapter.end("normal_completion");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(fake.events).toHaveLength(1);
+    expect(fake.events[0].event).toBe(MEETING_TRANSCRIPT_FINALIZED_EVENT);
+    expect(fake.events[0].payload).toMatchObject({
+      source: "plugin-meetings",
+      session: {
+        id: dto.id,
+        status: "ended",
+        transcriptId: dto.transcriptId,
+      },
+      transcript: {
+        id: dto.transcriptId,
+        status: "ready",
+        segments: [
+          expect.objectContaining({
+            speakerLabel: "Ava",
+            text: "Ava will send the launch-date rollback plan by Friday.",
+          }),
+        ],
+      },
+      ghostAttendance: {
+        ownerUserId: "owner-1",
+        careAbouts: ["launch date"],
+        attendees: [{ name: "Ava", email: "ava@example.com" }],
+      },
+    });
+    expect(fake.reportedErrors).toHaveLength(0);
   });
 
   it("fails the session when pipeline finalize throws", async () => {
