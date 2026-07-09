@@ -39,6 +39,10 @@ import { generateMediaAction } from "./actions/generate-media.js";
 import { identifySpeakerAction } from "./actions/identify-speaker.js";
 import { localInferenceManagementAction } from "./actions/local-inference-management.js";
 import {
+	redactTranscriptAction,
+	shareTranscriptAction,
+} from "./actions/transcript-permissions.js";
+import {
 	startTranscriptionAction,
 	stopTranscriptionAction,
 } from "./actions/transcription-control.js";
@@ -1121,6 +1125,8 @@ export const localInferencePlugin: Plugin = {
 		identifySpeakerAction,
 		startTranscriptionAction,
 		stopTranscriptionAction,
+		redactTranscriptAction,
+		shareTranscriptAction,
 	],
 	events: {
 		// Round-trip half of the voice→entity binding: when the merge engine

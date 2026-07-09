@@ -17,6 +17,10 @@ export {
 	identifySpeakerAction,
 } from "./actions/identify-speaker.js";
 export {
+	redactTranscriptAction,
+	shareTranscriptAction,
+} from "./actions/transcript-permissions.js";
+export {
 	emitVoiceControl,
 	startTranscriptionAction,
 	stopTranscriptionAction,
