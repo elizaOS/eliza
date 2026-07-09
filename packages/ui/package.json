@@ -33,6 +33,8 @@
     "test:e2e": "bun run test:slow",
     "test:agent-surface-e2e": "bun run --cwd ../.. packages/ui/src/agent-surface/__e2e__/run-e2e.mjs",
     "test:chat-sheet-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
+    "test:chat-sheet-safari-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs --browser=webkit --smoke",
+    "test:chat-sheet-mobile-safari-smoke": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-sheet-mobile-safari-smoke.mjs",
     "test:settings-e2e": "bun run --cwd ../.. packages/ui/src/components/pages/__e2e__/run-settings-e2e.mjs",
     "test:chat-scroll-web-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-chat-scroll-web-e2e.mjs",
     "test:widget-cert-e2e": "bun run --cwd ../.. packages/ui/src/testing/__e2e__/run-widget-cert-e2e.mjs",

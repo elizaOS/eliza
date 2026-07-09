@@ -129,6 +129,8 @@ jobs:
       # The iOS-style chat-sheet detent/gesture state machine (mouse + touch).
       - name: Chat-sheet gesture e2e
         run: bun run --cwd packages/ui test:chat-sheet-e2e
+      - name: Chat-sheet Safari/WebKit gesture smoke
+        run: bun run --cwd packages/ui test:chat-sheet-safari-e2e
 
       # "can't scroll chat on web" repro (#chat-scroll-web): seeds a long
       # transcript, opens the sheet to FULL, and asserts the transcript scroller
@@ -218,6 +220,7 @@ jobs:
           name: chat-shell-gesture-artifacts
           path: |
             packages/ui/src/components/shell/__e2e__/output/
+            packages/ui/src/components/shell/__e2e__/output-webkit/
             packages/ui/src/components/shell/__e2e__/output-chatux/
             packages/ui/src/components/shell/__e2e__/output-home/
             packages/ui/src/components/shell/__e2e__/output-launcher-loop/

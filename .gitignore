@@ -41,6 +41,8 @@ packages/ui/src/components/chat/__e2e__/output-activity-feedback/
 packages/ui/src/components/chat/widgets/__e2e__/output/
 # Chat-sheet e2e output (screenshots + webm + html bundle — regenerate via test:chat-sheet-e2e)
 packages/ui/src/components/shell/__e2e__/output/
+packages/ui/src/components/shell/__e2e__/output-webkit/
+packages/ui/src/components/shell/__e2e__/output-mobile-safari/
 packages/ui/src/components/shell/__e2e__/output-frame-glitch/
 
 .next/

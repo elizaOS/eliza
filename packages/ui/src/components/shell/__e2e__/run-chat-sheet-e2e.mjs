@@ -1,7 +1,8 @@
 /**
  * Real-browser e2e for the iOS-style three-detent continuous-chat sheet — no app
  * server. Bundles chat-sheet-fixture.tsx with esbuild, loads it in headless
- * chromium via Playwright, and drives the sheet with REAL pointer gestures.
+ * chromium/webkit via Playwright, and drives the sheet with REAL pointer
+ * gestures.
  *
  * Coverage (the user asked for exhaustive interaction + state testing):
  *   - DETENTS: peek (76px) → half (46vh) → full (72vh), stepped by pulls.
@@ -26,15 +27,17 @@
  *   - Screenshots every state; captures the browser console and fails on any
  *     page error or error-level log.
  *
- * Run: bun run --cwd packages/ui test:chat-sheet-e2e
- *      bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
+ * Run:
+ *   bun run --cwd packages/ui test:chat-sheet-e2e
+ *   bun run --cwd packages/ui test:chat-sheet-safari-e2e
+ *   bun run --cwd packages/ui test:chat-sheet-e2e -- --only-autoscroll
  * Exits non-zero on any failed assertion / console error.
  */
 
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright";
+import { chromium, webkit } from "playwright";
 import { PNG } from "pngjs";
 import {
   renameRecordedVideo,
@@ -49,7 +52,12 @@ import {
 } from "../../../testing/real-touch-gestures.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const outDir = join(here, "output");
+const browserName = process.argv.includes("--browser=webkit")
+  ? "webkit"
+  : "chromium";
+const smokeMode = process.argv.includes("--smoke");
+const browserType = browserName === "webkit" ? webkit : chromium;
+const outDir = join(here, browserName === "webkit" ? "output-webkit" : "output");
 const videoDir = join(outDir, "video");
 const ONLY_AUTOSCROLL =
   process.argv.includes("--only-autoscroll") ||
@@ -1281,7 +1289,8 @@ async function runAutoScrollSuite(p, pointer, tag) {
   await snap(p, `${tag}-autoscroll-jump-repinned`);
 }
 
-const browser = await chromium.launch();
+console.log(`\nCHAT-SHEET E2E using Playwright ${browserName}`);
+const browser = await browserType.launch();
 const sink = { logs: [], errors: [] };
 
 // FINGER-SYNC DIAGNOSTIC (env FINGER_PROBE=1): grab the pill and drag SLOWLY to
@@ -1789,6 +1798,75 @@ if (process.env.FINGER_PROBE) {
 }
 
 try {
+  if (smokeMode) {
+    // Safari/WebKit smoke: focused cross-engine coverage for the state machine
+    // without importing Chromium's full pixel/animation tolerance matrix. This
+    // still mounts the real overlay, captures screenshots, and drives WebKit
+    // pointer paths through the grabber/composer controls in desktop and mobile
+    // viewports. Mobile Safari visual coverage lives in
+    // run-chat-sheet-mobile-safari-smoke.mjs because Playwright WebKit does not
+    // expose Chromium's low-level touch-drag injection API.
+    const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
+    attachConsole(desktop, sink);
+    await gotoFixture(desktop);
+    await desktop.waitForSelector('[data-testid="chat-sheet"]');
+    await desktop.waitForTimeout(700);
+    assert((await variant(desktop)) === "closed", "[webkit mouse] starts closed");
+    await snap(desktop, "safari-desktop-collapsed");
+    await gesture(desktop, 140, { pointer: "mouse", slow: false, steps: 3 });
+    await desktop.waitForTimeout(SETTLE);
+    assert((await variant(desktop)) === "open", "[webkit mouse] flick opens the sheet");
+    assert(await headerShown(desktop), "[webkit mouse] open sheet exposes the header strip");
+    assert(
+      await desktop.getByTestId("chat-composer-textarea").isVisible(),
+      "[webkit mouse] open sheet keeps the composer usable",
+    );
+    await snap(desktop, "safari-desktop-open");
+    const draft = desktop.getByTestId("chat-composer-textarea");
+    await draft.fill("webkit smoke message");
+    await desktop.waitForTimeout(150);
+    assert(
+      await desktop.getByTestId("chat-composer-action").isVisible(),
+      "[webkit mouse] typing swaps the trailing control to send",
+    );
+    await desktop.getByTestId("chat-composer-action").click({ force: true });
+    await desktop.waitForTimeout(200);
+    assert(
+      sink.logs.some((l) => l.includes("[fixture] send:")),
+      "[webkit mouse] send routes through the fixture controller",
+    );
+    await desktop.close();
+
+    const mobileCtx = await browser.newContext({
+      viewport: { width: 402, height: 874 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+    });
+    const mobile = await mobileCtx.newPage();
+    attachConsole(mobile, sink);
+    await gotoFixture(mobile);
+    await mobile.waitForSelector('[data-testid="chat-sheet"]');
+    await mobile.waitForTimeout(700);
+    assert((await variant(mobile)) === "closed", "[webkit mobile] starts closed");
+    await gesture(mobile, 140, { pointer: "mouse", slow: false, steps: 3 });
+    await mobile.waitForTimeout(SETTLE);
+    assert((await variant(mobile)) === "open", "[webkit mobile] flick opens the sheet");
+    assert(
+      await mobile.getByTestId("chat-composer-textarea").isVisible(),
+      "[webkit mobile] open sheet keeps the composer usable",
+    );
+    await snap(mobile, "safari-mobile-open");
+    await gesture(mobile, -180, { pointer: "mouse", slow: false, steps: 3 });
+    await mobile.waitForTimeout(SETTLE);
+    assert(
+      ["closed", "open"].includes(await variant(mobile)),
+      `[webkit mobile] downward flick settles to a valid state (${await variant(mobile)})`,
+    );
+    await snap(mobile, "safari-mobile-after-close-flick");
+    await mobile.close();
+    await mobileCtx.close();
+  } else {
   if (!ONLY_AUTOSCROLL) {
     // ===== DESKTOP + MOUSE =====
     const desktop = await browser.newPage({ viewport: { width: 1180, height: 820 } });
@@ -3551,6 +3629,7 @@ try {
     await p.close();
   }
   }
+  }
 } finally {
   await browser.close();
 }
@@ -3563,7 +3642,7 @@ assert(sink.errors.length === 0, `no uncaught page errors (${sink.errors.length}
 if (sink.errors.length) for (const e of sink.errors) console.error(`  ⚠ ${e}`);
 assert(errorLevel.length === 0, `no error-level console messages (${errorLevel.length})`);
 if (errorLevel.length) for (const e of errorLevel) console.error(`  ⚠ ${e}`);
-if (!ONLY_AUTOSCROLL) {
+if (!ONLY_AUTOSCROLL && !smokeMode) {
   assert(
     sink.logs.some(
       (l) =>

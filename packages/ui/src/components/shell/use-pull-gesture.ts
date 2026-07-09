@@ -166,6 +166,11 @@ export function usePullGesture(
       drag.schedule({ axis: nextAxis, value }),
     [drag],
   );
+  const eventTime = React.useCallback((event: React.PointerEvent): number => {
+    return Number.isFinite(event.timeStamp) && event.timeStamp > 0
+      ? event.timeStamp
+      : performance.now();
+  }, []);
 
   const onPointerDown = React.useCallback(
     (event: React.PointerEvent) => {
@@ -188,7 +193,7 @@ export function usePullGesture(
       start.current = {
         x: event.clientX,
         y: event.clientY,
-        t: performance.now(),
+        t: eventTime(event),
         pointerId: event.pointerId,
       };
       axis.current = null;
@@ -207,7 +212,7 @@ export function usePullGesture(
         }
       }
     },
-    [hasSwipe, hasVerticalPull, onStart],
+    [hasSwipe, hasVerticalPull, onStart, eventTime],
   );
 
   const onPointerMove = React.useCallback(
@@ -218,7 +223,7 @@ export function usePullGesture(
       last.current = {
         x: event.clientX,
         y: event.clientY,
-        t: performance.now(),
+        t: eventTime(event),
       };
       const dy = s.y - event.clientY; // up positive
       const dx = s.x - event.clientX; // left positive
@@ -266,7 +271,15 @@ export function usePullGesture(
         scheduleDrag("y", dy); // pre-commit: drive the vertical sheet
       }
     },
-    [hasSwipe, hasVerticalPull, onDragReset, onDragX, scheduleDrag, drag],
+    [
+      hasSwipe,
+      hasVerticalPull,
+      onDragReset,
+      onDragX,
+      scheduleDrag,
+      drag,
+      eventTime,
+    ],
   );
 
   const finish = React.useCallback(
@@ -303,7 +316,7 @@ export function usePullGesture(
       const deltaLeft = useLastSample ? lastDeltaLeft : eventDeltaLeft;
       const elapsed = Math.max(
         1,
-        (useLastSample && lastSample ? lastSample.t : performance.now()) - s.t,
+        (useLastSample && lastSample ? lastSample.t : eventTime(event)) - s.t,
       );
       const velocityUp = deltaUp / elapsed;
       const velocityLeft = deltaLeft / elapsed;
@@ -415,6 +428,7 @@ export function usePullGesture(
       velocityThreshold,
       distanceThresholdX,
       velocityThresholdX,
+      eventTime,
     ],
   );
 

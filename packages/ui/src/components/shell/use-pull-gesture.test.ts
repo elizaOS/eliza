@@ -228,6 +228,34 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onSettleFree).not.toHaveBeenCalled();
   });
 
+  it("uses pointer event timestamps for short flick velocity", () => {
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    vi.spyOn(performance, "now")
+      .mockReturnValueOnce(1000)
+      .mockReturnValueOnce(1300);
+
+    const onPullUp = vi.fn();
+    const onDragReset = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onPullUp, onDragReset }),
+    );
+    const b = result.current;
+
+    b.onPointerDown(pointer(100, 300, 1, undefined, { timeStamp: 10 }));
+    b.onPointerMove(pointer(100, 260, 1, undefined, { timeStamp: 50 }));
+    b.onPointerUp(pointer(100, 252, 1, undefined, { timeStamp: 70 }));
+
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onDragReset).not.toHaveBeenCalled();
+  });
+
   it("uses the tracked touch sample when pointerup reports stale coordinates", () => {
     vi.stubGlobal(
       "requestAnimationFrame",
