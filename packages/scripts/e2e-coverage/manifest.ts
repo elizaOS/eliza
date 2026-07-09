@@ -120,15 +120,6 @@ function covered(artifact: string, extraSignals: string[] = []): CoverageEntry {
   };
 }
 
-/** A keyless route e2e that drives routeHandler/Hono production dispatch. */
-function coveredByHono(artifact: string): CoverageEntry {
-  return {
-    status: "covered",
-    artifacts: [artifact],
-    signals: ["buildHonoAppForRuntime"],
-  };
-}
-
 /** A pre-existing route test is trusted to exist; deletion is the regression. */
 function existing(artifact: string): CoverageEntry {
   return { status: "covered", artifacts: [artifact], signals: [] };
@@ -143,6 +134,9 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   // ── Pre-existing dedicated route tests (trusted; ratcheted against deletion) ─
   "plugin-agent-orchestrator": existing(
     "plugins/plugin-agent-orchestrator/__tests__/unit/agent-routes-goal-wrapper.test.ts",
+  ),
+  "plugin-birdclaw": existing(
+    "plugins/plugin-birdclaw/src/routes/birdclaw-routes.test.ts",
   ),
   "plugin-bluebubbles": existing(
     "plugins/plugin-bluebubbles/__tests__/data-routes.test.ts",
@@ -160,19 +154,17 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-hyperliquid": existing(
     "plugins/plugin-hyperliquid/src/routes.real.test.ts",
   ),
+  "plugin-inbox": existing("plugins/plugin-inbox/test/inbox-routes.test.ts"),
   "plugin-local-inference": existing(
     "plugins/plugin-local-inference/__tests__/voice-models-routes.test.ts",
+  ),
+  "plugin-meetings": existing(
+    "plugins/plugin-meetings/src/routes/meetings-routes.test.ts",
   ),
   "plugin-polymarket": existing(
     "plugins/plugin-polymarket/src/routes.real.test.ts",
   ),
-  "plugin-shopify": existing(
-    "plugins/plugin-shopify/src/routes.contract.test.ts",
-  ),
   "plugin-signal": existing("plugins/plugin-signal/src/setup-routes.test.ts"),
-  "plugin-social-alpha": existing(
-    "plugins/plugin-social-alpha/src/routes.test.ts",
-  ),
   "plugin-scheduling": existing(
     "plugins/plugin-scheduling/src/routes/scheduled-tasks.test.ts",
   ),
@@ -202,9 +194,6 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-telegram": covered("plugins/plugin-telegram/src/routes-e2e.test.ts"),
   "plugin-workflow": covered(
     "plugins/plugin-workflow/__tests__/integration/routes-e2e.test.ts",
-  ),
-  "plugin-xr": coveredByHono(
-    "plugins/plugin-xr/src/__tests__/routes-e2e.test.ts",
   ),
 
   // ── Exempt with written justification (genuinely covered elsewhere, or need a
