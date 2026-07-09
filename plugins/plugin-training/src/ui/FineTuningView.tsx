@@ -2299,9 +2299,16 @@ export function FineTuningDashboard({
   return (
     <ContentLayout
       contentHeader={contentHeader}
-      contentClassName="mb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1rem)] pe-[var(--eliza-continuous-chat-side-clearance,0px)]"
+      contentClassName="pe-[var(--eliza-continuous-chat-side-clearance,0px)]"
     >
-      <div data-testid="fine-tuning-view" className="space-y-4 pb-4">
+      <div
+        data-testid="fine-tuning-view"
+        className="chat-native-scrollbar eliza-continuous-chat-scroll space-y-4 overflow-y-auto pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1rem)]"
+        style={{
+          maxHeight:
+            "calc(100dvh - var(--eliza-mobile-nav-offset, 0px) - max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) - var(--eliza-continuous-chat-clearance, 5.25rem) - 3rem)",
+        }}
+      >
         <section className="px-2 py-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>

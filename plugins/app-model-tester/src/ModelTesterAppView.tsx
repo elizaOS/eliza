@@ -341,7 +341,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
         </div>
       </div>
 
-      <div className="chat-native-scrollbar eliza-continuous-chat-scroll mb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1rem)] flex-1 overflow-y-auto px-3 pt-2 pb-4 pe-[calc(var(--eliza-continuous-chat-side-clearance,0px)+0.75rem)] sm:px-5">
+      <div className="chat-native-scrollbar eliza-continuous-chat-scroll max-h-[calc(100%-var(--eliza-mobile-nav-offset,0px)-max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))-var(--eliza-continuous-chat-clearance,5.25rem)-1rem)] flex-1 overflow-y-auto ps-3 pt-2 pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1rem)] pe-[calc(var(--eliza-continuous-chat-side-clearance,0px)+0.75rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pe-[15rem] sm:ps-5">
         <div className="mx-auto flex max-w-5xl flex-col gap-3">
           <section className="py-2">
             <div className="grid grid-cols-3 gap-2">
@@ -451,7 +451,7 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
               const urls = id === "image" ? generatedImageUrls(result) : [];
               return (
                 <section key={id} className="py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-start gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="grid h-9 w-9 shrink-0 place-items-center">
                         <Icon className="h-5 w-5 text-txt" />
