@@ -38,6 +38,7 @@ import {
   openAppPath,
   openSettingsSection,
   seedAppStorage,
+  seedFirstRunCompleteBeforeLoad,
 } from "../helpers";
 
 export type Lane = "mock" | "live";
@@ -678,9 +679,7 @@ async function navigateViaAgentEvent(
 
 async function reachChatReady(ctx: StepContext): Promise<void> {
   ctx.routes.firstRun.setComplete(true);
-  await ctx.page.evaluate(() => {
-    localStorage.setItem("eliza:first-run-complete", "1");
-  });
+  await seedFirstRunCompleteBeforeLoad(ctx.page);
   await openAppPath(ctx.page, "/chat");
   await expect(ctx.page.getByTestId("continuous-chat-overlay")).toBeVisible({
     timeout: 60_000,

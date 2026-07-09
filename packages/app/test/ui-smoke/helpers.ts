@@ -272,6 +272,38 @@ export async function seedAppStorage(
   );
 }
 
+const firstRunSeededPages = new WeakSet<Page>();
+
+/**
+ * Seed the shell-reserved `eliza:first-run-complete` flag for the NEXT full page
+ * load. That key sits in the shell's reserved `eliza:` namespace, which the
+ * surface-realm guard (#15247) lets only privileged shell code write: a raw
+ * `localStorage.setItem` on the live page throws {@link SurfaceRealmDeniedError}
+ * the moment a view owns the host realm. An `addInitScript` runs at
+ * document-start of the reload a caller performs next — before the shell mounts
+ * any view and publishes a surface-realm scope — which is the same
+ * guard-permitted window `seedAppStorage` seeds through, so the synchronous boot
+ * readers route straight to chat without a view-forbidden write. Callers that
+ * only flip the mock `/api/first-run/status` still need this so the flag is
+ * present on the SYNCHRONOUS boot read, before the API resolves. Install-once
+ * per page: the seed then re-runs on every later navigation, which is correct
+ * because every load after first-run completes wants the flag set.
+ */
+export async function seedFirstRunCompleteBeforeLoad(
+  page: Page,
+): Promise<void> {
+  if (firstRunSeededPages.has(page)) return;
+  firstRunSeededPages.add(page);
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("eliza:first-run-complete", "1");
+    } catch {
+      // Opaque-origin / storage-hostile frames deny Web Storage; the mutable
+      // /api/first-run/status the caller sets stays the authority there.
+    }
+  });
+}
+
 export async function hideContinuousChatOverlay(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const install = () => {
