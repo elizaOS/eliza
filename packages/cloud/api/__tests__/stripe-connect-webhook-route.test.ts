@@ -1,4 +1,6 @@
-// Exercises cloud API tests stripe connect webhook route.test behavior with deterministic Worker route fixtures.
+/**
+ * Exercises the Stripe Connect webhook route with deterministic Worker route fixtures.
+ */
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // The REAL Stripe SDK — used (un-mocked) in the "real crypto" suite below to
 // prove the actual signature verification the route relies on rejects forgeries.
@@ -240,7 +242,7 @@ describe("Stripe Connect payout webhook route", () => {
 // issue describes (#10117). Signature ops are local HMAC-SHA256 — no network.
 describe("Stripe Connect webhook — real signature verification (no mock)", () => {
   const realStripe = new Stripe("sk_test_dummy_for_signature_only", {
-    apiVersion: "2026-06-24.dahlia",
+    apiVersion: "2026-05-27.dahlia",
   });
   const secret = "whsec_connect_realtest";
   const payload = JSON.stringify(accountUpdatedEvent);
