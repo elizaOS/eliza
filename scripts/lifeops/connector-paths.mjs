@@ -47,8 +47,8 @@ export const CONNECTOR_PATH_KINDS = [
   "api-key",
 ];
 
-/** Probe ids valid on paths beyond the credential-probes.mjs families. */
-export const EXTRA_PROBE_IDS = ["github", "elizacloud"];
+/** Probe ids valid on paths beyond the credential-probes.mjs family sweep. */
+export const EXTRA_PROBE_IDS = ["github", "elizacloud", "imessage"];
 
 export const DEFAULT_APP_BASE = "http://localhost:2138";
 
@@ -345,7 +345,7 @@ export const CONNECTOR_PATHS = [
     kind: "user-client",
     label: "Discord user token paste",
     requiredAll: ["DISCORD_USER_TOKEN"],
-    probeId: null,
+    probeId: "discord",
     probeEndpoint:
       "GET https://discord.com/api/v10/users/@me (raw user token, no Bot prefix)",
     availability: { type: "always" },
@@ -389,7 +389,7 @@ export const CONNECTOR_PATHS = [
     kind: "user-client",
     label: "Slack user token (user-context calls)",
     requiredAll: ["SLACK_USER_TOKEN"],
-    probeId: null,
+    probeId: "slack",
     probeEndpoint: "POST https://slack.com/api/auth.test (xoxp user token)",
     availability: { type: "always" },
   }),
@@ -493,7 +493,7 @@ export const CONNECTOR_PATHS = [
     kind: "local-bridge",
     label: "macOS Messages bridge",
     optional: ["ELIZA_IMESSAGE_BACKEND"],
-    probeId: null,
+    probeId: "imessage",
     probeEndpoint:
       "local: ~/Library/Messages/chat.db readable (requires Full Disk Access)",
     availability: {
@@ -525,7 +525,7 @@ export const CONNECTOR_PATHS = [
     kind: "local-bridge",
     label: "BlueBubbles server",
     requiredAll: ["BLUEBUBBLES_SERVER_URL", "BLUEBUBBLES_PASSWORD"],
-    probeId: null,
+    probeId: "imessage",
     probeEndpoint:
       "GET {BLUEBUBBLES_SERVER_URL|http://localhost:1234}/api/v1/ping?password=<password>",
     availability: {
@@ -714,7 +714,7 @@ export const CONNECTOR_PATHS = [
     kind: "api-key",
     label: "Google Fit access token",
     requiredAll: ["ELIZA_GOOGLE_FIT_ACCESS_TOKEN"],
-    probeId: null,
+    probeId: "health",
     probeEndpoint:
       "GET https://www.googleapis.com/fitness/v1/users/me/dataSources (Bearer)",
     availability: { type: "always" },

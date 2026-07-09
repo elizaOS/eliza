@@ -6,6 +6,7 @@
  * machine states like "signal-cli installed but unregistered").
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   appBase,
@@ -20,6 +21,7 @@ import {
   resolveDeepLink,
   validateConnectorPaths,
 } from "./connector-paths.mjs";
+import { PROBEABLE_PATH_IDS } from "./credential-probes.mjs";
 
 /** Deterministic machine context; override per scenario. */
 function fakeCtx(overrides = {}) {
@@ -40,10 +42,58 @@ const byId = (id) => {
   return path;
 };
 
+function markdownCells(row) {
+  return row
+    .replaceAll("\\|", "__ESCAPED_PIPE__")
+    .split("|")
+    .slice(1, -1)
+    .map((cell) => cell.replaceAll("__ESCAPED_PIPE__", "|").trim());
+}
+
 // --- registry shape ------------------------------------------------------------
 
 test("shipped registry passes every structural invariant", () => {
   assert.deepEqual(validateConnectorPaths(CONNECTOR_PATHS), []);
+});
+
+test("wired per-path probes have registry metadata and documented rows", () => {
+  const byPath = new Map(CONNECTOR_PATHS.map((path) => [path.id, path]));
+  const probeable = new Set(PROBEABLE_PATH_IDS);
+
+  for (const pathId of probeable) {
+    const path = byPath.get(pathId);
+    assert.ok(path, `PATH_PROBES contains unknown path ${pathId}`);
+    assert.notEqual(path.probeId, null, `${pathId} probeId is missing`);
+  }
+  for (const path of CONNECTOR_PATHS) {
+    if (path.probeId !== null) {
+      assert.ok(probeable.has(path.id), `${path.id} claims unwired probeId`);
+    }
+  }
+
+  const doc = readFileSync(
+    new URL("../../docs/testing/hitl-probes.md", import.meta.url),
+    "utf8",
+  );
+  const rows = doc.split("\n").filter((line) => /^\| `[^`]+` \|/.test(line));
+  const docIds = rows.map((row) => markdownCells(row)[0].replaceAll("`", ""));
+  assert.deepEqual(
+    docIds.sort(),
+    CONNECTOR_PATHS.map((path) => path.id).sort(),
+  );
+
+  for (const row of rows) {
+    const cells = markdownCells(row);
+    assert.equal(cells.length, 10, `wrong cell count in ${row}`);
+    const pathId = cells[0].replaceAll("`", "");
+    const probeState = cells[4];
+    const expected = probeable.has(pathId) ? "wired" : "documented-skip";
+    assert.equal(probeState, expected, `${pathId} doc probe state`);
+    assert.ok(
+      cells.every((cell) => cell.length > 0),
+      `${pathId} has blanks`,
+    );
+  }
 });
 
 test("validateConnectorPaths flags duplicates, bad kinds, bad probe ids, missing endpoints", () => {
