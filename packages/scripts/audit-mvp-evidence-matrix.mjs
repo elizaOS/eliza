@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import process from "node:process";
 
 const DEFAULT_REPO = "elizaOS/eliza";
@@ -196,13 +196,16 @@ const RULES = [
 function usage() {
   return `Usage:
   node packages/scripts/audit-mvp-evidence-matrix.mjs [--json]
+  node packages/scripts/audit-mvp-evidence-matrix.mjs --markdown [--output mvp-evidence.md]
   node packages/scripts/audit-mvp-evidence-matrix.mjs --issues-json issues.json --project-json project.json [--json]
 
 Options:
   --repo <owner/repo>             GitHub repo for live mode (default: ${DEFAULT_REPO}).
   --project-owner <org>          GitHub Project owner for live mode (default: ${DEFAULT_PROJECT_OWNER}).
   --project-number <number>      GitHub Project number for live mode (default: ${DEFAULT_PROJECT_NUMBER}).
-  --limit <n>                    GitHub issue/project limit (default: ${DEFAULT_LIMIT}).`;
+  --limit <n>                    GitHub issue/project limit (default: ${DEFAULT_LIMIT}).
+  --markdown                     Print a GitHub-ready evidence checklist.
+  --output <file>                Write the selected format to a file.`;
 }
 
 function parseArgs(argv) {
@@ -212,11 +215,14 @@ function parseArgs(argv) {
     projectNumber: DEFAULT_PROJECT_NUMBER,
     limit: DEFAULT_LIMIT,
     json: false,
+    markdown: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--json") {
       out.json = true;
+    } else if (arg === "--markdown") {
+      out.markdown = true;
     } else if (arg === "--help" || arg === "-h") {
       out.help = true;
     } else if (
@@ -224,6 +230,7 @@ function parseArgs(argv) {
       arg === "--project-owner" ||
       arg === "--project-number" ||
       arg === "--limit" ||
+      arg === "--output" ||
       arg === "--issues-json" ||
       arg === "--project-json"
     ) {
@@ -380,6 +387,66 @@ function formatText(report) {
   return `${lines.join("\n")}\n`;
 }
 
+function formatChecklistItem(evidence) {
+  return `- [ ] **${evidence.label}** (\`${evidence.id}\`) — ${evidence.reason}`;
+}
+
+export function formatMarkdown(report) {
+  const lines = [
+    "# LifeOps MVP Evidence Checklist",
+    "",
+    "| Metric | Count |",
+    "| --- | ---: |",
+    `| Open MVP issues | ${report.counts.openMvpIssues} |`,
+    `| Human/owner-gated | ${report.counts.humanGated} |`,
+    `| Agent-actionable | ${report.counts.agentActionable} |`,
+    "",
+    "## Evidence Category Coverage",
+    "",
+    "| Evidence | Issues |",
+    "| --- | ---: |",
+  ];
+
+  for (const [id, count] of Object.entries(report.evidenceCounts)) {
+    lines.push(`| \`${id}\` | ${count} |`);
+  }
+
+  if (report.agentActionable.length > 0) {
+    lines.push("", "## Agent-Actionable Open Rows", "");
+    for (const row of report.agentActionable) {
+      lines.push(`- #${row.number} ${row.title}`);
+    }
+  }
+
+  lines.push("", "## Issue Checklists", "");
+  for (const row of report.rows) {
+    const blockers =
+      row.blockerLabels.length > 0 ? row.blockerLabels.join(", ") : "none";
+    lines.push(`### #${row.number} ${row.title}`);
+    lines.push("");
+    lines.push(`- Project status: ${row.projectStatus ?? "unset"}`);
+    lines.push(`- Blocker labels: ${blockers}`);
+    if (row.url) lines.push(`- Issue: ${row.url}`);
+    lines.push("");
+    lines.push("Required evidence before closeout:");
+    for (const evidence of row.evidence) {
+      lines.push(formatChecklistItem(evidence));
+    }
+    lines.push("");
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+function formatReport(report, args) {
+  if (args.json && args.markdown) {
+    throw new Error("--json and --markdown are mutually exclusive");
+  }
+  if (args.json) return `${JSON.stringify(report, null, 2)}\n`;
+  if (args.markdown) return formatMarkdown(report);
+  return formatText(report);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -425,9 +492,12 @@ async function main() {
   const report = buildEvidenceMatrix(issues, projectPayload, {
     repo: args.repo,
   });
-  process.stdout.write(
-    args.json ? `${JSON.stringify(report, null, 2)}\n` : formatText(report),
-  );
+  const output = formatReport(report, args);
+  if (args.output) {
+    writeFileSync(args.output, output);
+  } else {
+    process.stdout.write(output);
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

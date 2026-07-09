@@ -138,4 +138,33 @@ describe("MVP evidence matrix", () => {
 
     expect(report.rows[0].projectStatus).toBeNull();
   });
+
+  test("renders a GitHub-ready markdown checklist for issue evidence", () => {
+    const report = matrix.buildEvidenceMatrix(
+      [
+        issue(14358, "[onboarding] Device e2e for iOS sim + Android emu", [
+          "mvp",
+          "ui",
+          "needs-human",
+        ]),
+      ],
+      { items: [projectItem(14358)] },
+    );
+
+    const markdown = matrix.formatMarkdown(report);
+
+    expect(markdown).toContain("# LifeOps MVP Evidence Checklist");
+    expect(markdown).toContain("| Open MVP issues | 1 |");
+    expect(markdown).toContain(
+      "### #14358 [onboarding] Device e2e for iOS sim + Android emu",
+    );
+    expect(markdown).toContain("- Project status: Needs human review");
+    expect(markdown).toContain("- Blocker labels: needs-human");
+    expect(markdown).toContain(
+      "- [ ] **Before/after screenshots with OCR and color heuristics** (`visual-screenshots-ocr-color`)",
+    );
+    expect(markdown).toContain(
+      "- [ ] **Per-device screenshots, recording, logs, and status JSON** (`device-artifact-bundle`)",
+    );
+  });
 });
