@@ -13,6 +13,7 @@
  */
 
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
+import { logger } from "../../utils/logger";
 import type { PooledDirectProvider } from "./provider-map";
 
 export function pooledProviderBaseUrl(providerId: PooledDirectProvider): string {
@@ -76,7 +77,14 @@ export async function probePooledApiKey(
       // signal (drives fail-closed rejection at contribution and needs-reauth at
       // keep-alive); reading the optional provider error body is best-effort and
       // must not clobber that status by throwing out of this branch.
-      const text = await response.text().catch(() => "");
+      const text = await response.text().catch((error) => {
+        logger.warn("[team-credential-pool] Failed to read pooled API probe error body", {
+          providerId,
+          status: response.status,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return "";
+      });
       return {
         ok: false,
         status: response.status,

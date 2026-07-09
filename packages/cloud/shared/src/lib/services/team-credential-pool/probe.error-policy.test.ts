@@ -6,7 +6,8 @@
  * `probePooledApiKey` against a stubbed global `fetch` (no network, no DB).
  */
 
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { logger } from "../../utils/logger";
 import { probePooledApiKey } from "./probe";
 
 function okResponse(status: number): Response {
@@ -72,6 +73,7 @@ describe("probePooledApiKey error policy", () => {
   });
 
   it("does not let a failed error-body read clobber the load-bearing HTTP status", async () => {
+    const warnSpy = spyOn(logger, "warn").mockImplementation(() => {});
     const bodyReadFails = {
       ok: false,
       status: 403,
@@ -81,12 +83,24 @@ describe("probePooledApiKey error policy", () => {
     } as unknown as Response;
     globalThis.fetch = mock(async () => bodyReadFails) as unknown as typeof fetch;
 
-    const result = await probePooledApiKey("openai-api", "sk-forbidden-key");
+    try {
+      const result = await probePooledApiKey("openai-api", "sk-forbidden-key");
 
-    expect(result.ok).toBe(false);
-    // The inner `.catch(() => "")` on response.text() must preserve status 403,
-    // not fall through to the outer catch (which would report status:0).
-    expect(result.status).toBe(403);
+      expect(result.ok).toBe(false);
+      // The inner body-read handler must preserve status 403, not fall through
+      // to the outer catch (which would report status:0).
+      expect(result.status).toBe(403);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[team-credential-pool] Failed to read pooled API probe error body",
+        expect.objectContaining({
+          providerId: "openai-api",
+          status: 403,
+          error: "stream already consumed",
+        }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("distinguishes all three outcomes from one another", async () => {
