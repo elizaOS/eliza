@@ -36,17 +36,24 @@ export interface AppContainerRow {
   userId: string;
   /** Caller env incl. the app's per-tenant DATABASE_URL (never the shared one). */
   environmentVars?: Record<string, string>;
+  nodeId?: string;
 }
 
 /** Read/write seam for app container state (over the `containers` table). */
 export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
   findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]>;
+  claimNodeSlot(containerId: string, organizationId: string, nodeId: string): Promise<boolean>;
+  rollbackNodeSlotClaim(
+    containerId: string,
+    organizationId: string,
+    nodeId: string,
+  ): Promise<boolean>;
   markRunning(
     containerId: string,
     info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
   ): Promise<void>;
-  markDeleted(containerId: string): Promise<void>;
+  markDeleted(containerId: string, organizationId: string, nodeId?: string): Promise<void>;
   markError(containerId: string, error: string): Promise<void>;
 }
 
@@ -118,6 +125,7 @@ export async function executeContainerProvision(
     port: row.port,
     environmentVars: row.environmentVars,
   });
+  await deps.store.claimNodeSlot(containerId, row.organizationId, deps.provider.targetNodeId);
   // PROVISION + markRunning: a failure HERE means no container is running, so the
   // row is a true provision failure -> markError (reapable/retryable). Only this
   // span is allowed to flip the row to `failed`.
@@ -128,6 +136,17 @@ export async function executeContainerProvision(
       containerName: row.containerName,
       input,
     });
+  } catch (error) {
+    await deps.store.rollbackNodeSlotClaim(
+      containerId,
+      row.organizationId,
+      deps.provider.targetNodeId,
+    );
+    await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
+    throw error;
+  }
+
+  try {
     await deps.store.markRunning(containerId, {
       hostContainerId: result.containerId,
       hostPort: result.hostPort,
@@ -135,6 +154,21 @@ export async function executeContainerProvision(
       nodeHost: result.nodeHost,
     });
   } catch (error) {
+    try {
+      await deps.provider.delete(row.containerName);
+      await deps.store.rollbackNodeSlotClaim(
+        containerId,
+        row.organizationId,
+        deps.provider.targetNodeId,
+      );
+    } catch (cleanupError) {
+      // error-policy:J6 failed provision rollback remains visible and keeps its slot claimed until retry/reconciliation.
+      logger.error("[ContainerExecutor] failed to remove container after running-state write", {
+        containerId,
+        nodeId: result.nodeId,
+        error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+      });
+    }
     await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
     throw error;
   }
@@ -207,7 +241,11 @@ export async function executeContainerDelete(
   job: JobLike,
   deps: ContainerExecutorDeps,
 ): Promise<void> {
-  let targets: Array<{ id: string; row: AppContainerRow | null }>;
+  let targets: Array<{
+    id: string;
+    organizationId: string;
+    row: AppContainerRow | null;
+  }>;
   if (isContainerDeleteJobData(job.data)) {
     const row = await deps.store.getById(job.data.containerId);
     if (row && row.organizationId !== job.data.organizationId) {
@@ -225,11 +263,11 @@ export async function executeContainerDelete(
         },
       );
     }
-    targets = [{ id: job.data.containerId, row }];
+    targets = [{ id: job.data.containerId, organizationId: job.data.organizationId, row }];
   } else {
     const organizationId = recoverableDeleteOrganizationId(job);
     const rows = await deps.store.findDeletingByOrganization(organizationId);
-    targets = rows.map((row) => ({ id: row.id, row }));
+    targets = rows.map((row) => ({ id: row.id, organizationId, row }));
     logger.warn("[ContainerExecutor] recovering malformed container delete job", {
       jobId: job.id,
       organizationId,
@@ -237,7 +275,7 @@ export async function executeContainerDelete(
     });
   }
 
-  for (const { id, row } of targets) {
+  for (const { id, organizationId, row } of targets) {
     if (row) {
       try {
         await deps.provider.delete(row.containerName);
@@ -263,7 +301,7 @@ export async function executeContainerDelete(
         });
       });
     }
-    await deps.store.markDeleted(id);
+    await deps.store.markDeleted(id, organizationId, row?.nodeId);
   }
 }
 

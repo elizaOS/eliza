@@ -3,6 +3,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
+import {
+  countAllocatedWorkloadsOnNodeWithDatabase,
+  TERMINAL_SANDBOX_STATUSES,
+} from "./docker-node-workload-queries";
 import { AGENT_CONTAINER_NAME_PREFIX } from "./docker-sandbox-utils";
 import {
   type LiveContainerRef,
@@ -32,12 +36,7 @@ async function countRows(query: Promise<Array<{ count: number }>>): Promise<numb
  * agent_delete job is actively in flight and owns the teardown; reaping under
  * it would race the worker.
  */
-const TERMINAL_SANDBOX_STATUSES = new Set<string>([
-  "stopped",
-  "error",
-  "sleeping",
-  "deletion_failed",
-]);
+const TERMINAL_SANDBOX_STATUS_SET = new Set<string>(TERMINAL_SANDBOX_STATUSES);
 
 /**
  * Active compute slots on a Docker node.
@@ -56,35 +55,7 @@ const TERMINAL_SANDBOX_STATUSES = new Set<string>([
  * container is up but unreachable) and still occupies the slot.
  */
 export async function countAllocatedWorkloadsOnNode(nodeId: string): Promise<number> {
-  const [containerCount, agentCount] = await Promise.all([
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(containers)
-        .where(
-          and(
-            eq(containers.node_id, nodeId),
-            sql`${containers.status} not in ('failed','stopped','deleted')`,
-          ),
-        ),
-    ),
-    countRows(
-      dbRead
-        .select({ count: sql<number>`count(*)::int` })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.node_id, nodeId),
-            sql`${agentSandboxes.status} not in (${sql.join(
-              [...TERMINAL_SANDBOX_STATUSES].map((status) => sql`${status}`),
-              sql`, `,
-            )})`,
-          ),
-        ),
-    ),
-  ]);
-
-  return containerCount + agentCount;
+  return countAllocatedWorkloadsOnNodeWithDatabase(dbRead, nodeId);
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +127,7 @@ async function loadSandboxStatusesByIds(agentIds: readonly string[]): Promise<Li
 const AGENT_ORPHAN_RECONCILER_CONFIG: OrphanReconcilerConfig = {
   prefix: AGENT_CONTAINER_NAME_PREFIX,
   keyOf: agentIdFromContainerName,
-  terminalStatuses: TERMINAL_SANDBOX_STATUSES,
+  terminalStatuses: TERMINAL_SANDBOX_STATUS_SET,
   loadStatuses: loadSandboxStatusesByIds,
   logScope: "orphan-reconciler",
   nodeAware: true,

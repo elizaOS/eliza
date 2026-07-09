@@ -23,12 +23,21 @@ const ROW: AppContainerRow = {
 
 function fakeStore(row: AppContainerRow | null = ROW) {
   const events: Array<{ op: string; id: string; info?: unknown }> = [];
+  const slotEvents: Array<{ op: "claim" | "rollback"; nodeId: string }> = [];
   const store: AppContainerStore = {
     async getById() {
       return row;
     },
     async findDeletingByOrganization() {
       return row ? [row] : [];
+    },
+    async claimNodeSlot(_id, _organizationId, nodeId) {
+      slotEvents.push({ op: "claim", nodeId });
+      return true;
+    },
+    async rollbackNodeSlotClaim(_id, _organizationId, nodeId) {
+      slotEvents.push({ op: "rollback", nodeId });
+      return true;
     },
     async markRunning(id, info) {
       events.push({ op: "running", id, info });
@@ -40,15 +49,22 @@ function fakeStore(row: AppContainerRow | null = ROW) {
       events.push({ op: "error", id, info: error });
     },
   };
-  return { events, store };
+  return { events, slotEvents, store };
 }
 
 function fakeProvider(over: Partial<Record<keyof AppContainerProvider, unknown>> = {}) {
   const calls: Array<{ op: string; arg: unknown }> = [];
   const provider = {
+    targetNodeId: "node-1",
     async provision(params: unknown): Promise<ProvisionedAppContainer> {
       calls.push({ op: "provision", arg: params });
-      return { containerId: "docker-abc", hostPort: 49001, network: "app-net-x" };
+      return {
+        containerId: "docker-abc",
+        hostPort: 49001,
+        network: "app-net-x",
+        nodeId: "node-1",
+        nodeHost: "node.example.test",
+      };
     },
     async delete(name: string) {
       calls.push({ op: "delete", arg: name });
@@ -69,7 +85,7 @@ const job = (data: unknown) => ({ id: "job-1", data });
 
 describe("executeContainerProvision", () => {
   test("builds input from the row, provisions, and marks running", async () => {
-    const { events, store } = fakeStore();
+    const { events, slotEvents, store } = fakeStore();
     const { calls, provider } = fakeProvider();
     await executeContainerProvision(
       job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
@@ -92,9 +108,15 @@ describe("executeContainerProvision", () => {
       {
         op: "running",
         id: "container-1",
-        info: { hostContainerId: "docker-abc", hostPort: 49001, network: "app-net-x" },
+        info: {
+          hostContainerId: "docker-abc",
+          hostPort: 49001,
+          network: "app-net-x",
+          nodeHost: "node.example.test",
+        },
       },
     ]);
+    expect(slotEvents).toEqual([{ op: "claim", nodeId: "node-1" }]);
   });
 
   test("flips the linked app to deployed on success (#5: deploy reaches READY)", async () => {
@@ -139,7 +161,7 @@ describe("executeContainerProvision", () => {
   });
 
   test("marks error and rethrows when provisioning fails", async () => {
-    const { events, store } = fakeStore();
+    const { events, slotEvents, store } = fakeStore();
     const { provider } = fakeProvider({
       async provision() {
         throw new Error("docker create failed");
@@ -155,6 +177,71 @@ describe("executeContainerProvision", () => {
       ),
     ).rejects.toThrow("docker create failed");
     expect(events[0]).toMatchObject({ op: "error", id: "container-1" });
+    expect(slotEvents).toEqual([
+      { op: "claim", nodeId: "node-1" },
+      { op: "rollback", nodeId: "node-1" },
+    ]);
+  });
+
+  test("capacity refusal never invokes Docker or fabricates a failed container", async () => {
+    const { events, store } = fakeStore();
+    store.claimNodeSlot = async () => {
+      throw new Error("node capacity unavailable");
+    };
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        { provider, store },
+      ),
+    ).rejects.toThrow("node capacity unavailable");
+
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  test("a running-state write failure removes Docker before releasing the slot", async () => {
+    const { events, slotEvents, store } = fakeStore();
+    store.markRunning = async () => {
+      throw new Error("status write failed");
+    };
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        { provider, store },
+      ),
+    ).rejects.toThrow("status write failed");
+
+    expect(calls.map((call) => call.op)).toEqual(["provision", "delete"]);
+    expect(slotEvents).toEqual([
+      { op: "claim", nodeId: "node-1" },
+      { op: "rollback", nodeId: "node-1" },
+    ]);
+    expect(events).toEqual([{ op: "error", id: "container-1", info: "status write failed" }]);
+  });
+
+  test("failed Docker rollback keeps the slot claimed for retry reconciliation", async () => {
+    const { slotEvents, store } = fakeStore();
+    store.markRunning = async () => {
+      throw new Error("status write failed");
+    };
+    const { provider } = fakeProvider({
+      async delete() {
+        throw new Error("ssh unavailable");
+      },
+    });
+
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        { provider, store },
+      ),
+    ).rejects.toThrow("status write failed");
+
+    expect(slotEvents).toEqual([{ op: "claim", nodeId: "node-1" }]);
   });
 
   test("throws when the container row is missing", async () => {
