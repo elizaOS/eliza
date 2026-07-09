@@ -29,7 +29,7 @@
     "ensure-plugin-test-conventions": "bun packages/scripts/ensure-plugin-test-conventions.mjs",
     "ensure-plugin-test-conventions:check": "bun packages/scripts/ensure-plugin-test-conventions.mjs --check",
     "trajectory:inspect": "bun packages/scripts/trajectory.ts",
-    "audit:e2e-coverage": "bun packages/scripts/e2e-coverage/check-e2e-coverage.ts",
+    "audit:e2e-coverage": "bun --conditions=eliza-source packages/scripts/e2e-coverage/check-e2e-coverage.ts",
     "soc2:verify": "bun run packages/security/soc2-verify/src/cli.ts",
     "audit:even-research": "node scripts/check-even-research-audit.mjs",
     "audit:even-research:self-test": "node scripts/check-even-research-audit.mjs --self-test",
