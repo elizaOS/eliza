@@ -17,8 +17,10 @@
 
 import { Capacitor } from "@capacitor/core";
 
-import { NativeBlePendantTransport } from "./native-ble-transport";
-import type { PendantTransport } from "./pendant-transport";
+import {
+  type PendantTransport,
+  PendantUserCancelledError,
+} from "./pendant-transport";
 import {
   isWebBluetoothAvailable,
   WebBluetoothPendantTransport,
@@ -54,7 +56,67 @@ export function isPendantSupported(): boolean {
  * Bluetooth — the native BLE plugin is the only path there.
  */
 export function selectPendantTransport(): PendantTransport | null {
-  if (isNativeAndroid()) return new NativeBlePendantTransport();
+  if (isNativeAndroid()) return new LazyNativeBlePendantTransport();
   if (isWebBluetoothAvailable()) return new WebBluetoothPendantTransport();
   return null;
+}
+
+export class LazyNativeBlePendantTransport implements PendantTransport {
+  readonly kind = "native-ble" as const;
+  private transport: PendantTransport | null = null;
+  private loadPromise: Promise<PendantTransport> | null = null;
+  private disconnectedHandler: (() => void) | null = null;
+  private cancelled = false;
+
+  async requestAndConnect(): Promise<{ deviceName: string | null }> {
+    const transport = await this.load();
+    if (this.cancelled) throw new PendantUserCancelledError();
+    const result = await transport.requestAndConnect();
+    if (this.cancelled) {
+      await transport.disconnect();
+      throw new PendantUserCancelledError();
+    }
+    return result;
+  }
+
+  async readCodec() {
+    return (await this.load()).readCodec();
+  }
+
+  async startAudio(listener: Parameters<PendantTransport["startAudio"]>[0]) {
+    return (await this.load()).startAudio(listener);
+  }
+
+  async startBattery(
+    listener: Parameters<PendantTransport["startBattery"]>[0],
+  ) {
+    return (await this.load()).startBattery(listener);
+  }
+
+  onDisconnected(handler: () => void): void {
+    this.disconnectedHandler = handler;
+    this.transport?.onDisconnected(handler);
+  }
+
+  async disconnect(): Promise<void> {
+    this.cancelled = true;
+    const transport =
+      this.transport ?? (await this.loadPromise?.catch(() => null));
+    await transport?.disconnect();
+  }
+
+  private async load(): Promise<PendantTransport> {
+    if (!this.loadPromise) {
+      this.loadPromise = import("./native-ble-transport").then(
+        ({ NativeBlePendantTransport }) => {
+          this.transport = new NativeBlePendantTransport();
+          if (this.disconnectedHandler) {
+            this.transport.onDisconnected(this.disconnectedHandler);
+          }
+          return this.transport;
+        },
+      );
+    }
+    return this.loadPromise;
+  }
 }

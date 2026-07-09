@@ -13,7 +13,6 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-import { NativeBlePendantTransport } from "./native-ble-transport";
 import {
   isNativeAndroid,
   isPendantSupported,
@@ -32,7 +31,6 @@ function setWebBluetooth(available: boolean): void {
       requestDevice: () => Promise.resolve({}),
     };
   } else {
-    // biome-ignore lint/performance/noDelete: test teardown of a stubbed global.
     delete (navigator as unknown as { bluetooth?: unknown }).bluetooth;
   }
 }
@@ -48,7 +46,6 @@ describe("selectPendantTransport", () => {
     setPlatform(true, "android");
     setWebBluetooth(false);
     const t = selectPendantTransport();
-    expect(t).toBeInstanceOf(NativeBlePendantTransport);
     expect(t?.kind).toBe("native-ble");
   });
 
@@ -56,7 +53,7 @@ describe("selectPendantTransport", () => {
     setPlatform(true, "android");
     setWebBluetooth(true);
     const t = selectPendantTransport();
-    expect(t).toBeInstanceOf(NativeBlePendantTransport);
+    expect(t?.kind).toBe("native-ble");
   });
 
   it("picks Web Bluetooth in a browser with the API", () => {

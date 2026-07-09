@@ -52,7 +52,12 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
   const supported = React.useMemo(() => isPendantSupported(), []);
 
   const connect = React.useCallback(() => {
-    if (connectionRef.current) return;
+    const existing = connectionRef.current;
+    if (existing) {
+      const status = existing.getState().status;
+      if (status === "idle" || status === "error") void existing.connect();
+      return;
+    }
     const opts: PendantConnectionOptions = {
       onState: setState,
       onTranscript: optionsRef.current.onTranscript,

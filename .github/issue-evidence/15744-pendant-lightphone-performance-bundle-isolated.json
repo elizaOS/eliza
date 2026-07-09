@@ -1,0 +1,22 @@
+{
+  "issue": 15744,
+  "lane": "pendant-bundle-isolated",
+  "scope": "Bun split browser build of packages/ui/src/pendant/select-transport.ts",
+  "baseline": "b9f707965de source from the feat/eliza-pendant worktree",
+  "current": "perf/pendant-latency-soak working tree",
+  "command": "bun build <worktree>/packages/ui/src/pendant/select-transport.ts --outdir <tmp> --splitting --format esm --target browser",
+  "before": {
+    "entryBytes": 9298,
+    "nativeTransportInInitialEntry": true,
+    "nativeTransportLazyChunkBytes": 0
+  },
+  "after": {
+    "entryBytes": 6587,
+    "nativeTransportInInitialEntry": false,
+    "nativeTransportLazyChunkBytes": 3883
+  },
+  "delta": {
+    "entryBytes": -2711
+  },
+  "interpretation": "The isolated transport entry became 2,711 bytes smaller and native BLE moved into its own lazy chunk. The later full app build/profile also passed after prerequisite workspace packages were built; see 15744-pendant-lightphone-performance-bundle.json."
+}

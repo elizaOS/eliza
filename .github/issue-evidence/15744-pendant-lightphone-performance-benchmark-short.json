@@ -1,0 +1,105 @@
+{
+  "issue": 15744,
+  "lane": "pendant-performance-replay",
+  "host": {
+    "runtime": "node",
+    "node": "v24.14.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 16
+  },
+  "fixture": {
+    "kind": "synthetic-tone-silence",
+    "privacy": "no speech, audio text, device identifier, or transcript data",
+    "framingDependentCases": [
+      "multi-chunk framing is covered by reassembler tests, not this decode benchmark"
+    ]
+  },
+  "iterations": 100,
+  "dispatches": 100,
+  "droppedPackets": 0,
+  "budgets": {
+    "reassembly_p95_ms": 0.3,
+    "opus_decode_p95_ms": 3,
+    "vad_wav_asr_dispatch_p95_ms": 25,
+    "dropped_packets_max": 0
+  },
+  "checks": {
+    "reassembly_p95_ms": true,
+    "opus_decode_p95_ms": true,
+    "opus_fixture_clean": true,
+    "vad_wav_asr_dispatch_p95_ms": true,
+    "dropped_packets_max": true
+  },
+  "pass": true,
+  "raw": {
+    "reassemblyP95Ms": 0.003907000000026528,
+    "opusDecodeP95Ms": 0.0448170000000232,
+    "pcmDecodeP95Ms": 0.0041279999999801475,
+    "pipelineP95Ms": 4.036415999999974,
+    "corruptedOpusFrames": 0
+  },
+  "latencySummary": {
+    "ble_to_reassembly_ms": {
+      "count": 3100,
+      "p50": 0.0018739999999866086,
+      "p95": 0.00872700000002169,
+      "max": 0.4800040000000081
+    },
+    "reassembly_to_decode_ms": {
+      "count": 3100,
+      "p50": 0.0009820000000217988,
+      "p95": 0.0025039999999876272,
+      "max": 0.5294190000000185
+    },
+    "decode_ms": {
+      "count": 3100,
+      "p50": 0.007464000000027227,
+      "p95": 0.027033000000074026,
+      "max": 3.5301919999999996
+    },
+    "decode_to_vad_speech_ms": {
+      "count": 100,
+      "p50": 0.004737999999974818,
+      "p95": 0.01563000000004422,
+      "max": 0.25635699999997996
+    },
+    "wav_encode_ms": {
+      "count": 100,
+      "p50": 0.08802200000002358,
+      "p95": 0.47185699999999997,
+      "max": 0.8943670000000452
+    },
+    "asr_ms": {
+      "count": 100,
+      "p50": 0.8863110000000347,
+      "p95": 2.423080999999968,
+      "max": 22.670275000000004
+    },
+    "asr_resolve_to_dispatch_ms": {
+      "count": 100,
+      "p50": 0.006412000000011631,
+      "p95": 0.025940000000048258,
+      "max": 0.06230099999993399
+    },
+    "ble_to_dispatch_ms": {
+      "count": 100,
+      "p50": 1.787384999999972,
+      "p95": 4.029532000000017,
+      "max": 33.59814600000004
+    },
+    "vad_speech_to_pending_ms": {
+      "count": 50,
+      "p50": 0.3174070000000029,
+      "p95": 0.6311259999999947,
+      "max": 1.03626399999996
+    },
+    "vad_pending_to_asr_resolve_ms": {
+      "count": 50,
+      "p50": 0.9838930000000232,
+      "p95": 2.5277039999999715,
+      "max": 3.693590000000029
+    }
+  },
+  "counters": {}
+}

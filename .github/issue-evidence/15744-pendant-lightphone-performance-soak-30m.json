@@ -1,0 +1,118 @@
+{
+  "issue": 15744,
+  "lane": "pendant-soak",
+  "mode": "soak",
+  "host": {
+    "runtime": "node",
+    "node": "v24.14.0",
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 16
+  },
+  "durationMs": 1800053,
+  "configuredDurationMs": 1800000,
+  "privacy": "synthetic/replayed notifications only; no speech, transcript, audio artifact, or device identifier",
+  "counters": {
+    "connects": 30,
+    "disconnects": 30,
+    "decoderCreates": 30,
+    "decoderFrees": 30,
+    "notifications": 711505,
+    "duplicates": 7429,
+    "dropped": 8804,
+    "decodedFrames": 709349,
+    "pendingUtterances": 17734,
+    "maxPendingUtterances": 3,
+    "dispatchedSegments": 17732,
+    "duplicateSegmentIds": 0,
+    "droppedSegmentIds": 0,
+    "backpressureEvents": 2122,
+    "overloadBursts": 59,
+    "transportDuplicateInjections": 7429,
+    "transportDropInjections": 6704,
+    "listenersAdded": 60,
+    "listenersRemoved": 60,
+    "pauseResumeCycles": 29,
+    "visibilityChanges": 29,
+    "reconnects": 29,
+    "timersStarted": 4,
+    "timersCleared": 4,
+    "eventLoopStalls": 0
+  },
+  "maxQueueDepth": 32,
+  "stableChecks": {
+    "decoderLifecycleBalanced": true,
+    "timersCleared": true,
+    "listenerLifecycleBalanced": true,
+    "decodedFrames": true,
+    "queueBounded": true,
+    "duplicateAccounting": true,
+    "dropAccounting": true,
+    "noDuplicateSegmentIds": true,
+    "noDroppedSegmentIds": true,
+    "backpressureCovered": true,
+    "overloadBurstCovered": true,
+    "concurrentPendingCovered": true,
+    "reconnectCovered": true,
+    "pauseResumeCovered": true,
+    "visibilityCovered": true
+  },
+  "evidenceOnly": {
+    "heapDeltaBytes": 5852792,
+    "rssDeltaBytes": 61911040,
+    "maxHeapUsedBytes": 35992736,
+    "maxRssBytes": 128057344,
+    "eventLoopStalls": 0
+  },
+  "latencySummary": {
+    "ble_to_reassembly_ms": {
+      "count": 709349,
+      "p50": 0.006182000041007996,
+      "p95": 0.03228299994952977,
+      "max": 5.514510000124574
+    },
+    "reassembly_to_decode_ms": {
+      "count": 709349,
+      "p50": 0.00240500015206635,
+      "p95": 0.006261999951675534,
+      "max": 7.387579000089318
+    },
+    "decode_ms": {
+      "count": 709349,
+      "p50": 0.004477999871596694,
+      "p95": 0.00915800011716783,
+      "max": 13.165788999991491
+    },
+    "decode_to_vad_speech_ms": {
+      "count": 17734,
+      "p50": 0.004359999904409051,
+      "p95": 0.009308000095188618,
+      "max": 0.12036400000215508
+    },
+    "vad_speech_to_pending_ms": {
+      "count": 17734,
+      "p50": 0.006514000007882714,
+      "p95": 0.010178999975323677,
+      "max": 0.2721480000036536
+    },
+    "vad_pending_to_asr_resolve_ms": {
+      "count": 17732,
+      "p50": 21.267669999971986,
+      "p95": 30.82044699997641,
+      "max": 285.5485059999628
+    },
+    "asr_resolve_to_dispatch_ms": {
+      "count": 17732,
+      "p50": 0.0034360000863671303,
+      "p95": 0.005510000046342611,
+      "max": 0.11439200000313576
+    },
+    "ble_to_dispatch_ms": {
+      "count": 17732,
+      "p50": 21.36513900011778,
+      "p95": 30.840846000006422,
+      "max": 285.5719510000199
+    }
+  },
+  "pass": true
+}
