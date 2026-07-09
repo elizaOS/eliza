@@ -7,6 +7,7 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import process from "node:process";
 
 const DEFAULT_OWNER = "elizaOS";
@@ -15,15 +16,86 @@ const DEFAULT_PROJECT = "15";
 const DEFAULT_LIMIT = "500";
 const DONE_STATUS = "Done";
 
-function argValue(name, fallback) {
-  const index = process.argv.indexOf(name);
-  if (index !== -1) return process.argv[index + 1] ?? fallback;
-  const inline = process.argv.find((arg) => arg.startsWith(`${name}=`));
-  return inline ? inline.slice(name.length + 1) : fallback;
+function usage() {
+  return `Usage:
+  node packages/scripts/audit-mvp-project-board.mjs [--json] [--strict]
+  node packages/scripts/audit-mvp-project-board.mjs --project-json project.json --open-json open.json --closed-json closed.json [--json] [--strict]
+
+Options:
+  --owner <org>        GitHub Project owner for live mode (default: ${DEFAULT_OWNER}).
+  --project <number>  GitHub Project number for live mode (default: ${DEFAULT_PROJECT}).
+  --repo <owner/repo> GitHub repo for live mode (default: ${DEFAULT_REPO}).
+  --limit <n>         GitHub item/page limit (default: ${DEFAULT_LIMIT}).
+  --strict            Exit 1 when any stale/actionable bucket is non-empty.`;
+}
+
+function parseArgs(argv) {
+  const out = {
+    owner: DEFAULT_OWNER,
+    repo: DEFAULT_REPO,
+    project: DEFAULT_PROJECT,
+    limit: DEFAULT_LIMIT,
+    json: false,
+    strict: false,
+  };
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--json") {
+      out.json = true;
+    } else if (arg === "--strict") {
+      out.strict = true;
+    } else if (arg === "--help" || arg === "-h") {
+      out.help = true;
+    } else if (
+      arg === "--owner" ||
+      arg === "--project" ||
+      arg === "--repo" ||
+      arg === "--limit" ||
+      arg === "--project-json" ||
+      arg === "--open-json" ||
+      arg === "--closed-json"
+    ) {
+      const value = argv[i + 1];
+      if (!value) throw new Error(`${arg} requires a value`);
+      out[
+        arg
+          .slice(2)
+          .replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())
+      ] = value;
+      i += 1;
+    } else if (arg.includes("=")) {
+      const [name, value] = arg.split(/=(.*)/s);
+      if (
+        ![
+          "--owner",
+          "--project",
+          "--repo",
+          "--limit",
+          "--project-json",
+          "--open-json",
+          "--closed-json",
+        ].includes(name)
+      ) {
+        throw new Error(`Unknown argument: ${arg}`);
+      }
+      out[
+        name
+          .slice(2)
+          .replace(/-([a-z])/g, (_match, letter) => letter.toUpperCase())
+      ] = value;
+    } else {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
+  }
+  return out;
 }
 
 function ghJson(args) {
   return JSON.parse(execFileSync("gh", args, { encoding: "utf8" }));
+}
+
+function readJson(file) {
+  return JSON.parse(readFileSync(file, "utf8"));
 }
 
 export function normalizeProjectIssue(item) {
@@ -89,6 +161,32 @@ export function summarizeMvpBoard({ projectItems, openIssues, closedIssues }) {
   };
 }
 
+export function strictViolations(summary) {
+  const violations = [];
+  if (summary.closedNotDone.length > 0) {
+    violations.push({
+      type: "closed-not-done",
+      count: summary.closedNotDone.length,
+      message: `${summary.closedNotDone.length} closed MVP issue(s) are not marked Done`,
+    });
+  }
+  if (summary.agentActionable.length > 0) {
+    violations.push({
+      type: "agent-actionable-open",
+      count: summary.agentActionable.length,
+      message: `${summary.agentActionable.length} open MVP issue(s) are neither Done nor human-gated`,
+    });
+  }
+  if (summary.openDone.length > 0) {
+    violations.push({
+      type: "open-done",
+      count: summary.openDone.length,
+      message: `${summary.openDone.length} open MVP issue(s) are already marked Done`,
+    });
+  }
+  return violations;
+}
+
 function formatIssue(issue) {
   const labels = issue.labels.length > 0 ? ` [${issue.labels.join(",")}]` : "";
   return `#${issue.number} ${issue.status ?? "(no status)"} — ${issue.title}${labels}`;
@@ -123,62 +221,90 @@ export function formatSummary(summary) {
 }
 
 async function main() {
-  const owner = argValue("--owner", DEFAULT_OWNER);
-  const project = argValue("--project", DEFAULT_PROJECT);
-  const repo = argValue("--repo", DEFAULT_REPO);
-  const limit = argValue("--limit", DEFAULT_LIMIT);
-  const jsonMode = process.argv.includes("--json");
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    process.stdout.write(`${usage()}\n`);
+    return;
+  }
+  const fixtureInputs = [
+    args.projectJson,
+    args.openJson,
+    args.closedJson,
+  ].filter(Boolean);
+  if (fixtureInputs.length > 0 && fixtureInputs.length !== 3) {
+    throw new Error(
+      "--project-json, --open-json, and --closed-json must be passed together",
+    );
+  }
 
-  const projectData = ghJson([
-    "project",
-    "item-list",
-    project,
-    "--owner",
-    owner,
-    "--format",
-    "json",
-    "--limit",
-    limit,
-  ]);
-  const openIssues = ghJson([
-    "issue",
-    "list",
-    "--repo",
-    repo,
-    "--state",
-    "open",
-    "--label",
-    "mvp",
-    "--limit",
-    limit,
-    "--json",
-    "number,title,labels,url",
-  ]);
-  const closedIssues = ghJson([
-    "issue",
-    "list",
-    "--repo",
-    repo,
-    "--state",
-    "closed",
-    "--label",
-    "mvp",
-    "--limit",
-    limit,
-    "--json",
-    "number,title,labels,url",
-  ]);
+  const projectData = args.projectJson
+    ? readJson(args.projectJson)
+    : ghJson([
+        "project",
+        "item-list",
+        args.project,
+        "--owner",
+        args.owner,
+        "--format",
+        "json",
+        "--limit",
+        args.limit,
+      ]);
+  const openIssues = args.openJson
+    ? readJson(args.openJson)
+    : ghJson([
+        "issue",
+        "list",
+        "--repo",
+        args.repo,
+        "--state",
+        "open",
+        "--label",
+        "mvp",
+        "--limit",
+        args.limit,
+        "--json",
+        "number,title,labels,url",
+      ]);
+  const closedIssues = args.closedJson
+    ? readJson(args.closedJson)
+    : ghJson([
+        "issue",
+        "list",
+        "--repo",
+        args.repo,
+        "--state",
+        "closed",
+        "--label",
+        "mvp",
+        "--limit",
+        args.limit,
+        "--json",
+        "number,title,labels,url",
+      ]);
 
   const summary = summarizeMvpBoard({
     projectItems: projectData.items ?? [],
     openIssues,
     closedIssues,
   });
+  const violations = strictViolations(summary);
+  const output = args.json
+    ? { ...summary, strictViolations: violations }
+    : null;
   process.stdout.write(
-    jsonMode
-      ? `${JSON.stringify(summary, null, 2)}\n`
+    args.json
+      ? `${JSON.stringify(output, null, 2)}\n`
       : `${formatSummary(summary)}\n`,
   );
+  if (args.strict && violations.length > 0) {
+    process.stderr.write(
+      `[audit-mvp-project-board] strict failed: ${violations
+        .map((violation) => violation.message)
+        .join("; ")}\n`,
+    );
+    process.exitCode = 1;
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

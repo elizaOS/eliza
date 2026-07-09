@@ -5,10 +5,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const board = await import(
   new URL("../audit-mvp-project-board.mjs", import.meta.url).href
 );
+const scriptPath = new URL("../audit-mvp-project-board.mjs", import.meta.url)
+  .pathname;
 
 const projectItems = [
   {
@@ -104,5 +110,106 @@ describe("audit-mvp-project-board", () => {
     expect(text).toContain("Open MVP issues not Done and not human-gated");
     expect(text).toContain("#3 In progress — Agent tractable");
     expect(text).toContain("open-but-Done: 1");
+  });
+
+  test("strictViolations returns the stale buckets that should fail closeout", () => {
+    const summary = board.summarizeMvpBoard({
+      projectItems,
+      openIssues: [{ number: 2 }, { number: 3 }, { number: 4 }],
+      closedIssues: [{ number: 1 }],
+    });
+
+    expect(board.strictViolations(summary)).toEqual([
+      expect.objectContaining({ type: "closed-not-done", count: 1 }),
+      expect.objectContaining({ type: "agent-actionable-open", count: 1 }),
+      expect.objectContaining({ type: "open-done", count: 1 }),
+    ]);
+  });
+
+  test("CLI fixture mode exits non-zero in strict mode and prints JSON violations", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-board-audit-"));
+    const projectJson = join(dir, "project.json");
+    const openJson = join(dir, "open.json");
+    const closedJson = join(dir, "closed.json");
+    writeFileSync(projectJson, JSON.stringify({ items: projectItems }));
+    writeFileSync(
+      openJson,
+      JSON.stringify([{ number: 2 }, { number: 3 }, { number: 4 }]),
+    );
+    writeFileSync(closedJson, JSON.stringify([{ number: 1 }]));
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--project-json",
+        projectJson,
+        "--open-json",
+        openJson,
+        "--closed-json",
+        closedJson,
+        "--json",
+        "--strict",
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("strict failed");
+    const parsed = JSON.parse(result.stdout);
+    expect(
+      parsed.strictViolations.map(
+        (violation: { type: string }) => violation.type,
+      ),
+    ).toEqual(["closed-not-done", "agent-actionable-open", "open-done"]);
+  });
+
+  test("CLI fixture mode exits zero in strict mode when only human-gated rows remain", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-board-audit-clean-"));
+    const projectJson = join(dir, "project.json");
+    const openJson = join(dir, "open.json");
+    const closedJson = join(dir, "closed.json");
+    writeFileSync(
+      projectJson,
+      JSON.stringify({
+        items: [
+          {
+            content: {
+              type: "Issue",
+              number: 2,
+              title: "Needs device evidence",
+              url: "https://github.com/elizaOS/eliza/issues/2",
+            },
+            title: "Needs device evidence",
+            status: "Needs human review",
+            labels: ["mvp", "needs-human"],
+          },
+        ],
+      }),
+    );
+    writeFileSync(openJson, JSON.stringify([{ number: 2 }]));
+    writeFileSync(closedJson, JSON.stringify([]));
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--project-json",
+        projectJson,
+        "--open-json",
+        openJson,
+        "--closed-json",
+        closedJson,
+        "--json",
+        "--strict",
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const parsed = JSON.parse(result.stdout);
+    expect(parsed.strictViolations).toEqual([]);
+    expect(parsed.counts.humanGated).toBe(1);
   });
 });
