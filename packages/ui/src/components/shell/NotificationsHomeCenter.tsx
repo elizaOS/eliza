@@ -48,7 +48,14 @@
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { tierForPriority } from "@elizaos/core";
 import { ChevronDown } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { haptics } from "../../bridge/capacitor-bridge";
 import { dispatchChatPrefill } from "../../events";
 import { cn } from "../../lib/utils";
@@ -125,6 +132,27 @@ export function dampenPull(rawDy: number): number {
 }
 
 /**
+ * Convert the live rubber-band travel into a staggered reveal for rows that
+ * are hidden in the rested shade. Every revealed group reaches full opacity
+ * at the commit point, so releasing a completed pull never causes a pop.
+ */
+export function notificationPullRevealProgress(
+  pullPx: number,
+  groupIndex: number,
+): number {
+  const progress = Math.min(1, Math.max(0, pullPx / PULL_COMMIT_PX));
+  const stagger = Math.min(Math.max(groupIndex, 0), 4) * 0.06;
+  return Math.min(1, Math.max(0, (progress - stagger) / (1 - stagger)));
+}
+
+function notificationPullRevealStyle(progress: number): CSSProperties {
+  return {
+    opacity: progress,
+    transform: `translate3d(0, ${(1 - progress) * -10}px, 0) scale(${0.985 + progress * 0.015})`,
+  };
+}
+
+/**
  * Scroll + glass polish for the shade, in one inline block (house pattern —
  * see HOME_ENTER_CSS in HomeScreen):
  *
@@ -139,6 +167,8 @@ export function dampenPull(rawDy: number): number {
  *    platform notification shade. Progressive enhancement only; the fallback
  *    is the plain masked scroll.
  *  - New rows (live arrivals) slide in from the top.
+ *  - Rows hidden by the rested shade track pull distance with opacity and
+ *    vertical settling, so the user's finger reveals content before release.
  *
  * All of it is opacity/transform/color-only and disabled under reduced motion.
  */
@@ -177,6 +207,13 @@ const NOTIF_SCROLL_CSS = `
 ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-glass:hover {
   background-color: rgb(38 38 42 / 42%);
+}
+.eliza-notif-pull-reveal {
+  transform-origin: top center;
+  will-change: opacity, transform;
+}
+.eliza-notif-row.eliza-notif-pull-reveal {
+  animation: none;
 }
 .eliza-notif-scroll {
   scrollbar-width: none;
@@ -355,9 +392,9 @@ export function notificationRowOptions(
  * `<RelativeTime>` leaf that owns the minute tick, so the row never re-renders
  * to keep "5m" honest. `arePropsEqual` compares the identity fields that drive
  * its markup: `id`, `title`, `body`, `deepLink`, `category` (options), the
- * single-open `expanded` flag, plus the callbacks (stable via the parent's
- * `useCallback`). `createdAt` is intentionally NOT compared: it feeds only
- * the leaf.
+ * single-open `expanded` flag, transient pull reveal progress, plus the
+ * callbacks (stable via the parent's `useCallback`). `createdAt` is
+ * intentionally NOT compared: it feeds only the leaf.
  */
 export function rowPropsEqual(
   prev: NotificationRowProps,
@@ -372,6 +409,7 @@ export function rowPropsEqual(
     a.deepLink === b.deepLink &&
     a.category === b.category &&
     prev.expanded === next.expanded &&
+    prev.pullRevealProgress === next.pullRevealProgress &&
     prev.onToggleExpand === next.onToggleExpand &&
     prev.onOpen === next.onOpen &&
     prev.onDismiss === next.onDismiss &&
@@ -383,6 +421,8 @@ export interface NotificationRowProps {
   notification: AgentNotification;
   /** Whether THIS row's option strip is open (single-open, parent-owned). */
   expanded: boolean;
+  /** Live pull reveal for a row added to an already-visible fanned group. */
+  pullRevealProgress?: number;
   /** Toggle this row's strip; the parent collapses every other row. */
   onToggleExpand: (id: string) => void;
   onOpen: (n: AgentNotification) => void;
@@ -419,6 +459,7 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
 const NotificationRow = memo(function NotificationRow({
   notification,
   expanded,
+  pullRevealProgress,
   onToggleExpand,
   onOpen,
   onDismiss,
@@ -537,7 +578,20 @@ const NotificationRow = memo(function NotificationRow({
   const options = notificationRowOptions(notification);
   return (
     <li
-      className="eliza-notif-row relative"
+      className={cn(
+        "eliza-notif-row relative",
+        pullRevealProgress !== undefined &&
+          "eliza-notif-pull-reveal pointer-events-none",
+      )}
+      data-notification-pull-reveal={
+        pullRevealProgress !== undefined ? "" : undefined
+      }
+      inert={pullRevealProgress !== undefined ? true : undefined}
+      style={
+        pullRevealProgress !== undefined
+          ? notificationPullRevealStyle(pullRevealProgress)
+          : undefined
+      }
       data-notif-row
       onContextMenu={(e) => {
         e.preventDefault();
@@ -938,20 +992,30 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
 
   if (notifications.length === 0) return null;
 
-  // Cap rendered rows, filter to the rested (interrupt-tier) slice unless
-  // expanded, then group by view: the cap keeps the always-cheap paint budget;
-  // grouping happens on the shown slice.
+  // Cap rendered rows, then build both stable shade projections. During a
+  // downward pull the expanded projection paints immediately and the groups
+  // absent from the rested projection reveal in proportion to pull travel.
+  // Release only commits the mode; it is never the first frame of the content.
   const capped = orderDashboardNotifications(notifications).slice(
     0,
     MAX_RENDERED_ROWS,
   );
-  const shown = shadeExpanded ? capped : capped.filter(isInterruptPriority);
-  const groups = groupDashboardNotifications(shown);
+  const restedNotifications = capped.filter(isInterruptPriority);
+  const restedGroups = groupDashboardNotifications(restedNotifications);
   // Rested, only each group's TOP card is fully visible (the rest peek from
   // the stack), so "more" counts everything the rest of the shade is hiding:
   // sub-interrupt rows plus the stacked-behind cards.
-  const hiddenCount = shadeExpanded ? 0 : capped.length - groups.length;
+  const hiddenCount = shadeExpanded ? 0 : capped.length - restedGroups.length;
   const canExpand = !shadeExpanded && hiddenCount > 0;
+  const previewingExpansion = canExpand && pullPx > 0;
+  const groups =
+    shadeExpanded || previewingExpansion
+      ? groupDashboardNotifications(capped)
+      : restedGroups;
+  const restedGroupLabels = new Set(restedGroups.map((group) => group.label));
+  const restedNotificationIds = new Set(
+    restedNotifications.map((notification) => notification.id),
+  );
   shadeGestureRef.current = { canExpand, canCollapse: shadeExpanded };
 
   const onListPointerDown = (e: React.PointerEvent) => {
@@ -1034,6 +1098,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         onWheel={onListWheel}
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
+        data-shade-preview={previewingExpansion ? "expanding" : undefined}
         style={{
           // Rubber-band while pulling (down) or pushing (up); springs back
           // (or into the new mode) on release. Transform-only, so the glass
@@ -1046,10 +1111,15 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
-          "eliza-notif-scroll flex min-h-0 flex-1 select-none flex-col gap-2 overflow-y-auto overscroll-y-contain px-1.5 pb-1.5 pt-1",
+          "eliza-notif-scroll flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-1.5 pt-1",
         )}
       >
-        {groups.map((group) => {
+        {groups.map((group, groupIndex) => {
+          const groupWasRested = restedGroupLabels.has(group.label);
+          const pullRevealed = previewingExpansion && !groupWasRested;
+          const revealProgress = pullRevealed
+            ? notificationPullRevealProgress(pullPx, groupIndex)
+            : 1;
           const stackExpanded = expandedStacks.has(group.label);
           const stacked = !stackExpanded && group.rows.length > 1;
           const peeks = stacked ? group.rows.slice(1, 1 + MAX_STACK_PEEKS) : [];
@@ -1058,7 +1128,20 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
             : group.rows;
           const fanned = stackExpanded && group.rows.length > 1;
           return (
-            <li key={group.label} className="flex flex-col gap-1.5">
+            <li
+              key={group.label}
+              data-notification-pull-reveal={pullRevealed ? "" : undefined}
+              inert={pullRevealed ? true : undefined}
+              className={cn(
+                "flex flex-col gap-1.5",
+                pullRevealed && "eliza-notif-pull-reveal pointer-events-none",
+              )}
+              style={
+                pullRevealed
+                  ? notificationPullRevealStyle(revealProgress)
+                  : undefined
+              }
+            >
               {stacked ? (
                 // The Z-stack: the group's highest-priority card on top, the
                 // next cards peeking out beneath it — depth in Z, ordered by
@@ -1090,42 +1173,70 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                       onPrefill={prefillNotification}
                     />
                   </ul>
-                  {peeks.map((peek, i) => (
-                    // The cards behind the top one blur with depth and are
-                    // TAPPABLE: touching the visible sliver below the top card
-                    // fans the stack out in place (iOS shade idiom).
-                    <button
-                      key={peek.id}
-                      type="button"
-                      data-testid="notification-stack-peek"
-                      data-notif-control=""
-                      aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
-                      onClick={() => toggleStack(group.label)}
-                      className="eliza-notif-glass absolute inset-0 rounded-2xl"
-                      style={{
-                        zIndex: 1 - i,
-                        opacity: 0.75 - i * 0.25,
-                        filter: `blur(${(i + 1) * 1.25}px)`,
-                        transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
-                          1 - (i + 1) * 0.045
-                        })`,
-                      }}
-                    />
-                  ))}
+                  {peeks.map((peek, i) => {
+                    const peekPullRevealed =
+                      previewingExpansion &&
+                      groupWasRested &&
+                      !restedNotificationIds.has(peek.id);
+                    const peekRevealProgress = peekPullRevealed
+                      ? notificationPullRevealProgress(pullPx, groupIndex + i)
+                      : 1;
+                    return (
+                      // The cards behind the top one blur with depth and are
+                      // TAPPABLE: touching the visible sliver below the top card
+                      // fans the stack out in place (iOS shade idiom).
+                      <button
+                        key={peek.id}
+                        type="button"
+                        data-testid="notification-stack-peek"
+                        data-notif-control=""
+                        data-notification-pull-reveal={
+                          peekPullRevealed ? "" : undefined
+                        }
+                        tabIndex={peekPullRevealed ? -1 : undefined}
+                        aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
+                        onClick={() => toggleStack(group.label)}
+                        className={cn(
+                          "eliza-notif-glass absolute inset-0 rounded-2xl",
+                          peekPullRevealed &&
+                            "eliza-notif-pull-reveal pointer-events-none",
+                        )}
+                        style={{
+                          zIndex: 1 - i,
+                          opacity: (0.75 - i * 0.25) * peekRevealProgress,
+                          filter: `blur(${(i + 1) * 1.25}px)`,
+                          transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
+                            1 - (i + 1) * 0.045
+                          })`,
+                        }}
+                      />
+                    );
+                  })}
                 </div>
               ) : (
                 <ul className="flex flex-col gap-1.5">
-                  {rows.map((notification) => (
-                    <NotificationRow
-                      key={notification.id}
-                      notification={notification}
-                      expanded={expandedRowId === notification.id}
-                      onToggleExpand={toggleRowExpand}
-                      onOpen={openNotification}
-                      onDismiss={dismissNotification}
-                      onPrefill={prefillNotification}
-                    />
-                  ))}
+                  {rows.map((notification) => {
+                    const rowPullRevealed =
+                      previewingExpansion &&
+                      groupWasRested &&
+                      !restedNotificationIds.has(notification.id);
+                    return (
+                      <NotificationRow
+                        key={notification.id}
+                        notification={notification}
+                        expanded={expandedRowId === notification.id}
+                        pullRevealProgress={
+                          rowPullRevealed
+                            ? notificationPullRevealProgress(pullPx, groupIndex)
+                            : undefined
+                        }
+                        onToggleExpand={toggleRowExpand}
+                        onOpen={openNotification}
+                        onDismiss={dismissNotification}
+                        onPrefill={prefillNotification}
+                      />
+                    );
+                  })}
                 </ul>
               )}
               {fanned ? (

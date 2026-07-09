@@ -213,7 +213,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="__APP_THEME_COLOR__" />
-  <meta name="color-scheme" content="dark light" />
+  <meta name="color-scheme" content="dark" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' electrobun://* https://*__APP_CSP_LOCAL_HTTP__;
                script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*__APP_CSP_LOCAL_HTTP__;
                style-src 'self' 'unsafe-inline' https://*__APP_CSP_LOCAL_HTTP__;
@@ -247,29 +247,14 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/brand/favicons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <script>
-    // Synchronously apply the correct dark/light class to <html> before the
-    // first paint so CSS custom properties (--bg, etc.) resolve immediately.
-    // Mirrors the priority logic in packages/ui/src/state/persistence.ts:
-    //   1. eliza:ui-theme-mode  ("dark" | "light" | "system")
-    //   2. legacy eliza:ui-theme / elizaos:ui-theme
-    //   3. system prefers-color-scheme
+    // The app has one curated dark appearance. Apply it before first paint so
+    // persisted legacy values and OS color-scheme changes cannot flash white.
     (() => {
       try {
-        let mode = localStorage.getItem('eliza:ui-theme-mode');
-        if (!mode) {
-          const legacy =
-            localStorage.getItem('eliza:ui-theme') ||
-            localStorage.getItem('elizaos:ui-theme');
-          mode = (legacy === 'light' || legacy === 'dark') ? legacy : 'system';
-        }
-        const dark =
-          mode === 'dark' ||
-          (mode !== 'light' &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches);
         const root = document.documentElement;
-        root.classList.toggle('dark', dark);
-        root.style.colorScheme = dark ? 'dark' : 'light';
-        root.setAttribute('data-theme', dark ? 'dark' : 'light');
+        root.classList.add('dark');
+        root.style.colorScheme = 'dark';
+        root.setAttribute('data-theme', 'dark');
       } catch {}
     })();
   </script>

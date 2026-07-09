@@ -279,6 +279,41 @@ describe("useChatSend stop handling", () => {
     );
   });
 
+  it("paints the accepted turn before cold conversation creation finishes", async () => {
+    const creation = deferred<{ conversation: Conversation }>();
+    mocks.client.createConversation.mockReturnValue(creation.promise);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Hi there",
+      completed: true,
+    });
+    const deps = makeDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hello");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.map(({ role, text }) => ({
+        role,
+        text,
+      })),
+    ).toEqual([
+      { role: "user", text: "hello" },
+      { role: "assistant", text: "" },
+    ]);
+
+    await act(async () => {
+      creation.resolve({
+        conversation: conversation("conv-new", "room-new"),
+      });
+      await sendPromise;
+    });
+  });
+
   it("does NOT surface an error notice when the send is aborted by the user", async () => {
     // A user-initiated stop rejects the stream with AbortError. The send catch
     // has a dedicated abort branch (drop the empty assistant placeholder, return)
@@ -2255,6 +2290,18 @@ describe("useChatSend E2 auto-retry on reconnect", () => {
     expect(seenIds).toHaveLength(2);
     expect(seenIds[0]).toBeTruthy();
     expect(seenIds[1]).toBe(seenIds[0]);
+    expect(
+      deps.conversationMessagesRef.current.map(({ role, text }) => ({
+        role,
+        text,
+      })),
+    ).toEqual([
+      { role: "user", text: "hi" },
+      { role: "assistant", text: "hi there" },
+    ]);
+    expect(
+      new Set(deps.conversationMessagesRef.current.map(({ id }) => id)).size,
+    ).toBe(2);
     // The retry succeeded — no error notice ever surfaced.
     expect(deps.setActionNotice).not.toHaveBeenCalled();
   });

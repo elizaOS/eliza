@@ -55,6 +55,7 @@ import {
 import {
   dampenPull,
   NotificationsHomeCenter,
+  notificationPullRevealProgress,
   notificationRowOptions,
   orderDashboardNotifications,
   PULL_COMMIT_PX,
@@ -130,6 +131,17 @@ describe("dampenPull", () => {
     expect(dampenPull(48)).toBe(20); // (48-8)/2
     expect(dampenPull(88)).toBe(PULL_COMMIT_PX); // commit travel ≈ 88px raw
     expect(dampenPull(10_000)).toBe(96); // clamped rubber band
+  });
+});
+
+describe("notificationPullRevealProgress", () => {
+  it("tracks pull travel, staggers later groups, and finishes by commit", () => {
+    expect(notificationPullRevealProgress(0, 0)).toBe(0);
+    expect(notificationPullRevealProgress(PULL_COMMIT_PX / 2, 0)).toBe(0.5);
+    expect(notificationPullRevealProgress(PULL_COMMIT_PX / 2, 2)).toBeLessThan(
+      0.5,
+    );
+    expect(notificationPullRevealProgress(PULL_COMMIT_PX, 4)).toBe(1);
   });
 });
 
@@ -587,6 +599,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     const list = screen.getByTestId("home-notification-list");
+    expect(list.className).toContain("touch-pan-y");
+    expect(list.className).toContain("overflow-x-hidden");
     fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
@@ -801,6 +815,53 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     // Stacks persist through the pull; the peeks carry the revealed rows.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
+  });
+
+  it("reveals hidden notification groups continuously before release", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        title: "Normal thing",
+        category: "system",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "low",
+        title: "Low thing",
+        category: "general",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 10,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 10,
+      clientX: 10,
+      clientY: 58,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(list.getAttribute("data-shade-preview")).toBe("expanding");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
+    const revealedGroups = list.querySelectorAll(
+      ":scope > [data-notification-pull-reveal]",
+    );
+    expect(revealedGroups).toHaveLength(2);
+    for (const group of revealedGroups) {
+      const opacity = Number.parseFloat((group as HTMLElement).style.opacity);
+      expect(opacity).toBeGreaterThan(0);
+      expect(opacity).toBeLessThan(1);
+    }
   });
 
   it("a short pull springs back without toggling", () => {

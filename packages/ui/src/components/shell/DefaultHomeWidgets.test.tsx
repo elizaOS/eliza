@@ -67,12 +67,19 @@ describe("DefaultHomeWidgets", () => {
     expect(root.textContent).toContain("Thursday");
     expect(root.textContent).toContain("June");
     expect(root.textContent).toContain("25");
+    expect(screen.getByText("Thursday, June 25").className).toContain(
+      "truncate",
+    );
 
     // Weather tile renders its reading next to the time.
     const weather = screen.getByTestId("home-weather");
     expect(weather.getAttribute("data-status")).toBe("ready");
     expect(weather.textContent).toContain("68");
     expect(weather.textContent).toContain("Clear");
+    expect(
+      weather.querySelector("svg")?.classList.contains("text-white/85"),
+    ).toBe(true);
+    expect(weather.querySelector(".text-5xl")).toBeTruthy();
   });
 
   it("lays the time + weather out as 2×2 grid neighbours", () => {
