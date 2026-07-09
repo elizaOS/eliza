@@ -444,8 +444,16 @@ describe("models map gating (large-tier only)", () => {
           params: unknown
         ) => Promise<string>
       >;
+      // ELIZA_CLI_CLAUDE_BIN pins the binary so `resolveSafeBinary` never probes
+      // the real filesystem (CI runners have no allowlisted claude install); the
+      // spawn itself goes through the mocked seam.
       const runtime = {
-        getSetting: (key: string) => (key === "ELIZA_CHAT_VIA_CLI" ? "claude" : undefined),
+        getSetting: (key: string) =>
+          key === "ELIZA_CHAT_VIA_CLI"
+            ? "claude"
+            : key === "ELIZA_CLI_CLAUDE_BIN"
+              ? FAKE_CLAUDE
+              : undefined,
       };
 
       await expect(models.TEXT_LARGE(runtime, { prompt: "hello" })).resolves.toBe("from claude");
@@ -503,8 +511,15 @@ describe("models map gating (large-tier only)", () => {
           params: unknown
         ) => Promise<string>
       >;
+      // Same binary pin as the cold-handler test above: keeps the test hermetic
+      // on boxes without an allowlisted claude install.
       const runtime = {
-        getSetting: (key: string) => (key === "ELIZA_CHAT_VIA_CLI" ? "claude" : undefined),
+        getSetting: (key: string) =>
+          key === "ELIZA_CHAT_VIA_CLI"
+            ? "claude"
+            : key === "ELIZA_CLI_CLAUDE_BIN"
+              ? FAKE_CLAUDE
+              : undefined,
       };
 
       expect(models.ACTION_PLANNER).toBeTypeOf("function");

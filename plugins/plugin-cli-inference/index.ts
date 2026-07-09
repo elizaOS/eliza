@@ -267,10 +267,23 @@ function parseTimeout(value: string | undefined): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+/**
+ * Optional operator-pinned binary path for the cold CLI backends. The warm SDK
+ * sessions already honor `ELIZA_CLI_CLAUDE_BIN` / `ELIZA_CLI_CODEX_BIN`; the
+ * cold `claude`/`codex` spawn paths must honor the same pin so a deploy whose
+ * CLI lives outside the SOC2 launcher allowlist (e.g. a container image) can
+ * still use them. Empty/whitespace reads as unset → allowlisted PATH lookup.
+ */
+function resolveBinaryPin(runtime: IAgentRuntime, key: string): string | undefined {
+  const value = getSetting(runtime, key)?.trim();
+  return value ? value : undefined;
+}
+
 function buildClaude(runtime: IAgentRuntime): ClaudeCli {
   return new ClaudeCli({
     model: getSetting(runtime, "ELIZA_CLI_CLAUDE_MODEL"),
     timeoutMs: parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
+    binaryPath: resolveBinaryPin(runtime, "ELIZA_CLI_CLAUDE_BIN"),
   });
 }
 
@@ -278,6 +291,7 @@ function buildCodex(runtime: IAgentRuntime): CodexCli {
   return new CodexCli({
     model: getSetting(runtime, "ELIZA_CLI_CODEX_MODEL"),
     timeoutMs: parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
+    binaryPath: resolveBinaryPin(runtime, "ELIZA_CLI_CODEX_BIN"),
   });
 }
 
@@ -455,6 +469,7 @@ export const cliInferencePlugin: Plugin = {
     ELIZA_CLI_SDK_RESTART_AFTER_TURNS: readEnv("ELIZA_CLI_SDK_RESTART_AFTER_TURNS") ?? null,
     ELIZA_CLI_SDK_TURN_TIMEOUT_MS: readEnv("ELIZA_CLI_SDK_TURN_TIMEOUT_MS") ?? null,
     ELIZA_CLI_CODEX_MODEL: readEnv("ELIZA_CLI_CODEX_MODEL") ?? null,
+    ELIZA_CLI_CODEX_BIN: readEnv("ELIZA_CLI_CODEX_BIN") ?? null,
     ELIZA_CLI_TIMEOUT_MS: readEnv("ELIZA_CLI_TIMEOUT_MS") ?? null,
     ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION: readEnv("ELIZA_CLI_INFERENCE_ACCOUNT_ROTATION") ?? null,
   },
