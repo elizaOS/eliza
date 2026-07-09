@@ -25,6 +25,7 @@ import { analyzeExecutiveVerdict } from "./analyzers/executiveVerdict";
 import { analyzeWalletCustodyProfile } from "./analyzers/custody";
 import { analyzeWalletCompliance } from "./analyzers/compliance";
 import { analyzeWalletTransactionRisk } from "./analyzers/transactionRisk";
+import { analyzeWalletSmartMoney } from "./analyzers/smartMoney";
 import { getWalletIntelligenceSources } from "./sources/registry";
 import {
   SupportedChain,
@@ -192,6 +193,16 @@ const transactionRisk =
     caseSummary,
   );
 
+const smartMoney =
+  analyzeWalletSmartMoney(
+    age,
+    activity,
+    defi,
+    portfolio,
+    whale,
+    trust,
+  );
+
 const investigationReplay = analyzeInvestigationReplay(
   portfolio,
   activity,
@@ -255,6 +266,7 @@ age,
 funding,
 risk,
 transactionRisk,
+smartMoney,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
