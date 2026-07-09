@@ -409,6 +409,15 @@ export type WalletInvestigationReport = {
   disclaimer: string;
 };
 
+export type WalletInvestigationNarrative = {
+  summary: string;
+  findings: string[];
+  conclusion: string;
+  recommendation: string;
+  confidenceStatement: string;
+  limitationsStatement: string;
+};
+
 export type WalletInvestigationResult = {
   chain: SupportedChain;
   address: string;
@@ -439,6 +448,7 @@ export type WalletInvestigationResult = {
   transactionRisk?: WalletTransactionRiskSummary;
   smartMoney?: WalletSmartMoneySummary;
   investigationReport?: WalletInvestigationReport;
+  investigationNarrative?: WalletInvestigationNarrative;
   summary: string;
   warnings: string[];
 };
