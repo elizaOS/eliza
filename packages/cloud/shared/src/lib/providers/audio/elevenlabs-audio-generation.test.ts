@@ -18,6 +18,7 @@ interface MockState {
 }
 
 const state: MockState = { requests: [], status: 200, errorBody: "", emptyBody: false };
+const realFetch = globalThis.fetch;
 
 const server = Bun.serve({
   port: 0,
@@ -47,6 +48,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  globalThis.fetch = realFetch;
   state.requests = [];
   state.status = 200;
   state.errorBody = "";
@@ -95,6 +97,33 @@ describe("generateElevenLabsAudio — music", () => {
         apiKeys,
       }),
     ).rejects.toThrow(/music generation failed \(401\).*invalid api key/);
+  });
+
+  test("unreadable upstream failure body rethrows with status and cause", async () => {
+    globalThis.fetch = (async () =>
+      ({
+        ok: false,
+        status: 502,
+        text: async () => {
+          throw new Error("body stream failed");
+        },
+      }) as Response) as typeof fetch;
+
+    try {
+      await generateElevenLabsAudio({
+        kind: "music",
+        model: "elevenlabs/music_v1",
+        prompt: "x",
+        apiKeys,
+      });
+      throw new Error("expected generateElevenLabsAudio to reject");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      const err = error as Error;
+      expect(err.message).toMatch(/music generation failed \(502\).*body could not be read/);
+      expect(err.cause).toBeInstanceOf(Error);
+      expect((err.cause as Error).message).toBe("body stream failed");
+    }
   });
 });
 

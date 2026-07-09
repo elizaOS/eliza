@@ -37,8 +37,21 @@ async function readAudioBody(response: Response, label: string): Promise<Uint8Ar
   return new Uint8Array(buffer);
 }
 
+async function readUpstreamErrorText(response: Response, label: string): Promise<string> {
+  try {
+    return await response.text();
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — callers need the upstream
+    // status even when the provider error stream itself fails.
+    throw new Error(
+      `ElevenLabs ${label} failed (${response.status}) and its error body could not be read`,
+      { cause: error },
+    );
+  }
+}
+
 async function throwUpstreamError(response: Response, label: string): Promise<never> {
-  const text = await response.text().catch(() => "");
+  const text = await readUpstreamErrorText(response, label);
   throw new Error(`ElevenLabs ${label} failed (${response.status}): ${text}`);
 }
 
