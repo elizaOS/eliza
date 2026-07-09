@@ -535,17 +535,19 @@ async function handleGhToken(body) {
   }
   const target = parseTarget(body);
   const run = await runCommand("gh", ["auth", "token"], { timeoutMs: 15_000 });
-  if (run.status !== 0) {
-    throw new HttpError(
-      502,
-      `gh auth token failed: ${run.stderr.trim().slice(0, 200) || `status ${run.status}`}`,
-    );
-  }
   const token = run.stdout.trim();
-  if (!/^\S{20,}$/.test(token)) {
-    throw new HttpError(502, "gh auth token returned no usable token");
+  if (run.status === 0 && /^\S{20,}$/.test(token)) {
+    return {
+      status: "complete",
+      ...persistEnvVar(key, token, target),
+      source: "gh CLI keyring",
+    };
   }
-  return { ...persistEnvVar(key, token, target), source: "gh CLI keyring" };
+  return {
+    status: "device",
+    ...(await handleGitHubDeviceStart({ target })),
+    source: "GitHub OAuth device flow",
+  };
 }
 
 async function handleGitHubDeviceStart(body) {
@@ -992,12 +994,36 @@ const PAGE_HTML = `<!doctype html>
   function oneClickControls(path, card) {
     var controls = [];
     var oc = path.oneClick;
+    function wait(seconds) {
+      return new Promise(function (resolve) { setTimeout(resolve, seconds * 1000); });
+    }
+    function pollGitHubDevice(flowId, seconds) {
+      return wait(seconds).then(function () {
+        return api('POST', '/api/oneclick/github-device/poll', { flowId: flowId });
+      }).then(function (payload) {
+        if (payload.status === 'pending') return pollGitHubDevice(flowId, payload.retryAfterSeconds);
+        toast('GitHub login complete: saved ' + payload.key + ' = ' + payload.masked + ' → ' + payload.target, false);
+        return payload;
+      });
+    }
+    function showGitHubDevice(payload) {
+      var box = el('p', 'uri-box');
+      box.appendChild(document.createTextNode('Code: ' + payload.userCode + ' · '));
+      var link = el('a', null, payload.verificationUri);
+      link.href = payload.verificationUri; link.target = '_blank'; link.rel = 'noreferrer';
+      box.appendChild(link);
+      card.appendChild(box);
+      window.open(payload.verificationUri, '_blank', 'noopener,noreferrer');
+      return pollGitHubDevice(payload.flowId, payload.intervalSeconds);
+    }
     if (oc && oc.type === 'gh-token') {
-      var gh = el('button', null, 'Use gh CLI token');
+      var gh = el('button', null, 'Login with GitHub');
       gh.title = oc.detail;
       gh.addEventListener('click', function () {
         busyRun(gh, 'fetching…', api('POST', '/api/oneclick/gh-token', { target: saveTarget() }).then(function (payload) {
+          if (payload.status === 'device') return showGitHubDevice(payload);
           toast('saved ' + payload.key + ' = ' + payload.masked + ' from ' + payload.source + ' → ' + payload.target, false);
+          return payload;
         }));
       });
       controls.push(gh);
@@ -1006,28 +1032,9 @@ const PAGE_HTML = `<!doctype html>
       var device = el('button', null, 'Login with GitHub');
       device.title = oc.detail;
       device.addEventListener('click', function () {
-        function wait(seconds) {
-          return new Promise(function (resolve) { setTimeout(resolve, seconds * 1000); });
-        }
-        function poll(flowId, seconds) {
-          return wait(seconds).then(function () {
-            return api('POST', '/api/oneclick/github-device/poll', { flowId: flowId });
-          }).then(function (payload) {
-            if (payload.status === 'pending') return poll(flowId, payload.retryAfterSeconds);
-            toast('GitHub login complete: saved ' + payload.key + ' = ' + payload.masked + ' → ' + payload.target, false);
-            return payload;
-          });
-        }
         busyRun(device, 'starting…', api('POST', '/api/oneclick/github-device/start', { target: saveTarget() }).then(function (payload) {
-          var box = el('p', 'uri-box');
-          box.appendChild(document.createTextNode('Code: ' + payload.userCode + ' · '));
-          var link = el('a', null, payload.verificationUri);
-          link.href = payload.verificationUri; link.target = '_blank'; link.rel = 'noreferrer';
-          box.appendChild(link);
-          card.appendChild(box);
-          window.open(payload.verificationUri, '_blank', 'noopener,noreferrer');
           device.textContent = 'waiting for GitHub…';
-          return poll(payload.flowId, payload.intervalSeconds);
+          return showGitHubDevice(payload);
         }));
       });
       controls.push(device);
