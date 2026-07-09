@@ -5,15 +5,9 @@
  * service lookup or model extraction, so these tests pin the state contracts
  * that can expose music actions.
  */
-import type { State } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { CONTEXT_ROUTING_STATE_KEY, type State } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { selectedContextMatches } from "./selectedContextMatches";
-
-vi.mock("@elizaos/core", () => ({
-  CONTEXT_ROUTING_STATE_KEY: "__contextRouting",
-}));
-
-const CONTEXT_ROUTING_STATE_KEY = "__contextRouting";
 
 function state(values?: State["values"], data?: State["data"]): State {
   return { values, data } as State;

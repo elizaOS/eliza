@@ -2311,6 +2311,7 @@
       "dependencies": {
         "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-groq": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "dotenv": "^17.2.3",
         "zod": "^4.4.3",
