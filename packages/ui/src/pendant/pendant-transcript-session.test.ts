@@ -5,6 +5,7 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
+import { isShellReservedStorageKey } from "../surface-realm-broker";
 import {
   createLocalOptimisticPendantTranscriptSessionAdapter,
   EMPTY_PENDANT_TRANSCRIPT_SESSION,
@@ -256,6 +257,12 @@ describe("pendantTranscriptSessionReducer", () => {
 });
 
 describe("pendant transcript session storage", () => {
+  it("uses a view-owned key outside the shell-reserved namespace", () => {
+    expect(isShellReservedStorageKey(PENDANT_TRANSCRIPT_STORAGE_KEY)).toBe(
+      false,
+    );
+  });
+
   it("round-trips the session through storage", () => {
     const storage = new MemoryStorage();
     const state = pendantTranscriptSessionReducer(

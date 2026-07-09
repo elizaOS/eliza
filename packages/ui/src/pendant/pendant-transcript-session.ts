@@ -12,8 +12,7 @@ import type {
   PendantTranscriptSegmentDetail,
 } from "./transcript-segment-event";
 
-export const PENDANT_TRANSCRIPT_STORAGE_KEY =
-  "eliza:pendant-transcript-session:v1";
+export const PENDANT_TRANSCRIPT_STORAGE_KEY = "pendant:transcript-session:v1";
 export const MAX_PERSISTED_PENDANT_TRANSCRIPT_SEGMENTS = 500;
 
 export interface PendantTranscriptSegment {
