@@ -241,6 +241,62 @@ function uniqueSessionIds(sessionIds: string[]): string[] {
   return [...new Set(sessionIds.map((value) => value.trim()).filter(Boolean))];
 }
 
+function describeHostedBrowserError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function warnHostedBrowserCacheFailure(
+  operation: string,
+  error: unknown,
+  metadata?: Record<string, unknown>,
+): void {
+  // error-policy:J4 explicit user-facing degrade; in-memory session access keeps the current process usable while Redis/cache failures remain visible.
+  logger.warn("[Hosted Browser] Session cache operation failed", {
+    operation,
+    error: describeHostedBrowserError(error),
+    ...metadata,
+  });
+}
+
+function warnHostedBrowserUsageFailure(
+  operation: string,
+  error: unknown,
+  metadata?: Record<string, unknown>,
+): void {
+  // error-policy:J7 diagnostics-must-not-kill-the-loop; usage telemetry must be observable but not block browser tool output.
+  logger.warn("[Hosted Browser] Usage telemetry failed", {
+    operation,
+    error: describeHostedBrowserError(error),
+    ...metadata,
+  });
+}
+
+function warnHostedBrowserTeardownFailure(
+  operation: string,
+  error: unknown,
+  metadata?: Record<string, unknown>,
+): void {
+  // error-policy:J6 best-effort teardown; the primary browser operation failure is rethrown after cleanup is attempted.
+  logger.warn("[Hosted Browser] Cleanup failed", {
+    operation,
+    error: describeHostedBrowserError(error),
+    ...metadata,
+  });
+}
+
+function warnHostedBrowserOptionalReadFailure(
+  operation: string,
+  error: unknown,
+  metadata?: Record<string, unknown>,
+): void {
+  // error-policy:J4 explicit user-facing degrade; optional state/snapshot reads may be omitted while the primary browser action still succeeds.
+  logger.warn("[Hosted Browser] Optional browser state read failed", {
+    operation,
+    error: describeHostedBrowserError(error),
+    ...metadata,
+  });
+}
+
 async function getStoredHostedBrowserSessionAccess(
   sessionId: string,
 ): Promise<HostedBrowserSessionAccess | null> {
@@ -251,7 +307,10 @@ async function getStoredHostedBrowserSessionAccess(
 
   const cached = await cache
     .get<HostedBrowserSessionAccess>(getHostedBrowserSessionAccessKey(sessionId))
-    .catch(() => null);
+    .catch((error) => {
+      warnHostedBrowserCacheFailure("session_access_read", error, { sessionId });
+      return null;
+    });
 
   if (cached) {
     hostedBrowserSessionAccessMemory.set(sessionId, cached);
@@ -264,7 +323,10 @@ async function getStoredHostedBrowserSessionAccess(
 async function getStoredOrganizationSessionIds(organizationId: string): Promise<string[]> {
   const cached = await cache
     .get<string[]>(getHostedBrowserOrganizationSessionsKey(organizationId))
-    .catch(() => null);
+    .catch((error) => {
+      warnHostedBrowserCacheFailure("organization_sessions_read", error, { organizationId });
+      return null;
+    });
 
   if (Array.isArray(cached)) {
     return uniqueSessionIds(cached);
@@ -287,7 +349,9 @@ async function setStoredOrganizationSessionIds(
       uniqueSessionIds(sessionIds),
       HOSTED_BROWSER_SESSION_INDEX_TTL_SECONDS,
     )
-    .catch(() => {});
+    .catch((error) => {
+      warnHostedBrowserCacheFailure("organization_sessions_write", error, { organizationId });
+    });
 }
 
 async function registerHostedBrowserSessionAccess(
@@ -312,7 +376,9 @@ async function registerHostedBrowserSessionAccess(
         access,
         HOSTED_BROWSER_SESSION_INDEX_TTL_SECONDS,
       )
-      .catch(() => {}),
+      .catch((error) => {
+        warnHostedBrowserCacheFailure("session_access_write", error, { sessionId });
+      }),
   ]);
 
   await setStoredOrganizationSessionIds(organizationId, [...existingIds, sessionId]);
@@ -326,10 +392,15 @@ async function removeHostedBrowserSessionAccess(
     hostedBrowserSessionAccessMemory.get(sessionId) ??
     (await cache
       .get<HostedBrowserSessionAccess>(getHostedBrowserSessionAccessKey(sessionId))
-      .catch(() => null));
+      .catch((error) => {
+        warnHostedBrowserCacheFailure("session_access_read_for_delete", error, { sessionId });
+        return null;
+      }));
 
   hostedBrowserSessionAccessMemory.delete(sessionId);
-  await cache.del(getHostedBrowserSessionAccessKey(sessionId)).catch(() => {});
+  await cache.del(getHostedBrowserSessionAccessKey(sessionId)).catch((error) => {
+    warnHostedBrowserCacheFailure("session_access_delete", error, { sessionId });
+  });
 
   const targetOrganizationId = organizationId ?? existing?.organizationId;
   if (!targetOrganizationId) {
@@ -497,7 +568,10 @@ async function loadAuthorizedHostedBrowserTab(
   tab: HostedBrowserTab;
 }> {
   const { access, session } = await resolveAuthorizedFirecrawlBrowserSession(sessionId, auth);
-  const state = await readHostedBrowserPageState(sessionId).catch(() => null);
+  const state = await readHostedBrowserPageState(sessionId).catch((error) => {
+    warnHostedBrowserOptionalReadFailure("page_state", error, { sessionId });
+    return null;
+  });
 
   return {
     access,
@@ -659,7 +733,9 @@ export async function listHostedBrowserSessions(
   await logHostedBrowserUsage(auth, {
     operation: "browser_list",
     sessions: resolvedTabs.length,
-  }).catch(() => {});
+  }).catch((error) => {
+    warnHostedBrowserUsageFailure("browser_list", error, { sessions: resolvedTabs.length });
+  });
 
   return resolvedTabs;
 }
@@ -672,7 +748,9 @@ export async function getHostedBrowserSession(
   await logHostedBrowserUsage(auth, {
     operation: "browser_get",
     sessionId,
-  }).catch(() => {});
+  }).catch((error) => {
+    warnHostedBrowserUsageFailure("browser_get", error, { sessionId });
+  });
   return tab;
 }
 
@@ -724,11 +802,20 @@ JSON.stringify({ title: await page.title(), url: page.url() });
       operation: "browser_create",
       sessionId: titledTab.id,
       url: titledTab.url,
-    }).catch(() => {});
+    }).catch((error) => {
+      warnHostedBrowserUsageFailure("browser_create", error, {
+        sessionId: titledTab.id,
+        url: titledTab.url,
+      });
+    });
 
     return titledTab;
   } catch (error) {
-    await removeHostedBrowserSessionAccess(created.id).catch(() => {});
+    await removeHostedBrowserSessionAccess(created.id).catch((cleanupError) => {
+      warnHostedBrowserTeardownFailure("browser_create_session_access_cleanup", cleanupError, {
+        sessionId: created.id,
+      });
+    });
     throw error;
   }
 }
@@ -752,7 +839,9 @@ JSON.stringify({ title: await page.title(), url: page.url() });
     operation: "browser_navigate",
     sessionId,
     url,
-  }).catch(() => {});
+  }).catch((error) => {
+    warnHostedBrowserUsageFailure("browser_navigate", error, { sessionId, url });
+  });
   return tab;
 }
 
@@ -775,7 +864,9 @@ export async function deleteHostedBrowserSession(
     sessionId,
     creditsBilled: deleted.creditsBilled ?? null,
     sessionDurationMs: deleted.sessionDurationMs ?? null,
-  }).catch(() => {});
+  }).catch((error) => {
+    warnHostedBrowserUsageFailure("browser_delete", error, { sessionId });
+  });
 
   return deleted;
 }
@@ -789,7 +880,9 @@ export async function getHostedBrowserSnapshot(
   await logHostedBrowserUsage(auth, {
     operation: "browser_snapshot",
     sessionId,
-  }).catch(() => {});
+  }).catch((error) => {
+    warnHostedBrowserUsageFailure("browser_snapshot", error, { sessionId });
+  });
   return snapshot;
 }
 
@@ -814,13 +907,21 @@ export async function executeHostedBrowserCommand(
   const snapshot =
     command.subaction === "state" || command.subaction === "get"
       ? undefined
-      : await readHostedBrowserSnapshot(sessionId).catch(() => undefined);
+      : await readHostedBrowserSnapshot(sessionId).catch((error) => {
+          warnHostedBrowserOptionalReadFailure("command_snapshot", error, { sessionId });
+          return undefined;
+        });
 
   await logHostedBrowserUsage(auth, {
     operation: "browser_command",
     sessionId,
     subaction: command.subaction,
-  }).catch(() => {});
+  }).catch((error) => {
+    warnHostedBrowserUsageFailure("browser_command", error, {
+      sessionId,
+      subaction: command.subaction,
+    });
+  });
 
   return {
     output,
@@ -862,7 +963,12 @@ export async function extractHostedPage(
     operation: "extract_page",
     url: options.url,
     formats: options.formats ?? ["markdown"],
-  }).catch(() => {});
+  }).catch((error) => {
+    warnHostedBrowserUsageFailure("extract_page", error, {
+      url: options.url,
+      formats: options.formats ?? ["markdown"],
+    });
+  });
 
   return result;
 }
