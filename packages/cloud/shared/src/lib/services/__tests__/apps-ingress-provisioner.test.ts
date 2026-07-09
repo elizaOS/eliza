@@ -55,6 +55,26 @@ describe("addAppRoute", () => {
       addAppRoute({ hostname: HOST, nodeHost: "n", hostPort: 1, adminBase: ADMIN, fetchImpl }),
     ).rejects.toThrow(/add-route failed \(500\)/);
   });
+
+  test("logs stale-route delete failure but still POSTs the replacement route", async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const fetchImpl: IngressFetch = async (url, init) => {
+      calls.push({ url, method: init.method });
+      if (init.method === "DELETE") {
+        throw new Error("caddy delete timeout");
+      }
+      return { ok: true, status: 201, text: async () => "" };
+    };
+
+    await addAppRoute({
+      hostname: HOST,
+      hostPort: 28123,
+      adminBase: ADMIN,
+      fetchImpl,
+    });
+
+    expect(calls.map((call) => call.method)).toEqual(["DELETE", "POST"]);
+  });
 });
 
 describe("removeAppRoute", () => {
