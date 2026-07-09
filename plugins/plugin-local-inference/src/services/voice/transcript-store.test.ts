@@ -367,5 +367,120 @@ describe("TranscriptStore", () => {
 				true,
 			);
 		});
+
+		it("creates a deterministic redacted variant without mutating the original or audio", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			const original = makeTranscript({
+				id: ORIGINAL_ID,
+				title: "Payroll sync",
+				audioUrl: "/api/media/original.wav",
+				audioContentType: "audio/wav",
+				segments: [
+					{
+						id: "s1",
+						speakerLabel: "Alice",
+						startMs: 0,
+						endMs: 2000,
+						text: "Email bob@example.com and use SSN 123-45-6789.",
+						words: [
+							{
+								text: "bob@example.com",
+								startMs: 0,
+								endMs: 1000,
+							},
+						],
+					},
+				],
+			});
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: original,
+			});
+
+			const first = await store.createRedactedVariant({
+				originalId: ORIGINAL_ID as UUID,
+				redactedBy: VIEWER,
+				seed: "fixed",
+				nowMs: 3000,
+			});
+			const second = await store.createRedactedVariant({
+				originalId: ORIGINAL_ID as UUID,
+				redactedBy: VIEWER,
+				seed: "fixed",
+				nowMs: 3000,
+			});
+
+			expect(second.id).toBe(first.id);
+			expect(first.audioUrl).toBeUndefined();
+			expect(first.audioContentType).toBeUndefined();
+			expect(first.segments[0]?.text).toContain("[EMAIL]");
+			expect(first.segments[0]?.text).toContain("[SSN]");
+			expect(first.segments[0]?.text).not.toContain("bob@example.com");
+			expect(first.segments[0]?.text).not.toContain("123-45-6789");
+			expect(first.segments[0]?.words[0]?.text).toBe("[EMAIL]");
+
+			const originalAfter = await store.get(ORIGINAL_ID as UUID);
+			expect(originalAfter).toEqual(original);
+			const originalMeta = (rt.rows.get(ORIGINAL_ID) as Memory)
+				.metadata as Record<string, unknown>;
+			expect(originalMeta.redactedVariantId).toBe(first.id);
+			const variantMeta = (rt.rows.get(first.id) as Memory).metadata as Record<
+				string,
+				unknown
+			>;
+			expect(variantMeta.redactionOf).toBe(ORIGINAL_ID);
+			expect(variantMeta.redactedBy).toBe(VIEWER);
+		});
+
+		it("adds and replaces transcript share grants on the original row", async () => {
+			const rt = fakeRuntime();
+			const store = new TranscriptStore(rt);
+			await store.create({
+				roomId: ROOM,
+				entityId: ENTITY,
+				transcript: makeTranscript({ id: ORIGINAL_ID }),
+			});
+
+			await store.share({
+				transcriptId: ORIGINAL_ID as UUID,
+				entityId: VIEWER,
+				mode: "redacted",
+				grantedBy: ENTITY,
+				grantedAtMs: 4000,
+			});
+			await store.share({
+				transcriptId: ORIGINAL_ID as UUID,
+				entityId: VIEWER,
+				mode: "full",
+				grantedBy: ENTITY,
+				grantedAtMs: 5000,
+			});
+
+			const row = rt.rows.get(ORIGINAL_ID) as Memory;
+			expect((row.metadata as Record<string, unknown>).share).toEqual({
+				grants: [
+					{
+						entityId: VIEWER,
+						mode: "full",
+						grantedBy: ENTITY,
+						grantedAtMs: 5000,
+					},
+				],
+			});
+		});
+
+		it("refuses to attach grants to a redacted variant row", async () => {
+			const rt = fakeRuntime();
+			const { store } = await seed(rt);
+			await expect(
+				store.share({
+					transcriptId: VARIANT_ID as UUID,
+					entityId: VIEWER,
+					mode: "full",
+				}),
+			).rejects.toThrow(/original transcript/);
+		});
 	});
 });

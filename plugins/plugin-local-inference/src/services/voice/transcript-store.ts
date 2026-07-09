@@ -14,11 +14,15 @@
 import {
 	type AccessContext,
 	type ArtifactDisclosure,
+	type ArtifactShareGrant,
+	type ArtifactShareGrantMode,
+	detectPii,
 	type JsonObject,
 	type Memory,
 	type MemoryMetadata,
 	parseArtifactShareGrants,
 	resolveArtifactDisclosure,
+	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
 import type {
@@ -64,6 +68,25 @@ export interface CreateTranscriptInput {
 	entityId: UUID;
 	/** The fully-built transcript record (audio + segments + words). */
 	transcript: Transcript;
+}
+
+export interface CreateRedactedTranscriptVariantInput {
+	/** The stored original transcript id. */
+	originalId: UUID;
+	/** Entity issuing the redaction, recorded on metadata for audit context. */
+	redactedBy?: UUID;
+	/** Stable seed for deterministic tests; defaults to the original id. */
+	seed?: string;
+	/** Epoch ms override for deterministic tests. */
+	nowMs?: number;
+}
+
+export interface ShareTranscriptGrantInput {
+	transcriptId: UUID;
+	entityId: UUID;
+	mode: ArtifactShareGrantMode;
+	grantedBy?: UUID;
+	grantedAtMs?: number;
 }
 
 /** Pull the stored {@link Transcript} back out of a memory row (parses the
@@ -150,6 +173,48 @@ function serveRedactedVariant(
 		source: original.source,
 		redacted: true,
 	};
+}
+
+function redactedText(text: string): string {
+	const matches = detectPii(text);
+	if (matches.length === 0) return text;
+	let out = "";
+	let cursor = 0;
+	for (const match of [...matches].sort((a, b) => a.start - b.start)) {
+		if (match.start < cursor) continue;
+		out += text.slice(cursor, match.start);
+		out += `[${match.kind.toUpperCase()}]`;
+		cursor = match.end;
+	}
+	out += text.slice(cursor);
+	return out;
+}
+
+function redactTranscript(original: Transcript): Transcript {
+	const segments = original.segments.map((segment) => ({
+		...segment,
+		text: redactedText(segment.text),
+		words: segment.words.map((word) => ({
+			...word,
+			text: redactedText(word.text),
+		})),
+	}));
+	return {
+		...original,
+		title: `${original.title} (redacted)`,
+		audioUrl: undefined,
+		audioContentType: undefined,
+		segments,
+	};
+}
+
+function mergedGrant(
+	grants: readonly ArtifactShareGrant[],
+	next: ArtifactShareGrant,
+): ArtifactShareGrant[] {
+	const out = grants.filter((grant) => grant.entityId !== next.entityId);
+	out.push(next);
+	return out;
 }
 
 /** CRUD for transcript records over the runtime memory partition. */
@@ -290,6 +355,121 @@ export class TranscriptStore {
 		const variantRow = await this.runtime.getMemoryById(variantId);
 		if (!variantRow) return null;
 		return rowToTranscript(variantRow);
+	}
+
+	/**
+	 * Create or refresh the deterministic redacted variant linked to an original.
+	 * The original transcript and retained audio URL are never modified; only the
+	 * original row's metadata gains/updates `redactedVariantId`.
+	 */
+	async createRedactedVariant(
+		input: CreateRedactedTranscriptVariantInput,
+	): Promise<Transcript> {
+		const originalRow = await this.runtime.getMemoryById(input.originalId);
+		if (!originalRow) {
+			throw new Error(`transcript ${input.originalId} not found`);
+		}
+		const original = rowToTranscript(originalRow);
+		if (!original) {
+			throw new Error(`transcript ${input.originalId} is corrupt`);
+		}
+		const existingVariantId = redactedVariantId(originalRow);
+		const variantId =
+			existingVariantId ??
+			(stringToUuid(
+				`transcript-redaction:${input.seed ?? input.originalId}`,
+			) as UUID);
+		const nowMs = input.nowMs ?? Date.now();
+		const variant = {
+			...redactTranscript(original),
+			id: variantId,
+			createdAt: nowMs,
+			metadata: {
+				...(original.metadata ?? {}),
+				redactionOf: input.originalId,
+				redactedAtMs: nowMs,
+				...(input.redactedBy ? { redactedBy: input.redactedBy } : {}),
+			},
+		};
+		const existingVariant = await this.runtime.getMemoryById(variantId);
+		if (existingVariant) {
+			await this.update(variant);
+		} else {
+			await this.create({
+				roomId: originalRow.roomId,
+				entityId: originalRow.entityId,
+				transcript: variant,
+			});
+		}
+		const variantRow = await this.runtime.getMemoryById(variantId);
+		const variantMeta = variantRow?.metadata as
+			| Record<string, unknown>
+			| undefined;
+		const variantOk = await this.runtime.updateMemory({
+			id: variantId,
+			metadata: {
+				...(variantMeta ?? {}),
+				type: "custom",
+				source: TRANSCRIPT_METADATA_TYPE,
+				redactionOf: input.originalId,
+				redactedAtMs: nowMs,
+				...(input.redactedBy ? { redactedBy: input.redactedBy } : {}),
+			} as MemoryMetadata,
+		});
+		if (!variantOk) {
+			throw new Error(`redacted transcript variant ${variantId} not found`);
+		}
+		const meta = originalRow.metadata as Record<string, unknown> | undefined;
+		const ok = await this.runtime.updateMemory({
+			id: input.originalId,
+			metadata: {
+				...(meta ?? {}),
+				type: "custom",
+				source: TRANSCRIPT_METADATA_TYPE,
+				redactedVariantId: variantId,
+			} as MemoryMetadata,
+		});
+		if (!ok) {
+			throw new Error(`transcript ${input.originalId} not found`);
+		}
+		return variant;
+	}
+
+	/** Add or replace one per-entity share grant on the original transcript row. */
+	async share(input: ShareTranscriptGrantInput): Promise<void> {
+		const row = await this.runtime.getMemoryById(input.transcriptId);
+		if (!row) {
+			throw new Error(`transcript ${input.transcriptId} not found`);
+		}
+		if (redactionOriginalId(row)) {
+			throw new Error(
+				"share grants must be attached to the original transcript",
+			);
+		}
+		const metadata = row.metadata as Record<string, unknown> | undefined;
+		const grants = parseArtifactShareGrants(metadata);
+		const nextGrant: ArtifactShareGrant = {
+			entityId: input.entityId,
+			mode: input.mode,
+			...(input.grantedBy ? { grantedBy: input.grantedBy } : {}),
+			...(input.grantedAtMs !== undefined
+				? { grantedAtMs: input.grantedAtMs }
+				: {}),
+		};
+		const ok = await this.runtime.updateMemory({
+			id: input.transcriptId,
+			metadata: {
+				...(metadata ?? {}),
+				type: "custom",
+				source: TRANSCRIPT_METADATA_TYPE,
+				share: {
+					grants: mergedGrant(grants, nextGrant),
+				} as unknown as JsonObject,
+			} as MemoryMetadata,
+		});
+		if (!ok) {
+			throw new Error(`transcript ${input.transcriptId} not found`);
+		}
 	}
 
 	/**
