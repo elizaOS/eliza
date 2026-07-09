@@ -29,23 +29,16 @@ type RemoteCapabilityServer = {
 };
 
 const ADVANCED_SETTINGS_STORAGE_KEY = "eliza:settings-advanced";
-// The Capabilities settings section is developerOnly since the MVP settings
-// declutter (788a314a7b9 / 5102e001b41): the hub renders it only when
-// Developer Mode is on. The advanced flag above additionally reveals the
-// remote-endpoint connect form INSIDE the section (CapabilitiesSection).
+// Both flags are required: developer mode exposes the section, while advanced
+// settings exposes its remote-endpoint controls.
 const DEVELOPER_MODE_STORAGE_KEY = "eliza:developerMode";
 const REMOTE_CAPABILITY_BUNDLE_PATH =
   "/api/views/remote-capability-live/bundle.js";
 
-// The production renderer registers /sw.js, whose fetch handler serves
-// /api/views/:id/bundle.js stale-while-revalidate (fd47ef2b275). A
-// service-worker-originated fetch is invisible to page.route, so with the SW
-// controlling the page the mocked bundle below is fetched from the real stub
-// server (404) and the dynamic import fails. Blocking SWs keeps the
-// route-mocked bundle path authoritative — same rationale as the
-// desktop-webkit project in playwright.ui-smoke.config.ts. Playwright's block
-// resolves register() to undefined, which sw-registration.ts already treats
-// as SW-unavailable without logging a console error.
+// The worker owns dynamic-view caching, but Playwright cannot intercept its
+// requests with page.route. Blocking it keeps this spec focused on the real
+// loader against its explicitly routed remote bundle; worker caching and auth
+// behavior are covered independently against public/sw.js.
 test.use({ serviceWorkers: "block" });
 
 test("app shell loads a remote capability view bundle from a running endpoint", async ({
@@ -280,9 +273,8 @@ test("settings provisions a cloud capability sandbox", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Capabilities\b/);
 
-  // The Endpoint/Cloud connection-mode switch is a SettingsSegmentedRow
-  // radiogroup ("Capability router connection mode"), so the Cloud option
-  // exposes role=radio, not role=button.
+  // Select through the control's public accessibility contract so the test
+  // follows the same radiogroup semantics as keyboard and assistive-tech users.
   await page.getByRole("radio", { name: "Cloud", exact: true }).click();
   await page
     .getByLabel("Capability cloud API base URL")
