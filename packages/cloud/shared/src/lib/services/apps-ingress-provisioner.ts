@@ -42,11 +42,18 @@ function resolveFetch(f?: IngressFetch): IngressFetch {
 }
 
 async function safeText(res: IngressResponse): Promise<string> {
-  try {
-    return (await res.text()).slice(0, 200);
-  } catch {
-    return "";
-  }
+  return (await res.text()).slice(0, 200);
+}
+
+function caddyAdminRequest(adminBase: string): {
+  adminHost: string;
+  headers: Record<string, string>;
+} {
+  const adminUrl = new URL(adminBase);
+  return {
+    adminHost: adminUrl.host,
+    headers: { Origin: adminUrl.origin },
+  };
 }
 
 export interface AddRouteOpts extends AppRouteInput {
@@ -69,29 +76,35 @@ export async function addAppRoute(opts: AddRouteOpts): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const route = buildCaddyRoute(opts);
   const routeId = route["@id"];
+  const adminRequest = caddyAdminRequest(opts.adminBase);
 
   // best-effort delete of a stale same-id route (idempotent re-deploy)
   await fetchImpl(buildCaddyRouteByIdUrl(opts.adminBase, routeId), {
     method: "DELETE",
+    headers: adminRequest.headers,
     signal: AbortSignal.timeout(timeoutMs),
   }).catch((error) => {
     // error-policy:J4 stale-route cleanup failure must not block the replacement route.
     logger.warn("[apps-ingress] stale route delete failed before add-route", {
       routeId,
       hostname: opts.hostname,
+      adminHost: adminRequest.adminHost,
       error: error instanceof Error ? error.message : String(error),
     });
   });
 
   const res = await fetchImpl(buildCaddyAddRouteUrl(opts.adminBase, opts.server), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      ...adminRequest.headers,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(route),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     throw new Error(
-      `[apps-ingress] add-route failed (${res.status}) for ${opts.hostname}: ${await safeText(res)}`,
+      `[apps-ingress] add-route failed (${res.status}) for ${opts.hostname} via ${adminRequest.adminHost}: ${await safeText(res)}`,
     );
   }
 }
@@ -108,12 +121,16 @@ export async function removeAppRoute(opts: RemoveRouteOpts): Promise<void> {
   const fetchImpl = resolveFetch(opts.fetchImpl);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const routeId = buildCaddyRouteId(opts.hostname);
+  const adminRequest = caddyAdminRequest(opts.adminBase);
   const res = await fetchImpl(buildCaddyRouteByIdUrl(opts.adminBase, routeId), {
     method: "DELETE",
+    headers: adminRequest.headers,
     signal: AbortSignal.timeout(timeoutMs),
   });
   // 200 = removed, 404 = already absent; both are success for teardown.
   if (!res.ok && res.status !== 404) {
-    throw new Error(`[apps-ingress] remove-route failed (${res.status}) for ${opts.hostname}`);
+    throw new Error(
+      `[apps-ingress] remove-route failed (${res.status}) for ${opts.hostname} via ${adminRequest.adminHost}`,
+    );
   }
 }
