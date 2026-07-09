@@ -344,6 +344,7 @@ export type WalletFundingSummary = {
   fundingAmountSol?: number | null;
   fundingSourceType: "unknown" | "wallet" | "exchange" | "bridge" | "program";
   fundingSourceLabel?: WalletLabel | null;
+  evidenceConfidence: "low" | "medium" | "high";
   confidence: "low" | "medium" | "high";
   notes: string[];
 };
