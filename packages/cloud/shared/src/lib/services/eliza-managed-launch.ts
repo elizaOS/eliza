@@ -138,7 +138,15 @@ async function ensureManagedOnboarding(
   });
 
   if (!onboardingResponse.ok) {
-    const text = await onboardingResponse.text().catch(() => "");
+    const text = await onboardingResponse.text().catch((error) => {
+      // error-policy:J6 best-effort error-body read; HTTP status remains the load-bearing failure.
+      logger.warn("[agent-managed-launch] Failed to read onboarding error body", {
+        agentId: sandbox.id,
+        status: onboardingResponse.status,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return "";
+    });
     throw new ManagedElizaLaunchError(
       `Failed to bootstrap managed onboarding (HTTP ${onboardingResponse.status})${text ? `: ${text.slice(0, 200)}` : ""}`,
       502,
