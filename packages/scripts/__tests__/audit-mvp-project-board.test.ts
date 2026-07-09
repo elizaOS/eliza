@@ -114,7 +114,7 @@ describe("audit-mvp-project-board", () => {
 
     expect(summary.counts).toEqual({
       projectIssues: 4,
-      mvpIssues: 4,
+      labeledMvpIssues: 4,
       closedNotDone: 1,
       openNotDone: 2,
       humanGated: 1,
@@ -136,10 +136,35 @@ describe("audit-mvp-project-board", () => {
       }),
     );
 
-    expect(text).toContain("Closed MVP issues not marked Done");
-    expect(text).toContain("Open MVP issues not Done and not human-gated");
+    expect(text).toContain("Closed Project 15 issues not marked Done");
+    expect(text).toContain(
+      "Open Project 15 issues not Done and not human-gated",
+    );
     expect(text).toContain("#3 In progress — Agent tractable");
     expect(text).toContain("open-but-Done: 1");
+  });
+
+  test("includes an unlabeled Ready project issue in the actionable set", () => {
+    const unlabeledReady = {
+      content: {
+        type: "Issue",
+        number: 6,
+        title: "Unlabeled ready work",
+        url: "https://github.com/elizaOS/eliza/issues/6",
+      },
+      title: "Unlabeled ready work",
+      status: "Ready",
+      labels: ["testing"],
+    };
+    const summary = board.summarizeMvpBoard({
+      projectItems: [...projectItems, unlabeledReady],
+      openIssues: [{ number: 2 }, { number: 3 }, { number: 4 }, { number: 6 }],
+      closedIssues: [{ number: 1 }],
+    });
+
+    expect(summary.agentActionable.map((issue) => issue.number)).toContain(6);
+    expect(summary.counts.projectIssues).toBe(5);
+    expect(summary.counts.labeledMvpIssues).toBe(4);
   });
 
   test("strictViolations returns the stale buckets that should fail closeout", () => {

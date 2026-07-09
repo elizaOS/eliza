@@ -2,7 +2,7 @@
 /**
  * Read-only audit for the LifeOps MVP project board. The GitHub Project is the
  * live kanban, but closeout work needs a compact stale-state report instead of
- * a raw 195-item dump: closed issues that are not Done, open MVP issues still
+ * a raw project dump: closed issues that are not Done, open issues still
  * active, and the subset that is explicitly human-gated.
  */
 
@@ -153,12 +153,14 @@ export function summarizeMvpBoard({ projectItems, openIssues, closedIssues }) {
   const openByNumber = byNumber(openIssues);
   const closedNumbers = new Set(closedIssues.map((issue) => issue.number));
   const issues = projectItems.map(normalizeProjectIssue).filter(Boolean);
-  const mvpIssues = issues.filter((issue) => issue.labels.includes("mvp"));
+  const labeledMvpIssues = issues.filter((issue) =>
+    issue.labels.includes("mvp"),
+  );
 
-  const closedNotDone = mvpIssues.filter(
+  const closedNotDone = issues.filter(
     (issue) => closedNumbers.has(issue.number) && issue.status !== DONE_STATUS,
   );
-  const openOnBoard = mvpIssues.filter(
+  const openOnBoard = issues.filter(
     (issue) => openByNumber.has(issue.number) && issue.status !== DONE_STATUS,
   );
   const humanGated = openOnBoard.filter((issue) =>
@@ -172,14 +174,14 @@ export function summarizeMvpBoard({ projectItems, openIssues, closedIssues }) {
         (label) => label === "needs-human" || label === "needs-shaw",
       ),
   );
-  const openDone = mvpIssues.filter(
+  const openDone = issues.filter(
     (issue) => openByNumber.has(issue.number) && issue.status === DONE_STATUS,
   );
 
   return {
     counts: {
       projectIssues: issues.length,
-      mvpIssues: mvpIssues.length,
+      labeledMvpIssues: labeledMvpIssues.length,
       closedNotDone: closedNotDone.length,
       openNotDone: openOnBoard.length,
       humanGated: humanGated.length,
@@ -234,7 +236,7 @@ export function strictViolations(summary) {
     violations.push({
       type: "closed-not-done",
       count: summary.closedNotDone.length,
-      message: `${summary.closedNotDone.length} closed MVP issue(s) are not marked Done`,
+      message: `${summary.closedNotDone.length} closed Project 15 issue(s) are not marked Done`,
     });
   }
   if (summary.agentActionable.length > 0) {
@@ -243,14 +245,14 @@ export function strictViolations(summary) {
       count: summary.agentActionable.length,
       message: summary.projectCheckSkipped
         ? `${summary.agentActionable.length} open MVP issue(s) are not human-gated`
-        : `${summary.agentActionable.length} open MVP issue(s) are neither Done nor human-gated`,
+        : `${summary.agentActionable.length} open Project 15 issue(s) are neither Done nor human-gated`,
     });
   }
   if (summary.openDone?.length > 0) {
     violations.push({
       type: "open-done",
       count: summary.openDone.length,
-      message: `${summary.openDone.length} open MVP issue(s) are already marked Done`,
+      message: `${summary.openDone.length} open Project 15 issue(s) are already marked Done`,
     });
   }
   return violations;
@@ -273,7 +275,7 @@ export function formatSummary(summary) {
 
   const lines = [
     "LifeOps MVP project-board audit",
-    `project issues: ${summary.counts.projectIssues}; mvp issues: ${summary.counts.mvpIssues}`,
+    `project issues: ${summary.counts.projectIssues}; carrying mvp label: ${summary.counts.labeledMvpIssues}`,
     `closed-not-Done: ${summary.counts.closedNotDone}`,
     `open-not-Done: ${summary.counts.openNotDone} (${summary.counts.humanGated} human-gated, ${summary.counts.agentActionable} agent-actionable)`,
     `open-but-Done: ${summary.counts.openDone}`,
@@ -288,13 +290,16 @@ export function formatSummary(summary) {
     for (const row of rows) lines.push(`  ${formatIssue(row)}`);
   };
 
-  section("Closed MVP issues not marked Done", summary.closedNotDone);
+  section("Closed Project 15 issues not marked Done", summary.closedNotDone);
   section(
-    "Open MVP issues not Done and not human-gated",
+    "Open Project 15 issues not Done and not human-gated",
     summary.agentActionable,
   );
-  section("Open MVP issues not Done and human-gated", summary.humanGated);
-  section("Open MVP issues already marked Done", summary.openDone);
+  section(
+    "Open Project 15 issues not Done and human-gated",
+    summary.humanGated,
+  );
+  section("Open Project 15 issues already marked Done", summary.openDone);
   return lines.join("\n");
 }
 
@@ -400,8 +405,8 @@ async function main() {
         args.repo,
         "--state",
         "open",
-        "--label",
-        "mvp",
+        "--search",
+        `project:${args.owner}/${args.project}`,
         "--limit",
         args.limit,
         "--json",
@@ -416,8 +421,8 @@ async function main() {
         args.repo,
         "--state",
         "closed",
-        "--label",
-        "mvp",
+        "--search",
+        `project:${args.owner}/${args.project}`,
         "--limit",
         args.limit,
         "--json",
