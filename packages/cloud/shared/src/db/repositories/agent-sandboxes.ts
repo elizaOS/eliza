@@ -1338,6 +1338,50 @@ export class AgentSandboxesRepository {
   }
 
   /**
+   * The stored (still-encrypted, possibly R2-offloaded) backup row, un-hydrated.
+   * The wake restore-integrity gate feeds these to `verifyBackupRestorability`,
+   * which does its own budgeted download + decrypt — hydrating here would
+   * decrypt the payload eagerly and bypass the verifier's byte budget.
+   */
+  async getStoredBackupById(backupId: string): Promise<StoredAgentSandboxBackup | undefined> {
+    return getStoredBackupById(backupId);
+  }
+
+  /** Newest stored (still-encrypted) backup row for a sandbox, un-hydrated. */
+  async getLatestStoredBackup(
+    sandboxRecordId: string,
+  ): Promise<StoredAgentSandboxBackup | undefined> {
+    const [row] = await dbRead
+      .select()
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.sandbox_record_id, sandboxRecordId))
+      .orderBy(desc(agentSandboxBackups.created_at))
+      .limit(1);
+    return row;
+  }
+
+  /**
+   * Stamp a verification outcome on a backup row. Field semantics match the
+   * continuous verifier cycle (`agent-backup-verifier.ts`): `verified_at`
+   * records the attempt time; `verification_error` is `null` on success and
+   * `"<kind>: <message>"` on failure, so wake-gate stamps and cycle stamps are
+   * indistinguishable to readers.
+   */
+  async stampBackupVerification(
+    backupId: string,
+    outcome: { status: "verified" | "failed"; verifiedAt: Date; error: string | null },
+  ): Promise<void> {
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({
+        verification_status: outcome.status,
+        verified_at: outcome.verifiedAt,
+        verification_error: outcome.error,
+      })
+      .where(eq(agentSandboxBackups.id, backupId));
+  }
+
+  /**
    * Chain-safe prune: keep the newest `keep` restore points plus every
    * ancestor any retained incremental still needs, then delete the rest. This
    * can never strand an incremental backup without the full backup it builds

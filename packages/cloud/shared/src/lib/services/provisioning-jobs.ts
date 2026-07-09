@@ -50,6 +50,10 @@ import {
   resolveWaifuWebhookTarget,
   signWaifuWebhook,
 } from "./waifu-webhook";
+import {
+  WakeRestoreIntegrityError,
+  type WakeRestoreIntegrityFailure,
+} from "./wake-restore-integrity";
 
 // ---------------------------------------------------------------------------
 // Job data shapes (hydrated from object storage when jobs.data is offloaded)
@@ -90,6 +94,17 @@ export interface AgentWakeJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  /**
+   * Explicit user-selected restore point (an older validated backup) — the
+   * escape hatch when the latest backup fails the wake integrity gate. Never
+   * set by default; mutually exclusive with `forceFreshBoot`.
+   */
+  restoreBackupId?: string;
+  /**
+   * Explicit user acceptance of data loss: wake into an empty container with
+   * no restore. Never set by default; mutually exclusive with `restoreBackupId`.
+   */
+  forceFreshBoot?: boolean;
 }
 
 export interface AgentRestartJobData {
@@ -208,6 +223,10 @@ export interface AgentWakeJobResult {
   cloudAgentId: string;
   reprovisioned: boolean;
   restoredBackupId?: string;
+  /** True when the wake booted empty via the explicit `forceFreshBoot` opt-in. */
+  freshBoot?: boolean;
+  /** Structured wake-integrity-gate failure, surfaced to job pollers. */
+  integrityFailure?: WakeRestoreIntegrityFailure;
   error?: string;
 }
 
@@ -434,12 +453,22 @@ function readAgentSleepJobData(job: Job): AgentSleepJobData {
 }
 
 function isAgentWakeJobData(value: unknown): value is AgentWakeJobData {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    typeof (value as { agentId?: unknown }).agentId !== "string" ||
+    typeof (value as { organizationId?: unknown }).organizationId !== "string" ||
+    typeof (value as { userId?: unknown }).userId !== "string"
+  ) {
+    return false;
+  }
+  const { restoreBackupId, forceFreshBoot } = value as {
+    restoreBackupId?: unknown;
+    forceFreshBoot?: unknown;
+  };
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { agentId?: unknown }).agentId === "string" &&
-    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    (restoreBackupId === undefined || typeof restoreBackupId === "string") &&
+    (forceFreshBoot === undefined || typeof forceFreshBoot === "boolean")
   );
 }
 
@@ -1193,15 +1222,19 @@ export class ProvisioningJobService {
   /**
    * Enqueue an Agent wake job.
    *
-   * Daemon-side execution provisions a fresh container (claiming a warm-pool
-   * slot when available) and restores the latest backup. The inverse of
-   * `agent_sleep`.
+   * Daemon-side execution runs the restore-integrity gate, then provisions a
+   * fresh container (claiming a warm-pool slot when available) and restores
+   * the validated backup. The inverse of `agent_sleep`. `restoreBackupId` /
+   * `forceFreshBoot` are the explicit wake-route escape hatches (#15603 B6),
+   * never defaults.
    */
   async enqueueAgentWakeOnce(params: {
     agentId: string;
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    restoreBackupId?: string;
+    forceFreshBoot?: boolean;
   }): Promise<EnqueueAgentWakeResult> {
     return this.enqueueLifecycleJob<AgentWakeJobData>({
       jobType: JOB_TYPES.AGENT_WAKE,
@@ -1209,6 +1242,8 @@ export class ProvisioningJobService {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
+        ...(params.restoreBackupId ? { restoreBackupId: params.restoreBackupId } : {}),
+        ...(params.forceFreshBoot ? { forceFreshBoot: true } : {}),
       },
       toRecord: agentWakeJobDataToRecord,
       agentId: params.agentId,
@@ -2332,7 +2367,10 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
-    const result = await elizaSandboxService.executeWake(data.agentId, data.organizationId);
+    const result = await elizaSandboxService.executeWake(data.agentId, data.organizationId, {
+      restoreBackupId: data.restoreBackupId,
+      forceFreshBoot: data.forceFreshBoot,
+    });
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
@@ -2342,9 +2380,19 @@ export class ProvisioningJobService {
           cloudAgentId: data.agentId,
           reprovisioned: result.reprovisioned,
           restoredBackupId: result.restoredBackupId,
+          freshBoot: result.freshBoot,
+          integrityFailure: result.integrityFailure,
           error: result.error,
         }),
       });
+      // Integrity-gate refusals surface as the typed wake error so the job's
+      // error_message is the full user-legible explanation (backup, failure
+      // kind, escape hatches). AGENT_WAKE has no permanent-failure writeback,
+      // so exhausting attempts leaves the sandbox row `sleeping` — state
+      // preserved, per the #15603 B6 contract.
+      if (result.integrityFailure) {
+        throw new WakeRestoreIntegrityError(result.integrityFailure);
+      }
       throw new Error(result.error ?? "Unknown agent_wake failure");
     }
 
@@ -2352,6 +2400,7 @@ export class ProvisioningJobService {
       cloudAgentId: data.agentId,
       reprovisioned: result.reprovisioned,
       restoredBackupId: result.restoredBackupId,
+      freshBoot: result.freshBoot,
     };
 
     await jobsRepository.updateStatus(job.id, "completed", {

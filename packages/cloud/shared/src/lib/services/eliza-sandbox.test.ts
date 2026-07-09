@@ -13,6 +13,7 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
+import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
@@ -530,6 +531,16 @@ describe("ElizaSandboxService wake", () => {
         parent_backup_id: null,
         content_hash: null,
         created_at: now,
+        verification_status: null,
+        verified_at: null,
+        verification_error: null,
+      };
+      // The wake restore-integrity gate (#15603 B6) verifies the STORED row
+      // before provision runs; a plaintext inline full backup with no
+      // content_hash passes verification for real (legacy-row passthrough).
+      const storedBackup: StoredAgentSandboxBackup = {
+        ...backup,
+        state_data: { memories: [], config: {}, workspaceFiles: {} },
       };
       const provider: SandboxProvider = {
         create: mock(async () => ({
@@ -562,6 +573,8 @@ describe("ElizaSandboxService wake", () => {
       const originalFindByIdAndOrgForWrite = agentSandboxesRepository.findByIdAndOrgForWrite;
       const originalTrySetProvisioning = agentSandboxesRepository.trySetProvisioning;
       const originalGetLatestBackup = agentSandboxesRepository.getLatestBackup;
+      const originalGetLatestStoredBackup = agentSandboxesRepository.getLatestStoredBackup;
+      const originalStampBackupVerification = agentSandboxesRepository.stampBackupVerification;
       const originalGetReconstructedBackupState =
         agentSandboxesRepository.getReconstructedBackupState;
       agentSandboxesRepository.findByIdAndOrg = mock(async () => sleepingSandbox);
@@ -574,6 +587,8 @@ describe("ElizaSandboxService wake", () => {
         status: "provisioning",
       }));
       agentSandboxesRepository.getLatestBackup = mock(async () => backup);
+      agentSandboxesRepository.getLatestStoredBackup = mock(async () => storedBackup);
+      agentSandboxesRepository.stampBackupVerification = mock(async () => {});
       agentSandboxesRepository.getReconstructedBackupState = mock(async () => ({
         memories: [],
         config: {},
@@ -613,6 +628,8 @@ describe("ElizaSandboxService wake", () => {
         agentSandboxesRepository.findByIdAndOrgForWrite = originalFindByIdAndOrgForWrite;
         agentSandboxesRepository.trySetProvisioning = originalTrySetProvisioning;
         agentSandboxesRepository.getLatestBackup = originalGetLatestBackup;
+        agentSandboxesRepository.getLatestStoredBackup = originalGetLatestStoredBackup;
+        agentSandboxesRepository.stampBackupVerification = originalStampBackupVerification;
         agentSandboxesRepository.getReconstructedBackupState = originalGetReconstructedBackupState;
         createForAgentSpy.mockRestore();
         updateSpy.mockRestore();
