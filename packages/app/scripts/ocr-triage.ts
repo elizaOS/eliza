@@ -300,7 +300,7 @@ async function main() {
 // Auto-run only as a CLI entrypoint (`bun scripts/ocr-triage.ts …`). When a test
 // imports this module for `authorizedShots`, `import.meta.main` is false so the
 // triage does not fire and call `process.exit` out from under the test runner.
-if ((import.meta as { main?: boolean }).main) {
+if (import.meta.main) {
   main()
     .catch((e) => {
       // error-policy:J1 CLI boundary — surface the failure and exit non-zero.

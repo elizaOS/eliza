@@ -25,9 +25,18 @@ import { authorizedShots, type ReportEntry } from "../../scripts/ocr-triage";
 // package script invokes it from `packages/app`. Vitest gives `import.meta.url`
 // a virtual scheme, so select between those two documented cwd contracts by
 // probing for the CLI rather than assuming the package-root invocation.
-const APP_DIR = existsSync(join(process.cwd(), "scripts", "ocr-triage.ts"))
-  ? process.cwd()
-  : join(process.cwd(), "packages", "app");
+const appDirCandidates = [
+  process.cwd(),
+  join(process.cwd(), "packages", "app"),
+].filter((candidate) =>
+  existsSync(join(candidate, "scripts", "ocr-triage.ts")),
+);
+if (appDirCandidates.length !== 1) {
+  throw new Error(
+    `Expected one app package root from ${process.cwd()}, found ${appDirCandidates.length}`,
+  );
+}
+const [APP_DIR] = appDirCandidates;
 const CLI = join(APP_DIR, "scripts", "ocr-triage.ts");
 
 /** Minimal valid 1×1 PNG — enough for `existsSync`; the CLI OCR comes from ndjson. */
