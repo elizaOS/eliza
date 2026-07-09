@@ -6,26 +6,15 @@
  */
 import type { IAgentRuntime, Memory, MessagePayload } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-
-const listDelegationContracts = vi.fn(async () => []);
-
-vi.mock("../src/lifeops/repository.js", () => ({
-  LifeOpsRepository: class {
-    listDelegationContracts = listDelegationContracts;
-    upsertDelegationContract = vi.fn(async () => undefined);
-  },
-}));
-
-vi.mock("../src/lifeops/approval-queue.js", () => ({
-  createApprovalQueue: vi.fn(() => ({
-    enqueue: vi.fn(),
-  })),
-}));
-
+import type { ApprovalQueue } from "../src/lifeops/approval-queue.types.js";
 import {
+  createDelegationInboundMessageHandler,
   delegationInboundTurnFromMessage,
-  handleDelegationInboundMessage,
 } from "../src/lifeops/delegation-contracts/inbound-event.js";
+import type {
+  DelegationContractRepository,
+  DelegationInboundProcessingResult,
+} from "../src/lifeops/delegation-contracts/index.js";
 
 const ENTITY_ID = "00000000-0000-0000-0000-000000001856";
 const ROOM_ID = "00000000-0000-0000-0000-000000001857";
@@ -101,18 +90,69 @@ describe("delegation connector event normalization", () => {
     ).toBeNull();
   });
 
-  it("hands connector messages to the durable contract repository", async () => {
-    listDelegationContracts.mockClear();
+  it("hands connector messages to the durable policy processor", async () => {
+    const repository: DelegationContractRepository = {
+      listDelegationContracts: vi.fn(async () => []),
+      upsertDelegationContract: vi.fn(async () => undefined),
+    };
+    const approvalQueue: ApprovalQueue = {
+      enqueue: vi.fn(),
+      list: vi.fn(),
+      byId: vi.fn(),
+      approve: vi.fn(),
+      reject: vi.fn(),
+      markExecuting: vi.fn(),
+      markDone: vi.fn(),
+      markExpired: vi.fn(),
+      purgeExpired: vi.fn(),
+    };
+    const processingResult: DelegationInboundProcessingResult = {
+      evaluations: [],
+      enqueuedApprovals: [],
+    };
+    const processTurn = vi.fn(async () => processingResult);
+    const handler = createDelegationInboundMessageHandler({
+      createRepository: () => repository,
+      createApprovalQueue: () => approvalQueue,
+      processTurn,
+      now: () => new Date("2026-07-09T18:01:00.000Z"),
+    });
     const payload: MessagePayload = {
       runtime: { agentId: ENTITY_ID } as IAgentRuntime,
       message: message(),
       source: "test",
     };
-    await handleDelegationInboundMessage(payload);
-    expect(listDelegationContracts).toHaveBeenCalledWith(ENTITY_ID, {
-      statuses: ["active"],
-      activeAtIso: "2026-07-09T18:00:00.000Z",
+    await handler(payload);
+    expect(processTurn).toHaveBeenCalledWith({
+      agentId: ENTITY_ID,
+      turn: delegationInboundTurnFromMessage(message()),
+      nowIso: "2026-07-09T18:01:00.000Z",
+      repository,
+      approvalQueue,
     });
+  });
+
+  it("does not allocate adapters for non-connector chat", async () => {
+    const createRepository = vi.fn();
+    const createApprovalQueue = vi.fn();
+    const processTurn = vi.fn();
+    const handler = createDelegationInboundMessageHandler({
+      createRepository,
+      createApprovalQueue,
+      processTurn,
+    });
+
+    await handler({
+      runtime: { agentId: ENTITY_ID } as IAgentRuntime,
+      message: message({
+        content: { text: "hello", source: "client_chat" },
+        metadata: { type: "message", source: "client_chat" },
+      }),
+      source: "test",
+    });
+    expect(createRepository).not.toHaveBeenCalled();
+    expect(createApprovalQueue).not.toHaveBeenCalled();
+    expect(processTurn).not.toHaveBeenCalled();
   });
 
   it("fails fast when connector metadata omits message time", () => {

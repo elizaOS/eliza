@@ -104,6 +104,7 @@ import {
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
 import { anticipationFeedbackEvaluator } from "./lifeops/anticipation/evaluator.js";
+import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import { registerLifeOpsCalendarGate } from "./lifeops/calendar-gate.js";
 import {
   createChannelRegistry,
@@ -116,7 +117,8 @@ import {
   registerDefaultConnectorPack,
 } from "./lifeops/connectors/index.js";
 import { applyMockoonEnvOverrides } from "./lifeops/connectors/mockoon-redirect.js";
-import { handleDelegationInboundMessage } from "./lifeops/delegation-contracts/inbound-event.js";
+import { createDelegationInboundMessageHandler } from "./lifeops/delegation-contracts/inbound-event.js";
+import { processDelegationInboundTurn } from "./lifeops/delegation-contracts/index.js";
 import { handleVoiceTurnObserved } from "./lifeops/entities/voice-observer-bridge.js";
 import { installFirstRunChannelInspector } from "./lifeops/first-run/channel-inspector.js";
 import { setRuntimeChannelInspector } from "./lifeops/first-run/questions.js";
@@ -211,6 +213,13 @@ import {
   ensureBlockRuleReconcileTask,
   registerBlockRuleReconcilerWorker,
 } from "./website-blocker/chat-integration/index.js";
+
+const handleDelegationInboundMessage = createDelegationInboundMessageHandler({
+  createRepository: (runtime) => new LifeOpsRepository(runtime),
+  createApprovalQueue: (runtime) =>
+    createApprovalQueue(runtime, { agentId: runtime.agentId }),
+  processTurn: processDelegationInboundTurn,
+});
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";

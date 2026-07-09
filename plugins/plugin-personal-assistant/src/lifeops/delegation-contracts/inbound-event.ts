@@ -6,12 +6,12 @@
  * processor persists state and creates approval-gated reply drafts.
  */
 import type { IAgentRuntime, Memory, MessagePayload } from "@elizaos/core";
-import { createApprovalQueue } from "../approval-queue.js";
-import { LifeOpsRepository } from "../repository.js";
-import {
-  type DelegationChannel,
-  type DelegationInboundTurn,
-  processDelegationInboundTurn,
+import type { ApprovalQueue } from "../approval-queue.types.js";
+import type {
+  DelegationChannel,
+  DelegationContractRepository,
+  DelegationInboundProcessingResult,
+  DelegationInboundTurn,
 } from "./index.js";
 
 type UnknownRecord = Record<string, unknown>;
@@ -191,18 +191,35 @@ export function delegationInboundTurnFromMessage(
   };
 }
 
-/** Process a connector message through the durable delegation policy path. */
-export async function handleDelegationInboundMessage(
-  payload: MessagePayload,
-): Promise<void> {
-  const turn = delegationInboundTurnFromMessage(payload.message);
-  if (!turn) return;
-  const runtime: IAgentRuntime = payload.runtime;
-  await processDelegationInboundTurn({
-    agentId: runtime.agentId,
-    turn,
-    nowIso: new Date().toISOString(),
-    repository: new LifeOpsRepository(runtime),
-    approvalQueue: createApprovalQueue(runtime, { agentId: runtime.agentId }),
-  });
+export interface DelegationInboundMessageDependencies {
+  readonly createRepository: (
+    runtime: IAgentRuntime,
+  ) => DelegationContractRepository;
+  readonly createApprovalQueue: (runtime: IAgentRuntime) => ApprovalQueue;
+  readonly processTurn: (input: {
+    readonly agentId: string;
+    readonly turn: DelegationInboundTurn;
+    readonly nowIso: string;
+    readonly repository: DelegationContractRepository;
+    readonly approvalQueue: ApprovalQueue;
+  }) => Promise<DelegationInboundProcessingResult>;
+  readonly now?: () => Date;
+}
+
+/** Build the connector-event handler with runtime-owned persistence adapters. */
+export function createDelegationInboundMessageHandler(
+  dependencies: DelegationInboundMessageDependencies,
+): (payload: MessagePayload) => Promise<void> {
+  return async (payload: MessagePayload): Promise<void> => {
+    const turn = delegationInboundTurnFromMessage(payload.message);
+    if (!turn) return;
+    const runtime: IAgentRuntime = payload.runtime;
+    await dependencies.processTurn({
+      agentId: runtime.agentId,
+      turn,
+      nowIso: (dependencies.now?.() ?? new Date()).toISOString(),
+      repository: dependencies.createRepository(runtime),
+      approvalQueue: dependencies.createApprovalQueue(runtime),
+    });
+  };
 }
