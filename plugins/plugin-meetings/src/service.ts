@@ -13,6 +13,7 @@
 import {
   ChannelType,
   createUniqueUuid,
+  type EventPayload,
   type IAgentRuntime,
   logger,
   Service,
@@ -32,6 +33,7 @@ import {
   type MeetingPlatform,
   type MeetingSession,
   type MeetingSessionStatus,
+  type MeetingTranscriptFinalizedPayload,
   parseMeetingUrl,
   parsePositiveInteger,
 } from "@elizaos/shared";
@@ -704,15 +706,16 @@ export class MeetingService extends Service {
     transcript: Transcript | null,
   ): Promise<void> {
     if (!transcript || session.status !== "ended") return;
+    const payload: EventPayload & MeetingTranscriptFinalizedPayload = {
+      session: dto,
+      transcript,
+      ...(session.ghostAttendance
+        ? { ghostAttendance: session.ghostAttendance }
+        : {}),
+      source: "plugin-meetings",
+    };
     try {
-      await this.runtime.emitEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, {
-        session: dto,
-        transcript,
-        ...(session.ghostAttendance
-          ? { ghostAttendance: session.ghostAttendance }
-          : {}),
-        source: "plugin-meetings",
-      });
+      await this.runtime.emitEvent(MEETING_TRANSCRIPT_FINALIZED_EVENT, payload);
     } catch (err) {
       this.runtime.reportError("MeetingService.transcriptFinalizedEvent", err, {
         sessionId: session.id,
