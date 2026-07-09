@@ -151,12 +151,12 @@ plugins/plugin-cli-inference/
 | `ELIZA_CHAT_VIA_CLI` | — | (unset = inert) | `claude`, `claude-sdk`, or `codex` — the single enable gate |
 | `ELIZA_CLI_CLAUDE_MODEL` | No | `claude-opus-4-8` | claude large-tier model (`--model` / SDK large tier) |
 | `ELIZA_CLI_CLAUDE_PLANNER_MODEL` | No | (falls back to large) | `claude-sdk` small/planner tier model (e.g. sonnet) |
-| `ELIZA_CLI_CLAUDE_BIN` | No | (SDK default) | `claude-sdk`: path to the Claude Code executable the SDK drives |
+| `ELIZA_CLI_CLAUDE_BIN` | No | (SDK default / allowlist lookup) | path to the claude executable: drives the `claude-sdk` session AND pins the cold `claude` spawn (deploys outside the SOC2 launcher allowlist) |
 | `ELIZA_CLI_SDK_RESTART_AFTER_TURNS` | No | `20` | `claude-sdk`: restart a warm session after N turns (bounds context) |
 | `ELIZA_CLI_CODEX_MODEL` | No | `gpt-5.5` | codex large-tier model (`codex exec -m` / SDK large tier) |
 | `ELIZA_CLI_CODEX_PLANNER_MODEL` | No | (falls back to large) | `codex-sdk` small/planner tier model |
 | `ELIZA_CLI_CODEX_REASONING_EFFORT` | No | (sdk default) | `codex-sdk`: `modelReasoningEffort` (minimal..xhigh) |
-| `ELIZA_CLI_CODEX_BIN` | No | (sdk bundled) | `codex-sdk`: path to the system codex binary (REQUIRED — bundled 0.80.0 rejects current models) |
+| `ELIZA_CLI_CODEX_BIN` | No | (sdk bundled / allowlist lookup) | path to the system codex binary: REQUIRED for `codex-sdk` (bundled 0.80.0 rejects current models); also pins the cold `codex` spawn |
 | `ELIZA_CLI_TIMEOUT_MS` | No | `120000` | per-call spawn timeout (SIGTERM on expiry; CLI backends) |
 
 ## Errors

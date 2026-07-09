@@ -29,8 +29,24 @@ type RemoteCapabilityServer = {
 };
 
 const ADVANCED_SETTINGS_STORAGE_KEY = "eliza:settings-advanced";
+// The Capabilities settings section is developerOnly since the MVP settings
+// declutter (788a314a7b9 / 5102e001b41): the hub renders it only when
+// Developer Mode is on. The advanced flag above additionally reveals the
+// remote-endpoint connect form INSIDE the section (CapabilitiesSection).
+const DEVELOPER_MODE_STORAGE_KEY = "eliza:developerMode";
 const REMOTE_CAPABILITY_BUNDLE_PATH =
   "/api/views/remote-capability-live/bundle.js";
+
+// The production renderer registers /sw.js, whose fetch handler serves
+// /api/views/:id/bundle.js stale-while-revalidate (fd47ef2b275). A
+// service-worker-originated fetch is invisible to page.route, so with the SW
+// controlling the page the mocked bundle below is fetched from the real stub
+// server (404) and the dynamic import fails. Blocking SWs keeps the
+// route-mocked bundle path authoritative — same rationale as the
+// desktop-webkit project in playwright.ui-smoke.config.ts. Playwright's block
+// resolves register() to undefined, which sw-registration.ts already treats
+// as SW-unavailable without logging a console error.
+test.use({ serviceWorkers: "block" });
 
 test("app shell loads a remote capability view bundle from a running endpoint", async ({
   page,
@@ -89,7 +105,10 @@ test("app shell loads a remote capability view bundle from a running endpoint", 
 test("settings connects a remote capability endpoint and opens its view", async ({
   page,
 }) => {
-  await seedAppStorage(page, { [ADVANCED_SETTINGS_STORAGE_KEY]: "1" });
+  await seedAppStorage(page, {
+    [ADVANCED_SETTINGS_STORAGE_KEY]: "1",
+    [DEVELOPER_MODE_STORAGE_KEY]: "1",
+  });
   await installDefaultAppRoutes(page);
 
   const remote = await startRemoteCapabilityServer();
@@ -214,7 +233,10 @@ test("settings connects a remote capability endpoint and opens its view", async 
 });
 
 test("settings provisions a cloud capability sandbox", async ({ page }) => {
-  await seedAppStorage(page, { [ADVANCED_SETTINGS_STORAGE_KEY]: "1" });
+  await seedAppStorage(page, {
+    [ADVANCED_SETTINGS_STORAGE_KEY]: "1",
+    [DEVELOPER_MODE_STORAGE_KEY]: "1",
+  });
   await installDefaultAppRoutes(page);
 
   let connectPayload: unknown = null;
@@ -258,7 +280,10 @@ test("settings provisions a cloud capability sandbox", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Capabilities\b/);
 
-  await page.getByRole("button", { name: "Cloud", exact: true }).click();
+  // The Endpoint/Cloud connection-mode switch is a SettingsSegmentedRow
+  // radiogroup ("Capability router connection mode"), so the Cloud option
+  // exposes role=radio, not role=button.
+  await page.getByRole("radio", { name: "Cloud", exact: true }).click();
   await page
     .getByLabel("Capability cloud API base URL")
     .fill("https://api.elizacloud.ai");
