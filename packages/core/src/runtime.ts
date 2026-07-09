@@ -306,6 +306,9 @@ import {
 	StructuredFieldStreamExtractor,
 } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
+import { computePrefixHashes } from "./runtime/context-hash";
+import { cachePrefixSegments } from "./runtime/context-renderer";
+import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 
 const environmentSettings: RuntimeSettings = {};
 // Whether debug-level logs are emitted, captured once at load (mirrors the
@@ -6880,6 +6883,17 @@ ${section_end}`;
 			);
 
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
+			// Build the full provider cache plan from the stable-prefix hash so providers like plugin-anthropic and
+			// plugin-openrouter can inject cache_control breakpoints without needing a separate planner call.
+			const _dynamicPrefixHashes = computePrefixHashes(segments);
+			const _dynamicCacheHash =
+				computePrefixHashes(cachePrefixSegments(segments)).at(-1)?.hash ??
+				"no-context-segments";
+			const _dynamicCachePlan = buildProviderCachePlan({
+				prefixHash: _dynamicCacheHash,
+				segmentHashes: _dynamicPrefixHashes.map((e) => e.segmentHash),
+				promptSegments: segments,
+			});
 			const modelParams = {
 				...params,
 				prompt,
@@ -6887,6 +6901,7 @@ ${section_end}`;
 				promptSegments: segments,
 				providerOptions: {
 					agentName: this.character.name,
+					..._dynamicCachePlan.providerOptions,
 				},
 				...(extractor
 					? {
