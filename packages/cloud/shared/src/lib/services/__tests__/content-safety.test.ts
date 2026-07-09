@@ -20,6 +20,7 @@ const ORIGINAL_CONTENT_SAFETY_MODE = process.env.CONTENT_SAFETY_MODE;
 const ORIGINAL_CONTENT_SAFETY_REQUIRE_CONFIG = process.env.CONTENT_SAFETY_REQUIRE_CONFIG;
 const ORIGINAL_CONTENT_SAFETY_FAIL_OPEN = process.env.CONTENT_SAFETY_FAIL_OPEN;
 const loggerErrors: string[] = [];
+const loggerWarnings: string[] = [];
 
 mock.module("@/lib/utils/logger", () => ({
   ...REAL_LOGGER,
@@ -29,7 +30,9 @@ mock.module("@/lib/utils/logger", () => ({
       loggerErrors.push(message);
     },
     info: () => {},
-    warn: () => {},
+    warn: (message: string) => {
+      loggerWarnings.push(message);
+    },
   },
 }));
 
@@ -46,6 +49,7 @@ afterAll(() => {
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   loggerErrors.length = 0;
+  loggerWarnings.length = 0;
   restoreEnv("OPENAI_API_KEY", ORIGINAL_OPENAI_API_KEY);
   restoreEnv("OPENAI_MODERATION_API_KEY", ORIGINAL_OPENAI_MODERATION_API_KEY);
   restoreEnv("CONTENT_SAFETY_MODE", ORIGINAL_CONTENT_SAFETY_MODE);
@@ -167,6 +171,33 @@ describe("contentSafetyService", () => {
 
     expect(loggerErrors[0]).toContain("Incorrect API key provided: sk-[REDACTED]");
     expect(loggerErrors[0]).not.toContain("sk-test-secret-1234567890");
+  });
+
+  test("fails closed with an observable diagnostic when moderation error body is unreadable", async () => {
+    process.env.OPENAI_API_KEY = "test-key";
+    globalThis.fetch = (async () =>
+      ({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        text: async () => {
+          throw new Error("body stream failed");
+        },
+      }) as Response) as typeof fetch;
+
+    const { contentSafetyService } = await import(
+      `../content-safety.ts?case=unreadable-body-${Date.now()}`
+    );
+
+    await expect(
+      contentSafetyService.assertSafeForPublicUse({
+        surface: "promotion_copy",
+        text: "Safe text",
+      }),
+    ).rejects.toThrow("Content safety moderation is unavailable");
+
+    expect(loggerWarnings[0]).toContain("Failed to read moderation error body");
+    expect(loggerErrors[0]).toContain("<unreadable moderation error body>");
   });
 
   test("fails closed when moderation transport rejects", async () => {

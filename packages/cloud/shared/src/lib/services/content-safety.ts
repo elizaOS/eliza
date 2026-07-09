@@ -96,6 +96,22 @@ function redactProviderErrorDetail(detail: string): string {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, "Bearer [REDACTED]");
 }
 
+async function readModerationErrorDetail(response: Response): Promise<string> {
+  try {
+    return redactProviderErrorDetail(await response.text()).slice(0, 300);
+  } catch (error) {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — the moderation
+    // response is already failed; keep that boundary decision intact while
+    // making the lost provider detail observable.
+    logger.warn("[ContentSafety] Failed to read moderation error body", {
+      status: response.status,
+      statusText: response.statusText,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "<unreadable moderation error body>";
+  }
+}
+
 function compactText(input: ContentSafetyInput["text"]): string {
   const values = Array.isArray(input) ? input : [input];
   return values
@@ -313,10 +329,7 @@ export class ContentSafetyService {
       // inline it in the log MESSAGE: Workers Logs drops context objects, and
       // this fail-closed path blocked staging image-gen with zero log trace
       // of the upstream rejection.
-      const upstreamDetail = await response
-        .text()
-        .then((t) => redactProviderErrorDetail(t).slice(0, 300))
-        .catch(() => "");
+      const upstreamDetail = await readModerationErrorDetail(response);
       if (env.CONTENT_SAFETY_FAIL_OPEN === "true") {
         logger.error(
           `[ContentSafety] Moderation unavailable (${response.status} ${response.statusText}) on surface ${input.surface}; allowing because fail-open is set: ${upstreamDetail}`,
