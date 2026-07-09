@@ -10,6 +10,18 @@ import {
   parseHostExternalSpecifiers,
   wrapBundleAsHostExternalFactory,
 } from "../../agent/src/api/dynamic-view-host-external.mjs";
+// The declarations + provenance decision live in one place so a removed plugin
+// cannot linger in the stub and a fabricated bundle can never masquerade as the
+// production one. Audit mode (ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES=1) turns a
+// missing real bundle into an observable 424 instead of a synthesized surface.
+import {
+  resolveBundleProvenance,
+  smokeViewDeclarations,
+  VIEW_BUNDLE_PROVENANCE_HEADER,
+} from "./smoke-view-declarations.mjs";
+
+const REQUIRE_REAL_VIEW_BUNDLES =
+  process.env.ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES === "1";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const repoRoot = path.resolve(
@@ -64,119 +76,10 @@ const SMOKE_VOICE_TRANSCRIPT = "this is the voice smoke transcript";
 // the overlay's TTS output is non-empty and the assistant bubble is assertable.
 const SMOKE_VOICE_REPLY = "Got it, this is the spoken reply.";
 
-// The smoke stub mirrors shipped plugin views: one GUI declaration per route.
-// The viewType contract still accepts future modalities, but this fixture should
-// not manufacture concrete XR/TUI rows that production no longer ships.
-const smokeViewDeclarations = [
-  ["birdclaw", "Birdclaw", "plugin-birdclaw", "/birdclaw", "BirdclawView"],
-  ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsView"],
-  [
-    "hyperliquid",
-    "Hyperliquid",
-    "plugin-hyperliquid",
-    "/hyperliquid",
-    "HyperliquidView",
-  ],
-  // NOTE: the LifeOps overview view was removed (PA no longer registers a
-  // `lifeops` view). Its stub entries are deleted so the smoke launcher matches
-  // production. The decomposed per-domain views below are the real surfaces.
-  // Decomposed personal-assistant domain views — registered so their dynamic
-  // bundles load in keyless ui-smoke and the decomposed-interactions spec can
-  // drive them (closing INTERACTION_DEBT in view-interaction-coverage.test.ts).
-  // NOTE: "documents" is intentionally NOT registered here — its view path
-  // `/documents` collides with the built-in "documents" tab (App.tsx findView
-  // matches `/${tab}`), which would hijack the `/character/documents` route.
-  ["calendar", "Calendar", "plugin-calendar", "/calendar", "CalendarView"],
-  ["finances", "Finances", "plugin-finances", "/finances", "FinancesView"],
-  ["focus", "Focus", "plugin-blocker", "/focus", "FocusView"],
-  ["goals", "Goals", "plugin-goals", "/goals", "GoalsView"],
-  ["health", "Health", "plugin-health", "/health", "HealthView"],
-  ["inbox", "Inbox", "plugin-inbox", "/inbox", "InboxView"],
-  ["todos", "Todos", "plugin-todos", "/todos", "TodosView"],
-  [
-    "relationships",
-    "Relationships",
-    "plugin-relationships",
-    "/relationships",
-    "RelationshipsView",
-  ],
-  ["messages", "Messages", "plugin-messages", "/messages", "MessagesView"],
-  [
-    "model-tester",
-    "Model Tester",
-    "app-model-tester",
-    "/model-tester",
-    "ModelTesterView",
-  ],
-  ["phone", "Phone", "plugin-phone", "/phone", "PhoneView"],
-  [
-    "polymarket",
-    "Polymarket",
-    "plugin-polymarket",
-    "/polymarket",
-    "PolymarketView",
-  ],
-  ["shopify", "Shopify", "plugin-shopify", "/shopify", "ShopifyView"],
-  ["steward", "Steward", "plugin-steward", "/steward", "StewardView"],
-  [
-    "wallet",
-    "Wallet",
-    "plugin-wallet-ui",
-    "/wallet",
-    "InventoryView",
-  ],
-  [
-    "vector-browser",
-    "Vector Browser",
-    "plugin-vector-browser",
-    "/vector-browser",
-    "VectorBrowserView",
-  ],
-  ["feed", "Feed", "plugin-feed", "/feed", "FeedView"],
-  [
-    "views-manager",
-    "Views",
-    "plugin-app-control",
-    "/views",
-    "ViewManagerView",
-  ],
-  [
-    "screenshare",
-    "Screenshare",
-    "plugin-screenshare",
-    "/screenshare",
-    "ScreenshareView",
-  ],
-  [
-    "social-alpha",
-    "Social Alpha",
-    "plugin-social-alpha",
-    "/social-alpha",
-    "SocialAlphaView",
-  ],
-  [
-    "task-coordinator",
-    "Task Coordinator",
-    "plugin-task-coordinator",
-    "/task-coordinator",
-    "TaskCoordinatorView",
-  ],
-  [
-    "orchestrator",
-    "Orchestrator",
-    "plugin-task-coordinator",
-    "/orchestrator",
-    "OrchestratorView",
-  ],
-  [
-    "trajectory-logger",
-    "Trajectory Logger",
-    "plugin-trajectory-logger",
-    "/trajectory-logger",
-    "TrajectoryLoggerView",
-  ],
-  ["training", "Fine Tuning", "plugin-training", "/training", "FineTuningView"],
-];
+// `smokeViewDeclarations` is imported from ./smoke-view-declarations.mjs so it
+// stays pinned to shipping plugins by `checkSmokeViewParity` (removed views such
+// as Shopify/Steward/Social Alpha cannot reappear here). The viewType contract
+// still accepts future modalities; this fixture ships GUI-only rows.
 
 function smokeViewObject({
   id,
@@ -1787,22 +1690,71 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
     return;
   }
   const hostExternalSpecifiers = parseHostExternalSpecifiers(url);
-  if (!existsSync(assetPath)) {
-    if (subResource === "bundle.js") {
-      const source = smokeViewBundleSource(view);
+  if (subResource === "bundle.js") {
+    // The bundle route is the one an audit trusts to prove the production
+    // surface, so its provenance is always decided explicitly and echoed on the
+    // response header — real built bundle, marked synthesis, or (audit mode)
+    // observable failure — never a silent fabrication.
+    const provenance = resolveBundleProvenance({
+      viewId: view.id,
+      realBundleExists: existsSync(assetPath),
+      requireRealBundle: REQUIRE_REAL_VIEW_BUNDLES,
+    });
+    res.setHeader(VIEW_BUNDLE_PROVENANCE_HEADER, provenance.mode);
+    res.setHeader("X-Eliza-View-Component", view.componentExport);
+    res.setHeader("X-Eliza-View-Id", view.id);
+    if (provenance.mode === "missing-real-bundle") {
+      sendJson(req, res, provenance.status, {
+        error: `Missing production view bundle: ${view.pluginName}`,
+        viewId: view.id,
+        componentExport: view.componentExport,
+        provenance: provenance.mode,
+        expectedBundlePath: `plugins/${view._smokePluginDirName}/dist/views/bundle.js`,
+        hint: "Build the plugin view bundle (bun run build-views) before running the audit; audit mode refuses to fabricate a placeholder.",
+      });
+      return;
+    }
+    if (provenance.mode === "real-dist") {
+      const rawBody = readFileSync(assetPath);
       const body =
         hostExternalSpecifiers.length > 0
-          ? wrapBundleAsHostExternalFactory(source, hostExternalSpecifiers)
-          : source;
+          ? Buffer.from(
+              wrapBundleAsHostExternalFactory(
+                rawBody.toString("utf8"),
+                hostExternalSpecifiers,
+              ),
+              "utf8",
+            )
+          : rawBody;
       sendBinary(
         req,
         res,
-        200,
+        provenance.status,
         "application/javascript; charset=utf-8",
-        Buffer.from(body, "utf8"),
+        body,
       );
       return;
     }
+    // Non-audit synthesized placeholder: prefix a provenance banner so the byte
+    // stream itself, not just the header, marks the bundle as synthesized.
+    const banner =
+      `/* eliza-view-bundle-provenance: ${provenance.mode}; component=${view.componentExport}; view=${view.id} */\n` +
+      `globalThis.__ELIZA_VIEW_BUNDLE_PROVENANCE__ = Object.assign(globalThis.__ELIZA_VIEW_BUNDLE_PROVENANCE__ || {}, { ${JSON.stringify(view.id)}: ${JSON.stringify(provenance.mode)} });\n`;
+    const source = banner + smokeViewBundleSource(view);
+    const body =
+      hostExternalSpecifiers.length > 0
+        ? wrapBundleAsHostExternalFactory(source, hostExternalSpecifiers)
+        : source;
+    sendBinary(
+      req,
+      res,
+      provenance.status,
+      "application/javascript; charset=utf-8",
+      Buffer.from(body, "utf8"),
+    );
+    return;
+  }
+  if (!existsSync(assetPath)) {
     sendJson(req, res, 404, { error: `View asset not found: ${subResource}` });
     return;
   }

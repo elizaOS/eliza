@@ -78,19 +78,6 @@ async function captureViewCase(
   try {
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
-    if (view.id === "social-alpha") {
-      await page.route("**/api/social-alpha/leaderboard", async (route) => {
-        if (route.request().method() !== "GET") {
-          await route.fallback();
-          return;
-        }
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ data: [] }),
-        });
-      });
-    }
 
     await page
       .goto(view.path, {
