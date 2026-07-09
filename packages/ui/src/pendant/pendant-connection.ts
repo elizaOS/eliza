@@ -39,8 +39,8 @@ import {
 } from "./connect-timeout";
 import {
   OMI_OPUS_SAMPLE_RATE_HZ,
-  OmiFrameReassembler,
   type OmiCodecId,
+  OmiFrameReassembler,
 } from "./omi-protocol";
 import {
   createPendantAudioDecoder,
@@ -48,10 +48,12 @@ import {
 } from "./opus-frame-decoder";
 import type { PendantTransport } from "./pendant-transport";
 import { isUserCancelled } from "./pendant-transport";
+import { isPendantSupported, selectPendantTransport } from "./select-transport";
 import {
-  isPendantSupported,
-  selectPendantTransport,
-} from "./select-transport";
+  dispatchPendantTranscriptSegment,
+  normalizePendantAsrWords,
+  type PendantTranscriptSegmentDetail,
+} from "./transcript-segment-event";
 
 export type PendantStatus =
   | "unsupported"
@@ -62,6 +64,7 @@ export type PendantStatus =
   | "listening" // audio frames arriving, VAD idle (no speech yet)
   | "hearing" // VAD sees speech in the current utterance
   | "transcribing"
+  | "paused" // ambient capture paused by the user (frames ignored)
   | "error";
 
 export interface PendantState {
@@ -81,8 +84,14 @@ export interface PendantState {
   lastTranscript: string | null;
   /** Cumulative count of BLE audio packets dropped (loss accounting). */
   droppedPackets: number;
-  /** Last error message, when `status === "error"`. */
+  /** Last connection failure or non-fatal ASR warning shown in the transcript UI. */
   error: string | null;
+  /**
+   * True while ambient capture is paused. When paused, audio frames are still
+   * received (the BLE link stays up + battery still updates) but are dropped
+   * before the VAD, so no segments are produced.
+   */
+  paused: boolean;
 }
 
 export interface PendantConnectionOptions {
@@ -94,6 +103,14 @@ export interface PendantConnectionOptions {
   vadSilenceMs?: number;
   /** VAD RMS speech threshold. */
   vadSpeechRmsThreshold?: number;
+  /**
+   * Called for each ambient-transcript segment as it moves through its
+   * lifecycle (pending → resolved/dropped). Distinct from {@link onTranscript},
+   * which only fires on a resolved turn (and drives the VOICE_DM send). The
+   * transcript surface listens to this for interim state; if omitted the
+   * segment window events are still dispatched globally.
+   */
+  onSegment?: (detail: PendantTranscriptSegmentDetail) => void;
   /** Per-step connect timeout (ms). Defaults to {@link DEFAULT_STEP_TIMEOUT_MS}. */
   stepTimeoutMs?: number;
   /**
@@ -110,6 +127,11 @@ export const PENDANT_VOICE_TRANSCRIPT_EVENT =
 
 export interface PendantVoiceTranscriptDetail {
   text: string;
+}
+
+function formatPendantAsrError(err: unknown): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  return `Pendant ASR failed: ${detail}`;
 }
 
 /** Dispatch a finalized pendant transcript for the shell to send as VOICE_DM. */
@@ -141,13 +163,20 @@ export class PendantConnection {
   private utterance: Float32Array[] = [];
   private utteranceSamples = 0;
   private detector:
-    | ((pcm: Float32Array, t?: number) => {
+    | ((
+        pcm: Float32Array,
+        t?: number,
+      ) => {
         shouldBuffer: boolean;
         shouldStop: boolean;
       })
     | null = null;
   private sawSpeech = false;
 
+  /** Ambient capture paused by the user (frames dropped before the VAD). */
+  private paused = false;
+  /** Tie-breaker for segment ids that already include wall-clock timing. */
+  private segmentSeq = 0;
   private state: PendantState = {
     status: "idle",
     connectStep: "idle",
@@ -157,6 +186,7 @@ export class PendantConnection {
     lastTranscript: null,
     droppedPackets: 0,
     error: null,
+    paused: false,
   };
 
   /** True while an utterance is being transcribed — serializes finalizations. */
@@ -177,11 +207,14 @@ export class PendantConnection {
     this.decoder?.free();
     this.decoder = null;
     this.reassembler.reset();
+    this.paused = false;
+    this.resetDetector();
     if (this.state.status !== "error") {
       this.patch({
         status: "idle",
         connectStep: "idle",
         deviceName: this.state.deviceName,
+        paused: false,
       });
     }
   };
@@ -199,6 +232,11 @@ export class PendantConnection {
   private patch(next: Partial<PendantState>): void {
     this.state = { ...this.state, ...next };
     this.opts.onState(this.state);
+  }
+
+  private emitSegment(detail: PendantTranscriptSegmentDetail): void {
+    dispatchPendantTranscriptSegment(detail);
+    this.opts.onSegment?.(detail);
   }
 
   private resetDetector(): void {
@@ -251,8 +289,7 @@ export class PendantConnection {
 
   /** Request a device, connect GATT, subscribe to audio + battery. */
   async connect(): Promise<void> {
-    const transport =
-      (this.opts.createTransport ?? selectPendantTransport)();
+    const transport = (this.opts.createTransport ?? selectPendantTransport)();
     if (!transport) {
       this.patch({
         status: "unsupported",
@@ -283,8 +320,9 @@ export class PendantConnection {
         await this.partialTeardown();
         // Give the stack a beat to fully drop the link before reconnecting.
         await new Promise((r) => setTimeout(r, 400));
-        const retryTransport =
-          (this.opts.createTransport ?? selectPendantTransport)();
+        const retryTransport = (
+          this.opts.createTransport ?? selectPendantTransport
+        )();
         if (!retryTransport) throw err;
         this.transport = retryTransport;
         retryTransport.onDisconnected(this.onDisconnected);
@@ -375,6 +413,7 @@ export class PendantConnection {
 
   private handleNotification(notification: Uint8Array): void {
     if (!this.decoder || !this.detector) return;
+    if (this.paused) return;
     const frames = this.reassembler.push(notification);
     for (const frame of frames) {
       if (frame.droppedBefore > 0) {
@@ -407,16 +446,39 @@ export class PendantConnection {
       // transcribed + dispatched strictly in order (never out of order).
       const chunks = this.utterance;
       const total = this.utteranceSamples;
+      const segment = this.createPendingSegment(total);
+      if (segment) this.emitSegment(segment);
       this.resetDetector();
-      this.finalizing = this.finalizing.then(() =>
-        this.finalizeUtterance(chunks, total),
-      );
+      if (segment) {
+        this.finalizing = this.finalizing.then(() =>
+          this.finalizeUtterance(chunks, total, segment),
+        );
+      }
     }
+  }
+
+  private createPendingSegment(
+    totalSamples: number,
+  ): PendantTranscriptSegmentDetail | null {
+    if (totalSamples === 0) return null;
+    const durationMs = Math.round(
+      (totalSamples / OMI_OPUS_SAMPLE_RATE_HZ) * 1000,
+    );
+    const endedAt = Date.now();
+    const startedAt = endedAt - durationMs;
+    return {
+      id: `pendant-segment-${startedAt}-${endedAt}-${++this.segmentSeq}`,
+      status: "pending",
+      startedAt,
+      endedAt,
+      durationMs,
+    };
   }
 
   private async finalizeUtterance(
     chunks: Float32Array[],
     total: number,
+    segment: PendantTranscriptSegmentDetail,
   ): Promise<void> {
     if (total === 0) return;
     const pcm = new Float32Array(total);
@@ -425,31 +487,63 @@ export class PendantConnection {
       pcm.set(c, off);
       off += c.length;
     }
-    // Guard against a spurious near-silent segment burning an ASR round-trip.
-    if (isSilentPcmAudio(pcm)) return;
+    if (isSilentPcmAudio(pcm)) {
+      this.emitSegment({ ...segment, status: "dropped" });
+      return;
+    }
 
     const wav = encodeMonoPcm16Wav(pcm, OMI_OPUS_SAMPLE_RATE_HZ);
     const wasStatus = this.state.status;
     this.patch({ status: "transcribing" });
     try {
-      const { text } = await transcribeLocalInferenceWav(wav);
+      const { text, words } = await transcribeLocalInferenceWav(wav);
       dispatchPendantVoiceTranscript(text);
-      this.patch({ lastTranscript: text });
+      this.patch({ lastTranscript: text, error: null });
+      this.emitSegment({
+        ...segment,
+        status: "resolved",
+        text,
+        words: normalizePendantAsrWords(words, segment.durationMs),
+      });
       this.opts.onTranscript?.(text);
-    } catch {
-      // Empty transcript / ASR error — silently drop this turn (the mic path
-      // surfaces these as toasts; the pendant is ambient, so we stay quiet and
-      // just keep listening).
+    } catch (err) {
+      // ASR failure is non-fatal for ambient capture, but it must stay visible
+      // so the transcript surface does not look healthy while segments drop.
+      this.patch({ error: formatPendantAsrError(err) });
+      this.emitSegment({ ...segment, status: "dropped" });
     } finally {
       // Return to the ambient listening state (or hearing if speech already
       // resumed while we were transcribing).
       const next =
         wasStatus === "error"
           ? "error"
-          : this.sawSpeech
-            ? "hearing"
-            : "listening";
+          : this.paused
+            ? "paused"
+            : this.sawSpeech
+              ? "hearing"
+              : "listening";
       if (this.state.status === "transcribing") this.patch({ status: next });
+    }
+  }
+
+  /** Pause ambient capture without disconnecting BLE or battery notifications. */
+  pause(): void {
+    if (this.paused) return;
+    this.paused = true;
+    this.reassembler.reset();
+    this.resetDetector();
+    this.patch({ paused: true, status: "paused" });
+  }
+
+  /** Resume feeding decoded pendant audio into VAD. */
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    this.resetDetector();
+    if (this.transport && this.decoder) {
+      this.patch({ paused: false, status: "listening" });
+    } else {
+      this.patch({ paused: false, status: this.state.status });
     }
   }
 
@@ -472,11 +566,13 @@ export class PendantConnection {
     this.decoder = null;
     this.transport = null;
     this.reassembler.reset();
+    this.paused = false;
     this.patch({
       status: "idle",
       connectStep: "idle",
       batteryPercent: null,
       codecId: null,
+      paused: false,
     });
   }
 }
@@ -490,6 +586,6 @@ export async function connectPendant(
   return conn;
 }
 
+export { isPendantSupported } from "./select-transport";
 // Re-export for existing importers that pulled availability from this module.
 export { isWebBluetoothAvailable } from "./web-bluetooth-transport";
-export { isPendantSupported } from "./select-transport";

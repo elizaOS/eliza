@@ -20,11 +20,10 @@ import {
   Loader2,
   Radio,
 } from "lucide-react";
-import * as React from "react";
-
-import { usePendant } from "../../pendant/usePendant";
-import type { PendantStatus } from "../../pendant/pendant-connection";
+import type * as React from "react";
 import type { PendantConnectStep } from "../../pendant/connect-timeout";
+import type { PendantStatus } from "../../pendant/pendant-connection";
+import { usePendant } from "../../pendant/usePendant";
 import { Button } from "../ui/button";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
 
@@ -46,6 +45,8 @@ function statusLabel(status: PendantStatus): string {
       return "Hearing you…";
     case "transcribing":
       return "Transcribing…";
+    case "paused":
+      return "Paused";
     case "error":
       return "Connection error";
   }
@@ -80,7 +81,8 @@ function isLive(status: PendantStatus): boolean {
     status === "connected" ||
     status === "listening" ||
     status === "hearing" ||
-    status === "transcribing"
+    status === "transcribing" ||
+    status === "paused"
   );
 }
 
@@ -142,7 +144,7 @@ export function PendantSettingsCard(): React.ReactElement {
             ) : null}
             {state.status === "hearing" ? (
               <Radio
-                className="size-4 animate-pulse text-accent"
+                className="size-4 animate-pulse text-accent motion-reduce:animate-none"
                 aria-hidden
                 data-testid="pendant-hearing-indicator"
               />

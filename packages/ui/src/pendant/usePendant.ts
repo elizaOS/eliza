@@ -16,11 +16,13 @@ import {
   type PendantConnectionOptions,
   type PendantState,
 } from "./pendant-connection";
+import type { PendantTranscriptSegmentDetail } from "./transcript-segment-event";
 
 export interface UsePendantOptions {
   vadSilenceMs?: number;
   vadSpeechRmsThreshold?: number;
   onTranscript?: (text: string) => void;
+  onSegment?: (detail: PendantTranscriptSegmentDetail) => void;
 }
 
 export interface UsePendantResult {
@@ -28,6 +30,8 @@ export interface UsePendantResult {
   supported: boolean;
   connect: () => void;
   disconnect: () => void;
+  pause: () => void;
+  resume: () => void;
 }
 
 const INITIAL_STATE: PendantState = {
@@ -39,6 +43,7 @@ const INITIAL_STATE: PendantState = {
   lastTranscript: null,
   droppedPackets: 0,
   error: null,
+  paused: false,
 };
 
 export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
@@ -56,6 +61,7 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
     const opts: PendantConnectionOptions = {
       onState: setState,
       onTranscript: optionsRef.current.onTranscript,
+      onSegment: optionsRef.current.onSegment,
       vadSilenceMs: optionsRef.current.vadSilenceMs,
       vadSpeechRmsThreshold: optionsRef.current.vadSpeechRmsThreshold,
     };
@@ -70,6 +76,14 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
     void conn?.disconnect();
   }, []);
 
+  const pause = React.useCallback(() => {
+    connectionRef.current?.pause();
+  }, []);
+
+  const resume = React.useCallback(() => {
+    connectionRef.current?.resume();
+  }, []);
+
   // Tear down on unmount so a background BLE stream doesn't outlive the view.
   React.useEffect(() => {
     return () => {
@@ -78,5 +92,5 @@ export function usePendant(options: UsePendantOptions = {}): UsePendantResult {
     };
   }, []);
 
-  return { state, supported, connect, disconnect };
+  return { state, supported, connect, disconnect, pause, resume };
 }
