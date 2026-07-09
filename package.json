@@ -39,6 +39,7 @@
     "audit:ui-determinism": "node packages/scripts/audit-ui-determinism.mjs",
     "audit:ui-determinism:self-test": "node packages/scripts/audit-ui-determinism.mjs --self-test",
     "audit:ui-determinism:update": "node packages/scripts/audit-ui-determinism.mjs --update-baseline",
+    "audit:mvp-board": "node packages/scripts/audit-mvp-project-board.mjs",
     "audit:focused-tests": "node packages/scripts/audit-focused-skipped-tests.mjs",
     "audit:focused-tests:self-test": "node packages/scripts/audit-focused-skipped-tests.mjs --self-test",
     "audit:type-duplication": "node packages/scripts/type-duplication-audit.mjs",
