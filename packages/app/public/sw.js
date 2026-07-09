@@ -190,17 +190,28 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Auth navigations are NEVER intercepted: the sign-in page and the OAuth
-  // callback must always load the freshest shell from the network. A stale
-  // cached shell can carry an outdated build — e.g. one baked with the wrong
-  // Steward tenant — which makes the code exchange fail with 401, and caching a
-  // one-time `?code=` callback URL risks replaying a consumed code. Bypassing
-  // (no respondWith) lets the browser fetch directly, uncached.
+  // Auth requests are NEVER cached: the sign-in page and the OAuth callback
+  // must always load the freshest shell from the network. A stale cached
+  // shell can carry an outdated build — e.g. one baked with the wrong
+  // Steward tenant — which makes the code exchange fail with 401, and caching
+  // a one-time `?code=` callback URL risks replaying a consumed code. But a
+  // bare bypass (no respondWith) leaves the navigation-preload response —
+  // already in flight once `activate` enabled preload — unconsumed, so the
+  // browser cancels it, logs a "navigation preload request was cancelled"
+  // warning, and wastes the round trip on the sign-in golden path. Take over
+  // auth navigations as a pure network passthrough instead: consume the
+  // preload when present, else fetch the original request untouched (same
+  // credentials/redirect semantics), touching no cache in either direction.
+  // Non-navigation requests (the browser never preloads those) stay fully
+  // bypassed, which is behavior-identical to a direct browser fetch.
   if (
     pathname === "/login" ||
     url.searchParams.has("code") ||
     url.searchParams.has("token")
   ) {
+    if (request.mode === "navigate") {
+      event.respondWith(networkPassthrough(request, event.preloadResponse));
+    }
     return;
   }
 
@@ -369,6 +380,31 @@ async function networkFirst(request, cacheName, preloadResponsePromise) {
     const cached = await cache.match(request);
     return cached ?? new Response("Offline", { status: 503 });
   }
+}
+
+/**
+ * Pure network passthrough (no cache reads, no cache writes) for auth
+ * navigations (/login and the OAuth callback). Consumes the browser's
+ * navigation-preload response when one was started — leaving it unconsumed
+ * cancels the parallel fetch and logs a "navigation preload request was
+ * cancelled" warning — else fetches the original request untouched, so the
+ * served response is byte-for-byte what the network returns.
+ * `preloadResponse` resolves undefined when preload wasn't started (preload
+ * disabled/unsupported), and older engines don't expose the property at all;
+ * both fall through to the plain fetch.
+ */
+async function networkPassthrough(request, preloadResponsePromise) {
+  try {
+    const preloaded = preloadResponsePromise
+      ? await preloadResponsePromise
+      : undefined;
+    if (preloaded) return preloaded;
+  } catch {
+    // Preload failed or was aborted — fall through to a direct fetch so the
+    // auth navigation is never more fragile than the browser fetch that the
+    // old bypass delegated to.
+  }
+  return fetch(request);
 }
 
 /**
