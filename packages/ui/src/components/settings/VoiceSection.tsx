@@ -17,6 +17,7 @@ import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { Input } from "../ui/input";
 import { AdvancedToggle } from "./AdvancedToggle";
+import { PendantSettingsCard } from "./PendantSettingsCard";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
@@ -197,6 +198,8 @@ export function VoiceSection({
             compact
           />
         </SettingsGroup>
+
+        <PendantSettingsCard />
 
         <SettingsGroup
           title={t("voicesection.chatGroupTitle", {

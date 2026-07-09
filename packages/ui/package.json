@@ -429,6 +429,7 @@
     "motion": "^12.38.0",
     "nanoid": "^5.1.6",
     "nprogress": "^0.2.0",
+    "opus-decoder": "0.7.11",
     "react-day-picker": "^10.0.1",
     "react-hook-form": "^7.74.0",
     "react-plaid-link": "^4.0.1",
