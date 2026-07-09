@@ -131,7 +131,26 @@ jobs:
           ELIZA_IOS_FULL_BUN_ENGINE: "0"
           ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator"
           ELIZA_IOS_BUILD_SDK: "iphonesimulator"
+          ELIZA_MOBILE_BUILD_TIMING_OUT: ${{ runner.temp }}/ios-simulator-build-timing.json
+          ELIZA_MOBILE_BUILD_TIMING_TARGET: ios-ipa
           NODE_OPTIONS: "--max-old-space-size=8192"
+
+      - name: Check iOS simulator build-time budget
+        run: |
+          bun run --cwd packages/app perf:startup-budget -- \
+            --build-timing "$RUNNER_TEMP/ios-simulator-build-timing.json" \
+            --out "$RUNNER_TEMP/ios-simulator-build-budget-report.json"
+
+      - name: Upload iOS simulator build budget report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-simulator-build-budget
+          path: |
+            ${{ runner.temp }}/ios-simulator-build-timing.json
+            ${{ runner.temp }}/ios-simulator-build-budget-report.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify .app exists
         run: |
@@ -364,7 +383,26 @@ jobs:
           ELIZA_IOS_FULL_BUN_ENGINE: "1"
           ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator"
           ELIZA_IOS_BUILD_SDK: "iphonesimulator"
+          ELIZA_MOBILE_BUILD_TIMING_OUT: ${{ runner.temp }}/ios-full-bun-build-timing.json
+          ELIZA_MOBILE_BUILD_TIMING_TARGET: ios-ipa
           NODE_OPTIONS: "--max-old-space-size=8192"
+
+      - name: Check iOS full-Bun build-time budget
+        run: |
+          bun run --cwd packages/app perf:startup-budget -- \
+            --build-timing "$RUNNER_TEMP/ios-full-bun-build-timing.json" \
+            --out "$RUNNER_TEMP/ios-full-bun-build-budget-report.json"
+
+      - name: Upload iOS full-Bun build budget report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-full-bun-build-budget
+          path: |
+            ${{ runner.temp }}/ios-full-bun-build-timing.json
+            ${{ runner.temp }}/ios-full-bun-build-budget-report.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify .app exists
         run: |
@@ -595,6 +633,25 @@ jobs:
           # Real local/AOSP Android builds still fail if fork llama libs are
           # missing; the opt-out only lets CI validate Capacitor/Gradle wiring.
           ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
+          ELIZA_MOBILE_BUILD_TIMING_OUT: ${{ runner.temp }}/android-cloud-debug-build-timing.json
+          ELIZA_MOBILE_BUILD_TIMING_TARGET: android-apk
+
+      - name: Check Android cloud-debug build-time budget
+        run: |
+          bun run --cwd packages/app perf:startup-budget -- \
+            --build-timing "$RUNNER_TEMP/android-cloud-debug-build-timing.json" \
+            --out "$RUNNER_TEMP/android-cloud-debug-build-budget-report.json"
+
+      - name: Upload Android cloud-debug build budget report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-cloud-debug-build-budget
+          path: |
+            ${{ runner.temp }}/android-cloud-debug-build-timing.json
+            ${{ runner.temp }}/android-cloud-debug-build-budget-report.json
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify APK exists
         run: |
