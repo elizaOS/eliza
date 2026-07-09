@@ -101,7 +101,16 @@ async function flattenNestedSource() {
     }
 
     await removePathRecursive(targetEntry);
-    await retryTransientFsOperation(() => fs.rename(stagingEntry, targetEntry));
+    try {
+      await retryTransientFsOperation(() =>
+        fs.rename(stagingEntry, targetEntry),
+      );
+    } catch (error) {
+      if (error?.code === "ENOENT" && (await pathExists(targetEntry))) {
+        continue;
+      }
+      throw error;
+    }
   }
 }
 
