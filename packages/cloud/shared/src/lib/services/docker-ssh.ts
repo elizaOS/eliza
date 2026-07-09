@@ -159,6 +159,13 @@ export class DockerSSHClient {
   /** Max number of concurrent SSH connections in pool to prevent unbounded growth. */
   private static readonly MAX_POOL_SIZE = 50;
 
+  private static warnDisconnectFailure(poolKey: string, err: unknown): void {
+    // error-policy:J6 best-effort teardown; pool eviction continues, but SSH cleanup failure must remain observable.
+    logger.warn(
+      `[docker-ssh] error disconnecting pooled client ${poolKey}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
   /**
    * Get (or create) a pooled client for the given hostname.
    * Uses default SSH port / user / key unless the pool entry was created
@@ -189,7 +196,9 @@ export class DockerSSHClient {
         Date.now() - client.lastActivityMs > DockerSSHClient.IDLE_TIMEOUT_MS
       ) {
         logger.info(`[docker-ssh] Evicting idle connection for ${poolKey}`);
-        client.disconnect().catch(() => {});
+        client.disconnect().catch((err) => {
+          DockerSSHClient.warnDisconnectFailure(poolKey, err);
+        });
         DockerSSHClient.pool.delete(poolKey);
         client = undefined;
       }
@@ -200,7 +209,9 @@ export class DockerSSHClient {
           normalizeSshFingerprint(hostKeyFingerprint ?? "")
       ) {
         logger.info(`[docker-ssh] Evicting pooled connection for ${poolKey} — fingerprint changed`);
-        client.disconnect().catch(() => {});
+        client.disconnect().catch((err) => {
+          DockerSSHClient.warnDisconnectFailure(poolKey, err);
+        });
         DockerSSHClient.pool.delete(poolKey);
         client = undefined;
       }
@@ -222,7 +233,9 @@ export class DockerSSHClient {
           DockerSSHClient.pool
             .get(oldestKey)
             ?.disconnect()
-            .catch(() => {});
+            .catch((err) => {
+              DockerSSHClient.warnDisconnectFailure(oldestKey, err);
+            });
           DockerSSHClient.pool.delete(oldestKey);
         }
       }
