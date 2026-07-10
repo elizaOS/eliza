@@ -74,6 +74,15 @@ export type WalletEvidenceItem = {
   description: string;
 };
 
+export type WalletConfidenceAnalysis = {
+  rawScore: number;
+  maxScore: 100;
+  displayScore: string;
+  maxDisplayScore: 10;
+  level: "low" | "medium" | "high";
+  reasons: string[];
+};
+
 export type WalletEvidenceRecord = {
   id: string;
 
@@ -391,6 +400,7 @@ export type WalletFundingSummary = {
   fundingSourceType: "unknown" | "wallet" | "exchange" | "bridge" | "program";
   fundingSourceLabel?: WalletLabel | null;
   evidenceConfidence: "low" | "medium" | "high";
+  confidenceAnalysis?: WalletConfidenceAnalysis;
   confidence: "low" | "medium" | "high";
   notes: string[];
 };
