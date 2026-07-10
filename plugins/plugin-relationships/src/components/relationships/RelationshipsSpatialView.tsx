@@ -96,7 +96,7 @@ export function RelationshipsSpatialView({
   const dispatch = (action: string) => () => onAction?.(action);
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} shrink={0} width="100%">
       {snapshot.state === "loading" ? (
         <Text tone="muted" align="center" style="caption">
           Loading relationships

@@ -162,6 +162,29 @@ describe("DynamicViewLoader", () => {
     );
   });
 
+  it("does not reserve chat clearance owned by an enclosing shell", async () => {
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function ShellHostedPanel() {
+        return <div>Shell-hosted panel</div>;
+      },
+    }));
+
+    render(
+      <DynamicViewLoader
+        bundleUrl="/api/views/shell-hosted/bundle.js"
+        viewId="shell-hosted"
+        reserveChatClearance={false}
+      />,
+    );
+
+    await screen.findByText("Shell-hosted panel");
+    const surface = document.querySelector(
+      '[data-spatial-surface="gui"]',
+    ) as HTMLElement | null;
+    expect(surface?.style.paddingBottom).toBe("");
+    expect(surface?.style.paddingInlineEnd).toBe("");
+  });
+
   it("renders sandboxed iframe views from frameUrl and does not import bundleUrl", () => {
     const importBundle = vi.fn(async () => ({
       default: function ShouldNotLoad() {
