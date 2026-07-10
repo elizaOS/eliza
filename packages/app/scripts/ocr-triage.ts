@@ -76,7 +76,9 @@ interface OcrRecord extends OcrResult {
 }
 
 /** A report-authorized screenshot and its canonical evidence key. */
-export type AuthorizedShot = ReturnType<typeof buildAuditCaptureManifest>[number];
+export type AuthorizedShot = ReturnType<
+  typeof buildAuditCaptureManifest
+>[number];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

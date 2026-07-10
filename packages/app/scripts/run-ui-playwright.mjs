@@ -207,11 +207,15 @@ function isProcessAlive(pid) {
 }
 
 function removePathRecursive(targetPath, label) {
-  const result = spawnSync("node", [cleanupHelperScript, targetPath], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    stdio: "pipe",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [cleanupHelperScript, targetPath],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    },
+  );
 
   if (result.error) {
     throw result.error;
@@ -240,6 +244,7 @@ function cleanAuditAppOutput() {
   // Cleaning here survives worker restarts and retries without erasing screenshots
   // that earlier tests in the same run already proved.
   removePathRecursive(outputDir, "app aesthetic audit output");
+  fs.mkdirSync(outputDir, { recursive: true });
   console.log(`[ui-smoke] Reset app aesthetic audit output: ${outputDir}`);
 }
 

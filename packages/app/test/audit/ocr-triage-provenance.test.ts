@@ -316,10 +316,10 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         "--out",
         join(dir, "ocr-triage.json"),
       ]),
-    ).rejects.toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    ).rejects.toThrow(/OCR input is not in the current audit report/);
     const { status, stderr } = run();
     expect(status).not.toBe(0);
-    expect(stderr).toMatch(/unexpected OCR record plugin-social-alpha-gui/);
+    expect(stderr).toMatch(/OCR input is not in the current audit report/);
   });
 
   it("exits non-zero when a report row's screenshot is missing", async () => {
@@ -420,6 +420,7 @@ describe("audit runner cleanup", () => {
 
     expect(output).toContain("Reset app aesthetic audit output");
     expect(output).toContain("Listing tests:");
+    expect(existsSync(dir)).toBe(true);
     expect(existsSync(stale)).toBe(false);
   }, 30_000);
 });
