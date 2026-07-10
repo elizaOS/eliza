@@ -124,13 +124,9 @@ function TodoRow({
 
   return (
     <div
-      // Home tone keeps its glass plate (wallpaper surface); the chat tone is
-      // a flat row — the status dot + text carry the structure, no box.
-      className={
-        isHome
-          ? "rounded-sm border border-white/15 bg-white/10 p-3 text-white"
-          : "py-1.5"
-      }
+      // The status dot + text carry the structure in both contexts. Home uses
+      // spacing and contrast rather than reintroducing card chrome.
+      className={isHome ? "p-3 text-white" : "py-1.5"}
     >
       <div className="flex items-start gap-2">
         <span

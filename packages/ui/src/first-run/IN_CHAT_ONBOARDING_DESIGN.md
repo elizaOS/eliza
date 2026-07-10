@@ -66,8 +66,8 @@ The desktop `?shellMode=chat-overlay` shell mounts the (headless,
 `firstRunComplete`-gated) conductor too, so a fresh chat-first desktop install
 seeds the same in-chat onboarding; once first-run completes the mount is a
 no-op (`App.chat-overlay-first-run.test.tsx`). The transcript's CHOICE widgets,
-any OAuth/secret blocks, and the unlocked composer are the interactive surfaces
-during onboarding.
+plus any OAuth/secret blocks they reveal, are the only interactive surfaces
+during onboarding; the composer remains locked until sign-in completes.
 
 ## Post-onboarding landing (#14362)
 

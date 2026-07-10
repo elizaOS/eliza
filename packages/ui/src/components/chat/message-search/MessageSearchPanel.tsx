@@ -133,7 +133,7 @@ export function MessageSearchPanel({
       // away when the results list above it is long.
       className={
         keyboardAnchored
-          ? "shrink-0 border-white/15 bg-white/[0.08] text-white shadow-sm placeholder:text-white/45 focus-visible:border-white/25 focus-visible:ring-white/10"
+          ? "shrink-0 border-white/15 bg-white/[0.08] text-white shadow-sm placeholder:text-white/45"
           : undefined
       }
     />

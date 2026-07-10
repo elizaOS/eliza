@@ -42,13 +42,10 @@
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
-import type { AgentNotification, NotificationCategory } from "@elizaos/core";
-import { tierForPriority } from "@elizaos/core";
-import { ChevronDown, ChevronUp, X } from "lucide-react";
+import type { AgentNotification } from "@elizaos/core";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { motion } from "motion/react";
 import {
-  type CSSProperties,
-  memo,
   type RefObject,
   useCallback,
   useEffect,
@@ -68,12 +65,25 @@ import {
   removeNotifications,
   useNotifications,
 } from "../../state/notifications/notification-store";
-import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import {
-  getChatSourceMeta,
-  hasChatSourceMeta,
-  normalizeChatSourceKey,
-} from "../composites/chat/chat-source.helpers";
+  ClearConfirmationContent,
+  groupDashboardNotifications,
+  isInterruptPriority,
+  NotificationRow,
+  orderDashboardNotifications,
+} from "./notification-shade-content";
+
+export {
+  __setNotificationRowRenderObserverForTests,
+  groupDashboardNotifications,
+  isInterruptPriority,
+  type NotificationRowProps,
+  notificationGroupKey,
+  notificationGroupLabel,
+  orderDashboardNotifications,
+  rowPropsEqual,
+} from "./notification-shade-content";
+
 import {
   LIQUID_GLASS_BLUR,
   LIQUID_GLASS_EDGE_SHADOW,
@@ -82,14 +92,25 @@ import {
   LiquidGlassRefractionDefs,
   liquidGlassRimCss,
 } from "./liquid-glass";
-import { RelativeTime } from "./RelativeTime";
+import {
+  applyNotificationPullPresentation,
+  dampenPull,
+  notificationGroupContainerOffset,
+  notificationGroupPullOffset,
+  notificationGroupPullVisibility,
+  notificationPullPresentation,
+  notificationPullRevealProgress,
+  notificationPullRevealStyle,
+  PULL_COMMIT_PX,
+  PULL_SLOP_PX,
+  visibleNotificationGroups,
+} from "./notification-shade-presentation";
 
-/**
- * Horizontal travel (px) a touch swipe must clear before the row commits to a
- * dismiss on release; below it the row springs back. Also the distance past
- * which the row is treated as thrown (fling out + remove).
- */
-const SWIPE_DISMISS_PX = 88;
+export {
+  dampenPull,
+  notificationPullRevealProgress,
+  PULL_COMMIT_PX,
+} from "./notification-shade-presentation";
 
 /**
  * Upper bound on rendered rows. The store caps the inbox at 300 but painting
@@ -106,18 +127,8 @@ const MAX_RENDERED_ROWS = 100;
  */
 const MAX_PULL_PREVIEW_GROUPS = 6;
 
-/**
- * Dampened overscroll travel (px) past the list top that commits the shade
- * mode change on release. The raw finger/mouse travel is roughly double
- * (see dampenPull); wheel deltas accumulate against the same threshold.
- */
-export const PULL_COMMIT_PX = 48;
-
 /** Empty feedback should latch after a normal short pull, not require a full shade drag. */
 const EMPTY_PULL_COMMIT_PX = PULL_COMMIT_PX / 2;
-
-/** Dead zone (px) before a vertical drag starts reading as a pull. */
-const PULL_SLOP_PX = 8;
 
 /**
  * Bottom-edge capture for the iOS-style upward close gesture. Keeping this
@@ -166,291 +177,6 @@ const STACK_LAYOUT_TRANSITION = {
   duration: 0.34,
   ease: [0.22, 1, 0.36, 1],
 } as const;
-
-/**
- * Rubber-band a raw downward overscroll travel into the dampened pull the
- * shade renders and commits against. Exported for the gesture tests.
- */
-export function dampenPull(rawDy: number): number {
-  return Math.min(Math.max(0, rawDy - PULL_SLOP_PX) * 0.5, 88);
-}
-
-/**
- * Convert the live rubber-band travel into a staggered reveal for rows that
- * are hidden while the shade is closed. Every revealed group reaches full opacity
- * at the commit point, so releasing a completed pull never causes a pop.
- */
-export function notificationPullRevealProgress(
-  pullPx: number,
-  groupIndex: number,
-): number {
-  const progress = Math.min(1, Math.max(0, pullPx / PULL_COMMIT_PX));
-  const stagger = Math.min(Math.max(groupIndex, 0), 4) * 0.06;
-  return Math.min(1, Math.max(0, (progress - stagger) / (1 - stagger)));
-}
-
-function notificationPullRevealStyle(progress: number): CSSProperties {
-  return {
-    opacity: progress,
-    transform: `translate3d(0, ${(1 - progress) * -8}px, 0)`,
-  };
-}
-
-function notificationPullPresentation(
-  pullPx: number,
-  shadeExpanded: boolean,
-  shadeClosing: boolean,
-) {
-  const dragCloseProgress =
-    shadeExpanded && !shadeClosing
-      ? notificationPullRevealProgress(-pullPx, 0)
-      : 0;
-  const committedCloseProgress = shadeClosing ? 1 : 0;
-  const shadeCloseProgress = Math.max(
-    dragCloseProgress,
-    committedCloseProgress,
-  );
-  const disposableContentVisibility = 1 - shadeCloseProgress;
-  const pullContentVisibility = shadeExpanded
-    ? disposableContentVisibility
-    : notificationPullRevealProgress(pullPx, 0);
-  const notificationCountVisibility = shadeExpanded
-    ? shadeCloseProgress
-    : 1 - notificationPullRevealProgress(pullPx, 0);
-  const clearControlVisibility = shadeExpanded
-    ? disposableContentVisibility
-    : pullPx > 0
-      ? notificationPullRevealProgress(pullPx, 0)
-      : 0;
-  return {
-    shadeCloseProgress,
-    committedCloseProgress,
-    disposableContentVisibility,
-    pullContentVisibility,
-    notificationCountVisibility,
-    notificationCountLayoutVisibility:
-      shadeExpanded && pullPx < 0 && !shadeClosing
-        ? 1
-        : notificationCountVisibility,
-    emptyStateVisibility: shadeExpanded
-      ? disposableContentVisibility
-      : notificationPullRevealProgress(pullPx, 0),
-    collapseControlVisibility: shadeExpanded
-      ? disposableContentVisibility
-      : notificationPullRevealProgress(pullPx, 0),
-    clearControlVisibility,
-    clearControlLayoutVisibility: shadeExpanded
-      ? shadeClosing || pullPx < 0
-        ? 0
-        : 1
-      : pullPx > 0
-        ? 1
-        : 0,
-  };
-}
-
-function notificationGroupContainerOffset(
-  pullPx: number,
-  shadeExpanded: boolean,
-  shadeClosing: boolean,
-): number {
-  if (shadeClosing) return 0;
-  if (shadeExpanded && pullPx < 0) {
-    return (1 - notificationPullRevealProgress(-pullPx, 0)) * 40;
-  }
-  if (!shadeExpanded && pullPx > 0) {
-    return (1 - notificationPullRevealProgress(pullPx, 0)) * -40;
-  }
-  return 0;
-}
-
-function notificationGroupPullOffset(
-  pullPx: number,
-  shadeExpanded: boolean,
-  shadeClosing: boolean,
-  groupVisibility: number,
-): number {
-  const countSlotCompensation =
-    shadeExpanded && pullPx < 0 && !shadeClosing
-      ? (1 - notificationPullRevealProgress(-pullPx, 0)) * -40
-      : 0;
-  return countSlotCompensation + (1 - groupVisibility) * -8;
-}
-
-function notificationGroupPullVisibility(
-  pullPx: number,
-  groupIndex: number,
-  shadeExpanded: boolean,
-  shadeClosing: boolean,
-  pullRevealed: boolean,
-): number {
-  if (pullRevealed) {
-    return notificationPullRevealProgress(pullPx, groupIndex);
-  }
-  if (shadeClosing) return 0;
-  if (shadeExpanded && pullPx < 0) {
-    return notificationPullRevealProgress(PULL_COMMIT_PX + pullPx, groupIndex);
-  }
-  return 1;
-}
-
-function applyNotificationPullPresentation(
-  root: HTMLElement | null,
-  pullPx: number,
-  shadeExpanded: boolean,
-  shadeClosing: boolean,
-  visibleGroups?: readonly HTMLElement[],
-): void {
-  if (!root) return;
-  const presentation = notificationPullPresentation(
-    pullPx,
-    shadeExpanded,
-    shadeClosing,
-  );
-  const count = root.querySelector<HTMLElement>(
-    "[data-notification-count-slot]",
-  );
-  if (count) {
-    count.style.height = `${presentation.notificationCountLayoutVisibility * 32}px`;
-    count.style.marginBottom = `${(presentation.notificationCountLayoutVisibility - 1) * 8}px`;
-    count.style.opacity = String(presentation.notificationCountVisibility);
-  }
-  const clearSlot = root.querySelector<HTMLElement>(
-    "[data-notification-clear-slot]",
-  );
-  if (clearSlot) {
-    clearSlot.style.height = `${presentation.clearControlLayoutVisibility * 32}px`;
-    clearSlot.style.marginBottom = `${(presentation.clearControlLayoutVisibility - 1) * 8}px`;
-    clearSlot.style.opacity = String(presentation.clearControlVisibility);
-    clearSlot.style.transform = `translate3d(0, ${(1 - presentation.clearControlVisibility) * -8}px, 0)`;
-  }
-  const empty = root.querySelector<HTMLElement>("[data-notification-empty]");
-  if (empty) {
-    Object.assign(
-      empty.style,
-      notificationPullRevealStyle(presentation.emptyStateVisibility),
-    );
-  }
-  const collapse = root.querySelector<HTMLElement>(
-    "[data-notification-collapse-footer]",
-  );
-  if (collapse) {
-    collapse.style.opacity = String(presentation.collapseControlVisibility);
-    collapse.style.transform = `translateY(${(1 - presentation.collapseControlVisibility) * 4}px)`;
-  }
-  const groups =
-    visibleGroups ??
-    root.querySelectorAll<HTMLElement>("[data-notification-group]");
-  for (const group of groups) {
-    const groupIndex = Number(group.dataset.notificationGroupIndex ?? 0);
-    const pullRevealed = group.hasAttribute("data-notification-pull-reveal");
-    const groupVisibility = notificationGroupPullVisibility(
-      pullPx,
-      groupIndex,
-      shadeExpanded,
-      shadeClosing,
-      pullRevealed,
-    );
-    const containerOffset = notificationGroupContainerOffset(
-      pullPx,
-      shadeExpanded,
-      shadeClosing,
-    );
-    group.style.transform = `translate3d(0, ${
-      containerOffset + (pullRevealed ? (1 - groupVisibility) * -8 : 0)
-    }px, 0)`;
-    if (pullRevealed) {
-      group.style.opacity = String(groupVisibility);
-    }
-    if (
-      !pullRevealed &&
-      !group.hasAttribute("data-rested-notification-group")
-    ) {
-      const content = group.querySelector<HTMLElement>(
-        ":scope > [data-notification-group-content]",
-      );
-      if (content) {
-        content.style.opacity = String(groupVisibility);
-        content.style.transform = `translate3d(0, ${notificationGroupPullOffset(
-          pullPx,
-          shadeExpanded,
-          shadeClosing,
-          groupVisibility,
-        )}px, 0)`;
-      }
-    }
-    if (!shadeExpanded && pullPx > 0) {
-      const content = group.querySelector<HTMLElement>(
-        ":scope > [data-notification-group-content][data-notification-stacked]",
-      );
-      if (content) {
-        const restedTailPx = Number(
-          content.dataset.notificationRestedTailPx ?? 0,
-        );
-        const expandedTailPx = Number(
-          content.dataset.notificationExpandedTailPx ?? restedTailPx,
-        );
-        const tailProgress = group.hasAttribute(
-          "data-rested-notification-group",
-        )
-          ? notificationPullRevealProgress(pullPx, groupIndex)
-          : 1;
-        const tailPx =
-          restedTailPx + (expandedTailPx - restedTailPx) * tailProgress;
-        content.style.paddingBottom = `${tailPx}px`;
-        for (const peek of content.querySelectorAll<HTMLElement>(
-          "[data-notification-stack-peek]",
-        )) {
-          peek.style.bottom = `${tailPx}px`;
-        }
-      }
-    }
-    const controls = group.querySelector<HTMLElement>(
-      "[data-notification-stack-controls]",
-    );
-    if (controls) {
-      controls.style.opacity = String(presentation.disposableContentVisibility);
-      controls.style.transform = `translate3d(0, ${(1 - presentation.disposableContentVisibility) * -6}px, 0)`;
-    }
-    for (const row of group.querySelectorAll<HTMLElement>(
-      "[data-notification-disposable-row]",
-    )) {
-      row.style.opacity = String(presentation.disposableContentVisibility);
-      row.style.transform = `translate3d(0, ${(1 - presentation.disposableContentVisibility) * -8}px, 0)`;
-    }
-    for (const peek of group.querySelectorAll<HTMLElement>(
-      "[data-notification-peek-mode]",
-    )) {
-      const baseOpacity = Number(peek.dataset.notificationPeekBaseOpacity ?? 1);
-      const mode = peek.dataset.notificationPeekMode;
-      const visibility =
-        mode === "close"
-          ? presentation.shadeCloseProgress
-          : mode === "disposable"
-            ? presentation.pullContentVisibility
-            : 1;
-      peek.style.opacity = String(baseOpacity * visibility);
-    }
-  }
-}
-
-function visibleNotificationGroups(
-  root: HTMLElement | null,
-  scrollport: HTMLElement | null,
-): HTMLElement[] | undefined {
-  if (!root || !scrollport) return undefined;
-  const viewport = scrollport.getBoundingClientRect();
-  const bufferPx = 120;
-  return Array.from(
-    root.querySelectorAll<HTMLElement>("[data-notification-group]"),
-  ).filter((group) => {
-    const bounds = group.getBoundingClientRect();
-    return (
-      bounds.bottom >= viewport.top - bufferPx &&
-      bounds.top <= viewport.bottom + bufferPx
-    );
-  });
-}
 
 /**
  * Scroll + glass polish for the shade, in one inline block (house pattern —
@@ -624,430 +350,13 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 }
 `;
 
-/**
- * Stable shade order: priority bucket, then recency, then id as the total
- * tiebreak. A total order, so live arrivals never reshuffle existing rows.
- * The shade has exactly one order — priority triage; there is no user-facing
- * sort mode.
- */
-export function orderDashboardNotifications(
-  notifications: readonly AgentNotification[],
-): AgentNotification[] {
-  return [...notifications].sort((a, b) => {
-    const byPriority =
-      (NOTIFICATION_PRIORITY_RANK[b.priority] ?? 1) -
-      (NOTIFICATION_PRIORITY_RANK[a.priority] ?? 1);
-    if (byPriority !== 0) return byPriority;
-    if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
-    return a.id.localeCompare(b.id);
-  });
-}
-
-/** Only interrupt-tier notifications remain visible before shade expansion. */
-export function isInterruptPriority(n: AgentNotification): boolean {
-  return tierForPriority(n.priority) === "interrupt";
-}
-
-/** Human group labels for producer categories with no in-app deep link. */
-const CATEGORY_GROUP_LABELS: Record<NotificationCategory, string> = {
-  reminder: "Reminders",
-  task: "Tasks",
-  workflow: "Workflows",
-  agent: "Agents",
-  approval: "Needs response",
-  message: "Messages",
-  health: "Health",
-  system: "System",
-  general: "General",
-};
-
-/**
- * Stable producer identity for an Apple-style notification stack. `source` is
- * the canonical notification contract's app/plugin identifier; normalize it
- * with the existing chat-source helper so casing cannot split one producer.
- * Empty legacy sources fall back to category rather than merging globally.
- */
-export function notificationGroupKey(n: AgentNotification): string {
-  return normalizeChatSourceKey(n.source) ?? `category:${n.category}`;
-}
-
-/** Accessible producer label for a source-grouped notification stack. */
-export function notificationGroupLabel(n: AgentNotification): string {
-  const source = normalizeChatSourceKey(n.source);
-  if (source) return getChatSourceMeta(source).label;
-  return CATEGORY_GROUP_LABELS[n.category] ?? CATEGORY_GROUP_LABELS.general;
-}
-
-/**
- * Shade rows grouped by producer. Rows keep the stable priority→recency order;
- * a group sits where its highest-ranked row would (Map insertion order), so
- * the most urgent producer stacks first — priority-sorted groups, newest inside.
- * In the expanded shade each group renders as a Z-stack with `rows[0]` on top.
- */
-export function groupDashboardNotifications(
-  notifications: readonly AgentNotification[],
-): Array<{ key: string; label: string; rows: AgentNotification[] }> {
-  const groups = new Map<
-    string,
-    { label: string; rows: AgentNotification[] }
-  >();
-  for (const n of orderDashboardNotifications(notifications)) {
-    const key = notificationGroupKey(n);
-    const group = groups.get(key);
-    if (group) group.rows.push(n);
-    else groups.set(key, { label: notificationGroupLabel(n), rows: [n] });
-  }
-  return [...groups.entries()].map(([key, group]) => ({ key, ...group }));
-}
-
-function ClearConfirmationContent({
-  confirming,
-}: {
-  confirming: boolean;
-}): React.JSX.Element {
-  return (
-    <span className="relative flex h-full w-full items-center justify-center">
-      <X
-        aria-hidden
-        className={cn(
-          "eliza-notif-control-transition absolute h-3.5 w-3.5 transition-[opacity,transform] duration-200 ease-out",
-          confirming ? "scale-75 opacity-0" : "scale-100 opacity-100",
-        )}
-      />
-      <span
-        aria-hidden={!confirming}
-        className={cn(
-          "eliza-notif-control-transition absolute transition-[opacity,transform] duration-200 ease-out",
-          confirming
-            ? "translate-y-0 scale-100 opacity-100"
-            : "translate-y-0.5 scale-95 opacity-0",
-        )}
-      >
-        Clear
-      </span>
-    </span>
-  );
-}
-
-function NotificationSourceIcon({
-  count,
-  source,
-}: {
-  count?: number;
-  source: string;
-}): React.JSX.Element {
-  const meta = getChatSourceMeta(source);
-  const Icon = meta.Icon;
-  const registered = hasChatSourceMeta(source);
-  return (
-    <span
-      data-testid="notification-source-icon"
-      data-source={normalizeChatSourceKey(source) ?? undefined}
-      role="img"
-      aria-label={
-        count && count > 1
-          ? `${meta.label}, ${count} notifications`
-          : meta.label
-      }
-      title={meta.label}
-      className={cn(
-        "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
-        registered && meta.iconClassName,
-      )}
-    >
-      {registered ? (
-        <Icon className="h-5 w-5" />
-      ) : (
-        <span aria-hidden className="text-sm font-semibold text-white/85">
-          {meta.label.trim().charAt(0).toUpperCase() || "E"}
-        </span>
-      )}
-      {count && count > 1 ? (
-        <span
-          data-testid="notification-source-count"
-          aria-hidden
-          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
-        >
-          {count > 99 ? "99+" : count}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-/**
- * Memoized (binding pattern, spec §C.4): the relative timestamp lives in a
- * `<RelativeTime>` leaf that owns the minute tick, so the row never re-renders
- * to keep "5m" honest. `arePropsEqual` compares the identity fields that drive
- * its markup and activation: `id`, `title`, `body`, `deepLink`, transient shade
- * visibility, plus the callbacks (stable via the parent's `useCallback`).
- * `createdAt` is
- * intentionally NOT compared: it feeds only the leaf.
- */
-export function rowPropsEqual(
-  prev: NotificationRowProps,
-  next: NotificationRowProps,
-): boolean {
-  const a = prev.notification;
-  const b = next.notification;
-  return (
-    a.id === b.id &&
-    a.title === b.title &&
-    a.body === b.body &&
-    a.deepLink === b.deepLink &&
-    a.source === b.source &&
-    prev.stackKey === next.stackKey &&
-    prev.stackCount === next.stackCount &&
-    prev.pullRevealProgress === next.pullRevealProgress &&
-    prev.shadeVisibility === next.shadeVisibility &&
-    prev.onExpandStack === next.onExpandStack &&
-    prev.onOpen === next.onOpen &&
-    prev.onDismiss === next.onDismiss
-  );
-}
-
-export interface NotificationRowProps {
-  notification: AgentNotification;
-  /** Present only for the collapsed top card; tapping fans this producer. */
-  stackKey?: string;
-  /** Producer-stack size shown as a badge on the collapsed top card. */
-  stackCount?: number;
-  /** Live pull reveal for a row added to an already-visible fanned group. */
-  pullRevealProgress?: number;
-  /** Close visibility for an extra fanned row folding back into its stack. */
-  shadeVisibility?: number;
-  onExpandStack?: (key: string) => void;
-  onOpen: (n: AgentNotification) => void;
-  onDismiss: (id: string) => void;
-}
-
-let notificationRowRenderObserverForTests: (() => void) | null = null;
 let notificationsHomeCenterRenderObserverForTests: (() => void) | null = null;
-
-export function __setNotificationRowRenderObserverForTests(
-  observer: (() => void) | null,
-): void {
-  notificationRowRenderObserverForTests = observer;
-}
 
 export function __setNotificationsHomeCenterRenderObserverForTests(
   observer: (() => void) | null,
 ): void {
   notificationsHomeCenterRenderObserverForTests = observer;
 }
-
-/**
- * One liquid-glass notification card. Tap opens its safe destination and
- * acknowledges the row; a row without a destination is simply acknowledged.
- * Dragging horizontally — mouse or touch — past {@link SWIPE_DISMISS_PX}
- * dismisses it. There is no corner X or secondary action strip. The title line
- * is title + relative time only — no count chip, no icon, no accent rail.
- */
-const NotificationRow = memo(function NotificationRow({
-  notification,
-  stackKey,
-  stackCount,
-  pullRevealProgress,
-  shadeVisibility,
-  onExpandStack,
-  onOpen,
-  onDismiss,
-}: NotificationRowProps): React.JSX.Element {
-  notificationRowRenderObserverForTests?.();
-
-  // Swipe-to-dismiss state. `swipeX` drives the live drag transform; refs hold
-  // the in-flight gesture so the memoized row never needs the parent to
-  // re-render mid-drag.
-  const [swipeX, setSwipeX] = useState(0);
-  const [dismissing, setDismissing] = useState<"left" | "right" | null>(null);
-  const gesture = useRef<{
-    id: number;
-    startX: number;
-    startY: number;
-    axis: "none" | "x" | "y";
-  } | null>(null);
-  // Set true by a completed drag so its synthetic click does not also open the
-  // notification.
-  const suppressClick = useRef(false);
-
-  const clearGesture = useCallback(() => {
-    gesture.current = null;
-  }, []);
-
-  const commitDismiss = useCallback(
-    (dir: "left" | "right") => {
-      suppressClick.current = true;
-      setDismissing(dir);
-      // Let the fling-out transition paint before the store removes the row.
-      window.setTimeout(() => onDismiss(notification.id), 180);
-    },
-    [notification.id, onDismiss],
-  );
-
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    suppressClick.current = false;
-    gesture.current = {
-      id: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      axis: "none",
-    };
-  }, []);
-
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const g = gesture.current;
-    if (!g || g.id !== e.pointerId) return;
-    const dx = e.clientX - g.startX;
-    const dy = e.clientY - g.startY;
-    // Lock the axis on first real movement: a vertical drag belongs to the
-    // list scroller (or the shade's pull gesture), only a horizontal one is a
-    // dismiss swipe. Mouse and touch both swipe — the rows are buttons (no
-    // text selection to hijack), and the 8px lock threshold keeps ordinary
-    // clicks from starting a drag.
-    if (g.axis === "none" && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-      g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-    }
-    if (g.axis !== "x") return;
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    setSwipeX(dx);
-  }, []);
-
-  const onPointerEnd = useCallback(
-    (e: React.PointerEvent) => {
-      const g = gesture.current;
-      if (!g || g.id !== e.pointerId) {
-        clearGesture();
-        return;
-      }
-      clearGesture();
-      // A committed drag on either axis never doubles as a tap: a horizontal
-      // one is a swipe (may spring back), a vertical one belongs to the
-      // scroller/pull gesture — neither may open the row on release.
-      if (g.axis !== "none") suppressClick.current = true;
-      if (g.axis === "x") {
-        const dx = e.clientX - g.startX;
-        if (Math.abs(dx) >= SWIPE_DISMISS_PX) {
-          commitDismiss(dx < 0 ? "left" : "right");
-          return;
-        }
-      }
-      setSwipeX(0);
-    },
-    [clearGesture, commitDismiss],
-  );
-
-  // Lock-screen restraint: no per-row icon chip, no accent rail, no count
-  // chip — a notification is its glass card, line + time, like an iOS lock
-  // note. Coalesced arrivals speak through their title/body, not a bare number.
-  const dragging = swipeX !== 0 && !dismissing;
-  return (
-    <li
-      className={cn(
-        "eliza-notif-row relative",
-        pullRevealProgress !== undefined &&
-          "eliza-notif-pull-reveal pointer-events-none",
-        shadeVisibility !== undefined && "eliza-notif-shade-transition grid",
-      )}
-      data-notification-pull-reveal={
-        pullRevealProgress !== undefined ? "" : undefined
-      }
-      data-notification-disposable-row={
-        shadeVisibility !== undefined ? "" : undefined
-      }
-      aria-hidden={shadeVisibility === 0 ? true : undefined}
-      inert={
-        pullRevealProgress !== undefined || shadeVisibility === 0
-          ? true
-          : undefined
-      }
-      style={
-        pullRevealProgress !== undefined
-          ? notificationPullRevealStyle(pullRevealProgress)
-          : shadeVisibility !== undefined
-            ? {
-                gridTemplateRows: `${shadeVisibility}fr`,
-                opacity: shadeVisibility,
-                transform: `translate3d(0, ${(1 - shadeVisibility) * -8}px, 0)`,
-              }
-            : undefined
-      }
-      data-notif-row
-    >
-      <div
-        data-testid="notification-row-swipe"
-        data-swipe-dragging={dragging ? "" : undefined}
-        style={{
-          // Only apply a transform while actually swiping/dismissing: a resting
-          // `translateX(0)` would create a stacking context on every row.
-          transform: dismissing
-            ? `translateX(${dismissing === "left" ? "-120%" : "120%"})`
-            : swipeX
-              ? `translateX(${swipeX}px)`
-              : undefined,
-          opacity: dismissing ? 0 : Math.max(0, 1 - Math.abs(swipeX) / 220),
-          touchAction: "pan-y",
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerEnd}
-        onPointerCancel={onPointerEnd}
-        className={cn(
-          // The liquid-glass card surface (fill/sheen/edge live in the shared
-          // .eliza-notif-glass recipe; hover is its neutral lighten).
-          "eliza-notif-row-inner eliza-notif-glass group relative flex min-h-0 flex-col overflow-hidden rounded-2xl",
-        )}
-      >
-        <button
-          type="button"
-          data-testid="notification-row"
-          aria-label={`${notification.title}${
-            stackKey && stackCount
-              ? `. Show all ${stackCount} ${getChatSourceMeta(notification.source).label} notifications`
-              : notification.body
-                ? `. ${notification.body}`
-                : ""
-          }`}
-          onClick={(e) => {
-            // A swipe or vertical drag synthesizes a click on release; swallow
-            // it so the gesture does not also open the notification.
-            if (suppressClick.current) {
-              suppressClick.current = false;
-              e.preventDefault();
-              return;
-            }
-            if (stackKey && onExpandStack) onExpandStack(stackKey);
-            else onOpen(notification);
-          }}
-          className="flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
-        >
-          <NotificationSourceIcon
-            source={notification.source}
-            count={stackCount}
-          />
-          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="flex items-baseline gap-1.5">
-              <span className="truncate text-sm font-semibold text-white">
-                {notification.title}
-              </span>
-              <RelativeTime
-                ts={notification.createdAt}
-                short
-                className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
-                data-testid="notification-row-time"
-              />
-            </span>
-            {notification.body ? (
-              <span className="line-clamp-2 text-xs leading-snug text-white/62">
-                {notification.body}
-              </span>
-            ) : null}
-          </span>
-        </button>
-      </div>
-    </li>
-  );
-}, rowPropsEqual);
-NotificationRow.displayName = "NotificationRow";
 
 /**
  * The notification inbox. Before hydration it renders nothing; a hydrated empty
@@ -1137,7 +446,8 @@ export function NotificationsHomeCenter({
   // movement to suppress the browser's synthetic click. The list owns the
   // vertical shade gesture, so it also blocks that one immediate follow-up
   // click; the next intentional tap remains available.
-  const suppressNotificationClickUntil = useRef(0);
+  const suppressNotificationClick = useRef(false);
+  const suppressNotificationClickTimer = useRef<number | null>(null);
   // Wheel accumulation toward a shade commit: one direction at a time; a
   // direction flip abandons the previous run.
   const wheelPull = useRef<{ dir: 1 | -1; px: number }>({ dir: 1, px: 0 });
@@ -1160,6 +470,17 @@ export function NotificationsHomeCenter({
     expanded: shadeExpanded,
     closing: shadeClosing,
   };
+
+  const armNotificationClickSuppression = useCallback(() => {
+    suppressNotificationClick.current = true;
+    if (suppressNotificationClickTimer.current !== null) {
+      window.clearTimeout(suppressNotificationClickTimer.current);
+    }
+    suppressNotificationClickTimer.current = window.setTimeout(() => {
+      suppressNotificationClick.current = false;
+      suppressNotificationClickTimer.current = null;
+    }, 500);
+  }, []);
 
   const setPullPx = useCallback((px: number) => {
     pullPxRef.current = px;
@@ -1486,7 +807,7 @@ export function NotificationsHomeCenter({
         return;
       }
       if (Math.abs(dy) > PULL_SLOP_PX && Math.abs(dy) >= Math.abs(dx)) {
-        suppressNotificationClickUntil.current = Date.now() + 500;
+        armNotificationClickSuppression();
       }
       if (closeFromBottomEdge && dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
         // Claim the bottom-edge close from its first vertical pixel so the
@@ -1598,6 +919,7 @@ export function NotificationsHomeCenter({
       gestureTarget.removeEventListener("wheel", onEmptyBackgroundWheel);
     };
   }, [
+    armNotificationClickSuppression,
     commitPull,
     emptyGestureTargetRef,
     handleWheelDelta,
@@ -1776,6 +1098,9 @@ export function NotificationsHomeCenter({
     () => () => {
       if (wheelDecayTimer.current) window.clearTimeout(wheelDecayTimer.current);
       if (shadeCloseTimer.current) window.clearTimeout(shadeCloseTimer.current);
+      if (suppressNotificationClickTimer.current !== null) {
+        window.clearTimeout(suppressNotificationClickTimer.current);
+      }
       if (pullPresentationFrame.current !== null) {
         window.cancelAnimationFrame(pullPresentationFrame.current);
       }
@@ -1947,7 +1272,7 @@ export function NotificationsHomeCenter({
       // centered) list still fires onListPointerEnd — otherwise pullPx freezes
       // and the shade sticks translated down.
       if (g.axis === "y") {
-        suppressNotificationClickUntil.current = Date.now() + 500;
+        armNotificationClickSuppression();
         e.currentTarget.setPointerCapture?.(e.pointerId);
       }
     }
@@ -1978,8 +1303,12 @@ export function NotificationsHomeCenter({
     commitPull();
   };
   const onListClickCapture = (e: React.MouseEvent) => {
-    if (Date.now() >= suppressNotificationClickUntil.current) return;
-    suppressNotificationClickUntil.current = 0;
+    if (!suppressNotificationClick.current) return;
+    suppressNotificationClick.current = false;
+    if (suppressNotificationClickTimer.current !== null) {
+      window.clearTimeout(suppressNotificationClickTimer.current);
+      suppressNotificationClickTimer.current = null;
+    }
     e.preventDefault();
     e.stopPropagation();
   };
