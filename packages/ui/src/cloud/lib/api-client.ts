@@ -194,7 +194,7 @@ function readLiveNativeStewardToken(token: string): string | null {
  * The Cloud API accepts both a Steward JWT and the owner API key. On web the
  * fallback never applies — it resolves to the steward token or nothing.
  */
-function readCloudBearerToken(): string | null {
+export function readCloudBearerToken(): string | null {
   const stewardToken = readStewardToken()?.trim();
   if (stewardToken) {
     if (!isNativeCloudRuntime()) return stewardToken;

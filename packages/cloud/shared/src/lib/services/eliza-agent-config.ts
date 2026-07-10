@@ -5,6 +5,22 @@ export const AGENT_REUSE_EXISTING_CHARACTER = "reuse-existing";
 export const AGENT_MANAGED_DISCORD_KEY = "__agentManagedDiscord";
 export const AGENT_MANAGED_DISCORD_GATEWAY_KEY = "__agentManagedDiscordGateway";
 export const AGENT_MANAGED_GITHUB_KEY = "__agentManagedGithub";
+/**
+ * Server-set marker on a DEDICATED agent minted by the shared→dedicated tier
+ * upgrade (#15355): records the shared source agent's id so a retried upgrade
+ * reattaches to the in-flight migration target instead of minting a second
+ * dedicated agent. Lives in the reserved `__agent` namespace, so caller input
+ * can never forge it (stripReservedElizaConfigKeys drops it at every create).
+ */
+export const AGENT_UPGRADED_FROM_KEY = "__agentUpgradedFrom";
+
+/** The shared source agent id a dedicated tier-upgrade target was minted from, if any. */
+export function readUpgradedFromAgentId(
+  agentConfig?: Record<string, unknown> | null,
+): string | null {
+  const value = agentConfig?.[AGENT_UPGRADED_FROM_KEY];
+  return typeof value === "string" && value.trim() ? value : null;
+}
 
 export interface ManagedAgentDiscordBinding {
   mode: "cloud-managed";

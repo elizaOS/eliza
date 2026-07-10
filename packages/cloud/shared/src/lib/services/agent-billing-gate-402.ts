@@ -72,7 +72,7 @@ export function insufficientCredits402(
   logger.warn(warn, {
     ...logContext,
     balance: creditCheck.balance,
-    required: AGENT_PRICING.MINIMUM_DEPOSIT,
+    required: context.requiredBalance ?? AGENT_PRICING.MINIMUM_DEPOSIT,
     ...(context.welcomeBonusWithheldReason
       ? { welcomeBonusWithheldReason: context.welcomeBonusWithheldReason }
       : {}),
