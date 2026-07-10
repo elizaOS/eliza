@@ -40,8 +40,12 @@ is_excluded_test() {
 }
 
 changed_source() {
-  git diff --name-only "$MERGE_BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
-    | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
+  git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" -- \
+    '*.ts' '*.tsx' '*.js' '*.jsx' \
+    | grep -vE '(^|/)(__tests__|test|tests)/|[.]d[.]ts$|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' \
+    | while IFS= read -r file; do
+        [ -f "$file" ] && echo "$file"
+      done || true
 }
 
 changed_tests() {

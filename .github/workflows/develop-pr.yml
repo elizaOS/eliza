@@ -58,6 +58,11 @@ jobs:
       - name: Test-integrity audit self-test
         run: node packages/scripts/lint-test-integrity.self-test.mjs
 
+      - name: Changed-file coverage classifier self-tests
+        run: |
+          node scripts/security/coverage-changed-files.self-test.mjs
+          node scripts/security/coverage-gate.self-test.mjs
+
       # View→action ratchet (#14369): every builtin-view on-screen mutation
       # must map to a registered agent action (chat twin), and the generated
       # action catalog must reflect the real registered surface. Dependency-free
