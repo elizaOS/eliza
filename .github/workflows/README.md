@@ -75,8 +75,9 @@ in the `changes` job, #13617):
    `format:check` / repo-wide `typecheck` / gitleaks secret scan that guard
    `main`, and `ci-ok` needs it — so a lint, type, format, or committed-secret
    regression is refused by the merge queue on develop, not just on `main`. It
-   runs on `merge_group` + develop `push` (PRs are already covered by
-   `quality.yml`).
+   runs on `merge_group` + develop `push`. The lightweight `develop-pr.yml`
+   lint job also runs `format:check`, so formatting fails on the PR even when a
+   busy push wave supersedes post-merge quality runs (#15959).
 
 CodeQL is a separate exception: trusted push, scheduled, and manual CodeQL runs
 use `self-hosted, Linux, X64, hetzner-robot` because full JavaScript analysis is

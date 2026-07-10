@@ -93,6 +93,9 @@ jobs:
       - name: Run lint
         run: bun run lint
 
+      - name: Check formatting
+        run: bun run format:check
+
   typecheck:
     runs-on: ubuntu-latest
     # 35 not 20: at --concurrency=4 a near-total affected cone (~250 packages)
