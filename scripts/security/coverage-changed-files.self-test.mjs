@@ -118,6 +118,11 @@ try {
   );
   write(
     dir,
+    "scripts/security/tool.self-test.mjs",
+    "throw new Error('self-test only');\n",
+  );
+  write(
+    dir,
     "plugins/plugin-demo/vitest.config.ts",
     "export default { test: { include: ['scripts/**/*.test.mjs'] } };\n",
   );
@@ -205,6 +210,13 @@ try {
       `vitest config leaked into changed source: ${out.files.join(",")}`,
     );
   });
+
+  assertCase(
+    "standalone self-test scripts are not LCOV-enforced source",
+    () => {
+      assert.ok(!out.files.includes("scripts/security/tool.self-test.mjs"));
+    },
+  );
 
   assertCase(
     "deleted, declaration, and type-only sources are not LCOV-enforced",
