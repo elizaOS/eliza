@@ -47,6 +47,7 @@
     "audit:type-duplication:update-baseline": "node packages/scripts/type-duplication-audit.mjs --update-baseline",
     "audit:type-safety-ratchet": "node packages/scripts/type-safety-ratchet.mjs",
     "audit:type-safety-ratchet:self-test": "node packages/scripts/type-safety-ratchet.mjs --self-test",
+    "audit:publish-graph": "node packages/scripts/publish-graph-guard.mjs",
     "audit:error-policy-ratchet": "node packages/scripts/error-policy-ratchet.mjs",
     "audit:error-policy-ratchet:self-test": "node packages/scripts/error-policy-ratchet.mjs --self-test",
     "audit:voice-policy-ratchet": "node packages/scripts/voice-policy-ratchet.mjs",
