@@ -4,6 +4,7 @@
  * approval artifacts used by the CLI without replacing any boundary with mocks.
  */
 
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import os from "node:os";
@@ -12,7 +13,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { CorpusMessage } from "../schema.ts";
 import { readCorpusShard } from "../validator.ts";
 import { canonicalDeletionArtifactSha256 } from "./delete.ts";
-import { applyDeletionFiles, planDeletionFiles } from "./delete-command.ts";
+import {
+  applyDeletionFiles,
+  type planDeletionFiles,
+} from "./delete-command.ts";
 
 const temporaryDirectories: string[] = [];
 const REVIEWED_AT = "2026-07-10T05:00:00.000Z";
@@ -66,6 +70,23 @@ function message(
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function runCorpusCli(args: readonly string[]): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    execFile(
+      "bun",
+      [path.resolve(import.meta.dirname, "../cli.ts"), ...args],
+      { maxBuffer: 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`corpus CLI failed: ${stderr}`, { cause: error }));
+          return;
+        }
+        resolve(stdout);
+      },
+    );
+  });
 }
 
 afterEach(async () => {
@@ -138,13 +159,23 @@ rules:
       `${upstreamRecords.map((record) => JSON.stringify(record)).join("\n")}\n`,
     );
 
-    const queue = await planDeletionFiles({
-      targetPath: corpusPath,
+    const planOutput = await runCorpusCli([
+      "delete",
+      "plan",
+      "--target",
+      corpusPath,
+      "--candidates",
       candidatesPath,
+      "--rules",
       rulesPath,
+      "--queue",
       queuePath,
+      "--normalized-rules",
       normalizedRulesPath,
-    });
+    ]);
+    const queue = JSON.parse(planOutput) as Awaited<
+      ReturnType<typeof planDeletionFiles>
+    >;
 
     expect(queue.groups).toHaveLength(1);
     expect(queue.groups[0]?.messageIds).toEqual(["delete-me"]);
@@ -221,8 +252,36 @@ rules:
     });
     await fs.rm(`${ledgerPath}.lock`);
 
-    const first = await applyDeletionFiles(applyOptions);
-    const second = await applyDeletionFiles(applyOptions);
+    const applyArgs = [
+      "delete",
+      "apply",
+      "--target",
+      corpusPath,
+      "--candidates",
+      candidatesPath,
+      "--normalized-rules",
+      normalizedRulesPath,
+      "--queue",
+      queuePath,
+      "--decisions",
+      decisionsPath,
+      "--output",
+      applyOptions.outputPath,
+      "--ledger",
+      ledgerPath,
+      "--manifest",
+      applyOptions.manifestPath,
+      "--approval",
+      applyOptions.approvalPath,
+      "--report",
+      applyOptions.reportPath,
+    ];
+    const first = JSON.parse(await runCorpusCli(applyArgs)) as Awaited<
+      ReturnType<typeof applyDeletionFiles>
+    >;
+    const second = JSON.parse(await runCorpusCli(applyArgs)) as Awaited<
+      ReturnType<typeof applyDeletionFiles>
+    >;
 
     expect(first.ledgerRecordsWritten).toBe(2);
     expect(second.ledgerRecordsWritten).toBe(0);
@@ -230,7 +289,7 @@ rules:
     expect(first.approval).toMatchObject({
       survivorCount: 1,
       tombstoneCount: 1,
-      attachmentBytesDropped: 1,
+      attachmentBytesDropped: 9,
     });
     const outputShard = await readCorpusShard(
       path.join(applyOptions.outputPath, "gmail", "work", "2026-06.jsonl"),

@@ -446,7 +446,7 @@ describe("reviewed deletion application", () => {
           filename: "safe.pdf",
           mimeType: "application/pdf",
           sha256: "a".repeat(64),
-          bytes: 42,
+          bytes: 13,
           dataBase64: "cHJpdmF0ZS1ieXRlcw==",
         },
       ],
@@ -489,7 +489,7 @@ describe("reviewed deletion application", () => {
         ],
       },
     ]);
-    expect(applied.approval.attachmentBytesDropped).toBe(2);
+    expect(applied.approval.attachmentBytesDropped).toBe(20);
     expect(applied.tombstones).toHaveLength(1);
     const publicArtifacts = JSON.stringify({
       tombstones: applied.tombstones,
@@ -505,6 +505,38 @@ describe("reviewed deletion application", () => {
         reportDigest: undefined,
       }),
     );
+  });
+
+  it.each([
+    ["malformed", "***", undefined, "invalid base64 payload"],
+    ["size mismatch", "c2VjcmV0", 7, "inconsistent payload bytes"],
+  ])("rejects %s embedded attachment byte evidence", (_name, dataBase64, bytes, expectedError) => {
+    const messages = [
+      message("unsafe-attachment", {
+        attachments: [
+          {
+            filename: "unsafe.bin",
+            mimeType: "application/octet-stream",
+            sha256: "a".repeat(64),
+            dataBase64,
+            bytes,
+          },
+        ],
+      }),
+    ];
+    const queue = buildDeletionReviewQueue({
+      messages,
+      candidates: [],
+      rules: rules([]),
+    });
+
+    expect(() =>
+      applyDeletionReview({
+        messages,
+        queue,
+        decisions: approve(queue),
+      }),
+    ).toThrow(expectedError);
   });
 
   it("supports explicit keeps and an approved zero-match review", () => {
