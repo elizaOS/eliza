@@ -60,8 +60,13 @@ jobs:
 
       - name: Changed-file coverage classifier self-tests
         run: |
-          node scripts/security/coverage-changed-files.self-test.mjs
-          node scripts/security/coverage-gate.self-test.mjs
+          while IFS= read -r self_test; do
+            if [ ! -f "$self_test" ]; then
+              echo "registered coverage self-test is missing: $self_test"
+              exit 1
+            fi
+            node "$self_test"
+          done < scripts/security/coverage-node-self-tests.txt
 
       # View→action ratchet (#14369): every builtin-view on-screen mutation
       # must map to a registered agent action (chat twin), and the generated

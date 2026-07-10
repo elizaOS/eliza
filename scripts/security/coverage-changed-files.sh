@@ -20,6 +20,7 @@ set -euo pipefail
 BASE=$1
 HEAD=$2
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+NODE_SELF_TEST_MANIFEST="$SCRIPT_DIR/coverage-node-self-tests.txt"
 
 # Fail fast: an empty merge-base means the two commits share no history (bad
 # fetch depth / wrong refs), which would otherwise silently diff the entire tree.
@@ -44,10 +45,12 @@ changed_source() {
   {
     git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" -- \
       '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' \
-      | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec|self-test)[.](ts|tsx|js|jsx|mjs|cjs|mts|cts)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
+      | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs|cjs|mts|cts)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
   } \
     | while IFS= read -r file; do
-        [ -f "$file" ] && echo "$file"
+        [ -f "$file" ] || continue
+        grep -Fxq "$file" "$NODE_SELF_TEST_MANIFEST" && continue
+        echo "$file"
       done \
     | node --no-warnings "$SCRIPT_DIR/coverage-source-classifier.mjs"
 }
@@ -60,8 +63,22 @@ changed_tests() {
     '*.spec.cjs' '*.spec.mts' '*.spec.cts'
 }
 
+changed_node_self_tests() {
+  git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" \
+    | while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        if grep -Fxq "$file" "$NODE_SELF_TEST_MANIFEST"; then
+          echo "$file"
+        fi
+      done
+}
+
 echo 'files<<EOF'
 changed_source
+echo 'EOF'
+
+echo 'node_tests<<EOF'
+changed_node_self_tests
 echo 'EOF'
 
 echo 'bun_tests<<EOF'

@@ -123,6 +123,11 @@ try {
   );
   write(
     dir,
+    "scripts/security/coverage-gate.self-test.mjs",
+    "process.stdout.write('registered self-test ran');\n",
+  );
+  write(
+    dir,
     "plugins/plugin-demo/vitest.config.ts",
     "export default { test: { include: ['scripts/**/*.test.mjs'] } };\n",
   );
@@ -212,9 +217,15 @@ try {
   });
 
   assertCase(
-    "standalone self-test scripts are not LCOV-enforced source",
+    "only registered standalone self-tests leave source enforcement",
     () => {
-      assert.ok(!out.files.includes("scripts/security/tool.self-test.mjs"));
+      assert.ok(out.files.includes("scripts/security/tool.self-test.mjs"));
+      assert.ok(
+        !out.files.includes("scripts/security/coverage-gate.self-test.mjs"),
+      );
+      assert.ok(
+        out.node_tests.includes("scripts/security/coverage-gate.self-test.mjs"),
+      );
     },
   );
 
