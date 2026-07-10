@@ -17,6 +17,15 @@ const requireAuthOrApiKeyWithOrg = mock<() => Promise<unknown>>();
 mock.module("@/lib/auth", () => ({
   requireAuthOrApiKeyWithOrg,
 }));
+// The logger is captured (not silenced) so tests can assert on what reaches
+// log output: transcripts, upload filenames, and provider response bodies
+// must never appear there (SEC log hygiene).
+const logError = mock(() => {});
+const logInfo = mock(() => {});
+const logWarn = mock(() => {});
+mock.module("@/lib/utils/logger", () => ({
+  logger: { error: logError, info: logInfo, warn: logWarn },
+}));
 // Billing and provider modules are mocked so importing the route does not
 // initialize DB-backed services in a unit-test process; their behavior is
 // mutable per test so both lanes (free whisper, billed ElevenLabs) and the
@@ -50,8 +59,9 @@ const speechToText = mock(
 mock.module("@/lib/services/elevenlabs", () => ({
   getElevenLabsService: mock(() => ({ speechToText })),
 }));
+const usageCreate = mock(async (_record: Record<string, unknown>) => ({}));
 mock.module("@/lib/services/usage", () => ({
-  usageService: { create: mock(async () => ({})) },
+  usageService: { create: usageCreate },
 }));
 
 const sttRoute = (await import("./route")).default;
@@ -212,7 +222,20 @@ const LIVE_SHAPE = {
   ],
 };
 
+/** Every string that reached any logger method in this test, joined. */
+function allLoggedContent(): string {
+  return JSON.stringify([
+    ...logError.mock.calls,
+    ...logInfo.mock.calls,
+    ...logWarn.mock.calls,
+  ]);
+}
+
 beforeEach(() => {
+  logError.mockClear();
+  logInfo.mockClear();
+  logWarn.mockClear();
+  usageCreate.mockClear();
   requireAuthOrApiKeyWithOrg.mockReset();
   requireAuthOrApiKeyWithOrg.mockResolvedValue({
     user: { id: "user-1", organization_id: "org-1" },
@@ -413,12 +436,53 @@ describe("POST /api/v1/voice/stt — whisper lane (#14806)", () => {
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
   });
 
-  test("an upstream 5xx stays a structured 502", async () => {
-    upstreamReply = () => new Response("boom", { status: 500 });
+  test("an upstream 5xx stays a structured 502 without logging its body", async () => {
+    upstreamReply = () =>
+      new Response("secret transcript and provider token", { status: 500 });
     const res = await app.request(sttRequest(), undefined, whisperEnv);
 
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    // The provider error body must not reach logs — only the status code.
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("secret transcript");
+    expect(logs).not.toContain("provider token");
+    expect(logs).toContain('"status":500');
+  });
+
+  test("a successful whisper transcription never logs the transcript or filename", async () => {
+    upstreamReply = () => Response.json(LIVE_SHAPE);
+    const res = await app.request(
+      sttRequest(wavFile("user-recording-2026.wav")),
+      undefined,
+      whisperEnv,
+    );
+
+    expect(res.status).toBe(200);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("Hello there world");
+    expect(logs).not.toContain("user-recording-2026.wav");
+    // Redaction keeps observability: length metadata still lands in logs.
+    expect(logs).toContain("transcriptLength");
+  });
+
+  test("rejected uploads log size and mime metadata, not the filename", async () => {
+    const res = await app.request(
+      sttRequest(
+        bytesFile(
+          new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]),
+          "private-meeting-notes.wav",
+          "audio/wav",
+        ),
+      ),
+      undefined,
+      whisperEnv,
+    );
+
+    expect(res.status).toBe(400);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("private-meeting-notes.wav");
+    expect(logs).toContain("audioSizeBytes");
   });
 });
 
@@ -443,6 +507,27 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
     const call = speechToText.mock.calls[0][0];
     expect(call.audioFile.name).toBe("probe.wav");
     expect(call.languageCode).toBe("fr");
+
+    // Log hygiene: the transcript and upload filename reach the provider and
+    // the response, but never the logs.
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("elevenlabs transcript");
+    expect(logs).not.toContain("probe.wav");
+    expect(logs).toContain("transcriptLength");
+
+    // Usage-record hygiene: metadata drops the raw filename (can carry PII)
+    // but keeps size/duration/length metrics and the languageCode enum.
+    await Bun.sleep(0); // usage record write is fire-and-forget
+    expect(usageCreate).toHaveBeenCalledTimes(1);
+    const usageRecord = usageCreate.mock.calls[0][0] as {
+      metadata: Record<string, unknown>;
+    };
+    expect(usageRecord.metadata.audioFileName).toBeUndefined();
+    expect(usageRecord.metadata.languageCode).toBe("fr");
+    expect(usageRecord.metadata.audioSizeBytes).toBeGreaterThan(0);
+    expect(usageRecord.metadata.transcriptLength).toBe(
+      "elevenlabs transcript".length,
+    );
   });
 
   test("insufficient credits is a 402 carrying the required amount", async () => {
@@ -466,6 +551,24 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
       error: "Rate limit exceeded. Please try again in a moment.",
     });
     expect(reconcile).toHaveBeenCalledWith(0);
+  });
+
+  test("a provider error embedding request content is logged as its type only", async () => {
+    // Provider SDK errors can carry the request/response payload in their
+    // message. The route's catch must log only the error type, never the
+    // message or the error object itself.
+    speechToText.mockRejectedValue(
+      new Error(
+        'transcription failed for utterance: "my social security number is"',
+      ),
+    );
+    const res = await app.request(sttRequest(), undefined, elevenLabsEnv);
+
+    expect(res.status).toBe(500);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("social security");
+    expect(logs).not.toContain("utterance");
+    expect(logs).toContain('"errorType":"Error"');
   });
 
   test("a quota failure naming a paid tier is a 402 upgrade prompt", async () => {
