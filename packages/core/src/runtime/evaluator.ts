@@ -651,6 +651,18 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 	if (/\{\s*"(?:action|tool|name|parameters|command)"\s*:/i.test(text)) {
 		return false;
 	}
+	// Native model tool syntax is machine output, never a user-facing answer.
+	// glm/qwen-family models drift to <tool_call>/<arg_key> XML mid-turn, and a
+	// hallucinated bare ALL_CAPS action name followed by a JSON args object
+	// ("GET_WEATHER\n{\"location\":\"Tokyo\"}") evaded both the JSON guard above
+	// (no name/tool/action key) and this gate — delivered verbatim, observed
+	// live. Screen both dialects.
+	if (/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text)) {
+		return false;
+	}
+	if (/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text)) {
+		return false;
+	}
 	if (
 		/\b(?:need|needs|should|must|will)\s+(?:to\s+)?(?:run|call|use|invoke|execute)\b/i.test(
 			text,
@@ -806,12 +818,47 @@ function getStructuredEvaluatorObject(
 		typeof raw.object === "object" &&
 		!Array.isArray(raw.object)
 	) {
+		// Same shape gate the text path applies: a structured object that carries
+		// none of success/decision/route is model drift (observed live: a bare
+		// {"command":"curl ..."} shell-style object), not an evaluator verdict.
+		// Accepting it produced a silent default-CONTINUE that burned planner
+		// iterations; route it through the parse-error path instead so the loop
+		// sees a malformed evaluation, not a judgement.
+		if (!isEvaluatorShapedObject(raw.object)) {
+			return {
+				object: null,
+				parseError: `structured evaluator output is not evaluator-shaped: ${JSON.stringify(raw.object).slice(0, 200)}`,
+			};
+		}
 		return { object: raw.object as RawEvaluatorOutput };
 	}
 	if (typeof raw.text === "string") {
 		return parseEvaluatorText(raw.text);
 	}
 	return { object: null, parseError: "missing evaluator text/object" };
+}
+
+/**
+ * Split a response that BEGINS with a fenced JSON block into the block and the
+ * prose after it. glm-family evaluators love the shape
+ * "```json\n{success,decision,thought}\n```\n\n<the actual answer>" — the
+ * envelope is a valid verdict and the prose is the user-facing message, but a
+ * whole-string parse rejects it and the prose-recovery path then delivered the
+ * ENTIRE text, raw envelope included (observed live).
+ */
+function extractLeadingJsonFence(
+	text: string,
+): { block: string; rest: string } | null {
+	if (!text.startsWith("```")) return null;
+	const firstLineEnd = text.indexOf("\n");
+	if (firstLineEnd < 0) return null;
+	const closeIdx = text.indexOf("\n```", firstLineEnd);
+	if (closeIdx < 0) return null;
+	const afterClose = text.indexOf("\n", closeIdx + 1);
+	const block = text.slice(firstLineEnd + 1, closeIdx).trim();
+	const rest = afterClose < 0 ? "" : text.slice(afterClose + 1);
+	if (!block) return null;
+	return { block, rest };
 }
 
 function parseEvaluatorText(text: string): ParsedEvaluatorObject {
@@ -829,6 +876,27 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 		}
 		return { object: parsed };
 	} catch {
+		// Envelope-then-prose repair: a leading fenced evaluator verdict with the
+		// answer following it is a SUCCESS, not drift — take the envelope as the
+		// verdict and the prose as messageToUser when the envelope lacks one.
+		const leading = extractLeadingJsonFence(text.trim());
+		if (leading) {
+			try {
+				const parsedBlock = JSON.parse(leading.block);
+				if (isEvaluatorShapedObject(parsedBlock)) {
+					const prose = leading.rest.trim();
+					const record = parsedBlock as RawEvaluatorOutput & {
+						messageToUser?: unknown;
+					};
+					if (prose && typeof record.messageToUser !== "string") {
+						record.messageToUser = prose;
+					}
+					return { object: record };
+				}
+			} catch {
+				// fall through to the tolerant parse below
+			}
+		}
 		const tolerant = parseJsonObject<RawEvaluatorOutput>(candidate);
 		if (isEvaluatorShapedObject(tolerant)) {
 			return {

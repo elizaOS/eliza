@@ -744,3 +744,38 @@ Result: / and /home are on /dev/sda1, 387G total, 223G used, 165G free, 58% used
 		);
 	});
 });
+
+describe("envelope-then-prose repair (leading fenced verdict + answer)", () => {
+	it("takes the fenced envelope as the verdict and the prose as messageToUser", () => {
+		const raw = [
+			"```json",
+			'{',
+			'  "success": true,',
+			'  "decision": "FINISH",',
+			'  "thought": "Retrieved the commit info."',
+			"}",
+			"```",
+			"",
+			"Last commit:",
+			"SHA: 2e240df0a1ecab779ccca5e17eecd4bc532f1d25",
+		].join("\n");
+		const parsed = parseEvaluatorOutput(raw);
+		expect(parsed.decision).toBe("FINISH");
+		expect(parsed.success).toBe(true);
+		expect(parsed.messageToUser).toContain("Last commit:");
+		// The raw envelope must never reach the user-facing message.
+		expect(parsed.messageToUser).not.toContain("```json");
+		expect(parsed.messageToUser).not.toContain('"decision"');
+	});
+
+	it("keeps an explicit messageToUser from the envelope over trailing prose", () => {
+		const raw = [
+			"```json",
+			'{ "success": true, "decision": "FINISH", "messageToUser": "The answer is 42." }',
+			"```",
+			"stray trailing text",
+		].join("\n");
+		const parsed = parseEvaluatorOutput(raw);
+		expect(parsed.messageToUser).toBe("The answer is 42.");
+	});
+});
