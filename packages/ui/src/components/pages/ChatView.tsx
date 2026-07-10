@@ -39,6 +39,7 @@ import {
 } from "../../hooks/useConversationRenderWindow";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
+import { useRealtimeVoiceMint } from "../../hooks/useRealtimeVoiceMint";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
@@ -394,10 +395,17 @@ export function ChatView({
         defaultValue: "Set up an LLM provider in Settings to start chatting",
       })
     : undefined;
+  // Resolve the realtime-voice mint inputs (agent UUID + consent nonce) from the
+  // same auth/runtime source the app uses for every other /api/v1 call. A
+  // local/self-hosted runtime yields a null agentId, so the realtime path never
+  // arms and the mic runs the batch flow unchanged.
+  const { agentId: realtimeAgentId, getConsentNonce: getRealtimeConsentNonce } =
+    useRealtimeVoiceMint();
   const {
     beginVoiceCapture,
     endVoiceCapture,
     continuous,
+    voiceSession,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
@@ -422,7 +430,23 @@ export function ChatView({
     uiLanguage,
     continuousMode: continuousChatMode,
     onServerTurnAbort: interruptActiveChatPipeline,
+    realtimeAgentId,
+    getRealtimeConsentNonce,
   });
+  // Mic-tap semantics: while a REALTIME session is the active mic and the agent
+  // is speaking, a mic tap is a BARGE-IN (flush playback + notify server), not a
+  // new dictation capture. Otherwise the mic behaves exactly as before
+  // (`beginVoiceCapture`). This keeps barge-in on the SAME existing control.
+  const handleMicStartListening = useCallback(
+    (mode?: Parameters<typeof beginVoiceCapture>[0]) => {
+      if (voiceSession.realtimeActive && voiceSession.agentSpeaking) {
+        voiceSession.bargeIn();
+        return;
+      }
+      beginVoiceCapture(mode);
+    },
+    [beginVoiceCapture, voiceSession],
+  );
   // Stop any in-flight voice playback when the user switches conversations.
   // useLayoutEffect (not useEffect): must run *before* useChatVoiceController's
   // passive auto-speak effect. Otherwise we queue the new thread's greeting
@@ -833,23 +857,35 @@ export function ChatView({
     (continuousChatMode !== "off" ||
       voice.isListening ||
       voice.isSpeaking ||
+      voiceSession.realtimeActive ||
       Boolean(voiceSpeaker) ||
-      Boolean(continuous.interimTranscript));
+      Boolean(voiceSession.interimTranscript));
   const continuousChatToggleVisible =
     voice.supported && continuousChatMode !== "off";
 
   const auxiliaryNode = (
     <>
-      {voiceStatusBarVisible || continuous.ttsError ? (
+      {voiceStatusBarVisible || voiceSession.ttsError ? (
+        // One status bar for BOTH paths: when the realtime WS session is the
+        // active mic, `voiceSession` surfaces its status/transcript; otherwise
+        // it passes the batch continuous-chat state through unchanged. Same
+        // design language, same `VoiceContinuousStatus` vocabulary (#15924).
         <ChatVoiceStatusBar
-          status={continuous.status}
-          interimTranscript={continuous.interimTranscript}
+          status={voiceSession.status}
+          interimTranscript={voiceSession.interimTranscript}
           speaker={voiceSpeaker}
-          latency={continuous.latency}
-          needsAudioUnlock={continuous.needsAudioUnlock}
-          onUnlockAudio={continuous.unlockAudio}
-          micReconnected={continuous.micReconnected}
-          ttsError={continuous.ttsError}
+          latency={voiceSession.latency}
+          needsAudioUnlock={voiceSession.needsAudioUnlock}
+          onUnlockAudio={voiceSession.unlockAudio}
+          micReconnected={voiceSession.micReconnected}
+          ttsError={voiceSession.ttsError}
+          realtimeActive={voiceSession.realtimeActive}
+          realtimePaused={voiceSession.paused}
+          realtimeErrorMessage={
+            voiceSession.realtimeError?.actionable
+              ? voiceSession.realtimeError.message
+              : null
+          }
           visible={voiceStatusBarVisible}
           className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
           data-testid="chat-view-voice-status-bar"
@@ -989,7 +1025,7 @@ export function ChatView({
           interimTranscript: voice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
-          startListening: beginVoiceCapture,
+          startListening: handleMicStartListening,
           stopListening: endVoiceCapture,
         }}
         agentVoiceEnabled={!agentVoiceMuted}
@@ -1061,7 +1097,7 @@ export function ChatView({
           interimTranscript: voice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
-          startListening: beginVoiceCapture,
+          startListening: handleMicStartListening,
           stopListening: endVoiceCapture,
         }}
         agentVoiceEnabled={!agentVoiceMuted}
