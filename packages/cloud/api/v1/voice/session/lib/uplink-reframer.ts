@@ -11,7 +11,7 @@
  * with silence (padding would inject phantom audio into a paid STT stream).
  */
 
-import { DEEPGRAM_FLUX_CHUNK_BYTES } from "@/api/v1/voice/stt/providers/deepgram-flux";
+import { DEEPGRAM_FLUX_CHUNK_BYTES } from "../../stt/providers/deepgram-flux";
 
 export const UPLINK_FRAME_BYTES = DEEPGRAM_FLUX_CHUNK_BYTES;
 
