@@ -678,7 +678,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // so codec-less clients can decode it. (Buffered, not streamed — fine for
     // short TTS replies; the MP3 path keeps its chunked streaming below.)
     if (wantWav) {
-      const wav = pcm16ToWav(await drainStream(audioStream), WAV_PCM_SAMPLE_RATE);
+      const wav = pcm16ToWav(
+        await drainStream(audioStream),
+        WAV_PCM_SAMPLE_RATE,
+      );
       return new Response(wav as unknown as BodyInit, {
         headers: {
           "Content-Type": "audio/wav",
