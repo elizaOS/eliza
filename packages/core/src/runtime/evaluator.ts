@@ -651,6 +651,17 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 	if (/\{\s*"(?:action|tool|name|parameters|command)"\s*:/i.test(text)) {
 		return false;
 	}
+	// Native model tool syntax is machine output, never a user-facing answer.
+	// Two dialects need their own screens because neither carries the JSON keys
+	// the guard above matches: XML-style tool markup (<tool_call>/<arg_key>),
+	// and a bare ALL_CAPS action name followed by a JSON args object
+	// ("GET_WEATHER\n{\"location\":\"Tokyo\"}").
+	if (/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text)) {
+		return false;
+	}
+	if (/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text)) {
+		return false;
+	}
 	if (
 		/\b(?:need|needs|should|must|will)\s+(?:to\s+)?(?:run|call|use|invoke|execute)\b/i.test(
 			text,
@@ -806,12 +817,57 @@ function getStructuredEvaluatorObject(
 		typeof raw.object === "object" &&
 		!Array.isArray(raw.object)
 	) {
+		// Same shape gate the text path applies: a structured object carrying
+		// none of success/decision/route (e.g. a bare {"command": ...} tool-call
+		// shape) is model drift, not an evaluator verdict. It routes through the
+		// parse-error path so the loop sees a malformed evaluation and retries,
+		// instead of a silent default verdict.
+		if (!isEvaluatorShapedObject(raw.object)) {
+			return {
+				object: null,
+				parseError: `structured evaluator output is not evaluator-shaped: ${JSON.stringify(raw.object).slice(0, 200)}`,
+			};
+		}
 		return { object: raw.object as RawEvaluatorOutput };
 	}
 	if (typeof raw.text === "string") {
 		return parseEvaluatorText(raw.text);
 	}
 	return { object: null, parseError: "missing evaluator text/object" };
+}
+
+/**
+ * Split a response that BEGINS with a fenced JSON block into the block and the
+ * prose after it. Some evaluator models emit a fenced verdict envelope followed
+ * by the user-facing answer as trailing prose; a whole-string JSON parse
+ * rejects that shape, so the envelope and the prose must be separated before
+ * either can be used.
+ */
+function extractLeadingJsonFence(
+	text: string,
+): { block: string; rest: string } | null {
+	if (!text.startsWith("```")) return null;
+	const firstLineEnd = text.indexOf("\n");
+	if (firstLineEnd < 0) return null;
+	const closeIdx = text.indexOf("\n```", firstLineEnd);
+	if (closeIdx < 0) return null;
+	const afterClose = text.indexOf("\n", closeIdx + 1);
+	const block = text.slice(firstLineEnd + 1, closeIdx).trim();
+	const rest = afterClose < 0 ? "" : text.slice(afterClose + 1);
+	if (!block) return null;
+	return { block, rest };
+}
+
+/** JSON.parse that reports failure as null instead of throwing. */
+function tryParseJson(candidate: string): unknown {
+	try {
+		return JSON.parse(candidate);
+	} catch {
+		// error-policy:J3 the fenced block is untrusted model output; a parse
+		// failure means "not a verdict", reported as null so the caller falls
+		// through to the tolerant parse instead of treating it as valid.
+		return null;
+	}
 }
 
 function parseEvaluatorText(text: string): ParsedEvaluatorObject {
@@ -829,6 +885,35 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 		}
 		return { object: parsed };
 	} catch {
+		// Envelope-then-prose repair: a leading fenced evaluator verdict with the
+		// answer following it is a valid response — the envelope is the verdict
+		// and the prose is the user-facing message. The prose must pass the same
+		// machine-output screen every other recovery path uses: an envelope
+		// followed by native tool syntax means the model was trying to ACT, so
+		// the whole response is reported invalid (the loop retries/continues)
+		// rather than finishing the turn with tool syntax as the answer or a
+		// silent no-message FINISH.
+		const leading = extractLeadingJsonFence(text.trim());
+		if (leading) {
+			const parsedBlock = tryParseJson(leading.block);
+			if (parsedBlock && isEvaluatorShapedObject(parsedBlock)) {
+				const prose = leading.rest.trim();
+				const record = parsedBlock as RawEvaluatorOutput & {
+					messageToUser?: unknown;
+				};
+				if (prose && typeof record.messageToUser !== "string") {
+					if (!looksLikeUserFacingAnswer(prose)) {
+						return {
+							object: null,
+							parseError:
+								"leading evaluator envelope followed by machine output (tool syntax), not a user-facing answer",
+						};
+					}
+					record.messageToUser = prose;
+				}
+				return { object: record };
+			}
+		}
 		const tolerant = parseJsonObject<RawEvaluatorOutput>(candidate);
 		if (isEvaluatorShapedObject(tolerant)) {
 			return {

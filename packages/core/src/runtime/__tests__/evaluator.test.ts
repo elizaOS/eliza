@@ -744,3 +744,135 @@ Result: / and /home are on /dev/sda1, 387G total, 223G used, 165G free, 58% used
 		);
 	});
 });
+
+describe("envelope-then-prose repair (leading fenced verdict + answer)", () => {
+	it("takes the fenced envelope as the verdict and the prose as messageToUser", () => {
+		const raw = [
+			"```json",
+			'{',
+			'  "success": true,',
+			'  "decision": "FINISH",',
+			'  "thought": "Retrieved the commit info."',
+			"}",
+			"```",
+			"",
+			"Last commit:",
+			"SHA: 2e240df0a1ecab779ccca5e17eecd4bc532f1d25",
+		].join("\n");
+		const parsed = parseEvaluatorOutput(raw);
+		expect(parsed.decision).toBe("FINISH");
+		expect(parsed.success).toBe(true);
+		expect(parsed.messageToUser).toContain("Last commit:");
+		// The raw envelope must never reach the user-facing message.
+		expect(parsed.messageToUser).not.toContain("```json");
+		expect(parsed.messageToUser).not.toContain('"decision"');
+	});
+
+	it("keeps an explicit messageToUser from the envelope over trailing prose", () => {
+		const raw = [
+			"```json",
+			'{ "success": true, "decision": "FINISH", "messageToUser": "The answer is 42." }',
+			"```",
+			"stray trailing text",
+		].join("\n");
+		const parsed = parseEvaluatorOutput(raw);
+		expect(parsed.messageToUser).toBe("The answer is 42.");
+	});
+
+	it("reports invalid when the trailing prose is XML tool syntax", () => {
+		const raw = [
+			"```json",
+			'{ "success": true, "decision": "FINISH", "thought": "done" }',
+			"```",
+			"<tool_call>",
+			"<arg_key>location</arg_key>",
+			"<arg_value>Tokyo</arg_value>",
+			"</tool_call>",
+		].join("\n");
+		const parsed = parseEvaluatorOutput(raw);
+		// The model was trying to act, not answer: the response is invalid and
+		// the loop replans — the tool syntax never becomes the user message and
+		// the turn never ends on a silent no-message FINISH.
+		expect(parsed.parseError).toBeDefined();
+		expect(parsed.decision).toBe("CONTINUE");
+		expect(parsed.messageToUser).toBeUndefined();
+	});
+
+	it("reports invalid when the trailing prose is a bare action name + JSON args", () => {
+		const raw = [
+			"```json",
+			'{ "success": true, "decision": "FINISH", "thought": "done" }',
+			"```",
+			"GET_WEATHER",
+			'{ "location": "Tokyo" }',
+		].join("\n");
+		const parsed = parseEvaluatorOutput(raw);
+		expect(parsed.parseError).toBeDefined();
+		expect(parsed.decision).toBe("CONTINUE");
+		expect(parsed.messageToUser).toBeUndefined();
+	});
+});
+
+describe("structured evaluator output shape gate", () => {
+	it("rejects a structured object with no verdict fields as a parse error", () => {
+		const parsed = parseEvaluatorOutput({
+			object: { command: "curl https://example.com" },
+		});
+		expect(parsed.parseError).toContain("not evaluator-shaped");
+		expect(parsed.decision).toBe("CONTINUE");
+		expect(parsed.success).toBe(false);
+	});
+
+	it("accepts a structured object that carries a verdict field", () => {
+		const parsed = parseEvaluatorOutput({
+			object: { success: true, decision: "FINISH", messageToUser: "Done." },
+		});
+		expect(parsed.parseError).toBeUndefined();
+		expect(parsed.decision).toBe("FINISH");
+		expect(parsed.messageToUser).toBe("Done.");
+	});
+});
+
+describe("native tool dialects never recover as the user-facing answer", () => {
+	async function runWithModelText(text: string) {
+		const runtime = { useModel: vi.fn(async () => text) };
+		return await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "tool-1", name: "SHELL", params: {} },
+						result: { success: true, text: "tool ran" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+	}
+
+	it("does not deliver standalone XML tool syntax", async () => {
+		const result = await runWithModelText(
+			"<tool_call>\n<arg_key>location</arg_key>\n<arg_value>Tokyo</arg_value>\n</tool_call>",
+		);
+		expect(result.messageToUser ?? "").not.toContain("tool_call");
+		expect(result.messageToUser ?? "").not.toContain("arg_key");
+	});
+
+	it("does not deliver a standalone bare action name + JSON args block", async () => {
+		const result = await runWithModelText(
+			'GET_WEATHER\n{ "location": "Tokyo" }',
+		);
+		expect(result.messageToUser ?? "").not.toContain("GET_WEATHER");
+		expect(result.messageToUser ?? "").not.toContain("location");
+	});
+});
