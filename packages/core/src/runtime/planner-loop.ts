@@ -3328,8 +3328,10 @@ function preferredFinalMessageFromToolOrModel(
 	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
 	const widgetCollectsLatestMissingInput =
 		widgetReply !== undefined && latestToolResultAwaitsUserInput(trajectory);
-	const nonWidgetModelText =
-		widgetReply === undefined ? usableModelText : undefined;
+	const modelTextWithoutUnlicensedNoopWidget =
+		widgetReply !== undefined && latestToolResultIsGenericNoop(trajectory)
+			? undefined
+			: usableModelText;
 	// Precedence:
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
@@ -3358,10 +3360,22 @@ function preferredFinalMessageFromToolOrModel(
 		singleVerifiedUserFacingToolResultText(trajectory) ??
 		(widgetCollectsLatestMissingInput ? widgetReply : undefined) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
-		nonWidgetModelText ??
+		modelTextWithoutUnlicensedNoopWidget ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);
+}
+
+function latestToolResultIsGenericNoop(trajectory: PlannerTrajectory): boolean {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
+			continue;
+		}
+		return (
+			hasNoopMarker(step.result) && !hasAwaitingUserInputMarker(step.result)
+		);
+	}
+	return false;
 }
 
 function latestToolResultAwaitsUserInput(

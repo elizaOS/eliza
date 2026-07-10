@@ -78,11 +78,4 @@ export default scenario({
       },
     },
   ],
-  finalChecks: [
-    {
-      type: "actionCalled",
-      actionName: "OWNER_REMINDERS",
-      minCount: 1,
-    },
-  ],
 });

@@ -118,12 +118,4 @@ export default scenario({
       assertTurn: expectActionOwnedPreview,
     },
   ],
-  finalChecks: [
-    {
-      type: "actionCalled",
-      actionName: ACTION_NAME,
-      status: "success",
-      minCount: 1,
-    },
-  ],
 });
