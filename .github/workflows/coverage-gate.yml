@@ -44,50 +44,13 @@ jobs:
 
       - name: Determine changed files
         id: changed
+        # Three-dot diff (merge-base..HEAD) so a branch trailing develop does not
+        # count develop-side files it never touched. Logic lives in the script so
+        # its path/diff boundary rules are regression-tested (issue #15845).
         run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          HEAD=${{ github.event.pull_request.head.sha }}
-          {
-            echo 'files<<EOF'
-            git diff --name-only "$BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
-              | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$' || true
-            echo 'EOF'
-            echo 'bun_tests<<EOF'
-            git diff --name-only "$BASE" "$HEAD" -- \
-              '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
-              '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
-              | while IFS= read -r file; do
-                  [ -f "$file" ] || continue
-                  case "$file" in
-                    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) continue ;;
-                  esac
-                  if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
-                    continue
-                  fi
-                  if grep -Eq "from ['\"]@playwright/test['\"]|require\\(['\"]@playwright/test['\"]\\)" "$file"; then
-                    continue
-                  fi
-                  echo "$file"
-                done
-            echo 'EOF'
-            echo 'vitest_tests<<EOF'
-            git diff --name-only "$BASE" "$HEAD" -- \
-              '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
-              '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
-              | while IFS= read -r file; do
-                  [ -f "$file" ] || continue
-                  case "$file" in
-                    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) continue ;;
-                  esac
-                  if grep -Eq "from ['\"]@playwright/test['\"]|require\\(['\"]@playwright/test['\"]\\)" "$file"; then
-                    continue
-                  fi
-                  if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
-                    echo "$file"
-                  fi
-                done
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          bash scripts/security/coverage-changed-files.sh \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Require changed tests for changed source
         if: steps.changed.outputs.files != '' && steps.changed.outputs.bun_tests == '' && steps.changed.outputs.vitest_tests == ''
