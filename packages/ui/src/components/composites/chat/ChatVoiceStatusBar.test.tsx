@@ -170,13 +170,20 @@ describe("ChatVoiceStatusBar", () => {
     expect(screen.queryByTestId("chat-voice-realtime-paused")).toBeNull();
   });
 
+  it("shows an Armed pill when realtime is selected but not connected yet", () => {
+    render(<ChatVoiceStatusBar status="idle" realtimeAvailable />);
+    const armed = screen.getByTestId("chat-voice-realtime-armed");
+    expect(armed.textContent).toContain("Realtime armed");
+    expect(screen.queryByTestId("chat-voice-realtime-live")).toBeNull();
+  });
+
   it("shows a Paused pill (not the Live pill) when the realtime session is paused", () => {
     render(
       <ChatVoiceStatusBar status="listening" realtimeActive realtimePaused />,
     );
-    expect(screen.getByTestId("chat-voice-realtime-paused").textContent).toContain(
-      "Paused",
-    );
+    expect(
+      screen.getByTestId("chat-voice-realtime-paused").textContent,
+    ).toContain("Paused");
     expect(screen.queryByTestId("chat-voice-realtime-live")).toBeNull();
   });
 
