@@ -164,6 +164,7 @@ export interface VoicePlaybackStartEvent {
   assistantFirstTextAtMs?: number;
   assistantTextUpdatedAtMs?: number;
   queuedAtMs?: number;
+  voiceTraceId?: string;
 }
 
 export interface VoiceTranscriptPreviewEvent {
@@ -215,6 +216,8 @@ export interface VoiceAssistantSpeechTelemetry {
   assistantFirstTextAtMs?: number;
   /** UI monotonic timestamp for this visible text update. */
   assistantTextUpdatedAtMs?: number;
+  /** Shared-runtime cloud voice trace id propagated from STT to sequential TTS. */
+  voiceTraceId?: string;
 }
 
 export interface QueueAssistantSpeechOptions {

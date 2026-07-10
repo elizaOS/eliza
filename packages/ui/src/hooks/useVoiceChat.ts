@@ -60,8 +60,12 @@ import {
   type PlaybackFrameTap,
 } from "../voice/playback-frame-pump";
 import {
+  createSharedRuntimeVoiceTraceId,
   currentSharedRuntimeVoiceOrigin,
+  markSharedRuntimeVoiceTrace,
+  measureSharedRuntimeVoiceTrace,
   sharedRuntimeTtsUrl,
+  sharedRuntimeVoiceTraceHeaders,
 } from "../voice/shared-runtime-voice";
 import {
   collapseWhitespace,
@@ -361,6 +365,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const captureStartedAtRef = useRef<number>(0);
   const transcriptBufferRef = useRef("");
   const latestTranscriptTurnRef = useRef<VoiceTurn | null>(null);
+  const lastSharedRuntimeVoiceTraceIdRef = useRef<string | null>(null);
   const emitTranscript = useEffectEvent(
     (text: string, event: VoiceTranscriptEvent) => {
       options.onTranscript(text, event);
@@ -993,8 +998,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   );
 
   const transcribeCloudAudio = useCallback(
-    async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      return transcribeCloudWav(audio, { signal });
+    async (
+      audio: Uint8Array,
+      options?: { signal?: AbortSignal; traceId?: string },
+    ): Promise<string> => {
+      return transcribeCloudWav(audio, {
+        signal: options?.signal,
+        traceId: options?.traceId,
+      });
     },
     [],
   );
@@ -1401,10 +1412,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               url: cloudAsrPostUrl(),
               bytes: audio.byteLength,
             });
-            const transcript = await transcribeCloudAudio(audio);
+            const sharedVoiceTraceId = currentSharedRuntimeVoiceOrigin()
+              ? createSharedRuntimeVoiceTraceId()
+              : undefined;
+            lastSharedRuntimeVoiceTraceIdRef.current =
+              sharedVoiceTraceId ?? null;
+            const transcript = await transcribeCloudAudio(audio, {
+              traceId: sharedVoiceTraceId,
+            });
             voiceCaptureDebug("post:200", {
               status: "200",
               chars: transcript.length,
+              traceId: sharedVoiceTraceId,
             });
             voiceCaptureDebug("txt", { chars: transcript.length });
             applyTranscriptUpdate(transcript, true, {
@@ -1413,7 +1432,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 normalizeActiveVoiceSessionMode(listeningModeRef.current) ??
                 "compose",
               source: "cloud",
-              metadata: { source: "cloud" },
+              metadata: {
+                source: "cloud",
+                ...(sharedVoiceTraceId
+                  ? { voiceTraceId: sharedVoiceTraceId }
+                  : {}),
+              },
             });
           } catch (error) {
             // Distinguish the failing leg for the HUD: a `post:<status>` when the
@@ -1421,7 +1445,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             // failure (e.g. "No microphone audio was captured" = empty WAV).
             const status = cloudSttErrorStatus(error);
             if (status != null) {
-              voiceCaptureDebug("post:err", { status: String(status) });
+              voiceCaptureDebug("post:err", {
+                status: String(status),
+                traceId: lastSharedRuntimeVoiceTraceIdRef.current ?? undefined,
+              });
             } else {
               voiceCaptureDebug("rec:stop-err", {
                 backend: "cloud",
@@ -1430,6 +1457,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                   error instanceof Error
                     ? error.message.slice(0, 80)
                     : String(error).slice(0, 80),
+                traceId: lastSharedRuntimeVoiceTraceIdRef.current ?? undefined,
               });
             }
             ttsDebug("asr:cloud:error", {
@@ -1913,9 +1941,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           const ttsTarget = sharedTtsOrigin
             ? sharedRuntimeTtsUrl(sharedTtsOrigin)
             : resolveApiUrl("/api/tts/cloud");
+          const voiceTraceId = sharedTtsOrigin
+            ? task.telemetry?.voiceTraceId
+            : undefined;
+          markSharedRuntimeVoiceTrace("tts_request_start", voiceTraceId);
           res = await fetchWithCsrf(ttsTarget, {
             method: "POST",
-            headers: {
+            headers: sharedRuntimeVoiceTraceHeaders(voiceTraceId, {
               "Content-Type": "application/json",
               Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
               ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
@@ -1932,10 +1964,17 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                     ),
                   }
                 : {}),
-            },
+            }),
             body: JSON.stringify({ text }),
             signal: controller.signal,
           });
+          markSharedRuntimeVoiceTrace("tts_first_byte", voiceTraceId);
+          measureSharedRuntimeVoiceTrace(
+            "tts_first_byte",
+            "tts_request_start",
+            "tts_first_byte",
+            voiceTraceId,
+          );
         } finally {
           clearTimeout(timeoutId);
           if (activeFetchAbortRef.current === controller) {
@@ -1957,13 +1996,34 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
 
         audioBytes = new Uint8Array(await res.arrayBuffer());
+        markSharedRuntimeVoiceTrace("tts_end", task.telemetry?.voiceTraceId);
+        measureSharedRuntimeVoiceTrace(
+          "tts_end",
+          "tts_request_start",
+          "tts_end",
+          task.telemetry?.voiceTraceId,
+        );
         if (cacheKey) {
           rememberCachedSegment(cacheKey, audioBytes.slice());
         }
       }
 
       if (generation !== generationRef.current) return;
+      markSharedRuntimeVoiceTrace(
+        "audio_decode_start",
+        task.telemetry?.voiceTraceId,
+      );
       const audioBuffer = await ctx.decodeAudioData(toArrayBuffer(audioBytes));
+      markSharedRuntimeVoiceTrace(
+        "audio_decode_end",
+        task.telemetry?.voiceTraceId,
+      );
+      measureSharedRuntimeVoiceTrace(
+        "audio_decode_end",
+        "audio_decode_start",
+        "audio_decode_end",
+        task.telemetry?.voiceTraceId,
+      );
       if (generation !== generationRef.current) return;
 
       const analyser = ctx.createAnalyser();
@@ -1993,6 +2053,16 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const finish = () => {
           if (finished) return;
           finished = true;
+          markSharedRuntimeVoiceTrace(
+            "playback_end",
+            task.telemetry?.voiceTraceId,
+          );
+          measureSharedRuntimeVoiceTrace(
+            "playback_end",
+            "playback_start",
+            "playback_end",
+            task.telemetry?.voiceTraceId,
+          );
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
@@ -2033,6 +2103,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         );
 
         source.start(0);
+        markSharedRuntimeVoiceTrace(
+          "playback_start",
+          task.telemetry?.voiceTraceId,
+        );
         emitPlaybackStart({
           text,
           segment: task.segment,

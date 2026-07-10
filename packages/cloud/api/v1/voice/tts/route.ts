@@ -53,6 +53,13 @@ import {
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import {
+  elapsedMs,
+  readVoiceTraceId,
+  type VoiceTimingComponent,
+  voiceJsonResponse,
+  voiceTraceHeaders,
+} from "../trace";
+import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
@@ -115,7 +122,14 @@ function resolveKokoroVoice(voiceId?: string): string {
 }
 
 async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
+  const routeStartMs = Date.now();
+  const traceId = readVoiceTraceId(request);
   let reservation: CreditReservation | undefined;
+  const timings = (): VoiceTimingComponent[] => [
+    { name: "admission", durationMs: elapsedMs(routeStartMs) },
+  ];
+  const json = (body: unknown, status = 200, extra = timings()) =>
+    voiceJsonResponse(body, { status, traceId, timings: extra });
 
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
@@ -123,27 +137,27 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const rawBody = await request.json();
     const parsed = TtsBody.safeParse(rawBody);
     if (!parsed.success) {
-      return Response.json(
+      return json(
         { error: "Invalid request body", details: parsed.error.flatten() },
-        { status: 400 },
+        400,
       );
     }
     const { text, voiceId, modelId } = parsed.data;
 
     if (!text) {
-      return Response.json({ error: "No text provided" }, { status: 400 });
+      return json({ error: "No text provided" }, 400);
     }
 
     if (text.length === 0) {
-      return Response.json({ error: "Text cannot be empty" }, { status: 400 });
+      return json({ error: "Text cannot be empty" }, 400);
     }
 
     if (text.length > MAX_TEXT_LENGTH) {
-      return Response.json(
+      return json(
         {
           error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
         },
-        { status: 400 },
+        400,
       );
     }
 
@@ -155,9 +169,13 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       metadata: { type: "tts", model: modelId || "eleven_flash_v2_5", voiceId },
     });
 
-    logger.info(
-      `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
-    );
+    logger.info("[Voice TTS API] Generating speech", {
+      traceId,
+      userId: user.id,
+      textLength: text.length,
+      voiceId,
+      modelId,
+    });
 
     // -------------------------------------------------------------------------
     // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
@@ -188,32 +206,50 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           : null;
 
       if (kokoroCacheKey) {
+        const cacheStartMs = Date.now();
+        const admissionMs = elapsedMs(routeStartMs);
         try {
           const cached =
             await getCloudFirstLineCacheService().get(kokoroCacheKey);
           if (cached) {
-            logger.info(
-              `[Voice TTS API] Kokoro first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount}, voice=${kokoroVoice}) — no upstream request`,
-            );
+            const cacheMs = elapsedMs(cacheStartMs);
+            logger.info("[Voice TTS API] Kokoro first-line cache hit", {
+              traceId,
+              byteSize: cached.byteSize,
+              hitCount: cached.hitCount,
+              voice: kokoroVoice,
+            });
             return new Response(cached.bytes as unknown as BodyInit, {
               status: 200,
-              headers: {
-                "Content-Type": cached.contentType,
-                "Cache-Control": "no-cache",
-                "X-TTS-Cache": "hit; kokoro; first-sentence",
-              },
+              headers: voiceTraceHeaders(
+                traceId,
+                [
+                  { name: "admission", durationMs: admissionMs },
+                  { name: "cache", durationMs: cacheMs },
+                ],
+                {
+                  "Content-Type": cached.contentType,
+                  "Cache-Control": "no-cache",
+                  "X-TTS-Cache": "hit; kokoro; first-sentence",
+                },
+              ),
             });
           }
         } catch (err) {
           // error-policy:J4 cache lookup failure degrades to fresh synthesis;
           // the upstream Railway request below is the source of truth.
           logger.warn?.(
-            `[Voice TTS API] Kokoro first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+            "[Voice TTS API] Kokoro first-line cache lookup failed",
+            {
+              traceId,
+              error: err instanceof Error ? err.message : String(err),
+            },
           );
         }
       }
 
       const kokoroStart = Date.now();
+      const admissionMs = elapsedMs(routeStartMs);
       const kokoroResponse = await fetch(
         `${kokoroBaseUrl.replace(/\/+$/, "")}/api/tts`,
         {
@@ -224,20 +260,28 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         },
       );
       if (!kokoroResponse.ok || !kokoroResponse.body) {
-        const detail = await kokoroResponse.text().catch(() => "");
-        logger.error(
-          `[Voice TTS API] Kokoro synthesis failed (${kokoroResponse.status}): ${detail.slice(0, 200)}`,
-        );
-        return Response.json(
-          { error: "TTS synthesis failed" },
-          { status: 502 },
-        );
+        const synthMs = elapsedMs(kokoroStart);
+        logger.error("[Voice TTS API] Kokoro synthesis failed", {
+          traceId,
+          status: kokoroResponse.status,
+          synthMs,
+        });
+        return json({ error: "TTS synthesis failed" }, 502, [
+          { name: "admission", durationMs: admissionMs },
+          { name: "synth", durationMs: synthMs },
+          { name: "provider", durationMs: synthMs },
+          { name: "error", durationMs: synthMs },
+        ]);
       }
       const kokoroContentType =
         kokoroResponse.headers.get("Content-Type") ?? "audio/wav";
-      logger.info(
-        `[Voice TTS API] Kokoro stream started in ${Date.now() - kokoroStart}ms (voice=${kokoroVoice}, free)`,
-      );
+      const kokoroDuration = elapsedMs(kokoroStart);
+      logger.info("[Voice TTS API] Kokoro stream started", {
+        traceId,
+        durationMs: kokoroDuration,
+        voice: kokoroVoice,
+        billing: "free",
+      });
 
       // Cacheable opener MISS: buffer the (tiny, ≤10-word) WAV so we can serve
       // it AND populate the cache. Non-cacheable text streams straight through
@@ -256,7 +300,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           .then((ok) => {
             if (ok) {
               logger.info(
-                `[Voice TTS API] Kokoro first-line cache POPULATE ok (${bytes.byteLength}B, "${kokoroSnip.normalized}")`,
+                "[Voice TTS API] Kokoro first-line cache populate ok",
+                { traceId, byteSize: bytes.byteLength },
               );
             }
           })
@@ -264,26 +309,46 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             // error-policy:J7 populate is a background write; a failure must not
             // affect the response the user already receives below.
             logger.warn?.(
-              `[Voice TTS API] Kokoro first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
+              "[Voice TTS API] Kokoro first-line cache populate failed",
+              {
+                traceId,
+                error: err instanceof Error ? err.message : String(err),
+              },
             );
           });
 
         return new Response(bytes as unknown as BodyInit, {
           status: 200,
-          headers: {
-            "Content-Type": kokoroContentType,
-            "Cache-Control": "no-store",
-            "X-TTS-Cache": "miss; kokoro",
-          },
+          headers: voiceTraceHeaders(
+            traceId,
+            [
+              { name: "admission", durationMs: admissionMs },
+              { name: "synth", durationMs: kokoroDuration },
+              { name: "provider", durationMs: kokoroDuration },
+            ],
+            {
+              "Content-Type": kokoroContentType,
+              "Cache-Control": "no-store",
+              "X-TTS-Cache": "miss; kokoro",
+            },
+          ),
         });
       }
 
       return new Response(kokoroResponse.body, {
         status: 200,
-        headers: {
-          "Content-Type": kokoroContentType,
-          "Cache-Control": "no-store",
-        },
+        headers: voiceTraceHeaders(
+          traceId,
+          [
+            { name: "admission", durationMs: admissionMs },
+            { name: "synth", durationMs: kokoroDuration },
+            { name: "provider", durationMs: kokoroDuration },
+          ],
+          {
+            "Content-Type": kokoroContentType,
+            "Cache-Control": "no-store",
+          },
+        ),
       });
     }
 
@@ -301,6 +366,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
         userVoicesRepository.incrementUsageCount(voice.id).catch((err) =>
           logger.error("[Voice TTS API] Failed to increment voice usage", {
+            traceId,
             voiceId: voice.id,
             voiceName: voice.name,
             error: err instanceof Error ? err.message : String(err),
@@ -308,6 +374,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         );
 
         logger.info("[Voice TTS API] Tracking custom voice usage", {
+          traceId,
           userVoiceId: voice.id,
           voiceName: voice.name,
         });
@@ -341,6 +408,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       // alignment hazards on the concat path.
       snipResult.endOffset === text.trimEnd().length
     ) {
+      const cacheStartMs = Date.now();
+      const admissionMs = elapsedMs(routeStartMs);
       try {
         const cacheService = getCloudFirstLineCacheService();
         const cached = await cacheService.get({
@@ -358,22 +427,34 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           scope: cacheScope,
         });
         if (cached) {
-          logger.info(
-            `[Voice TTS API] first-line cache HIT (${cacheScope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
-          );
+          const cacheMs = elapsedMs(cacheStartMs);
+          logger.info("[Voice TTS API] first-line cache hit", {
+            traceId,
+            cacheScope,
+            byteSize: cached.byteSize,
+            hitCount: cached.hitCount,
+          });
           return new Response(cached.bytes as unknown as BodyInit, {
-            headers: {
-              "Content-Type": cached.contentType,
-              "Cache-Control": "no-cache",
-              "X-TTS-Cache": "hit; first-sentence",
-            },
+            headers: voiceTraceHeaders(
+              traceId,
+              [
+                { name: "admission", durationMs: admissionMs },
+                { name: "cache", durationMs: cacheMs },
+              ],
+              {
+                "Content-Type": cached.contentType,
+                "Cache-Control": "no-cache",
+                "X-TTS-Cache": "hit; first-sentence",
+              },
+            ),
           });
         }
       } catch (err) {
         // Cache failure is non-fatal — fall through to normal synthesis.
-        logger.warn?.(
-          `[Voice TTS API] first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
+          traceId,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
@@ -395,12 +476,12 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
-        return Response.json(
+        return json(
           {
             error: "Insufficient credits for text-to-speech",
             required: error.required,
           },
-          { status: 402 },
+          402,
         );
       }
       throw error;
@@ -409,6 +490,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const elevenlabs = getElevenLabsService(env);
 
     const startTime = Date.now();
+    const admissionMs = elapsedMs(routeStartMs);
     const audioStream = await elevenlabs.textToSpeech({
       text,
       voiceId,
@@ -416,7 +498,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     });
     const duration = Date.now() - startTime;
 
-    logger.info(`[Voice TTS API] Stream started in ${duration}ms`);
+    logger.info("[Voice TTS API] Stream started", {
+      traceId,
+      durationMs: duration,
+    });
 
     const billing = await billFlatUsage(
       {
@@ -475,6 +560,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         });
       } catch (error) {
         logger.error("[Voice TTS API] Failed to create usage record", {
+          traceId,
           error: error instanceof Error ? error.message : String(error),
           userVoiceId,
         });
@@ -538,35 +624,49 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             durationMs: 0,
             wordCount: snipResult.wordCount,
           });
-          logger.info(
-            `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${total}B, "${snipResult.normalized}")`,
-          );
+          logger.info("[Voice TTS API] first-line cache populate ok", {
+            traceId,
+            cacheScope,
+            byteSize: total,
+          });
         } catch (err) {
-          logger.warn?.(
-            `[Voice TTS API] first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          logger.warn?.("[Voice TTS API] first-line cache populate failed", {
+            traceId,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       })();
     }
 
     return new Response(audioStream, {
-      headers: {
-        "Content-Type": "audio/mpeg",
-        "Transfer-Encoding": "chunked",
-        "Cache-Control": "no-cache",
-        "X-TTS-Cache": "miss",
-      },
+      headers: voiceTraceHeaders(
+        traceId,
+        [
+          { name: "admission", durationMs: admissionMs },
+          { name: "synth", durationMs: duration },
+          { name: "provider", durationMs: duration },
+        ],
+        {
+          "Content-Type": "audio/mpeg",
+          "Transfer-Encoding": "chunked",
+          "Cache-Control": "no-cache",
+          "X-TTS-Cache": "miss",
+        },
+      ),
     });
   } catch (error) {
-    logger.error("[Voice TTS API] Error:", error);
+    logger.error("[Voice TTS API] Error", {
+      traceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
 
     if (reservation) {
       await reservation.reconcile(0);
-      logger.info("[Voice TTS API] Refunded credits after error");
+      logger.info("[Voice TTS API] Refunded credits after error", { traceId });
     }
 
     if (error instanceof ApiError) {
-      return Response.json(error.toJSON(), { status: error.status });
+      return json(error.toJSON(), error.status);
     }
 
     const errorMessage =
@@ -584,46 +684,40 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       errorMessage.includes("authentication required") ||
       errorMessage.includes("forbidden")
     ) {
-      return Response.json({ error: "Unauthorized" }, { status: 401 });
+      return json({ error: "Unauthorized" }, 401);
     }
 
     if (errorMessage.includes("rate limit")) {
-      return Response.json(
+      return json(
         { error: "Rate limit exceeded. Please try again in a moment." },
-        { status: 429 },
+        429,
       );
     }
 
     if (errorMessage.includes("quota")) {
-      return Response.json(
+      return json(
         {
           error:
             "Voice service is temporarily unavailable due to high demand. Please try again in a few moments.",
           type: "service_unavailable",
           retryAfter: "5 minutes",
         },
-        { status: 503 },
+        503,
       );
     }
 
     if (errorMessage.includes("voice")) {
-      return Response.json(
+      return json(
         { error: "Invalid voice ID. Please select a different voice." },
-        { status: 400 },
+        400,
       );
     }
 
     if (errorMessage.includes("elevenlabs_api_key")) {
-      return Response.json(
-        { error: "Service not configured" },
-        { status: 500 },
-      );
+      return json({ error: "Service not configured" }, 500);
     }
 
-    return Response.json(
-      { error: "Failed to generate speech. Please try again." },
-      { status: 500 },
-    );
+    return json({ error: "Failed to generate speech. Please try again." }, 500);
   }
 }
 

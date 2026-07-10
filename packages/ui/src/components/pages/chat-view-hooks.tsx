@@ -107,6 +107,7 @@ type PendingVoiceTurnState = {
   assistantFirstTextAtMs?: number;
   speechEndedAtMs: number;
   voiceStartedAtMs?: number;
+  voiceTraceId?: string;
 };
 
 function makeVoiceTurnId(speechEndedAtMs: number): string {
@@ -332,6 +333,11 @@ export function useChatVoiceController(options: {
       if (!composedText) return;
       const speechEndedAtMs = nowMs();
       const voiceTurnId = event?.turn.id ?? makeVoiceTurnId(speechEndedAtMs);
+      const rawVoiceTraceId = event?.turn.metadata?.voiceTraceId;
+      const voiceTraceId =
+        typeof rawVoiceTraceId === "string" && rawVoiceTraceId.trim()
+          ? rawVoiceTraceId.trim()
+          : undefined;
       // Prefer the signal the native VAD/turn engine computed (it folds in
       // diarization + audio-frame end-of-turn); fall back to the transcript
       // gate so transcript-only backends still reach the server ambient gate.
@@ -346,6 +352,7 @@ export function useChatVoiceController(options: {
         expiresAtMs: speechEndedAtMs + VOICE_TURN_OUTPUT_WINDOW_MS,
         latencyExpiresAtMs: speechEndedAtMs + VOICE_TURN_LATENCY_WINDOW_MS,
         speechEndedAtMs,
+        voiceTraceId,
       };
       setVoiceLatency(null);
       setState("chatInput", composedText);
@@ -718,6 +725,7 @@ export function useChatVoiceController(options: {
         assistantFirstTextAtMs:
           pendingVoiceTurn.assistantFirstTextAtMs ?? textUpdatedAtMs,
         assistantTextUpdatedAtMs: textUpdatedAtMs,
+        voiceTraceId: pendingVoiceTurn.voiceTraceId,
       };
     }
 

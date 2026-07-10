@@ -26,6 +26,92 @@
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
 
+export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
+
+export type SharedRuntimeVoiceTraceMark =
+  | "stt_request_start"
+  | "stt_request_end"
+  | "transcript_received"
+  | "tts_request_start"
+  | "tts_first_byte"
+  | "tts_end"
+  | "audio_decode_start"
+  | "audio_decode_end"
+  | "playback_start"
+  | "playback_end";
+
+export function createSharedRuntimeVoiceTraceId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+  const random =
+    typeof cryptoApi?.getRandomValues === "function"
+      ? cryptoApi.getRandomValues(new Uint32Array(2)).join("")
+      : Math.random().toString(36).slice(2);
+  return `voice-${Date.now().toString(36)}-${random}`;
+}
+
+export function sharedRuntimeVoiceMarkName(
+  mark: SharedRuntimeVoiceTraceMark,
+): string {
+  return `eliza.voice.${mark}`;
+}
+
+export function sharedRuntimeVoiceTraceHeaders(
+  traceId: string | null | undefined,
+  headers: Record<string, string>,
+): Record<string, string> {
+  return traceId ? { ...headers, [VOICE_TRACE_HEADER]: traceId } : headers;
+}
+
+export function markSharedRuntimeVoiceTrace(
+  mark: SharedRuntimeVoiceTraceMark,
+  traceId: string | null | undefined,
+): void {
+  const perf = globalThis.performance;
+  if (!traceId || typeof perf?.mark !== "function") return;
+  try {
+    perf.mark(sharedRuntimeVoiceMarkName(mark), {
+      detail: { traceId },
+    } as PerformanceMarkOptions);
+  } catch {
+    try {
+      perf.mark(sharedRuntimeVoiceMarkName(mark));
+    } catch {
+      // Partial test/browser performance mocks may expose mark but still throw.
+      return;
+    }
+  }
+}
+
+export function measureSharedRuntimeVoiceTrace(
+  measure: SharedRuntimeVoiceTraceMark,
+  start: SharedRuntimeVoiceTraceMark,
+  end: SharedRuntimeVoiceTraceMark,
+  traceId: string | null | undefined,
+): void {
+  const perf = globalThis.performance;
+  if (!traceId || typeof perf?.measure !== "function") return;
+  const measureName = sharedRuntimeVoiceMarkName(measure);
+  const startName = sharedRuntimeVoiceMarkName(start);
+  const endName = sharedRuntimeVoiceMarkName(end);
+  try {
+    perf.measure(measureName, {
+      start: startName,
+      end: endName,
+      detail: { traceId },
+    } as PerformanceMeasureOptions);
+  } catch {
+    try {
+      perf.measure(measureName, startName, endName);
+    } catch {
+      // Missing marks or partial mocks should not affect voice playback.
+      return;
+    }
+  }
+}
+
 /**
  * Derive the cloud API worker origin from a shared-runtime agent base.
  *

@@ -14,15 +14,25 @@ vi.mock("../utils/eliza-globals", () => ({
   getElizaApiBase: vi.fn<() => string | undefined>(),
 }));
 
+vi.mock("../utils/cloud-agent-base", () => ({
+  normalizeDirectCloudSharedAgentApiBase: (value: string) =>
+    value.replace(/\/bridge\/?$/, ""),
+}));
+
 import { getElizaApiBase } from "../utils/eliza-globals";
 import {
   buildSharedRuntimeSttBody,
   currentSharedRuntimeVoiceOrigin,
   isVoiceTargetResolvableForActiveAgent,
+  markSharedRuntimeVoiceTrace,
+  measureSharedRuntimeVoiceTrace,
   parseSharedRuntimeSttResponse,
   sharedRuntimeSttUrl,
   sharedRuntimeTtsUrl,
+  sharedRuntimeVoiceMarkName,
   sharedRuntimeVoiceOrigin,
+  sharedRuntimeVoiceTraceHeaders,
+  VOICE_TRACE_HEADER,
 } from "./shared-runtime-voice";
 
 const getElizaApiBaseMock = vi.mocked(getElizaApiBase);
@@ -97,6 +107,27 @@ describe("v1 route URL builders", () => {
   });
 });
 
+describe("shared-runtime voice trace headers", () => {
+  it("adds X-Eliza-Voice-Trace-Id without changing stable base headers", () => {
+    expect(
+      sharedRuntimeVoiceTraceHeaders("trace-turn-1", {
+        Accept: "audio/wav",
+      }),
+    ).toEqual({
+      Accept: "audio/wav",
+      [VOICE_TRACE_HEADER]: "trace-turn-1",
+    });
+  });
+
+  it("leaves headers unchanged when no shared-runtime trace id exists", () => {
+    expect(
+      sharedRuntimeVoiceTraceHeaders(undefined, {
+        Accept: "audio/wav",
+      }),
+    ).toEqual({ Accept: "audio/wav" });
+  });
+});
+
 describe("STT request/response adaptation", () => {
   it("builds a multipart body with the WAV as an `audio` File (audio/wav)", () => {
     const wav = new Uint8Array([82, 73, 70, 70]); // "RIFF"
@@ -145,5 +176,100 @@ describe("isVoiceTargetResolvableForActiveAgent (mic-affordance guard)", () => {
       "https://api.elizacloud.ai/api/v1/eliza/agents/abc",
     );
     expect(isVoiceTargetResolvableForActiveAgent()).toBe(true);
+  });
+});
+
+describe("shared-runtime voice performance helpers", () => {
+  it("uses stable mark names and stores traceId in detail", () => {
+    const marks: Array<{ name: string; detail?: unknown }> = [];
+    const measures: Array<{ name: string; detail?: unknown }> = [];
+    const originalPerformance = globalThis.performance;
+    Object.defineProperty(globalThis, "performance", {
+      configurable: true,
+      value: {
+        mark: vi.fn((name: string, options?: PerformanceMarkOptions) => {
+          marks.push({ name, detail: options?.detail });
+        }),
+        measure: vi.fn(
+          (
+            name: string,
+            options?: PerformanceMeasureOptions | string,
+            _end?: string,
+          ) => {
+            measures.push({
+              name,
+              detail:
+                typeof options === "object" && options !== null
+                  ? options.detail
+                  : undefined,
+            });
+          },
+        ),
+      },
+    });
+
+    try {
+      markSharedRuntimeVoiceTrace("stt_request_start", "trace-1");
+      markSharedRuntimeVoiceTrace("stt_request_end", "trace-1");
+      measureSharedRuntimeVoiceTrace(
+        "stt_request_end",
+        "stt_request_start",
+        "stt_request_end",
+        "trace-1",
+      );
+    } finally {
+      Object.defineProperty(globalThis, "performance", {
+        configurable: true,
+        value: originalPerformance,
+      });
+    }
+
+    expect(marks).toEqual([
+      {
+        name: sharedRuntimeVoiceMarkName("stt_request_start"),
+        detail: { traceId: "trace-1" },
+      },
+      {
+        name: sharedRuntimeVoiceMarkName("stt_request_end"),
+        detail: { traceId: "trace-1" },
+      },
+    ]);
+    expect(measures).toEqual([
+      {
+        name: sharedRuntimeVoiceMarkName("stt_request_end"),
+        detail: { traceId: "trace-1" },
+      },
+    ]);
+  });
+
+  it("does not throw when performance APIs are absent or partial", () => {
+    const originalPerformance = globalThis.performance;
+    Object.defineProperty(globalThis, "performance", {
+      configurable: true,
+      value: {
+        mark: vi.fn(() => {
+          throw new Error("partial mark mock");
+        }),
+      },
+    });
+
+    try {
+      expect(() =>
+        markSharedRuntimeVoiceTrace("tts_request_start", "trace-1"),
+      ).not.toThrow();
+      expect(() =>
+        measureSharedRuntimeVoiceTrace(
+          "tts_end",
+          "tts_request_start",
+          "tts_end",
+          "trace-1",
+        ),
+      ).not.toThrow();
+    } finally {
+      Object.defineProperty(globalThis, "performance", {
+        configurable: true,
+        value: originalPerformance,
+      });
+    }
   });
 });
