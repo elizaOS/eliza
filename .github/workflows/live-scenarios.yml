@@ -198,6 +198,7 @@ jobs:
             plugins/plugin-local-inference
             plugins/plugin-app-control
             plugins/plugin-agent-skills
+            plugins/plugin-calendar
             plugins/plugin-health
             plugins/plugin-pdf
             plugins/plugin-telegram

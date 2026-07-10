@@ -24,6 +24,13 @@ test("builds the blocker engine imported by personal-assistant scenarios", () =>
   );
 });
 
+test("builds the calendar plugin imported by personal-assistant scenarios", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  expect(workflow).toMatch(
+    /package_dirs=\([\s\S]*plugins\/plugin-calendar[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
+  );
+});
+
 test("runs every live scenario root against workspace source exports", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   const sourceConditionEntries = [
