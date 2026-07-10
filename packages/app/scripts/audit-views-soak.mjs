@@ -316,6 +316,23 @@ function summarizeNetworkLog(networkLog) {
   };
 }
 
+function isExpectedConsoleError(entry, classifiedNetworkLog) {
+  if (
+    !/^Failed to load resource: the server responded with a status of (401|404) \([^)]+\)$/.test(
+      entry.text,
+    )
+  ) {
+    return false;
+  }
+  const locationUrl = entry.location?.url;
+  return classifiedNetworkLog.some(
+    (networkEntry) =>
+      networkEntry.kind === "response" &&
+      networkEntry.url === locationUrl &&
+      networkEntry.classification.expected,
+  );
+}
+
 let activeBrowser = null;
 let activeContext = null;
 
@@ -684,6 +701,7 @@ async function main() {
   // sweep trips it; 2.2x is a deliberately loose doubling-guard to stay non-flaky.
   const heapWarm = heapSamples[1] || heapStart;
   const heapRatio = heapEnd / Math.max(1, heapWarm);
+  const consoleErrors = consoleLog.filter((entry) => entry.type === "error");
   assert(
     heapRatio < 2.2 || heapEnd === 0,
     `heap bounded across the soak: end ${(heapEnd / 1e6).toFixed(1)}MB / warm ${(heapWarm / 1e6).toFixed(1)}MB = ${heapRatio.toFixed(2)}x (< 2.2x; 0 = no perf.memory)`,
@@ -711,6 +729,13 @@ async function main() {
   activeBrowser = null;
 
   const networkSummary = summarizeNetworkLog(networkLog);
+  const unexpectedConsoleErrors = consoleErrors.filter(
+    (entry) => !isExpectedConsoleError(entry, networkSummary.classified),
+  );
+  assert(
+    unexpectedConsoleErrors.length === 0,
+    `no unexpected console errors during the soak (${JSON.stringify(unexpectedConsoleErrors.slice(0, 3))})`,
+  );
   assert(
     networkSummary.unexpectedCount === 0,
     `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count}, expected protected-route 401s=${networkSummary.expectedProtectedRoute401Count})`,
@@ -729,6 +754,8 @@ async function main() {
   writeJson("audit-views-navigation.json", [...navRecords.values()]);
   writeJson("audit-views-frontend-log.json", {
     console: consoleLog,
+    consoleErrors,
+    unexpectedConsoleErrors,
     pageErrors,
   });
   writeJson("audit-views-network-log.json", networkLog);
