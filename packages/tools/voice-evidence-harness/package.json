@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/voice-evidence-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Real-provider Definition-of-Done evidence capture harness for the realtime voice-session WebSocket contract (Deepgram Flux STT -> streaming LLM -> Cartesia Sonic TTS). Drives the REAL merged provider adapters against LIVE providers and captures every artifact the DoD demands (WS transcript, input/output audio, both-side logs, stage timings, post-interrupt frame-count assertion, domain artifacts, MP4). Harness-only; NOT a second production voice service.",
+  "bin": {
+    "voice-evidence": "./src/cli.ts"
+  },
+  "scripts": {
+    "evidence": "bun run src/cli.ts",
+    "evidence:baseline": "bun run src/cli.ts --scenario=baseline",
+    "evidence:bargein": "bun run src/cli.ts --scenario=bargein",
+    "evidence:error": "bun run src/cli.ts --scenario=error-auth",
+    "evidence:all": "bun run src/cli.ts --scenario=all",
+    "typecheck": "tsgo --noEmit || tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "ws": "^8.21.0"
+  }
+}
