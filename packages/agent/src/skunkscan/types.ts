@@ -83,6 +83,55 @@ export type WalletConfidenceAnalysis = {
   reasons: string[];
 };
 
+export type WalletDecisionFactor = {
+  id: string;
+
+  category:
+    | "risk"
+    | "trust"
+    | "exposure"
+    | "compliance"
+    | "funding"
+    | "relationships"
+    | "custody"
+    | "behavior"
+    | "whale"
+    | "smart_money"
+    | "transaction_risk";
+
+  effect: "positive" | "negative" | "neutral";
+
+  weight: number;
+
+  description: string;
+
+  evidenceRecordIds: string[];
+};
+
+export type WalletDecisionSummary = {
+  decision:
+    | "low_risk"
+    | "review"
+    | "investigate"
+    | "high_risk";
+
+  recommendation:
+    | "allow"
+    | "review"
+    | "investigate"
+    | "high_risk";
+
+  confidence: "low" | "medium" | "high";
+
+  confidenceAnalysis: WalletConfidenceAnalysis;
+
+  factors: WalletDecisionFactor[];
+
+  supportingEvidenceRecordIds: string[];
+
+  limitations: string[];
+};
+
 export type WalletEvidenceRecord = {
   id: string;
 
@@ -489,6 +538,7 @@ export type WalletInvestigationResult = {
   behavior?: WalletBehaviorSummary;
   caseSummary?: WalletCaseSummary;
   display?: WalletDisplaySummary;
+  decision?: WalletDecisionSummary;
   executiveVerdict?: WalletExecutiveVerdict;
   custodyProfile?: WalletCustodyProfile;
   complianceScreening?: WalletComplianceScreeningSummary;
