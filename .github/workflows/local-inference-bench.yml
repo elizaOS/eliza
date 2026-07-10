@@ -173,6 +173,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
+      - name: Initialize the fused-runtime source
+        run: |
+          git submodule update --init --recursive \
+            plugins/plugin-local-inference/native/llama.cpp
+
       - name: Build and stage the CPU fused inference runtime
         run: |
           set -euo pipefail
