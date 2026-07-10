@@ -924,9 +924,11 @@ export const ChatMessage = memo(function ChatMessage({
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
       // Give first-run the same conversational bubble structure as chat, with
-      // enough room and contrast for its full-width next-step action.
+      // enough room and contrast for its next-step action. Intrinsic width keeps
+      // short greetings from stretching across the full onboarding column;
+      // longer copy still wraps at the row's existing 22rem maximum.
       isFirstRun &&
-        "w-full border-white/20 bg-white/[0.07] px-4 py-3.5 sm:px-5 sm:py-4",
+        "w-fit max-w-full border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so

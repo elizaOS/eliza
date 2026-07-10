@@ -1969,6 +1969,7 @@ function HomeScreenMount({
   initialPage?: "home" | "launcher";
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
+  const firstRunOpen = useAppSelector((s) => s.firstRunComplete === false);
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
@@ -2000,7 +2001,14 @@ function HomeScreenMount({
   );
   const launcher = useMemo(() => <LauncherSurface />, []);
   return (
-    <div className="relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden">
+    <div
+      aria-hidden={firstRunOpen ? "true" : undefined}
+      data-onboarding-hidden={firstRunOpen ? "true" : undefined}
+      className={cn(
+        "relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden",
+        firstRunOpen && "invisible",
+      )}
+    >
       <HomeLauncherSurface
         home={home}
         launcher={launcher}

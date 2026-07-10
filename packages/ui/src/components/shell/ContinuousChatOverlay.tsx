@@ -3279,13 +3279,12 @@ export function ContinuousChatOverlay({
     if (was) goToDetent("half");
   }, [firstRunOpen, goToDetent]);
 
-  // First-run opaque backdrop (#12178). While onboarding pins the sheet FULL,
-  // the backdrop is an OPAQUE `bg-bg` layer that hides the launcher/home behind
-  // the chat — the normal translucent gradient scrim would let them show
-  // through. On the falling edge (onboarding just completed) it fades opaque →
-  // transparent over ~400ms in step with the one-shot auto-collapse above,
-  // revealing home/launcher underneath (kept mounted, warm); reduced-motion
-  // cuts straight to hidden. `off` unmounts the layer for ordinary sessions.
+  // First-run backdrop. While onboarding pins the sheet FULL, a neutral scrim
+  // preserves the shell's configured wallpaper while keeping the sign-in copy
+  // readable. On the falling edge (onboarding just completed) it fades away
+  // over ~400ms in step with the one-shot auto-collapse above; reduced-motion
+  // cuts straight to hidden. The historical `opaque` phase name describes the
+  // layer's opacity and remains part of the smoke-test transition contract.
   const [firstRunBackdrop, setFirstRunBackdrop] = React.useState<
     "opaque" | "revealing" | "off"
   >(firstRunOpen ? "opaque" : "off");
@@ -4841,12 +4840,10 @@ export function ContinuousChatOverlay({
         }}
       />
 
-      {/* First-run opaque backdrop (#12178): while onboarding is open this
-          OPAQUE `bg-bg` layer sits ABOVE the gradient scrim and BELOW the glass
-          panel, so no launcher/home pixel shows through — including behind the
-          translucent panel glass. On completion it fades to transparent (~400ms)
-          in step with the one-shot collapse, revealing the launcher warm
-          underneath; reduced-motion cuts. Pointer-transparent like the scrim. */}
+      {/* First-run wallpaper scrim: it sits above the shell wallpaper and below
+          the chat, preserving the configured background without compromising
+          text contrast. On completion it fades out with the one-shot collapse.
+          Pointer-transparent like the ordinary sheet backdrop. */}
       {firstRunBackdrop !== "off" ? (
         <motion.div
           aria-hidden="true"
@@ -4854,7 +4851,7 @@ export function ContinuousChatOverlay({
           data-first-run-opaque={
             firstRunBackdrop === "opaque" ? "true" : "false"
           }
-          className="fixed inset-0 bg-bg"
+          className="fixed inset-0 bg-black/35"
           initial={false}
           animate={{ opacity: firstRunBackdrop === "opaque" ? 1 : 0 }}
           transition={{
@@ -5015,6 +5012,7 @@ export function ContinuousChatOverlay({
               corner radius. Crossfades in by openProgress (compositor opacity). */}
           <motion.div
             aria-hidden="true"
+            data-testid="chat-sheet-surface"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
               // SOLID warm-dark panel. The chat floats over the live ember field,
@@ -5046,9 +5044,11 @@ export function ContinuousChatOverlay({
               // CHAT_PANEL_THEME on the fieldset, not the orange app theme behind.
               // Full-bleed stays fully opaque (it covers the whole screen — there
               // is nothing to see through, and the blur would be wasted battery).
-              backgroundColor: fullBleed
-                ? "var(--bg)"
-                : "color-mix(in srgb, var(--card) 62%, transparent)",
+              backgroundColor: firstRunOpen
+                ? "transparent"
+                : fullBleed
+                  ? "var(--bg)"
+                  : "color-mix(in srgb, var(--card) 62%, transparent)",
               backdropFilter: fullBleed
                 ? undefined
                 : "blur(30px) saturate(1.4)",
@@ -5065,7 +5065,9 @@ export function ContinuousChatOverlay({
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
               // warm `--surface` gradient that read as brown.
-              backgroundImage: `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+              backgroundImage: firstRunOpen
+                ? "none"
+                : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
@@ -5608,6 +5610,7 @@ export function ContinuousChatOverlay({
             wrapper crossfades + scales in from the pill (openProgress), so this
             row needs no separate entrance — it just sits at the panel base. */}
             <motion.div
+              data-testid="chat-composer-row"
               className={cn(
                 // items-center vertically centers a single-line composer with
                 // the round +/mic buttons (the common case); a multi-line draft
@@ -5650,6 +5653,13 @@ export function ContinuousChatOverlay({
                   : { marginBottom: composerCapsuleMarginBottom }),
               }}
             >
+              {firstRunOpen ? (
+                <span
+                  aria-hidden="true"
+                  data-testid="chat-first-run-grabber"
+                  className="pointer-events-none absolute left-1/2 top-1.5 h-1.5 w-12 -translate-x-1/2 select-none rounded-full bg-white/45"
+                />
+              ) : null}
               {/* Inline slash-command autocomplete, floating just above the
                     input row. */}
               {slashProp && !slashDismissed ? (

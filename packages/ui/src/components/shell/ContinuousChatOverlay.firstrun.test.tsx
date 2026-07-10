@@ -181,13 +181,16 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("paints an OPAQUE bg-bg backdrop while onboarding is open (no launcher/home shows through)", () => {
+  it("preserves the shell wallpaper behind a neutral onboarding scrim", () => {
     render(
       <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
     );
     const backdrop = screen.getByTestId("chat-first-run-backdrop");
     expect(backdrop.getAttribute("data-first-run-opaque")).toBe("true");
-    expect(backdrop.className).toContain("bg-bg");
+    expect(backdrop.className).toContain("bg-black/35");
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(surface.style.backgroundColor).toBe("transparent");
+    expect(surface.style.backgroundImage).toBe("none");
   });
 
   it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
@@ -259,13 +262,20 @@ describe("ContinuousChatOverlay first-run gating", () => {
     expect(sheet.getAttribute("data-detent")).toBe("full");
   });
 
-  it("does not render the grabber while onboarding is active", () => {
+  it("renders a non-interactive composer handle without changing its height", () => {
     render(
       <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
     );
     const sheet = screen.getByTestId("chat-sheet");
+    const composer = screen.getByTestId("chat-composer-row");
+    const decorativeHandle = screen.getByTestId("chat-first-run-grabber");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(screen.queryByTestId("chat-sheet-grabber")).toBeNull();
+    expect(composer.contains(decorativeHandle)).toBe(true);
+    expect(decorativeHandle.getAttribute("aria-hidden")).toBe("true");
+    expect(decorativeHandle.tagName).toBe("SPAN");
+    expect(composer.className.split(" ")).toContain("py-2");
+    expect(composer.className.split(" ")).not.toContain("pt-5");
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("full");
   });
