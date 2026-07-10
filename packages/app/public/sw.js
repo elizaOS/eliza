@@ -206,7 +206,17 @@ self.addEventListener("fetch", (event) => {
     url.searchParams.has("token")
   ) {
     event.respondWith(
-      (async () => (await event.preloadResponse) || fetch(request))(),
+      (async () => {
+        try {
+          const preloaded = await event.preloadResponse;
+          if (preloaded) return preloaded;
+        } catch (_err) {
+          // error-policy:J4 a failed/aborted preload must not fail the sign-in
+          // navigation — fall through to the same direct network fetch the
+          // pre-takeover bypass delegated to the browser.
+        }
+        return fetch(request);
+      })(),
     );
     return;
   }

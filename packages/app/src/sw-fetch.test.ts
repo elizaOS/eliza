@@ -166,6 +166,27 @@ describe("sw.js fetch handler — auth navigation branch", () => {
     expect(cacheCalls).toEqual([]);
   });
 
+  it("falls back to a live fetch when the preload REJECTS (flaky-network sign-in must not fail)", async () => {
+    const handler = loadFetchListener(caches, fetchImpl);
+    const event: FetchEventStub = {
+      request: { url: `${ORIGIN}/login`, method: "GET", mode: "navigate" },
+      preloadResponse: Promise.reject(new Error("preload aborted")),
+      respondWith: vi.fn((p: unknown) => {
+        event.responsePromise = p;
+      }),
+    };
+
+    handler(event);
+
+    // The pre-takeover bypass let the browser fetch directly after a dead
+    // preload; the takeover must be no more fragile than that.
+    expect(event.respondWith).toHaveBeenCalledTimes(1);
+    const resolved = await event.responsePromise;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(resolved).toEqual({ __from: "fetch" });
+    expect(cacheCalls).toEqual([]);
+  });
+
   it("still routes a normal shell navigation through the cache (control)", () => {
     const handler = loadFetchListener(caches, fetchImpl);
     const event = makeNavEvent(`${ORIGIN}/dashboard`, undefined);
