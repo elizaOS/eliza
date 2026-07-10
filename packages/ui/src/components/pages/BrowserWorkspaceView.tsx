@@ -2444,7 +2444,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
             {workspace.mode === "web" &&
             browserBridgeSupported &&
             !browserBridgeUnsupportedInNativeLocalMode ? (
-              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:-mt-10 [@media(orientation:landscape)_and_(max-height:520px)]:pb-[var(--eliza-continuous-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pe-[var(--eliza-continuous-chat-side-clearance,0px)] sm:grid-cols-3">
+              <div className="grid w-full max-w-xl grid-cols-1 items-stretch gap-1.5 px-6 [@media(orientation:landscape)_and_(max-height:520px)]:pb-[var(--eliza-continuous-chat-clearance,5.25rem)] [@media(orientation:landscape)_and_(max-height:520px)]:pe-[var(--eliza-continuous-chat-side-clearance,0px)] sm:grid-cols-3">
                 <div className="text-center text-[11px] text-muted/70 sm:col-span-3">
                   {browserBridgeConnected
                     ? t("browserworkspace.BrowserBridgeConnected", {

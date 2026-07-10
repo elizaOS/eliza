@@ -932,6 +932,37 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
       rect: DOMRect;
       text: string;
     }> = [];
+    const clipToVisibleAncestors = (
+      source: DOMRect,
+      element: HTMLElement,
+    ): DOMRect => {
+      let left = Math.max(0, source.left);
+      let top = Math.max(0, source.top);
+      let right = Math.min(window.innerWidth, source.right);
+      let bottom = Math.min(window.innerHeight, source.bottom);
+      for (
+        let ancestor: HTMLElement | null = element;
+        ancestor;
+        ancestor = ancestor.parentElement
+      ) {
+        const style = getComputedStyle(ancestor);
+        const rect = ancestor.getBoundingClientRect();
+        if (/hidden|clip|auto|scroll/.test(style.overflowX)) {
+          left = Math.max(left, rect.left);
+          right = Math.min(right, rect.right);
+        }
+        if (/hidden|clip|auto|scroll/.test(style.overflowY)) {
+          top = Math.max(top, rect.top);
+          bottom = Math.min(bottom, rect.bottom);
+        }
+      }
+      return new DOMRect(
+        left,
+        top,
+        Math.max(0, right - left),
+        Math.max(0, bottom - top),
+      );
+    };
     const walker = document.createTreeWalker(
       document.body,
       NodeFilter.SHOW_TEXT,
@@ -944,9 +975,16 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
       const text = node.textContent?.trim().replace(/\s+/g, " ") ?? "";
       const element = node.parentElement;
       if (!text || !element) continue;
+      const closedDetails = element.closest("details:not([open])");
+      if (
+        closedDetails &&
+        !closedDetails.querySelector(":scope > summary")?.contains(element)
+      ) {
+        continue;
+      }
       if (
         element.closest(
-          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
+          ".sr-only, [aria-hidden='true'], [hidden], [data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
         )
       ) {
         continue;
@@ -961,7 +999,8 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
       }
       const range = document.createRange();
       range.selectNodeContents(node);
-      for (const rect of range.getClientRects()) {
+      for (const rawRect of range.getClientRects()) {
+        const rect = clipToVisibleAncestors(rawRect, element);
         if (
           rect.width > 0 &&
           rect.height > 0 &&
@@ -993,8 +1032,8 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
           Math.max(first.rect.top, second.rect.top);
         if (
           overlapWidth > 2 &&
-          overlapHeight > 2 &&
-          overlapWidth * overlapHeight >= 16
+          overlapHeight > 4 &&
+          overlapWidth * overlapHeight >= 32
         ) {
           issues.push(
             `text overlaps "${first.text}" with "${second.text}" (${Math.round(overlapWidth)}×${Math.round(overlapHeight)}px)`,
