@@ -119,4 +119,19 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
     expect(deleteControl()).toBeNull();
     expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
   });
+
+  it("keeps user turns inside the compact right-side glass bubble", () => {
+    render(
+      <ChatMessage
+        message={makeMessage({ role: "user", text: "My message" })}
+        appearance="glass"
+      />,
+    );
+    const bubble = screen.getByText("My message").parentElement;
+    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
+    expect(bubble?.classList.contains("rounded-br-md")).toBe(true);
+    expect(bubble?.classList.contains("border-white/15")).toBe(true);
+    expect(bubble?.classList.contains("px-3.5")).toBe(true);
+    expect(bubble?.classList.contains("py-2")).toBe(true);
+  });
 });

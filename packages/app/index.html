@@ -347,8 +347,25 @@
       letter-spacing: 0;
     }
 
-    .eliza-preboot-shell__status-space {
+    .eliza-preboot-shell__status {
+      margin: 0;
       min-height: 1.25rem;
+      font-size: 0.875rem;
+      line-height: 1.25rem;
+      opacity: 0.8;
+      animation: eliza-preboot-status-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes eliza-preboot-status-pulse {
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .eliza-preboot-shell__status {
+        animation: none;
+      }
     }
   </style>
 </head>
@@ -361,7 +378,7 @@
           <img class="eliza-preboot-shell__mark" src="./brand/logos/logo_white_nobg.svg" alt="" />
           <span class="eliza-preboot-shell__name">elizaOS</span>
         </div>
-        <div class="eliza-preboot-shell__status-space" aria-hidden="true"></div>
+        <p class="eliza-preboot-shell__status">Booting up&hellip;</p>
       </div>
     </div>
   </div>
