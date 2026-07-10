@@ -26,6 +26,7 @@ import { analyzeExecutiveVerdict } from "./analyzers/executiveVerdict";
 import { analyzeWalletCustodyProfile } from "./analyzers/custody";
 import { analyzeWalletCompliance } from "./analyzers/compliance";
 import { analyzeWalletTransactionRisk } from "./analyzers/transactionRisk";
+import { analyzeWalletDecision } from "./analyzers/decision";
 import { analyzeWalletSmartMoney } from "./analyzers/smartMoney";
 import { analyzeInvestigationReport } from "./analyzers/investigationReport";
 import { analyzeInvestigationNarrative } from "./analyzers/investigationNarrative";
@@ -238,6 +239,14 @@ const evidenceRecords =
     transactionRisk,
   );
 
+const decision = analyzeWalletDecision(
+  evidenceRecords,
+  risk,
+  trust,
+  exposure,
+  transactionRisk,
+);
+
 const evidence = analyzeWalletEvidence(
   evidenceRecords,
 );
@@ -281,6 +290,7 @@ exposure,
 relationships,
 caseSummary,
 display,
+decision,
 executiveVerdict,
 custodyProfile,
 complianceScreening,
