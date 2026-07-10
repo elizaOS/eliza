@@ -42,9 +42,7 @@
  * per-tenant DSN, never the shared agent URL — is asserted directly.
  */
 
-import { ElizaError } from "@elizaos/core";
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
-import { isContainerStatus } from "../../db/repositories/container-status";
 import { containersRepository } from "../../db/repositories/containers";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
@@ -61,6 +59,10 @@ import { deriveAppPublicUrl } from "./app-url";
 import { appsService } from "./apps";
 import { imageRequiresDigestPin, isCodingContainerImageAllowed } from "./coding-containers";
 import { ContainerJobEnqueuer, type ContainerJobsWriter } from "./container-job-service";
+import {
+  type ContainerRetirementResult,
+  retireContainerWithDeleteJob,
+} from "./container-retirement";
 import { getOrgImageNamespaces } from "./org-image-namespaces";
 import type { TenantDbProvisioning } from "./tenant-db/tenant-db-provisioning";
 import type { UserDatabaseService } from "./user-database";
@@ -81,6 +83,11 @@ export interface AppDeployRunnerDeps {
   createContainerRow?: (row: NewAppContainerRow) => Promise<{ containerId: string }>;
   /** Enqueues the provision job. Defaults to a `ContainerJobEnqueuer` over the writer. */
   jobsWriter: ContainerJobsWriter;
+  /** Atomically marks a prior row deleting and gives a durable delete job ownership. */
+  retireContainer?: (
+    containerId: string,
+    organizationId: string,
+  ) => Promise<ContainerRetirementResult>;
   /**
    * Resolve the full image reference (`ghcr.io/owner/app:tag`) to deploy. When
    * omitted, falls back to `app.metadata.imageTag` then `APP_DEFAULT_IMAGE`.
@@ -231,12 +238,11 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     // Every deploy creates a fresh `containers` row under the same project key
     // (project_name = appId); without retiring the old ones, their stale
     // `stopped`/`failed` rows keep counting against the per-org container quota
-    // forever (the quota readers exclude only `deleting`/`deleted`). We flip each
-    // prior row to `deleting` immediately (so it stops counting before the new
-    // row's quota check runs) and enqueue a CONTAINER_DELETE so the daemon
-    // removes the old container + releases its node slot. Net effect: at most one
-    // active row per app.
-    await this.retirePriorContainers(app.organization_id, appId, enqueuer);
+    // forever (the quota readers exclude only `deleting`/`deleted`). The atomic
+    // retirement transaction pairs each non-counting transition with the
+    // CONTAINER_DELETE job that owns teardown. Net effect: at most one active
+    // row per app without an unowned intermediate state.
+    await this.retirePriorContainers(app.organization_id, appId);
 
     const createContainerRow =
       this.deps.createContainerRow ??
@@ -296,80 +302,32 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
   /**
    * Retire every pre-existing container row for an app so stale rows from prior
    * deploys stop counting against the per-org container quota (and the old
-   * containers get torn down on the node). Each prior row is flipped to
-   * `deleting` immediately — a non-quota-counting state — so the quota count
-   * drops BEFORE the new row's createWithQuotaCheck runs (the enqueued
-   * CONTAINER_DELETE is async and would otherwise race the new row's check). The
-   * daemon's CONTAINER_DELETE then does the real `docker rm -f` + node-slot
-   * release and flips the row to terminal `deleted`. Best-effort per row: a
-   * failure to retire one row is logged but never blocks the new deploy. An
-   * enqueue failure AFTER the status flip additionally reverts the row to its
-   * pre-retire status: a `deleting` row with no job is permanently stuck
-   * (recovery only fans out from a claimed legacy job, and `deleting` is
-   * excluded from this retire query), whereas a reverted row is simply retried
-   * by the next deploy's retire pass (#15826).
+   * containers get torn down on the node). Retirement commits `deleting` and
+   * its CONTAINER_DELETE job in one transaction before the new row's quota
+   * check. The daemon owns every later transition; an ambiguous response cannot
+   * trigger compensation that overwrites `deleted` or another worker state.
+   * Best-effort remains at the deploy boundary: a failed transaction leaves
+   * both records untouched and is reported without blocking the new deploy.
    */
-  private async retirePriorContainers(
-    organizationId: string,
-    appId: string,
-    enqueuer: ContainerJobEnqueuer,
-  ): Promise<void> {
+  private async retirePriorContainers(organizationId: string, appId: string): Promise<void> {
     const prior = await containersRepository.findUndeletedByProjectName(organizationId, appId);
+    const retireContainer = this.deps.retireContainer ?? retireContainerWithDeleteJob;
     for (const row of prior) {
-      // Captured before the flip: the revert below must restore the PRE-retire
-      // status even if the row object aliases live state mutated by updateStatus.
-      const preRetireStatus = row.status;
       try {
-        // Mark `deleting` up front so it stops counting toward quota before the
-        // new row's quota check; the daemon's CONTAINER_DELETE finishes the job.
-        await containersRepository.updateStatus(row.id, "deleting");
+        const retirement = await retireContainer(row.id, organizationId);
+        logger.info("[AppDeployRunner] retired prior container row", {
+          appId,
+          containerId: row.id,
+          deleteJobId: retirement.jobId,
+          outcome: retirement.outcome,
+        });
       } catch (error) {
-        // error-policy:J6 retire is best-effort teardown on the deploy path; the untouched row is retried by the next deploy's retire pass.
+        // error-policy:J6 retirement is best-effort for this deploy; the atomic transaction leaves no partial state, and the periodic reconciler repairs historical rows.
         logger.warn("[AppDeployRunner] failed to retire prior container row", {
           appId,
           containerId: row.id,
           error: error instanceof Error ? error.message : String(error),
         });
-        continue;
-      }
-      try {
-        await enqueuer.enqueueDelete({ containerId: row.id, organizationId });
-        logger.info("[AppDeployRunner] retired prior container row", {
-          appId,
-          containerId: row.id,
-        });
-      } catch (error) {
-        // error-policy:J6 teardown stays best-effort for the deploy, but the stuck-`deleting` hazard is reverted and surfaced at error level (an enqueue failure means the jobs write path is broken — systemic, not a per-row blip).
-        const enqueueMessage = error instanceof Error ? error.message : String(error);
-        try {
-          // `containers.status` is free text at the column level; validate the
-          // read-back value before handing it to the typed writer.
-          if (!isContainerStatus(preRetireStatus)) {
-            throw new ElizaError(
-              `Container ${row.id} pre-retire status '${preRetireStatus}' is outside the containers status vocabulary`,
-              {
-                code: "CONTAINER_PRE_RETIRE_STATUS_INVALID",
-                context: { appId, containerId: row.id, preRetireStatus },
-              },
-            );
-          }
-          await containersRepository.updateStatus(row.id, preRetireStatus);
-          logger.error(
-            "[AppDeployRunner] failed to enqueue prior-container delete; reverted the row to its pre-retire status",
-            { appId, containerId: row.id, revertedTo: preRetireStatus, error: enqueueMessage },
-          );
-        } catch (revertError) {
-          // error-policy:J6 last-resort escalation: both writes failed and the row IS stuck in `deleting` with no job — surfaced at error level, never a quiet warn.
-          logger.error(
-            "[AppDeployRunner] failed to enqueue prior-container delete AND failed to revert the row — container row is stuck in deleting with no job",
-            {
-              appId,
-              containerId: row.id,
-              error: enqueueMessage,
-              revertError: revertError instanceof Error ? revertError.message : String(revertError),
-            },
-          );
-        }
       }
     }
   }
