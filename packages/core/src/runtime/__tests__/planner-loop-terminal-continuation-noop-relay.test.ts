@@ -178,6 +178,28 @@ describe("planner-loop - terminal continuation missing-input relay", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
+	it("does not let a generic noop authorize a later planner form", async () => {
+		const actionReply = "No changes were needed; the goal already exists.";
+		const runtime = plannerEmitsNoopThenTerminalText(REMINDER_FORM);
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: actionReply,
+			data: { noop: true },
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: { maxTerminalOnlyContinuations: 0 },
+			executeToolCall,
+			evaluate: evaluatorRequestsAnotherIteration(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(actionReply);
+		expect(result.finalMessage).not.toContain("[FORM]");
+	});
+
 	it("does not leak diagnostic text when the successful tool lacks the noop marker", async () => {
 		const shellLog =
 			"$ cat secrets.txt\nexit 0\ncwd=/home/milady\nAWS_SECRET=leak-me";
@@ -230,6 +252,59 @@ describe("planner-loop - terminal continuation missing-input relay", () => {
 
 		expect(result.status).toBe("finished");
 		expect(result.finalMessage).toBe(clarification);
+	});
+
+	it("accepts a missingField marker nested under validated data.values", async () => {
+		const clarification =
+			"Which deadline should I use before I create that reminder?";
+		const runtime = plannerEmitsNoopThenTerminalText(clarification);
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "clarification required",
+			data: {
+				values: {
+					missingField: "deadline",
+				},
+			},
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: { maxTerminalOnlyContinuations: 0 },
+			executeToolCall,
+			evaluate: evaluatorRequestsAnotherIteration(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(clarification);
+	});
+
+	it("rejects behavioral markers from a non-plain data.values container", async () => {
+		class UntrustedValues {
+			missingField = "deadline";
+		}
+
+		const runtime = plannerEmitsNoopThenTerminalText(
+			"Which deadline should I use before I create that reminder?",
+		);
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "",
+			data: { values: new UntrustedValues() },
+		}));
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				config: { maxTerminalOnlyContinuations: 0 },
+				executeToolCall,
+				evaluate: evaluatorRequestsAnotherIteration(),
+			}),
+		).rejects.toMatchObject({
+			kind: "terminal_only_continuations",
+		} satisfies Partial<TrajectoryLimitExceeded>);
 	});
 
 	it("relays a confirmation-required preview instead of exhausting terminal continuations", async () => {

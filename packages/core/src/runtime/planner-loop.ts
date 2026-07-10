@@ -39,6 +39,7 @@ import {
 } from "../types/model";
 import { isModelProviderError } from "../utils/model-errors";
 import { resolveStateDir } from "../utils/state-dir";
+import { isPlainObject } from "../utils/type-guards";
 import { computePrefixHashes } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
@@ -3134,30 +3135,19 @@ function hasNoopMarker(result: PlannerToolResult): boolean {
 	const data = result.data;
 	if (!data) return false;
 	if (data.noop === true) return true;
-	const values = data.values;
-	return (
-		values !== null &&
-		typeof values === "object" &&
-		!Array.isArray(values) &&
-		(values as Record<string, unknown>).noop === true
-	);
+	return plannerResultValues(result)?.noop === true;
 }
 
 function hasAwaitingUserInputMarker(result: PlannerToolResult): boolean {
-	if (hasNoopMarker(result)) return true;
 	const data = result.data;
 	if (!data) return false;
 	if (data.awaitingUserInput === true || getNonEmptyString(data.missingField)) {
 		return true;
 	}
-	const values = data.values;
+	const values = plannerResultValues(result);
 	return (
-		values !== null &&
-		typeof values === "object" &&
-		!Array.isArray(values) &&
-		((values as Record<string, unknown>).awaitingUserInput === true ||
-			getNonEmptyString((values as Record<string, unknown>).missingField) !==
-				undefined)
+		values?.awaitingUserInput === true ||
+		getNonEmptyString(values?.missingField) !== undefined
 	);
 }
 
@@ -3171,14 +3161,22 @@ function hasRequiresConfirmationMarker(result: PlannerToolResult | undefined) {
 	) {
 		return true;
 	}
-	const values = data.values;
+	const values = plannerResultValues(result);
 	return (
-		values !== null &&
-		typeof values === "object" &&
-		!Array.isArray(values) &&
-		((values as Record<string, unknown>).requiresConfirmation === true ||
-			(values as Record<string, unknown>).awaitingUserInput === true)
+		values?.requiresConfirmation === true || values?.awaitingUserInput === true
 	);
+}
+
+/**
+ * Action adapters sometimes wrap result fields under `data.values`. Treat that
+ * external shape as untrusted: only a plain record may contribute behavioral
+ * markers, while arrays, built-ins, and class instances remain inert.
+ */
+function plannerResultValues(
+	result: PlannerToolResult,
+): Record<string, unknown> | undefined {
+	const values = result.data?.values;
+	return isPlainObject(values) ? values : undefined;
 }
 
 /**

@@ -978,6 +978,69 @@ describe("v5 planner loop skeleton", () => {
 		expect(executeToolCall).toHaveBeenCalledTimes(1);
 	});
 
+	it("keeps an action-owned preview ahead of a stale form after a generic noop", async () => {
+		const form = [
+			"[FORM]",
+			JSON.stringify({
+				title: "Replace existing reminder",
+				fields: [{ name: "schedule", type: "text", label: "When?" }],
+			}),
+			"[/FORM]",
+		].join("\n");
+		const preview =
+			"The reminder draft is unchanged. Confirm if you still want me to save it.";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "OWNER_REMINDERS",
+							arguments: { action: "inspect" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({ text: form }),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: preview,
+			userFacingText: preview,
+			data: {
+				noop: true,
+				requiresConfirmation: true,
+			},
+		}));
+		const evaluate = vi
+			.fn()
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "CONTINUE" as const,
+				thought: "The owner still needs an interaction.",
+			})
+			.mockResolvedValueOnce({
+				success: true,
+				decision: "FINISH" as const,
+				thought: "The form is ready.",
+				messageToUser: form,
+			});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{ name: "OWNER_REMINDERS", description: "Manage owner reminders." },
+			],
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(preview);
+	});
+
 	it("falls back to tool text when evaluator names an action execution", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({

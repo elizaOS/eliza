@@ -794,6 +794,8 @@ const PROSE_ONLY_LLM_SCENARIOS: Record<string, string> = {
     "live-only real-LLM counterpart of the deterministic lifeops scheduled-task lanes; the live model routes SCHEDULED_TASKS with no deterministic ACTION_PLANNER fixture. The deterministic twins gate the keyless lane.",
   "live-missing-input-terminal-relay":
     "live-only real-LLM missing-input planner-loop regression; the live model routes OWNER_REMINDERS without a deterministic ACTION_PLANNER fixture, while the keyless planner-loop suite forces the erroneous evaluator-CONTINUE branch.",
+  "live-noop-terminal-provenance":
+    "live-only real-LLM adversarial planner-loop regression; the live model routes the scenario no-op without a deterministic ACTION_PLANNER fixture, while the keyless planner-loop suite pins generic-noop widget rejection and action-owned preview precedence.",
   "live-plugin-enable-toggle-verb":
     "live-only real-LLM plugin enable/toggle verb routing; no deterministic ACTION_PLANNER fixture. Keyless gating proof: plugin-manager action unit suites in core.",
   "live-workflow-action-executions":
