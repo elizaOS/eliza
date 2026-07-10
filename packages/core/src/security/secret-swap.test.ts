@@ -45,6 +45,22 @@ describe("SecretSwapSession", () => {
 		expect(swapped.prompt).not.toContain("sk-known");
 	});
 
+	it("swaps a bare Hugging Face token via the shared redact pattern set", () => {
+		// Ingress draws value-shape detectors from ./redact, so the hf_ pattern
+		// added for the private corpus repo (#14773) must swap here with no
+		// secret-swap-side change — proving the shared set actually propagates.
+		const session = new SecretSwapSession();
+		const hf = `hf_${"B".repeat(20)}0123456789abcd`;
+		const original = `corpus pull auth ${hf} done`;
+		const swapped = session.substituteText(original);
+
+		expect(swapped).not.toContain(hf);
+		expect(swapped).toMatch(PLACEHOLDER);
+		expect(session.restoreText(swapped, { failOnUnresolved: true })).toBe(
+			original,
+		);
+	});
+
 	it("fails loud on a fabricated this-session placeholder, ignores foreign ones", () => {
 		const session = new SecretSwapSession();
 		const swapped = session.substituteText("key sk-test_1234567890abcdef");

@@ -69,6 +69,27 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactSensitiveText(bearer)).not.toContain("a".repeat(40));
 	});
 
+	it("masks a bare Hugging Face token (hf_) in text and log-object paths", () => {
+		// HF tokens gate the private LifeOps corpus dataset repo (#14773); corpus
+		// publish/pull tooling echoes the bare value in URLs and CLI output where
+		// no credential-named key protects it, so the value shape must be caught.
+		const hf = `hf_${"A".repeat(20)}0123456789abcd`;
+		const text = redactSensitiveText(`pulling with ${hf} from hub`);
+		expect(text).not.toContain(hf);
+		expect(text).toContain("…");
+
+		// Log-sink path: the token hides under a NON-credential key name, so only
+		// value-shape detection can mask it.
+		const [ctx] = redactLogArgs([
+			{ note: `curl -H "Authorization: X" https://hf.co?x=${hf}` },
+		]) as [{ note: string }];
+		expect(ctx.note).not.toContain(hf);
+
+		// Object path: redactObjectSecrets applies pattern detection to nested strings.
+		const obj = redactObjectSecrets({ nested: [`token ${hf}`] }, {});
+		expect(obj.nested[0]).not.toContain(hf);
+	});
+
 	it("masks Stripe secret + restricted keys (underscore form)", () => {
 		// Stripe is the payment processor — a leaked sk_live_ is catastrophic, and these
 		// often appear as bare values (not under a *_SECRET name) in logged request bodies.

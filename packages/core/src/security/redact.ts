@@ -53,6 +53,12 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`\b((?:sk|rk)_(?:live|test)_[A-Za-z0-9]{10,})\b`,
 	String.raw`\b(ghp_[A-Za-z0-9]{20,})\b`,
 	String.raw`\b(github_pat_[A-Za-z0-9_]{20,})\b`,
+	// Hugging Face access tokens (hf_…) — gate the private LifeOps corpus dataset
+	// repo (#14773). The ENV-name pattern above catches `HF_TOKEN=…`, but corpus
+	// publish/pull tooling also echoes the bare value in URLs and CLI output, so
+	// the value shape needs its own detector. This set also feeds the Stage-1
+	// secret swap (secret-swap.ts) and the corpus scrub/verify gates (corpus-tools).
+	String.raw`\b(hf_[A-Za-z0-9]{15,})\b`,
 	String.raw`\b(xox[baprs]-[A-Za-z0-9-]{10,})\b`,
 	String.raw`\b(xapp-[A-Za-z0-9-]{10,})\b`,
 	String.raw`\b(gsk_[A-Za-z0-9_-]{10,})\b`,
@@ -160,7 +166,7 @@ function parsePattern(raw: string): RegExp | null {
 // Compiled once at module load. The default patterns never change, and
 // String.prototype.replace resets a global regex's lastIndex before each call,
 // so the same compiled array is safe to reuse across every redaction — no need
-// to allocate 16 fresh RegExp objects per call.
+// to allocate fresh RegExp objects per call.
 const DEFAULT_REDACT_REGEXPS: readonly RegExp[] = DEFAULT_REDACT_PATTERNS.map(
 	parsePattern,
 ).filter((re): re is RegExp => Boolean(re));
