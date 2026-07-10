@@ -452,9 +452,15 @@ export function CharacterEditor({
   const [, setVoiceLoading] = useState(false);
   const [voiceSaving, setVoiceSaving] = useState(false);
   const [voiceSaveError, setVoiceSaveError] = useState<string | null>(null);
+  const [voiceConfigLoadError, setVoiceConfigLoadError] = useState<
+    string | null
+  >(null);
   const [, setSelectedVoicePresetId] = useState<string | null>(null);
   const [voiceSelectionLocked] = useState(false);
   const activeCharacterIdRef = useRef<string | null>(null);
+  const voiceConfigWritableRef = useRef(false);
+  const voiceConfigLoadGenerationRef = useRef(0);
+  const voicePresetAppliedRef = useRef(false);
 
   /* ── Load roster ────────────────────────────────────────────────── */
   // Use static STYLE_PRESETS shipped in the frontend bundle — no API call
@@ -637,56 +643,76 @@ export function CharacterEditor({
   /* ── Load voice config on mount ─────────────────────────────────── */
   /* Load voice config from server — but don't overwrite a roster-derived
      voice preset that was already applied by auto-select. */
-  const voicePresetAppliedRef = useRef(false);
-  useEffect(() => {
-    void (async () => {
-      setVoiceLoading(true);
-      try {
-        const cfg = await client.getConfig();
-        type MessagesConfig = { tts?: CharacterEditorVoiceConfig };
-        const messages = cfg.messages as MessagesConfig | undefined;
-        const tts = messages?.tts;
-        if (tts) {
-          const serverElevenlabsVoiceId =
-            typeof tts.elevenlabs === "object" ? tts.elevenlabs.voiceId : null;
-          setVoiceConfig((prev) => {
-            if (!voicePresetAppliedRef.current) {
-              return tts;
-            }
-            const serverElevenlabs =
-              typeof tts.elevenlabs === "object" ? tts.elevenlabs : {};
-            const currentElevenlabs =
-              typeof prev.elevenlabs === "object" ? prev.elevenlabs : {};
-            const serverEdge = typeof tts.edge === "object" ? tts.edge : {};
-            const currentEdge = typeof prev.edge === "object" ? prev.edge : {};
-            return {
-              ...tts,
-              ...prev,
-              elevenlabs: {
-                ...serverElevenlabs,
-                ...currentElevenlabs,
-              },
-              edge: {
-                ...serverEdge,
-                ...currentEdge,
-              },
-            };
-          });
-          // Only set the voice preset from server if a roster entry hasn't
-          // already set one (roster voice takes precedence).
-          if (serverElevenlabsVoiceId && !voicePresetAppliedRef.current) {
-            const preset = PREMADE_VOICES.find(
-              (p) => p.voiceId === serverElevenlabsVoiceId,
-            );
-            setSelectedVoicePresetId(preset?.id ?? null);
+  const loadVoiceConfig = useCallback(async () => {
+    const generation = ++voiceConfigLoadGenerationRef.current;
+    voiceConfigWritableRef.current = false;
+    setVoiceLoading(true);
+    setVoiceConfigLoadError(null);
+    try {
+      const cfg = await client.getConfig();
+      if (generation !== voiceConfigLoadGenerationRef.current) return;
+      voiceConfigWritableRef.current = true;
+      type MessagesConfig = { tts?: CharacterEditorVoiceConfig };
+      const messages = cfg.messages as MessagesConfig | undefined;
+      const tts = messages?.tts;
+      if (tts) {
+        const serverElevenlabsVoiceId =
+          typeof tts.elevenlabs === "object" ? tts.elevenlabs.voiceId : null;
+        setVoiceConfig((prev) => {
+          if (!voicePresetAppliedRef.current) {
+            return tts;
           }
+          const serverElevenlabs =
+            typeof tts.elevenlabs === "object" ? tts.elevenlabs : {};
+          const currentElevenlabs =
+            typeof prev.elevenlabs === "object" ? prev.elevenlabs : {};
+          const serverEdge = typeof tts.edge === "object" ? tts.edge : {};
+          const currentEdge = typeof prev.edge === "object" ? prev.edge : {};
+          return {
+            ...tts,
+            ...prev,
+            elevenlabs: {
+              ...serverElevenlabs,
+              ...currentElevenlabs,
+            },
+            edge: {
+              ...serverEdge,
+              ...currentEdge,
+            },
+          };
+        });
+        // Only set the voice preset from server if a roster entry hasn't
+        // already set one (roster voice takes precedence).
+        if (serverElevenlabsVoiceId && !voicePresetAppliedRef.current) {
+          const preset = PREMADE_VOICES.find(
+            (p) => p.voiceId === serverElevenlabsVoiceId,
+          );
+          setSelectedVoicePresetId(preset?.id ?? null);
         }
-      } catch {
-        // non-fatal: voice config load failure leaves voice section empty
       }
-      setVoiceLoading(false);
-    })();
+    } catch (error) {
+      // error-policy:J4 the unavailable banner and retry action preserve the
+      // distinction between an unreadable config and an empty voice config.
+      if (generation !== voiceConfigLoadGenerationRef.current) return;
+      setVoiceConfigLoadError(
+        error instanceof Error
+          ? `Voice settings are unavailable: ${error.message}`
+          : "Voice settings are unavailable.",
+      );
+    } finally {
+      if (generation === voiceConfigLoadGenerationRef.current) {
+        setVoiceLoading(false);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    void loadVoiceConfig();
+    return () => {
+      voiceConfigLoadGenerationRef.current += 1;
+      voiceConfigWritableRef.current = false;
+    };
+  }, [loadVoiceConfig]);
 
   /* ── Voice helpers ──────────────────────────────────────────────── */
   const applyVoicePresetForEntry = useCallback(
@@ -731,23 +757,27 @@ export function CharacterEditor({
         const persistedVoiceConfig = applyVoicePresetForEntry(entry);
         if (persistedVoiceConfig) {
           dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, persistedVoiceConfig);
-          // Persist the voice switch immediately so the next assistant line
-          // uses the selected character's voice without waiting for Save.
-          // error-policy:J4 immediate persist is an optimization — Save
-          // remains the durable write path; error log keeps a failed early
-          // sync observable instead of silently speaking with the old voice.
-          void client
-            .updateConfig({
-              messages: {
-                tts: persistedVoiceConfig,
-              },
-            })
-            .catch((err: unknown) => {
-              logger.error(
-                { err },
-                "[CharacterEditor] voice config early persist failed",
-              );
-            });
+          // The local event is safe before authentication, but a server write
+          // is authorized only after this mount has read the writable config.
+          if (voiceConfigWritableRef.current) {
+            void client
+              .updateConfig({
+                messages: {
+                  tts: persistedVoiceConfig,
+                },
+              })
+              .catch((err: unknown) => {
+                // error-policy:J4 the selected voice remains active locally;
+                // the visible error distinguishes a failed server sync.
+                setVoiceSaveError(
+                  "Voice selection is active locally but could not be synced.",
+                );
+                logger.error(
+                  { err },
+                  "[CharacterEditor] voice config early persist failed",
+                );
+              });
+          }
         }
       }
       if (applyDefaults) {
@@ -1297,6 +1327,23 @@ export function CharacterEditor({
         data-testid={sceneOverlay ? "companion-character-editor" : undefined}
         onWheel={sceneOverlay ? (e) => e.stopPropagation() : undefined}
       >
+        {voiceConfigLoadError ? (
+          <div
+            role="alert"
+            data-testid="character-voice-config-unavailable"
+            className="flex shrink-0 items-center justify-between gap-3 rounded-sm border border-status-danger/30 bg-status-danger-bg px-3 py-2 text-xs text-status-danger pointer-events-auto"
+          >
+            <span>{voiceConfigLoadError}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => void loadVoiceConfig()}
+            >
+              {t("common.retry", { defaultValue: "Retry" })}
+            </Button>
+          </div>
+        ) : null}
         <div
           className={
             sceneOverlay
@@ -1478,7 +1525,7 @@ export function CharacterEditor({
               handlePendingStyleEntryChange={handlePendingStyleEntryChange}
               applyStyleEdit={handleCharacterStyleInput}
               handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-              characterSaveError={characterSaveError}
+              characterSaveError={combinedSaveError}
             />
           )}
         </div>
