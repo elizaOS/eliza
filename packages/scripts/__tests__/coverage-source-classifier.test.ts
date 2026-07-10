@@ -43,6 +43,20 @@ describe("changed-source runtime classifier", () => {
     expect(sourceRetainsRuntimeCode("exports.value = 1;\n")).toBe(true);
   });
 
+  test("excludes pure re-export facades but retains local runtime exports", () => {
+    expect(sourceRetainsRuntimeCode('export * from "./button";\n')).toBe(false);
+    expect(
+      sourceRetainsRuntimeCode(
+        'export { Message, MessageContent as Content } from "./message";\n',
+      ),
+    ).toBe(false);
+    expect(
+      sourceRetainsRuntimeCode(
+        'export * from "./button";\nexport const version = 1;\n',
+      ),
+    ).toBe(true);
+  });
+
   test("treats an unparseable module as executable", () => {
     const dir = mkdtempSync(join(tmpdir(), "coverage-source-classifier-"));
     const path = join(dir, "runtime.tsx");
@@ -77,7 +91,7 @@ describe("changed-source runtime classifier", () => {
       );
       expect(output).toEqual([`${runtimePath}\n`]);
       expect(diagnostics).toEqual([
-        `[coverage-source-classifier] excluding type-only module: ${typesPath}\n`,
+        `[coverage-source-classifier] excluding module without coverable runtime statements: ${typesPath}\n`,
       ]);
     } finally {
       rmSync(dir, { recursive: true, force: true });

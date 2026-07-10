@@ -26,6 +26,7 @@ import {
 import {
   applyRestoredConnection,
   type RestoringSessionDeps,
+  reconcileMobileRestoredActiveServer,
   runRestoringSession,
 } from "./startup-phase-restore";
 
@@ -300,6 +301,31 @@ describe("desktop local restore shares one runtime-mode RPC", () => {
     expect(dispatch).toHaveBeenCalledWith({
       type: "SESSION_RESTORED",
       target: "remote-backend",
+    });
+  });
+});
+
+describe("mobile restored target reconciliation", () => {
+  it("drops a persisted local target after switching away from local mode", () => {
+    expect(
+      reconcileMobileRestoredActiveServer({
+        server: { id: "local", kind: "local", label: "Local Agent" },
+        mobileRuntimeMode: "cloud",
+        platform: "android",
+      }),
+    ).toBeNull();
+  });
+
+  it("normalizes a legacy local target to the active platform IPC base", () => {
+    expect(
+      reconcileMobileRestoredActiveServer({
+        server: { id: "local", kind: "local", label: "Local Agent" },
+        mobileRuntimeMode: "local",
+        platform: "android",
+      }),
+    ).toMatchObject({
+      id: "local:android",
+      apiBase: "eliza-local-agent://ipc",
     });
   });
 });
