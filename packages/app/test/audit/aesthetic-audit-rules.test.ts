@@ -13,6 +13,7 @@ import {
   evaluateMinimalismRatchet,
   evaluateStrictGate,
   exceedsMinimalismBudget,
+  findRemoteBundleDeclaration,
   type GateFinding,
   MINIMALISM_DENSITY_CEILING,
   MINIMALISM_RATCHET_TOLERANCE,
@@ -25,6 +26,35 @@ import {
   resolveAuditStrictFlags,
   type VerdictFinding,
 } from "../ui-smoke/aesthetic-audit-rules";
+
+describe("findRemoteBundleDeclaration", () => {
+  it("distinguishes in-process app-shell pages from production bundles", () => {
+    const payload = {
+      views: [
+        { id: "documents", viewType: "gui", path: "/documents" },
+        {
+          id: "calendar",
+          viewType: "gui",
+          bundleUrl: "/api/views/calendar/bundle.js",
+        },
+      ],
+    };
+
+    expect(findRemoteBundleDeclaration(payload, "documents", "gui")).toBeNull();
+    expect(findRemoteBundleDeclaration(payload, "missing", "gui")).toBeNull();
+    expect(findRemoteBundleDeclaration(payload, "calendar", "gui")).toEqual({
+      id: "calendar",
+      bundleUrl: "/api/views/calendar/bundle.js",
+      componentExport: "default",
+    });
+  });
+
+  it("rejects a malformed registry boundary", () => {
+    expect(() => findRemoteBundleDeclaration({}, "calendar", "gui")).toThrow(
+      /invalid views payload/,
+    );
+  });
+});
 
 describe("parseRgb (#8796)", () => {
   it("parses rgb() and rgba(), defaulting alpha to 1", () => {
