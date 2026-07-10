@@ -7,14 +7,15 @@
  * glob-separator filter regression stays fixed (no vite-only components or
  * duplicate root entrypoints in dist), and a child Node process with default
  * conditions resolves the bare package name to the real built entry. Runs
- * against the real `bun run build.ts` output — dist is rebuilt when absent or
- * shaped by a pre-#15779 build.
+ * against a fresh real `build.ts` run inside the test process so changed-source
+ * coverage and the asserted artifacts describe the same build.
  */
+
+import { beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(packageRoot, "dist");
@@ -48,27 +49,15 @@ function collectExportTargets(value: unknown, skipCondition: string, out: string
   }
 }
 
-function distIsCurrent(): boolean {
-  if (!existsSync(distFile("node/index.node.js"))) return false;
-  if (!existsSync(distFile("index.node.d.ts"))) return false;
-  // A pre-#15779 dist carries extensionless shim specifiers or (on Windows)
-  // vite-only component bundles; both shapes require a rebuild before the
-  // invariants below can be asserted meaningfully.
-  if (!existsSync(distFile("node/index.d.ts"))) return false;
-  if (!readFileSync(distFile("node/index.d.ts"), "utf8").includes(".js'")) return false;
-  if (existsSync(distFile("components"))) return false;
-  return true;
-}
-
-beforeAll(() => {
-  if (distIsCurrent()) return;
-  const result = spawnSync("bun", ["run", "build.ts"], {
-    cwd: packageRoot,
-    stdio: "inherit",
-    timeout: 280_000,
-  });
-  if (result.status !== 0) {
-    throw new Error(`dist rebuild failed (exit ${result.status}); run: bun run build`);
+beforeAll(async () => {
+  // Importing the build entry keeps the real build inside the test process, so
+  // the changed-source coverage gate can observe the production path it proves.
+  const previousCwd = process.cwd();
+  process.chdir(packageRoot);
+  try {
+    await import("../build.ts");
+  } finally {
+    process.chdir(previousCwd);
   }
 }, 300_000);
 
@@ -113,7 +102,7 @@ describe("dist packaging (#15779)", () => {
 
   it("a default-conditions Node process resolves the bare package to the built node entry", () => {
     const result = spawnSync(
-      process.execPath,
+      "node",
       [
         "--input-type=module",
         "-e",
