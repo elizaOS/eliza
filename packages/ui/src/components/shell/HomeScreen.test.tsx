@@ -4,7 +4,13 @@
 // notification center, and the AOSP-only tile grid, with the notification
 // store driven directly (no network).
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
@@ -189,7 +195,9 @@ describe("HomeScreen", () => {
       touches: [{ clientX: 200, clientY: 300 }],
     });
     fireEvent.touchMove(home, {
-      touches: [{ clientX: 202, clientY: 440 }],
+      // A short 50px pull dampens to 21px: enough for empty feedback, still
+      // below the populated shade's 40px commit threshold.
+      touches: [{ clientX: 202, clientY: 350 }],
     });
     expect(screen.getByTestId("notifications-empty").textContent).toBe(
       "No Notifications",
@@ -209,23 +217,33 @@ describe("HomeScreen", () => {
   });
 
   it("reveals and closes the empty state from a trackpad swipe on the home background", () => {
-    __setHydratedForTests(true);
-    render(<HomeScreen onOpenTile={vi.fn()} />);
-    const home = screen.getByTestId("home-screen");
-    const list = screen.getByTestId("home-notification-list");
+    vi.useFakeTimers();
+    try {
+      __setHydratedForTests(true);
+      render(<HomeScreen onOpenTile={vi.fn()} />);
+      const home = screen.getByTestId("home-screen");
+      const list = screen.getByTestId("home-notification-list");
 
-    fireEvent.wheel(home, { deltaY: -(PULL_COMMIT_PX + 10) });
-    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getByTestId("notifications-empty").textContent).toBe(
-      "No Notifications",
-    );
+      fireEvent.wheel(home, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
+      expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+      expect(screen.getByTestId("notifications-empty").textContent).toBe(
+        "No Notifications",
+      );
 
-    // Collapse is intentionally a two-event commit so ordinary scrolling
-    // cannot dismiss a populated shade on one aggressive wheel event.
-    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+      // Opposite-direction rebound during the settle cannot hide the empty
+      // status and make it flash back on trailing momentum.
+      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+      expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+
+      act(() => vi.advanceTimersByTime(500));
+      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+      expect(list.getAttribute("data-shade-mode")).toBe("rested");
+      expect(screen.queryByTestId("notifications-empty")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not steal an empty-inbox gesture that begins on a home control", () => {

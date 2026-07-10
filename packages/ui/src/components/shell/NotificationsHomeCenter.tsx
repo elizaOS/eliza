@@ -104,6 +104,9 @@ const MAX_RENDERED_ROWS = 100;
  */
 export const PULL_COMMIT_PX = 40;
 
+/** Empty feedback should latch after a normal short pull, not require a full shade drag. */
+const EMPTY_PULL_COMMIT_PX = PULL_COMMIT_PX / 2;
+
 /** Dead zone (px) before a vertical drag starts reading as a pull. */
 const PULL_SLOP_PX = 8;
 
@@ -134,6 +137,9 @@ function isInteractiveGestureTarget(target: EventTarget | null): boolean {
  * uncapped.
  */
 const WHEEL_COLLAPSE_STEP_PX = PULL_COMMIT_PX / 2;
+
+/** Ignore trackpad rebound while the committed 320ms shade settle is running. */
+const WHEEL_COMMIT_LOCK_MS = 360;
 
 /** How many cards may peek out beneath a rested stack's top card. */
 const MAX_STACK_PEEKS = 2;
@@ -737,6 +743,7 @@ export function NotificationsHomeCenter({
   // Wheel accumulation toward a shade commit: one direction at a time; a
   // direction flip abandons the previous run.
   const wheelPull = useRef<{ dir: 1 | -1; px: number }>({ dir: 1, px: 0 });
+  const wheelCommitLockUntil = useRef(0);
   // Idle-decay timer: a wheel run accumulates toward the commit, but two
   // nudges seconds apart must not sum into a surprise transition — the
   // accumulator resets after a short quiet period.
@@ -769,18 +776,22 @@ export function NotificationsHomeCenter({
   const commitPull = useCallback(() => {
     const px = pullPxRef.current;
     const { canExpand, canCollapse } = shadeGestureRef.current;
+    const commitPx =
+      notifications.length === 0 ? EMPTY_PULL_COMMIT_PX : PULL_COMMIT_PX;
     // Directional: a downward pull only expands, an upward push only
     // collapses. A gesture in the direction of the current state is a no-op.
-    if (px >= PULL_COMMIT_PX && canExpand) setShade(true);
-    else if (px <= -PULL_COMMIT_PX && canCollapse) setShade(false);
+    if (px >= commitPx && canExpand) setShade(true);
+    else if (px <= -commitPx && canCollapse) setShade(false);
     setPullPx(0);
-  }, [setPullPx, setShade]);
+  }, [notifications.length, setPullPx, setShade]);
 
   // Shared wheel accumulator for both the list and, while empty, the wider
   // home background. Returns whether the shade consumed this delta so the
   // native background listener can suppress browser overscroll.
   const handleWheelDelta = useCallback(
     (deltaY: number, scrollTop: number): boolean => {
+      const empty = notifications.length === 0;
+      if (empty && Date.now() < wheelCommitLockUntil.current) return true;
       // Away from the top the scroller owns every wheel event.
       if (scrollTop > 0) {
         wheelPull.current.px = 0;
@@ -806,15 +817,19 @@ export function NotificationsHomeCenter({
       wheelDecayTimer.current = window.setTimeout(() => {
         wheelPull.current.px = 0;
       }, 220);
-      if (wheelPull.current.px >= PULL_COMMIT_PX) {
+      const commitPx = empty ? EMPTY_PULL_COMMIT_PX : PULL_COMMIT_PX;
+      if (wheelPull.current.px >= commitPx) {
         wheelPull.current.px = 0;
         if (wheelDecayTimer.current)
           window.clearTimeout(wheelDecayTimer.current);
+        if (empty) {
+          wheelCommitLockUntil.current = Date.now() + WHEEL_COMMIT_LOCK_MS;
+        }
         setShade(dir === 1);
       }
       return true;
     },
-    [setShade],
+    [notifications.length, setShade],
   );
 
   const onListWheel = useCallback(
