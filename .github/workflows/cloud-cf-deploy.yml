@@ -26,6 +26,7 @@ name: Cloud CF Deploy
 #   OPENROUTER_API_KEY, CEREBRAS_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
 #   GROQ_API_KEY, AI_GATEWAY_API_KEY, FAL_KEY, ELEVENLABS_API_KEY, VAST_API_KEY, VAST_BASE_URL.
 # Media/voice secrets, likewise published when configured (#13406):
+#   DEEPGRAM_API_KEY, CARTESIA_API_KEY
 #   FAL_API_KEY (the video provider registry reads FAL_KEY ?? FAL_API_KEY),
 #   ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 + ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64
 #   (Ed25519 keypair for the signed voice-model catalog; the catalog route 503s
@@ -467,6 +468,8 @@ jobs:
           # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
           FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
           # Ed25519 keypair for the signed voice-model catalog —
           # /v1/voice-models/catalog 503s while the signing key is unset
           # (#13406). publish_secret no-ops with a notice while these are
@@ -522,6 +525,8 @@ jobs:
             FAL_KEY \
             FAL_API_KEY \
             ELEVENLABS_API_KEY \
+            DEEPGRAM_API_KEY \
+            CARTESIA_API_KEY \
             ELIZA_VOICE_CATALOG_SIGNING_KEY_BASE64 \
             ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 \
             VAST_API_KEY \
@@ -555,8 +560,15 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          VOICE_REALTIME_WS_ENABLED_INPUT: ${{ vars.VOICE_REALTIME_WS_ENABLED || 'false' }}
         run: |
           args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA")
+          voice_realtime_ws_enabled="${VOICE_REALTIME_WS_ENABLED_INPUT:-false}"
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ]; then
+            voice_realtime_ws_enabled="false"
+          fi
+          args+=(--var VOICE_REALTIME_WS_ENABLED:"$voice_realtime_ws_enabled")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else

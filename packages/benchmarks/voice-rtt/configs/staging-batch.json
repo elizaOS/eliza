@@ -1,0 +1,16 @@
+{
+  "baseUrl": "https://staging.elizacloud.ai",
+  "ttsPath": "/api/v1/voice/tts",
+  "sttPath": "/api/v1/voice/stt",
+  "ttsRequest": {
+    "textField": "text",
+    "responseFormat": "binary",
+    "contentType": "application/json"
+  },
+  "sttRequest": {
+    "fieldName": "audio",
+    "responseFormat": "json",
+    "durationField": "duration_ms"
+  },
+  "curlTimeoutSeconds": 60
+}

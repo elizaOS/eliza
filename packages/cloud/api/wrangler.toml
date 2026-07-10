@@ -229,6 +229,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   AI_GATEWAY_API_KEY
 #   GROQ_API_KEY                       Groq
 #   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning chat agent
+#   DEEPGRAM_API_KEY                   Deepgram STT for staging voice-session soak
+#   CARTESIA_API_KEY                   Cartesia TTS for staging voice-session soak
 #   FAL_KEY                            Fal.ai video gen
 #   FAL_API_KEY                        Alias for FAL_KEY used by image/video/music generation
 #   ATLASCLOUD_API_KEY                 AtlasCloud image generation billing key
@@ -406,6 +408,7 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # the upstream JSON untouched; usage parses from the same buffer and bills
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+VOICE_REALTIME_WS_ENABLED = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
@@ -572,6 +575,7 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # the upstream JSON untouched; usage parses from the same buffer and bills
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+VOICE_REALTIME_WS_ENABLED = "false"
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"

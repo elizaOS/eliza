@@ -16,10 +16,12 @@
     "bench": "bun run src/runner.ts",
     "bench:mock": "bun run src/runner.ts --mode=mock",
     "bench:live": "bun run src/runner.ts --mode=live",
+    "bench:staging-session": "bun run src/staging-session.ts",
+    "bench:staging-batch": "bun run src/staging-batch.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "format": "bunx @biomejs/biome format --write package.json README.md AGENTS.md CLAUDE.md src tests fixtures",
-    "format:check": "bunx @biomejs/biome format package.json README.md AGENTS.md CLAUDE.md src tests fixtures",
+    "format": "bunx @biomejs/biome format --write package.json README.md AGENTS.md CLAUDE.md src tests fixtures configs scripts",
+    "format:check": "bunx @biomejs/biome format package.json README.md AGENTS.md CLAUDE.md src tests fixtures configs scripts",
     "typecheck": "tsgo --noEmit"
   },
   "devDependencies": {

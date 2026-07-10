@@ -1,0 +1,32 @@
+{
+  "baseUrl": "https://staging.elizacloud.ai",
+  "mintPath": "/api/v1/voice/session",
+  "transport": "websocket",
+  "protocol": 1,
+  "audio": {
+    "encoding": "pcm16",
+    "sampleRateHz": 16000,
+    "chunkBytes": 2560,
+    "chunkMs": 80
+  },
+  "events": {
+    "ready": "ready",
+    "sttFinal": "stt_final",
+    "llmFirstText": "llm_first_text",
+    "interrupted": "interrupted",
+    "error": "error"
+  },
+  "messages": {
+    "helloType": "hello",
+    "bargeInType": "barge_in",
+    "endOfInputType": "input_audio_done"
+  },
+  "cases": ["short", "long", "barge-in"],
+  "guardMs": 250,
+  "timeouts": {
+    "mintMs": 10000,
+    "readyMs": 10000,
+    "turnMs": 60000,
+    "interruptMs": 5000
+  }
+}
