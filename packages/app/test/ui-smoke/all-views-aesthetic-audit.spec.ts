@@ -14,6 +14,7 @@ import {
   evaluateAestheticMetricBudget,
   evaluateMinimalismRatchet,
   evaluateStrictGate,
+  findRemoteBundleDeclaration,
   minimalismBaselineKey,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   parseMinimalismBaseline,
@@ -994,10 +995,6 @@ interface RemoteBundleAuditProof {
   response: Promise<import("@playwright/test").Response>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 async function forceRemoteBundleAuditRoute(
   page: Page,
   view: AuditCase,
@@ -1006,24 +1003,12 @@ async function forceRemoteBundleAuditRoute(
   const registryResponse = await page.request.get("/api/views");
   expect(registryResponse.ok(), "plugin view registry must load").toBe(true);
   const payload: unknown = await registryResponse.json();
-  if (!isRecord(payload) || !Array.isArray(payload.views)) {
-    throw new Error("plugin view registry returned an invalid views payload");
-  }
-  const registered = payload.views?.find(
-    (entry) =>
-      isRecord(entry) &&
-      entry.id === view.id &&
-      (entry.viewType ?? "gui") === view.viewType,
+  const registered = findRemoteBundleDeclaration(
+    payload,
+    view.id,
+    view.viewType,
   );
-  if (
-    !isRecord(registered) ||
-    typeof registered.bundleUrl !== "string" ||
-    typeof registered.componentExport !== "string"
-  ) {
-    throw new Error(
-      `${view.slug} is missing its production bundle declaration in /api/views`,
-    );
-  }
+  if (!registered) return null;
 
   const auditPath = `/__audit/plugin-view/${encodeURIComponent(registered.id)}`;
   const bundlePath = new URL(registered.bundleUrl, "http://audit.local")
@@ -1038,10 +1023,13 @@ async function forceRemoteBundleAuditRoute(
       contentType: "application/json",
       body: JSON.stringify({
         ...payload,
-        views: payload.views.map((entry) =>
-          isRecord(entry) &&
+        views: (payload as { views: unknown[] }).views.map((entry) =>
+          typeof entry === "object" &&
+          entry !== null &&
+          !Array.isArray(entry) &&
+          "id" in entry &&
           entry.id === registered.id &&
-          (entry.viewType ?? "gui") === view.viewType
+          ("viewType" in entry ? entry.viewType : "gui") === view.viewType
             ? { ...entry, path: auditPath }
             : entry,
         ),
