@@ -53,6 +53,9 @@ export interface TTSOptions {
   text: string;
   voiceId?: string;
   modelId?: string;
+  /** Per-request container/codec override (e.g. `pcm_24000` for the WAV path);
+   *  falls back to the service default when unset. */
+  outputFormat?: string;
 }
 
 /**
@@ -119,7 +122,13 @@ export class ElevenLabsService {
     const audioStream = await this.client.textToSpeech.stream(voiceId, {
       text: options.text,
       modelId,
-      outputFormat: this.config.outputFormat as "mp3_44100_128" | "pcm_16000",
+      // Honor a per-request outputFormat (e.g. `pcm_24000` for the WAV path);
+      // fall back to the service default. Previously this only ever read the
+      // config default, so callers could not request PCM/WAV.
+      outputFormat: (options.outputFormat ?? this.config.outputFormat) as
+        | "mp3_44100_128"
+        | "pcm_16000"
+        | "pcm_24000",
       optimizeStreamingLatency: this.config.optimizeStreamingLatency,
       voiceSettings: {
         stability: this.config.voiceStability,

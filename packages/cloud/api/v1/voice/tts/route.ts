@@ -83,6 +83,11 @@ const TtsBody = z.object({
   text: z.string(),
   voiceId: z.string().optional(),
   modelId: z.string().optional(),
+  // Optional container format. Default (unset) = MP3, unchanged for every
+  // existing caller. `"wav"` returns PCM16 WAV for clients whose audio stack has
+  // no MP3 decoder (e.g. the Light Phone III / LightOS WebView), which need an
+  // uncompressed container that decodes without a codec.
+  format: z.enum(["mp3", "wav"]).optional(),
 });
 
 interface TtsTimings {
@@ -111,6 +116,60 @@ function buildTtsObservabilityHeaders(
       ? { "Server-Timing": serverTiming.join(", ") }
       : {}),
   };
+}
+
+/** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
+const WAV_PCM_SAMPLE_RATE = 24_000;
+
+/** Prepend a canonical 44-byte PCM16 mono WAV header to raw little-endian
+ *  16-bit PCM samples (what ElevenLabs `pcm_24000` streams). */
+function pcm16ToWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  const dataLen = pcm.byteLength;
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataLen, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true); // PCM fmt chunk size
+  view.setUint16(20, 1, true); // audio format = PCM
+  view.setUint16(22, 1, true); // channels = mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate (mono * 16-bit)
+  view.setUint16(32, 2, true); // block align
+  view.setUint16(34, 16, true); // bits per sample
+  writeStr(36, "data");
+  view.setUint32(40, dataLen, true);
+  const out = new Uint8Array(44 + dataLen);
+  out.set(new Uint8Array(header), 0);
+  out.set(pcm, 44);
+  return out;
+}
+
+/** Drain a ReadableStream of PCM chunks into one buffer. */
+async function drainStream(
+  stream: ReadableStream<Uint8Array>,
+): Promise<Uint8Array> {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const r = await reader.read();
+    if (r.done) break;
+    const c = r.value as Uint8Array;
+    chunks.push(c);
+    total += c.byteLength;
+  }
+  const merged = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    merged.set(c, off);
+    off += c.byteLength;
+  }
+  return merged;
 }
 
 /**
@@ -146,6 +205,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       voiceId,
       kokoroConfigured: Boolean(kokoroBaseUrl),
     });
+    // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
+    // different codec); billing/usage are identical to the MP3 path.
+    const wantWav = parsed.data.format === "wav";
 
     if (!text) {
       return Response.json({ error: "No text provided" }, { status: 400 });
@@ -384,6 +446,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     timings.admissionMs = Date.now() - admissionStart;
 
     if (
+      !wantWav &&
       snipResult &&
       !cacheBypass &&
       // Cache currently only serves WHOLE-input hits to avoid mp3 stream
@@ -467,6 +530,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       text,
       voiceId,
       modelId,
+      // WAV path requests raw PCM (wrapped in a WAV header below); default
+      // callers get the service's MP3 default.
+      ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
     });
     const duration = Date.now() - startTime;
     timings.synthesisMs = duration;
@@ -548,7 +614,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // boundaries — mp3 frames aren't aligned). The fan-out is bounded by
     // the ≤ 10-word snip cap and skipped entirely on bypass / no-snip.
     // ---------------------------------------------------------------------
-    if (snipResult && !cacheBypass) {
+    if (!wantWav && snipResult && !cacheBypass) {
       void (async () => {
         try {
           const cacheService = getCloudFirstLineCacheService();
@@ -606,6 +672,20 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           );
         }
       })();
+    }
+
+    // WAV path: ElevenLabs streamed raw PCM; buffer it and wrap in a WAV header
+    // so codec-less clients can decode it. (Buffered, not streamed — fine for
+    // short TTS replies; the MP3 path keeps its chunked streaming below.)
+    if (wantWav) {
+      const wav = pcm16ToWav(await drainStream(audioStream), WAV_PCM_SAMPLE_RATE);
+      return new Response(wav as unknown as BodyInit, {
+        headers: {
+          "Content-Type": "audio/wav",
+          "Cache-Control": "no-cache",
+          "X-TTS-Cache": "miss",
+        },
+      });
     }
 
     return new Response(audioStream, {
