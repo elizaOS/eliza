@@ -156,7 +156,7 @@ export const TaskWidget = memo(function TaskWidget({
         data-testid="task-widget"
         data-task-id={threadId}
         data-removed="true"
-        className="my-2 rounded-sm border border-border bg-card px-3 py-2 text-xs text-muted"
+        className="my-2 py-1 text-xs text-muted"
       >
         Task removed.
       </div>
@@ -191,14 +191,14 @@ export const TaskWidget = memo(function TaskWidget({
       data-task-id={threadId}
       data-task-status={status}
       data-expanded={expanded ? "true" : "false"}
-      className="my-2 overflow-hidden rounded-sm border border-border bg-card"
+      className="my-2 overflow-hidden"
     >
       <Button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         variant="ghost"
         aria-expanded={expanded}
-        className="flex h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-none px-3 py-2 text-left font-normal transition-colors hover:bg-bg-hover"
+        className="flex h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-sm -mx-2 px-2 py-1.5 text-left font-normal transition-colors hover:bg-bg-hover"
       >
         <span
           className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
@@ -253,7 +253,7 @@ export const TaskWidget = memo(function TaskWidget({
       {expanded ? (
         <div
           data-testid="task-widget-pipeline"
-          className="flex flex-col gap-3 border-t border-border px-3 py-3"
+          className="flex flex-col gap-3 py-2"
         >
           {activity.plan.length > 0 && activity.subagents.length <= 1 ? (
             <PlanChecklist entries={activity.plan} title="Plan" />

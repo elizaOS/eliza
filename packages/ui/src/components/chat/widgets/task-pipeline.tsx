@@ -182,7 +182,7 @@ export const ChecklistWidget = memo(function ChecklistWidget({
     <ChatWidgetShell
       title={resolvedTitle}
       status={
-        <span className="rounded-sm bg-bg px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted">
+        <span className="text-[11px] font-medium tabular-nums text-muted">
           {done}/{entries.length}
         </span>
       }
@@ -190,7 +190,7 @@ export const ChecklistWidget = memo(function ChecklistWidget({
       complete={complete}
       testId="checklist-widget-shell"
     >
-      <div className="px-3 py-2">
+      <div className="py-1.5">
         <PlanChecklist entries={entries} title={resolvedTitle} />
       </div>
     </ChatWidgetShell>

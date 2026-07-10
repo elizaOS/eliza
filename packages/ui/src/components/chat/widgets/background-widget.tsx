@@ -28,7 +28,7 @@ export function BackgroundWidget() {
         defaultValue: "Background",
       })}
     >
-      <div className="p-3">
+      <div className="py-1.5">
         <BackgroundSettingsControls variant="filmstrip" />
       </div>
     </ChatWidgetShell>
