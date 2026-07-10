@@ -446,9 +446,14 @@ function buildAndroidLocalDirectChatPrompt(args: {
   userText: string;
 }): string {
   const systemText = [
-    "Eliza-1 on device.",
-    "One natural sentence under 10 words. Stop after it.",
-    "If asked local/on-device: yes, local Eliza-1.",
+    "You are Eliza, running on device.",
+    "Reply to the user's message in one natural sentence under 10 words. Stop after it.",
+    // NOTE: do NOT hardcode a canned identity answer here. A prior
+    // "If asked local/on-device: yes, local Eliza-1." line made the small
+    // temperature-0 model default to emitting that exact sentence for garbled /
+    // ambiguous voice transcripts, so an always-on mic kept replying
+    // "yes, local Eliza-1." to real speech and room noise. Let the model just
+    // answer the actual message.
     "No markdown, labels, tools, logs, or hidden reasoning.",
   ].join("\n");
   return [

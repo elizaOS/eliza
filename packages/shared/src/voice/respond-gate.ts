@@ -51,6 +51,24 @@ function words(text: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Strip Whisper's non-speech sound-event annotations — parenthesised or
+ * bracketed tokens like "(music)", "(bubbling sound)", "[laughter]",
+ * "(Perro jadea)", "(clicking)". An always-on mic transcribes room noise and the
+ * agent's own audio bleeding back, and Whisper wraps those as `(...)`/`[...]`
+ * events. Returns the residual SPOKEN text; when a turn is entirely such
+ * annotations the residue is empty. This is the #1 source of the agent replying
+ * to ambient noise ("yes, local Eliza-1" on repeat), which the word/disfluency
+ * and echo guards below do not catch (the annotation words don't overlap the
+ * reply and aren't in the disfluency set).
+ */
+function stripNonSpeechAnnotations(text: string): string {
+  return text
+    .replace(/[([{][^)\]}]*[)\]}]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export interface ShouldRespondContext {
   /** The agent's most recent spoken reply, for the echo guard. */
   recentAgentReply?: string;
@@ -74,7 +92,11 @@ export function shouldRespondToVoiceTurn(
   transcript: string,
   context: ShouldRespondContext = {},
 ): boolean {
-  const w = words(transcript);
+  // Drop turns that are ENTIRELY non-speech sound-event annotations
+  // ("(bubbling sound)", "(techno music)", "(Perro jadea)") — ambient noise or
+  // the agent's own audio bled back into the open mic, never a spoken turn.
+  const spoken = stripNonSpeechAnnotations(transcript);
+  const w = words(spoken);
   if (w.length === 0) return false;
 
   // Pure disfluency ("um", "uh huh"… with nothing substantive) → ignore.
