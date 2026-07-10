@@ -869,7 +869,7 @@ async function collectOverlayClearanceIssues(
   }, overlaySelector);
 }
 
-/** Spatial column siblings must flow rather than paint through each other. */
+/** Flex-column siblings must flow rather than paint through each other. */
 async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const issues: string[] = [];
@@ -880,9 +880,16 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
         element.getAttribute("data-spatial-kind") ||
         element.tagName.toLowerCase()
       ).slice(0, 48);
-    for (const box of document.querySelectorAll<HTMLElement>(
-      '[data-spatial-kind="box"]',
-    )) {
+    for (const box of Array.from(
+      document.querySelectorAll<HTMLElement>("*"),
+    ).slice(0, 4000)) {
+      if (
+        box.closest(
+          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
+        )
+      ) {
+        continue;
+      }
       const style = getComputedStyle(box);
       if (style.display !== "flex" || style.flexDirection !== "column") {
         continue;
@@ -919,8 +926,109 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
         }
       }
     }
+
+    const textRects: Array<{
+      element: HTMLElement;
+      rect: DOMRect;
+      text: string;
+    }> = [];
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+    );
+    for (
+      let node = walker.nextNode();
+      node && textRects.length < 600;
+      node = walker.nextNode()
+    ) {
+      const text = node.textContent?.trim().replace(/\s+/g, " ") ?? "";
+      const element = node.parentElement;
+      if (!text || !element) continue;
+      if (
+        element.closest(
+          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
+        )
+      ) {
+        continue;
+      }
+      const style = getComputedStyle(element);
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        Number(style.opacity || "1") <= 0.02
+      ) {
+        continue;
+      }
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rect of range.getClientRects()) {
+        if (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.right > 0 &&
+          rect.bottom > 0 &&
+          rect.left < window.innerWidth &&
+          rect.top < window.innerHeight
+        ) {
+          textRects.push({ element, rect, text: text.slice(0, 32) });
+        }
+      }
+      range.detach();
+    }
+    for (let left = 0; left < textRects.length; left += 1) {
+      const first = textRects[left];
+      for (let right = left + 1; right < textRects.length; right += 1) {
+        const second = textRects[right];
+        if (
+          first.element.contains(second.element) ||
+          second.element.contains(first.element)
+        ) {
+          continue;
+        }
+        const overlapWidth =
+          Math.min(first.rect.right, second.rect.right) -
+          Math.max(first.rect.left, second.rect.left);
+        const overlapHeight =
+          Math.min(first.rect.bottom, second.rect.bottom) -
+          Math.max(first.rect.top, second.rect.top);
+        if (
+          overlapWidth > 2 &&
+          overlapHeight > 2 &&
+          overlapWidth * overlapHeight >= 16
+        ) {
+          issues.push(
+            `text overlaps "${first.text}" with "${second.text}" (${Math.round(overlapWidth)}×${Math.round(overlapHeight)}px)`,
+          );
+          if (issues.length >= 5) return issues;
+        }
+      }
+    }
     return issues;
   });
+}
+
+/** A hosted spatial view must fill the shell content width. */
+async function collectSpatialSizingIssues(page: Page): Promise<string[]> {
+  return page.locator("[data-spatial-surface]").evaluateAll((surfaces) =>
+    surfaces.flatMap((surface) => {
+      if (!(surface instanceof HTMLElement)) return [];
+      const rect = surface.getBoundingClientRect();
+      const rootStyle = getComputedStyle(document.documentElement);
+      const sideClearance =
+        Number.parseFloat(
+          rootStyle.getPropertyValue("--eliza-continuous-chat-side-clearance"),
+        ) || 0;
+      const surfaceStyle = getComputedStyle(surface);
+      const duplicatePadding =
+        Number.parseFloat(surfaceStyle.paddingInlineEnd) || 0;
+      const usableWidth = rect.width - duplicatePadding;
+      const expectedWidth = window.innerWidth - sideClearance;
+      if (usableWidth >= expectedWidth * 0.8) return [];
+      return [
+        `spatial surface underfills shell content (${Math.round(usableWidth)}/${Math.round(expectedWidth)}px usable; ${Math.round(duplicatePadding)}px nested clearance)`,
+      ];
+    }),
+  );
 }
 
 /** A resting empty composer must not grow just to wrap its placeholder. */
@@ -1237,6 +1345,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
             ? ["dynamic view remained in its loading state after 12 seconds"]
             : []),
           ...(await collectSpatialOverlapIssues(page)),
+          ...(await collectSpatialSizingIssues(page)),
           ...(await collectComposerLegibilityIssues(page)),
         ];
 

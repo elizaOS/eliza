@@ -129,7 +129,7 @@ describe("RelationshipsView — states", () => {
   });
 
   it("renders the populated graph with entity nodes and their edges", async () => {
-    render(
+    const { container } = render(
       <RelationshipsView
         fetchers={makeFetchers({
           fetchEntities: async () => ({
@@ -171,6 +171,11 @@ describe("RelationshipsView — states", () => {
     );
 
     await screen.findByText("Owner");
+    const root = container.querySelector(
+      '[data-spatial-kind="box"]',
+    ) as HTMLElement;
+    expect(root.style.flexShrink).toBe("0");
+    expect(root.style.width).toBe("100%");
     // The self node carries the colleague edge to Pat with cadence + last contact.
     expect(agent("rel-self")).toBeTruthy();
     expect(screen.getByText(/colleague_of · every 14d · last/)).toBeTruthy();
