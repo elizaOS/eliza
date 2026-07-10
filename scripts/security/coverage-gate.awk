@@ -65,6 +65,7 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
       if (path_matches_lcov(current, cf)) { matched = cf; break }
     }
     if (matched != "") {
+      matched_map[matched] = 1
       changed_count++
       changed_sum += pct
       printf "  %6.2f%% %s\n", pct, matched
@@ -75,25 +76,33 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
 }
 
 END {
+  missing_count = 0
+  for (f in changed_map) {
+    if (!(f in matched_map)) {
+      printf "  MISSING: %s\n", f
+      missing_count++
+    }
+  }
+
   if (changed_count == 0) {
     print "no changed files matched the LCOV report"
-    if (changed != "" && ENVIRON["COVERAGE_GATE_ENFORCE"] == "1") {
-      print "coverage gate FAILED (changed source missing from LCOV)"
-      exit 1
-    }
-    exit 0
+  } else {
+    avg = changed_sum / changed_count
+    printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: %d%%\n", \
+      changed_count, avg, threshold
   }
-  avg = changed_sum / changed_count
-  printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: %d%%\n", \
-    changed_count, avg, threshold
 
-  fail = 0
+  fail = missing_count > 0
   for (f in below) {
     printf "  BELOW: %s (%.2f%%)\n", f, below[f]
     fail = 1
   }
   if (fail && ENVIRON["COVERAGE_GATE_ENFORCE"] == "1") {
-    print "coverage gate FAILED (enforcement enabled)"
+    if (missing_count > 0) {
+      print "coverage gate FAILED (changed source missing from LCOV)"
+    } else {
+      print "coverage gate FAILED (enforcement enabled)"
+    }
     exit 1
   }
   if (fail) {
