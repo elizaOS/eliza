@@ -268,8 +268,10 @@ const CHAT_PANEL_THEME = {
 // token-based color there resolves to the ambient app theme — which is dark on a
 // light surface, making the handle render BLACK (the "handle is black sometimes"
 // bug: the open-sheet grabber was black while the in-panel pill bar was white).
-// This warm near-white matches the panel's `--muted-strong` in every context.
-const HANDLE_BAR_COLOR = "rgba(255, 247, 240, 0.86)";
+// Fixed white matches the panel's `--muted-strong` in every context.
+const HANDLE_BAR_COLOR = "rgba(255, 255, 255, 0.86)";
+const HANDLE_SHIMMER_CLASS =
+  "shimmer text-white/45 [--shimmer-color:rgba(255,255,255,1)] [--shimmer-duration:1400ms] [--shimmer-spread:24px] [background-clip:border-box] [-webkit-background-clip:border-box] motion-reduce:shimmer-none";
 
 // Shared easing for the overlay's cheap motion path. Open/close must stay
 // opacity/translate only: animating blur/filter or scaling a scrollable
@@ -601,14 +603,14 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
  * pull DOWN to close it. It is also keyboard-operable (Enter/Space toggles,
  * ArrowUp opens, ArrowDown/Escape closes) so the drag-only affordance stays
  * WCAG 2.1.1 operable. `touch-none` keeps the browser from scroll/refreshing
- * mid-drag. A faint warm sheen rides the handle while the agent is live.
+ * mid-drag. A subtle white sheen rides the handle while the agent is live.
  */
 function SheetGrabber({
   open,
   onOpen,
   onClose,
   binding,
-  glow,
+  shimmering,
   opacity,
   pilled,
   inert,
@@ -617,7 +619,7 @@ function SheetGrabber({
   onOpen: () => void;
   onClose: () => void;
   binding: PullGestureBinding;
-  glow: boolean;
+  shimmering: boolean;
   // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
   // handle, fading to 1 only AFTER the pill has fully faded out — so the grabber
   // bar and the (identical) pill bar are NEVER both visible (the "two pills" bug).
@@ -685,13 +687,13 @@ function SheetGrabber({
           // together. The bar paints at full opacity — a prior regression pinned
           // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Pulse while the mic is hot / a reply is speaking: the warm bar
-          // breathes instead of sitting static, the "audio is on" cue.
-          glow && "animate-pulse bg-accent motion-reduce:animate-none",
+          // A white shadcn shimmer marks live agent work without recoloring the
+          // grabber or competing with the composer's orange recording cue.
+          shimmering && HANDLE_SHIMMER_CLASS,
         )}
         // Explicit fixed color (see HANDLE_BAR_COLOR) so the grabber — rendered
         // outside the panel theme — never inherits a dark ambient token.
-        style={glow ? undefined : { backgroundColor: HANDLE_BAR_COLOR }}
+        style={{ backgroundColor: HANDLE_BAR_COLOR }}
       />
     </motion.button>
   );
@@ -705,12 +707,12 @@ function SheetGrabber({
 function PillHandle({
   binding,
   onOpen,
-  glow,
+  shimmering,
   pilled,
 }: {
   binding: PullGestureBinding;
   onOpen: () => void;
-  glow: boolean;
+  shimmering: boolean;
   // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
   // and wide and sits directly over the composer textarea; if it kept
   // `pointer-events-auto` while NOT pilled it would intercept the tap meant for
@@ -761,13 +763,12 @@ function PillHandle({
           // The bar paints at full opacity — a prior regression pinned it to
           // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Same pulse as the SheetGrabber bar: while audio is on and the chat
-          // is collapsed to the pill, the pill itself pulses.
-          glow && "animate-pulse bg-accent motion-reduce:animate-none",
+          // Same white work-state shimmer as the SheetGrabber bar.
+          shimmering && HANDLE_SHIMMER_CLASS,
         )}
         // Same explicit color as the grabber bar so the two are pixel-identical
         // through the crossfade (HANDLE_BAR_COLOR).
-        style={glow ? undefined : { backgroundColor: HANDLE_BAR_COLOR }}
+        style={{ backgroundColor: HANDLE_BAR_COLOR }}
       />
     </Button>
   );
@@ -2016,6 +2017,7 @@ export function ContinuousChatOverlay({
         >
           <ChatMessage
             appearance="glass"
+            enterOnMount={m.id.startsWith("temp-")}
             agentName={agentName}
             message={shellToChatMessageData(m)}
             reduceMotion={reduce}
@@ -4914,7 +4916,7 @@ export function ContinuousChatOverlay({
             // next to the user's attention; a second pulsing bar above them
             // read as noise. Only the collapsed PILL (where no composer glyph
             // is visible) pulses for a live capture — see PillHandle below.
-            glow={(listening || responding) && !recording}
+            shimmering={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
             inert={!sheetOpen && (hasImages || Boolean(imageError))}
@@ -5292,7 +5294,7 @@ export function ContinuousChatOverlay({
                     // old `overflow-y-auto`) let the input scroll away under the
                     // keyboard on iOS; keep it `overflow-hidden` and let the
                     // inner results list be the only scroll region.
-                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-scrim px-4 pb-3 pt-2 backdrop-blur-xl"
+                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-black/20 px-4 pb-3 pt-2 backdrop-blur-md"
                   >
                     <MessageSearchPanel
                       search={runMessageSearch}
@@ -5365,7 +5367,7 @@ export function ContinuousChatOverlay({
                             "flex flex-col gap-0",
                             firstRunOpen
                               ? "shrink-0 pt-8"
-                              : "mt-auto pb-3 pt-1",
+                              : "mt-auto pb-3 pt-8",
                           )}
                         >
                           {/* Top sentinel for infinite upward scroll (#13532, #14279):
@@ -5382,16 +5384,8 @@ export function ContinuousChatOverlay({
                               ref={topSentinelRef}
                               data-testid="chat-transcript-top-sentinel"
                               aria-hidden="true"
-                              className="pointer-events-none flex h-5 shrink-0 items-center justify-center"
-                            >
-                              <Loader2
-                                className={cn(
-                                  "h-4 w-4 text-muted-strong opacity-60",
-                                  reduce ? "" : "animate-spin",
-                                )}
-                                aria-hidden="true"
-                              />
-                            </div>
+                              className="pointer-events-none h-px w-full shrink-0"
+                            />
                           ) : null}
                           {hasTopics
                             ? // Topic-grouped transcript: each cluster collapses via a
@@ -5431,9 +5425,7 @@ export function ContinuousChatOverlay({
                                           )
                                         }
                                       >
-                                        <AnimatePresence initial={false}>
-                                          {lines}
-                                        </AnimatePresence>
+                                        {lines}
                                       </TopicGroup>
                                     </MessageScrollerItem>
                                   );
@@ -5444,13 +5436,11 @@ export function ContinuousChatOverlay({
                               // in-flight one) reads turnStatus — every settled bubble
                               // gets undefined so its memo identity is unchanged.
                               null}
-                          {hasTopics ? null : (
-                            <AnimatePresence initial={false}>
-                              {visibleMessages.map((m, i) =>
+                          {hasTopics
+                            ? null
+                            : visibleMessages.map((m, i) =>
                                 renderThreadLine(m, i),
                               )}
-                            </AnimatePresence>
-                          )}
                           <AnimatePresence>
                             {/* Rich status row (#8813): what the agent is doing —
                           thinking / running an action / waking / speaking — for
@@ -5925,7 +5915,7 @@ export function ContinuousChatOverlay({
               // The pill IS the whole chat while collapsed, so it alone pulses
               // for a live mic capture (`recording`) — the open-sheet grabber
               // deliberately does not (the composer glyphs carry that cue).
-              glow={listening || responding || recording}
+              shimmering={listening || responding || recording}
               pilled={pilled}
             />
           </motion.div>

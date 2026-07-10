@@ -2,7 +2,7 @@
  * Per-message action controls (copy / play / edit / delete), in the two chromes
  * the chat surfaces use: `rail` — the hover `PagePanel.ActionRail` overlaying a
  * panel bubble (ChatView / detached windows) — and `glass-row` — the continuous
- * overlay's tap-revealed row of round icon buttons beneath a glass bubble
+ * overlay's tap-revealed row of unframed icon buttons beneath a glass bubble
  * (#10713). Each control is opt-in via its `can*` flag; copy shows a transient
  * confirmed state; play toggles to stop on the bubble that is speaking
  * (`playing`, glass-row only). Wired by ChatMessage.
@@ -42,10 +42,10 @@ export interface ChatMessageActionsProps {
 }
 
 /**
- * One icon-only control in the glass action row: no card fill, neutral resting
- * → neutral-opacity hover; an active (e.g. playing) control tints with the
- * orange accent. `stopPropagation` keeps a tap on the button from re-toggling
- * the row or ending text selection.
+ * One unframed icon-only control in the glass action row. The invisible square
+ * remains a full hit target, while only icon color changes on hover or active
+ * state. `stopPropagation` keeps a tap from re-toggling the row or ending text
+ * selection.
  */
 function GlassActionButton({
   label,
@@ -72,10 +72,8 @@ function GlassActionButton({
         onClick();
       }}
       className={cn(
-        "h-7 w-7 rounded-full p-0 transition-colors",
-        active
-          ? "bg-[rgb(255,88,0)]/25 text-white"
-          : "bg-white/10 text-white/80 hover:bg-white/20",
+        "h-7 w-7 rounded-none bg-transparent p-0 text-white/70 transition-colors hover:bg-transparent hover:text-white",
+        active && "text-[rgb(255,148,84)] hover:text-[rgb(255,148,84)]",
       )}
     >
       {icon}

@@ -52,6 +52,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -856,9 +857,20 @@ export function NotificationsHomeCenter({
       // starts from a predictable grouped inbox.
       setExpandedStacks(new Set());
     }
-    // Both modes start reading from the top of the shade.
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    // Collapse completion is deterministic even when a smooth scroll was
+    // interrupted. Expansion resets after the expanded rows mount below.
+    if (!expanded && scrollRef.current) scrollRef.current.scrollTop = 0;
   }, []);
+
+  // Every expansion path must reveal the shade's first row and clear control.
+  // Stack taps call expandStack directly (not setShade), and mounting their
+  // hidden siblings can trigger browser scroll anchoring; reset after that DOM
+  // commit, before paint, so the expanded shade always starts at its real top.
+  useLayoutEffect(() => {
+    if (shadeExpanded && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [shadeExpanded]);
 
   const requestShadeCollapse = useCallback(() => {
     if (!shadeExpanded || shadeClosing) return;
@@ -1666,7 +1678,9 @@ export function NotificationsHomeCenter({
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
-          "eliza-notif-scroll scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem] relative flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-10 pt-1",
+          "eliza-notif-scroll relative flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-10 pt-1",
+          hasNotifications &&
+            "scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem]",
           shadeClosing && "pointer-events-none",
         )}
       >
@@ -1716,7 +1730,7 @@ export function NotificationsHomeCenter({
               ...notificationPullRevealStyle(emptyStateVisibility),
               transition: pullPx ? "none" : undefined,
             }}
-            className="eliza-notif-pull-reveal flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45 transition-[opacity,transform] duration-[320ms] ease-out motion-reduce:transition-none"
+            className="eliza-notif-pull-reveal flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none"
           >
             No Notifications
           </li>

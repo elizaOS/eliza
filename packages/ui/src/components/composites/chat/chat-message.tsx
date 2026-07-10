@@ -70,12 +70,10 @@ export interface ChatMessageProps {
   appearance?: ChatMessageAppearance;
   children?: React.ReactNode;
   /**
-   * Play a one-shot fade+lift entrance when this row mounts (panel only — the
-   * glass chrome animates through motion/AnimatePresence). Set only for a
-   * freshly-arrived turn (see ChatTranscript) so reloaded history never
-   * animates. Deliberately NOT part of arePropsEqual: the row keeps its
-   * mount-time value, so streamed-token re-renders neither restart nor cancel
-   * the animation.
+   * Play a one-shot fade+lift entrance when this row mounts. Set only for a
+   * freshly-arrived turn so reloaded or reconciled history never animates.
+   * Deliberately NOT part of arePropsEqual: the row keeps its mount-time value,
+   * so streamed-token re-renders neither restart nor cancel the animation.
    */
   enterOnMount?: boolean;
   isGrouped?: boolean;
@@ -738,6 +736,15 @@ export const ChatMessage = memo(function ChatMessage({
 
   // ── Glass chrome (the continuous overlay's floating row) ──────────────────
   if (glass) {
+    const initial = enterOnMount
+      ? reduceMotion
+        ? { opacity: 0 }
+        : { opacity: 0, y: 14 }
+      : false;
+    const transition = {
+      duration: reduceMotion ? 0.15 : 0.52,
+      ease: GLASS_EASE,
+    };
     // A failure the user can't recover from without wiring a provider renders a
     // structured gate (via renderContent), NOT a normal bubble — no reveal
     // actions, no copy-hold. The gate owns its own chrome; the row only carries
@@ -749,13 +756,9 @@ export const ChatMessage = memo(function ChatMessage({
           data-testid="thread-line"
           data-role={message.role}
           data-failure="no_provider"
-          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+          initial={initial}
           animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-          transition={{
-            duration: reduceMotion ? 0.15 : 0.52,
-            ease: GLASS_EASE,
-          }}
+          transition={transition}
           className="mb-2.5 flex w-full justify-start"
         >
           {renderContent?.(message, renderContext) ?? children ?? message.text}
@@ -924,9 +927,7 @@ export const ChatMessage = memo(function ChatMessage({
       // enough room and contrast for its full-width next-step action.
       isFirstRun &&
         "w-full border-white/20 bg-white/[0.07] px-4 py-3.5 sm:px-5 sm:py-4",
-      // shadcn's assistant-message pattern uses a full-width ghost surface:
-      // content remains selectable and interactive without drawing a nested
-      // bordered card inside the already-glassy chat sheet.
+      // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
@@ -943,10 +944,9 @@ export const ChatMessage = memo(function ChatMessage({
         data-role={message.role}
         // New turns rise+fade in. Transform/opacity only; reduced motion
         // collapses it to a quick fade with no positional movement.
-        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+        initial={initial}
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-        transition={{ duration: reduceMotion ? 0.15 : 0.52, ease: GLASS_EASE }}
+        transition={transition}
         className="mb-1.5"
       >
         {/* Bubble + its click-to-reveal action row stack vertically, aligned to

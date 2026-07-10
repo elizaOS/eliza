@@ -287,13 +287,17 @@ describe("interrupt priority projection", () => {
     expect(screen.getByTestId("notification-source-count").textContent).toBe(
       "2",
     );
+    const list = screen.getByTestId("home-notification-list");
+    Object.defineProperty(list, "scrollTop", {
+      configurable: true,
+      value: 240,
+      writable: true,
+    });
     fireEvent.click(screen.getByTestId("notification-row"));
 
-    expect(
-      screen
-        .getByTestId("home-notification-list")
-        .getAttribute("data-shade-mode"),
-    ).toBe("expanded");
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.scrollTop).toBe(0);
+    expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
     expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
     expect(screen.getByText("Calendar summary")).toBeTruthy();
@@ -525,6 +529,7 @@ describe("NotificationsHomeCenter", () => {
     const empty = screen.getByTestId("notifications-empty");
 
     expect(center.className).toContain("min-h-14");
+    expect(list.className).not.toContain("scroll-fade");
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(empty.style.opacity).toBe("0");
     expect(empty.getAttribute("aria-hidden")).toBe("true");
@@ -582,6 +587,37 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.getByTestId("notifications-empty").style.opacity).toBe("1");
     expect(empty.style.transform).toBe(restingEmptyStyle.transform);
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
+
+    fireEvent.click(document.body);
+    const fadingEmpty = screen.getByTestId("notifications-empty");
+    expect(fadingEmpty.style.opacity).toBe("0");
+    expect(fadingEmpty.className).toContain("duration-200");
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    act(() => vi.advanceTimersByTime(200));
+    expect(screen.getByTestId("notifications-empty")).toBe(fadingEmpty);
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+
+    // Re-open for the directional swipe-collapse assertions below.
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 3,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 3,
+      clientX: 10,
+      clientY: 140,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 3,
+      clientX: 10,
+      clientY: 140,
+    });
 
     fireEvent.pointerDown(list, {
       pointerType: "mouse",

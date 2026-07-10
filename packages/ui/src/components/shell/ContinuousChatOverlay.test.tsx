@@ -735,7 +735,7 @@ describe("ContinuousChatOverlay", () => {
       );
     });
 
-    it("pulses the collapsed pill bar only while listening (regression guard)", () => {
+    it("shimmers the collapsed pill bar in white only while listening", () => {
       const { rerender } = render(
         <ContinuousChatOverlay controller={makeController()} />,
       );
@@ -743,11 +743,11 @@ describe("ContinuousChatOverlay", () => {
       const spanOf = () =>
         screen.getByTestId("chat-pill").querySelector("span");
       const barOf = () => spanOf()?.className ?? "";
-      expect(barOf()).not.toContain("animate-pulse");
-      // Resting bar color is an explicit light warm-white inline style (not the
+      expect(barOf()).not.toContain("shimmer");
+      // Resting bar color is an explicit white inline style (not the
       // `bg-muted-strong` token, which resolved dark/black on the grabber that
       // renders outside the panel theme) — kept identical to the grabber bar.
-      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 247, 240, 0.86)");
+      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.86)");
       rerender(
         <ContinuousChatOverlay
           controller={makeController({ phase: "listening", recording: true })}
@@ -758,9 +758,11 @@ describe("ContinuousChatOverlay", () => {
       fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
       fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
       expect(sheet.getAttribute("data-detent")).toBe("pill");
-      expect(barOf()).toContain("animate-pulse");
-      expect(barOf()).toContain("bg-accent");
-      expect(barOf()).toContain("motion-reduce:animate-none");
+      expect(barOf()).toContain("shimmer");
+      expect(barOf()).toContain("text-white/45");
+      expect(barOf()).not.toContain("bg-accent");
+      expect(barOf()).not.toContain("animate-pulse");
+      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.86)");
     });
   });
 
@@ -1222,6 +1224,57 @@ describe("ContinuousChatOverlay", () => {
     expect(assistant?.getAttribute("data-align")).toBe("start");
     expect(user?.getAttribute("data-align")).toBe("end");
     expect(user?.className).not.toContain("justify-end");
+    expect(
+      log?.querySelector('[data-slot="message-scroller-content"]')?.className,
+    ).toContain("pt-8");
+  });
+
+  it("reconciles optimistic turns without retaining animated duplicate rows", () => {
+    const optimistic = makeController({
+      messages: [
+        {
+          id: "temp-turn",
+          role: "user",
+          content: "hello",
+          createdAt: 1,
+        },
+        {
+          id: "temp-resp-turn",
+          role: "assistant",
+          content: "hi there",
+          createdAt: 2,
+        },
+      ],
+    });
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={optimistic} />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const thread = document.getElementById("continuous-thread");
+    expect(
+      thread?.querySelectorAll('[data-testid="thread-line"]'),
+    ).toHaveLength(2);
+
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            { id: "user-1", role: "user", content: "hello", createdAt: 1 },
+            {
+              id: "assistant-1",
+              role: "assistant",
+              content: "hi there",
+              createdAt: 2,
+            },
+          ],
+        })}
+      />,
+    );
+
+    const rows = thread?.querySelectorAll('[data-testid="thread-line"]');
+    expect(rows).toHaveLength(2);
+    expect(thread?.querySelector('[data-message-id^="temp-"]')).toBeNull();
   });
 
   it("anchors the in-flight status row as an assistant-aligned transcript row", () => {
@@ -2918,7 +2971,9 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(screen.queryByTestId("chat-message-search")).toBeNull();
     // "+" → "Search chat…" reveals the search panel over the transcript.
     openSearchFromComposerMenu();
-    expect(screen.getByTestId("chat-message-search")).toBeTruthy();
+    const searchLayer = screen.getByTestId("chat-message-search");
+    expect(searchLayer.className).toContain("bg-black/20");
+    expect(searchLayer.className).not.toContain("bg-scrim");
     expect(screen.getByTestId("message-search-panel")).toBeTruthy();
   });
 
@@ -3047,7 +3102,9 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
     // The load-older prefetch sentinel mounts above the oldest turn so
     // useLoadOlderOnScroll can page older history in as the reader scrolls up.
-    expect(screen.getByTestId("chat-transcript-top-sentinel")).toBeTruthy();
+    const sentinel = screen.getByTestId("chat-transcript-top-sentinel");
+    expect(sentinel.className).toContain("h-px");
+    expect(sentinel.childElementCount).toBe(0);
   });
 
   // Maximize is a PULL now, not a button (#13531). A big upward over-pull of the
