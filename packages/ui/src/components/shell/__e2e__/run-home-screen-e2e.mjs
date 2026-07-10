@@ -591,6 +591,11 @@ try {
     (await mobile.getByTestId("first-session-swipe-hint").count()) === 0,
     "mobile coarse-pointer: retired lesson stays absent after reload",
   );
+  // Chromium's first screenshot after a mobile reload can race the compositor
+  // layer upload even after DOM geometry and animations have settled. Warm the
+  // capture path, then require another stable frame before recording evidence.
+  await mobile.screenshot();
+  await waitForRenderedHomeSettled(mobile);
   await snap(mobile, "mobile-after-swipe-hint-retired");
   assert(
     (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
