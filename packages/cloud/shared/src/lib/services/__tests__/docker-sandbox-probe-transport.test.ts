@@ -214,9 +214,7 @@ describe("classifyHealthTimeoutDetail", () => {
 
   test("running but unhealthy → surfaces the health status", () => {
     expect(
-      classifyHealthTimeoutDetail(
-        "--- inspect ---\nstate=running health=unhealthy exit=0 error=",
-      ),
+      classifyHealthTimeoutDetail("--- inspect ---\nstate=running health=unhealthy exit=0 error="),
     ).toBe("container running but health=unhealthy");
   });
 
