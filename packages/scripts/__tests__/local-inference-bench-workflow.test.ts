@@ -17,9 +17,14 @@ describe("local inference bench workflow", () => {
     const buildStep = workflow.indexOf(
       "node packages/app-core/scripts/stage-desktop-fused-lib.mjs",
     );
+    const submoduleStep = workflow.indexOf(
+      "git submodule update --init --recursive",
+    );
     const bootStep = workflow.indexOf("- name: Boot dev agent");
 
     expect(buildStep).toBeGreaterThan(-1);
+    expect(submoduleStep).toBeGreaterThan(-1);
+    expect(buildStep).toBeGreaterThan(submoduleStep);
     expect(bootStep).toBeGreaterThan(buildStep);
     expect(workflow).toContain("--variant cpu");
     expect(workflow).toContain(
