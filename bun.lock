@@ -484,15 +484,6 @@
         "vitest": "4.1.10",
       },
     },
-    "packages/benchmarks/voice-rtt": {
-      "name": "@elizaos/voice-rtt-bench",
-      "version": "0.1.0",
-      "devDependencies": {
-        "@types/node": "^25.0.3",
-        "typescript": "^6.0.3",
-        "vitest": "4.1.10",
-      },
-    },
     "packages/benchmarks/lib": {
       "name": "@elizaos-benchmarks/lib",
       "version": "0.1.0",
@@ -532,6 +523,15 @@
       "devDependencies": {
         "@types/node": "^25.0.3",
         "bun-types": "1.3.14",
+        "typescript": "^6.0.3",
+        "vitest": "4.1.10",
+      },
+    },
+    "packages/benchmarks/voice-rtt": {
+      "name": "@elizaos/voice-rtt-bench",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "^25.0.3",
         "typescript": "^6.0.3",
         "vitest": "4.1.10",
       },
@@ -6404,8 +6404,6 @@
 
     "@elizaos/interrupt-bench": ["@elizaos/interrupt-bench@workspace:packages/benchmarks/interrupt-bench"],
 
-    "@elizaos/voice-rtt-bench": ["@elizaos/voice-rtt-bench@workspace:packages/benchmarks/voice-rtt"],
-
     "@elizaos/ios-native-deps": ["@elizaos/ios-native-deps@workspace:packages/native/ios-deps"],
 
     "@elizaos/lifeops-bench": ["@elizaos/lifeops-bench@workspace:packages/lifeops-bench"],
@@ -6693,6 +6691,8 @@
     "@elizaos/vercel-edge-examples": ["@elizaos/vercel-edge-examples@workspace:packages/examples/vercel"],
 
     "@elizaos/vitest-vite": ["vite@7.3.3", "", { "dependencies": { "esbuild": "^0.27.0", "fdir": "^6.5.0", "picomatch": "^4.0.3", "postcss": "^8.5.6", "rollup": "^4.43.0", "tinyglobby": "^0.2.15" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "jiti": ">=1.21.0", "less": "^4.0.0", "lightningcss": "^1.21.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "jiti", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-/4XH147Ui7OGTjg3HbdWe5arnZQSbfuRzdr9Ec7TQi5I7R+ir0Rlc9GIvD4v0XZurELqA035KVXJXpR61xhiTA=="],
+
+    "@elizaos/voice-rtt-bench": ["@elizaos/voice-rtt-bench@workspace:packages/benchmarks/voice-rtt"],
 
     "@elysiajs/cors": ["@elysiajs/cors@1.4.2", "", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-FTCcbH35brTLigF1W7BYySRZomgI/dBEMK9BgK9RP9Nez7zmpGh4koL/Yr1BFv8nYz7CfhRvcM8d/c+XnwMaVQ=="],
 

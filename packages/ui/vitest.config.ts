@@ -236,6 +236,9 @@ export default defineConfig({
     ],
   },
   test: {
+    // Regenerate the gitignored i18n keyword artifact core re-exports before any
+    // test module loads, so pre-build lanes (e.g. the coverage gate) resolve it.
+    globalSetup: ["./vitest.global-setup.ts"],
     setupFiles: ["./vitest.setup.ts"],
     pool: "forks",
     poolOptions: {
