@@ -101,8 +101,8 @@ describe("computeOrphanContainersToReap (app diff)", () => {
     ]);
   });
 
-  test("does NOT reap deploying / building / pending rows", () => {
-    for (const status of ["deploying", "building", "pending"]) {
+  test("does NOT reap deploying, building, pending, or cleanup-required rows", () => {
+    for (const status of ["deploying", "building", "pending", "cleanup_required"]) {
       const orphans = compute([container("app-x", "cx")], [live("app-x", status)]);
       expect(orphans).toEqual([]);
     }

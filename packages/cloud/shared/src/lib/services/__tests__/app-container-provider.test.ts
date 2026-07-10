@@ -93,19 +93,20 @@ describe("AppContainerProvider.provision", () => {
 
     const rmIdx = calls.indexOf("docker rm -f 'app-nubilio'");
     const createIdx = calls.findIndex((c) => c.startsWith("docker create"));
-    // A best-effort `docker rm -f <name>` is issued, and it precedes the create
+    // The idempotent `docker rm -f <name>` is issued, and it precedes the create
     // so the deterministic `app-<slug>` name is free (no 'name already in use').
     expect(rmIdx).toBeGreaterThanOrEqual(0);
     expect(createIdx).toBeGreaterThanOrEqual(0);
     expect(rmIdx).toBeLessThan(createIdx);
   });
 
-  test("a failing pre-clean rm does not abort the provision (best-effort)", async () => {
+  test("a missing pre-clean target is confirmed absent before provisioning", async () => {
     const calls: string[] = [];
     const ssh: AppContainerSsh = {
       async exec(command) {
         calls.push(command);
-        if (command.startsWith("docker rm -f")) throw new Error("no such container");
+        if (command === "docker rm -f 'app-nubilio'") throw new Error("rm failed");
+        if (command.startsWith("docker inspect")) throw new Error("No such container");
         if (command.startsWith("docker create")) return "cid";
         return "";
       },
@@ -120,9 +121,28 @@ describe("AppContainerProvider.provision", () => {
       containerName: "app-nubilio",
       input: INPUT,
     });
-    // rm threw but the create still ran and the provision succeeded.
+    // rm failed, but inspect proved the name absent before create continued.
     expect(result.containerId).toBe("cid");
     expect(calls.some((c) => c.startsWith("docker create"))).toBe(true);
+  });
+
+  test("an uninspectable pre-clean target blocks provisioning", async () => {
+    const ssh: AppContainerSsh = {
+      async exec(command) {
+        if (command.startsWith("docker rm -f")) throw new Error("ssh write failed");
+        if (command.startsWith("docker inspect")) throw new Error("ssh read failed");
+        return "";
+      },
+    };
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
+
+    await expect(
+      provider.provision({ appId: APP_ID, containerName: "app-nubilio", input: INPUT }),
+    ).rejects.toThrow("Could not prove Docker container app-nubilio is absent");
   });
 
   test("picks a host port not already in use on the node (collision-safe)", async () => {
@@ -150,7 +170,7 @@ describe("AppContainerProvider.provision", () => {
     expect(result.hostPort).toBe(31000);
   });
 
-  test("a start failure removes the created container before propagating", async () => {
+  test("a start failure propagates to the executor cleanup boundary", async () => {
     const calls: string[] = [];
     const ssh: AppContainerSsh = {
       async exec(command) {
@@ -169,7 +189,7 @@ describe("AppContainerProvider.provision", () => {
     await expect(
       provider.provision({ appId: APP_ID, containerName: "app-nubilio", input: INPUT }),
     ).rejects.toThrow("start failed");
-    expect(calls.filter((command) => command === "docker rm -f 'app-nubilio'")).toHaveLength(2);
+    expect(calls.filter((command) => command === "docker rm -f 'app-nubilio'")).toHaveLength(1);
   });
 
   test("provision with DATABASE_URL + POSTGRES_URL stands up the ambassador + rewrites BOTH", async () => {
@@ -218,10 +238,13 @@ describe("AppContainerProvider.provision", () => {
       allocateHostPort: async () => 1,
     });
     await provider.delete("app-x");
+    await provider.deleteById("docker-immutable-1", "app-x");
     await provider.restart("app-x");
     await provider.logs("app-x", 50);
     expect(calls).toEqual([
       "docker rm -f 'app-x'",
+      "docker rm -f 'app-db-x' >/dev/null 2>&1 || true",
+      "docker rm -f 'docker-immutable-1'",
       "docker rm -f 'app-db-x' >/dev/null 2>&1 || true",
       "docker restart 'app-x'",
       "docker logs --tail 50 'app-x'",

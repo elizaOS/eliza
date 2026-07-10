@@ -11,6 +11,7 @@
  * scaffolding, no shared network, no NET_ADMIN.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 import {
   ambassadorName,
@@ -102,6 +103,46 @@ export class AppContainerProvider {
     this.targetNodeId = deps.nodeId;
   }
 
+  private async removeContainerAndConfirmAbsent(containerName: string): Promise<void> {
+    try {
+      await this.deps.ssh.exec(`docker rm -f ${shellQuote(containerName)}`);
+      return;
+    } catch (removalError) {
+      // error-policy:J2 add Docker inspection context before rethrowing cleanup failure.
+      let inspectedId: string;
+      try {
+        inspectedId = await this.deps.ssh.exec(
+          `docker inspect --format '{{.Id}}' ${shellQuote(containerName)}`,
+        );
+      } catch (inspectionError) {
+        // error-policy:J2 preserve both removal and inspection failures as absence-proof context.
+        if (/no such (object|container)/i.test(describeAppContainerError(inspectionError))) {
+          return;
+        }
+        throw new ElizaError(`Could not prove Docker container ${containerName} is absent`, {
+          code: "APP_CONTAINER_ABSENCE_UNPROVEN",
+          context: {
+            containerName,
+            removalError: describeAppContainerError(removalError),
+            inspectionError: describeAppContainerError(inspectionError),
+          },
+          cause: inspectionError,
+          severity: "fatal",
+        });
+      }
+      throw new ElizaError(`Docker container ${containerName} remains after removal failed`, {
+        code: "APP_CONTAINER_REMOVAL_FAILED",
+        context: {
+          containerName,
+          containerId: inspectedId.trim(),
+          removalError: describeAppContainerError(removalError),
+        },
+        cause: removalError,
+        severity: "fatal",
+      });
+    }
+  }
+
   /** Ensure the per-app `--internal` network, create the container, start it. */
   async provision(params: ProvisionAppContainerParams): Promise<ProvisionedAppContainer> {
     const network = appNetworkName(params.appId);
@@ -166,35 +207,16 @@ export class AppContainerProvider {
       pidsLimit: this.deps.pidsLimit,
     });
 
-    // Best-effort pre-clean: a redeploy reuses the deterministic `app-<slug>`
+    // A redeploy reuses the deterministic `app-<slug>`
     // name, so a still-present container from a prior deploy makes `docker
     // create --name` fail with 'name already in use'. Remove it first (no-op when
     // absent). Mirrors `executeContainerUpgrade`/`provider.delete`; self-heals
     // regardless of which deploy route enqueued this provision.
-    await this.deps.ssh.exec(`docker rm -f ${shellQuote(params.containerName)}`).catch((error) => {
-      // error-policy:J6 best-effort teardown; a missing/stale container must not block the replacement create, but failed cleanup stays visible.
-      logger.warn("[AppContainerProvider] Failed to remove stale app container before create", {
-        appId: params.appId,
-        containerName: params.containerName,
-        error: describeAppContainerError(error),
-      });
-    });
+    await this.removeContainerAndConfirmAbsent(params.containerName);
 
     const stdout = await this.deps.ssh.exec(createCmd);
     const containerId = (this.deps.extractContainerId ?? defaultExtractContainerId)(stdout);
-    try {
-      await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
-    } catch (error) {
-      await this.delete(params.containerName).catch((cleanupError) => {
-        // error-policy:J6 failed-start cleanup is best-effort; the start failure still propagates to the slot rollback boundary.
-        logger.warn("[AppContainerProvider] Failed to remove container after start failure", {
-          appId: params.appId,
-          containerName: params.containerName,
-          error: describeAppContainerError(cleanupError),
-        });
-      });
-      throw error;
-    }
+    await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
 
     return {
       containerId,
@@ -206,8 +228,16 @@ export class AppContainerProvider {
   }
 
   async delete(containerName: string): Promise<void> {
-    await this.deps.ssh.exec(`docker rm -f ${shellQuote(containerName)}`);
+    await this.removeContainerAndConfirmAbsent(containerName);
     // Tear down the per-app DB ambassador too (best-effort; no-op if absent).
+    await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
+  }
+
+  /** Remove one persisted Docker object without trusting its reusable app name. */
+  async deleteById(hostContainerId: string, containerName: string): Promise<void> {
+    await this.removeContainerAndConfirmAbsent(hostContainerId);
+    // The ambassador name derives from the stable app-container name, not the
+    // immutable Docker id of the primary container.
     await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
   }
 

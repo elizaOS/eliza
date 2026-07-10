@@ -4,6 +4,8 @@
  * protects them together while a missing or fully terminal row makes each
  * observed Docker ID reapable. Multiple deployment rows may share one name;
  * the generic reconciler therefore keeps the resources when any row is live.
+ * A `cleanup_required` row also remains live until a retry proves Docker
+ * absence, preserving the node-capacity claim across uncertain teardown.
  * Containers outside the `app-` namespace are never listed or touched.
  */
 
@@ -42,6 +44,9 @@ export const APP_CONTAINER_NAME_PREFIX = "app-";
  * `deleted` is the hard-terminal state. `deleting` is NOT included: a delete job
  * is actively in flight and owns the teardown; reaping under it would race the
  * worker (the exact mirror of the agent reconciler excluding `deletion_pending`).
+ * `cleanup_required` is also protected: it deliberately retains node capacity
+ * until a provision retry proves Docker absence or successfully replaces the
+ * deterministic container name.
  */
 const TERMINAL_CONTAINER_STATUSES = new Set<string>(["stopped", "failed", "deleted"]);
 
