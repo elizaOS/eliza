@@ -19,6 +19,7 @@ set -euo pipefail
 
 BASE=$1
 HEAD=$2
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 # Fail fast: an empty merge-base means the two commits share no history (bad
 # fetch depth / wrong refs), which would otherwise silently diff the entire tree.
@@ -40,18 +41,23 @@ is_excluded_test() {
 }
 
 changed_source() {
-  git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" -- \
-    '*.ts' '*.tsx' '*.js' '*.jsx' \
-    | grep -vE '(^|/)(__tests__|test|tests)/|[.]d[.]ts$|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' \
+  {
+    git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" -- \
+      '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' \
+      | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs|cjs|mts|cts)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
+  } \
     | while IFS= read -r file; do
         [ -f "$file" ] && echo "$file"
-      done || true
+      done \
+    | node --no-warnings "$SCRIPT_DIR/coverage-source-classifier.mjs"
 }
 
 changed_tests() {
   git diff --name-only "$MERGE_BASE" "$HEAD" -- \
     '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
-    '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs'
+    '*.test.cjs' '*.test.mts' '*.test.cts' \
+    '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
+    '*.spec.cjs' '*.spec.mts' '*.spec.cts'
 }
 
 echo 'files<<EOF'

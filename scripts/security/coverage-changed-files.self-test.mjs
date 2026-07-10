@@ -96,8 +96,25 @@ try {
   write(dir, "packages/demo/src/feature.ts", "export const f = 1;\n");
   write(
     dir,
+    "packages/demo/src/types.ts",
+    "export interface RuntimeFree { id: string }\n",
+  );
+  write(
+    dir,
     "packages/demo/src/public.d.ts",
     "export interface PublicType { id: string }\n",
+  );
+  write(dir, "packages/demo/src/runtime.mjs", "export const mjs = 1;\n");
+  write(dir, "packages/demo/src/runtime.cjs", "exports.cjs = 1;\n");
+  write(
+    dir,
+    "packages/demo/src/runtime.mts",
+    "export const mts: number = 1;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/runtime.cts",
+    "export const cts: number = 1;\n",
   );
   write(
     dir,
@@ -190,12 +207,22 @@ try {
   });
 
   assertCase(
-    "deleted source and declaration files are not LCOV-enforced",
+    "deleted, declaration, and type-only sources are not LCOV-enforced",
     () => {
       assert.ok(!out.files.includes("packages/demo/src/deleted.ts"));
       assert.ok(!out.files.includes("packages/demo/src/public.d.ts"));
+      assert.ok(!out.files.includes("packages/demo/src/types.ts"));
     },
   );
+
+  assertCase("all executable module extensions are LCOV-enforced", () => {
+    for (const extension of ["mjs", "cjs", "mts", "cts"]) {
+      assert.ok(
+        out.files.includes(`packages/demo/src/runtime.${extension}`),
+        `${extension} runtime module missing: ${out.files.join(",")}`,
+      );
+    }
+  });
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

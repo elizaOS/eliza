@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Verifies exact changed-path attribution, missing-source failure, and type-only LCOV handling. */
+/** Verifies exact changed-path attribution and fail-closed missing-source handling. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -127,17 +127,14 @@ try {
     assert.doesNotMatch(result.stdout, /MISSING:/);
   });
 
-  assertGate("accepts an LCOV-present type-only source with LF zero", () => {
-    const source = "packages/demo/src/types.ts";
+  assertGate("rejects an executable source reported with LF zero", () => {
+    const source = "packages/demo/src/runtime.ts";
     const lcov = writeLcov(dir, source, 0, 0);
     const result = runGate({ changed: source, lcov });
 
-    assert.equal(result.status, 0, result.stdout);
-    assert.match(
-      result.stdout,
-      /TYPE-ONLY: packages\/demo\/src\/types[.]ts \(LF:0\)/,
-    );
-    assert.doesNotMatch(result.stdout, /MISSING:/);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stdout, /MISSING: packages\/demo\/src\/runtime[.]ts/);
+    assert.match(result.stdout, /changed source missing from LCOV/);
   });
 } finally {
   rmSync(dir, { recursive: true, force: true });
