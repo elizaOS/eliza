@@ -12,6 +12,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FIRST_RUN_GREETING } from "./first-run-greeting";
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -95,7 +96,11 @@ vi.mock("./device-ram-gate", async (importOriginal) => {
     assertDeviceRamTierAllowsLocalRuntime: async (localInference: string) => {
       const tier = mocks.deviceRamTier;
       if (!tier) return;
-      if (!tier.allowsLocalAgent) {
+      const allowsSelectedRuntime =
+        localInference === "cloud-inference"
+          ? tier.allowsHybridAgent
+          : tier.allowsLocalAgent;
+      if (!allowsSelectedRuntime) {
         throw new Error(
           `This device can't run the on-device agent: ${tier.reason}.`,
         );
@@ -1273,7 +1278,7 @@ describe("surfaceCloudLoginRetryTurn", () => {
 
     expect(messages[0]?.id).toBe("first-run:cloud-oauth");
     expect(messages[0]?.secretRequest).toBeUndefined();
-    expect(messages[0]?.text).toContain("Hi — I'm Eliza.");
+    expect(messages[0]?.text).toContain(FIRST_RUN_GREETING);
     expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:local=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:remote=");
@@ -1704,7 +1709,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     const retry = await waitForTurn(turn, "first-run:cloud-oauth");
     expect(retry.secretRequest).toBeUndefined();
-    expect(retry.text).toContain("Hi — I'm Eliza.");
+    expect(retry.text).toContain(FIRST_RUN_GREETING);
     expect(retry.text).toContain("__first_run__:runtime:cloud=");
     expect(retry.text).not.toContain("__first_run__:runtime:local=");
     unmount();
@@ -1956,16 +1961,16 @@ describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", 
 });
 
 describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
-  it("labels the local option unavailable on a sub-8 GB device and refuses the pick with the reason", async () => {
-    mocks.deviceRamTier = classifyDeviceRamTier(4);
+  it("labels the local option unavailable below the 4 GB hybrid floor and refuses the pick", async () => {
+    mocks.deviceRamTier = classifyDeviceRamTier(3);
     seedAppStore();
     const { transcript, turn, unmount } = renderConductor();
 
     // The greeting's local option is visibly gated — never silently hidden.
     const greeting = await waitForTurn(turn, "first-run:greeting");
     expect(greeting.text).toContain("__first_run__:runtime:local=");
-    expect(greeting.text).toContain("unavailable — needs 8 GB+ RAM");
-    expect(greeting.text).toContain("~4 GB detected");
+    expect(greeting.text).toContain("unavailable — needs 4 GB+ RAM");
+    expect(greeting.text).toContain("~3 GB detected");
 
     // The tap is refused at the decision point: a refusal turn with the
     // reason and a FRESH runtime choice — no provider step, no finish.
@@ -1980,7 +1985,7 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     const blocked = transcript.current.find((m) =>
       m.id.startsWith("first-run:runtime-blocked:"),
     );
-    expect(blocked?.text).toContain("~4 GB RAM");
+    expect(blocked?.text).toContain("~3 GB RAM");
     expect(blocked?.text).toContain("[CHOICE:first-run id=runtime]");
     expect(turn("first-run:provider")).toBeUndefined();
     expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
@@ -1991,8 +1996,8 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     unmount();
   });
 
-  it("blocks on-device models on a sub-12 GB device but finishes the hybrid local runtime", async () => {
-    mocks.deviceRamTier = classifyDeviceRamTier(8);
+  it("blocks local configuration and models at 4 GB but finishes the hybrid runtime", async () => {
+    mocks.deviceRamTier = classifyDeviceRamTier(4);
     seedAppStore();
     const { transcript, turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
@@ -2003,6 +2008,9 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     expect(provider.text).toContain("unavailable — needs 12 GB+ RAM");
     expect(provider.text).toContain(
       "__first_run__:provider:elizacloud=Eliza Cloud inference (recommended)",
+    );
+    expect(provider.text).toContain(
+      "Other / configure in Settings (unavailable — needs 8 GB+ RAM)",
     );
     expect(provider.text).toContain("__first_run__:back:runtime=");
 
@@ -2021,6 +2029,18 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
     expect(
       mocks.autoDownloadRecommendedLocalModelInBackground,
     ).not.toHaveBeenCalled();
+
+    // Configure-later is a full local runtime mode, so it retains the 8 GB
+    // floor even though it does not download a model immediately.
+    expect(tryHandleFirstRunAction("__first_run__:provider:other")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) =>
+          m.text.includes("An unconfigured local runtime won't work here"),
+        ),
+      ).toBe(true);
+    });
+    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
 
     // Eliza Cloud inference (hybrid) is the allowed local path here and
     // completes the REAL finish: exactly one POST, no model download, and the

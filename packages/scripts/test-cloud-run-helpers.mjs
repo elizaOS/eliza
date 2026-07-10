@@ -38,13 +38,36 @@ export function hasBunRunSummary(output) {
   );
 }
 
+export function hasBunPassRecord(output) {
+  return getSummaryLines(output).some((line) => /^\s*\(pass\)\s+/.test(line));
+}
+
+export function hasBunFailureMarker(output) {
+  return getSummaryLines(output).some((line) => {
+    if (/^\s*\(fail\)\s+/.test(line)) return true;
+    if (/^# Unhandled error between tests/.test(line)) return true;
+    if (/^error: Cannot find (module|package)\b/.test(line)) return true;
+    return /^error: Module not found\b/.test(line);
+  });
+}
+
 export function shouldNormalizeBunStatus99({ status, signal, output }) {
-  if (status !== 99 || signal) return false;
+  if (signal) return false;
+
+  const statusIsKnownExitCodePollution = status === 99;
+  const statusIsGreenButDirtyExit = status === 1;
+  if (!statusIsKnownExitCodePollution && !statusIsGreenButDirtyExit)
+    return false;
 
   const failCounts = getBunFailCounts(output);
-  if (failCounts.length === 0 || failCounts.some((count) => count !== 0)) {
+  if (failCounts.some((count) => count !== 0)) {
     return false;
   }
 
-  return hasBunRunSummary(output);
+  if (hasBunFailureMarker(output)) return false;
+
+  return (
+    hasBunRunSummary(output) ||
+    (statusIsGreenButDirtyExit && hasBunPassRecord(output))
+  );
 }

@@ -134,9 +134,10 @@ export const ChoiceWidget = memo(function ChoiceWidget({
     <ChatWidgetShell
       title={firstRun ? "Choose next step" : "Choose"}
       status={
-        // bg-surface, not bg-bg: on the dark cloud/os themes bg-bg is a
-        // near-transparent alpha that left this chip unreadable (#15144).
-        <span className="rounded-sm bg-surface px-2 py-0.5 text-[11px] font-medium text-muted">
+        // Plain muted text, no pill chrome: the theme text token stays
+        // readable on every surface (chat-native de-slop, supersedes the
+        // #15144 pill-background fix by removing the pill).
+        <span className="text-[11px] font-medium text-muted">
           {selected ? "Selected" : `${options.length} options`}
         </span>
       }
@@ -151,8 +152,8 @@ export const ChoiceWidget = memo(function ChoiceWidget({
       <fieldset
         className={
           firstRun
-            ? "flex min-w-0 flex-col items-stretch gap-2 border-0 p-3"
-            : "flex min-w-0 flex-wrap items-center gap-2 border-0 p-3"
+            ? "flex min-w-0 flex-col items-stretch gap-2 border-0 py-1.5"
+            : "flex min-w-0 flex-wrap items-center gap-2 border-0 py-1.5"
         }
         aria-label={`Choose ${scope}`}
         data-choice-id={id}

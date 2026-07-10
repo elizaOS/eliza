@@ -62,22 +62,27 @@ if (process.env.RUN_TURBO_LOCKFILE_CHECK_ONLY === "1") {
 }
 
 const rawTurboArgs = process.argv.slice(2);
-const rawRunIndex = rawTurboArgs.indexOf("run");
-const taskAndOptionArgs =
-  rawRunIndex === -1 ? [] : rawTurboArgs.slice(rawRunIndex + 1);
-const firstOptionIndex = taskAndOptionArgs.findIndex((arg) =>
-  arg.startsWith("-"),
-);
+// Turbo accepts tasks as `turbo run <task>` or bare `turbo <task>`, with flags
+// anywhere in between (`run --filter=x typecheck`), and forwards everything
+// after a bare `--` to the tasks themselves. Collect every non-flag argument
+// before the `--` separator, dropping only a leading `run` command word, so
+// keyword pre-generation cannot be skipped by flag placement or the bare form.
+// A space-separated flag value (`--filter core`) may be miscounted as a task;
+// that errs toward running the idempotent generator, never toward skipping it.
+const passThroughIndex = rawTurboArgs.indexOf("--");
+const turboOwnArgs =
+  passThroughIndex === -1
+    ? rawTurboArgs
+    : rawTurboArgs.slice(0, passThroughIndex);
+const positionalArgs = turboOwnArgs.filter((arg) => !arg.startsWith("-"));
 const requestedTasks =
-  firstOptionIndex === -1
-    ? taskAndOptionArgs
-    : taskAndOptionArgs.slice(0, firstOptionIndex);
+  positionalArgs[0] === "run" ? positionalArgs.slice(1) : positionalArgs;
 
 if (requestedTasks.includes("typecheck")) {
   const generator = process.env.RUN_TURBO_KEYWORD_GENERATOR
     ? path.resolve(process.env.RUN_TURBO_KEYWORD_GENERATOR)
     : path.join(repoRoot, "packages/shared/scripts/generate-keywords.mjs");
-  const result = spawnSync(process.execPath, [generator, "--target", "ts"], {
+  const result = spawnSync(process.execPath, [generator], {
     cwd: repoRoot,
     env: process.env,
     stdio: "inherit",

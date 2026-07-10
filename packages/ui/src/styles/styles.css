@@ -34,7 +34,6 @@ electrobun-wgpu {
 @source "..";
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
-@source "../../../../plugins/plugin-social-alpha/src/frontend";
 
 /* Memories sits beside a persistent filter rail in short landscape, where the
    default feature-empty stack falls behind the assistant overlay. Compact only

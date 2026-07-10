@@ -254,13 +254,6 @@ export const VIEW_HERO_ICONS = {
     <line x1="-100" y1="-44" x2="100" y2="-44"/>
     <line x1="-100" y1="16" x2="40" y2="16"/>`,
 
-  // trending up arrow over people dots — Social Alpha
-  socialAlpha: `    <polyline points="-150,80 -54,-22 6,38 150,-110" fill="none"/>
-    <polyline points="92,-110 150,-110 150,-52" fill="none"/>
-    <circle cx="-110" cy="128" r="26"/>
-    <circle cx="0" cy="128" r="26"/>
-    <circle cx="110" cy="128" r="26"/>`,
-
   // checklist square — Todos
   todos: `    <rect x="-150" y="-150" width="300" height="300" rx="36"/>
     <polyline points="-92,-6 -36,52 92,-78" fill="none"/>`,
@@ -320,10 +313,6 @@ const ICON_KEYWORD_RULES: ReadonlyArray<[ViewHeroIconKind, readonly string[]]> =
     ["goals", ["goal", "target", "objective", "habit", "routine"]],
     ["inbox", ["inbox", "mail", "email"]],
     ["messages", ["message", "chat", "dm", "conversation", "sms"]],
-    [
-      "socialAlpha",
-      ["social", "leaderboard", "trust", "alpha", "feed", "follow"],
-    ],
     ["todos", ["todo", "task", "checklist", "todos"]],
     [
       "vectorBrowser",

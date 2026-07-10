@@ -168,7 +168,7 @@ test("validateConnectorPaths flags duplicates, bad kinds, bad probe ids, missing
       probeId: "nope",
       probeEndpoint: "",
       oneClick: { type: "telepathy" },
-      availability: { type: "mystery" },
+      availability: { type: "mystery", outputFilter: "telepathy" },
     },
   ]);
   for (const needle of [
@@ -182,6 +182,7 @@ test("validateConnectorPaths flags duplicates, bad kinds, bad probe ids, missing
     "ownerVars/agentVars imply rolesVia env-slots",
     "malformed env name lower_case",
     "unknown availability type mystery",
+    "unknown command-output filter telepathy",
   ]) {
     assert.ok(
       problems.some((problem) => problem.includes(needle)),
@@ -531,6 +532,98 @@ test("command-output-nonempty requires both success and actual stdout", () => {
     ),
     { available: true, reason: null },
   );
+  // A command that fails to run reports the run failure, never the spec's
+  // empty-output reason — even when the injected ctx omits status/stderr.
+  assert.deepEqual(
+    checkAvailability(spec, fakeCtx({ runCommand: () => ({ ok: false }) })),
+    {
+      available: false,
+      reason: "signal-cli listAccounts failed (status=spawn-error)",
+    },
+  );
+  assert.deepEqual(
+    checkAvailability(
+      spec,
+      fakeCtx({
+        runCommand: () => ({
+          ok: false,
+          status: 3,
+          stdout: "",
+          stderr: "Config file is in use by another instance\nsecond line",
+        }),
+      }),
+    ),
+    {
+      available: false,
+      reason:
+        "signal-cli listAccounts failed (status=3): Config file is in use by another instance",
+    },
+  );
+  // An unknown filter name is a malformed spec — a bug, not a skip.
+  assert.throws(
+    () =>
+      checkAvailability(
+        { ...spec, outputFilter: "telepathy" },
+        fakeCtx({ runCommand: () => ({ ok: true, stdout: "x\n" }) }),
+      ),
+    /Unknown command-output filter: "telepathy"/,
+  );
+});
+
+test("signal.cli scenario: warning-only listAccounts stdout reads as no linked account", () => {
+  const spec = byId("signal.cli").availability;
+  const signalCtx = (listAccountsStdout) =>
+    fakeCtx({
+      commandInPath: (command) => command === "signal-cli",
+      runCommand: (_command, args) => ({
+        ok: true,
+        stdout:
+          args[0] === "listAccounts" ? listAccountsStdout : "signal-cli 0.13\n",
+      }),
+    });
+  // signal-cli builds that emit warnings to stdout with zero linked accounts
+  // must skip exactly like an empty listing — probeSignal already rejects
+  // this shape, and the coarse availability leaf shares its parser.
+  const warningOnly = checkAvailability(
+    spec,
+    signalCtx("WARN no account configured\n"),
+  );
+  assert.equal(warningOnly.available, false);
+  assert.match(warningOnly.reason, /no linked Signal account/);
+  // Warnings interleaved with a real account line still count as linked.
+  const mixed = checkAvailability(
+    spec,
+    signalCtx("WARN storage version is newer\nNumber: +15551234567\n"),
+  );
+  assert.deepEqual(mixed, { available: true, reason: null });
+  // A u:username account handle counts the same as an E.164 number.
+  const username = checkAvailability(spec, signalCtx("u:agent.01\n"));
+  assert.deepEqual(username, { available: true, reason: null });
+});
+
+test("signal.cli scenario: listAccounts crash after --version reports the run failure", () => {
+  const spec = byId("signal.cli").availability;
+  const crashed = checkAvailability(
+    spec,
+    fakeCtx({
+      commandInPath: (command) => command === "signal-cli",
+      runCommand: (_command, args) =>
+        args[0] === "listAccounts"
+          ? {
+              ok: false,
+              status: 1,
+              stdout: "",
+              stderr: "Config file is in use by another instance",
+            }
+          : { ok: true, stdout: "signal-cli 0.13\n" },
+    }),
+  );
+  assert.equal(crashed.available, false);
+  // Locked account storage is a run failure, not evidence of a missing
+  // account — the dashboard reason must carry the exit code and stderr.
+  assert.match(crashed.reason, /signal-cli listAccounts failed \(status=1\)/);
+  assert.match(crashed.reason, /Config file is in use/);
+  assert.doesNotMatch(crashed.reason, /no linked Signal account/);
 });
 
 test("oauth-app-dependent rows skip with an explanatory reason until an app is configured", () => {

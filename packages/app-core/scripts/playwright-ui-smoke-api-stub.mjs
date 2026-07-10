@@ -27,6 +27,9 @@ const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const repoRoot = path.resolve(
   fileURLToPath(new URL("../../..", import.meta.url)),
 );
+const VIEW_BUNDLE_ROOT =
+  process.env.ELIZA_UI_SMOKE_VIEW_BUNDLE_ROOT?.trim() ||
+  path.join(repoRoot, "plugins");
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const DEMO_ORCHESTRATOR = process.env.ELIZA_UI_SMOKE_DEMO_ORCHESTRATOR === "1";
 const HUMAN_CHAT_FIXTURES = process.env.ELIZA_UI_SMOKE_HUMAN_CHAT === "1";
@@ -92,8 +95,7 @@ function smokeViewObject({
   const encodedId = encodeURIComponent(id);
   const query = "?v=ui-smoke";
   const bundlePath = path.join(
-    repoRoot,
-    "plugins",
+    VIEW_BUNDLE_ROOT,
     pluginDirName,
     "dist",
     "views",
@@ -1673,8 +1675,7 @@ function smokeViewBundleSource(view) {
 
 function sendSmokeViewAsset(req, res, url, view, subResource) {
   const bundleDir = path.join(
-    repoRoot,
-    "plugins",
+    VIEW_BUNDLE_ROOT,
     view._smokePluginDirName,
     "dist",
     "views",
@@ -4811,19 +4812,6 @@ const server = http.createServer(async (req, res) => {
     // (packages/app-core/src/api/i18n-locale-routes.ts). The SPA polls this on
     // first paint; without it the stub's catch-all 501 spams console.error.
     sendJson(req, res, 200, { language: "en" });
-    return;
-  }
-
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/social-alpha/leaderboard"
-  ) {
-    // Mirror the social-alpha leaderboard route's zero-key behavior
-    // (plugins/plugin-social-alpha/src/routes.ts): with no recommendations
-    // recorded the real route returns an empty data array, and the view
-    // renders its wallet-required / empty state. Returning the same shape
-    // keeps the visual smoke deterministic and avoids the catch-all 501.
-    sendJson(req, res, 200, { data: [] });
     return;
   }
 

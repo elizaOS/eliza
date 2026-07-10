@@ -75,12 +75,15 @@ import {
 } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
+import { computePrefixHashes } from "./runtime/context-hash";
 import { ContextRegistry } from "./runtime/context-registry";
+import { cachePrefixSegments } from "./runtime/context-renderer";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
+import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
@@ -306,9 +309,6 @@ import {
 	StructuredFieldStreamExtractor,
 } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
-import { computePrefixHashes } from "./runtime/context-hash";
-import { cachePrefixSegments } from "./runtime/context-renderer";
-import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 
 const environmentSettings: RuntimeSettings = {};
 // Whether debug-level logs are emitted, captured once at load (mirrors the
@@ -541,7 +541,7 @@ export function mergeProviderOptionsWithCachePlan(
 ): Record<string, JsonValue | object | undefined> {
 	const merged: Record<string, JsonValue | object | undefined> = {
 		...base,
-		...(callerOptions ?? {}),
+		...callerOptions,
 	};
 	for (const [key, planValue] of Object.entries(planOptions)) {
 		const existing = merged[key];
@@ -6934,17 +6934,19 @@ ${section_end}`;
 			});
 			// Deep-merge caller-supplied providerOptions with the cache plan. See
 			// mergeProviderOptionsWithCachePlan for the full merging semantics.
-			const _rawCallerProviderOptions = (params as { providerOptions?: unknown }).providerOptions;
+			const _rawCallerProviderOptions = (
+				params as { providerOptions?: unknown }
+			).providerOptions;
 			const _callerProviderOptions =
 				_rawCallerProviderOptions != null &&
 				typeof _rawCallerProviderOptions === "object" &&
 				!Array.isArray(_rawCallerProviderOptions)
-					? (_rawCallerProviderOptions as Record<string, JsonValue | object | undefined>)
+					? (_rawCallerProviderOptions as Record<
+							string,
+							JsonValue | object | undefined
+						>)
 					: undefined;
-			const _planProviderOptions = (_dynamicCachePlan.providerOptions ?? {}) as Record<
-				string,
-				JsonValue | object | undefined
-			>;
+			const _planProviderOptions = _dynamicCachePlan.providerOptions;
 			const _mergedProviderOptions = mergeProviderOptionsWithCachePlan(
 				{ agentName: this.character.name },
 				_callerProviderOptions,

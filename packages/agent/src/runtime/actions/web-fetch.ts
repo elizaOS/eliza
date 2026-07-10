@@ -118,7 +118,7 @@ export const webFetch: Action & Record<string, unknown> = {
   contexts: ["web"],
   suppressInitialMessage: true,
   routingHint:
-    "fetch/read the contents of ONE specific URL, JSON API, or data file whose address you already have or can construct exactly (a price/weather endpoint, a page you can name) -> WEB_FETCH; to discover pages or answer an open-ended real-world question with NO known URL (prices, news, recommendations, 'latest on...') -> WEB_SEARCH; to read a link/attachment already in THIS conversation -> ATTACHMENT (action=read); for the user's own notes/memories -> MEMORY (action=search)",
+    "fetch/read the contents of ONE specific URL, JSON API, or data file whose address you already have or can construct exactly (a crypto-price or weather endpoint like api.coingecko.com or wttr.in/<city>?format=j1, a page you can name) -> WEB_FETCH; to discover pages or answer an open-ended real-world question with NO constructable URL (news, recommendations, 'latest on...') -> WEB_SEARCH; to read a link/attachment already in THIS conversation -> ATTACHMENT (action=read); for the user's own notes/memories -> MEMORY (action=search)",
   description:
     "Fetch one specific URL and return its contents — a JSON API, data file, or page whose address you already have or can construct exactly. " +
     "Prefer a JSON API over an HTML page so the value parses cleanly, and fetch it inline THIS turn — " +

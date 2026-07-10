@@ -170,18 +170,7 @@ Redesign direction judged against: **minimalism** (cut text/borders/cards/badges
 - **Minimize**: Replace per-entity cards with a flat list: name (bold) · kind (small dim, not orange badge) · identity · edge count. Drop card border/bg. Demote `kindBadge` to dim gray or small icon (reserve orange for active filter). Collapse each entity's edges behind a count ("4 relationships"), expand on demand. Drop subtitle; one-line empty + existing "Add someone" chat CTA. Render kind chips only for kinds with entities, or filter via chat. Lighten off `#0a0a0a`.
 - **Even-simpler**: Data layer is a stub today → strong chat-first candidate. Add-person already → chat; filtering agent-addressable. Minimal = glance list of names the agent knows; "who is X / how do I know Y / add Z" in chat. **Overlaps conceptually with contacts** — confirm it isn't duplicating a contacts surface.
 
-## 14. Social Alpha
-
-- **plugin / view id / file**: `@elizaos/plugin-social-alpha` / `social-alpha` (icon `UsersRound`, "Trust leaderboard for token calls… Requires an agent wallet") / `plugins/plugin-social-alpha/src/frontend/LeaderboardView.tsx` (126 L, exports `SocialAlphaView`) + `LeaderboardTable.tsx`. Decl: `plugins/plugin-social-alpha/src/index.ts:51`.
-- **Purpose**: Leaderboard ranking chat users by a P&L-backed "trust score" for crypto token calls (shills/FUD).
-- **Real or stub?** **Real.** `fetchLeaderboardData()` gated on `hasWalletConfigured()` (`:13,29,43`), auto-refresh 15s (`:18,56`); backed by `GET /api/social-alpha/leaderboard`. **Zero `useAgentElement`** — chat CANNOT drive it (unique among all views).
-- **States**: 5 — wallet-check pending Spinner (`:63`), wallet-not-configured EmptyState (`:71`), loading Spinner (`:100`), error box (`:105`), populated `LeaderboardTable` (`:111`); inner empty "Be the first to make a recommendation!" (`:114`). Per-row expandable detail panel (`expandedUser` `LeaderboardTable.tsx:193,280`). No modals/forms.
-- **Visual structure**: **`text-5xl` gradient-clip `<h1>Alpha Leaderboard</h1>`** (`:86-90`) + second `<CardTitle>Top Callers</CardTitle>` (`:95`) = two titles; wallet description (`:77`) + "no data" sentences; outer `Card` (`:93`) + **one `Card` per recommendation inside the expanded detail** (`LeaderboardTable.tsx:61-180`) = card-in-table-in-card; **8+ border classes**; **4+ badge types** (chain/address `:81`, BUY/SELL `:88`, conviction `:105`, "Flagged: Scam/Rug" `:163`); per-row View/Hide Recs toggle (`:259`); 1 full `<Table>` Rank/Username/Trust Score/Actions. Evidence: gradient title `:87` `"bg-gradient-to-r from-primary via-orange-400 to-secondary bg-clip-text … text-5xl text-transparent"`; quote block `:114` `"italic border-l-2 border-primary/60 pl-3 py-1.5 bg-primary/10 rounded-r-md"`; **hardcoded `dark:` classes** `bg-slate-50 dark:bg-slate-800/50` (`:65`), `text-green-500`/`text-red-500` (outside Eliza palette).
-- **Heaviness/slop**: Heaviest/most-slop view. `text-5xl` gradient-clip hero = pure crypto-dashboard decoration. Two stacked titles. `shadow-xl`/`shadow-lg`/`hover:shadow-primary/20` + 8+ borders. 3 levels of card nesting + 4 badge types in expanded detail. Hardcoded `dark:` variants conflict w/ single-look mandate. Green/red literals outside palette. No chat integration.
-- **Minimize** (if kept): Kill gradient hero + `text-5xl`; one plain `<h1>`. Remove outer `Card`/`shadow-xl`; flat table. Strip `dark:`. Collapse per-recommendation `Card` to a flat 2-line list (token · type · result %); drop chain/address/conviction badges. Use blue `#1d91e8` info + one accent for ±, not `green-500`/`red-500`. Add `useAgentElement`.
-- **Even-simpler**: **FLAG — does not belong in a productivity/lifeops assistant.** Crypto token-call trust leaderboard (shills/FUD, on-chain P&L, requires agent wallet). Opt-in operator surface, not a PA view; drags heavy crypto chrome into the product. Recommend gating it OUT of the default productivity view set; if retained for crypto users, a single "your top callers" strip + detail in chat.
-
-## 15. Feed
+## 14. Feed
 
 - **plugin / view id / file**: `@elizaos/plugin-feed` / `feed` (icon `Gamepad2`, "Feed prediction market operator dashboard") / `plugins/plugin-feed/src/components/FeedView.tsx` + `FeedSpatialView.tsx`. Decl: `plugins/plugin-feed/src/index.ts:6`.
 - **Purpose**: Operator dashboard to spectate-and-steer an autonomous agent trading the Feed prediction-market game.
@@ -212,33 +201,29 @@ Redesign direction judged against: **minimalism** (cut text/borders/cards/badges
 | **LifeOps** | **PURE STUB** — hardcoded fake copy, dead input/buttons, `<h1>LifeOpsPageView</h1>` |
 | Documents | **Real** |
 | **Relationships** | View real but **data layer stubbed** (renders empty in fresh agent) |
-| Social Alpha | **Real** (wallet-gated) |
 | Feed | **Real** (10 fetches) |
 
 ### Worst slop offenders (ranked)
 1. **LifeOps** — 100% fake scaffold; all text/borders/dead controls; contradicts PA's documented "no views".
-2. **Social Alpha** — `text-5xl` gradient hero, 2 titles, 3-level card nesting, 4 badge types, `dark:` variants, no chat integration.
-3. **Feed** — 34vh dark image hero, 4 sections / 12+ cards, 3 status badges, preset-prompt steering.
-4. **Comms trio (Contacts/Phone/Messages)** — large GUI files with 2 decorative SVG motifs, redundant headers (Messages has THREE), and heavy permission prose.
-5. **Calendar** — ~2300 lines reimplementing a desktop calendar; per-hour/per-column line grid; 1005-line CRUD drawer.
-6. **Inbox** — 8 always-on channel chips + double-nested cards.
-7. **Goals** — redundant status grouping AND status chips; 26-line CSS for filter pills.
+2. **Feed** — 34vh dark image hero, 4 sections / 12+ cards, 3 status badges, preset-prompt steering.
+3. **Comms trio (Contacts/Phone/Messages)** — large GUI files with 2 decorative SVG motifs, redundant headers (Messages has THREE), and heavy permission prose.
+4. **Calendar** — ~2300 lines reimplementing a desktop calendar; per-hour/per-column line grid; 1005-line CRUD drawer.
+5. **Inbox** — 8 always-on channel chips + double-nested cards.
+6. **Goals** — redundant status grouping AND status chips; 26-line CSS for filter pills.
 
 ### Highest-impact simplifications
-- **Single light token set** replacing the 7× duplicated inline `#0a0a0a` dark themes + Social-alpha `dark:` variants. One change, lightens everything.
+- **Single light token set** replacing the 7× duplicated inline `#0a0a0a` dark themes. One change, lightens everything.
 - **Delete the LifeOps stub** (or rebuild as a chat-first daily brief from the existing `BRIEF`/`lifeops`/`pendingPrompts` providers).
 - **Keep retired renderer cleanup complete**; do not reintroduce blue terminal twins.
 - **Calendar → AgendaView default + chat-driven editing**, deleting the 1005-line `EventEditorDrawer`.
-- **Replace per-item bordered cards with flat lists** (Relationships, Inbox channel groups, Social-alpha recommendations, Health stat cards).
+- **Replace per-item bordered cards with flat lists** (Relationships, Inbox channel groups, Health stat cards).
 - **Convert status/type to color** (todo overdue, call direction, goal at-risk, regularity, unread) instead of text labels + badges.
 - **Delete all always-on subtitles** (8 views) and decorative SVG motifs (2).
-- **Add `useAgentElement` to Social Alpha** (the only chat-blind view).
-
 ### Mergeable / removable / replaceable-by-chat
 - **MERGE Contacts + Phone + Messages → one unified Comms surface** (people/threads list, tap→timeline, inline call/text, keypad behind one tap, composing/dialing/lookup via chat). Highest-value merge.
 - **MERGE Todos + Goals + Calendar-agenda → one "Today / what-needs-me-now" surface** (chat-driven mutation).
 - **REMOVE LifeOps stub** — duplicates the per-domain plugins; rebuild only as a proactive brief if anything.
-- **REMOVE Social Alpha + Feed from the default productivity view set** — crypto/game operator surfaces, wallet-gated, out of scope; keep opt-in for those games only. Both are nearly fully chat-replaceable.
+- **REMOVE Feed from the default productivity view set** — crypto/game operator surface, wallet-gated, out of scope; keep opt-in for those games only. It is nearly fully chat-replaceable.
 - **Relationships** — strong chat-first candidate (data stubbed today); confirm it isn't duplicating Contacts.
 - **Focus** — could collapse to a single status pill in the chat overlay's status area (one boolean + one button); barely needs to be a full page.
 - **Documents** — keep (legit glanceable) but drop the search input/button in favor of chat search.

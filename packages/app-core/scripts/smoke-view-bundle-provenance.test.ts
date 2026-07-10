@@ -6,11 +6,12 @@
  * as such on the wire (issue #15791).
  */
 import { type ChildProcess, spawn } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { realViewBundleExists } from "./smoke-view-declarations.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -72,22 +73,41 @@ async function bootStub(env: Record<string, string>): Promise<{
 }
 
 let running: ChildProcess | null = null;
-afterEach(() => {
+const tempRoots: string[] = [];
+afterEach(async () => {
   running?.kill("SIGKILL");
   running = null;
+  await Promise.all(
+    tempRoots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
-describe("smoke view bundle provenance over HTTP (#15791)", () => {
-  // Whether a real dist bundle exists depends on prior builds; the provenance
-  // contract must hold in either state, so the expectations branch on it.
-  const walletHasRealBundle = realViewBundleExists(
-    repoRoot,
-    "plugin-wallet-ui",
-  );
+async function emptyBundleRoot(): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "eliza-view-bundles-"));
+  tempRoots.push(root);
+  return root;
+}
 
+async function bundleRootWithWallet(): Promise<string> {
+  const root = await emptyBundleRoot();
+  const bundleDir = path.join(root, "plugin-wallet-ui", "dist", "views");
+  await mkdir(bundleDir, { recursive: true });
+  await writeFile(
+    path.join(bundleDir, "bundle.js"),
+    "export const InventoryView = () => null;\n",
+    "utf8",
+  );
+  return root;
+}
+
+describe("smoke view bundle provenance over HTTP (#15791)", () => {
   it("audit mode returns an observable failure, never a fabricated bundle", async () => {
+    const bundleRoot = await emptyBundleRoot();
     const { child, port } = await bootStub({
       ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES: "1",
+      ELIZA_UI_SMOKE_VIEW_BUNDLE_ROOT: bundleRoot,
     });
     running = child;
     const response = await fetch(
@@ -96,15 +116,6 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
     expect(response.headers.get("x-eliza-view-component")).toBe(
       "InventoryView",
     );
-    if (walletHasRealBundle) {
-      // A real bundle is present: audit mode must serve it, marked real-dist.
-      expect(response.status).toBe(200);
-      expect(response.headers.get("x-eliza-view-bundle-provenance")).toBe(
-        "real-dist",
-      );
-      return;
-    }
-    // No real bundle: audit mode refuses to fabricate one and fails observably.
     expect(response.status).toBe(424);
     expect(response.headers.get("x-eliza-view-bundle-provenance")).toBe(
       "missing-real-bundle",
@@ -117,7 +128,10 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
   });
 
   it("non-audit marks synthesized placeholders on the wire and in bytes", async () => {
-    const { child, port } = await bootStub({});
+    const bundleRoot = await emptyBundleRoot();
+    const { child, port } = await bootStub({
+      ELIZA_UI_SMOKE_VIEW_BUNDLE_ROOT: bundleRoot,
+    });
     running = child;
     const response = await fetch(
       `http://127.0.0.1:${port}/api/views/wallet/bundle.js`,
@@ -130,12 +144,29 @@ describe("smoke view bundle provenance over HTTP (#15791)", () => {
     );
     const provenance = response.headers.get("x-eliza-view-bundle-provenance");
     const body = await response.text();
-    if (walletHasRealBundle) {
-      expect(provenance).toBe("real-dist");
-      return;
-    }
     expect(provenance).toBe("synthesized-generic");
     expect(body).toContain("eliza-view-bundle-provenance: synthesized-generic");
     expect(body).toContain("InventoryView");
+  });
+
+  it("audit mode serves a present real bundle with exact identity headers", async () => {
+    const bundleRoot = await bundleRootWithWallet();
+    const { child, port } = await bootStub({
+      ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES: "1",
+      ELIZA_UI_SMOKE_VIEW_BUNDLE_ROOT: bundleRoot,
+    });
+    running = child;
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/views/wallet/bundle.js`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-eliza-view-bundle-provenance")).toBe(
+      "real-dist",
+    );
+    expect(response.headers.get("x-eliza-view-component")).toBe(
+      "InventoryView",
+    );
+    expect(response.headers.get("x-eliza-view-id")).toBe("wallet");
+    expect(await response.text()).toContain("export const InventoryView");
   });
 });

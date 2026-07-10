@@ -75,6 +75,42 @@ export async function startAndroidScreenRecord({
         new Promise((resolve) => recorder.once("close", resolve)),
         delay(3_000),
       ]);
+      // The local adb process closing does not mean the on-device screenrecord
+      // has finished: it still has to append the trailing moov atom, and
+      // pulling at that instant yields an unplayable MP4. Wait (bounded) for
+      // the device-side process to exit, re-sending SIGINT while it lives —
+      // a single pkill has been observed not landing.
+      const exitDeadline = Date.now() + 15_000;
+      while (Date.now() < exitDeadline) {
+        const pid = spawnSync(
+          adb,
+          ["-s", serial, "shell", "pidof", "screenrecord"],
+          { encoding: "utf8" },
+        );
+        if (!pid.stdout || pid.stdout.trim() === "") break;
+        spawnSync(
+          adb,
+          ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
+          { stdio: "ignore" },
+        );
+        await delay(500);
+      }
+      // Belt over the pid check: require the remote file size to hold steady
+      // across consecutive samples so a mid-flush pull can never grab a
+      // truncated file (covers a transient pidof miss or the exit-wait
+      // timing out above).
+      let settledSize = -1;
+      for (let i = 0; i < 10; i += 1) {
+        const stat = spawnSync(
+          adb,
+          ["-s", serial, "shell", "stat", "-c", "%s", remotePath],
+          { encoding: "utf8" },
+        );
+        const size = Number.parseInt(stat.stdout?.trim() ?? "", 10);
+        if (Number.isFinite(size) && size > 0 && size === settledSize) break;
+        settledSize = Number.isFinite(size) ? size : -1;
+        await delay(500);
+      }
       spawnSync(adb, ["-s", serial, "pull", remotePath, localPath], {
         stdio: "ignore",
       });

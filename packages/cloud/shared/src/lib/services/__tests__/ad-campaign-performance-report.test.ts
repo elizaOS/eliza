@@ -164,18 +164,22 @@ describe("campaign performance reports (#11600)", () => {
       }),
     );
 
+    // Relative to now: the service rejects non-future expirations, so a
+    // hardcoded calendar date is a wall-clock time bomb (this test went red
+    // repo-wide the moment 2026-07-10T00:00Z passed).
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const share = await advertisingService.createCampaignReportShare({
       organizationId: ORG_ID,
       userId: "user-1",
       campaignId: CAMPAIGN_ID,
-      expiresAt: new Date("2026-07-10T00:00:00.000Z"),
+      expiresAt,
     });
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(share).toMatchObject({
       id: "share-created",
       campaignId: CAMPAIGN_ID,
-      expiresAt: "2026-07-10T00:00:00.000Z",
+      expiresAt: expiresAt.toISOString(),
     });
     expect(share.token.length).toBeGreaterThan(20);
     expect(share.publicPath).toContain("/api/v1/advertising/reports/");

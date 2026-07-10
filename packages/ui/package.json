@@ -348,6 +348,7 @@
     "./*.css": "./dist/*.css"
   },
   "peerDependencies": {
+    "@capacitor-community/bluetooth-le": ">=8.0.0",
     "@capacitor/app": "^8.0.0",
     "@elizaos/capacitor-agent": "workspace:*",
     "@elizaos/capacitor-llama": "workspace:*",
@@ -356,6 +357,9 @@
     "react-dom": "19.2.5"
   },
   "peerDependenciesMeta": {
+    "@capacitor-community/bluetooth-le": {
+      "optional": true
+    },
     "@capacitor/app": {
       "optional": true
     },
@@ -433,6 +437,7 @@
     "motion": "^12.38.0",
     "nanoid": "^5.1.6",
     "nprogress": "^0.2.0",
+    "opus-decoder": "0.7.11",
     "react-day-picker": "^10.0.1",
     "react-hook-form": "^7.74.0",
     "react-plaid-link": "^4.0.1",
@@ -450,6 +455,7 @@
     "ws": "^8.19.0"
   },
   "devDependencies": {
+    "@capacitor-community/bluetooth-le": "8.2.0",
     "@capacitor/haptics": "8.0.2",
     "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",

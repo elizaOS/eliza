@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
+import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
 import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -228,6 +229,20 @@ function removePathRecursive(targetPath, label) {
   }
 }
 
+function cleanAuditAppOutput() {
+  const outputDir = resolveAuditAppOutput({
+    appDir,
+    repoRoot,
+    configured: env.ELIZA_AUDIT_APP_DIR,
+  });
+
+  // The runner owns one evidence directory for the whole Playwright invocation.
+  // Cleaning here survives worker restarts and retries without erasing screenshots
+  // that earlier tests in the same run already proved.
+  removePathRecursive(outputDir, "app aesthetic audit output");
+  console.log(`[ui-smoke] Reset app aesthetic audit output: ${outputDir}`);
+}
+
 function acquireUiSmokeViewLock() {
   const staleAfterMs = 30 * 60 * 1000;
   let announcedWait = false;
@@ -344,6 +359,10 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
 // NodeNext `.js` specifiers while their worktree files are TypeScript.
 env.NODE_OPTIONS = withElizaSourceNodeOptions(env.NODE_OPTIONS);
 
+if (hasPlaywrightProject("audit-app")) {
+  cleanAuditAppOutput();
+}
+
 if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
   env.ELIZA_UI_SMOKE_RUN_ID =
     env.ELIZA_UI_SMOKE_RUN_ID || `${process.pid}-${Date.now().toString(36)}`;
@@ -364,6 +383,17 @@ if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
     env.ELIZA_UI_SMOKE_PORT = String(uiPort);
     env.ELIZA_PORT = env.ELIZA_PORT || String(uiPort);
   }
+}
+
+// The all-views audit is evidence for production plugin bundles, so its stub
+// server must reject missing dist output instead of exercising the generic
+// placeholder used by lightweight offline smoke lanes. build-views runs below
+// before the server starts, making this a fail-closed provenance contract.
+if (
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
+  hasPlaywrightProject("audit-app")
+) {
+  env.ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES = "1";
 }
 
 if (

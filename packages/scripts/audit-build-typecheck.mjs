@@ -27,8 +27,8 @@ const WORKSPACE_GLOBS = ["packages", "plugins"];
 // Deliberate, documented exceptions to the "tsgo checks, tsc emits" model. Each
 // package opts in via `elizaos.scripts.buildModel` in its own package.json (e.g.
 // @elizaos/core / plugin-streaming keep a full build type-check for byte-stable
-// declaration emit; plugin-social-alpha / plugin-personal-assistant stay on
-// `tsc` for typecheck pending a tsgo fix, #9626). Resolved through the discovery
+// declaration emit; plugin-personal-assistant stays on `tsc` for typecheck
+// pending a tsgo fix, #9626). Resolved through the discovery
 // seam so no package names live in this file.
 const ALLOW = resolveBuildModelExceptions({ repoRoot });
 

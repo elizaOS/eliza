@@ -23,6 +23,7 @@ export const VIEW_ROUTES: readonly ViewRoute[] = [
   { id: "tasks", path: "/apps/tasks" },
   { id: "browser", path: "/browser" },
   { id: "stream", path: "/stream" },
+  { id: "pendant-transcript", path: "/pendant/transcript" },
   { id: "apps", path: "/apps" },
   { id: "views", path: "/views" },
   { id: "character", path: "/character" },

@@ -71,6 +71,13 @@ describe("view-hero-art", () => {
     }
   });
 
+  it("does not retain the removed Social Alpha glyph or keyword mapping", () => {
+    expect("socialAlpha" in VIEW_HERO_ICONS).toBe(false);
+    expect(pickViewHeroIcon({ label: "Social Alpha leaderboard feed" })).toBe(
+      "views",
+    );
+  });
+
   it("uses the Lucide icon name and tags as keyword hints", () => {
     expect(pickViewHeroIcon({ label: "Money Tracker", icon: "Wallet" })).toBe(
       "finances",

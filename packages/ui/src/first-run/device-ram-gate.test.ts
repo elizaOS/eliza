@@ -118,11 +118,12 @@ afterEach(() => {
 
 describe("peekDeviceRamTierAssessment", () => {
   it("classifies synchronously from the Android native bridge", () => {
-    // The #14390 Moto G Play: totalMem ~3660 MB → marketed 4 GB → cloud-only.
+    // The #14390 Moto G Play: totalMem ~3660 MB → marketed 4 GB → hybrid-only.
     installSyncBridge(3660);
     const a = peekDeviceRamTierAssessment();
-    expect(a?.tier).toBe("cloud-only");
+    expect(a?.tier).toBe("no-local-models");
     expect(a?.marketedRamGb).toBe(4);
+    expect(a?.allowsHybridAgent).toBe(true);
     expect(a?.allowsLocalAgent).toBe(false);
   });
 
@@ -140,6 +141,7 @@ describe("peekDeviceRamTierAssessment", () => {
     mocks.isIOS = false;
     const a = peekDeviceRamTierAssessment();
     expect(a?.tier).toBe("unknown");
+    expect(a?.allowsHybridAgent).toBe(true);
     expect(a?.allowsLocalAgent).toBe(true);
   });
 });
@@ -160,18 +162,32 @@ describe("resolveDeviceRamTierAssessment", () => {
     mocks.resourceSnapshot = null;
     const a = await resolveDeviceRamTierAssessment();
     expect(a.tier).toBe("unknown");
+    expect(a.allowsHybridAgent).toBe(true);
     expect(a.allowsLocalAgent).toBe(true);
   });
 });
 
 describe("assertDeviceRamTierAllowsLocalRuntime", () => {
-  it("throws for ANY local runtime on a sub-8 GB device", async () => {
+  it("allows hybrid but rejects local/provider modes on a 4 GB device", async () => {
     installSyncBridge(3660);
+    await expect(
+      assertDeviceRamTierAllowsLocalRuntime("cloud-inference"),
+    ).resolves.toBeUndefined();
     await expect(
       assertDeviceRamTierAllowsLocalRuntime("all-local"),
     ).rejects.toThrow(/on-device agent/);
     await expect(
+      assertDeviceRamTierAllowsLocalRuntime("configure-later"),
+    ).rejects.toThrow(/on-device agent/);
+  });
+
+  it("rejects every local runtime below the 4 GB hybrid floor", async () => {
+    installSyncBridge(2.5 * 1024);
+    await expect(
       assertDeviceRamTierAllowsLocalRuntime("cloud-inference"),
+    ).rejects.toThrow(/on-device agent/);
+    await expect(
+      assertDeviceRamTierAllowsLocalRuntime("all-local"),
     ).rejects.toThrow(/on-device agent/);
   });
 
@@ -204,8 +220,8 @@ describe("assertDeviceRamTierAllowsLocalRuntime", () => {
 });
 
 describe("enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot", () => {
-  function seedLocalCommitment(): void {
-    persistMobileRuntimeMode("local");
+  function seedLocalCommitment(mode: "local" | "cloud-hybrid" = "local"): void {
+    persistMobileRuntimeMode(mode);
     savePersistedActiveServer({
       id: ANDROID_LOCAL_AGENT_SERVER_ID,
       kind: "remote",
@@ -221,6 +237,15 @@ describe("enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot", () => {
     expect(enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot()).toBe(true);
     expect(readPersistedMobileRuntimeMode()).toBeNull();
     expect(loadPersistedActiveServer()).toBeNull();
+  });
+
+  it("keeps persisted hybrid mode at the 4 GB runtime-only floor", () => {
+    installSyncBridge(3660);
+    seedLocalCommitment("cloud-hybrid");
+
+    expect(enforceDeviceRamPolicyOnPersistedRuntimeModeAtBoot()).toBe(false);
+    expect(readPersistedMobileRuntimeMode()).toBe("cloud-hybrid");
+    expect(loadPersistedActiveServer()?.id).toBe(ANDROID_LOCAL_AGENT_SERVER_ID);
   });
 
   it("keeps a persisted local mode on a capable device", () => {

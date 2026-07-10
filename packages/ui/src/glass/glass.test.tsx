@@ -27,10 +27,13 @@ function fakeBridge(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function installCapacitor(bridge: ReturnType<typeof fakeBridge> | null) {
+function installCapacitor(
+  bridge: ReturnType<typeof fakeBridge> | null,
+  platform: "ios" | "android" = "ios",
+) {
   (globalThis as CapGlobal).Capacitor = {
     isNativePlatform: () => true,
-    getPlatform: () => "ios",
+    getPlatform: () => platform,
     registerPlugin: <T,>(name: string): T => {
       if (name !== "GlassBridge") throw new Error(`unexpected plugin ${name}`);
       if (!bridge) throw new Error("not registered");
@@ -108,7 +111,7 @@ describe("GlassSurface", () => {
       <GlassSurface variant="pill" interactive data-testid="s" />,
     );
     await waitFor(() =>
-      expect(getByTestId("s").dataset.glassTier).toBe("ios26-native"),
+      expect(getByTestId("s").dataset.glassTier).toBe("native"),
     );
     await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(1));
     const call = bridge.attachGlass.mock.calls[0]?.[0] as unknown as {
@@ -118,6 +121,20 @@ describe("GlassSurface", () => {
     };
     expect(call.id.length).toBeGreaterThan(0);
     expect(call.interactive).toBe(true);
+    unmount();
+    await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledTimes(1));
+  });
+
+  it("upgrades to the native tier on Android too — same bridge, same contract", async () => {
+    const bridge = fakeBridge();
+    installCapacitor(bridge, "android");
+    const { getByTestId, unmount } = render(
+      <GlassSurface variant="menu" data-testid="s" />,
+    );
+    await waitFor(() =>
+      expect(getByTestId("s").dataset.glassTier).toBe("native"),
+    );
+    await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(1));
     unmount();
     await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledTimes(1));
   });

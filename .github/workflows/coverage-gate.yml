@@ -3,8 +3,11 @@ name: coverage-gate
 # SOC2 CC4.1 — track unit-test coverage on changed files. ENFORCED (issue #9943):
 # a PR that changes source under packages/plugins/apps must change at least one
 # unit test that can emit coverage, and changed source files that appear in LCOV
-# must clear the line-coverage floor. Docs-only and test-only PRs do not spend
-# coverage time.
+# must clear the line-coverage floor. Docs-only PRs do not spend coverage time.
+# A test-only PR (changed tests, no changed source) executes its changed tests —
+# gating the run steps on changed *source* let such PRs go vacuously green with
+# the new test never running (#15849); the per-file floor simply has no source
+# to enforce against.
 #
 # The per-package coverage floors live in the shared base vitest config
 # (packages/test/vitest/default.config.ts, sourced from coverage-policy.mjs) and
@@ -44,50 +47,13 @@ jobs:
 
       - name: Determine changed files
         id: changed
+        # Three-dot diff (merge-base..HEAD) so a branch trailing develop does not
+        # count develop-side files it never touched. Logic lives in the script so
+        # its path/diff boundary rules are regression-tested (issue #15845).
         run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          HEAD=${{ github.event.pull_request.head.sha }}
-          {
-            echo 'files<<EOF'
-            git diff --name-only "$BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
-              | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$' || true
-            echo 'EOF'
-            echo 'bun_tests<<EOF'
-            git diff --name-only "$BASE" "$HEAD" -- \
-              '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
-              '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
-              | while IFS= read -r file; do
-                  [ -f "$file" ] || continue
-                  case "$file" in
-                    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) continue ;;
-                  esac
-                  if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
-                    continue
-                  fi
-                  if grep -Eq "from ['\"]@playwright/test['\"]|require\\(['\"]@playwright/test['\"]\\)" "$file"; then
-                    continue
-                  fi
-                  echo "$file"
-                done
-            echo 'EOF'
-            echo 'vitest_tests<<EOF'
-            git diff --name-only "$BASE" "$HEAD" -- \
-              '*.test.ts' '*.test.tsx' '*.test.js' '*.test.jsx' '*.test.mjs' \
-              '*.spec.ts' '*.spec.tsx' '*.spec.js' '*.spec.jsx' '*.spec.mjs' \
-              | while IFS= read -r file; do
-                  [ -f "$file" ] || continue
-                  case "$file" in
-                    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) continue ;;
-                  esac
-                  if grep -Eq "from ['\"]@playwright/test['\"]|require\\(['\"]@playwright/test['\"]\\)" "$file"; then
-                    continue
-                  fi
-                  if grep -Eq "from ['\"]vitest['\"]|require\\(['\"]vitest['\"]\\)" "$file"; then
-                    echo "$file"
-                  fi
-                done
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          bash scripts/security/coverage-changed-files.sh \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Require changed tests for changed source
         if: steps.changed.outputs.files != '' && steps.changed.outputs.bun_tests == '' && steps.changed.outputs.vitest_tests == ''
@@ -97,9 +63,11 @@ jobs:
           exit 1
 
       - name: Setup Bun workspace
-        if: steps.changed.outputs.files != '' && (steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != '')
+        if: steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != ''
         # Keep dependency setup behind the changed-test check so docs-only and
         # test-free source PRs either skip or fail before spending setup time.
+        # Not gated on changed source: a test-only PR (files == '') must still
+        # execute its changed tests, or the suite goes vacuously green (#15849).
         uses: ./.github/actions/setup-bun-workspace
         with:
           install-native-deps: "false"
@@ -107,7 +75,7 @@ jobs:
           setup-python: "false"
 
       - name: Run changed Bun tests with coverage
-        if: steps.changed.outputs.files != '' && steps.changed.outputs.bun_tests != ''
+        if: steps.changed.outputs.bun_tests != ''
         run: |
           cat > "$RUNNER_TEMP/changed-tests.txt" <<'EOF'
           ${{ steps.changed.outputs.bun_tests }}
@@ -117,14 +85,16 @@ jobs:
             echo "no changed Bun-native test files; skipping coverage run"
             exit 0
           fi
-          bun test "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun
+          # This lane runs before workspace builds, so package defaults point at
+          # absent dist files; source exports keep changed tests self-contained.
+          bun test --conditions=eliza-source "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun
         env:
           # Tests must produce coverage/lcov.info. If a package emits to a
           # different path, surface it here.
           BUN_COVERAGE_DIR: coverage/bun
 
       - name: Run changed Vitest tests with coverage
-        if: steps.changed.outputs.files != '' && steps.changed.outputs.vitest_tests != ''
+        if: steps.changed.outputs.vitest_tests != ''
         run: |
           cat > "$RUNNER_TEMP/changed-vitest-tests.txt" <<'EOF'
           ${{ steps.changed.outputs.vitest_tests }}
@@ -137,12 +107,20 @@ jobs:
           bunx vitest run "${changed_tests[@]}" --coverage --coverage.reporter=lcov --coverage.reportsDirectory=coverage/vitest
 
       - name: Apply coverage gate (enforced)
-        if: steps.changed.outputs.files != '' && (steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != '')
+        # Runs whenever changed tests ran, including test-only PRs (files == '').
+        # With no changed source, executing the changed tests is the gate:
+        # Bun may not emit LCOV when it only ran tests, and there is no per-file
+        # floor to enforce (#15849).
+        if: steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != ''
         env:
           COVERAGE_GATE_ENFORCE: "1"   # enforced (issue #9943)
         run: |
           mapfile -t lcov_files < <(find coverage -name lcov.info -type f | sort)
           if [ "${#lcov_files[@]}" -eq 0 ]; then
+            if [ -z "${{ steps.changed.outputs.files }}" ]; then
+              echo "changed tests ran; no changed source files require LCOV enforcement"
+              exit 0
+            fi
             echo "changed tests ran but no coverage/lcov.info files were produced"
             exit 1
           fi

@@ -117,7 +117,7 @@ jobs:
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
           # gitignored generated keyword data. Source-mode (eliza-source) migrate
           # never builds core, so generate the file first (mirrors core's prebuild).
-          node packages/shared/scripts/generate-keywords.mjs --target ts
+          node packages/shared/scripts/generate-keywords.mjs
           bun run db:cloud:migrate
 
       - name: Notify Discord (Success)

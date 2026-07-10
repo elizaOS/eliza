@@ -105,7 +105,13 @@ jobs:
             commands:
               - bun run --cwd packages/app-core test
               - bun run --cwd packages/elizaos test
-              - bun run --cwd packages/cloud/shared test
+              # The tenant-db durable-placement-claimer suite is split out into
+              # its own bounded-retry step below (#15785): under Bun canary on
+              # Windows it intermittently trips a native `Illegal instruction`
+              # panic while driving PGlite (WASM). Ignore it in the whole-package
+              # run so that upstream-runtime flake cannot fail the shard; the rest
+              # of packages/cloud/shared still runs here unchanged.
+              - bun run --cwd packages/cloud/shared test --path-ignore-patterns "**/tenant-db-placement-claimer.test.ts"
           - lane: framework-packages
             commands:
               - bun run --cwd packages/scenario-runner test
@@ -203,3 +209,32 @@ jobs:
               exit $code
             }
           }
+
+      # #15785: The tenant-db durable-placement-claimer suite drives PGlite
+      # (WASM) and intermittently trips a native `Illegal instruction` panic
+      # under Bun canary on Windows. That is an upstream runtime flake, not a
+      # product regression (the test blob is byte-identical to a run that passed
+      # in 49ms hours earlier — do not bisect). It is ignored by the whole-package
+      # run above and re-run here in isolation with a small bounded retry so a
+      # single native panic is retried instead of failing the whole shard.
+      # Each attempt is logged; the suite still has to pass for the shard to pass.
+      - name: Retry-isolated tenant-db PGlite suite (Windows canary flake, #15785)
+        if: matrix.lane == 'app-and-cli'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Continue"
+          $suite = "src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts"
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "::group::tenant-db placement-claimer suite (attempt $attempt/$maxAttempts)"
+            bun run --cwd packages/cloud/shared test $suite
+            $code = $LASTEXITCODE
+            Write-Host "::endgroup::"
+            if ($code -eq 0) {
+              Write-Host "tenant-db placement-claimer suite passed on attempt $attempt/$maxAttempts."
+              exit 0
+            }
+            Write-Warning "tenant-db placement-claimer suite failed on attempt $attempt/$maxAttempts with exit code $code (Bun canary/PGlite native flake, #15785)."
+          }
+          Write-Error "tenant-db placement-claimer suite still failing after $maxAttempts attempts; not the expected transient flake."
+          exit 1

@@ -101,9 +101,9 @@ function TaskCard() {
       data-task-id="b1a7c0de"
       data-task-status="active"
       data-expanded="true"
-      className="my-2 overflow-hidden rounded-sm border border-border bg-card"
+      className="my-2 overflow-hidden"
     >
-      <div className="flex items-start gap-2 px-3 py-2">
+      <div className="flex items-start gap-2 py-1.5">
         <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center text-ok">
           <CirclePlay className="h-3.5 w-3.5 animate-pulse" />
         </span>
@@ -123,7 +123,7 @@ function TaskCard() {
       </div>
       <div
         data-testid="task-widget-pipeline"
-        className="flex flex-col gap-3 border-t border-border px-3 py-3"
+        className="flex flex-col gap-3 py-2"
       >
         <SubagentBlock agent={builder} />
         <SubagentBlock agent={reviewer} />
@@ -155,7 +155,7 @@ root.render(
       <div className="mb-1 text-xs uppercase tracking-wide text-muted">
         [CHECKLIST] todo list
       </div>
-      <div className="my-2 rounded-sm border border-border bg-card px-3 py-2">
+      <div className="my-2 py-1.5">
         <PlanChecklist entries={checklist} title="Migration" />
       </div>
     </div>

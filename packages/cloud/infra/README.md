@@ -9,6 +9,7 @@ Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifest
 | `cloud/local/` | kind cluster setup for local development (scripts, Helm values, K8s manifests) |
 | `cloud/docker-compose.yml` | Self-hosted Supabase Storage for offline object-storage testing |
 | `cloud/terraform/hetzner/control-plane/` | Terraform for the elizaOS Cloud Hetzner control-plane VMs |
+| `cloud/terraform/cloudflare/pages-domains/` | Terraform for Pages custom domains, DNS, and certificate bindings |
 | `cloud/terraform/gcp/` | Experimental GCP/GKE roots (not active, not CI-wired) |
 | `tests/` | Bun smoke tests validating YAML structure (no cluster required) |
 

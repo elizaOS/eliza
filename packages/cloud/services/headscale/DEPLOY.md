@@ -61,6 +61,13 @@ Worker secret path. Keep host and Worker values identical for
 `HEADSCALE_API_KEY`, `AGENT_TOKEN_PRIVATE_KEY_PEM`, and `ELIZA_LOCAL_ROOT_KEY`;
 otherwise the daemon can mint state that the Worker cannot validate.
 
+`headscale-api-key-health.yml` probes the daemon-local user-list endpoint from
+the staging control-plane host every day and fails on a missing, expired, or
+rejected key. It deliberately reads `HEADSCALE_API_KEY` from the host's
+`/opt/eliza/cloud/.env.local` instead of importing the admin key into the
+Actions runner. Production uses the same workflow through a manual dispatch
+because that GitHub Environment requires deployment approval.
+
 ### Manual equivalent
 
 ```bash

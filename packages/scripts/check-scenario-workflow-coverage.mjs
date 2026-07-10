@@ -48,7 +48,7 @@ function ensureGeneratedKeywordData() {
     return;
   }
 
-  const completed = spawnSync("node", [KEYWORD_GENERATOR, "--target", "ts"], {
+  const completed = spawnSync("node", [KEYWORD_GENERATOR], {
     cwd: REPO_ROOT,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

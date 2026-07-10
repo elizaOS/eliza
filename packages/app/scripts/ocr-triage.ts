@@ -11,6 +11,13 @@
  * labels they exist to show, retiring them from the manual "needs-eyeball" pile
  * instead of leaving every soft-signal view for a human to squint at.
  *
+ * Provenance is report-authoritative: the triage evaluates exactly the
+ * screenshots named by the current `report.json` — one per row, all present —
+ * never a directory glob. A screenshot left behind by an earlier capture is
+ * structurally unable to enter the result, so the OCR row count always equals
+ * the DOM report row count and a stale render can never be mis-reported as a
+ * current regression (#15790).
+ *
  * Run: `bun scripts/ocr-triage.ts [--audit-dir <dir>] [--ocr <ndjson>] [--out <json>] [--baseline <json>]`.
  * With no `--ocr`, it uses `scripts/mvp-visual-verify/ocr.mjs`, which prefers the
  * installed `tesseract.js` package so CI and local verification do not depend on
@@ -19,8 +26,8 @@
  * the same ratchet posture as the aesthetic audit's verdict-debt map, so a known
  * bug stays visible without wedging CI while a NEW pixel-broken render fails it.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   evaluateOcrContent,
@@ -44,9 +51,15 @@ const BLANK_EXEMPT_SLUGS = new Set<string>([
   ...OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   "builtin-background",
   "plugin-focus-gui",
+  // Legacy alias route that resolves to the launcher-grid fallback (see
+  // launcher-curation.ts and the ocr-view-expectations.ts trailer). The grid's
+  // white-on-gradient icon labels sit right at the engine's blank word floor
+  // (1–2 garbled words across runs), so without the exemption the same healthy
+  // render flaps between needs-eyeball and blank-broken run to run.
+  "builtin-rolodex",
 ]);
 
-interface ReportEntry {
+export interface ReportEntry {
   slug: string;
   viewport: string;
   viewType?: "gui" | "tui";
@@ -57,7 +70,7 @@ interface OcrRecord extends OcrResult {
   path: string;
 }
 
-interface TriageEntry {
+export interface TriageEntry {
   slug: string;
   viewport: string;
   path: string;
@@ -69,6 +82,21 @@ interface TriageEntry {
   text: string;
 }
 
+export interface TriageSummary {
+  total: number;
+  verified: number;
+  broken: number;
+  needsEyeball: number;
+  regressions: number;
+  knownRegressions: number;
+  newRegressions: number;
+}
+
+export interface TriageResult {
+  summary: TriageSummary;
+  entries: TriageEntry[];
+}
+
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
@@ -78,16 +106,53 @@ function parseArgs(argv: string[]): Record<string, string> {
   return out;
 }
 
-function listPngs(dir: string): string[] {
-  const out: string[] = [];
-  for (const viewport of readdirSync(dir, { withFileTypes: true })) {
-    if (!viewport.isDirectory()) continue;
-    const vp = join(dir, viewport.name);
-    for (const f of readdirSync(vp)) {
-      if (f.endsWith(".png")) out.push(join(vp, f));
-    }
+/** One authorized screenshot per current report row, with its on-disk path. */
+export interface AuthorizedShot {
+  key: string;
+  slug: string;
+  viewport: string;
+  path: string;
+}
+
+/**
+ * The screenshots the current `report.json` authorizes OCR to evaluate — the
+ * single source of provenance for this triage.
+ *
+ * The prior implementation globbed every PNG under the audit directory, so a
+ * screenshot left behind by an earlier capture (a retired view, a since-fixed
+ * crash) was OCR'd and mis-reported as a CURRENT regression (#15790: 240 report
+ * rows, 379 globbed PNGs). Scoping to report rows makes stale files structurally
+ * unable to enter the result: a shot not named by a row is never read, and every
+ * row's shot must exist. A missing report, a duplicate row, or a row whose
+ * screenshot is absent is a corrupt capture and fails fast rather than silently
+ * narrowing the run.
+ */
+export function authorizedShots(
+  auditDir: string,
+  report: ReportEntry[],
+): AuthorizedShot[] {
+  if (report.length === 0) {
+    throw new Error(
+      `[ocr-triage] ${join(auditDir, "report.json")} lists no views — run \`audit:app:capture\` first. OCR is scoped to the current report, never a directory glob.`,
+    );
   }
-  return out;
+  const seen = new Set<string>();
+  return report.map((r) => {
+    const key = `${r.slug}::${r.viewport}`;
+    if (seen.has(key)) {
+      throw new Error(
+        `[ocr-triage] duplicate report row ${key} — report.json is corrupt; each slug::viewport must appear once.`,
+      );
+    }
+    seen.add(key);
+    const path = join(auditDir, r.viewport, `${r.slug}.png`);
+    if (!existsSync(path)) {
+      throw new Error(
+        `[ocr-triage] report row ${key} has no screenshot at ${path} — the capture is incomplete; re-run \`audit:app:capture\`.`,
+      );
+    }
+    return { key, slug: r.slug, viewport: r.viewport, path };
+  });
 }
 
 async function runPackagedOcr(paths: string[]): Promise<OcrRecord[]> {
@@ -122,8 +187,65 @@ function viewportOf(path: string): string {
   return basename(dirname(path));
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+function recordMatchesShotPath(
+  auditDir: string,
+  recordPath: string,
+  shotPath: string,
+): boolean {
+  const expected = resolve(shotPath);
+  if (resolve(recordPath) === expected) return true;
+  return !isAbsolute(recordPath) && resolve(auditDir, recordPath) === expected;
+}
+
+/**
+ * Bind imported OCR evidence one-to-one to the screenshots authorized by the
+ * current report. Filtering an over-broad NDJSON file would make a combined or
+ * stale evidence bundle look healthy after the bad records disappeared, so
+ * every missing, duplicate, unexpected, or path-mismatched record fails.
+ */
+export function validateImportedOcrRecords(
+  auditDir: string,
+  sourcePath: string,
+  shots: AuthorizedShot[],
+  records: OcrRecord[],
+): OcrRecord[] {
+  const expected = new Map(shots.map((shot) => [shot.key, shot]));
+  const byKey = new Map<string, OcrRecord>();
+
+  for (const record of records) {
+    const key = `${slugOf(record.path)}::${viewportOf(record.path)}`;
+    if (byKey.has(key)) {
+      throw new Error(
+        `[ocr-triage] duplicate OCR record ${key} in ${sourcePath} — each report row must have exactly one record.`,
+      );
+    }
+    const shot = expected.get(key);
+    if (!shot) {
+      throw new Error(
+        `[ocr-triage] unexpected OCR record ${key} in ${sourcePath} — imported OCR must exactly match the current report.`,
+      );
+    }
+    if (!recordMatchesShotPath(auditDir, record.path, shot.path)) {
+      throw new Error(
+        `[ocr-triage] OCR record ${key} points to ${record.path}, expected ${shot.path}.`,
+      );
+    }
+    byKey.set(key, record);
+  }
+
+  return shots.map((shot) => {
+    const record = byKey.get(shot.key);
+    if (!record) {
+      throw new Error(
+        `[ocr-triage] report row ${shot.key} has no OCR record in ${sourcePath} — the OCR input is out of sync with report.json.`,
+      );
+    }
+    return record;
+  });
+}
+
+export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
+  const args = parseArgs(argv);
   const auditDir = args["audit-dir"] ?? "aesthetic-audit-output";
   const outPath = args.out ?? join(auditDir, "ocr-triage.json");
 
@@ -143,13 +265,21 @@ async function main() {
   const reportByKey = new Map<string, ReportEntry>();
   for (const r of report) reportByKey.set(`${r.slug}::${r.viewport}`, r);
 
-  const pngs = listPngs(auditDir);
-  const ocr: OcrRecord[] = args.ocr
-    ? readFileSync(args.ocr, "utf8")
-        .split("\n")
-        .filter((l) => l.trim())
-        .map((l) => JSON.parse(l) as OcrRecord)
-    : await runPackagedOcr(pngs);
+  // Provenance: OCR evaluates exactly the shots the current report authorizes —
+  // one per row, all present — so the OCR row count equals the DOM report row
+  // count by construction and no stale PNG can slip in (#15790).
+  const shots = authorizedShots(auditDir, report);
+
+  let ocr: OcrRecord[];
+  if (args.ocr) {
+    const records = readFileSync(args.ocr, "utf8")
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as OcrRecord);
+    ocr = validateImportedOcrRecords(auditDir, args.ocr, shots, records);
+  } else {
+    ocr = await runPackagedOcr(shots.map((s) => s.path));
+  }
 
   const entries: TriageEntry[] = [];
   for (const rec of ocr) {
@@ -228,15 +358,24 @@ async function main() {
     }
   }
   console.log(`\n[ocr-triage] wrote ${outPath}`);
-  process.exitCode = newRegressions.length > 0 ? 1 : 0;
+  return { summary, entries };
 }
 
-main()
-  .catch((e) => {
-    console.error("[ocr-triage]", e);
-    process.exitCode = 2;
-  })
-  .finally(async () => {
-    await closeOcrEngines();
-    if (process.exitCode) process.exit(process.exitCode);
-  });
+// Auto-run only as a CLI entrypoint (`bun scripts/ocr-triage.ts …`). When a test
+// imports this module for `authorizedShots`, `import.meta.main` is false so the
+// triage does not fire and call `process.exit` out from under the test runner.
+if (import.meta.main) {
+  runOcrTriage(process.argv.slice(2))
+    .then(({ summary }) => {
+      process.exitCode = summary.newRegressions > 0 ? 1 : 0;
+    })
+    .catch((e) => {
+      // error-policy:J1 CLI boundary — surface the failure and exit non-zero.
+      console.error("[ocr-triage]", e);
+      process.exitCode = 2;
+    })
+    .finally(async () => {
+      await closeOcrEngines();
+      if (process.exitCode) process.exit(process.exitCode);
+    });
+}

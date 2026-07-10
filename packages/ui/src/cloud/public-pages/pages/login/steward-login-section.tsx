@@ -1,9 +1,9 @@
 /**
  * Steward login section for the app-hosted login page.
  *
- * Supports passkey, email magic-link, email-OTP passkey signup, and OAuth
- * (Google / Discord / GitHub), plus the post-redirect OAuth `code` / `#token`
- * consumption + cookie sync.
+ * Supports passkey where browser WebAuthn is actually available, plus email
+ * magic-link, OAuth (Google / Discord / GitHub), wallets, and the post-redirect
+ * OAuth `code` / `#token` consumption + cookie sync.
  *
  * Wallet (SIWE / SIWS) sign-in is the bounded port of the wallet UI from
  * `cloud-frontend@4056e0e868` (nubs's call, 2026-07-06): gated on the live
@@ -66,6 +66,10 @@ import {
   refreshStewardSessionViaCookie,
   syncStewardSessionCookie,
 } from "../../lib/steward-session";
+import {
+  resolveWebPasskeyCapability,
+  type WebPasskeyCapability,
+} from "./passkey-capability";
 
 const Github = ({ className }: { className?: string }) => (
   <svg
@@ -290,11 +294,19 @@ export default function StewardLoginSection() {
   const [providers, setProviders] = useState<StewardProviders>(
     () => cachedStewardProviders ?? DEFAULT_PROVIDERS,
   );
+  const [passkeyCapability, setPasskeyCapability] =
+    useState<WebPasskeyCapability | null>(
+      PLAYWRIGHT_TEST_AUTH_ENABLED
+        ? { usable: true, reason: "available" }
+        : null,
+    );
 
   const hasOAuthProviders = Boolean(
     providers.google || providers.discord || providers.github,
   );
   const showWallets = hasAnyWalletProvider(providers);
+  const showPasskey =
+    providers.passkey !== false && passkeyCapability?.usable === true;
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) {
@@ -311,6 +323,19 @@ export default function StewardLoginSection() {
       })
       .finally(() => setProvidersLoaded(true));
   }, [auth]);
+
+  useEffect(() => {
+    if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+
+    let cancelled = false;
+    resolveWebPasskeyCapability().then((capability) => {
+      if (!cancelled) setPasskeyCapability(capability);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const code = consumeStewardCodeFromQuery();
@@ -476,6 +501,16 @@ export default function StewardLoginSection() {
   }
 
   async function handlePasskey() {
+    if (!showPasskey) {
+      if (providers.email !== false) {
+        await handleEmail();
+        return;
+      }
+      setError(
+        "Passkeys are not available in this browser. Use Google, Discord, or open this sign-in link on another device.",
+      );
+      return;
+    }
     if (!email.trim()) {
       setError("Enter your email first");
       return;
@@ -653,7 +688,7 @@ export default function StewardLoginSection() {
     );
   }
 
-  if (step === "otp-entry") {
+  if (step === "otp-entry" && showPasskey) {
     return (
       <div className="space-y-4 py-4">
         <div className="space-y-1 text-center">
@@ -776,15 +811,21 @@ export default function StewardLoginSection() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter") handlePasskey();
+          if (e.key === "Enter") {
+            if (showPasskey) {
+              handlePasskey();
+            } else if (providers.email !== false) {
+              handleEmail();
+            }
+          }
         }}
         disabled={isLoading}
         className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-txt outline-none transition-colors placeholder:text-muted hover:border-border-strong disabled:opacity-50"
-        autoComplete="email webauthn"
+        autoComplete={showPasskey ? "email webauthn" : "email"}
       />
 
       <div className="flex gap-2">
-        {providers.passkey !== false && (
+        {showPasskey && (
           <Button
             variant="ghost"
             type="button"
@@ -810,11 +851,27 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      <p className="text-center text-xs text-muted">
-        {t("cloud.login.signupHint", {
-          defaultValue: "New here? Passkey sets up your account in seconds.",
-        })}
-      </p>
+      {showPasskey ? (
+        <p className="text-center text-xs text-muted">
+          {t("cloud.login.signupHint", {
+            defaultValue: "New here? Passkey sets up your account in seconds.",
+          })}
+        </p>
+      ) : passkeyCapability === null ? (
+        <p className="text-center text-xs text-muted" role="status">
+          {t("cloud.login.checkingPasskey", {
+            defaultValue:
+              "Checking passkey availability. You can continue with Magic Link or another sign-in method now.",
+          })}
+        </p>
+      ) : (
+        <p className="text-center text-xs text-muted">
+          {t("cloud.login.passkeyUnavailable", {
+            defaultValue:
+              "Passkey sign-in is not available here. Use Google, Discord, or Magic Link, or open this sign-in link on another device.",
+          })}
+        </p>
+      )}
 
       {hasOAuthProviders && (
         <div className="flex items-center gap-3">

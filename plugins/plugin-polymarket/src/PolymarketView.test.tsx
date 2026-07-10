@@ -378,14 +378,33 @@ describe("PolymarketView — refresh + error path", () => {
     expect(polymarketClient.polymarketStatus).toHaveBeenCalledTimes(2);
   });
 
-  it("surfaces a markets fetch failure as the error text", async () => {
+  it("renders a distinct error state — not the empty placeholder — when the load fails with no cached markets", async () => {
     polymarketClient.polymarketStatus.mockResolvedValue(sampleStatus);
     polymarketClient.polymarketMarkets.mockRejectedValue(
       new Error("network down"),
     );
     render(React.createElement(PolymarketView));
     await screen.findByText("network down");
-    expect(screen.getByText("no markets loaded")).toBeTruthy();
+    // The three-state rule (#15781): a failed load is its own designed state, so
+    // the empty ("no markets loaded") and loading placeholders must NOT co-render.
+    expect(screen.getByText("Couldn't load markets")).toBeTruthy();
+    expect(screen.queryByText("no markets loaded")).toBeNull();
+    expect(screen.queryByText("loading markets")).toBeNull();
+  });
+
+  it("renders the empty state — not an error — when the load succeeds with zero markets", async () => {
+    polymarketClient.polymarketStatus.mockResolvedValue(sampleStatus);
+    polymarketClient.polymarketMarkets.mockResolvedValue({
+      markets: [],
+      source: { api: "gamma", endpoint: "/markets" },
+    });
+    render(React.createElement(PolymarketView));
+    await screen.findByText("no markets loaded");
+    expect(screen.queryByText("Couldn't load markets")).toBeNull();
+    // A legitimately-empty response never leaks a developer crash string.
+    const text = document.body.textContent ?? "";
+    expect(text).not.toContain("Cannot read properties");
+    expect(text).not.toContain("undefined");
   });
 });
 

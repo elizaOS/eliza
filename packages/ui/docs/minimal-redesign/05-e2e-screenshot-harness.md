@@ -251,7 +251,7 @@ hyperliquid, lifeops, focus, calendar, documents, finances, goals, health,
 inbox, relationships, todos, messages, model-tester, phone, polymarket,
 shopify, steward, wallet, vector-browser, feed,
 views-manager,
-screenshare, social-alpha, task-coordinator, orchestrator, trajectory-logger,
+screenshare, task-coordinator, orchestrator, trajectory-logger,
 training, facewear, smartglasses.
 
 ### Per-spec coverage highlights (66 spec files)
@@ -390,8 +390,7 @@ onboarding server-side once before the specs run.
 **For the redesign screenshot sweep:** call `seedAppStorage(page)` +
 `installDefaultAppRoutes(page)` in `beforeEach` (exactly as
 `plugin-views-visual.spec.ts` does) and you land directly on any view with no
-auth flow. Add per-view route stubs only for views that hit a unique endpoint
-(see the `social-alpha` leaderboard example in `plugin-views-visual.spec.ts`).
+auth flow. Add per-view route stubs only for views that hit a unique endpoint.
 
 ---
 

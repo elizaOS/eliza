@@ -257,8 +257,8 @@ for (let i = 0; i < batches.length; i++) {
   if ((status ?? 1) !== 0 || signal) {
     if (shouldNormalizeBunStatus99({ status, signal, output })) {
       console.warn(
-        `[test:cloud] batch ${i + 1}/${batches.length} exited with Bun status 99 ` +
-          "after reporting 0 failed tests; treating as pass (known PGlite/Emscripten exitCode pollution).",
+        `[test:cloud] batch ${i + 1}/${batches.length} exited with Bun status ${status} ` +
+          "after reporting no failed tests; treating as pass (known Bun/PGlite exitCode pollution).",
       );
       continue;
     }

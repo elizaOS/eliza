@@ -89,8 +89,10 @@ export async function ensureGitHubClient(
     | undefined;
   if (!clientId) {
     throw new Error(
-      "GitHub access required but no credentials available. " +
-        "Set GITHUB_TOKEN (PAT) or GITHUB_OAUTH_CLIENT_ID (for OAuth device flow).",
+      "GitHub access required but no credentials are configured. " +
+        "Connect GitHub in Settings → Coding Agents (paste a personal access token, " +
+        'or "Sign in with GitHub" when a GITHUB_OAUTH_CLIENT_ID is configured). ' +
+        "Alternatively set the GITHUB_TOKEN setting for this agent.",
     );
   }
 
@@ -141,7 +143,8 @@ export async function performOAuthFlow(
   if (!delivered) {
     throw new Error(
       "GitHub OAuth device flow requires an immediate chat delivery path before polling. " +
-        "Wire an authPromptCallback or set GITHUB_TOKEN.",
+        "Wire an authPromptCallback, connect GitHub in Settings → Coding Agents, " +
+        "or set the GITHUB_TOKEN setting.",
     );
   }
 

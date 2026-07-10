@@ -21,8 +21,8 @@ const APP_PACKAGE_JSON = path.join(REPO_ROOT, "packages/app/package.json");
 
 // Documented non-workspace HMR probes: entries whose source file lives outside
 // the workspace tree (so `probePathExists` legitimately fails) but that stay in
-// the matrix. Empty now — the shopify + social-alpha plugin views were removed
-// from the workspace (their probe levels dropped with them), and
+// the matrix. Empty now — retired plugin views were removed from the workspace
+// (their probe levels dropped with them), and
 // plugin-trajectory-logger's view source is back in the workspace tree.
 const EXPECTED_NON_WORKSPACE_HMR_PROBES = new Set<string>([]);
 
