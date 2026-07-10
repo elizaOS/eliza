@@ -138,7 +138,7 @@ jobs:
     # Keep the real profile on the model-capable fleet independently of the
     # generic CI fleet toggle; operators can redirect this lane with one var.
     runs-on: ${{ fromJSON(vars.LOCAL_INFERENCE_BENCH_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -247,13 +247,19 @@ jobs:
           DATE="$(date -u +%Y-%m-%d)"
           OUT_DIR="reports/porting/${DATE}"
           mkdir -p "$OUT_DIR"
+          echo "REPORT_DIR=$OUT_DIR" >> "$GITHUB_ENV"
+          node packages/scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:31337" \
+            --config packages/scripts/benchmark/configs/host-cpu-release-acceptance.json \
+            --label "release-acceptance-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
+            --out "$OUT_DIR/release-acceptance" \
+            --ensure-models
           node packages/scripts/benchmark/profile-inference.mjs \
             --target "http://127.0.0.1:31337" \
             --config packages/scripts/benchmark/configs/host-cpu.json \
             --label "ci-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
             --out "$OUT_DIR" \
             --ensure-models
-          echo "REPORT_DIR=$OUT_DIR" >> "$GITHUB_ENV"
 
       - name: Tear down dev agent
         if: ${{ always() }}

@@ -1,0 +1,16 @@
+{
+  "$schema": "../profile-config.schema.json",
+  "description": "Release acceptance matrix. Downloads, loads, and produces a real response from every published CPU tier before the longer nightly performance profile runs.",
+  "models": ["eliza-1-2b", "eliza-1-4b"],
+  "kvCacheConfigs": [{ "name": "baseline-fp16", "k": "f16", "v": "f16" }],
+  "mtpConfigs": [{ "name": "no-mtp", "drafter": null }],
+  "prompts": [
+    {
+      "id": "release-smoke",
+      "text": "Reply with the word ready.",
+      "maxTokens": 12
+    }
+  ],
+  "iterations": 1,
+  "warmupIterations": 0
+}

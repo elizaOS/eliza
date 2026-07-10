@@ -11,19 +11,29 @@ const workflow = readFileSync(
   ),
   "utf8",
 );
-const hostCpuConfig = JSON.parse(
+const releaseAcceptanceConfig = JSON.parse(
   readFileSync(
-    path.resolve(import.meta.dir, "../benchmark/configs/host-cpu.json"),
+    path.resolve(
+      import.meta.dir,
+      "../benchmark/configs/host-cpu-release-acceptance.json",
+    ),
     "utf8",
   ),
 ) as { models: string[] };
 
 describe("local inference bench workflow", () => {
   it("preflights and profiles every published release tier", () => {
-    expect(hostCpuConfig.models).toEqual(["eliza-1-2b", "eliza-1-4b"]);
-    for (const modelId of hostCpuConfig.models) {
+    expect(releaseAcceptanceConfig.models).toEqual([
+      "eliza-1-2b",
+      "eliza-1-4b",
+    ]);
+    for (const modelId of releaseAcceptanceConfig.models) {
       expect(workflow).toContain(`preflight-eliza1-manifest.mjs ${modelId}`);
     }
+    expect(workflow).toContain(
+      "--config packages/scripts/benchmark/configs/host-cpu-release-acceptance.json",
+    );
+    expect(workflow).toContain("timeout-minutes: 120");
   });
 
   it("schedules the real model profile on model-capable self-hosted runners", () => {
