@@ -1,6 +1,6 @@
 /** Verifies PCM16 stream validation and the exact RIFF/WAV bytes consumed by codec-less clients. */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, test } from "bun:test";
 import { drainPcm16Stream, pcm16ToWav } from "../pcm16-wav";
 
 function stream(...chunks: number[][]): ReadableStream<Uint8Array> {
@@ -13,7 +13,7 @@ function stream(...chunks: number[][]): ReadableStream<Uint8Array> {
 }
 
 describe("PCM16 WAV encoding", () => {
-  it("preserves streamed samples and writes a canonical mono header", async () => {
+  test("preserves streamed samples and writes a canonical mono header", async () => {
     const pcm = await drainPcm16Stream(stream([0x01], [0x02, 0x03, 0x04]), 1024);
     const wav = pcm16ToWav(pcm, 24_000);
     const view = new DataView(wav.buffer);
@@ -31,7 +31,7 @@ describe("PCM16 WAV encoding", () => {
     expect([...wav.subarray(44)]).toEqual([0x01, 0x02, 0x03, 0x04]);
   });
 
-  it("rejects empty and partial samples", async () => {
+  test("rejects empty and partial samples", async () => {
     await expect(drainPcm16Stream(stream(), 1024)).rejects.toMatchObject({
       code: "TTS_PCM_INVALID",
     });
@@ -41,7 +41,7 @@ describe("PCM16 WAV encoding", () => {
     expect(() => pcm16ToWav(Uint8Array.of(1), 24_000)).toThrow("complete 16-bit samples");
   });
 
-  it("cancels and rejects a response beyond the memory limit", async () => {
+  test("cancels and rejects a response beyond the memory limit", async () => {
     await expect(drainPcm16Stream(stream([0, 1], [2, 3]), 2)).rejects.toMatchObject({
       code: "TTS_PCM_INVALID",
       context: { maxBytes: 2, receivedBytes: 4 },
