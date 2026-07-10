@@ -14,6 +14,7 @@
   "scripts": {
     "validate": "bun src/cli.ts validate",
     "corpus:scrub": "bun src/cli.ts scrub",
+    "corpus:delete": "bun src/cli.ts delete",
     "corpus:verify": "bun src/cli.ts verify",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",

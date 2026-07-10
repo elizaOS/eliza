@@ -5,17 +5,22 @@
  */
 import path from "node:path";
 import { isAlias, isScalar, parseDocument, visit } from "yaml";
-import { type DeletionRules, parseDeletionRules } from "./delete.ts";
+import {
+  type DeletionReviewDecisions,
+  type DeletionRules,
+  parseDeletionReviewDecisions,
+  parseDeletionRules,
+} from "./delete.ts";
 
-function parseJson(source: string): unknown {
+function parseJson(source: string, label: string): unknown {
   try {
     return JSON.parse(source);
   } catch (error) {
-    throw new Error("invalid deletion rules JSON", { cause: error });
+    throw new Error(`invalid ${label} JSON`, { cause: error });
   }
 }
 
-function parseYaml(source: string): unknown {
+function parseYaml(source: string, label: string): unknown {
   const document = parseDocument(source, {
     merge: false,
     prettyErrors: true,
@@ -26,7 +31,7 @@ function parseYaml(source: string): unknown {
     const diagnostics = [...document.errors, ...document.warnings]
       .map((diagnostic) => diagnostic.message)
       .join("; ");
-    throw new Error(`invalid deletion rules YAML: ${diagnostics}`);
+    throw new Error(`invalid ${label} YAML: ${diagnostics}`);
   }
   visit(document, {
     Node(_key, node) {
@@ -51,14 +56,33 @@ function parseYaml(source: string): unknown {
   return document.toJS({ maxAliasCount: 0 });
 }
 
+function parseDocumentValue(
+  source: string,
+  filename: string,
+  label: string,
+): unknown {
+  const extension = path.extname(filename).toLowerCase();
+  if (extension === ".json") return parseJson(source, label);
+  if (extension === ".yaml" || extension === ".yml") {
+    return parseYaml(source, label);
+  }
+  throw new Error(`${label} must use .json, .yaml, or .yml`);
+}
+
 export function parseDeletionRulesDocument(
   source: string,
   filename: string,
 ): DeletionRules {
-  const extension = path.extname(filename).toLowerCase();
-  if (extension === ".json") return parseDeletionRules(parseJson(source));
-  if (extension === ".yaml" || extension === ".yml") {
-    return parseDeletionRules(parseYaml(source));
-  }
-  throw new Error("deletion rules must use .json, .yaml, or .yml");
+  return parseDeletionRules(
+    parseDocumentValue(source, filename, "deletion rules"),
+  );
+}
+
+export function parseDeletionReviewDecisionsDocument(
+  source: string,
+  filename: string,
+): DeletionReviewDecisions {
+  return parseDeletionReviewDecisions(
+    parseDocumentValue(source, filename, "deletion review decisions"),
+  );
 }

@@ -3,6 +3,9 @@
  * loader adapters.
  */
 export * from "./mappers.ts";
+export * from "./pipeline/delete.ts";
+export * from "./pipeline/delete-command.ts";
+export * from "./pipeline/delete-files.ts";
 export * from "./pipeline/driver.ts";
 export * from "./pipeline/llm-pii.ts";
 export * from "./pipeline/rewrite.ts";

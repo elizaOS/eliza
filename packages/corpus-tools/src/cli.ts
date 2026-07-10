@@ -1,9 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Command-line boundary for corpus validation. The library returns structured
- * diagnostics; this file is the only place that prints and converts validation
- * failure into a process exit code.
+ * Command-line boundary for corpus validation, scrubbing, reviewed deletion,
+ * and verification. Library operations return structured results; this file
+ * owns printing and process exit codes.
  */
+import {
+  applyDeletionFiles,
+  planDeletionFiles,
+} from "./pipeline/delete-command.ts";
 import {
   runScrubPipeline,
   type ScrubMode,
@@ -114,8 +118,39 @@ async function main(argv: string[]): Promise<number> {
     return result.status === "passed" ? 0 : 1;
   }
 
+  if (command === "delete") {
+    if (maybeTarget === "plan") {
+      const result = await planDeletionFiles({
+        targetPath: requireFlagValue(rest, "--target"),
+        candidatesPath: requireFlagValue(rest, "--candidates"),
+        rulesPath: requireFlagValue(rest, "--rules"),
+        queuePath: requireFlagValue(rest, "--queue"),
+        normalizedRulesPath: requireFlagValue(rest, "--normalized-rules"),
+      });
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return 0;
+    }
+    if (maybeTarget === "apply") {
+      const result = await applyDeletionFiles({
+        targetPath: requireFlagValue(rest, "--target"),
+        candidatesPath: requireFlagValue(rest, "--candidates"),
+        normalizedRulesPath: requireFlagValue(rest, "--normalized-rules"),
+        queuePath: requireFlagValue(rest, "--queue"),
+        decisionsPath: requireFlagValue(rest, "--decisions"),
+        outputPath: requireFlagValue(rest, "--output"),
+        ledgerPath: requireFlagValue(rest, "--ledger"),
+        manifestPath: requireFlagValue(rest, "--manifest"),
+        approvalPath: requireFlagValue(rest, "--approval"),
+        reportPath: requireFlagValue(rest, "--report"),
+      });
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return 0;
+    }
+    throw new Error("corpus delete requires plan or apply");
+  }
+
   process.stderr.write(
-    "usage: corpus validate <file-or-dir>\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n       corpus verify --target <dir> --manifest <file> --candidates <file> --canaries <file> --ledger <file> --gazetteer <file> --deletion-rules <file> --deletion-review-queue <file> --deletion-review-decision <file> --deletion-approval <file> --placeholder-registry <file> --ruleset-version <version> --report <file>\n",
+    "usage: corpus validate <file-or-dir>\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n       corpus delete plan --target <dir> --rules <file> --candidates <file> --queue <file> --normalized-rules <file>\n       corpus delete apply --target <dir> --candidates <file> --normalized-rules <file> --queue <file> --decisions <file> --output <dir> --ledger <file> --manifest <file> --approval <file> --report <file>\n       corpus verify --target <dir> --manifest <file> --candidates <file> --canaries <file> --ledger <file> --gazetteer <file> --deletion-rules <file> --deletion-review-queue <file> --deletion-review-decision <file> --deletion-approval <file> --placeholder-registry <file> --ruleset-version <version> --report <file>\n",
   );
   return 2;
 }
