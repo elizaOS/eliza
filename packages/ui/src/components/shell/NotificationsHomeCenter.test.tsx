@@ -299,6 +299,26 @@ describe("interrupt priority projection", () => {
     expect(screen.getByText("Calendar summary")).toBeTruthy();
     expect(__getStateForTests().notifications).toHaveLength(2);
     expect(navigateDeepLink).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId("notification-stack-collapse"));
+    finishShadeCollapse();
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("rested");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
+
+    const center = screen.getByTestId("home-notification-center");
+    fireEvent.click(document.body);
+    expect(screen.getByTestId("home-notification-center")).toBe(center);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("rested");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
   });
 
   it("does not fan a stack from the synthetic click after a vertical touch drag", () => {
@@ -1014,6 +1034,11 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack-collapse")).toBeNull();
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("expanded");
   });
 
   it("fanning an expanded stack keeps the shade open", () => {

@@ -737,23 +737,28 @@ export function NotificationsHomeCenter({
   const [expandedStacks, setExpandedStacks] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const stackSessionStartedFromRest = useRef(false);
   const [confirmingGroupKey, setConfirmingGroupKey] = useState<string | null>(
     null,
   );
   const [confirmingClearAll, setConfirmingClearAll] = useState(false);
   const [shadeClosing, setShadeClosing] = useState(false);
   const shadeCloseTimer = useRef<number | null>(null);
-  const expandStack = useCallback((key: string) => {
-    setExpandedStacks((prev) => {
-      if (prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.add(key);
-      return next;
-    });
-    setConfirmingGroupKey(null);
-    setConfirmingClearAll(false);
-    setShadeExpanded(true);
-  }, []);
+  const expandStack = useCallback(
+    (key: string) => {
+      if (!shadeExpanded) stackSessionStartedFromRest.current = true;
+      setExpandedStacks((prev) => {
+        if (prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+      setConfirmingGroupKey(null);
+      setConfirmingClearAll(false);
+      setShadeExpanded(true);
+    },
+    [shadeExpanded],
+  );
   const collapseStack = useCallback((key: string) => {
     setExpandedStacks((prev) => {
       if (!prev.has(key)) return prev;
@@ -824,6 +829,7 @@ export function NotificationsHomeCenter({
     setShadeExpanded(expanded);
     setConfirmingClearAll(false);
     setConfirmingGroupKey(null);
+    stackSessionStartedFromRest.current = false;
     if (!expanded) {
       // Folding the shade folds every fanned stack with it so the next open
       // starts from a predictable grouped inbox.
@@ -849,6 +855,18 @@ export function NotificationsHomeCenter({
     shadeClosing,
     shadeExpanded,
   ]);
+
+  const foldStack = useCallback(
+    (key: string) => {
+      const restoresRestedShade =
+        stackSessionStartedFromRest.current &&
+        expandedStacks.size === 1 &&
+        expandedStacks.has(key);
+      collapseStack(key);
+      if (restoresRestedShade) requestShadeCollapse();
+    },
+    [collapseStack, expandedStacks, requestShadeCollapse],
+  );
 
   const hasClearConfirmation =
     confirmingClearAll || confirmingGroupKey !== null;
@@ -1266,10 +1284,10 @@ export function NotificationsHomeCenter({
         return;
       }
       setConfirmingGroupKey(null);
-      collapseStack(key);
+      foldStack(key);
       void removeNotifications(ids);
     },
-    [collapseStack, confirmingGroupKey],
+    [confirmingGroupKey, foldStack],
   );
   const clearAll = useCallback(() => {
     if (!confirmingClearAll) {
@@ -1290,6 +1308,7 @@ export function NotificationsHomeCenter({
   useEffect(() => {
     if (notifications.length === 0) {
       setShadeExpanded(false);
+      stackSessionStartedFromRest.current = false;
       setExpandedStacks(new Set());
       setConfirmingGroupKey(null);
       setConfirmingClearAll(false);
@@ -1634,7 +1653,7 @@ export function NotificationsHomeCenter({
                         type="button"
                         data-testid="notification-stack-collapse"
                         data-notif-control=""
-                        onClick={() => collapseStack(group.key)}
+                        onClick={() => foldStack(group.key)}
                         className="h-8 px-2 text-xs font-medium text-white/60 transition-colors hover:text-white/90"
                       >
                         Show Less
