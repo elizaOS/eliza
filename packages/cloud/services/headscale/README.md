@@ -42,6 +42,13 @@ values are in [`DEPLOY.md`](./DEPLOY.md). The `HEADSCALE_API_KEY` is generated o
 the host and stored as a GitHub/Worker secret — never pasted into issues or
 workflow inputs.
 
+The provisioning daemon authenticates `GET /api/v1/user` at startup and on each
+infra-maintenance sweep. A missing, expired, revoked, or wrong-server key pages
+through the provisioning alert channels and withholds the daemon heartbeat, so
+the Cloud API fails provisioning closed instead of reporting a healthy but
+unusable control plane. The unauthenticated Headscale `/health` endpoint is not
+sufficient evidence that the key works.
+
 ## Local dev
 
 A `docker-compose.yml` for headscale is intentionally NOT included in `cloud/docker-compose.yml` — local dev uses the `tag:agent` flow only and doesn't touch customer-tunnel pricing. To exercise customer tunnels locally, point `HEADSCALE_API_URL` at a development instance you stand up by hand.

@@ -59,6 +59,8 @@ type WorkerProcessNodeDiskCleanup =
   typeof import("@elizaos/cloud-shared/lib/services/node-disk-manager").processNodeDiskCleanup;
 type WorkerRunBackupVerificationCycle =
   typeof import("@elizaos/cloud-shared/lib/services/agent-backup-verifier").runBackupVerificationCycle;
+type WorkerAssertHeadscaleApiKeyHealthy =
+  typeof import("@elizaos/cloud-shared/lib/services/headscale-api-key-health").assertHeadscaleApiKeyHealthy;
 
 interface PreflightKmsClient {
   getOrCreateKey(keyId: string): Promise<unknown>;
@@ -89,6 +91,7 @@ interface WorkerDeps {
   withTimeout: WorkerWithTimeout;
   processNodeDiskCleanup: WorkerProcessNodeDiskCleanup;
   runBackupVerificationCycle: WorkerRunBackupVerificationCycle;
+  assertHeadscaleApiKeyHealthy: WorkerAssertHeadscaleApiKeyHealthy;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -248,6 +251,7 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/lib/utils/with-timeout"),
       import("@elizaos/cloud-shared/lib/services/node-disk-manager"),
       import("@elizaos/cloud-shared/lib/services/agent-backup-verifier"),
+      import("@elizaos/cloud-shared/lib/services/headscale-api-key-health"),
     ]).then(
       ([
         jobsModule,
@@ -265,6 +269,7 @@ async function loadDeps(): Promise<WorkerDeps> {
         withTimeoutModule,
         nodeDiskManagerModule,
         backupVerifierModule,
+        headscaleApiKeyHealthModule,
       ]) => ({
         provisioningJobService: jobsModule.provisioningJobService,
         logger: loggerModule.logger,
@@ -286,6 +291,8 @@ async function loadDeps(): Promise<WorkerDeps> {
         processNodeDiskCleanup: nodeDiskManagerModule.processNodeDiskCleanup,
         runBackupVerificationCycle:
           backupVerifierModule.runBackupVerificationCycle,
+        assertHeadscaleApiKeyHealthy:
+          headscaleApiKeyHealthModule.assertHeadscaleApiKeyHealthy,
       }),
     );
   }
@@ -689,6 +696,19 @@ async function processNodeDiskCleanupCycle(): Promise<NodeDiskCleanupSummary> {
 }
 
 /**
+ * Exercise the real authenticated Headscale API boundary used by dedicated
+ * provisioning. The unauthenticated `/health` endpoint stays green when an API
+ * key expires, so only this read-only `/api/v1/user` probe can detect the drift
+ * before every new agent fails enrollment. Exported for the daemon wiring test.
+ */
+export async function processHeadscaleApiKeyHealthCycle(): Promise<
+  Awaited<ReturnType<WorkerAssertHeadscaleApiKeyHealthy>>
+> {
+  const { assertHeadscaleApiKeyHealthy } = await loadDeps();
+  return assertHeadscaleApiKeyHealthy();
+}
+
+/**
  * Verify a bounded sample of stored agent backups is actually RESTORABLE with
  * the current KMS keys (#15603 B5): decrypt the newest backup per agent,
  * replay incremental chains, validate content/manifest hashes, stamp the
@@ -1077,6 +1097,14 @@ assertWatchdogInvariant();
  */
 let preflightOk = false;
 
+/**
+ * Authenticated Headscale health is independent from the KMS preflight. A
+ * running Headscale process with an expired admin key cannot enroll agents, so
+ * the heartbeat gate requires both signals and fails closed after a periodic
+ * probe detects key drift.
+ */
+let headscaleApiKeyOk = false;
+
 /** Wall-clock of the last `pollCycle` that returned. Drives the watchdog. */
 let lastCycleCompletedAt = Date.now();
 
@@ -1226,7 +1254,7 @@ function startHeartbeatInterval(
     if (heartbeatPublishInFlight) return;
     heartbeatPublishInFlight = true;
     void maybePublishHeartbeat(logger, {
-      preflightOk,
+      preflightOk: preflightOk && headscaleApiKeyOk,
       lastCycleCompletedAt,
     })
       .then(({ watchdogTripped }) => {
@@ -1477,6 +1505,31 @@ async function runInfraMaintenanceCycle(
     "db liveness check cycle",
     () => processDbLivenessCheckCycle(config),
     (assessment) => logJobsTableLiveness(logger, assessment),
+  );
+
+  await runBoundedPhase(
+    logger,
+    "Headscale API key health cycle",
+    async () => {
+      try {
+        const health = await processHeadscaleApiKeyHealthCycle();
+        headscaleApiKeyOk = true;
+        return health;
+      } catch (error) {
+        // error-policy:J7 the shared monitor already pages; keep the maintenance loop alive but fail the heartbeat gate closed.
+        headscaleApiKeyOk = false;
+        throw error;
+      }
+    },
+    (health) => {
+      logger.info(
+        "[provisioning-worker] Headscale API key health check passed",
+        {
+          endpoint: health.endpoint,
+          status: health.status,
+        },
+      );
+    },
   );
 
   await runBoundedPhase(
@@ -1741,8 +1794,12 @@ async function main(): Promise<void> {
     throw error;
   }
 
+  await processHeadscaleApiKeyHealthCycle();
+  headscaleApiKeyOk = true;
   preflightOk = true;
-  logger.info("[provisioning-worker] startup preflight passed");
+  logger.info("[provisioning-worker] startup preflight passed", {
+    headscaleApiKeyAuthenticated: true,
+  });
 
   // #15160 guard, startup half: right after the preflight, check that the
   // jobs table this DATABASE_URL points at has been written to recently.

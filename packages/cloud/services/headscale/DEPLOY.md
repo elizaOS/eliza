@@ -56,6 +56,16 @@ The workflow:
 5. restarts `headscale` and `eliza-provisioning-worker.service`;
 6. fails if local `/health` is not green.
 
+The provisioning worker adds the credential-level check that `/health` cannot:
+it calls authenticated `GET /api/v1/user` before publishing its first heartbeat
+and repeats the probe on every infra-maintenance sweep. A 401/403 pages the
+configured `PROVISIONING_ALERT_*` channels under the stable
+`headscale-api-key-unhealthy` incident key, stops heartbeat publication, and
+causes provisioning to fail closed. After rotating a key, rerun the arm workflow
+to reconcile the control-plane daemon, update the matching Cloudflare Worker
+secret through the normal Worker secret path, then confirm the worker startup log contains
+`headscaleApiKeyAuthenticated: true`.
+
 The matching Cloudflare Worker secrets still need to be set through the normal
 Worker secret path. Keep host and Worker values identical for
 `HEADSCALE_API_KEY`, `AGENT_TOKEN_PRIVATE_KEY_PEM`, and `ELIZA_LOCAL_ROOT_KEY`;
