@@ -485,4 +485,53 @@ describe("transcriptKnowledgeFragments", () => {
     expect(fragments[0].metadata.segmentIds).toEqual(["s2"]);
     expect(fragments[0].metadata.startMs).toBe(1200);
   });
+
+  it("rejects a non-positive or non-finite maxChars", () => {
+    expect(() => transcriptKnowledgeFragments(segs, 0)).toThrow(/maxChars/);
+    expect(() => transcriptKnowledgeFragments(segs, -5)).toThrow(/maxChars/);
+    expect(() => transcriptKnowledgeFragments(segs, Number.NaN)).toThrow(
+      /maxChars/,
+    );
+  });
+
+  it("rejects a non-empty segment with invalid timing (fail fast)", () => {
+    // endMs before startMs — a broken ASR segment must not silently become a
+    // fragment claiming a garbage audio span.
+    const inverted: TranscriptSegment[] = [
+      { id: "bad", startMs: 2000, endMs: 100, text: "oops", words: [] },
+    ];
+    expect(() => transcriptKnowledgeFragments(inverted)).toThrow(
+      /invalid timing/,
+    );
+
+    const negative: TranscriptSegment[] = [
+      { id: "neg", startMs: -1, endMs: 100, text: "oops", words: [] },
+    ];
+    expect(() => transcriptKnowledgeFragments(negative)).toThrow(
+      /invalid timing/,
+    );
+
+    const nan: TranscriptSegment[] = [
+      { id: "nan", startMs: Number.NaN, endMs: 100, text: "oops", words: [] },
+    ];
+    expect(() => transcriptKnowledgeFragments(nan)).toThrow(/invalid timing/);
+  });
+
+  it("rejects a non-empty segment missing a stable id", () => {
+    const noId: TranscriptSegment[] = [
+      { id: "", startMs: 0, endMs: 100, text: "oops", words: [] },
+    ];
+    expect(() => transcriptKnowledgeFragments(noId)).toThrow(/stable id/);
+  });
+
+  it("ignores invalid timing on empty-text segments (they are skipped)", () => {
+    // An empty segment never becomes a fragment, so its timing is irrelevant.
+    const mixed: TranscriptSegment[] = [
+      { id: "empty", startMs: 999, endMs: 1, text: "  ", words: [] },
+      segs[1],
+    ];
+    const fragments = transcriptKnowledgeFragments(mixed);
+    expect(fragments).toHaveLength(1);
+    expect(fragments[0].metadata.segmentIds).toEqual(["s2"]);
+  });
 });
