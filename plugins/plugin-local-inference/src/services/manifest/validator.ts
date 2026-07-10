@@ -22,6 +22,7 @@
 // failing contract rule. This mirrors the publish-side gate in
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 
+import { type Eliza1TierId, eliza1PublishedTierSlug } from "@elizaos/shared";
 import {
 	collectQwenAsrProvenanceBlockers,
 	QWEN_PROVENANCE_RE,
@@ -337,7 +338,10 @@ function collectContractErrors(
 				);
 			}
 		} else {
-			const expectedDrafterPath = `mtp/drafter-${m.tier}.gguf`;
+			const publishedSlug = eliza1PublishedTierSlug(
+				`eliza-1-${m.tier}` as Eliza1TierId,
+			);
+			const expectedDrafterPath = `mtp/drafter-${publishedSlug}.gguf`;
 			if (m.files.mtp.length === 0) {
 				if (strictRelease) {
 					errors.push(

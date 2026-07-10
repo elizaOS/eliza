@@ -22,6 +22,8 @@ export {
 	ELIZA_1_TIER_PUBLISH_STATUS,
 	ELIZA_1_VISION_TIER_IDS,
 	type Eliza1TierId,
+	eliza1PublishedManifestId,
+	eliza1PublishedTierSlug,
 	eliza1TierPublishStatus,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,

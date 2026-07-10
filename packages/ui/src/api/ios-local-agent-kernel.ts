@@ -25,6 +25,8 @@ import {
 } from "@elizaos/shared/transcripts";
 import { getBootConfig } from "../config/boot-config-store";
 import {
+  type Eliza1TierId,
+  eliza1PublishedManifestId,
   findCatalogModel,
   MODEL_CATALOG,
 } from "../services/local-inference/catalog";
@@ -1652,7 +1654,7 @@ function parseIosBundleManifest(
     throw new Error("Invalid Eliza-1 manifest: expected object");
   }
   const raw = input as Partial<IosBundleManifest>;
-  if (raw.id !== model.id) {
+  if (raw.id !== eliza1PublishedManifestId(model.id as Eliza1TierId)) {
     throw new Error(`Invalid Eliza-1 manifest id for ${model.id}`);
   }
   if (raw.defaultEligible !== true || typeof raw.version !== "string") {
