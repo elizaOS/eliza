@@ -1,6 +1,6 @@
 /**
  * Atomically retires app-container rows with their durable delete jobs. The
- * container row is the serialization point, while migration 0175 repairs rows
+ * container row is the serialization point, while migration 0176 repairs rows
  * created before this invariant existed.
  */
 
