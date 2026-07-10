@@ -409,10 +409,14 @@ export class MeetingTranscriptWriter {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 64) || "transcript";
-    // Segment-boundary fragments carrying startMs/endMs anchors (#14806);
-    // `content` non-empty above guarantees at least one fragment.
-    const fragments = transcriptKnowledgeFragments(transcript.segments);
     try {
+      // Segment-boundary fragments carrying startMs/endMs anchors (#14806);
+      // `content` non-empty above guarantees at least one fragment. Computed
+      // inside the try: the fail-fast fragment validator throws on a malformed
+      // ASR segment (the meetings pipeline never enforces endMs >= startMs or
+      // NaN-freedom), and that throw must hit the J7 boundary below instead of
+      // escaping finalize() and stranding the already-finalized transcript row.
+      const fragments = transcriptKnowledgeFragments(transcript.segments);
       const res = await documents.addDocument({
         worldId: this.input.worldId,
         roomId: this.input.roomId,

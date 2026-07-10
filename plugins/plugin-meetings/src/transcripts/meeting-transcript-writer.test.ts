@@ -284,6 +284,74 @@ describe("MeetingTranscriptWriter — finalize edges", () => {
     }
   });
 
+  it("keeps the transcript row ready when a malformed segment rejects the knowledge mirror (J7 observed)", async () => {
+    // The meetings pipeline clamps negatives but never enforces
+    // endMs >= startMs or NaN-freedom, so a jittered ASR/diarization segment
+    // can reach finalize(). The fragment validator's fail-fast throw must be
+    // absorbed by the mirror's J7 boundary — finalize() has already set
+    // `finalized = true`, so an escaping throw would strand the row
+    // permanently non-ready, leave the WAV unreferenced for GC, and fail the
+    // whole session (the #16002 F1 regression).
+    const dir = mkdtempSync(join(tmpdir(), "meetings-malformed-"));
+    const prev = process.env.ELIZA_STATE_DIR;
+    process.env.ELIZA_STATE_DIR = dir;
+    try {
+      const fake = makeFakeRuntime();
+      const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+      await writer.start(START_INPUT);
+      const final = await writer.finalize({
+        segments: [
+          segment("s1", "Jill", "hello there", 0, 1_500),
+          // Inverted timing: endMs < startMs.
+          segment("s2", "Bob", "garbled diarization", 2_000, 100),
+        ],
+        endReason: "normal_completion",
+        participants: [{ id: "p1", displayName: "Jill" }],
+        audioWav: Buffer.from("RIFF-real-wav-payload-bytes"),
+      });
+
+      // The record survives: ready, parseable, audio reference written.
+      expect(final.status).toBe("ready");
+      expect(final.audioUrl).toMatch(/^\/api\/media\/[0-9a-f]{64}\.wav$/);
+      const row = fake.memories.get(writer.transcriptId) as Memory;
+      const readBack = transcriptsViewReader(row);
+      expect(readBack?.status).toBe("ready");
+      expect(readBack?.audioUrl).toBe(final.audioUrl);
+      expect(row.metadata).toMatchObject({ status: "ready" });
+
+      // The mirror was rejected before any document write, and the failure is
+      // OBSERVABLE through the J7 boundary rather than swallowed or escaping.
+      expect(final.knowledgeDocumentId).toBeUndefined();
+      expect(fake.documents).toHaveLength(0);
+      expect(fake.reportedErrors).toHaveLength(1);
+      expect(fake.reportedErrors[0].scope).toBe(
+        "MeetingTranscriptWriter.mirrorToKnowledge",
+      );
+      expect(fake.reportedErrors[0].context).toMatchObject({
+        transcriptId: writer.transcriptId,
+      });
+      expect(String(fake.reportedErrors[0].error)).toContain("invalid timing");
+
+      // Same containment for the NaN shape.
+      const fakeNaN = makeFakeRuntime();
+      const writerNaN = new MeetingTranscriptWriter(fakeNaN.runtime, 0);
+      await writerNaN.start(START_INPUT);
+      const finalNaN = await writerNaN.finalize({
+        segments: [segment("s1", "Jill", "hi", Number.NaN, 500)],
+        endReason: "normal_completion",
+        participants: [],
+        audioWav: null,
+      });
+      expect(finalNaN.status).toBe("ready");
+      expect(fakeNaN.documents).toHaveLength(0);
+      expect(fakeNaN.reportedErrors).toHaveLength(1);
+    } finally {
+      if (prev === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = prev;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("treats a zero-length audioWav buffer as no audio", async () => {
     const fake = makeFakeRuntime();
     const writer = new MeetingTranscriptWriter(fake.runtime, 0);
