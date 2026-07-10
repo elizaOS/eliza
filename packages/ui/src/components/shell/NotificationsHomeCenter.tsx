@@ -1523,6 +1523,11 @@ export function NotificationsHomeCenter({
   const collapseControlVisibility = shadeExpanded
     ? disposableContentVisibility
     : 0;
+  const showCollapseControl =
+    shadeExpanded &&
+    hasNotifications &&
+    expandedStacks.size === 0 &&
+    !shadeOpenedByStack;
   const clearControlVisibility = shadeExpanded
     ? disposableContentVisibility
     : previewingExpansion
@@ -1650,8 +1655,8 @@ export function NotificationsHomeCenter({
       <LiquidGlassRefractionDefs />
       {/* No "Notifications" header, no group eyebrows, no dividers: the
           physical gaps between card clusters ARE the grouping. Directional
-          pull gestures own the shade transition; footer commands scroll with
-          the list rather than floating over it. */}
+          pull gestures own the shade transition; the collapse command stays
+          pinned to the viewport while notification rows scroll beneath it. */}
       <ul
         ref={scrollRef}
         onPointerDown={onListPointerDown}
@@ -1678,7 +1683,8 @@ export function NotificationsHomeCenter({
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
-          "eliza-notif-scroll relative flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-10 pt-1",
+          "eliza-notif-scroll relative flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pt-1",
+          showCollapseControl ? "pb-2" : "pb-10",
           hasNotifications &&
             "scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem]",
           shadeClosing && "pointer-events-none",
@@ -1694,7 +1700,7 @@ export function NotificationsHomeCenter({
               opacity: clearControlVisibility,
               transform: `translate3d(0, ${(1 - clearControlVisibility) * -8}px, 0)`,
             }}
-            className="eliza-notif-shade-transition flex justify-end overflow-hidden px-1"
+            className="eliza-notif-shade-transition flex shrink-0 justify-end overflow-hidden px-1"
           >
             {shadeExpanded || previewingExpansion ? (
               <button
@@ -1975,29 +1981,29 @@ export function NotificationsHomeCenter({
             ? [groupElement, notificationCount]
             : [groupElement];
         })}
-        {shadeExpanded &&
-        hasNotifications &&
-        expandedStacks.size === 0 &&
-        !shadeOpenedByStack ? (
-          <li
-            style={{
-              opacity: collapseControlVisibility,
-              transform: `translateY(${(1 - collapseControlVisibility) * -4}px)`,
-            }}
-            className="eliza-notif-shade-transition -mt-4 flex justify-center px-3 motion-reduce:transform-none"
-          >
-            <button
-              type="button"
-              data-testid="notifications-collapse"
-              onClick={requestShadeCollapse}
-              className="flex min-h-touch items-center justify-center gap-1 px-2 text-2xs font-medium text-white/55 transition-colors hover:text-white/90"
-            >
-              Collapse
-              <ChevronUp aria-hidden className="h-3 w-3 shrink-0" />
-            </button>
-          </li>
-        ) : null}
       </ul>
+      {showCollapseControl ? (
+        <div
+          data-testid="notifications-collapse-footer"
+          aria-hidden={collapseControlVisibility === 0 ? true : undefined}
+          inert={collapseControlVisibility < 1 ? true : undefined}
+          style={{
+            opacity: collapseControlVisibility,
+            transform: `translateY(${(1 - collapseControlVisibility) * 4}px)`,
+          }}
+          className="eliza-notif-shade-transition pointer-events-none flex shrink-0 justify-center px-3 motion-reduce:transform-none"
+        >
+          <button
+            type="button"
+            data-testid="notifications-collapse"
+            onClick={requestShadeCollapse}
+            className="pointer-events-auto flex min-h-touch items-center justify-center gap-1 px-2 text-2xs font-medium text-white/55 transition-colors hover:text-white/90"
+          >
+            Collapse
+            <ChevronUp aria-hidden className="h-3 w-3 shrink-0" />
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

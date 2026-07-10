@@ -520,7 +520,7 @@ describe("ContinuousChatOverlay", () => {
       });
       vi.stubGlobal("ResizeObserver", TestResizeObserver);
       rectSpy.mockReturnValue({
-        width: 208,
+        width: 360,
         height: 72,
         x: 0,
         y: 0,
@@ -540,7 +540,7 @@ describe("ContinuousChatOverlay", () => {
         document.documentElement.style.getPropertyValue(
           "--eliza-continuous-chat-side-clearance",
         ),
-      ).toBe("232px");
+      ).toBe("384px");
 
       fireEvent.focus(screen.getByLabelText("message"));
 
@@ -561,6 +561,71 @@ describe("ContinuousChatOverlay", () => {
       document.documentElement.style.removeProperty(
         "--eliza-continuous-chat-side-clearance",
       );
+    }
+  });
+
+  it("recomputes the resting composer after portrait-landscape rotation", async () => {
+    const originalInnerWidth = Object.getOwnPropertyDescriptor(
+      window,
+      "innerWidth",
+    );
+    const originalInnerHeight = Object.getOwnPropertyDescriptor(
+      window,
+      "innerHeight",
+    );
+
+    try {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 390,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 844,
+      });
+      render(<ContinuousChatOverlay controller={makeController()} />);
+
+      const overlay = screen.getByTestId("continuous-chat-overlay");
+      const wrapper = screen.getByTestId("chat-sheet").parentElement;
+      expect(wrapper?.style.maxWidth).toBe("768px");
+      expect(overlay.className).toContain("items-center");
+
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 844,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 390,
+      });
+      act(() => window.dispatchEvent(new Event("orientationchange")));
+
+      await waitFor(() => {
+        expect(wrapper?.style.maxWidth).toBe("360px");
+        expect(overlay.className).toContain("items-end");
+      });
+
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 390,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 844,
+      });
+      act(() => window.dispatchEvent(new Event("orientationchange")));
+
+      await waitFor(() => {
+        expect(wrapper?.style.maxWidth).toBe("768px");
+        expect(overlay.className).toContain("items-center");
+      });
+    } finally {
+      if (originalInnerWidth) {
+        Object.defineProperty(window, "innerWidth", originalInnerWidth);
+      }
+      if (originalInnerHeight) {
+        Object.defineProperty(window, "innerHeight", originalInnerHeight);
+      }
     }
   });
 
@@ -692,11 +757,10 @@ describe("ContinuousChatOverlay", () => {
     expect(grabber.className).toContain("before:bottom-0");
   });
 
-  // #14331: the overlay mic must pulse whenever a live capture is hot, so its
-  // motion agrees with the accent color (previously it only recolored, never
-  // pulsed, while every sibling surface pulsed). Reduced-motion falls back to the
-  // static accent. The pill/grabber pulse already shipped; pin it here.
-  describe("mic + pill pulse while capture is hot (#14331)", () => {
+  // #14331: the waveform pulses whenever capture is hot, but only turns orange
+  // when its own conversation mode is active. Transcription belongs to the
+  // adjacent mic and must not recolor this separate control.
+  describe("waveform + pill pulse while capture is hot (#14331)", () => {
     it("does not pulse the mic while idle (neutral resting, no motion)", () => {
       render(<ContinuousChatOverlay controller={makeController()} />);
       const mic = screen.getByTestId("chat-composer-mic");
@@ -704,16 +768,26 @@ describe("ContinuousChatOverlay", () => {
       expect(mic.className).not.toContain("text-accent");
     });
 
+    it("pulses the accent waveform while hands-free conversation is active", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({ handsFree: true })}
+        />,
+      );
+      const waveform = screen.getByTestId("chat-composer-mic");
+      expect(waveform.className).toContain("animate-pulse");
+      expect(waveform.className).toContain("motion-reduce:animate-none");
+      expect(waveform.className).toContain("text-accent");
+    });
+
     it.each([
       ["recording", { recording: true }],
-      ["hands-free", { handsFree: true }],
       ["transcribing", { transcriptionMode: true }],
-    ] as const)("pulses the accent mic while %s", (_label, override) => {
+    ] as const)("keeps the pulsing waveform neutral while %s", (_label, override) => {
       render(<ContinuousChatOverlay controller={makeController(override)} />);
-      const mic = screen.getByTestId("chat-composer-mic");
-      expect(mic.className).toContain("animate-pulse");
-      expect(mic.className).toContain("motion-reduce:animate-none");
-      expect(mic.className).toContain("text-accent");
+      const waveform = screen.getByTestId("chat-composer-mic");
+      expect(waveform.className).toContain("animate-pulse");
+      expect(waveform.className).not.toContain("text-accent");
     });
 
     it("drops the pulse the moment the capture predicate clears", () => {
@@ -735,7 +809,7 @@ describe("ContinuousChatOverlay", () => {
       );
     });
 
-    it("shimmers the collapsed pill bar in white only while listening", () => {
+    it("breathes the collapsed pill bar in white only while listening", () => {
       const { rerender } = render(
         <ContinuousChatOverlay controller={makeController()} />,
       );
@@ -743,11 +817,11 @@ describe("ContinuousChatOverlay", () => {
       const spanOf = () =>
         screen.getByTestId("chat-pill").querySelector("span");
       const barOf = () => spanOf()?.className ?? "";
-      expect(barOf()).not.toContain("shimmer");
+      expect(barOf()).not.toContain("eliza-chat-handle-breathe");
       // Resting bar color is an explicit white inline style (not the
       // `bg-muted-strong` token, which resolved dark/black on the grabber that
       // renders outside the panel theme) — kept identical to the grabber bar.
-      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.86)");
+      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
       rerender(
         <ContinuousChatOverlay
           controller={makeController({ phase: "listening", recording: true })}
@@ -758,11 +832,12 @@ describe("ContinuousChatOverlay", () => {
       fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 1 });
       fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
       expect(sheet.getAttribute("data-detent")).toBe("pill");
-      expect(barOf()).toContain("shimmer");
-      expect(barOf()).toContain("text-white/45");
+      expect(barOf()).toContain("eliza-chat-handle-breathe");
+      expect(barOf()).not.toContain("shimmer");
+      expect(barOf()).not.toContain("background-clip");
       expect(barOf()).not.toContain("bg-accent");
       expect(barOf()).not.toContain("animate-pulse");
-      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.86)");
+      expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
     });
   });
 
@@ -1100,11 +1175,11 @@ describe("ContinuousChatOverlay", () => {
     }
     unmount();
 
-    // Active (recording): distinguishable via accent icon color + pulse — never
+    // Active (hands-free): distinguishable via accent icon color + pulse — never
     // by reintroducing a background/border fill on the resting-style control.
     render(
       <ContinuousChatOverlay
-        controller={makeController({ recording: true })}
+        controller={makeController({ handsFree: true })}
       />,
     );
     const mic = screen.getByTestId("chat-composer-mic");
@@ -1277,17 +1352,25 @@ describe("ContinuousChatOverlay", () => {
     expect(thread?.querySelector('[data-message-id^="temp-"]')).toBeNull();
   });
 
-  it("anchors the in-flight status row as an assistant-aligned transcript row", () => {
+  it("composes the in-flight status as a busy transcript row", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({ phase: "responding", responding: true })}
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    // The status indicator sits inside a left-aligned, full-width assistant row.
-    const row = screen.getByTestId("turn-status-indicator").closest(".w-full");
+    const viewport = screen.getByTestId("chat-thread-scroll");
+    const content = viewport.querySelector<HTMLElement>(
+      '[data-slot="message-scroller-content"]',
+    );
+    const row = screen
+      .getByTestId("turn-status-indicator")
+      .closest<HTMLElement>('[data-slot="message-scroller-item"]');
+    expect(viewport.getAttribute("aria-live")).toBeNull();
+    expect(content?.getAttribute("role")).toBe("log");
+    expect(content?.getAttribute("aria-busy")).toBe("true");
+    expect(row?.parentElement).toBe(content);
     expect(row?.className).toContain("w-full");
-    expect(row?.className).toContain("justify-start");
   });
 
   it("closes the sheet on Escape", () => {
@@ -1806,7 +1889,7 @@ describe("ContinuousChatOverlay", () => {
     ).toHaveLength(0);
   });
 
-  it("anchors a new user turn without restarting a smooth stream scroll", async () => {
+  it("keeps a new user turn at the live bottom", async () => {
     const base = [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }];
     const { rerender } = render(
       <ContinuousChatOverlay
@@ -1823,9 +1906,8 @@ describe("ContinuousChatOverlay", () => {
       scrollHeight: { configurable: true, get: () => scrollHeight },
       scrollTop: { configurable: true, value: 300, writable: true },
     });
-    // shadcn's MessageScroller anchors a new user turn with an immediate scroll
-    // and reserves smooth scrolling for explicit navigation. That keeps streamed
-    // token growth from restarting a smooth animation on every frame.
+    // Messaging-style follow: a new user turn stays at the live bottom instead
+    // of using shadcn's optional turn-anchor behavior to move it near the top.
     const scrollTo = vi.fn();
     Element.prototype.scrollTo = scrollTo as unknown as Element["scrollTo"];
     try {
@@ -1842,8 +1924,48 @@ describe("ContinuousChatOverlay", () => {
       );
       await waitFor(() => {
         expect(scrollTo).toHaveBeenCalledWith(
-          expect.objectContaining({ behavior: "auto" }),
+          expect.objectContaining({ behavior: "auto", top: 400 }),
         );
+      });
+      expect(
+        document
+          .querySelector('[data-message-id="b"]')
+          ?.getAttribute("data-scroll-anchor"),
+      ).toBe("false");
+    } finally {
+      delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
+    }
+  });
+
+  it("returns to the live bottom when the user sends from history", async () => {
+    const controller = makeController();
+    const scrollTo = vi.fn();
+    Element.prototype.scrollTo = scrollTo as unknown as Element["scrollTo"];
+    try {
+      render(<ContinuousChatOverlay controller={controller} />);
+      const input = screen.getByLabelText("message");
+      fireEvent.focus(input);
+
+      const viewport = screen.getByTestId("chat-thread-scroll");
+      Object.defineProperties(viewport, {
+        clientHeight: { configurable: true, value: 100 },
+        scrollHeight: { configurable: true, value: 500 },
+        scrollTop: { configurable: true, value: 120, writable: true },
+      });
+      // A wheel/touch/key scroll opts out of automatic following while reading
+      // history. An explicit send must opt back into the live conversation.
+      fireEvent.wheel(viewport, { deltaY: -40 });
+      scrollTo.mockClear();
+
+      fireEvent.change(input, { target: { value: "back to live" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+
+      expect(controller.send).toHaveBeenCalledWith("back to live");
+      await waitFor(() => {
+        expect(scrollTo).toHaveBeenCalledWith({
+          behavior: "auto",
+          top: 400,
+        });
       });
     } finally {
       delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
@@ -2322,7 +2444,7 @@ describe("ContinuousChatOverlay", () => {
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the mic button ON while transcribing (additive, not a takeover)", () => {
+  it("keeps the waveform available but neutral while the mic transcribes", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -2331,9 +2453,10 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    const mic = screen.getByTestId("chat-composer-mic");
-    // The mic stays active (lit) the whole time transcription runs.
-    expect(mic.getAttribute("aria-pressed")).toBe("true");
+    const waveform = screen.getByTestId("chat-composer-mic");
+    expect(waveform.getAttribute("aria-pressed")).toBe("false");
+    expect(waveform.className).toContain("animate-pulse");
+    expect(waveform.className).not.toContain("text-accent");
   });
 
   it("a mic tap while transcribing ends transcription, never starts a conversation", () => {

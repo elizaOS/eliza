@@ -297,7 +297,9 @@ describe("interrupt priority projection", () => {
 
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.scrollTop).toBe(0);
-    expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
+    const clearAll = screen.getByTestId("notifications-clear-all");
+    expect(clearAll).toBeTruthy();
+    expect(clearAll.closest("li")?.className).toContain("shrink-0");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
     expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
     expect(screen.getByText("Calendar summary")).toBeTruthy();
@@ -1282,9 +1284,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(clearSlot.style.height).toBe("32px");
     expect(clearSlot.style.marginBottom).toBe("0px");
     expect(collapse.textContent).toContain("Collapse");
-    expect(collapse.parentElement).toBe(list.lastElementChild);
-    expect(collapse.parentElement?.className).toContain("-mt-4");
-    expect(list.className).toContain("pb-10");
+    const collapseFooter = screen.getByTestId("notifications-collapse-footer");
+    expect(collapseFooter.parentElement).toBe(
+      screen.getByTestId("home-notification-center"),
+    );
+    expect(collapseFooter.contains(collapse)).toBe(true);
+    expect(list.contains(collapse)).toBe(false);
+    expect(collapseFooter.className).toContain("shrink-0");
+    expect(collapseFooter.className).not.toContain("absolute");
+    expect(list.className).toContain("pb-2");
     expect(list.className).toContain("scroll-fade");
     expect(list.className).toContain("scroll-fade-b-[1.5rem]");
     fireEvent.click(collapse);

@@ -259,14 +259,16 @@ export function HomeScreen({
           </div>
 
           {/* The prioritized data widgets (#9143). With notifications present
-            they sit at natural height directly beneath the (grown) inbox. With
+            they keep a modest height beneath the inbox, leaving a clear gesture
+            area above the chat instead of letting notifications consume every
+            remaining pixel. With
             an EMPTY inbox this reclaims the `flex-1` breathing region and centres
             its content, so a quiet home reads as calm airiness rather than a
             broken gap. A little padding sets the stack apart as its own section. */}
           <div
             className={cn(
               enterClass,
-              "flex min-h-24 flex-col py-6",
+              "flex min-h-32 flex-col py-6",
               !hasNotifications && "flex-1 justify-center",
             )}
             style={{ animationDelay: "110ms" }}

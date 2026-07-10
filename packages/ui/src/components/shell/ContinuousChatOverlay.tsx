@@ -131,6 +131,7 @@ import {
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
+  useMessageScroller,
 } from "../ui/message-scroller";
 import { Textarea } from "../ui/textarea";
 import {
@@ -269,9 +270,7 @@ const CHAT_PANEL_THEME = {
 // light surface, making the handle render BLACK (the "handle is black sometimes"
 // bug: the open-sheet grabber was black while the in-panel pill bar was white).
 // Fixed white matches the panel's `--muted-strong` in every context.
-const HANDLE_BAR_COLOR = "rgba(255, 255, 255, 0.86)";
-const HANDLE_SHIMMER_CLASS =
-  "shimmer text-white/45 [--shimmer-color:rgba(255,255,255,1)] [--shimmer-duration:1400ms] [--shimmer-spread:24px] [background-clip:border-box] [-webkit-background-clip:border-box] motion-reduce:shimmer-none";
+const HANDLE_BAR_COLOR = "rgba(255, 255, 255, 0.96)";
 
 // Shared easing for the overlay's cheap motion path. Open/close must stay
 // opacity/translate only: animating blur/filter or scaling a scrollable
@@ -321,6 +320,11 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+// A landscape phone still needs room for the attach, mic, voice, and text
+// controls. The old 208px cap squeezed the editable field to ~46px and made a
+// rotation look like the composer had broken. Keep the corner treatment, but
+// preserve the same useful width as a portrait-phone composer.
+const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 360;
 // Ceiling (px) for the composer-footprint clearance the chat reserves in the
 // home/launcher layout. The panel can momentarily measure its OPEN/animating
 // height on the drag-down→collapse edge; publishing that as the reserved space
@@ -603,14 +607,14 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
  * pull DOWN to close it. It is also keyboard-operable (Enter/Space toggles,
  * ArrowUp opens, ArrowDown/Escape closes) so the drag-only affordance stays
  * WCAG 2.1.1 operable. `touch-none` keeps the browser from scroll/refreshing
- * mid-drag. A subtle white sheen rides the handle while the agent is live.
+ * mid-drag. A subtle white breath marks live agent work.
  */
 function SheetGrabber({
   open,
   onOpen,
   onClose,
   binding,
-  shimmering,
+  breathing,
   opacity,
   pilled,
   inert,
@@ -619,7 +623,7 @@ function SheetGrabber({
   onOpen: () => void;
   onClose: () => void;
   binding: PullGestureBinding;
-  shimmering: boolean;
+  breathing: boolean;
   // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
   // handle, fading to 1 only AFTER the pill has fully faded out — so the grabber
   // bar and the (identical) pill bar are NEVER both visible (the "two pills" bug).
@@ -687,9 +691,9 @@ function SheetGrabber({
           // together. The bar paints at full opacity — a prior regression pinned
           // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // A white shadcn shimmer marks live agent work without recoloring the
-          // grabber or competing with the composer's orange recording cue.
-          shimmering && HANDLE_SHIMMER_CLASS,
+          // A dedicated opacity/scale breath marks live agent work without
+          // repurposing shadcn's text-only shimmer utility.
+          breathing && "eliza-chat-handle-breathe",
         )}
         // Explicit fixed color (see HANDLE_BAR_COLOR) so the grabber — rendered
         // outside the panel theme — never inherits a dark ambient token.
@@ -707,12 +711,12 @@ function SheetGrabber({
 function PillHandle({
   binding,
   onOpen,
-  shimmering,
+  breathing,
   pilled,
 }: {
   binding: PullGestureBinding;
   onOpen: () => void;
-  shimmering: boolean;
+  breathing: boolean;
   // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
   // and wide and sits directly over the composer textarea; if it kept
   // `pointer-events-auto` while NOT pilled it would intercept the tap meant for
@@ -763,8 +767,8 @@ function PillHandle({
           // The bar paints at full opacity — a prior regression pinned it to
           // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Same white work-state shimmer as the SheetGrabber bar.
-          shimmering && HANDLE_SHIMMER_CLASS,
+          // Same compositor-only work-state breath as the SheetGrabber bar.
+          breathing && "eliza-chat-handle-breathe",
         )}
         // Same explicit color as the grabber bar so the two are pixel-identical
         // through the crossfade (HANDLE_BAR_COLOR).
@@ -772,6 +776,18 @@ function PillHandle({
       />
     </Button>
   );
+}
+
+/** Forces the canonical shadcn scroller to the end after an explicit send. */
+function MessageScrollerSendFollow({ request }: { request: number }) {
+  const { scrollToEnd } = useMessageScroller();
+
+  React.useLayoutEffect(() => {
+    if (request === 0) return;
+    scrollToEnd({ behavior: "auto" });
+  }, [request, scrollToEnd]);
+
+  return null;
 }
 
 /**
@@ -1767,6 +1783,7 @@ export function ContinuousChatOverlay({
   // streamed-content growth. The ref remains local because search, keyboard
   // focus, topic jumps, and infinite-history prefetch address the same viewport.
   const threadRef = React.useRef<HTMLDivElement>(null);
+  const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
   // Focus the thread for keyboard scrolling when an opener requested it —
   // consumed on the reveal edge, separate from the scroll engine above.
   React.useLayoutEffect(() => {
@@ -2009,12 +2026,7 @@ export function ContinuousChatOverlay({
             }
           : undefined;
       return (
-        <MessageScrollerItem
-          key={m.id}
-          messageId={m.id}
-          scrollAnchor={m.role === "user"}
-          className="w-full"
-        >
+        <MessageScrollerItem key={m.id} messageId={m.id} className="w-full">
           <ChatMessage
             appearance="glass"
             enterOnMount={m.id.startsWith("temp-")}
@@ -2164,6 +2176,10 @@ export function ContinuousChatOverlay({
       } else {
         send(trimmed);
       }
+      // Sending is an explicit return to the live edge, even if the reader had
+      // scrolled into history. Once there, MessageScroller's auto-follow keeps
+      // streamed growth and the arriving reply pinned to the composer.
+      setScrollToEndRequest((request) => request + 1);
       // Open the thread to show the conversation + the streaming reply, the same
       // HALF detent focusing/typing uses — NOT a full-screen takeover on every
       // send (that shoved the messages up too high). Keep a taller detent if the
@@ -2410,18 +2426,32 @@ export function ContinuousChatOverlay({
     // soft-keyboard animation; settling on those events fights typing, detent
     // drags, and keyboard open/close. For vv resize/scroll, update measurements
     // only and let the current sheet state remain authoritative.
+    let settleFrame: number | null = null;
     const syncAndSettleWindow = () => {
       sync();
-      settleDragRef.current?.();
+      if (settleFrame !== null) window.cancelAnimationFrame(settleFrame);
+      // orientationchange may arrive before innerWidth/innerHeight and the
+      // visual viewport have reached their final values. Measure now, measure
+      // once more on the next frame, then settle against the committed layout.
+      settleFrame = window.requestAnimationFrame(() => {
+        sync();
+        settleFrame = window.requestAnimationFrame(() => {
+          settleFrame = null;
+          settleDragRef.current?.();
+        });
+      });
     };
     syncAndSettleWindow();
     const vv = window.visualViewport;
     window.addEventListener("resize", syncAndSettleWindow);
+    window.addEventListener("orientationchange", syncAndSettleWindow);
     vv?.addEventListener("resize", sync);
     vv?.addEventListener("scroll", sync, { passive: true });
     return () => {
       cancelViewportSync();
+      if (settleFrame !== null) window.cancelAnimationFrame(settleFrame);
       window.removeEventListener("resize", syncAndSettleWindow);
+      window.removeEventListener("orientationchange", syncAndSettleWindow);
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
     };
@@ -2769,7 +2799,9 @@ export function ContinuousChatOverlay({
   // maximize COMMITTED — on desktop the background jumped 768px → viewport on
   // release instead of growing under the finger. The content columns inside
   // stay pinned at the reading width, so only the glass grows.
-  const wrapperBaseMaxW = compactLanding ? 208 : 768;
+  const wrapperBaseMaxW = compactLanding
+    ? SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX
+    : 768;
   const wrapperMaxW = useTransform(
     fullBleedT,
     (t) =>
@@ -4916,7 +4948,7 @@ export function ContinuousChatOverlay({
             // next to the user's attention; a second pulsing bar above them
             // read as noise. Only the collapsed PILL (where no composer glyph
             // is visible) pulses for a live capture — see PillHandle below.
-            shimmering={(listening || responding) && !recording}
+            breathing={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
             inert={!sheetOpen && (hasImages || Boolean(imageError))}
@@ -5309,6 +5341,7 @@ export function ContinuousChatOverlay({
                   autoScroll={!firstRunOpen}
                   defaultScrollPosition={firstRunOpen ? "start" : "end"}
                 >
+                  <MessageScrollerSendFollow request={scrollToEndRequest} />
                   <MessageScroller>
                     <motion.div
                       className="flex size-full min-h-0 flex-col"
@@ -5320,7 +5353,6 @@ export function ContinuousChatOverlay({
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
                         aria-label="conversation history"
-                        aria-live="polite"
                         aria-hidden={!sheetOpen ? true : undefined}
                         tabIndex={sheetOpen ? 0 : -1}
                         onKeyDown={(e) => {
@@ -5363,6 +5395,7 @@ export function ContinuousChatOverlay({
                   like the first turn in a conversation. */}
                         <MessageScrollerContent
                           ref={threadContentRef}
+                          aria-busy={responding}
                           className={cn(
                             "flex flex-col gap-0",
                             firstRunOpen
@@ -5407,9 +5440,6 @@ export function ContinuousChatOverlay({
                                         segment.messages[0]?.id ?? segment.key
                                       }
                                       messageId={`topic:${segment.messages[0]?.id ?? segment.key}`}
-                                      scrollAnchor={
-                                        segment.messages[0]?.role === "user"
-                                      }
                                       className="w-full"
                                     >
                                       <TopicGroup
@@ -5454,10 +5484,15 @@ export function ContinuousChatOverlay({
                               visibleMessages.at(-1)?.role === "assistant" &&
                               !visibleMessages.at(-1)?.content.trim()
                             ) ? (
-                              <TurnStatusIndicator
-                                status={turnStatus}
-                                reduce={reduce}
-                              />
+                              <MessageScrollerItem
+                                key="turn-status"
+                                className="w-full"
+                              >
+                                <TurnStatusIndicator
+                                  status={turnStatus}
+                                  reduce={reduce}
+                                />
+                              </MessageScrollerItem>
                             ) : null}
                           </AnimatePresence>
                         </MessageScrollerContent>
@@ -5886,7 +5921,11 @@ export function ContinuousChatOverlay({
                       // Voice input is free text too — locked with the rest of
                       // the composer while onboarding is choice-driven.
                       disabled={firstRunOpen}
-                      active={recording || handsFree || transcriptionMode}
+                      // The adjacent mic owns transcription. Keep this waveform
+                      // neutral when that separate control starts recording;
+                      // orange active state belongs only to conversation mode
+                      // initiated by this waveform (or its push-to-talk hold).
+                      active={handsFree || pttHolding}
                       pulse={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
                       onPointerDown={micHoldHandlers.onPointerDown}
@@ -5915,7 +5954,7 @@ export function ContinuousChatOverlay({
               // The pill IS the whole chat while collapsed, so it alone pulses
               // for a live mic capture (`recording`) — the open-sheet grabber
               // deliberately does not (the composer glyphs carry that cue).
-              shimmering={listening || responding || recording}
+              breathing={listening || responding || recording}
               pilled={pilled}
             />
           </motion.div>
