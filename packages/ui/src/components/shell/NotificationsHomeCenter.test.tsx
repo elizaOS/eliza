@@ -562,17 +562,20 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(peeks).toHaveLength(2);
     for (const peek of peeks) {
       expect(peek.className).toContain("eliza-notif-glass");
-      // Peeks are TAPPABLE (tap fans the stack) and blur with depth.
+      // Peeks are TAPPABLE (tap fans the stack) and remain crisp.
       expect(peek.tagName).toBe("BUTTON");
-      expect(peek.style.filter).toContain("blur(");
-      expect(peek.style.transform).toMatch(/translateY\(\d+px\) scale\(0\.9/);
+      expect(peek.style.filter).toBe("");
+      expect(peek.style.bottom).toBe("18px");
     }
     // Deeper cards sit lower in Z and protrude further.
     expect(Number(peeks[0].style.zIndex)).toBeGreaterThan(
       Number(peeks[1].style.zIndex),
     );
-    expect(peeks[0].style.transform).toContain("translateY(8px)");
-    expect(peeks[1].style.transform).toContain("translateY(16px)");
+    expect(peeks[0].style.opacity).toBe("0.88");
+    expect(peeks[1].style.opacity).toBe("0.72");
+    expect(peeks[0].style.transform).toBe("translateY(5px) scale(0.975)");
+    expect(peeks[1].style.transform).toBe("translateY(10px) scale(0.95)");
+    expect(stack.style.paddingBottom).toBe("18px");
     // The producer tile is vertically centered and carries the stack total.
     const sourceIcon = screen.getByTestId("notification-source-icon");
     expect(sourceIcon.className).toContain("h-10");
@@ -1157,7 +1160,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
-  it("a bottom-edge touch drag UP collapses an overflowing expanded shade", () => {
+  it("a bottom-edge touch drag stays scroll-owned while the expanded shade overflows", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
@@ -1168,7 +1171,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     fireEvent.touchMove(list, { touches: [{ clientX: 152, clientY: 330 }] });
     fireEvent.touchEnd(list, { touches: [] });
 
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.style.transform).toBe("");
   });
 
   it("an upward touch in the middle of overflowing content scrolls instead of collapsing", () => {

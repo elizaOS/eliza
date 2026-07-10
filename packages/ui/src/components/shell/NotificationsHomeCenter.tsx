@@ -110,13 +110,6 @@ const EMPTY_PULL_COMMIT_PX = PULL_COMMIT_PX / 2;
 /** Dead zone (px) before a vertical drag starts reading as a pull. */
 const PULL_SLOP_PX = 8;
 
-/**
- * Height of the upward-close gesture zone at the visible bottom of the shade.
- * This mirrors the iOS bottom-edge dismissal without stealing ordinary upward
- * scrolling from an overflowing notification list.
- */
-const SHADE_CLOSE_EDGE_PX = 96;
-
 const INTERACTIVE_GESTURE_TARGET_SELECTOR =
   "button, a, input, textarea, select, [role='button'], [contenteditable='true']";
 
@@ -145,7 +138,10 @@ const WHEEL_COMMIT_LOCK_MS = 360;
 const MAX_STACK_PEEKS = 2;
 
 /** Vertical offset (px) each successive peek card protrudes beneath the top. */
-const STACK_PEEK_OFFSET_PX = 8;
+const STACK_PEEK_OFFSET_PX = 5;
+
+/** Clear space after the final peek before the next notification group. */
+const STACK_BOTTOM_CLEARANCE_PX = 8;
 
 /**
  * Rubber-band a raw downward overscroll travel into the dampened pull the
@@ -841,7 +837,7 @@ export function NotificationsHomeCenter({
   );
 
   // Maintain the edge-fade attributes from real scroll geometry. Runs on
-  // scroll and whenever the row count changes (a dismiss can end the overflow).
+  // scroll and whenever content can change the scroll height.
   const syncEdgeFades = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -850,10 +846,10 @@ export function NotificationsHomeCenter({
     el.toggleAttribute("data-fade-top", canUp);
     el.toggleAttribute("data-fade-bottom", canDown);
   }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure when the row count changes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure after shade/stack layout changes
   useEffect(() => {
     syncEdgeFades();
-  }, [syncEdgeFades, notifications.length]);
+  }, [syncEdgeFades, notifications.length, shadeExpanded, expandedStacks]);
 
   // The pull gesture's TOUCH path binds native listeners: the list is a real
   // `touch-action: pan-y` scroller, so the browser claims a downward pan for
@@ -879,7 +875,6 @@ export function NotificationsHomeCenter({
     // jump the shade by the pre-top travel and instantly commit.
     let expandAnchorY: number | null = null;
     let collapseAnchorY: number | null = null;
-    let closeFromBottomEdge = false;
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
       const target = e.target;
@@ -887,7 +882,6 @@ export function NotificationsHomeCenter({
         start = null;
         expandAnchorY = null;
         collapseAnchorY = null;
-        closeFromBottomEdge = false;
         return;
       }
       start =
@@ -902,24 +896,10 @@ export function NotificationsHomeCenter({
         gestureTarget.scrollHeight - gestureTarget.clientHeight,
       );
       const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
-      const viewportBottom =
-        window.visualViewport?.height ?? window.innerHeight;
-      const visibleBottom = Math.min(
-        gestureTarget.getBoundingClientRect().bottom,
-        viewportBottom,
-      );
-      closeFromBottomEdge = Boolean(
-        start &&
-          shadeGestureRef.current.canCollapse &&
-          start.y >= visibleBottom - SHADE_CLOSE_EDGE_PX,
-      );
       collapseAnchorY =
         start &&
         shadeGestureRef.current.canCollapse &&
-        (usesEmptyBackground ||
-          closeFromBottomEdge ||
-          maxScrollTop <= 1 ||
-          atBottom)
+        (usesEmptyBackground || maxScrollTop <= 1 || atBottom)
           ? start.y
           : null;
     };
@@ -933,16 +913,14 @@ export function NotificationsHomeCenter({
         start = null;
         expandAnchorY = null;
         collapseAnchorY = null;
-        closeFromBottomEdge = false;
         return;
       }
       const { canExpand, canCollapse } = shadeGestureRef.current;
       if (dy < -PULL_SLOP_PX) {
-        // An upward push closes from the shade's visible bottom edge. Elsewhere
-        // the pan-y scroller keeps ordinary upward scrolling; once it reaches
-        // the list end, additional travel becomes an overscroll-to-close. The
-        // anchor is rebased at that boundary so the scroll travel itself never
-        // counts toward the close threshold.
+        // The pan-y scroller owns upward travel while content remains below.
+        // Once it reaches the list end, additional travel becomes an
+        // overscroll-to-close. The anchor is rebased at that boundary so the
+        // scroll travel itself never counts toward the close threshold.
         const maxScrollTop = Math.max(
           0,
           gestureTarget.scrollHeight - gestureTarget.clientHeight,
@@ -950,10 +928,7 @@ export function NotificationsHomeCenter({
         const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
         if (
           canCollapse &&
-          (usesEmptyBackground ||
-            closeFromBottomEdge ||
-            maxScrollTop <= 1 ||
-            atBottom)
+          (usesEmptyBackground || maxScrollTop <= 1 || atBottom)
         ) {
           if (collapseAnchorY === null) collapseAnchorY = t.clientY;
           const push = collapseAnchorY - t.clientY;
@@ -991,7 +966,6 @@ export function NotificationsHomeCenter({
       start = null;
       expandAnchorY = null;
       collapseAnchorY = null;
-      closeFromBottomEdge = false;
       commitPull();
     };
     const onTouchCancel = () => {
@@ -1001,7 +975,6 @@ export function NotificationsHomeCenter({
       start = null;
       expandAnchorY = null;
       collapseAnchorY = null;
-      closeFromBottomEdge = false;
       setPullPx(0);
     };
     const onEmptyBackgroundWheel = (e: WheelEvent) => {
@@ -1315,6 +1288,9 @@ export function NotificationsHomeCenter({
           const stackExpanded = expandedStacks.has(group.key);
           const stacked = !stackExpanded && group.rows.length > 1;
           const peeks = stacked ? group.rows.slice(1, 1 + MAX_STACK_PEEKS) : [];
+          const stackTailPx =
+            peeks.length * STACK_PEEK_OFFSET_PX +
+            (peeks.length > 0 ? STACK_BOTTOM_CLEARANCE_PX : 0);
           const rows = stacked
             ? [group.rows[0] as AgentNotification]
             : group.rows;
@@ -1346,7 +1322,7 @@ export function NotificationsHomeCenter({
                   data-testid="notification-stack"
                   className="relative"
                   style={{
-                    paddingBottom: peeks.length * STACK_PEEK_OFFSET_PX,
+                    paddingBottom: stackTailPx,
                   }}
                 >
                   <ul className="relative z-[2] flex flex-col">
@@ -1374,7 +1350,7 @@ export function NotificationsHomeCenter({
                       ? notificationPullRevealProgress(pullPx, groupIndex + i)
                       : 1;
                     return (
-                      // The cards behind the top one blur with depth and are
+                      // The cards behind the top one remain crisp and are
                       // TAPPABLE: touching the visible sliver below the top card
                       // fans the stack out in place (iOS shade idiom).
                       <button
@@ -1389,16 +1365,16 @@ export function NotificationsHomeCenter({
                         aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
                         onClick={() => expandStack(group.key)}
                         className={cn(
-                          "eliza-notif-glass absolute inset-0 rounded-2xl",
+                          "eliza-notif-glass absolute inset-x-0 top-0 rounded-2xl",
                           peekPullRevealed &&
                             "eliza-notif-pull-reveal pointer-events-none",
                         )}
                         style={{
+                          bottom: stackTailPx,
                           zIndex: 1 - i,
-                          opacity: (0.75 - i * 0.25) * peekRevealProgress,
-                          filter: `blur(${(i + 1) * 1.25}px)`,
+                          opacity: (0.88 - i * 0.16) * peekRevealProgress,
                           transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
-                            1 - (i + 1) * 0.045
+                            1 - (i + 1) * 0.025
                           })`,
                         }}
                       />
