@@ -30,11 +30,12 @@ import {
   WALLET_BACKEND_SERVICE_TYPE,
   WalletBackendService,
 } from "./services/wallet-backend-service.js";
+import { StewardTradingService } from "./services/steward-trading-service.js";
 
 const coreWalletPlugin: Plugin = {
   name: "wallet-backend",
   description: "Wallet backend service + wallet provider (Steward / local).",
-  services: [WalletBackendService],
+  services: [WalletBackendService, StewardTradingService],
   providers: [walletProvider],
   actions: [],
 };
@@ -143,6 +144,10 @@ export const walletPlugin: Plugin = {
       WALLET_BACKEND_SERVICE_TYPE,
     );
     await walletBackend?.stop();
+    const stewardTrading = runtime.getService<StewardTradingService>(
+      StewardTradingService.serviceType,
+    );
+    await stewardTrading?.stop();
   },
 };
 
