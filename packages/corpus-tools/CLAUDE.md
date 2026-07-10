@@ -27,5 +27,11 @@ work.
   mine candidates, gazetteer, deletion rules/review/approval chain, placeholder
   registry, scanner config, and final corpus bytes. Report self-hashes detect
   corruption but never substitute for a fresh rerun or owner authorization.
+- Collectors (`src/collectors/`) share `checkpoint.ts` + `shard-writer.ts` and
+  fail closed with a typed `CollectorError`; they never fabricate a partial pull.
+  A collector must never operate on a live source database or leave decrypted
+  copies/key material behind — copy, read, then wipe with a teardown assert. The
+  live credential/device pull is the only owner-gated step; the parsing,
+  normalization, and resume logic is exercised keyless against fixtures.
 
 Repo-wide rules and evidence standards are in the root `AGENTS.md`.

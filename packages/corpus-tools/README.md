@@ -96,6 +96,46 @@ self-hash detects corruption but is not an authorization signature. Owner sample
 review remains a separate authorization bound to that machine report; the
 machine report alone does not satisfy the final human sign-off.
 
+## Collectors
+
+Collectors live under `src/collectors/` and share the resume/shard infra:
+`checkpoint.ts` (durable per-account high-water marks, atomic writes,
+fail-closed on a corrupt marker) and `shard-writer.ts` (idempotent
+`<platform>/<account>/<yyyy-mm>.jsonl` output in the exact layout `validate`
+reads back). Collector failures are typed `CollectorError`s
+(`src/collectors/errors.ts`) so the CLI maps a key/decrypt/IO failure to a
+distinct exit path instead of shipping a truncated pull.
+
+### Signal (`#14762`)
+
+`corpus collect signal` reads Signal Desktop's SQLCipher `db.sqlite`. It:
+
+1. Resolves the 256-bit key from `<Signal>/config.json` — plaintext `key`
+   (legacy) or the Electron `safeStorage` `encryptedKey`, unwrapped via the
+   Chromium OSCrypt v10 scheme keyed by the macOS Keychain item
+   "Signal Safe Storage". The key is never persisted.
+2. Copies `db.sqlite` into the local `.state` dir and reads the **copy**
+   read-only (never the live file), then normalizes `messages` (joined to
+   `conversations`) into `CorpusMessage` rows.
+3. Writes idempotent month shards and advances a `max(received_at)` checkpoint,
+   then **wipes the decrypted copy** and asserts it is gone — a failed wipe is a
+   fail-closed error, not a warning.
+
+```bash
+bun run --cwd packages/corpus-tools corpus collect signal \
+  --owner-id <your-service-id> --owner-display "You" \
+  --account primary --output data --state-dir data/.state
+```
+
+The SQLCipher engine (`better-sqlite3-multiple-ciphers`) is an
+**optional dependency** loaded only for a live owner-machine pull; when absent
+the collector fails closed with `sqlcipher_unavailable`. The query and
+normalization path is exercised keyless in tests against a plaintext SQLite build
+of Signal's schema (the injected `openDatabase` seam), so the only owner-gated
+step is the live `PRAGMA key` decrypt plus the Keychain approval prompt.
+Attachment bytes are out of scope; body-less rows (reactions, attachment-only,
+membership events) are skipped, never fabricated into empty-text messages.
+
 ## X Mapping
 
 The canonical schema includes platform `x`. The existing LifeOps simulator

@@ -4,6 +4,16 @@
  * diagnostics; this file is the only place that prints and converts validation
  * failure into a process exit code.
  */
+import { execFile } from "node:child_process";
+import { homedir } from "node:os";
+import { promisify } from "node:util";
+import {
+  type CollectSignalResult,
+  collectSignal,
+  defaultSignalDir,
+  defaultSignalStateDir,
+} from "./collectors/signal.ts";
+import { macosKeychainPasswordReader } from "./collectors/signal-key.ts";
 import {
   runScrubPipeline,
   type ScrubMode,
@@ -11,6 +21,8 @@ import {
 } from "./pipeline/driver.ts";
 import { validateCorpusTarget } from "./validator.ts";
 import { type VerifyCorpusOptions, verifyCorpus } from "./verification.ts";
+
+const execFileAsync = promisify(execFile);
 
 interface ScrubCliOptions {
   targetPath: string;
@@ -91,8 +103,58 @@ function parseScrubCliOptions(args: string[]): ScrubCliOptions {
   };
 }
 
+async function collectSignalFromCli(
+  args: string[],
+): Promise<CollectSignalResult> {
+  const signalDir =
+    readFlagValue(args, "--signal-dir") ?? defaultSignalDir(homedir());
+  const outputDir = readFlagValue(args, "--output") ?? "data";
+  const stateDir =
+    readFlagValue(args, "--state-dir") ?? defaultSignalStateDir();
+  const accountId = readFlagValue(args, "--account") ?? "primary";
+  const ownerId = requireFlagValue(args, "--owner-id");
+  const ownerDisplay = readFlagValue(args, "--owner-display") ?? ownerId;
+  return collectSignal({
+    signalDir,
+    outputDir,
+    stateDir,
+    accountId,
+    ownerId,
+    ownerDisplay,
+    readKeychainPassword: macosKeychainPasswordReader(
+      async (command, cmdArgs) => {
+        // error-policy:J1 CLI boundary: translate a Keychain lookup failure into
+        // a non-zero status the resolver maps to a typed key error.
+        try {
+          const { stdout } = await execFileAsync(command, cmdArgs);
+          return { stdout, status: 0 };
+        } catch (error) {
+          return {
+            stdout: "",
+            status:
+              typeof (error as { code?: number }).code === "number"
+                ? (error as { code: number }).code
+                : 1,
+          };
+        }
+      },
+    ),
+  });
+}
+
 async function main(argv: string[]): Promise<number> {
   const [command, maybeTarget = "data", ...rest] = argv;
+  if (command === "collect") {
+    const platform = maybeTarget;
+    if (platform !== "signal") {
+      process.stderr.write(`unsupported collect platform ${platform}\n`);
+      return 2;
+    }
+    const result = await collectSignalFromCli(rest);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
   if (command === "validate") {
     const result = await validateCorpusTarget(maybeTarget);
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -115,7 +177,7 @@ async function main(argv: string[]): Promise<number> {
   }
 
   process.stderr.write(
-    "usage: corpus validate <file-or-dir>\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n       corpus verify --target <dir> --manifest <file> --candidates <file> --canaries <file> --ledger <file> --gazetteer <file> --deletion-rules <file> --deletion-review-queue <file> --deletion-review-decision <file> --deletion-approval <file> --placeholder-registry <file> --ruleset-version <version> --report <file>\n",
+    "usage: corpus validate <file-or-dir>\n       corpus collect signal --owner-id <id> [--account <id>] [--signal-dir <dir>] [--output <dir>] [--state-dir <dir>] [--owner-display <name>]\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n       corpus verify --target <dir> --manifest <file> --candidates <file> --canaries <file> --ledger <file> --gazetteer <file> --deletion-rules <file> --deletion-review-queue <file> --deletion-review-decision <file> --deletion-approval <file> --placeholder-registry <file> --ruleset-version <version> --report <file>\n",
   );
   return 2;
 }
