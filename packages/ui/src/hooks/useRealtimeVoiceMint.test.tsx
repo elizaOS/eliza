@@ -7,7 +7,7 @@
  * the real UUID guard.
  */
 
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 // The persistence + recovery modules pull a native (Capacitor) transport chain
@@ -22,7 +22,10 @@ vi.mock("../state/agent-session-recovery", () => ({
   resolveDedicatedAgentId: () => null,
 }));
 
-import { useRealtimeVoiceMint } from "./useRealtimeVoiceMint";
+import {
+  REALTIME_FORCE_SENTINEL_AGENT_ID,
+  useRealtimeVoiceMint,
+} from "./useRealtimeVoiceMint";
 
 const UUID = "33333333-3333-3333-3333-333333333333";
 
@@ -122,5 +125,103 @@ describe("useRealtimeVoiceMint", () => {
       nonce = await result.current.getConsentNonce();
     });
     expect(nonce).toBeNull();
+  });
+
+  // ── force-arm override (VITE_VOICE_REALTIME_FORCE) ──────────────────────
+  describe("force-arm override", () => {
+    it("flag OFF + no resolvable agent id → null (unchanged self-hosted behavior)", () => {
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          forceEnabled: false,
+          fetch: vi.fn(),
+        }),
+      );
+      expect(result.current.agentId).toBeNull();
+    });
+
+    it("flag ON + probe OK + no resolvable agent id → arms with the sentinel UUID", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(new Response("{}", { status: 200 }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          forceEnabled: true,
+          fetch,
+        }),
+      );
+      // The force build does not expose realtime until the same-origin health
+      // probe succeeds, so a failing backend cannot steal the mic from batch.
+      expect(result.current.agentId).toBeNull();
+      await waitFor(() =>
+        expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
+      );
+    });
+
+    it("flag ON but a real agent id resolves → the REAL id wins, not the sentinel", () => {
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => UUID,
+          forceEnabled: true,
+          fetch: vi.fn(),
+        }),
+      );
+      expect(result.current.agentId).toBe(UUID);
+    });
+
+    it("flag ON + health probe fails → stays null so batch owns the mic", async () => {
+      const fetch = vi
+        .fn()
+        .mockResolvedValue(new Response("{}", { status: 404 }));
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          forceEnabled: true,
+          fetch,
+        }),
+      );
+      await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      expect(result.current.agentId).toBeNull();
+    });
+
+    it("flag ON + health probe 200 → arms, then fetches fresh consent on first start", async () => {
+      const fetch = vi
+        .fn()
+        // non-consuming health probe
+        .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+        // fresh consent nonce on the visible start gesture
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ consentNonce: "live-nonce" }), {
+            status: 200,
+          }),
+        );
+      const { result } = renderHook(() =>
+        useRealtimeVoiceMint({
+          resolveAgentId: () => null,
+          forceEnabled: true,
+          fetch,
+        }),
+      );
+      await waitFor(() =>
+        expect(result.current.agentId).toBe(REALTIME_FORCE_SENTINEL_AGENT_ID),
+      );
+      let nonce: string | null = "unset";
+      await act(async () => {
+        nonce = await result.current.getConsentNonce();
+      });
+      expect(nonce).toBe("live-nonce");
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenNthCalledWith(
+        1,
+        "/api/v1/voice/session/health",
+        expect.objectContaining({ method: "GET" }),
+      );
+      expect(fetch).toHaveBeenNthCalledWith(
+        2,
+        "/api/v1/voice/session/consent",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
   });
 });
