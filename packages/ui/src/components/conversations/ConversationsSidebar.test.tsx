@@ -73,8 +73,16 @@ const CATALOG: Record<string, string> = {
 function makeAppState(overrides: Partial<AppState> = {}): AppState {
   return {
     conversations: [
-      conv({ id: "conv-a", title: "Alpha thread" }),
-      conv({ id: "conv-b", title: "Beta thread" }),
+      conv({
+        id: "conv-a",
+        title: "Alpha thread",
+        updatedAt: "2026-01-02T00:00:00.000Z",
+      }),
+      conv({
+        id: "conv-b",
+        title: "Beta thread",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
     ],
     activeConversationId: "conv-a",
     activeInboxChat: null,
