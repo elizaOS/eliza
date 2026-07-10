@@ -546,6 +546,9 @@ async function fetchWithPinnedTarget(
 
 /** Hard cap on the response body we read from a guarded GET. */
 const GUARDED_GET_MAX_BYTES = 256 * 1024;
+// Redirect-hop cap for the guarded fetch: enough for a rename 301 plus a
+// canonicalization hop, small enough that a redirect loop dies fast.
+const GUARDED_GET_MAX_REDIRECTS = 3;
 
 /** Hard cap on the response body we read from a legacy `http` custom action. */
 const CUSTOM_ACTION_HTTP_MAX_CHARS = 4_000;
@@ -692,16 +695,68 @@ async function performGuardedHttpRequest(
     ...(opts.body !== undefined ? { body: opts.body } : {}),
   };
 
-  const response = safety.target
-    ? await fetchWithPinnedTarget(safety.target, fetchOpts, timeoutMs)
-    : await fetch(url, fetchOpts);
+  // Follow a bounded redirect chain, re-running the FULL safety check on every
+  // hop. Public APIs legitimately 3xx (a renamed GitHub repo 301s to its new
+  // slug; hard-blocking every 3xx turned those into "blocked host" failures).
+  // The SSRF risk in following redirects is a hop that lands on an internal
+  // host — mitigated by treating each Location as a brand-new URL: https-only
+  // and `resolveUrlSafety` per hop, with the redirect count capped.
+  let currentUrl = url;
+  let currentSafety = safety;
+  for (let hop = 0; hop <= GUARDED_GET_MAX_REDIRECTS; hop++) {
+    const response = currentSafety.target
+      ? await fetchWithPinnedTarget(currentSafety.target, fetchOpts, timeoutMs)
+      : await fetch(currentUrl, fetchOpts);
 
-  if (response.status >= 300 && response.status < 400) {
-    return { ok: false, status: response.status, text: "", blocked: true };
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      if (!location || hop === GUARDED_GET_MAX_REDIRECTS) {
+        return { ok: false, status: response.status, text: "", blocked: true };
+      }
+      let nextUrl: URL;
+      try {
+        nextUrl = new URL(location, currentUrl);
+      } catch {
+        // error-policy:J3 malformed Location from an untrusted server → block
+        return { ok: false, status: response.status, text: "", blocked: true };
+      }
+      if (nextUrl.protocol !== "https:") {
+        return { ok: false, status: response.status, text: "", blocked: true };
+      }
+      const nextSafety = await resolveUrlSafety(nextUrl.toString());
+      // A null target is resolveUrlSafety's self-API loopback exemption. Fine
+      // for a caller-typed URL; NOT fine as a redirect destination — an
+      // external host must not be able to 3xx the agent into its own API.
+      if (nextSafety.blocked || !nextSafety.target) {
+        return { ok: false, status: response.status, text: "", blocked: true };
+      }
+      // HTTP redirect semantics + cross-origin hygiene: 303 (and the
+      // conventional 301/302-with-body demotion) becomes a bodyless GET, and
+      // credential-bearing headers never follow a hop to a different origin.
+      if (
+        response.status === 303 ||
+        ((response.status === 301 || response.status === 302) &&
+          fetchOpts.body !== undefined)
+      ) {
+        fetchOpts.method = "GET";
+        fetchOpts.body = undefined;
+        (fetchOpts.headers as Headers).delete("Content-Type");
+      }
+      if (nextUrl.origin !== new URL(currentUrl).origin) {
+        for (const h of ["authorization", "cookie", "proxy-authorization"]) {
+          (fetchOpts.headers as Headers).delete(h);
+        }
+      }
+      currentUrl = nextUrl.toString();
+      currentSafety = nextSafety;
+      continue;
+    }
+
+    const text = await readBodyTextCapped(response, maxChars);
+    return { ok: response.ok, status: response.status, text, blocked: false };
   }
-
-  const text = await readBodyTextCapped(response, maxChars);
-  return { ok: response.ok, status: response.status, text, blocked: false };
+  // Unreachable: every iteration inside the cap returns or continues.
+  return { ok: false, status: 0, text: "", blocked: true };
 }
 
 /** SSRF-guarded https-only GET (custom actions + the built-in WEB_FETCH action). */
