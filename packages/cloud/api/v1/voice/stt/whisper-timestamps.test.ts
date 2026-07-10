@@ -71,12 +71,6 @@ describe("parseWhisperTimestamps (#14806)", () => {
     expect(parsed.dropped).toBe(1);
   });
 
-  it("tolerates a non-object payload", () => {
-    expect(parseWhisperTimestamps(null)).toEqual({ dropped: 0 });
-    expect(parseWhisperTimestamps("text")).toEqual({ dropped: 0 });
-    expect(parseWhisperTimestamps(42)).toEqual({ dropped: 0 });
-  });
-
   it("accepts a zero-length span (start === end) as valid", () => {
     const parsed = parseWhisperTimestamps({
       words: [{ word: "uh", start: 1.0, end: 1.0 }],

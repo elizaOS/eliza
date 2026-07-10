@@ -51,6 +51,9 @@ const SUPPORTED_MIME_TYPES = [
   "audio/mp4",
   "audio/m4a",
   "audio/wav",
+  // Windows clients (and Bun's multipart layer) commonly declare WAV as the
+  // legacy x- form; the magic-number allowlist below already accepts it.
+  "audio/x-wav",
   "audio/webm",
   "audio/ogg",
 ];
@@ -219,17 +222,49 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           { status: 502 },
         );
       }
-      const whisperJson = (await whisperResponse.json()) as { text?: string };
-      const transcript = (whisperJson.text ?? "").trim();
-      const { segments, words, dropped } = parseWhisperTimestamps(whisperJson);
+      // Boundary validation (J3): a 200 whose body is not JSON, not an object,
+      // or lacks the required `text` string is an upstream failure — translate
+      // it to a structured 502, never a healthy empty transcript.
+      let whisperPayload: unknown;
+      try {
+        whisperPayload = await whisperResponse.json();
+      } catch (parseError) {
+        logger.error(
+          `[Voice STT API] Whisper returned unparseable JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+        );
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+      const whisperRecord =
+        whisperPayload !== null &&
+        typeof whisperPayload === "object" &&
+        !Array.isArray(whisperPayload)
+          ? (whisperPayload as Record<string, unknown>)
+          : null;
+      if (!whisperRecord || typeof whisperRecord.text !== "string") {
+        logger.error(
+          `[Voice STT API] Whisper returned a malformed transcription payload (${whisperRecord ? "missing text field" : "non-object body"})`,
+        );
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+      const transcript = whisperRecord.text.trim();
+      const { segments, words, dropped } =
+        parseWhisperTimestamps(whisperRecord);
       if (dropped > 0) {
         logger.warn(
           `[Voice STT API] Dropped ${dropped} malformed timestamp entries from Whisper verbose_json`,
         );
       }
       const whisperDuration = Date.now() - whisperStart;
+      // "timestamps absent" (plain-text response shape) and "zero timed spans"
+      // are different states — log them distinguishably.
       logger.info(
-        `[Voice STT API] Whisper (${whisperModel}) completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}" (${segments?.length ?? 0} segments, ${words?.length ?? 0} words timed)`,
+        `[Voice STT API] Whisper (${whisperModel}) completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}" (segments ${segments ? segments.length : "absent"}, words ${words ? words.length : "absent"})`,
       );
       return Response.json({
         transcript,

@@ -7,11 +7,15 @@
  * transcripts), so a caller can chunk on segment boundaries and map text spans
  * back onto audio time.
  *
- * Untrusted-input rule (J3): each entry is validated structurally — non-empty
- * text, finite non-negative start/end, end >= start. Malformed entries are
- * DROPPED and counted in `dropped` (the route logs it), never coerced into
- * fake-valid spans. Absent/empty timestamp arrays yield ABSENT keys in the
- * DTO — "no timestamps" is signaled by omission, never by fabricated zeros.
+ * Untrusted-input rule (J3): the ROUTE validates the response root (an object
+ * carrying the required `text` string) and translates violations to a
+ * structured 502 — this parser only ever receives that validated record and
+ * extracts the OPTIONAL timestamp arrays from it. Each entry is validated
+ * structurally — non-empty text, finite non-negative start/end, end >= start.
+ * Malformed entries are DROPPED and counted in `dropped` (the route logs it),
+ * never coerced into fake-valid spans. Absent/empty timestamp arrays yield
+ * ABSENT keys in the DTO — "no timestamps" is signaled by omission, never by
+ * fabricated zeros.
  */
 
 /** One timed span in ms-from-audio-start (`text` is a word or segment body). */
@@ -50,17 +54,17 @@ function toSpan(
 }
 
 /**
- * Extract ms-based segment/word spans from a `verbose_json` payload. Accepts
- * the OpenAI shapes (`segments[]{text,start,end}`, `words[]{word,start,end}`);
- * a plain `{text}` payload (server ignored the format request) parses to no
- * timestamp keys and zero drops — the route's DTO stays exactly as before.
+ * Extract ms-based segment/word spans from a ROUTE-VALIDATED `verbose_json`
+ * record. Accepts the OpenAI shapes (`segments[]{text,start,end}`,
+ * `words[]{word,start,end}`); a plain `{text}` record (server ignored the
+ * format request) is the one explicitly valid no-timestamps shape — it parses
+ * to no timestamp keys and zero drops. Root-shape violations (non-object body,
+ * missing `text`) are the route boundary's job and never reach this function.
  */
-export function parseWhisperTimestamps(payload: unknown): WhisperTimestamps {
+export function parseWhisperTimestamps(
+  record: Record<string, unknown>,
+): WhisperTimestamps {
   let dropped = 0;
-  const record =
-    payload && typeof payload === "object"
-      ? (payload as Record<string, unknown>)
-      : {};
 
   const parseArray = (
     value: unknown,
