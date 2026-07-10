@@ -50,6 +50,7 @@ let state: NotificationState = {
 };
 
 const listeners = new Set<() => void>();
+const ephemeralNotificationIds = new Set<string>();
 let initialized = false;
 
 function emit(): void {
@@ -414,6 +415,7 @@ export async function removeNotification(id: string): Promise<void> {
   const previous = state;
   const notifications = state.notifications.filter((n) => n.id !== id);
   setState({ notifications, unreadCount: countUnread(notifications) });
+  if (ephemeralNotificationIds.delete(id)) return;
   try {
     await client.removeNotification(id);
   } catch (err) {
@@ -421,12 +423,36 @@ export async function removeNotification(id: string): Promise<void> {
   }
 }
 
+/** Remove a producer stack with one optimistic update and one rollback point. */
+export async function removeNotifications(
+  ids: readonly string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  const idSet = new Set(ids);
+  const previous = state;
+  const notifications = state.notifications.filter((n) => !idSet.has(n.id));
+  setState({ notifications, unreadCount: countUnread(notifications) });
+  const ephemeralIds = ids.filter((id) => ephemeralNotificationIds.delete(id));
+  const ephemeralIdSet = new Set(ephemeralIds);
+  const persistedIds = ids.filter((id) => !ephemeralIdSet.has(id));
+  if (persistedIds.length === 0) return;
+  try {
+    await Promise.all(persistedIds.map((id) => client.removeNotification(id)));
+  } catch (err) {
+    for (const id of ephemeralIds) ephemeralNotificationIds.add(id);
+    revertMutation(previous, "removeNotifications", err);
+  }
+}
+
 export async function clearNotifications(): Promise<void> {
   const previous = state;
+  const previousEphemeralIds = [...ephemeralNotificationIds];
   setState({ notifications: [], unreadCount: 0 });
+  ephemeralNotificationIds.clear();
   try {
     await client.clearNotifications();
   } catch (err) {
+    for (const id of previousEphemeralIds) ephemeralNotificationIds.add(id);
     revertMutation(previous, "clearNotifications", err);
   }
 }
@@ -451,6 +477,7 @@ export function __resetNotificationStoreForTests(): void {
   state = { notifications: [], unreadCount: 0, hydrated: false };
   initialized = false;
   devSeedAttempted = false;
+  ephemeralNotificationIds.clear();
   listeners.clear();
 }
 
@@ -460,6 +487,15 @@ export function __ingestNotificationForTests(
   unreadCount?: number,
 ): void {
   ingest(notification, unreadCount);
+}
+
+/** Browser-QA ingest whose mutations intentionally stay local. */
+export function __ingestEphemeralNotificationForTests(
+  notification: AgentNotification,
+  unreadCount?: number,
+): void {
+  ephemeralNotificationIds.add(notification.id);
+  ingest(notification, unreadCount, { deliver: false });
 }
 
 /** Test-only: drive the hydration flag to exercise the not-loaded vs empty UI. */
@@ -478,6 +514,10 @@ type NotificationStoreTestBridge = {
     notification: AgentNotification,
     unreadCount?: number,
   ) => void;
+  ingestEphemeralNotificationForTests: (
+    notification: AgentNotification,
+    unreadCount?: number,
+  ) => void;
   resetNotificationStoreForTests: () => void;
   getStateForTests: () => NotificationState;
 };
@@ -486,6 +526,7 @@ function publishNotificationStoreTestBridge(): void {
   const g = globalThis as Record<PropertyKey, unknown>;
   g[Symbol.for("elizaos.ui.notification-store-tests")] = {
     ingestNotificationForTests: __ingestNotificationForTests,
+    ingestEphemeralNotificationForTests: __ingestEphemeralNotificationForTests,
     resetNotificationStoreForTests: __resetNotificationStoreForTests,
     getStateForTests: __getStateForTests,
   } satisfies NotificationStoreTestBridge;

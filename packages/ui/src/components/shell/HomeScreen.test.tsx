@@ -152,7 +152,7 @@ describe("HomeScreen", () => {
     expect(wrapper?.className).toContain("mt-4");
     // The inbox itself fills its wrapper and scrolls internally.
     expect(card.className).toContain("flex-1");
-    // Rows are grouped by view PHYSICALLY only — no header eyebrows render.
+    // Rows are grouped by producer physically only — no header eyebrows render.
     expect(screen.getByTestId("notification-row")).toBeTruthy();
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
   });
@@ -166,14 +166,13 @@ describe("HomeScreen", () => {
     expect(hostWrapper?.className).toContain("justify-center");
   });
 
-  it("tapping an inline row expands options; Open follows its safe deep link", () => {
+  it("tapping an inline row follows its safe deep link directly", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
     fireEvent.click(screen.getByTestId("notification-row"));
-    fireEvent.click(screen.getByTestId("notification-option-open"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
   });
 });

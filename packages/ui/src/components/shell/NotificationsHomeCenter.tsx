@@ -6,16 +6,16 @@
  * Apple-style when the first notification arrives. The inbox container has no
  * card chrome of its own; each notification is a liquid-glass card. Groups
  * carry NO headers or dividers — the physical gap between card clusters is the
- * only group structure (view-group labels survive as grouping keys and
+ * only group structure (producer labels survive as grouping keys and
  * accessible names, never as rendered eyebrows).
  *
  * Two shade modes:
  *
  *  - RESTED is triage, not a log: only interrupt-tier (`high`/`urgent`) rows
- *    show, and a view-group with several of them renders as a Z-stack — the
+ *    show, and a producer with several of them renders as a Z-stack — the
  *    highest-priority card on top, the rest peeking out beneath it (the iOS
  *    lock-screen stack idiom, stacked by priority).
- *  - EXPANDED includes all priorities but preserves each view-group stack until
+ *  - EXPANDED includes all priorities but preserves each producer stack until
  *    the user fans that group out in place; the list is height-capped and
  *    scrolls internally.
  *
@@ -25,29 +25,24 @@
  * same-direction gesture in the state it already produced is a no-op — this is
  * what makes trackpad momentum safe (the old toggle re-fired on trailing
  * momentum deltas and snapped the shade shut moments after opening it). The
- * "N more" hint at the foot of the rested shade is a real button: clicking it
- * expands, and its expanded twin ("Show less") collapses — the same transition
- * for keyboard, AT, and anyone who prefers clicking to pulling.
+ * footer is a passive total (for example, "3 Notifications"), never a control.
+ * Pull/push gestures exclusively own the shade transition.
  *
- * Stacks are independent of the shade: the pull/wheel gesture NEVER fans a
- * stack, and a drag that starts on a stack still belongs to the shade. A stack
- * fans out via a tap on its peeked cards and folds back via its own quiet
- * "Show less" control; folding the whole shade folds every fanned stack too.
+ * The pull/wheel gesture NEVER fans a stack, and a drag that starts on a stack
+ * still belongs to the shade. Tapping a peek fans that producer group and
+ * enters the expanded shade; folding the shade folds every fanned stack too.
  *
- * Acknowledgement is the platform-shade model (iOS lock screen / Android
- * shade) with an expand step: tap opens the row's contextual option strip
- * (Suggest a reply / Review / Open / Dismiss; see notificationRowOptions);
- * acting on an option clears the row. Only one row's strip is open at a time —
- * expanding a row collapses the others. The options are bare action text (no
- * pill fill, no border). Horizontal drag (mouse or touch) dismisses; there is
- * no read/unread bookkeeping, no dots, no corner X. The sort order is a stable
+ * Acknowledgement follows the platform-shade model (iOS lock screen / Android
+ * shade): tap opens a safe destination and clears the row; a row without a
+ * destination simply clears. Horizontal drag (mouse or touch) dismisses; there
+ * is no read/unread bookkeeping, no dots, no corner X. The sort order is a stable
  * priority-first total order, so live arrivals never reshuffle existing rows
  * under the user's finger; groups inherit the position of their highest-ranked
  * row.
  */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { tierForPriority } from "@elizaos/core";
-import { ChevronDown } from "lucide-react";
+import { X } from "lucide-react";
 import {
   type CSSProperties,
   memo,
@@ -56,19 +51,23 @@ import {
   useRef,
   useState,
 } from "react";
-import { haptics } from "../../bridge/capacitor-bridge";
-import { dispatchChatPrefill } from "../../events";
 import { cn } from "../../lib/utils";
-import { tabFromPath, titleForTab } from "../../navigation";
 import {
   isSafeDeepLink,
   navigateDeepLink,
 } from "../../state/notifications/navigate-deep-link";
 import {
+  clearNotifications,
   removeNotification,
+  removeNotifications,
   useNotifications,
 } from "../../state/notifications/notification-store";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
+import {
+  getChatSourceMeta,
+  hasChatSourceMeta,
+  normalizeChatSourceKey,
+} from "../composites/chat/chat-source.helpers";
 import {
   LIQUID_GLASS_BLUR,
   LIQUID_GLASS_EDGE_SHADOW,
@@ -85,9 +84,6 @@ import { RelativeTime } from "./RelativeTime";
  * which the row is treated as thrown (fling out + remove).
  */
 const SWIPE_DISMISS_PX = 88;
-
-/** Long-press duration (ms) that expands the row's options on touch. */
-const LONG_PRESS_MS = 420;
 
 /**
  * Upper bound on rendered rows. The store caps the inbox at 300 but painting
@@ -305,94 +301,97 @@ const CATEGORY_GROUP_LABELS: Record<NotificationCategory, string> = {
 };
 
 /**
- * The shade groups rows by the VIEW a notification opens (its in-app deepLink
- * resolved through the tab model), the way a platform shade groups by app.
- * External links and link-less rows fall back to the producer-category label.
- * The label is a grouping key and an accessible name only — it is never
- * rendered as a header (the physical card clusters carry the structure).
+ * Stable producer identity for an Apple-style notification stack. `source` is
+ * the canonical notification contract's app/plugin identifier; normalize it
+ * with the existing chat-source helper so casing cannot split one producer.
+ * Empty legacy sources fall back to category rather than merging globally.
  */
+export function notificationGroupKey(n: AgentNotification): string {
+  return normalizeChatSourceKey(n.source) ?? `category:${n.category}`;
+}
+
+/** Accessible producer label for a source-grouped notification stack. */
 export function notificationGroupLabel(n: AgentNotification): string {
-  const link = n.deepLink;
-  if (link?.startsWith("/")) {
-    const tab = tabFromPath(link.split(/[?#]/)[0] ?? link);
-    if (tab) {
-      const title = titleForTab(tab);
-      if (title) return title;
-    }
-  }
+  const source = normalizeChatSourceKey(n.source);
+  if (source) return getChatSourceMeta(source).label;
   return CATEGORY_GROUP_LABELS[n.category] ?? CATEGORY_GROUP_LABELS.general;
 }
 
 /**
- * Shade rows grouped by view. Rows keep the stable priority→recency order;
+ * Shade rows grouped by producer. Rows keep the stable priority→recency order;
  * a group sits where its highest-ranked row would (Map insertion order), so
- * the most urgent view stacks first — priority-sorted groups, newest inside.
+ * the most urgent producer stacks first — priority-sorted groups, newest inside.
  * In the rested shade each group renders as a Z-stack with `rows[0]` on top.
  */
 export function groupDashboardNotifications(
   notifications: readonly AgentNotification[],
-): Array<{ label: string; rows: AgentNotification[] }> {
-  const groups = new Map<string, AgentNotification[]>();
+): Array<{ key: string; label: string; rows: AgentNotification[] }> {
+  const groups = new Map<
+    string,
+    { label: string; rows: AgentNotification[] }
+  >();
   for (const n of orderDashboardNotifications(notifications)) {
-    const label = notificationGroupLabel(n);
-    const rows = groups.get(label);
-    if (rows) rows.push(n);
-    else groups.set(label, [n]);
+    const key = notificationGroupKey(n);
+    const group = groups.get(key);
+    if (group) group.rows.push(n);
+    else groups.set(key, { label: notificationGroupLabel(n), rows: [n] });
   }
-  return [...groups.entries()].map(([label, rows]) => ({ label, rows }));
+  return [...groups.entries()].map(([key, group]) => ({ key, ...group }));
 }
 
-/** One inline contextual option a tapped (expanded) row offers. */
-export interface NotificationRowOption {
-  id: string;
-  label: string;
-  kind: "open" | "prefill" | "dismiss";
-  /** Composer seed for `kind: "prefill"` (opens the chat, never auto-sends). */
-  prefill?: string;
-}
-
-/**
- * The contextual options a row expands to on tap, derived from category +
- * deepLink. Every notification exposes at least one action plus Dismiss:
- * a message offers "Suggest a reply" (chat prefill), an approval "Review",
- * task-like categories a labeled open, anything with a safe deepLink a plain
- * Open. Acting on any option acknowledges (clears) the row.
- */
-export function notificationRowOptions(
-  n: AgentNotification,
-): NotificationRowOption[] {
-  const options: NotificationRowOption[] = [];
-  const hasLink = Boolean(n.deepLink && isSafeDeepLink(n.deepLink));
-  if (n.category === "message") {
-    options.push({
-      id: "suggest-reply",
-      label: "Suggest a reply",
-      kind: "prefill",
-      prefill: `Suggest a reply to "${n.title}"${n.body ? ` — ${n.body}` : ""}`,
-    });
-  }
-  if (hasLink) {
-    const label =
-      n.category === "approval"
-        ? "Review"
-        : n.category === "task" || n.category === "agent"
-          ? "Open task"
-          : n.category === "workflow"
-            ? "View run"
-            : "Open";
-    options.push({ id: "open", label, kind: "open" });
-  }
-  options.push({ id: "dismiss", label: "Dismiss", kind: "dismiss" });
-  return options;
+function NotificationSourceIcon({
+  count,
+  source,
+}: {
+  count?: number;
+  source: string;
+}): React.JSX.Element {
+  const meta = getChatSourceMeta(source);
+  const Icon = meta.Icon;
+  const registered = hasChatSourceMeta(source);
+  return (
+    <span
+      data-testid="notification-source-icon"
+      data-source={normalizeChatSourceKey(source) ?? undefined}
+      role="img"
+      aria-label={
+        count && count > 1
+          ? `${meta.label}, ${count} notifications`
+          : meta.label
+      }
+      title={meta.label}
+      className={cn(
+        "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[9px] border border-white/15 bg-black/30",
+        registered && meta.iconClassName,
+      )}
+    >
+      {registered ? (
+        <Icon className="h-5 w-5" />
+      ) : (
+        <span aria-hidden className="text-sm font-semibold text-white/85">
+          {meta.label.trim().charAt(0).toUpperCase() || "E"}
+        </span>
+      )}
+      {count && count > 1 ? (
+        <span
+          data-testid="notification-source-count"
+          aria-hidden
+          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black ring-2 ring-black/70 shadow-[0_1px_4px_rgba(0,0,0,0.45)]"
+        >
+          {count > 99 ? "99+" : count}
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 /**
  * Memoized (binding pattern, spec §C.4): the relative timestamp lives in a
  * `<RelativeTime>` leaf that owns the minute tick, so the row never re-renders
  * to keep "5m" honest. `arePropsEqual` compares the identity fields that drive
- * its markup: `id`, `title`, `body`, `deepLink`, `category` (options), the
- * single-open `expanded` flag, transient pull reveal progress, plus the
- * callbacks (stable via the parent's `useCallback`). `createdAt` is
+ * its markup and activation: `id`, `title`, `body`, `deepLink`, transient pull
+ * reveal progress, plus the callbacks (stable via the parent's `useCallback`).
+ * `createdAt` is
  * intentionally NOT compared: it feeds only the leaf.
  */
 export function rowPropsEqual(
@@ -406,27 +405,27 @@ export function rowPropsEqual(
     a.title === b.title &&
     a.body === b.body &&
     a.deepLink === b.deepLink &&
-    a.category === b.category &&
-    prev.expanded === next.expanded &&
+    a.source === b.source &&
+    prev.stackKey === next.stackKey &&
+    prev.stackCount === next.stackCount &&
     prev.pullRevealProgress === next.pullRevealProgress &&
-    prev.onToggleExpand === next.onToggleExpand &&
+    prev.onExpandStack === next.onExpandStack &&
     prev.onOpen === next.onOpen &&
-    prev.onDismiss === next.onDismiss &&
-    prev.onPrefill === next.onPrefill
+    prev.onDismiss === next.onDismiss
   );
 }
 
 export interface NotificationRowProps {
   notification: AgentNotification;
-  /** Whether THIS row's option strip is open (single-open, parent-owned). */
-  expanded: boolean;
+  /** Present only for the collapsed top card; tapping fans this producer. */
+  stackKey?: string;
+  /** Producer-stack size shown as a badge on the collapsed top card. */
+  stackCount?: number;
   /** Live pull reveal for a row added to an already-visible fanned group. */
   pullRevealProgress?: number;
-  /** Toggle this row's strip; the parent collapses every other row. */
-  onToggleExpand: (id: string) => void;
+  onExpandStack?: (key: string) => void;
   onOpen: (n: AgentNotification) => void;
   onDismiss: (id: string) => void;
-  onPrefill: (n: AgentNotification, text: string) => void;
 }
 
 let notificationRowRenderObserverForTests: (() => void) | null = null;
@@ -445,24 +444,20 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
 }
 
 /**
- * One liquid-glass notification card. Tap EXPANDS it into its contextual
- * options ({@link notificationRowOptions}) and collapses any sibling — the
- * option strip is single-open, owned by the parent; tap again collapses.
- * Long-press (touch) and right-click (mouse) also expand. Acting on any option
- * acknowledges the row (it clears from the shade). Dragging the row
- * horizontally off the screen — mouse or touch — past {@link SWIPE_DISMISS_PX}
- * dismisses it; there is no corner X. The card carries the shared glass
- * recipe; its options are bare action text with no fill or border. The title
- * line is title + relative time only — no count chip, no icon, no accent rail.
+ * One liquid-glass notification card. Tap opens its safe destination and
+ * acknowledges the row; a row without a destination is simply acknowledged.
+ * Dragging horizontally — mouse or touch — past {@link SWIPE_DISMISS_PX}
+ * dismisses it. There is no corner X or secondary action strip. The title line
+ * is title + relative time only — no count chip, no icon, no accent rail.
  */
 const NotificationRow = memo(function NotificationRow({
   notification,
-  expanded,
+  stackKey,
+  stackCount,
   pullRevealProgress,
-  onToggleExpand,
+  onExpandStack,
   onOpen,
   onDismiss,
-  onPrefill,
 }: NotificationRowProps): React.JSX.Element {
   notificationRowRenderObserverForTests?.();
 
@@ -476,16 +471,12 @@ const NotificationRow = memo(function NotificationRow({
     startX: number;
     startY: number;
     axis: "none" | "x" | "y";
-    longPress: number | null;
-    moved: boolean;
   } | null>(null);
-  // Set true by a completed swipe / drag / long-press so the synthetic click
-  // the same gesture emits doesn't also toggle the options.
+  // Set true by a completed drag so its synthetic click does not also open the
+  // notification.
   const suppressClick = useRef(false);
 
   const clearGesture = useCallback(() => {
-    const g = gesture.current;
-    if (g?.longPress != null) window.clearTimeout(g.longPress);
     gesture.current = null;
   }, []);
 
@@ -499,35 +490,21 @@ const NotificationRow = memo(function NotificationRow({
     [notification.id, onDismiss],
   );
 
-  const onPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      suppressClick.current = false;
-      const longPress =
-        e.pointerType !== "mouse"
-          ? window.setTimeout(() => {
-              suppressClick.current = true;
-              onToggleExpand(notification.id);
-              void haptics.light();
-            }, LONG_PRESS_MS)
-          : null;
-      gesture.current = {
-        id: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        axis: "none",
-        longPress,
-        moved: false,
-      };
-    },
-    [notification.id, onToggleExpand],
-  );
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    suppressClick.current = false;
+    gesture.current = {
+      id: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      axis: "none",
+    };
+  }, []);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const g = gesture.current;
     if (!g || g.id !== e.pointerId) return;
     const dx = e.clientX - g.startX;
     const dy = e.clientY - g.startY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) g.moved = true;
     // Lock the axis on first real movement: a vertical drag belongs to the
     // list scroller (or the shade's pull gesture), only a horizontal one is a
     // dismiss swipe. Mouse and touch both swipe — the rows are buttons (no
@@ -535,11 +512,6 @@ const NotificationRow = memo(function NotificationRow({
     // clicks from starting a drag.
     if (g.axis === "none" && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
       g.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-      // Any committed drag cancels the pending long-press.
-      if (g.longPress != null) {
-        window.clearTimeout(g.longPress);
-        g.longPress = null;
-      }
     }
     if (g.axis !== "x") return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -556,7 +528,7 @@ const NotificationRow = memo(function NotificationRow({
       clearGesture();
       // A committed drag on either axis never doubles as a tap: a horizontal
       // one is a swipe (may spring back), a vertical one belongs to the
-      // scroller/pull gesture — neither may toggle the options on release.
+      // scroller/pull gesture — neither may open the row on release.
       if (g.axis !== "none") suppressClick.current = true;
       if (g.axis === "x") {
         const dx = e.clientX - g.startX;
@@ -574,7 +546,6 @@ const NotificationRow = memo(function NotificationRow({
   // chip — a notification is its glass card, line + time, like an iOS lock
   // note. Coalesced arrivals speak through their title/body, not a bare number.
   const dragging = swipeX !== 0 && !dismissing;
-  const options = notificationRowOptions(notification);
   return (
     <li
       className={cn(
@@ -592,10 +563,6 @@ const NotificationRow = memo(function NotificationRow({
           : undefined
       }
       data-notif-row
-      onContextMenu={(e) => {
-        e.preventDefault();
-        onToggleExpand(notification.id);
-      }}
     >
       <div
         data-testid="notification-row-swipe"
@@ -626,70 +593,49 @@ const NotificationRow = memo(function NotificationRow({
         <button
           type="button"
           data-testid="notification-row"
-          aria-expanded={expanded}
           aria-label={`${notification.title}${
-            notification.body ? `. ${notification.body}` : ""
+            stackKey && stackCount
+              ? `. Show all ${stackCount} ${getChatSourceMeta(notification.source).label} notifications`
+              : notification.body
+                ? `. ${notification.body}`
+                : ""
           }`}
           onClick={(e) => {
-            // A swipe / drag / long-press synthesizes a click on release;
-            // swallow it so the gesture doesn't also toggle the options.
+            // A swipe or vertical drag synthesizes a click on release; swallow
+            // it so the gesture does not also open the notification.
             if (suppressClick.current) {
               suppressClick.current = false;
               e.preventDefault();
               return;
             }
-            onToggleExpand(notification.id);
+            if (stackKey && onExpandStack) onExpandStack(stackKey);
+            else onOpen(notification);
           }}
-          className="flex min-h-touch min-w-0 flex-col gap-0.5 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
+          className="flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
         >
-          <span className="flex items-baseline gap-1.5">
-            <span className="truncate text-sm font-semibold text-white">
-              {notification.title}
+          <NotificationSourceIcon
+            source={notification.source}
+            count={stackCount}
+          />
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="flex items-baseline gap-1.5">
+              <span className="truncate text-sm font-semibold text-white">
+                {notification.title}
+              </span>
+              <RelativeTime
+                ts={notification.createdAt}
+                short
+                className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
+                data-testid="notification-row-time"
+              />
             </span>
-            <RelativeTime
-              ts={notification.createdAt}
-              short
-              className="ml-auto shrink-0 pl-2 text-2xs tabular-nums text-white/60"
-              data-testid="notification-row-time"
-            />
+            {notification.body ? (
+              <span className="line-clamp-2 text-xs leading-snug text-white/62">
+                {notification.body}
+              </span>
+            ) : null}
           </span>
-          {notification.body ? (
-            <span className="line-clamp-2 text-xs leading-snug text-white/62">
-              {notification.body}
-            </span>
-          ) : null}
         </button>
-        {expanded ? (
-          <fieldset
-            aria-label="Notification actions"
-            data-testid="notification-row-options"
-            className="m-0 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 border-0 px-3 pb-2.5 pt-0.5"
-          >
-            {options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                data-testid={`notification-option-${option.id}`}
-                onClick={() => {
-                  if (option.kind === "open") onOpen(notification);
-                  else if (option.kind === "prefill" && option.prefill)
-                    onPrefill(notification, option.prefill);
-                  else onDismiss(notification.id);
-                }}
-                className={cn(
-                  // Bare action text: no fill, no border, no pill — the label
-                  // IS the affordance; hover only brightens the text.
-                  "min-h-touch py-2 text-xs font-medium transition-colors",
-                  option.kind === "dismiss"
-                    ? "text-white/60 hover:text-white"
-                    : "text-white/90 hover:text-white",
-                )}
-              >
-                {option.label}
-              </button>
-            ))}
-          </fieldset>
-        ) : null}
       </div>
     </li>
   );
@@ -707,22 +653,35 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   // Shade mode: rested (priority triage) vs expanded (all priority tiers).
   // Groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
-  // Single-open option strip: expanding one row collapses the others.
-  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
-  // Per-group stack expansion (iOS-shade idiom): a group fans out in place
-  // when its stack is tapped below the top card, and folds back via its own
-  // "Show less" control. Independent of the shade mode — the pull/wheel
-  // gesture reveals more GROUPS and never fans a stack.
+  // Per-producer stack expansion (iOS-shade idiom). Tapping a peek fans that
+  // stack and enters the expanded shade; folding the shade resets every stack.
   const [expandedStacks, setExpandedStacks] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const toggleStack = useCallback((key: string) => {
+  const [confirmingGroupKey, setConfirmingGroupKey] = useState<string | null>(
+    null,
+  );
+  const [confirmingClearAll, setConfirmingClearAll] = useState(false);
+  const expandStack = useCallback((key: string) => {
     setExpandedStacks((prev) => {
+      if (prev.has(key)) return prev;
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      next.add(key);
       return next;
     });
+    setConfirmingGroupKey(null);
+    setConfirmingClearAll(false);
+    setShadeExpanded(true);
+  }, []);
+  const collapseStack = useCallback((key: string) => {
+    setExpandedStacks((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    setConfirmingGroupKey((current) => (current === key ? null : current));
+    setConfirmingClearAll(false);
   }, []);
   // Dampened live pull (px), SIGNED: positive is a downward pull (expand),
   // negative an upward push (collapse). State drives the rubber-band
@@ -765,7 +724,8 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
 
   const setShade = useCallback((expanded: boolean) => {
     setShadeExpanded(expanded);
-    setExpandedRowId(null);
+    setConfirmingClearAll(false);
+    setConfirmingGroupKey(null);
     if (!expanded) {
       // Folding the shade folds every fanned stack with it — the rested shade
       // always comes back in its compact triage form.
@@ -915,19 +875,30 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   const dismissNotification = useCallback((id: string) => {
     void removeNotification(id);
   }, []);
-  const prefillNotification = useCallback(
-    (n: AgentNotification, text: string) => {
-      // "Suggest a reply"-class options: open the chat with the ask staged for
-      // review (never auto-sent), then acknowledge the row.
-      dispatchChatPrefill({ text });
-      void removeNotification(n.id);
+  const clearProducer = useCallback(
+    (key: string, ids: readonly string[]) => {
+      if (confirmingGroupKey !== key) {
+        setConfirmingClearAll(false);
+        setConfirmingGroupKey(key);
+        return;
+      }
+      setConfirmingGroupKey(null);
+      collapseStack(key);
+      void removeNotifications(ids);
     },
-    [],
+    [collapseStack, confirmingGroupKey],
   );
-  const toggleRowExpand = useCallback((id: string) => {
-    // Single-open: expanding a row collapses whichever other row was open.
-    setExpandedRowId((current) => (current === id ? null : id));
-  }, []);
+  const clearAll = useCallback(() => {
+    if (!confirmingClearAll) {
+      setConfirmingGroupKey(null);
+      setConfirmingClearAll(true);
+      return;
+    }
+    setConfirmingClearAll(false);
+    setConfirmingGroupKey(null);
+    setExpandedStacks(new Set());
+    void clearNotifications();
+  }, [confirmingClearAll]);
 
   // An emptied-out inbox resets the shade so the next arrival starts rested.
   // `pullPx` is cleared too: if the inbox empties mid-pull the touch effect
@@ -937,7 +908,8 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     if (notifications.length === 0) {
       setShadeExpanded(false);
       setExpandedStacks(new Set());
-      setExpandedRowId(null);
+      setConfirmingGroupKey(null);
+      setConfirmingClearAll(false);
       setPullPx(0);
     }
   }, [notifications.length, setPullPx]);
@@ -1011,7 +983,13 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     shadeExpanded || previewingExpansion
       ? groupDashboardNotifications(capped)
       : restedGroups;
-  const restedGroupLabels = new Set(restedGroups.map((group) => group.label));
+  const allGroupRowsByKey = new Map(
+    groupDashboardNotifications(notifications).map((group) => [
+      group.key,
+      group.rows,
+    ]),
+  );
+  const restedGroupKeys = new Set(restedGroups.map((group) => group.key));
   const restedNotificationIds = new Set(
     restedNotifications.map((notification) => notification.id),
   );
@@ -1084,9 +1062,8 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       <style>{NOTIF_SCROLL_CSS}</style>
       <LiquidGlassRefractionDefs />
       {/* No "Notifications" header, no group eyebrows, no dividers: the
-          physical gaps between card clusters ARE the grouping. The directional
-          pull gesture and the "N more"/"Show less" button own the shade
-          transition. */}
+          physical gaps between card clusters ARE the grouping. Directional
+          pull gestures own the shade transition; the footer is only a total. */}
       <ul
         ref={scrollRef}
         onScroll={syncEdgeFades}
@@ -1113,13 +1090,54 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
           "eliza-notif-scroll flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-1.5 pt-1",
         )}
       >
+        {shadeExpanded || previewingExpansion ? (
+          <li
+            inert={previewingExpansion ? true : undefined}
+            style={
+              previewingExpansion
+                ? notificationPullRevealStyle(
+                    notificationPullRevealProgress(pullPx, 0),
+                  )
+                : undefined
+            }
+            className={cn(
+              "sticky top-0 z-20 flex justify-end px-1",
+              previewingExpansion &&
+                "eliza-notif-pull-reveal pointer-events-none",
+            )}
+          >
+            <button
+              type="button"
+              data-testid="notifications-clear-all"
+              data-confirming={confirmingClearAll ? "true" : undefined}
+              data-notif-control=""
+              aria-label={
+                confirmingClearAll
+                  ? "Confirm clear all notifications"
+                  : "Clear all notifications"
+              }
+              onClick={clearAll}
+              className={cn(
+                "flex h-8 min-w-8 items-center justify-center rounded-full border border-white/15 bg-black/45 text-2xs font-medium text-white/80 backdrop-blur-md transition-colors hover:text-white",
+                confirmingClearAll && "px-2.5 text-white",
+              )}
+            >
+              {confirmingClearAll ? (
+                "Clear"
+              ) : (
+                <X aria-hidden className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </li>
+        ) : null}
         {groups.map((group, groupIndex) => {
-          const groupWasRested = restedGroupLabels.has(group.label);
+          const allGroupRows = allGroupRowsByKey.get(group.key) ?? group.rows;
+          const groupWasRested = restedGroupKeys.has(group.key);
           const pullRevealed = previewingExpansion && !groupWasRested;
           const revealProgress = pullRevealed
             ? notificationPullRevealProgress(pullPx, groupIndex)
             : 1;
-          const stackExpanded = expandedStacks.has(group.label);
+          const stackExpanded = expandedStacks.has(group.key);
           const stacked = !stackExpanded && group.rows.length > 1;
           const peeks = stacked ? group.rows.slice(1, 1 + MAX_STACK_PEEKS) : [];
           const rows = stacked
@@ -1128,7 +1146,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
           const fanned = stackExpanded && group.rows.length > 1;
           return (
             <li
-              key={group.label}
+              key={group.key}
               data-notification-pull-reveal={pullRevealed ? "" : undefined}
               inert={pullRevealed ? true : undefined}
               className={cn(
@@ -1165,11 +1183,11 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                       // (dismissing/swipeX) and paint invisible.
                       key={(rows[0] as AgentNotification).id}
                       notification={rows[0] as AgentNotification}
-                      expanded={expandedRowId === rows[0]?.id}
-                      onToggleExpand={toggleRowExpand}
+                      stackKey={group.key}
+                      stackCount={allGroupRows.length}
+                      onExpandStack={expandStack}
                       onOpen={openNotification}
                       onDismiss={dismissNotification}
-                      onPrefill={prefillNotification}
                     />
                   </ul>
                   {peeks.map((peek, i) => {
@@ -1194,7 +1212,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                         }
                         tabIndex={peekPullRevealed ? -1 : undefined}
                         aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
-                        onClick={() => toggleStack(group.label)}
+                        onClick={() => expandStack(group.key)}
                         className={cn(
                           "eliza-notif-glass absolute inset-0 rounded-2xl",
                           peekPullRevealed &&
@@ -1223,67 +1241,79 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                       <NotificationRow
                         key={notification.id}
                         notification={notification}
-                        expanded={expandedRowId === notification.id}
                         pullRevealProgress={
                           rowPullRevealed
                             ? notificationPullRevealProgress(pullPx, groupIndex)
                             : undefined
                         }
-                        onToggleExpand={toggleRowExpand}
                         onOpen={openNotification}
                         onDismiss={dismissNotification}
-                        onPrefill={prefillNotification}
                       />
                     );
                   })}
                 </ul>
               )}
               {fanned ? (
-                // A fanned group's fold-back control (the group headers are
-                // gone, so the group carries its own quiet "Show less").
-                <button
-                  type="button"
-                  data-testid="notification-stack-collapse"
-                  data-notif-control=""
-                  aria-label={`Collapse ${group.label} notifications`}
-                  onClick={() => toggleStack(group.label)}
-                  className="flex min-h-touch items-center justify-center gap-1 px-3 py-1 text-2xs font-medium text-white/45 transition-colors hover:text-white/80"
+                <div
+                  data-testid="notification-stack-controls"
+                  className="flex h-9 items-center justify-between gap-3 px-2"
                 >
-                  <ChevronDown aria-hidden className="h-3 w-3 rotate-180" />
-                  Show less
-                </button>
+                  <span className="truncate text-2xs font-medium text-white/45">
+                    {group.label}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      data-testid="notification-stack-collapse"
+                      data-notif-control=""
+                      onClick={() => collapseStack(group.key)}
+                      className="h-8 px-2 text-2xs font-medium text-white/55 transition-colors hover:text-white/90"
+                    >
+                      Show Less
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="notification-stack-clear"
+                      data-confirming={
+                        confirmingGroupKey === group.key ? "true" : undefined
+                      }
+                      data-notif-control=""
+                      aria-label={
+                        confirmingGroupKey === group.key
+                          ? `Confirm clear ${group.label} notifications`
+                          : `Clear ${group.label} notifications`
+                      }
+                      onClick={() =>
+                        clearProducer(
+                          group.key,
+                          allGroupRows.map((notification) => notification.id),
+                        )
+                      }
+                      className={cn(
+                        "flex h-8 min-w-8 items-center justify-center text-2xs font-medium text-white/55 transition-colors hover:text-white/90",
+                        confirmingGroupKey === group.key && "px-2 text-white",
+                      )}
+                    >
+                      {confirmingGroupKey === group.key ? (
+                        "Clear"
+                      ) : (
+                        <X aria-hidden className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </span>
+                </div>
               ) : null}
             </li>
           );
         })}
-        {/* The shade's click affordance for the same transition the gestures
-            own: rested it names what is hidden ("N more") and expands;
-            expanded it reads "Show less" and collapses. One real button —
-            keyboard, AT, and mouse users all get the transition without the
-            gesture. */}
-        {canExpand || shadeExpanded ? (
-          <li className="flex">
-            <button
-              type="button"
-              data-testid="notifications-expand-toggle"
-              // Exempt from the chat overlay's outside-tap swallower (see
-              // ContinuousChatOverlay's isAboveShellOverlay): this control
-              // lives outside [data-notif-row] but must own its activation.
-              data-notif-control=""
-              onClick={() => setShade(!shadeExpanded)}
-              className="flex min-h-touch flex-1 items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50 transition-colors hover:text-white/85"
-            >
-              <ChevronDown
-                aria-hidden
-                className={cn(
-                  "h-3 w-3 transition-transform",
-                  (shadeExpanded || pullPx >= PULL_COMMIT_PX) && "rotate-180",
-                )}
-              />
-              {shadeExpanded ? "Show less" : `${hiddenCount} more`}
-            </button>
-          </li>
-        ) : null}
+        <li
+          data-testid="notifications-count"
+          className="flex items-center justify-center px-3 py-2 text-2xs font-medium text-white/50"
+        >
+          {notifications.length === 1
+            ? "1 Notification"
+            : `${notifications.length} Notifications`}
+        </li>
       </ul>
     </section>
   );

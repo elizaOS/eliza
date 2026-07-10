@@ -3769,13 +3769,13 @@ export function ContinuousChatOverlay({
     // The inline home notification center (#15080) is a live INTERACTIVE
     // surface even though it sits BELOW the chat glass (inline on the home
     // column, not the old Z_NOTIFICATION_OVERLAY shade). Its rows own tap (open
-    // / deep-link), swipe-dismiss, and a long-press menu; without this
+    // / deep-link) and swipe-dismiss; without this
     // exemption the capture-phase pointerup below preventDefault +
     // stopImmediatePropagation'd the row's tap and set suppressNextOutsideClick,
     // so the click-swallower ate the row's onClick, tapping a notification did
-    // NOTHING ("interacting is cooked", device r8). Exempt the ROWS
-    // (`[data-notif-row]` — the option strip lives inside the row) so their own
-    // handlers win. Scope the exemption to the rows, NOT the whole center
+    // NOTHING ("interacting is cooked", device r8). Exempt the ROWS via
+    // `[data-notif-row]` so their own handlers win. Scope the exemption to the
+    // rows, NOT the whole center
     // section: the section is `flex-1` and chromeless, so it fills most of the
     // home band with invisible field — exempting the section (as it once did)
     // killed outside-tap collapse everywhere around the rows. A real tap on the

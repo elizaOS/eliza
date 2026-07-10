@@ -5,8 +5,8 @@
 // Pins the shade spec: priority-only triage, liquid-glass Z-stacked groups
 // with no headers/dividers, DIRECTIONAL pull/wheel expand-collapse (down
 // expands, up collapses — never a toggle, so trailing trackpad momentum can't
-// snap the shade back shut), a visible "N more"/"Show less" button for the
-// same transition, single-open chromeless option strips, and swipe-to-dismiss.
+// snap the shade back shut), a passive notification total, direct-tap
+// activation, and swipe-to-dismiss.
 
 import {
   act,
@@ -16,13 +16,6 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// Haptics is a native bridge; stub it so the row's long-press path
-// (`void haptics.light()`) doesn't leave a real pending promise under fake
-// timers in the touch-interaction tests.
-vi.mock("../../bridge/capacitor-bridge", () => ({
-  haptics: { light: vi.fn(async () => {}), medium: vi.fn(async () => {}) },
-}));
 
 // Mutations are optimistic writes through the API client - mock the transport,
 // not the store, so mark-read/dismiss/clear exercise the real store paths.
@@ -54,9 +47,11 @@ import {
 } from "../../state/notifications/notification-store";
 import {
   dampenPull,
+  groupDashboardNotifications,
   NotificationsHomeCenter,
+  notificationGroupKey,
+  notificationGroupLabel,
   notificationPullRevealProgress,
-  notificationRowOptions,
   orderDashboardNotifications,
   PULL_COMMIT_PX,
 } from "./NotificationsHomeCenter";
@@ -79,6 +74,19 @@ function makeNotification(
     readAt: null,
     ...overrides,
   };
+}
+
+function expandShade(): HTMLElement {
+  const list = screen.getByTestId("home-notification-list");
+  fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
+  return list;
+}
+
+function collapseShade(): HTMLElement {
+  const list = screen.getByTestId("home-notification-list");
+  fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+  fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
+  return list;
 }
 
 beforeEach(() => {
@@ -124,6 +132,40 @@ describe("orderDashboardNotifications", () => {
   });
 });
 
+describe("notification producer grouping", () => {
+  it("keeps one producer together across categories and separates different producers that open the same view", () => {
+    const approval = makeNotification({
+      category: "approval",
+      deepLink: "/tasks",
+      source: " LifeOps ",
+    });
+    const reminder = makeNotification({
+      category: "reminder",
+      deepLink: "/automations",
+      source: "lifeops",
+    });
+    const scheduler = makeNotification({
+      category: "reminder",
+      deepLink: "/automations",
+      source: "scheduling",
+    });
+
+    expect(notificationGroupKey(approval)).toBe("lifeops");
+    expect(notificationGroupLabel(approval)).toBe("Lifeops");
+    expect(
+      groupDashboardNotifications([approval, reminder, scheduler]).map(
+        (group) => ({
+          key: group.key,
+          ids: group.rows.map((row) => row.id),
+        }),
+      ),
+    ).toEqual([
+      { key: "scheduling", ids: [scheduler.id] },
+      { key: "lifeops", ids: [reminder.id, approval.id] },
+    ]);
+  });
+});
+
 describe("dampenPull", () => {
   it("has a slop dead zone, halves travel, and clamps", () => {
     expect(dampenPull(0)).toBe(0);
@@ -145,51 +187,6 @@ describe("notificationPullRevealProgress", () => {
   });
 });
 
-describe("notificationRowOptions", () => {
-  it("every notification exposes at least one action plus Dismiss", () => {
-    const plain = makeNotification({ deepLink: undefined });
-    const ids = notificationRowOptions(plain).map((o) => o.id);
-    expect(ids).toEqual(["dismiss"]);
-    const linked = makeNotification({ deepLink: "/settings" });
-    expect(notificationRowOptions(linked).map((o) => o.id)).toEqual([
-      "open",
-      "dismiss",
-    ]);
-  });
-
-  it("a message offers Suggest a reply as a chat prefill", () => {
-    const msg = makeNotification({
-      category: "message",
-      title: "New message from Alice",
-      body: "design doc?",
-      deepLink: "/chat",
-    });
-    const opts = notificationRowOptions(msg);
-    const suggest = opts.find((o) => o.id === "suggest-reply");
-    expect(suggest?.kind).toBe("prefill");
-    expect(suggest?.prefill).toContain("New message from Alice");
-    expect(opts.map((o) => o.id)).toEqual(["suggest-reply", "open", "dismiss"]);
-  });
-
-  it("labels the open action by category (Review / Open task / View run)", () => {
-    const label = (category: AgentNotification["category"]) =>
-      notificationRowOptions(
-        makeNotification({ category, deepLink: "/x" }),
-      ).find((o) => o.id === "open")?.label;
-    expect(label("approval")).toBe("Review");
-    expect(label("task")).toBe("Open task");
-    expect(label("workflow")).toBe("View run");
-    expect(label("reminder")).toBe("Open");
-  });
-
-  it("an unsafe deepLink yields no open option", () => {
-    const n = makeNotification({ deepLink: "javascript:alert(1)" });
-    expect(
-      notificationRowOptions(n).find((o) => o.id === "open"),
-    ).toBeUndefined();
-  });
-});
-
 describe("NotificationsHomeCenter", () => {
   it("renders nothing while the inbox is empty", () => {
     const { container } = render(<NotificationsHomeCenter />);
@@ -198,12 +195,17 @@ describe("NotificationsHomeCenter", () => {
 
   it("renders the inbox rows once notifications arrive — no unread count badge", () => {
     __ingestNotificationForTests(
-      makeNotification({ title: "Reminder fired", category: "reminder" }),
+      makeNotification({
+        title: "Reminder fired",
+        category: "reminder",
+        source: "scheduling",
+      }),
     );
     __ingestNotificationForTests(
       makeNotification({
         title: "Deploy approved",
         readAt: Date.now(),
+        source: "workflow",
       }),
     );
     render(<NotificationsHomeCenter />);
@@ -226,108 +228,49 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.queryByTestId("notification-unread-dot")).toBeNull();
   });
 
-  it("tap expands contextual options; Open follows the deep link and clears the row", () => {
+  it("tap follows a safe deep link and clears the row directly", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
     render(<NotificationsHomeCenter />);
-    const row = screen.getByTestId("notification-row");
-    // First tap: expand, don't navigate.
-    fireEvent.click(row);
-    expect(navigateDeepLink).not.toHaveBeenCalled();
-    expect(row.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(screen.getByTestId("notification-option-open"));
+    fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
-    // Shade acknowledgement: acting on a notification removes it.
     expect(__getStateForTests().notifications).toHaveLength(0);
-  });
-
-  it("tap again collapses the options without acting", () => {
-    __ingestNotificationForTests(makeNotification({ deepLink: "/settings" }));
-    render(<NotificationsHomeCenter />);
-    const row = screen.getByTestId("notification-row");
-    fireEvent.click(row);
-    fireEvent.click(row);
-    expect(row.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByTestId("notification-row-options")).toBeNull();
-    expect(__getStateForTests().notifications).toHaveLength(1);
   });
 
-  it("expanding one row collapses the other — the option strip is single-open", () => {
-    __ingestNotificationForTests(
-      makeNotification({ title: "First", category: "system" }),
-    );
-    __ingestNotificationForTests(
-      makeNotification({ title: "Second", category: "general" }),
-    );
-    render(<NotificationsHomeCenter />);
-    const rows = screen.getAllByTestId("notification-row");
-    expect(rows).toHaveLength(2);
-    fireEvent.click(rows[0]);
-    expect(rows[0].getAttribute("aria-expanded")).toBe("true");
-    // Pressing the second notification collapses the first — exactly one
-    // option strip is ever open.
-    fireEvent.click(rows[1]);
-    expect(rows[0].getAttribute("aria-expanded")).toBe("false");
-    expect(rows[1].getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getAllByTestId("notification-row-options")).toHaveLength(1);
-  });
-
-  it("an unsafe deep link exposes no Open option; Dismiss still clears", () => {
+  it("tap never navigates an unsafe deep link but still clears the row", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "javascript:alert(1)" }),
     );
     render(<NotificationsHomeCenter />);
     fireEvent.click(screen.getByTestId("notification-row"));
-    expect(screen.queryByTestId("notification-option-open")).toBeNull();
-    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
     expect(navigateDeepLink).not.toHaveBeenCalled();
     expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
-  it("a message row's Suggest a reply prefills the chat and clears the row", () => {
+  it("tap clears only the activated row and leaves its sibling", () => {
     __ingestNotificationForTests(
       makeNotification({
-        category: "message",
-        title: "New message from Alice",
-        deepLink: "/chat",
+        title: "Keep me",
+        category: "system",
+        source: "system",
       }),
     );
-    render(<NotificationsHomeCenter />);
-    const prefillEvents: string[] = [];
-    const onPrefill = (e: Event) =>
-      prefillEvents.push((e as CustomEvent<{ text: string }>).detail.text);
-    window.addEventListener("eliza:chat:prefill", onPrefill);
-    try {
-      fireEvent.click(screen.getByTestId("notification-row"));
-      fireEvent.click(screen.getByTestId("notification-option-suggest-reply"));
-    } finally {
-      window.removeEventListener("eliza:chat:prefill", onPrefill);
-    }
-    expect(prefillEvents[0]).toContain("New message from Alice");
-    expect(__getStateForTests().notifications).toHaveLength(0);
-  });
-
-  it("dismisses a single row via its expanded Dismiss option (no corner X)", () => {
     __ingestNotificationForTests(
-      makeNotification({ title: "Keep me", category: "system" }),
-    );
-    __ingestNotificationForTests(
-      makeNotification({ title: "Dismiss me", category: "general" }),
+      makeNotification({
+        title: "Dismiss me",
+        category: "general",
+        source: "agent",
+      }),
     );
     render(<NotificationsHomeCenter />);
     const rows = screen.getAllByTestId("notification-row");
     expect(rows).toHaveLength(2);
-    // The hover-X is gone entirely.
     expect(screen.queryByTestId("notification-row-dismiss")).toBeNull();
     const target = screen.getByText("Dismiss me").closest("li") as HTMLElement;
     fireEvent.click(
       target.querySelector('[data-testid="notification-row"]') as HTMLElement,
-    );
-    fireEvent.click(
-      target.querySelector(
-        '[data-testid="notification-option-dismiss"]',
-      ) as HTMLElement,
     );
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.queryByText("Dismiss me")).toBeNull();
@@ -337,23 +280,9 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(makeNotification());
     __ingestNotificationForTests(makeNotification());
     render(<NotificationsHomeCenter />);
-    // Rows manage their own state one at a time (tap to expand, swipe / option
-    // to dismiss); the shade carries no bulk affordances at all.
+    // Rows act one at a time; the shade carries no bulk affordances.
     expect(screen.queryByTestId("notifications-clear-all")).toBeNull();
     expect(screen.queryByTestId("notifications-mark-all-read")).toBeNull();
-  });
-
-  it("right-click expands the same contextual options (no floating menu)", () => {
-    __ingestNotificationForTests(
-      makeNotification({ title: "Menu me", deepLink: "/x" }),
-    );
-    render(<NotificationsHomeCenter />);
-    const li = screen.getByText("Menu me").closest("li") as HTMLElement;
-    fireEvent.contextMenu(li);
-    expect(screen.queryByTestId("notification-row-menu")).toBeNull();
-    expect(screen.getByTestId("notification-row-options")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
-    expect(screen.queryByText("Menu me")).toBeNull();
   });
 
   it("the inbox CONTAINER has no chrome — glass lives on the cards", () => {
@@ -379,34 +308,16 @@ describe("NotificationsHomeCenter", () => {
     expect(css).toContain("box-shadow");
   });
 
-  it("expanded options are bare action text — no fill, no border, no pill", () => {
-    __ingestNotificationForTests(
-      makeNotification({
-        category: "message",
-        title: "M",
-        deepLink: "/chat",
-      }),
-    );
-    render(<NotificationsHomeCenter />);
-    fireEvent.click(screen.getByTestId("notification-row"));
-    const strip = screen.getByTestId("notification-row-options");
-    const buttons = Array.from(strip.querySelectorAll("button"));
-    expect(buttons.length).toBeGreaterThanOrEqual(2);
-    for (const b of buttons) {
-      expect(b.className).not.toMatch(/\bbg-/);
-      expect(b.className).not.toMatch(/rounded-full/);
-      expect(b.className).not.toMatch(/\bborder\b/);
-      // The label is the affordance: text styling only.
-      expect(b.className).toMatch(/text-white/);
-    }
-  });
-
   it("acting on a row removes it; surviving rows keep their stable order", () => {
     __ingestNotificationForTests(
-      makeNotification({ title: "Second", category: "system" }),
+      makeNotification({
+        title: "Second",
+        category: "system",
+        source: "system",
+      }),
     );
     __ingestNotificationForTests(
-      makeNotification({ priority: "urgent", title: "First" }),
+      makeNotification({ priority: "urgent", title: "First", source: "agent" }),
     );
     render(<NotificationsHomeCenter />);
     const titles = () =>
@@ -415,7 +326,6 @@ describe("NotificationsHomeCenter", () => {
         .map((el) => el.textContent ?? "");
     expect(titles()[0]).toContain("First");
     fireEvent.click(screen.getAllByTestId("notification-row")[0]);
-    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
     expect(titles()).toHaveLength(1);
     expect(titles()[0]).toContain("Second");
   });
@@ -451,7 +361,7 @@ describe("NotificationsHomeCenter", () => {
     );
     render(<NotificationsHomeCenter />);
     expect(screen.queryByText("Notifications")).toBeNull();
-    // The view-group eyebrow headers (and their counts) are gone: groups are
+    // The producer-group eyebrow headers (and their counts) are gone: groups are
     // separated by spacing only.
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
     expect(screen.queryByTestId("notification-stack-count")).toBeNull();
@@ -462,7 +372,10 @@ describe("NotificationsHomeCenter", () => {
       __ingestNotificationForTests(makeNotification({ priority: "high" }));
     }
     render(<NotificationsHomeCenter />);
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
+    expect(screen.getByTestId("notification-source-count").textContent).toBe(
+      "99+",
+    );
     // Stacks persist through the shade change; fan the group via a peek tap.
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(100);
@@ -476,7 +389,7 @@ describe("NotificationsHomeCenter", () => {
       makeNotification({ priority: "normal", title: "Quiet one" }),
     );
     render(<NotificationsHomeCenter />);
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     // A notification is its glass card - no leading edge highlight even for
     // urgent rows, no per-row icon chip.
@@ -531,8 +444,15 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     );
     expect(peeks[0].style.transform).toContain("translateY(8px)");
     expect(peeks[1].style.transform).toContain("translateY(16px)");
-    // No eyebrow, no stack-size number — the peeks themselves are the cue.
-    expect(screen.queryByTestId("notification-stack-count")).toBeNull();
+    // The producer tile is vertically centered and carries the stack total.
+    const sourceIcon = screen.getByTestId("notification-source-icon");
+    expect(sourceIcon.className).toContain("h-10");
+    expect(sourceIcon.className).toContain("w-10");
+    expect(sourceIcon.className).toContain("items-center");
+    const count = screen.getByTestId("notification-source-count");
+    expect(count.textContent).toBe("3");
+    expect(count.className).toContain("min-w-5");
+    expect(count.className).toContain("tabular-nums");
   });
 
   it("stacks cap their visual depth at two peeks", () => {
@@ -551,6 +471,32 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
   });
 
+  it("tapping the collapsed top card fans the stack instead of opening its deep link", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "A", deepLink: "/settings" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "B", deepLink: "/settings" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        title: "C",
+        priority: "urgent",
+        deepLink: "/settings",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    fireEvent.click(screen.getByTestId("notification-row"));
+    expect(navigateDeepLink).not.toHaveBeenCalled();
+    expect(__getStateForTests().notifications).toHaveLength(3);
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("expanded");
+  });
+
   it("expanding the shade keeps the stacks; tapping a peek fans the group in place", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "A", priority: "high" }),
@@ -563,8 +509,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     );
     render(<NotificationsHomeCenter />);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
-    // The shade toggle reveals more GROUPS but never flattens a stack.
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    // Pulling the shade open reveals more groups but never flattens a stack.
+    expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     // Tapping the peeked card below the top one fans the stack out.
@@ -577,15 +523,21 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       .getAllByTestId("notification-row")
       .map((el) => el.textContent ?? "");
     expect(titles[0]).toContain("C");
-    // The fanned group's own "Show less" control folds it back into the stack
-    // (there is no group header to tap).
+    // Expanded producer controls are local to the stack.
+    expect(screen.getByTestId("notification-stack-collapse").textContent).toBe(
+      "Show Less",
+    );
+    expect(screen.getByTestId("notification-stack-clear").textContent).toBe("");
+    expect(screen.getByTestId("notifications-count").textContent).toBe(
+      "3 Notifications",
+    );
     fireEvent.click(screen.getByTestId("notification-stack-collapse"));
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack-collapse")).toBeNull();
   });
 
-  it("keeps a fanned stack open when the shade expands", () => {
+  it("fanning a stack enters the expanded shade", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "A", priority: "high" }),
     );
@@ -601,10 +553,34 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     const list = screen.getByTestId("home-notification-list");
     expect(list.className).toContain("touch-pan-y");
     expect(list.className).toContain("overflow-x-hidden");
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
+  });
+
+  it("requires X then Clear before removing only that producer stack", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "A", source: "github" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "B", source: "github" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ title: "Keep", source: "calendar" }),
+    );
+    render(<NotificationsHomeCenter />);
+    const stack = screen.getByTestId("notification-stack");
+    fireEvent.click(
+      stack.querySelector('[data-testid="notification-row"]') as HTMLElement,
+    );
+    const clear = screen.getByTestId("notification-stack-clear");
+    expect(clear.textContent).toBe("");
+    fireEvent.click(clear);
+    expect(clear.textContent).toBe("Clear");
+    expect(__getStateForTests().notifications).toHaveLength(3);
+    fireEvent.click(clear);
+    expect(__getStateForTests().notifications).toHaveLength(1);
+    expect(screen.getByText("Keep")).toBeTruthy();
   });
 
   it("a drag that starts ON a stack still pulls the shade open and never fans the stack", () => {
@@ -618,11 +594,12 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       makeNotification({ title: "C", priority: "urgent" }),
     );
     __ingestNotificationForTests(
-      // Its own view-group (system), so the expanded shade shows it flat.
+      // Its own producer group, so the expanded shade shows it flat.
       makeNotification({
         title: "Quiet",
         priority: "normal",
         category: "system",
+        source: "system",
       }),
     );
     render(<NotificationsHomeCenter />);
@@ -660,26 +637,6 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
     expect(screen.getByText("Quiet")).toBeTruthy();
-  });
-
-  it("swiping away the top card surfaces the next card in the stack", () => {
-    __ingestNotificationForTests(
-      makeNotification({ title: "Below", priority: "high" }),
-    );
-    __ingestNotificationForTests(
-      makeNotification({ title: "On top", priority: "urgent" }),
-    );
-    render(<NotificationsHomeCenter />);
-    expect(screen.getByTestId("notification-row").textContent).toContain(
-      "On top",
-    );
-    fireEvent.click(screen.getByTestId("notification-row"));
-    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
-    // The store removed the top row; the group's next card takes the top.
-    expect(screen.getByTestId("notification-row").textContent).toContain(
-      "Below",
-    );
-    expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
   });
 
   it("SWIPE-dismissing the stack top promotes the next card WITHOUT its fling-out state (keyed remount)", () => {
@@ -748,44 +705,50 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   }
 
-  it('the "N more" hint is a real button that expands, and its expanded twin reads "Show less"', () => {
+  it("renders one passive total with no arrow or button in either shade mode", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
-    // Rested: only the interrupt-tier row renders; the visible foot button
-    // names the hidden count and owns the click path of the same transition
-    // the gestures drive. The old passive hint + sr-only pair are gone.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
-    expect(screen.queryByTestId("notifications-pull-hint")).toBeNull();
-    const toggle = screen.getByTestId("notifications-expand-toggle");
-    expect(toggle.className).not.toContain("sr-only");
-    expect(toggle.className).not.toContain("pointer-events-none");
-    expect(toggle.textContent).toContain("2 more");
-    fireEvent.click(toggle);
-    expect(
-      screen
-        .getByTestId("home-notification-list")
-        .getAttribute("data-shade-mode"),
-    ).toBe("expanded");
-    expect(
-      screen.getByTestId("notifications-expand-toggle").textContent,
-    ).toContain("Show less");
+    const count = screen.getByTestId("notifications-count");
+    expect(count.textContent).toBe("3 Notifications");
+    expect(count.closest("button")).toBeNull();
+    expect(count.querySelector("svg")).toBeNull();
+    expect(screen.queryByTestId("notifications-expand-toggle")).toBeNull();
+    expect(screen.queryByText(/more|show less/i)).toBeNull();
+    expandShade();
+    expect(count.textContent).toBe("3 Notifications");
   });
 
-  it("the foot button expands to all priorities and compresses back", () => {
+  it("gestures expand to all priorities and compress back", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     // All three priorities are now represented — still stacked (1 top card +
     // 2 tappable peeks); the shade change reveals groups, never flattens them.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    collapseShade();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
+  });
+
+  it("requires X then Clear before clearing the expanded inbox", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    expandShade();
+    const clear = screen.getByTestId("notifications-clear-all");
+    expect(clear.className).toContain("h-8");
+    expect(clear.className).not.toContain("min-h-touch");
+    expect(clear.textContent).toBe("");
+    fireEvent.click(clear);
+    expect(clear.textContent).toBe("Clear");
+    expect(__getStateForTests().notifications).toHaveLength(3);
+    fireEvent.click(clear);
+    expect(__getStateForTests().notifications).toHaveLength(0);
   });
 
   it("a mouse pull-down past the commit travel expands the shade", () => {
@@ -823,6 +786,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         priority: "normal",
         title: "Normal thing",
         category: "system",
+        source: "system",
       }),
     );
     __ingestNotificationForTests(
@@ -830,6 +794,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
         priority: "low",
         title: "Low thing",
         category: "general",
+        source: "agent",
       }),
     );
     render(<NotificationsHomeCenter />);
@@ -853,6 +818,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
+    const clear = screen.getByTestId("notifications-clear-all");
+    const clearReveal = clear.closest("li") as HTMLElement;
+    expect(Number.parseFloat(clearReveal.style.opacity)).toBeGreaterThan(0);
+    expect(Number.parseFloat(clearReveal.style.opacity)).toBeLessThan(1);
     const revealedGroups = list.querySelectorAll(
       ":scope > [data-notification-pull-reveal]",
     );
@@ -912,7 +881,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     // The list is scrolled down 150px; the browser owns the pan until scrollTop
     // hits 0. A naive dy-from-touchstart would arrive at the top already maxed
@@ -963,7 +932,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     // Fingers-down (deltaY < 0) while already expanded must NOT collapse —
     // that direction only expands.
@@ -983,7 +952,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     // Drag DOWN while expanded: the expand direction in a state with nothing
     // left to expand — springs back, never collapses.
@@ -1034,7 +1003,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     // jsdom geometry: scrollHeight == clientHeight == 0 → no overflow, so the
     // pan-y scroller has nothing to do and the shade owns the upward drag.
@@ -1048,7 +1017,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
+    expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     fireEvent.touchStart(list, { touches: [{ clientX: 10, clientY: 10 }] });
     fireEvent.touchMove(list, { touches: [{ clientX: 12, clientY: 150 }] });
@@ -1089,13 +1058,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
-  it("with nothing hidden the rested shade has no hint, no toggle, no pull", () => {
+  it("with nothing hidden the rested shade only shows its passive total", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", title: "Only one" }),
     );
     render(<NotificationsHomeCenter />);
     expect(screen.queryByTestId("notifications-pull-hint")).toBeNull();
     expect(screen.queryByTestId("notifications-expand-toggle")).toBeNull();
+    expect(screen.getByTestId("notifications-count").textContent).toBe(
+      "1 Notification",
+    );
     const list = screen.getByTestId("home-notification-list");
     fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
@@ -1131,7 +1103,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
     });
   }
 
-  it("tap (pointerdown → pointerup, no move) expands the row's options on TOUCH", () => {
+  it("tap (pointerdown → pointerup, no move) opens directly on touch", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Tap me" }),
     );
@@ -1139,21 +1111,29 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
     const swipe = screen.getByTestId("notification-row-swipe");
     const button = screen.getByTestId("notification-row");
     // A real touch tap: down then up on the swipe surface, no movement, then the
-    // button's synthetic click. suppressClick must NOT be set (no swipe / long
-    // press), so the tap expands the row.
+    // button's synthetic click. suppressClick must not be set.
     pointer(swipe, "pointerDown", { x: 10, y: 10 });
     pointer(swipe, "pointerUp", { x: 10, y: 10 });
     fireEvent.click(button);
-    expect(screen.getByTestId("notification-row-options")).toBeTruthy();
-    expect(navigateDeepLink).not.toHaveBeenCalled();
+    expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
+    expect(__getStateForTests().notifications).toHaveLength(0);
+    expect(screen.queryByTestId("notification-row-options")).toBeNull();
   });
 
   it("horizontal swipe past the threshold dismisses the row (and swallows the click)", () => {
     __ingestNotificationForTests(
-      makeNotification({ title: "Keep", category: "system" }),
+      makeNotification({
+        title: "Keep",
+        category: "system",
+        source: "system",
+      }),
     );
     __ingestNotificationForTests(
-      makeNotification({ title: "Swipe away", category: "general" }),
+      makeNotification({
+        title: "Swipe away",
+        category: "general",
+        source: "agent",
+      }),
     );
     render(<NotificationsHomeCenter />);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
@@ -1179,7 +1159,7 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
     expect(swipe.style.transform).toContain("translateX(-120%)");
   });
 
-  it("a long-press expands the row's options on TOUCH", () => {
+  it("holding a row does not reveal a hidden action menu", () => {
     vi.useFakeTimers();
     try {
       __ingestNotificationForTests(
@@ -1188,19 +1168,18 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
       render(<NotificationsHomeCenter />);
       const swipe = screen.getByTestId("notification-row-swipe");
       pointer(swipe, "pointerDown", { x: 10, y: 10 });
-      // Hold past LONG_PRESS_MS (420) with no movement → options expand. Wrap
-      // the timer flush in act() so the parent's single-open state commits
-      // before the query reads the DOM.
       act(() => {
         vi.advanceTimersByTime(450);
       });
-      expect(screen.getByTestId("notification-row-options")).toBeTruthy();
+      expect(screen.queryByTestId("notification-row-options")).toBeNull();
+      expect(navigateDeepLink).not.toHaveBeenCalled();
+      expect(__getStateForTests().notifications).toHaveLength(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("a vertical drag on a row never doubles as a tap (pull, not expand)", () => {
+  it("a vertical drag on a row never doubles as an open", () => {
     __ingestNotificationForTests(makeNotification({ title: "Draggy" }));
     render(<NotificationsHomeCenter />);
     const swipe = screen.getByTestId("notification-row-swipe");
@@ -1209,8 +1188,9 @@ describe("NotificationsHomeCenter (touch interaction, device r8)", () => {
     pointer(swipe, "pointerMove", { x: 12, y: 60 }); // axis locks y
     pointer(swipe, "pointerUp", { x: 12, y: 60 });
     fireEvent.click(button); // the synthetic click the drag emits
-    // The drag belonged to the scroller/pull — the options must NOT open.
+    // The drag belonged to the scroller/pull, so the row remains untouched.
     expect(screen.queryByTestId("notification-row-options")).toBeNull();
+    expect(__getStateForTests().notifications).toHaveLength(1);
   });
 
   it("marks the row + its center with the overlay-exemption hooks the collapse-swallower reads", () => {

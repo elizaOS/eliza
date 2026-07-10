@@ -1383,9 +1383,8 @@ describe("ContinuousChatOverlay", () => {
     // interactive surfaces: without an exemption the outside-tap collapse-
     // swallower ate the row's tap (preventDefault + suppressNextOutsideClick),
     // so tapping a notification did NOTHING ("interacting is cooked"). The
-    // swallower exempts [data-notif-row] (the rows, and their option strip
-    // which lives inside the row); a tap on a row must leave the chat OPEN and
-    // not be swallowed.
+    // swallower exempts [data-notif-row]; a tap on a row must leave the chat
+    // OPEN and not be swallowed.
     render(<ContinuousChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
