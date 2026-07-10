@@ -570,7 +570,7 @@ function applyListFilter(
   entries: PluginListEntry[],
   filter: ListFilter,
 ): PluginListEntry[] {
-  const search = filter.search?.trim().toLowerCase() ?? "";
+  const search = filter.search?.trim().toLowerCase();
   return entries.filter((entry) => {
     if (search) {
       const haystack =

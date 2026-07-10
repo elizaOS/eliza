@@ -423,9 +423,9 @@ function buildLegacyShim(args: {
 
 function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   const buffer = Buffer.concat(captured.chunks);
-  const contentType = (captured.headers["content-type"] ?? "").toLowerCase();
-  const contentEncoding = (captured.headers["content-encoding"] ?? "")
-    .trim()
+  const contentType = captured.headers["content-type"]?.toLowerCase();
+  const contentEncoding = captured.headers["content-encoding"]
+    ?.trim()
     .toLowerCase();
   if (buffer.length === 0) {
     return {
@@ -438,10 +438,12 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   // underlying media type is textual; interpreting either encoded or binary
   // bytes as UTF-8 would make the downstream IPC base64 envelope lossy.
   const hasTransferEncoding =
-    contentEncoding !== "" && contentEncoding !== "identity";
+    contentEncoding !== undefined &&
+    contentEncoding.length > 0 &&
+    contentEncoding !== "identity";
   const isTextual =
     !hasTransferEncoding &&
-    (contentType === "" ||
+    (contentType === undefined ||
       contentType.startsWith("text/") ||
       contentType.includes("json") ||
       contentType.includes("xml") ||
@@ -457,7 +459,7 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   }
   const text = buffer.toString("utf8");
   let body: unknown = text;
-  if (contentType.includes("json")) {
+  if (contentType?.includes("json")) {
     try {
       body = JSON.parse(text);
     } catch {
