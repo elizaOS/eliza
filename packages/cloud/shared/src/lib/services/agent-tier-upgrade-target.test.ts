@@ -1,22 +1,31 @@
 /**
  * Real-DB coverage for the tier-upgrade single-flight boundary (#15943):
  * target creation, managed-environment preparation, and provision-job enqueue
- * as one durable unit. Real service + real repositories + real provisioning
- * job service against in-process PGlite; the only instrumented seam is
- * `prepareManagedElizaSharedEnvironment` (wrapped, not replaced — it delegates
- * to the real implementation) so tests can delay or fail the credential-mint
- * phase and prove losers/retries never double-prepare, plus one spy on the
- * enqueue step to prove target+job atomicity under rollback.
+ * as one durable unit, plus the org-wide quota serialization and the
+ * ambiguous-commit credential-ownership rules from the #16042 review. Real
+ * service + real repositories + real provisioning job service. Defaults to
+ * in-process PGlite; an ambient DATABASE_URL (a disposable multi-connection
+ * Postgres) is honored so the same suite doubles as the real-Postgres
+ * advisory-lock/concurrency proof — point it at a THROWAWAY database only,
+ * the fixture DDL and seeds are applied as-is.
+ *
+ * Instrumented seams (installed in beforeAll, snapshot-restored in afterAll):
+ * `prepareManagedElizaSharedEnvironment` (wrapped, delegates to the real
+ * implementation) to delay/fail the credential-mint phase, and a dbWrite
+ * transaction wrapper that lets one test drop the COMMIT acknowledgment after
+ * the commit itself landed. One spy on the enqueue step proves target+job
+ * atomicity under rollback.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
+process.env.DATABASE_URL ||= "pglite://memory";
+process.env.TEST_DATABASE_URL ||= process.env.DATABASE_URL;
 process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 
 import { eq, like } from "drizzle-orm";
+import * as dbHelpersActual from "../../db/helpers";
 import * as managedConfigActual from "./managed-eliza-config";
 
 // ---- instrumented prep seam: delay / fail / count, delegating to the real fn ----
@@ -55,8 +64,47 @@ function installPrepSeam(): void {
   }));
 }
 
+// ---- commit-ack-loss seam: after the Nth service transaction COMMITS, the
+// wrapper rejects the transaction promise — exactly the ambiguity of a lost
+// commit acknowledgment. A one-shot select failure models the verification
+// read itself failing. Value snapshot for the same live-binding reason above.
+const dbHelpersSnapshot = { ...dbHelpersActual };
+let commitAckLossCountdown = 0;
+let verifySelectFailNext = false;
+
+function installCommitAckSeam(): void {
+  const realDbWrite = dbHelpersSnapshot.dbWrite;
+  const wrappedDbWrite = new Proxy(realDbWrite, {
+    get(target, prop, receiver) {
+      if (prop === "transaction" && commitAckLossCountdown > 0) {
+        return async (...args: Parameters<typeof realDbWrite.transaction>) => {
+          commitAckLossCountdown -= 1;
+          const committed = await target.transaction(...args);
+          if (commitAckLossCountdown === 0) {
+            throw new Error("simulated commit-acknowledgment loss");
+          }
+          return committed;
+        };
+      }
+      if (prop === "select" && verifySelectFailNext) {
+        verifySelectFailNext = false;
+        return () => {
+          throw new Error("simulated verification read failure");
+        };
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  mock.module("../../db/helpers", () => ({
+    ...dbHelpersSnapshot,
+    dbWrite: wrappedDbWrite,
+  }));
+}
+
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_QUOTA = "22222222-2222-4222-8222-222222222222";
+const ORG_RACE = "33333333-3333-4333-8333-333333333333";
+const ORG_RACE_CREATE = "44444444-4444-4444-8444-444444444444";
 const USER_A = "aaaaaaaa-1111-4111-8111-111111111111";
 const USER_QUOTA = "bbbbbbbb-1111-4111-8111-111111111111";
 const CHARACTER_A = "eeeeeeee-1111-4111-8111-111111111111";
@@ -68,6 +116,11 @@ const SRC_PREP_FAIL = "cccccccc-5555-4555-8555-555555555555";
 const SRC_ADOPTED = "cccccccc-6666-4666-8666-666666666666";
 const SRC_QUOTA = "cccccccc-7777-4777-8777-777777777777";
 const SRC_FORGED = "cccccccc-8888-4888-8888-888888888888";
+const SRC_ACK_LOSS = "cccccccc-9999-4999-8999-999999999999";
+const SRC_ACK_VERIFY_FAIL = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const SRC_RACE_1 = "cccccccc-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const SRC_RACE_2 = "cccccccc-dddd-4ddd-8ddd-dddddddddddd";
+const SRC_RACE_CREATE = "cccccccc-eeee-4eee-8eee-eeeeeeeeeeee";
 const QUOTA_EXISTING = "dddddddd-1111-4111-8111-111111111111";
 
 const PGLITE_TIMEOUT = 120_000;
@@ -85,8 +138,12 @@ beforeAll(async () => {
   try {
     installPrepSeam();
     const client = await import("../../db/client");
+    // Capture the pristine handles BEFORE the commit-ack seam lands: the
+    // harness must keep observing the DB directly even while a test rejects
+    // the service's transaction promises.
     dbWrite = client.dbWrite;
     closeDb = client.closeDatabaseConnectionsForTests;
+    installCommitAckSeam();
 
     const { organizations } = await import("../../db/schemas/organizations");
     const { users } = await import("../../db/schemas/users");
@@ -105,6 +162,13 @@ beforeAll(async () => {
     await dbWrite.insert(organizations).values([
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "100" },
       { id: ORG_QUOTA, name: "Org Quota", slug: "org-quota", credit_balance: "100" },
+      { id: ORG_RACE, name: "Org Race", slug: "org-race", credit_balance: "100" },
+      {
+        id: ORG_RACE_CREATE,
+        name: "Org Race Create",
+        slug: "org-race-create",
+        credit_balance: "100",
+      },
     ]);
     await dbWrite.insert(users).values([
       {
@@ -153,6 +217,8 @@ beforeAll(async () => {
 afterEach(() => {
   prepDelayMs = 0;
   prepFailNext = false;
+  commitAckLossCountdown = 0;
+  verifySelectFailNext = false;
 });
 
 function upgradeParams(sourceAgentId: string, overrides: Record<string, unknown> = {}) {
@@ -456,6 +522,152 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
   );
 
   test(
+    "a lost commit acknowledgment is recovered — the durable target keeps its credentials and the result is returned",
+    async () => {
+      expect(pgliteReady).toBe(true);
+
+      // The service runs two transactions on a fresh mint (phase 1 pre-check,
+      // phase 3 boundary). Drop the acknowledgment of the SECOND one: the
+      // commit lands, the promise rejects — the exact ambiguity the #16042
+      // review flagged as inverting credential ownership.
+      commitAckLossCountdown = 2;
+      const result = await svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_ACK_LOSS));
+
+      // Recovered, not failed: the committed pair is handed back.
+      expect(result.created).toBe(true);
+      const targets = await targetsForSource(SRC_ACK_LOSS);
+      expect(targets).toHaveLength(1);
+      expect(targets[0]?.id).toBe(result.agent.id);
+      expect(await jobsForAgent(result.agent.id)).toHaveLength(1);
+
+      // The live target's credential was NEVER revoked — the row stays bootable.
+      const keyRows = await dbWrite
+        .select()
+        .from(apiKeys)
+        .where(eq(apiKeys.name, `agent-sandbox:${result.agent.id}`));
+      expect(keyRows).toHaveLength(1);
+      expect(keyRows[0]?.is_active).toBe(true);
+
+      // A retry reattaches to the recovered pair.
+      const retry = await svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_ACK_LOSS));
+      expect(retry.created).toBe(false);
+      expect(retry.agent.id).toBe(result.agent.id);
+      await expectNoOrphanAgentKeys();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "when durability cannot be verified after a rejection, credentials are preserved and the uncertainty surfaces",
+    async () => {
+      expect(pgliteReady).toBe(true);
+
+      // Commit lands, ack is lost, AND the verification read fails: nothing is
+      // provable, so the candidate credential must be PRESERVED (revoking a
+      // live target's key breaks the agent; a stranded key is only hygiene
+      // debt) and the original rejection must surface.
+      commitAckLossCountdown = 2;
+      verifySelectFailNext = true;
+      await expect(
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_ACK_VERIFY_FAIL)),
+      ).rejects.toThrow("simulated commit-acknowledgment loss");
+
+      // Durable state is intact (the commit DID land) and its credential lives.
+      const targets = await targetsForSource(SRC_ACK_VERIFY_FAIL);
+      expect(targets).toHaveLength(1);
+      expect(await jobsForAgent(targets[0]!.id)).toHaveLength(1);
+      const keyRows = await dbWrite
+        .select()
+        .from(apiKeys)
+        .where(eq(apiKeys.name, `agent-sandbox:${targets[0]!.id}`));
+      expect(keyRows).toHaveLength(1);
+      expect(keyRows[0]?.is_active).toBe(true);
+
+      // The retry converges onto the durable pair.
+      const retry = await svc.createTierUpgradeTargetWithProvision(
+        upgradeParams(SRC_ACK_VERIFY_FAIL),
+      );
+      expect(retry.created).toBe(false);
+      expect(retry.agent.id).toBe(targets[0]!.id);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "two upgrades of DIFFERENT source agents racing for the org's last quota slot: exactly one succeeds",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const { AgentQuotaExceededError } = await import("./eliza-sandbox");
+
+      // cap=1 with zero existing agents: one free slot, two distinct sources.
+      // The per-source tier-upgrade locks differ, so only the ORG-WIDE lock
+      // makes the two count→insert windows mutually exclusive (#16042 review).
+      const outcomes = await Promise.allSettled([
+        svc.createTierUpgradeTargetWithProvision(
+          upgradeParams(SRC_RACE_1, { organizationId: ORG_RACE, maxNonTerminalAgents: 1 }),
+        ),
+        svc.createTierUpgradeTargetWithProvision(
+          upgradeParams(SRC_RACE_2, { organizationId: ORG_RACE, maxNonTerminalAgents: 1 }),
+        ),
+      ]);
+
+      const fulfilled = outcomes.filter((outcome) => outcome.status === "fulfilled");
+      const rejected = outcomes.filter((outcome) => outcome.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(AgentQuotaExceededError);
+
+      const raceTargets = [
+        ...(await targetsForSource(SRC_RACE_1)),
+        ...(await targetsForSource(SRC_RACE_2)),
+      ];
+      expect(raceTargets).toHaveLength(1);
+      expect(await jobsForAgent(raceTargets[0]!.id)).toHaveLength(1);
+      await expectNoOrphanAgentKeys();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an upgrade racing an ordinary createAgent for the last quota slot: exactly one succeeds",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const { AgentQuotaExceededError, elizaSandboxService } = await import("./eliza-sandbox");
+
+      // createAgent serializes on the org-wide agent-create lock; the upgrade
+      // boundary must take the SAME lock or the two paths can both read
+      // count = cap-1 and both insert (#16042 review).
+      const outcomes = await Promise.allSettled([
+        svc.createTierUpgradeTargetWithProvision(
+          upgradeParams(SRC_RACE_CREATE, {
+            organizationId: ORG_RACE_CREATE,
+            maxNonTerminalAgents: 1,
+          }),
+        ),
+        elizaSandboxService.createAgent({
+          organizationId: ORG_RACE_CREATE,
+          userId: USER_A,
+          agentName: "ordinary-create",
+          maxNonTerminalAgents: 1,
+        }),
+      ]);
+
+      const fulfilled = outcomes.filter((outcome) => outcome.status === "fulfilled");
+      const rejected = outcomes.filter((outcome) => outcome.status === "rejected");
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(AgentQuotaExceededError);
+
+      const orgRows = (await dbWrite.select().from(agentSandboxes)).filter(
+        (row) => row.organization_id === ORG_RACE_CREATE,
+      );
+      expect(orgRows).toHaveLength(1);
+      await expectNoOrphanAgentKeys();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "an over-quota upgrade is refused before any credential is minted",
     async () => {
       expect(pgliteReady).toBe(true);
@@ -511,8 +723,9 @@ describe("findLiveTierUpgradeTarget", () => {
 afterAll(async () => {
   if (closeDb) await closeDb();
   mock.restore();
-  // Hand the pristine module back to whatever test file runs after this one in
-  // the same process — a leaked module mock patches itself into later suites'
-  // imports.
+  // Hand the pristine modules back to whatever test file runs after this one
+  // in the same process — a leaked module mock patches itself into later
+  // suites' imports.
   mock.module("./managed-eliza-config", () => managedConfigSnapshot);
+  mock.module("../../db/helpers", () => dbHelpersSnapshot);
 });

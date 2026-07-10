@@ -24,6 +24,17 @@
  * candidate key, but each key is bound to its caller's own prospective id —
  * the loser's key never touches any row and is revoked on the spot, so the
  * durable end state is always exactly one credential set for the one target.
+ * Candidate credentials are revoked ONLY after durable state proves the
+ * prospective id was never adopted: a transaction rejection can be an
+ * ambiguous commit (commit landed, acknowledgment lost), so the catch path
+ * re-reads the live target before touching any key.
+ *
+ * Lock order (global discipline, deadlock-free by strict ordering):
+ * org agent-create lock → per-source tier-upgrade lock → per-agent provision
+ * lock. The org lock makes the quota count→insert atomic against EVERY other
+ * quota-consuming creation path (createAgent, coding containers, and upgrades
+ * of a different source agent); the per-source lock serializes upgrades of one
+ * source; the provision lock is acquired by the nested job enqueue.
  *
  * Consumed only by the upgrade-tier route (cloud/api), which resolves quota
  * and identity-copy inputs before calling in.
@@ -36,13 +47,18 @@ import { dbWrite } from "../../db/helpers";
 import type { AgentSandbox, AgentSandboxStatus } from "../../db/repositories/agent-sandboxes";
 import type { Job } from "../../db/repositories/jobs";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import { jobs } from "../../db/schemas/jobs";
 import { logger } from "../utils/logger";
 import { encryptAgentEnvVarsForStorage } from "./agent-env-crypto";
 import { apiKeysService } from "./api-keys";
 import { AGENT_UPGRADED_FROM_KEY } from "./eliza-agent-config";
-import { elizaAgentTierUpgradeAdvisoryLockSql } from "./eliza-provision-lock";
+import {
+  elizaAgentCreateAdvisoryLockSql,
+  elizaAgentTierUpgradeAdvisoryLockSql,
+} from "./eliza-provision-lock";
 import { assertOrgAgentQuota, buildAgentSandboxInsertValues } from "./eliza-sandbox";
 import { prepareManagedElizaSharedEnvironment } from "./managed-eliza-config";
+import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
 /**
@@ -120,22 +136,19 @@ export async function findLiveTierUpgradeTarget(
 
 /**
  * Best-effort teardown of the credentials prepared for a prospective target
- * that never became durable (lost the mint race, or the mint transaction
- * failed). The key is bound to the prospective id's name, so a race loser can
- * never touch the winner's credentials. One caveat: an AMBIGUOUS commit
- * failure (commit landed, acknowledgment lost) reaches this via the catch with
- * a targetId that IS now live — the revoke then removes a live target's key.
- * That state self-heals: the provision executor re-mints the agent key
- * unconditionally (`createForAgent` revokes-then-mints on every provision
- * run), so the container still boots with working credentials.
+ * that durable state has PROVEN was never adopted (lost the mint race to a
+ * competitor, or the boundary transaction verifiably rolled back). Callers
+ * must establish that proof first — `resolveOutcomeAfterBoundaryRejection`
+ * re-reads the live target before this ever runs — so the key named for the
+ * prospective id can never belong to a live target.
  */
 async function revokeAbandonedTargetCredentials(prospectiveTargetId: string): Promise<void> {
   try {
     await apiKeysService.revokeForAgent(prospectiveTargetId);
   } catch (error) {
     // error-policy:J6 best-effort teardown — the key references a target id
-    // that never existed and is unreachable; the caller's primary outcome
-    // (reattach or the original failure) is what must surface.
+    // that provably never existed; the caller's primary outcome (reattach or
+    // the original failure) is what must surface.
     logger.warn(
       "[agent-tier-upgrade] Failed to revoke credentials of an abandoned target candidate",
       {
@@ -144,6 +157,106 @@ async function revokeAbandonedTargetCredentials(prospectiveTargetId: string): Pr
       },
     );
   }
+}
+
+/**
+ * Classifies a boundary-transaction rejection by re-reading durable state on a
+ * fresh connection: a rejection is NOT proof of rollback — the COMMIT may have
+ * landed with only its acknowledgment lost. Exactly three provable outcomes:
+ *
+ *  - the candidate id IS the live target → the commit landed; recover the
+ *    result (with its provision job) instead of failing, and never touch the
+ *    credential the durable row's environment references;
+ *  - a COMPETITOR's target is live → this caller lost the race; its candidate
+ *    credential is provably unreferenced and safe to revoke;
+ *  - NO live target exists → the transaction provably rolled back; the
+ *    candidate credential is safe to revoke, and the original error stands.
+ *
+ * When the verification itself fails, nothing is provable: the credential is
+ * PRESERVED (a stranded-but-active key is recoverable hygiene debt, #16071; a
+ * revoked live-target key breaks a paying user's agent) and the original
+ * error surfaces with the uncertainty logged.
+ */
+async function resolveOutcomeAfterBoundaryRejection(
+  params: CreateTierUpgradeTargetParams,
+  candidateTargetId: string,
+  rejection: unknown,
+): Promise<TierUpgradeTargetResult | null> {
+  let live: AgentSandbox | null;
+  try {
+    live = await findLiveTierUpgradeTarget(params.organizationId, params.sourceAgentId);
+  } catch (verificationError) {
+    // error-policy:J2 context-adding uncertainty path — the ORIGINAL rejection
+    // is rethrown by the caller; this records that durability could not be
+    // verified and that the candidate credential was deliberately preserved.
+    logger.error(
+      "[agent-tier-upgrade] Could not verify durability after a boundary rejection — preserving candidate credentials",
+      {
+        sourceAgentId: params.sourceAgentId,
+        candidateTargetId,
+        orgId: params.organizationId,
+        rejection: rejection instanceof Error ? rejection.message : String(rejection),
+        verificationError:
+          verificationError instanceof Error
+            ? verificationError.message
+            : String(verificationError),
+      },
+    );
+    return null;
+  }
+
+  if (live?.id === candidateTargetId) {
+    // Ambiguous commit recovered: target (and, atomically, its job) are
+    // durable. Hand back the committed pair; the credential stays untouched.
+    const job = await findActiveTierUpgradeProvisionJob(params.organizationId, candidateTargetId);
+    logger.warn(
+      "[agent-tier-upgrade] Boundary transaction rejected AFTER a durable commit — recovered the committed target",
+      {
+        sourceAgentId: params.sourceAgentId,
+        dedicatedAgentId: candidateTargetId,
+        orgId: params.organizationId,
+        jobId: job?.id ?? null,
+        rejection: rejection instanceof Error ? rejection.message : String(rejection),
+      },
+    );
+    if (job) return { created: true, agent: live, job };
+    // Job already claimed-and-finished (or otherwise not active): reattach —
+    // the route's idempotent re-enqueue handles a dead job safely.
+    return { created: false, agent: live };
+  }
+
+  if (live) {
+    // A competitor's commit is durable — this caller's candidate was provably
+    // never adopted.
+    await revokeAbandonedTargetCredentials(candidateTargetId);
+    return { created: false, agent: live };
+  }
+
+  // Provable rollback: no live target for this source. Candidate credentials
+  // are unreferenced; the original rejection is the real outcome.
+  await revokeAbandonedTargetCredentials(candidateTargetId);
+  return null;
+}
+
+/** The candidate/target's active provision job, if one is pending or running. */
+async function findActiveTierUpgradeProvisionJob(
+  organizationId: string,
+  agentId: string,
+): Promise<Job | null> {
+  const [job] = await dbWrite
+    .select()
+    .from(jobs)
+    .where(
+      and(
+        eq(jobs.type, JOB_TYPES.AGENT_PROVISION),
+        eq(jobs.organization_id, organizationId),
+        eq(jobs.agent_id, agentId),
+        sql`${jobs.status} IN ('pending', 'in_progress')`,
+      ),
+    )
+    .orderBy(desc(jobs.created_at))
+    .limit(1);
+  return job ?? null;
 }
 
 /**
@@ -156,10 +269,15 @@ async function revokeAbandonedTargetCredentials(prospectiveTargetId: string): Pr
 export async function createTierUpgradeTargetWithProvision(
   params: CreateTierUpgradeTargetParams,
 ): Promise<TierUpgradeTargetResult> {
-  // Phase 1 — reattach fast path and pre-mint quota refusal under the lock.
+  // Phase 1 — reattach fast path and pre-mint quota refusal under the locks.
   // Anything durable a previous winner committed is visible here, so retries
   // and post-commit racers return without preparing any state of their own.
   const preexisting = await dbWrite.transaction(async (tx) => {
+    // Org lock FIRST (global order: org → tier-upgrade → provision): the
+    // quota count is only atomic if every quota-consuming creation path —
+    // createAgent, coding containers, upgrades of OTHER source agents —
+    // serializes on the same org-wide lock (#16042 review).
+    await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
     await tx.execute(
       elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
     );
@@ -191,8 +309,13 @@ export async function createTierUpgradeTargetWithProvision(
   try {
     // Phase 3 — the durable single-flight boundary: re-check, quota-check,
     // insert the target, and enqueue its provision job in ONE transaction
-    // under the per-source lock. A failure rolls back target and job together.
+    // under the org + per-source locks. A rollback discards target and job
+    // together.
     result = await dbWrite.transaction(async (tx) => {
+      // Same global lock order as phase 1: org → tier-upgrade (→ the nested
+      // enqueue's provision lock). The org lock is what makes the quota
+      // count→insert atomic against createAgent and other-source upgrades.
+      await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
       await tx.execute(
         elizaAgentTierUpgradeAdvisoryLockSql(params.organizationId, params.sourceAgentId),
       );
@@ -248,7 +371,11 @@ export async function createTierUpgradeTargetWithProvision(
       return { created: true as const, agent: created, job };
     });
   } catch (error) {
-    await revokeAbandonedTargetCredentials(targetId);
+    // A rejection is NOT proof of rollback — verify durability before any
+    // cleanup (an ambiguous commit-ack loss leaves target+job live, and the
+    // candidate credential is then the LIVE target's credential).
+    const recovered = await resolveOutcomeAfterBoundaryRejection(params, targetId, error);
+    if (recovered) return recovered;
     throw error;
   }
 
