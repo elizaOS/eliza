@@ -23,13 +23,14 @@
 
 import {
   closeSync,
+  constants,
   lstatSync,
   openSync,
-  readFileSync,
   readSync,
   renameSync,
 } from "node:fs";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import { loadAccount, saveAccount } from "../account-storage.js";
 
 function codexAuthPath(): string {
@@ -123,12 +124,14 @@ function readRegularFile(filePath: string): string {
       "not_regular_file",
     );
   }
-  // O_NOFOLLOW (0o400000 on Linux) rejects a symlink swapped in after the
-  // lstat; combined with the isFile() check this closes the TOCTOU window.
-  const O_NOFOLLOW = 0o400000;
+  // O_NOFOLLOW rejects a symlink swapped in after the lstat; combined with the
+  // isFile() check this closes the TOCTOU window. The flag value differs per
+  // platform (Linux 0o400000, macOS 0x100), so use the libuv-resolved constant
+  // rather than a hardcoded Linux number that silently means something else on
+  // other platforms.
   let fd: number;
   try {
-    fd = openSync(filePath, 0 /* O_RDONLY */ | O_NOFOLLOW);
+    fd = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch {
     throw new AdoptCodexError(
       `Codex login at ${filePath} could not be opened as a regular file`,
@@ -233,8 +236,15 @@ export function adoptCodexCliLogin(
   } catch (err) {
     try {
       renameSync(retiredTo, authPath);
-    } catch {
-      // best-effort restore; surface the original write failure regardless.
+    } catch (restoreErr) {
+      // error-policy:J6 best-effort teardown — the account write already failed;
+      // restoring the retired source is a courtesy so the operator is not left
+      // with neither a CLI login nor a pool account. If the restore also fails
+      // we surface it (the retired file still exists at `retiredTo`) but rethrow
+      // the ORIGINAL write failure below, which is the actionable one.
+      logger.warn(
+        `[auth] adoptCodexCliLogin: pool write failed and could not restore the retired Codex source from ${retiredTo} to ${authPath}: ${restoreErr instanceof Error ? restoreErr.message : String(restoreErr)}`,
+      );
     }
     throw err;
   }
