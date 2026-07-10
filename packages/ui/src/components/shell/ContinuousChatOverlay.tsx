@@ -5727,17 +5727,20 @@ export function ContinuousChatOverlay({
                 // (This surface's strings are plain literals by design — see
                 // the imageError note above.)
                 placeholder={
-                  firstRunOpen
-                    ? "Sign in to start chatting"
-                    : noProviderConfigured
-                      ? "Connect a model provider in Settings to chat"
-                      : modelBlocksSend
-                        ? modelStatus?.kind === "downloading"
-                          ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                          : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                        : booting
-                          ? `Ask ${agentName} — waking up…`
-                          : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
+                  compactLanding
+                    ? "Ask"
+                    : firstRunOpen
+                      ? "Sign in to start chatting"
+                      : noProviderConfigured
+                        ? "Connect a model provider in Settings to chat"
+                        : modelBlocksSend
+                          ? modelStatus?.kind === "downloading"
+                            ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                            : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                          : booting
+                            ? `Ask ${agentName} — waking up…`
+                            : (viewChatBinding?.placeholder ??
+                              `Ask ${agentName}`)
                 }
                 aria-label="message"
                 data-testid="chat-composer-textarea"

@@ -42,7 +42,9 @@
  * per-tenant DSN, never the shared agent URL — is asserted directly.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
+import { isContainerStatus } from "../../db/repositories/container-status";
 import { containersRepository } from "../../db/repositories/containers";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
@@ -300,7 +302,12 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
    * CONTAINER_DELETE is async and would otherwise race the new row's check). The
    * daemon's CONTAINER_DELETE then does the real `docker rm -f` + node-slot
    * release and flips the row to terminal `deleted`. Best-effort per row: a
-   * failure to retire one row is logged but never blocks the new deploy.
+   * failure to retire one row is logged but never blocks the new deploy. An
+   * enqueue failure AFTER the status flip additionally reverts the row to its
+   * pre-retire status: a `deleting` row with no job is permanently stuck
+   * (recovery only fans out from a claimed legacy job, and `deleting` is
+   * excluded from this retire query), whereas a reverted row is simply retried
+   * by the next deploy's retire pass (#15826).
    */
   private async retirePriorContainers(
     organizationId: string,
@@ -309,21 +316,60 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
   ): Promise<void> {
     const prior = await containersRepository.findUndeletedByProjectName(organizationId, appId);
     for (const row of prior) {
+      // Captured before the flip: the revert below must restore the PRE-retire
+      // status even if the row object aliases live state mutated by updateStatus.
+      const preRetireStatus = row.status;
       try {
         // Mark `deleting` up front so it stops counting toward quota before the
         // new row's quota check; the daemon's CONTAINER_DELETE finishes the job.
         await containersRepository.updateStatus(row.id, "deleting");
+      } catch (error) {
+        // error-policy:J6 retire is best-effort teardown on the deploy path; the untouched row is retried by the next deploy's retire pass.
+        logger.warn("[AppDeployRunner] failed to retire prior container row", {
+          appId,
+          containerId: row.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        continue;
+      }
+      try {
         await enqueuer.enqueueDelete({ containerId: row.id, organizationId });
         logger.info("[AppDeployRunner] retired prior container row", {
           appId,
           containerId: row.id,
         });
       } catch (error) {
-        logger.warn("[AppDeployRunner] failed to retire prior container row", {
-          appId,
-          containerId: row.id,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        // error-policy:J6 teardown stays best-effort for the deploy, but the stuck-`deleting` hazard is reverted and surfaced at error level (an enqueue failure means the jobs write path is broken — systemic, not a per-row blip).
+        const enqueueMessage = error instanceof Error ? error.message : String(error);
+        try {
+          // `containers.status` is free text at the column level; validate the
+          // read-back value before handing it to the typed writer.
+          if (!isContainerStatus(preRetireStatus)) {
+            throw new ElizaError(
+              `Container ${row.id} pre-retire status '${preRetireStatus}' is outside the containers status vocabulary`,
+              {
+                code: "CONTAINER_PRE_RETIRE_STATUS_INVALID",
+                context: { appId, containerId: row.id, preRetireStatus },
+              },
+            );
+          }
+          await containersRepository.updateStatus(row.id, preRetireStatus);
+          logger.error(
+            "[AppDeployRunner] failed to enqueue prior-container delete; reverted the row to its pre-retire status",
+            { appId, containerId: row.id, revertedTo: preRetireStatus, error: enqueueMessage },
+          );
+        } catch (revertError) {
+          // error-policy:J6 last-resort escalation: both writes failed and the row IS stuck in `deleting` with no job — surfaced at error level, never a quiet warn.
+          logger.error(
+            "[AppDeployRunner] failed to enqueue prior-container delete AND failed to revert the row — container row is stuck in deleting with no job",
+            {
+              appId,
+              containerId: row.id,
+              error: enqueueMessage,
+              revertError: revertError instanceof Error ? revertError.message : String(revertError),
+            },
+          );
+        }
       }
     }
   }

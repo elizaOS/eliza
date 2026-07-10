@@ -55,6 +55,20 @@ export {
 	scrubIncomingMessageTextForStorage,
 } from "./incoming-message-security.js";
 export {
+	type AssembleContextPackRequest,
+	assembleContextPack,
+	buildScrubRequestDraft,
+	entityResolverFromStore,
+	type PiiContextFragment,
+	type PiiContextPack,
+	type PiiContextSources,
+	type PiiEntityResolverStore,
+	type PiiResolvedEntity,
+	type PiiScrubCandidate,
+	type RuntimeContextSourceOptions,
+	sourcesFromRuntime,
+} from "./pii-context-pack.js";
+export {
 	cardBrand,
 	detectPii,
 	ibanValid,
@@ -67,6 +81,25 @@ export {
 	ssnValid,
 	wifValid,
 } from "./pii-detectors.js";
+export {
+	type AliasSubstitutionResult,
+	type AssignClusterInput,
+	assertValidSnapshot,
+	CorpusPseudonymMap,
+	type CorpusPseudonymMapOptions,
+	type PseudonymClusterIdentity,
+	type PseudonymClusterRecord,
+	PseudonymMapIntegrityError,
+	type PseudonymMapSnapshot,
+} from "./pii-pseudonym-map.js";
+export {
+	EncryptedCachePseudonymMapStore,
+	type EncryptedCachePseudonymMapStoreOptions,
+	PII_PSEUDONYM_MAP_AAD,
+	PII_PSEUDONYM_MAP_CACHE_KEY,
+	type PseudonymMapStore,
+	PseudonymMapStoreError,
+} from "./pii-pseudonym-map-store.js";
 export {
 	DEFAULT_PSEUDONYM_BLOCKLIST,
 	PII_SWAP_DISABLED_KINDS_SETTING,

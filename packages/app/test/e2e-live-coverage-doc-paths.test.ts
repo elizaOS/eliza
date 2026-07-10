@@ -43,7 +43,10 @@ describe("E2E_LIVE_COVERAGE.md path integrity", () => {
     // Sanity: a broken extraction regex must not silently empty the roster.
     expect(paths.length).toBeGreaterThan(10);
     const missing = paths.filter((p) => !existsSync(path.join(REPO_ROOT, p)));
-    expect(missing, `E2E_LIVE_COVERAGE.md references missing paths:\n${missing.join("\n")}`).toEqual([]);
+    expect(
+      missing,
+      `E2E_LIVE_COVERAGE.md references missing paths:\n${missing.join("\n")}`,
+    ).toEqual([]);
   });
 
   it("does not reference the removed whisper.cpp voice path (#14420)", () => {
@@ -54,7 +57,10 @@ describe("E2E_LIVE_COVERAGE.md path integrity", () => {
       "ELIZA_WHISPER_MODEL",
       "build-omnivoice.mjs",
     ]) {
-      expect(doc, `stale reference to removed voice path: ${banned}`).not.toContain(banned);
+      expect(
+        doc,
+        `stale reference to removed voice path: ${banned}`,
+      ).not.toContain(banned);
     }
   });
 });

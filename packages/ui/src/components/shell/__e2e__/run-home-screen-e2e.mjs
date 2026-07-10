@@ -30,6 +30,12 @@ import {
   touchLongPress,
   touchSwipe,
 } from "../../../testing/real-touch-gestures.ts";
+import {
+  SWIPE_HINT_DISPLAY_MS,
+  SWIPE_HINT_FADE_MS,
+  SWIPE_HINT_SHOW_DELAY_MS,
+  SWIPE_HINT_WIDGET_KEY,
+} from "../FirstSessionSwipeHint.tsx";
 
 // Frame gate for the home↔launcher rail swipe - same factor-based thresholds as
 // the sibling real-overlay gates (run-perf-gate-e2e / run-chat-perf-gate): the
@@ -379,6 +385,59 @@ async function waitForSurfacePageSettled(p, pageName) {
     return railSettled && transitionsDone;
   }, pageName);
 }
+async function waitForRenderedHomeSettled(page) {
+  const viewportWidth = page.viewportSize()?.width;
+  assert(viewportWidth, "mobile viewport width is available");
+  await page.waitForFunction(
+    async (expectedViewportWidth) => {
+      const sample = () => {
+        const surface = document.querySelector(
+          '[data-testid="home-launcher-surface"]',
+        );
+        const rail = document.querySelector(
+          '[data-testid="home-launcher-rail"]',
+        );
+        const home = document.querySelector(
+          '[data-testid="home-launcher-home-page"]',
+        );
+        if (
+          !(surface instanceof HTMLElement) ||
+          !(rail instanceof HTMLElement) ||
+          !(home instanceof HTMLElement)
+        ) {
+          return null;
+        }
+        const railRect = rail.getBoundingClientRect();
+        const homeRect = home.getBoundingClientRect();
+        return {
+          railLeft: railRect.left,
+          homeLeft: homeRect.left,
+          homeRight: homeRect.right,
+          viewportWidth: window.innerWidth,
+        };
+      };
+      const first = sample();
+      if (!first) return false;
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      );
+      const second = sample();
+      if (!second) return false;
+      const stable = ["railLeft", "homeLeft", "homeRight"].every(
+        (key) => Math.abs(first[key] - second[key]) < 0.5,
+      );
+      return (
+        stable &&
+        Math.abs(second.viewportWidth - expectedViewportWidth) < 1 &&
+        Math.abs(second.railLeft) < 1 &&
+        Math.abs(second.homeLeft) < 1 &&
+        Math.abs(second.homeRight - expectedViewportWidth) < 1
+      );
+    },
+    viewportWidth,
+    { timeout: 15000 },
+  );
+}
 function medianNumber(values) {
   const sorted = values
     .filter((value) => Number.isFinite(value))
@@ -463,10 +522,81 @@ try {
   await mobile.goto(`${url}?homeData=quiet`);
   await assertQuietHome(mobile, "quiet account");
   await snap(mobile, "mobile-home-quiet");
+  // The preceding quiet-state capture must not consume the one-time lesson;
+  // isolate this certification from runner timing before loading its subject.
+  await mobile.evaluate(() =>
+    localStorage.removeItem("eliza:home-dismissed:v1"),
+  );
   await mobile.goto(`${url}?native&homeData=attention`);
   await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
   await mobile.waitForSelector('[data-testid="home-screen"]');
   await mobile.waitForTimeout(600);
+  const firstSessionSwipeHint = mobile.getByTestId(
+    "first-session-swipe-hint",
+  );
+  await firstSessionSwipeHint.waitFor({
+    state: "visible",
+    timeout: SWIPE_HINT_SHOW_DELAY_MS + 2_000,
+  });
+  assert(
+    (await firstSessionSwipeHint.getByText("Swipe for apps").count()) === 1,
+    "mobile coarse-pointer: first session renders the swipe lesson",
+  );
+  await snap(mobile, "mobile-first-session-swipe-hint");
+  await firstSessionSwipeHint.waitFor({
+    state: "hidden",
+    timeout: SWIPE_HINT_DISPLAY_MS + SWIPE_HINT_FADE_MS + 2_000,
+  });
+  const persistedSwipeHintLife = await mobile.evaluate(
+    (widgetKey) =>
+      JSON.parse(localStorage.getItem("eliza:home-dismissed:v1") ?? "{}")?.[
+        widgetKey
+      ],
+    SWIPE_HINT_WIDGET_KEY,
+  );
+  assert(
+    persistedSwipeHintLife?.seen === 1 &&
+      persistedSwipeHintLife?.dismissed === true,
+    "mobile coarse-pointer: completed lesson persists its retirement",
+  );
+  await mobile.reload();
+  await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
+  await waitForSurfacePageSettled(mobile, "home");
+  await waitForHomeEnterSettled(mobile);
+  await mobile.waitForTimeout(SWIPE_HINT_SHOW_DELAY_MS + 1_000);
+  await Promise.all([
+    mobile.getByTestId("home-time-widget").waitFor({ state: "visible" }),
+    mobile.getByTestId("home-weather").waitFor({ state: "visible" }),
+    mobile.getByText("Buy groceries", { exact: true }).waitFor({
+      state: "visible",
+    }),
+    mobile.getByText("Design review", { exact: true }).waitFor({
+      state: "visible",
+    }),
+  ]);
+  await mobile.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  });
+  await waitForRenderedHomeSettled(mobile);
+  assert(
+    (await mobile.getByTestId("home-launcher-surface").getAttribute(
+      "data-page",
+    )) === "home",
+    "mobile coarse-pointer: reload returns to the home half",
+  );
+  assert(
+    (await mobile.getByTestId("first-session-swipe-hint").count()) === 0,
+    "mobile coarse-pointer: retired lesson stays absent after reload",
+  );
+  // Chromium's first screenshot after a mobile reload can race the compositor
+  // layer upload even after DOM geometry and animations have settled. Warm the
+  // capture path, then require another stable frame before recording evidence.
+  await mobile.screenshot();
+  await waitForRenderedHomeSettled(mobile);
+  await snap(mobile, "mobile-after-swipe-hint-retired");
   assert(
     (await mobile.getByTestId("rail-pager-edge-prev").count()) === 0 &&
       (await mobile.getByTestId("rail-pager-edge-next").count()) === 0 &&

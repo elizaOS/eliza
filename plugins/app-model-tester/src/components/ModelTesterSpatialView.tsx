@@ -101,7 +101,7 @@ export function ModelTesterSpatialView({
 }: ModelTesterSpatialViewProps) {
   const dispatch = (action: string) => () => onAction?.(action);
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} shrink={0} width="100%">
       <HStack gap={1} align="center" wrap>
         <Text style="caption" tone="success">
           {snapshot.readyCount} ready
@@ -119,7 +119,7 @@ export function ModelTesterSpatialView({
           Refresh
         </Button>
         <Button
-          variant="outline"
+          variant="ghost"
           tone="default"
           agent="back"
           onPress={dispatch("back")}
@@ -142,7 +142,7 @@ export function ModelTesterSpatialView({
         {PROMPT_PRESETS.map((preset) => (
           <Button
             key={preset}
-            variant="outline"
+            variant="ghost"
             tone="default"
             grow={1}
             agent={`preset-${preset.toLowerCase()}`}
@@ -154,7 +154,7 @@ export function ModelTesterSpatialView({
       </HStack>
       <HStack gap={1} wrap>
         <Button
-          variant="outline"
+          variant="ghost"
           tone={snapshot.imageDataUrl ? "success" : "default"}
           grow={1}
           agent="pick-image"
@@ -163,7 +163,7 @@ export function ModelTesterSpatialView({
           {snapshot.imageDataUrl ? "Image ok" : "Image"}
         </Button>
         <Button
-          variant="outline"
+          variant="ghost"
           tone={snapshot.audioLoaded ? "success" : "default"}
           grow={1}
           agent="pick-audio"
@@ -202,7 +202,7 @@ export function ModelTesterSpatialView({
                   {resultLabel(probe)}
                 </Text>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   tone="default"
                   disabled={probe.running}
                   agent={`run-${probe.id}`}

@@ -1,11 +1,5 @@
 /**
- * Provenance regression guard for the app-audit OCR triage (#15790). Proves the
- * triage is scoped to the current `report.json` and can never fold a screenshot
- * left behind by an earlier capture into the result. Two layers: pure-function
- * tests of `authorizedShots` (the selection invariant), and an end-to-end run of
- * the real `scripts/ocr-triage.ts` CLI over a fixture directory salted with a
- * stale PNG and a stale OCR record — the exact shape that produced the bug where
- * 240 report rows were triaged against 379 globbed PNGs.
+ * Proves the OCR triage accepts exactly the current report manifest through both its function and real CLI boundaries.
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -107,7 +101,7 @@ describe("authorizedShots (report-authoritative selection)", () => {
     shot(dir, "desktop-landscape", "builtin-chat");
     // builtin-phone.png intentionally absent.
     expect(() => authorizedShots(dir, CURRENT_ROWS)).toThrow(
-      /builtin-phone::desktop-landscape has no screenshot/,
+      /screenshot is missing: builtin-phone::desktop-landscape/,
     );
   });
 
@@ -115,11 +109,13 @@ describe("authorizedShots (report-authoritative selection)", () => {
     for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
     expect(() =>
       authorizedShots(dir, [...CURRENT_ROWS, CURRENT_ROWS[0]]),
-    ).toThrow(/duplicate report row builtin-chat::desktop-landscape/);
+    ).toThrow(/Duplicate audit report row: builtin-chat::desktop-landscape/);
   });
 
   it("fails fast on an empty report", () => {
-    expect(() => authorizedShots(dir, [])).toThrow(/lists no views/);
+    expect(() => authorizedShots(dir, [])).toThrow(
+      /contains no screenshot rows/,
+    );
   });
 });
 
@@ -152,17 +148,45 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     }
   }
 
-  it("triages exactly the report rows while ignoring an unreported stale PNG", async () => {
-    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
-    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
-    // A retired-view PNG can remain on disk, but it is not authorized evidence.
-    shot(dir, "desktop-landscape", STALE_SLUG);
+  it("writes an exact manifest result and accounts for known pixel regressions", async () => {
+    const rows: ReportEntry[] = [
+      {
+        slug: "builtin-settings",
+        viewport: "desktop-landscape",
+        verdict: "good",
+      },
+      {
+        slug: "plugin-readable-gui",
+        viewport: "mobile-portrait",
+        verdict: "good",
+      },
+      {
+        slug: "plugin-broken-gui",
+        viewport: "ipad-portrait",
+        verdict: "needs-eyeball",
+      },
+    ];
+    for (const row of rows) shot(dir, row.viewport, row.slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(rows));
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
-        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
-        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+        ocrLine("desktop-landscape", "builtin-settings", "Settings Voice"),
+        ocrLine(
+          "mobile-portrait",
+          "plugin-readable-gui",
+          "Readable plugin content",
+        ),
+        ocrLine(
+          "ipad-portrait",
+          "plugin-broken-gui",
+          "TypeError Cannot read properties",
+        ),
       ].join("\n"),
+    );
+    writeFileSync(
+      join(dir, "baseline.json"),
+      JSON.stringify({ known: ["plugin-broken-gui::ipad-portrait"] }),
     );
 
     const result = await runOcrTriage([
@@ -172,29 +196,57 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       join(dir, "ocr.ndjson"),
       "--out",
       join(dir, "ocr-triage.json"),
+      "--baseline",
+      join(dir, "baseline.json"),
     ]);
-    expect(result.summary.total).toBe(CURRENT_ROWS.length);
-    expect(result.entries.map((entry) => entry.slug).sort()).toEqual([
-      "builtin-chat",
-      "builtin-phone",
+
+    expect(result.summary).toEqual({
+      total: 3,
+      verified: 1,
+      broken: 1,
+      needsEyeball: 1,
+      regressions: 1,
+      knownRegressions: 1,
+      newRegressions: 0,
+    });
+    expect(result.entries.map((entry) => entry.slug)).toEqual([
+      "plugin-broken-gui",
+      "builtin-settings",
+      "plugin-readable-gui",
     ]);
+    expect(
+      JSON.parse(readFileSync(join(dir, "ocr-triage.json"), "utf8")),
+    ).toEqual(result);
+  });
+
+  it("rejects an OCR record that is not in the current report", async () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
+    // A retired-view PNG can remain on disk, but it is not authorized evidence.
+    shot(dir, "desktop-landscape", STALE_SLUG);
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      [
+        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
+        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+        ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
+      ].join("\n"),
+    );
+
+    await expect(
+      runOcrTriage([
+        "--audit-dir",
+        dir,
+        "--ocr",
+        join(dir, "ocr.ndjson"),
+        "--out",
+        join(dir, "ocr-triage.json"),
+      ]),
+    ).rejects.toThrow(/OCR input is not in the current audit report/);
 
     const { status, stderr } = run();
-    expect(stderr).toBe("");
-    expect(status).toBe(0);
-
-    const out = JSON.parse(
-      readFileSync(join(dir, "ocr-triage.json"), "utf8"),
-    ) as { summary: { total: number }; entries: { slug: string }[] };
-    // OCR row count equals the DOM report row count — provenance holds.
-    expect(out.summary.total).toBe(CURRENT_ROWS.length);
-    expect(out.entries.map((e) => e.slug).sort()).toEqual([
-      "builtin-chat",
-      "builtin-phone",
-    ]);
-    expect(out.entries.some((e) => e.slug.includes("social-alpha"))).toBe(
-      false,
-    );
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/OCR input is not in the current audit report/);
   });
 
   it("rejects imported OCR with missing, duplicate, unexpected, or mismatched records", () => {
@@ -207,7 +259,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
     );
     const stale = JSON.parse(
-      ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+      ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
     );
 
     expect(() =>
@@ -226,7 +278,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         phone,
         stale,
       ]),
-    ).toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    ).toThrow(new RegExp(`unexpected OCR record ${STALE_SLUG}`));
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
         {
@@ -251,7 +303,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       [
         ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
         ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
-        ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+        ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
 
@@ -264,10 +316,10 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         "--out",
         join(dir, "ocr-triage.json"),
       ]),
-    ).rejects.toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    ).rejects.toThrow(/OCR input is not in the current audit report/);
     const { status, stderr } = run();
     expect(status).not.toBe(0);
-    expect(stderr).toMatch(/unexpected OCR record plugin-social-alpha-gui/);
+    expect(stderr).toMatch(/OCR input is not in the current audit report/);
   });
 
   it("exits non-zero when a report row's screenshot is missing", async () => {
@@ -287,12 +339,34 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         "--out",
         join(dir, "ocr-triage.json"),
       ]),
-    ).rejects.toThrow(/builtin-phone::desktop-landscape has no screenshot/);
+    ).rejects.toThrow(
+      /screenshot is missing: builtin-phone::desktop-landscape/,
+    );
     const { status, stderr } = run();
     expect(status).not.toBe(0);
     expect(stderr).toMatch(
-      /builtin-phone::desktop-landscape has no screenshot/,
+      /screenshot is missing: builtin-phone::desktop-landscape/,
     );
+  });
+
+  it("rejects a malformed precomputed OCR record at the input boundary", async () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      `${JSON.stringify({ path: join(dir, "desktop-landscape", "builtin-chat.png"), ok: true })}\n`,
+    );
+
+    await expect(
+      runOcrTriage([
+        "--audit-dir",
+        dir,
+        "--ocr",
+        join(dir, "ocr.ndjson"),
+        "--out",
+        join(dir, "ocr-triage.json"),
+      ]),
+    ).rejects.toThrow(/Invalid OCR input record at line 1/);
   });
 });
 
@@ -311,16 +385,19 @@ describe("audit runner cleanup", () => {
     expect(() => resolveConfigured(APP_DIR)).toThrow(/unsafe audit output/);
     expect(() => resolveConfigured(repoRoot)).toThrow(/unsafe audit output/);
     expect(() => resolveConfigured("/")).toThrow(/unsafe audit output/);
+    expect(() => resolveConfigured(join(APP_DIR, "..", "ui"))).toThrow(
+      /unsafe audit output/,
+    );
     expect(resolveConfigured(dir)).toBe(dir);
   });
 
   it("resets stale artifacts once before Playwright owns the run", () => {
-    const stale = join(dir, "mobile-portrait", "plugin-social-alpha-gui.png");
+    const stale = join(dir, "mobile-portrait", "plugin-retired-gui.png");
     mkdirSync(join(dir, "mobile-portrait"));
     writeFileSync(stale, PNG_1x1);
 
     const output = execFileSync(
-      "node",
+      process.execPath,
       [
         join(APP_DIR, "scripts", "run-ui-playwright.mjs"),
         "--config",
@@ -343,6 +420,7 @@ describe("audit runner cleanup", () => {
 
     expect(output).toContain("Reset app aesthetic audit output");
     expect(output).toContain("Listing tests:");
+    expect(existsSync(dir)).toBe(true);
     expect(existsSync(stale)).toBe(false);
   }, 30_000);
 });

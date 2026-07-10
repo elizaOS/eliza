@@ -25,8 +25,8 @@
  *    reconstruct identity from DTOs (onboarding-created shared agents keep
  *    name/bio only in agent_config).
  *  - 2xx `alreadyInProgress:true` reattach when this shared agent already has a
- *    live migration target (the `__agentUpgradedFrom` marker): a retry or a
- *    second tab must resume the SAME upgrade, never mint a second container.
+ *    live migration target (the `__agentUpgradedFrom` marker): a per-source
+ *    database lock makes retries and concurrent tabs resume the SAME upgrade.
  */
 
 import { Hono } from "hono";
@@ -38,9 +38,10 @@ import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quo
 import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
-  AGENT_UPGRADED_FROM_KEY,
-  readUpgradedFromAgentId,
-} from "@/lib/services/eliza-agent-config";
+  createTierUpgradeTarget,
+  findActiveTierUpgradeProvisionJob,
+} from "@/lib/services/agent-tier-upgrade-target";
+import { readUpgradedFromAgentId } from "@/lib/services/eliza-agent-config";
 import { prepareManagedElizaEnvironment } from "@/lib/services/eliza-managed-launch";
 import {
   AgentQuotaExceededError,
@@ -83,6 +84,21 @@ function pollingBody(jobId: string) {
   };
 }
 
+async function waitForConcurrentProvisionJob(
+  agentId: string,
+  organizationId: string,
+) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const job = await findActiveTierUpgradeProvisionJob(
+      agentId,
+      organizationId,
+    );
+    if (job) return job;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return undefined;
+}
+
 function asConfigRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -100,9 +116,8 @@ function asEnvRecord(value: unknown): Record<string, string> {
 
 /**
  * The org's live migration target for this shared agent, if one exists.
- * Best-effort dedup for the realistic retry cases (double-click, client retry,
- * reload mid-provision); a sub-second concurrent race can still double-mint,
- * bounded by the per-org agent quota the create enforces.
+ * The atomic find-or-create service repeats this lookup under its per-source
+ * database lock before inserting, closing the concurrent double-mint window.
  */
 async function findLiveUpgradeTarget(
   organizationId: string,
@@ -208,10 +223,10 @@ async function __hono_POST(
     }
 
     // ── Reattach: an upgrade for this shared agent is already under way. ──
-    // No credit gate here — nothing new is minted, and blocking the reattach
-    // would strand a user whose balance dipped AFTER the (gated) mint while
-    // the container is already provisioned/billing. Ongoing solvency is owned
-    // by the billing cron + low-credit shutdown, not this route.
+    // Running and already-provisioning targets reattach without a second gate:
+    // nothing new starts billing. Resuming a stopped/sleeping target does start
+    // compute again, so that path must prove the same dedicated runway as a
+    // fresh upgrade before it may enqueue work.
     const existingTarget = await findLiveUpgradeTarget(
       user.organization_id,
       agentId,
@@ -238,6 +253,29 @@ async function __hono_POST(
             executionTier: existingTarget.execution_tier,
           },
         });
+      }
+      if (
+        existingTarget.status === "stopped" ||
+        existingTarget.status === "sleeping"
+      ) {
+        const resumeCreditCheck = await checkAgentTierUpgradeCreditGate(
+          user.organization_id,
+        );
+        if (!resumeCreditCheck.allowed) {
+          return json(
+            insufficientCredits402(
+              resumeCreditCheck,
+              "[agent-upgrade-tier] Resume blocked: insufficient hosting runway",
+              {
+                sharedAgentId: agentId,
+                dedicatedAgentId: existingTarget.id,
+                orgId: user.organization_id,
+              },
+              { requiredBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE },
+            ),
+            402,
+          );
+        }
       }
       // pending/provisioning (or stopped/sleeping after an interrupted boot):
       // hand back the active provision job — enqueue reuses an in-flight job
@@ -304,20 +342,16 @@ async function __hono_POST(
     const sourceEnv = stripReservedEnvKeys(
       asEnvRecord(shared.environment_vars),
     );
-    let created: Awaited<ReturnType<typeof elizaSandboxService.createAgent>>;
+    let created: Awaited<ReturnType<typeof createTierUpgradeTarget>>;
     try {
-      created = await elizaSandboxService.createAgent({
+      created = await createTierUpgradeTarget({
+        sourceAgentId: agentId,
         organizationId: user.organization_id,
         userId: user.id,
         agentName: shared.agent_name ?? agentId,
         ...(shared.character_id ? { characterId: shared.character_id } : {}),
         agentConfig: sourceConfig,
         environmentVars: sourceEnv,
-        executionTier: "dedicated-always",
-        // The shared source is itself a live non-terminal agent — the reuse
-        // guard would hand it straight back, so the migration target must be a
-        // forced fresh record, bounded by the balance-tiered org quota.
-        reuseExistingNonTerminal: false,
         maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(
           creditCheck.balance,
         ),
@@ -345,21 +379,107 @@ async function __hono_POST(
     }
     const dedicated = created.agent;
 
+    if (created.idempotent) {
+      if (dedicated.status === "running") {
+        return json({
+          success: true,
+          created: false,
+          alreadyInProgress: true,
+          data: {
+            id: dedicated.id,
+            agentId: dedicated.id,
+            dedicatedAgentId: dedicated.id,
+            sharedAgentId: agentId,
+            agentName: dedicated.agent_name,
+            status: dedicated.status,
+            executionTier: dedicated.execution_tier,
+          },
+        });
+      }
+      const concurrentJob = await waitForConcurrentProvisionJob(
+        dedicated.id,
+        user.organization_id,
+      );
+      if (concurrentJob) {
+        return json(
+          {
+            success: true,
+            created: false,
+            alreadyInProgress: true,
+            data: {
+              id: dedicated.id,
+              agentId: dedicated.id,
+              dedicatedAgentId: dedicated.id,
+              sharedAgentId: agentId,
+              agentName: dedicated.agent_name,
+              status: concurrentJob.status,
+              jobId: concurrentJob.id,
+              estimatedCompletionAt: concurrentJob.estimated_completion_at,
+              executionTier: dedicated.execution_tier,
+            },
+            polling: pollingBody(concurrentJob.id),
+          },
+          202,
+        );
+      }
+      const workerHealth = await checkProvisioningWorkerHealth();
+      if (!workerHealth.ok) {
+        return json(
+          provisioningWorkerFailureBody(workerHealth),
+          workerHealth.status,
+        );
+      }
+      const managedEnvironment = await prepareManagedElizaEnvironment({
+        existingEnv: sourceEnv,
+        organizationId: user.organization_id,
+        userId: user.id,
+        agentSandboxId: dedicated.id,
+      });
+      if (managedEnvironment.changed) {
+        await elizaSandboxService.updateAgentEnvironment(
+          dedicated.id,
+          user.organization_id,
+          managedEnvironment.environmentVars,
+        );
+      }
+      const reattach = await provisioningJobService.enqueueAgentProvisionOnce({
+        agentId: dedicated.id,
+        organizationId: user.organization_id,
+        userId: user.id,
+        agentName: dedicated.agent_name ?? dedicated.id,
+      });
+      if (reattach.created) {
+        void provisioningJobService.triggerImmediate(env).catch(() => {
+          // error-policy:J5 fire-and-forget nudge; the job is persisted and the
+          // provisioning cron is the safety net (failure logged in the service).
+        });
+      }
+      return json(
+        {
+          success: true,
+          created: false,
+          alreadyInProgress: true,
+          data: {
+            id: dedicated.id,
+            agentId: dedicated.id,
+            dedicatedAgentId: dedicated.id,
+            sharedAgentId: agentId,
+            agentName: dedicated.agent_name,
+            status: reattach.job.status,
+            jobId: reattach.job.id,
+            estimatedCompletionAt: reattach.job.estimated_completion_at,
+            executionTier: dedicated.execution_tier,
+          },
+          polling: pollingBody(reattach.job.id),
+        },
+        202,
+      );
+    }
+
     return await withUpgradeOrphanCleanup(
       dedicated.id,
       user.organization_id,
       async () => {
-        // Persist the upgrade marker FIRST so a crash after this point still
-        // leaves a reattachable target (the marker is what retries key on).
-        // buildAgentInsertData strips the reserved `__agent` namespace from
-        // caller config, so the marker must be written post-create.
-        await agentSandboxesRepository.update(dedicated.id, {
-          agent_config: {
-            ...asConfigRecord(dedicated.agent_config),
-            [AGENT_UPGRADED_FROM_KEY]: agentId,
-          },
-        });
-
         const managedEnvironment = await prepareManagedElizaEnvironment({
           existingEnv: sourceEnv,
           organizationId: user.organization_id,
@@ -401,7 +521,7 @@ async function __hono_POST(
           );
         }
 
-        const job = await provisioningJobService.enqueueAgentProvision({
+        const { job } = await provisioningJobService.enqueueAgentProvisionOnce({
           agentId: dedicated.id,
           organizationId: user.organization_id,
           userId: user.id,

@@ -207,11 +207,15 @@ function isProcessAlive(pid) {
 }
 
 function removePathRecursive(targetPath, label) {
-  const result = spawnSync("node", [cleanupHelperScript, targetPath], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    stdio: "pipe",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [cleanupHelperScript, targetPath],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    },
+  );
 
   if (result.error) {
     throw result.error;
@@ -240,6 +244,7 @@ function cleanAuditAppOutput() {
   // Cleaning here survives worker restarts and retries without erasing screenshots
   // that earlier tests in the same run already proved.
   removePathRecursive(outputDir, "app aesthetic audit output");
+  fs.mkdirSync(outputDir, { recursive: true });
   console.log(`[ui-smoke] Reset app aesthetic audit output: ${outputDir}`);
 }
 
@@ -359,7 +364,15 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
 // NodeNext `.js` specifiers while their worktree files are TypeScript.
 env.NODE_OPTIONS = withElizaSourceNodeOptions(env.NODE_OPTIONS);
 
-if (hasPlaywrightProject("audit-app")) {
+const runsAppAudit =
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
+  hasPlaywrightProject("audit-app");
+
+if (runsAppAudit) {
+  // The lock covers cleanup and the complete capture, including lanes that
+  // intentionally skip rebuilding views. No concurrent audit can erase this
+  // run's evidence after it starts writing.
+  releaseUiSmokeViewLock = acquireUiSmokeViewLock();
   cleanAuditAppOutput();
 }
 
@@ -400,7 +413,7 @@ if (
   hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
   env.ELIZA_UI_SMOKE_SKIP_VIEW_BUILD !== "1"
 ) {
-  releaseUiSmokeViewLock = acquireUiSmokeViewLock();
+  releaseUiSmokeViewLock ??= acquireUiSmokeViewLock();
   const result = spawnSync(
     process.execPath,
     [path.join(repoRoot, "packages", "scripts", "build-views.mjs")],

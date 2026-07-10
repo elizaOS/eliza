@@ -12,7 +12,7 @@
     "format:check": "bunx @biomejs/biome format src scripts",
     "clean": "node ../scripts/rm-path-recursive.mjs dist .turbo",
     "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bun test scripts/audit-views-soak-navigation.test.mjs && vitest run --config vitest.config.ts",
     "trace:startup": "node scripts/capture-startup-trace.mjs",
     "perf:startup-budget": "node scripts/check-startup-budget.mjs",
     "test:dev-smoke": "node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts",

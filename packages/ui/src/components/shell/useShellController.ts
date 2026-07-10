@@ -367,6 +367,8 @@ const selectShellController = (s: AppContextValue) => ({
   setTab: s.setTab,
   handleChatStop: s.handleChatStop,
   setActionNotice: s.setActionNotice,
+  chatAgentVoiceMuted: s.chatAgentVoiceMuted,
+  setState: s.setState,
 });
 
 export function useShellController(): ShellController {
@@ -385,6 +387,8 @@ export function useShellController(): ShellController {
     setTab,
     handleChatStop,
     setActionNotice,
+    chatAgentVoiceMuted,
+    setState,
   } = useAppSelectorShallow(selectShellController);
   // The wake phrase for transcript-mode inline replies follows the character
   // name (issue #9880); falls back to the running agent name, then "eliza".
@@ -1344,6 +1348,10 @@ export function useShellController(): ShellController {
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
 
+  const toggleAgentVoiceMute = React.useCallback(() => {
+    setState("chatAgentVoiceMuted", !chatAgentVoiceMuted);
+  }, [chatAgentVoiceMuted, setState]);
+
   const voiceOutput = useShellVoiceOutput({
     conversationMessages: Array.isArray(conversationMessages)
       ? conversationMessages
@@ -1351,6 +1359,8 @@ export function useShellController(): ShellController {
     chatSending,
     recording,
     lastTurnVoice,
+    agentVoiceMuted: chatAgentVoiceMuted,
+    toggleAgentVoiceMute,
     uiLanguage,
     cloudConnected: elizaCloudVoiceProxyAvailable,
   });

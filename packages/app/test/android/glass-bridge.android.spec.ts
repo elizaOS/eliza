@@ -183,10 +183,8 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
   expect(afterMove.exists).toBe(true);
   expect(afterMove.rect?.width).toBeCloseTo(MOVED_RECT.width * dpr, -1);
   expect(afterMove.rect?.height).toBeCloseTo(MOVED_RECT.height * dpr, -1);
-  const containerOffsetX =
-    (boot.afterAttach.rect?.x ?? 0) - CSS_RECT.x * dpr;
-  const containerOffsetY =
-    (boot.afterAttach.rect?.y ?? 0) - CSS_RECT.y * dpr;
+  const containerOffsetX = (boot.afterAttach.rect?.x ?? 0) - CSS_RECT.x * dpr;
+  const containerOffsetY = (boot.afterAttach.rect?.y ?? 0) - CSS_RECT.y * dpr;
   expect(afterMove.rect?.x).toBeCloseTo(
     MOVED_RECT.x * dpr + containerOffsetX,
     -1,

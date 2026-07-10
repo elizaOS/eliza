@@ -38,6 +38,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
     "/api/cron/cleanup-stuck-provisioning",
+    // #14808 CLOUD lane: drain pending pii_scrub jobs (content-hash-idempotent,
+    // budget-bounded; the scrub is background work, so 5-min cadence is plenty).
+    "/api/cron/process-pii-scrub-jobs",
     // node-disk-maintenance matches the daemon's 5-min infra-maintenance cadence;
     // it's a daemon-superseded parity endpoint (the real prune runs in the
     // provisioning-worker, which owns the SSH credential + docker_nodes truth).

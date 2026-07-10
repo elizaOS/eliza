@@ -9,3 +9,4 @@ export * from "./pipeline/rewrite.ts";
 export * from "./pipeline/secrets.ts";
 export * from "./schema.ts";
 export * from "./validator.ts";
+export * from "./verification.ts";

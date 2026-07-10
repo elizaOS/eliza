@@ -6709,11 +6709,61 @@ export class AgentRuntime implements IAgentRuntime {
 			);
 			const templateContext = { ...filteredState, ...state.values };
 
-			const outputSegments = this.renderPromptTemplateSegments(
+			let outputSegments = this.renderPromptTemplateSegments(
 				finalTemplateStr,
 				templateContext,
 				state,
 			);
+			// Callers that assemble the prompt themselves (e.g. the PromptBatcher
+			// dispatcher) can pass `params.promptSegments` alongside the flat
+			// `params.prompt` to preserve stable/dynamic structure for provider
+			// prompt caching. Without this, the whole caller prompt renders as a
+			// single segment and volatile content (batched section contexts) can be
+			// marked stable, producing cache writes that are never read. The caller
+			// segmentation is adopted ONLY when it reproduces the rendered template
+			// byte-for-byte, so the prompt text sent to the model is provably
+			// unchanged; otherwise (placeholders, template cleaning, optimization
+			// hooks rewriting the template) we keep the rendered segmentation.
+			const callerPromptSegments = (params as { promptSegments?: unknown })
+				.promptSegments;
+			if (
+				Array.isArray(callerPromptSegments) &&
+				callerPromptSegments.length > 0
+			) {
+				const normalizedCallerSegments: PromptSegment[] = [];
+				let callerSegmentsValid = true;
+				for (const segment of callerPromptSegments) {
+					if (
+						typeof segment !== "object" ||
+						segment === null ||
+						typeof (segment as { content?: unknown }).content !== "string"
+					) {
+						callerSegmentsValid = false;
+						break;
+					}
+					const typedSegment = segment as PromptSegment;
+					normalizedCallerSegments.push({
+						content: typedSegment.content,
+						stable: Boolean(typedSegment.stable),
+						...(typedSegment.ttl === "long" || typedSegment.ttl === "short"
+							? { ttl: typedSegment.ttl }
+							: {}),
+					});
+				}
+				const renderedOutput = outputSegments
+					.map((segment) => segment.content)
+					.join("");
+				const callerJoined = normalizedCallerSegments
+					.map((segment) => segment.content)
+					.join("");
+				if (callerSegmentsValid && callerJoined === renderedOutput) {
+					outputSegments = this.mergePromptSegments(normalizedCallerSegments);
+				} else if (RUNTIME_DEBUG_LOG_ENABLED) {
+					this.logger.debug(
+						"dynamicPromptExecFromState: caller promptSegments do not reproduce the rendered prompt; using template segmentation",
+					);
+				}
+			}
 			const output = outputSegments.map((segment) => segment.content).join("");
 
 			// Process format options
@@ -6927,10 +6977,19 @@ ${section_end}`;
 			const _dynamicCacheHash =
 				computePrefixHashes(cachePrefixSegments(segments)).at(-1)?.hash ??
 				"no-context-segments";
+			const _callerTools = (params as { tools?: unknown }).tools;
 			const _dynamicCachePlan = buildProviderCachePlan({
 				prefixHash: _dynamicCacheHash,
 				segmentHashes: _dynamicPrefixHashes.map((e) => e.segmentHash),
 				promptSegments: segments,
+				// Providers with tool-aware cache policies (Gemini disables explicit
+				// caching when tools are present; Anthropic reserves a breakpoint for
+				// the tools array) need to know whether this call carries tools.
+				hasTools: Array.isArray(_callerTools)
+					? _callerTools.length > 0
+					: typeof _callerTools === "object" && _callerTools !== null
+						? Object.keys(_callerTools).length > 0
+						: false,
 			});
 			// Deep-merge caller-supplied providerOptions with the cache plan. See
 			// mergeProviderOptionsWithCachePlan for the full merging semantics.

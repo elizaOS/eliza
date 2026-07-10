@@ -2912,26 +2912,35 @@ export async function runLifeOperationHandler(
       operation: operationPlan.operation,
       kind: resolvedKind,
     });
+    const text = await renderLifeActionReply({
+      runtime,
+      message,
+      state,
+      intent,
+      scenario:
+        operationPlan.operation === "create" && resolvedKind === "goal"
+          ? "clarify_create_goal"
+          : "clarify_create_definition",
+      fallback,
+      context: {
+        missing: operationPlan.missing,
+        operation: operationPlan.operation,
+      },
+    });
     return {
       success: true,
-      text: await renderLifeActionReply({
-        runtime,
-        message,
-        state,
-        intent,
-        scenario:
-          operationPlan.operation === "create" && resolvedKind === "goal"
-            ? "clarify_create_goal"
-            : "clarify_create_definition",
-        fallback,
-        context: {
-          missing: operationPlan.missing,
-          operation: operationPlan.operation,
-        },
-      }),
+      text,
+      userFacingText: text,
+      values: {
+        success: true,
+        noop: true,
+        awaitingUserInput: true,
+        suggestedOperation: operationPlan.operation,
+      },
       data: {
         actionName: ownerSurfaceActionName,
         noop: true,
+        awaitingUserInput: true,
         suggestedOperation: operationPlan.operation,
       },
     };
@@ -3140,9 +3149,23 @@ export async function runLifeOperationHandler(
           !detailString(details, "goalTitle") &&
           !detailString(details, "kind");
         if (shouldHonorPlannerResponse && llmPlan.response) {
+          const text = llmPlan.response;
           return {
             success: true as const,
-            text: llmPlan.response,
+            text,
+            userFacingText: text,
+            values: {
+              success: true,
+              noop: true,
+              awaitingUserInput: true,
+              suggestedOperation: "create",
+            },
+            data: {
+              actionName: ownerSurfaceActionName,
+              noop: true,
+              awaitingUserInput: true,
+              suggestedOperation: "create",
+            },
           };
         }
         if (llmPlan) {
@@ -3215,20 +3238,22 @@ export async function runLifeOperationHandler(
 
       if (!title) {
         const fallback = "What should I call it?";
+        const text = await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "clarify_create_definition",
+          fallback,
+          context: {
+            missing: ["title"],
+            operation: "create_definition",
+          },
+        });
         return {
           success: false as const,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "clarify_create_definition",
-            fallback,
-            context: {
-              missing: ["title"],
-              operation: "create_definition",
-            },
-          }),
+          text,
+          userFacingText: text,
           // Asking the owner to fill in a missing field — selection +
           // execution were both correct, terminal state is "needs human
           // input". Flag so the native planner chain breaks and the spy
@@ -3238,40 +3263,46 @@ export async function runLifeOperationHandler(
             error: "MISSING_DEFINITION_FIELD",
             missingField: "title",
             requiresConfirmation: true,
+            awaitingUserInput: true,
           },
           data: {
             actionName: ownerSurfaceActionName,
             missingField: "title",
             requiresConfirmation: true,
+            awaitingUserInput: true,
           },
         };
       }
       if (!cadence) {
         const fallback = "When should it happen?";
+        const text = await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "clarify_create_definition",
+          fallback,
+          context: {
+            missing: ["schedule"],
+            operation: "create_definition",
+          },
+        });
         return {
           success: false as const,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "clarify_create_definition",
-            fallback,
-            context: {
-              missing: ["schedule"],
-              operation: "create_definition",
-            },
-          }),
+          text,
+          userFacingText: text,
           values: {
             success: false,
             error: "MISSING_DEFINITION_FIELD",
             missingField: "schedule",
             requiresConfirmation: true,
+            awaitingUserInput: true,
           },
           data: {
             actionName: ownerSurfaceActionName,
             missingField: "schedule",
             requiresConfirmation: true,
+            awaitingUserInput: true,
           },
         };
       }

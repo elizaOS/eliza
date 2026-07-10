@@ -153,26 +153,45 @@ describe("Discord channel debouncer — recent unaddressed context buffer", () =
 		}
 	});
 
-	it("still buffers an unaddressed message during the response cooldown (strict mode)", () => {
+	it("still buffers an unaddressed follow-up right after the bot responds (strict mode)", () => {
 		vi.useFakeTimers();
 		try {
 			const { flushed, debouncer } = setup({
 				shouldRespondOnlyToMentions: true,
 				bufferTtlMs: 10_000,
-				responseCooldownMs: 30_000,
 			});
 
-			// Bot just answered an addressed message → cooldown armed, buffer cleared.
+			// Bot just answered an addressed message → buffer cleared.
 			debouncer.markResponded("channel-1");
 
-			// A follow-up question (unaddressed) arrives inside the cooldown window.
-			// In strict mode it never triggers a reply, so it must NOT be dropped —
-			// it should still be ingested and buffered for a following pointer.
+			// A follow-up question (unaddressed) arrives moments later. In strict
+			// mode it never triggers a reply, so it must NOT be dropped — it should
+			// still be ingested and buffered for a following pointer.
 			debouncer.enqueue(mockMessage("1", "a follow-up question"));
 			vi.advanceTimersByTime(3000);
 
 			debouncer.enqueue(mockMessage("2", "<@123> ^^"));
 			expect(flushed[flushed.length - 1]).toEqual(["1", "2"]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("flushes an unaddressed follow-up right after the bot responds (respond-to-all mode)", () => {
+		vi.useFakeTimers();
+		try {
+			// Regression: a post-reply "response cooldown" used to hard-drop
+			// unaddressed messages for 30s after each bot reply in respond-to-all
+			// mode, so "@bot hi" → reply → "wyd?" lost the follow-up silently.
+			const { flushed, debouncer } = setup({
+				shouldRespondOnlyToMentions: false,
+			});
+
+			debouncer.markResponded("channel-1");
+			debouncer.enqueue(mockMessage("1", "wyd?"));
+			vi.advanceTimersByTime(3000);
+
+			expect(flushed[flushed.length - 1]).toEqual(["1"]);
 		} finally {
 			vi.useRealTimers();
 		}

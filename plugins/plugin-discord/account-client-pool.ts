@@ -24,6 +24,12 @@ export interface DiscordAccountClientState {
 	dynamicChannelIds: Set<string>;
 	clientReadyPromise: Promise<void> | null;
 	loginFailed: boolean;
+	// Pending initial-login retry, tracked so `stop()` can cancel an in-flight
+	// backoff and the ClientReady handler can clear a superseded retry.
+	loginRetryTimer?: ReturnType<typeof setTimeout>;
+	// Wall-clock of the last login-failure heartbeat, used to throttle the Warn
+	// heartbeat while the account is stuck retrying.
+	lastLoginHeartbeatAt?: number;
 	messageManager?: MessageManager;
 	voiceManager?: VoiceManager;
 	channelDebouncer?: ChannelDebouncer;

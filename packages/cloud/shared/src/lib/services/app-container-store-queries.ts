@@ -39,6 +39,16 @@ export type AppContainerReadDatabase = Pick<typeof dbWrite, "select">;
 /** Minimum database surface required by atomic slot mutations. */
 export type AppContainerTransactionDatabase = Pick<typeof dbWrite, "transaction">;
 
+/** A slot reservation is either new or an idempotent retry of the same row. */
+export type AppContainerNodeSlotClaim = "claimed" | "already-claimed";
+
+export interface ExistingAppContainerNodeSlotClaim {
+  nodeId: string | null;
+  status: string;
+  slotClaimed: boolean;
+  slotReleased: boolean;
+}
+
 export async function findAppContainerRowById(
   database: AppContainerReadDatabase,
   containerId: string,
@@ -68,7 +78,8 @@ export function claimAppContainerNodeSlot(
   organizationId: string,
   nodeId: string,
   capacityError: () => Error,
-): Promise<boolean> {
+  conflictError: (existing: ExistingAppContainerNodeSlotClaim | null) => Error,
+): Promise<AppContainerNodeSlotClaim> {
   return database.transaction(async (tx) => {
     const [claimed] = await tx
       .update(containers)
@@ -87,7 +98,27 @@ export function claimAppContainerNodeSlot(
       )
       .returning({ id: containers.id });
 
-    if (!claimed) return false;
+    if (!claimed) {
+      const [existing] = await tx
+        .select({
+          nodeId: containers.node_id,
+          status: containers.status,
+          slotClaimed: sql<boolean>`jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'slotClaimedAt')`,
+          slotReleased: sql<boolean>`jsonb_exists(coalesce(${containers.metadata}, '{}'::jsonb), 'slotReleasedAt')`,
+        })
+        .from(containers)
+        .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)))
+        .limit(1);
+      if (
+        existing?.nodeId === nodeId &&
+        existing.slotClaimed &&
+        !existing.slotReleased &&
+        existing.status !== "deleted"
+      ) {
+        return "already-claimed";
+      }
+      throw conflictError(existing ?? null);
+    }
 
     const [node] = await tx
       .update(dockerNodes)
@@ -107,7 +138,7 @@ export function claimAppContainerNodeSlot(
     // The exception rolls back both attribution and the claim marker. The caller
     // supplies its domain error so this SQL-only module stays runtime-independent.
     if (!node) throw capacityError();
-    return true;
+    return "claimed";
   });
 }
 

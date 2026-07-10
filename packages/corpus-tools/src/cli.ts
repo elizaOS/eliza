@@ -10,6 +10,7 @@ import {
   type ScrubStageSelector,
 } from "./pipeline/driver.ts";
 import { validateCorpusTarget } from "./validator.ts";
+import { type VerifyCorpusOptions, verifyCorpus } from "./verification.ts";
 
 interface ScrubCliOptions {
   targetPath: string;
@@ -32,6 +33,35 @@ function readFlagValue(args: string[], flag: string): string | undefined {
     throw new Error(`missing value for ${flag}`);
   }
   return value;
+}
+
+function requireFlagValue(args: string[], flag: string): string {
+  const value = readFlagValue(args, flag);
+  if (!value) throw new Error(`${flag} is required`);
+  return value;
+}
+
+function parseVerifyCliOptions(args: string[]): VerifyCorpusOptions {
+  return {
+    targetPath: requireFlagValue(args, "--target"),
+    manifestPath: requireFlagValue(args, "--manifest"),
+    candidatesPath: requireFlagValue(args, "--candidates"),
+    canariesPath: requireFlagValue(args, "--canaries"),
+    ledgerPath: requireFlagValue(args, "--ledger"),
+    gazetteerPath: requireFlagValue(args, "--gazetteer"),
+    deletionRulesPath: requireFlagValue(args, "--deletion-rules"),
+    deletionReviewQueuePath: requireFlagValue(args, "--deletion-review-queue"),
+    deletionReviewDecisionPath: requireFlagValue(
+      args,
+      "--deletion-review-decision",
+    ),
+    deletionApprovalPath: requireFlagValue(args, "--deletion-approval"),
+    placeholderRegistryPath: requireFlagValue(args, "--placeholder-registry"),
+    rulesetVersion: requireFlagValue(args, "--ruleset-version"),
+    reportPath: requireFlagValue(args, "--report"),
+    gitleaksBinaryPath: readFlagValue(args, "--gitleaks-binary"),
+    gitleaksConfigPath: readFlagValue(args, "--gitleaks-config"),
+  };
 }
 
 function parseScrubCliOptions(args: string[]): ScrubCliOptions {
@@ -76,8 +106,16 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
+  if (command === "verify") {
+    const result = await verifyCorpus(
+      parseVerifyCliOptions([maybeTarget, ...rest]),
+    );
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return result.status === "passed" ? 0 : 1;
+  }
+
   process.stderr.write(
-    "usage: corpus validate <file-or-dir>\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n",
+    "usage: corpus validate <file-or-dir>\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n       corpus verify --target <dir> --manifest <file> --candidates <file> --canaries <file> --ledger <file> --gazetteer <file> --deletion-rules <file> --deletion-review-queue <file> --deletion-review-decision <file> --deletion-approval <file> --placeholder-registry <file> --ruleset-version <version> --report <file>\n",
   );
   return 2;
 }

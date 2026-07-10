@@ -5,10 +5,10 @@
 // runtime load/cache/error behavior. The origin gate and the production-strip
 // check compile the REAL DynamicViewLoader.tsx source with esbuild rather than
 // asserting against a mock.
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
-import { transform } from "esbuild";
 import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -41,21 +41,35 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
   });
 
   it("erases the test import hook from production builds before the origin gate", async () => {
-    const source = await readFile(
-      resolve(process.cwd(), "src/components/views/DynamicViewLoader.tsx"),
-      "utf8",
-    );
-    const output = await transform(source, {
-      loader: "tsx",
-      format: "esm",
-      minify: true,
-      treeShaking: true,
-      define: {
-        "import.meta.env.DEV": "false",
-        "import.meta.env.MODE": '"production"',
-        "process.env.NODE_ENV": '"production"',
-      },
-    });
+    // jsdom and Node can expose different typed-array realms. esbuild validates
+    // TextEncoder against the active Uint8Array constructor when it loads.
+    const jsdomUint8Array = globalThis.Uint8Array;
+    globalThis.Uint8Array = new TextEncoder().encode("")
+      .constructor as typeof Uint8Array;
+    let output: { code: string };
+    try {
+      const { transform } = await import("esbuild");
+      const packageRoot = existsSync(resolve(process.cwd(), "packages/ui"))
+        ? resolve(process.cwd(), "packages/ui")
+        : process.cwd();
+      const source = await readFile(
+        resolve(packageRoot, "src/components/views/DynamicViewLoader.tsx"),
+        "utf8",
+      );
+      output = await transform(source, {
+        loader: "tsx",
+        format: "esm",
+        minify: true,
+        treeShaking: true,
+        define: {
+          "import.meta.env.DEV": "false",
+          "import.meta.env.MODE": '"production"',
+          "process.env.NODE_ENV": '"production"',
+        },
+      });
+    } finally {
+      globalThis.Uint8Array = jsdomUint8Array;
+    }
 
     expect(output.code).not.toContain("__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__");
     expect(output.code).toContain("isSameOriginBundleUrl");
@@ -160,6 +174,29 @@ describe("DynamicViewLoader", () => {
     expect(surface?.style.paddingInlineEnd).toBe(
       "var(--eliza-continuous-chat-side-clearance, 0px)",
     );
+  });
+
+  it("does not reserve chat clearance owned by an enclosing shell", async () => {
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__ = vi.fn(async () => ({
+      default: function ShellHostedPanel() {
+        return <div>Shell-hosted panel</div>;
+      },
+    }));
+
+    render(
+      <DynamicViewLoader
+        bundleUrl="/api/views/shell-hosted/bundle.js"
+        viewId="shell-hosted"
+        reserveChatClearance={false}
+      />,
+    );
+
+    await screen.findByText("Shell-hosted panel");
+    const surface = document.querySelector(
+      '[data-spatial-surface="gui"]',
+    ) as HTMLElement | null;
+    expect(surface?.style.paddingBottom).toBe("");
+    expect(surface?.style.paddingInlineEnd).toBe("");
   });
 
   it("renders sandboxed iframe views from frameUrl and does not import bundleUrl", () => {
@@ -1044,7 +1081,9 @@ describe("DynamicViewLoader", () => {
     const rendered = render(
       <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.cleanup.view" />,
     );
-    expect(screen.getByText("Loading view…")).toBeTruthy();
+    expect(
+      screen.getByText("Loading view…").closest('[data-view-status="loading"]'),
+    ).toBeTruthy();
 
     rendered.unmount();
     expect(resolveImport).toBeTruthy();

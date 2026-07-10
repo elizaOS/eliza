@@ -536,6 +536,24 @@ export async function runPlannerLoop(
 						continue;
 					}
 
+					const missingInputWidgetRelay =
+						deterministicMissingInputPlannerWidgetRelay(trajectory);
+					if (missingInputWidgetRelay) {
+						params.runtime.logger?.warn?.(
+							{ iteration },
+							"[planner-loop] evaluator continued after a missing-input widget; finishing with the user interaction",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							evaluator,
+							finalMessage: userSafeFinalMessage(
+								missingInputWidgetRelay,
+								trajectory,
+							),
+						};
+					}
+
 					terminalOnlyContinuations++;
 					if (terminalOnlyContinuations > config.maxTerminalOnlyContinuations) {
 						const relay =
@@ -3026,10 +3044,57 @@ function deterministicTerminalContinuationLimitRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	return (
+		deterministicMissingInputPlannerWidgetRelay(trajectory) ??
 		deterministicSuccessfulToolRelay(trajectory) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
-		deterministicNoopClarificationRelay(trajectory)
+		deterministicNoopClarificationRelay(trajectory) ??
+		deterministicMissingInputPlannerClarificationRelay(trajectory)
 	);
+}
+
+/**
+ * A planner reply may finish a missing-input turn only when the latest executed
+ * tool structurally declares that it is waiting for the owner. This keeps the
+ * relay from treating arbitrary terminal prose after successful work as safe.
+ * Widgets take precedence over prose because they preserve the fields and input
+ * types the planner selected instead of degrading the turn to another question.
+ */
+function deterministicMissingInputPlannerWidgetRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	return missingInputPlannerTerminalCandidates(trajectory)
+		.map(userSafeWidgetReplyCandidate)
+		.find((candidate): candidate is string => candidate !== undefined);
+}
+
+function deterministicMissingInputPlannerClarificationRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	return missingInputPlannerTerminalCandidates(trajectory)
+		.map(userSafeClarificationReplyCandidate)
+		.find((candidate): candidate is string => candidate !== undefined);
+}
+
+function missingInputPlannerTerminalCandidates(
+	trajectory: PlannerTrajectory,
+): Array<string | undefined> {
+	let latestToolResultIndex = -1;
+	for (let index = trajectory.steps.length - 1; index >= 0; index--) {
+		const step = trajectory.steps[index];
+		if (!step?.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
+			continue;
+		}
+		latestToolResultIndex = index;
+		if (!hasAwaitingUserInputMarker(step.result)) return [];
+		break;
+	}
+	if (latestToolResultIndex < 0) return [];
+
+	return trajectory.steps
+		.slice(latestToolResultIndex + 1)
+		.filter((step) => step.terminalOnly === true)
+		.map((step) => step.terminalMessage)
+		.reverse();
 }
 
 function deterministicRequiresConfirmationRelay(
@@ -3075,6 +3140,24 @@ function hasNoopMarker(result: PlannerToolResult): boolean {
 		typeof values === "object" &&
 		!Array.isArray(values) &&
 		(values as Record<string, unknown>).noop === true
+	);
+}
+
+function hasAwaitingUserInputMarker(result: PlannerToolResult): boolean {
+	if (hasNoopMarker(result)) return true;
+	const data = result.data;
+	if (!data) return false;
+	if (data.awaitingUserInput === true || getNonEmptyString(data.missingField)) {
+		return true;
+	}
+	const values = data.values;
+	return (
+		values !== null &&
+		typeof values === "object" &&
+		!Array.isArray(values) &&
+		((values as Record<string, unknown>).awaitingUserInput === true ||
+			getNonEmptyString((values as Record<string, unknown>).missingField) !==
+				undefined)
 	);
 }
 
@@ -3244,19 +3327,25 @@ function preferredFinalMessageFromToolOrModel(
 	const modelText = getNonEmptyString(modelMessage);
 	const usableModelText =
 		modelText && !isToolMetaNarration(modelText) ? modelText : undefined;
+	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
+	const widgetCollectsLatestMissingInput =
+		widgetReply !== undefined && latestToolResultAwaitsUserInput(trajectory);
 	// Precedence:
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
 	//      (paths, ids, counts) where evaluator paraphrase risks
 	//      hallucinating a value.
-	//   2. A confirmation-required tool preview — action-owned copy must not be
+	//   2. A grammar-valid widget emitted for a structurally-marked missing-input
+	//      result. The widget preserves the planner's field types and supersedes
+	//      the tool's prose question, but never a lifeDraft confirmation preview.
+	//   3. A confirmation-required tool preview — action-owned copy must not be
 	//      paraphrased into a vague extra question or a false save.
-	//   3. The model/evaluator's explicit `messageToUser` — authoritative
+	//   4. The model/evaluator's explicit `messageToUser` — authoritative
 	//      by default; the evaluator has seen the full trajectory and
 	//      chose what the user should read.
-	//   4. The most recent tool's `userFacingText` — fallback when neither
+	//   5. The most recent tool's `userFacingText` — fallback when neither
 	//      the model nor any verified tool provided a clean reply.
-	//   5. An explicit caller-provided fallback (e.g. failed-tool message).
+	//   6. An explicit caller-provided fallback (e.g. failed-tool message).
 	//
 	// Regression coverage:
 	//   - `planner-loop-user-facing-text.test.ts` → "does not regress
@@ -3267,11 +3356,25 @@ function preferredFinalMessageFromToolOrModel(
 	//     opts in via `verifiedUserFacing: true`.
 	return (
 		singleVerifiedUserFacingToolResultText(trajectory) ??
+		(widgetCollectsLatestMissingInput ? widgetReply : undefined) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
 		usableModelText ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);
+}
+
+function latestToolResultAwaitsUserInput(
+	trajectory: PlannerTrajectory,
+): boolean {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
+			continue;
+		}
+		if (step.result.data?.lifeDraft !== undefined) return false;
+		return hasAwaitingUserInputMarker(step.result);
+	}
+	return false;
 }
 
 function isToolMetaNarration(text: string): boolean {
@@ -3734,6 +3837,17 @@ function userSafeCapturedAnswerCandidate(
 		return undefined;
 	}
 	if (PROGRESS_ONLY_ANSWER_REJECT.test(candidate)) return undefined;
+	return candidate;
+}
+
+const CLARIFICATION_REQUEST =
+	/(?:\?\s*(?:$|\n)|\bplease\s+(?:choose|confirm|enter|provide|select|share|specify|tell)\b|^(?:can|could|do|does|how|is|are|what|when|where|which|who|would)\b)/i;
+
+function userSafeClarificationReplyCandidate(
+	message: string | undefined,
+): string | undefined {
+	const candidate = userSafeCapturedAnswerCandidate(message);
+	if (!candidate || !CLARIFICATION_REQUEST.test(candidate)) return undefined;
 	return candidate;
 }
 

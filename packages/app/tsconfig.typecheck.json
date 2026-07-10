@@ -150,7 +150,9 @@
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/import-conversations": ["../import-conversations/src/index.ts"],
       "@elizaos/import-conversations/*": ["../import-conversations/src/*"],
-      "@elizaos/import-conversations/browser": ["../import-conversations/src/browser.ts"],
+      "@elizaos/import-conversations/browser": [
+        "../import-conversations/src/browser.ts"
+      ],
       "@elizaos/cloud-ui": ["../cloud-ui/src/index.ts"],
       "@elizaos/cloud-ui/*": ["../cloud-ui/src/*"],
       "@elizaos/cloud-shared": ["../cloud/shared/src/index.ts"],
