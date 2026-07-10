@@ -506,3 +506,136 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     }
   });
 });
+
+// The same-tab login leg lands back in the app with only a session token; the
+// visible connected/credits state comes from the next pollCloudCredits pass.
+// These pin that snapshot application: connected+balance, auth-rejected, and
+// the disconnected reset — never a fabricated healthy-empty.
+describe("useCloudState — pollCloudCredits status snapshot", () => {
+  let getCloudStatusSpy: ReturnType<typeof vi.spyOn>;
+  let getCloudCreditsSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    // Capacitor-native satisfies canPollCloudStatus() without a configured base.
+    globalWithPlatform.Capacitor = { isNativePlatform: () => true };
+    getCloudStatusSpy = vi.spyOn(client, "getCloudStatus");
+    getCloudCreditsSpy = vi.spyOn(client, "getCloudCredits");
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    delete globalWithPlatform.Capacitor;
+    vi.restoreAllMocks();
+  });
+
+  it("applies a connected snapshot: enabled, credits balance, low/critical flags, and status reason", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: true,
+      userId: "user-9",
+      reason: " degraded upstream ",
+      topUpUrl: "https://elizacloud.ai/top-up",
+    });
+    getCloudCreditsSpy.mockResolvedValue({
+      balance: 12.5,
+      low: true,
+      critical: false,
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = false;
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+
+    expect(connected).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    expect(result.current.elizaCloudEnabled).toBe(true);
+    expect(result.current.elizaCloudUserId).toBe("user-9");
+    expect(result.current.elizaCloudStatusReason).toBe("degraded upstream");
+    expect(result.current.elizaCloudTopUpUrl).toBe(
+      "https://elizacloud.ai/top-up",
+    );
+    expect(result.current.elizaCloudCredits).toBe(12.5);
+    expect(result.current.elizaCloudCreditsLow).toBe(true);
+    expect(result.current.elizaCloudCreditsCritical).toBe(false);
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+    expect(result.current.elizaCloudCreditsError).toBeNull();
+
+    unmount();
+  });
+
+  it("marks the session auth-rejected from the credits probe without fabricating a balance", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: false,
+    });
+    getCloudCreditsSpy.mockResolvedValue({
+      authRejected: true,
+      topUpUrl: "https://elizacloud.ai/top-up",
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.pollCloudCredits();
+    });
+
+    expect(result.current.elizaCloudAuthRejected).toBe(true);
+    expect(result.current.elizaCloudCredits).toBeNull();
+    expect(result.current.elizaCloudCreditsLow).toBe(false);
+    expect(result.current.elizaCloudCreditsError).toBeNull();
+
+    unmount();
+  });
+
+  it("carries a credits transport failure into the visible error state, never healthy-empty", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: false,
+    });
+    getCloudCreditsSpy.mockRejectedValue(new Error("credits endpoint down"));
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.pollCloudCredits();
+    });
+
+    expect(result.current.elizaCloudCreditsError).toBe("credits endpoint down");
+    expect(result.current.elizaCloudCredits).toBeNull();
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+
+    unmount();
+  });
+
+  it("resets credits and error state on a disconnected snapshot", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: false,
+      connected: false,
+      hasApiKey: false,
+      cloudVoiceProxyAvailable: false,
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = true;
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+
+    expect(connected).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudCredits).toBeNull();
+    expect(result.current.elizaCloudCreditsError).toBeNull();
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+    expect(result.current.elizaCloudStatusReason).toBeNull();
+    expect(getCloudCreditsSpy).not.toHaveBeenCalled();
+
+    unmount();
+  });
+});

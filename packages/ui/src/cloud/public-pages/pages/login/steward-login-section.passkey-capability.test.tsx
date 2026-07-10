@@ -31,6 +31,9 @@ const stewardAuthSpies = vi.hoisted(() => ({
   refreshSession: vi.fn(),
   signInWithEmail: vi.fn(),
   signInWithPasskey: vi.fn(),
+  sendEmailOtp: vi.fn(),
+  verifyEmailOtp: vi.fn(),
+  addPasskey: vi.fn(),
 }));
 
 vi.mock("@stwd/sdk", () => ({
@@ -40,6 +43,9 @@ vi.mock("@stwd/sdk", () => ({
     refreshSession = stewardAuthSpies.refreshSession;
     signInWithEmail = stewardAuthSpies.signInWithEmail;
     signInWithPasskey = stewardAuthSpies.signInWithPasskey;
+    sendEmailOtp = stewardAuthSpies.sendEmailOtp;
+    verifyEmailOtp = stewardAuthSpies.verifyEmailOtp;
+    addPasskey = stewardAuthSpies.addPasskey;
   },
 }));
 
@@ -158,5 +164,143 @@ describe("StewardLoginSection passkey capability gating", () => {
       ),
     );
     expect(stewardAuthSpies.signInWithEmail).not.toHaveBeenCalled();
+  });
+
+  it("requires an email before invoking passkey sign-in", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+
+    renderSection();
+
+    const passkeyButton = await screen.findByRole("button", {
+      name: /Passkey/i,
+    });
+    fireEvent.click(passkeyButton);
+
+    expect(await screen.findByText("Enter your email first")).toBeTruthy();
+    expect(stewardAuthSpies.signInWithPasskey).not.toHaveBeenCalled();
+  });
+
+  it("falls back to email-OTP passkey signup when passkey sign-in fails, then completes registration", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.signInWithPasskey.mockRejectedValue(
+      new Error("no credential for this email"),
+    );
+    stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
+    stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
+      emailGrant: "grant-1",
+    });
+    stewardAuthSpies.addPasskey.mockResolvedValue({
+      token: "registered-token",
+      refreshToken: null,
+    });
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
+
+    // Sign-in failure routes into the OTP signup step, not an error dead-end.
+    expect(await screen.findByText("Set up your passkey")).toBeTruthy();
+    await waitFor(() =>
+      expect(stewardAuthSpies.sendEmailOtp).toHaveBeenCalledWith(
+        "person@example.com",
+      ),
+    );
+
+    const codeInput = screen.getByPlaceholderText("123456");
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /Create passkey/i }));
+
+    await waitFor(() =>
+      expect(stewardAuthSpies.verifyEmailOtp).toHaveBeenCalledWith(
+        "person@example.com",
+        "123456",
+      ),
+    );
+    await waitFor(() =>
+      expect(stewardAuthSpies.addPasskey).toHaveBeenCalledWith(
+        "person@example.com",
+        { emailGrant: "grant-1" },
+      ),
+    );
+  });
+
+  it("rejects a too-short OTP code without calling the API and reports a cancelled passkey setup", async () => {
+    capabilityRef.usable = true;
+    capabilityRef.reason = "available";
+    stewardAuthSpies.signInWithPasskey.mockRejectedValue(
+      new Error("no credential"),
+    );
+    stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
+    stewardAuthSpies.verifyEmailOtp.mockResolvedValue({
+      emailGrant: "grant-1",
+    });
+    stewardAuthSpies.addPasskey.mockRejectedValue(
+      new Error("NotAllowedError: the operation was aborted"),
+    );
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
+
+    const codeInput = await screen.findByPlaceholderText("123456");
+
+    // A short code is refused locally — Enter submits, but nothing hits the API.
+    fireEvent.change(codeInput, { target: { value: "12" } });
+    fireEvent.keyDown(codeInput, { key: "Enter" });
+    expect(
+      await screen.findByText("Enter the code from your email"),
+    ).toBeTruthy();
+    expect(stewardAuthSpies.verifyEmailOtp).not.toHaveBeenCalled();
+
+    // A user-cancelled WebAuthn ceremony surfaces retry guidance, not a raw error.
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: /Create passkey/i }));
+    expect(
+      await screen.findByText(
+        "Passkey setup was cancelled. Tap Create passkey to retry.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("requires an email before sending a magic link and surfaces send failures", async () => {
+    stewardAuthSpies.signInWithEmail.mockRejectedValue(
+      new Error("SMTP unavailable"),
+    );
+
+    renderSection();
+
+    const magicLink = await screen.findByRole("button", {
+      name: /Magic Link/i,
+    });
+    fireEvent.click(magicLink);
+    expect(await screen.findByText("Enter your email")).toBeTruthy();
+    expect(stewardAuthSpies.signInWithEmail).not.toHaveBeenCalled();
+
+    const input = screen.getByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(magicLink);
+    expect(await screen.findByText("SMTP unavailable")).toBeTruthy();
+  });
+
+  it("renders the magic-link sent state and returns to the login form", async () => {
+    stewardAuthSpies.signInWithEmail.mockResolvedValue(undefined);
+
+    renderSection();
+
+    const input = await screen.findByPlaceholderText("you@example.com");
+    fireEvent.change(input, { target: { value: "person@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: /Magic Link/i }));
+
+    expect(await screen.findByText("Magic link sent to")).toBeTruthy();
+    expect(screen.getByText("person@example.com")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Back to login/i }));
+    expect(await screen.findByPlaceholderText("you@example.com")).toBeTruthy();
   });
 });
