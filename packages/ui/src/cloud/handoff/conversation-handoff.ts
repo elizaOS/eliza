@@ -38,6 +38,50 @@ export interface PersonalReadiness {
   apiBase?: string;
 }
 
+/**
+ * A copy/switch-step failure that is expected to heal on its own while the
+ * dedicated container finishes coming up, so the orchestrator must NOT treat it
+ * as terminal. The canonical case (#15901): the control plane reports the agent
+ * `running` minutes before the runtime proxy actually routes to it, so the
+ * import POST against the dedicated base 404s during that window. Deps throw
+ * this (or any error with `transient: true`) to send the orchestrator back into
+ * the readiness loop instead of burning the remaining budget on a hard `failed`.
+ */
+export class HandoffTransientError extends Error {
+  readonly transient = true;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "HandoffTransientError";
+  }
+}
+
+/** True when a thrown handoff-step error is retryable within the budget. */
+export function isTransientHandoffError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { transient?: unknown }).transient === true
+  );
+}
+
+/**
+ * HTTP statuses a handoff I/O step may retry within the budget: the proxy-
+ * readiness window (404 from a router that has not registered the running
+ * container yet), slow-start/throttle responses, and transient upstream
+ * failures. Auth/validation failures (401/403/400/409/422) are deliberately
+ * NOT here — they do not heal by waiting and must fail loudly.
+ */
+export function isRetryableHandoffHttpStatus(status: number): boolean {
+  return (
+    status === 404 ||
+    status === 408 ||
+    status === 425 ||
+    status === 429 ||
+    (status >= 500 && status < 600)
+  );
+}
+
 export interface ConversationHandoffDeps {
   /** Poll whether the personal container has finished provisioning. */
   checkPersonalReady: () => Promise<PersonalReadiness>;
@@ -106,41 +150,73 @@ export async function waitForPersonalAgent(
  * Run the full handoff: wait for the personal container, copy the shared
  * conversation into it, then switch. Safe to re-invoke (the import is
  * idempotent and switching is a no-op once switched).
+ *
+ * The whole ready→read→import→switch attempt shares ONE deadline. A transient
+ * step failure ({@link HandoffTransientError} — e.g. the runtime proxy still
+ * 404ing an agent the control plane already calls `running`, #15901) re-enters
+ * the readiness loop and retries on the next interval instead of returning a
+ * terminal `failed` seconds into a 10-minute budget. Non-transient errors
+ * (auth/validation) fail immediately. When the budget runs out the result is
+ * `timed-out` if the container never probed ready, or `failed` with the last
+ * error when it did but the copy/switch never landed — either way the user
+ * stays on the working shared adapter and the caller's retry affordance
+ * applies.
  */
 export async function runConversationHandoff(
   deps: ConversationHandoffDeps,
 ): Promise<ConversationHandoffResult> {
-  const personal = await waitForPersonalAgent(deps);
-  if (!personal.ready) {
-    deps.log?.("[handoff] personal container did not become ready in time");
-    return { status: "timed-out", imported: 0 };
-  }
+  const intervalMs = deps.intervalMs ?? DEFAULT_INTERVAL_MS;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? defaultSleep;
+  const deadline = now() + timeoutMs;
+  let lastTransientError: string | undefined;
 
-  try {
-    const messages = await deps.readSharedMessages();
-    let imported = 0;
-    if (messages.length > 0) {
-      const result = await deps.importToPersonal(messages, personal);
-      imported = result.inserted;
-      deps.log?.(
-        `[handoff] imported ${imported}/${messages.length} message(s)` +
-          (result.alreadyPopulated ? " (already populated)" : ""),
-      );
+  for (;;) {
+    const personal = await waitForPersonalAgent({
+      ...deps,
+      // Every readiness wait spends what REMAINS of the shared budget, so a
+      // transient copy/switch failure never re-arms a fresh 10 minutes.
+      timeoutMs: Math.max(0, deadline - now()),
+    });
+    if (!personal.ready) {
+      deps.log?.("[handoff] personal container did not become ready in time");
+      return {
+        status: "timed-out",
+        imported: 0,
+        ...(lastTransientError ? { error: lastTransientError } : {}),
+      };
     }
-    await deps.switchToPersonal(personal);
-    return {
-      status: messages.length > 0 ? "switched" : "switched-empty",
-      imported,
-    };
-  } catch (err) {
-    deps.log?.(
-      `[handoff] failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return {
-      status: "failed",
-      imported: 0,
-      error: err instanceof Error ? err.message : String(err),
-    };
+
+    try {
+      const messages = await deps.readSharedMessages();
+      let imported = 0;
+      if (messages.length > 0) {
+        const result = await deps.importToPersonal(messages, personal);
+        imported = result.inserted;
+        deps.log?.(
+          `[handoff] imported ${imported}/${messages.length} message(s)` +
+            (result.alreadyPopulated ? " (already populated)" : ""),
+        );
+      }
+      await deps.switchToPersonal(personal);
+      return {
+        status: messages.length > 0 ? "switched" : "switched-empty",
+        imported,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isTransientHandoffError(err) && now() < deadline) {
+        lastTransientError = message;
+        deps.log?.(
+          `[handoff] transient step failure (will retry within budget): ${message}`,
+        );
+        await sleep(intervalMs);
+        continue;
+      }
+      deps.log?.(`[handoff] failed: ${message}`);
+      return { status: "failed", imported: 0, error: message };
+    }
   }
 }
 

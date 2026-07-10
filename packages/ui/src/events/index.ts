@@ -258,6 +258,23 @@ export function dispatchWindowEvent(
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
+// Last dispatched handoff phase, kept so surfaces that MOUNT AFTER a phase
+// fired (the home provisioning tile renders only once onboarding lands, i.e.
+// after the runner's initial `migrating` dispatch) still see the in-flight
+// state instead of nothing. Session-scoped by design — a reload's in-flight
+// handoff is re-driven by resumePendingCloudHandoff, which re-dispatches.
+let lastCloudHandoffPhaseDetail: CloudHandoffPhaseDetail | null = null;
+
+/** The most recent handoff phase dispatched this session (null before any). */
+export function getLastCloudHandoffPhaseDetail(): CloudHandoffPhaseDetail | null {
+  return lastCloudHandoffPhaseDetail;
+}
+
+/** Test-only: forget the cached phase so specs start from a clean session. */
+export function __resetLastCloudHandoffPhaseDetailForTests(): void {
+  lastCloudHandoffPhaseDetail = null;
+}
+
 /**
  * Surface a shared→dedicated handoff phase. Replaces the silent
  * `startCloudAgentHandoff(...).catch(() => {})` discard so the typed
@@ -266,6 +283,7 @@ export function dispatchWindowEvent(
 export function dispatchCloudHandoffPhase(
   detail: CloudHandoffPhaseDetail,
 ): void {
+  lastCloudHandoffPhaseDetail = detail;
   dispatchWindowEvent(CLOUD_HANDOFF_PHASE_EVENT, detail);
 }
 

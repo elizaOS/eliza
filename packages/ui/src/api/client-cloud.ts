@@ -15,6 +15,7 @@ import {
   type AuthedAgentFetch,
   startCloudConversationHandoff,
 } from "../cloud/handoff/cloud-handoff-supervisor";
+import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
 import { getBootConfig } from "../config/boot-config";
 import {
   buildCloudSharedAgentApiBase,
@@ -3614,6 +3615,24 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       });
       // Never "switch" onto the shared adapter (no migration target there).
       if (isDirectCloudSharedAgentBase(base)) return null;
+      // Control-plane `running` precedes actual routability: the runtime proxy
+      // can keep 404ing the subdomain for minutes after the record flips
+      // (#15901). Probe the base itself and only report ready once the proxy
+      // actually routes to the container — a 404/408/425/429/5xx or a
+      // network-layer failure means "running but not yet routable", so the
+      // supervisor keeps polling inside its budget instead of one-shot
+      // importing into a router that answers 404. Any routed response —
+      // including an auth challenge — proves routability; the import carries
+      // its own credentials.
+      try {
+        const probe = await authedFetch(base, "/api/health");
+        if (isRetryableHandoffHttpStatus(probe.status)) return null;
+      } catch {
+        // error-policy:J4 readiness probe — an unreachable base is the
+        // designed "not ready yet" signal; the poll loop retries within its
+        // budget and times out honestly if the container never serves.
+        return null;
+      }
       return base;
     },
   };

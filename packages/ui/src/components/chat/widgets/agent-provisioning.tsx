@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { client } from "../../../api";
 import { isDirectCloudSharedAgentBase } from "../../../api/client-cloud";
 import { openCloudBillingConsole } from "../../../cloud/billing-console";
+import { loadPendingCloudHandoff } from "../../../cloud/handoff/pending-handoff-store";
 import {
   type CloudHandoffPhaseDetail,
   dispatchCloudHandoffRetry,
@@ -51,6 +52,16 @@ function readSharedCloudTarget(): SharedCloudTarget | null {
     ? active.id.slice("cloud:".length)
     : active.id;
   if (!agentId) return null;
+  // "Setting up…" is only honest while a shared→dedicated migration is
+  // actually pending for THIS agent — the durable signal is the pending-
+  // handoff marker (the load TTL-clears expired ones). A shared-adapter
+  // session with no marker and no live phase has nothing provisioning (e.g. a
+  // reused agent bound via the shared adapter by tier preference, or a marker
+  // reconciled away after its target died), and a mismatched leftover marker
+  // belongs to some other landing — rendering an eternal tile for either was
+  // the #15902 pin. Live phase events still take precedence in the component.
+  const pending = loadPendingCloudHandoff();
+  if (pending?.sharedAgentId !== agentId) return null;
   return { agentId };
 }
 

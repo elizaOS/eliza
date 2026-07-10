@@ -968,6 +968,12 @@ export async function runPollingBackend(
                   );
                   return;
                 }
+                // Reconcile-on-boot (#15902): landing on a dedicated base
+                // means any pending-handoff marker is stale (the migration
+                // either completed or was abandoned for this landing); the
+                // resume path clears it when the active server is off the
+                // shared base, so the marker can never re-pin a later boot.
+                resumePendingCloudHandoff();
                 deps.setFirstRunComplete(true);
                 deps.setFirstRunLoading(false);
                 dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
@@ -1198,6 +1204,10 @@ export async function runPollingBackend(
             );
             return;
           }
+          // Reconcile-on-boot (#15902): a dedicated-base landing makes any
+          // pending-handoff marker stale — the resume path clears it when the
+          // active server is off the shared base.
+          resumePendingCloudHandoff();
           deps.setFirstRunComplete(true);
           deps.setFirstRunLoading(false);
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
