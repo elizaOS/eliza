@@ -138,6 +138,10 @@ describe("Cloudflare Pages domain durability", () => {
     join(CLOUDFLARE_PAGES_DOMAINS_DIR, "import.tf"),
     "utf-8",
   );
+  const variables = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "variables.tf"),
+    "utf-8",
+  );
   const workflow = readFileSync(
     join(
       import.meta.dir,
@@ -165,6 +169,27 @@ describe("Cloudflare Pages domain durability", () => {
     expect(imports).toContain(
       "one(data.cloudflare_dns_records.existing_pages[each.key].result).id",
     );
+  });
+
+  test("owns the staging dedicated-agent wildcard and paid certificate pack", () => {
+    expect(main).toContain(
+      'resource "cloudflare_dns_record" "staging_agent_wildcard"',
+    );
+    expect(main).toContain('name    = "*.staging.elizacloud.ai"');
+    expect(main).toContain(
+      'resource "cloudflare_certificate_pack" "staging_agent"',
+    );
+    expect(main).toContain('type                  = "advanced"');
+    expect(main).toContain("prevent_destroy       = true");
+    expect(imports).toContain(
+      'data "cloudflare_dns_records" "existing_staging_agent_wildcard"',
+    );
+    expect(imports).toContain("cloudflare_certificate_pack.staging_agent[0]");
+    expect(variables).toContain('variable "staging_agent_wildcard_origins"');
+    expect(variables).toContain('variable "staging_agent_certificate_pack_id"');
+    expect(workflow).toContain("STAGING_AGENT_WILDCARD_ORIGINS_JSON");
+    expect(workflow).toContain("STAGING_AGENT_CERTIFICATE_PACK_ID");
+    expect(workflow).toContain("terraform-probe.staging.elizacloud.ai");
   });
 
   test("keeps real writes manual and verifies certificate plus routing after apply", () => {

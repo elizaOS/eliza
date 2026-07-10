@@ -68,6 +68,9 @@ jobs:
       TF_VAR_environment: ${{ github.event.inputs.environment }}
       TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_staging_agent_wildcard_origins: ${{ vars.STAGING_AGENT_WILDCARD_ORIGINS_JSON || '[]' }}
+      TF_VAR_staging_agent_certificate_pack_id: ${{ vars.STAGING_AGENT_CERTIFICATE_PACK_ID }}
+      TF_VAR_staging_agent_certificate_hosts: ${{ vars.STAGING_AGENT_CERTIFICATE_HOSTS_JSON || '[]' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: hashicorp/setup-terraform@v4
@@ -81,6 +84,11 @@ jobs:
           [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing R2_STATE_SECRET_ACCESS_KEY"; fail=1; }
           [ -n "$TF_VAR_cloudflare_account_id" ] || { echo "::error::missing CLOUDFLARE_ACCOUNT_ID"; fail=1; }
           [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::missing APPS_CLOUDFLARE_ZONE_ID"; fail=1; }
+          if [ "$TF_VAR_environment" = "staging" ]; then
+            [ "$TF_VAR_staging_agent_wildcard_origins" != "[]" ] || { echo "::error::missing STAGING_AGENT_WILDCARD_ORIGINS_JSON"; fail=1; }
+            [ -n "$TF_VAR_staging_agent_certificate_pack_id" ] || { echo "::error::missing STAGING_AGENT_CERTIFICATE_PACK_ID"; fail=1; }
+            [ "$TF_VAR_staging_agent_certificate_hosts" != "[]" ] || { echo "::error::missing STAGING_AGENT_CERTIFICATE_HOSTS_JSON"; fail=1; }
+          fi
           exit "$fail"
       - name: Terraform format
         working-directory: ${{ env.TF_DIR }}
@@ -100,6 +108,7 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: |
           terraform output -json pages_domains > "$RUNNER_TEMP/pages-domains.json"
+          terraform output -json staging_agent_edge > "$RUNNER_TEMP/staging-agent-edge.json"
           node -e '
             const fs = require("node:fs");
             const domains = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
@@ -107,7 +116,15 @@ jobs:
               if (entry.status !== "active") throw new Error(`${key} domain is ${entry.status}, expected active`);
               if (!entry.certificate_authority) throw new Error(`${key} has no issued certificate authority`);
             }
-          ' "$RUNNER_TEMP/pages-domains.json"
+            const agentEdge = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            if (process.env.TF_VAR_environment === "staging") {
+              if (Object.keys(agentEdge.dns_records).length !== 2) throw new Error("staging agent wildcard does not have two DNS records");
+              if (agentEdge.certificate_pack.status !== "active") throw new Error(`staging agent certificate is ${agentEdge.certificate_pack.status}, expected active`);
+            }
+          ' "$RUNNER_TEMP/pages-domains.json" "$RUNNER_TEMP/staging-agent-edge.json"
+      - name: Verify staging agent wildcard TLS
+        if: github.event.inputs.action == 'apply' && github.event.inputs.environment == 'staging'
+        run: curl --silent --show-error --output /dev/null https://terraform-probe.staging.elizacloud.ai/api/health
       - name: Verify live environment routing
         if: github.event.inputs.action == 'apply'
         run: node packages/scripts/cloud/verify-environment-routing-cli.mjs --environment "${{ github.event.inputs.environment }}" --require-beacon

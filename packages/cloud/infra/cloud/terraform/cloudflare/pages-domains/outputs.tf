@@ -10,3 +10,21 @@ output "pages_domains" {
     }
   }
 }
+
+output "staging_agent_edge" {
+  description = "Staging-only dedicated-agent wildcard DNS and advanced-certificate state."
+  value = var.environment == "staging" ? {
+    dns_records = {
+      for origin, record in cloudflare_dns_record.staging_agent_wildcard : origin => {
+        id      = record.id
+        content = record.content
+        proxied = record.proxied
+      }
+    }
+    certificate_pack = {
+      id     = cloudflare_certificate_pack.staging_agent[0].id
+      hosts  = cloudflare_certificate_pack.staging_agent[0].hosts
+      status = cloudflare_certificate_pack.staging_agent[0].status
+    }
+  } : null
+}
