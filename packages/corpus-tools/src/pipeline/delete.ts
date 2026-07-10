@@ -825,10 +825,35 @@ export function applyDeletionReview(options: {
   const tombstones: DeletionTombstoneMetadata[] = [];
   let attachmentBytesDropped = 0;
   for (const message of options.messages) {
-    attachmentBytesDropped += message.attachments.filter(
-      (attachment) =>
-        attachment.dataBase64 !== undefined || attachment.bytes !== undefined,
-    ).length;
+    for (const attachment of message.attachments) {
+      if (attachment.dataBase64 !== undefined) {
+        if (
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+            attachment.dataBase64,
+          )
+        ) {
+          throw new Error(
+            `attachment ${attachment.sha256} has invalid base64 payload`,
+          );
+        }
+        const decoded = Buffer.from(attachment.dataBase64, "base64");
+        if (
+          decoded.toString("base64") !== attachment.dataBase64 ||
+          (attachment.bytes !== undefined &&
+            attachment.bytes !== decoded.length)
+        ) {
+          throw new Error(
+            `attachment ${attachment.sha256} has inconsistent payload bytes`,
+          );
+        }
+        attachmentBytesDropped += decoded.length;
+      } else if (attachment.bytes !== undefined) {
+        attachmentBytesDropped += attachment.bytes;
+      }
+      if (!Number.isSafeInteger(attachmentBytesDropped)) {
+        throw new Error("attachment byte total exceeds safe integer range");
+      }
+    }
     const group = deletionByMessage.get(message.id);
     if (group) {
       const unsigned = {

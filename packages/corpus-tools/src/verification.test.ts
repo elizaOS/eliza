@@ -7,6 +7,11 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { canonicalDeletionArtifactSha256 } from "./pipeline/delete.ts";
+import {
+  applyDeletionFiles,
+  planDeletionFiles,
+} from "./pipeline/delete-command.ts";
 import type { CorpusMessage } from "./schema.ts";
 import { buildCorpusManifest } from "./validator.ts";
 import {
@@ -449,6 +454,92 @@ describe("corpus verification", () => {
     await expect(
       assertFreshGreenVerification(report, options),
     ).rejects.toThrow();
+  });
+
+  it("accepts artifacts produced by reviewed deletion plan and apply", async () => {
+    const placeholder = defaultCanaryPlaceholder();
+    const finalMessage = baseMessage({ text: `Scrubbed body ${placeholder}` });
+    const options = await fixture(finalMessage, {
+      canaryPlaceholder: placeholder,
+    });
+    const root = path.dirname(path.dirname(options.targetPath));
+    const upstream = (await fs.readFile(options.ledgerPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter(
+        (record) => record.stage === "mine" || record.stage === "secrets",
+      );
+    await fs.writeFile(
+      options.ledgerPath,
+      `${upstream.map((record) => JSON.stringify(record)).join("\n")}\n`,
+    );
+    const secretsRecord = upstream.find((record) => record.stage === "secrets");
+    if (!secretsRecord?.output) {
+      throw new Error("fixture is missing the secrets output");
+    }
+    const preDeletePath = path.join(root, "pre-delete");
+    const preDeleteShard = path.join(
+      preDeletePath,
+      "gmail",
+      "work",
+      "2026-06.jsonl",
+    );
+    await fs.mkdir(path.dirname(preDeleteShard), { recursive: true });
+    await fs.writeFile(
+      preDeleteShard,
+      `${JSON.stringify(secretsRecord.output)}\n`,
+    );
+    const rawRulesPath = path.join(root, "delete-rules-input.json");
+    await fs.copyFile(options.deletionRulesPath, rawRulesPath);
+    const queue = await planDeletionFiles({
+      targetPath: preDeletePath,
+      candidatesPath: options.candidatesPath,
+      rulesPath: rawRulesPath,
+      queuePath: options.deletionReviewQueuePath,
+      normalizedRulesPath: options.deletionRulesPath,
+    });
+    await writeJson(options.deletionReviewDecisionPath, {
+      schemaVersion: 1,
+      rulesetVersion: queue.rulesetVersion,
+      corpusDigest: queue.corpusDigest,
+      rulesSha256: queue.rulesSha256,
+      reviewedQueueSha256: canonicalDeletionArtifactSha256(queue),
+      approved: true,
+      reviewedBy: "test-owner",
+      reviewedAt: GENERATED_AT,
+      decisions: [],
+    });
+    const deleteOutputPath = path.join(root, "post-delete");
+    await applyDeletionFiles({
+      targetPath: preDeletePath,
+      candidatesPath: options.candidatesPath,
+      normalizedRulesPath: options.deletionRulesPath,
+      queuePath: options.deletionReviewQueuePath,
+      decisionsPath: options.deletionReviewDecisionPath,
+      outputPath: deleteOutputPath,
+      ledgerPath: options.ledgerPath,
+      manifestPath: path.join(root, "post-delete-manifest.json"),
+      approvalPath: options.deletionApprovalPath,
+      reportPath: path.join(root, "deletion-report.json"),
+    });
+    const deletedMessage = JSON.parse(
+      await fs.readFile(
+        path.join(deleteOutputPath, "gmail", "work", "2026-06.jsonl"),
+        "utf8",
+      ),
+    ) as CorpusMessage;
+    await fs.appendFile(
+      options.ledgerPath,
+      `${JSON.stringify(ledgerRecord(deletedMessage, finalMessage, "rewrite"))}\n${JSON.stringify(ledgerRecord(finalMessage, finalMessage, "llm"))}\n`,
+    );
+
+    const report = await verifyCorpus(options);
+
+    expect(report.findings, JSON.stringify(report.findings, null, 2)).toEqual(
+      [],
+    );
+    expect(report.status).toBe("passed");
   });
 
   it.each([
