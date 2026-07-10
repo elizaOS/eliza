@@ -5,7 +5,19 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+// Keep package-barrel evaluation hermetic: these unrelated registration and
+// backend-selection modules depend on the built @elizaos/shared package, which
+// is intentionally unavailable in the changed-file test lane.
 vi.mock("./api/wallet-routes.js", () => ({}));
+vi.mock("./automation-node-contributor.js", () => ({
+  registerWalletAutomationNodeContributor: vi.fn(),
+}));
+vi.mock("./wallet/select-backend.js", () => ({
+  resolveWalletBackend: vi.fn(),
+}));
+vi.mock("./lib/server-wallet-trade.js", () => ({}));
+vi.mock("./lib/wallet-export-guard.js", () => ({}));
+vi.mock("./routes/plugin.js", () => ({}));
 
 import walletPluginDefault, {
   createTradeIdempotencyKey,

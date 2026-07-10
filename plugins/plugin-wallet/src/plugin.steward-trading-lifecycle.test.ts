@@ -5,6 +5,13 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Backend selection is unrelated to plugin composition and requires the built
+// @elizaos/shared entrypoint, which the changed-file CI lane does not provide.
+vi.mock("./wallet/select-backend.js", () => ({
+  resolveWalletBackend: vi.fn(),
+}));
+
 import { walletPlugin } from "./plugin.js";
 import { StewardTradingService } from "./services/steward-trading-service.js";
 import { WALLET_BACKEND_SERVICE_TYPE } from "./services/wallet-backend-service.js";
