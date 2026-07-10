@@ -229,7 +229,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       [
         ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
         ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
-        ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+        ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
 
@@ -259,7 +259,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
     );
     const stale = JSON.parse(
-      ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+      ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
     );
 
     expect(() =>
@@ -278,7 +278,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         phone,
         stale,
       ]),
-    ).toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    ).toThrow(new RegExp(`unexpected OCR record ${STALE_SLUG}`));
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
         {
@@ -303,7 +303,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       [
         ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
         ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
-        ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+        ocrLine("desktop-landscape", STALE_SLUG, "Retired plugin screenshot"),
       ].join("\n"),
     );
 
@@ -392,7 +392,7 @@ describe("audit runner cleanup", () => {
   });
 
   it("resets stale artifacts once before Playwright owns the run", () => {
-    const stale = join(dir, "mobile-portrait", "plugin-social-alpha-gui.png");
+    const stale = join(dir, "mobile-portrait", "plugin-retired-gui.png");
     mkdirSync(join(dir, "mobile-portrait"));
     writeFileSync(stale, PNG_1x1);
 
