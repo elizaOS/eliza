@@ -1322,9 +1322,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // dev server slows late in the walk, so a fixed short wait yields false
         // blanks. Non-fatal: a view that never paints is recorded as a finding.
         const viewRoot = page.locator("main, #root").first();
-        await viewRoot
-          .waitFor({ state: "visible", timeout: 15_000 })
-          .catch(() => {});
+        await viewRoot.waitFor({ state: "visible", timeout: 15_000 });
         const overlayRequired =
           view.viewType !== "tui" &&
           !OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(view.slug);
@@ -1340,13 +1338,11 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           overlayPresent: boolean;
           loadingViewPresent: boolean;
         }> => {
-          const readableChars = await viewRoot
-            .evaluate(
-              (root) =>
-                (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
-                  .length,
-            )
-            .catch(() => 0);
+          const readableChars = await viewRoot.evaluate(
+            (root) =>
+              (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
+                .length,
+          );
           const overlayPresent = await page
             .locator(overlaySelector)
             .evaluateAll((nodes) =>
@@ -1362,12 +1358,10 @@ test.describe("all-views aesthetic audit (#8796)", () => {
                   rect.height > 0
                 );
               }),
-            )
-            .catch(() => false);
+            );
           const loadingViewPresent = await page
             .locator('[data-view-status="loading"]')
-            .isVisible()
-            .catch(() => false);
+            .isVisible();
           return { readableChars, overlayPresent, loadingViewPresent };
         };
         let paint = await readPaint();
