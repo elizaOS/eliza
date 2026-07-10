@@ -5,6 +5,11 @@
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", async () => {
+  return await import("../test-utils/core-vitest-mock.js");
+});
+
 import { stewardFixtures } from "../services/__fixtures__/steward-trade-responses.js";
 import { StewardTradingService } from "../services/steward-trading-service.js";
 import { stewardTradingProvider } from "./steward-trading-provider.js";
