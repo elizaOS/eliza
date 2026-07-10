@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import process from "node:process";
+import { projectItemIsIssue } from "./check-mvp-board-readiness.mjs";
 
 const DEFAULT_OWNER = "elizaOS";
 const DEFAULT_REPO = "elizaOS/eliza";
@@ -109,7 +110,7 @@ function readJson(file) {
 }
 
 export function normalizeProjectIssue(item) {
-  if (item?.content?.type !== "Issue") return null;
+  if (!projectItemIsIssue(item)) return null;
   const labels = (item.labels ?? []).map((label) =>
     typeof label === "string" ? label : label.name,
   );

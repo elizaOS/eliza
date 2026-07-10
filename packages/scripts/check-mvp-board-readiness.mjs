@@ -184,13 +184,23 @@ export function projectItemMatchesRepo(item, repo = DEFAULT_REPO) {
 }
 
 /**
- * Project item-list mixes issues, pull requests, and draft cards. The MVP
- * contract is issue-scoped, while older offline fixtures omit content.type;
- * retain those fixtures but reject every explicitly non-Issue card.
+ * Project item-list mixes Issue, PullRequest, and DraftIssue cards, and the
+ * MVP audit contract is issue-scoped: only `content.type === "Issue"` enters
+ * issue reconciliation. A card without a type cannot be classified — guessing
+ * either direction silently reshapes the audit — so an untyped card is an
+ * invalid payload and fails the run. Shared by the board, readiness, and
+ * evidence analyzers so all three scope cards identically (#15852).
  */
 export function projectItemIsIssue(item) {
   const type = item?.content?.type;
-  return type === undefined || type === "Issue";
+  if (typeof type !== "string" || type.length === 0) {
+    const label =
+      item?.content?.url ?? item?.title ?? item?.id ?? "unidentified card";
+    throw new Error(
+      `Project card ${label} carries no content.type; refusing to classify an untyped card as issue or non-issue`,
+    );
+  }
+  return type === "Issue";
 }
 
 export function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
