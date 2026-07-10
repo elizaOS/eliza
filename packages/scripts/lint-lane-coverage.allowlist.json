@@ -20,11 +20,6 @@
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
-      "plugin": "plugin-anthropic-proxy",
-      "issues": ["missing-action-tests"],
-      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
-    },
-    {
       "plugin": "plugin-aosp-local-inference",
       "issues": ["missing-deterministic-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
