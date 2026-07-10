@@ -14,7 +14,10 @@ import {
   strictViolations,
   summarizeMvpBoard,
 } from "./audit-mvp-project-board.mjs";
-import { auditMvpBoardReadiness } from "./check-mvp-board-readiness.mjs";
+import {
+  auditMvpBoardReadiness,
+  normalizeProjectItems,
+} from "./check-mvp-board-readiness.mjs";
 
 const DEFAULT_OWNER = "elizaOS";
 const DEFAULT_PROJECT = "15";
@@ -174,10 +177,15 @@ export function validateSnapshot(snapshot) {
     }
   }
 
+  // Scope cards to the audited repository the same way normalizeProjectItems
+  // does for readiness, so a foreign-repo card that happens to share an issue
+  // number can neither mask a divergence nor hard-fail the open/closed check
+  // ("Project issue #N is missing from open/closed snapshot rows").
   const projectNumbers = new Set(
-    snapshot.project.items
-      .filter((item) => item?.content?.type === "Issue")
-      .map((item) => item.content.number),
+    normalizeProjectItems(
+      snapshot.project,
+      snapshot.repo ?? DEFAULT_REPO,
+    ).keys(),
   );
   if (projectNumbers.size === 0) {
     throw new Error("snapshot contains no Project issue cards");
@@ -247,7 +255,9 @@ export function buildCloseoutReport(snapshot) {
     generatedAt: new Date().toISOString(),
     snapshot: {
       fetchedAt: snapshot.fetchedAt ?? null,
-      source: snapshot.source ?? "fixture",
+      // A source-less snapshot is of unknown provenance, not a fixture:
+      // label it distinctly rather than asserting a false origin.
+      source: snapshot.source ?? "unknown",
       owner: snapshot.owner ?? null,
       projectNumber: snapshot.projectNumber ?? null,
       repo: snapshot.repo ?? DEFAULT_REPO,

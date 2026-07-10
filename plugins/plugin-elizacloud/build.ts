@@ -17,7 +17,12 @@ import { buildPlugin } from "../plugin-build";
 // Per-file subpath bundles: every src module except the dedicated Node/Browser
 // entrypoints and tests. Emitted under dist/src (naming "[dir]/[name]"), then
 // flattened up into dist/ by the driver's `flatten` step.
+// Bun.Glob.scanSync yields native separators, so paths must be normalized to
+// forward slashes before the string filters below — otherwise on Windows every
+// exclusion silently fails and dist gains vite-only components plus duplicate
+// root entrypoints (#15779).
 const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."))
+  .map((entry) => entry.replaceAll("\\", "/"))
   .filter((entry) => {
     if (entry.includes("__tests__/") || entry.endsWith(".test.ts") || entry.endsWith(".test.tsx"))
       return false;
@@ -30,9 +35,14 @@ const subpathEntries = Array.from(new Bun.Glob("src/**/*.{ts,tsx}").scanSync("."
   })
   .sort();
 
-// Single-quoted re-exports to keep the emitted alias .d.ts byte-stable.
-const nodeReexport = "export * from '../index.node';\nexport { default } from '../index.node';\n";
-const browserReexport = "export * from '../index';\nexport { default } from '../index';\n";
+// Single-quoted re-exports to keep the emitted alias .d.ts byte-stable. The
+// specifiers carry an explicit .js extension because TypeScript's node16/nodenext
+// resolution rejects extensionless relative paths — consumers of the built
+// package would get TS2307 on the exports "." types entry otherwise (#15779).
+// TS maps the .js specifier to the tsc-emitted ../index.node.d.ts / ../index.d.ts.
+const nodeReexport =
+  "export * from '../index.node.js';\nexport { default } from '../index.node.js';\n";
+const browserReexport = "export * from '../index.js';\nexport { default } from '../index.js';\n";
 
 await buildPlugin({
   name: "@elizaos/plugin-elizacloud",

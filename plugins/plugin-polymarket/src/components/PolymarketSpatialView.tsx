@@ -276,6 +276,37 @@ function PositionRow({ position }: { position: PolymarketPosition }) {
   );
 }
 
+function MarketsEmptyState({
+  loading,
+  error,
+}: {
+  loading: boolean;
+  error: string | null;
+}) {
+  // Three distinguishable no-data renders (#15781): a failed load is a
+  // danger-toned error block, an in-flight load a neutral "loading" line, and a
+  // resolved-but-empty response a muted "empty" line. `refresh` clears `error`
+  // before it sets `loading`, so the two are mutually exclusive and the error
+  // branch can take precedence without masking an in-flight retry.
+  if (error) {
+    return (
+      <VStack gap={0} align="center" tone="danger" border padding={1}>
+        <Text tone="danger" style="caption" bold>
+          Couldn't load markets
+        </Text>
+        <Text tone="danger" style="caption" align="center" wrap>
+          {error}
+        </Text>
+      </VStack>
+    );
+  }
+  return (
+    <Text tone="muted" align="center" style="caption">
+      {loading ? "loading markets" : "no markets loaded"}
+    </Text>
+  );
+}
+
 function PositionsSection({
   positions,
   summary,
@@ -363,8 +394,12 @@ export function PolymarketSpatialView({
         </HStack>
       ) : null}
 
-      {error ? (
-        <Text tone="danger" style="caption">
+      {/* Stale-while-error banner: keep the failure visible over cached content
+          (detail overlay or a populated list) instead of blanking it. When there
+          is no content to preserve, the empty region below owns the error state
+          so the message never double-renders (#15781). */}
+      {error && (selectedMarket || markets.length > 0) ? (
+        <Text tone="danger" style="caption" wrap>
           {error}
         </Text>
       ) : null}
@@ -386,11 +421,7 @@ export function PolymarketSpatialView({
           <Text style="caption" tone="muted">
             markets
           </Text>
-          {markets.length === 0 ? (
-            <Text tone="muted" align="center" style="caption">
-              {loading ? "loading markets" : "no markets loaded"}
-            </Text>
-          ) : (
+          {markets.length > 0 ? (
             <List gap={1}>
               {markets.slice(0, MAX_LIST).map((market, index) => (
                 <MarketRow
@@ -402,6 +433,11 @@ export function PolymarketSpatialView({
                 />
               ))}
             </List>
+          ) : (
+            <MarketsEmptyState
+              loading={loading ?? false}
+              error={error ?? null}
+            />
           )}
         </>
       )}

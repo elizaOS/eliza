@@ -19,6 +19,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
 import {
   authorizedShots,
   type ReportEntry,
@@ -221,4 +222,55 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       /builtin-phone::desktop-landscape has no screenshot/,
     );
   });
+});
+
+describe("audit runner cleanup", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "audit-runner-cleanup-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("rejects filesystem, repository, and app roots", () => {
+    const repoRoot = join(APP_DIR, "..", "..");
+    const resolveConfigured = (configured: string) =>
+      resolveAuditAppOutput({ appDir: APP_DIR, repoRoot, configured });
+
+    expect(() => resolveConfigured(APP_DIR)).toThrow(/unsafe audit output/);
+    expect(() => resolveConfigured(repoRoot)).toThrow(/unsafe audit output/);
+    expect(() => resolveConfigured("/")).toThrow(/unsafe audit output/);
+    expect(resolveConfigured(dir)).toBe(dir);
+  });
+
+  it("resets stale artifacts once before Playwright owns the run", () => {
+    const stale = join(dir, "mobile-portrait", "plugin-social-alpha-gui.png");
+    mkdirSync(join(dir, "mobile-portrait"));
+    writeFileSync(stale, PNG_1x1);
+
+    const output = execFileSync(
+      "node",
+      [
+        join(APP_DIR, "scripts", "run-ui-playwright.mjs"),
+        "--config",
+        "playwright.ui-smoke.config.ts",
+        "--project=audit-app",
+        "--list",
+      ],
+      {
+        cwd: APP_DIR,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ELIZA_AUDIT_APP_DIR: dir,
+          ELIZA_UI_SMOKE_SKIP_BUILD: "1",
+          ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
+          ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
+        },
+      },
+    );
+
+    expect(output).toContain("Reset app aesthetic audit output");
+    expect(output).toContain("Listing tests:");
+    expect(existsSync(stale)).toBe(false);
+  }, 30_000);
 });

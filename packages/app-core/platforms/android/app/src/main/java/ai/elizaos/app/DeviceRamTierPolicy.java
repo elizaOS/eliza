@@ -3,13 +3,10 @@ package ai.elizaos.app;
 /**
  * Device RAM-tier policy for the bundled on-device agent (elizaOS/eliza#14390).
  *
- * <p>Low-RAM phones cannot sustain the Bun agent runtime: a 4 GB Moto G Play
- * (2024) wedges boot for the full 180 s startup budget before surfacing a
- * "Backend Timeout" card. The product policy is RAM-driven, not build-driven —
- * a device below the 8 GB marketed-RAM floor is cloud-only and must never spawn
- * the local agent, no matter which APK variant is installed or what runtime
- * mode an older install persisted (the mode survives reinstalls via Capacitor
- * Preferences).
+ * <p>The Bun runtime and local model loading have separate memory costs. A
+ * hybrid runtime that keeps inference in the cloud may run from 4 GB; an
+ * unconfigured/full local runtime retains the 8 GB floor. The renderer owns
+ * the additional 12/16 GB local-model tiers.
  *
  * <p>{@code ActivityManager.MemoryInfo.totalMem} under-reports the marketed
  * capacity because the kernel/carveout reserve a slice (a marketed "4 GB"
@@ -27,7 +24,10 @@ final class DeviceRamTierPolicy {
     private DeviceRamTierPolicy() {
     }
 
-    /** Marketed-RAM floor (GB) below which the on-device agent is disabled. */
+    /** Marketed-RAM floor (GB) for the runtime-only hybrid path. */
+    static final int HYBRID_AGENT_MIN_MARKETED_RAM_GB = 4;
+
+    /** Marketed-RAM floor (GB) for an unconfigured/full local runtime. */
     static final int LOCAL_AGENT_MIN_MARKETED_RAM_GB = 8;
 
     private static final long ONE_GIB = 1L << 30;
@@ -54,5 +54,12 @@ final class DeviceRamTierPolicy {
         int marketed = marketedRamGb(totalMemBytes);
         if (marketed < 0) return true;
         return marketed >= LOCAL_AGENT_MIN_MARKETED_RAM_GB;
+    }
+
+    /** Whether this device may run the agent while inference stays in cloud. */
+    static boolean allowsHybridAgent(long totalMemBytes) {
+        int marketed = marketedRamGb(totalMemBytes);
+        if (marketed < 0) return true;
+        return marketed >= HYBRID_AGENT_MIN_MARKETED_RAM_GB;
     }
 }
