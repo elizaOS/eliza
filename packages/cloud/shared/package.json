@@ -29,7 +29,7 @@
     "check:tenant-scope": "bun scripts/check-tenant-scope.ts",
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
     "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",
-    "test": "bun test --isolate",
+    "test": "node scripts/run-bun-tests.mjs",
     "test:vitest": "vitest run",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
