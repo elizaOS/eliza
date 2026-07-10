@@ -14,10 +14,11 @@
  *
  * Two shade modes:
  *
- *  - RESTED is closed: only the passive notification total is visible.
- *  - EXPANDED shows the priority-ordered inbox and preserves each producer
- *    stack until the user fans that group out in place; the list is
- *    height-capped and scrolls internally.
+ *  - RESTED is triage: interrupt-tier (`high`/`urgent`) producer stacks remain
+ *    visible above the passive total while quieter notifications stay folded.
+ *  - EXPANDED shows every priority and preserves each producer stack until the
+ *    user fans that group out in place; the list is height-capped and scrolls
+ *    internally.
  *
  * The transition is DIRECTIONAL, never a toggle: pulling DOWN (touch drag /
  * mouse drag / trackpad fingers-down wheel) while the list sits at its top only
@@ -42,6 +43,7 @@
  * row.
  */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
+import { tierForPriority } from "@elizaos/core";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import { motion } from "motion/react";
 import {
@@ -50,6 +52,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -318,6 +321,11 @@ export function orderDashboardNotifications(
     if (b.createdAt !== a.createdAt) return b.createdAt - a.createdAt;
     return a.id.localeCompare(b.id);
   });
+}
+
+/** Only interrupt-tier notifications remain visible before shade expansion. */
+export function isInterruptPriority(n: AgentNotification): boolean {
+  return tierForPriority(n.priority) === "interrupt";
 }
 
 /** Human group labels for producer categories with no in-app deep link. */
@@ -721,8 +729,8 @@ export function NotificationsHomeCenter({
 } = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated } = useNotifications();
-  // Shade mode: rested (closed, total only) vs expanded (full inbox).
-  // Groups stay stacked until individually fanned out.
+  // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
+  // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
   // Per-producer stack expansion (iOS-shade idiom). Tapping a peek fans that
   // stack and enters the expanded shade; folding the shade resets every stack.
@@ -1281,32 +1289,71 @@ export function NotificationsHomeCenter({
     }
   }, [notifications.length, setPullPx]);
 
+  // Build stable rested and expanded projections. During a downward pull,
+  // lower-priority groups reveal under the finger while already-visible
+  // interrupt groups retain their keys and positions.
+  const {
+    allGroupRowsByKey,
+    expandedGroups,
+    previewGroups,
+    restedGroupKeys,
+    restedGroups,
+    restedGroupsByKey,
+    restedNotificationIds,
+  } = useMemo(() => {
+    const capped = orderDashboardNotifications(notifications).slice(
+      0,
+      MAX_RENDERED_ROWS,
+    );
+    const expanded = groupDashboardNotifications(capped);
+    const restedNotifications = capped.filter(isInterruptPriority);
+    const rested = expanded.flatMap((group) => {
+      const rows = group.rows.filter(isInterruptPriority);
+      return rows.length > 0 ? [{ ...group, rows }] : [];
+    });
+    const restedByKey = new Map(rested.map((group) => [group.key, group]));
+    let previewExpansionCount = 0;
+    const preview = expanded.flatMap((group) => {
+      const restedGroup = restedByKey.get(group.key);
+      const revealsHiddenRows =
+        !restedGroup || group.rows.length > restedGroup.rows.length;
+      if (!revealsHiddenRows) return [group];
+      if (previewExpansionCount < MAX_PULL_PREVIEW_GROUPS) {
+        previewExpansionCount += 1;
+        return [group];
+      }
+      return restedGroup ? [restedGroup] : [];
+    });
+    return {
+      allGroupRowsByKey: new Map(
+        groupDashboardNotifications(notifications).map((group) => [
+          group.key,
+          group.rows,
+        ]),
+      ),
+      expandedGroups: expanded,
+      previewGroups: preview,
+      restedGroupKeys: new Set(rested.map((group) => group.key)),
+      restedGroups: rested,
+      restedGroupsByKey: restedByKey,
+      restedNotificationIds: new Set(
+        restedNotifications.map((notification) => notification.id),
+      ),
+    };
+  }, [notifications]);
+
   // Do not flash an empty result while the initial request is still in flight.
   // Once hydrated, keep the transparent pull target mounted so an empty shade
   // can communicate its state instead of ignoring the gesture.
   if (!surfaceReady) return null;
 
-  // Cap rendered rows, then paint the expanded projection during a downward
-  // pull so notifications reveal before release. The rested projection has no
-  // rows: it is only the passive total.
-  const capped = orderDashboardNotifications(notifications).slice(
-    0,
-    MAX_RENDERED_ROWS,
-  );
-  const expandedGroups = groupDashboardNotifications(capped);
   const canExpand = !shadeExpanded;
   const previewingExpansion = canExpand && pullPx > 0;
   const groups = shadeExpanded
     ? expandedGroups
     : previewingExpansion
-      ? expandedGroups.slice(0, MAX_PULL_PREVIEW_GROUPS)
-      : [];
-  const allGroupRowsByKey = new Map(
-    groupDashboardNotifications(notifications).map((group) => [
-      group.key,
-      group.rows,
-    ]),
-  );
+      ? previewGroups
+      : restedGroups;
   shadeGestureRef.current = { canExpand, canCollapse: shadeExpanded };
   const closingPullProgress = shadeExpanded
     ? notificationPullRevealProgress(-pullPx, 0)
@@ -1494,7 +1541,8 @@ export function NotificationsHomeCenter({
         ) : null}
         {groups.map((group, groupIndex) => {
           const allGroupRows = allGroupRowsByKey.get(group.key) ?? group.rows;
-          const pullRevealed = previewingExpansion;
+          const groupWasRested = restedGroupKeys.has(group.key);
+          const pullRevealed = previewingExpansion && !groupWasRested;
           const revealProgress = pullRevealed
             ? notificationPullRevealProgress(pullPx, groupIndex)
             : 1;
@@ -1503,13 +1551,32 @@ export function NotificationsHomeCenter({
           const peeks = stacked
             ? group.rows.slice(1, MAX_VISIBLE_STACK_LAYERS)
             : [];
-          const stackTailPx =
+          const expandedStackTailPx =
             peeks.length * STACK_PEEK_OFFSET_PX +
             (peeks.length > 0 ? STACK_BOTTOM_CLEARANCE_PX : 0);
+          const restedPeekCount = Math.min(
+            Math.max(
+              (restedGroupsByKey.get(group.key)?.rows.length ?? 1) - 1,
+              0,
+            ),
+            MAX_VISIBLE_STACK_LAYERS - 1,
+          );
+          const restedStackTailPx =
+            restedPeekCount * STACK_PEEK_OFFSET_PX +
+            (restedPeekCount > 0 ? STACK_BOTTOM_CLEARANCE_PX : 0);
+          const stackTailRevealProgress =
+            previewingExpansion && groupWasRested
+              ? notificationPullRevealProgress(pullPx, groupIndex)
+              : 1;
+          const stackTailPx =
+            restedStackTailPx +
+            (expandedStackTailPx - restedStackTailPx) * stackTailRevealProgress;
           const rows = stacked
             ? [group.rows[0] as AgentNotification]
             : group.rows;
           const fanned = stackExpanded && group.rows.length > 1;
+          const collapsedGroupHasMore =
+            !stackExpanded && allGroupRows.length > 1;
           return (
             <motion.li
               key={group.key}
@@ -1623,25 +1690,42 @@ export function NotificationsHomeCenter({
                       onDismiss={dismissNotification}
                     />
                   </ul>
-                  {peeks.map((peek, i) => (
-                    <button
-                      key={peek.id}
-                      type="button"
-                      data-testid="notification-stack-peek"
-                      data-notif-control=""
-                      aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
-                      onClick={() => expandStack(group.key)}
-                      className="eliza-notif-glass absolute inset-x-0 top-0 rounded-2xl"
-                      style={{
-                        bottom: stackTailPx,
-                        zIndex: 1 - i,
-                        opacity: 0.92 - i * 0.14,
-                        transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
-                          1 - (i + 1) * 0.015
-                        })`,
-                      }}
-                    />
-                  ))}
+                  {peeks.map((peek, i) => {
+                    const peekPullRevealed =
+                      previewingExpansion &&
+                      groupWasRested &&
+                      !restedNotificationIds.has(peek.id);
+                    const peekRevealProgress = peekPullRevealed
+                      ? notificationPullRevealProgress(pullPx, groupIndex + i)
+                      : 1;
+                    return (
+                      <button
+                        key={peek.id}
+                        type="button"
+                        data-testid="notification-stack-peek"
+                        data-notif-control=""
+                        data-notification-pull-reveal={
+                          peekPullRevealed ? "" : undefined
+                        }
+                        tabIndex={peekPullRevealed ? -1 : undefined}
+                        aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
+                        onClick={() => expandStack(group.key)}
+                        className={cn(
+                          "eliza-notif-glass absolute inset-x-0 top-0 rounded-2xl",
+                          peekPullRevealed &&
+                            "eliza-notif-pull-reveal pointer-events-none",
+                        )}
+                        style={{
+                          bottom: stackTailPx,
+                          zIndex: 1 - i,
+                          opacity: (0.92 - i * 0.14) * peekRevealProgress,
+                          transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
+                            1 - (i + 1) * 0.015
+                          })`,
+                        }}
+                      />
+                    );
+                  })}
                 </motion.div>
               ) : (
                 <motion.ul
@@ -1655,6 +1739,11 @@ export function NotificationsHomeCenter({
                     <NotificationRow
                       key={notification.id}
                       notification={notification}
+                      stackKey={collapsedGroupHasMore ? group.key : undefined}
+                      stackCount={
+                        collapsedGroupHasMore ? allGroupRows.length : undefined
+                      }
+                      onExpandStack={expandStack}
                       onOpen={openNotification}
                       onDismiss={dismissNotification}
                     />
@@ -1691,10 +1780,9 @@ export function NotificationsHomeCenter({
           inert={notificationCountVisibility === 0 ? true : undefined}
           style={{
             opacity: notificationCountVisibility,
-            transform: `translate3d(0, ${(1 - notificationCountVisibility) * 4}px, 0)`,
             transition: pullPx ? "none" : undefined,
           }}
-          className="pointer-events-none absolute inset-x-1.5 top-1 z-10 flex items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50 transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity"
+          className="pointer-events-none flex h-8 shrink-0 items-center justify-center gap-1 px-3 text-2xs font-medium text-white/50 transition-opacity duration-200 ease-out motion-reduce:transition-none"
         >
           {notifications.length === 1
             ? "1 Notification"

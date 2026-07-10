@@ -171,10 +171,10 @@ describe("HomeScreen", () => {
     const column = screen.getByTestId("home-content-column");
     expect(column.className).toContain("h-full");
     expect(column.className).not.toContain("min-h-full");
-    // Closed means total-only; opening reveals producer-grouped rows with no
-    // header eyebrows.
+    // Closed keeps interrupt-tier rows above the total; opening reveals every
+    // priority with no header eyebrows.
     expect(screen.getByTestId("notifications-count")).toBeTruthy();
-    expect(screen.queryByTestId("notification-row")).toBeNull();
+    expect(screen.getByTestId("notification-row")).toBeTruthy();
     fireEvent.wheel(screen.getByTestId("home-notification-list"), {
       deltaY: -(PULL_COMMIT_PX + 10),
     });

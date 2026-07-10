@@ -49,6 +49,7 @@ import {
 import {
   dampenPull,
   groupDashboardNotifications,
+  isInterruptPriority,
   NotificationsHomeCenter,
   notificationGroupKey,
   notificationGroupLabel,
@@ -157,6 +158,245 @@ describe("orderDashboardNotifications", () => {
     // takes exactly one argument — the shade cannot be put into a "recent"
     // mode at all.
     expect(orderDashboardNotifications.length).toBe(1);
+  });
+});
+
+describe("interrupt priority projection", () => {
+  it("keeps only high and urgent notifications visible before expansion", () => {
+    expect(isInterruptPriority(makeNotification({ priority: "urgent" }))).toBe(
+      true,
+    );
+    expect(isInterruptPriority(makeNotification({ priority: "high" }))).toBe(
+      true,
+    );
+    expect(isInterruptPriority(makeNotification({ priority: "normal" }))).toBe(
+      false,
+    );
+    expect(isInterruptPriority(makeNotification({ priority: "low" }))).toBe(
+      false,
+    );
+  });
+
+  it("reuses a mixed producer stack while quieter peeks reveal under the pull", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "mail",
+        title: "Urgent mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "high",
+        source: "mail",
+        title: "Important mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "mail",
+        title: "Regular mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "low",
+        source: "mail",
+        title: "Quiet mail",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+
+    const list = screen.getByTestId("home-notification-list");
+    const topRow = screen.getByTestId("notification-row");
+    expect(topRow.textContent).toContain("Urgent mail");
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(1);
+    expect(screen.getByTestId("notification-source-count").textContent).toBe(
+      "4",
+    );
+    expect(screen.getByTestId("notification-stack").style.paddingBottom).toBe(
+      "17px",
+    );
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 31,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 31,
+      clientX: 10,
+      clientY: 78,
+    });
+
+    expect(screen.getByTestId("notification-row")).toBe(topRow);
+    const previewPeeks = screen.getAllByTestId("notification-stack-peek");
+    expect(previewPeeks).toHaveLength(2);
+    expect(previewPeeks[1].hasAttribute("data-notification-pull-reveal")).toBe(
+      true,
+    );
+    expect(Number.parseFloat(previewPeeks[1].style.opacity)).toBeGreaterThan(0);
+    expect(Number.parseFloat(previewPeeks[1].style.opacity)).toBeLessThan(0.78);
+    const previewTail = Number.parseFloat(
+      screen.getByTestId("notification-stack").style.paddingBottom,
+    );
+    expect(previewTail).toBeGreaterThan(17);
+    expect(previewTail).toBeLessThan(24);
+
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 31,
+      clientX: 10,
+      clientY: 78,
+    });
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(1);
+
+    expandShade();
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
+    expect(screen.getByTestId("notification-stack").style.paddingBottom).toBe(
+      "24px",
+    );
+    collapseShade();
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(1);
+  });
+
+  it("fans a badged interrupt card whose only sibling is still folded", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "calendar",
+        title: "Calendar alert",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "calendar",
+        title: "Calendar summary",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
+    expect(screen.getByTestId("notification-source-count").textContent).toBe(
+      "2",
+    );
+    fireEvent.click(screen.getByTestId("notification-row"));
+
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("expanded");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
+    expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
+    expect(screen.getByText("Calendar summary")).toBeTruthy();
+    expect(__getStateForTests().notifications).toHaveLength(2);
+    expect(navigateDeepLink).not.toHaveBeenCalled();
+  });
+
+  it("keeps 50 priority producer stacks visible while folding their quiet siblings", () => {
+    for (let i = 0; i < 50; i += 1) {
+      const source = `plugin-${i}`;
+      __ingestNotificationForTests(
+        makeNotification({
+          priority: "normal",
+          source,
+          title: `Quiet ${i}`,
+        }),
+      );
+      __ingestNotificationForTests(
+        makeNotification({
+          priority: "urgent",
+          source,
+          title: `Urgent ${i}`,
+        }),
+      );
+    }
+    render(<NotificationsHomeCenter />);
+
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(50);
+    expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
+    expect(screen.getAllByTestId("notification-source-count")).toHaveLength(50);
+    expect(screen.getByTestId("notifications-count").textContent).toBe(
+      "100 Notifications",
+    );
+
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 33,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 33,
+      clientX: 10,
+      clientY: 70,
+    });
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(50);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(6);
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 33,
+      clientX: 10,
+      clientY: 70,
+    });
+    expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
+
+    expandShade();
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(50);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(50);
+    collapseShade();
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(50);
+    expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
+  });
+
+  it("limits a quiet inbox pull preview to the first six producer groups", () => {
+    for (let i = 0; i < 10; i += 1) {
+      __ingestNotificationForTests(
+        makeNotification({
+          priority: "normal",
+          source: `quiet-plugin-${i}`,
+          title: `Quiet ${i}`,
+        }),
+      );
+    }
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 32,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 32,
+      clientX: 10,
+      clientY: 70,
+    });
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(6);
+
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 32,
+      clientX: 10,
+      clientY: 70,
+    });
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
   });
 });
 
@@ -351,7 +591,7 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });
 
-  it("keeps rows closed behind the passive total until the shade expands", () => {
+  it("shows interrupt rows above the total and folds quieter rows", () => {
     __ingestNotificationForTests(
       makeNotification({
         title: "Reminder fired",
@@ -362,13 +602,16 @@ describe("NotificationsHomeCenter", () => {
     __ingestNotificationForTests(
       makeNotification({
         title: "Deploy approved",
+        priority: "normal",
         readAt: Date.now(),
         source: "workflow",
       }),
     );
     render(<NotificationsHomeCenter />);
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getByText("Reminder fired")).toBeTruthy();
+    expect(screen.queryByText("Deploy approved")).toBeNull();
     expect(screen.getByTestId("notifications-count").textContent).toBe(
       "2 Notifications",
     );
@@ -377,7 +620,7 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     // The header is a bare eyebrow: no numeric unread badge next to the label.
     expect(screen.queryByTestId("notifications-unread-badge")).toBeNull();
-    expect(screen.getByText("Reminder fired")).toBeTruthy();
+    expect(screen.getByText("Deploy approved")).toBeTruthy();
   });
 
   it("carries no read-state chrome — no unread dot, no data-unread attribute", () => {
@@ -600,7 +843,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       makeNotification({ title: "Top urgent", priority: "urgent" }),
     );
     render(<NotificationsHomeCenter />);
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
     expandShade();
     // One interactive card — the group's highest-priority row.
     const rows = screen.getAllByTestId("notification-row");
@@ -651,7 +895,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
   it("a single-row group renders flat — no stack, no peeks", () => {
     __ingestNotificationForTests(makeNotification({ title: "Solo" }));
     render(<NotificationsHomeCenter />);
-    expect(screen.queryByTestId("notification-row")).toBeNull();
+    expect(screen.getByTestId("notification-row")).toBeTruthy();
     expandShade();
     expect(screen.getByTestId("notification-row")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack")).toBeNull();
@@ -690,13 +934,14 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       makeNotification({ title: "A", priority: "high" }),
     );
     __ingestNotificationForTests(
-      makeNotification({ title: "B", priority: "high" }),
+      makeNotification({ title: "B", priority: "normal" }),
     );
     __ingestNotificationForTests(
       makeNotification({ title: "C", priority: "urgent" }),
     );
     render(<NotificationsHomeCenter />);
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(1);
     // Pulling the shade open reveals more groups but never flattens a stack.
     expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
@@ -905,15 +1150,19 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   }
 
-  it("renders the total only while closed and a bottom collapse command while open", () => {
+  it("renders interrupt triage with the total while closed and a bottom collapse command while open", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
     const count = screen.getByTestId("notifications-count");
     expect(count.textContent).toBe("3 Notifications");
     expect(count.closest("button")).toBeNull();
     expect(count.style.opacity).toBe("1");
     expect(count.getAttribute("aria-hidden")).toBeNull();
+    expect(count.className).toContain("shrink-0");
+    expect(count).toBe(
+      screen.getByTestId("home-notification-center").lastElementChild,
+    );
     const chevron = screen.getByTestId("notifications-count-chevron");
     expect(chevron.classList.contains("h-3")).toBe(true);
     expect(chevron.classList.contains("w-3")).toBe(true);
@@ -945,7 +1194,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
     expandShade();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     // All three priorities are now represented — still stacked (1 top card +
@@ -954,7 +1204,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
     collapseShade();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
     expect(screen.getByTestId("notifications-count").textContent).toBe(
       "3 Notifications",
@@ -1106,7 +1356,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientY: 40,
     });
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
+    expect(screen.queryAllByTestId("notification-stack-peek")).toHaveLength(0);
   });
 
   it("a touch pull-down expands the shade (native non-passive listener path)", () => {
@@ -1198,7 +1449,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
+    expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });
 
   it("a mouse drag UP collapses the expanded shade; drag down while expanded is a no-op", () => {
