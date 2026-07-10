@@ -299,6 +299,7 @@ import {
 	getV5ModelText,
 } from "./message/generate-text-result";
 import { resolveEffectiveMuteState } from "./message/mute-state";
+import { sanitizeOutboundText } from "./message/outbound-sanitize";
 import {
 	GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE,
 	isStage1GroupTriageTierEnabled,
@@ -8539,6 +8540,22 @@ export function wrapSingleTurnVisibleCallback(
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
 	const deliver = async (response: Content, actionName?: string) => {
+		// Shared post-model, pre-channel sanitization (#15888): every visible
+		// delivery — action callbacks, early replies, simple replies, terminal
+		// content — funnels through this wrap, so stripping leaked machine
+		// syntax here covers every connector without per-connector copies.
+		if (typeof response?.text === "string" && response.text.length > 0) {
+			const sanitized = sanitizeOutboundText(response.text);
+			if (sanitized !== response.text) {
+				// Record the raw form too: planner-echo suppression compares the
+				// planner's unsanitized finalMessage against this set, and must
+				// still recognize a delivery whose wire text was sanitized.
+				if (response.text.trim()) {
+					recordDeliveredVisibleText?.(response.text);
+				}
+				response = { ...response, text: sanitized };
+			}
+		}
 		if (typeof response?.text === "string" && response.text.trim()) {
 			recordDeliveredVisibleText?.(response.text);
 		}
