@@ -68,11 +68,15 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
       }
     }
     if (matched != "") {
-      matched_map[matched] = 1
-      changed_count++
-      changed_sum += pct
-      printf "  %6.2f%% %s\n", pct, matched
-      if (pct + 0 < threshold + 0) below[matched] = pct
+      # Aggregate per file across ALL lcov inputs BEFORE thresholding. The same
+      # source can appear in several lane reports — its own focused lane at real
+      # coverage plus another package's lane that merely imports it at ~2%. Keep
+      # the file's BEST-lane percentage so an incidental low record cannot fail a
+      # file whose real coverage clears the floor (#16043). Counting, the mean,
+      # and the below[] verdict are all computed from file_pct in END.
+      if (!(matched in file_pct) || pct + 0 > file_pct[matched] + 0) {
+        file_pct[matched] = pct
+      }
     }
   }
   current = ""; lines_found = 0; lines_hit = 0
@@ -80,10 +84,17 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
 
 END {
   missing_count = 0
+  changed_count = 0
+  changed_sum = 0
   for (f in changed_map) {
-    if (!(f in matched_map)) {
+    if (!(f in file_pct)) {
       printf "  MISSING: %s\n", f
       missing_count++
+    } else {
+      changed_count++
+      changed_sum += file_pct[f]
+      printf "  %6.2f%% %s\n", file_pct[f], f
+      if (file_pct[f] + 0 < threshold + 0) below[f] = file_pct[f]
     }
   }
 
