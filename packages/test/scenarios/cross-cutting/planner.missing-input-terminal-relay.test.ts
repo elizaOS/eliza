@@ -2,8 +2,9 @@
  * Pins the missing-input live scenario's action provenance before credentialed
  * execution so parent and generated child routes share the same strict result bar.
  */
-import { describe, expect, test } from "bun:test";
+
 import type { CapturedAction } from "@elizaos/scenario-runner/schema";
+import { describe, expect, test } from "vitest";
 import { expectMissingInputTerminalRelay } from "./planner.missing-input-terminal-relay.assertion";
 
 const CLARIFICATION =

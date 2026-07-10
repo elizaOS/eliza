@@ -9,7 +9,12 @@ import { buildHarnessSourceAliases } from "./source-aliases.ts";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["harness/**/*.test.ts"],
+    // `scenarios/**` holds .scenario.ts specs for the scenario runner, but unit
+    // tests of their assertion modules live alongside them as *.test.ts. This
+    // package's `test` script is their only recurring lane (server lane on
+    // develop pushes + nightly), so they must be included here or they run
+    // nowhere (#16020).
+    include: ["harness/**/*.test.ts", "scenarios/**/*.test.ts"],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 180_000,
     hookTimeout: 180_000,
