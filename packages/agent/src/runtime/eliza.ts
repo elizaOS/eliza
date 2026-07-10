@@ -3881,6 +3881,31 @@ export async function startEliza(
   // bridge (see ./host-bridge.ts) — no app-core import, no boot-time cycle.
   if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1")
     try {
+      // Auto-adopt an existing Codex / Claude Code CLI login into the account
+      // pool BEFORE the pool loads, so a self-hosted operator who ran
+      // `codex login` / `claude login` gets a first-class, pool-owned account
+      // with no manual step — the pool then owns the single refresh chain
+      // (mutex + 5-min keep-alive sweep + per-account CODEX_HOME), which is
+      // what stops the one-time-use refresh-token race that revokes an
+      // uncoordinated shared login. Idempotent (skips when the store already
+      // holds the current token) and non-destructive (the CLI files stay in
+      // place); opt out with ELIZA_AUTO_IMPORT_CLI_LOGINS=0.
+      if (readAliasedEnv("ELIZA_AUTO_IMPORT_CLI_LOGINS") !== "0") {
+        try {
+          const { importAllCliLogins } = await import("@elizaos/auth");
+          for (const r of importAllCliLogins()) {
+            if (r.imported) {
+              logger.info(
+                `[eliza] Adopted ${r.provider} CLI login into the account pool (account "${r.accountId}")`,
+              );
+            }
+          }
+        } catch (err) {
+          logger.debug(
+            `[eliza] CLI-login auto-import skipped: ${formatError(err)}`,
+          );
+        }
+      }
       const accountPool = await importAppCoreRuntime();
       accountPool.getDefaultAccountPool();
       await accountPool.applyAccountPoolApiCredentials({
