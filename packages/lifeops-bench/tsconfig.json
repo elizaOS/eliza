@@ -9,13 +9,9 @@
     "noEmit": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
-<<<<<<< HEAD
     "types": ["node"],
     "paths": {
-      "@elizaos/vault": ["../vault/src/index.ts"]
-    }
-=======
-    "paths": {
+      "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/agent/runtime/core-plugins": [
         "../agent/dist/runtime/core-plugins.d.ts"
       ],
@@ -25,9 +21,7 @@
       "@elizaos/plugin-local-inference/runtime": [
         "../../plugins/plugin-local-inference/dist/runtime/index.d.ts"
       ]
-    },
-    "types": ["node"]
->>>>>>> 1ddff6f3eb4191a5fac20358bca4c06e58b1db67
+    }
   },
   "include": ["src/**/*.ts"]
 }
