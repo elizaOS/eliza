@@ -104,7 +104,7 @@ jobs:
             echo "no changed Vitest test files; skipping coverage run"
             exit 0
           fi
-          bunx vitest run "${changed_tests[@]}" --coverage --coverage.reporter=lcov --coverage.reportsDirectory=coverage/vitest
+          node packages/scripts/run-changed-vitest-coverage.mjs "${changed_tests[@]}"
 
       - name: Apply coverage gate (enforced)
         # Runs whenever changed tests ran, including test-only PRs (files == '').
