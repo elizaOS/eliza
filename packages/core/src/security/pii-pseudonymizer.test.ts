@@ -11,7 +11,9 @@ import {
 	RegexEntityRecognizer,
 } from "./entity-recognizer";
 import {
+	compileReplacer,
 	DEFAULT_PSEUDONYM_BLOCKLIST,
+	mintSurrogate,
 	PseudonymSession,
 } from "./pii-pseudonymizer";
 
@@ -247,5 +249,109 @@ describe("PseudonymSession", () => {
 		expect(a.restoreText(a.substituteText("call Dana Whitfield"))).toBe(
 			"call Dana Whitfield",
 		);
+	});
+});
+
+// The corpus pseudonym map (#14805) reuses these two primitives directly rather
+// than going through PseudonymSession, so they are asserted here against their
+// exported contract: determinism, kind-shaping, collision-probe divergence, and
+// the longest-first / word-boundary substitution guarantees.
+
+describe("mintSurrogate", () => {
+	it("is a pure function of (salt, kind, value, attempt)", () => {
+		const first = mintSurrogate("s", "person", "Dana Whitfield", 0);
+		const again = mintSurrogate("s", "person", "Dana Whitfield", 0);
+		expect(again).toBe(first);
+	});
+
+	it("advances to a different surrogate as the collision-probe attempt increases", () => {
+		// The caller bumps `attempt` on a collision; consecutive probes must not
+		// keep minting the same candidate or the vault could never converge.
+		const a0 = mintSurrogate("s", "person", "Dana Whitfield", 0);
+		const a1 = mintSurrogate("s", "person", "Dana Whitfield", 1);
+		const a2 = mintSurrogate("s", "person", "Dana Whitfield", 2);
+		expect(new Set([a0, a1, a2]).size).toBe(3);
+	});
+
+	it("diverges across salts for the same value (cross-corpus unlinkability)", () => {
+		const surrogates = new Set(
+			Array.from({ length: 8 }, (_, i) =>
+				mintSurrogate(`salt-${i}`, "person", "Dana Whitfield", 0),
+			),
+		);
+		expect(surrogates.size).toBeGreaterThan(1);
+	});
+
+	it("shapes the surrogate to the entity kind", () => {
+		expect(mintSurrogate("s", "person", "Dana Whitfield", 0)).toMatch(
+			/^[A-Z][a-z]+ [A-Z][a-z]+$/,
+		);
+		expect(mintSurrogate("s", "org", "Northgate Union", 0)).toMatch(
+			/^\S.* \S.*$/,
+		);
+		expect(mintSurrogate("s", "location", "Rivertown", 0)).not.toContain(" @");
+		expect(mintSurrogate("s", "address", "1 Main St", 0)).toMatch(
+			/^\d{3,4} .+$/,
+		);
+		// RFC 2606 reserved domain — a minted email can never route to a mailbox.
+		expect(mintSurrogate("s", "email", "d@x.com", 0)).toMatch(
+			/^[a-z]+\.[a-z]+@example\.com$/,
+		);
+		// NANP 555-01xx block is reserved for fictional use.
+		expect(mintSurrogate("s", "phone", "+1 202 555 0100", 0)).toMatch(
+			/^\(\d{3}\) 555-0\d{3}$/,
+		);
+	});
+
+	it("falls back to a fluent person-shaped surrogate for an unknown kind", () => {
+		// Unknown kinds must not leak an opaque token into otherwise-fluent text.
+		expect(mintSurrogate("s", "spaceship", "USS Cerritos", 0)).toMatch(
+			/^[A-Z][a-z]+ [A-Z][a-z]+$/,
+		);
+	});
+});
+
+describe("compileReplacer", () => {
+	it("returns null when there is nothing to replace", () => {
+		expect(compileReplacer([])).toBeNull();
+	});
+
+	it("matches the longest key first so an inserted value is never re-scanned", () => {
+		const compiled = compileReplacer([
+			{ from: "Acme", to: "Zeta" },
+			{ from: "Acme Robotics", to: "Zeta Dynamics" },
+		]);
+		expect(compiled).not.toBeNull();
+		const { regex, map } = compiled as {
+			regex: RegExp;
+			map: Map<string, string>;
+		};
+		const out = "Acme Robotics ships Acme parts".replace(
+			regex,
+			(m) => map.get(m) as string,
+		);
+		// Longest-first: "Acme Robotics" wins over the shorter "Acme" prefix, and
+		// the standalone "Acme" is still swapped in the same single pass.
+		expect(out).toBe("Zeta Dynamics ships Zeta parts");
+	});
+
+	it("only matches on word boundaries (never mangles a superstring)", () => {
+		const compiled = compileReplacer([{ from: "John", to: "Marcus" }]);
+		const { regex, map } = compiled as {
+			regex: RegExp;
+			map: Map<string, string>;
+		};
+		const out = "John met Johnson".replace(regex, (m) => map.get(m) as string);
+		expect(out).toBe("Marcus met Johnson");
+	});
+
+	it("escapes regex-special characters in keys", () => {
+		const compiled = compileReplacer([{ from: "AT&T", to: "Globex" }]);
+		const { regex, map } = compiled as {
+			regex: RegExp;
+			map: Map<string, string>;
+		};
+		const out = "call AT&T today".replace(regex, (m) => map.get(m) as string);
+		expect(out).toBe("call Globex today");
 	});
 });
