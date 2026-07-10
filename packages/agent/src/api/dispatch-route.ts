@@ -435,7 +435,10 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
       body: undefined,
     };
   }
-  const mediaType = contentType.split(";", 1)[0]?.trim() ?? "";
+  const parameterOffset = contentType.indexOf(";");
+  const mediaType = (
+    parameterOffset === -1 ? contentType : contentType.slice(0, parameterOffset)
+  ).trim();
   // Content-Encoding describes the bytes on the wire, so even a textual MIME
   // type remains binary until the receiving HTTP stack decompresses it.
   const isEncoded = contentEncoding !== "" && contentEncoding !== "identity";
@@ -456,11 +459,13 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
       body: buffer,
     };
   }
-  let body: unknown = buffer.toString("utf8");
+  const text = buffer.toString("utf8");
+  let body: unknown = text;
   if (mediaType === "application/json" || mediaType.endsWith("+json")) {
     try {
-      body = JSON.parse(body as string);
+      body = JSON.parse(text);
     } catch (error) {
+      // error-policy:J2 preserve the parser cause while adding route context
       throw new ElizaError("legacy route emitted malformed JSON", {
         code: "ROUTE_RESPONSE_INVALID_JSON",
         cause: error,

@@ -3,6 +3,7 @@
  */
 
 import { Buffer } from "node:buffer";
+import { gzipSync } from "node:zlib";
 import type { IAgentRuntime, Route } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { dispatchBufferedRequest } from "../../../../plugins/plugin-capacitor-bridge/src/android/dispatch.ts";
@@ -76,7 +77,7 @@ describe("dispatchRoute captured response finalization", () => {
   });
 
   it("does not decode content-encoded text before the client handles it", async () => {
-    const encoded = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00]);
+    const encoded = gzipSync("hello from the route");
     const runtime = runtimeWithHandler((response) => {
       response.setHeader("content-type", "text/plain; charset=utf-8");
       response.setHeader("content-encoding", "gzip");
@@ -87,6 +88,19 @@ describe("dispatchRoute captured response finalization", () => {
 
     expect(Buffer.isBuffer(result?.body)).toBe(true);
     expect(result?.body).toEqual(encoded);
+  });
+
+  it("does not let a charset parameter reclassify binary media as text", async () => {
+    const bytes = Buffer.from([0xff, 0x00, 0x80, 0x7f]);
+    const runtime = runtimeWithHandler((response) => {
+      response.setHeader("content-type", "application/pdf; charset=utf-8");
+      response.end(bytes);
+    });
+
+    const result = await dispatch(runtime);
+
+    expect(Buffer.isBuffer(result?.body)).toBe(true);
+    expect(result?.body).toEqual(bytes);
   });
 
   it("preserves textual and JSON response compatibility", async () => {
@@ -107,7 +121,7 @@ describe("dispatchRoute captured response finalization", () => {
     });
   });
 
-  it("returns malformed JSON as raw text and empty responses as undefined", async () => {
+  it("rejects malformed declared JSON and returns empty responses as undefined", async () => {
     const invalidJsonRuntime = runtimeWithHandler((response) => {
       response.setHeader("content-type", "application/json");
       response.end("{not-json");
@@ -117,8 +131,9 @@ describe("dispatchRoute captured response finalization", () => {
       response.end();
     });
 
-    await expect(dispatch(invalidJsonRuntime)).resolves.toMatchObject({
-      body: "{not-json",
+    await expect(dispatch(invalidJsonRuntime)).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "ROUTE_RESPONSE_INVALID_JSON",
     });
     await expect(dispatch(emptyRuntime)).resolves.toMatchObject({
       status: 200,
