@@ -1,7 +1,9 @@
-// Walkthrough fixture for the chat-native widget de-slop: mounts the real
-// interactive widgets (choice → lock/collapse, form → submit/collapse,
-// checklist, workflow) so a recorded run demonstrates the chrome-free
-// rendering AND the intact collapse-on-complete contract end to end.
+/**
+ * Walkthrough fixture for the chat-native widget de-slop: mounts the real
+ * interactive widgets (choice → lock/collapse, form → submit/collapse,
+ * checklist, workflow) so a recorded run demonstrates the chrome-free
+ * rendering and the intact collapse-on-complete contract end to end.
+ */
 import { createRoot } from "react-dom/client";
 import { ChoiceWidget } from "../ChoiceWidget";
 import { FormRequest } from "../form-request";
