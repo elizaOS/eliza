@@ -3881,19 +3881,35 @@ export async function startEliza(
   // bridge (see ./host-bridge.ts) — no app-core import, no boot-time cycle.
   if (readAliasedEnv("ELIZA_CLOUD_PROVISIONED") !== "1")
     try {
-      // Auto-adopt an existing Codex / Claude Code CLI login into the account
-      // pool BEFORE the pool loads, so a self-hosted operator who ran
-      // `codex login` / `claude login` gets a first-class, pool-owned account
-      // with no manual step — the pool then owns the single refresh chain
-      // (mutex + 5-min keep-alive sweep + per-account CODEX_HOME), which is
-      // what stops the one-time-use refresh-token race that revokes an
-      // uncoordinated shared login. Idempotent (skips when the store already
-      // holds the current token) and non-destructive (the CLI files stay in
-      // place); opt out with ELIZA_AUTO_IMPORT_CLI_LOGINS=0.
+      // Auto-adopt an existing Codex CLI login (`codex login`) into the account
+      // pool BEFORE the pool loads, so a self-hosted operator gets a
+      // first-class, pool-owned account with no manual step — the pool then
+      // owns the single refresh chain (mutex + 5-min keep-alive sweep +
+      // per-account CODEX_HOME), which is what stops the one-time-use
+      // refresh-token race that revokes an uncoordinated shared login.
+      // Idempotent + non-destructive; opt out with ELIZA_AUTO_IMPORT_CLI_LOGINS=0.
+      //
+      // Codex is safe to auto-pool: the spawned codex-acp runs against an
+      // ISOLATED per-account CODEX_HOME, so the pool and any interactive
+      // `codex` use never share a token in memory. The Claude Code login is
+      // NOT auto-imported: a Claude Max login is almost always the SAME account
+      // the operator uses interactively in Claude Code, and both share ONE
+      // one-time-use refresh chain — the moment the pool's keep-alive sweep
+      // refreshes it, the interactive Claude Code session's copy is revoked and
+      // the operator is silently logged out (observed live). Pooling Claude is
+      // therefore explicit opt-in via ELIZA_POOL_CLAUDE_CLI_LOGIN=1 and is
+      // only safe for a Claude Max account DEDICATED to the bot (not shared
+      // with interactive Claude Code). See importClaudeCliLogin.
       if (readAliasedEnv("ELIZA_AUTO_IMPORT_CLI_LOGINS") !== "0") {
         try {
-          const { importAllCliLogins } = await import("@elizaos/auth");
-          for (const r of importAllCliLogins()) {
+          const { importCodexCliLogin, importClaudeCliLogin } = await import(
+            "@elizaos/auth"
+          );
+          const results = [importCodexCliLogin()];
+          if (readAliasedEnv("ELIZA_POOL_CLAUDE_CLI_LOGIN") === "1") {
+            results.push(importClaudeCliLogin());
+          }
+          for (const r of results) {
             if (r.imported) {
               logger.info(
                 `[eliza] Adopted ${r.provider} CLI login into the account pool (account "${r.accountId}")`,

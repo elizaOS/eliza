@@ -52,7 +52,7 @@ function jwtExpiryMs(token: string): number | undefined {
   }
 }
 
-export interface ImportResult {
+export interface CliLoginImportResult {
   provider: AccountCredentialProvider;
   accountId: string;
   imported: boolean;
@@ -67,7 +67,7 @@ export interface ImportResult {
  */
 export function importCodexCliLogin(
   opts: { accountId?: string; retireSource?: boolean } = {},
-): ImportResult {
+): CliLoginImportResult {
   const provider: AccountCredentialProvider = "openai-codex";
   const accountId = opts.accountId ?? "default";
   const authPath = codexHomePath();
@@ -139,10 +139,22 @@ export function importCodexCliLogin(
  * Import the Claude Code CLI's Max login. The blob is either flat
  * (`{ accessToken, refreshToken, expiresAt, subscriptionType }`) or wrapped in
  * `{ claudeAiOauth: { ... } }`; both are accepted.
+ *
+ * ⚠ SHARED-GRANT HAZARD — read before calling from an auto-import path. Unlike
+ * Codex (whose per-account CODEX_HOME isolates the pool from any interactive
+ * `codex` use), a Claude Max login is almost always the SAME account the
+ * operator runs Claude Code with. The pool and interactive Claude Code then
+ * share ONE one-time-use refresh chain: when the pool's keep-alive sweep
+ * refreshes the token, Anthropic rotates-and-revokes it and the interactive
+ * Claude Code session's now-stale copy is kicked — the operator is silently
+ * logged out (reproduced live). Only pool a Claude Max account DEDICATED to the
+ * bot; the boot auto-import gates this behind ELIZA_POOL_CLAUDE_CLI_LOGIN=1 for
+ * exactly this reason. This function itself is a safe library primitive — the
+ * hazard is in WHERE it is called, not the mapping.
  */
 export function importClaudeCliLogin(
   opts: { accountId?: string; retireSource?: boolean } = {},
-): ImportResult {
+): CliLoginImportResult {
   const provider: AccountCredentialProvider = "anthropic-subscription";
   const accountId = opts.accountId ?? "default";
   const credPath = claudeCredentialsPath();
@@ -199,6 +211,6 @@ export function importClaudeCliLogin(
 /** Import whichever CLI logins are present. */
 export function importAllCliLogins(
   opts: { retireSource?: boolean } = {},
-): ImportResult[] {
+): CliLoginImportResult[] {
   return [importCodexCliLogin(opts), importClaudeCliLogin(opts)];
 }
