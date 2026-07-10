@@ -49,6 +49,22 @@ function evaluatorRequestsAnotherIteration() {
 	}));
 }
 
+function evaluatorContinuesThenFinishes(messageToUser: string) {
+	return vi
+		.fn()
+		.mockResolvedValueOnce({
+			success: true,
+			decision: "CONTINUE" as const,
+			thought: "The owner still needs an interaction.",
+		})
+		.mockResolvedValueOnce({
+			success: true,
+			decision: "FINISH" as const,
+			thought: "The form collects the missing fields.",
+			messageToUser,
+		});
+}
+
 describe("planner-loop - terminal continuation missing-input relay", () => {
 	it("finishes with a grammar-valid planner form when the evaluator continues past missing input", async () => {
 		const toolQuestion =
@@ -273,6 +289,64 @@ describe("planner-loop - terminal continuation missing-input relay", () => {
 			runtime,
 			context: { id: "ctx" },
 			config: { maxTerminalOnlyContinuations: 0 },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(preview);
+	});
+
+	it("keeps a grammar-valid FINISH form ahead of the missing-input prose question", async () => {
+		const question =
+			"Please tell me the report name, date, and time before I create the reminder.";
+		const runtime = plannerEmitsNoopThenTerminalText(REMINDER_FORM);
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: question,
+			userFacingText: question,
+			data: {
+				missingField: "schedule",
+				requiresConfirmation: true,
+				awaitingUserInput: true,
+			},
+		}));
+		const evaluate = evaluatorContinuesThenFinishes(REMINDER_FORM);
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(REMINDER_FORM);
+		expect(evaluate).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps a lifeDraft confirmation preview ahead of a FINISH form", async () => {
+		const preview =
+			"I can save this reminder for Friday at 9 AM. Confirm and I'll create it.";
+		const runtime = plannerEmitsNoopThenTerminalText(REMINDER_FORM);
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: preview,
+			userFacingText: preview,
+			data: {
+				requiresConfirmation: true,
+				awaitingUserInput: true,
+				lifeDraft: {
+					operation: "create_definition",
+					request: { title: "Report deadline" },
+				},
+			},
+		}));
+		const evaluate = evaluatorContinuesThenFinishes(REMINDER_FORM);
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
 			executeToolCall,
 			evaluate,
 		});

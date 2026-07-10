@@ -3327,19 +3327,25 @@ function preferredFinalMessageFromToolOrModel(
 	const modelText = getNonEmptyString(modelMessage);
 	const usableModelText =
 		modelText && !isToolMetaNarration(modelText) ? modelText : undefined;
+	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
+	const widgetCollectsLatestMissingInput =
+		widgetReply !== undefined && latestToolResultAwaitsUserInput(trajectory);
 	// Precedence:
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
 	//      (paths, ids, counts) where evaluator paraphrase risks
 	//      hallucinating a value.
-	//   2. A confirmation-required tool preview — action-owned copy must not be
+	//   2. A grammar-valid widget emitted for a structurally-marked missing-input
+	//      result. The widget preserves the planner's field types and supersedes
+	//      the tool's prose question, but never a lifeDraft confirmation preview.
+	//   3. A confirmation-required tool preview — action-owned copy must not be
 	//      paraphrased into a vague extra question or a false save.
-	//   3. The model/evaluator's explicit `messageToUser` — authoritative
+	//   4. The model/evaluator's explicit `messageToUser` — authoritative
 	//      by default; the evaluator has seen the full trajectory and
 	//      chose what the user should read.
-	//   4. The most recent tool's `userFacingText` — fallback when neither
+	//   5. The most recent tool's `userFacingText` — fallback when neither
 	//      the model nor any verified tool provided a clean reply.
-	//   5. An explicit caller-provided fallback (e.g. failed-tool message).
+	//   6. An explicit caller-provided fallback (e.g. failed-tool message).
 	//
 	// Regression coverage:
 	//   - `planner-loop-user-facing-text.test.ts` → "does not regress
@@ -3350,11 +3356,25 @@ function preferredFinalMessageFromToolOrModel(
 	//     opts in via `verifiedUserFacing: true`.
 	return (
 		singleVerifiedUserFacingToolResultText(trajectory) ??
+		(widgetCollectsLatestMissingInput ? widgetReply : undefined) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
 		usableModelText ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);
+}
+
+function latestToolResultAwaitsUserInput(
+	trajectory: PlannerTrajectory,
+): boolean {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
+			continue;
+		}
+		if (step.result.data?.lifeDraft !== undefined) return false;
+		return hasAwaitingUserInputMarker(step.result);
+	}
+	return false;
 }
 
 function isToolMetaNarration(text: string): boolean {
