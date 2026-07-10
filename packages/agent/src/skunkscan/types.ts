@@ -177,6 +177,7 @@ export type WalletExposureSummary = {
   exposureScore: number;
   exposureLevel: "none" | "low" | "medium" | "high";
   evidenceConfidence: "low" | "medium" | "high";
+  confidenceAnalysis?: WalletConfidenceAnalysis;
   confidence: "low" | "medium" | "high";
   hasKnownScamExposure: boolean;
   hasKnownRugPullExposure: boolean;
