@@ -8,6 +8,7 @@ import type http from "node:http";
 import type { Memory, UUID } from "@elizaos/core";
 import { makeSourceSegment } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
+import { syntheticAmbientDay } from "./__fixtures__/ambient-insights-day.ts";
 import {
   cascadeDeletePendantInsightsForSession,
   formatPendantInsightsMemory,
@@ -33,6 +34,18 @@ const segments = [0, 1, 2].map((ordinal) =>
     atMs: 100 + ordinal,
   }),
 );
+
+function ambientSegments(sessionId: string, count: number) {
+  return Array.from({ length: count }, (_, ordinal) => ({
+    ...makeSourceSegment({
+      sessionId,
+      ordinal,
+      text: `ambient segment ${ordinal}`,
+      atMs: 1_000 + ordinal,
+    }),
+    status: "finalized" as const,
+  }));
+}
 
 function memoryRuntime() {
   const memories = new Map<UUID, Memory>();
@@ -61,6 +74,43 @@ function memoryRuntime() {
     ),
   };
   return { runtime, memories, createMemory, updateMemory, deleteMemory };
+}
+
+async function postInsightsRoute(args: {
+  runtime: PendantInsightsMemoryRuntime & {
+    useModel: (
+      modelType: unknown,
+      params: { prompt: string; signal?: AbortSignal },
+    ) => Promise<unknown>;
+  };
+  ownerId?: UUID;
+  body: Record<string, unknown>;
+}) {
+  const req = Object.assign(new EventEmitter(), { aborted: false });
+  const res = Object.assign(new EventEmitter(), {
+    destroyed: false,
+    writableEnded: false,
+  });
+  let payload: unknown;
+  const json = vi.fn((_res: http.ServerResponse, data: unknown) => {
+    payload = data;
+  });
+  const error = vi.fn();
+  const handled = await handlePendantInsightsRoutes({
+    req: req as unknown as http.IncomingMessage,
+    res: res as unknown as http.ServerResponse,
+    method: "POST",
+    pathname: "/api/pendant/insights",
+    state: {
+      runtime: args.runtime,
+      adminEntityId: args.ownerId ?? (identity.ownerId as UUID),
+    },
+    json,
+    error,
+    readJsonBody: vi.fn(async () => args.body),
+  });
+  expect(handled).toBe(true);
+  return { payload, json, error };
 }
 
 async function generatedRollup() {
@@ -359,5 +409,488 @@ describe("pendant insights agent memory integration", () => {
     });
     expect(result).toEqual({ cancelled: 0, deleted: true });
     expect(memories.has(pendantInsightsMemoryId(identity))).toBe(false);
+  });
+});
+
+describe("ambient pendant insights quality gates", () => {
+  it("rolls only newly finalized canonical segments plus bounded finalized context", async () => {
+    const sessionId = "ambient-window";
+    const baseIdentity = { ...identity, sessionId };
+    const { runtime } = memoryRuntime();
+    const prompts: string[] = [];
+    const runtimeWithModel = {
+      ...runtime,
+      useModel: vi.fn(
+        async (_modelType: unknown, params: { prompt: string }) => {
+          prompts.push(params.prompt);
+          const sourceSegmentIds = Array.from(
+            params.prompt.matchAll(/\[(ambient-window:segment:\d+)\]/g),
+            (match) => match[1],
+          );
+          return JSON.stringify({
+            summary: "Grounded ambient rollup.",
+            summarySourceSegmentIds: sourceSegmentIds.slice(-1),
+            actionItems: [
+              {
+                text: "Buy milk",
+                owner: null,
+                confidence: 0.9,
+                sourceSegmentIds: sourceSegmentIds.slice(-1),
+              },
+            ],
+          });
+        },
+      ),
+    };
+
+    await postInsightsRoute({
+      runtime: runtimeWithModel,
+      body: {
+        enabled: true,
+        mode: "ambient",
+        sessionId,
+        ambient: {
+          minSegments: 3,
+          minIntervalMs: 0,
+          dailyCallCap: 48,
+          contextTailSegments: 2,
+        },
+        segments: ambientSegments(sessionId, 10),
+      },
+    });
+
+    const secondSegments = ambientSegments(sessionId, 13).map((segment) =>
+      segment.ordinal === 10
+        ? {
+            ...segment,
+            text: "pending should not be visible",
+            status: "pending" as const,
+          }
+        : segment,
+    );
+    await postInsightsRoute({
+      runtime: runtimeWithModel,
+      body: {
+        enabled: true,
+        mode: "ambient",
+        sessionId,
+        ambient: {
+          minSegments: 2,
+          minIntervalMs: 0,
+          dailyCallCap: 48,
+          contextTailSegments: 2,
+        },
+        segments: secondSegments,
+      },
+    });
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toContain("[ambient-window:segment:8]");
+    expect(prompts[1]).toContain("[ambient-window:segment:9]");
+    expect(prompts[1]).toContain("[ambient-window:segment:11]");
+    expect(prompts[1]).toContain("[ambient-window:segment:12]");
+    expect(prompts[1]).not.toContain("[ambient-window:segment:0]");
+    expect(prompts[1]).not.toContain("pending should not be visible");
+
+    await postInsightsRoute({
+      runtime: runtimeWithModel,
+      body: {
+        enabled: true,
+        mode: "ambient",
+        sessionId,
+        ambient: {
+          minSegments: 1,
+          minIntervalMs: 0,
+          dailyCallCap: 48,
+          contextTailSegments: 1,
+        },
+        segments: ambientSegments(sessionId, 13),
+      },
+    });
+    expect(prompts).toHaveLength(3);
+    expect(prompts[2]).toContain("[ambient-window:segment:10]");
+
+    const stored = await runtime.getMemoryById(
+      pendantInsightsMemoryId(baseIdentity),
+    );
+    const metadata = stored?.metadata as Record<string, unknown>;
+    const insights = metadata.insights as {
+      actionItems: Array<{ sourceSegmentIds: string[] }>;
+    };
+    expect(insights.actionItems).toHaveLength(1);
+    expect(insights.actionItems[0].sourceSegmentIds).toEqual(
+      expect.arrayContaining([
+        "ambient-window:segment:9",
+        "ambient-window:segment:12",
+      ]),
+    );
+  });
+
+  it("checkpoints empty ambient windows instead of reprocessing quiet history", async () => {
+    const sessionId = "ambient-empty-checkpoint";
+    const { runtime } = memoryRuntime();
+    const prompts: string[] = [];
+    const runtimeWithModel = {
+      ...runtime,
+      useModel: vi.fn(
+        async (_modelType: unknown, params: { prompt: string }) => {
+          prompts.push(params.prompt);
+          return prompts.length === 1
+            ? JSON.stringify({})
+            : JSON.stringify({
+                summary: "A new task appeared.",
+                summarySourceSegmentIds: [`${sessionId}:segment:5`],
+              });
+        },
+      ),
+    };
+    const request = (count: number) =>
+      postInsightsRoute({
+        runtime: runtimeWithModel,
+        body: {
+          enabled: true,
+          mode: "ambient",
+          sessionId,
+          ambient: {
+            minSegments: 3,
+            minIntervalMs: 0,
+            dailyCallCap: 48,
+            contextTailSegments: 0,
+          },
+          segments: ambientSegments(sessionId, count),
+        },
+      });
+
+    await request(3);
+    await request(6);
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).not.toContain(`${sessionId}:segment:0`);
+    expect(prompts[1]).toContain(`${sessionId}:segment:5`);
+  });
+
+  it("enforces a server-side ambient daily call cap before the model call", async () => {
+    const sessionId = "ambient-budget";
+    const { runtime } = memoryRuntime();
+    const runtimeWithModel = {
+      ...runtime,
+      useModel: vi.fn(async () =>
+        JSON.stringify({
+          summary: "one call",
+          summarySourceSegmentIds: [`${sessionId}:segment:2`],
+        }),
+      ),
+    };
+    const body = (count: number) => ({
+      enabled: true,
+      mode: "ambient",
+      sessionId,
+      ambient: {
+        minSegments: 3,
+        minIntervalMs: 0,
+        dailyCallCap: 1,
+        contextTailSegments: 0,
+      },
+      segments: ambientSegments(sessionId, count),
+    });
+
+    const first = await postInsightsRoute({
+      runtime: runtimeWithModel,
+      body: body(3),
+    });
+    const second = await postInsightsRoute({
+      runtime: runtimeWithModel,
+      body: body(6),
+    });
+
+    expect(first.payload).toMatchObject({ ok: true });
+    expect(second.payload).toEqual({ ok: false, reason: "budget-exhausted" });
+    expect(runtimeWithModel.useModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("chunks an all-day digest and charges every model call before starting", async () => {
+    const sessionId = "ambient-long-digest";
+    const { runtime } = memoryRuntime();
+    const longDay = ambientSegments(sessionId, 180).map((segment) => ({
+      ...segment,
+      text: `${segment.text} ${"meeting errands and casual context ".repeat(4)}`,
+    }));
+    const runtimeWithModel = {
+      ...runtime,
+      useModel: vi.fn(
+        async (_modelType: unknown, params: { prompt: string }) => {
+          const ids = Array.from(
+            params.prompt.matchAll(/\[(ambient-long-digest:segment:\d+)\]/g),
+            (match) => match[1],
+          );
+          return JSON.stringify({
+            summary: "A bounded part of the day.",
+            summarySourceSegmentIds: ids.slice(-1),
+            digest: {
+              summary: "A bounded part of the day.",
+              summarySourceSegmentIds: ids.slice(-1),
+              actionItems: [
+                {
+                  text: "Send the notes",
+                  owner: null,
+                  confidence: 0.9,
+                  sourceSegmentIds: ids.slice(-1),
+                },
+              ],
+            },
+          });
+        },
+      ),
+    };
+    const body = {
+      enabled: true,
+      mode: "ambient",
+      kind: "digest",
+      sessionId,
+      ambient: {
+        minSegments: 8,
+        minIntervalMs: 0,
+        dailyCallCap: 48,
+        contextTailSegments: 0,
+      },
+      segments: longDay,
+    };
+
+    const result = await postInsightsRoute({ runtime: runtimeWithModel, body });
+
+    expect(result.payload).toMatchObject({ ok: true });
+    expect(runtimeWithModel.useModel.mock.calls.length).toBeGreaterThan(1);
+    const digest = (
+      result.payload as {
+        insights: {
+          digest: {
+            actionItems: Array<{ sourceSegmentIds: string[] }>;
+          };
+        };
+      }
+    ).insights.digest;
+    expect(digest.actionItems).toHaveLength(1);
+    expect(digest.actionItems[0].sourceSegmentIds).toHaveLength(
+      runtimeWithModel.useModel.mock.calls.length,
+    );
+
+    const cappedSession = "ambient-long-capped";
+    const cappedRuntime = memoryRuntime().runtime;
+    const cappedModel = {
+      ...cappedRuntime,
+      useModel: vi.fn(async () => "{}"),
+    };
+    const capped = await postInsightsRoute({
+      runtime: cappedModel,
+      body: {
+        ...body,
+        sessionId: cappedSession,
+        ambient: { ...body.ambient, dailyCallCap: 1 },
+        segments: longDay.map((segment) => ({
+          ...segment,
+          sessionId: cappedSession,
+          id: `${cappedSession}:segment:${segment.ordinal}`,
+        })),
+      },
+    });
+    expect(capped.payload).toEqual({ ok: false, reason: "budget-exhausted" });
+    expect(cappedModel.useModel).not.toHaveBeenCalled();
+  });
+
+  it("derives digest identity from trusted user-local timezone config", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-10T02:00:00.000Z"));
+    try {
+      const sessionId = "ambient-local-day";
+      const { runtime } = memoryRuntime();
+      runtime.getSetting = (key: string) =>
+        key === "TIMEZONE" ? "America/Denver" : undefined;
+      const runtimeWithModel = {
+        ...runtime,
+        useModel: vi.fn(async () => "{}"),
+      };
+      const result = await postInsightsRoute({
+        runtime: runtimeWithModel,
+        body: {
+          enabled: true,
+          mode: "ambient",
+          kind: "digest",
+          sessionId,
+          segments: [],
+        },
+      });
+      expect(result.payload).toMatchObject({
+        ok: true,
+        insights: { dayKey: "2026-07-09" },
+      });
+      expect(runtimeWithModel.useModel).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("writes exactly one digest per ambient session-day and permits an empty day", async () => {
+    const sessionId = "ambient-empty-digest";
+    const { runtime } = memoryRuntime();
+    const runtimeWithModel = {
+      ...runtime,
+      useModel: vi.fn(async () => {
+        throw new Error("empty digest should not call model");
+      }),
+    };
+    const body = {
+      enabled: true,
+      mode: "ambient",
+      kind: "digest",
+      sessionId,
+      ambient: {
+        minSegments: 8,
+        minIntervalMs: 0,
+        dailyCallCap: 48,
+        contextTailSegments: 0,
+      },
+      segments: [],
+    };
+
+    const first = await postInsightsRoute({ runtime: runtimeWithModel, body });
+    const second = await postInsightsRoute({ runtime: runtimeWithModel, body });
+
+    expect(first.payload).toMatchObject({
+      ok: true,
+      insights: {
+        kind: "digest",
+        summary: "",
+        digest: {
+          summary: "",
+          actionItems: [],
+          commitments: [],
+          followUps: [],
+          notableMoments: [],
+        },
+      },
+      provenance: { sourceSegments: [] },
+    });
+    expect(second.payload).toEqual({
+      ok: false,
+      reason: "digest-already-generated",
+    });
+    expect(runtimeWithModel.useModel).not.toHaveBeenCalled();
+  });
+
+  it("grounds digest citations to real canonical ids and removes invented ids", async () => {
+    const sessionId = "ambient-digest";
+    const { runtime } = memoryRuntime();
+    const runtimeWithModel = {
+      ...runtime,
+      useModel: vi.fn(async () =>
+        JSON.stringify({
+          summary: "The day mixed errands and a design sync.",
+          summarySourceSegmentIds: [`${sessionId}:segment:0`, "ghost"],
+          actionItems: [
+            {
+              text: "Pick up the prescription",
+              owner: null,
+              confidence: 0.95,
+              sourceSegmentIds: [`${sessionId}:segment:1`, "ghost"],
+            },
+          ],
+          digest: {
+            summary: "The day mixed errands and a design sync.",
+            summarySourceSegmentIds: [`${sessionId}:segment:0`, "ghost"],
+            actionItems: [
+              {
+                text: "Pick up the prescription",
+                owner: null,
+                confidence: 0.95,
+                sourceSegmentIds: [`${sessionId}:segment:1`, "ghost"],
+              },
+            ],
+            commitments: [
+              {
+                text: "Send the meeting notes",
+                owner: "anonymous",
+                confidence: 0.9,
+                sourceSegmentIds: [`${sessionId}:segment:2`],
+              },
+            ],
+            followUps: [
+              {
+                text: "Check whether Sam got the link",
+                owner: null,
+                confidence: 0.8,
+                sourceSegmentIds: [`${sessionId}:segment:3`],
+              },
+            ],
+            notableMoments: [
+              {
+                text: "A casual lunch chat turned into a reminder.",
+                sourceSegmentIds: [`${sessionId}:segment:4`, "ghost"],
+              },
+            ],
+          },
+        }),
+      ),
+    };
+
+    const result = await postInsightsRoute({
+      runtime: runtimeWithModel,
+      body: {
+        enabled: true,
+        mode: "ambient",
+        kind: "digest",
+        sessionId,
+        ambient: {
+          minSegments: 8,
+          minIntervalMs: 0,
+          dailyCallCap: 48,
+          contextTailSegments: 0,
+        },
+        segments: syntheticAmbientDay(sessionId),
+      },
+    });
+
+    expect(result.payload).toMatchObject({ ok: true });
+    const payload = result.payload as {
+      insights: {
+        summarySourceSegmentIds: string[];
+        digest: {
+          summarySourceSegmentIds: string[];
+          actionItems: Array<{ sourceSegmentIds: string[] }>;
+          commitments: Array<{ sourceSegmentIds: string[] }>;
+          followUps: Array<{ sourceSegmentIds: string[] }>;
+          notableMoments: Array<{ sourceSegmentIds: string[] }>;
+        };
+      };
+    };
+    const allIds = [
+      ...payload.insights.summarySourceSegmentIds,
+      ...payload.insights.digest.summarySourceSegmentIds,
+      ...payload.insights.digest.actionItems.flatMap(
+        (item) => item.sourceSegmentIds,
+      ),
+      ...payload.insights.digest.commitments.flatMap(
+        (item) => item.sourceSegmentIds,
+      ),
+      ...payload.insights.digest.followUps.flatMap(
+        (item) => item.sourceSegmentIds,
+      ),
+      ...payload.insights.digest.notableMoments.flatMap(
+        (item) => item.sourceSegmentIds,
+      ),
+    ];
+    expect(allIds).not.toContain("ghost");
+    expect(allIds.every((id) => id.startsWith(`${sessionId}:segment:`))).toBe(
+      true,
+    );
+    const digestPrompt = (
+      runtimeWithModel.useModel.mock.calls[0]?.[1] as {
+        prompt: string;
+      }
+    ).prompt;
+    expect(digestPrompt).toContain("ship the onboarding copy");
+    expect(digestPrompt).toContain("pick up the prescription");
+    expect(digestPrompt).toContain("movie and what to cook");
+    expect(digestPrompt).not.toContain("interim words");
+    expect(digestPrompt).not.toContain("eager hypothesis");
   });
 });

@@ -6,7 +6,9 @@ import {
   fnv1a32,
   isEmptyInsights,
   isPendantSegmentId,
+  makeInsightDedupeKey,
   makePendantSegmentId,
+  mergePendantInsights,
   PENDANT_INSIGHTS_SCHEMA_VERSION,
   PendantInsightsModelOutputSchema,
   PendantInsightsSchema,
@@ -54,6 +56,19 @@ describe("pendant insights route contract", () => {
         segments: [{ ...segment, speakerId: null }],
       }).success,
     ).toBe(true);
+  });
+
+  it("keeps ambient mode opt-in and accepts finalized lifecycle metadata", () => {
+    const parsed = PostPendantInsightsRequestSchema.parse({
+      enabled: true,
+      mode: "ambient",
+      sessionId: "session-1",
+      ambient: {},
+      segments: [{ ...segment, status: "finalized" }],
+    });
+    expect(parsed.mode).toBe("ambient");
+    expect(parsed.ambient?.minSegments).toBe(8);
+    expect(parsed.segments[0].status).toBe("finalized");
   });
 
   it("rejects cross-session, noncanonical, and duplicate source identities", () => {
@@ -135,6 +150,8 @@ describe("PendantInsightsModelOutputSchema", () => {
       topics: [],
       peopleMentioned: [],
       notableQuotes: [],
+      summarySourceSegmentIds: [],
+      digest: undefined,
     });
   });
   it("trims summary, dedupes sourceSegmentIds, drops extra keys", () => {
@@ -317,6 +334,81 @@ describe("composePendantInsights", () => {
     expect(out.notableQuotes[0].sourceSegmentIds).toEqual(["known"]);
     // The composed record round-trips through the full validator.
     expect(parsePendantInsights(out).ok).toBe(true);
+  });
+
+  it("requires grounded summary citations and digest detail for digest records", () => {
+    const out = composePendantInsights({
+      model: PendantInsightsModelOutputSchema.parse({
+        summary: "Errands and a meeting happened.",
+        summarySourceSegmentIds: ["known", "ghost"],
+        digest: {
+          summary: "Errands and a meeting happened.",
+          summarySourceSegmentIds: ["known", "ghost"],
+          actionItems: [
+            {
+              text: "Pick up milk",
+              owner: null,
+              confidence: 0.8,
+              sourceSegmentIds: ["known", "ghost"],
+            },
+          ],
+          commitments: [],
+          followUps: [],
+          notableMoments: [
+            { text: "Quick lunch chat", sourceSegmentIds: ["known"] },
+          ],
+        },
+      }),
+      generatedAt: 999,
+      transcriptRange: { startOrdinal: 0, endOrdinal: 0, segmentCount: 1 },
+      knownSegmentIds: new Set(["known"]),
+      kind: "digest",
+      dayKey: "2026-07-10",
+    });
+    expect(out.kind).toBe("digest");
+    expect(out.summarySourceSegmentIds).toEqual(["known"]);
+    expect(out.digest?.actionItems[0].sourceSegmentIds).toEqual(["known"]);
+  });
+});
+
+describe("mergePendantInsights", () => {
+  it("merges repeated actions by deterministic normalized content key", () => {
+    const first = composePendantInsights({
+      model: PendantInsightsModelOutputSchema.parse({
+        actionItems: [
+          {
+            text: "Buy milk",
+            owner: null,
+            confidence: 0.9,
+            sourceSegmentIds: ["a"],
+          },
+        ],
+      }),
+      generatedAt: 1,
+      transcriptRange: { startOrdinal: 0, endOrdinal: 0, segmentCount: 1 },
+      knownSegmentIds: new Set(["a"]),
+    });
+    const second = composePendantInsights({
+      model: PendantInsightsModelOutputSchema.parse({
+        actionItems: [
+          {
+            text: "buy milk!",
+            owner: null,
+            confidence: 0.8,
+            sourceSegmentIds: ["b"],
+          },
+        ],
+      }),
+      generatedAt: 2,
+      transcriptRange: { startOrdinal: 1, endOrdinal: 1, segmentCount: 1 },
+      knownSegmentIds: new Set(["b"]),
+    });
+    const merged = mergePendantInsights(first, second);
+    expect(merged.actionItems).toHaveLength(1);
+    expect(merged.actionItems[0].dedupeKey).toBe(
+      makeInsightDedupeKey("action", "Buy milk", null),
+    );
+    expect(merged.actionItems[0].sourceSegmentIds).toEqual(["a", "b"]);
   });
 });
 

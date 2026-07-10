@@ -47,6 +47,7 @@ export interface BuildInsightsPromptOptions {
   priorSummary?: string;
   /** Max characters of transcript body to include (cost guard). Default 12000. */
   maxTranscriptChars?: number;
+  kind?: "rollup" | "digest";
 }
 
 /** Default transcript-body character budget fed to the model. */
@@ -155,6 +156,55 @@ export const INSIGHTS_OUTPUT_SCHEMA_HINT = `Return ONLY a JSON object (no prose,
   ]
 }`;
 
+export const DIGEST_OUTPUT_SCHEMA_HINT = `Return ONLY a JSON object (no prose, no code fences) with this exact shape:
+{
+  "summary": string,
+  "summarySourceSegmentIds": string[],
+  "actionItems": [
+    {
+      "text": string,
+      "owner": string | null,
+      "dueAt": string?,
+      "confidence": number,
+      "sourceSegmentIds": string[]
+    }
+  ],
+  "digest": {
+    "summary": string,
+    "summarySourceSegmentIds": string[],
+    "actionItems": [
+      {
+        "text": string,
+        "owner": string | null,
+        "dueAt": string?,
+        "confidence": number,
+        "sourceSegmentIds": string[]
+      }
+    ],
+    "commitments": [
+      {
+        "text": string,
+        "owner": string | null,
+        "dueAt": string?,
+        "confidence": number,
+        "sourceSegmentIds": string[]
+      }
+    ],
+    "followUps": [
+      {
+        "text": string,
+        "owner": string | null,
+        "dueAt": string?,
+        "confidence": number,
+        "sourceSegmentIds": string[]
+      }
+    ],
+    "notableMoments": [
+      { "text": string, "sourceSegmentIds": string[] }
+    ]
+  }
+}`;
+
 /**
  * The generation guardrails. These are the anti-fabrication + attribution rules
  * that keep the model from inventing action items or citing segments it never saw.
@@ -163,6 +213,7 @@ export const INSIGHTS_GENERATION_RULES = [
   "Extract ONLY what is actually present in the transcript. Do NOT invent, infer beyond the text, or pad.",
   'If the window is small talk or has no substantive content, return empty arrays and an empty ("") summary. An empty result is correct and expected.',
   "Every sourceSegmentIds value MUST be a segment id that appears in [brackets] in the transcript above. Never cite an id you did not see.",
+  "When returning a non-empty summary, include summarySourceSegmentIds from the transcript lines that ground it.",
   "Only set owner/dueAt when the transcript makes them explicit. Omit them otherwise — do not guess.",
   "Calibrate confidence honestly: a clearly-stated commitment is ~0.9; an ambiguous aside is ~0.3.",
   "notableQuotes must be VERBATIM substrings of the transcript, not paraphrases.",
@@ -189,8 +240,16 @@ export function buildInsightsPrompt(
     ? `Context from earlier in this session (for continuity only, do NOT re-report it):\n${options.priorSummary.trim()}\n\n`
     : "";
 
+  const isDigest = options.kind === "digest";
+  const schemaHint = isDigest
+    ? DIGEST_OUTPUT_SCHEMA_HINT
+    : INSIGHTS_OUTPUT_SCHEMA_HINT;
+  const task = isDigest
+    ? "You produce the end-of-day digest for one ambient session-day."
+    : "You produce a structured rollup of what was discussed.";
+
   const prompt = `You are an ambient note-taker summarizing a wearable-pendant voice transcript. \
-You produce a structured rollup of what was discussed. You are precise and never fabricate.
+${task} You are precise and never fabricate.
 
 ${priorBlock}Transcript (each line is prefixed with its [segment-id]):
 ${body || "(no transcript content)"}
@@ -198,7 +257,7 @@ ${body || "(no transcript content)"}
 Rules:
 ${INSIGHTS_GENERATION_RULES}
 
-${INSIGHTS_OUTPUT_SCHEMA_HINT}`;
+${schemaHint}`;
 
   return {
     prompt,

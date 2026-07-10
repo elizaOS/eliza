@@ -33,6 +33,10 @@ export const PENDANT_INSIGHTS_SCHEMA_VERSION = 1 as const;
 export const INSIGHT_CONFIDENCE_MIN = 0;
 export const INSIGHT_CONFIDENCE_MAX = 1;
 
+export const AMBIENT_INSIGHT_DEFAULT_MIN_SEGMENTS = 8;
+export const AMBIENT_INSIGHT_DEFAULT_MIN_INTERVAL_MS = 300_000;
+export const AMBIENT_INSIGHT_DEFAULT_DAILY_CALL_CAP = 48;
+
 // ---------------------------------------------------------------------------
 // Deterministic segment IDs
 // ---------------------------------------------------------------------------
@@ -124,6 +128,11 @@ const SourceSegmentIds = z
   .min(1)
   .transform((ids) => Array.from(new Set(ids)));
 
+const OptionalSourceSegmentIds = z
+  .array(NonEmptyText)
+  .default([])
+  .transform((ids) => Array.from(new Set(ids)));
+
 const IsoDateOrDateTime = NonEmptyText.refine(
   (value) =>
     /^\d{4}-\d{2}-\d{2}$/.test(value) ||
@@ -137,12 +146,14 @@ const IsoDateOrDateTime = NonEmptyText.refine(
 export const ActionItemSchema = z
   .object({
     text: NonEmptyText,
-    /** Who owns it, when attributable to a speaker/person; omitted if unknown. */
-    owner: NonEmptyText.optional(),
+    /** Who owns it, when attributable; null means explicitly anonymous/unknown. */
+    owner: NonEmptyText.nullable().optional(),
     /** ISO-8601 due date/time when the transcript implies one; omitted otherwise. */
     dueAt: IsoDateOrDateTime.optional(),
     confidence: Confidence,
     sourceSegmentIds: SourceSegmentIds,
+    /** Stable normalized-content key for cross-rollup merge/dedupe. */
+    dedupeKey: NonEmptyText.optional(),
   })
   .strict();
 export type ActionItem = z.infer<typeof ActionItemSchema>;
@@ -176,6 +187,47 @@ export const NotableQuoteSchema = z
   })
   .strict();
 export type NotableQuote = z.infer<typeof NotableQuoteSchema>;
+
+export const DigestItemSchema = z
+  .object({
+    text: NonEmptyText,
+    sourceSegmentIds: SourceSegmentIds,
+    dedupeKey: NonEmptyText.optional(),
+  })
+  .strict();
+export type DigestItem = z.infer<typeof DigestItemSchema>;
+
+export const DigestActionItemSchema = DigestItemSchema.extend({
+  owner: NonEmptyText.nullable().optional(),
+  dueAt: IsoDateOrDateTime.optional(),
+  confidence: Confidence.default(1),
+}).strict();
+export type DigestActionItem = z.infer<typeof DigestActionItemSchema>;
+
+export const PendantEndOfDayDigestSchema = z
+  .object({
+    summary: z
+      .string()
+      .transform((s) => s.trim())
+      .default(""),
+    summarySourceSegmentIds: OptionalSourceSegmentIds,
+    actionItems: z.array(DigestActionItemSchema).default([]),
+    commitments: z.array(DigestActionItemSchema).default([]),
+    followUps: z.array(DigestActionItemSchema).default([]),
+    notableMoments: z.array(DigestItemSchema).default([]),
+  })
+  .strict()
+  .superRefine((digest, ctx) => {
+    const hasSummary = digest.summary.length > 0;
+    if (hasSummary && digest.summarySourceSegmentIds.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["summarySourceSegmentIds"],
+        message: "digest summaries require grounded source segment ids",
+      });
+    }
+  });
+export type PendantEndOfDayDigest = z.infer<typeof PendantEndOfDayDigestSchema>;
 
 /** The half-open segment range (by ordinal) this rollup was computed over. */
 export const TranscriptRangeSchema = z
@@ -230,15 +282,48 @@ export const PendantInsightsSchema = z
       .string()
       .transform((s) => s.trim())
       .default(""),
+    /** Grounding for summary text; required when populated on a digest. */
+    summarySourceSegmentIds: OptionalSourceSegmentIds,
     actionItems: z.array(ActionItemSchema).default([]),
     topics: z.array(InsightTopicSchema).default([]),
     peopleMentioned: z.array(PersonMentionSchema).default([]),
     notableQuotes: z.array(NotableQuoteSchema).default([]),
+    kind: z.enum(["rollup", "digest"]).default("rollup"),
+    dayKey: NonEmptyText.optional(),
+    digest: PendantEndOfDayDigestSchema.optional(),
     /** Epoch ms when this rollup was generated. */
     generatedAt: z.number().int().min(0),
     transcriptRange: TranscriptRangeSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((insights, ctx) => {
+    if (insights.kind === "digest") {
+      if (!insights.dayKey) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["dayKey"],
+          message: "digest insights require a dayKey",
+        });
+      }
+      if (!insights.digest) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["digest"],
+          message: "digest insights require digest details",
+        });
+      }
+      if (
+        insights.summary.length > 0 &&
+        insights.summarySourceSegmentIds.length === 0
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["summarySourceSegmentIds"],
+          message: "digest summaries require grounded source segment ids",
+        });
+      }
+    }
+  });
 export type PendantInsights = z.infer<typeof PendantInsightsSchema>;
 
 /**
@@ -258,6 +343,8 @@ export const PendantInsightsModelOutputSchema = z
     topics: z.array(InsightTopicSchema).default([]),
     peopleMentioned: z.array(PersonMentionSchema).default([]),
     notableQuotes: z.array(NotableQuoteSchema).default([]),
+    summarySourceSegmentIds: OptionalSourceSegmentIds,
+    digest: PendantEndOfDayDigestSchema.optional(),
   })
   // Non-strict: tolerate extra keys a chatty model appends, drop them silently.
   .passthrough()
@@ -267,6 +354,8 @@ export const PendantInsightsModelOutputSchema = z
     topics: v.topics,
     peopleMentioned: v.peopleMentioned,
     notableQuotes: v.notableQuotes,
+    summarySourceSegmentIds: v.summarySourceSegmentIds,
+    digest: v.digest,
   }));
 export type PendantInsightsModelOutput = z.infer<
   typeof PendantInsightsModelOutputSchema
@@ -398,6 +487,8 @@ export function composePendantInsights(args: {
   transcriptRange: z.input<typeof TranscriptRangeSchema>;
   /** The set of segment ids the model was shown (for evidence filtering). */
   knownSegmentIds: ReadonlySet<string>;
+  kind?: "rollup" | "digest";
+  dayKey?: string;
 }): PendantInsights {
   const filterIds = (ids: string[]): string[] =>
     ids.filter((id) => args.knownSegmentIds.has(id));
@@ -410,16 +501,46 @@ export function composePendantInsights(args: {
         sourceSegmentIds: filterIds(item.sourceSegmentIds),
       }))
       .filter((item) => item.sourceSegmentIds.length > 0) as T[];
-  return {
+  const summarySourceSegmentIds = filterIds(args.model.summarySourceSegmentIds);
+  const digest = args.model.digest
+    ? {
+        summary: args.model.digest.summary,
+        summarySourceSegmentIds: filterIds(
+          args.model.digest.summarySourceSegmentIds,
+        ),
+        actionItems: withDedupeKeys(
+          grounded(args.model.digest.actionItems),
+          "digest-action",
+        ),
+        commitments: withDedupeKeys(
+          grounded(args.model.digest.commitments),
+          "commitment",
+        ),
+        followUps: withDedupeKeys(
+          grounded(args.model.digest.followUps),
+          "follow-up",
+        ),
+        notableMoments: withDedupeKeys(
+          grounded(args.model.digest.notableMoments),
+          "moment",
+        ),
+      }
+    : undefined;
+  const composed = {
     schemaVersion: PENDANT_INSIGHTS_SCHEMA_VERSION,
     summary: args.model.summary,
-    actionItems: grounded(args.model.actionItems),
+    summarySourceSegmentIds,
+    actionItems: withDedupeKeys(grounded(args.model.actionItems), "action"),
     topics: grounded(args.model.topics),
     peopleMentioned: grounded(args.model.peopleMentioned),
     notableQuotes: grounded(args.model.notableQuotes),
+    kind: args.kind ?? "rollup",
+    ...(args.dayKey ? { dayKey: args.dayKey } : {}),
+    ...(digest ? { digest } : {}),
     generatedAt: args.generatedAt,
     transcriptRange: TranscriptRangeSchema.parse(args.transcriptRange),
   };
+  return PendantInsightsSchema.parse(composed);
 }
 
 /** True when a rollup carries no substantive content (a legitimately quiet window). */
@@ -429,6 +550,196 @@ export function isEmptyInsights(insights: PendantInsights): boolean {
     insights.actionItems.length === 0 &&
     insights.topics.length === 0 &&
     insights.peopleMentioned.length === 0 &&
-    insights.notableQuotes.length === 0
+    insights.notableQuotes.length === 0 &&
+    !insights.digest
   );
+}
+
+function normalizeInsightContent(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{Letter}\p{Number}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function makeInsightDedupeKey(
+  kind: string,
+  text: string,
+  owner?: string | null,
+): string {
+  const ownerPart = owner ? normalizeInsightContent(owner) : "anonymous";
+  return `${kind}:${fnv1a32(`${normalizeInsightContent(text)}\u0000${ownerPart}`)}`;
+}
+
+function withDedupeKeys<
+  T extends { text: string; owner?: string | null; dedupeKey?: string },
+>(items: T[], kind: string): T[] {
+  return items.map((item) => ({
+    ...item,
+    // Model-provided keys are untrusted. Always derive the canonical key here.
+    dedupeKey: makeInsightDedupeKey(kind, item.text, item.owner),
+  }));
+}
+
+function mergeByDedupeKey<
+  T extends { sourceSegmentIds: string[]; dedupeKey?: string },
+>(
+  existing: readonly T[],
+  incoming: readonly T[],
+  keyFor: (item: T) => string,
+): T[] {
+  const byKey = new Map<string, T>();
+  const merge = (item: T): void => {
+    // Recompute rather than trusting a model/stored payload to choose collisions.
+    const key = keyFor(item);
+    const previous = byKey.get(key);
+    if (!previous) {
+      byKey.set(key, { ...item, dedupeKey: key });
+      return;
+    }
+    byKey.set(key, {
+      ...previous,
+      ...item,
+      dedupeKey: key,
+      sourceSegmentIds: Array.from(
+        new Set([...previous.sourceSegmentIds, ...item.sourceSegmentIds]),
+      ),
+    });
+  };
+  existing.forEach(merge);
+  incoming.forEach(merge);
+  return Array.from(byKey.values()).sort((a, b) =>
+    (a.dedupeKey ?? "").localeCompare(b.dedupeKey ?? ""),
+  );
+}
+
+function mergeGroundedByKey<T extends { sourceSegmentIds: string[] }>(
+  existing: readonly T[],
+  incoming: readonly T[],
+  keyFor: (item: T) => string,
+): T[] {
+  const byKey = new Map<string, T>();
+  for (const item of [...existing, ...incoming]) {
+    const key = normalizeInsightContent(keyFor(item));
+    const previous = byKey.get(key);
+    byKey.set(
+      key,
+      previous
+        ? {
+            ...previous,
+            ...item,
+            sourceSegmentIds: Array.from(
+              new Set([...previous.sourceSegmentIds, ...item.sourceSegmentIds]),
+            ),
+          }
+        : { ...item },
+    );
+  }
+  return Array.from(byKey.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, item]) => item);
+}
+
+export function mergePendantInsights(
+  existing: PendantInsights,
+  incoming: PendantInsights,
+): PendantInsights {
+  const actionItems = mergeByDedupeKey(
+    existing.actionItems,
+    incoming.actionItems,
+    (item) => makeInsightDedupeKey("action", item.text, item.owner),
+  );
+  const joinSummary = (left: string, right: string): string =>
+    Array.from(new Set([left.trim(), right.trim()].filter(Boolean))).join(" ");
+  const digest =
+    existing.digest && incoming.digest
+      ? {
+          summary: joinSummary(
+            existing.digest.summary,
+            incoming.digest.summary,
+          ),
+          summarySourceSegmentIds: Array.from(
+            new Set([
+              ...existing.digest.summarySourceSegmentIds,
+              ...incoming.digest.summarySourceSegmentIds,
+            ]),
+          ),
+          actionItems: mergeByDedupeKey(
+            existing.digest.actionItems,
+            incoming.digest.actionItems,
+            (item) =>
+              makeInsightDedupeKey("digest-action", item.text, item.owner),
+          ),
+          commitments: mergeByDedupeKey(
+            existing.digest.commitments,
+            incoming.digest.commitments,
+            (item) => makeInsightDedupeKey("commitment", item.text, item.owner),
+          ),
+          followUps: mergeByDedupeKey(
+            existing.digest.followUps,
+            incoming.digest.followUps,
+            (item) => makeInsightDedupeKey("follow-up", item.text, item.owner),
+          ),
+          notableMoments: mergeByDedupeKey(
+            existing.digest.notableMoments,
+            incoming.digest.notableMoments,
+            (item) => makeInsightDedupeKey("moment", item.text),
+          ),
+        }
+      : (incoming.digest ?? existing.digest);
+  return PendantInsightsSchema.parse({
+    ...incoming,
+    summary: joinSummary(existing.summary, incoming.summary),
+    summarySourceSegmentIds: Array.from(
+      new Set([
+        ...existing.summarySourceSegmentIds,
+        ...incoming.summarySourceSegmentIds,
+      ]),
+    ),
+    actionItems,
+    topics: mergeGroundedByKey(
+      existing.topics,
+      incoming.topics,
+      (item) => item.label,
+    ),
+    peopleMentioned: mergeGroundedByKey(
+      existing.peopleMentioned,
+      incoming.peopleMentioned,
+      (item) => item.name,
+    ),
+    notableQuotes: mergeGroundedByKey(
+      existing.notableQuotes,
+      incoming.notableQuotes,
+      (item) => `${item.text}\u0000${item.speaker ?? ""}`,
+    ),
+    ...(digest ? { digest } : {}),
+    transcriptRange: {
+      startOrdinal: Math.min(
+        existing.transcriptRange.startOrdinal,
+        incoming.transcriptRange.startOrdinal,
+      ),
+      endOrdinal: Math.max(
+        existing.transcriptRange.endOrdinal,
+        incoming.transcriptRange.endOrdinal,
+      ),
+      segmentCount:
+        existing.transcriptRange.segmentCount +
+        incoming.transcriptRange.segmentCount,
+      startedAtMs:
+        existing.transcriptRange.startedAtMs === 0
+          ? incoming.transcriptRange.startedAtMs
+          : incoming.transcriptRange.startedAtMs === 0
+            ? existing.transcriptRange.startedAtMs
+            : Math.min(
+                existing.transcriptRange.startedAtMs,
+                incoming.transcriptRange.startedAtMs,
+              ),
+      endedAtMs: Math.max(
+        existing.transcriptRange.endedAtMs,
+        incoming.transcriptRange.endedAtMs,
+      ),
+    },
+  });
 }
