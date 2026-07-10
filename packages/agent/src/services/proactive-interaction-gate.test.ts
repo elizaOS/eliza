@@ -134,6 +134,19 @@ describe("ProactiveInteractionGate — UX governance (#8792)", () => {
     ).toBe(true);
   });
 
+  it("wouldAdmit does not prune stale emission history (#14678)", () => {
+    const g = gate(SUBTLE);
+    g.tryAdmit({ surface: "wallet", text: "a", now: 0 });
+
+    // The precheck contract lets callers inspect admission without changing
+    // history, even when the committing path would compact stale records.
+    g.wouldAdmit("wallet", 3 * 24 * 60 * 60 * 1000);
+
+    expect((g as unknown as { emissions: unknown[] }).emissions).toHaveLength(
+      1,
+    );
+  });
+
   it("wouldAdmit mirrors tryAdmit's text-independent denials (#14678)", () => {
     const g = gate(SUBTLE);
     g.tryAdmit({ surface: "wallet", text: "a", now: 0 });

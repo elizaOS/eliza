@@ -30,6 +30,7 @@
  * bad backup or, worse, booting fresh.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import type { StoredAgentSandboxBackup } from "../../db/schemas/agent-sandboxes";
 import { logger } from "../utils/logger";
@@ -51,8 +52,8 @@ import {
 
 export interface WakeRestoreGateConfig {
   /**
-   * `WAKE_RESTORE_INTEGRITY_ENABLED` — ops kill switch; anything but `0`/
-   * `false` is on. When off, wake reverts to the ungated legacy behavior
+   * `WAKE_RESTORE_INTEGRITY_ENABLED` — ops kill switch; accepts only `1`/
+   * `true` or `0`/`false`. When off, wake reverts to the ungated legacy behavior
    * (latest-backup restore with provision's degrade-to-fresh-boot).
    */
   enabled: boolean;
@@ -75,29 +76,51 @@ export interface WakeRestoreGateConfig {
 const DEFAULT_VERIFIED_FRESHNESS_HOURS = 24;
 const DEFAULT_ALTERNATIVE_SCAN_LIMIT = 25;
 
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+function invalidWakeConfig(name: string, value: string, expected: string): never {
+  throw new ElizaError(`Invalid ${name}: expected ${expected}, received ${JSON.stringify(value)}`, {
+    code: "WAKE_RESTORE_CONFIG_INVALID",
+    severity: "fatal",
+    context: { name, value, expected },
+  });
 }
 
-function parseBooleanDefaultTrue(value: string | undefined): boolean {
+function parsePositiveInt(name: string, value: string | undefined, defaultValue: number): number {
+  if (value === undefined) return defaultValue;
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) {
+    return invalidWakeConfig(name, value, "a positive integer");
+  }
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    return invalidWakeConfig(name, value, "a positive integer");
+  }
+  return parsed;
+}
+
+function parseBooleanDefaultTrue(name: string, value: string | undefined): boolean {
   if (value === undefined) return true;
   const normalized = value.trim().toLowerCase();
-  return normalized !== "0" && normalized !== "false";
+  if (normalized === "1" || normalized === "true") return true;
+  if (normalized === "0" || normalized === "false") return false;
+  return invalidWakeConfig(name, value, "true, false, 1, or 0");
 }
 
 export function readWakeRestoreGateConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): WakeRestoreGateConfig {
   return {
-    enabled: parseBooleanDefaultTrue(env.WAKE_RESTORE_INTEGRITY_ENABLED),
+    enabled: parseBooleanDefaultTrue(
+      "WAKE_RESTORE_INTEGRITY_ENABLED",
+      env.WAKE_RESTORE_INTEGRITY_ENABLED,
+    ),
     verifiedFreshnessMs:
       parsePositiveInt(
+        "WAKE_RESTORE_VERIFIED_FRESHNESS_HOURS",
         env.WAKE_RESTORE_VERIFIED_FRESHNESS_HOURS,
         DEFAULT_VERIFIED_FRESHNESS_HOURS,
       ) * 3_600_000,
     alternativeScanLimit: parsePositiveInt(
+      "WAKE_RESTORE_ALTERNATIVE_SCAN_LIMIT",
       env.WAKE_RESTORE_ALTERNATIVE_SCAN_LIMIT,
       DEFAULT_ALTERNATIVE_SCAN_LIMIT,
     ),
@@ -193,7 +216,8 @@ function isFreshVerifiedStamp(
   freshnessMs: number,
 ): boolean {
   if (row.verification_status !== "verified" || !(row.verified_at instanceof Date)) return false;
-  return now.getTime() - row.verified_at.getTime() <= freshnessMs;
+  const ageMs = now.getTime() - row.verified_at.getTime();
+  return ageMs >= 0 && ageMs <= freshnessMs;
 }
 
 /**

@@ -375,13 +375,16 @@ export async function ensureEmulatorBooted({
 // ---------------------------------------------------------------------------
 // App install / launch / forwards
 // ---------------------------------------------------------------------------
-export function resolveApk(explicit) {
+export function resolveApk(
+  explicit,
+  { candidates = APK_CANDIDATES, existsSync = fs.existsSync } = {},
+) {
   if (explicit) {
     const resolved = path.resolve(explicit);
-    if (!fs.existsSync(resolved)) throw new Error(`APK not found: ${resolved}`);
+    if (!existsSync(resolved)) throw new Error(`APK not found: ${resolved}`);
     return resolved;
   }
-  const found = APK_CANDIDATES.find((candidate) => fs.existsSync(candidate));
+  const found = candidates.find((candidate) => existsSync(candidate));
   if (!found) {
     throw new Error(
       `No debug APK found. Build one first:\n  ELIZA_MOBILE_REPO_ROOT=${elizaRoot} ELIZA_WEBVIEW_DEBUG=1 bun run --cwd packages/app build:android\nLooked in:\n  ${APK_CANDIDATES.join("\n  ")}`,

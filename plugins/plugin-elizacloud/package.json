@@ -4,7 +4,7 @@
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
-  "types": "dist/node/index.d.ts",
+  "types": "dist/index.node.d.ts",
   "browser": "dist/browser/index.browser.js",
   "sideEffects": false,
   "repository": {
@@ -14,19 +14,19 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
-      "types": "./dist/node/index.d.ts",
+      "types": "./dist/index.node.d.ts",
       "eliza-source": {
         "types": "./src/index.node.ts",
         "import": "./src/index.node.ts",
         "default": "./src/index.node.ts"
       },
       "browser": {
-        "types": "./dist/browser/index.d.ts",
+        "types": "./dist/index.browser.d.ts",
         "import": "./dist/browser/index.browser.js",
         "default": "./dist/browser/index.browser.js"
       },
       "node": {
-        "types": "./dist/node/index.d.ts",
+        "types": "./dist/index.node.d.ts",
         "import": "./dist/node/index.node.js",
         "default": "./dist/node/index.node.js"
       },
@@ -131,7 +131,7 @@
     "test:unit": "vitest run __tests__/unit/",
     "test:integration": "vitest run __tests__/integration/",
     "lint:check": "bunx @biomejs/biome check .",
-    "build": "bun run build.ts && bun run build:views",
+    "build": "bun run build.ts && bun run build:views && node scripts/verify-built-package.mjs",
     "build:ts": "bun run build.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",

@@ -618,6 +618,54 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
     expect(onPullUp).toHaveBeenCalledTimes(1);
   });
 
+  it("re-seeds a fresh MOUSE gesture stranded on the SAME pointerId (constant id=1)", () => {
+    // A mouse/pen keeps a CONSTANT pointerId (1) across every press, so the
+    // different-id re-seed above does not cover it: when a prior mouse gesture's
+    // element unmounts mid-drag (pill/grabber morph, restore strip), `start`
+    // strands with id 1 and the NEXT mouse press reuses id 1. A same-id early
+    // return then rejects that press outright — the gesture never seeds, never
+    // captures, and drives NOTHING. The fresh press must adopt from its OWN
+    // origin.
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((cb: FrameRequestCallback) => {
+        cb(0);
+        return 1;
+      }),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+
+    const onStart = vi.fn();
+    const onDrag = vi.fn();
+    const onPullUp = vi.fn();
+    const onPullDown = vi.fn();
+    const { result } = renderHook(() =>
+      usePullGesture({ onStart, onDrag, onPullUp, onPullDown }),
+    );
+    const b = result.current;
+
+    // Gesture 1 (mouse, pid=1): press at y=300 + drag up, element unmounts —
+    // the pointerup NEVER arrives, so `start` stays seeded at pid=1 / y=300.
+    b.onPointerDown(pointer(100, 300, 1));
+    b.onPointerMove(pointer(100, 200, 1));
+    expect(onDrag).toHaveBeenLastCalledWith(100);
+
+    onStart.mockClear();
+    onDrag.mockClear();
+
+    // Gesture 2 (mouse, pid=1 AGAIN) on the remounted handle at a DIFFERENT
+    // origin (y=520): it must re-seed HERE and drive an upward pull from 520,
+    // not inherit the stranded y=300 seed (which would read the drag as DOWN).
+    b.onPointerDown(pointer(100, 520, 1));
+    b.onPointerMove(pointer(100, 420, 1));
+    b.onPointerUp(pointer(100, 420, 1));
+
+    expect(onStart).toHaveBeenCalledTimes(1);
+    expect(onDrag).toHaveBeenLastCalledWith(100); // up 100 from the fresh y=520
+    expect(onPullUp).toHaveBeenCalledTimes(1);
+    expect(onPullDown).not.toHaveBeenCalled();
+  });
+
   it("calls onStart once for the accepted pointer and ignores secondary starts", () => {
     vi.stubGlobal(
       "requestAnimationFrame",

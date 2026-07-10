@@ -1,4 +1,4 @@
-// Exercises container job service behavior with deterministic cloud-shared lib fixtures.
+/** Exercises container-job dispatch and persistence through deterministic queue seams. */
 import { describe, expect, test } from "bun:test";
 import type { AppContainerProvider } from "../app-container-provider";
 import type {
@@ -33,6 +33,15 @@ function fakeDeps() {
     async getById() {
       return ROW;
     },
+    async findDeletingByOrganization() {
+      return [ROW];
+    },
+    async claimNodeSlot() {
+      return true;
+    },
+    async rollbackNodeSlotClaim() {
+      return true;
+    },
     async markRunning() {},
     async markDeleted() {
       calls.push("markDeleted");
@@ -40,9 +49,16 @@ function fakeDeps() {
     async markError() {},
   };
   const provider = {
+    targetNodeId: "node-1",
     async provision() {
       calls.push("provision");
-      return { containerId: "c", hostPort: 1, network: "n" };
+      return {
+        containerId: "c",
+        hostPort: 1,
+        network: "n",
+        nodeId: "node-1",
+        nodeHost: "node.example.test",
+      };
     },
     async delete() {
       calls.push("delete");
@@ -133,5 +149,15 @@ describe("ContainerJobEnqueuer", () => {
     ]);
     expect(inserts[0].data).toMatchObject({ containerId: "c1", userId: "u1" });
     expect(inserts[2].data).toMatchObject({ image: "ghcr.io/x:2" });
+  });
+
+  test("rejects an undefined runtime container id before writing a delete job", async () => {
+    const { inserts, writer } = fakeWriter();
+    const enqueuer = new ContainerJobEnqueuer(writer);
+    const malformed = { containerId: "placeholder", organizationId: "o1" };
+    Object.defineProperty(malformed, "containerId", { value: undefined });
+
+    expect(() => enqueuer.enqueueDelete(malformed)).toThrow("persistence");
+    expect(inserts).toHaveLength(0);
   });
 });

@@ -1,11 +1,11 @@
 // Exercises app container store behavior with deterministic cloud-shared lib fixtures.
 import { describe, expect, test } from "bun:test";
+import { toNewContainer } from "../app-container-record";
 import {
   mapContainerRowToAppContainerRow,
   mergeHostPlacementMetadata,
   type ProjectableContainerRow,
 } from "../app-container-store";
-import { toNewContainer } from "../app-deploy-runner";
 
 const DSN = "postgresql://app_x:pw@cluster:5432/db_app_x?sslmode=require";
 
@@ -20,6 +20,7 @@ function row(overrides: Partial<ProjectableContainerRow> = {}): ProjectableConta
     user_id: "user-1",
     environment_vars: { DATABASE_URL: DSN, PORT: "3000" },
     metadata: {},
+    node_id: null,
     ...overrides,
   };
 }

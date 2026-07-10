@@ -187,14 +187,17 @@ export class ProactiveInteractionGate {
    * still goes through {@link tryAdmit}.
    */
   wouldAdmit(surface: string, now: number): AdmitResult {
-    this.pruneOlderThan(now);
     return this.checkTextIndependentGates(surface, now);
   }
 
   /**
    * The text-independent portion of the admission gate. Shared by
    * {@link wouldAdmit} (precheck) and {@link tryAdmit} (commit) so the two can
-   * never drift. Assumes {@link pruneOlderThan} has already run.
+   * never drift. Every check self-filters by its own time window (daily cap by
+   * {@link DAY_MS}, global cooldown by the newest emission, per-surface cooldown
+   * by the newest matching emission), so it is correct with or without a prior
+   * {@link pruneOlderThan} — which is why the precheck can skip pruning and stay
+   * genuinely non-mutating.
    */
   private checkTextIndependentGates(surface: string, now: number): AdmitResult {
     if (this.config.chattiness === "off" || this.config.dailyCap <= 0) {
