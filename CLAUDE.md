@@ -111,6 +111,9 @@ locking and linear probing so active lanes do not collide. See
 | `bun run personality:bench:calibrate` | `bun run bench:personality:calibrate` |
 | `bun run lint:all` | `bun run verify` |
 | `bun run build:typescript` | `node packages/scripts/run-turbo.mjs run build` |
+| `bun run audit:mvp-board` | `bun run mvp:closeout-audit` |
+| `bun run mvp:board-readiness` | `bun run mvp:closeout-audit` |
+| `bun run mvp:evidence-matrix` | `bun run mvp:closeout-audit` |
 
 ## Repo map — where to find what
 
