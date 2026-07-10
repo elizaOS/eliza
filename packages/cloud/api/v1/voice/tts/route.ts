@@ -45,6 +45,7 @@ import {
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
+import { drainPcm16Stream, pcm16ToWav } from "@/lib/services/pcm16-wav";
 import {
   fingerprintCloudVoiceSettings,
   getCloudFirstLineCacheService,
@@ -120,57 +121,7 @@ function buildTtsObservabilityHeaders(
 
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24_000;
-
-/** Prepend a canonical 44-byte PCM16 mono WAV header to raw little-endian
- *  16-bit PCM samples (what ElevenLabs `pcm_24000` streams). */
-function pcm16ToWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
-  const header = new ArrayBuffer(44);
-  const view = new DataView(header);
-  const writeStr = (off: number, s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
-  };
-  const dataLen = pcm.byteLength;
-  writeStr(0, "RIFF");
-  view.setUint32(4, 36 + dataLen, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  view.setUint32(16, 16, true); // PCM fmt chunk size
-  view.setUint16(20, 1, true); // audio format = PCM
-  view.setUint16(22, 1, true); // channels = mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true); // byte rate (mono * 16-bit)
-  view.setUint16(32, 2, true); // block align
-  view.setUint16(34, 16, true); // bits per sample
-  writeStr(36, "data");
-  view.setUint32(40, dataLen, true);
-  const out = new Uint8Array(44 + dataLen);
-  out.set(new Uint8Array(header), 0);
-  out.set(pcm, 44);
-  return out;
-}
-
-/** Drain a ReadableStream of PCM chunks into one buffer. */
-async function drainStream(
-  stream: ReadableStream<Uint8Array>,
-): Promise<Uint8Array> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const r = await reader.read();
-    if (r.done) break;
-    const c = r.value as Uint8Array;
-    chunks.push(c);
-    total += c.byteLength;
-  }
-  const merged = new Uint8Array(total);
-  let off = 0;
-  for (const c of chunks) {
-    merged.set(c, off);
-    off += c.byteLength;
-  }
-  return merged;
-}
+const MAX_WAV_PCM_BYTES = 64 * 1024 * 1024;
 
 /**
  * POST /api/v1/voice/tts
@@ -534,6 +485,12 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       // callers get the service's MP3 default.
       ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
     });
+    const wav = wantWav
+      ? pcm16ToWav(
+          await drainPcm16Stream(audioStream, MAX_WAV_PCM_BYTES),
+          WAV_PCM_SAMPLE_RATE,
+        )
+      : undefined;
     const duration = Date.now() - startTime;
     timings.synthesisMs = duration;
 
@@ -677,11 +634,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // WAV path: ElevenLabs streamed raw PCM; buffer it and wrap in a WAV header
     // so codec-less clients can decode it. (Buffered, not streamed — fine for
     // short TTS replies; the MP3 path keeps its chunked streaming below.)
-    if (wantWav) {
-      const wav = pcm16ToWav(
-        await drainStream(audioStream),
-        WAV_PCM_SAMPLE_RATE,
-      );
+    if (wav !== undefined) {
       return new Response(wav as unknown as BodyInit, {
         headers: {
           "Content-Type": "audio/wav",
