@@ -2413,7 +2413,11 @@ export function ContinuousChatOverlay({
         });
       });
     };
-    syncAndSettleWindow();
+    // Initial mount needs measurements only. Scheduling the deferred settle
+    // here races the first user gesture: the second frame can land after a
+    // pointerdown and cancel a valid drag preview. Real resize/orientation
+    // events below retain the two-frame settle path.
+    sync();
     const vv = window.visualViewport;
     window.addEventListener("resize", syncAndSettleWindow);
     window.addEventListener("orientationchange", syncAndSettleWindow);
