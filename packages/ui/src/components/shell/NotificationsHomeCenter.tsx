@@ -1569,7 +1569,10 @@ export function NotificationsHomeCenter({
       // Capture on the vertical lock so a release outside the (narrow,
       // centered) list still fires onListPointerEnd — otherwise pullPx freezes
       // and the shade sticks translated down.
-      if (g.axis === "y") e.currentTarget.setPointerCapture?.(e.pointerId);
+      if (g.axis === "y") {
+        suppressNotificationClickUntil.current = Date.now() + 500;
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      }
     }
     if (g.axis !== "y") return;
     const { canExpand: mayExpand, canCollapse } = shadeGestureRef.current;
@@ -1616,16 +1619,26 @@ export function NotificationsHomeCenter({
         opacity: notificationCountVisibility,
         transition: pullPx ? "none" : undefined,
       }}
-      className="pointer-events-none flex shrink-0 items-center justify-center gap-1 overflow-hidden px-3 text-2xs font-medium text-white/50 transition-[height,margin,opacity] duration-200 ease-out motion-reduce:transition-none"
+      className="flex shrink-0 items-center justify-center overflow-hidden px-3 text-2xs font-medium text-white/50 transition-[height,margin,opacity] duration-200 ease-out motion-reduce:transition-none"
     >
-      {notifications.length === 1
-        ? "1 Notification"
-        : `${notifications.length} Notifications`}
-      <ChevronDown
-        aria-hidden
-        data-testid="notifications-count-chevron"
-        className="h-3 w-3 shrink-0"
-      />
+      <button
+        type="button"
+        data-testid="notifications-count-button"
+        data-notif-control=""
+        aria-label={`Show all ${notifications.length} notification${notifications.length === 1 ? "" : "s"}`}
+        aria-expanded={shadeExpanded}
+        onClick={() => setShade(true)}
+        className="flex h-full w-full items-center justify-center gap-1 text-inherit transition-colors hover:text-white/70"
+      >
+        {notifications.length === 1
+          ? "1 Notification"
+          : `${notifications.length} Notifications`}
+        <ChevronDown
+          aria-hidden
+          data-testid="notifications-count-chevron"
+          className="h-3 w-3 shrink-0"
+        />
+      </button>
     </li>
   ) : null;
   return (

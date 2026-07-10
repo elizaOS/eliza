@@ -1218,8 +1218,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
     const priorityRow = screen.getByTestId("notification-row");
     const count = screen.getByTestId("notifications-count");
+    const countButton = screen.getByTestId("notifications-count-button");
     expect(count.textContent).toBe("3 Notifications");
-    expect(count.closest("button")).toBeNull();
+    expect(countButton.parentElement).toBe(count);
+    expect(countButton.getAttribute("aria-expanded")).toBe("false");
     expect(count.style.opacity).toBe("1");
     expect(count.getAttribute("aria-hidden")).toBeNull();
     expect(count.className).toContain("shrink-0");
@@ -1259,6 +1261,42 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     finishShadeCollapse();
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+  });
+
+  it("opens from the notification total without treating a pointer drag as a click", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    let countButton = screen.getByTestId("notifications-count-button");
+
+    fireEvent.click(countButton);
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(countButton.getAttribute("aria-expanded")).toBe("true");
+    collapseShade();
+
+    countButton = screen.getByTestId("notifications-count-button");
+    fireEvent.pointerDown(countButton, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 82,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(countButton, {
+      pointerType: "mouse",
+      pointerId: 82,
+      clientX: 10,
+      clientY: 30,
+    });
+    fireEvent.pointerUp(countButton, {
+      pointerType: "mouse",
+      pointerId: 82,
+      clientX: 10,
+      clientY: 30,
+    });
+    fireEvent.click(countButton);
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 
   it("keeps the priority row mounted while an outside tap fades quiet groups", () => {
