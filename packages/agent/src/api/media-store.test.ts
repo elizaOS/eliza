@@ -40,6 +40,8 @@ const {
   readStoredMediaBytes,
   writeStoredMediaFile,
   deleteMediaFile,
+  mimeForStoredMediaFile,
+  storedMediaFileExists,
 } = await import("./media-store.ts");
 
 function mediaPath(fileName: string): string {
@@ -738,4 +740,61 @@ describe("deleteMediaFile fast-fail (#12265)", () => {
       }
     },
   );
+});
+
+// The two additive helpers back the audio-redaction variant cache: it needs to
+// know a stored `<sha256>.<ext>` name's mime without an index, and to probe a
+// variant's presence without reading bytes (a GC'd variant is a normal miss).
+describe("mimeForStoredMediaFile", () => {
+  it("derives the served mime from a stored name's extension", () => {
+    expect(mimeForStoredMediaFile(`${"a".repeat(64)}.wav`)).toBe("audio/wav");
+    expect(mimeForStoredMediaFile(`${"b".repeat(64)}.png`)).toBe("image/png");
+    expect(mimeForStoredMediaFile(`${"c".repeat(64)}.mp3`)).toBe("audio/mpeg");
+    expect(mimeForStoredMediaFile(`${"d".repeat(64)}.json`)).toBe(
+      "application/json; charset=utf-8",
+    );
+  });
+
+  it("falls back to application/octet-stream for an unknown extension", () => {
+    expect(mimeForStoredMediaFile(`${"e".repeat(64)}.xyz`)).toBe(
+      "application/octet-stream",
+    );
+  });
+});
+
+describe("storedMediaFileExists", () => {
+  it("returns true for a name actually present in the store", () => {
+    const { fileName } = persistMediaBytes(
+      Buffer.from("variant-probe-hit"),
+      "audio/wav",
+    );
+    expect(fs.existsSync(mediaPath(fileName))).toBe(true);
+    expect(storedMediaFileExists(fileName)).toBe(true);
+  });
+
+  it("returns false for a well-formed name that is not stored (evicted/GC'd)", () => {
+    const absent = `${"1".repeat(64)}.wav`;
+    expect(fs.existsSync(mediaPath(absent))).toBe(false);
+    expect(storedMediaFileExists(absent)).toBe(false);
+  });
+
+  it("returns false for a name that does not match the strict content-addressed form", () => {
+    // Too-short hash, wrong charset, and a bare basename are all rejected
+    // before touching the fs.
+    expect(storedMediaFileExists("not-a-hash.wav")).toBe(false);
+    expect(storedMediaFileExists(`${"g".repeat(64)}.wav`)).toBe(false);
+    expect(storedMediaFileExists(`${"a".repeat(64)}`)).toBe(false);
+  });
+
+  it("rejects a path-traversal name even if its basename would exist", () => {
+    // Persist a real file, then try to reach it through a traversal-shaped
+    // name: the strict-name regex fails closed, so it never resolves outside
+    // the media dir.
+    const { fileName } = persistMediaBytes(
+      Buffer.from("traversal-guard"),
+      "audio/wav",
+    );
+    expect(storedMediaFileExists(`../media/${fileName}`)).toBe(false);
+    expect(storedMediaFileExists(`../../${fileName}`)).toBe(false);
+  });
 });
