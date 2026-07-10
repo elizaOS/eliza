@@ -21,6 +21,7 @@ function appWithCors() {
   app.post("/api/auth/pair", (c) => c.json({ ok: true }));
   app.get("/api/v1/models", (c) => c.json({ ok: true }));
   app.post("/api/v1/chat/completions", (c) => c.json({ ok: true }));
+  app.post("/api/v1/voice/tts", (c) => c.json({ ok: true }));
   return app;
 }
 
@@ -128,6 +129,22 @@ describe("corsMiddleware — Eliza app WebView origin (credentialed SSE)", () =>
     expect(allowHeaders).toContain("x-elizaos-client-id");
     expect(allowHeaders).toContain("x-elizaos-ui-language");
     expect(allowHeaders).toContain("x-eliza-client-id");
+  });
+
+  test("allows the shared-runtime voice trace header", async () => {
+    const app = appWithCors();
+    const res = await app.request("/api/v1/voice/tts", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://app.elizacloud.ai",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type,x-eliza-voice-trace-id",
+      },
+    });
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://app.elizacloud.ai");
+    expect((res.headers.get("access-control-allow-headers") || "").toLowerCase()).toContain(
+      "x-eliza-voice-trace-id",
+    );
   });
 });
 

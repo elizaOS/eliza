@@ -17,8 +17,11 @@ import { resolveApiUrl } from "../utils";
 import {
   buildSharedRuntimeSttBody,
   currentSharedRuntimeVoiceOrigin,
+  markSharedRuntimeVoiceTrace,
+  measureSharedRuntimeVoiceTrace,
   parseSharedRuntimeSttResponse,
   sharedRuntimeSttUrl,
+  sharedRuntimeVoiceTraceHeaders,
 } from "./shared-runtime-voice";
 
 export interface TranscribeWavOptions {
@@ -38,6 +41,8 @@ export interface TranscribeCloudWavOptions extends TranscribeWavOptions {
    * before surfacing the error. Defaults to {@link DEFAULT_CLOUD_STT_TIMEOUT_MS}.
    */
   timeoutMs?: number;
+  /** Shared-runtime per-turn trace id; STT retries retain the same value. */
+  traceId?: string;
 }
 
 /**
@@ -173,6 +178,7 @@ export async function transcribeCloudWav(
 ): Promise<string> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_CLOUD_STT_TIMEOUT_MS;
   const callerSignal = options?.signal;
+  const traceId = options?.traceId;
 
   // One attempt: arm a per-attempt timeout AbortController, compose it with the
   // caller's signal, POST, and classify any failure as retryable or terminal.
@@ -196,11 +202,16 @@ export async function transcribeCloudWav(
       // File in, `{ transcript }` out. Dedicated-tier agents keep the raw-WAV
       // `/api/asr/cloud` proxy path unchanged (sharedOrigin is null for them).
       const sharedOrigin = currentSharedRuntimeVoiceOrigin();
+      if (sharedOrigin) {
+        markSharedRuntimeVoiceTrace("stt_request_start", traceId);
+      }
       const res = sharedOrigin
         ? await fetchWithCsrf(sharedRuntimeSttUrl(sharedOrigin), {
             method: "POST",
             // No explicit Content-Type: the browser sets the multipart boundary.
-            headers: { Accept: "application/json" },
+            headers: sharedRuntimeVoiceTraceHeaders(traceId, {
+              Accept: "application/json",
+            }),
             body: buildSharedRuntimeSttBody(audio),
             signal: timeoutController.signal,
           })
@@ -216,6 +227,15 @@ export async function transcribeCloudWav(
             body: audio as BodyInit,
             signal: timeoutController.signal,
           });
+      if (sharedOrigin) {
+        markSharedRuntimeVoiceTrace("stt_request_end", traceId);
+        measureSharedRuntimeVoiceTrace(
+          "stt_request_end",
+          "stt_request_start",
+          "stt_request_end",
+          traceId,
+        );
+      }
       if (!res.ok) {
         // error-policy:J6 the error body is diagnostic-only; a failed read must
         // not mask the HTTP status the error below already carries.
@@ -243,6 +263,15 @@ export async function transcribeCloudWav(
         throw new CloudSttError("Cloud ASR returned an empty transcript", {
           retryable: false,
         });
+      }
+      if (sharedOrigin) {
+        markSharedRuntimeVoiceTrace("transcript_received", traceId);
+        measureSharedRuntimeVoiceTrace(
+          "transcript_received",
+          "stt_request_start",
+          "transcript_received",
+          traceId,
+        );
       }
       return text;
     } catch (err) {

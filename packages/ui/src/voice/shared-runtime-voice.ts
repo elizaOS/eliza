@@ -26,6 +26,116 @@
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
 
+export const VOICE_TRACE_HEADER = "X-Eliza-Voice-Trace-Id";
+
+export type SharedRuntimeVoiceTraceMark =
+  | "stt_request_start"
+  | "stt_request_end"
+  | "transcript_received"
+  | "tts_request_start"
+  | "tts_first_byte"
+  | "tts_end"
+  | "audio_decode_start"
+  | "audio_decode_end"
+  | "playback_start"
+  | "playback_end";
+
+export function createSharedRuntimeVoiceTraceId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+  const random =
+    typeof cryptoApi?.getRandomValues === "function"
+      ? cryptoApi.getRandomValues(new Uint32Array(2)).join("")
+      : Math.random().toString(36).slice(2);
+  return `voice-${Date.now().toString(36)}-${random}`;
+}
+
+/**
+ * Build the performance-entry name for a mark/measure.
+ *
+ * Trace-scoping (#15931 re-land, defect #2): the name MUST include the trace id
+ * when one exists. `performance.measure(name, { start, end })` resolves its
+ * start/end marks by NAME. If two concurrent (or retried) voice turns both
+ * emitted a globally-named `eliza.voice.stt_request_start`, a later measure
+ * could pair a start mark from turn A with an end mark from turn B and report a
+ * fabricated duration. Qualifying the name with the trace id gives every turn
+ * its own mark namespace, so measures can only ever pair marks from the SAME
+ * turn.
+ *
+ * The id is already canonical (bounded, `[a-z0-9-]`) at mint time, so it is
+ * safe to embed in the name. When no trace id exists (dedicated tier, or a
+ * turn that never ran on a shared origin) we fall back to the legacy global
+ * name — but in that case no marks are emitted at all (the mark/measure
+ * helpers no-op on a falsy id), so no cross-contamination is possible.
+ */
+export function sharedRuntimeVoiceMarkName(
+  mark: SharedRuntimeVoiceTraceMark,
+  traceId?: string | null,
+): string {
+  return traceId ? `eliza.voice.${traceId}.${mark}` : `eliza.voice.${mark}`;
+}
+
+export function sharedRuntimeVoiceTraceHeaders(
+  traceId: string | null | undefined,
+  headers: Record<string, string>,
+): Record<string, string> {
+  return traceId ? { ...headers, [VOICE_TRACE_HEADER]: traceId } : headers;
+}
+
+export function markSharedRuntimeVoiceTrace(
+  mark: SharedRuntimeVoiceTraceMark,
+  traceId: string | null | undefined,
+): void {
+  const perf = globalThis.performance;
+  if (!traceId || typeof perf?.mark !== "function") return;
+  // Trace-scoped name: two interleaved turns get disjoint mark namespaces so a
+  // later measure cannot pair marks across turns (#15931 defect #2).
+  const name = sharedRuntimeVoiceMarkName(mark, traceId);
+  try {
+    perf.mark(name, {
+      detail: { traceId },
+    } as PerformanceMarkOptions);
+  } catch {
+    try {
+      perf.mark(name);
+    } catch {
+      // Partial test/browser performance mocks may expose mark but still throw.
+      return;
+    }
+  }
+}
+
+export function measureSharedRuntimeVoiceTrace(
+  measure: SharedRuntimeVoiceTraceMark,
+  start: SharedRuntimeVoiceTraceMark,
+  end: SharedRuntimeVoiceTraceMark,
+  traceId: string | null | undefined,
+): void {
+  const perf = globalThis.performance;
+  if (!traceId || typeof perf?.measure !== "function") return;
+  // Resolve start/end by trace-scoped names so the measure can only ever pair
+  // marks from THIS trace, never another concurrent turn's (#15931 defect #2).
+  const measureName = sharedRuntimeVoiceMarkName(measure, traceId);
+  const startName = sharedRuntimeVoiceMarkName(start, traceId);
+  const endName = sharedRuntimeVoiceMarkName(end, traceId);
+  try {
+    perf.measure(measureName, {
+      start: startName,
+      end: endName,
+      detail: { traceId },
+    } as PerformanceMeasureOptions);
+  } catch {
+    try {
+      perf.measure(measureName, startName, endName);
+    } catch {
+      // Missing marks or partial mocks should not affect voice playback.
+      return;
+    }
+  }
+}
+
 /**
  * Derive the cloud API worker origin from a shared-runtime agent base.
  *

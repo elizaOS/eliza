@@ -40,6 +40,12 @@ import {
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
+import {
+  elapsedMs,
+  readVoiceTraceId,
+  type VoiceTimingComponent,
+  voiceJsonResponse,
+} from "../trace";
 import { resolveWhisperSttModel } from "./whisper-model";
 import { parseWhisperTimestamps } from "./whisper-timestamps";
 
@@ -101,16 +107,23 @@ function estimateAudioDurationMinutes(
  * @returns Transcript and processing duration.
  */
 async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
+  const routeStartMs = Date.now();
+  const traceId = readVoiceTraceId(request);
   let reservation: CreditReservation | undefined;
+  const timings = (): VoiceTimingComponent[] => [
+    { name: "admission", durationMs: elapsedMs(routeStartMs) },
+  ];
+  const json = (body: unknown, status = 200, extra = timings()) =>
+    voiceJsonResponse(body, { status, traceId, timings: extra });
 
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
 
     const contentType = request.headers.get("content-type") ?? "";
     if (!contentType.includes("multipart/form-data")) {
-      return Response.json(
+      return json(
         { error: "Expected multipart form data with audio field" },
-        { status: 400 },
+        400,
       );
     }
 
@@ -119,28 +132,25 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const languageCode = formData.get("languageCode") as string | undefined;
 
     if (!audioFile) {
-      return Response.json(
-        { error: "No audio file provided" },
-        { status: 400 },
-      );
+      return json({ error: "No audio file provided" }, 400);
     }
 
     if (audioFile.size > MAX_FILE_SIZE) {
-      return Response.json(
+      return json(
         {
           error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
         },
-        { status: 400 },
+        400,
       );
     }
 
     const baseMimeType = audioFile.type.split(";")[0].trim();
     if (!SUPPORTED_MIME_TYPES.includes(baseMimeType)) {
-      return Response.json(
+      return json(
         {
           error: `Unsupported audio format: ${audioFile.type}. Supported: mp3, mp4, m4a, wav, webm, ogg`,
         },
-        { status: 400 },
+        400,
       );
     }
 
@@ -148,41 +158,54 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const fileTypeResult = await fileTypeFromBuffer(buffer);
 
     if (!fileTypeResult) {
-      logger.warn(
-        `[Voice STT API] Unable to detect file type for ${audioFile.name} - rejecting`,
-      );
-      return Response.json(
+      logger.warn("[Voice STT API] Unable to detect file type - rejecting", {
+        traceId,
+        audioFileName: audioFile.name,
+        audioSizeBytes: audioFile.size,
+      });
+      return json(
         {
           error:
             "Unable to verify file type. The file may be corrupted or of an unsupported format.",
         },
-        { status: 400 },
+        400,
       );
     }
 
     if (!ALLOWED_AUDIO_SIGNATURES.has(fileTypeResult.mime)) {
-      logger.warn(
-        `[Voice STT API] File signature mismatch for ${audioFile.name}: claimed=${baseMimeType}, actual=${fileTypeResult.mime}`,
-      );
-      return Response.json(
+      logger.warn("[Voice STT API] File signature mismatch", {
+        traceId,
+        audioFileName: audioFile.name,
+        claimedMimeType: baseMimeType,
+        actualMimeType: fileTypeResult.mime,
+      });
+      return json(
         {
           error: `File content does not match the declared format. Detected: ${fileTypeResult.mime}, Expected audio format.`,
         },
-        { status: 400 },
+        400,
       );
     }
 
     let finalMimeType = fileTypeResult.mime;
     if (fileTypeResult.mime === "video/webm") {
       logger.info(
-        "[Voice STT API] Converting video/webm container to audio/webm (Safari/macOS audio recording)",
+        "[Voice STT API] Converting video/webm container to audio/webm",
+        {
+          traceId,
+        },
       );
       finalMimeType = "audio/webm";
     }
 
-    logger.info(
-      `[Voice STT API] Processing for user ${user.id}: ${audioFile.name} (${audioFile.size} bytes, verified: ${fileTypeResult.mime}, final: ${finalMimeType})`,
-    );
+    logger.info("[Voice STT API] Processing audio", {
+      traceId,
+      userId: user.id,
+      audioFileName: audioFile.name,
+      audioSizeBytes: audioFile.size,
+      verifiedMimeType: fileTypeResult.mime,
+      finalMimeType,
+    });
 
     // -------------------------------------------------------------------------
     // Free default STT: self-hosted Whisper (OpenAI-compatible
@@ -193,6 +216,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
     if (whisperBaseUrl) {
       const whisperStart = Date.now();
+      const admissionMs = elapsedMs(routeStartMs);
       const form = new FormData();
       form.append(
         "file",
@@ -213,14 +237,18 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         { method: "POST", body: form },
       );
       if (!whisperResponse.ok) {
-        const detail = await whisperResponse.text().catch(() => "");
-        logger.error(
-          `[Voice STT API] Whisper failed (${whisperResponse.status}): ${detail.slice(0, 200)}`,
-        );
-        return Response.json(
-          { error: "Speech-to-text failed" },
-          { status: 502 },
-        );
+        const transcribeMs = elapsedMs(whisperStart);
+        logger.error("[Voice STT API] Whisper failed", {
+          traceId,
+          status: whisperResponse.status,
+          transcribeMs,
+        });
+        return json({ error: "Speech-to-text failed" }, 502, [
+          { name: "admission", durationMs: admissionMs },
+          { name: "transcribe", durationMs: transcribeMs },
+          { name: "provider", durationMs: transcribeMs },
+          { name: "error", durationMs: transcribeMs },
+        ]);
       }
       // Boundary validation (J3): a 200 whose body is not JSON, not an object,
       // or lacks the required `text` string is an upstream failure — translate
@@ -273,15 +301,24 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         durationMs: whisperDuration,
         model: whisperModel,
         segmentCount: segments?.length,
+        traceId,
         transcriptLength: transcript.length,
         wordCount: words?.length,
       });
-      return Response.json({
-        transcript,
-        duration_ms: whisperDuration,
-        ...(segments ? { segments } : {}),
-        ...(words ? { words } : {}),
-      });
+      return json(
+        {
+          transcript,
+          duration_ms: whisperDuration,
+          ...(segments ? { segments } : {}),
+          ...(words ? { words } : {}),
+        },
+        200,
+        [
+          { name: "admission", durationMs: admissionMs },
+          { name: "transcribe", durationMs: whisperDuration },
+          { name: "provider", durationMs: whisperDuration },
+        ],
+      );
     }
 
     const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
@@ -307,12 +344,12 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
-        return Response.json(
+        return json(
           {
             error: "Insufficient credits for speech-to-text",
             required: error.required,
           },
-          { status: 402 },
+          402,
         );
       }
       throw error;
@@ -321,6 +358,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const elevenlabs = getElevenLabsService(env);
 
     const startTime = Date.now();
+    const admissionMs = elapsedMs(routeStartMs);
     const validatedFile = new File([buffer], audioFile.name, {
       type: finalMimeType,
     });
@@ -346,9 +384,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       reservation,
     );
 
-    logger.info(
-      `[Voice STT API] Completed in ${duration}ms: "${transcript.substring(0, 100)}..."`,
-    );
+    logger.info("[Voice STT API] Completed", {
+      traceId,
+      durationMs: duration,
+      transcriptLength: transcript.length,
+    });
 
     (async () => {
       try {
@@ -384,16 +424,20 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       }
     })();
 
-    return Response.json({
-      transcript,
-      duration_ms: duration,
-    });
+    return json({ transcript, duration_ms: duration }, 200, [
+      { name: "admission", durationMs: admissionMs },
+      { name: "transcribe", durationMs: duration },
+      { name: "provider", durationMs: duration },
+    ]);
   } catch (error) {
-    logger.error("[Voice STT API] Error:", error);
+    logger.error("[Voice STT API] Error", {
+      traceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
 
     if (reservation) {
       await reservation.reconcile(0);
-      logger.info("[Voice STT API] Refunded credits after error");
+      logger.info("[Voice STT API] Refunded credits after error", { traceId });
     }
 
     if (error instanceof Error) {
@@ -412,13 +456,13 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         errorMessage.includes("authentication required") ||
         errorMessage.includes("forbidden")
       ) {
-        return Response.json({ error: "Unauthorized" }, { status: 401 });
+        return json({ error: "Unauthorized" }, 401);
       }
 
       if (errorMessage.includes("rate limit")) {
-        return Response.json(
+        return json(
           { error: "Rate limit exceeded. Please try again in a moment." },
-          { status: 429 },
+          429,
         );
       }
 
@@ -428,36 +472,33 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           errorBody.includes("trial tier") ||
           errorBody.includes("ZRM mode")
         ) {
-          return Response.json(
+          return json(
             {
               error:
                 "Speech-to-Text requires a paid plan. Please upgrade to continue.",
             },
-            { status: 402 },
+            402,
           );
         }
-        return Response.json(
+        return json(
           {
             error:
               "Speech-to-text service is temporarily unavailable due to high demand. Please try again shortly.",
             type: "service_unavailable",
             retryAfter: "5 minutes",
           },
-          { status: 503 },
+          503,
         );
       }
 
       if (errorMessage.includes("elevenlabs_api_key")) {
-        return Response.json(
-          { error: "Service not configured" },
-          { status: 500 },
-        );
+        return json({ error: "Service not configured" }, 500);
       }
     }
 
-    return Response.json(
+    return json(
       { error: "Failed to transcribe audio. Please try again." },
-      { status: 500 },
+      500,
     );
   }
 }

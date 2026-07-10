@@ -54,6 +54,11 @@ import {
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import {
+  parseVoiceTraceId,
+  readVoiceTraceId,
+  VOICE_TRACE_HEADER,
+} from "../trace";
+import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
@@ -100,6 +105,7 @@ interface TtsTimings {
 function buildTtsObservabilityHeaders(
   provider: TtsProvider,
   timings: TtsTimings,
+  traceId: string | null,
 ): Record<string, string> {
   const serverTiming = [
     timings.authMs !== undefined ? `auth;dur=${timings.authMs}` : null,
@@ -111,8 +117,18 @@ function buildTtsObservabilityHeaders(
       : null,
   ].filter((entry): entry is string => entry !== null);
 
+  // Defense in depth: `traceId` already came from `readVoiceTraceId` (canonical
+  // or null), but re-validate at the echo boundary so a malformed value can
+  // never be reflected into a response header even if a future caller skips
+  // validation.
+  const echoTraceId =
+    traceId && parseVoiceTraceId(traceId).traceId === traceId ? traceId : null;
   return {
     "X-Eliza-TTS-Provider": provider,
+    // Echo the shared-runtime voice trace id (#15931) so a single request can be
+    // correlated end to end across STT -> chat -> TTS. Only emitted when the
+    // caller supplied a canonical one; never fabricated here.
+    ...(echoTraceId ? { [VOICE_TRACE_HEADER]: echoTraceId } : {}),
     ...(serverTiming.length > 0
       ? { "Server-Timing": serverTiming.join(", ") }
       : {}),
@@ -136,6 +152,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
   const requestStart = Date.now();
   const timings: TtsTimings = {};
+  // #15931: read (and later echo) the shared voice trace id so STT/chat/TTS for
+  // one utterance share a correlation id. Absent header => no trace echo.
+  const traceId = readVoiceTraceId(request);
 
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
@@ -194,6 +213,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           headers: buildTtsObservabilityHeaders(
             providerSelection.provider,
             timings,
+            traceId,
           ),
         },
       );
@@ -211,6 +231,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
     logger.info("[Voice TTS API] Selected TTS provider", {
+      traceId,
       provider: providerSelection.provider,
       fallbackReason: providerSelection.fallbackReason,
       voiceId: providerSelection.voiceId ?? "default",
@@ -258,7 +279,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
               headers: {
                 "Content-Type": cached.contentType,
                 "Cache-Control": "no-cache",
-                ...buildTtsObservabilityHeaders("kokoro", timings),
+                ...buildTtsObservabilityHeaders("kokoro", timings, traceId),
                 "X-TTS-Cache": "hit; kokoro; first-sentence",
               },
             });
@@ -332,7 +353,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           headers: {
             "Content-Type": kokoroContentType,
             "Cache-Control": "no-store",
-            ...buildTtsObservabilityHeaders("kokoro", timings),
+            ...buildTtsObservabilityHeaders("kokoro", timings, traceId),
             "X-TTS-Cache": "miss; kokoro",
           },
         });
@@ -343,7 +364,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         headers: {
           "Content-Type": kokoroContentType,
           "Cache-Control": "no-store",
-          ...buildTtsObservabilityHeaders("kokoro", timings),
+          ...buildTtsObservabilityHeaders("kokoro", timings, traceId),
         },
       });
     }
@@ -430,7 +451,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             headers: {
               "Content-Type": cached.contentType,
               "Cache-Control": "no-cache",
-              ...buildTtsObservabilityHeaders("elevenlabs", timings),
+              ...buildTtsObservabilityHeaders("elevenlabs", timings, traceId),
               "X-TTS-Cache": "hit; first-sentence",
             },
           });
@@ -495,6 +516,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     timings.synthesisMs = duration;
 
     logger.info("[Voice TTS API] Stream started", {
+      traceId,
       provider: "elevenlabs",
       fallbackReason: providerSelection.fallbackReason,
       durationMs: duration,
@@ -649,7 +671,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         "Content-Type": "audio/mpeg",
         "Transfer-Encoding": "chunked",
         "Cache-Control": "no-cache",
-        ...buildTtsObservabilityHeaders("elevenlabs", timings),
+        ...buildTtsObservabilityHeaders("elevenlabs", timings, traceId),
         "X-TTS-Cache": "miss",
       },
     });

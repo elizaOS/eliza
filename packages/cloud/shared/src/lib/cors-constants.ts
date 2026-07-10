@@ -46,6 +46,9 @@ export const CORS_ALLOW_HEADER_NAMES = [
   "X-Eliza-Client-Id",
   "X-ElizaOS-UI-Language",
   "X-Eliza-UI-Language",
+  // Correlates one shared-runtime PWA voice turn across cloud STT and TTS.
+  // The browser sends this to /api/v1/voice/*, so CORS preflight must allow it.
+  "X-Eliza-Voice-Trace-Id",
 ] as const;
 
 export const CORS_ALLOW_HEADERS = CORS_ALLOW_HEADER_NAMES.join(", ");
