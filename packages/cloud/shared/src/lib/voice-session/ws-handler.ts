@@ -28,9 +28,17 @@ import {
 } from "./protocol";
 import type { ServerControlFrame } from "./protocol";
 import {
+  isAmbientHelloRaw,
+  parseAmbientControlFrame,
+  parseAmbientHello,
+  serializeAmbientServerFrame,
+  type AmbientServerFrame,
+} from "./ambient-protocol";
+import {
   verifyVoiceSessionToken,
   type VoiceSessionTokenClaims,
 } from "./jwt";
+import type { VoiceSessionSeverReason } from "./session-registry";
 
 /**
  * The downlink surface the handler wires the socket into. Mirrors the session's
@@ -44,6 +52,17 @@ export interface VoiceSessionDownlink {
 }
 
 /**
+ * Ambient downlink surface. AMBIENT HAS NO AUDIO DOWNLINK (design §1.2): there
+ * is no `sendAudio`. It carries only ambient control/state events (segment
+ * commits, lease renewals, pause/resume acks). Distinct type so the compiler
+ * enforces "no binary downlink in ambient."
+ */
+export interface AmbientDownlink {
+  sendControl(frame: AmbientServerFrame): void;
+  close(code: number, reason: string): void;
+}
+
+/**
  * Minimal session surface the handler drives. The concrete `VoiceSession`
  * implements this; keeping it an interface lets the WS handler live in shared
  * while the orchestrator lives next to the merged provider adapters in api.
@@ -51,9 +70,18 @@ export interface VoiceSessionDownlink {
 export interface VoiceSessionLike {
   start(): void;
   pushUplinkAudio(bytes: Uint8Array): void;
-  bargeIn(): void;
+  /**
+   * Explicit barge-in. Conversation implements this; ambient has no downlink to
+   * interrupt, so it is optional and the handler only calls it when present.
+   */
+  bargeIn?(): void;
   bye(): void;
-  sever(reason: "client_disconnect" | "error"): void;
+  /**
+   * Sever the live provider sockets and tear down. Accepts the full sever-reason
+   * vocabulary so a session implementing `LiveVoiceSession` (which uses the wide
+   * reason type) satisfies this interface too.
+   */
+  sever(reason: VoiceSessionSeverReason): void;
   /**
    * Optional advisory: the client signalled it has finished sending audio for
    * the current utterance (`end_audio`). Phase-1 turn detection is Flux
@@ -61,6 +89,16 @@ export interface VoiceSessionLike {
    * the frame is accepted without forcing every implementation to react.
    */
   endUplink?(): void;
+  /**
+   * Ambient-only control frames (AMBIENT-MODE-DESIGN §1.2). Optional so the
+   * conversation session need not implement them; the handler only routes them
+   * for an ambient session. `pause` MUST sever the upstream Flux socket (not
+   * merely stop rendering); `resume` re-opens it; `leaseRenew` renews the
+   * capture lease over the socket.
+   */
+  pauseCapture?(): void;
+  resumeCapture?(): void;
+  leaseRenew?(): void;
 }
 
 export interface ServerWebSocketLike {
@@ -86,6 +124,21 @@ export interface VoiceWsHandlerDeps {
     jti: string;
     tokenExpSeconds: number;
     downlink: VoiceSessionDownlink;
+  }) => VoiceSessionLike;
+  /**
+   * Build an AMBIENT session for a verified ambient hello. Required for the
+   * handler to accept `mode:"ambient"` hellos; when omitted, an ambient hello is
+   * refused (a deployment with ambient disabled). The captureLeaseToken is the
+   * plaintext lease the client presented in hello; the session verifies it maps
+   * to the bound pendant session before writing.
+   */
+  buildAmbientSession?: (params: {
+    claims: VoiceSessionTokenClaims;
+    jti: string;
+    tokenExpSeconds: number;
+    pendantSessionId: string;
+    captureLeaseToken: string;
+    downlink: AmbientDownlink;
   }) => VoiceSessionLike;
   /** Verify override for tests; defaults to the real verifier. */
   verifyToken?: typeof verifyVoiceSessionToken;
@@ -115,6 +168,9 @@ export function attachVoiceWsHandler(
   const verify = deps.verifyToken ?? verifyVoiceSessionToken;
   let state: HandlerState = "awaiting_hello";
   let session: VoiceSessionLike | null = null;
+  // Whether the active session is ambient; set at hello time from the frame's
+  // `mode`. Determines which control-frame vocabulary applies after `ready`.
+  let isAmbient = false;
   // A well-behaved client may pipeline the first audio frame right after hello,
   // before async JWT verification finishes. Once hello is RECEIVED (even if not
   // yet verified), buffer those frames instead of failing the session, and
@@ -130,6 +186,20 @@ export function attachVoiceWsHandler(
     },
     sendAudio(bytes: Uint8Array) {
       safeSend(socket, bytes);
+    },
+    close(code: number, reason: string) {
+      try {
+        socket.close(code, reason);
+      } catch {
+        // already closing.
+      }
+    },
+  };
+
+  // Ambient downlink: control frames ONLY, never audio (design §1.2).
+  const ambientDownlink: AmbientDownlink = {
+    sendControl(frame: AmbientServerFrame) {
+      safeSend(socket, serializeAmbientServerFrame(frame));
     },
     close(code: number, reason: string) {
       try {
@@ -196,8 +266,60 @@ export function attachVoiceWsHandler(
       return;
     }
 
-    // Text frame = JSON control.
-    const parsed = parseClientControlFrame(typeof data === "string" ? data : String(data));
+    const text = typeof data === "string" ? data : String(data);
+
+    // Ambient control frames (after an ambient hello): a different vocabulary
+    // (pause/resume/lease_renew) parsed by the ambient protocol. Route here so
+    // one handler serves both modes without a fork.
+    if (state === "active" && isAmbient && session) {
+      const ap = parseAmbientControlFrame(text);
+      if (!ap.ok) {
+        safeSend(
+          socket,
+          serializeAmbientServerFrame({ t: "error", code: ap.code, retryable: ap.retryable }),
+        );
+        return;
+      }
+      switch (ap.value.t) {
+        case "pause":
+          session.pauseCapture?.();
+          return;
+        case "resume":
+          session.resumeCapture?.();
+          return;
+        case "lease_renew":
+          session.leaseRenew?.();
+          return;
+        case "bye":
+          session.bye();
+          state = "closed";
+          return;
+        case "barge_in_ignored":
+          return; // no downlink to interrupt in ambient.
+      }
+      return;
+    }
+
+    // Hello time: detect an ambient hello BEFORE the conversation parser (which
+    // does not know the ambient shape) so `mode:"ambient"` routes correctly.
+    if (state === "awaiting_hello" && !helloReceived && isAmbientHelloRaw(text)) {
+      const ah = parseAmbientHello(text);
+      if (!ah.ok) {
+        fail(ah.code, ah.message);
+        return;
+      }
+      if (!deps.buildAmbientSession) {
+        fail("ambient_not_enabled", "ambient mode is not enabled on this deployment");
+        return;
+      }
+      isAmbient = true;
+      helloReceived = true;
+      void handleAmbientHello(ah.value);
+      return;
+    }
+
+    // Text frame = JSON control (conversation vocabulary).
+    const parsed = parseClientControlFrame(text);
     if (!parsed.ok) {
       // Malformed control before hello is fatal; after hello it's a bad frame we
       // surface but survive.
@@ -243,7 +365,7 @@ export function attachVoiceWsHandler(
         // switch is a documented seam. Accept the meta as a no-op for pcm16.
         return;
       case "barge_in":
-        session.bargeIn();
+        session.bargeIn?.();
         return;
       case "end_audio":
         // Uplink-complete advisory. Phase-1 finalization is Flux semantic EOT,
@@ -273,6 +395,83 @@ export function attachVoiceWsHandler(
     session?.sever("error");
   });
 
+  async function handleAmbientHello(
+    hello: import("./ambient-protocol").AmbientHelloFrame,
+  ): Promise<void> {
+    if (hello.protocol !== VOICE_SESSION_PROTOCOL_VERSION) {
+      fail("hello_bad_protocol", "unsupported protocol version");
+      return;
+    }
+    let verified: Awaited<ReturnType<typeof verify>>;
+    try {
+      // Verify the token AND pin it to the requested session AND to the
+      // pendantSessionId the client presented: the JWT carries the signed
+      // pendantSessionId claim, so a hello that names a different session than
+      // the token was minted for is a claim mismatch (cannot retarget capture).
+      verified = await verify(
+        hello.token,
+        { sessionId: deps.requestedSessionId, pendantSessionId: hello.pendantSessionId },
+        deps.now ? { now: deps.now } : undefined,
+      );
+    } catch (error) {
+      const code =
+        error && typeof error === "object" && "code" in error
+          ? String((error as { code: unknown }).code)
+          : "invalid_token";
+      fail(code, "token verification failed");
+      return;
+    }
+    if (verified.claims.mode !== "ambient") {
+      // The socket sent an ambient hello but the token is a conversation token.
+      fail("mode_mismatch", "token is not an ambient session token");
+      return;
+    }
+    if (state !== "awaiting_hello") return; // raced a close.
+
+    if (deps.claimToken) {
+      let claimed: boolean;
+      try {
+        claimed = await deps.claimToken(verified.jti, verified.expSeconds);
+      } catch {
+        fail("token_claim_failed", "could not claim voice token");
+        return;
+      }
+      if (!claimed) {
+        fail("token_already_claimed", "voice token already in use");
+        return;
+      }
+      if (state !== "awaiting_hello") return;
+    }
+
+    if (deps.admitSession && !deps.admitSession()) {
+      fail("at_capacity", "voice realtime capacity reached");
+      return;
+    }
+
+    try {
+      session = deps.buildAmbientSession!({
+        claims: verified.claims,
+        jti: verified.jti,
+        tokenExpSeconds: verified.expSeconds,
+        pendantSessionId: hello.pendantSessionId,
+        captureLeaseToken: hello.captureLeaseToken,
+        downlink: ambientDownlink,
+      });
+      state = "active";
+      session.start();
+    } catch {
+      session = null;
+      state = "awaiting_hello";
+      isAmbient = false;
+      fail("session_start_failed", "could not start ambient session", 1011);
+      return;
+    }
+    if (pendingUplink.length > 0) {
+      const buffered = pendingUplink.splice(0);
+      for (const bytes of buffered) session.pushUplinkAudio(bytes);
+    }
+  }
+
   async function handleHello(token: string, protocol: number): Promise<void> {
     if (protocol !== VOICE_SESSION_PROTOCOL_VERSION) {
       fail("hello_bad_protocol", "unsupported protocol version");
@@ -291,6 +490,15 @@ export function attachVoiceWsHandler(
           ? String((error as { code: unknown }).code)
           : "invalid_token";
       fail(code, "token verification failed");
+      return;
+    }
+
+    // Mode pinning: an AMBIENT-minted token must NOT be steerable into the
+    // conversation (LLM+TTS) path by sending a plain conversation hello. The
+    // `mode` claim is signed; reject anything that is not a conversation token
+    // here before claiming/starting a paid conversation session.
+    if (verified.claims.mode === "ambient") {
+      fail("mode_mismatch", "ambient token cannot open a conversation session");
       return;
     }
 

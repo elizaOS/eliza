@@ -34,7 +34,14 @@ export type StageName =
   | "tts_first_frame"
   | "tts_complete"
   | "interrupt_requested"
-  | "interrupt_to_silence";
+  | "interrupt_to_silence"
+  // ambient scenario stages
+  | "first_segment"
+  | "second_segment"
+  | "paused"
+  | "resumed"
+  | "capture_complete"
+  | "revoke_to_silence";
 
 export interface StageMark {
   stage: StageName;

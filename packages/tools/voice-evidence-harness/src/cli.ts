@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { Evidence, type StageName } from "./evidence.ts";
 import { parseWav, writeWav } from "./wav.ts";
 import { runClient } from "./client.ts";
+import { runAmbientClient } from "./ambient-client.ts";
 import { startReferenceServer, type DomainRow, type ProviderConfig } from "./reference/voice-session-server.ts";
 import { startRealTarget, type RealTargetHandle } from "./real/real-target.ts";
 import { assembleMp4, ensureFfmpeg } from "./mp4.ts";
@@ -33,7 +34,7 @@ const EVIDENCE_ROOT = join(
   ".moltbot/projects/eliza-fleet/evidence/voice-e2e",
 );
 
-type Scenario = "baseline" | "bargein" | "error-auth";
+type Scenario = "baseline" | "bargein" | "error-auth" | "ambient";
 
 interface ScenarioResult {
   scenario: Scenario;
@@ -76,6 +77,9 @@ const FIXTURES: Record<Scenario, string> = {
   // but Flux needs real inter-word pauses to fire EOT on run-on speech.)
   bargein: "fixtures/turn_weather.wav",
   "error-auth": "fixtures/turn_error.wav",
+  // Ambient uses the same clean spoken fixture for each utterance (two passes
+  // with a pause between). It only needs Flux to fire end-of-turn per pass.
+  ambient: "fixtures/turn_weather.wav",
 };
 
 // Required stages per scenario. Absent = FAIL (no missing-becomes-zero).
@@ -86,7 +90,161 @@ const REQUIRED_STAGES: Record<Scenario, StageName[]> = {
   // prevent the session from reaching ready. It requires the auth handshake
   // stages plus a surfaced error (asserted separately in the gate below).
   "error-auth": ["mint", "ws_hello"],
+  ambient: ["mint", "ws_hello", "ready", "first_segment", "paused", "resumed", "second_segment", "capture_complete"],
 };
+
+async function runAmbientScenario(runDir: string): Promise<ScenarioResult> {
+  const scenario: Scenario = "ambient";
+  const evDir = join(runDir, scenario);
+  const ev = new Evidence(evDir);
+  const reasons: string[] = [];
+  ev.log("harness", "info", "=== scenario ambient (target=real) ===");
+
+  const providers = providerConfig();
+  const fixturePath = join(HARNESS_DIR, FIXTURES.ambient);
+  const wavBytes = new Uint8Array(readFileSync(fixturePath));
+  const wav = parseWav(wavBytes);
+  ev.writeArtifact("input.wav", wavBytes, "input audio (spoken fixture, used for both utterances)");
+  if (wav.sampleRate !== 16000 || wav.channels !== 1 || wav.bitsPerSample !== 16) {
+    reasons.push(`fixture not linear16 mono 16k`);
+  }
+
+  const realHandle = await startRealTarget({
+    providers,
+    ambient: true,
+    hooks: { log: (level, msg, data) => ev.log("server", level, msg, data) },
+  });
+  if (!realHandle.mintAmbient) {
+    reasons.push("real target did not expose mintAmbient");
+    ev.flushLogs();
+    return { scenario, pass: false, reasons, evidenceDir: evDir };
+  }
+
+  const minted = await realHandle.mintAmbient();
+  ev.mark("mint");
+  ev.wsEvent("s2c", "json", {
+    kind: "mint_response",
+    sessionId: minted.sessionId,
+    pendantSessionId: minted.pendantSessionId,
+    token: "<REDACTED>",
+    captureLeaseToken: "<REDACTED>",
+  });
+  ev.log("harness", "info", "minted ambient session", {
+    sessionId: minted.sessionId,
+    pendantSessionId: minted.pendantSessionId,
+  });
+
+  const connectUrl = `${realHandle.wsUrl}${encodeURIComponent(minted.sessionId)}`;
+
+  // Parse the token's exp for the revoke call (revokeLive needs expSeconds).
+  const expSeconds = Math.floor(new Date(minted.expiresAt).getTime() / 1000);
+
+  const clientResult = await runAmbientClient({
+    wsUrl: connectUrl,
+    token: minted.token,
+    pendantSessionId: minted.pendantSessionId,
+    captureLeaseToken: minted.captureLeaseToken,
+    utterancePcms: [wav.pcm, wav.pcm],
+    evidence: ev,
+    maxRunMs: 45_000,
+    // Revoke-to-silence (SEC-6): after capture, add the jti to the durable
+    // revocation store AND sever the live session via the registry (the exact
+    // pair the ws route wires). The AmbientSession severs Flux + closes the
+    // socket; the client records revokeToCloseMs.
+    onCaptureComplete: async () => {
+      if (!realHandle.revokeLive) return;
+      const severed = await realHandle.revokeLive(minted.jti, expSeconds);
+      ev.log("harness", "info", "revoke issued", { severedOnWorker: severed });
+    },
+  });
+
+  const store = realHandle.ambientStore;
+  const storedSegments = store?.segments ?? [];
+
+  // ---- domain artifacts: the committed pendant segments ----
+  ev.writeJsonArtifact(
+    "pendant-segments.json",
+    storedSegments.map((s) => ({ id: s.id, ordinal: s.ordinal, text: s.text })),
+    "canonical pendant_sessions_v1 segments the AmbientSession committed",
+  );
+
+  // ---- stage timing report ----
+  const timing = ev.timingReport(REQUIRED_STAGES.ambient);
+  ev.writeJsonArtifact("timing-report.json", timing, "stage timing with explicit not_reached");
+
+  // ---- ambient assertions ----
+  const assertion = {
+    sttFinals: clientResult.sttFinals,
+    storedOrdinals: storedSegments.map((s) => s.ordinal),
+    storedTexts: storedSegments.map((s) => s.text),
+    sawPaused: clientResult.sawPaused,
+    sawResumed: clientResult.sawResumed,
+    sawLeaseRenewed: clientResult.sawLeaseRenewed,
+    downlinkAudioFrames: clientResult.downlinkAudioFrames,
+    socketClosedAfterRun: clientResult.closed,
+    revokeToCloseMs: clientResult.revokeToCloseMs,
+  };
+  ev.writeJsonArtifact("ambient-assertion.json", assertion, "ambient capture assertions");
+
+  // DoD gate
+  if (timing.missing.length > 0) reasons.push(`missing required stages: ${timing.missing.join(", ")}`);
+  if (storedSegments.length < 2) reasons.push(`expected >=2 committed segments, got ${storedSegments.length}`);
+  // Ordinals MUST be contiguous starting at 0.
+  const expectedOrdinals = storedSegments.map((_, i) => i);
+  if (JSON.stringify(assertion.storedOrdinals) !== JSON.stringify(expectedOrdinals)) {
+    reasons.push(`non-contiguous ordinals: ${JSON.stringify(assertion.storedOrdinals)}`);
+  }
+  if (!clientResult.sawPaused) reasons.push("pause never confirmed (Flux not severed)");
+  if (!clientResult.sawResumed) reasons.push("resume never confirmed");
+  if (clientResult.downlinkAudioFrames !== 0) {
+    reasons.push(`AMBIENT DOWNLINK AUDIO LEAKED: ${clientResult.downlinkAudioFrames} (must be 0)`);
+  }
+  // Revoke-to-silence (SEC-6): the socket MUST be severed after revoke, <=500ms.
+  if (clientResult.revokeToCloseMs === null) {
+    reasons.push("revoke did not sever the socket (no close observed)");
+  } else if (clientResult.revokeToCloseMs > 500) {
+    reasons.push(`revoke-to-silence too slow: ${clientResult.revokeToCloseMs.toFixed(0)}ms (must be <=500)`);
+  }
+
+  ev.flushLogs();
+
+  const readmeLines = [
+    "# Ambient E2E evidence",
+    "",
+    `Generated ${new Date().toISOString()}.`,
+    "Target: **REAL ambient server** (mode:\"ambient\" mint + AmbientSession + merged Deepgram Flux, LIVE key).",
+    "Store: in-process pendant store enforcing the REAL pendant contract (contiguous ordinals, lease digest, paused-refuses-append).",
+    `Session: \`${minted.sessionId}\` pendant: \`${minted.pendantSessionId}\``,
+    "",
+    "## Committed segments (canonical pendant_sessions_v1)",
+    "",
+    ...storedSegments.map((s) => `- \`${s.id}\` (ordinal ${s.ordinal}): ${s.text}`),
+    "",
+    "## Assertions",
+    "",
+    `- stt_final events: ${clientResult.sttFinals.length}`,
+    `- committed segments: ${storedSegments.length}`,
+    `- pause confirmed (Flux severed): ${clientResult.sawPaused}`,
+    `- resume confirmed: ${clientResult.sawResumed}`,
+    `- lease renewed over socket: ${clientResult.sawLeaseRenewed}`,
+    `- downlink audio frames: **${clientResult.downlinkAudioFrames}** (MUST be 0)`,
+    `- revoke-to-silence: **${clientResult.revokeToCloseMs === null ? "NOT SEVERED" : clientResult.revokeToCloseMs.toFixed(0) + "ms"}** (MUST be <=500ms)`,
+    "",
+    "## Artifacts (SHA-256)",
+    "",
+    "| file | bytes | sha256 |",
+    "| --- | --- | --- |",
+    ...ev.artifactIndex.map((a) => `| \`${a.name}\` | ${a.bytes} | \`${a.sha256}\` |`),
+    "",
+  ];
+  ev.writeArtifact("README.md", new TextEncoder().encode(readmeLines.join("\n")), "evidence index");
+
+  await realHandle.stop();
+
+  const pass = reasons.length === 0;
+  ev.log("harness", pass ? "info" : "error", `scenario ambient ${pass ? "PASS" : "FAIL"}`, { reasons });
+  return { scenario, pass, reasons, evidenceDir: evDir };
+}
 
 async function runScenario(
   scenario: Scenario,
@@ -421,6 +579,16 @@ async function main() {
   const results: ScenarioResult[] = [];
   for (const s of scenarios) {
     console.log(`\n########## ${s} (target=${target}) ##########`);
+    if (s === "ambient") {
+      // Ambient is real-only (there is no reference ambient server).
+      if (target !== "real") {
+        console.error("the ambient scenario requires --target=real");
+        process.exit(2);
+      }
+      const r = await runAmbientScenario(runDir);
+      results.push(r);
+      continue;
+    }
     const r = await runScenario(s, runDir, target, s === scenarioArg ? fixtureOverride : undefined);
     results.push(r);
   }

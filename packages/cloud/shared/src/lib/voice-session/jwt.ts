@@ -57,6 +57,15 @@ const REVOCATION_KEY_PREFIX = "voice-session:revoked:";
 const MAX_REVOCATION_TTL_SECONDS = VOICE_SESSION_JWT_MAX_TTL_SECONDS + 30;
 const ENV_PREFIX = process.env.ENVIRONMENT || "local";
 
+/**
+ * Session mode carried in the token claims. `conversation` (default) is the
+ * phase-1 reply loop; `ambient` is always-listening capture (no downlink, no
+ * LLM turn loop) whose STT finals commit to the canonical pendant session
+ * store. The mode is a SIGNED claim so a conversation token cannot be steered
+ * at the ambient capture path (or vice-versa) by a later frame.
+ */
+export type VoiceSessionMode = "conversation" | "ambient";
+
 export interface VoiceSessionTokenClaims {
   /** The session this token authorizes exactly one WS connection for. */
   sessionId: string;
@@ -68,6 +77,19 @@ export interface VoiceSessionTokenClaims {
   agentId: string;
   /** Single conversation this session may write turns into. */
   conversationId: string;
+  /**
+   * Session mode. Defaults to `"conversation"` when absent so pre-ambient
+   * tokens verify unchanged (backward compatible). `ambient` REQUIRES a
+   * `pendantSessionId` claim below.
+   */
+  mode?: VoiceSessionMode;
+  /**
+   * Canonical `pendant_sessions_v1` id an ambient session is bound to. Present
+   * ONLY for `mode: "ambient"`. Ambient segments commit to this session; a
+   * conversation token never carries it. Signed so the capture target cannot be
+   * swapped after mint.
+   */
+  pendantSessionId?: string;
 }
 
 export interface VoiceSessionTokenMintInput extends VoiceSessionTokenClaims {
@@ -136,6 +158,23 @@ function assertClaims(claims: VoiceSessionTokenClaims): void {
   assertNonEmpty("userId", claims.userId);
   assertNonEmpty("agentId", claims.agentId);
   assertNonEmpty("conversationId", claims.conversationId);
+  // Ambient MUST bind a pendant session at mint; a conversation token MUST NOT
+  // carry one. This is enforced at signing so the WS handler can trust the
+  // claim pairing without re-deriving it.
+  const mode = claims.mode ?? "conversation";
+  if (mode === "ambient") {
+    if (typeof claims.pendantSessionId !== "string" || claims.pendantSessionId.trim() === "") {
+      throw new VoiceSessionTokenError(
+        "ambient voice-session token requires a pendantSessionId claim",
+        "invalid_input",
+      );
+    }
+  } else if (claims.pendantSessionId !== undefined) {
+    throw new VoiceSessionTokenError(
+      "conversation voice-session token must not carry a pendantSessionId claim",
+      "invalid_input",
+    );
+  }
 }
 
 /**
@@ -159,6 +198,7 @@ export async function mintVoiceSessionToken(
   const expSeconds = nowSeconds + ttl;
   const jti = crypto.randomUUID();
 
+  const mode: VoiceSessionMode = input.mode ?? "conversation";
   const privateKey = await getPrivateKey();
   const token = await new SignJWT({
     sessionId: input.sessionId,
@@ -166,6 +206,10 @@ export async function mintVoiceSessionToken(
     userId: input.userId,
     agentId: input.agentId,
     conversationId: input.conversationId,
+    mode,
+    // Only ambient carries a bound pendant session; omit the claim entirely for
+    // conversation so the token shape is unchanged for the existing path.
+    ...(mode === "ambient" ? { pendantSessionId: input.pendantSessionId } : {}),
   })
     .setProtectedHeader({ alg: getAlgorithm(), kid: getKeyId() })
     .setIssuer(VOICE_SESSION_JWT_ISSUER)
@@ -252,12 +296,39 @@ export async function verifyVoiceSessionToken(
     );
   }
 
+  // `mode` defaults to conversation for pre-ambient tokens (no claim). Ambient
+  // tokens MUST additionally carry a pendantSessionId claim; enforce the same
+  // pairing on verify that mint enforces, so a hand-forged/edited token cannot
+  // present `mode:ambient` with no bound session (or a conversation token that
+  // sneaks in a pendantSessionId).
+  const modeRaw = payload.mode;
+  const mode: VoiceSessionMode =
+    modeRaw === "ambient" ? "ambient" : modeRaw === undefined || modeRaw === "conversation"
+      ? "conversation"
+      : (() => {
+          throw new VoiceSessionTokenError(
+            `voice-session token has an unknown mode claim: ${String(modeRaw)}`,
+            "invalid_token",
+          );
+        })();
+  let pendantSessionId: string | undefined;
+  if (mode === "ambient") {
+    pendantSessionId = readClaim(payload, "pendantSessionId");
+  } else if (payload.pendantSessionId !== undefined) {
+    throw new VoiceSessionTokenError(
+      "conversation voice-session token must not carry a pendantSessionId claim",
+      "invalid_token",
+    );
+  }
+
   const claims: VoiceSessionTokenClaims = {
     sessionId: readClaim(payload, "sessionId"),
     organizationId: readClaim(payload, "organizationId"),
     userId: readClaim(payload, "userId"),
     agentId: readClaim(payload, "agentId"),
     conversationId: readClaim(payload, "conversationId"),
+    mode,
+    ...(pendantSessionId !== undefined ? { pendantSessionId } : {}),
   };
 
   if (expected) {

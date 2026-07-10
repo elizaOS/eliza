@@ -33,6 +33,8 @@ export interface StartRealTargetOptions {
   providers: ProviderConfig;
   faultInjection?: "deepgram-auth-fail";
   hooks: RealTargetHooks;
+  /** Boot the ambient path (mode:"ambient") for the ambient scenario. */
+  ambient?: boolean;
 }
 
 export type RealTargetHandle = RunningRealServer;
@@ -81,6 +83,15 @@ export async function startRealTarget(
   process.env.DEEPGRAM_API_KEY = providers.deepgramApiKey;
   process.env.CARTESIA_API_KEY = providers.cartesiaApiKey;
 
+  // Ambient is enabled in-env so the real config gate (isVoiceAmbientEnabled)
+  // passes; the store base URL is a placeholder because the harness injects an
+  // in-process store (no network hop), same seam as the platform-DB shim.
+  if (opts.ambient) {
+    process.env.VOICE_AMBIENT_ENABLED = "true";
+    process.env.VOICE_AMBIENT_PENDANT_BASE_URL = "http://harness.local";
+    process.env.VOICE_AMBIENT_PENDANT_AUTHORIZATION = "Bearer harness-server-held";
+  }
+
   const server = await startRealVoiceServer({
     deepgramApiKey: providers.deepgramApiKey,
     cartesiaApiKey: providers.cartesiaApiKey,
@@ -93,6 +104,7 @@ export async function startRealTarget(
     conversationId: CONVERSATION_ID,
     hooks,
     faultInjection: opts.faultInjection,
+    ambient: opts.ambient,
   });
 
   void homedir; // (reserved; keys are read by the CLI provider config)

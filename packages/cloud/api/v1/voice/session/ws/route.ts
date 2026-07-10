@@ -3,7 +3,11 @@ import { Hono } from "hono";
 
 import { logger } from "@/lib/utils/logger";
 import {
+  isVoiceAmbientEnabled,
   isVoiceRealtimeWsEnabled,
+  resolveAmbientMaxTurnMs,
+  resolveAmbientPendantStore,
+  resolveAmbientUsageLimits,
   resolveElizaModel,
   resolveMaxSessions,
   resolveVoiceUsageLimits,
@@ -15,10 +19,13 @@ import {
   isWorkerOutboundWsAvailable,
 } from "../lib/provider-socket-factory";
 import { VoiceSession } from "../lib/session";
+import { AmbientSession } from "../lib/ambient-session";
+import { createHttpPendantSegmentStore } from "@/lib/voice-session/pendant-store-client";
 import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
 import {
   claimVoiceSessionToken,
   isVoiceSessionTokenRevoked,
+  recordVoiceSessionJti,
   revokeVoiceSessionToken,
 } from "@/lib/voice-session/jwt";
 import {
@@ -146,12 +153,53 @@ app.get("/", (c) => {
     durableStore && evalCapable ? durableStore : getWorkerFallbackUsageStore();
 
   const maxSessions = resolveMaxSessions(env);
+
+  // Ambient store (design §3): the pendant session routes, reached over HTTP
+  // with a server-held credential. Only constructed when ambient is enabled +
+  // configured; when null the handler refuses ambient hellos (real gate).
+  const ambientStoreConfig = isVoiceAmbientEnabled(env) ? resolveAmbientPendantStore(env) : null;
+  const ambientUsageLimits = resolveAmbientUsageLimits(env);
+  const ambientMaxTurnMs = resolveAmbientMaxTurnMs(env);
+
   attachVoiceWsHandler(server, {
     requestedSessionId: sessionId,
     claimToken: (jti, expSeconds) => claimVoiceSessionToken(jti, expSeconds),
     // Enforce the per-worker ceiling against the LIVE registry at start time,
     // closing the race where many upgrades pass the earlier route-level check.
     admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
+    buildAmbientSession: ambientStoreConfig
+      ? ({ claims, jti, tokenExpSeconds, pendantSessionId, captureLeaseToken, downlink }) =>
+          new AmbientSession({
+            sessionId: claims.sessionId,
+            jti,
+            organizationId: claims.organizationId,
+            userId: claims.userId,
+            agentId: claims.agentId,
+            pendantSessionId,
+            captureLeaseToken,
+            tokenExpSeconds,
+            deepgramApiKey,
+            deepgramWebSocketFactory: createWorkerDeepgramFluxFactory(),
+            store: createHttpPendantSegmentStore(ambientStoreConfig),
+            usageStore,
+            usageLimits: ambientUsageLimits,
+            maxTurnMs: ambientMaxTurnMs,
+            isRevoked: (j) => isVoiceSessionTokenRevoked(j),
+            onTeardownRevoke: (j, exp) => revokeVoiceSessionToken(j, exp),
+            // Keep the cross-worker revocation directory alive past the 120s
+            // bootstrap token so a revoke on another worker can still resolve
+            // this long-lived ambient jti (P1).
+            refreshRevocationDirectory: (j, expSeconds) =>
+              recordVoiceSessionJti({
+                organizationId: claims.organizationId,
+                userId: claims.userId,
+                sessionId: claims.sessionId,
+                jti: j,
+                expSeconds,
+              }),
+            downlink,
+          })
+      : undefined,
     buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
       new VoiceSession({
         sessionId: claims.sessionId,

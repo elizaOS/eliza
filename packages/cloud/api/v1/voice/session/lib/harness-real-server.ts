@@ -85,7 +85,14 @@ import {
 } from "@/lib/services/voice-usage-meter";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { installVoiceSessionTestSigningKey } from "@/lib/voice-session/test-signing";
+import {
+  AmbientStoreError,
+  type AmbientSegmentInput,
+  type AmbientSegmentStore,
+} from "@/lib/voice-session/pendant-store-client";
+import { pendantSegmentId } from "@elizaos/shared/contracts";
 import { VoiceSession } from "./session";
+import { AmbientSession } from "./ambient-session";
 
 /**
  * SHIM 4: install a real ES256 keypair into the env `auth/jwks` reads, so the
@@ -309,6 +316,64 @@ export interface RealServerConfig {
   conversationId: string;
   hooks: RealServerHooks;
   faultInjection?: "deepgram-auth-fail";
+  /** When true, boot the AMBIENT path (mode:"ambient") instead of conversation. */
+  ambient?: boolean;
+}
+
+/**
+ * In-process pendant store for the ambient evidence run. The harness has no
+ * AgentRuntime/DB, so this stands in for the network hop to the agent's pendant
+ * routes — but it enforces the SAME contract the real route does (contiguous
+ * ordinals, lease-digest match, paused-refuses-append, ended-immutable), so the
+ * AmbientSession's ordering/lease/pause logic under test is exercised for real.
+ * This is the same "platform seam shimmed, voice logic real" boundary as SHIM 5.
+ */
+export class HarnessPendantStore implements AmbientSegmentStore {
+  segments: { id: string; ordinal: number; text: string }[] = [];
+  state: "active" | "paused" | "ended" = "active";
+  leaseToken: string;
+  private renewCounter = 0;
+
+  constructor(
+    readonly pendantSessionId: string,
+    initialLease: string,
+    private readonly hooks: RealServerHooks,
+  ) {
+    this.leaseToken = initialLease;
+  }
+
+  async getSessionState(_p: string) {
+    return { segmentCount: this.segments.length, state: this.state };
+  }
+
+  async appendSegment(pendantSessionId: string, leaseToken: string, input: AmbientSegmentInput) {
+    if (this.state === "paused") throw new AmbientStoreError("paused", "revision_conflict", 409);
+    if (this.state === "ended") throw new AmbientStoreError("ended", "revision_conflict", 409);
+    if (leaseToken !== this.leaseToken) throw new AmbientStoreError("lease mismatch", "lease_conflict", 409);
+    if (input.ordinal !== this.segments.length) throw new AmbientStoreError("non-contiguous", "validation", 400);
+    const id = pendantSegmentId(pendantSessionId, input.ordinal);
+    this.segments.push({ id, ordinal: input.ordinal, text: input.text });
+    this.hooks.log("info", "pendant append (in-process, real contract)", {
+      ordinal: input.ordinal,
+      chars: input.text.length,
+    });
+    return {
+      segmentId: id,
+      ordinal: input.ordinal,
+      revision: 0,
+      sessionRevision: this.segments.length,
+      segmentCount: this.segments.length,
+    };
+  }
+  async setState(_p: string, state: "paused" | "active" | "ended") {
+    this.state = state;
+    this.hooks.log("info", "pendant setState", { state });
+  }
+  async renewLease(_p: string, _h: string, _t: string, leaseMs: number) {
+    this.renewCounter++;
+    this.leaseToken = `renewed-${this.renewCounter}`;
+    return { leaseToken: this.leaseToken, leaseExpiresAt: new Date(Date.now() + leaseMs).toISOString() };
+  }
 }
 
 export interface RunningRealServer {
@@ -320,7 +385,25 @@ export interface RunningRealServer {
    * client presents in `hello`.
    */
   mint(): Promise<RealMintResult>;
+  /**
+   * Ambient mint: same consent+jwt chain but with mode:"ambient" + a bound
+   * pendant session. Returns the token + pendantSessionId + captureLeaseToken
+   * the ambient client presents in `hello`. The bound store is exposed on
+   * `ambientStore` so the evidence run can inspect the committed segments.
+   */
+  mintAmbient?(): Promise<RealAmbientMintResult>;
+  /** Drive a revoke-to-silence for the ambient run (SEC-6 assertion). */
+  revokeLive?(jti: string, expSeconds: number): Promise<boolean>;
+  /** The in-process pendant store for the ambient run (segment inspection). */
+  ambientStore?: HarnessPendantStore;
   stop(): Promise<void>;
+}
+
+export interface RealAmbientMintResult extends RealMintResult {
+  pendantSessionId: string;
+  captureLeaseToken: string;
+  /** The token's jti — the CLI uses it to drive a revoke-to-silence assertion. */
+  jti: string;
 }
 
 export async function startRealVoiceServer(config: RealServerConfig): Promise<RunningRealServer> {
@@ -379,12 +462,50 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
     });
   });
 
+  // Ambient run: one bound in-process pendant store per server, created at the
+  // ambient mint and shared with the WS handler's AmbientSession builder.
+  let ambientStore: HarnessPendantStore | undefined;
+  const AMBIENT_LEASE = "ambient-lease-plaintext";
+
   function attachRealHandler(ws: NodeWebSocket, sessionId: string): void {
     const serverSocket = adaptInboundSocket(ws);
     attachVoiceWsHandler(serverSocket, {
       requestedSessionId: sessionId,
       claimToken: (jti, expSeconds) => claimVoiceSessionToken(jti, expSeconds),
       admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
+      buildAmbientSession: config.ambient
+        ? ({ claims, jti, tokenExpSeconds, pendantSessionId, captureLeaseToken, downlink }) =>
+            new AmbientSession({
+              sessionId: claims.sessionId,
+              jti,
+              organizationId: claims.organizationId,
+              userId: claims.userId,
+              agentId: claims.agentId,
+              pendantSessionId,
+              captureLeaseToken,
+              tokenExpSeconds,
+              deepgramApiKey: config.deepgramApiKey,
+              deepgramWebSocketFactory: makeNodeDeepgramFactory(hooks, config.faultInjection),
+              store:
+                ambientStore ??
+                (ambientStore = new HarnessPendantStore(pendantSessionId, captureLeaseToken, hooks)),
+              usageStore,
+              usageLimits,
+              // Short lease renewal so the evidence run exercises a renewal.
+              leaseMs: 20_000,
+              isRevoked: (j) => isVoiceSessionTokenRevoked(j),
+              onTeardownRevoke: (j, exp) => revokeVoiceSessionToken(j, exp),
+              refreshRevocationDirectory: (j, expSeconds) =>
+                recordVoiceSessionJti({
+                  organizationId: claims.organizationId,
+                  userId: claims.userId,
+                  sessionId: claims.sessionId,
+                  jti: j,
+                  expSeconds,
+                }),
+              downlink,
+            })
+        : undefined,
       buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
         new VoiceSession({
           sessionId: claims.sessionId,
@@ -443,6 +564,44 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
     return { sessionId, token: minted.token, expiresAt: minted.expiresAt };
   }
 
+  async function mintAmbient(): Promise<RealAmbientMintResult> {
+    // REAL consent precondition (same as conversation).
+    const issued = await issueConsentNonce(config.userId);
+    if (!issued) throw new Error("consent store not configured (issue failed)");
+    const consented = await consumeConsentNonce(config.userId, issued.nonce);
+    if (!consented) throw new Error("consent nonce consume failed (SEC-21 precondition)");
+
+    const sessionId = crypto.randomUUID();
+    const pendantSessionId = `pendant-${crypto.randomUUID()}`;
+    // Bind the in-process store now so the WS builder shares it.
+    ambientStore = new HarnessPendantStore(pendantSessionId, AMBIENT_LEASE, hooks);
+    const minted = await mintVoiceSessionToken({
+      sessionId,
+      organizationId: config.organizationId,
+      userId: config.userId,
+      agentId: config.agentId,
+      conversationId: config.conversationId,
+      mode: "ambient",
+      pendantSessionId,
+    });
+    await recordVoiceSessionJti({
+      organizationId: config.organizationId,
+      userId: config.userId,
+      sessionId,
+      jti: minted.jti,
+      expSeconds: minted.expSeconds,
+    });
+    hooks.log("info", "minted real AMBIENT voice-session token", { sessionId, pendantSessionId });
+    return {
+      sessionId,
+      token: minted.token,
+      expiresAt: minted.expiresAt,
+      pendantSessionId,
+      captureLeaseToken: AMBIENT_LEASE,
+      jti: minted.jti,
+    };
+  }
+
   async function stop(): Promise<void> {
     // Force-terminate any lingering inbound sockets so neither wss.close nor
     // httpServer.close blocks on a half-open connection (which would hang the
@@ -464,7 +623,26 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
     __resetVoiceSessionRegistryForTests();
   }
 
-  return { wsUrl, mint, stop };
+  /**
+   * Drive a revoke-to-silence: add the jti to the durable revocation store AND
+   * sever the live session on this worker via the registry (the exact pair the
+   * ws route wires). Returns true if a live session was found + severed here.
+   */
+  async function revokeLive(jti: string, expSeconds: number): Promise<boolean> {
+    await revokeVoiceSessionToken(jti, expSeconds);
+    return getVoiceSessionRegistry().severByJti(jti, "revoked");
+  }
+
+  return {
+    wsUrl,
+    mint,
+    mintAmbient,
+    revokeLive,
+    get ambientStore() {
+      return ambientStore;
+    },
+    stop,
+  };
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | void> {

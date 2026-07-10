@@ -23,6 +23,18 @@ export interface VoiceRealtimeEnv {
   VOICE_REALTIME_MAX_SESSIONS?: string;
   CARTESIA_API_KEY?: string;
   DEEPGRAM_API_KEY?: string;
+  // Ambient mode (AMBIENT-MODE-DESIGN). Gated on the SAME realtime flag; a
+  // mode-specific enable lets a deployment run conversation without ambient.
+  VOICE_AMBIENT_ENABLED?: string;
+  /** Base URL of the agent host serving /api/pendant/sessions/* (the store). */
+  VOICE_AMBIENT_PENDANT_BASE_URL?: string;
+  /** Server-held credential resolving the owner boundary at the pendant store. */
+  VOICE_AMBIENT_PENDANT_AUTHORIZATION?: string;
+  /** Server backstop for a single Flux turn (ms). */
+  VOICE_AMBIENT_MAX_TURN_MS?: string;
+  /** Ambient org/user daily minute caps (separate meter key). */
+  VOICE_AMBIENT_ORG_DAILY_MINUTES?: string;
+  VOICE_AMBIENT_USER_DAILY_MINUTES?: string;
 }
 
 const TRUEY = new Set(["1", "true", "yes", "on"]);
@@ -40,6 +52,53 @@ export function isVoiceRealtimeWsEnabled(env: VoiceRealtimeEnv | undefined): boo
   const raw = env?.VOICE_REALTIME_WS_ENABLED;
   if (typeof raw !== "string") return false;
   return TRUEY.has(raw.trim().toLowerCase());
+}
+
+/**
+ * Ambient-mode flag consumer (AMBIENT-MODE-DESIGN §9). Ambient requires BOTH
+ * the realtime WS flag AND its own enable, AND a configured pendant store URL +
+ * server credential (ambient has nowhere to commit segments without them). A
+ * real consumer: the mint route refuses `mode:"ambient"` and the WS handler
+ * refuses ambient hellos when this returns false.
+ */
+export function isVoiceAmbientEnabled(env: VoiceRealtimeEnv | undefined): boolean {
+  if (!isVoiceRealtimeWsEnabled(env)) return false;
+  const raw = env?.VOICE_AMBIENT_ENABLED;
+  if (typeof raw !== "string" || !TRUEY.has(raw.trim().toLowerCase())) return false;
+  const base = env?.VOICE_AMBIENT_PENDANT_BASE_URL;
+  const auth = env?.VOICE_AMBIENT_PENDANT_AUTHORIZATION;
+  return typeof base === "string" && base.trim() !== "" && typeof auth === "string" && auth.trim() !== "";
+}
+
+const DEFAULT_AMBIENT_MAX_TURN_MS = 30_000;
+const DEFAULT_AMBIENT_ORG_DAILY_MINUTES = 1_440; // 24h upper bound per org.
+const DEFAULT_AMBIENT_USER_DAILY_MINUTES = 720; // 12h/day active-speech ceiling.
+
+export function resolveAmbientMaxTurnMs(env: VoiceRealtimeEnv | undefined): number {
+  return parsePositiveInt(env?.VOICE_AMBIENT_MAX_TURN_MS, DEFAULT_AMBIENT_MAX_TURN_MS);
+}
+
+export function resolveAmbientUsageLimits(env: VoiceRealtimeEnv | undefined): VoiceUsageLimits {
+  return {
+    organizationDailyMinutes: parsePositiveInt(
+      env?.VOICE_AMBIENT_ORG_DAILY_MINUTES,
+      DEFAULT_AMBIENT_ORG_DAILY_MINUTES,
+    ),
+    userDailyMinutes: parsePositiveInt(
+      env?.VOICE_AMBIENT_USER_DAILY_MINUTES,
+      DEFAULT_AMBIENT_USER_DAILY_MINUTES,
+    ),
+  };
+}
+
+export function resolveAmbientPendantStore(
+  env: VoiceRealtimeEnv | undefined,
+): { baseUrl: string; authorization: string } | null {
+  const baseUrl = env?.VOICE_AMBIENT_PENDANT_BASE_URL;
+  const authorization = env?.VOICE_AMBIENT_PENDANT_AUTHORIZATION;
+  if (typeof baseUrl !== "string" || baseUrl.trim() === "") return null;
+  if (typeof authorization !== "string" || authorization.trim() === "") return null;
+  return { baseUrl: baseUrl.trim(), authorization: authorization.trim() };
 }
 
 export function resolveVoiceUsageLimits(env: VoiceRealtimeEnv | undefined): VoiceUsageLimits {

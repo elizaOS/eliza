@@ -83,7 +83,9 @@ describe("voice-session jwt", () => {
     const verified = await verifyVoiceSessionToken(minted.token, {
       sessionId: CLAIMS.sessionId,
     });
-    expect(verified.claims).toEqual(CLAIMS);
+    // `mode` defaults to "conversation" and is now a resolved claim on verify
+    // (ambient adds mode + pendantSessionId; conversation carries mode only).
+    expect(verified.claims).toEqual({ ...CLAIMS, mode: "conversation" });
     expect(verified.jti).toBe(minted.jti);
   });
 
