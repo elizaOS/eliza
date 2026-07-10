@@ -6,7 +6,7 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -103,9 +103,18 @@ describe("reviewed deletion file orchestration", () => {
     temporaryDirectories.push(root);
     const corpusPath = path.join(root, "corpus");
     const shardPath = path.join(corpusPath, "gmail", "work", "2026-06.jsonl");
+    const deletedShardPath = path.join(
+      corpusPath,
+      "gmail",
+      "work",
+      "2026-07.jsonl",
+    );
     const artifactsPath = path.join(root, "artifacts");
     const sourceMessages = [
-      message("delete-me", { labels: ["Delete"] }),
+      message("delete-me", {
+        labels: ["Delete"],
+        ts: Date.parse("2026-07-01T12:00:00.000Z"),
+      }),
       message("keep-me", {
         attachments: [
           {
@@ -119,9 +128,10 @@ describe("reviewed deletion file orchestration", () => {
       }),
     ];
     await fs.mkdir(path.dirname(shardPath), { recursive: true });
+    await fs.writeFile(shardPath, `${JSON.stringify(sourceMessages[1])}\n`);
     await fs.writeFile(
-      shardPath,
-      `${sourceMessages.map((row) => JSON.stringify(row)).join("\n")}\n`,
+      deletedShardPath,
+      `${JSON.stringify(sourceMessages[0])}\n`,
     );
     const candidatesPath = path.join(artifactsPath, "candidates.jsonl");
     await fs.mkdir(artifactsPath, { recursive: true });
@@ -291,10 +301,15 @@ rules:
       tombstoneCount: 1,
       attachmentBytesDropped: 9,
     });
-    const outputShard = await readCorpusShard(
-      path.join(applyOptions.outputPath, "gmail", "work", "2026-06.jsonl"),
-      { rootDir: applyOptions.outputPath },
+    const outputShardPath = path.join(
+      applyOptions.outputPath,
+      "gmail",
+      "work",
+      "2026-06.jsonl",
     );
+    const outputShard = await readCorpusShard(outputShardPath, {
+      rootDir: applyOptions.outputPath,
+    });
     expect(outputShard.issues).toEqual([]);
     expect(outputShard.messages).toHaveLength(1);
     expect(outputShard.messages[0]?.id).toBe("keep-me");
@@ -303,6 +318,17 @@ rules:
       mimeType: "text/plain",
       sha256: "a".repeat(64),
     });
+    expect(
+      existsSync(
+        path.join(applyOptions.outputPath, "gmail", "work", "2026-07.jsonl"),
+      ),
+    ).toBe(false);
+    const manifest = JSON.parse(
+      await fs.readFile(applyOptions.manifestPath, "utf8"),
+    ) as { shards: Array<{ path: string }> };
+    expect(manifest.shards.map((shard) => shard.path)).toEqual([
+      "gmail/work/2026-06.jsonl",
+    ]);
     const ledger = (await fs.readFile(applyOptions.ledgerPath, "utf8"))
       .trim()
       .split("\n")
@@ -337,15 +363,50 @@ rules:
         ...applyOptions,
         outputPath: path.join(corpusPath, "nested-output"),
       }),
-    ).rejects.toThrow("deletion input and output paths must not overlap");
+    ).rejects.toThrow("deletion paths target and output must not overlap");
     const ledgerMode = (await fs.stat(ledgerPath)).mode & 0o777;
     const queueMode = (await fs.stat(queuePath)).mode & 0o777;
     expect(ledgerMode).toBe(0o600);
     expect(queueMode).toBe(0o600);
+    for (const artifactPath of [
+      applyOptions.manifestPath,
+      applyOptions.approvalPath,
+      applyOptions.reportPath,
+    ]) {
+      expect((await fs.stat(artifactPath)).mode & 0o777).toBe(0o600);
+    }
+
+    const ledgerBeforeAliasAttempt = await fs.readFile(ledgerPath, "utf8");
+    const ledgerAliasPath = path.join(artifactsPath, "ledger-alias.json");
+    await fs.symlink(ledgerPath, ledgerAliasPath);
+    await expect(
+      applyDeletionFiles({ ...applyOptions, approvalPath: ledgerAliasPath }),
+    ).rejects.toThrow("alias each other");
+    expect(await fs.readFile(ledgerPath, "utf8")).toBe(
+      ledgerBeforeAliasAttempt,
+    );
+    await fs.rm(ledgerAliasPath);
+    const ledgerHardLinkPath = path.join(artifactsPath, "ledger-hardlink.json");
+    await fs.link(ledgerPath, ledgerHardLinkPath);
+    await expect(
+      applyDeletionFiles({ ...applyOptions, reportPath: ledgerHardLinkPath }),
+    ).rejects.toThrow("share a file inode");
+    expect(await fs.readFile(ledgerPath, "utf8")).toBe(
+      ledgerBeforeAliasAttempt,
+    );
+
+    const survivorBytes = await fs.readFile(outputShardPath);
+    await fs.rm(outputShardPath);
+    await fs.link(shardPath, outputShardPath);
+    await expect(applyDeletionFiles(applyOptions)).rejects.toThrow(
+      "deletion output shares an inode with a source shard",
+    );
+    await fs.rm(outputShardPath);
+    await fs.writeFile(outputShardPath, survivorBytes, { mode: 0o600 });
 
     await fs.appendFile(ledgerPath, `${JSON.stringify(deletionRecords[0])}\n`);
     await expect(applyDeletionFiles(applyOptions)).rejects.toThrow(
       "deletion ledger contains duplicate marker history",
     );
-  });
+  }, 20_000);
 });
