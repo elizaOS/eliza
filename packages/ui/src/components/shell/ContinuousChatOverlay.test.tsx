@@ -534,7 +534,16 @@ describe("ContinuousChatOverlay", () => {
         "--eliza-continuous-chat-side-clearance",
       );
 
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(
+        <ContinuousChatOverlay
+          controller={makeController()}
+          agentName="Playwright Smoke"
+        />,
+      );
+
+      expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
+        "Ask",
+      );
 
       expect(
         document.documentElement.style.getPropertyValue(
@@ -543,6 +552,10 @@ describe("ContinuousChatOverlay", () => {
       ).toBe("232px");
 
       fireEvent.focus(screen.getByLabelText("message"));
+
+      expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
+        "Ask Playwright Smoke",
+      );
 
       expect(
         document.documentElement.style.getPropertyValue(
@@ -1018,6 +1031,11 @@ describe("ContinuousChatOverlay", () => {
 
   it("springs back to the input when a slow downward drift stays above the pill threshold", () => {
     const now = vi.spyOn(performance, "now");
+    // Changed-file coverage runs this test without the package setup that
+    // bridges DOM event timestamps to the mocked monotonic clock.
+    const eventTimeStamp = vi
+      .spyOn(Event.prototype, "timeStamp", "get")
+      .mockImplementation(() => performance.now() || Number.MIN_VALUE);
     try {
       render(<ContinuousChatOverlay controller={makeController()} />);
       const sheet = screen.getByTestId("chat-sheet");
@@ -1032,6 +1050,7 @@ describe("ContinuousChatOverlay", () => {
 
       expect(sheet.getAttribute("data-detent")).toBe("collapsed");
     } finally {
+      eventTimeStamp.mockRestore();
       now.mockRestore();
     }
   });

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   type AestheticMetricBudget,
   type AestheticVerdictDebt,
@@ -14,6 +14,7 @@ import {
   evaluateAestheticMetricBudget,
   evaluateMinimalismRatchet,
   evaluateStrictGate,
+  findRemoteBundleDeclaration,
   minimalismBaselineKey,
   OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   parseMinimalismBaseline,
@@ -324,6 +325,8 @@ interface ViewFinding {
   viewport: string;
   path: string;
   consoleErrors: string[];
+  /** User-visible loading persistence, overlap, or composer legibility failures. */
+  renderStateIssues: string[];
   blueColors: string[];
   hoverViolations: string[];
   /** Buttons the hover probe could not drive (hover timeout / detach) — a
@@ -362,6 +365,39 @@ interface ViewFinding {
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
+}
+
+interface ViewPaintState {
+  readableChars: number;
+  overlayPresent: boolean;
+  loadingViewPresent: boolean;
+}
+
+async function readViewPaint(
+  viewRoot: Locator,
+  overlay: Locator,
+  loadingView: Locator,
+): Promise<ViewPaintState> {
+  const readableChars = await viewRoot.evaluate(
+    (root) =>
+      (root as HTMLElement).innerText.trim().replace(/\s+/g, " ").length,
+  );
+  const overlayPresent = await overlay.evaluateAll((nodes) =>
+    nodes.some((node) => {
+      const element = node as HTMLElement;
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || "1") !== 0 &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    }),
+  );
+  const loadingViewPresent = await loadingView.isVisible();
+  return { readableChars, overlayPresent, loadingViewPresent };
 }
 
 /**
@@ -866,6 +902,233 @@ async function collectOverlayClearanceIssues(
   }, overlaySelector);
 }
 
+/** Flex-column siblings must flow rather than paint through each other. */
+async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const issues: string[] = [];
+    const label = (element: HTMLElement): string =>
+      (
+        element.getAttribute("data-agent-id") ||
+        element.textContent?.trim().replace(/\s+/g, " ") ||
+        element.getAttribute("data-spatial-kind") ||
+        element.tagName.toLowerCase()
+      ).slice(0, 48);
+    for (const box of Array.from(
+      document.querySelectorAll<HTMLElement>("*"),
+    ).slice(0, 4000)) {
+      if (
+        box.closest(
+          "[data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
+        )
+      ) {
+        continue;
+      }
+      const style = getComputedStyle(box);
+      if (style.display !== "flex" || style.flexDirection !== "column") {
+        continue;
+      }
+      const children = Array.from(box.children).filter(
+        (child): child is HTMLElement => {
+          if (!(child instanceof HTMLElement)) return false;
+          const childStyle = getComputedStyle(child);
+          const rect = child.getBoundingClientRect();
+          return (
+            childStyle.display !== "none" &&
+            childStyle.visibility !== "hidden" &&
+            childStyle.position !== "absolute" &&
+            childStyle.position !== "fixed" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        },
+      );
+      for (let index = 1; index < children.length; index += 1) {
+        const previous = children[index - 1];
+        const current = children[index];
+        const previousRect = previous.getBoundingClientRect();
+        const currentRect = current.getBoundingClientRect();
+        const horizontalIntersection =
+          Math.min(previousRect.right, currentRect.right) -
+          Math.max(previousRect.left, currentRect.left);
+        const verticalOverlap = previousRect.bottom - currentRect.top;
+        if (horizontalIntersection > 1 && verticalOverlap > 1) {
+          issues.push(
+            `spatial column overlaps "${label(previous)}" with "${label(current)}" by ${Math.round(verticalOverlap)}px`,
+          );
+          if (issues.length >= 5) return issues;
+        }
+      }
+    }
+
+    if (window.innerHeight > 520) return issues;
+
+    const textRects: Array<{
+      element: HTMLElement;
+      rect: DOMRect;
+      text: string;
+    }> = [];
+    const clipToVisibleAncestors = (
+      source: DOMRect,
+      element: HTMLElement,
+    ): DOMRect => {
+      let left = Math.max(0, source.left);
+      let top = Math.max(0, source.top);
+      let right = Math.min(window.innerWidth, source.right);
+      let bottom = Math.min(window.innerHeight, source.bottom);
+      for (
+        let ancestor: HTMLElement | null = element;
+        ancestor;
+        ancestor = ancestor.parentElement
+      ) {
+        const style = getComputedStyle(ancestor);
+        const rect = ancestor.getBoundingClientRect();
+        if (/hidden|clip|auto|scroll/.test(style.overflowX)) {
+          left = Math.max(left, rect.left);
+          right = Math.min(right, rect.right);
+        }
+        if (/hidden|clip|auto|scroll/.test(style.overflowY)) {
+          top = Math.max(top, rect.top);
+          bottom = Math.min(bottom, rect.bottom);
+        }
+      }
+      return new DOMRect(
+        left,
+        top,
+        Math.max(0, right - left),
+        Math.max(0, bottom - top),
+      );
+    };
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+    );
+    for (
+      let node = walker.nextNode();
+      node && textRects.length < 600;
+      node = walker.nextNode()
+    ) {
+      const text = node.textContent?.trim().replace(/\s+/g, " ") ?? "";
+      const element = node.parentElement;
+      if (!text || !element) continue;
+      const closedDetails = element.closest("details:not([open])");
+      if (
+        closedDetails &&
+        !closedDetails.querySelector(":scope > summary")?.contains(element)
+      ) {
+        continue;
+      }
+      if (
+        element.closest(
+          ".sr-only, [aria-hidden='true'], [hidden], [data-continuous-chat-overlay], [data-testid='continuous-chat-overlay'], [data-aesthetic-overlap-ignore='true']",
+        )
+      ) {
+        continue;
+      }
+      const style = getComputedStyle(element);
+      if (
+        style.display === "none" ||
+        style.visibility === "hidden" ||
+        Number(style.opacity || "1") <= 0.02
+      ) {
+        continue;
+      }
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const rawRect of range.getClientRects()) {
+        const rect = clipToVisibleAncestors(rawRect, element);
+        if (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          rect.right > 0 &&
+          rect.bottom > 0 &&
+          rect.left < window.innerWidth &&
+          rect.top < window.innerHeight
+        ) {
+          textRects.push({ element, rect, text: text.slice(0, 32) });
+        }
+      }
+      range.detach();
+    }
+    textRects.sort((left, right) => left.rect.top - right.rect.top);
+    for (let left = 0; left < textRects.length; left += 1) {
+      const first = textRects[left];
+      for (let right = left + 1; right < textRects.length; right += 1) {
+        const second = textRects[right];
+        if (second.rect.top >= first.rect.bottom - 4) break;
+        if (
+          first.element.contains(second.element) ||
+          second.element.contains(first.element)
+        ) {
+          continue;
+        }
+        const overlapWidth =
+          Math.min(first.rect.right, second.rect.right) -
+          Math.max(first.rect.left, second.rect.left);
+        const overlapHeight =
+          Math.min(first.rect.bottom, second.rect.bottom) -
+          Math.max(first.rect.top, second.rect.top);
+        if (
+          overlapWidth > 2 &&
+          overlapHeight > 4 &&
+          overlapWidth * overlapHeight >= 32
+        ) {
+          issues.push(
+            `text overlaps "${first.text}" with "${second.text}" (${Math.round(overlapWidth)}×${Math.round(overlapHeight)}px)`,
+          );
+          if (issues.length >= 5) return issues;
+        }
+      }
+    }
+    return issues;
+  });
+}
+
+/** A hosted spatial view must fill the shell content width. */
+async function collectSpatialSizingIssues(page: Page): Promise<string[]> {
+  return page.locator("[data-spatial-surface]").evaluateAll((surfaces) =>
+    surfaces.flatMap((surface) => {
+      if (!(surface instanceof HTMLElement)) return [];
+      const rect = surface.getBoundingClientRect();
+      const rootStyle = getComputedStyle(document.documentElement);
+      const sideClearance =
+        Number.parseFloat(
+          rootStyle.getPropertyValue("--eliza-continuous-chat-side-clearance"),
+        ) || 0;
+      const surfaceStyle = getComputedStyle(surface);
+      const duplicatePadding =
+        Number.parseFloat(surfaceStyle.paddingInlineEnd) || 0;
+      const usableWidth = rect.width - duplicatePadding;
+      const expectedWidth = window.innerWidth - sideClearance;
+      if (usableWidth >= expectedWidth * 0.8) return [];
+      return [
+        `spatial surface underfills shell content (${Math.round(usableWidth)}/${Math.round(expectedWidth)}px usable; ${Math.round(duplicatePadding)}px nested clearance)`,
+      ];
+    }),
+  );
+}
+
+/** A resting empty composer must not grow just to wrap its placeholder. */
+async function collectComposerLegibilityIssues(page: Page): Promise<string[]> {
+  return page
+    .locator('[data-testid="chat-composer-textarea"]')
+    .evaluateAll((nodes) =>
+      nodes.flatMap((node) => {
+        if (!(node instanceof HTMLTextAreaElement) || node.value) return [];
+        const placeholder = node.placeholder.trim();
+        const lineHeight = Number.parseFloat(getComputedStyle(node).lineHeight);
+        const height = node.getBoundingClientRect().height;
+        if (!placeholder || !Number.isFinite(lineHeight) || lineHeight <= 0) {
+          return [];
+        }
+        return height > lineHeight * 2.25
+          ? [
+              `composer placeholder wraps beyond two lines (${Math.round(height / lineHeight)} lines): "${placeholder.slice(0, 48)}"`,
+            ]
+          : [];
+      }),
+    );
+}
+
 function renderManualReviewStub(finding: ViewFinding): string {
   const lines = [
     `# ${finding.slug} (${finding.viewport})`,
@@ -876,6 +1139,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **bundle view id:** ${finding.bundleViewId ?? "n/a"}`,
     `- **verdict:** ${finding.verdict}`,
     `- **console errors:** ${finding.consoleErrors.length}`,
+    `- **render-state issues:** ${finding.renderStateIssues.length ? finding.renderStateIssues.join("; ") : "none"}`,
     `- **blue colors (banned):** ${finding.blueColors.length ? finding.blueColors.join(", ") : "none"}`,
     `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
@@ -915,10 +1179,6 @@ interface RemoteBundleAuditProof {
   response: Promise<import("@playwright/test").Response>;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 async function forceRemoteBundleAuditRoute(
   page: Page,
   view: AuditCase,
@@ -927,24 +1187,12 @@ async function forceRemoteBundleAuditRoute(
   const registryResponse = await page.request.get("/api/views");
   expect(registryResponse.ok(), "plugin view registry must load").toBe(true);
   const payload: unknown = await registryResponse.json();
-  if (!isRecord(payload) || !Array.isArray(payload.views)) {
-    throw new Error("plugin view registry returned an invalid views payload");
-  }
-  const registered = payload.views?.find(
-    (entry) =>
-      isRecord(entry) &&
-      entry.id === view.id &&
-      (entry.viewType ?? "gui") === view.viewType,
+  const registered = findRemoteBundleDeclaration(
+    payload,
+    view.id,
+    view.viewType,
   );
-  if (
-    !isRecord(registered) ||
-    typeof registered.bundleUrl !== "string" ||
-    typeof registered.componentExport !== "string"
-  ) {
-    throw new Error(
-      `${view.slug} is missing its production bundle declaration in /api/views`,
-    );
-  }
+  if (!registered) return null;
 
   const auditPath = `/__audit/plugin-view/${encodeURIComponent(registered.id)}`;
   const bundlePath = new URL(registered.bundleUrl, "http://audit.local")
@@ -959,10 +1207,13 @@ async function forceRemoteBundleAuditRoute(
       contentType: "application/json",
       body: JSON.stringify({
         ...payload,
-        views: payload.views.map((entry) =>
-          isRecord(entry) &&
+        views: (payload as { views: unknown[] }).views.map((entry) =>
+          typeof entry === "object" &&
+          entry !== null &&
+          !Array.isArray(entry) &&
+          "id" in entry &&
           entry.id === registered.id &&
-          (entry.viewType ?? "gui") === view.viewType
+          ("viewType" in entry ? entry.viewType : "gui") === view.viewType
             ? { ...entry, path: auditPath }
             : entry,
         ),
@@ -1047,6 +1298,40 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     ).toEqual([]);
   });
 
+  test("view readiness surfaces loading and measurement failures", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <main data-test-root>Loaded production view</main>
+      <div data-test-overlay>Composer</div>
+    `);
+    const overlay = page.locator("[data-test-overlay]");
+    const loadingView = page.locator('[data-view-status="loading"]');
+
+    await expect(
+      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
+    ).resolves.toEqual({
+      readableChars: "Loaded production view".length,
+      overlayPresent: true,
+      loadingViewPresent: false,
+    });
+
+    await page.locator("main").evaluate((root) => {
+      root.insertAdjacentHTML(
+        "beforeend",
+        '<div data-view-status="loading">Loading view</div>',
+      );
+    });
+    await expect(
+      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
+    ).resolves.toMatchObject({ loadingViewPresent: true });
+
+    await page.setContent("<main>first</main><main>second</main>");
+    await expect(
+      readViewPaint(page.locator("main"), overlay, loadingView),
+    ).rejects.toThrow(/strict mode violation/);
+  });
+
   for (const view of buildAuditCases()) {
     for (const vp of VIEWPORTS) {
       test(`${view.slug} ${vp.name}`, async ({ page }) => {
@@ -1104,9 +1389,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         // dev server slows late in the walk, so a fixed short wait yields false
         // blanks. Non-fatal: a view that never paints is recorded as a finding.
         const viewRoot = page.locator("main, #root").first();
-        await viewRoot
-          .waitFor({ state: "visible", timeout: 15_000 })
-          .catch(() => {});
+        await viewRoot.waitFor({ state: "visible", timeout: 15_000 });
         const overlayRequired =
           view.viewType !== "tui" &&
           !OVERLAY_NATIVE_OR_CANVAS_SLUGS.has(view.slug);
@@ -1117,48 +1400,33 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           "[data-testid='chat-pill']",
           "[data-testid='chat-composer-textarea']",
         ].join(", ");
-        const readPaint = async (): Promise<{
-          readableChars: number;
-          overlayPresent: boolean;
-        }> => {
-          const readableChars = await viewRoot
-            .evaluate(
-              (root) =>
-                (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
-                  .length,
-            )
-            .catch(() => 0);
-          const overlayPresent = await page
-            .locator(overlaySelector)
-            .evaluateAll((nodes) =>
-              nodes.some((node) => {
-                const el = node as HTMLElement;
-                const style = getComputedStyle(el);
-                const rect = el.getBoundingClientRect();
-                return (
-                  style.display !== "none" &&
-                  style.visibility !== "hidden" &&
-                  Number(style.opacity || "1") !== 0 &&
-                  rect.width > 0 &&
-                  rect.height > 0
-                );
-              }),
-            )
-            .catch(() => false);
-          return { readableChars, overlayPresent };
-        };
+        const readPaint = () =>
+          readViewPaint(
+            viewRoot,
+            page.locator(overlaySelector),
+            page.locator('[data-view-status="loading"]'),
+          );
         let paint = await readPaint();
         for (
           let attempt = 0;
           attempt < 12 &&
           (paint.readableChars < 10 ||
-            (overlayRequired && !paint.overlayPresent));
+            (overlayRequired && !paint.overlayPresent) ||
+            paint.loadingViewPresent);
           attempt += 1
         ) {
           await page.waitForTimeout(1000);
           paint = await readPaint();
         }
         const { readableChars, overlayPresent } = paint;
+        const renderStateIssues = [
+          ...(paint.loadingViewPresent
+            ? ["dynamic view remained in its loading state after 12 seconds"]
+            : []),
+          ...(await collectSpatialOverlapIssues(page)),
+          ...(await collectSpatialSizingIssues(page)),
+          ...(await collectComposerLegibilityIssues(page)),
+        ];
 
         // Document-level horizontal-overflow invariant (WS5). Measured, not
         // swallowed: a genuine measurement failure throws and fails the view
@@ -1245,6 +1513,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           bundleComponent: bundleResponse?.headers()["x-eliza-view-component"],
           bundleViewId: bundleResponse?.headers()["x-eliza-view-id"],
           consoleErrors,
+          renderStateIssues,
           blueColors,
           hoverViolations,
           hoverFailures,

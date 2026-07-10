@@ -1160,6 +1160,7 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
           componentExport={view.componentExport}
           viewId={view.id}
           viewType={view.viewType}
+          reserveChatClearance={false}
           surface={view.surface}
         />
       </div>

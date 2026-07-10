@@ -91,8 +91,13 @@ describe("ModelTesterView — unified GUI wrapper", () => {
   });
 
   it("renders inside a spatial surface and shows the probe rows after the status fetch", async () => {
-    render(React.createElement(ModelTesterView));
+    const { container } = render(React.createElement(ModelTesterView));
     await screen.findByText("6 ready");
+    const root = container.querySelector(
+      '[data-spatial-kind="box"]',
+    ) as HTMLElement;
+    expect(root.style.flexShrink).toBe("0");
+    expect(root.style.width).toBe("100%");
     // Each probe row renders its label.
     expect(screen.getByText("Text")).toBeTruthy();
     expect(screen.getByText("Activity")).toBeTruthy();
