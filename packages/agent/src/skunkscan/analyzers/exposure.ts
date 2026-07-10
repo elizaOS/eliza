@@ -4,8 +4,7 @@ import {
   WalletFundingSummary,
 } from "../types";
 import {
-  buildConfidenceInput,
-  confidenceLevelFromScore,
+  createConfidenceResponse,
 } from "../confidence/framework";
 
 export function analyzeWalletExposure(
@@ -37,18 +36,18 @@ export function analyzeWalletExposure(
   }
 
   const hasKnownScamExposure = matches.some(
-    (m) => m.category === "scam",
+    (match) => match.category === "scam",
   );
 
   const hasKnownRugPullExposure = matches.some(
-    (m) => m.category === "rug_pull",
+    (match) => match.category === "rug_pull",
   );
 
   const hasKnownSuspiciousExposure = matches.some(
-    (m) =>
-      m.category === "suspicious" ||
-      m.category === "sanctioned" ||
-      m.category === "adverse_media",
+    (match) =>
+      match.category === "suspicious" ||
+      match.category === "sanctioned" ||
+      match.category === "adverse_media",
   );
 
   let exposureScore = 0;
@@ -74,7 +73,7 @@ export function analyzeWalletExposure(
           ? "low"
           : "none";
 
-  const evidenceConfidenceInput = buildConfidenceInput([
+  const confidenceAnalysis = createConfidenceResponse([
     {
       condition: Boolean(walletAddress),
       score: 30,
@@ -104,7 +103,7 @@ export function analyzeWalletExposure(
 
   const confidence =
     matches.length > 0
-      ? confidenceLevelFromScore(evidenceConfidenceInput.score)
+      ? confidenceAnalysis.level
       : "medium";
 
   const notes =
@@ -119,9 +118,8 @@ export function analyzeWalletExposure(
   return {
     exposureScore,
     exposureLevel,
-    evidenceConfidence: confidenceLevelFromScore(
-      evidenceConfidenceInput.score,
-    ),
+    evidenceConfidence: confidenceAnalysis.level,
+    confidenceAnalysis,
     confidence,
     hasKnownScamExposure,
     hasKnownRugPullExposure,
