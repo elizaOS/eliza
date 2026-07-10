@@ -5,7 +5,8 @@
  * gate with the canonical 402 body carrying the stricter threshold, the
  * server-side identity copy (name / character / config / BYO env minus
  * platform-reserved keys) onto a dedicated-always target with a provisioning
- * job, and reattach idempotency (a retry resumes the SAME in-flight target).
+ * job, and reattach idempotency (a retry resumes the SAME in-flight target;
+ * a marker forged onto a non-dedicated row is never reattached to).
  *
  * Real route module + real sandbox/billing/provisioning services + real
  * repositories against in-process PGlite; the only mocked seam is
@@ -188,10 +189,7 @@ beforeAll(async () => {
       await import("../v1/eliza/agents/[agentId]/upgrade-tier/route")
     ).default;
     app = new Hono<AppEnv>();
-    app.route(
-      "/api/v1/eliza/agents/:agentId/upgrade-tier",
-      upgradeTierRoute,
-    );
+    app.route("/api/v1/eliza/agents/:agentId/upgrade-tier", upgradeTierRoute);
   } catch (error) {
     pgliteReady = false;
     console.error(
@@ -428,5 +426,67 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(body.data.dedicatedAgentId).toBe(target.id);
     expect(body.data.status).toBe("running");
     expect(body.data.jobId).toBeUndefined();
+  });
+
+  test("a forged marker on a shared-tier agent is NOT a live target — fresh mint, never reattach", async () => {
+    expect(pgliteReady).toBe(true);
+
+    const SHARED_C = "cccccccc-5555-4555-8555-555555555555";
+    const FORGED_SHARED = "cccccccc-6666-4666-8666-666666666666";
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    await dbWrite.insert(agentSandboxes).values([
+      {
+        id: SHARED_C,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Second Shared",
+        execution_tier: "shared",
+        status: "running",
+        database_status: "none",
+      },
+      {
+        id: FORGED_SHARED,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: "Marker Forgery",
+        execution_tier: "shared",
+        status: "running",
+        database_status: "none",
+      },
+    ]);
+    // Plant the reattach marker on the SHARED row via a config update — the
+    // same write shape a config PATCH produces. Tier, not marker, must decide.
+    const { agentSandboxesRepository } = await import(
+      "@/db/repositories/agent-sandboxes"
+    );
+    await agentSandboxesRepository.update(FORGED_SHARED, {
+      agent_config: { __agentUpgradedFrom: SHARED_C },
+    });
+
+    const res = await upgrade(SHARED_C);
+    // Without the dedicated-always tier check this would 200-reattach onto the
+    // forged running shared row; the fresh-mint 202 proves it was ignored.
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as {
+      created: boolean;
+      data: { dedicatedAgentId: string; executionTier: string };
+    };
+    expect(body.created).toBe(true);
+    expect(body.data.dedicatedAgentId).not.toBe(FORGED_SHARED);
+    expect(body.data.executionTier).toBe("dedicated-always");
+
+    // The forged row is untouched: still shared-tier and owns no provision job.
+    const forged = await agentSandboxesRepository.findByIdAndOrg(
+      FORGED_SHARED,
+      ORG_A,
+    );
+    expect(forged?.execution_tier).toBe("shared");
+    const { jobs } = await import("@/db/schemas/jobs");
+    const forgedJobs = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.agent_id, FORGED_SHARED));
+    expect(forgedJobs.length).toBe(0);
   });
 });

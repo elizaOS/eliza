@@ -114,6 +114,10 @@ async function findLiveUpgradeTarget(
     agents.find(
       (agent) =>
         agent.id !== sharedAgentId &&
+        // The marker alone is not proof of a migration target: agent_config is
+        // PATCHable, so a marker planted on a non-dedicated row must never be
+        // reattached to — only a dedicated-always row can own the upgrade.
+        agent.execution_tier === "dedicated-always" &&
         LIVE_TARGET_STATUSES.has(agent.status) &&
         readUpgradedFromAgentId(asConfigRecord(agent.agent_config)) ===
           sharedAgentId,

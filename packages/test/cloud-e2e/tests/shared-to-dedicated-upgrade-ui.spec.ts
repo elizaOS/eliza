@@ -16,6 +16,11 @@
  *     the identity copied and the reattach marker recorded server-side.
  */
 import { AGENT_PRICING } from "@elizaos/cloud-shared/lib/constants/agent-pricing";
+// Playwright spec marker: `test`/`expect` arrive via the shared fixtures
+// below, but the coverage gate classifies a changed *.spec.ts by grepping for
+// a DIRECT @playwright/test import — without one it would run this file under
+// `bun test`. Type-only and empty, so it costs nothing at runtime.
+import type {} from "@playwright/test";
 import {
   createCloudAgent,
   pollSandboxStatus,

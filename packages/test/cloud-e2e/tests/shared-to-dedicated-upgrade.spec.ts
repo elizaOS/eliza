@@ -32,6 +32,11 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
+// Playwright spec marker: `test`/`expect` arrive via the shared fixtures
+// below, but the coverage gate classifies a changed *.spec.ts by grepping for
+// a DIRECT @playwright/test import — without one it would run this file under
+// `bun test`. Type-only and empty, so it costs nothing at runtime.
+import type {} from "@playwright/test";
 // Relative source import (Playwright transpiles the two-file TS graph): the
 // `./cloud/*` subpath of @elizaos/ui resolves to dist, which is built from the
 // primary checkout and may not carry this module yet. `ElizaClient` above still
