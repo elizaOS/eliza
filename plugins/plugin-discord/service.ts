@@ -27,6 +27,7 @@ import {
 	type MessageConnectorTarget,
 	type MessageConnectorTypingParams,
 	type MessageConnectorUserContext,
+	parseBooleanFromText,
 	type Room,
 	Service,
 	setConnectorAdminWhitelist,
@@ -703,6 +704,13 @@ export class DiscordService extends Service implements IDiscordService {
 		let registrationError: Error | null = null;
 		let registrationFailed = false;
 
+		// Opt into user-installable / group-DM command availability. Off by
+		// default: Discord rejects user-install command registration unless the
+		// app is configured as user-installable in the developer portal.
+		const userInstall = parseBooleanFromText(
+			String(this.runtime.getSetting("DISCORD_USER_INSTALL") ?? ""),
+		);
+
 		this.commandRegistrationQueue = this.commandRegistrationQueue
 			.then(async () => {
 				const commandMap = new Map<string, DiscordSlashCommand>();
@@ -735,10 +743,10 @@ export class DiscordService extends Service implements IDiscordService {
 				);
 
 				const transformedGlobalCommands = globalCommands.map((cmd) =>
-					transformCommandToDiscordApi(cmd),
+					transformCommandToDiscordApi(cmd, { userInstall }),
 				);
 				const transformedGuildOnlyCommands = guildOnlyCommands.map((cmd) =>
-					transformCommandToDiscordApi(cmd),
+					transformCommandToDiscordApi(cmd, { userInstall }),
 				);
 
 				const clientApp = client.application;
@@ -808,7 +816,9 @@ export class DiscordService extends Service implements IDiscordService {
 				if (guilds && targetedGuildCommands.length > 0) {
 					await Promise.all(
 						targetedGuildCommands.flatMap((cmd) => {
-							const transformedCmd = transformCommandToDiscordApi(cmd);
+							const transformedCmd = transformCommandToDiscordApi(cmd, {
+								userInstall,
+							});
 							return (cmd.guildIds ?? []).map(async (guildId) => {
 								const guild = guilds.get(guildId);
 								if (!guild) return;

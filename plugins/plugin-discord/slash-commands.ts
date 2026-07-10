@@ -4,7 +4,10 @@
  * matching command's `execute` handler after role-access checks.
  */
 import {
+	ChannelType,
+	type Content,
 	createUniqueUuid,
+	type HandlerCallback,
 	hasRoleAccess,
 	type IAgentRuntime,
 	type Memory,
@@ -16,7 +19,9 @@ import type {
 } from "discord.js";
 import { ApplicationCommandOptionType } from "discord.js";
 import { getPreset, listPresets } from "./actions/setup-credentials";
+import { chunkDiscordText } from "./messaging";
 import type { DiscordSlashCommand } from "./types";
+import { getMessageService } from "./utils";
 import type { VoiceManager } from "./voice";
 
 export type SlashCommandRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
@@ -660,8 +665,113 @@ const transcribeCommand: SlashCommand = {
 	},
 };
 
+/**
+ * `/ask <message>` — route free text to the agent and return its reply as the
+ * interaction response. This is the ONLY way to talk to the agent where the
+ * connector cannot read the message stream: group DMs and DMs-with-others,
+ * which a user-installed app receives as interactions but never as messages.
+ * It also works in servers and bot DMs, giving a command handle to the agent
+ * everywhere. Not guild-only, so it inherits group-DM availability when
+ * `DISCORD_USER_INSTALL` is on.
+ */
+const askCommand: SlashCommand = {
+	name: "ask",
+	description: "Ask the agent a question and get a reply",
+	options: [
+		{
+			name: "message",
+			description: "What you want to ask or say",
+			type: "string",
+			required: true,
+		},
+	],
+	async execute(interaction, runtime) {
+		const text = interaction.options.getString("message", true).trim();
+		if (!text) {
+			await interaction.reply({
+				content: "Ask me something — the message can't be empty.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		const messageService = getMessageService(runtime);
+		if (!messageService) {
+			await interaction.reply({
+				content: "The agent runtime isn't ready to answer right now.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		// The agent turn takes seconds; acknowledge within Discord's 3s window
+		// and edit the deferred reply once the answer is composed.
+		await interaction.deferReply();
+
+		const channelId = interaction.channelId ?? interaction.user.id;
+		const entityId = createUniqueUuid(runtime, interaction.user.id);
+		const roomId = createUniqueUuid(runtime, channelId);
+		const channelType = interaction.inGuild()
+			? ChannelType.GROUP
+			: ChannelType.DM;
+
+		await runtime.ensureConnection({
+			entityId,
+			roomId,
+			userName: interaction.user.username,
+			name: interaction.user.displayName ?? interaction.user.username,
+			source: "discord",
+			channelId,
+			type: channelType,
+			worldId: createUniqueUuid(runtime, interaction.guildId ?? channelId),
+			worldName: interaction.guild?.name,
+			userId: interaction.user.id as UUID,
+		});
+
+		const message: Memory = {
+			id: createUniqueUuid(runtime, `${interaction.id}-ask`),
+			entityId,
+			agentId: runtime.agentId,
+			roomId,
+			content: {
+				text,
+				source: "discord",
+				channelType,
+			},
+			createdAt: Date.now(),
+		};
+
+		const replies: string[] = [];
+		const callback: HandlerCallback = async (response: Content) => {
+			if (typeof response.text === "string" && response.text.trim()) {
+				replies.push(response.text);
+			}
+			return [];
+		};
+
+		await messageService.handleMessage(runtime, message, callback);
+
+		const answer = replies.join("\n\n").trim();
+		if (!answer) {
+			await interaction.editReply(
+				"I processed that but didn't have anything to say back.",
+			);
+			return;
+		}
+
+		// Discord caps a message at 2000 chars; the first chunk edits the
+		// deferred reply, the rest follow up in the same thread.
+		const chunks = chunkDiscordText(answer);
+		await interaction.editReply(chunks[0] ?? answer.slice(0, 2000));
+		for (const chunk of chunks.slice(1)) {
+			await interaction.followUp(chunk);
+		}
+	},
+};
+
 function registerBuiltins(): void {
 	for (const command of [
+		askCommand,
 		helpCommand,
 		statusCommand,
 		searchCommand,

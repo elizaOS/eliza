@@ -44,6 +44,7 @@ function makeService() {
 	};
 	const runtime = {
 		agentId: AGENT_ID,
+		getSetting: vi.fn(() => undefined),
 		logger: {
 			debug: vi.fn(),
 			error: vi.fn(),
@@ -128,6 +129,7 @@ describe("Discord slash-command registration scopes", () => {
 		};
 		const runtime = {
 			agentId: AGENT_ID,
+			getSetting: vi.fn(() => undefined),
 			reportError,
 			logger: {
 				debug: vi.fn(),
@@ -186,6 +188,7 @@ describe("handleGuildCreate registration scopes", () => {
 		};
 		const runtime = {
 			agentId: AGENT_ID,
+			getSetting: vi.fn(() => undefined),
 			reportError,
 			emitEvent: vi.fn(async () => undefined),
 			logger: {
