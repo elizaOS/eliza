@@ -1216,6 +1216,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
+    const priorityRow = screen.getByTestId("notification-row");
     const count = screen.getByTestId("notifications-count");
     expect(count.textContent).toBe("3 Notifications");
     expect(count.closest("button")).toBeNull();
@@ -1249,9 +1250,161 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     // The count starts its crossfade on the same frame as the notification
     // exit; the expanded DOM remains only for the 260ms fade.
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(screen.getAllByTestId("notification-row")[0]).toBe(priorityRow);
+    expect(
+      priorityRow.closest<HTMLElement>("[data-notification-group]")?.style
+        .opacity,
+    ).not.toBe("0");
     expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
     finishShadeCollapse();
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
+    expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+  });
+
+  it("keeps the priority row mounted while an outside tap fades quiet groups", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "mail",
+        title: "Urgent mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "files",
+        title: "Files updated",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    const priorityRow = screen.getByTestId("notification-row");
+    expandShade();
+    const quietRow = screen.getByText("Files updated").closest("li");
+    const quietGroup = quietRow
+      ?.closest("[data-notification-group]")
+      ?.querySelector<HTMLElement>("[data-notification-group-content]");
+
+    fireEvent.click(document.body);
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByText("Urgent mail").closest("li")).toBe(
+      priorityRow.closest("li"),
+    );
+    expect(quietGroup?.style.opacity).toBe("0");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(screen.queryByText("Files updated")).toBeNull();
+  });
+
+  it("tracks an upward drag without fading or remounting the priority row", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    const priorityRow = screen.getByTestId("notification-row");
+    expandShade();
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 81,
+      clientX: 12,
+      clientY: 160,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 81,
+      clientX: 12,
+      clientY: 20,
+    });
+
+    expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    for (const peek of screen.getAllByTestId("notification-stack-peek")) {
+      expect(peek.style.opacity).toBe("0");
+    }
+
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 81,
+      clientX: 12,
+      clientY: 20,
+    });
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+  });
+
+  it("fades fanned controls and extra rows before folding their stable top card", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "calendar",
+        title: "Calendar alert",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "calendar",
+        title: "Calendar summary",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const priorityRow = screen.getByTestId("notification-row");
+    fireEvent.click(priorityRow);
+    const controls = screen.getByTestId("notification-stack-controls");
+    const quietRow = screen.getByText("Calendar summary").closest("li");
+
+    fireEvent.click(document.body);
+
+    expect(screen.getByText("Calendar alert").closest("li")).toBe(
+      priorityRow.closest("li"),
+    );
+    expect(controls.style.opacity).toBe("0");
+    expect(controls.style.height).toBe("0px");
+    expect(quietRow?.style.opacity).toBe("0");
+    expect(quietRow?.style.gridTemplateRows).toBe("0fr");
+    finishShadeCollapse();
+    expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
+    expect(screen.queryByText("Calendar summary")).toBeNull();
+  });
+
+  it("crossfades a fanned priority group back into its resting peek layers", () => {
+    __ingestNotificationForTests(
+      makeNotification({ priority: "high", title: "Old priority" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ priority: "high", title: "Middle priority" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ priority: "urgent", title: "Top priority" }),
+    );
+    render(<NotificationsHomeCenter />);
+    const priorityRow = screen.getByTestId("notification-row");
+    fireEvent.click(priorityRow);
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
+    expect(screen.queryByTestId("notification-stack-peek")).toBeNull();
+
+    fireEvent.click(document.body);
+
+    expect(screen.getAllByTestId("notification-row")[0]).toBe(priorityRow);
+    const peeks = screen.getAllByTestId("notification-stack-peek");
+    expect(peeks).toHaveLength(2);
+    expect(peeks[0]?.style.opacity).toBe("0.92");
+    expect(peeks[1]?.style.opacity).toBe("0.78");
+    for (const row of screen.getAllByTestId("notification-row").slice(1)) {
+      const container = row.closest("[data-notif-row]") as HTMLElement;
+      expect(container.style.opacity).toBe("0");
+      expect(container.style.gridTemplateRows).toBe("0fr");
+    }
+    finishShadeCollapse();
+    expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
   });
 
   it("gestures expand to all priorities and compress back", () => {

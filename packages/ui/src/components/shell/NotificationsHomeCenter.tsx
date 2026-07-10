@@ -253,7 +253,19 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-pull-reveal {
   transform-origin: top center;
 }
-.eliza-notif-row.eliza-notif-pull-reveal {
+.eliza-notif-shade-transition {
+  transform-origin: top center;
+  transition:
+    grid-template-rows ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    height ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    opacity ${SHADE_CLOSE_FADE_MS}ms ease-out,
+    transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1);
+}
+.eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition {
+  transition: none;
+}
+.eliza-notif-scroll .eliza-notif-row.eliza-notif-pull-reveal,
+.eliza-notif-scroll .eliza-notif-row.eliza-notif-shade-transition {
   animation: none;
 }
 .eliza-notif-scroll {
@@ -301,6 +313,7 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 }
 @media (prefers-reduced-motion: reduce) {
   .eliza-notif-row, .eliza-notif-row-inner { animation: none; }
+  .eliza-notif-shade-transition { transition: none !important; }
 }
 `;
 
@@ -459,8 +472,8 @@ function NotificationSourceIcon({
  * Memoized (binding pattern, spec §C.4): the relative timestamp lives in a
  * `<RelativeTime>` leaf that owns the minute tick, so the row never re-renders
  * to keep "5m" honest. `arePropsEqual` compares the identity fields that drive
- * its markup and activation: `id`, `title`, `body`, `deepLink`, transient pull
- * reveal progress, plus the callbacks (stable via the parent's `useCallback`).
+ * its markup and activation: `id`, `title`, `body`, `deepLink`, transient shade
+ * visibility, plus the callbacks (stable via the parent's `useCallback`).
  * `createdAt` is
  * intentionally NOT compared: it feeds only the leaf.
  */
@@ -479,6 +492,7 @@ export function rowPropsEqual(
     prev.stackKey === next.stackKey &&
     prev.stackCount === next.stackCount &&
     prev.pullRevealProgress === next.pullRevealProgress &&
+    prev.shadeVisibility === next.shadeVisibility &&
     prev.onExpandStack === next.onExpandStack &&
     prev.onOpen === next.onOpen &&
     prev.onDismiss === next.onDismiss
@@ -493,6 +507,8 @@ export interface NotificationRowProps {
   stackCount?: number;
   /** Live pull reveal for a row added to an already-visible fanned group. */
   pullRevealProgress?: number;
+  /** Close visibility for an extra fanned row folding back into its stack. */
+  shadeVisibility?: number;
   onExpandStack?: (key: string) => void;
   onOpen: (n: AgentNotification) => void;
   onDismiss: (id: string) => void;
@@ -525,6 +541,7 @@ const NotificationRow = memo(function NotificationRow({
   stackKey,
   stackCount,
   pullRevealProgress,
+  shadeVisibility,
   onExpandStack,
   onOpen,
   onDismiss,
@@ -622,15 +639,27 @@ const NotificationRow = memo(function NotificationRow({
         "eliza-notif-row relative",
         pullRevealProgress !== undefined &&
           "eliza-notif-pull-reveal pointer-events-none",
+        shadeVisibility !== undefined && "eliza-notif-shade-transition grid",
       )}
       data-notification-pull-reveal={
         pullRevealProgress !== undefined ? "" : undefined
       }
-      inert={pullRevealProgress !== undefined ? true : undefined}
+      aria-hidden={shadeVisibility === 0 ? true : undefined}
+      inert={
+        pullRevealProgress !== undefined || shadeVisibility === 0
+          ? true
+          : undefined
+      }
       style={
         pullRevealProgress !== undefined
           ? notificationPullRevealStyle(pullRevealProgress)
-          : undefined
+          : shadeVisibility !== undefined
+            ? {
+                gridTemplateRows: `${shadeVisibility}fr`,
+                opacity: shadeVisibility,
+                transform: `translate3d(0, ${(1 - shadeVisibility) * -8}px, 0)`,
+              }
+            : undefined
       }
       data-notif-row
     >
@@ -657,7 +686,7 @@ const NotificationRow = memo(function NotificationRow({
         className={cn(
           // The liquid-glass card surface (fill/sheen/edge live in the shared
           // .eliza-notif-glass recipe; hover is its neutral lighten).
-          "eliza-notif-row-inner eliza-notif-glass group relative flex flex-col overflow-hidden rounded-2xl",
+          "eliza-notif-row-inner eliza-notif-glass group relative flex min-h-0 flex-col overflow-hidden rounded-2xl",
         )}
       >
         <button
@@ -842,6 +871,11 @@ export function NotificationsHomeCenter({
   const requestShadeCollapse = useCallback(() => {
     if (!shadeExpanded || shadeClosing) return;
     cancelClearConfirmation();
+    const list = scrollRef.current;
+    if (list && list.scrollTop > 0) {
+      list.scrollTo?.({ top: 0, behavior: "smooth" });
+    }
+    wheelCommitLockUntil.current = Date.now() + WHEEL_COMMIT_LOCK_MS;
     setShadeClosing(true);
     shadeCloseTimer.current = window.setTimeout(() => {
       shadeCloseTimer.current = null;
@@ -928,7 +962,7 @@ export function NotificationsHomeCenter({
   const handleWheelDelta = useCallback(
     (deltaY: number, scrollTop: number): boolean => {
       const empty = notifications.length === 0;
-      if (empty && Date.now() < wheelCommitLockUntil.current) return true;
+      if (Date.now() < wheelCommitLockUntil.current) return true;
       // Away from the top the scroller owns every wheel event.
       if (scrollTop > 0) {
         wheelPull.current.px = 0;
@@ -1485,27 +1519,27 @@ export function NotificationsHomeCenter({
       ? previewGroups
       : restedGroups;
   shadeGestureRef.current = { canExpand, canCollapse: shadeExpanded };
-  const closingPullProgress = shadeExpanded
-    ? notificationPullRevealProgress(-pullPx, 0)
+  const shadeCloseProgress = shadeExpanded
+    ? shadeClosing
+      ? 1
+      : notificationPullRevealProgress(-pullPx, 0)
     : 0;
-  const notificationCountVisibility = shadeClosing
-    ? 1
-    : shadeExpanded
-      ? closingPullProgress
-      : 1 - notificationPullRevealProgress(pullPx, 0);
-  const expandedContentVisibility = shadeClosing ? 0 : 1 - closingPullProgress;
-  const expandedContentStyle: CSSProperties = {
-    opacity: expandedContentVisibility,
-    translate: `0 ${(1 - expandedContentVisibility) * -6}px`,
+  const notificationCountVisibility = shadeExpanded
+    ? shadeCloseProgress
+    : 1 - notificationPullRevealProgress(pullPx, 0);
+  const disposableContentVisibility = 1 - shadeCloseProgress;
+  const disposableContentStyle: CSSProperties = {
+    opacity: disposableContentVisibility,
+    transform: `translate3d(0, ${(1 - disposableContentVisibility) * -8}px, 0)`,
     transition: pullPx
       ? "none"
-      : `opacity ${SHADE_CLOSE_FADE_MS}ms ease-out, translate ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1)`,
+      : `opacity ${SHADE_CLOSE_FADE_MS}ms ease-out, transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1)`,
   };
   const emptyStateVisibility = shadeExpanded
-    ? 1 - notificationPullRevealProgress(-pullPx, 0)
+    ? disposableContentVisibility
     : notificationPullRevealProgress(pullPx, 0);
   const collapseControlVisibility = shadeExpanded
-    ? expandedContentVisibility
+    ? disposableContentVisibility
     : 0;
   // The scrollport follows only a populated opening pull. Empty feedback and
   // closing content animate independently so neither can rebound on release.
@@ -1578,10 +1612,11 @@ export function NotificationsHomeCenter({
       inert={notificationCountVisibility === 0 ? true : undefined}
       style={{
         height: `${notificationCountVisibility * 32}px`,
+        marginBottom: `${(notificationCountVisibility - 1) * 8}px`,
         opacity: notificationCountVisibility,
         transition: pullPx ? "none" : undefined,
       }}
-      className="pointer-events-none flex shrink-0 items-center justify-center gap-1 overflow-hidden px-3 text-2xs font-medium text-white/50 transition-[height,opacity] duration-200 ease-out motion-reduce:transition-none"
+      className="pointer-events-none flex shrink-0 items-center justify-center gap-1 overflow-hidden px-3 text-2xs font-medium text-white/50 transition-[height,margin,opacity] duration-200 ease-out motion-reduce:transition-none"
     >
       {notifications.length === 1
         ? "1 Notification"
@@ -1629,6 +1664,7 @@ export function NotificationsHomeCenter({
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
         data-shade-preview={previewingExpansion ? "expanding" : undefined}
+        data-shade-dragging={pullPx !== 0 ? "" : undefined}
         style={{
           // Only the opening pull rubber-bands the scrollport. Closing fades
           // its contents in place, so releasing an upward gesture cannot make
@@ -1655,7 +1691,7 @@ export function NotificationsHomeCenter({
                 ? notificationPullRevealStyle(
                     notificationPullRevealProgress(pullPx, 0),
                   )
-                : expandedContentStyle
+                : disposableContentStyle
             }
             className={cn(
               "flex justify-end px-1",
@@ -1709,36 +1745,41 @@ export function NotificationsHomeCenter({
             ? notificationPullRevealProgress(pullPx, groupIndex)
             : 1;
           const stackExpanded = expandedStacks.has(group.key);
-          const stacked = !stackExpanded && group.rows.length > 1;
-          const peeks = stacked
-            ? group.rows.slice(1, MAX_VISIBLE_STACK_LAYERS)
-            : [];
+          // Every presentation shares one shell, so the top NotificationRow
+          // stays under the same parent/key while a fanned stack closes.
+          const fanned = stackExpanded && group.rows.length > 1;
+          const stacked = !fanned && group.rows.length > 1;
+          const restedGroupRows = restedGroupsByKey.get(group.key)?.rows ?? [];
+          // Resting priority peeks remain mounted invisibly behind a fan so
+          // full cards can fold back into them without a last-frame pop.
+          const peeks = (fanned ? restedGroupRows : group.rows).slice(
+            1,
+            MAX_VISIBLE_STACK_LAYERS,
+          );
           const expandedStackTailPx =
             peeks.length * STACK_PEEK_OFFSET_PX +
             (peeks.length > 0 ? STACK_BOTTOM_CLEARANCE_PX : 0);
           const restedPeekCount = Math.min(
-            Math.max(
-              (restedGroupsByKey.get(group.key)?.rows.length ?? 1) - 1,
-              0,
-            ),
+            Math.max((restedGroupRows.length || 1) - 1, 0),
             MAX_VISIBLE_STACK_LAYERS - 1,
           );
           const restedStackTailPx =
             restedPeekCount * STACK_PEEK_OFFSET_PX +
             (restedPeekCount > 0 ? STACK_BOTTOM_CLEARANCE_PX : 0);
-          const stackTailRevealProgress =
-            previewingExpansion && groupWasRested
-              ? notificationPullRevealProgress(pullPx, groupIndex)
-              : 1;
+          const stackTailRevealProgress = shadeExpanded
+            ? disposableContentVisibility
+            : previewingExpansion
+              ? groupWasRested
+                ? notificationPullRevealProgress(pullPx, groupIndex)
+                : 1
+              : 0;
           const stackTailPx =
             restedStackTailPx +
             (expandedStackTailPx - restedStackTailPx) * stackTailRevealProgress;
-          const rows = stacked
-            ? [group.rows[0] as AgentNotification]
-            : group.rows;
-          const fanned = stackExpanded && group.rows.length > 1;
-          const collapsedGroupHasMore =
-            !stackExpanded && allGroupRows.length > 1;
+          const rows = fanned
+            ? group.rows
+            : [group.rows[0] as AgentNotification];
+          const collapsedGroupHasMore = !fanned && allGroupRows.length > 1;
           const groupElement = (
             <motion.li
               key={group.key}
@@ -1748,6 +1789,8 @@ export function NotificationsHomeCenter({
                   : false
               }
               transition={{ layout: STACK_LAYOUT_TRANSITION }}
+              data-notification-group=""
+              data-rested-notification-group={groupWasRested ? "" : undefined}
               data-notification-pull-reveal={pullRevealed ? "" : undefined}
               inert={pullRevealed ? true : undefined}
               className={cn(
@@ -1758,20 +1801,38 @@ export function NotificationsHomeCenter({
               style={
                 pullRevealed
                   ? notificationPullRevealStyle(revealProgress)
-                  : expandedContentStyle
+                  : undefined
               }
             >
-              {fanned ? (
-                <motion.div
-                  key="fanned"
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={STACK_LAYOUT_TRANSITION}
-                  className="flex flex-col gap-1.5"
-                >
+              <div
+                data-notification-group-content=""
+                data-testid={stacked ? "notification-stack" : undefined}
+                className="eliza-notif-shade-transition relative flex flex-col"
+                style={{
+                  paddingBottom: fanned
+                    ? disposableContentVisibility * 8 +
+                      shadeCloseProgress * restedStackTailPx
+                    : stacked
+                      ? stackTailPx
+                      : 0,
+                  opacity: groupWasRested ? 1 : disposableContentVisibility,
+                  transform: groupWasRested
+                    ? undefined
+                    : `translate3d(0, ${(1 - disposableContentVisibility) * -8}px, 0)`,
+                  transition: pullPx
+                    ? "none"
+                    : `padding-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1), opacity ${SHADE_CLOSE_FADE_MS}ms ease-out, transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1)`,
+                }}
+              >
+                {fanned ? (
                   <div
                     data-testid="notification-stack-controls"
-                    className="flex h-9 items-center justify-between gap-3 px-2"
+                    className="eliza-notif-shade-transition flex items-center justify-between gap-3 overflow-hidden px-2"
+                    style={{
+                      height: disposableContentVisibility * 36,
+                      opacity: disposableContentVisibility,
+                      transform: `translate3d(0, ${(1 - disposableContentVisibility) * -6}px, 0)`,
+                    }}
                   >
                     <span className="truncate text-xs font-semibold text-white/55">
                       {group.label}
@@ -1817,93 +1878,33 @@ export function NotificationsHomeCenter({
                       </button>
                     </span>
                   </div>
-                  <ul className="flex flex-col gap-1.5">
-                    {rows.map((notification) => (
-                      <NotificationRow
-                        key={notification.id}
-                        notification={notification}
-                        onOpen={openNotification}
-                        onDismiss={dismissNotification}
-                      />
-                    ))}
-                  </ul>
-                </motion.div>
-              ) : stacked ? (
-                // The Z-stack: at most three crisp card layers. Tapping any
-                // visible layer fans the producer while vertical movement
-                // remains owned by the shade scroll/pull gesture.
-                <motion.div
-                  key="stacked"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={STACK_LAYOUT_TRANSITION}
-                  data-testid="notification-stack"
-                  className="relative"
-                  style={{ paddingBottom: stackTailPx }}
-                >
-                  <ul className="relative z-[2] flex flex-col">
-                    <NotificationRow
-                      key={(rows[0] as AgentNotification).id}
-                      notification={rows[0] as AgentNotification}
-                      stackKey={group.key}
-                      stackCount={allGroupRows.length}
-                      onExpandStack={expandStack}
-                      onOpen={openNotification}
-                      onDismiss={dismissNotification}
-                    />
-                  </ul>
-                  {peeks.map((peek, i) => {
-                    const peekPullRevealed =
-                      previewingExpansion &&
-                      groupWasRested &&
-                      !restedNotificationIds.has(peek.id);
-                    const peekRevealProgress = peekPullRevealed
-                      ? notificationPullRevealProgress(pullPx, groupIndex + i)
-                      : 1;
-                    return (
-                      <button
-                        key={peek.id}
-                        type="button"
-                        data-testid="notification-stack-peek"
-                        data-notif-control=""
-                        data-notification-pull-reveal={
-                          peekPullRevealed ? "" : undefined
-                        }
-                        tabIndex={peekPullRevealed ? -1 : undefined}
-                        aria-label={`Show all ${group.rows.length} ${group.label} notifications`}
-                        onClick={() => expandStack(group.key)}
-                        className={cn(
-                          "eliza-notif-glass absolute inset-x-0 top-0 rounded-2xl",
-                          peekPullRevealed &&
-                            "eliza-notif-pull-reveal pointer-events-none",
-                        )}
-                        style={{
-                          bottom: stackTailPx,
-                          zIndex: 1 - i,
-                          opacity: (0.92 - i * 0.14) * peekRevealProgress,
-                          transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
-                            1 - (i + 1) * 0.015
-                          })`,
-                        }}
-                      />
-                    );
-                  })}
-                </motion.div>
-              ) : (
+                ) : null}
                 <motion.ul
-                  key="single"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={STACK_LAYOUT_TRANSITION}
-                  className="flex flex-col gap-1.5"
+                  layout="position"
+                  transition={{ layout: STACK_LAYOUT_TRANSITION }}
+                  className={cn(
+                    "relative z-[2] flex flex-col",
+                    fanned && "gap-1.5",
+                  )}
                 >
-                  {rows.map((notification) => (
+                  {rows.map((notification, rowIndex) => (
                     <NotificationRow
                       key={notification.id}
                       notification={notification}
-                      stackKey={collapsedGroupHasMore ? group.key : undefined}
+                      stackKey={
+                        rowIndex === 0 && collapsedGroupHasMore
+                          ? group.key
+                          : undefined
+                      }
                       stackCount={
-                        collapsedGroupHasMore ? allGroupRows.length : undefined
+                        rowIndex === 0 && collapsedGroupHasMore
+                          ? allGroupRows.length
+                          : undefined
+                      }
+                      shadeVisibility={
+                        fanned && rowIndex > 0
+                          ? disposableContentVisibility
+                          : undefined
                       }
                       onExpandStack={expandStack}
                       onOpen={openNotification}
@@ -1911,7 +1912,64 @@ export function NotificationsHomeCenter({
                     />
                   ))}
                 </motion.ul>
-              )}
+                {peeks.map((peek, i) => {
+                  const peekPullRevealed =
+                    previewingExpansion &&
+                    groupWasRested &&
+                    !restedNotificationIds.has(peek.id);
+                  const peekRevealProgress = peekPullRevealed
+                    ? notificationPullRevealProgress(pullPx, groupIndex + i)
+                    : 1;
+                  const peekCloseVisibility = fanned
+                    ? shadeCloseProgress
+                    : shadeExpanded && !restedNotificationIds.has(peek.id)
+                      ? disposableContentVisibility
+                      : 1;
+                  return (
+                    <button
+                      key={peek.id}
+                      type="button"
+                      data-testid={
+                        !fanned || shadeCloseProgress > 0
+                          ? "notification-stack-peek"
+                          : undefined
+                      }
+                      data-notif-control=""
+                      data-notification-pull-reveal={
+                        peekPullRevealed ? "" : undefined
+                      }
+                      tabIndex={
+                        peekPullRevealed || peekCloseVisibility < 1
+                          ? -1
+                          : undefined
+                      }
+                      aria-hidden={peekCloseVisibility === 0 ? true : undefined}
+                      aria-label={`Show all ${allGroupRows.length} ${group.label} notifications`}
+                      onClick={() => expandStack(group.key)}
+                      className={cn(
+                        "eliza-notif-glass eliza-notif-shade-transition absolute inset-x-0 top-0 rounded-2xl",
+                        fanned && "pointer-events-none",
+                        peekPullRevealed &&
+                          "eliza-notif-pull-reveal pointer-events-none",
+                      )}
+                      style={{
+                        bottom: fanned ? restedStackTailPx : stackTailPx,
+                        zIndex: 1 - i,
+                        opacity:
+                          (0.92 - i * 0.14) *
+                          peekRevealProgress *
+                          peekCloseVisibility,
+                        transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
+                          1 - (i + 1) * 0.015
+                        })`,
+                        transition: pullPx
+                          ? "none"
+                          : `bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1), opacity ${SHADE_CLOSE_FADE_MS}ms ease-out`,
+                      }}
+                    />
+                  );
+                })}
+              </div>
             </motion.li>
           );
           return groupIndex === notificationCountAfterGroupIndex
@@ -1927,7 +1985,7 @@ export function NotificationsHomeCenter({
               opacity: collapseControlVisibility,
               transform: `translateY(${(1 - collapseControlVisibility) * -4}px)`,
             }}
-            className="-mt-4 flex justify-center px-3 transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity"
+            className="eliza-notif-shade-transition -mt-4 flex justify-center px-3 motion-reduce:transform-none"
           >
             <button
               type="button"
