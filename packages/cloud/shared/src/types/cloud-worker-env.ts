@@ -81,8 +81,49 @@ export interface Bindings {
    */
   WHISPER_STT_MODEL?: string;
 
+  // ---- Realtime voice-session WebSocket (Phase 1, flag-gated) ----
+  /**
+   * Master flag for the realtime voice-session WebSocket path
+   * (VOICE-INTEGRATION-DECISION §8). Default OFF. The mint/revoke route and the
+   * WS handler both consult `isVoiceRealtimeWsEnabled(env)`; when unset/false the
+   * route returns 404 (feature-absent) so the client falls back to the existing
+   * batch STT/TTS path. This is a REAL runtime consumer, not a dead flag.
+   */
+  VOICE_REALTIME_WS_ENABLED?: string;
+  /** Cartesia voice id (UUID) used for the realtime downlink. */
+  VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
+  /**
+   * Worker-internal SSE endpoint for the LLM leg. MUST be an agent-scoped
+   * conversation endpoint (or a voice-aware shim) that consumes the
+   * `X-Eliza-Agent-Id` / `X-Eliza-Conversation-Id` scope headers the bridge
+   * sends — NOT raw `/api/v1/chat/completions`, whose ChatRequest ignores that
+   * scope and would run turns without agent context/persistence.
+   */
+  VOICE_REALTIME_ELIZA_ENDPOINT?: string;
+  /**
+   * Server-held credential (Bearer value) the voice-session uses to call the
+   * internal chat/completions SSE leg. The realtime WS is headerless (WebView
+   * 113), so the client's Authorization is unavailable inside the session; the
+   * server presents this credential instead. The user identity is carried by
+   * the verified voice-token claims, NOT by the client. Deploy as a wrangler
+   * secret; never returned to clients.
+   */
+  VOICE_REALTIME_ELIZA_AUTHORIZATION?: string;
+  /** Gemma pass-through model id for the LLM leg. */
+  VOICE_REALTIME_ELIZA_MODEL?: string;
+  /** Per-org daily voice minute cap (SEC-15). */
+  VOICE_REALTIME_ORG_DAILY_MINUTES?: string;
+  /** Per-user daily voice minute cap (SEC-15). */
+  VOICE_REALTIME_USER_DAILY_MINUTES?: string;
+  /** Max concurrent live voice sessions per worker. */
+  VOICE_REALTIME_MAX_SESSIONS?: string;
+
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
+  /** Deepgram Flux realtime STT key (server-held; NEVER returned to clients). */
+  DEEPGRAM_API_KEY?: string;
+  /** Cartesia Sonic realtime TTS key (server-held; NEVER returned to clients). */
+  CARTESIA_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
   OPENROUTER_BASE_URL?: string;
