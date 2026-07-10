@@ -13,6 +13,7 @@
 import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 import type { AppContainerProvider } from "./app-container-provider";
+import type { AppContainerNodeSlotClaim } from "./app-container-store-queries";
 import { deriveAppPublicUrl } from "./app-url";
 import {
   isContainerDeleteJobData,
@@ -37,13 +38,19 @@ export interface AppContainerRow {
   /** Caller env incl. the app's per-tenant DATABASE_URL (never the shared one). */
   environmentVars?: Record<string, string>;
   nodeId?: string;
+  /** Immutable Docker id persisted when the row reached running. */
+  hostContainerId?: string;
 }
 
 /** Read/write seam for app container state (over the `containers` table). */
 export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
   findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]>;
-  claimNodeSlot(containerId: string, organizationId: string, nodeId: string): Promise<boolean>;
+  claimNodeSlot(
+    containerId: string,
+    organizationId: string,
+    nodeId: string,
+  ): Promise<AppContainerNodeSlotClaim>;
   rollbackNodeSlotClaim(
     containerId: string,
     organizationId: string,
@@ -55,6 +62,7 @@ export interface AppContainerStore {
   ): Promise<void>;
   markDeleted(containerId: string, organizationId: string, nodeId?: string): Promise<void>;
   markError(containerId: string, error: string): Promise<void>;
+  markCleanupRequired(containerId: string, error: string): Promise<void>;
 }
 
 export interface ContainerExecutorDeps {
@@ -110,6 +118,57 @@ async function requireRow(store: AppContainerStore, containerId: string): Promis
   return row;
 }
 
+async function settleFailedProvision(
+  deps: ContainerExecutorDeps,
+  row: AppContainerRow,
+  containerId: string,
+  failure: unknown,
+): Promise<never> {
+  const nodeId = deps.provider.targetNodeId;
+  const failureMessage = failure instanceof Error ? failure.message : String(failure);
+  try {
+    await deps.provider.delete(row.containerName);
+  } catch (cleanupError) {
+    // error-policy:J2 retain the slot and add cleanup proof context to the provisioning failure.
+    const cleanupMessage =
+      cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+    await deps.store.markCleanupRequired(
+      containerId,
+      `${failureMessage}; Docker absence unproven: ${cleanupMessage}`,
+    );
+    throw new ElizaError(
+      `App container ${containerId} provisioning failed and Docker cleanup could not be proven`,
+      {
+        code: "APP_CONTAINER_CLEANUP_UNPROVEN",
+        context: { containerId, nodeId, failure: failureMessage, cleanupError: cleanupMessage },
+        cause: cleanupError,
+        severity: "fatal",
+      },
+    );
+  }
+
+  const rolledBack = await deps.store.rollbackNodeSlotClaim(
+    containerId,
+    row.organizationId,
+    nodeId,
+  );
+  if (!rolledBack) {
+    await deps.store.markCleanupRequired(
+      containerId,
+      `${failureMessage}; Docker is absent but the node-slot claim could not be released`,
+    );
+    throw new ElizaError(`App container ${containerId} node-slot rollback was not applied`, {
+      code: "APP_CONTAINER_SLOT_ROLLBACK_UNAPPLIED",
+      context: { containerId, nodeId, failure: failureMessage },
+      cause: failure,
+      severity: "fatal",
+    });
+  }
+
+  await deps.store.markError(containerId, failureMessage);
+  throw failure;
+}
+
 export async function executeContainerProvision(
   job: JobLike,
   deps: ContainerExecutorDeps,
@@ -137,13 +196,8 @@ export async function executeContainerProvision(
       input,
     });
   } catch (error) {
-    await deps.store.rollbackNodeSlotClaim(
-      containerId,
-      row.organizationId,
-      deps.provider.targetNodeId,
-    );
-    await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
-    throw error;
+    // error-policy:J2 cleanup and slot-accounting context is added by settleFailedProvision.
+    return settleFailedProvision(deps, row, containerId, error);
   }
 
   try {
@@ -154,23 +208,8 @@ export async function executeContainerProvision(
       nodeHost: result.nodeHost,
     });
   } catch (error) {
-    try {
-      await deps.provider.delete(row.containerName);
-      await deps.store.rollbackNodeSlotClaim(
-        containerId,
-        row.organizationId,
-        deps.provider.targetNodeId,
-      );
-    } catch (cleanupError) {
-      // error-policy:J6 failed provision rollback remains visible and keeps its slot claimed until retry/reconciliation.
-      logger.error("[ContainerExecutor] failed to remove container after running-state write", {
-        containerId,
-        nodeId: result.nodeId,
-        error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
-      });
-    }
-    await deps.store.markError(containerId, error instanceof Error ? error.message : String(error));
-    throw error;
+    // error-policy:J2 cleanup and slot-accounting context is added by settleFailedProvision.
+    return settleFailedProvision(deps, row, containerId, error);
   }
 
   // POST-markRunning: the container IS running. Registering the ingress route +
@@ -276,18 +315,29 @@ export async function executeContainerDelete(
   }
 
   for (const { id, organizationId, row } of targets) {
-    if (row) {
+    if (row?.hostContainerId) {
       try {
-        await deps.provider.delete(row.containerName);
+        await deps.provider.deleteById(row.hostContainerId, row.containerName);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        if (!/no such container/i.test(message)) throw error;
-        // error-policy:J6 another teardown worker already removed the target; the terminal DB transition still must complete.
+        if (!/no such (object|container)/i.test(message)) throw error;
+        // error-policy:J6 another teardown worker already removed the immutable target; the terminal DB transition still must complete.
         logger.info("[ContainerExecutor] container already absent during delete", {
           containerId: id,
-          containerName: row.containerName,
+          hostContainerId: row.hostContainerId,
         });
       }
+    } else if (row) {
+      // A deterministic app name is reused by every deploy. An old deleting
+      // row without its immutable Docker id must never remove by name: that
+      // could kill a newer running row for the same app. Mark this stale row
+      // terminal and let the orphan reconciler remove any genuinely unowned
+      // Docker object by the immutable id it gets from `docker ps` (#15826).
+      logger.warn("[ContainerExecutor] skipping unsafe name-only container delete", {
+        containerId: id,
+        containerName: row.containerName,
+        organizationId,
+      });
     }
     // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
     const endpoint = deriveAppPublicUrl(id);

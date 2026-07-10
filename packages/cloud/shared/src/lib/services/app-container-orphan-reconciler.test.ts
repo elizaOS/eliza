@@ -39,6 +39,11 @@ describe("appContainerKeyOf", () => {
 
   test("rejects a bare prefix with no slug", () => {
     expect(appContainerKeyOf("app-")).toBeNull();
+    expect(appContainerKeyOf("app-db-")).toBeNull();
+  });
+
+  test("maps a DB ambassador to its owning app container row", () => {
+    expect(appContainerKeyOf("app-db-abc123def456")).toBe("app-abc123def456");
   });
 });
 
@@ -67,8 +72,37 @@ describe("computeOrphanContainersToReap (app diff)", () => {
     expect(orphans).toEqual([]);
   });
 
-  test("does NOT reap deploying / building / pending rows", () => {
-    for (const status of ["deploying", "building", "pending"]) {
+  test("keeps a running app and its DB ambassador from the same live row", () => {
+    const orphans = compute(
+      [container("app-live", "app-id"), container("app-db-live", "ambassador-id")],
+      [live("app-live", "running")],
+    );
+    expect(orphans).toEqual([]);
+  });
+
+  test("reaps a terminal app and its DB ambassador", () => {
+    const orphans = compute(
+      [container("app-dead", "app-id"), container("app-db-dead", "ambassador-id")],
+      [live("app-dead", "deleted")],
+    );
+    expect(orphans).toEqual([
+      {
+        name: "app-dead",
+        id: "app-id",
+        key: "app-dead",
+        reason: "terminal_db_row",
+      },
+      {
+        name: "app-db-dead",
+        id: "ambassador-id",
+        key: "app-dead",
+        reason: "terminal_db_row",
+      },
+    ]);
+  });
+
+  test("does NOT reap deploying, building, pending, or cleanup-required rows", () => {
+    for (const status of ["deploying", "building", "pending", "cleanup_required"]) {
       const orphans = compute([container("app-x", "cx")], [live("app-x", status)]);
       expect(orphans).toEqual([]);
     }

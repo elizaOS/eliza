@@ -31,3 +31,15 @@ export function elizaCodingContainerImageAdvisoryLockSql(organizationId: string,
 export function elizaAgentCreateAdvisoryLockSql(organizationId: string) {
   return sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId}), hashtext(${"agent-create"}))`;
 }
+
+/**
+ * Per-source-agent tier-upgrade lock. The target service holds this across its
+ * durable re-check and initial insert so concurrent requests can only observe
+ * and reattach to the first request's target.
+ */
+export function elizaAgentTierUpgradeAdvisoryLockSql(
+  organizationId: string,
+  sharedAgentId: string,
+) {
+  return sql`SELECT pg_advisory_xact_lock(hashtext(${organizationId}), hashtext(${`tier-upgrade:${sharedAgentId}`}))`;
+}

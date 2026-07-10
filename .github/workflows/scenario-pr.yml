@@ -796,66 +796,29 @@ jobs:
       - name: Ensure generated shared i18n data
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
-      - name: Test-runner pool + shard unit tests
-        run: bun test packages/scripts/__tests__/test-task-pool.test.ts
-
-      # #13620/#12342: spawned real-runner guards for vacuous-green failures.
-      # packages/scripts/__tests__ is outside workspace test discovery, so keep
-      # this explicit or zero-task / no-tests-skip regressions can ship green.
-      - name: Test-runner vacuous-green guard
-        run: bun test packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts
-
-      # Contract-tests the cloud agent image workflow's Turbo build step.
-      # packages/scripts/__tests__ is outside workspace test discovery, so keep
-      # this explicit or the workflow contract can silently stop running in CI.
-      - name: Agent image workflow contract
-        run: bun test packages/scripts/__tests__/build-agent-image-workflow.test.ts
-
-      # Drift guard for the build:core package set + delegation (issue #10200).
-      # packages/scripts/__tests__ is outside workspace test discovery, so keep
-      # this explicit or the guard silently stops running in CI.
-      - name: build:core package-set drift guard
-        run: bun test packages/scripts/__tests__/build-core.test.ts
-
-      # Self-test for the shared plugin build driver (issue #10200): 57 plugin
-      # build.ts files delegate to buildPlugin; this drives it against fixture
-      # packages and asserts the real emitted dist/ tree.
-      - name: Shared plugin-build driver self-test
-        run: bun test packages/scripts/__tests__/plugin-build.test.ts
-
-      # Smoke-tests the packages/app extension of the script inventory tool
-      # (issue #10200, item 2) — the second dense script surface.
-      - name: Script inventory (packages/app) smoke test
-        run: bun test packages/scripts/__tests__/audit-scripts-inventory.test.ts
-
-      # #9310 §E: guarded *.real/*.live suite accounting. Keeps the post-merge
-      # lane's named-skip summary honest: manifest ↔ on-disk drift, phantom
-      # guard credentials, and vitest configs that would silently re-exclude a
-      # guarded suite from every lane. packages/scripts/__tests__ is outside
-      # workspace test discovery, so keep this explicit.
-      - name: Real/live guarded-suite manifest gate
-        run: bun test packages/scripts/__tests__/real-live-suites.test.ts
-
-      # #9310 §3.16: every packages/ui __e2e__ run-*.mjs fixture runner must
-      # have a package script AND a workflow leg (ui-fixture-e2e.yml et al) —
-      # a runner nothing invokes is coverage that does not exist.
-      - name: UI fixture-runner CI-coverage ratchet
-        run: bun test packages/scripts/__tests__/ui-e2e-runner-coverage.test.ts
-
-      # E2E coverage gate (issue #8802). Now REQUIRED: the baseline is green —
-      # commands 38/38, #8791 shortcuts 1/1 (wired into SHORTCUT_COVERAGE),
-      # plugin routes covered/exempt, view ship-gates intact, zero blocking gaps.
-      # The advisory cycle is complete, so the ratchets (route-manifest lockstep,
-      # zero-test plugins, no-blocking-gaps) now fail the build on regression.
-      # `--conditions=eliza-source`: inventory.ts scans plugin SOURCE and reaches
-      # plugin-commands/src → @elizaos/core, which under bun's default `bun`
-      # export condition resolves to unbuilt dist on this --ignore-scripts install.
-      # The source condition resolves those workspace packages to src (same as the
-      # matrix-report step below), so the gate runs before build:core (#15759).
-      - name: E2E coverage ship-gate
+      # packages/scripts has no package.json, so packages/scripts/__tests__ is
+      # outside workspace test discovery (run-all-tests.mjs never sees it). This
+      # job used to enumerate individual files here, which left every unlisted
+      # suite dead on arrival — most of the directory never ran anywhere
+      # (#15846). Sweep the whole directory so a new test file there always has
+      # a lane. The sweep still owns every guard the per-file steps named:
+      # test-task-pool, the vacuous-green runner guard (#13620/#12342), the
+      # agent-image workflow + build:core drift contracts and the plugin-build
+      # driver self-test (#10200), the scripts-inventory smoke, the real/live
+      # guarded-suite manifest gate (#9310 §E), the UI fixture-runner
+      # CI-coverage ratchet (#9310 §3.16), and the ENFORCED e2e-coverage
+      # ship-gate (#8802 — baseline green; route-manifest lockstep, zero-test
+      # plugins, and no-blocking-gaps ratchets fail the build on regression).
+      # `--conditions=eliza-source`: several suites (e2e-coverage among them)
+      # scan workspace SOURCE that reaches @elizaos/core, which under bun's
+      # default `bun` export condition resolves to unbuilt dist on this
+      # --ignore-scripts install. The source condition resolves those workspace
+      # packages to src (same as the matrix-report step below), so the sweep
+      # runs before build:core (#15759).
+      - name: packages/scripts test sweep (all __tests__ suites)
         env:
           E2E_COVERAGE_GATE_ENFORCE: "1"
-        run: bun test --conditions=eliza-source packages/scripts/__tests__/e2e-coverage.test.ts
+        run: bun test --conditions=eliza-source packages/scripts/__tests__/
 
       # Per-plugin keyless-e2e coverage gate (issue #8801). The surface matrix
       # above proves app-facing routes/views; this ratchet proves each plugin

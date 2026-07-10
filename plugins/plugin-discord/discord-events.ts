@@ -100,7 +100,6 @@ export interface DiscordServiceInternals {
 interface EventListenerConfig {
 	listenCids: string[];
 	channelDebounceMs: number;
-	responseCooldownMs: number;
 	recentContextTtlMs: number;
 	shouldRespondOnlyToMentions: boolean;
 }
@@ -136,17 +135,6 @@ function parseEventListenerConfig(
 				? Number.parseInt(channelDebounceMsSetting, 10) || 3000
 				: 3000;
 
-	const responseCooldownMsSetting = service.runtime.getSetting(
-		"DISCORD_RESPONSE_COOLDOWN_MS",
-	) as string | number | undefined;
-	const responseCooldownMs =
-		typeof responseCooldownMsSetting === "number"
-			? responseCooldownMsSetting
-			: typeof responseCooldownMsSetting === "string" &&
-					responseCooldownMsSetting.trim()
-				? Number.parseInt(responseCooldownMsSetting, 10) || 30000
-				: 30000;
-
 	// How long a recent unaddressed message stays eligible to be folded into a
 	// following pointer's "[Recent channel context]". Tunable like its siblings;
 	// the debouncer clamps it up to the channel debounce window. Default 90s:
@@ -173,7 +161,6 @@ function parseEventListenerConfig(
 	return {
 		listenCids,
 		channelDebounceMs,
-		responseCooldownMs,
 		recentContextTtlMs,
 		shouldRespondOnlyToMentions,
 	};
@@ -192,7 +179,6 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 	const {
 		listenCids,
 		channelDebounceMs,
-		responseCooldownMs,
 		recentContextTtlMs,
 		shouldRespondOnlyToMentions,
 	} = parseEventListenerConfig(service);
@@ -270,18 +256,16 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				void service.messageManager.handleMessage(combined as Message);
 			}
 
-			// Arm the response cooldown only when the bot actually engages with
-			// this batch. A purely-unaddressed batch (channel chatter the bot is
-			// not replying to) must not start the cooldown — otherwise the next
-			// unaddressed message is dropped (debouncer cooldown gate), losing
-			// context like a question typed just before an "@bot ^^" pointer.
+			// Clear the answered-context buffer only when the bot actually engages
+			// with this batch — a purely-unaddressed batch (channel chatter the bot
+			// is not replying to) must keep its buffer so a following "@bot ^^"
+			// pointer can still fold that question in.
 			if (botAddressed || !shouldRespondOnlyToMentions) {
 				channelDebouncer?.markResponded(messages[0].channel.id);
 			}
 		},
 		{
 			debounceMs: effectiveChannelDebounceMs,
-			responseCooldownMs,
 			getBotUserId: () => service.client?.user?.id,
 			coalesceEnabled: messageCoalesce.enabled,
 			maxBatch: messageCoalesce.maxBatch,

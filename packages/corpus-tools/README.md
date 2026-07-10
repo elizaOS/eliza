@@ -15,6 +15,20 @@ which is ignored by the repo-wide `**/data/` rule. Only synthetic fixtures under
 bun run --cwd packages/corpus-tools validate -- fixtures/synthetic
 bun run --cwd packages/corpus-tools corpus:scrub -- --target data --stage all --mode deep --resume
 bun run --cwd packages/corpus-tools corpus:scrub -- --target data --stage llm --mode fast-track --dry-run
+bun run --cwd packages/corpus-tools corpus:verify -- \
+  --target data/final \
+  --manifest data/final/manifest.json \
+  --candidates data/.state/candidates.jsonl \
+  --canaries data/.state/canaries.json \
+  --ledger data/.state/scrub-ledger.jsonl \
+  --gazetteer data/.state/original-gazetteer.json \
+  --deletion-rules data/delete-rules.yaml \
+  --deletion-review-queue data/.state/deletion-review.json \
+  --deletion-review-decision data/.state/deletion-decisions.json \
+  --deletion-approval data/.state/deletion-approval.json \
+  --placeholder-registry data/.state/placeholder-registry.json \
+  --ruleset-version 1 \
+  --report data/.state/verification-report.json
 ```
 
 The validator accepts either a shard file or a directory of `*.jsonl` shards and
@@ -58,6 +72,29 @@ enforces `privacy-filter-f16.gguf`; q8 model paths are rejected because the
 issue research found token-label mismatches. The committed deterministic engine
 is the test/parity harness until the large f16 GGUF and `pf-cli` sidecar are
 installed locally.
+
+`corpus:scrub --stage all` stops at `rewritten`; verification is deliberately a
+separate whole-corpus boundary. The former per-message `verify` stage is
+disabled because it could label raw rows verified without scanning sibling
+shards or local-only provenance artifacts.
+
+`corpus:verify` is fail-closed and currently declares scope `jsonl-text-v1`. It
+requires an exact shard manifest, hash-chained scrub ledger, raw local mine
+candidates, original-value gazetteer, canary attestation, deletion rules plus
+the owner-reviewed queue/decision/approval chain, and placeholder registry from
+the same ruleset. It snapshots shards before scanning, recomputes the mine
+detector floor, checks deletion rules against the exact review queue and
+tombstone set, scans every string field, rejects embedded attachment bytes, and
+invokes gitleaks over the same snapshot. It writes only hashes and locations for
+findings. A missing scanner/report, malformed or incomplete artifact, concurrent
+input change, stale manifest, or ruleset mismatch is an error. Audio and other
+multimodal bytes are not certified by this report.
+
+Publishers consume `assertFreshGreenVerification()`, which reruns the complete
+gate immediately before upload and requires a byte-identical green report. The
+self-hash detects corruption but is not an authorization signature. Owner sample
+review remains a separate authorization bound to that machine report; the
+machine report alone does not satisfy the final human sign-off.
 
 ## X Mapping
 

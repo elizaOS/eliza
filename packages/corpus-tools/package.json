@@ -14,6 +14,7 @@
   "scripts": {
     "validate": "bun src/cli.ts validate",
     "corpus:scrub": "bun src/cli.ts scrub",
+    "corpus:verify": "bun src/cli.ts verify",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src fixtures",

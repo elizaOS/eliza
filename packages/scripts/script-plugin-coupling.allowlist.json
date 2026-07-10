@@ -210,7 +210,6 @@
       "plugins/plugin-messages",
       "plugins/plugin-native-settings",
       "plugins/plugin-relationships",
-      "plugins/plugin-social-alpha",
       "plugins/plugin-todos",
       "plugins/plugin-vector-browser"
     ],

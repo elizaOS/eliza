@@ -10,6 +10,7 @@
 
 import type { ElevenLabs } from "@elevenlabs/elevenlabs-js";
 import { ElevenLabsClient } from "@elevenlabs/elevenlabs-js";
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../utils/logger";
 
 /**
@@ -24,7 +25,7 @@ export interface ElevenLabsConfig {
   voiceStyle?: number;
   voiceUseSpeakerBoost?: boolean;
   optimizeStreamingLatency?: number;
-  outputFormat?: string;
+  outputFormat?: ElevenLabs.TextToSpeechStreamRequestOutputFormat;
 }
 
 type ElevenLabsEnv = Partial<
@@ -53,6 +54,50 @@ export interface TTSOptions {
   text: string;
   voiceId?: string;
   modelId?: string;
+  /** Per-request codec override; falls back to the configured service default. */
+  outputFormat?: ElevenLabs.TextToSpeechStreamRequestOutputFormat;
+}
+
+const TTS_OUTPUT_FORMATS: ReadonlySet<string> = new Set([
+  "mp3_22050_32",
+  "mp3_24000_48",
+  "mp3_44100_32",
+  "mp3_44100_64",
+  "mp3_44100_96",
+  "mp3_44100_128",
+  "mp3_44100_192",
+  "pcm_8000",
+  "pcm_16000",
+  "pcm_22050",
+  "pcm_24000",
+  "pcm_32000",
+  "pcm_44100",
+  "pcm_48000",
+  "ulaw_8000",
+  "alaw_8000",
+  "opus_48000_32",
+  "opus_48000_64",
+  "opus_48000_96",
+  "opus_48000_128",
+  "opus_48000_192",
+]);
+
+function isTtsOutputFormat(
+  value: string,
+): value is ElevenLabs.TextToSpeechStreamRequestOutputFormat {
+  return TTS_OUTPUT_FORMATS.has(value);
+}
+
+function parseTtsOutputFormat(
+  value: string | undefined,
+): ElevenLabs.TextToSpeechStreamRequestOutputFormat {
+  const resolved = value ?? "mp3_44100_128";
+  if (isTtsOutputFormat(resolved)) return resolved;
+  throw new ElizaError(`[ElevenLabs TTS] Unsupported output format: ${resolved}`, {
+    code: "ELEVENLABS_OUTPUT_FORMAT_INVALID",
+    context: { outputFormat: resolved },
+    severity: "fatal",
+  });
 }
 
 /**
@@ -99,7 +144,7 @@ export class ElevenLabsService {
       optimizeStreamingLatency: Number.parseInt(
         envValue(env, "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY") || "4",
       ),
-      outputFormat: envValue(env, "ELEVENLABS_OUTPUT_FORMAT") || "mp3_44100_128",
+      outputFormat: parseTtsOutputFormat(envValue(env, "ELEVENLABS_OUTPUT_FORMAT")),
     };
 
     return new ElevenLabsService(config);
@@ -119,7 +164,7 @@ export class ElevenLabsService {
     const audioStream = await this.client.textToSpeech.stream(voiceId, {
       text: options.text,
       modelId,
-      outputFormat: this.config.outputFormat as "mp3_44100_128" | "pcm_16000",
+      outputFormat: options.outputFormat ?? this.config.outputFormat,
       optimizeStreamingLatency: this.config.optimizeStreamingLatency,
       voiceSettings: {
         stability: this.config.voiceStability,

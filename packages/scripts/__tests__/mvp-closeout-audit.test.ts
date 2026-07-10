@@ -15,14 +15,19 @@ const audit = await import(
 const scriptPath = new URL("../run-mvp-closeout-audit.mjs", import.meta.url)
   .pathname;
 
-function projectItem(number: number, status: string, labels: string[]) {
+function projectItem(
+  number: number,
+  status: string,
+  labels: string[],
+  repository = "elizaOS/eliza",
+) {
   return {
     content: {
       type: "Issue",
       number,
-      repository: "elizaOS/eliza",
+      repository,
       title: `Issue ${number}`,
-      url: `https://github.com/elizaOS/eliza/issues/${number}`,
+      url: `https://github.com/${repository}/issues/${number}`,
     },
     title: `Issue ${number}`,
     status,
@@ -37,6 +42,45 @@ function issue(number: number, labels: string[]) {
     body: "Evidence contract",
     url: `https://github.com/elizaOS/eliza/issues/${number}`,
     labels: labels.map((name) => ({ name })),
+  };
+}
+
+function pullRequestItem(number: number, status = "Done") {
+  return {
+    content: {
+      type: "PullRequest",
+      number,
+      repository: "elizaOS/eliza",
+      title: `Pull request ${number}`,
+      url: `https://github.com/elizaOS/eliza/pull/${number}`,
+    },
+    title: `Pull request ${number}`,
+    status,
+    labels: ["mvp"],
+  };
+}
+
+// Real DraftIssue cards from `gh project item-list` carry only type, title,
+// and body — no number, repository, or url.
+function draftItem(title: string, status = "Todo") {
+  return {
+    content: { type: "DraftIssue", title, body: "Draft note" },
+    title,
+    status,
+  };
+}
+
+function untypedItem(number: number, status = "Ready") {
+  return {
+    content: {
+      number,
+      repository: "elizaOS/eliza",
+      title: `Issue ${number}`,
+      url: `https://github.com/elizaOS/eliza/issues/${number}`,
+    },
+    title: `Issue ${number}`,
+    status,
+    labels: ["mvp"],
   };
 }
 
@@ -77,6 +121,43 @@ describe("atomic MVP closeout audit", () => {
     expect(report.parity.evidence).toEqual([1, 2]);
   });
 
+  test("excludes Project pull-request cards from issue reconciliation", () => {
+    const withPullRequest = snapshot();
+    withPullRequest.project.items.push(pullRequestItem(14490));
+
+    const report = audit.buildCloseoutReport(withPullRequest);
+
+    expect(report.integrityOk).toBe(true);
+    expect(report.snapshot.projectItemCount).toBe(4);
+    expect(report.snapshot.projectIssueItemCount).toBe(3);
+    expect(report.board.counts.projectIssues).toBe(3);
+    expect(report.parity.readiness).toEqual([1, 2]);
+    expect(report.parity.evidence).toEqual([1, 2]);
+  });
+
+  test("excludes Project draft cards from issue reconciliation", () => {
+    const withDraft = snapshot();
+    withDraft.project.items.push(draftItem("Loose planning note"));
+
+    const report = audit.buildCloseoutReport(withDraft);
+
+    expect(report.integrityOk).toBe(true);
+    expect(report.snapshot.projectItemCount).toBe(4);
+    expect(report.snapshot.projectIssueItemCount).toBe(3);
+    expect(report.board.counts.projectIssues).toBe(3);
+    expect(report.parity.readiness).toEqual([1, 2]);
+    expect(report.parity.evidence).toEqual([1, 2]);
+  });
+
+  test("rejects snapshots containing an untyped Project card", () => {
+    const withUntyped = snapshot();
+    withUntyped.project.items.push(untypedItem(99));
+
+    expect(() => audit.buildCloseoutReport(withUntyped)).toThrow(
+      "carries no content.type",
+    );
+  });
+
   test("reports analyzer issue-set divergence explicitly", () => {
     expect(
       audit.compareIssueNumberSets(
@@ -95,6 +176,7 @@ describe("atomic MVP closeout audit", () => {
   test("rejects empty, duplicate, and cross-state snapshots", () => {
     expect(() =>
       audit.validateSnapshot({
+        source: "fixture",
         project: { items: [] },
         openIssues: [],
         closedIssues: [],
@@ -120,6 +202,42 @@ describe("atomic MVP closeout audit", () => {
     );
   });
 
+  test("requires explicit snapshot provenance instead of a fixture default", () => {
+    const { source: _omitted, ...sourceless } = snapshot();
+    expect(() => audit.validateSnapshot(sourceless)).toThrow(
+      "snapshot.source must be a non-empty string",
+    );
+    expect(() => audit.validateSnapshot({ ...snapshot(), source: "" })).toThrow(
+      "snapshot.source must be a non-empty string",
+    );
+  });
+
+  test("scopes project cards to the audited repository", () => {
+    // A card from another repo must not hard-fail validation as a phantom
+    // missing issue, and must stay out of the board counts.
+    const withForeignCard = snapshot();
+    withForeignCard.project.items.push(
+      projectItem(99, "Ready", ["mvp"], "elizaOS/other-repo"),
+    );
+    const report = audit.buildCloseoutReport(withForeignCard);
+    expect(report.integrityOk).toBe(true);
+    expect(report.board.counts.projectIssues).toBe(3);
+    expect(report.parity.readiness).toEqual([1, 2]);
+
+    // A same-numbered foreign card must not stand in for an eliza issue whose
+    // own card is gone — that divergence has to stay observable.
+    const masked = snapshot();
+    masked.project.items = masked.project.items.filter(
+      (item) => item.content.number !== 1,
+    );
+    masked.project.items.push(
+      projectItem(1, "Ready", ["testing"], "elizaOS/other-repo"),
+    );
+    expect(() => audit.validateSnapshot(masked)).toThrow(
+      "issue #1 is not present in snapshot project.items",
+    );
+  });
+
   test("CLI emits one complete fixture report", () => {
     const dir = mkdtempSync(join(tmpdir(), "mvp-closeout-fixture-"));
     const fixture = join(dir, "snapshot.json");
@@ -139,6 +257,25 @@ describe("atomic MVP closeout audit", () => {
     expect(report.integrityOk).toBe(true);
     expect(report.ready).toBe(false);
     expect(report.snapshot.source).toBe("fixture");
+  });
+
+  test("CLI treats an untyped Project card as a fatal invalid snapshot", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-closeout-untyped-"));
+    const fixture = join(dir, "snapshot.json");
+    const withUntyped = snapshot();
+    withUntyped.project.items.push(untypedItem(99));
+    writeFileSync(fixture, JSON.stringify(withUntyped));
+
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, "--snapshot-json", fixture, "--json"],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("[mvp-closeout-audit]");
+    expect(result.stderr).toContain("carries no content.type");
   });
 
   test("GitHub command failure exits nonzero without a report", () => {

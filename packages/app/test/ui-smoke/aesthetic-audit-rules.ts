@@ -24,6 +24,48 @@ export type AestheticVerdict =
   | "needs-eyeball"
   | "broken";
 
+export interface RemoteBundleDeclaration {
+  id: string;
+  bundleUrl: string;
+  componentExport: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Selects production JS-bundle metadata for a plugin route. App-shell pages
+ * legitimately share the registry without a bundle URL, so they return null
+ * and continue through their in-process registration path.
+ */
+export function findRemoteBundleDeclaration(
+  payload: unknown,
+  id: string,
+  viewType: "gui" | "tui",
+): RemoteBundleDeclaration | null {
+  if (!isRecord(payload) || !Array.isArray(payload.views)) {
+    throw new Error("plugin view registry returned an invalid views payload");
+  }
+  const registered = payload.views.find(
+    (entry) =>
+      isRecord(entry) &&
+      entry.id === id &&
+      (entry.viewType ?? "gui") === viewType,
+  );
+  if (!isRecord(registered) || typeof registered.bundleUrl !== "string") {
+    return null;
+  }
+  return {
+    id,
+    bundleUrl: registered.bundleUrl,
+    componentExport:
+      typeof registered.componentExport === "string"
+        ? registered.componentExport
+        : "default",
+  };
+}
+
 /** The subset of a view audit finding the verdict policy reads. The spec's
  * fuller `ViewFinding` is structurally assignable to this. */
 export interface VerdictFinding {
@@ -31,6 +73,8 @@ export interface VerdictFinding {
   viewType: "gui" | "tui";
   consoleErrors: string[];
   qualityIssues: string[];
+  /** User-visible state/layout failures detected from the live DOM. */
+  renderStateIssues?: string[];
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
   /** Border/divider edges per 1M viewport pixels. */
@@ -458,6 +502,7 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   // floors are waived for them.
   if (
     finding.consoleErrors.length > 0 ||
+    (finding.renderStateIssues?.length ?? 0) > 0 ||
     (!exempt &&
       (finding.qualityIssues.length > 0 || finding.readableChars < 10))
   ) {

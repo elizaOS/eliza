@@ -73,8 +73,8 @@ const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/components/chat/widgets/home-widget-card.tsx",
   // The unified liquid-glass system (GlassSurface + its tokens/native bridge).
   // The blur is the CSS-tier material for stable chrome (sheets at rest, pills,
-  // menus, headers) and is switched OFF entirely on the ios26-native tier
-  // (`data-glass-tier="ios26-native"` → `backdrop-filter: none`, a real
+  // menus, headers) and is switched OFF entirely on the native tier
+  // (`data-glass-tier="native"` → `backdrop-filter: none`, a real
   // UIGlassEffect replaces it). Same product direction as the shell
   // liquid-glass surfaces above; this generalizes them into one primitive.
   "packages/ui/src/glass/GlassSurface.tsx",

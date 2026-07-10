@@ -452,6 +452,27 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- BLE pendant (omi DevKit1) via @capacitor-community/bluetooth-le.
+         Android 12+ (API 31+) uses the runtime BLUETOOTH_SCAN / BLUETOOTH_CONNECT
+         permissions instead of legacy location. usesPermissionFlags="neverForLocation"
+         asserts the scan is NOT used to derive physical location, so the user is
+         NOT prompted for location on the Light Phone III (Android 13+). The legacy
+         BLUETOOTH / BLUETOOTH_ADMIN perms are gated to maxSdkVersion=30 for older
+         devices only. See NativeBlePendantTransport + PENDANT-ANDROID-REPORT.md. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <uses-feature
+        android:name="android.hardware.bluetooth_le"
+        android:required="false" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />

@@ -1,36 +1,15 @@
 #!/usr/bin/env node
 /**
- * Contract that keeps the develop merge gate robust against a self-hosted
- * single-point-of-failure while staying a real gate (#13617). Runs in test.yml's
- * `changes` job; a violation fails the branch's CI.
+ * Enforces the workflow structure that makes `ci-ok` a real develop merge gate
+ * while allowing operators to drain the self-hosted fleet (#13617). Classifiers
+ * and required test lanes retain a hosted fallback; `ci-ok` owns lint, format,
+ * type, stale-base, and secret checks; and the lightweight develop PR lane runs
+ * formatting before merge because superseded post-merge runs cannot reliably
+ * be the first detector (#15959).
  *
- * Three invariants, each guarding one failure mode the issue documents:
- *
- *   1. Path classifiers keep a hosted fallback. Every `Classify changed paths`
- *      job is a git-diff + node script; when it was pinned to the hetzner-robot
- *      fleet with no fallback, a drained fleet left it queued forever and every
- *      downstream job (and the required `ci-ok`) wedged with it (#8501
- *      gridlock). It must either run directly on `ubuntu-*` or use the
- *      `HETZNER_FLEET_ONLINE` fallback expression.
- *
- *   2. Heavy self-hosted jobs carry the fleet-drain fallback. `ci-ok` needs the
- *      test lanes, which run on the hetzner-robot fleet. There is no way to
- *      probe fleet health from a `runs-on:` expression, so an operator toggle
- *      (`vars.HETZNER_FLEET_ONLINE`) flips the whole workflow to hosted during
- *      an outage — replacing per-PR admin-bypass with one repo-variable flip.
- *      No test.yml job may hardcode a bare `[self-hosted, hetzner-robot]`.
- *
- *   3. `ci-ok` needs the hosted quality gate. The merge queue's sole required
- *      context is `ci-ok`; before #13617 it needed only test lanes, so a lint /
- *      format / typecheck / stale-base / secret regression (all required on
- *      `main`) could merge to develop. `ci-ok` must need `merge-quality-gate`,
- *      and that job must run lint + format:check + typecheck + stale-base +
- *      a gitleaks secret scan on a runner with the same hosted fallback, so it
- *      gates even when operators drain the self-hosted fleet.
- *
- * Text-scans the workflow YAML (no yaml dependency, matching the sibling
- * ci-*-contract.mjs scripts). `--self-test` proves the checker against synthetic
- * pass/fail fixtures so a broken checker cannot vacuously pass.
+ * The checker text-scans YAML to avoid a workflow-time parser dependency. Its
+ * synthetic self-test must reject every missing dependency or command so the
+ * contract cannot pass vacuously.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -42,7 +21,7 @@ const DEFAULT_REPO_ROOT = resolve(
   "..",
 );
 
-const CLASSIFIER_WORKFLOWS = [
+const CONTRACT_WORKFLOWS = [
   "test.yml",
   "scenario-pr.yml",
   "dev-smoke.yml",
@@ -50,7 +29,10 @@ const CLASSIFIER_WORKFLOWS = [
   "mobile-build-smoke.yml",
   "windows-dev-smoke.yml",
   "windows-desktop-preload-smoke.yml",
+  "develop-pr.yml",
 ];
+
+const DEVELOP_PR_WORKFLOW = "develop-pr.yml";
 
 const FLEET_FALLBACK_VAR = "HETZNER_FLEET_ONLINE";
 const BARE_SELF_HOSTED = /runs-on:\s*\[\s*self-hosted\s*,\s*hetzner-robot\s*\]/;
@@ -281,17 +263,36 @@ function checkWorkflowText(fileName, text, problems) {
       }
     }
   }
+
+  if (fileName === DEVELOP_PR_WORKFLOW) {
+    const lintJob = jobBody(text, "lint");
+    if (lintJob === null) {
+      problems.push(`${fileName}: no 'lint' job found`);
+    } else {
+      if (!/bun run lint\b/.test(lintJob)) {
+        problems.push(`${fileName}: 'lint' job is missing bun run lint`);
+      }
+      if (!/bun run format:check\b/.test(lintJob)) {
+        problems.push(
+          `${fileName}: 'lint' job is missing bun run format:check — formatting regressions would first surface after merge`,
+        );
+      }
+    }
+  }
 }
 
 function run(repoRoot) {
   const problems = [];
-  for (const fileName of CLASSIFIER_WORKFLOWS) {
+  for (const fileName of CONTRACT_WORKFLOWS) {
     const path = resolve(repoRoot, ".github/workflows", fileName);
     let text;
     try {
       text = readFileSync(path, "utf8");
-    } catch {
-      problems.push(`${fileName}: workflow file not found at ${path}`);
+    } catch (error) {
+      // error-policy:J1 the CLI reports unreadable required workflows as contract violations
+      problems.push(
+        `${fileName}: workflow file could not be read at ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       continue;
     }
     checkWorkflowText(fileName, text, problems);
@@ -445,8 +446,35 @@ function selfTest() {
       throw new Error(`self-test: invalid fixture '${name}' was not caught`);
     }
   }
+  const goodDevelopPr = `jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bun run lint
+      - run: bun run format:check
+`;
+  const developProblems = [];
+  checkWorkflowText(DEVELOP_PR_WORKFLOW, goodDevelopPr, developProblems);
+  if (developProblems.length !== 0) {
+    throw new Error(
+      `self-test: valid develop PR fixture reported problems:\n  ${developProblems.join("\n  ")}`,
+    );
+  }
+  for (const command of ["bun run lint", "bun run format:check"]) {
+    const problems = [];
+    checkWorkflowText(
+      DEVELOP_PR_WORKFLOW,
+      goodDevelopPr.replace(`      - run: ${command}\n`, ""),
+      problems,
+    );
+    if (problems.length === 0) {
+      throw new Error(
+        `self-test: develop PR fixture missing '${command}' was not caught`,
+      );
+    }
+  }
   console.log(
-    `ci-merge-gate-contract self-test: ${badCases.length + 1} cases passed`,
+    `ci-merge-gate-contract self-test: ${badCases.length + 4} cases passed`,
   );
 }
 
@@ -462,7 +490,7 @@ function main() {
     process.exit(1);
   }
   console.log(
-    "ci-merge-gate-contract: classifiers have hosted fallback, fleet-drain fallback present, ci-ok enforces the quality gate.",
+    "ci-merge-gate-contract: classifiers have hosted fallback, fleet-drain fallback present, develop PRs check formatting, and ci-ok enforces the quality gate.",
   );
 }
 

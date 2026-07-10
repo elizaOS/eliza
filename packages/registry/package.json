@@ -3,7 +3,6 @@
   "version": "2.0.0-beta.0",
   "description": "In-repo source of truth for the elizaOS community plugin registry: third-party entry data, JSON schema, validation, generator, and a typed loader.",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "homepage": "https://github.com/elizaOS/eliza/tree/main/packages/registry",
   "repository": {
@@ -16,6 +15,12 @@
     "registry",
     "plugins"
   ],
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=24.0.0"
   },

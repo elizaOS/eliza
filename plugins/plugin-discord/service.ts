@@ -199,6 +199,18 @@ type DiscordAccountServiceFacade = IDiscordService &
 		isVoiceChannelClaimed(guildId: string, channelId: string): boolean;
 	};
 
+// Initial-login retry schedule. discord.js only auto-reconnects once a gateway
+// session exists, so a transient failure of the FIRST `client.login()` is
+// otherwise terminal — the process stays "active" but deaf (#15855). We retry
+// the initial connect with capped exponential backoff (base doubles per
+// attempt, clamped) and keep retrying indefinitely until a session is
+// established; the network coming back is the only success condition.
+const DISCORD_LOGIN_RETRY_BASE_MS = 1_000;
+const DISCORD_LOGIN_RETRY_MAX_MS = 60_000;
+// While an account is stuck in the failed state, warn at most this often so the
+// retry storm surfaces as an observable heartbeat without flooding the log.
+const DISCORD_LOGIN_HEARTBEAT_MIN_INTERVAL_MS = 30_000;
+
 // Forward Content.metadata onto the persisted Memory (e.g. `transient: true`
 // for orchestrator status posts). Plain-object guard so arrays/instances don't leak through.
 function extractContentMetadata(
@@ -728,10 +740,6 @@ export class DiscordService extends Service implements IDiscordService {
 				const transformedGuildOnlyCommands = guildOnlyCommands.map((cmd) =>
 					transformCommandToDiscordApi(cmd),
 				);
-				const transformedAllGeneralCommands = [
-					...transformedGlobalCommands,
-					...transformedGuildOnlyCommands,
-				];
 
 				const clientApp = client.application;
 				if (!clientApp) {
@@ -752,16 +760,35 @@ export class DiscordService extends Service implements IDiscordService {
 					);
 				}
 
+				// Per-guild registration pushes ONLY the guild-only commands: global
+				// commands live in the global scope, and Discord renders a command
+				// present in BOTH scopes twice in the slash menu. Setting the
+				// guild-only set (often empty) also clears any stale guild-scoped
+				// copies of global commands, which is what removes existing
+				// duplicates.
 				const guilds = client.guilds.cache;
-				if (guilds && transformedAllGeneralCommands.length > 0) {
+				if (guilds) {
 					await Promise.all(
 						[...guilds].map(async ([guildId, guild]) => {
 							try {
 								await clientApp.commands.set(
-									transformedAllGeneralCommands,
+									transformedGuildOnlyCommands,
 									guildId,
 								);
 							} catch (err) {
+								// error-policy:J7 one guild's failed command write must not
+								// abort the sync fan-out to the remaining guilds; the partial
+								// sync is surfaced to the agent/owner via reportError rather
+								// than left as a healthy-looking startup.
+								this.runtime.reportError(
+									"DiscordService.commandSync",
+									err instanceof Error ? err : new Error(String(err)),
+									{
+										accountId: state.accountId,
+										guildId,
+										guildName: guild.name,
+									},
+								);
 								this.runtime.logger.warn(
 									{
 										src: "plugin:discord",
@@ -1441,49 +1468,12 @@ export class DiscordService extends Service implements IDiscordService {
 		state.voiceManager = new VoiceManager(facade, this.runtime);
 		state.messageManager = new MessageManager(facade, this.runtime);
 
-		const client = state.client;
-		if (!client) {
-			throw new Error(
-				`Discord client is not available for account ${state.accountId}`,
-			);
-		}
-		state.clientReadyPromise = new Promise((resolve, reject) => {
-			client.once(Events.ClientReady, async (readyClient) => {
-				try {
-					await this.onReadyForAccount(state.accountId, readyClient);
-					resolve();
-				} catch (error) {
-					this.runtime.logger.error(
-						`Error in Discord onReady for account ${state.accountId}: ${
-							error instanceof Error ? error.message : String(error)
-						}`,
-					);
-					reject(error);
-				}
-			});
-			client.once(Events.Error, (error) => {
-				this.runtime.logger.error(
-					`Discord client error for account ${state.accountId}: ${
-						error instanceof Error ? error.message : String(error)
-					}`,
-				);
-				state.loginFailed = true;
-				reject(error);
-			});
-			client.login(account.token).catch((error) => {
-				this.runtime.logger.warn(
-					`Failed to login to Discord account ${state.accountId}: ${
-						error instanceof Error ? error.message : String(error)
-					} — check the configured Discord bot token`,
-				);
-				state.loginFailed = true;
-				state.client?.destroy().catch(() => {});
-				state.client = null;
-				if (state.accountId === this.defaultAccountId) {
-					this.syncLegacyDefaultAliases(state);
-				}
-				reject(error);
-			});
+		// Initial login now retries with backoff instead of settling terminal on
+		// a transient transport failure (#15855). The promise resolves on the
+		// first successful ClientReady (any attempt) and only rejects on a
+		// terminal post-ready onReady failure — never on a login rejection.
+		state.clientReadyPromise = new Promise<void>((resolve, reject) => {
+			this.attemptDiscordLogin(state, account.token, 0, resolve, reject);
 		});
 
 		state.clientReadyPromise.catch((error) => {
@@ -1501,8 +1491,149 @@ export class DiscordService extends Service implements IDiscordService {
 				this._loginFailed = true;
 			}
 		});
+	}
 
+	/**
+	 * Drives one initial-login attempt for an account and re-arms the next on
+	 * failure. discord.js destroys the client when `login()` rejects, so each
+	 * attempt binds a fresh client (created here once the prior one was torn
+	 * down), re-attaches the gateway listeners, and races ClientReady against the
+	 * login rejection / gateway Error. Success resolves the ready promise and
+	 * clears the failed state; a transient failure discards the client and
+	 * schedules `attempt + 1` after a capped-exponential backoff, keeping the
+	 * connector self-healing instead of running deaf-but-active (#15855). Once
+	 * ClientReady fires, discord.js owns reconnection — this loop stops.
+	 */
+	private attemptDiscordLogin(
+		state: DiscordAccountClientState,
+		token: string,
+		attempt: number,
+		resolve: () => void,
+		reject: (error: unknown) => void,
+	): void {
+		if (!state.client) {
+			state.client = this.createDiscordJsClient();
+		}
+		const client = state.client;
+		// Rebind message/reaction/guild listeners onto this (possibly fresh)
+		// client; the prior attempt's debouncer is discarded with its client.
+		state.channelDebouncer?.destroy();
 		this.setupEventListenersForAccount(state);
+
+		// ClientReady, gateway Error, and the login() rejection can all fire for
+		// one attempt — settle exactly once so we never both resolve and retry.
+		let settled = false;
+
+		const scheduleRetry = (error: unknown): void => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			state.loginFailed = true;
+			if (state.accountId === this.defaultAccountId) {
+				this._loginFailed = true;
+				this.syncLegacyDefaultAliases(state);
+			}
+			state.client?.destroy().catch((destroyError) => {
+				// error-policy:J6 best-effort teardown of the client we are replacing
+				this.runtime.logger.debug(
+					`Discord client teardown after failed login for account ${state.accountId}: ${
+						destroyError instanceof Error
+							? destroyError.message
+							: String(destroyError)
+					}`,
+				);
+			});
+			state.client = null;
+			const delayMs = this.computeLoginBackoffMs(attempt);
+			this.emitLoginFailureHeartbeat(state, error, attempt, delayMs);
+			const timer = setTimeout(() => {
+				state.loginRetryTimer = undefined;
+				this.attemptDiscordLogin(state, token, attempt + 1, resolve, reject);
+			}, delayMs);
+			state.loginRetryTimer = timer;
+			this.timeouts.push(timer);
+		};
+
+		client.once(Events.ClientReady, async (readyClient) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			if (state.loginRetryTimer) {
+				clearTimeout(state.loginRetryTimer);
+				state.loginRetryTimer = undefined;
+			}
+			state.loginFailed = false;
+			state.lastLoginHeartbeatAt = undefined;
+			if (state.accountId === this.defaultAccountId) {
+				this._loginFailed = false;
+			}
+			try {
+				await this.onReadyForAccount(state.accountId, readyClient);
+				resolve();
+			} catch (error) {
+				// A post-ready onReady failure (backfill/voice scan) is terminal, not
+				// a login-transport problem — surface it rather than looping login.
+				this.runtime.logger.error(
+					`Error in Discord onReady for account ${state.accountId}: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+				reject(error);
+			}
+		});
+		client.once(Events.Error, (error) => {
+			this.runtime.logger.error(
+				`Discord client error for account ${state.accountId}: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			scheduleRetry(error);
+		});
+		client.login(token).catch((error) => {
+			scheduleRetry(error);
+		});
+	}
+
+	// Capped exponential backoff for the initial-login retry loop: the delay
+	// doubles per attempt and clamps at DISCORD_LOGIN_RETRY_MAX_MS.
+	private computeLoginBackoffMs(attempt: number): number {
+		const scaled = DISCORD_LOGIN_RETRY_BASE_MS * 2 ** attempt;
+		return Math.min(scaled, DISCORD_LOGIN_RETRY_MAX_MS);
+	}
+
+	/**
+	 * Warn-level heartbeat naming the account and the login failure, throttled to
+	 * at most once per DISCORD_LOGIN_HEARTBEAT_MIN_INTERVAL_MS so a fast retry
+	 * storm surfaces observably (#15855) without flooding the log.
+	 */
+	private emitLoginFailureHeartbeat(
+		state: DiscordAccountClientState,
+		error: unknown,
+		attempt: number,
+		delayMs: number,
+	): void {
+		const now = Date.now();
+		const last = state.lastLoginHeartbeatAt;
+		if (
+			last !== undefined &&
+			now - last < DISCORD_LOGIN_HEARTBEAT_MIN_INTERVAL_MS
+		) {
+			return;
+		}
+		state.lastLoginHeartbeatAt = now;
+		this.runtime.logger.warn(
+			{
+				src: "plugin:discord",
+				agentId: this.runtime.agentId,
+				accountId: state.accountId,
+				attempt: attempt + 1,
+				retryInMs: delayMs,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			`Discord account ${state.accountId} failed to log in and is connected-but-deaf; retrying in ${delayMs}ms (attempt ${attempt + 1})`,
+		);
 	}
 
 	/**

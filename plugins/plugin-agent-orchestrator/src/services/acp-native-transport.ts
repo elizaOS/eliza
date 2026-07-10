@@ -406,6 +406,16 @@ export class NativeAcpClient {
     switch (method) {
       case "session/update":
         return {};
+      // Agent-initiated session-lifecycle notifications. An ACP agent (e.g. the
+      // elizaos code server) tells the client the session is closing/cancelling
+      // once its work is done; the client's own subprocess teardown is separate,
+      // so the only correct response is to acknowledge. Without these cases the
+      // request fell through to `default` and answered "Method not found", which
+      // surfaced to the user as a spurious "Couldn't finish … session/close"
+      // AFTER an otherwise-complete task.
+      case "session/close":
+      case "session/cancel":
+        return {};
       case "session/request_permission":
         return this.resolvePermission(asRecord(params));
       case "fs/read_text_file":

@@ -1247,6 +1247,8 @@ interface DynamicViewLoaderProps {
   viewProps?: Record<string, unknown>;
   /** Presentation/runtime family for this view. Defaults to GUI. */
   viewType?: "gui" | "tui" | "xr";
+  /** Reserve floating-chat space when no enclosing shell already owns it. */
+  reserveChatClearance?: boolean;
   /**
    * The view's declared surface manifest (#13452). Resolved to a
    * {@link ResolvedSurfaceManifest} and used to broker the interact channel: a
@@ -1275,6 +1277,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   viewId,
   viewProps: forwardedViewProps,
   viewType = "gui",
+  reserveChatClearance = true,
   surface,
 }: DynamicViewLoaderProps) {
   // Resolve the declared manifest once per surface declaration so the interact
@@ -1552,7 +1555,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
               keeps the exact auto-detect behaviour the per-view wrappers had.
               The host also reserves the floating composer clearance once so
               spatial plugin content scrolls above the chat affordance. */}
-          <SpatialSurface reserveChatClearance>
+          <SpatialSurface reserveChatClearance={reserveChatClearance}>
             <View {...viewProps} />
           </SpatialSurface>
         </ErrorBoundary>

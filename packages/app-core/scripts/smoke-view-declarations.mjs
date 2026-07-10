@@ -20,6 +20,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 /**
  * One GUI declaration per shipped plugin view: `[id, label, pluginDirName,
@@ -109,7 +110,13 @@ export const smokeViewDeclarations = [
     "/trajectory-logger",
     "TrajectoryLoggerView",
   ],
-  ["training", "Fine Tuning", "plugin-training", "/training", "FineTuningView"],
+  [
+    "training",
+    "Fine Tuning",
+    "plugin-training",
+    "/apps/fine-tuning",
+    "FineTuningView",
+  ],
 ];
 
 /**
@@ -124,26 +131,75 @@ function toDeclaration(tuple) {
 function readSourceFiles(dir) {
   const sources = [];
   const walk = (current) => {
-    let entries;
-    try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      // error-policy:J3 a plugin dir that vanished mid-scan is reported by the
-      // caller as a parity miss (missing directory), not swallowed as "clean".
-      return;
-    }
+    const entries = readdirSync(current, { withFileTypes: true });
     for (const entry of entries) {
-      if (entry.name === "node_modules" || entry.name === "dist") continue;
+      if (
+        entry.name === "node_modules" ||
+        entry.name === "dist" ||
+        entry.name === "__tests__" ||
+        /\.(test|spec)\.[cm]?[jt]sx?$/.test(entry.name)
+      ) {
+        continue;
+      }
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
         walk(full);
       } else if (/\.(ts|tsx|mjs|js)$/.test(entry.name)) {
-        sources.push(readFileSync(full, "utf8"));
+        sources.push({ filePath: full, source: readFileSync(full, "utf8") });
       }
     }
   };
   walk(dir);
   return sources;
+}
+
+function stringProperty(object, propertyName) {
+  for (const property of object.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = property.name;
+    const key =
+      ts.isIdentifier(name) || ts.isStringLiteralLike(name)
+        ? name.text
+        : undefined;
+    if (key !== propertyName) continue;
+    return ts.isStringLiteralLike(property.initializer)
+      ? property.initializer.text
+      : undefined;
+  }
+  return undefined;
+}
+
+function inspectViewDeclarations(
+  sourceFiles,
+  { id, viewPath, componentExport },
+) {
+  let declaresIdAndPath = false;
+  let declaresExactView = false;
+  for (const { filePath, source } of sourceFiles) {
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      filePath.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    const visit = (node) => {
+      if (ts.isObjectLiteralExpression(node)) {
+        const objectId = stringProperty(node, "id");
+        const objectPath = stringProperty(node, "path");
+        if (objectId === id && objectPath === viewPath) {
+          declaresIdAndPath = true;
+          if (stringProperty(node, "componentExport") === componentExport) {
+            declaresExactView = true;
+          }
+        }
+      }
+      if (!declaresExactView) ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    if (declaresExactView) break;
+  }
+  return { declaresExactView, declaresIdAndPath };
 }
 
 /**
@@ -160,14 +216,11 @@ export function checkSmokeViewParity(
   const pluginsDir = path.join(repoRoot, "plugins");
   const missing = [];
   for (const tuple of declarations) {
-    const { id, pluginDirName, componentExport } = toDeclaration(tuple);
+    const { id, pluginDirName, componentExport, viewPath } =
+      toDeclaration(tuple);
     const pluginDir = path.join(pluginsDir, pluginDirName);
-    let dirExists = false;
-    try {
-      dirExists = statSync(pluginDir).isDirectory();
-    } catch {
-      dirExists = false;
-    }
+    const dirExists =
+      existsSync(pluginDir) && statSync(pluginDir).isDirectory();
     if (!dirExists) {
       missing.push({
         id,
@@ -177,17 +230,16 @@ export function checkSmokeViewParity(
       });
       continue;
     }
-    const sources = readSourceFiles(path.join(pluginDir, "src"));
-    const declaresId = sources.some((source) => source.includes(`"${id}"`));
-    const exportsComponent = sources.some((source) =>
-      source.includes(componentExport),
+    const declaration = inspectViewDeclarations(
+      readSourceFiles(path.join(pluginDir, "src")),
+      { id, viewPath, componentExport },
     );
-    if (!declaresId || !exportsComponent) {
+    if (!declaration.declaresExactView) {
       missing.push({
         id,
         pluginDirName,
         componentExport,
-        reason: !exportsComponent
+        reason: declaration.declaresIdAndPath
           ? "component-export-missing"
           : "view-id-not-declared",
       });

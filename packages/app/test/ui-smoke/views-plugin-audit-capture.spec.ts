@@ -78,7 +78,6 @@ async function captureViewCase(
   try {
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
-
     await page
       .goto(view.path, {
         waitUntil: "commit",

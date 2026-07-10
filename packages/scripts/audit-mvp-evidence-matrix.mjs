@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import process from "node:process";
+import { projectItemIsIssue } from "./check-mvp-board-readiness.mjs";
 
 const DEFAULT_REPO = "elizaOS/eliza";
 const DEFAULT_PROJECT_OWNER = "elizaOS";
@@ -363,7 +364,7 @@ function projectStatusByNumber(payload, repo = DEFAULT_REPO) {
   const expectedRepo = normalizeRepository(repo);
   const byNumber = new Map();
   for (const item of Array.isArray(payload) ? payload : (payload.items ?? [])) {
-    if (item.content?.type && item.content.type !== "Issue") continue;
+    if (!projectItemIsIssue(item)) continue;
     const itemRepo = projectItemRepository(item);
     if (expectedRepo && itemRepo && itemRepo !== expectedRepo) continue;
     const number = projectItemNumber(item);

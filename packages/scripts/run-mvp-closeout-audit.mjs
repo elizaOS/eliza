@@ -14,7 +14,12 @@ import {
   strictViolations,
   summarizeMvpBoard,
 } from "./audit-mvp-project-board.mjs";
-import { auditMvpBoardReadiness } from "./check-mvp-board-readiness.mjs";
+import {
+  auditMvpBoardReadiness,
+  normalizeProjectItems,
+  projectItemIsIssue,
+  projectItemMatchesRepo,
+} from "./check-mvp-board-readiness.mjs";
 
 const DEFAULT_OWNER = "elizaOS";
 const DEFAULT_PROJECT = "15";
@@ -152,6 +157,14 @@ export function validateSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== "object") {
     throw new Error("snapshot must be an object");
   }
+  // Provenance is load-bearing in the report: a reviewer must be able to tell
+  // a live GitHub pull from an offline fixture, so a snapshot may never
+  // default its way into either label (#15852).
+  if (typeof snapshot.source !== "string" || snapshot.source.length === 0) {
+    throw new Error(
+      'snapshot.source must be a non-empty string naming the snapshot provenance (e.g. "github" or "fixture")',
+    );
+  }
   if (
     !Array.isArray(snapshot.project?.items) ||
     snapshot.project.items.length === 0
@@ -174,10 +187,15 @@ export function validateSnapshot(snapshot) {
     }
   }
 
+  // Scope cards to the audited repository the same way normalizeProjectItems
+  // does for readiness, so a foreign-repo card that happens to share an issue
+  // number can neither mask a divergence nor hard-fail the open/closed check
+  // ("Project issue #N is missing from open/closed snapshot rows").
   const projectNumbers = new Set(
-    snapshot.project.items
-      .filter((item) => item?.content?.type === "Issue")
-      .map((item) => item.content.number),
+    normalizeProjectItems(
+      snapshot.project,
+      snapshot.repo ?? DEFAULT_REPO,
+    ).keys(),
   );
   if (projectNumbers.size === 0) {
     throw new Error("snapshot contains no Project issue cards");
@@ -225,8 +243,16 @@ export function compareIssueNumberSets(readinessRows, evidenceRows) {
 
 export function buildCloseoutReport(snapshot) {
   validateSnapshot(snapshot);
+  const repo = snapshot.repo ?? DEFAULT_REPO;
+  // All three analyzers must see the same repo-scoped card set; readiness and
+  // evidence filter internally, so the board summary gets the filtered items
+  // here lest a same-numbered cross-repo card donate its status to an eliza
+  // issue.
+  const projectItems = snapshot.project.items.filter(
+    (item) => projectItemIsIssue(item) && projectItemMatchesRepo(item, repo),
+  );
   const board = summarizeMvpBoard({
-    projectItems: snapshot.project.items,
+    projectItems,
     openIssues: snapshot.openIssues,
     closedIssues: snapshot.closedIssues,
   });
@@ -235,11 +261,11 @@ export function buildCloseoutReport(snapshot) {
     snapshot.openIssues,
     snapshot.project,
     {
-      repo: snapshot.repo ?? DEFAULT_REPO,
+      repo,
     },
   );
   const evidence = buildEvidenceMatrix(snapshot.openIssues, snapshot.project, {
-    repo: snapshot.repo ?? DEFAULT_REPO,
+    repo,
     projectStatusSource: "atomic-snapshot",
   });
   const parity = compareIssueNumberSets(readiness.rows, evidence.rows);
@@ -247,11 +273,14 @@ export function buildCloseoutReport(snapshot) {
     generatedAt: new Date().toISOString(),
     snapshot: {
       fetchedAt: snapshot.fetchedAt ?? null,
-      source: snapshot.source ?? "fixture",
+      // validateSnapshot already rejected snapshots without a source; a
+      // fixture is labeled "fixture" only because the fixture says so.
+      source: snapshot.source,
       owner: snapshot.owner ?? null,
       projectNumber: snapshot.projectNumber ?? null,
-      repo: snapshot.repo ?? DEFAULT_REPO,
+      repo,
       projectItemCount: snapshot.project.items.length,
+      projectIssueItemCount: projectItems.length,
       openIssueCount: snapshot.openIssues.length,
       closedIssueCount: snapshot.closedIssues.length,
     },

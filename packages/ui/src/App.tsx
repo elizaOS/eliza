@@ -289,6 +289,10 @@ const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
   "StreamView",
 );
+const PendantTranscriptView = lazyNamedView(
+  () => import("./components/pages/PendantTranscriptView"),
+  "PendantTranscriptView",
+);
 // Route-level page views — lazy-split out of the main chunk. Each renders
 // inside the LazyViewBoundary Suspense below, and none is imported statically
 // elsewhere in the app graph, so the dynamic boundary actually defers load.
@@ -1156,6 +1160,7 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
           componentExport={view.componentExport}
           viewId={view.id}
           viewType={view.viewType}
+          reserveChatClearance={false}
           surface={view.surface}
         />
       </div>
@@ -1376,6 +1381,7 @@ function buildStaticTabRenderers(): Record<
     chat: () => <ViewUnavailableFallback />,
     browser: () => <BrowserWorkspaceView />,
     stream: () => <StreamView />,
+    "pendant-transcript": () => <PendantTranscriptView />,
     tasks: wrap(<TasksPageView />),
     automations: () => <AutomationsFeed />,
     plugins: withHeader("plugins", <PluginsPageView />),

@@ -109,11 +109,6 @@
       "measuredGzipBytes": 5763,
       "gzipBudgetBytes": 7000
     },
-    "plugin-social-alpha": {
-      "measuredRawBytes": 6952,
-      "measuredGzipBytes": 2266,
-      "gzipBudgetBytes": 3000
-    },
     "plugin-task-coordinator": {
       "measuredRawBytes": 592808,
       "measuredGzipBytes": 125975,

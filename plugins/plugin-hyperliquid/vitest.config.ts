@@ -237,7 +237,6 @@ export default defineConfig({
 			pluginAlias("plugin-shopify"),
 			pluginAlias("plugin-signal"),
 			pluginAlias("plugin-slack"),
-			pluginAlias("plugin-social-alpha"),
 			pluginAlias("plugin-sql"),
 			pluginAlias("plugin-streaming"),
 			pluginAlias("plugin-suno"),

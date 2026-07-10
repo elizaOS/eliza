@@ -12,7 +12,7 @@
     "format:check": "bunx @biomejs/biome format src scripts",
     "clean": "node ../scripts/rm-path-recursive.mjs dist .turbo",
     "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "bun test scripts/audit-views-soak-navigation.test.mjs && vitest run --config vitest.config.ts",
     "trace:startup": "node scripts/capture-startup-trace.mjs",
     "perf:startup-budget": "node scripts/check-startup-budget.mjs",
     "test:dev-smoke": "node scripts/run-ui-playwright.mjs --config playwright.dev-smoke.config.ts",
@@ -53,6 +53,7 @@
     "test:e2e:android:assistant": "node scripts/android-assistant-verify.mjs --require-device --json",
     "test:e2e:android:onboarding": "ELIZA_ANDROID_BACKEND=host ELIZA_ANDROID_REQUIRE_AGENT=1 bunx playwright test --config playwright.android.config.ts test/android/onboarding-to-home.android.spec.ts",
     "test:e2e:android:cloud-onboarding": "ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run build:android:cloud:debug && bun run install:android:adb && ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 ELIZA_ANDROID_ALLOW_FIRST_RUN=1 ELIZA_ANDROID_REQUIRE_AGENT=0 bunx playwright test --config playwright.android.config.ts test/android/cloud-onboarding.android.spec.ts",
+    "test:e2e:android:passkey-degrade": "ELIZA_ANDROID_ALLOW_FIRST_RUN=1 ELIZA_ANDROID_REQUIRE_AGENT=0 bunx playwright test --config playwright.android.config.ts test/android/passkey-native-degrade.android.spec.ts",
     "test:e2e:android:native-plugin-view": "ELIZA_ANDROID_BACKEND=${ELIZA_ANDROID_BACKEND:-host} ELIZA_ANDROID_REQUIRE_AGENT=${ELIZA_ANDROID_REQUIRE_AGENT:-1} bunx playwright test --config playwright.android.config.ts test/android/native-plugin-view-smoke.android.spec.ts",
     "test:e2e:android:view-runtime-soak": "ELIZA_ANDROID_BACKEND=${ELIZA_ANDROID_BACKEND:-host} ELIZA_ANDROID_REQUIRE_AGENT=${ELIZA_ANDROID_REQUIRE_AGENT:-1} bunx playwright test --config playwright.android.config.ts test/android/view-runtime-soak.android.spec.ts",
     "test:e2e:android:touch-gesture": "ELIZA_ANDROID_BACKEND=${ELIZA_ANDROID_BACKEND:-host} ELIZA_ANDROID_REQUIRE_AGENT=${ELIZA_ANDROID_REQUIRE_AGENT:-1} ELIZA_ANDROID_CLEAR_APP_DATA=1 bunx playwright test --config playwright.android.config.ts test/android/touch-gesture.android.spec.ts",
@@ -134,6 +135,7 @@
     "test:dev-server-registry": "node --test scripts/dev-server-registry.test.mjs"
   },
   "dependencies": {
+    "@capacitor-community/bluetooth-le": "8.2.0",
     "@capacitor/android": "8.3.4",
     "@capacitor/app": "8.1.0",
     "@capacitor/background-runner": "^3.0.0",
@@ -204,6 +206,7 @@
     "@fontsource/poppins": "^5.2.7",
     "@pixiv/three-vrm": "^3.4.5",
     "llama-cpp-capacitor": "^0.1.5",
+    "opus-decoder": "0.7.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.184.0"

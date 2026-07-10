@@ -19,6 +19,7 @@ const ROW: AppContainerRow = {
   organizationId: "org-1",
   userId: "user-1",
   environmentVars: { DATABASE_URL: "postgresql://app_x:pw@cluster1/db_app_x" },
+  hostContainerId: "docker-immutable-1",
 };
 
 function fakeStore(row: AppContainerRow | null = ROW) {
@@ -33,7 +34,7 @@ function fakeStore(row: AppContainerRow | null = ROW) {
     },
     async claimNodeSlot(_id, _organizationId, nodeId) {
       slotEvents.push({ op: "claim", nodeId });
-      return true;
+      return "claimed";
     },
     async rollbackNodeSlotClaim(_id, _organizationId, nodeId) {
       slotEvents.push({ op: "rollback", nodeId });
@@ -47,6 +48,9 @@ function fakeStore(row: AppContainerRow | null = ROW) {
     },
     async markError(id, error) {
       events.push({ op: "error", id, info: error });
+    },
+    async markCleanupRequired(id, error) {
+      events.push({ op: "cleanup-required", id, info: error });
     },
   };
   return { events, slotEvents, store };
@@ -68,6 +72,9 @@ function fakeProvider(over: Partial<Record<keyof AppContainerProvider, unknown>>
     },
     async delete(name: string) {
       calls.push({ op: "delete", arg: name });
+    },
+    async deleteById(hostContainerId: string, name: string) {
+      calls.push({ op: "deleteById", arg: { hostContainerId, name } });
     },
     async restart(name: string) {
       calls.push({ op: "restart", arg: name });
@@ -117,6 +124,20 @@ describe("executeContainerProvision", () => {
       },
     ]);
     expect(slotEvents).toEqual([{ op: "claim", nodeId: "node-1" }]);
+  });
+
+  test("a worker retry may continue only with the same idempotent slot claim", async () => {
+    const { events, store } = fakeStore();
+    store.claimNodeSlot = async () => "already-claimed";
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerProvision(
+      job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+      { provider, store },
+    );
+
+    expect(calls.some((call) => call.op === "provision")).toBe(true);
+    expect(events.some((event) => event.op === "running")).toBe(true);
   });
 
   test("flips the linked app to deployed on success (#5: deploy reaches READY)", async () => {
@@ -183,6 +204,38 @@ describe("executeContainerProvision", () => {
     ]);
   });
 
+  test("create or start failure with unproven removal retains the claimed slot", async () => {
+    const { events, slotEvents, store } = fakeStore();
+    let containerExists = false;
+    const { provider } = fakeProvider({
+      async provision() {
+        containerExists = true;
+        throw new Error("docker start failed");
+      },
+      async delete() {
+        expect(containerExists).toBe(true);
+        throw new Error("docker rm failed");
+      },
+    } as never);
+
+    await expect(
+      executeContainerProvision(
+        job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
+        { provider, store },
+      ),
+    ).rejects.toThrow("cleanup could not be proven");
+
+    expect(slotEvents).toEqual([{ op: "claim", nodeId: "node-1" }]);
+    expect(containerExists).toBe(true);
+    expect(events).toEqual([
+      {
+        op: "cleanup-required",
+        id: "container-1",
+        info: "docker start failed; Docker absence unproven: docker rm failed",
+      },
+    ]);
+  });
+
   test("capacity refusal never invokes Docker or fabricates a failed container", async () => {
     const { events, store } = fakeStore();
     store.claimNodeSlot = async () => {
@@ -224,7 +277,7 @@ describe("executeContainerProvision", () => {
   });
 
   test("failed Docker rollback keeps the slot claimed for retry reconciliation", async () => {
-    const { slotEvents, store } = fakeStore();
+    const { events, slotEvents, store } = fakeStore();
     store.markRunning = async () => {
       throw new Error("status write failed");
     };
@@ -239,9 +292,16 @@ describe("executeContainerProvision", () => {
         job({ containerId: "container-1", organizationId: "org-1", userId: "user-1" }),
         { provider, store },
       ),
-    ).rejects.toThrow("status write failed");
+    ).rejects.toThrow("cleanup could not be proven");
 
     expect(slotEvents).toEqual([{ op: "claim", nodeId: "node-1" }]);
+    expect(events).toEqual([
+      {
+        op: "cleanup-required",
+        id: "container-1",
+        info: "status write failed; Docker absence unproven: ssh unavailable",
+      },
+    ]);
   });
 
   test("throws when the container row is missing", async () => {
@@ -356,7 +416,10 @@ describe("executeContainerDelete / restart / logs", () => {
       provider,
       store,
     });
-    expect(calls.find((c) => c.op === "delete")?.arg).toBe("app-nubilio");
+    expect(calls.find((c) => c.op === "deleteById")?.arg).toEqual({
+      hostContainerId: "docker-immutable-1",
+      name: "app-nubilio",
+    });
     expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
   });
 
@@ -382,7 +445,24 @@ describe("executeContainerDelete / restart / logs", () => {
       store,
     });
 
-    expect(calls.find((call) => call.op === "delete")?.arg).toBe("app-nubilio");
+    expect(calls.find((call) => call.op === "deleteById")?.arg).toEqual({
+      hostContainerId: "docker-immutable-1",
+      name: "app-nubilio",
+    });
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("legacy recovery never removes a newer live container through a reused name", async () => {
+    const staleDeletingRow = { ...ROW, hostContainerId: undefined };
+    const { events, store } = fakeStore(staleDeletingRow);
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), {
+      provider,
+      store,
+    });
+
+    expect(calls.filter((call) => call.op === "delete" || call.op === "deleteById")).toEqual([]);
     expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
   });
 

@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
+import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
 import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -206,11 +207,15 @@ function isProcessAlive(pid) {
 }
 
 function removePathRecursive(targetPath, label) {
-  const result = spawnSync("node", [cleanupHelperScript, targetPath], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    stdio: "pipe",
-  });
+  const result = spawnSync(
+    process.execPath,
+    [cleanupHelperScript, targetPath],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: "pipe",
+    },
+  );
 
   if (result.error) {
     throw result.error;
@@ -226,6 +231,21 @@ function removePathRecursive(targetPath, label) {
       }${detail ? `: ${detail}` : ""}`,
     );
   }
+}
+
+function cleanAuditAppOutput() {
+  const outputDir = resolveAuditAppOutput({
+    appDir,
+    repoRoot,
+    configured: env.ELIZA_AUDIT_APP_DIR,
+  });
+
+  // The runner owns one evidence directory for the whole Playwright invocation.
+  // Cleaning here survives worker restarts and retries without erasing screenshots
+  // that earlier tests in the same run already proved.
+  removePathRecursive(outputDir, "app aesthetic audit output");
+  fs.mkdirSync(outputDir, { recursive: true });
+  console.log(`[ui-smoke] Reset app aesthetic audit output: ${outputDir}`);
 }
 
 function acquireUiSmokeViewLock() {
@@ -344,6 +364,18 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
 // NodeNext `.js` specifiers while their worktree files are TypeScript.
 env.NODE_OPTIONS = withElizaSourceNodeOptions(env.NODE_OPTIONS);
 
+const runsAppAudit =
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
+  hasPlaywrightProject("audit-app");
+
+if (runsAppAudit) {
+  // The lock covers cleanup and the complete capture, including lanes that
+  // intentionally skip rebuilding views. No concurrent audit can erase this
+  // run's evidence after it starts writing.
+  releaseUiSmokeViewLock = acquireUiSmokeViewLock();
+  cleanAuditAppOutput();
+}
+
 if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
   env.ELIZA_UI_SMOKE_RUN_ID =
     env.ELIZA_UI_SMOKE_RUN_ID || `${process.pid}-${Date.now().toString(36)}`;
@@ -366,11 +398,22 @@ if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
   }
 }
 
+// The all-views audit is evidence for production plugin bundles, so its stub
+// server must reject missing dist output instead of exercising the generic
+// placeholder used by lightweight offline smoke lanes. build-views runs below
+// before the server starts, making this a fail-closed provenance contract.
+if (
+  hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
+  hasPlaywrightProject("audit-app")
+) {
+  env.ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES = "1";
+}
+
 if (
   hasPlaywrightConfig("playwright.ui-smoke.config.ts") &&
   env.ELIZA_UI_SMOKE_SKIP_VIEW_BUILD !== "1"
 ) {
-  releaseUiSmokeViewLock = acquireUiSmokeViewLock();
+  releaseUiSmokeViewLock ??= acquireUiSmokeViewLock();
   const result = spawnSync(
     process.execPath,
     [path.join(repoRoot, "packages", "scripts", "build-views.mjs")],

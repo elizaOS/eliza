@@ -1,53 +1,18 @@
 /**
- * Orphan APP-container reconciler (Apps / Product 2).
- *
- * The sibling of the AGENT orphan reconciler in `docker-node-workloads.ts`, for
- * the OTHER kind of workload on the shared Hetzner-Docker pool: user-deployed
- * APP containers (the `containers` table, NOT `agent_sandboxes`).
- *
- * Both share ONE implementation — the orchestration loop, the SSH wiring, the
- * hard timeouts, the reap-by-immutable-id rm, and the fail-safe group-by-key
- * diff all live in `orphan-container-reconciler.ts`. This module injects only
- * the three app-specific deltas: the `app-` prefix, the `keyOf` that uses the
- * container NAME as the diff key, and the app terminal-status vocab (plus the
- * `containers` status query and a log tag).
- *
- * THE GAP THIS CLOSES
- * App-container teardown (`appCleanupService` / the CONTAINER_DELETE executor)
- * only runs on an EXPLICIT app delete. A mid-deploy crash or a partial failure
- * can leave an `app-<slug>` container running on a node with no live DB row (or
- * a DB row left in a dead terminal state) — it holds a compute slot and host
- * volume forever because nothing in the deploy lifecycle will ever reap it
- * again. Agents already get a periodic sweep for exactly this; apps did not.
- *
- * HOW APP CONTAINERS DIFFER FROM AGENTS
- *   - App containers are named `app-<first 12 of app id>` (see
- *     `containerNameForApp` in `app-deploy-runner.ts`); the name is written
- *     verbatim to `containers.name`. The diff key is therefore the container
- *     NAME itself, not an id parsed out of the name (agents key on the agent id
- *     embedded in `agent-<id>`).
- *   - The backing row lives in `containers`, with the status vocab
- *     pending | building | deploying | running | stopped | failed | deleting |
- *     deleted. A container is LIVE (do NOT reap) when its row is in
- *     pending/building/deploying/running/deleting (`deleting` = a delete job is
- *     in flight and owns teardown). It is an ORPHAN (reap) when its row is
- *     MISSING (`no_db_row`) or in a dead terminal state stopped/failed/deleted
- *     (`terminal_db_row`).
- *   - `containers.name` has NO unique constraint, so one `app-<slug>` name maps
- *     to MANY rows (one per deploy) — the shared diff's group-by-key
- *     `every-terminal` fail-safe (#9307) is what protects a live app sharing a
- *     name with stale stopped/failed rows. (For agents the key is a PRIMARY KEY
- *     so each key has at most one row and the same fail-safe reduces to a plain
- *     single-status check — identical decisions.)
- *
- * Non-`app-`-prefixed containers on a shared node (agents `agent-…`, the older
- * direct `cloud-container-…` provider path, infra containers like postgres) are
- * never matched by the `--filter name=app-` listing and never touched here.
+ * Reconciles app workloads and their DB ambassadors on the shared Docker pool.
+ * Both resources map to the workload name stored in `containers`, so a live row
+ * protects them together while a missing or fully terminal row makes each
+ * observed Docker ID reapable. Multiple deployment rows may share one name;
+ * the generic reconciler therefore keeps the resources when any row is live.
+ * A `cleanup_required` row also remains live until a retry proves Docker
+ * absence, preserving the node-capacity claim across uncertain teardown.
+ * Containers outside the `app-` namespace are never listed or touched.
  */
 
 import { inArray } from "drizzle-orm";
 import { dbRead } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
+import { APP_DB_AMBASSADOR_NAME_PREFIX, appContainerNameForAmbassador } from "./app-db-ambassador";
 import {
   type LiveContainerRef,
   type OrphanReconcileResult,
@@ -79,17 +44,22 @@ export const APP_CONTAINER_NAME_PREFIX = "app-";
  * `deleted` is the hard-terminal state. `deleting` is NOT included: a delete job
  * is actively in flight and owns the teardown; reaping under it would race the
  * worker (the exact mirror of the agent reconciler excluding `deletion_pending`).
+ * `cleanup_required` is also protected: it deliberately retains node capacity
+ * until a provision retry proves Docker absence or successfully replaces the
+ * deterministic container name.
  */
 const TERMINAL_CONTAINER_STATUSES = new Set<string>(["stopped", "failed", "deleted"]);
 
 /**
- * The app reconciler's `keyOf`: the diff key is the container NAME itself (apps
- * write the deterministic `app-<slug>` verbatim to `containers.name`). Returns
- * null for names outside the managed-app pattern so unrelated containers on a
- * shared node are never considered. A bare `app-` with no slug is rejected
- * (mirrors the agent reconciler rejecting a bare `agent-`).
+ * Map an app workload or its DB ambassador to the workload name stored in
+ * `containers.name`. Ambassadors deliberately have no row of their own, so
+ * sharing the owner's key makes them live, terminal, or missing as one unit.
+ * Names outside the managed namespace and incomplete names are rejected.
  */
 export function appContainerKeyOf(name: string): string | null {
+  if (name.startsWith(APP_DB_AMBASSADOR_NAME_PREFIX)) {
+    return appContainerNameForAmbassador(name);
+  }
   return name.startsWith(APP_CONTAINER_NAME_PREFIX) &&
     name.length > APP_CONTAINER_NAME_PREFIX.length
     ? name

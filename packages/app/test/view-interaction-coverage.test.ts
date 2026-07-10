@@ -156,11 +156,7 @@ const GUI_INTERACTION_OWNERS: Readonly<
       spec: "plugins/plugin-scheduling/src/components/lifeops-live-test/LifeOpsLiveTestSpatialView.tsx",
       proves:
         "Owns the LifeOps live-test readiness, run, retry, and fire-now agent controls consumed by the visual matrix.",
-      signals: [
-        "run-reminder",
-        "run-checkin",
-        "retry",
-      ],
+      signals: ["run-reminder", "run-checkin", "retry"],
     },
   ],
   messages: [
@@ -365,13 +361,17 @@ function readVisualMatrixCases(): VisualViewCase[] {
 
   return Array.from(
     viewCasesSource.matchAll(
-      /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
+      /\["([^"]+)",\s*"(gui|tui|xr)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
     ),
   ).flatMap((caseMatch) => {
     const id = caseMatch[1];
     const viewType = caseMatch[2];
     const viewPath = caseMatch[3];
-    if (!id || (viewType !== "gui" && viewType !== "tui") || !viewPath) {
+    expect(
+      viewType,
+      `Plugin visual matrix must stay GUI-only; remove ${id}:${viewType} from VIEW_CASES`,
+    ).toBe("gui");
+    if (!id || viewType !== "gui" || !viewPath) {
       return [];
     }
     return [{ id, viewType, path: viewPath }];
@@ -396,8 +396,9 @@ describe("plugin view interaction coverage", () => {
     const visualCases = readVisualMatrixCases();
     const unclassified = visualCases.filter((view) => {
       const owners = interactionOwners(view);
-      const hasInteractionOwner =
-        owners.some((owner) => owner !== VISUAL_BASELINE_OWNER);
+      const hasInteractionOwner = owners.some(
+        (owner) => owner !== VISUAL_BASELINE_OWNER,
+      );
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 

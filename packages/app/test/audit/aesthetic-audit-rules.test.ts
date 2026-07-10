@@ -2,7 +2,7 @@
  * Unit tests for the Aesthetic Audit Rules app audit helper used by visual
  * review evidence.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -13,6 +13,7 @@ import {
   evaluateMinimalismRatchet,
   evaluateStrictGate,
   exceedsMinimalismBudget,
+  findRemoteBundleDeclaration,
   type GateFinding,
   MINIMALISM_DENSITY_CEILING,
   MINIMALISM_RATCHET_TOLERANCE,
@@ -25,6 +26,35 @@ import {
   resolveAuditStrictFlags,
   type VerdictFinding,
 } from "../ui-smoke/aesthetic-audit-rules";
+
+describe("findRemoteBundleDeclaration", () => {
+  it("distinguishes in-process app-shell pages from production bundles", () => {
+    const payload = {
+      views: [
+        { id: "documents", viewType: "gui", path: "/documents" },
+        {
+          id: "calendar",
+          viewType: "gui",
+          bundleUrl: "/api/views/calendar/bundle.js",
+        },
+      ],
+    };
+
+    expect(findRemoteBundleDeclaration(payload, "documents", "gui")).toBeNull();
+    expect(findRemoteBundleDeclaration(payload, "missing", "gui")).toBeNull();
+    expect(findRemoteBundleDeclaration(payload, "calendar", "gui")).toEqual({
+      id: "calendar",
+      bundleUrl: "/api/views/calendar/bundle.js",
+      componentExport: "default",
+    });
+  });
+
+  it("rejects a malformed registry boundary", () => {
+    expect(() => findRemoteBundleDeclaration({}, "calendar", "gui")).toThrow(
+      /invalid views payload/,
+    );
+  });
+});
 
 describe("parseRgb (#8796)", () => {
   it("parses rgb() and rgba(), defaulting alpha to 1", () => {
@@ -153,6 +183,11 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
       "broken",
     );
     expect(computeVerdict(finding({ readableChars: 0 }))).toBe("broken");
+    expect(
+      computeVerdict(
+        finding({ renderStateIssues: ["dynamic view remained loading"] }),
+      ),
+    ).toBe("broken");
   });
 
   it("TUI and overlay surfaces are exempt from the quality/content floors", () => {
@@ -502,11 +537,14 @@ describe("minimalism baseline parse/build (#9950 update path)", () => {
   });
 
   it("the COMMITTED baseline file parses (spec-load integrity)", () => {
-    // process.cwd() is the vitest root (packages/app); jsdom rewrites
-    // import.meta.url to a non-file scheme, so resolve from the root.
+    // The changed-file coverage lane runs Vitest from the repository root,
+    // while the package command runs it from packages/app.
+    const packageRoot = existsSync(path.join(process.cwd(), "packages/app"))
+      ? path.join(process.cwd(), "packages/app")
+      : process.cwd();
     const committed = readFileSync(
       path.join(
-        process.cwd(),
+        packageRoot,
         "test/ui-smoke/aesthetic-minimalism-baseline.json",
       ),
       "utf8",

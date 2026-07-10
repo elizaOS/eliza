@@ -7448,5 +7448,19 @@
   "messageattachments.pdfLabel": "PDF",
   "messageattachments.textLabel": "Text",
   "messageattachments.model3dLoading": "Loading 3D model",
-  "messageattachments.model3dDownloadToView": "3D preview unavailable here. Download to view."
+  "messageattachments.model3dDownloadToView": "3D preview unavailable here. Download to view.",
+  "cloud.containers.agentActions.upgrade": "Upgrade to Dedicated",
+  "cloud.containers.agentActions.upgradeHint": "Move this agent to its own always-on container. Your conversation moves with it.",
+  "cloud.containers.agentActions.upgradeTitle": "Upgrade to a dedicated agent?",
+  "cloud.containers.agentActions.upgradeBody1": "Your agent moves to its own always-on container. Unlike the shared runtime, dedicated hosting consumes credits continuously — {{daily}}/day ({{rate}}) while running.",
+  "cloud.containers.agentActions.upgradeBody2": "Upgrading requires a balance above {{minimum}} ({{days}} days of hosting). If your balance is too low the upgrade is refused before anything changes.",
+  "cloud.containers.agentActions.upgradeBody3": "Your conversation history moves to the new agent; the shared agent is removed only after the move is confirmed. You can deactivate or delete the dedicated agent anytime to stop the hosting burn.",
+  "cloud.containers.agentActions.upgradeConfirm": "Yes, upgrade",
+  "cloud.containers.agentActions.upgradeStarted": "Upgrade started — provisioning your dedicated agent. Keep this page open.",
+  "cloud.containers.agentActions.upgradeComplete": "Upgrade complete — your conversation moved to the dedicated agent.",
+  "cloud.containers.agentActions.upgradeSharedLeftBehind": "The old shared agent entry could not be removed automatically — you can delete it from your agents list.",
+  "cloud.containers.agentActions.upgradeNotReady": "The dedicated agent did not become ready in time. Your shared agent keeps working — try the upgrade again to resume it.",
+  "cloud.containers.agentActions.upgradeFailed": "Upgrade failed",
+  "cloud.containers.agentActions.upgradeInsufficientCredits": "Not enough credits to upgrade. Add funds at /dashboard/billing and try again.",
+  "cloud.containers.agentActions.upgradeProgressHint": "Upgrading — provisioning a dedicated agent and moving your conversation onto it. This can take a few minutes; keep this page open."
 }

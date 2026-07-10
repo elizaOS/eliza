@@ -30,7 +30,9 @@ import type { ExtractedTaskParams } from "./lib/extract-task-plan.js";
 import {
   buildCadenceFromLlmParams,
   buildCadenceFromUpdateFields,
+  resolveDefinitionFromIntent,
   resolveOnceDueAt,
+  runLifeConnectedQuery,
   runLifeOperationHandler,
 } from "./life.js";
 
@@ -479,6 +481,284 @@ function taskPlanJson(overrides: Record<string, unknown>): string {
     ...overrides,
   });
 }
+
+describe("runLifeOperationHandler clarification contract", () => {
+  it("marks a reminder-plan response as user-facing and awaiting owner input", async () => {
+    const clarification =
+      "Please tell me the report name, date, and time before I create the reminder.";
+    const runtime = makeRuntime((prompt) => {
+      if (
+        prompt.includes(
+          "Plan the next step for a LifeOps create_definition request.",
+        )
+      ) {
+        return taskPlanJson({
+          mode: "respond",
+          response: clarification,
+        });
+      }
+      return clarification;
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "I need a reminder for an upcoming report deadline, but I still need to provide its name, date, and time.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent:
+            "Create a reminder after asking me for its report name, date, and time.",
+          ownerSurface: "OWNER_REMINDERS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: clarification,
+      userFacingText: clarification,
+      values: {
+        success: true,
+        noop: true,
+        awaitingUserInput: true,
+        suggestedOperation: "create",
+      },
+      data: {
+        actionName: "OWNER_REMINDERS",
+        noop: true,
+        awaitingUserInput: true,
+        suggestedOperation: "create",
+      },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+
+  it("marks a missing reminder schedule as user-facing and awaiting owner input", async () => {
+    const clarification = "What day and time should I use?";
+    const runtime = makeRuntime((prompt) => {
+      if (
+        prompt.includes(
+          "Plan the next step for a LifeOps create_definition request.",
+        )
+      ) {
+        return taskPlanJson({
+          mode: "respond",
+          response: clarification,
+          title: "Report deadline",
+        });
+      }
+      return clarification;
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("Remind me about my report deadline."),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Create a report deadline reminder.",
+          title: "Report deadline",
+          ownerSurface: "OWNER_REMINDERS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: "When should it happen?",
+      userFacingText: "When should it happen?",
+      values: {
+        success: false,
+        error: "MISSING_DEFINITION_FIELD",
+        missingField: "schedule",
+        requiresConfirmation: true,
+        awaitingUserInput: true,
+      },
+      data: {
+        actionName: "OWNER_REMINDERS",
+        missingField: "schedule",
+        requiresConfirmation: true,
+        awaitingUserInput: true,
+      },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+});
+
+describe("runLifeConnectedQuery capability boundaries", () => {
+  const service = (
+    overrides: Record<string, unknown>,
+  ): Parameters<typeof runLifeConnectedQuery>[0]["service"] =>
+    ({
+      getGoogleConnectorStatus: vi.fn(async () => ({
+        connected: false,
+        grantedCapabilities: [],
+      })),
+      listCalendars: vi.fn(async () => []),
+      ...overrides,
+    }) as unknown as Parameters<typeof runLifeConnectedQuery>[0]["service"];
+
+  const query = async (
+    queryOperation: Parameters<
+      typeof runLifeConnectedQuery
+    >[0]["queryOperation"],
+    serviceOverrides: Record<string, unknown>,
+  ) =>
+    runLifeConnectedQuery({
+      runtime: makeRuntime(() => ""),
+      message: makeMessage("show me the connected data"),
+      state: undefined,
+      intent: "show me the connected data",
+      service: service(serviceOverrides),
+      queryOperation,
+      actionName: "OWNER_LIFE",
+    });
+
+  it("reports Gmail unavailable without calling the triage endpoint", async () => {
+    const getGmailTriage = vi.fn();
+    const result = await query("query_email", { getGmailTriage });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("Gmail is not connected");
+    expect(getGmailTriage).not.toHaveBeenCalled();
+  });
+
+  it("returns the designed empty Gmail state when triage access is granted", async () => {
+    const result = await query("query_email", {
+      getGoogleConnectorStatus: vi.fn(async () => ({
+        connected: true,
+        grantedCapabilities: ["google.gmail.triage"],
+      })),
+      getGmailTriage: vi.fn(async () => ({
+        messages: [],
+        source: "synced",
+        syncedAt: "2026-07-10T00:00:00.000Z",
+        summary: {
+          unreadCount: 0,
+          importantNewCount: 0,
+          likelyReplyNeededCount: 0,
+        },
+      })),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("No important emails right now.");
+  });
+
+  it("uses an Apple calendar grant when Google calendar access is absent", async () => {
+    const result = await query("query_calendar_next", {
+      listCalendars: vi.fn(async () => [{ id: "apple-calendar" }]),
+      getNextCalendarEventContext: vi.fn(async () => ({
+        event: null,
+        startsAt: null,
+        startsInMinutes: null,
+        location: null,
+        attendeeNames: [],
+      })),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("No upcoming events on your calendar.");
+  });
+
+  it("reports calendar unavailable when neither connector grants read access", async () => {
+    const result = await query("query_calendar_today", {});
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("Google Calendar is not connected");
+    expect(result.data).toEqual({
+      actionName: "OWNER_LIFE",
+      operation: "query_calendar_today",
+    });
+  });
+
+  it("returns the designed empty state for an accessible clear calendar", async () => {
+    const getCalendarFeed = vi.fn(async () => ({ events: [] }));
+    const result = await query("query_calendar_today", {
+      getGoogleConnectorStatus: vi.fn(async () => ({
+        connected: true,
+        grantedCapabilities: ["google.calendar.read"],
+      })),
+      getCalendarFeed,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("Your calendar is clear today.");
+    expect(getCalendarFeed).toHaveBeenCalledOnce();
+  });
+
+  it("summarizes populated accessible calendar feeds", async () => {
+    const result = await query("query_calendar_today", {
+      getGoogleConnectorStatus: vi.fn(async () => ({
+        connected: true,
+        grantedCapabilities: ["google.calendar.read"],
+      })),
+      getCalendarFeed: vi.fn(async () => ({
+        events: [
+          {
+            title: "Report review",
+            startAt: "2026-07-10T15:00:00.000Z",
+            timezone: "UTC",
+          },
+        ],
+      })),
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("You have 1 event today:");
+    expect(result.text).toContain("Report review");
+  });
+
+  it("translates a connected-service rate limit at the action boundary", async () => {
+    const { LifeOpsServiceError } = await import("../lifeops/service.js");
+    const result = await query("query_calendar_today", {
+      getGoogleConnectorStatus: vi.fn(async () => ({
+        connected: true,
+        grantedCapabilities: ["google.calendar.read"],
+      })),
+      getCalendarFeed: vi.fn(async () => {
+        throw new LifeOpsServiceError("rate limit", 429);
+      }),
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toBe(
+      "LifeOps is rate-limited right now. Try again in a bit.",
+    );
+    expect(result.data).toEqual({
+      actionName: "OWNER_LIFE",
+      operation: "query_calendar_today",
+    });
+  });
+});
+
+describe("resolveDefinitionFromIntent", () => {
+  it("resolves a uniquely named definition from natural-language intent", async () => {
+    const service = {
+      listDefinitions: vi.fn(async () => [
+        {
+          definition: {
+            id: "def-1",
+            title: "workout",
+            domain: "user_lifeops",
+          },
+        },
+      ]),
+    } as unknown as Parameters<typeof resolveDefinitionFromIntent>[0];
+    const result = await resolveDefinitionFromIntent(
+      service,
+      undefined,
+      "Please update my workout routine",
+      "user_lifeops",
+    );
+
+    expect(result?.definition.id).toBe("def-1");
+  });
+});
 
 describe("runLifeOperationHandler snooze durations", () => {
   beforeEach(() => {

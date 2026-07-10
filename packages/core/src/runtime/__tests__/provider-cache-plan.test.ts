@@ -75,6 +75,58 @@ describe("ProviderCachePlan", () => {
 		expect(1 + plan.anthropic.breakpoints.length).toBeLessThanOrEqual(4);
 	});
 
+	it("routes per-segment TTL hints into Anthropic breakpoints (#15742)", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "abc123",
+			segmentHashes: ["s0", "s1", "s2", "s3"],
+			promptSegments: [
+				// Stable run ending at index 1: run-end segment carries ttl "long".
+				{ stable: true },
+				{ stable: true, ttl: "long" },
+				{ stable: false },
+				// Stable run of one segment with no ttl → default "short".
+				{ stable: true },
+			],
+		});
+
+		expect(plan.anthropic.breakpoints).toEqual([
+			{
+				segmentIndex: 1,
+				segmentHash: "s1",
+				ttl: "long",
+				cacheControl: { type: "ephemeral", ttl: "1h" },
+			},
+			{
+				segmentIndex: 3,
+				segmentHash: "s3",
+				ttl: "short",
+				cacheControl: { type: "ephemeral" },
+			},
+		]);
+	});
+
+	it("ignores a ttl hint on a segment that is not a stable run end (#15742)", () => {
+		const plan = buildProviderCachePlan({
+			prefixHash: "abc123",
+			segmentHashes: ["s0", "s1", "s2"],
+			promptSegments: [
+				// ttl on a mid-run segment is inert; the run END segment governs.
+				{ stable: true, ttl: "long" },
+				{ stable: true },
+				{ stable: false },
+			],
+		});
+
+		expect(plan.anthropic.breakpoints).toEqual([
+			{
+				segmentIndex: 1,
+				segmentHash: "s1",
+				ttl: "short",
+				cacheControl: { type: "ephemeral" },
+			},
+		]);
+	});
+
 	it("uses section priority while preserving selected marker order", () => {
 		const plan = buildProviderCachePlan({
 			prefixHash: "abc123",

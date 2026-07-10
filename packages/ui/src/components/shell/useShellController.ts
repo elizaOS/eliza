@@ -31,6 +31,10 @@ import {
   type VoiceControlEventDetail,
 } from "../../events";
 import { useViewEvent } from "../../hooks/useViewEvent";
+import {
+  PENDANT_VOICE_TRANSCRIPT_EVENT,
+  type PendantVoiceTranscriptDetail,
+} from "../../pendant/pendant-connection";
 import type { HomeModelStatus } from "../../services/local-inference/home-model-status";
 import {
   useChatComposer,
@@ -363,6 +367,8 @@ const selectShellController = (s: AppContextValue) => ({
   setTab: s.setTab,
   handleChatStop: s.handleChatStop,
   setActionNotice: s.setActionNotice,
+  chatAgentVoiceMuted: s.chatAgentVoiceMuted,
+  setState: s.setState,
 });
 
 export function useShellController(): ShellController {
@@ -381,6 +387,8 @@ export function useShellController(): ShellController {
     setTab,
     handleChatStop,
     setActionNotice,
+    chatAgentVoiceMuted,
+    setState,
   } = useAppSelectorShallow(selectShellController);
   // The wake phrase for transcript-mode inline replies follows the character
   // name (issue #9880); falls back to the running agent name, then "eliza".
@@ -1340,6 +1348,10 @@ export function useShellController(): ShellController {
     if (captureRef.current) stopCapture();
   }, [stopCapture]);
 
+  const toggleAgentVoiceMute = React.useCallback(() => {
+    setState("chatAgentVoiceMuted", !chatAgentVoiceMuted);
+  }, [chatAgentVoiceMuted, setState]);
+
   const voiceOutput = useShellVoiceOutput({
     conversationMessages: Array.isArray(conversationMessages)
       ? conversationMessages
@@ -1347,6 +1359,8 @@ export function useShellController(): ShellController {
     chatSending,
     recording,
     lastTurnVoice,
+    agentVoiceMuted: chatAgentVoiceMuted,
+    toggleAgentVoiceMute,
     uiLanguage,
     cloudConnected: elizaCloudVoiceProxyAvailable,
   });
@@ -1691,6 +1705,41 @@ export function useShellController(): ShellController {
     return () =>
       window.removeEventListener(VOICE_CONTROL_EVENT, onVoiceControl);
   }, []);
+
+  // omi pendant → chat. The pendant module (packages/ui/src/pendant) runs its
+  // own Web Bluetooth capture + VAD + ASR loop and dispatches each finalized
+  // transcript as PENDANT_VOICE_TRANSCRIPT_EVENT. Route it through the same
+  // VOICE_DM send the mic surfaces use so the reply is spoken back — the pendant
+  // gets the full voice loop for free without touching the capture state machine.
+  React.useEffect(() => {
+    const onPendantTranscript = (e: Event) => {
+      const detail = (e as CustomEvent<PendantVoiceTranscriptDetail>).detail;
+      const text = detail?.text?.trim();
+      if (!text) return;
+      send(text, {
+        channelType: "VOICE_DM",
+        metadata: {
+          voiceSource: "pendant",
+          voiceTurnSignal: buildVoiceTurnSignal(text, {
+            recentAgentReply: latestAgentReplyRef.current.text,
+            replyAgeMs: latestAgentReplyRef.current.at
+              ? Math.max(0, Date.now() - latestAgentReplyRef.current.at)
+              : Number.POSITIVE_INFINITY,
+            agentSpeaking: speakingRef.current,
+          }),
+        },
+      });
+    };
+    window.addEventListener(
+      PENDANT_VOICE_TRANSCRIPT_EVENT,
+      onPendantTranscript,
+    );
+    return () =>
+      window.removeEventListener(
+        PENDANT_VOICE_TRANSCRIPT_EVENT,
+        onPendantTranscript,
+      );
+  }, [send]);
 
   // Transcription re-listen loop: a one-shot capture backend (local-inference
   // auto-stop on silence) ends after each utterance — re-open it so long-form

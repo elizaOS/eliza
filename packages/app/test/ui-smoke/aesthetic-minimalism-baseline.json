@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-07T13:40:29.175Z",
+  "generatedAt": "2026-07-10T02:06:43Z",
   "views": {
     "builtin-background@ipad-portrait": {
       "borderDividerDensity": 45.4733,
@@ -67,9 +67,9 @@
       "whitespaceRatio": 0.8595
     },
     "plugin-calendar-gui@mobile-landscape": {
-      "borderDividerDensity": 139.7497,
-      "textDensity": 5.9242,
-      "whitespaceRatio": 0.876
+      "borderDividerDensity": 127.5975,
+      "textDensity": 4.1925,
+      "whitespaceRatio": 0.6833
     },
     "plugin-calendar-gui@mobile-portrait": {
       "borderDividerDensity": 139.7497,
@@ -77,9 +77,9 @@
       "whitespaceRatio": 0.7231
     },
     "plugin-goals-gui@mobile-landscape": {
-      "borderDividerDensity": 60.7607,
-      "textDensity": 8.2635,
-      "whitespaceRatio": 0.8618
+      "borderDividerDensity": 48.6086,
+      "textDensity": 6.5318,
+      "whitespaceRatio": 0.8169
     },
     "plugin-goals-gui@mobile-portrait": {
       "borderDividerDensity": 60.7607,
@@ -107,9 +107,9 @@
       "whitespaceRatio": 0.7934
     },
     "plugin-relationships-gui@mobile-landscape": {
-      "borderDividerDensity": 60.7607,
-      "textDensity": 7.3217,
-      "whitespaceRatio": 0.8633
+      "borderDividerDensity": 48.6086,
+      "textDensity": 5.9849,
+      "whitespaceRatio": 0.778
     },
     "plugin-relationships-gui@mobile-portrait": {
       "borderDividerDensity": 60.7607,

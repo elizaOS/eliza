@@ -382,6 +382,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "pendant-transcript",
+    path: "/pendant/transcript",
+    label: "Pendant Transcript",
+    group: "Pendant",
+    visibility: "all",
+    featureFlag: null,
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "automations",
     path: "/automations",
     label: "Automations",

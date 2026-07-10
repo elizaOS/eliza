@@ -22,7 +22,14 @@ their schemas** (they model different things):
   plugin-side `registerRegistryEntry()` runtime overlay. Re-exported by
   `@elizaos/app-core/registry` for backwards compatibility.
 
-`private: true` — not published to npm.
+Published to npm (`@elizaos/registry`, `publishConfig.access: public`). It ships
+its `src/` as raw TypeScript — same publish-as-source convention as
+`@elizaos/prompts` — with `files: ["src"]` so the first-party JSON under
+`src/first-party/` travels with it. It was un-privatized in #15833: published
+`@elizaos/shared` / `@elizaos/agent` / `@elizaos/app-core` pin it via
+`workspace:*`, so while it was `private: true` the rewritten pin 404'd for every
+external `npm install` of the beta line. `packages/scripts/publish-graph-guard.mjs`
+guards that invariant for the whole workspace going forward.
 
 ## Layout
 

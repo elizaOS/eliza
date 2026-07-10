@@ -34,6 +34,7 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "updateRect", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "detachGlass", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setGrouping", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getRegionState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isAvailable", returnType: CAPPluginReturnPromise),
     ]
 
@@ -60,7 +61,7 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
     @objc public func attachGlass(_ call: CAPPluginCall) {
         guard let id = call.getString("id"), let rect = Self.parseRect(call.getObject("rect"))
         else {
-            call.reject("attachGlass requires id and rect{x,y,width,height}")
+            call.reject("attachGlass requires id and a finite, positive rect{x,y,width,height}")
             return
         }
         guard Self.glassSupported else {
@@ -114,7 +115,7 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
     @objc public func updateRect(_ call: CAPPluginCall) {
         guard let id = call.getString("id"), let rect = Self.parseRect(call.getObject("rect"))
         else {
-            call.reject("updateRect requires id and rect{x,y,width,height}")
+            call.reject("updateRect requires id and a finite, positive rect{x,y,width,height}")
             return
         }
         DispatchQueue.main.async { [weak self] in
@@ -139,6 +140,42 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         DispatchQueue.main.async { [weak self] in
             self?.regions.removeValue(forKey: id)?.removeFromSuperview()
             call.resolve()
+        }
+    }
+
+    /// Diagnostic readback for device e2e: whether `id` has a live effect
+    /// view, the total region count, and the view's REAL frame (points,
+    /// container coordinates) — so tests prove insertion/replace/move/detach
+    /// against native truth, not just resolved promises.
+    @objc public func getRegionState(_ call: CAPPluginCall) {
+        guard let id = call.getString("id") else {
+            call.reject("getRegionState requires id")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                call.reject("plugin deallocated")
+                return
+            }
+            var result: [String: Any] = ["regionCount": self.regions.count]
+            if let effectView = self.regions[id], let container = effectView.superview {
+                result["exists"] = true
+                if let webView = self.webView,
+                    let panelIndex = container.subviews.firstIndex(of: effectView),
+                    let webIndex = container.subviews.firstIndex(of: webView)
+                {
+                    result["attachedBelowWebView"] = panelIndex < webIndex
+                }
+                result["rect"] = [
+                    "x": Double(effectView.frame.origin.x),
+                    "y": Double(effectView.frame.origin.y),
+                    "width": Double(effectView.frame.size.width),
+                    "height": Double(effectView.frame.size.height),
+                ]
+            } else {
+                result["exists"] = false
+            }
+            call.resolve(result)
         }
     }
 
@@ -173,6 +210,12 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         webView.scrollView.backgroundColor = .clear
     }
 
+    /// Untrusted-boundary rect bound (CSS px) — mirrors the Android plugin.
+    private static let maxRectCoordCssPx: Double = 100_000
+
+    // error-policy:J3 untrusted Capacitor boundary — a malformed rect
+    // (missing/non-finite/non-positive/out-of-envelope values) produces nil →
+    // the method rejects; nothing is clamped into a fake-valid region.
     private static func parseRect(_ object: JSObject?) -> CGRect? {
         guard
             let object,
@@ -181,6 +224,12 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
             let width = object["width"] as? Double ?? (object["width"] as? Int).map(Double.init),
             let height = object["height"] as? Double
                 ?? (object["height"] as? Int).map(Double.init)
+        else { return nil }
+        guard x.isFinite, y.isFinite, width.isFinite, height.isFinite else { return nil }
+        guard width > 0, height > 0 else { return nil }
+        guard
+            abs(x) <= Self.maxRectCoordCssPx, abs(y) <= Self.maxRectCoordCssPx,
+            width <= Self.maxRectCoordCssPx, height <= Self.maxRectCoordCssPx
         else { return nil }
         return CGRect(x: x, y: y, width: width, height: height)
     }

@@ -15,7 +15,8 @@
  *      anyOf groups, the missing-creds line printed even at zero).
  *
  * packages/scripts/__tests__ is outside workspace test discovery — this file
- * runs via an explicit `bun test` leg in .github/workflows/scenario-pr.yml.
+ * runs via the directory-wide `bun test` sweep in
+ * .github/workflows/scenario-pr.yml (#15846).
  */
 
 import { describe, expect, test } from "bun:test";

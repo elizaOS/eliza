@@ -566,6 +566,7 @@ describe("App navigate-view event wiring", () => {
       expect(dynamicViewLoaderMock.render).toHaveBeenCalledWith(
         expect.objectContaining({
           bundleUrl: "/api/views/remote-ledger/bundle.js",
+          reserveChatClearance: false,
           viewId: "remote-ledger",
           viewType: "gui",
         }),

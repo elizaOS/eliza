@@ -196,7 +196,7 @@ jobs:
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
           # gitignored generated keyword data. Source-mode (eliza-source) migrate
           # never builds core, so generate the file first (mirrors core's prebuild).
-          node packages/shared/scripts/generate-keywords.mjs --target ts
+          node packages/shared/scripts/generate-keywords.mjs
           bun run db:cloud:migrate
 
   # ---------------------------------------------------------------------------
@@ -554,7 +554,15 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA"
+          KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+        run: |
+          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA")
+          if [ -n "${KOKORO_TTS_URL:-}" ]; then
+            args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
+          else
+            echo "::notice::ELIZA_VOICE_KOKORO_TTS_URL is not configured; deploying without KOKORO_TTS_URL"
+          fi
+          bunx wrangler deploy "${args[@]}"
 
       - name: Verify deployed API commit
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'

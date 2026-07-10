@@ -17,9 +17,17 @@ import {
   readCloudLoginPending,
 } from "../first-run/first-run-cloud-resume";
 import { CLOUD_LOGIN_POPUP_NAME } from "./cloud-login-launch";
+import { registerStewardLoginLauncher } from "./cloud-steward-login";
 import { useCloudState } from "./useCloudState";
 
 const DEVICE_CODE_SENTINEL = "device-code-flow-reached";
+const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
+  window,
+  "location",
+);
+const globalWithPlatform = globalThis as typeof globalThis & {
+  Capacitor?: { isNativePlatform?: () => boolean };
+};
 
 function makeParams() {
   return {
@@ -34,10 +42,6 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
   let cloudLoginSpy: ReturnType<typeof vi.spyOn>;
   let cloudLoginDirectSpy: ReturnType<typeof vi.spyOn>;
   let cloudLoginPollDirectSpy: ReturnType<typeof vi.spyOn>;
-  const originalLocationDescriptor = Object.getOwnPropertyDescriptor(
-    window,
-    "location",
-  );
 
   beforeEach(() => {
     localStorage.clear();
@@ -69,6 +73,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
   afterEach(() => {
     localStorage.clear();
+    delete globalWithPlatform.Capacitor;
     vi.restoreAllMocks();
     if (originalLocationDescriptor) {
       Object.defineProperty(window, "location", originalLocationDescriptor);
@@ -432,5 +437,205 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("bypasses a registered Steward launcher on Capacitor native and uses external direct device-code polling", async () => {
+    vi.useFakeTimers();
+    globalWithPlatform.Capacitor = { isNativePlatform: () => true };
+    const launcher = vi.fn(async () => ({ token: "launcher-token" }));
+    const unregister = registerStewardLoginLauncher(launcher);
+    const popup = {
+      closed: false,
+      close: vi.fn(() => {
+        (popup as { closed: boolean }).closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    } as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(popup);
+    cloudLoginDirectSpy.mockResolvedValue({
+      ok: true,
+      apiBase: "https://api.elizacloud.ai",
+      browserUrl: "https://elizacloud.ai/auth/cli-login?session=sess-native",
+      sessionId: "sess-native",
+    });
+    cloudLoginPollDirectSpy.mockResolvedValue({
+      status: "authenticated",
+      token: "native-session-token",
+      userId: "user-native",
+    });
+
+    try {
+      const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+      let login: Promise<void> = Promise.resolve();
+      await act(async () => {
+        login = result.current.handleCloudLogin(popup);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(launcher).not.toHaveBeenCalled();
+      expect(cloudLoginDirectSpy).toHaveBeenCalledWith(
+        "https://api.elizacloud.ai",
+      );
+      expect(popup.location.href).toBe(
+        "https://elizacloud.ai/auth/cli-login?session=sess-native",
+      );
+      expect(result.current.elizaCloudLoginFallbackUrl).toBe(
+        "https://elizacloud.ai/auth/cli-login?session=sess-native",
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+        await login;
+      });
+
+      expect(cloudLoginPollDirectSpy).toHaveBeenCalledWith(
+        "https://api.elizacloud.ai",
+        "sess-native",
+      );
+      expect(localStorage.getItem("steward_session_token")).toBe(
+        "native-session-token",
+      );
+
+      unmount();
+      vi.clearAllTimers();
+    } finally {
+      unregister();
+      vi.useRealTimers();
+    }
+  });
+});
+
+// The same-tab login leg lands back in the app with only a session token; the
+// visible connected/credits state comes from the next pollCloudCredits pass.
+// These pin that snapshot application: connected+balance, auth-rejected, and
+// the disconnected reset — never a fabricated healthy-empty.
+describe("useCloudState — pollCloudCredits status snapshot", () => {
+  let getCloudStatusSpy: ReturnType<typeof vi.spyOn>;
+  let getCloudCreditsSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    // Capacitor-native satisfies canPollCloudStatus() without a configured base.
+    globalWithPlatform.Capacitor = { isNativePlatform: () => true };
+    getCloudStatusSpy = vi.spyOn(client, "getCloudStatus");
+    getCloudCreditsSpy = vi.spyOn(client, "getCloudCredits");
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    delete globalWithPlatform.Capacitor;
+    vi.restoreAllMocks();
+  });
+
+  it("applies a connected snapshot: enabled, credits balance, low/critical flags, and status reason", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: true,
+      userId: "user-9",
+      reason: " degraded upstream ",
+      topUpUrl: "https://elizacloud.ai/top-up",
+    });
+    getCloudCreditsSpy.mockResolvedValue({
+      balance: 12.5,
+      low: true,
+      critical: false,
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = false;
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+
+    expect(connected).toBe(true);
+    expect(result.current.elizaCloudConnected).toBe(true);
+    expect(result.current.elizaCloudEnabled).toBe(true);
+    expect(result.current.elizaCloudUserId).toBe("user-9");
+    expect(result.current.elizaCloudStatusReason).toBe("degraded upstream");
+    expect(result.current.elizaCloudTopUpUrl).toBe(
+      "https://elizacloud.ai/top-up",
+    );
+    expect(result.current.elizaCloudCredits).toBe(12.5);
+    expect(result.current.elizaCloudCreditsLow).toBe(true);
+    expect(result.current.elizaCloudCreditsCritical).toBe(false);
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+    expect(result.current.elizaCloudCreditsError).toBeNull();
+
+    unmount();
+  });
+
+  it("marks the session auth-rejected from the credits probe without fabricating a balance", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: false,
+    });
+    getCloudCreditsSpy.mockResolvedValue({
+      authRejected: true,
+      topUpUrl: "https://elizacloud.ai/top-up",
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.pollCloudCredits();
+    });
+
+    expect(result.current.elizaCloudAuthRejected).toBe(true);
+    expect(result.current.elizaCloudCredits).toBeNull();
+    expect(result.current.elizaCloudCreditsLow).toBe(false);
+    expect(result.current.elizaCloudCreditsError).toBeNull();
+
+    unmount();
+  });
+
+  it("carries a credits transport failure into the visible error state, never healthy-empty", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: true,
+      connected: true,
+      hasApiKey: true,
+      cloudVoiceProxyAvailable: false,
+    });
+    getCloudCreditsSpy.mockRejectedValue(new Error("credits endpoint down"));
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    await act(async () => {
+      await result.current.pollCloudCredits();
+    });
+
+    expect(result.current.elizaCloudCreditsError).toBe("credits endpoint down");
+    expect(result.current.elizaCloudCredits).toBeNull();
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+
+    unmount();
+  });
+
+  it("resets credits and error state on a disconnected snapshot", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      enabled: false,
+      connected: false,
+      hasApiKey: false,
+      cloudVoiceProxyAvailable: false,
+    });
+
+    const { result, unmount } = renderHook(() => useCloudState(makeParams()));
+    let connected = true;
+    await act(async () => {
+      connected = await result.current.pollCloudCredits();
+    });
+
+    expect(connected).toBe(false);
+    expect(result.current.elizaCloudConnected).toBe(false);
+    expect(result.current.elizaCloudCredits).toBeNull();
+    expect(result.current.elizaCloudCreditsError).toBeNull();
+    expect(result.current.elizaCloudAuthRejected).toBe(false);
+    expect(result.current.elizaCloudStatusReason).toBeNull();
+    expect(getCloudCreditsSpy).not.toHaveBeenCalled();
+
+    unmount();
   });
 });

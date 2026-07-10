@@ -11,6 +11,7 @@ import {
   setShellSurfacePage,
   useShellSurface,
 } from "../../state/shell-surface-store";
+import { FirstSessionSwipeHint } from "./FirstSessionSwipeHint";
 import { PagerEdgeButtons } from "./PagerEdgeButtons";
 
 export interface HomeLauncherSurfaceProps {
@@ -171,6 +172,11 @@ export function HomeLauncherSurface({
         prevLabel="Home"
         nextLabel="Launcher"
       />
+      {/* Touch complement of the edge buttons: a one-time first-session pill
+          teaching the swipe, retired forever through the home-dismissal sunset
+          lifecycle. Floats over the rail (pointer-events-none) so it can never
+          steal the gesture it teaches. */}
+      <FirstSessionSwipeHint page={page} />
     </section>
   );
 }

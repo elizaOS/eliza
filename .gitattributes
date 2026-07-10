@@ -3,3 +3,21 @@
 # so they must stay byte-identical across platforms — never let a Windows
 # checkout (autocrlf) rewrite them to CRLF.
 patches/CHECKSUMS.sha256 -text
+
+# Source files must check out with LF everywhere: Windows runners default to
+# core.autocrlf=true, and a CRLF checkout makes vitest's transform pipeline
+# reject otherwise-valid modules ("SyntaxError: Invalid or unexpected token"
+# at collection — reproduced by CRLF-converting run-mobile-build.mjs on
+# Linux). Biome also formats LF-only, so CRLF working copies churn
+# format:check.
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.mts text eol=lf
+*.cts text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

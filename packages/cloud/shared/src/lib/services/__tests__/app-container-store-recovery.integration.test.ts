@@ -116,8 +116,11 @@ describe("app-container persistence transactions", () => {
   });
 
   test("claims and rolls back exactly one authoritative node slot", async () => {
-    expect(await store.claimNodeSlot(SLOT_ID, ORG_ONE, "node-1")).toBe(true);
-    expect(await store.claimNodeSlot(SLOT_ID, ORG_ONE, "node-1")).toBe(false);
+    expect(await store.claimNodeSlot(SLOT_ID, ORG_ONE, "node-1")).toBe("claimed");
+    expect(await store.claimNodeSlot(SLOT_ID, ORG_ONE, "node-1")).toBe("already-claimed");
+    await expect(store.claimNodeSlot(SLOT_ID, ORG_ONE, "node-full")).rejects.toMatchObject({
+      name: "APP_CONTAINER_NODE_SLOT_CONFLICT",
+    });
     expect(await store.getById(SLOT_ID)).toMatchObject({ id: SLOT_ID, nodeId: "node-1" });
 
     expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, "node-1")).toBe(1);
@@ -154,6 +157,7 @@ describe("app-container persistence transactions", () => {
   });
 
   test("running, failure, and deletion transitions preserve ownership and placement", async () => {
+    expect(await store.claimNodeSlot(SLOT_ID, ORG_ONE, "node-1")).toBe("claimed");
     await store.markRunning(SLOT_ID, {
       hostContainerId: "docker-1",
       hostPort: 31000,
@@ -161,6 +165,15 @@ describe("app-container persistence transactions", () => {
       nodeHost: "10.0.0.1",
     });
     await store.markError(SLOT_ID, "health check failed");
+    await store.markCleanupRequired(SLOT_ID, "docker absence unproven");
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, "node-1")).toBe(1);
+    expect(
+      (
+        await client.query<{ error_message: string; status: string }>(
+          `SELECT status, error_message FROM containers WHERE id='${SLOT_ID}'`,
+        )
+      ).rows,
+    ).toEqual([{ status: "cleanup_required", error_message: "docker absence unproven" }]);
     await store.markDeleted(SLOT_ID, ORG_ONE, "node-1");
 
     expect(statusUpdates).toContainEqual({ id: SLOT_ID, status: "running" });

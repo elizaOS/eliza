@@ -26,6 +26,12 @@ export interface InsufficientCreditsBody {
 export interface InsufficientCreditsContext {
   welcomeBonusWithheldReason?: SignupGrantWithheldReason;
   welcomeBonusWithheldMessage?: string;
+  /**
+   * Threshold the denied gate enforced. Defaults to the create/provision/resume
+   * minimum (`MINIMUM_DEPOSIT`); the shared→dedicated tier-upgrade gate passes
+   * its N-days-of-hosting minimum so clients render the real number (#15355).
+   */
+  requiredBalance?: number;
 }
 
 /** Build the canonical 402 body from a denied `checkAgentCreditGate` result. */
@@ -41,7 +47,7 @@ export function insufficientCreditsBody(
       ? (context.welcomeBonusWithheldMessage ??
         "Welcome credit unavailable for this signup. Add funds to start an agent.")
       : (creditCheck.error ?? "Insufficient credits"),
-    requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+    requiredBalance: context.requiredBalance ?? AGENT_PRICING.MINIMUM_DEPOSIT,
     currentBalance: creditCheck.balance,
     ...(welcomeBonusWithheld
       ? {
@@ -66,7 +72,7 @@ export function insufficientCredits402(
   logger.warn(warn, {
     ...logContext,
     balance: creditCheck.balance,
-    required: AGENT_PRICING.MINIMUM_DEPOSIT,
+    required: context.requiredBalance ?? AGENT_PRICING.MINIMUM_DEPOSIT,
     ...(context.welcomeBonusWithheldReason
       ? { welcomeBonusWithheldReason: context.welcomeBonusWithheldReason }
       : {}),

@@ -171,13 +171,48 @@ function projectItemRepository(item) {
   );
 }
 
-function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
+/**
+ * True when a project card belongs to `repo`. Cards carrying no repository
+ * signal at all are kept — a metadata gap must widen the audit, not silently
+ * shrink it. Shared by the closeout audit so board, readiness, and evidence
+ * analyzers scope cards identically (#15852).
+ */
+export function projectItemMatchesRepo(item, repo = DEFAULT_REPO) {
+  const expectedRepo = normalizeRepository(repo);
+  const itemRepo = projectItemRepository(item);
+  return !expectedRepo || !itemRepo || itemRepo === expectedRepo;
+}
+
+/**
+ * Project item-list mixes Issue, PullRequest, and DraftIssue cards, and the
+ * MVP audit contract is issue-scoped: only `content.type === "Issue"` enters
+ * issue reconciliation. A card without a type cannot be classified — guessing
+ * either direction silently reshapes the audit — so an untyped card is an
+ * invalid payload and fails the run. Shared by the board, readiness, and
+ * evidence analyzers so all three scope cards identically (#15852).
+ */
+export function projectItemIsIssue(item) {
+  const type = item?.content?.type;
+  const label =
+    item?.content?.url ?? item?.title ?? item?.id ?? "unidentified card";
+  if (typeof type !== "string" || type.trim().length === 0) {
+    throw new Error(
+      `Project card ${label} carries no content.type; refusing to classify an untyped card as issue or non-issue`,
+    );
+  }
+  if (type === "Issue") return true;
+  if (type === "PullRequest" || type === "DraftIssue") return false;
+  throw new Error(
+    `Project card ${label} carries unsupported content.type ${JSON.stringify(type)}; refusing to exclude an unknown card type`,
+  );
+}
+
+export function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
   const items = Array.isArray(payload) ? payload : (payload.items ?? []);
   const byNumber = new Map();
-  const expectedRepo = normalizeRepository(repo);
   for (const item of items) {
-    const itemRepo = projectItemRepository(item);
-    if (expectedRepo && itemRepo && itemRepo !== expectedRepo) continue;
+    if (!projectItemIsIssue(item)) continue;
+    if (!projectItemMatchesRepo(item, repo)) continue;
     const number = projectItemNumber(item);
     if (typeof number === "number") {
       byNumber.set(number, item);

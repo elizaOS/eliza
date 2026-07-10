@@ -177,11 +177,20 @@ function planEntryEqual(
  * identical re-parse is not.
  */
 export function planChecklistPropsEqual(
-  prev: { entries: SwarmActivityPlanEntry[]; title?: string },
-  next: { entries: SwarmActivityPlanEntry[]; title?: string },
+  prev: {
+    entries: SwarmActivityPlanEntry[];
+    title?: string;
+    headerless?: boolean;
+  },
+  next: {
+    entries: SwarmActivityPlanEntry[];
+    title?: string;
+    headerless?: boolean;
+  },
 ): boolean {
   return (
     prev.title === next.title &&
+    prev.headerless === next.headerless &&
     listEqual(prev.entries, next.entries, planEntryEqual)
   );
 }

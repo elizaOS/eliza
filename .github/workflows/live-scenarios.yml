@@ -194,6 +194,8 @@ jobs:
 
           package_dirs=(
             plugins/plugin-sql
+            plugins/plugin-blocker
+            plugins/plugin-local-inference
             plugins/plugin-app-control
             plugins/plugin-agent-skills
             plugins/plugin-health

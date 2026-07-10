@@ -167,6 +167,33 @@ describe("audit-mvp-project-board", () => {
     expect(summary.counts.labeledMvpIssues).toBe(4);
   });
 
+  test("normalizeProjectIssue excludes non-issue cards and rejects untyped cards", () => {
+    expect(
+      board.normalizeProjectIssue({
+        content: {
+          type: "PullRequest",
+          number: 7,
+          title: "Ignored PR",
+          url: "https://github.com/elizaOS/eliza/pull/7",
+        },
+        status: "Done",
+      }),
+    ).toBeNull();
+    // Real DraftIssue cards carry only type, title, and body.
+    expect(
+      board.normalizeProjectIssue({
+        content: { type: "DraftIssue", title: "Loose planning note" },
+        status: "Todo",
+      }),
+    ).toBeNull();
+    expect(() =>
+      board.normalizeProjectIssue({
+        content: { number: 8, title: "Untyped card" },
+        status: "Ready",
+      }),
+    ).toThrow("carries no content.type");
+  });
+
   test("strictViolations returns the stale buckets that should fail closeout", () => {
     const summary = board.summarizeMvpBoard({
       projectItems,

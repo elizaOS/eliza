@@ -250,7 +250,7 @@
         "./plugins/plugin-elevenlabs/dist/index.d.ts"
       ],
       "@elizaos/plugin-elizacloud": [
-        "./plugins/plugin-elizacloud/dist/node/index.d.ts"
+        "./plugins/plugin-elizacloud/dist/index.node.d.ts"
       ],
       "@elizaos/plugin-embeddings": [
         "./plugins/plugin-embeddings/dist/node/index.d.ts"
@@ -554,6 +554,9 @@
       ],
       "@elizaos/vault": [
         "./packages/vault/dist/index.d.ts"
+      ],
+      "@elizaos/voice-rtt-bench": [
+        "./packages/benchmarks/voice-rtt/src/index.ts"
       ],
       "@feed/a2a": [
         "./packages/feed/packages/a2a/src/index.ts"

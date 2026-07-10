@@ -10,6 +10,7 @@ import type { dbWrite } from "../../db/helpers";
 import type { containersRepository } from "../../db/repositories/containers";
 import { containers } from "../../db/schemas/containers";
 import {
+  type AppContainerNodeSlotClaim,
   type AppContainerReadDatabase,
   type AppContainerTransactionDatabase,
   claimAppContainerNodeSlot,
@@ -56,6 +57,8 @@ export interface ContainerRepoAppContainerStoreDeps {
 export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): AppContainerRow {
   const metaAppId =
     typeof row.metadata?.appId === "string" ? (row.metadata.appId as string) : undefined;
+  const hostContainerId =
+    typeof row.metadata?.hostContainerId === "string" ? row.metadata.hostContainerId : undefined;
   return {
     id: row.id,
     // project_name is set to the appId by the deploy orchestrator's
@@ -68,6 +71,7 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
     userId: row.user_id,
     environmentVars: row.environment_vars ?? undefined,
     nodeId: row.node_id ?? undefined,
+    hostContainerId,
   };
 }
 
@@ -116,7 +120,7 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     containerId: string,
     organizationId: string,
     nodeId: string,
-  ): Promise<boolean> {
+  ): Promise<AppContainerNodeSlotClaim> {
     return claimAppContainerNodeSlot(
       this.deps.writeDatabase,
       containerId,
@@ -127,6 +131,12 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
           code: "APP_CONTAINER_NODE_CAPACITY_UNAVAILABLE",
           context: { containerId, organizationId, nodeId },
           severity: "ephemeral",
+        }),
+      (existing) =>
+        this.deps.errorFactory(`App container ${containerId} has a conflicting node-slot claim`, {
+          code: "APP_CONTAINER_NODE_SLOT_CONFLICT",
+          context: { containerId, organizationId, requestedNodeId: nodeId, existing },
+          severity: "fatal",
         }),
     );
   }
@@ -201,5 +211,12 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
 
   async markError(containerId: string, error: string): Promise<void> {
     await this.deps.repository.updateStatus(containerId, "failed", error);
+  }
+
+  async markCleanupRequired(containerId: string, error: string): Promise<void> {
+    await this.deps.writeDatabase
+      .update(containers)
+      .set({ status: "cleanup_required", error_message: error, updated_at: new Date() })
+      .where(eq(containers.id, containerId));
   }
 }

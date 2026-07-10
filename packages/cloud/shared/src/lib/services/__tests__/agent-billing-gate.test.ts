@@ -1,8 +1,7 @@
-// Exercises the agent-billing-gate pre-provisioning spend gate with deterministic
-// repository fixtures. Regression focus: a corrupt organizations.credit_balance
-// NUMERIC read ('NaN'::numeric is valid Postgres NUMERIC, read back as "NaN")
-// previously slipped past `Number(...)` + `NaN <= MINIMUM_DEPOSIT` (false) and
-// FAILED OPEN with { allowed: true, balance: NaN }.
+/**
+ * Exercises agent credit gates with deterministic repository fixtures, including
+ * corrupt Postgres NUMERIC values and the dedicated-hosting runway threshold.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const findById = mock();
@@ -24,9 +23,12 @@ mock.module("../../utils/logger", () => ({
   },
 }));
 
-const { checkAgentCreditGate, parseGateCreditBalance, CorruptCreditBalanceError } = await import(
-  "../agent-billing-gate"
-);
+const {
+  checkAgentCreditGate,
+  checkAgentTierUpgradeCreditGate,
+  parseGateCreditBalance,
+  CorruptCreditBalanceError,
+} = await import("../agent-billing-gate");
 
 beforeEach(() => {
   findById.mockReset();
@@ -140,5 +142,26 @@ describe("checkAgentCreditGate", () => {
     expect(loggerError).toHaveBeenCalledTimes(1);
     const [message] = loggerError.mock.calls[0] as [string];
     expect(message).toContain("Failed to check credits");
+  });
+});
+
+describe("checkAgentTierUpgradeCreditGate", () => {
+  test("requires the dedicated-hosting runway rather than the create minimum", async () => {
+    findById.mockResolvedValue({ credit_balance: "0.50" });
+
+    const result = await checkAgentTierUpgradeCreditGate("org-short-runway");
+
+    expect(result.allowed).toBe(false);
+    expect(result.balance).toBe(0.5);
+    expect(result.error).toContain("3 days of hosting");
+    expect(result.error).toContain("$0.22");
+  });
+
+  test("allows an upgrade only above the dedicated-hosting threshold", async () => {
+    findById.mockResolvedValue({ credit_balance: "0.73" });
+
+    const result = await checkAgentTierUpgradeCreditGate("org-funded-upgrade");
+
+    expect(result).toEqual({ allowed: true, balance: 0.73 });
   });
 });

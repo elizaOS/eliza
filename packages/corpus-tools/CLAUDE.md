@@ -16,5 +16,16 @@ work.
   boundary.
 - Validator failures are data errors; return structured diagnostics from the
   library and let only the CLI translate them to stdout/stderr and exit codes.
+- Verification is corpus-wide, non-mutating, and fail-closed. A row-level stage
+  may not assign `scrubState: "verified"`; publication reruns the complete gate
+  against every bound input, and its declared scope must not imply multimodal
+  coverage.
+- Raw gitleaks output, mine candidates, gazetteers, and other cleartext
+  provenance stay local. Persisted verification findings contain hashes and
+  structural locations only.
+- Verification and publisher freshness checks bind the exact manifest, ledger,
+  mine candidates, gazetteer, deletion rules/review/approval chain, placeholder
+  registry, scanner config, and final corpus bytes. Report self-hashes detect
+  corruption but never substitute for a fresh rerun or owner authorization.
 
 Repo-wide rules and evidence standards are in the root `AGENTS.md`.

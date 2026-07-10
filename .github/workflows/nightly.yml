@@ -217,6 +217,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      # Fail the cut before lerna touches npm if a published package pins an
+      # unpublishable workspace target — the rewritten version 404s for external
+      # consumers (#15833). Only NEW edges (outside publish-graph-baseline.json)
+      # fail; known pre-existing ones are baselined follow-up.
+      - name: Guard publish graph
+        run: bun run audit:publish-graph
+
       - name: Publish @elizaos/* packages with nightly dist-tag
         # --no-sort bypasses a lerna 9.0.7 topological queue bug triggered by
         # the @elizaos/agent <-> @elizaos/plugin-capacitor-bridge cycle, which

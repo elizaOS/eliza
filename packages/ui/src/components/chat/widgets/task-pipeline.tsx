@@ -115,20 +115,28 @@ export function toNativeToolEvent(step: TaskActivityStep): NativeToolCallEvent {
 export const PlanChecklist = memo(function PlanChecklist({
   entries,
   title,
+  headerless = false,
 }: {
   entries: SwarmActivityPlanEntry[];
   title?: string;
+  /**
+   * Suppress the title + count row when a wrapping surface (the collapsible
+   * ChecklistWidget shell) already renders both — otherwise they appear twice.
+   */
+  headerless?: boolean;
 }) {
   if (entries.length === 0) return null;
   const done = entries.filter((e) => e.status === "completed").length;
   return (
     <div data-testid="plan-checklist" className="flex flex-col gap-1">
-      <div className="flex items-center justify-between text-xs text-muted">
-        <span>{title ?? "Checklist"}</span>
-        <span className="tabular-nums">
-          {done}/{entries.length}
-        </span>
-      </div>
+      {!headerless && (
+        <div className="flex items-center justify-between text-xs text-muted">
+          <span>{title ?? "Checklist"}</span>
+          <span className="tabular-nums">
+            {done}/{entries.length}
+          </span>
+        </div>
+      )}
       <ul className="flex flex-col gap-0.5">
         {entries.map((entry, i) => {
           const isDone = entry.status === "completed";
@@ -182,7 +190,7 @@ export const ChecklistWidget = memo(function ChecklistWidget({
     <ChatWidgetShell
       title={resolvedTitle}
       status={
-        <span className="rounded-sm bg-bg px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted">
+        <span className="text-[11px] font-medium tabular-nums text-muted">
           {done}/{entries.length}
         </span>
       }
@@ -190,8 +198,8 @@ export const ChecklistWidget = memo(function ChecklistWidget({
       complete={complete}
       testId="checklist-widget-shell"
     >
-      <div className="px-3 py-2">
-        <PlanChecklist entries={entries} title={resolvedTitle} />
+      <div className="py-1.5">
+        <PlanChecklist entries={entries} title={resolvedTitle} headerless />
       </div>
     </ChatWidgetShell>
   );

@@ -30,7 +30,6 @@ const GENERATOR_PATH = join(SHARED_PKG_DIR, "scripts", "generate-keywords.mjs");
 export function runKeywordGenerator({
   generatorPath = GENERATOR_PATH,
   cwd = SHARED_PKG_DIR,
-  target = "ts",
 } = {}) {
   if (!existsSync(generatorPath)) {
     console.warn(
@@ -39,15 +38,11 @@ export function runKeywordGenerator({
     return { skipped: true };
   }
 
-  const result = spawnSync(
-    process.execPath,
-    [generatorPath, "--target", target],
-    {
-      cwd,
-      stdio: "inherit",
-      env: process.env,
-    },
-  );
+  const result = spawnSync(process.execPath, [generatorPath], {
+    cwd,
+    stdio: "inherit",
+    env: process.env,
+  });
 
   if (result.error) {
     throw result.error;

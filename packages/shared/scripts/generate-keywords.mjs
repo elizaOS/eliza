@@ -1,15 +1,20 @@
 #!/usr/bin/env node
 /**
- * i18n Keyword Code Generator
- *
- * Reads keyword JSON files from src/i18n/keywords/*.keywords.json and generates
- * the TypeScript keyword module consumed by @elizaos/shared and @elizaos/core.
+ * i18n keyword code generator: reads the hand-authored keyword JSON files from
+ * src/i18n/keywords/*.keywords.json and emits the gitignored keyword modules
+ * consumed by @elizaos/shared and @elizaos/core.
  *
  * Usage:
  *   node scripts/generate-keywords.mjs
  *
  * Output: src/i18n/generated/validation-keyword-data.ts (and .js)
  *         ../core/src/i18n/generated/validation-keyword-data.ts (standalone)
+ *
+ * All three outputs are always emitted together and it takes no arguments:
+ * each caller depends on a different file (core typecheck on the standalone
+ * .ts, Vite/Rolldown bundles and release packaging on the literal .js path),
+ * so partial emission is never safe. Unexpected argv is rejected so a call
+ * site cannot silently imply target selection that does not exist (#15847).
  */
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -21,8 +26,13 @@ const keywordsDir = join(__dirname, "..", "src", "i18n", "keywords");
 const generatedDir = join(__dirname, "..", "src", "i18n", "generated");
 
 const args = process.argv.slice(2);
-const targetIdx = args.indexOf("--target");
-const _target = targetIdx !== -1 ? args[targetIdx + 1] : "all";
+if (args.length > 0) {
+  console.error(
+    `generate-keywords.mjs takes no arguments (got: ${args.join(" ")}); ` +
+      "it always emits every output (shared .ts + .js and the standalone core .ts).",
+  );
+  process.exit(1);
+}
 
 // --- Load all keyword JSON files ---
 
