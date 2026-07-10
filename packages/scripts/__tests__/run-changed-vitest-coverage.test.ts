@@ -19,6 +19,7 @@ import {
   findNearestPackageDir,
   findNearestVitestConfig,
   groupChangedVitestTests,
+  mergeLcovReports,
   normalizeLcovReport,
 } from "../run-changed-vitest-coverage.mjs";
 
@@ -138,6 +139,81 @@ describe("changed Vitest coverage grouping", () => {
     const root = fixture();
     expect(() => findNearestVitestConfig(root, "../outside.test.ts")).toThrow(
       "escapes the repository",
+    );
+  });
+
+  test("union-merges per-group LCOV reports so any-group coverage counts once per file", () => {
+    // The gate latches a failure on EVERY below-threshold occurrence of a
+    // changed file; a group that merely LOADED a file must not mask the group
+    // that exercised it.
+    const root = fixture();
+    const reportA = path.join(root, "coverage", "vitest", "a");
+    const reportB = path.join(root, "coverage", "vitest", "b");
+    mkdirSync(reportA, { recursive: true });
+    mkdirSync(reportB, { recursive: true });
+    writeFileSync(
+      path.join(reportA, "lcov.info"),
+      [
+        "TN:",
+        "SF:packages/feature/src/covered.ts",
+        "DA:1,1",
+        "DA:2,0",
+        "DA:3,0",
+        "LF:3",
+        "LH:1",
+        "end_of_record",
+        "SF:packages/feature/src/only-a.ts",
+        "DA:1,1",
+        "LF:1",
+        "LH:1",
+        "end_of_record",
+        "",
+      ].join("\n"),
+    );
+    writeFileSync(
+      path.join(reportB, "lcov.info"),
+      [
+        "TN:",
+        "SF:packages/feature/src/covered.ts",
+        "DA:1,0",
+        "DA:2,5",
+        "DA:4,2",
+        "LF:3",
+        "LH:2",
+        "end_of_record",
+        "",
+      ].join("\n"),
+    );
+
+    const mergedPath = path.join(root, "coverage", "vitest", "lcov.info");
+    mergeLcovReports(
+      [
+        path.join(reportA, "lcov.info"),
+        path.join(reportB, "lcov.info"),
+        path.join(root, "coverage", "vitest", "absent", "lcov.info"),
+      ],
+      mergedPath,
+    );
+
+    const merged = readFileSync(mergedPath, "utf8");
+    // covered.ts: union of lines 1-4; hits are per-line maxima → 3 of 4 hit.
+    expect(merged).toContain(
+      [
+        "SF:packages/feature/src/covered.ts",
+        "DA:1,1",
+        "DA:2,5",
+        "DA:3,0",
+        "DA:4,2",
+        "LF:4",
+        "LH:3",
+        "end_of_record",
+      ].join("\n"),
+    );
+    // A file present in only one group is preserved as-is.
+    expect(merged).toContain(
+      ["SF:packages/feature/src/only-a.ts", "DA:1,1", "LF:1", "LH:1"].join(
+        "\n",
+      ),
     );
   });
 

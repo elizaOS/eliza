@@ -71,13 +71,17 @@ afterEach(() => {
 });
 
 /**
- * Drive one inbound guild message through the REAL Discord MessageManager and
- * capture everything the connector pushes through its outbound seam.
+ * Drive one inbound message through the REAL Discord MessageManager and
+ * capture everything the connector pushes through its outbound seam — the
+ * guild-text `channel.send` or, for `channelKind: "dm"`, the
+ * `client.users.fetch(...).send` direct-message seam.
  */
 async function driveDiscordTurn(options: {
 	inboundText: string;
 	fixtures?: LlmProxyFixture[];
+	channelKind?: "guild" | "dm";
 }): Promise<{ sent: SentMessage[]; channelId: string }> {
+	const channelKind = options.channelKind ?? "guild";
 	// Heuristic (non-strict) proxy: the reply turn makes several model calls;
 	// callers pin only the calls they need via fixtures and the proxy answers
 	// the rest deterministically without hand fixtures.
@@ -91,20 +95,46 @@ async function driveDiscordTurn(options: {
 
 	const sent: SentMessage[] = [];
 
+	const channelId = "1253563208833433701";
+	const guildId = "1253563208833400000";
+	const botMemberId = "9999999999999999999";
+	const authorId = "555000111222333444";
+
+	const author = {
+		id: authorId,
+		bot: false,
+		username: "tester",
+		globalName: "Tester",
+		displayName: "Tester",
+		discriminator: "0",
+		displayAvatarURL: () => "https://cdn.discordapp.com/avatar.png",
+		// The DM outbound seam: MessageManager resolves the user via
+		// `client.users.fetch(author.id)` and calls `user.send(options)`.
+		send: async (options: string | { content?: string }): Promise<unknown> => {
+			const content =
+				typeof options === "string" ? options : (options.content ?? "");
+			sent.push({ channelId, content });
+			return { id: `dm${sent.length}`, content };
+		},
+	};
+
 	const captureClient = {
-		user: null,
+		user: { id: botMemberId },
 		users: {
-			fetch: async () => {
-				throw new Error(
-					"client.users.fetch should not be called for a guild channel reply",
-				);
+			fetch: async (id: string) => {
+				if (channelKind !== "dm") {
+					throw new Error(
+						"client.users.fetch should not be called for a guild channel reply",
+					);
+				}
+				if (id !== authorId) {
+					throw new Error(`unexpected users.fetch for ${id}`);
+				}
+				return author;
 			},
 		},
 	};
 
-	const channelId = "1253563208833433701";
-	const guildId = "1253563208833400000";
-	const botMemberId = "9999999999999999999";
 	const botMember = { id: botMemberId };
 	const guild = {
 		id: guildId,
@@ -114,14 +144,18 @@ async function driveDiscordTurn(options: {
 		fetch: async () => guild,
 	};
 
-	// The outbound seam: `sendMessageInChunks` calls `channel.send(options)`;
+	// The guild outbound seam: `sendMessageInChunks` calls `channel.send(options)`;
 	// capturing it is the same surface that, in production, POSTs to Discord's
 	// REST `/channels/:id/messages` endpoint.
 	const channel = {
 		id: channelId,
-		type: DiscordChannelType.GuildText,
-		name: "general",
-		guild,
+		type:
+			channelKind === "dm"
+				? DiscordChannelType.DM
+				: DiscordChannelType.GuildText,
+		name: channelKind === "dm" ? undefined : "general",
+		guild: channelKind === "dm" ? undefined : guild,
+		recipient: channelKind === "dm" ? author : undefined,
 		client: { user: { id: botMemberId } },
 		isThread: () => false,
 		permissionsFor: () => ({ has: () => true }),
@@ -140,28 +174,22 @@ async function driveDiscordTurn(options: {
 		},
 	};
 
-	const authorId = "555000111222333444";
-	const author = {
-		id: authorId,
-		bot: false,
-		username: "tester",
-		globalName: "Tester",
-		displayName: "Tester",
-		discriminator: "0",
-		displayAvatarURL: () => "https://cdn.discordapp.com/avatar.png",
-		send: async () => ({ id: "dm" }),
-	};
-
 	const messageId = "1253563208833433999";
 	const message = {
 		id: messageId,
 		content: options.inboundText,
 		createdTimestamp: Date.now(),
 		author,
-		member: { displayName: "Tester", nickname: undefined },
+		member:
+			channelKind === "dm"
+				? null
+				: { displayName: "Tester", nickname: undefined },
 		channel,
-		guild,
-		url: `https://discord.com/channels/${guildId}/${channelId}/${messageId}`,
+		guild: channelKind === "dm" ? null : guild,
+		url:
+			channelKind === "dm"
+				? `https://discord.com/channels/@me/${channelId}/${messageId}`
+				: `https://discord.com/channels/${guildId}/${channelId}/${messageId}`,
 		interaction: null,
 		reference: undefined,
 		embeds: [],
@@ -176,7 +204,9 @@ async function driveDiscordTurn(options: {
 		autoReply: true,
 		shouldRespondOnlyToMentions: false,
 		shouldIgnoreBotMessages: true,
-		shouldIgnoreDirectMessages: true,
+		// Guild turns pin DMs ignored (the default posture); the DM turn is the
+		// surface under test and uses the open-DM policy path.
+		shouldIgnoreDirectMessages: channelKind !== "dm",
 		dmPolicy: "open",
 		replyToMode: "first",
 	};
@@ -270,5 +300,40 @@ describe("discord connector loop (keyless harness)", () => {
 		}
 		expect(sent[0]?.content).toBe("The forecast looks clear.");
 		expect(sent[0]?.channelId).toBe(channelId);
+	}, 120_000);
+
+	it("delivers a drifted tool-call reply to the DM seam already sanitized (#15888)", async () => {
+		// The DM surface delivers through `client.users.fetch(...).send`, a
+		// different wire seam from guild `channel.send` — the open-DM policy path
+		// (checkDmAccess) and DM delivery must also receive shared-boundary
+		// sanitized text.
+		const { sent } = await driveDiscordTurn({
+			channelKind: "dm",
+			inboundText: "Say hello and describe your plan.",
+			fixtures: [
+				{
+					name: "drifted-stage1-dm",
+					match: { modelType: ModelType.RESPONSE_HANDLER },
+					response: {
+						contexts: ["simple"],
+						intents: [],
+						replyText: "The forecast looks clear.<tool_call>get_weather",
+						candidateActionNames: [],
+					},
+				},
+			],
+		});
+
+		expect(
+			sent.length,
+			"the connector delivered at least one DM reply",
+		).toBeGreaterThan(0);
+		for (const message of sent) {
+			expect(
+				message.content,
+				"no delivered DM text carries native tool syntax",
+			).not.toMatch(/<\/?(?:tool_call|function_call)\b/i);
+		}
+		expect(sent[0]?.content).toBe("The forecast looks clear.");
 	}, 120_000);
 });
