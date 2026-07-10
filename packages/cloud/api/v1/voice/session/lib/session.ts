@@ -31,7 +31,7 @@ import {
   type DeepgramFluxRealtimeEvent,
   type DeepgramFluxRealtimeSession,
   type DeepgramFluxWebSocketFactory,
-} from "@/api/v1/voice/stt/providers/deepgram-flux";
+} from "../../stt/providers/deepgram-flux";
 import {
   CartesiaSonicTtsAdapter,
   type CartesiaSonicTtsStream,
