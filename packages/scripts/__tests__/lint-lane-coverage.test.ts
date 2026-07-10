@@ -1,8 +1,9 @@
 /** Exercises the plugin lane analyzer against deterministic temporary repositories. */
-import { afterEach, describe, expect, test } from "bun:test";
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
 
 const laneCoverage = await import(
   new URL("../lint-lane-coverage.mjs", import.meta.url).href
