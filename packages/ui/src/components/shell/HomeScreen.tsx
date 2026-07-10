@@ -266,7 +266,7 @@ export function HomeScreen({
           <div
             className={cn(
               enterClass,
-              "flex flex-col py-6",
+              "flex min-h-24 flex-col py-6",
               !hasNotifications && "flex-1 justify-center",
             )}
             style={{ animationDelay: "110ms" }}

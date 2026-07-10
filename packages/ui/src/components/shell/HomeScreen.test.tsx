@@ -11,7 +11,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
 vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
@@ -55,8 +55,14 @@ import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-stor
 import { HomeScreen } from "./HomeScreen";
 import { PULL_COMMIT_PX } from "./NotificationsHomeCenter";
 
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
 afterEach(() => {
   cleanup();
+  vi.clearAllTimers();
+  vi.useRealTimers();
   __resetNotificationStoreForTests();
   __resetHomeDismissalsForTests();
   navigateDeepLink.mockClear();
@@ -165,8 +171,15 @@ describe("HomeScreen", () => {
     const column = screen.getByTestId("home-content-column");
     expect(column.className).toContain("h-full");
     expect(column.className).not.toContain("min-h-full");
-    // Rows are grouped by producer physically only — no header eyebrows render.
+    // Closed means total-only; opening reveals producer-grouped rows with no
+    // header eyebrows.
+    expect(screen.getByTestId("notifications-count")).toBeTruthy();
+    expect(screen.queryByTestId("notification-row")).toBeNull();
+    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
+      deltaY: -(PULL_COMMIT_PX + 10),
+    });
     expect(screen.getByTestId("notification-row")).toBeTruthy();
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
   });
 
@@ -177,7 +190,9 @@ describe("HomeScreen", () => {
     const center = screen.getByTestId("home-notification-center");
     expect(center.className).toContain("min-h-14");
     expect(center.className).not.toContain("eliza-notif-center-in");
-    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+    const empty = screen.getByTestId("notifications-empty");
+    expect(empty.style.opacity).toBe("0");
+    expect(empty.getAttribute("aria-hidden")).toBe("true");
     expect(center.parentElement?.className).not.toContain("flex-1");
     // The widget breathing region keeps the flex-1 fill.
     const hostWrapper = screen.getByTestId("home-widget-host").parentElement;
@@ -195,9 +210,9 @@ describe("HomeScreen", () => {
       touches: [{ clientX: 200, clientY: 300 }],
     });
     fireEvent.touchMove(home, {
-      // A short 50px pull dampens to 21px: enough for empty feedback, still
-      // below the populated shade's 40px commit threshold.
-      touches: [{ clientX: 202, clientY: 350 }],
+      // An 80px pull clears the empty-state threshold while remaining below
+      // the populated shade's commit threshold after resistance.
+      touches: [{ clientX: 202, clientY: 380 }],
     });
     expect(screen.getByTestId("notifications-empty").textContent).toBe(
       "No Notifications",
@@ -212,38 +227,35 @@ describe("HomeScreen", () => {
       touches: [{ clientX: 202, clientY: 300 }],
     });
     fireEvent.touchEnd(home, { touches: [] });
+    act(() => vi.advanceTimersByTime(300));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });
 
   it("reveals and closes the empty state from a trackpad swipe on the home background", () => {
-    vi.useFakeTimers();
-    try {
-      __setHydratedForTests(true);
-      render(<HomeScreen onOpenTile={vi.fn()} />);
-      const home = screen.getByTestId("home-screen");
-      const list = screen.getByTestId("home-notification-list");
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const list = screen.getByTestId("home-notification-list");
 
-      fireEvent.wheel(home, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
-      expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-      expect(screen.getByTestId("notifications-empty").textContent).toBe(
-        "No Notifications",
-      );
+    fireEvent.wheel(home, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
 
-      // Opposite-direction rebound during the settle cannot hide the empty
-      // status and make it flash back on trailing momentum.
-      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-      expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    // Opposite-direction rebound during the settle cannot hide the empty
+    // status and make it flash back on trailing momentum.
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
 
-      act(() => vi.advanceTimersByTime(500));
-      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-      fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-      expect(list.getAttribute("data-shade-mode")).toBe("rested");
-      expect(screen.queryByTestId("notifications-empty")).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    act(() => vi.advanceTimersByTime(500));
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(300));
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });
 
   it("does not steal an empty-inbox gesture that begins on a home control", () => {
@@ -262,7 +274,7 @@ describe("HomeScreen", () => {
     fireEvent.wheel(tile, { deltaY: -(PULL_COMMIT_PX + 10) });
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });
 
   it("tapping an inline row follows its safe deep link directly", () => {
@@ -271,6 +283,9 @@ describe("HomeScreen", () => {
     );
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
+    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
+      deltaY: -(PULL_COMMIT_PX + 10),
+    });
     fireEvent.click(screen.getByTestId("notification-row"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
   });

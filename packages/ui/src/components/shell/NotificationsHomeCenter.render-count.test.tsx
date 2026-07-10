@@ -57,6 +57,7 @@ import {
   __setNotificationRowRenderObserverForTests,
   __setNotificationsHomeCenterRenderObserverForTests,
   NotificationsHomeCenter,
+  PULL_COMMIT_PX,
   rowPropsEqual,
 } from "./NotificationsHomeCenter";
 
@@ -83,7 +84,7 @@ function makeNotification(
     id: `00000000-0000-4000-8000-${hex}` as AgentNotification["id"],
     title: `Notification ${seq}`,
     category: CATEGORY_SPREAD[seq % CATEGORY_SPREAD.length] ?? "general",
-    // High so fixtures render in the rested (interrupt-only) shade.
+    // High keeps broad fixtures in the same priority bucket.
     priority: "high",
     source: `test-${seq}`,
     // Spread across the last hour so the rows render distinct "Nm ago" strings
@@ -109,6 +110,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function expandShade(): void {
+  fireEvent.wheel(screen.getByTestId("home-notification-list"), {
+    deltaY: -(PULL_COMMIT_PX + 10),
+  });
+}
+
 describe("NotificationsHomeCenter render count (#14559)", () => {
   it("the minute tick re-renders only RelativeTime leaves, not the list container", () => {
     for (let i = 0; i < 8; i++) {
@@ -121,11 +128,12 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
 
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
 
-    expect(listRenders).toBe(1);
+    expect(listRenders).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(8);
     const times = () =>
       screen
@@ -161,6 +169,7 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
 
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
@@ -255,6 +264,7 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       makeNotification({ title: "Fresh", createdAt: Date.now() }),
     );
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
@@ -283,6 +293,7 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     );
     __ingestNotificationForTests(urgent);
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
@@ -290,7 +301,7 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       screen
         .getAllByTestId("notification-row")
         .map((el) => el.textContent ?? "");
-    // Same producer: the rested shade stacks them, highest priority on top.
+    // Same producer: the expanded shade stacks them, highest priority on top.
     expect(titles()).toHaveLength(1);
     expect(titles()[0]).toContain("First");
     // First tap fans the producer stack; tapping its top individual row then
