@@ -1240,6 +1240,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expandShade();
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     const collapse = screen.getByTestId("notifications-collapse");
+    const clearSlot = screen
+      .getByTestId("notifications-clear-all")
+      .closest("li") as HTMLElement;
+    expect(clearSlot.style.height).toBe("32px");
+    expect(clearSlot.style.marginBottom).toBe("0px");
     expect(collapse.textContent).toContain("Collapse");
     expect(collapse.parentElement).toBe(list.lastElementChild);
     expect(collapse.parentElement?.className).toContain("-mt-4");
@@ -1252,6 +1257,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     // The count starts its crossfade on the same frame as the notification
     // exit; the expanded DOM remains only for the 260ms fade.
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(clearSlot.style.height).toBe("0px");
+    expect(clearSlot.style.marginBottom).toBe("-8px");
     expect(screen.getAllByTestId("notification-row")[0]).toBe(priorityRow);
     expect(
       priorityRow.closest<HTMLElement>("[data-notification-group]")?.style

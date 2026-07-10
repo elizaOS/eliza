@@ -258,6 +258,7 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   transition:
     grid-template-rows ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
     height ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    margin-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
     opacity ${SHADE_CLOSE_FADE_MS}ms ease-out,
     transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1);
 }
@@ -1528,19 +1529,17 @@ export function NotificationsHomeCenter({
     ? shadeCloseProgress
     : 1 - notificationPullRevealProgress(pullPx, 0);
   const disposableContentVisibility = 1 - shadeCloseProgress;
-  const disposableContentStyle: CSSProperties = {
-    opacity: disposableContentVisibility,
-    transform: `translate3d(0, ${(1 - disposableContentVisibility) * -8}px, 0)`,
-    transition: pullPx
-      ? "none"
-      : `opacity ${SHADE_CLOSE_FADE_MS}ms ease-out, transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1)`,
-  };
   const emptyStateVisibility = shadeExpanded
     ? disposableContentVisibility
     : notificationPullRevealProgress(pullPx, 0);
   const collapseControlVisibility = shadeExpanded
     ? disposableContentVisibility
     : 0;
+  const clearControlVisibility = shadeExpanded
+    ? disposableContentVisibility
+    : previewingExpansion
+      ? notificationPullRevealProgress(pullPx, 0)
+      : 0;
   // The scrollport follows only a populated opening pull. Empty feedback and
   // closing content animate independently so neither can rebound on release.
   const shadeTranslatePx = hasNotifications && pullPx > 0 ? pullPx : 0;
@@ -1696,40 +1695,38 @@ export function NotificationsHomeCenter({
           shadeClosing && "pointer-events-none",
         )}
       >
-        {hasNotifications && (shadeExpanded || previewingExpansion) ? (
+        {hasNotifications ? (
           <li
-            inert={previewingExpansion ? true : undefined}
-            style={
-              previewingExpansion
-                ? notificationPullRevealStyle(
-                    notificationPullRevealProgress(pullPx, 0),
-                  )
-                : disposableContentStyle
-            }
-            className={cn(
-              "flex justify-end px-1",
-              previewingExpansion &&
-                "eliza-notif-pull-reveal pointer-events-none",
-            )}
+            aria-hidden={clearControlVisibility === 0 ? true : undefined}
+            inert={clearControlVisibility < 1 ? true : undefined}
+            style={{
+              height: clearControlVisibility * 32,
+              marginBottom: (clearControlVisibility - 1) * 8,
+              opacity: clearControlVisibility,
+              transform: `translate3d(0, ${(1 - clearControlVisibility) * -8}px, 0)`,
+            }}
+            className="eliza-notif-shade-transition flex justify-end overflow-hidden px-1"
           >
-            <button
-              type="button"
-              data-testid="notifications-clear-all"
-              data-confirming={confirmingClearAll ? "true" : undefined}
-              data-notif-control=""
-              aria-label={
-                confirmingClearAll
-                  ? "Confirm clear all notifications"
-                  : "Clear all notifications"
-              }
-              onClick={clearAll}
-              className={cn(
-                "h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
-                confirmingClearAll ? "w-12 text-white" : "w-8",
-              )}
-            >
-              <ClearConfirmationContent confirming={confirmingClearAll} />
-            </button>
+            {shadeExpanded || previewingExpansion ? (
+              <button
+                type="button"
+                data-testid="notifications-clear-all"
+                data-confirming={confirmingClearAll ? "true" : undefined}
+                data-notif-control=""
+                aria-label={
+                  confirmingClearAll
+                    ? "Confirm clear all notifications"
+                    : "Clear all notifications"
+                }
+                onClick={clearAll}
+                className={cn(
+                  "h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
+                  confirmingClearAll ? "w-12 text-white" : "w-8",
+                )}
+              >
+                <ClearConfirmationContent confirming={confirmingClearAll} />
+              </button>
+            ) : null}
           </li>
         ) : null}
         {!hasNotifications ? (
