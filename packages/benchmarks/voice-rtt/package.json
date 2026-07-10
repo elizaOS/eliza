@@ -1,0 +1,30 @@
+{
+  "name": "@elizaos/voice-rtt-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider-agnostic end-to-end voice round-trip latency benchmark for Flux, Cerebras, and Cartesia.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./metrics": "./src/metrics.ts",
+    "./report": "./src/report.ts",
+    "./runner": "./src/runner.ts"
+  },
+  "scripts": {
+    "bench": "bun run src/runner.ts",
+    "bench:mock": "bun run src/runner.ts --mode=mock",
+    "bench:live": "bun run src/runner.ts --mode=live",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "bunx @biomejs/biome format --write package.json README.md AGENTS.md CLAUDE.md src tests fixtures",
+    "format:check": "bunx @biomejs/biome format package.json README.md AGENTS.md CLAUDE.md src tests fixtures",
+    "typecheck": "tsgo --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.10"
+  }
+}

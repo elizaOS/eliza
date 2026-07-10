@@ -243,6 +243,7 @@
     "packages/security/soc2-verify",
     "packages/benchmarks/lib",
     "packages/benchmarks/interrupt-bench",
+    "packages/benchmarks/voice-rtt",
     "packages/benchmarks/eliza-1",
     "packages/benchmarks/eliza-1/vision-cua-e2e",
     "packages/benchmarks/three-agent-dialogue",
