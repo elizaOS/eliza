@@ -43,6 +43,7 @@ import type { AgentNotification } from "@elizaos/core";
 import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
+  __setHydratedForTests,
 } from "../../state/notifications/notification-store";
 import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-store";
 import { HomeScreen } from "./HomeScreen";
@@ -120,9 +121,9 @@ describe("HomeScreen", () => {
     expect(screen.queryByText("Pinned")).toBeNull();
   });
 
-  // Notifications render INLINE on the home column (no pull-down shade, no hint
-  // pill): the inbox self-hides while empty and appears in place when it fills.
-  it("hides the notification inbox while empty (and has no shade/hint shells)", () => {
+  // Notifications render INLINE on the home column (no portal shade or hint
+  // pill). Before hydration there is no surface, avoiding a false empty flash.
+  it("hides the notification inbox while initial hydration is pending", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-notification-center")).toBeNull();
     expect(screen.queryByTestId("home-notifications-hint")).toBeNull();
@@ -157,10 +158,16 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
   });
 
-  it("does NOT grow the notification region when the inbox is empty (calm centred home)", () => {
+  it("keeps the hydrated empty gesture band quiet without growing the notification region", () => {
+    __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Empty inbox self-hides; the widget breathing region keeps the flex-1 fill.
-    expect(screen.queryByTestId("home-notification-center")).toBeNull();
+    // The pull target is mounted but has no visible empty label until dragged.
+    const center = screen.getByTestId("home-notification-center");
+    expect(center.className).toContain("min-h-14");
+    expect(center.className).not.toContain("eliza-notif-center-in");
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+    expect(center.parentElement?.className).not.toContain("flex-1");
+    // The widget breathing region keeps the flex-1 fill.
     const hostWrapper = screen.getByTestId("home-widget-host").parentElement;
     expect(hostWrapper?.className).toContain("flex-1");
     expect(hostWrapper?.className).toContain("justify-center");

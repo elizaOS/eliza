@@ -44,6 +44,7 @@ import {
   __getStateForTests,
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
+  __setHydratedForTests,
 } from "../../state/notifications/notification-store";
 import {
   dampenPull,
@@ -207,9 +208,118 @@ describe("notificationPullRevealProgress", () => {
 });
 
 describe("NotificationsHomeCenter", () => {
-  it("renders nothing while the inbox is empty", () => {
+  it("renders nothing while the empty inbox is still hydrating", () => {
     const { container } = render(<NotificationsHomeCenter />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("reveals a subtle empty status through the normal pull gesture", () => {
+    __setHydratedForTests(true);
+    render(<NotificationsHomeCenter />);
+    const center = screen.getByTestId("home-notification-center");
+    const list = screen.getByTestId("home-notification-list");
+
+    expect(center.className).toContain("min-h-14");
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+    expect(screen.queryByTestId("notifications-count")).toBeNull();
+    expect(screen.queryByTestId("notifications-clear-all")).toBeNull();
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 58,
+    });
+
+    const empty = screen.getByTestId("notifications-empty");
+    const partialOpacity = Number.parseFloat(empty.style.opacity);
+    expect(empty.textContent).toBe("No Notifications");
+    expect(partialOpacity).toBeGreaterThan(0);
+    expect(partialOpacity).toBeLessThan(1);
+    expect(list.getAttribute("data-shade-preview")).toBe("expanding");
+
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 140,
+    });
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 1,
+      clientX: 10,
+      clientY: 140,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("1");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 2,
+      clientX: 10,
+      clientY: 140,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 2,
+      clientX: 10,
+      clientY: 10,
+    });
+    expect(
+      Number.parseFloat(
+        screen.getByTestId("notifications-empty").style.opacity,
+      ),
+    ).toBeLessThan(1);
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 2,
+      clientX: 10,
+      clientY: 10,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+  });
+
+  it("supports the native touch path while the hydrated inbox is empty", () => {
+    __setHydratedForTests(true);
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(list, {
+      touches: [{ clientX: 10, clientY: 10 }],
+    });
+    fireEvent.touchMove(list, {
+      touches: [{ clientX: 12, clientY: 150 }],
+    });
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("1");
+    fireEvent.touchEnd(list, { touches: [] });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
+
+    fireEvent.touchStart(list, {
+      touches: [{ clientX: 10, clientY: 150 }],
+    });
+    fireEvent.touchMove(list, {
+      touches: [{ clientX: 12, clientY: 10 }],
+    });
+    fireEvent.touchEnd(list, { touches: [] });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
   });
 
   it("renders the inbox rows once notifications arrive — no unread count badge", () => {

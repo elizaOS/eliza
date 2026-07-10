@@ -2,8 +2,11 @@
  * The app's notification inbox, mounted INLINE on the home column (HomeScreen)
  * directly beneath the time/weather header, the same layer as the widgets, in
  * the band between the header and the floating chat. It owns the inbox content
- * (rows, open/deep-link, per-row dismiss), self-hides when empty, and fades in
- * Apple-style when the first notification arrives. The inbox container has no
+ * (rows, open/deep-link, per-row dismiss), stays visually quiet when empty, and
+ * fades in Apple-style when the first notification arrives. Once hydration has
+ * established that the inbox is empty, pulling its quiet gesture band reveals a
+ * restrained "No Notifications" status instead of producing a blank shade. The
+ * inbox container has no
  * card chrome of its own; each notification is a liquid-glass card. Groups
  * carry NO headers or dividers — the physical gap between card clusters is the
  * only group structure (producer labels survive as grouping keys and
@@ -651,13 +654,14 @@ const NotificationRow = memo(function NotificationRow({
 NotificationRow.displayName = "NotificationRow";
 
 /**
- * The notification inbox. Self-hiding: renders nothing until the inbox has at
- * least one notification. Mounted inline on the home column (HomeScreen),
- * directly beneath the time/weather header — the same layer as the widgets.
+ * The notification inbox. Before hydration it renders nothing; a hydrated empty
+ * inbox keeps only a visually quiet gesture band so a pull can reveal the empty
+ * state. Mounted inline on the home column (HomeScreen), directly beneath the
+ * time/weather header — the same layer as the widgets.
  */
 export function NotificationsHomeCenter(): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
-  const { notifications } = useNotifications();
+  const { notifications, hydrated } = useNotifications();
   // Shade mode: rested (priority triage) vs expanded (all priority tiers).
   // Groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
@@ -774,13 +778,13 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   // back. A non-passive touchmove that preventDefault()s only the at-top
   // downward overscroll is the one way to own the pull without breaking
   // ordinary scrolling (see reference: pan-y pull gestures are dead on arrival
-  // without this). `hasNotifications` re-runs the bind when the inbox goes
-  // empty↔populated — the empty inbox renders nothing, so on first arrival the
-  // list element only exists after that re-render.
+  // without this). `surfaceReady` re-runs the bind when hydration establishes a
+  // genuinely empty inbox or when a notification arrives before hydration.
   const hasNotifications = notifications.length > 0;
+  const surfaceReady = hydrated || hasNotifications;
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !hasNotifications) return;
+    if (!el || !surfaceReady) return;
     let start: { x: number; y: number } | null = null;
     // clientY where the drag first reached the top; the pull is measured from
     // here so a continuous drag that scrolled the list up to its top doesn't
@@ -902,7 +906,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchCancel);
     };
-  }, [commitPull, setPullPx, hasNotifications]);
+  }, [commitPull, setPullPx, surfaceReady]);
 
   // Clear the wheel-decay timer on unmount (the only timer that outlives a
   // single gesture).
@@ -1012,7 +1016,10 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     [setShade],
   );
 
-  if (notifications.length === 0) return null;
+  // Do not flash an empty result while the initial request is still in flight.
+  // Once hydrated, keep the transparent pull target mounted so an empty shade
+  // can communicate its state instead of ignoring the gesture.
+  if (!surfaceReady) return null;
 
   // Cap rendered rows, then build both stable shade projections. During a
   // downward pull the expanded projection paints immediately and the groups
@@ -1028,7 +1035,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   // the stack), so "more" counts everything the rest of the shade is hiding:
   // sub-interrupt rows plus the stacked-behind cards.
   const hiddenCount = shadeExpanded ? 0 : capped.length - restedGroups.length;
-  const canExpand = !shadeExpanded && hiddenCount > 0;
+  const canExpand = !shadeExpanded && (hiddenCount > 0 || !hasNotifications);
   const previewingExpansion = canExpand && pullPx > 0;
   const groups =
     shadeExpanded || previewingExpansion
@@ -1048,6 +1055,9 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   const notificationCountVisibility = shadeExpanded
     ? notificationPullRevealProgress(-pullPx, 0)
     : 1 - notificationPullRevealProgress(pullPx, 0);
+  const emptyStateVisibility = shadeExpanded
+    ? 1 - notificationPullRevealProgress(-pullPx, 0)
+    : notificationPullRevealProgress(pullPx, 0);
 
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
@@ -1108,10 +1118,15 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // No card chrome on the CONTAINER: the inbox has no fill and no border of
       // its own — the glass lives on each notification card. It sits inline on
       // the home field directly under the time/weather header.
-      // `eliza-notif-center-in` fades the whole inbox in (Apple-style) the
-      // moment it first appears. `min-h-0 flex-1` lets it fill the home column
-      // down to the chat when the parent grows it.
-      className="eliza-notif-center-in flex min-h-0 flex-1 flex-col overflow-hidden"
+      // `eliza-notif-center-in` is added only when real rows exist, so a quiet
+      // hydrated gesture band cannot consume the first-arrival animation.
+      // `min-h-0 flex-1` lets a populated inbox fill the home column down to the
+      // chat when the parent grows it.
+      className={cn(
+        "flex min-h-0 flex-1 flex-col overflow-hidden",
+        hasNotifications && "eliza-notif-center-in",
+        !hasNotifications && "min-h-14 flex-none",
+      )}
     >
       <style>{NOTIF_SCROLL_CSS}</style>
       <LiquidGlassRefractionDefs />
@@ -1144,7 +1159,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
           "eliza-notif-scroll flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-1.5 pt-1",
         )}
       >
-        {shadeExpanded || previewingExpansion ? (
+        {hasNotifications && (shadeExpanded || previewingExpansion) ? (
           <li
             inert={previewingExpansion ? true : undefined}
             style={
@@ -1182,6 +1197,19 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
                 <X aria-hidden className="h-3.5 w-3.5" />
               )}
             </button>
+          </li>
+        ) : null}
+        {!hasNotifications && (shadeExpanded || previewingExpansion) ? (
+          <li
+            role="status"
+            data-testid="notifications-empty"
+            style={{
+              ...notificationPullRevealStyle(emptyStateVisibility),
+              transition: pullPx ? "none" : undefined,
+            }}
+            className="eliza-notif-pull-reveal flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45 transition-[opacity,transform] duration-[320ms] ease-out motion-reduce:transition-none"
+          >
+            No Notifications
           </li>
         ) : null}
         {groups.map((group, groupIndex) => {
@@ -1360,25 +1388,27 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
             </li>
           );
         })}
-        <li
-          data-testid="notifications-count"
-          aria-hidden={shadeExpanded ? true : undefined}
-          style={{
-            opacity: notificationCountVisibility,
-            transform: `translate3d(0, ${(1 - notificationCountVisibility) * 6}px, 0)`,
-            transition: pullPx ? "none" : undefined,
-          }}
-          className="flex items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50 transition-[opacity,transform] duration-[320ms] ease-out motion-reduce:transition-none"
-        >
-          {notifications.length === 1
-            ? "1 Notification"
-            : `${notifications.length} Notifications`}
-          <ChevronDown
-            aria-hidden
-            data-testid="notifications-count-chevron"
-            className="h-3 w-3 shrink-0"
-          />
-        </li>
+        {hasNotifications ? (
+          <li
+            data-testid="notifications-count"
+            aria-hidden={shadeExpanded ? true : undefined}
+            style={{
+              opacity: notificationCountVisibility,
+              transform: `translate3d(0, ${(1 - notificationCountVisibility) * 6}px, 0)`,
+              transition: pullPx ? "none" : undefined,
+            }}
+            className="flex items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50 transition-[opacity,transform] duration-[320ms] ease-out motion-reduce:transition-none"
+          >
+            {notifications.length === 1
+              ? "1 Notification"
+              : `${notifications.length} Notifications`}
+            <ChevronDown
+              aria-hidden
+              data-testid="notifications-count-chevron"
+              className="h-3 w-3 shrink-0"
+            />
+          </li>
+        ) : null}
       </ul>
     </section>
   );

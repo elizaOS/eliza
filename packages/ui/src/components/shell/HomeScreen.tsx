@@ -154,9 +154,10 @@ export interface HomeScreenProps {
  * (calendar/goals/finances/health/relationships/inbox), each self-hiding when
  * empty and dynamically ranked so whatever needs attention floats to the top.
  * The notification inbox (NotificationsHomeCenter) sits inline on the SAME
- * layer directly beneath the time/weather header, self-hiding when empty and
- * fading in Apple-style when notifications arrive, so a quiet home is just the
- * ambient field + clock. The AOSP native-OS tiles render below on Android. The
+ * layer directly beneath the time/weather header, visually quiet when empty and
+ * fading in Apple-style when notifications arrive. Its empty gesture band only
+ * reveals a subtle status while pulled, so a quiet home remains the ambient
+ * field + clock. The AOSP native-OS tiles render below on Android. The
  * chat overlay floats over the bottom; this scrolls with clearance for it.
  */
 export function HomeScreen({
@@ -232,8 +233,9 @@ export function HomeScreen({
           </div>
 
           {/* Notifications live inline on the SAME layer as the widgets, in the
-            band between the time/weather header above and the chat below —
-            self-hiding when the inbox is empty. A small `mt-4` sets it apart
+            band between the time/weather header above and the chat below. A
+            hydrated empty inbox retains only a transparent pull target. A small
+            `mt-4` sets it apart
             from the editorial header. When present it grows (`flex-1 min-h-0`)
             to fill the column down to the chat, its list scrolling internally;
             it fades in (Apple-style) on first appearance. */}
