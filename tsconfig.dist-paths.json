@@ -555,6 +555,9 @@
       "@elizaos/vault": [
         "./packages/vault/dist/index.d.ts"
       ],
+      "@elizaos/voice-rtt-bench": [
+        "./packages/benchmarks/voice-rtt/src/index.ts"
+      ],
       "@feed/a2a": [
         "./packages/feed/packages/a2a/src/index.ts"
       ],
