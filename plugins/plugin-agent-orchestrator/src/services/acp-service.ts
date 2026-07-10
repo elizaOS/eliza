@@ -1461,6 +1461,43 @@ export class AcpService extends Service {
     await this.cleanOrphanedScratchWorkdirs();
   }
 
+  /**
+   * Capture WHY a mid-flight sub-agent vanished before its output buffer is
+   * reclaimed. A session that "lost state" left no exit code in the store, so
+   * the tail of its ACP output stream is the only breadcrumb for diagnosing the
+   * crash — emit it at warn with the session identity and idle time. Called at
+   * both state-lost sites (the background health-check and the send-prompt
+   * fast-fail); without it a dead sub-agent leaves no forensic trail because the
+   * session self-heals and its buffer is deleted.
+   */
+  private logSubAgentStateLost(
+    session: Pick<
+      SessionInfo,
+      "id" | "acpxSessionId" | "agentType" | "workdir" | "pid" | "status"
+    > & { lastActivityAt?: Date | string },
+    phase: string,
+  ): void {
+    const buffered = this.outputBuffers.get(session.id) ?? [];
+    const tail = buffered.slice(-40).join("");
+    const lastActivityMs = session.lastActivityAt
+      ? new Date(session.lastActivityAt).getTime()
+      : Number.NaN;
+    this.log("warn", "sub-agent state lost; diagnostics captured before reclaim", {
+      phase,
+      sessionId: session.id,
+      acpxSessionId: session.acpxSessionId,
+      agentType: session.agentType,
+      workdir: session.workdir,
+      pid: session.pid,
+      status: session.status,
+      idleMs: Number.isFinite(lastActivityMs)
+        ? Date.now() - lastActivityMs
+        : undefined,
+      outputLines: buffered.length,
+      tailOutput: tail ? tail.slice(-2000) : "(no buffered output)",
+    });
+  }
+
   private async runHealthCheck(): Promise<void> {
     if (!this.started) return;
     let sessions: SessionInfo[];
@@ -1504,6 +1541,7 @@ export class AcpService extends Service {
       if (sessionTransportMode(s, this.transportMode) === "native") continue;
       const { exists } = await this.acpxSessionStateStat(s.acpxSessionId);
       if (!exists) {
+        this.logSubAgentStateLost(s, "health-check");
         // Descriptive status, NOT an imperative. The old text literally said
         // "spawn a fresh sub-agent to continue", which the planner obeyed
         // verbatim every cycle — the load-bearing line of the respawn loop.
@@ -2020,6 +2058,7 @@ export class AcpService extends Service {
     ) {
       const exists = await this.hasAcpxSessionState(session.acpxSessionId);
       if (!exists) {
+        this.logSubAgentStateLost(session, "send-prompt");
         const message =
           "Sub-agent state was lost (process exited without persisting). No automatic action taken.";
         await this.store.updateStatus(sessionId, "errored", message);
