@@ -6,6 +6,11 @@
  */
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", async () => {
+  return await import("../test-utils/core-vitest-mock.js");
+});
+
 import { actionToJsonSchema } from "../../../../packages/core/src/actions/action-schema.js";
 import {
   requireTradeOrderConfirmation,
