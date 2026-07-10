@@ -7,7 +7,7 @@
  *
  *   css tiers      — translucent fill + backdrop-filter on this element
  *                    (refraction upgrade on Chromium via `@supports`).
- *   ios26-native   — the element goes transparent and a real UIGlassEffect
+ *   native   — the element goes transparent and a real UIGlassEffect
  *                    view is anchored to its rect through the GlassBridge
  *                    plugin. Rect syncs on mount and on resize (ResizeObserver
  *                    + window resize) — NOT per scroll frame, which is why the
@@ -45,7 +45,7 @@ export function GlassStyles(): React.JSX.Element {
   -webkit-backdrop-filter: ${r.backdropFilter};
   border-radius: ${r.radius};
 }
-.eliza-glass-${variant}[data-glass-tier="ios26-native"] {
+.eliza-glass-${variant}[data-glass-tier="native"] {
   background-color: transparent;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -53,7 +53,7 @@ export function GlassStyles(): React.JSX.Element {
     const refraction = r.refraction
       ? `
 @supports (backdrop-filter: url(#x)) {
-  .eliza-glass-${variant}:not([data-glass-tier="ios26-native"]) {
+  .eliza-glass-${variant}:not([data-glass-tier="native"]) {
     backdrop-filter: ${r.refraction};
     -webkit-backdrop-filter: ${r.refraction};
   }
@@ -89,7 +89,7 @@ function useNativeAnchor(
 ): void {
   const regionId = useId();
   useEffect(() => {
-    if (tier !== "ios26-native") return;
+    if (tier !== "native") return;
     const el = ref.current;
     const bridge = glassBridge();
     if (!el || !bridge) return;

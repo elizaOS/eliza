@@ -17,6 +17,14 @@ const K8S_TERRAFORM_DIR = join(
   "gcp",
   "02-k8s",
 );
+const CLOUDFLARE_PAGES_DOMAINS_DIR = join(
+  import.meta.dir,
+  "..",
+  "cloud",
+  "terraform",
+  "cloudflare",
+  "pages-domains",
+);
 
 function readK8sTerraform(file: string): string {
   return readFileSync(join(K8S_TERRAFORM_DIR, file), "utf-8");
@@ -118,5 +126,82 @@ describe("Terraform namespace contracts", () => {
     expect(variables).toContain(
       'description = "CNPG PostgreSQL clusters to deploy (key = namespace/org UUID)"',
     );
+  });
+});
+
+describe("Cloudflare Pages domain durability", () => {
+  const main = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "main.tf"),
+    "utf-8",
+  );
+  const imports = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "import.tf"),
+    "utf-8",
+  );
+  const variables = readFileSync(
+    join(CLOUDFLARE_PAGES_DOMAINS_DIR, "variables.tf"),
+    "utf-8",
+  );
+  const workflow = readFileSync(
+    join(
+      import.meta.dir,
+      "../../../../.github/workflows/terraform-pages-domains.yml",
+    ),
+    "utf-8",
+  );
+
+  test("binds production and staging to distinct Pages branch aliases", () => {
+    expect(main).toContain('domain       = "elizacloud.ai"');
+    expect(main).toContain('domain       = "app.elizacloud.ai"');
+    expect(main).toContain('domain       = "staging.elizacloud.ai"');
+    expect(main).toContain('domain       = "app-staging.elizacloud.ai"');
+    expect(main).toContain('cname_target = "develop.eliza-cloud.pages.dev"');
+    expect(main).toContain('cname_target = "develop.eliza-app.pages.dev"');
+    expect(main).toContain('resource "cloudflare_pages_domain" "public"');
+    expect(main).toContain('resource "cloudflare_dns_record" "pages"');
+  });
+
+  test("adopts live bindings and exact-name DNS records before managing them", () => {
+    expect(imports).toContain('data "cloudflare_dns_records" "existing_pages"');
+    expect(imports).toContain("exact = each.value.domain");
+    expect(imports).toContain("cloudflare_pages_domain.public[each.key]");
+    expect(imports).toContain("cloudflare_dns_record.pages[each.key]");
+    expect(imports).toContain(
+      "one(data.cloudflare_dns_records.existing_pages[each.key].result).id",
+    );
+  });
+
+  test("owns the staging dedicated-agent wildcard and paid certificate pack", () => {
+    expect(main).toContain(
+      'resource "cloudflare_dns_record" "staging_agent_wildcard"',
+    );
+    expect(main).toContain('name    = "*.staging.elizacloud.ai"');
+    expect(main).toContain(
+      'resource "cloudflare_certificate_pack" "staging_agent"',
+    );
+    expect(main).toContain('type                  = "advanced"');
+    expect(main).toContain("prevent_destroy       = true");
+    expect(imports).toContain(
+      'data "cloudflare_dns_records" "existing_staging_agent_wildcard"',
+    );
+    expect(imports).toContain("cloudflare_certificate_pack.staging_agent[0]");
+    expect(variables).toContain('variable "staging_agent_wildcard_origins"');
+    expect(variables).toContain('variable "staging_agent_certificate_pack_id"');
+    expect(workflow).toContain("STAGING_AGENT_WILDCARD_ORIGINS_JSON");
+    expect(workflow).toContain("STAGING_AGENT_CERTIFICATE_PACK_ID");
+    expect(workflow).toContain("terraform-probe.staging.elizacloud.ai");
+  });
+
+  test("keeps real writes manual and verifies certificate plus routing after apply", () => {
+    expect(workflow).toContain("oven-sh/setup-bun@");
+    expect(workflow).toContain(
+      "bun install --frozen-lockfile --ignore-scripts",
+    );
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("options: [plan, apply]");
+    expect(workflow).toContain("terraform apply -no-color -input=false");
+    expect(workflow).toContain('entry.status !== "active"');
+    expect(workflow).toContain("--require-beacon");
+    expect(workflow).not.toContain("push:");
   });
 });

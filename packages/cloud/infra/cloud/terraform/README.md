@@ -39,5 +39,9 @@ service runs today. Short version:
 
 - `gcp/` — partial GKE / foundation modules, not currently wired to CI. Keep
   for future GCP experimentation.
+- `hetzner/` — active control-plane, shared-app, and data-plane roots.
+- `cloudflare/pages-domains/` — active environment-scoped Pages custom-domain,
+  DNS, and certificate bindings for the console and app projects.
 
-That is it.
+Wrangler still owns Cloudflare Worker routes and Pages deployments; the
+Cloudflare Terraform root owns only the stable public edge bindings.

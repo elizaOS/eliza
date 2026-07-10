@@ -69,6 +69,19 @@ public class ElizaAgentAutostartPolicyTest {
         assertFalse(ElizaAgentService.shouldAutoStartForRuntimeMode(false, " local ", RAM_BLOCKED));
     }
 
+    @Test
+    public void explicitStartUsesTheModeSpecificRamFloor() {
+        long marketedFourGb = (long) (3.6 * (1L << 30));
+        long belowHybridFloor = (long) (2.8 * (1L << 30));
+
+        assertTrue(ElizaAgentService.allowsAgentStartForRuntimeMode(
+            "cloud-hybrid", marketedFourGb));
+        assertFalse(ElizaAgentService.allowsAgentStartForRuntimeMode(
+            "local", marketedFourGb));
+        assertFalse(ElizaAgentService.allowsAgentStartForRuntimeMode(
+            "cloud-hybrid", belowHybridFloor));
+    }
+
     /**
      * Cold-boot-guard stamp trust: the stamp is only as alive as the child it
      * describes. No journaled start yet = launcher's first second, trust it; a

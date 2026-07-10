@@ -25,6 +25,10 @@ import android.webkit.JavascriptInterface;
  * Surface area is intentionally narrow — only the local agent bearer is
  * exposed, and only the same-origin WebView (which is the same APK uid
  * that owns the token file) can call it.
+ *
+ * RAM policy crosses this bridge as a measured device total only. Eligibility
+ * depends on the selected runtime mode, so the shared renderer/native policy
+ * applies thresholds without exposing manufacturer-specific capability flags.
  */
 public final class ElizaNativeBridge {
 
@@ -65,20 +69,6 @@ public final class ElizaNativeBridge {
         ActivityManager.MemoryInfo info = new ActivityManager.MemoryInfo();
         am.getMemoryInfo(info);
         return info.totalMem > 0 ? info.totalMem / 1_048_576L : -1L;
-    }
-
-    /**
-     * Whether this device is exempt from the on-device-agent RAM floor (#14390)
-     * as a curated agent target (the Light Phone III). Mirrors
-     * {@link ElizaAgentService#isLocalAgentRamFloorExemptDevice} so the
-     * renderer's boot-time RAM-tier gate ({@code device-ram-tier.ts}) can offer
-     * the hybrid runtime on a device that clears the floor by allowlist rather
-     * than by raw RAM. Synchronous like {@link #getDeviceTotalRamMb} — the gate
-     * runs before the Capacitor plugin executor is trustworthy.
-     */
-    @JavascriptInterface
-    public boolean isLocalAgentRamFloorExempt() {
-        return ElizaAgentService.isLocalAgentRamFloorExemptDevice();
     }
 
     @JavascriptInterface

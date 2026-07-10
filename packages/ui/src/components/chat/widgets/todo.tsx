@@ -124,11 +124,13 @@ function TodoRow({
 
   return (
     <div
-      className={`rounded-sm border p-3 ${
+      // Home tone keeps its glass plate (wallpaper surface); the chat tone is
+      // a flat row — the status dot + text carry the structure, no box.
+      className={
         isHome
-          ? "border-white/15 bg-white/10 text-white"
-          : "border-border/50 bg-bg/70"
-      }`}
+          ? "rounded-sm border border-white/15 bg-white/10 p-3 text-white"
+          : "py-1.5"
+      }
     >
       <div className="flex items-start gap-2">
         <span
@@ -258,8 +260,8 @@ function GoalAttentionRow({
       data-testid="todo-goal-attention-row"
       aria-label={`Goal "${goal.title}" ${status}. Open Goals.`}
       onClick={onOpen}
-      className={`flex min-h-11 w-full items-start gap-2 rounded-sm border p-3 text-left ${
-        isHome ? "border-white/15 text-white" : "border-border/50 bg-bg/70"
+      className={`flex min-h-11 w-full items-start gap-2 text-left ${
+        isHome ? "rounded-sm border border-white/15 p-3 text-white" : "py-1.5"
       }`}
     >
       <Target

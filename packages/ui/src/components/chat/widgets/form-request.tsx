@@ -177,7 +177,7 @@ export const FormRequest = memo(function FormRequest({
     <ChatWidgetShell
       title={form.title ?? "Form"}
       status={
-        <span className="rounded-sm bg-bg px-2 py-0.5 text-[11px] font-medium text-muted">
+        <span className="text-[11px] font-medium text-muted">
           {submitted ? "Submitted" : `${form.fields.length} fields`}
         </span>
       }
@@ -188,7 +188,7 @@ export const FormRequest = memo(function FormRequest({
       <form
         data-testid="form-request"
         data-form-id={form.id}
-        className="space-y-3 p-3 text-sm"
+        className="space-y-3 py-1.5 text-sm"
         onSubmit={handleSubmit}
       >
         {form.description ? (

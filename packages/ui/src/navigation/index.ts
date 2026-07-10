@@ -17,6 +17,7 @@ import {
   Monitor,
   Phone,
   Radio,
+  ScrollText,
   Settings,
   UserRound,
   Wallet,
@@ -54,6 +55,7 @@ export type BuiltinTab =
   | "automations"
   | "browser"
   | "stream"
+  | "pendant-transcript"
   | "apps"
   | "views"
   | "character"
@@ -328,6 +330,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Live streaming controls",
   },
   {
+    label: "Pendant",
+    tabs: ["pendant-transcript"],
+    icon: ScrollText,
+    description: "Realtime transcript from the omi pendant",
+  },
+  {
     // One consolidated surface — workflows, triggers, and scheduled items share
     // the Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
     label: "Automations",
@@ -360,6 +368,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   tasks: "/apps/tasks",
   browser: "/browser",
   stream: "/stream",
+  "pendant-transcript": "/pendant/transcript",
   apps: "/apps",
   views: "/views",
   character: "/character",
@@ -660,6 +669,8 @@ export function titleForTab(tab: Tab): string {
       return "Background";
     case "stream":
       return "Stream";
+    case "pendant-transcript":
+      return "Pendant Transcript";
     default:
       // Dynamic plugin tabs — capitalize the tab ID as a fallback title.
       return tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");

@@ -171,7 +171,7 @@ function MessageTextBody({
 export function FormSubmitReceipt({ label }: { label: string }) {
   return (
     <div
-      className="inline-flex max-w-full items-center rounded-full border border-border/70 bg-bg px-2.5 py-1 text-xs font-medium text-muted-strong"
+      className="inline-flex max-w-full items-center py-1 text-xs font-medium text-muted-strong"
       data-testid="form-submit-receipt"
     >
       Submitted {label}
@@ -476,7 +476,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
 
   if (loading) {
     return (
-      <div className="my-2 px-3 py-2 border border-border bg-card text-xs text-muted italic">
+      <div className="my-2 py-2 text-xs text-muted italic">
         {t("messagecontent.LoadingConfiguration", {
           defaultValue: "Loading {{pluginId}} configuration...",
           pluginId,
@@ -487,7 +487,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
 
   if (!plugin) {
     return (
-      <div className="my-2 px-3 py-2 border border-border bg-card text-xs text-muted italic">
+      <div className="my-2 py-2 text-xs text-muted italic">
         {t("messagecontent.PluginNotFound", {
           defaultValue: 'Plugin "{{pluginId}}" not found.',
           pluginId,
@@ -585,7 +585,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       {/* OAuth sign-in — shown for a cloud/OAuth-shaped mode instead of the env
           form. The API-key / local fallback is always one click away below. */}
       {selectedMode?.kind === "oauth" && (
-        <div className="p-3" data-testid="inline-plugin-config-oauth">
+        <div className="py-1.5" data-testid="inline-plugin-config-oauth">
           <Button
             variant="default"
             size="sm"
@@ -624,7 +624,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
       {/* Local desktop pairing (Discord IPC): one-click authorize instead of an
           env form, plus the mode's guidance text. */}
       {selectedMode?.kind === "local" && localSignIn && (
-        <div className="p-3" data-testid="inline-plugin-config-local">
+        <div className="py-1.5" data-testid="inline-plugin-config-local">
           {selectedMode.description && (
             <p className="mb-2 text-2xs text-muted">
               {selectedMode.description}
@@ -653,7 +653,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
           modes (and connectors with no declared modes at all). Hidden while an
           OAuth or one-click-local mode owns the body. */}
       {showConfigForm ? (
-        <div className="p-3">
+        <div className="py-1.5">
           {selectedMode?.description &&
             selectedMode.kind === "local" &&
             !localSignIn && (
@@ -673,7 +673,7 @@ export const InlinePluginConfig = memo(function InlinePluginConfig({
         </div>
       ) : selectedMode?.kind === "oauth" ||
         (selectedMode?.kind === "local" && localSignIn) ? null : (
-        <div className="px-3 py-2 text-xs text-muted italic">
+        <div className="py-1.5 text-xs text-muted italic">
           {t("messagecontent.NoConfigurablePara")}
         </div>
       )}
@@ -819,8 +819,8 @@ export function MessageUiSpecBlock({
   );
 
   return (
-    <div className="my-2 border border-border overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-bg-hover">
+    <div className="my-2 overflow-hidden">
+      <div className="flex items-center justify-between py-1">
         <span className="text-2xs font-semibold text-muted uppercase tracking-wider">
           {t("messagecontent.InteractiveUI")}
         </span>
@@ -840,13 +840,15 @@ export function MessageUiSpecBlock({
         </Button>
       </div>
       {showRaw && (
+        // The raw JSON pane keeps a code-block fill: it is code, and the fill
+        // separates it from the rendered widget below.
         <div className="px-3 py-2 bg-card overflow-x-auto overscroll-x-contain">
           <pre className="text-2xs text-muted font-mono whitespace-pre-wrap break-words m-0">
             {raw}
           </pre>
         </div>
       )}
-      <div className="p-3">
+      <div className="py-1.5">
         {/*
           A model-emitted UiSpec can be malformed in ways the renderer can't
           fully normalize (wrong-typed array props, unknown shapes). Without a
@@ -1002,7 +1004,7 @@ export function SensitiveRequestBlock({
   return (
     <div
       data-testid="sensitive-request"
-      className="my-2 border border-border bg-card p-3 text-sm space-y-3"
+      className="my-2 py-1.5 text-sm space-y-3"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 break-words font-medium">{requestLabel}</div>

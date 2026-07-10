@@ -1,10 +1,10 @@
 """
 FullSystem — Production-quality benchmark system using real LLM extraction
-and the balanced trust score algorithm from plugin-social-alpha.
+and the benchmark-local balanced trust score algorithm.
 
 Uses:
   1. OpenAI LLM for message extraction (cached to disk)
-  2. Balanced trust score calculator (ported from TypeScript plugin)
+  2. Balanced trust score calculator
   3. Price-based P&L tracking from benchmark-provided price updates
   4. Archetype classification matching ground truth methodology
 
@@ -499,7 +499,7 @@ class _UserState:
         return "low_info"
 
     def compute_trust_score(self) -> float:
-        """Balanced trust score using the same algorithm as plugin-social-alpha."""
+        """Balanced trust score using the benchmark-local calculator."""
         m = self.compute_metrics()
         n = len(self.calls)
         if n == 0:
@@ -533,7 +533,7 @@ class FullSystem(SocialAlphaSystem):
     """
     Production benchmark system:
     - OpenAI LLM for extraction (with persistent disk cache)
-    - Balanced trust score algorithm from plugin-social-alpha
+    - Benchmark-local balanced trust score algorithm
     - Real P&L tracking from price updates
     - Archetype classification matching ground truth methodology
     """

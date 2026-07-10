@@ -1227,8 +1227,8 @@ def _command_social_alpha(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         "vllm",
     }:
         # Route LLM-backed providers through the eliza TS bridge so the actual
-        # registered eliza agent + plugin-social-alpha is exercised, not the
-        # Python port in benchmark/systems/full_system.py.
+        # registered Eliza agent is exercised, not the Python port in
+        # benchmark/systems/full_system.py.
         system = "eliza-bridge"
     else:
         system = "baseline"

@@ -30,7 +30,7 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "build": "bun run build:i18n && bun run build:dist",
-    "build:i18n": "node scripts/generate-keywords.mjs --target ts",
+    "build:i18n": "node scripts/generate-keywords.mjs",
     "typecheck": "bun run build:i18n && tsgo --noEmit -p tsconfig.json",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write src",

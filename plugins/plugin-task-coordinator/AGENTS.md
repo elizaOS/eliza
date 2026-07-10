@@ -78,7 +78,7 @@ src/
   GlobalPrefsSection.tsx           Global preference controls
   LlmProviderSection.tsx           LLM provider selector
   ModelConfigSection.tsx           Model config controls
-  GitHubConnectionCard.tsx         GitHub connection status card
+  GitHubConnectionCard.tsx         GitHub connection card — guided credential setup (PAT paste + OAuth device sign-in via /api/github/device/*)
   PtyConsoleBase.tsx               PTY output streamer (drawer/side-panel/full variants)
   PtyConsoleDrawer.tsx             Drawer variant wrapper
   PtyConsoleSidePanel.tsx          Side-panel variant wrapper

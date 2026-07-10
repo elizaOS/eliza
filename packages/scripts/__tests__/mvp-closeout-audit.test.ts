@@ -15,14 +15,19 @@ const audit = await import(
 const scriptPath = new URL("../run-mvp-closeout-audit.mjs", import.meta.url)
   .pathname;
 
-function projectItem(number: number, status: string, labels: string[]) {
+function projectItem(
+  number: number,
+  status: string,
+  labels: string[],
+  repository = "elizaOS/eliza",
+) {
   return {
     content: {
       type: "Issue",
       number,
-      repository: "elizaOS/eliza",
+      repository,
       title: `Issue ${number}`,
-      url: `https://github.com/elizaOS/eliza/issues/${number}`,
+      url: `https://github.com/${repository}/issues/${number}`,
     },
     title: `Issue ${number}`,
     status,
@@ -95,6 +100,7 @@ describe("atomic MVP closeout audit", () => {
   test("rejects empty, duplicate, and cross-state snapshots", () => {
     expect(() =>
       audit.validateSnapshot({
+        source: "fixture",
         project: { items: [] },
         openIssues: [],
         closedIssues: [],
@@ -117,6 +123,42 @@ describe("atomic MVP closeout audit", () => {
     truncated.closedIssues = [];
     expect(() => audit.validateSnapshot(truncated)).toThrow(
       "Project issue #3 is missing from open/closed snapshot rows",
+    );
+  });
+
+  test("requires explicit snapshot provenance instead of a fixture default", () => {
+    const { source: _omitted, ...sourceless } = snapshot();
+    expect(() => audit.validateSnapshot(sourceless)).toThrow(
+      "snapshot.source must be a non-empty string",
+    );
+    expect(() => audit.validateSnapshot({ ...snapshot(), source: "" })).toThrow(
+      "snapshot.source must be a non-empty string",
+    );
+  });
+
+  test("scopes project cards to the audited repository", () => {
+    // A card from another repo must not hard-fail validation as a phantom
+    // missing issue, and must stay out of the board counts.
+    const withForeignCard = snapshot();
+    withForeignCard.project.items.push(
+      projectItem(99, "Ready", ["mvp"], "elizaOS/other-repo"),
+    );
+    const report = audit.buildCloseoutReport(withForeignCard);
+    expect(report.integrityOk).toBe(true);
+    expect(report.board.counts.projectIssues).toBe(3);
+    expect(report.parity.readiness).toEqual([1, 2]);
+
+    // A same-numbered foreign card must not stand in for an eliza issue whose
+    // own card is gone — that divergence has to stay observable.
+    const masked = snapshot();
+    masked.project.items = masked.project.items.filter(
+      (item) => item.content.number !== 1,
+    );
+    masked.project.items.push(
+      projectItem(1, "Ready", ["testing"], "elizaOS/other-repo"),
+    );
+    expect(() => audit.validateSnapshot(masked)).toThrow(
+      "issue #1 is not present in snapshot project.items",
     );
   });
 

@@ -512,7 +512,7 @@ jobs:
 
       - name: Generate i18n keyword data
         run: |
-          node packages/shared/scripts/generate-keywords.mjs --target ts
+          node packages/shared/scripts/generate-keywords.mjs
           test -f packages/shared/src/i18n/generated/validation-keyword-data.js
 
       - name: Stage desktop bundle inputs

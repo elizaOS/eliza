@@ -23,7 +23,7 @@ const DEFAULT_MIN_VISIBLE_TEXT_LENGTH = 21;
 // Interaction coverage ratchet signals: rendered text, controls, screenshots.
 type ViewAudit = {
   id: string;
-  viewType: "gui" | "tui";
+  viewType: "gui";
   path: string;
   visibleText: string;
   controls: Array<{

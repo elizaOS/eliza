@@ -69,12 +69,15 @@ export function ChatWidgetShell({
   }
 
   return (
+    // Chat-native: no card box around the widget — it reads as part of the
+    // message flow (header row + body), with the collapse contract carrying
+    // the "done" state instead of a border doing visual work (#13560).
     <div
-      className="my-2 border border-border bg-card overflow-hidden [contain:content]"
+      className="my-2 overflow-hidden [contain:content]"
       data-testid={testId}
       data-expanded={expanded}
     >
-      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-bg-hover">
+      <div className="flex items-center justify-between gap-2 py-1">
         <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-txt">
           {icon}
           <span className="truncate">{title}</span>
@@ -102,7 +105,7 @@ export function ChatWidgetShell({
       </div>
       {!expanded && summary != null && (
         <div
-          className="truncate px-3 py-2 text-xs text-muted"
+          className="truncate py-1 text-xs text-muted"
           data-testid={testId ? `${testId}-summary` : undefined}
         >
           {summary}

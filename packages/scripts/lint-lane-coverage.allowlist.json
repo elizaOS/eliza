@@ -1,84 +1,63 @@
 {
-  "generatedFrom": "node packages/scripts/lint-lane-coverage.mjs --json on origin/develop (2579e7b75e, 2026-07-05)",
-  "issue": "https://github.com/elizaOS/eliza/issues/13620",
+  "generatedFrom": "node packages/scripts/lint-lane-coverage.mjs --json on origin/develop (afb55d4fd5, 2026-07-09)",
+  "issue": "https://github.com/elizaOS/eliza/issues/15856",
   "policy": "This file is the baseline for enforcing lint-lane-coverage without --dry-run. New unsuppressed issues fail; stale entries fail and should be removed.",
   "summary": {
-    "pluginCount": 140,
-    "pluginsWithNoTests": 1,
+    "pluginCount": 142,
+    "pluginsWithNoTests": 0,
     "pluginsWithNoDeterministicE2E": 100,
-    "pluginsWithActions": 44,
-    "pluginsWithViews": 30,
-    "issueCount": 153,
-    "unsuppressedIssueCount": 153,
-    "suppressedIssueCount": 0,
+    "pluginsWithActions": 45,
+    "pluginsWithViews": 32,
+    "issueCount": 150,
+    "unsuppressedIssueCount": 0,
+    "suppressedIssueCount": 150,
     "allowlistErrorCount": 0
   },
   "entries": [
     {
       "plugin": "app-model-tester",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-anthropic-proxy",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-aosp-local-inference",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-app-manager",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-background-runner",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-benchmarks",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-blocker",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-bluebubbles",
-      "issues": [
-        "missing-action-e2e",
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-bluesky",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-calendar",
@@ -87,7 +66,7 @@
         "missing-deterministic-e2e",
         "missing-view-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-calendly",
@@ -96,123 +75,87 @@
         "missing-action-tests",
         "missing-deterministic-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-capacitor-bridge",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-cli",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-cli-inference",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-cloud-apps",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-codex-cli",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-coding-tools",
-      "issues": [
-        "missing-action-e2e",
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-commands",
-      "issues": [
-        "missing-view-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-view-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-contacts",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-discord-local",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-documents",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-e2b-sandbox",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-edge-tts",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-elevenlabs",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-embeddings",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-farcaster",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-feed",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-feishu",
@@ -221,38 +164,27 @@
         "missing-action-tests",
         "missing-deterministic-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-finances",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-form",
-      "issues": [
-        "missing-action-tests",
-        "missing-view-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests", "missing-view-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-github",
-      "issues": [
-        "missing-action-e2e",
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-gitpathologist",
-      "issues": [
-        "missing-action-e2e",
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-google-chat",
@@ -261,28 +193,22 @@
         "missing-action-tests",
         "missing-deterministic-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-hyperliquid",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-imessage",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-inmemorydb",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-instagram",
@@ -291,42 +217,32 @@
         "missing-action-tests",
         "missing-deterministic-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-line",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-lmstudio",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-local-storage",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-localdb",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-matrix",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-mcp",
@@ -335,270 +251,192 @@
         "missing-action-tests",
         "missing-deterministic-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-messages",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-activity-tracker",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-agent",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-appblocker",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-browser-surface",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
+      "issues": ["missing-deterministic-e2e"],
       "reason": "Deterministic E2E coverage is device-bound: the plugin's real behavior is native webview isolation exercised by the Android connectedAndroidTest instrumented suite (android/src/androidTest) and the iOS WKWebView-pool XCUITest, neither of which runs as deterministic JS E2E in CI. JS-side surface is covered by src/web.test.ts. See #15245 (mobile native-webview isolation) and #13452."
     },
     {
       "plugin": "plugin-native-bun-runtime",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-calendar",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-camera",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-canvas",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-contacts",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-desktop",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-eliza-tasks",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-filesystem",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-gateway",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-llama",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-location",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-macosalarm",
-      "issues": [
-        "missing-action-e2e",
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-messages",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-mlkit-text",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-mobile-agent-bridge",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-mobile-signals",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-network-policy",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-phone",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-reminders",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-screencapture",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-settings",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-shared-types",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-swabble",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-system",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-talkmode",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-websiteblocker",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-native-wifi",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-ngrok",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-ollama",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-pdf",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-phone",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-pii-guard",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-polymarket",
@@ -607,121 +445,87 @@
         "missing-deterministic-e2e",
         "missing-view-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-pty",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-registry",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-reminders",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-remote-desktop",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-scheduling",
-      "issues": [
-        "missing-view-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-view-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-screenshare",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-shell",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-signal",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-slack",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-sql",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-streaming",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-tailscale",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-task-coordinator",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-tee",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-telegram-standalone",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-trajectory-logger",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-todos",
@@ -730,117 +534,82 @@
         "missing-deterministic-e2e",
         "missing-view-e2e"
       ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-training",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-tunnel",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-twitch",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-vector-browser",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-video",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-wallet",
-      "issues": [
-        "missing-action-tests"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-tests"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-wallet-ui",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-web-search",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-wechat",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-whatsapp",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-wifi",
-      "issues": [
-        "missing-deterministic-e2e",
-        "missing-view-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-workflow",
-      "issues": [
-        "missing-action-e2e",
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-x402",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-xai",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
       "plugin": "plugin-zai",
-      "issues": [
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #13620; ratchet by removing entries as tests/scenarios land."
+      "issues": ["missing-deterministic-e2e"],
+      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     }
   ]
 }

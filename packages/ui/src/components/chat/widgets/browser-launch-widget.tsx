@@ -65,7 +65,7 @@ export function BrowserLaunchWidget({
     <div
       data-testid="browser-launch"
       data-browser-status={status}
-      className="my-2 border border-border bg-card p-3 text-sm space-y-3"
+      className="my-2 text-sm space-y-3"
     >
       <div className="flex items-center gap-2">
         <Globe className="h-4 w-4 shrink-0 text-muted" aria-hidden />
@@ -99,7 +99,7 @@ export function BrowserLaunchWidget({
           src={screenshotUrl}
           alt={target ? `Screenshot of ${target}` : "Browser screenshot"}
           data-testid="browser-launch-screenshot"
-          className="max-h-48 w-full border border-border object-cover"
+          className="max-h-48 w-full object-cover"
         />
       ) : null}
 

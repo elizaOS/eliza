@@ -1,10 +1,13 @@
 /**
- * TS side of the `GlassBridge` Capacitor plugin: attaches REAL system glass
- * (iOS 26 `UIGlassEffect` on a `UIVisualEffectView`) behind anchored regions of
- * the webview. The Swift half lives at
- * `packages/app-core/platforms/ios/App/App/GlassBridge.swift`; below iOS 26 (or
- * off-Capacitor) every call resolves as a no-op and callers stay on the CSS
- * tier.
+ * TS side of the `GlassBridge` Capacitor plugin: attaches REAL native material
+ * behind anchored regions of the webview — iOS 26 `UIGlassEffect` on a
+ * `UIVisualEffectView` (Swift half:
+ * `packages/app-core/platforms/ios/App/App/GlassBridge.swift`) and the
+ * Material dynamic-palette panel on Android 12+ (Java half:
+ * `packages/app-core/platforms/android/.../GlassBridgePlugin.java`). The JS
+ * API and rect contract are identical on both platforms. Below iOS 26 /
+ * Android 12 (or off-Capacitor) every call resolves as a no-op and callers
+ * stay on the CSS tier.
  *
  * Deliberately reads the bridge-injected `globalThis.Capacitor` instead of
  * statically importing `@capacitor/core`: this module is re-exported through
@@ -36,6 +39,16 @@ export interface NativeGlassOptions {
   colorScheme?: "light" | "dark" | "system";
 }
 
+/** Native-truth readback of one region, for diagnostics and device e2e. */
+export interface NativeGlassRegionState {
+  exists: boolean;
+  regionCount: number;
+  /** Present when `exists`: panel z-order relative to the WebView. */
+  attachedBelowWebView?: boolean;
+  /** Present when `exists`: REAL view geometry (device px / iOS points). */
+  rect?: { x: number; y: number; width: number; height: number };
+}
+
 interface GlassBridgePlugin {
   attachGlass(options: NativeGlassOptions): Promise<{ attached: boolean }>;
   updateRect(options: {
@@ -46,6 +59,12 @@ interface GlassBridgePlugin {
   /** UIGlassContainerEffect merge distance for sibling regions. */
   setGrouping(options: { spacing: number }): Promise<void>;
   isAvailable(): Promise<{ available: boolean }>;
+  /**
+   * Reads the region's REAL native view state (existence, count, z-order,
+   * geometry) — the seam device e2e uses to prove the lifecycle against
+   * native truth instead of resolved promises.
+   */
+  getRegionState(options: { id: string }): Promise<NativeGlassRegionState>;
 }
 
 interface CapacitorGlobal {
@@ -69,7 +88,11 @@ let cached: GlassBridgePlugin | null | undefined;
 export function glassBridge(): GlassBridgePlugin | null {
   if (cached !== undefined) return cached;
   const cap = capacitorGlobal();
-  if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== "ios") {
+  const platform = cap?.getPlatform?.();
+  if (
+    !cap?.isNativePlatform?.() ||
+    (platform !== "ios" && platform !== "android")
+  ) {
     cached = null;
     return cached;
   }
@@ -85,7 +108,10 @@ export function glassBridge(): GlassBridgePlugin | null {
   return cached ?? null;
 }
 
-/** One async probe, memoized: true only on iOS 26+ with the plugin present. */
+/**
+ * One async probe, memoized: true only on iOS 26+ / Android 12+ with the
+ * plugin present.
+ */
 let availability: Promise<boolean> | null = null;
 
 export function isNativeGlassAvailable(): Promise<boolean> {

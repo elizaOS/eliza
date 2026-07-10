@@ -195,6 +195,18 @@ export const VIEW_EXPECTATIONS: Record<string, OcrExpectation> = {
       "Electrobun desktop runtim",
     ],
   },
+  // First-party MVP plugin view (#15781). Unlike third-party plugin surfaces it
+  // ships stable, OCR-legible chrome we positively verify. The audit auto-selects
+  // the first market, so the capture is the market-detail state: the "< Markets"
+  // back control (desktop/tablet) or the compact "Vol/Liq/Last" metric row
+  // (mobile, where the chat composer forces compact layout). The list state adds
+  // the "markets" label and the "reads"/"trading" readiness chips. requireAny
+  // over the union covers every viewport's layout; the universal developer-string
+  // rules independently reject the `undefined` / `Cannot read properties` crash
+  // this view once leaked, so a regressed render breaks instead of verifying.
+  "plugin-polymarket-gui": {
+    requireAny: ["markets", "reads", "trading", "vol", "liq", "last"],
+  },
 };
 
 // Native/permission-gated views (camera, contacts, phone, rolodex, messages) are

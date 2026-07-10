@@ -69,6 +69,8 @@ packages/cloud/infra/
           providers.tf
           backend.hcl
           cloud-init/
+      cloudflare/
+        pages-domains/             # Active: Pages custom-domain + DNS/certificate bindings
       gcp/
         01-foundation/             # GCP foundation (VPC, IAM, GKE module) — experimental, not CI-wired
         02-k8s/                    # GKE cluster resources — experimental, not CI-wired
@@ -107,6 +109,11 @@ Three Terraform roots:
 - **`control-plane/`** — manages the control-plane VMs only (one per env: `eliza-staging-1`, `eliza-production-1`).
 - **`apps-data-plane/`** — manages Hetzner data-plane app server resources.
 - **`apps-shared/`** — manages shared Hetzner infrastructure.
+
+The separate **`cloudflare/pages-domains/`** root adopts and manages the
+environment-specific Pages custom domains and CNAMEs for `eliza-cloud` and
+`eliza-app`. Wrangler continues to own deployments and Worker routes; this root
+prevents dashboard-only domain/certificate drift.
 
 The **data plane** is not in Terraform: dedicated robot nodes (`eliza-core-{env}-N`) are registered in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty) and extra burst capacity (`eliza-core-<hex>`) is minted at runtime by `packages/cloud/shared/src/lib/services/containers/node-autoscaler.ts` via the Hetzner Cloud API.
 

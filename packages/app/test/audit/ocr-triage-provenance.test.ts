@@ -19,10 +19,12 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
 import {
   authorizedShots,
   type ReportEntry,
   runOcrTriage,
+  validateImportedOcrRecords,
 } from "../../scripts/ocr-triage";
 
 // Changed-file coverage invokes Vitest from the repository root while the
@@ -74,7 +76,7 @@ const CURRENT_ROWS: ReportEntry[] = [
   { slug: "builtin-chat", viewport: "desktop-landscape", verdict: "good" },
   { slug: "builtin-phone", viewport: "desktop-landscape", verdict: "good" },
 ];
-const STALE_SLUG = "plugin-social-alpha-gui";
+const STALE_SLUG = "plugin-retired-gui";
 
 describe("authorizedShots (report-authoritative selection)", () => {
   let dir: string;
@@ -150,18 +152,16 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     }
   }
 
-  it("triages exactly the report rows and drops a stale PNG + stale OCR record", async () => {
+  it("triages exactly the report rows while ignoring an unreported stale PNG", async () => {
     for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
     writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
-    // Salt the directory with a retired-view PNG and its stale OCR record — the
-    // pre-fix glob would have OCR'd this and reported it as a current failure.
+    // A retired-view PNG can remain on disk, but it is not authorized evidence.
     shot(dir, "desktop-landscape", STALE_SLUG);
     writeFileSync(
       join(dir, "ocr.ndjson"),
       [
         ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
         ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
-        ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
       ].join("\n"),
     );
 
@@ -197,6 +197,79 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     );
   });
 
+  it("rejects imported OCR with missing, duplicate, unexpected, or mismatched records", () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    const shots = authorizedShots(dir, CURRENT_ROWS);
+    const chat = JSON.parse(
+      ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
+    );
+    const phone = JSON.parse(
+      ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+    );
+    const stale = JSON.parse(
+      ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+    );
+
+    expect(() =>
+      validateImportedOcrRecords(dir, "ocr.ndjson", shots, [chat]),
+    ).toThrow(/builtin-phone::desktop-landscape has no OCR record/);
+    expect(() =>
+      validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
+        chat,
+        phone,
+        phone,
+      ]),
+    ).toThrow(/duplicate OCR record builtin-phone::desktop-landscape/);
+    expect(() =>
+      validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
+        chat,
+        phone,
+        stale,
+      ]),
+    ).toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    expect(() =>
+      validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
+        {
+          ...chat,
+          path: join(
+            tmpdir(),
+            "elsewhere",
+            "desktop-landscape",
+            "builtin-chat.png",
+          ),
+        },
+        phone,
+      ]),
+    ).toThrow(/builtin-chat::desktop-landscape points to/);
+  });
+
+  it("exits non-zero when imported OCR contains a stale record", async () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      [
+        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
+        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+        ocrLine("desktop-landscape", STALE_SLUG, "Social Alpha leaderboard"),
+      ].join("\n"),
+    );
+
+    await expect(
+      runOcrTriage([
+        "--audit-dir",
+        dir,
+        "--ocr",
+        join(dir, "ocr.ndjson"),
+        "--out",
+        join(dir, "ocr-triage.json"),
+      ]),
+    ).rejects.toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    const { status, stderr } = run();
+    expect(status).not.toBe(0);
+    expect(stderr).toMatch(/unexpected OCR record plugin-social-alpha-gui/);
+  });
+
   it("exits non-zero when a report row's screenshot is missing", async () => {
     shot(dir, "desktop-landscape", "builtin-chat");
     // builtin-phone.png absent → incomplete capture.
@@ -221,4 +294,55 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       /builtin-phone::desktop-landscape has no screenshot/,
     );
   });
+});
+
+describe("audit runner cleanup", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "audit-runner-cleanup-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("rejects filesystem, repository, and app roots", () => {
+    const repoRoot = join(APP_DIR, "..", "..");
+    const resolveConfigured = (configured: string) =>
+      resolveAuditAppOutput({ appDir: APP_DIR, repoRoot, configured });
+
+    expect(() => resolveConfigured(APP_DIR)).toThrow(/unsafe audit output/);
+    expect(() => resolveConfigured(repoRoot)).toThrow(/unsafe audit output/);
+    expect(() => resolveConfigured("/")).toThrow(/unsafe audit output/);
+    expect(resolveConfigured(dir)).toBe(dir);
+  });
+
+  it("resets stale artifacts once before Playwright owns the run", () => {
+    const stale = join(dir, "mobile-portrait", "plugin-social-alpha-gui.png");
+    mkdirSync(join(dir, "mobile-portrait"));
+    writeFileSync(stale, PNG_1x1);
+
+    const output = execFileSync(
+      "node",
+      [
+        join(APP_DIR, "scripts", "run-ui-playwright.mjs"),
+        "--config",
+        "playwright.ui-smoke.config.ts",
+        "--project=audit-app",
+        "--list",
+      ],
+      {
+        cwd: APP_DIR,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ELIZA_AUDIT_APP_DIR: dir,
+          ELIZA_UI_SMOKE_SKIP_BUILD: "1",
+          ELIZA_UI_SMOKE_SKIP_CORE_BUILD: "1",
+          ELIZA_UI_SMOKE_SKIP_VIEW_BUILD: "1",
+        },
+      },
+    );
+
+    expect(output).toContain("Reset app aesthetic audit output");
+    expect(output).toContain("Listing tests:");
+    expect(existsSync(stale)).toBe(false);
+  }, 30_000);
 });

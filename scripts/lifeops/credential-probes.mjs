@@ -390,6 +390,23 @@ async function probeTwilio(e) {
     : fail("twilio", `account HTTP ${r.status}: ${errorSnippet(r)}`);
 }
 
+/**
+ * Linked-account identifiers in `signal-cli listAccounts` stdout. signal-cli
+ * mixes warning lines into stdout on some builds, so non-empty output is not
+ * evidence of a linked account: keep only trimmed lines that — after
+ * stripping the `Number: ` prefix case-insensitively — are an E.164 number or
+ * a `u:username` handle. Shared with the connector-path availability leaf
+ * (connector-paths.mjs) so the coarse dashboard row and this probe cannot
+ * drift on what counts as an account (#15848).
+ */
+export function parseSignalAccountLines(stdout) {
+  return String(stdout ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .map((line) => line.replace(/^Number:\s*/i, ""))
+    .filter((line) => /^\+\d{6,}$|^u:[A-Za-z0-9_.-]+$/.test(line));
+}
+
 export async function probeSignal(
   e,
   { fetchJsonFn = fetchJson, spawnSyncFn = spawnSync } = {},
@@ -453,11 +470,7 @@ export async function probeSignal(
       `${command} listAccounts failed (status=${listed.status ?? "spawn-error"}${listed.error ? `, ${listed.error.code ?? listed.error.message}` : ""})`,
     );
   }
-  const accounts = String(listed.stdout ?? "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .map((line) => line.replace(/^Number:\s*/i, ""))
-    .filter((line) => /^\+\d{6,}$|^u:[A-Za-z0-9_.-]+$/.test(line));
+  const accounts = parseSignalAccountLines(listed.stdout);
   if (accounts.length === 0) return fail("signal", "no linked Signal account");
   const selected = e("SIGNAL_ACCOUNT_NUMBER");
   if (selected && !accounts.includes(selected)) {
