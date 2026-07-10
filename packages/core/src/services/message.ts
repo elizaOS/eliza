@@ -1819,13 +1819,34 @@ function priorDialogueSpeakerName(memory: Memory): string | undefined {
 	return undefined;
 }
 
-function priorDialogueContent(text: string, speaker?: string): string {
-	if (!speaker) return text;
+// Age threshold above which a prior_message block gets an explicit staleness
+// tag. Without it, a slow channel's week-old request reads as part of the live
+// conversation — observed: "@bot wdyt?" answered with "or about filing the
+// GitHub issue for today's findings?" because a 7-day-old "file an issue on
+// all findings from today" sat untagged in the recall window.
+const PRIOR_DIALOGUE_STALE_AFTER_MS = 6 * 60 * 60 * 1000;
+
+function priorDialogueAgeTag(createdAt: number | undefined): string {
+	if (!createdAt) return "";
+	const ageMs = Date.now() - createdAt;
+	if (ageMs < PRIOR_DIALOGUE_STALE_AFTER_MS) return "";
+	const hours = Math.floor(ageMs / (60 * 60 * 1000));
+	const label = hours < 48 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
+	return `(${label}) `;
+}
+
+function priorDialogueContent(
+	text: string,
+	speaker?: string,
+	createdAt?: number,
+): string {
+	const ageTag = priorDialogueAgeTag(createdAt);
+	if (!speaker) return `${ageTag}${text}`;
 	const trimmedStart = text.trimStart();
 	if (trimmedStart.toLowerCase().startsWith(`${speaker.toLowerCase()}:`)) {
-		return text;
+		return `${ageTag}${text}`;
 	}
-	return `${speaker}: ${text}`;
+	return `${ageTag}${speaker}: ${text}`;
 }
 
 function appendPriorDialogueEvents(
@@ -1908,7 +1929,7 @@ function appendPriorDialogueEvents(
 			segment: {
 				id: `history:${memory.id}`,
 				label: isOwnReply ? "prior_message:agent" : "prior_message:user",
-				content: priorDialogueContent(text, speakerName),
+				content: priorDialogueContent(text, speakerName, memory.createdAt),
 				stable: false,
 				metadata: {
 					roomId: memory.roomId,
@@ -9962,7 +9983,19 @@ export class DefaultMessageService implements IMessageService {
 				);
 			}
 			try {
-				const [outcome] = await Promise.all([
+				// Sub-agent completion relays carry a finished task's deliverable; a
+				// transient provider failure on this ONE model call otherwise loses
+				// the completed work silently (the unaddressed-failure gate below
+				// suppresses the reply). Retry the stage once for those turns —
+				// observed live: eliza-code finished "top contributors", the relay
+				// turn hit a Cerebras 5xx, and the answer never reached the channel.
+				const isSubAgentRelayTurn =
+					(typeof message.content?.source === "string" &&
+						message.content.source.includes("sub-agent")) ||
+					(isRecord(message.content?.metadata) &&
+						(message.content.metadata as { subAgent?: unknown }).subAgent ===
+							true);
+				const runStage1 = () =>
 					runV5MessageRuntimeStage1({
 						runtime,
 						message,
@@ -9971,7 +10004,28 @@ export class DefaultMessageService implements IMessageService {
 						...(callback ? { callback } : {}),
 						deliveredVisibleTexts,
 						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
-					}),
+					});
+				const [outcome] = await Promise.all([
+					isSubAgentRelayTurn
+						? runStage1().catch(async (err: unknown) => {
+								if (
+									err instanceof TurnAbortedError ||
+									(isRecord(err) && err.code === "TURN_ABORTED")
+								) {
+									throw err;
+								}
+								runtime.logger.warn(
+									{
+										src: "service:message",
+										agentId: runtime.agentId,
+										error: err instanceof Error ? err.message : String(err),
+									},
+									"Sub-agent relay turn failed; retrying once",
+								);
+								await new Promise((r) => setTimeout(r, 2_000));
+								return runStage1();
+							})
+						: runStage1(),
 					runtime.applyPipelineHooks(
 						"parallel_with_should_respond",
 						parallelHookCtx,
