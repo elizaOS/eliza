@@ -3,7 +3,7 @@
  * while releasing its final active view.
  */
 
-import { expect, test } from "vitest";
+import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(
