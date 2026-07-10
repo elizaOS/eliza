@@ -64,7 +64,13 @@ export function resolveDeepLink(pathEntry, env = process.env) {
   return `${appBase(env)}${oneClick.hrefPath}`;
 }
 
-const ONE_CLICK_TYPES = ["gh-token", "deep-link", "shell", "siwe"];
+const ONE_CLICK_TYPES = [
+  "gh-token",
+  "github-device",
+  "deep-link",
+  "shell",
+  "siwe",
+];
 const ROLES_VIA = [
   "env-slots",
   "oauth-requested-role",
@@ -207,6 +213,28 @@ export const CONNECTOR_PATHS = [
     availability: { type: "always" },
     notes:
       "OWNER label maps to plugin-github role 'user', AGENT to 'agent' (plugins/plugin-github/src/accounts.ts); GITHUB_ACCOUNTS JSON and character.settings.github.accounts are the multi-account forms; GITHUB_TOKEN stays the ownerless legacy single token.",
+  }),
+  definePath({
+    id: "github.device-oauth",
+    family: "github",
+    kind: "user-oauth",
+    label: "GitHub OAuth device login",
+    requiredAll: ["GITHUB_OAUTH_CLIENT_ID"],
+    optional: ["GITHUB_TOKEN"],
+    probeId: "github",
+    probeEndpoint:
+      "POST https://github.com/login/device/code, then GET https://api.github.com/user with the acquired token",
+    oneClick: {
+      type: "github-device",
+      detail:
+        "Display GitHub's short device code, confirm it on github.com, and save the returned token without exposing it to the browser",
+    },
+    availability: {
+      type: "env-all",
+      names: ["GITHUB_OAUTH_CLIENT_ID"],
+      reason:
+        "needs owner setup: no GitHub OAuth client id with device flow enabled (GITHUB_OAUTH_CLIENT_ID)",
+    },
   }),
   definePath({
     id: "github.user-oauth",
@@ -416,7 +444,7 @@ export const CONNECTOR_PATHS = [
     probeEndpoint:
       "local install/link status only — Signal Desktop's DB is SQLCipher-encrypted and is not a credential source",
     availability: {
-      type: "any-of",
+      type: "all-of",
       specs: [
         {
           type: "dir-exists",
@@ -463,17 +491,23 @@ export const CONNECTOR_PATHS = [
               reason: "signal-cli not in PATH",
             },
             {
-              type: "dir-exists",
-              path: "~/.local/share/signal-cli",
-              reason:
-                "no registered signal-cli account (~/.local/share/signal-cli missing)",
+              type: "command-ok",
+              command: "signal-cli",
+              args: ["--version"],
+              reason: "signal-cli is installed but not runnable",
+            },
+            {
+              type: "command-output-nonempty",
+              command: "signal-cli",
+              args: ["listAccounts"],
+              reason: "no linked Signal account",
             },
           ],
         },
       ],
     },
     notes:
-      "A signal-cli binary can be present but unrunnable (e.g. built for a newer JRE); the data-dir requirement keeps an unregistered install skipping instead of red.",
+      "Availability executes the read-only listAccounts command: an installed-but-unrunnable binary and a runnable client with no linked account remain distinct skip states.",
   }),
 
   // --- WhatsApp -----------------------------------------------------------------------
@@ -834,7 +868,10 @@ export function defaultAvailabilityCtx() {
         encoding: "utf8",
         timeout: 10_000,
       });
-      return { ok: !result.error && result.status === 0 };
+      return {
+        ok: !result.error && result.status === 0,
+        stdout: result.stdout ?? "",
+      };
     },
   };
 }
@@ -889,6 +926,19 @@ export function checkAvailability(spec, ctx = defaultAvailabilityCtx()) {
             reason:
               spec.reason ?? `${spec.command} ${spec.args.join(" ")} failed`,
           };
+    case "command-output-nonempty": {
+      const result = ctx.runCommand(spec.command, spec.args);
+      return result.ok &&
+        typeof result.stdout === "string" &&
+        result.stdout.trim().length > 0
+        ? ok
+        : {
+            available: false,
+            reason:
+              spec.reason ??
+              `${spec.command} ${spec.args.join(" ")} returned no output`,
+          };
+    }
     case "platform":
       return ctx.platform === spec.platform
         ? ok
@@ -981,6 +1031,7 @@ function validateAvailabilitySpec(spec, id, problems) {
     "file-exists",
     "command-in-path",
     "command-ok",
+    "command-output-nonempty",
     "platform",
   ];
   if (!known.includes(spec.type)) {

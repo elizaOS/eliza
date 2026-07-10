@@ -448,7 +448,7 @@ test("any-of aggregates all branch reasons; all-of reports the first failure", (
   assert.deepEqual(allOf, { available: false, reason: "blocker" });
 });
 
-test("signal.cli scenario: installed-but-unregistered CLI skips with the account reason", () => {
+test("signal.cli scenario: installed-but-unrunnable CLI skips distinctly", () => {
   const spec = byId("signal.cli").availability;
   // This machine's GROUND state: signal-cli in PATH, no data dir, no REST URL.
   const broken = checkAvailability(
@@ -456,22 +456,81 @@ test("signal.cli scenario: installed-but-unregistered CLI skips with the account
     fakeCtx({ commandInPath: (command) => command === "signal-cli" }),
   );
   assert.equal(broken.available, false);
-  assert.match(broken.reason, /registered signal-cli account/);
+  assert.match(broken.reason, /installed but not runnable/);
   // REST bridge configured -> available regardless of the local CLI.
   const viaRest = checkAvailability(
     spec,
     fakeCtx({ env: { SIGNAL_HTTP_URL: "http://x" } }),
   );
   assert.equal(viaRest.available, true);
-  // CLI in PATH plus a registered data dir -> available.
+  // CLI in PATH plus a successful read-only account listing -> available.
   const registered = checkAvailability(
     spec,
     fakeCtx({
       commandInPath: (command) => command === "signal-cli",
-      existsSync: (path) => path === "/Users/op/.local/share/signal-cli",
+      runCommand: (_command, args) => ({
+        ok: args[0] === "--version" || args[0] === "listAccounts",
+        stdout:
+          args[0] === "listAccounts"
+            ? "Number: +15551234567\n"
+            : "signal-cli 0.13\n",
+      }),
     }),
   );
   assert.equal(registered.available, true);
+});
+
+test("Signal Desktop and signal-cli unavailability shapes stay distinct", () => {
+  const desktop = byId("signal.desktop-bridge").availability;
+  const absent = checkAvailability(desktop, fakeCtx());
+  assert.equal(absent.available, false);
+  assert.equal(absent.reason, "Signal Desktop not installed");
+  const noProfile = checkAvailability(
+    desktop,
+    fakeCtx({ existsSync: (path) => path === "/Applications/Signal.app" }),
+  );
+  assert.equal(noProfile.available, false);
+  assert.equal(noProfile.reason, "no Signal Desktop profile directory");
+
+  const cli = byId("signal.cli").availability;
+  const noBinary = checkAvailability(cli, fakeCtx());
+  assert.match(noBinary.reason, /signal-cli not in PATH/);
+  const noAccount = checkAvailability(
+    cli,
+    fakeCtx({
+      commandInPath: () => true,
+      runCommand: (_command, args) => ({
+        ok: args[0] === "--version" || args[0] === "listAccounts",
+        stdout: args[0] === "listAccounts" ? "" : "signal-cli 0.13\n",
+      }),
+    }),
+  );
+  assert.match(noAccount.reason, /no linked Signal account/);
+});
+
+test("command-output-nonempty requires both success and actual stdout", () => {
+  const spec = {
+    type: "command-output-nonempty",
+    command: "signal-cli",
+    args: ["listAccounts"],
+    reason: "no linked account",
+  };
+  assert.deepEqual(
+    checkAvailability(
+      spec,
+      fakeCtx({ runCommand: () => ({ ok: true, stdout: "" }) }),
+    ),
+    { available: false, reason: "no linked account" },
+  );
+  assert.deepEqual(
+    checkAvailability(
+      spec,
+      fakeCtx({
+        runCommand: () => ({ ok: true, stdout: "Number: +15551234567\n" }),
+      }),
+    ),
+    { available: true, reason: null },
+  );
 });
 
 test("oauth-app-dependent rows skip with an explanatory reason until an app is configured", () => {
@@ -509,6 +568,19 @@ test("github.gh-cli requires gh in PATH and an authenticated keyring", () => {
     fakeCtx({ commandInPath: () => true, runCommand: () => ({ ok: true }) }),
   );
   assert.equal(authed.available, true);
+});
+
+test("github device login is a designed owner-setup state until a client id exists", () => {
+  const path = byId("github.device-oauth");
+  assert.equal(path.oneClick.type, "github-device");
+  const missing = checkAvailability(path.availability, fakeCtx());
+  assert.equal(missing.available, false);
+  assert.match(missing.reason, /needs owner setup/);
+  const configured = checkAvailability(
+    path.availability,
+    fakeCtx({ env: { GITHUB_OAUTH_CLIENT_ID: "device-client" } }),
+  );
+  assert.equal(configured.available, true);
 });
 
 // --- evaluation output safety ---------------------------------------------------------

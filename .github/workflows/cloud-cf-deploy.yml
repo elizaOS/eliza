@@ -92,7 +92,14 @@ concurrency:
   # commit always lands next. This also removes the need for the manual out-of-band
   # deploy-serialization escort. PRs keep a per-PR dedupe group + cancel-in-progress
   # to avoid preview-deploy churn. Refs #11108.
-  group: cloud-cf-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('branch-{0}', github.ref) }}
+  #
+  # The "-v2" suffix retires a wedged predecessor group: REJECTING a waiting
+  # migrate-db reviewer gate completes the holder run without releasing its
+  # concurrency group, and GitHub never re-evaluates the queue afterward — every
+  # later run in the group sits in "pending" forever (rerun+cancel of the holder
+  # does not unwedge it; renaming the group is the only recovery). If a stale
+  # waiting deploy must be cleared, CANCEL the run; never reject its gate. (#15892)
+  group: cloud-cf-deploy-v2-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('branch-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.

@@ -35,9 +35,10 @@
  *
  * Device RAM-tier gating + reversibility (#14390): the runtime and provider
  * CHOICE blocks are built per-seed against the device's RAM-tier assessment
- * (`device-ram-gate.ts`) — a sub-8 GB phone sees "On this device" labeled
- * unavailable and its tap refused with the reason; a sub-12 GB phone gets
- * on-device models blocked the same way (never silently hidden). Every
+ * (`device-ram-gate.ts`) — a sub-4 GB phone sees "On this device" labeled
+ * unavailable and its tap refused with the reason; 4–7 GB phones may choose
+ * hybrid cloud inference but not an unconfigured local runtime, and a sub-12
+ * GB phone gets on-device models blocked (never silently hidden). Every
  * sub-step CHOICE carries a "← Back" option whose handler unwinds any
  * partially-committed local runtime (persisted mode, local active server,
  * started service) before re-offering a fresh runtime choice, so onboarding
@@ -82,7 +83,11 @@ import {
   peekDeviceRamTierAssessment,
   resolveDeviceRamTierAssessment,
 } from "./device-ram-gate";
-import type { DeviceRamTierAssessment } from "./device-ram-tier";
+import {
+  type DeviceRamTierAssessment,
+  HYBRID_AGENT_MIN_MARKETED_RAM_GB,
+  LOCAL_AGENT_MIN_MARKETED_RAM_GB,
+} from "./device-ram-tier";
 import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
@@ -222,15 +227,15 @@ const BACK_TO_RUNTIME_OPTION = `${FIRST_RUN_ACTION_PREFIX}back:runtime=← Back 
 // token; it owns its own provider, so it skips the provider sub-step.
 //
 // Built per-render because the local option is RAM-tier-gated (#14390): on a
-// device below the 8 GB floor it stays VISIBLE but labeled unavailable (never
+// device below the hybrid runtime floor it stays VISIBLE but labeled unavailable (never
 // silently hidden), and its tap is refused with the reason. The tier probe is
 // synchronous on Android; when it has not resolved yet (iOS first frames) the
 // plain label renders and the pick handler + finish backstop still enforce.
 function runtimeChoiceBlock(): string {
   const tier = peekDeviceRamTierAssessment();
   const localLabel =
-    tier && !tier.allowsLocalAgent
-      ? `On this device (unavailable — needs 8 GB+ RAM, ~${tier.marketedRamGb} GB detected)`
+    tier && !tier.allowsHybridAgent
+      ? `On this device (unavailable — needs ${HYBRID_AGENT_MIN_MARKETED_RAM_GB} GB+ RAM, ~${tier.marketedRamGb} GB detected)`
       : "On this device";
   return [
     "[CHOICE:first-run id=runtime]",
@@ -264,11 +269,15 @@ function providerChoice(opts: {
     ? `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference (recommended)`
     : `${FIRST_RUN_ACTION_PREFIX}provider:elizacloud=Eliza Cloud inference`;
   const other = `${FIRST_RUN_ACTION_PREFIX}provider:other=Other / configure in Settings`;
+  const configuredOther =
+    opts.tier != null && !opts.tier.allowsLocalAgent
+      ? `${FIRST_RUN_ACTION_PREFIX}provider:other=Other / configure in Settings (unavailable — needs ${LOCAL_AGENT_MIN_MARKETED_RAM_GB} GB+ RAM)`
+      : other;
   const ordered = modelsBlocked
-    ? [cloud, onDevice, other]
+    ? [cloud, onDevice, configuredOther]
     : opts.defaultId === "on-device"
-      ? [onDevice, cloud, other]
-      : [other, onDevice, cloud];
+      ? [onDevice, cloud, configuredOther]
+      : [configuredOther, onDevice, cloud];
   return [
     "[CHOICE:first-run id=provider]",
     ...ordered,
@@ -1013,10 +1022,10 @@ export function useFirstRunConductor(): void {
           return true;
         }
         // On this device: RAM-tier gate first (#14390). A device below the
-        // 8 GB floor is refused with the reason and re-offered a fresh
+        // hybrid runtime floor is refused with the reason and re-offered a fresh
         // runtime choice — enforced at the decision point, not just labeled.
         const tier = peekDeviceRamTierAssessment();
-        if (tier && !tier.allowsLocalAgent) {
+        if (tier && !tier.allowsHybridAgent) {
           seedTurn(
             makeTurn(
               `first-run:runtime-blocked:${Date.now()}`,
@@ -1110,6 +1119,14 @@ export function useFirstRunConductor(): void {
           }
         }
         if (id === "other") {
+          const tier = peekDeviceRamTierAssessment();
+          if (tier && !tier.allowsLocalAgent) {
+            seedFreshChoiceTurn(
+              "first-run:provider",
+              `An unconfigured local runtime won't work here — ${tier.reason}. Eliza Cloud inference keeps the agent on this device without loading a local model.\n\n${providerChoice({ defaultId: "other", tier })}`,
+            );
+            return true;
+          }
           // "Other / configure in Settings" (bring your own keys): finish the
           // LOCAL runtime with no provider wired and no model download.
           // `configure-later` keeps `needsProviderSetup` true, so the finish

@@ -245,6 +245,29 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+      - name: Run Mobile Safari chat-sheet visual smoke (#15666)
+        # run-chat-sheet-mobile-safari-smoke.mjs builds the WebKit chat-sheet
+        # fixture via the Playwright smoke, serves it over loopback HTTP, opens
+        # it in real Mobile Safari on the booted simulator, and asserts a
+        # non-blank screen capture. Wired here because this is the only
+        # PR-path lane with an iOS Simulator available, and the ui-e2e
+        # runner-coverage ratchet (packages/scripts/__tests__/
+        # ui-e2e-runner-coverage.test.ts) requires every packages/ui __e2e__
+        # runner to be invoked by a workflow leg.
+        run: |
+          set -euo pipefail
+          bunx playwright install webkit
+          bun run --cwd packages/ui test:chat-sheet-mobile-safari-smoke
+
+      - name: Upload Mobile Safari chat-sheet evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ios-mobile-safari-chat-sheet
+          path: packages/ui/src/components/shell/__e2e__/output-mobile-safari/**
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Verify required Info.plist keys for background HealthKit
         # Background HealthKit + BGTaskScheduler integration is in
         # progress: no plist generator is configured yet (no

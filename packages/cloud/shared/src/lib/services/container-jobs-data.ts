@@ -52,7 +52,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasStrings(value: unknown, keys: readonly string[]): boolean {
   if (!isRecord(value)) return false;
-  return keys.every((k) => typeof value[k] === "string");
+  return keys.every((key) => typeof value[key] === "string" && value[key].trim().length > 0);
 }
 
 export function isContainerProvisionJobData(value: unknown): value is ContainerProvisionJobData {
@@ -119,27 +119,27 @@ export function readContainerLogsJobData(job: JobLike): ContainerLogsJobData {
 export function containerProvisionJobDataToRecord(
   data: ContainerProvisionJobData,
 ): Record<string, unknown> {
-  return { ...data };
+  return { ...readContainerProvisionJobData({ id: "persistence", data }) };
 }
 
 export function containerDeleteJobDataToRecord(
   data: ContainerDeleteJobData,
 ): Record<string, unknown> {
-  return { ...data };
+  return { ...readContainerDeleteJobData({ id: "persistence", data }) };
 }
 
 export function containerRestartJobDataToRecord(
   data: ContainerRestartJobData,
 ): Record<string, unknown> {
-  return { ...data };
+  return { ...readContainerRestartJobData({ id: "persistence", data }) };
 }
 
 export function containerUpgradeJobDataToRecord(
   data: ContainerUpgradeJobData,
 ): Record<string, unknown> {
-  return { ...data };
+  return { ...readContainerUpgradeJobData({ id: "persistence", data }) };
 }
 
 export function containerLogsJobDataToRecord(data: ContainerLogsJobData): Record<string, unknown> {
-  return { ...data };
+  return { ...readContainerLogsJobData({ id: "persistence", data }) };
 }

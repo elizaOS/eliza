@@ -88,6 +88,10 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
+    "@elizaos/lifeops-bench#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
     "@elizaos/example-browser-extension-safari#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []

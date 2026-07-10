@@ -26,7 +26,10 @@ import {
 import { detectClientLanguage } from "../i18n/region";
 import type { Tab } from "../navigation";
 import { shellLocalStorage } from "../surface-realm-channel";
-import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
+import {
+  ELIZA_CLOUD_CONTROL_PLANE_HOSTS,
+  normalizeDirectCloudSharedAgentApiBase,
+} from "../utils/cloud-agent-base";
 import { DEFAULT_LOCAL_ASR_AUTO_STOP } from "../voice/local-asr-capture";
 import {
   type BackgroundConfig,
@@ -1181,12 +1184,6 @@ export interface PersistedActiveServer {
 }
 
 const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
-const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
-  "api.elizacloud.ai",
-  "elizacloud.ai",
-  "www.elizacloud.ai",
-  "dev.elizacloud.ai",
-]);
 
 function trimPersistedValue(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -1322,13 +1319,38 @@ function normalizePersistedActiveServer(
   };
 }
 
+// Normalization alone repairs the in-memory record; detecting that specific
+// repair lets the load path remove the unusable control-plane base from durable
+// storage without rewriting healthy records on every boot.
+function persistedRecordNeedsControlPlaneRepair(
+  raw: unknown,
+  normalized: PersistedActiveServer | null,
+): boolean {
+  if (!normalized) return false;
+  const record = asRecord(raw);
+  if (!record) return false;
+  const rawApiBase = normalizeApiBase(record.apiBase);
+  return (
+    !!rawApiBase &&
+    isElizaCloudControlPlaneApiBase(rawApiBase) &&
+    normalized.apiBase === undefined
+  );
+}
+
 export function loadPersistedActiveServer(): PersistedActiveServer | null {
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(ACTIVE_SERVER_STORAGE_KEY);
     if (!stored) {
       return null;
     }
-    return normalizePersistedActiveServer(JSON.parse(stored));
+    const raw = JSON.parse(stored);
+    const normalized = normalizePersistedActiveServer(raw);
+    // Persist the normalized record once so all readers see the same repaired
+    // server target, including readers that do not run this load path.
+    if (persistedRecordNeedsControlPlaneRepair(raw, normalized) && normalized) {
+      savePersistedActiveServer(normalized);
+    }
+    return normalized;
   }, null);
 }
 

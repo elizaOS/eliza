@@ -31,6 +31,8 @@ export interface AppContainerSsh {
 
 export interface AppContainerProviderDeps {
   ssh: AppContainerSsh;
+  /** Durable scheduler identity for the SSH target. */
+  nodeId: string;
   /** Allocate an external host port to map to the container's app port. */
   allocateHostPort: () => Promise<number>;
   /** Optional egress proxy URL routed into the container. */
@@ -63,6 +65,7 @@ export interface ProvisionedAppContainer {
   containerId: string;
   hostPort: number;
   network: string;
+  nodeId: string;
   /** The node the container runs on (for ingress routing + placement). */
   nodeHost: string;
 }
@@ -92,9 +95,11 @@ export function parseUsedHostPorts(dockerPsPortsOutput: string): Set<number> {
 
 export class AppContainerProvider {
   private readonly deps: AppContainerProviderDeps;
+  readonly targetNodeId: string;
 
   constructor(deps: AppContainerProviderDeps) {
     this.deps = deps;
+    this.targetNodeId = deps.nodeId;
   }
 
   /** Ensure the per-app `--internal` network, create the container, start it. */
@@ -177,9 +182,27 @@ export class AppContainerProvider {
 
     const stdout = await this.deps.ssh.exec(createCmd);
     const containerId = (this.deps.extractContainerId ?? defaultExtractContainerId)(stdout);
-    await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
+    try {
+      await this.deps.ssh.exec(`docker start ${shellQuote(params.containerName)}`);
+    } catch (error) {
+      await this.delete(params.containerName).catch((cleanupError) => {
+        // error-policy:J6 failed-start cleanup is best-effort; the start failure still propagates to the slot rollback boundary.
+        logger.warn("[AppContainerProvider] Failed to remove container after start failure", {
+          appId: params.appId,
+          containerName: params.containerName,
+          error: describeAppContainerError(cleanupError),
+        });
+      });
+      throw error;
+    }
 
-    return { containerId, hostPort, network, nodeHost: this.deps.nodeHost ?? "" };
+    return {
+      containerId,
+      hostPort,
+      network,
+      nodeId: this.targetNodeId,
+      nodeHost: this.deps.nodeHost ?? "",
+    };
   }
 
   async delete(containerName: string): Promise<void> {

@@ -2,11 +2,12 @@
  * Real-browser screenshot + assertion harness for the WALLET home widget
  * (#14344) — no app server. Bundles wallet-widget-fixture.tsx (the REAL
  * `WalletBalanceWidget`) with esbuild, stubs only the `../../../api` client,
- * auth, and nav modules, loads it in headless chromium, and proves both states:
+ * auth, and nav modules, loads it in headless chromium, and proves three states:
  *
  *   - DEFAULT (no holdings): the tracked BTC/SOL/ETH price rows are shown
  *     (previously the widget rendered nothing here — the bug this fixes).
  *   - HELD (≥1 priced holding): the top-3 held by holding value, price-only.
+ *   - UNAVAILABLE: a failed balances request never masquerades as no holdings.
  *
  * Captures a screenshot of each state for inline PR evidence.
  *
@@ -17,6 +18,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import {
+  closeOcrEngines,
+  dominantColorsFromPng,
+  ocrImage,
+} from "../../../../../../evidence/src/visual-primitives.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const stylesDir = join(here, "../../../../styles");
@@ -45,7 +51,9 @@ const TOKEN_SHIM = `
 const apiStub = join(outDir, "api-stub.ts");
 await writeFile(
   apiStub,
-  `const held = new URLSearchParams(location.search).get("state") === "held";
+  `const state = new URLSearchParams(location.search).get("state");
+const held = state === "held";
+const unavailable = state === "unavailable";
 const overview = {
   generatedAt: "", cacheTtlSeconds: 120, stale: false,
   sources: {}, predictions: [], movers: [],
@@ -64,7 +72,10 @@ const heldBalances = {
   solana: { address: "sol1", solBalance: "0", solValueUsd: "2000", tokens: [] },
 };
 export const client = {
-  getWalletBalances: async () => (held ? heldBalances : { evm: null, solana: null }),
+  getWalletBalances: async () => {
+    if (unavailable) throw new Error("balances 503");
+    return held ? heldBalances : { evm: null, solana: null };
+  },
   getWalletMarketOverview: async () => overview,
 };
 `,
@@ -137,6 +148,9 @@ try {
     `DEFAULT state shows BTC/SOL/ETH rows (got ${JSON.stringify(defaultRows)})`,
   );
   await page.screenshot({ path: join(outDir, "wallet-default.png") });
+  await page
+    .locator('[data-testid="chat-widget-wallet-prices"]')
+    .screenshot({ path: join(outDir, "wallet-default-card.png") });
   console.log("  📸 wallet-default.png");
 
   // HELD state — top-3 priced holdings by holding value: ETH $5000, SOL $2000, USDC $800.
@@ -165,7 +179,29 @@ try {
     "HELD state leaks no holding values (price-only #10706)",
   );
   await page.screenshot({ path: join(outDir, "wallet-held.png") });
+  await page
+    .locator('[data-testid="chat-widget-wallet-prices"]')
+    .screenshot({ path: join(outDir, "wallet-held-card.png") });
   console.log("  📸 wallet-held.png");
+
+  // Market prices alone cannot prove whether the wallet has holdings.
+  await page.goto(`file://${htmlPath}?state=unavailable`);
+  await page.waitForSelector('[data-testid="chat-widget-wallet-unavailable"]', {
+    timeout: 8000,
+  });
+  await page.waitForTimeout(100);
+  const unavailableRows = await page
+    .locator('[data-testid^="wallet-price-row-"]')
+    .count();
+  assert(
+    unavailableRows === 0,
+    `UNAVAILABLE state shows no fabricated default rows (got ${unavailableRows})`,
+  );
+  await page.screenshot({ path: join(outDir, "wallet-unavailable.png") });
+  await page
+    .locator('[data-testid="chat-widget-wallet-unavailable"]')
+    .screenshot({ path: join(outDir, "wallet-unavailable-card.png") });
+  console.log("  📸 wallet-unavailable.png");
 
   assert(errors.length === 0, `no page errors (${errors.length})`);
   for (const e of errors) console.log("  ERR:", e);
@@ -173,6 +209,102 @@ try {
 } finally {
   await browser.close();
 }
+
+const visualStates = [
+  {
+    state: "default",
+    image: "wallet-default.png",
+    ocrImages: ["wallet-default.png", "wallet-default-card.png"],
+    present: ["DEFAULT", "Wallet", "BTC", "SOL", "ETH"],
+    absent: ["UNAVAILABLE"],
+  },
+  {
+    state: "held",
+    image: "wallet-held.png",
+    ocrImages: ["wallet-held.png", "wallet-held-card.png"],
+    present: ["HELD", "Wallet", "ETH", "SOL", "USDC"],
+    absent: ["UNAVAILABLE"],
+  },
+  {
+    state: "unavailable",
+    image: "wallet-unavailable.png",
+    ocrImages: ["wallet-unavailable.png", "wallet-unavailable-card.png"],
+    present: ["UNAVAILABLE", "holdings unknown", "Wallet"],
+    absent: ["BTC", "SOL", "ETH", "USDC"],
+  },
+];
+const visualAnalysis = [];
+try {
+  for (const spec of visualStates) {
+    const imagePath = join(outDir, spec.image);
+    const [ocrParts, palette] = await Promise.all([
+      Promise.all(
+        spec.ocrImages.map((image) =>
+          ocrImage(join(outDir, image), { timeoutMs: 60_000 }),
+        ),
+      ),
+      dominantColorsFromPng(imagePath),
+    ]);
+    const ocr = {
+      available: ocrParts.every((part) => part.available),
+      parts: ocrParts,
+      text: ocrParts
+        .filter((part) => part.available)
+        .map((part) => part.text)
+        .join("\n"),
+    };
+    const normalizedText = ocr.text.toLowerCase();
+    const missing = spec.present.filter(
+      (value) => !normalizedText.includes(value.toLowerCase()),
+    );
+    const unexpected = spec.absent.filter((value) =>
+      normalizedText.includes(value.toLowerCase()),
+    );
+    const orangeCoverage = palette.buckets.orange ?? 0;
+    const blueCoverage = palette.buckets.blue ?? 0;
+    assert(ocr.available, `${spec.state} OCR is available`);
+    assert(
+      missing.length === 0,
+      `${spec.state} OCR contains expected text (missing ${JSON.stringify(missing)})`,
+    );
+    assert(
+      unexpected.length === 0,
+      `${spec.state} OCR excludes other-state text (found ${JSON.stringify(unexpected)})`,
+    );
+    assert(
+      orangeCoverage >= 0.65,
+      `${spec.state} keeps the orange home field (${(orangeCoverage * 100).toFixed(1)}%)`,
+    );
+    assert(
+      blueCoverage <= 0.01,
+      `${spec.state} contains no blue palette bleed (${(blueCoverage * 100).toFixed(1)}%)`,
+    );
+    visualAnalysis.push({
+      ...spec,
+      ocr,
+      palette,
+      verdict: {
+        missing,
+        unexpected,
+        orangeCoverage,
+        blueCoverage,
+        pass:
+          ocr.available &&
+          missing.length === 0 &&
+          unexpected.length === 0 &&
+          orangeCoverage >= 0.65 &&
+          blueCoverage <= 0.01,
+      },
+    });
+  }
+} finally {
+  await closeOcrEngines();
+}
+await writeFile(
+  join(outDir, "wallet-visual-analysis.json"),
+  `${JSON.stringify(visualAnalysis, null, 2)}\n`,
+);
+console.log("  📊 wallet-visual-analysis.json");
 
 if (failures > 0) {
   console.error(`\n${failures} assertion(s) FAILED`);

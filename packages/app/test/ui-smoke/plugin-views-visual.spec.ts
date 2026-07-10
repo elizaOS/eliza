@@ -17,7 +17,6 @@ const KNOWN_BROKEN = new Set<string>([]);
 const MIN_VISIBLE_TEXT_LENGTH_BY_VIEW_ID = new Map<string, number>([
   ["feed", 4],
   ["focus", 4],
-  ["social-alpha", 4],
 ]);
 const DEFAULT_MIN_VISIBLE_TEXT_LENGTH = 21;
 
@@ -86,19 +85,6 @@ test.describe("registered plugin views visual coverage", () => {
 
       await seedAppStorage(page);
       await installDefaultAppRoutes(page);
-      if (view.id === "social-alpha") {
-        await page.route("**/api/social-alpha/leaderboard", async (route) => {
-          if (route.request().method() !== "GET") {
-            await route.fallback();
-            return;
-          }
-          await route.fulfill({
-            status: 200,
-            contentType: "application/json",
-            body: JSON.stringify({ data: [] }),
-          });
-        });
-      }
       await openAppPath(page, view.path);
 
       await expectNoFailedView(

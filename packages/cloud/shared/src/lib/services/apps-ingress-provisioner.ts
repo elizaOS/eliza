@@ -1,21 +1,19 @@
 /**
- * Apps ingress provisioner (Apps / Product 2) — the thin IO layer that applies
- * the pure ingress routes ({@link ./apps-ingress-routes}) to a LIVE Caddy via its
- * admin API. Add a per-app reverse-proxy route after the container is running;
- * remove it (by `@id`) on teardown.
+ * Applies per-app reverse-proxy routes to a live Caddy admin API after a
+ * container starts and removes them during teardown.
  *
  * Mutations go through Caddy's admin API (atomic per route) rather than a
  * Caddyfile reload, so adding/removing one app never blips the others. Each call
- * is best-effort with a short timeout; callers decide failure handling — fail
- * fast on add (so the user retries rather than getting a silent 502), log + carry
- * on for remove (a reconciler sweeps orphaned routes).
+ * has a short timeout and fails fast unless a DELETE confirms the route is
+ * already absent. This prevents a failed replacement from leaving duplicate
+ * route identifiers or an unreachable deployment that appears healthy.
  *
  * `fetchImpl` is injectable so the client is unit-testable without a live Caddy;
  * the real wire format is proven against stock Caddy in
  * `scripts/verify-apps-ingress-routing.sh`.
  */
 
-import { logger } from "../utils/logger";
+import { ElizaError } from "@elizaos/core";
 import {
   type AppRouteInput,
   buildCaddyAddRouteUrl,
@@ -41,11 +39,53 @@ function resolveFetch(f?: IngressFetch): IngressFetch {
   return globalThis.fetch as IngressFetch;
 }
 
-async function safeText(res: IngressResponse): Promise<string> {
+function caddyAdminRequest(adminBase: string): {
+  adminHost: string;
+  headers: Record<string, string>;
+} {
+  const adminUrl = new URL(adminBase);
+  return {
+    adminHost: adminUrl.host,
+    headers: { Origin: adminUrl.origin },
+  };
+}
+
+function mutationError(input: {
+  operation: "add-route" | "remove-route" | "replace-route-delete";
+  status?: number;
+  hostname: string;
+  adminHost: string;
+  detail?: string;
+  cause?: unknown;
+}): ElizaError {
+  const status = input.status === undefined ? "request" : String(input.status);
+  const detail = input.detail ? `: ${input.detail}` : "";
+  return new ElizaError(
+    `[apps-ingress] ${input.operation} failed (${status}) for ${input.hostname} via ${input.adminHost}${detail}`,
+    {
+      code: "CADDY_ADMIN_MUTATION_FAILED",
+      context: {
+        operation: input.operation,
+        status: input.status,
+        hostname: input.hostname,
+        adminHost: input.adminHost,
+      },
+      cause: input.cause,
+      severity: "ephemeral",
+    },
+  );
+}
+
+async function responseDetail(res: IngressResponse): Promise<string> {
   try {
     return (await res.text()).slice(0, 200);
-  } catch {
-    return "";
+  } catch (cause) {
+    // error-policy:J2 Preserve the body-read failure at the Caddy boundary.
+    throw new ElizaError("[apps-ingress] failed to read Caddy admin error response", {
+      code: "CADDY_ADMIN_RESPONSE_READ_FAILED",
+      cause,
+      severity: "ephemeral",
+    });
   }
 }
 
@@ -69,30 +109,62 @@ export async function addAppRoute(opts: AddRouteOpts): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const route = buildCaddyRoute(opts);
   const routeId = route["@id"];
+  const adminRequest = caddyAdminRequest(opts.adminBase);
 
-  // best-effort delete of a stale same-id route (idempotent re-deploy)
-  await fetchImpl(buildCaddyRouteByIdUrl(opts.adminBase, routeId), {
-    method: "DELETE",
-    signal: AbortSignal.timeout(timeoutMs),
-  }).catch((error) => {
-    // error-policy:J4 stale-route cleanup failure must not block the replacement route.
-    logger.warn("[apps-ingress] stale route delete failed before add-route", {
-      routeId,
-      hostname: opts.hostname,
-      error: error instanceof Error ? error.message : String(error),
+  let deleteRes: IngressResponse;
+  try {
+    deleteRes = await fetchImpl(buildCaddyRouteByIdUrl(opts.adminBase, routeId), {
+      method: "DELETE",
+      headers: adminRequest.headers,
+      signal: AbortSignal.timeout(timeoutMs),
     });
-  });
+  } catch (cause) {
+    // error-policy:J2 Classify transport failures at the Caddy mutation boundary.
+    throw mutationError({
+      operation: "replace-route-delete",
+      hostname: opts.hostname,
+      adminHost: adminRequest.adminHost,
+      cause,
+    });
+  }
+  if (!deleteRes.ok && deleteRes.status !== 404) {
+    throw mutationError({
+      operation: "replace-route-delete",
+      status: deleteRes.status,
+      hostname: opts.hostname,
+      adminHost: adminRequest.adminHost,
+      detail: await responseDetail(deleteRes),
+    });
+  }
 
-  const res = await fetchImpl(buildCaddyAddRouteUrl(opts.adminBase, opts.server), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(route),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  let res: IngressResponse;
+  try {
+    res = await fetchImpl(buildCaddyAddRouteUrl(opts.adminBase, opts.server), {
+      method: "POST",
+      headers: {
+        ...adminRequest.headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(route),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (cause) {
+    // error-policy:J2 Classify transport failures at the Caddy mutation boundary.
+    throw mutationError({
+      operation: "add-route",
+      hostname: opts.hostname,
+      adminHost: adminRequest.adminHost,
+      cause,
+    });
+  }
   if (!res.ok) {
-    throw new Error(
-      `[apps-ingress] add-route failed (${res.status}) for ${opts.hostname}: ${await safeText(res)}`,
-    );
+    throw mutationError({
+      operation: "add-route",
+      status: res.status,
+      hostname: opts.hostname,
+      adminHost: adminRequest.adminHost,
+      detail: await responseDetail(res),
+    });
   }
 }
 
@@ -103,17 +175,35 @@ export interface RemoveRouteOpts {
   timeoutMs?: number;
 }
 
-/** Remove a per-app route by `@id` (best-effort; a 404 means it's already gone). */
+/** Remove a per-app route by `@id`; a 404 confirms it is already gone. */
 export async function removeAppRoute(opts: RemoveRouteOpts): Promise<void> {
   const fetchImpl = resolveFetch(opts.fetchImpl);
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const routeId = buildCaddyRouteId(opts.hostname);
-  const res = await fetchImpl(buildCaddyRouteByIdUrl(opts.adminBase, routeId), {
-    method: "DELETE",
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const adminRequest = caddyAdminRequest(opts.adminBase);
+  let res: IngressResponse;
+  try {
+    res = await fetchImpl(buildCaddyRouteByIdUrl(opts.adminBase, routeId), {
+      method: "DELETE",
+      headers: adminRequest.headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (cause) {
+    // error-policy:J2 Classify transport failures at the Caddy mutation boundary.
+    throw mutationError({
+      operation: "remove-route",
+      hostname: opts.hostname,
+      adminHost: adminRequest.adminHost,
+      cause,
+    });
+  }
   // 200 = removed, 404 = already absent; both are success for teardown.
   if (!res.ok && res.status !== 404) {
-    throw new Error(`[apps-ingress] remove-route failed (${res.status}) for ${opts.hostname}`);
+    throw mutationError({
+      operation: "remove-route",
+      status: res.status,
+      hostname: opts.hostname,
+      adminHost: adminRequest.adminHost,
+    });
   }
 }

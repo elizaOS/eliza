@@ -112,6 +112,9 @@ jobs:
           name: app-aesthetic-audit-output
           path: packages/app/aesthetic-audit-output
 
+      - name: Ensure OCR audit output directory exists
+        run: mkdir -p packages/app/aesthetic-audit-output
+
       - name: Run pixel OCR content audit
         continue-on-error: true
         env:

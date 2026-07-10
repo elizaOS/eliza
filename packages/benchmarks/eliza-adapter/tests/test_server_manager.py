@@ -5,6 +5,11 @@ from pathlib import Path
 from eliza_adapter.server_manager import ElizaServerManager, _server_command
 
 
+def _stub_node_resolution(monkeypatch) -> None:
+    monkeypatch.setattr("eliza_adapter.server_manager._resolve_node", lambda: "node")
+    monkeypatch.setattr("eliza_adapter.server_manager._node_major", lambda _node: 24)
+
+
 class _FakeProcess:
     pid = 999999
 
@@ -31,6 +36,7 @@ def test_server_manager_does_not_default_stub_embedding_env(
     monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
     monkeypatch.delenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", raising=False)
 
     manager.start()
@@ -57,6 +63,7 @@ def test_server_manager_does_not_default_stub_embedding_for_benchmark_harness(
     monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
     monkeypatch.delenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", raising=False)
     monkeypatch.setenv("BENCHMARK_HARNESS", "eliza")
 
@@ -66,7 +73,9 @@ def test_server_manager_does_not_default_stub_embedding_for_benchmark_harness(
     assert "ELIZA_BENCH_ALLOW_STUB_EMBEDDING" not in captured["kwargs"]["env"]
 
 
-def test_server_manager_uses_ephemeral_port_by_default(monkeypatch, tmp_path: Path) -> None:
+def test_server_manager_uses_ephemeral_port_by_default(
+    monkeypatch, tmp_path: Path
+) -> None:
     server = tmp_path / "packages" / "app-core" / "src" / "benchmark" / "server.ts"
     server.parent.mkdir(parents=True)
     server.write_text("console.log('fake benchmark server')\n", encoding="utf-8")
@@ -83,6 +92,7 @@ def test_server_manager_uses_ephemeral_port_by_default(monkeypatch, tmp_path: Pa
     monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
 
     manager.start()
     manager._proc = None
@@ -109,6 +119,7 @@ def test_server_manager_respects_explicit_stub_embedding_override(
     monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
     monkeypatch.setenv("ELIZA_BENCH_ALLOW_STUB_EMBEDDING", "0")
 
     manager.start()
@@ -135,6 +146,7 @@ def test_server_manager_maps_cerebras_env_to_openai_compatible_settings(
     monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("OPENAI_SMALL_MODEL", raising=False)
@@ -177,6 +189,7 @@ def test_server_manager_autowires_current_cerebras_model_without_provider(
     monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
     monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
@@ -215,6 +228,7 @@ def test_server_manager_maps_elizaos_task_agent_to_native_adapter(
     monkeypatch.setattr(manager.client, "health", lambda **_kwargs: {"status": "ready"})
     monkeypatch.setattr(manager.client, "reset", lambda *args, **kwargs: None)
     monkeypatch.setattr("eliza_adapter.server_manager.subprocess.Popen", fake_popen)
+    _stub_node_resolution(monkeypatch)
     monkeypatch.delenv("ELIZA_ACP_DEFAULT_AGENT", raising=False)
     monkeypatch.delenv("ELIZA_DEFAULT_AGENT_TYPE", raising=False)
     monkeypatch.delenv("ELIZA_AGENT_ORCHESTRATOR", raising=False)
@@ -232,10 +246,16 @@ def test_server_manager_maps_elizaos_task_agent_to_native_adapter(
     assert env["ELIZA_DEFAULT_AGENT_TYPE"] == "elizaos"
 
 
-def test_server_manager_prefers_bun_for_typescript_server(monkeypatch, tmp_path: Path) -> None:
+def test_server_manager_prefers_bun_for_typescript_server(
+    monkeypatch, tmp_path: Path
+) -> None:
     server = tmp_path / "server.ts"
     monkeypatch.delenv("ELIZA_BENCH_SERVER_CMD", raising=False)
-    monkeypatch.setattr("eliza_adapter.server_manager.shutil.which", lambda name: "/usr/bin/bun" if name == "bun" else None)
+    monkeypatch.setattr("eliza_adapter.server_manager._resolve_node", lambda: None)
+    monkeypatch.setattr(
+        "eliza_adapter.server_manager.shutil.which",
+        lambda name: "/usr/bin/bun" if name == "bun" else None,
+    )
 
     assert _server_command(server) == ["bun", "--no-env-file", "run", str(server)]
 
@@ -243,6 +263,13 @@ def test_server_manager_prefers_bun_for_typescript_server(monkeypatch, tmp_path:
 def test_server_manager_falls_back_to_node_tzx(monkeypatch, tmp_path: Path) -> None:
     server = tmp_path / "server.ts"
     monkeypatch.delenv("ELIZA_BENCH_SERVER_CMD", raising=False)
+    monkeypatch.setattr("eliza_adapter.server_manager._resolve_node", lambda: None)
     monkeypatch.setattr("eliza_adapter.server_manager.shutil.which", lambda _name: None)
 
-    assert _server_command(server) == ["node", "--import", "tsx", str(server)]
+    assert _server_command(server) == [
+        "node",
+        "--conditions=eliza-source",
+        "--import",
+        "tsx",
+        str(server),
+    ]

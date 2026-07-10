@@ -28,6 +28,7 @@ jobs:
     timeout-minutes: 30
 
     permissions:
+      actions: read
       contents: write
 
     steps:
@@ -76,20 +77,44 @@ jobs:
       # arm64-v8a (libelizainference.so + its backend .so siblings) and fails
       # the whole APK build without it (#15540). CI has no ~/.eliza staging
       # and no NDK cross-compile here — the fused libs are built by the
-      # build-llama-ffi-android workflow — so stage its latest green artifacts
-      # and point ELIZA_MTP_ANDROID_LIBDIR{,_X86_64} at them.
+      # build-llama-ffi-android workflow. Native artifacts are valid only for
+      # the exact producer inputs in this checkout; mixing a newer or older
+      # llama pin with these JNI headers can link successfully and fail later
+      # on-device.
       - name: Stage fused inference libs (from build-llama-ffi-android)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          run_id=$(gh api "repos/${{ github.repository }}/actions/workflows/build-llama-ffi-android.yml/runs?status=success&per_page=1" \
-            --jq '.workflow_runs[0].id // empty')
+          producer_inputs=(
+            "plugins/plugin-local-inference/native/llama.cpp"
+            ".github/workflows/build-llama-ffi-android.yml"
+            "packages/app-core/scripts/aosp/compile-libllama.mjs"
+            "packages/app-core/scripts/aosp/compile-libllama-paths.mjs"
+          )
+          run_id=""
+          while IFS=$'\t' read -r candidate source_sha; do
+            compatible=true
+            for path in "${producer_inputs[@]}"; do
+              local_sha=$(git rev-parse "HEAD:$path")
+              source_sha_for_path=$(gh api "repos/${{ github.repository }}/contents/$path?ref=$source_sha" \
+                --jq '.sha // empty' 2>/dev/null || true)
+              if [ "$source_sha_for_path" != "$local_sha" ]; then
+                compatible=false
+                break
+              fi
+            done
+            if [ "$compatible" = true ]; then
+              run_id="$candidate"
+              break
+            fi
+          done < <(gh api "repos/${{ github.repository }}/actions/workflows/build-llama-ffi-android.yml/runs?status=success&per_page=20" \
+            --jq '.workflow_runs[] | [.id, .head_sha] | @tsv')
           if [ -z "$run_id" ]; then
-            echo "::error::no successful build-llama-ffi-android run found — fix that workflow first (its fused artifacts feed this build)" >&2
+            echo "::error::no successful build-llama-ffi-android run matches this checkout's native producer inputs — build that workflow first" >&2
             exit 1
           fi
-          echo "staging fused libs from build-llama-ffi-android run $run_id"
+          echo "staging fused libs from input-compatible build-llama-ffi-android run $run_id"
           stage="$RUNNER_TEMP/elizainference"
           mkdir -p "$stage/arm64" "$stage/x86_64"
           gh run download "$run_id" -R "${{ github.repository }}" \

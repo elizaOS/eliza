@@ -4,7 +4,11 @@
     "packages/app-core has no `bun`/`eliza-source` export condition, so the accounts",
     "routes' dynamic import of @elizaos/app-core/account-pool would resolve to a",
     "possibly-stale dist build. This paths mapping pins app-core and its workspace",
-    "dependencies to current source so the e2e always tests the tree it runs from."
+    "dependencies to current source so the e2e always tests the tree it runs from.",
+    "@elizaos/core/src pins force every transitive workspace dep core's source",
+    "reaches to be pinned too (e.g. cloud-routing, imported by core/src/cloud-routing.ts",
+    "since #14459): otherwise it resolves to the package's `dist/index.js`, which does",
+    "not exist on the CI --ignore-scripts install, and the API server crashes at boot."
   ],
   "compilerOptions": {
     "baseUrl": "../../../..",
@@ -13,6 +17,8 @@
         "packages/app-core/src/services/account-pool.ts"
       ],
       "@elizaos/core": ["packages/core/src/index.ts"],
+      "@elizaos/cloud-routing": ["packages/cloud/routing/src/index.ts"],
+      "@elizaos/cloud-routing/*": ["packages/cloud/routing/src/*"],
       "@elizaos/shared": ["packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["packages/shared/src/*"]
     }

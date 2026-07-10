@@ -13,6 +13,9 @@ import { join } from "node:path";
 const matrix = await import(
   new URL("../audit-mvp-evidence-matrix.mjs", import.meta.url).href
 );
+const readiness = await import(
+  new URL("../check-mvp-board-readiness.mjs", import.meta.url).href
+);
 const scriptPath = new URL("../audit-mvp-evidence-matrix.mjs", import.meta.url)
   .pathname;
 
@@ -63,7 +66,7 @@ describe("MVP evidence matrix", () => {
     );
 
     expect(report.counts).toEqual({
-      openMvpIssues: 1,
+      activeProjectIssues: 1,
       humanGated: 1,
       agentActionable: 0,
     });
@@ -156,7 +159,7 @@ describe("MVP evidence matrix", () => {
       },
     );
 
-    expect(report.rows[0].projectStatus).toBeNull();
+    expect(report.rows).toEqual([]);
   });
 
   test("renders a GitHub-ready markdown checklist for issue evidence", () => {
@@ -174,7 +177,7 @@ describe("MVP evidence matrix", () => {
     const markdown = matrix.formatMarkdown(report);
 
     expect(markdown).toContain("# LifeOps MVP Evidence Checklist");
-    expect(markdown).toContain("| Open MVP issues | 1 |");
+    expect(markdown).toContain("| Active Project 15 issues | 1 |");
     expect(markdown).toContain(
       "### #14358 [onboarding] Device e2e for iOS sim + Android emu",
     );
@@ -196,6 +199,44 @@ describe("MVP evidence matrix", () => {
     );
     expect(markdown).toContain(
       "    - Attach the generated DB rows, memories, scheduled tasks, files, or connector artifacts inline in the issue.",
+    );
+  });
+
+  test("includes an unlabeled Ready project issue", () => {
+    const report = matrix.buildEvidenceMatrix(
+      [issue(15748, "Readiness audit completeness", ["testing"])],
+      { items: [projectItem(15748, "Ready")] },
+    );
+
+    expect(report.counts.activeProjectIssues).toBe(1);
+    expect(
+      report.agentActionable.map((row: { number: number }) => row.number),
+    ).toEqual([15748]);
+  });
+
+  test("uses the same active issue set as board readiness", () => {
+    const issues = [
+      issue(15748, "Unlabeled ready work", ["testing"]),
+      issue(14754, "Human device proof", ["needs-human"]),
+      issue(15000, "Already done", ["mvp"]),
+    ];
+    const project = {
+      items: [
+        projectItem(15748, "Ready"),
+        projectItem(14754, "Needs human review"),
+        projectItem(15000, "Done"),
+      ],
+    };
+
+    const matrixReport = matrix.buildEvidenceMatrix(issues, project);
+    const readinessReport = readiness.auditMvpBoardReadiness(issues, project);
+
+    expect(
+      matrixReport.rows.map((row: { number: number }) => row.number),
+    ).toEqual(
+      readinessReport.rows
+        .map((row: { number: number }) => row.number)
+        .sort((a, b) => a - b),
     );
   });
 

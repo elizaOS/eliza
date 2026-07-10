@@ -1,8 +1,10 @@
-// Exercises container jobs data behavior with deterministic cloud-shared lib fixtures.
+/** Exercises container-job runtime validation at its read and persistence boundaries. */
 import { describe, expect, test } from "bun:test";
 import {
+  containerDeleteJobDataToRecord,
   containerLogsJobDataToRecord,
   containerProvisionJobDataToRecord,
+  containerRestartJobDataToRecord,
   containerUpgradeJobDataToRecord,
   isContainerLogsJobData,
   isContainerProvisionJobData,
@@ -26,7 +28,7 @@ describe("container-jobs-data codecs", () => {
 
   test("delete + restart accept the minimal {containerId, organizationId}", () => {
     const data = { containerId: "c1", organizationId: "o1" };
-    expect(readContainerDeleteJobData(job(data))).toEqual(data);
+    expect(readContainerDeleteJobData(job(containerDeleteJobDataToRecord(data)))).toEqual(data);
     expect(readContainerRestartJobData(job(data))).toEqual(data);
   });
 
@@ -43,6 +45,9 @@ describe("container-jobs-data codecs", () => {
   test("guards reject malformed data", () => {
     expect(isContainerProvisionJobData({ containerId: "c1", organizationId: "o1" })).toBe(false); // missing userId
     expect(isContainerProvisionJobData(null)).toBe(false);
+    expect(
+      isContainerProvisionJobData({ containerId: " ", organizationId: "o1", userId: "u1" }),
+    ).toBe(false);
     expect(isContainerUpgradeJobData({ containerId: "c1", organizationId: "o1", image: 5 })).toBe(
       false,
     );
@@ -54,5 +59,27 @@ describe("container-jobs-data codecs", () => {
   test("read* throws (with the job id) on invalid data", () => {
     expect(() => readContainerProvisionJobData(job({ containerId: "c1" }))).toThrow("job-1");
     expect(() => readContainerLogsJobData(job("nope"))).toThrow();
+  });
+
+  test("persistence codecs reject missing runtime identifiers", () => {
+    const deleteData = { containerId: "c1", organizationId: "o1" };
+    Object.defineProperty(deleteData, "containerId", { value: undefined });
+    expect(() => containerDeleteJobDataToRecord(deleteData)).toThrow("persistence");
+
+    const provisionData = { containerId: "c1", organizationId: "o1", userId: "u1" };
+    Object.defineProperty(provisionData, "userId", { value: undefined });
+    expect(() => containerProvisionJobDataToRecord(provisionData)).toThrow("persistence");
+
+    const restartData = { containerId: "c1", organizationId: "o1" };
+    Object.defineProperty(restartData, "organizationId", { value: undefined });
+    expect(() => containerRestartJobDataToRecord(restartData)).toThrow("persistence");
+
+    const upgradeData = { containerId: "c1", organizationId: "o1", image: "image:2" };
+    Object.defineProperty(upgradeData, "containerId", { value: undefined });
+    expect(() => containerUpgradeJobDataToRecord(upgradeData)).toThrow("persistence");
+
+    const logsData = { containerId: "c1", organizationId: "o1", tail: 100 };
+    Object.defineProperty(logsData, "containerId", { value: undefined });
+    expect(() => containerLogsJobDataToRecord(logsData)).toThrow("persistence");
   });
 });

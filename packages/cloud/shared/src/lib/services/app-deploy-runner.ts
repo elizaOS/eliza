@@ -44,9 +44,9 @@
 
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
 import { containersRepository } from "../../db/repositories/containers";
-import type { NewContainer } from "../../db/schemas/containers";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
+import { toNewContainer } from "./app-container-record";
 import { resolveAppDatabaseMode } from "./app-database-mode";
 import {
   type AppDeployDeps,
@@ -98,25 +98,6 @@ export interface AppDeployRunnerDeps {
   orgImageNamespaces?: (organizationId: string) => Promise<string[]>;
   /** App listen port. Default 3000. */
   port?: number;
-}
-
-/** Map the orchestrator's NewAppContainerRow onto a `containers` insert. */
-export function toNewContainer(row: NewAppContainerRow): NewContainer {
-  return {
-    name: row.containerName,
-    // project_name = appId so the executor's AppContainerStore can recover the
-    // appId from the row, and so the partial unique index keys per-app.
-    project_name: row.appId,
-    organization_id: row.organizationId,
-    user_id: row.userId,
-    image_tag: row.image,
-    port: row.port,
-    // The app's OWN isolated DSN rides here — never the shared agent DATABASE_URL.
-    environment_vars: row.environmentVars,
-    // Stash appId in metadata too (belt-and-suspenders for the store's getById).
-    metadata: { appId: row.appId },
-    status: "pending",
-  };
 }
 
 export async function resolveImageRef(

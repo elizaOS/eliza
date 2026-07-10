@@ -29,8 +29,17 @@ type RemoteCapabilityServer = {
 };
 
 const ADVANCED_SETTINGS_STORAGE_KEY = "eliza:settings-advanced";
+// Both flags are required: developer mode exposes the section, while advanced
+// settings exposes its remote-endpoint controls.
+const DEVELOPER_MODE_STORAGE_KEY = "eliza:developerMode";
 const REMOTE_CAPABILITY_BUNDLE_PATH =
   "/api/views/remote-capability-live/bundle.js";
+
+// The worker owns dynamic-view caching, but Playwright cannot intercept its
+// requests with page.route. Blocking it keeps this spec focused on the real
+// loader against its explicitly routed remote bundle; worker caching and auth
+// behavior are covered independently against public/sw.js.
+test.use({ serviceWorkers: "block" });
 
 test("app shell loads a remote capability view bundle from a running endpoint", async ({
   page,
@@ -89,7 +98,10 @@ test("app shell loads a remote capability view bundle from a running endpoint", 
 test("settings connects a remote capability endpoint and opens its view", async ({
   page,
 }) => {
-  await seedAppStorage(page, { [ADVANCED_SETTINGS_STORAGE_KEY]: "1" });
+  await seedAppStorage(page, {
+    [ADVANCED_SETTINGS_STORAGE_KEY]: "1",
+    [DEVELOPER_MODE_STORAGE_KEY]: "1",
+  });
   await installDefaultAppRoutes(page);
 
   const remote = await startRemoteCapabilityServer();
@@ -214,7 +226,10 @@ test("settings connects a remote capability endpoint and opens its view", async 
 });
 
 test("settings provisions a cloud capability sandbox", async ({ page }) => {
-  await seedAppStorage(page, { [ADVANCED_SETTINGS_STORAGE_KEY]: "1" });
+  await seedAppStorage(page, {
+    [ADVANCED_SETTINGS_STORAGE_KEY]: "1",
+    [DEVELOPER_MODE_STORAGE_KEY]: "1",
+  });
   await installDefaultAppRoutes(page);
 
   let connectPayload: unknown = null;
@@ -258,7 +273,9 @@ test("settings provisions a cloud capability sandbox", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Capabilities\b/);
 
-  await page.getByRole("button", { name: "Cloud", exact: true }).click();
+  // Select through the control's public accessibility contract so the test
+  // follows the same radiogroup semantics as keyboard and assistive-tech users.
+  await page.getByRole("radio", { name: "Cloud", exact: true }).click();
   await page
     .getByLabel("Capability cloud API base URL")
     .fill("https://api.elizacloud.ai");

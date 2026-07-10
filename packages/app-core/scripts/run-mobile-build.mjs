@@ -3861,8 +3861,11 @@ function generatePodfile() {
 
   fs.writeFileSync(
     path.join(podfileDir, "Podfile"),
-    `\
-def node_package_path(package_name)
+    // No backslash-newline continuation here: it is the file's only
+    // line-ending-sensitive token, and a CRLF checkout (Windows runners,
+    // core.autocrlf) turns it into \<CR><LF>, which the Windows test lane
+    // rejects at parse ("Invalid or unexpected token" importing this module).
+    `def node_package_path(package_name)
   package_json = \`node --print "require.resolve('#{package_name}/package.json')"\`.strip
   if package_json.empty?
     raise "Unable to resolve #{package_name}; run bun install before pod install"
@@ -5492,7 +5495,7 @@ function cloudBrandUserAgentMarkerLines() {
     .join("\n");
 }
 
-function cloudSafeMainActivityJava(androidPackage) {
+export function cloudSafeMainActivityJava(androidPackage) {
   return `package ${androidPackage};
 
 import android.os.Build;
@@ -5532,6 +5535,10 @@ ${cloudBrandUserAgentMarkerLines()}
         }
 
         super.onCreate(savedInstanceState);
+
+        if (getBridge() != null) {
+            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
+        }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();

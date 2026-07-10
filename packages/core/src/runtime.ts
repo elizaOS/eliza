@@ -75,12 +75,15 @@ import {
 } from "./runtime/action-routing-context";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
 import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry";
+import { computePrefixHashes } from "./runtime/context-hash";
 import { ContextRegistry } from "./runtime/context-registry";
+import { cachePrefixSegments } from "./runtime/context-renderer";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import {
 	findEquivalentFact,
 	mergeStrongerFactMetadata,
 } from "./runtime/fact-write-dedupe";
+import { buildProviderCachePlan } from "./runtime/provider-cache-plan";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
@@ -518,6 +521,44 @@ export function resolveDynamicPromptStreamFields(
 			return DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS.has(row.field);
 		})
 		.map((row) => row.field);
+}
+
+/**
+ * Merges provider options from three sources: a base object (e.g. `{ agentName }`),
+ * optional caller-supplied options, and a cache-plan's options. Caller fields take
+ * precedence over base; plan fields take precedence over caller on key collision, but
+ * named provider sub-objects (e.g. `anthropic`, `openai`) are merged one level deep so
+ * caller-specific fields like `anthropic.thinking` survive alongside plan additions like
+ * `anthropic.cacheControl`.
+ *
+ * Exported so tests can import and exercise the real function rather than maintaining a
+ * hand-copied mirror that cannot catch regressions in this code path.
+ */
+export function mergeProviderOptionsWithCachePlan(
+	base: Record<string, JsonValue | object | undefined>,
+	callerOptions: Record<string, JsonValue | object | undefined> | undefined,
+	planOptions: Record<string, JsonValue | object | undefined>,
+): Record<string, JsonValue | object | undefined> {
+	const merged: Record<string, JsonValue | object | undefined> = {
+		...base,
+		...callerOptions,
+	};
+	for (const [key, planValue] of Object.entries(planOptions)) {
+		const existing = merged[key];
+		merged[key] =
+			existing != null &&
+			typeof existing === "object" &&
+			!Array.isArray(existing) &&
+			planValue != null &&
+			typeof planValue === "object" &&
+			!Array.isArray(planValue)
+				? {
+						...(existing as Record<string, unknown>),
+						...(planValue as Record<string, unknown>),
+					}
+				: planValue;
+	}
+	return merged;
 }
 
 function resolveResponseSkeletonStreamFields(
@@ -6880,14 +6921,43 @@ ${section_end}`;
 			);
 
 			// Pass promptSegments so providers can use cache hints when supported (Anthropic block cache, OpenAI/Gemini prefix).
+			// Build the full provider cache plan from the stable-prefix hash so providers like plugin-anthropic and
+			// plugin-openrouter can inject cache_control breakpoints without needing a separate planner call.
+			const _dynamicPrefixHashes = computePrefixHashes(segments);
+			const _dynamicCacheHash =
+				computePrefixHashes(cachePrefixSegments(segments)).at(-1)?.hash ??
+				"no-context-segments";
+			const _dynamicCachePlan = buildProviderCachePlan({
+				prefixHash: _dynamicCacheHash,
+				segmentHashes: _dynamicPrefixHashes.map((e) => e.segmentHash),
+				promptSegments: segments,
+			});
+			// Deep-merge caller-supplied providerOptions with the cache plan. See
+			// mergeProviderOptionsWithCachePlan for the full merging semantics.
+			const _rawCallerProviderOptions = (
+				params as { providerOptions?: unknown }
+			).providerOptions;
+			const _callerProviderOptions =
+				_rawCallerProviderOptions != null &&
+				typeof _rawCallerProviderOptions === "object" &&
+				!Array.isArray(_rawCallerProviderOptions)
+					? (_rawCallerProviderOptions as Record<
+							string,
+							JsonValue | object | undefined
+						>)
+					: undefined;
+			const _planProviderOptions = _dynamicCachePlan.providerOptions;
+			const _mergedProviderOptions = mergeProviderOptionsWithCachePlan(
+				{ agentName: this.character.name },
+				_callerProviderOptions,
+				_planProviderOptions,
+			);
 			const modelParams = {
 				...params,
 				prompt,
 				responseFormat: params.responseFormat ?? { type: "json_object" },
 				promptSegments: segments,
-				providerOptions: {
-					agentName: this.character.name,
-				},
+				providerOptions: _mergedProviderOptions,
 				...(extractor
 					? {
 							onStreamChunk: (chunk: string) => {

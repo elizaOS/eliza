@@ -1,0 +1,163 @@
+/**
+ * Exercises the atomic MVP snapshot contract offline, including transport
+ * failure and analyzer-set divergence that must never look like readiness.
+ */
+
+import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const audit = await import(
+  new URL("../run-mvp-closeout-audit.mjs", import.meta.url).href
+);
+const scriptPath = new URL("../run-mvp-closeout-audit.mjs", import.meta.url)
+  .pathname;
+
+function projectItem(number: number, status: string, labels: string[]) {
+  return {
+    content: {
+      type: "Issue",
+      number,
+      repository: "elizaOS/eliza",
+      title: `Issue ${number}`,
+      url: `https://github.com/elizaOS/eliza/issues/${number}`,
+    },
+    title: `Issue ${number}`,
+    status,
+    labels,
+  };
+}
+
+function issue(number: number, labels: string[]) {
+  return {
+    number,
+    title: `Issue ${number}`,
+    body: "Evidence contract",
+    url: `https://github.com/elizaOS/eliza/issues/${number}`,
+    labels: labels.map((name) => ({ name })),
+  };
+}
+
+function snapshot() {
+  return {
+    fetchedAt: "2026-07-09T20:00:00.000Z",
+    source: "fixture",
+    owner: "elizaOS",
+    projectNumber: "15",
+    repo: "elizaOS/eliza",
+    project: {
+      items: [
+        projectItem(1, "Ready", ["testing"]),
+        projectItem(2, "Needs human review", ["mvp", "needs-human"]),
+        projectItem(3, "Done", ["mvp"]),
+      ],
+    },
+    openIssues: [issue(1, ["testing"]), issue(2, ["mvp", "needs-human"])],
+    closedIssues: [issue(3, ["mvp"])],
+  };
+}
+
+describe("atomic MVP closeout audit", () => {
+  test("uses one snapshot for unlabeled Ready, readiness, and evidence rows", () => {
+    const report = audit.buildCloseoutReport(snapshot());
+
+    expect(report.integrityOk).toBe(true);
+    expect(report.ready).toBe(false);
+    expect(report.board.counts).toMatchObject({
+      projectIssues: 3,
+      labeledMvpIssues: 2,
+      openNotDone: 2,
+      humanGated: 1,
+      agentActionable: 1,
+    });
+    expect(report.readiness.agentActionableCount).toBe(1);
+    expect(report.parity.readiness).toEqual([1, 2]);
+    expect(report.parity.evidence).toEqual([1, 2]);
+  });
+
+  test("reports analyzer issue-set divergence explicitly", () => {
+    expect(
+      audit.compareIssueNumberSets(
+        [{ number: 1 }, { number: 2 }],
+        [{ number: 2 }, { number: 3 }],
+      ),
+    ).toEqual({
+      ok: false,
+      readiness: [1, 2],
+      evidence: [2, 3],
+      missingFromEvidence: [1],
+      missingFromReadiness: [3],
+    });
+  });
+
+  test("rejects empty, duplicate, and cross-state snapshots", () => {
+    expect(() =>
+      audit.validateSnapshot({
+        project: { items: [] },
+        openIssues: [],
+        closedIssues: [],
+      }),
+    ).toThrow("project.items must be a non-empty array");
+
+    const duplicate = snapshot();
+    duplicate.openIssues.push(issue(1, []));
+    expect(() => audit.validateSnapshot(duplicate)).toThrow(
+      "duplicate issue #1",
+    );
+
+    const crossState = snapshot();
+    crossState.closedIssues.push(issue(1, []));
+    expect(() => audit.validateSnapshot(crossState)).toThrow(
+      "issue #1 appears in both open and closed",
+    );
+
+    const truncated = snapshot();
+    truncated.closedIssues = [];
+    expect(() => audit.validateSnapshot(truncated)).toThrow(
+      "Project issue #3 is missing from open/closed snapshot rows",
+    );
+  });
+
+  test("CLI emits one complete fixture report", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-closeout-fixture-"));
+    const fixture = join(dir, "snapshot.json");
+    writeFileSync(fixture, JSON.stringify(snapshot()));
+
+    const result = spawnSync(
+      process.execPath,
+      [scriptPath, "--snapshot-json", fixture, "--json"],
+      {
+        encoding: "utf8",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe("");
+    const report = JSON.parse(result.stdout);
+    expect(report.integrityOk).toBe(true);
+    expect(report.ready).toBe(false);
+    expect(report.snapshot.source).toBe("fixture");
+  });
+
+  test("GitHub command failure exits nonzero without a report", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-closeout-gh-failure-"));
+    const fakeGh = join(dir, "gh");
+    writeFileSync(
+      fakeGh,
+      "#!/usr/bin/env sh\necho 'rate limit exceeded' >&2\nexit 1\n",
+    );
+    chmodSync(fakeGh, 0o755);
+
+    const result = spawnSync(process.execPath, [scriptPath, "--json"], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("rate limit exceeded");
+    expect(result.stderr).toContain("[mvp-closeout-audit]");
+  });
+});

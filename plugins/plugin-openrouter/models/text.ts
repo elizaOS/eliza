@@ -18,6 +18,12 @@
  * is injected on the system message to enable proper Anthropic prompt caching.
  * The @openrouter/ai-sdk-provider only emits wire-level cache_control directives
  * when providerOptions.anthropic.cacheControl is attached at the message level.
+ *
+ * For prompt-only calls that also supply promptSegments (e.g. the PromptBatcher /
+ * dynamicPromptExecFromState path), per-segment cache_control is additionally
+ * injected on the user content blocks corresponding to the cacheBreakpoints from
+ * the provider cache plan. This extends the single system-message breakpoint to
+ * up to three more user-content breakpoints under Anthropic's four-block cap.
  */
 import type {
   GenerateTextParams,
@@ -89,6 +95,8 @@ type GenerateTextParamsWithAttachments = GenerateTextParams & {
     anthropic?: {
       cacheControl?: AnthropicCacheControl;
       cacheSystem?: boolean;
+      cacheBreakpoints?: unknown[];
+      maxBreakpoints?: number;
     };
   };
 };
@@ -268,12 +276,82 @@ function stripLocalAnthropicCacheOptions(
   if (!anthropicOptions) {
     return undefined;
   }
+  // Strip elizaOS-internal fields that are not Anthropic wire parameters.
+  // cacheBreakpoints and maxBreakpoints are consumed here to build segmented
+  // user content; sending them through would produce unknown-field errors.
   const {
     cacheControl: _cacheControl,
     cacheSystem: _cacheSystem,
+    cacheBreakpoints: _cacheBreakpoints,
+    maxBreakpoints: _maxBreakpoints,
     ...wireOptions
   } = anthropicOptions;
   return Object.keys(wireOptions).length > 0 ? wireOptions : undefined;
+}
+
+function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
+  const ttl = runtime.getSetting("ANTHROPIC_PROMPT_CACHE_TTL");
+  return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+}
+
+type AnthropicCacheBreakpoint = { segmentIndex: number; cacheControl: AnthropicCacheControl };
+
+// Extends the AI SDK TextPart shape with provider-metadata so the AI SDK can forward
+// cache_control directives to the wire without losing the type guarantee on type/text.
+type CacheableTextPart = {
+  type: "text";
+  text: string;
+  providerOptions?: Record<string, unknown>;
+};
+
+function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBreakpoint {
+  return (
+    isRecord(value) &&
+    typeof value.segmentIndex === "number" &&
+    Number.isInteger(value.segmentIndex) &&
+    value.segmentIndex >= 0 &&
+    isRecord(value.cacheControl) &&
+    value.cacheControl.type === "ephemeral"
+  );
+}
+
+function readAnthropicCacheBreakpoints(
+  anthropicOptions: Record<string, unknown> | undefined,
+  maxBreakpoints: number,
+): AnthropicCacheBreakpoint[] {
+  const raw = anthropicOptions?.cacheBreakpoints;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isAnthropicCacheBreakpoint).slice(0, maxBreakpoints);
+}
+
+/**
+ * Builds user content as multiple text blocks (one per prompt segment) so that
+ * Anthropic cache_control breakpoints can be applied at the segment level, up to
+ * the three user-content slots under Anthropic's four-block cache cap. Only used
+ * on the prompt-only path (no `messages` supplied) when promptSegments and
+ * cacheBreakpoints are both available.
+ */
+function buildSegmentedPromptUserContent(
+  promptSegments: Array<{ content: string; stable?: boolean }>,
+  cacheBreakpoints: AnthropicCacheBreakpoint[],
+): CacheableTextPart[] {
+  if (cacheBreakpoints.length === 0) {
+    return promptSegments.map((seg) => ({ type: "text" as const, text: seg.content }));
+  }
+  const breakpointMap = new Map<number, AnthropicCacheControl>(
+    cacheBreakpoints.map((bp) => [bp.segmentIndex, bp.cacheControl]),
+  );
+  return promptSegments.map((seg, index) => {
+    const cc = breakpointMap.get(index);
+    if (cc) {
+      return {
+        type: "text" as const,
+        text: seg.content,
+        providerOptions: { anthropic: { cacheControl: cc } },
+      };
+    }
+    return { type: "text" as const, text: seg.content };
+  });
 }
 
 function readToolSet(value: GenerateTextParams["tools"]): ToolSet | undefined {
@@ -498,19 +576,43 @@ function buildGenerateParams(
     systemPrompt
   );
 
-  // Detect if we need to inject Anthropic message-level cache control
+  // Detect if we need to inject Anthropic message-level cache control.
+  // When the caller passes an explicit providerOptions.anthropic.cacheControl we
+  // use that; otherwise we fall back to reading ANTHROPIC_PROMPT_CACHE_TTL from
+  // runtime settings — matching the always-on behaviour of plugin-anthropic so
+  // that every Anthropic model routed through OpenRouter gets at least the
+  // system-message breakpoint regardless of whether the calling path assembled a
+  // full cache plan (e.g. the PromptBatcher / dynamicPromptExecFromState path).
   const isAnthropic = isAnthropicModel(modelName);
   const rawProviderOptions = paramsWithAttachments.providerOptions;
   const anthropicOptions = isRecord(rawProviderOptions?.anthropic)
     ? rawProviderOptions.anthropic
     : undefined;
-  const anthropicCacheControl = readAnthropicCacheControl(anthropicOptions);
+  const anthropicCacheControl =
+    readAnthropicCacheControl(anthropicOptions) ??
+    (isAnthropic ? getRuntimeCacheControl(runtime) : undefined);
   const anthropicCacheSystem = anthropicOptions?.cacheSystem !== false;
   const cacheSystemMessage =
     isAnthropic && anthropicCacheSystem
       ? buildCacheableSystemMessage(systemPrompt, anthropicCacheControl)
       : undefined;
   const shouldInjectMessageLevelCache = Boolean(cacheSystemMessage);
+
+  // Collect cacheBreakpoints for per-segment user-content injection.
+  // Only used on the prompt-only path (no messages) together with promptSegments.
+  // maxBreakpoints caps the number of slots used (Anthropic allows up to 3 user-content).
+  const maxBreakpoints =
+    typeof anthropicOptions?.maxBreakpoints === "number" &&
+    Number.isInteger(anthropicOptions.maxBreakpoints) &&
+    anthropicOptions.maxBreakpoints >= 0
+      ? anthropicOptions.maxBreakpoints
+      : 3;
+  const cacheBreakpoints = readAnthropicCacheBreakpoints(anthropicOptions, maxBreakpoints);
+  const promptSegments = Array.isArray(
+    (paramsWithAttachments as { promptSegments?: unknown }).promptSegments,
+  )
+    ? ((paramsWithAttachments as { promptSegments?: Array<{ content: string; stable?: boolean }> }).promptSegments ?? [])
+    : [];
 
   let finalWireMessages = wireMessages;
   if (cacheSystemMessage && paramsWithAttachments.messages) {
@@ -540,7 +642,14 @@ function buildGenerateParams(
               cacheSystemMessage,
               {
                 role: "user" as const,
-                content: userContent ?? buildUserContent(paramsWithAttachments),
+                // When promptSegments and cacheBreakpoints are both available,
+                // build multi-block user content so per-segment cache_control can
+                // be stamped on the last block of each stable run (up to three
+                // additional breakpoints under Anthropic's four-block cap).
+                content:
+                  promptSegments.length > 0 && cacheBreakpoints.length > 0 && !userContent
+                    ? (buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints) as UserContent)
+                    : (userContent ?? buildUserContent(paramsWithAttachments)),
               },
             ],
           }

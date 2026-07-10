@@ -41,7 +41,7 @@ thing is verification.
 
 ## Personas & journeys
 
-Seven personas, condensed from [research/01](../research/01-mvp-product-personas.md).
+Eight personas, condensed from [research/01](../research/01-mvp-product-personas.md).
 Where a bench persona already exists
 (`packages/benchmarks/lifeops-bench/.../scenarios/_personas.py`), the name is
 reused for continuity. Each maps to a pack in the persona scenario corpus.
@@ -118,6 +118,17 @@ breakthrough during quiet hours, a bill approval that fails closed on silence.
 conservative no-reply defaults. *Struggles:* nothing structural — she is the
 best-covered persona; her risk is regression while the neurodivergent packs get
 attention. *Intuitive fix:* keep F1 green.
+
+**P8 — Jordan, 39, separated co-parent** (iMessage + Calendar; planned pack
+J1). Fast-start, then connects calendar and messages when custody logistics
+become the immediate pain. First win: recurring exchange reminders and a
+neutral calendar view of the custody rhythm. Week 2: a last-minute swap request
+becomes an owner-approved, civil logistics draft without exposing child details
+or giving legal or therapy advice. *Loves:* factual language and coordination
+across both households. *Struggles:* the cross-domain handoff between scheduling,
+money, messaging, and child privacy has a planned ledger but no uniformly
+verified scenario pack. *Intuitive fix:* verify J1 end to end rather than add a
+co-parent-specific product mode.
 
 ## Real-life scenario matrix
 
@@ -209,9 +220,12 @@ concentrates exactly in the make-or-break neurodivergent packs — ADHD capture
 round-trips have **zero live-LLM scenario coverage**. The home carries seven
 non-MVP widgets and a wallet that contradicts its own doctrine (hides with no
 holdings, prices never refresh); an `AppRunsWidget` polls every 5s ungated.
-Cloud voice has **zero latency numbers, zero CI**, an unwired client capture
-default (interactive web capture never reaches Railway Whisper), and a
-hardcoded English-only `faster-whisper-tiny.en` STT model. The chat transcript
+Cloud voice now has a committed Railway benchmark and a scheduled live contract
+lane, the client cloud-ASR path is wired, the STT model is deploy-configurable,
+and reproducible Kokoro/Whisper Railway service definitions live in-repo.
+However, the scheduled lane still lacks a green owner-provisioned Railway run,
+and no browser test proves real mic audio reaches Railway Whisper and returns an
+audible live-agent reply. The chat transcript
 can silently become horizontally scrollable (`overflow-y-auto` without
 `overflow-x-hidden`), and the perf gate carries a known-red CLS 0.80 failure.
 Several view mutations (settings sections, documents, memories, files) have only
@@ -228,8 +242,8 @@ after onboarding, has had **no green run since ≤2026-06-25** (failure/cancelle
 every scheduled run for 10+ days), and no device lane covers the production
 default cloud sign-in path. The Android runner **runs stale builds by default**
 (install-if-missing skips fresh APKs — the Capacitor bake-in footgun, live in
-the runner). No Railway service definition exists in-repo for the cloud voice
-deploys — they are unreproducible pets.
+the runner). Railway ownership and live deploy evidence remain unproven even
+though the service definitions and scheduled contract lane are in-repo.
 
 ## Workstreams
 

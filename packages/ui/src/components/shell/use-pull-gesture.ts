@@ -181,15 +181,19 @@ export function usePullGesture(
       )
         return;
       // A press that reaches here is the primary pointer (a secondary touch
-      // finger returned above), so it is the ONLY pointer down. Any `start` still
-      // held with a different id is therefore stale — the previous gesture's
-      // element unmounted before delivering the pointerup/cancel that clears it
-      // (the maximize restore strip unmounts the instant a restore un-maximizes,
-      // so its captured release never lands and `start` is stranded with the old
-      // id). Re-seed from this press instead of letting the dead id reject every
-      // future gesture on the remounted element; only a duplicate down for the
-      // pointer we already track is ignored.
-      if (start.current?.pointerId === event.pointerId) return;
+      // finger returned above), so it is the ONLY pointer down and it begins a
+      // fresh gesture. Any `start` still held is therefore stale and must be
+      // replaced: the browser never delivers a second pointerdown for a pointer
+      // it still considers down (a pointerup/cancel must land first), so a
+      // lingering `start` means the previous gesture's element unmounted before
+      // its captured release arrived (the maximize restore strip unmounts the
+      // instant a restore un-maximizes; the pill/grabber unmount as the sheet
+      // morphs under a held drag). Re-seed unconditionally — INCLUDING when the
+      // id matches, which is the norm for mouse/pen where `pointerId` is a
+      // constant (1). A same-id early return here (the prior form) stranded
+      // every subsequent MOUSE gesture on a remounted handle: mouse reuses
+      // pointerId 1, so it matched the dead `start` and the fresh press was
+      // rejected outright — no seed, no capture, drives nothing.
       start.current = {
         x: event.clientX,
         y: event.clientY,

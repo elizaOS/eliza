@@ -39,6 +39,9 @@
       "@elizaos/capacitor-appblocker": [
         "./plugins/plugin-native-appblocker/dist/esm/index.d.ts"
       ],
+      "@elizaos/capacitor-browser-surface": [
+        "./plugins/plugin-native-browser-surface/dist/esm/index.d.ts"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "./plugins/plugin-native-bun-runtime/dist/esm/index.d.ts"
       ],

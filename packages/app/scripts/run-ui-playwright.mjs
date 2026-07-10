@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
+import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -180,17 +181,6 @@ function hasPlaywrightProject(projectName) {
   });
 }
 
-function appendNodeOption(value, option) {
-  const options =
-    typeof value === "string" && value.trim().length > 0
-      ? value.trim().split(/\s+/)
-      : [];
-  if (!options.includes(option)) {
-    options.push(option);
-  }
-  return options.join(" ");
-}
-
 function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -342,12 +332,17 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
   throw new Error("Could not allocate a distinct free port for UI smoke.");
 }
 
-if (hasPlaywrightConfig("playwright.electrobun.packaged.config.ts")) {
-  env.NODE_OPTIONS = appendNodeOption(
-    env.NODE_OPTIONS,
-    "--conditions=eliza-source",
-  );
-}
+// Every Playwright lane collects its spec files up front, and those specs pull
+// workspace helpers whose static import graph reaches source-only packages —
+// e.g. app-core `server.ts` → `@elizaos/agent` → `settings-actions.ts` →
+// `@elizaos/plugin-app-control`, and `@elizaos/core` → `@elizaos/cloud-routing`.
+// Those packages publish an `eliza-source` export condition pointing at `src`;
+// on a fresh CI install (`bun install --ignore-scripts`) they have no `dist`, so
+// under default node conditions the collector resolves a missing
+// `dist/index.js` and the whole lane dies before any spec runs. The tsx import
+// is also required by child Node/Vite processes because source packages retain
+// NodeNext `.js` specifiers while their worktree files are TypeScript.
+env.NODE_OPTIONS = withElizaSourceNodeOptions(env.NODE_OPTIONS);
 
 if (hasPlaywrightConfig("playwright.ui-smoke.config.ts")) {
   env.ELIZA_UI_SMOKE_RUN_ID =

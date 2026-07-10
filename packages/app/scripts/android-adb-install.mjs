@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveApk } from "./lib/android-device.mjs";
 import { assertAndroidApkRendererFresh } from "./lib/android-renderer-stamp.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -124,31 +125,6 @@ function currentHeadCommit() {
   return result.status === 0 ? result.stdout.trim() || null : null;
 }
 
-function latestApk() {
-  const roots = [
-    path.join(appRoot, "android", "app", "build", "outputs", "apk"),
-    path.join(appRoot, "android", "app", "build", "outputs"),
-  ];
-  const candidates = [];
-  for (const root of roots) {
-    if (!fs.existsSync(root)) continue;
-    const stack = [root];
-    while (stack.length > 0) {
-      const dir = stack.pop();
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) stack.push(full);
-        if (entry.isFile() && entry.name.endsWith(".apk")) {
-          const stat = fs.statSync(full);
-          candidates.push({ path: full, mtimeMs: stat.mtimeMs });
-        }
-      }
-    }
-  }
-  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return candidates[0]?.path ?? null;
-}
-
 if (!commandExists("adb")) {
   fail(
     "adb was not found",
@@ -191,12 +167,11 @@ if (!serial && onlineDevices.length !== 1) {
   );
 }
 
-const apkPath = apkArg ? path.resolve(apkArg) : latestApk();
-if (!apkPath || !fs.existsSync(apkPath)) {
-  fail(
-    "APK not found",
-    "Pass --apk <path> or run with --build to produce a sideload APK first.",
-  );
+let apkPath;
+try {
+  apkPath = resolveApk(apkArg);
+} catch (error) {
+  fail("APK not found", error instanceof Error ? error.message : String(error));
 }
 
 const appId = readAppId();

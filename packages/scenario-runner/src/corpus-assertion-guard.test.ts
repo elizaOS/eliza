@@ -309,6 +309,12 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "persona.night-owl-quiet-hours-sleep-protection",
   "anthropic-proxy.proxy-status",
   "benchmarks.osworld-action",
+  // Per-plugin keyless coverage (#8801, cluster 1 of #15759): keyless scenarios
+  // that spawn a fake birdclaw CLI, mock the Eliza Cloud HTTP API, and drive a
+  // scripted MeetingService so BIRDCLAW / CLOUD_ACCOUNT_STATUS /
+  // GET_MEETING_TRANSCRIPT each get a credential-free e2e. Added here in the same
+  // commit so this toEqual stays green.
+  "birdclaw.search-archive",
   "commands.help-command",
   // LifeOps persona pack D1 (comms-flood-triage, #12774). Convention (G1):
   // pr-deterministic persona scenarios live in
@@ -320,6 +326,7 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "computeruse.get-cursor-position",
   "convo.echo-self-test",
   "convo.greeting-dynamic",
+  "elizacloud.account-status",
   "facewear.smartglasses-status",
   "finances.owner-finances-dashboard",
   "form.restore-stashed",
@@ -331,11 +338,27 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   // structural proof for relationship-cadence follow-up creation.
   "g2-cadence-watcher-due",
   "goals.owner-goals-create",
+  // LifeOps knowledge-graph capture pack H2 (#14786). Keyless direct-action
+  // scenarios that drive the REAL ENTITY set_relationship / merge subactions and
+  // read the captured primitive back off the per-agent RelationshipStore /
+  // EntityStore (`eliza_knowledge_graph` service), asserting persisted rows
+  // rather than the scripted action arguments. Registered here in the same
+  // commit that flips their lane to pr-deterministic.
+  "h2-audit-trail-survives-restart",
+  "h2-conflicting-fact-resolution",
+  "h2-identity-merge-uses-engine",
+  "h2-relationship-update-live",
   "health.owner-health-status",
   "hyperliquid.perpetual-market-status",
   "inbox.summarize-inboxes",
   "linear.search-issues",
   "local-inference.start-transcription",
+  // Transcript permissioning (#14779): keyless proof that SHARE_TRANSCRIPT
+  // routes message -> planner -> TranscriptStore and that the disclosure
+  // predicate serves the redacted variant to a non-privileged colleague while
+  // an admin keeps the untouched original. Added here in the same commit.
+  "local-inference.transcript-permissioning",
+  "meetings.get-transcript",
   "music.routing-status",
   "nostr.search-posts",
   // Registered here retroactively: the scenario landed (#13778) without the

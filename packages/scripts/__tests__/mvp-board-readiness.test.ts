@@ -57,18 +57,23 @@ describe("MVP board readiness audit", () => {
     expect(report.violations).toEqual([]);
   });
 
-  test("flags open MVP issues without a blocker label", () => {
+  test("fails and classifies Ready issues without blocker labels as actionable", () => {
     const report = board.auditMvpBoardReadiness([issue(14749, ["mvp"])], {
       items: [projectItem(14749, "Ready")],
     });
 
     expect(report.ok).toBe(false);
+    expect(report.agentActionableCount).toBe(1);
     expect(report.violations).toContainEqual(
-      expect.objectContaining({
-        type: "missing-blocker-label",
-        number: 14749,
-      }),
+      expect.objectContaining({ type: "agent-actionable", number: 14749 }),
     );
+    expect(report.rows).toEqual([
+      expect.objectContaining({
+        number: 14749,
+        projectStatus: "Ready",
+        blockerLabels: [],
+      }),
+    ]);
   });
 
   test("flags blocker-labeled issues outside Needs human review", () => {
@@ -87,19 +92,15 @@ describe("MVP board readiness audit", () => {
     );
   });
 
-  test("flags open MVP issues missing from the project", () => {
+  test("ignores repository issues outside the project", () => {
     const report = board.auditMvpBoardReadiness(
       [issue(14351, ["mvp", "needs-shaw"])],
       { items: [] },
     );
 
-    expect(report.ok).toBe(false);
-    expect(report.violations).toContainEqual(
-      expect.objectContaining({
-        type: "missing-project-item",
-        number: 14351,
-      }),
-    );
+    expect(report.ok).toBe(true);
+    expect(report.issueCount).toBe(0);
+    expect(report.rows).toEqual([]);
   });
 
   test("issues-only mode skips project violations but keeps blocker violations", () => {
@@ -158,7 +159,7 @@ describe("MVP board readiness audit", () => {
     ]);
   });
 
-  test("does not match project items from a different repository by number", () => {
+  test("does not scope project items from a different repository by number", () => {
     const report = board.auditMvpBoardReadiness(
       [issue(14747, ["mvp", "needs-shaw"])],
       {
@@ -166,11 +167,20 @@ describe("MVP board readiness audit", () => {
       },
     );
 
+    expect(report.ok).toBe(true);
+    expect(report.issueCount).toBe(0);
+  });
+
+  test("flags human-review status without a blocker label", () => {
+    const report = board.auditMvpBoardReadiness([issue(15748, ["testing"])], {
+      items: [projectItem(15748, "Needs human review")],
+    });
+
     expect(report.ok).toBe(false);
     expect(report.violations).toContainEqual(
       expect.objectContaining({
-        type: "missing-project-item",
-        number: 14747,
+        type: "human-status-missing-blocker",
+        number: 15748,
       }),
     );
   });

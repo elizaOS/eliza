@@ -31,6 +31,7 @@ import {
 import { apps } from "../../db/schemas/apps";
 import { containers } from "../../db/schemas/containers";
 import { jobs } from "../../db/schemas/jobs";
+import { ApiError } from "../api/cloud-worker-errors";
 import { assertSafeOutboundUrl } from "../security/outbound-url";
 import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
@@ -50,6 +51,10 @@ import {
   resolveWaifuWebhookTarget,
   signWaifuWebhook,
 } from "./waifu-webhook";
+import {
+  WakeRestoreIntegrityError,
+  type WakeRestoreIntegrityFailure,
+} from "./wake-restore-integrity";
 
 // ---------------------------------------------------------------------------
 // Job data shapes (hydrated from object storage when jobs.data is offloaded)
@@ -90,6 +95,17 @@ export interface AgentWakeJobData {
   agentId: string;
   organizationId: string;
   userId: string;
+  /**
+   * Explicit user-selected restore point (an older validated backup) — the
+   * escape hatch when the latest backup fails the wake integrity gate. Never
+   * set by default; mutually exclusive with `forceFreshBoot`.
+   */
+  restoreBackupId?: string;
+  /**
+   * Explicit user acceptance of data loss: wake into an empty container with
+   * no restore. Never set by default; mutually exclusive with `restoreBackupId`.
+   */
+  forceFreshBoot?: boolean;
 }
 
 export interface AgentRestartJobData {
@@ -208,6 +224,10 @@ export interface AgentWakeJobResult {
   cloudAgentId: string;
   reprovisioned: boolean;
   restoredBackupId?: string;
+  /** True when the wake booted empty via the explicit `forceFreshBoot` opt-in. */
+  freshBoot?: boolean;
+  /** Structured wake-integrity-gate failure, surfaced to job pollers. */
+  integrityFailure?: WakeRestoreIntegrityFailure;
   error?: string;
 }
 
@@ -434,12 +454,22 @@ function readAgentSleepJobData(job: Job): AgentSleepJobData {
 }
 
 function isAgentWakeJobData(value: unknown): value is AgentWakeJobData {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    typeof (value as { agentId?: unknown }).agentId !== "string" ||
+    typeof (value as { organizationId?: unknown }).organizationId !== "string" ||
+    typeof (value as { userId?: unknown }).userId !== "string"
+  ) {
+    return false;
+  }
+  const { restoreBackupId, forceFreshBoot } = value as {
+    restoreBackupId?: unknown;
+    forceFreshBoot?: unknown;
+  };
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { agentId?: unknown }).agentId === "string" &&
-    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
-    typeof (value as { userId?: unknown }).userId === "string"
+    (restoreBackupId === undefined || typeof restoreBackupId === "string") &&
+    (forceFreshBoot === undefined || typeof forceFreshBoot === "boolean")
   );
 }
 
@@ -589,6 +619,14 @@ export interface EnqueueAgentSleepResult {
 export interface EnqueueAgentWakeResult {
   job: Job;
   created: boolean;
+  /**
+   * The restore params the in-flight job will ACTUALLY apply — the existing
+   * job's own data when an active wake was reused, never the caller's request.
+   * The wake route echoes these so a reused enqueue cannot misreport a
+   * restoreBackupId/forceFreshBoot that was silently not applied (#15603 B6).
+   */
+  appliedRestoreBackupId: string | null;
+  appliedForceFreshBoot: boolean;
 }
 
 export interface EnqueueAgentRestartResult {
@@ -651,6 +689,14 @@ interface LifecycleJobOptions<TData extends object> {
    * provision's `expectedUpdatedAt` race check).
    */
   validateSandbox?: (sandbox: LifecycleSandboxRow) => void;
+  /**
+   * Called with the hydrated existing job when an active pending/in_progress
+   * job of the same type would be reused instead of inserting a new row.
+   * Throw to refuse the enqueue — reuse silently DROPS the caller's job data,
+   * so operation-changing params (wake's restoreBackupId/forceFreshBoot) must
+   * either match the in-flight job or be rejected loudly (#15603 B6).
+   */
+  validateReuse?: (existing: Job) => void;
   /**
    * Called inside the transaction after the "no existing job" check
    * and before the new job is inserted. Used by delete to flip the
@@ -918,11 +964,13 @@ export class ProvisioningJobService {
       };
 
       if (existing) {
+        const hydrated = await hydrateJob(existing);
+        opts.validateReuse?.(hydrated);
         logger.info(`[provisioning-jobs] Reusing active ${opts.logName} job`, {
           jobId: existing.id,
           ...logFields,
         });
-        return { job: await hydrateJob(existing), created: false };
+        return { job: hydrated, created: false };
       }
 
       await opts.beforeInsert?.(tx, sandbox);
@@ -1193,22 +1241,28 @@ export class ProvisioningJobService {
   /**
    * Enqueue an Agent wake job.
    *
-   * Daemon-side execution provisions a fresh container (claiming a warm-pool
-   * slot when available) and restores the latest backup. The inverse of
-   * `agent_sleep`.
+   * Daemon-side execution runs the restore-integrity gate, then provisions a
+   * fresh container (claiming a warm-pool slot when available) and restores
+   * the validated backup. The inverse of `agent_sleep`. `restoreBackupId` /
+   * `forceFreshBoot` are the explicit wake-route escape hatches (#15603 B6),
+   * never defaults.
    */
   async enqueueAgentWakeOnce(params: {
     agentId: string;
     organizationId: string;
     userId: string;
     webhookUrl?: string;
+    restoreBackupId?: string;
+    forceFreshBoot?: boolean;
   }): Promise<EnqueueAgentWakeResult> {
-    return this.enqueueLifecycleJob<AgentWakeJobData>({
+    const result = await this.enqueueLifecycleJob<AgentWakeJobData>({
       jobType: JOB_TYPES.AGENT_WAKE,
       jobData: {
         agentId: params.agentId,
         organizationId: params.organizationId,
         userId: params.userId,
+        ...(params.restoreBackupId ? { restoreBackupId: params.restoreBackupId } : {}),
+        ...(params.forceFreshBoot ? { forceFreshBoot: true } : {}),
       },
       toRecord: agentWakeJobDataToRecord,
       agentId: params.agentId,
@@ -1219,7 +1273,41 @@ export class ProvisioningJobService {
       // Fresh provision (~60-90s) + state restore.
       estimatedDurationMs: 90_000,
       logName: "agent_wake",
+      // Reusing an in-flight wake keeps ITS params and drops the caller's. A
+      // bare retry ("wake me") may ride whatever is already running, but a
+      // request that names a restore point or forces a fresh boot is a
+      // DIFFERENT operation — the integrity gate's own failure message tells
+      // the user to retry with restoreBackupId, and silently reusing the very
+      // job that just failed the gate would discard that choice (#15603 B6).
+      validateReuse: (existing) => {
+        if (params.restoreBackupId === undefined && !params.forceFreshBoot) return;
+        const active = readAgentWakeJobData(existing);
+        const sameParams =
+          (active.restoreBackupId ?? null) === (params.restoreBackupId ?? null) &&
+          (active.forceFreshBoot ?? false) === (params.forceFreshBoot ?? false);
+        if (sameParams) return;
+        throw new ApiError(
+          409,
+          "session_not_ready",
+          `A wake job (${existing.id}) is already ${existing.status} for this agent with ` +
+            "different restore parameters; wait for it to finish (poll " +
+            `/api/v1/jobs/${existing.id}) and retry.`,
+          {
+            conflictingJobId: existing.id,
+            activeRestoreBackupId: active.restoreBackupId ?? null,
+            activeForceFreshBoot: active.forceFreshBoot ?? false,
+            requestedRestoreBackupId: params.restoreBackupId ?? null,
+            requestedForceFreshBoot: params.forceFreshBoot ?? false,
+          },
+        );
+      },
     });
+    const applied = readAgentWakeJobData(result.job);
+    return {
+      ...result,
+      appliedRestoreBackupId: applied.restoreBackupId ?? null,
+      appliedForceFreshBoot: applied.forceFreshBoot ?? false,
+    };
   }
 
   /**
@@ -2332,7 +2420,10 @@ export class ProvisioningJobService {
       agentId: data.agentId,
     });
 
-    const result = await elizaSandboxService.executeWake(data.agentId, data.organizationId);
+    const result = await elizaSandboxService.executeWake(data.agentId, data.organizationId, {
+      restoreBackupId: data.restoreBackupId,
+      forceFreshBoot: data.forceFreshBoot,
+    });
 
     if (await this.completeIfAgentGone(job, result, data.agentId)) return;
 
@@ -2342,9 +2433,19 @@ export class ProvisioningJobService {
           cloudAgentId: data.agentId,
           reprovisioned: result.reprovisioned,
           restoredBackupId: result.restoredBackupId,
+          freshBoot: result.freshBoot,
+          integrityFailure: result.integrityFailure,
           error: result.error,
         }),
       });
+      // Integrity-gate refusals surface as the typed wake error so the job's
+      // error_message is the full user-legible explanation (backup, failure
+      // kind, escape hatches). AGENT_WAKE has no permanent-failure writeback,
+      // so exhausting attempts leaves the sandbox row `sleeping` — state
+      // preserved, per the #15603 B6 contract.
+      if (result.integrityFailure) {
+        throw new WakeRestoreIntegrityError(result.integrityFailure);
+      }
       throw new Error(result.error ?? "Unknown agent_wake failure");
     }
 
@@ -2352,6 +2453,7 @@ export class ProvisioningJobService {
       cloudAgentId: data.agentId,
       reprovisioned: result.reprovisioned,
       restoredBackupId: result.restoredBackupId,
+      freshBoot: result.freshBoot,
     };
 
     await jobsRepository.updateStatus(job.id, "completed", {

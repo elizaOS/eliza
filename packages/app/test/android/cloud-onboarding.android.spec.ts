@@ -3,8 +3,8 @@
 // This lane differs from the existing remote-connect onboarding smoke: it keeps
 // the production cloud-only first-run surface, seeds the e2e SIWE wallet, and
 // lets the app complete the real Eliza Cloud login/provisioning path. No API
-// route is mocked; the test only wraps `fetch` to count the exactly-once
-// `/api/first-run` completion write the MVP issue requires.
+// route is mocked; the test records `/api/first-run` attempts to enforce the
+// Cloud architecture boundary while proving durable completion state.
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import { expect, ORIGIN, test } from "./android-harness";
@@ -30,12 +30,58 @@ type CloudOnboardingMode = "tap" | "autologin";
 
 async function installCloudOnboardingHarness(
   page: import("@playwright/test").Page,
+  mode: CloudOnboardingMode,
 ) {
   const privateKey =
     process.env.ELIZA_E2E_WALLET_PK?.trim() ||
     DEFAULT_E2E_WALLET_PRIVATE_KEY_PARTS.join("");
+  const resetKeys = [
+    "eliza:first-run-complete",
+    "eliza:onboarding-complete",
+    "eliza:setup:step",
+    "eliza:mobile-runtime-mode",
+    "elizaos:active-server",
+    "steward_session_token",
+    "eliza:first-run:cloud-resume",
+    "elizaos:first-run:force-fresh",
+  ];
+
+  // Capacitor Preferences outlives WebView navigation and otherwise restores
+  // the preceding serial test's authenticated state during app bootstrap.
+  await page.evaluate(
+    async ({ mode, privateKey }) => {
+      const preferences = (
+        window as Window & {
+          Capacitor?: {
+            Plugins?: {
+              Preferences?: {
+                clear(): Promise<void>;
+                remove(options: { key: string }): Promise<void>;
+                set(options: { key: string; value: string }): Promise<void>;
+              };
+            };
+          };
+        }
+      ).Capacitor?.Plugins?.Preferences;
+      if (!preferences) {
+        throw new Error("Capacitor Preferences plugin is unavailable");
+      }
+      await preferences.clear();
+      await preferences.set({ key: "eliza:e2e-wallet:pk", value: privateKey });
+      if (mode === "autologin") {
+        await preferences.set({
+          key: "eliza:e2e-wallet:autologin",
+          value: "1",
+        });
+      } else {
+        await preferences.remove({ key: "eliza:e2e-wallet:autologin" });
+      }
+    },
+    { mode, privateKey },
+  );
+
   await page.addInitScript(
-    ({ privateKey }) => {
+    ({ privateKey, resetKeys }) => {
       const mode =
         new URL(window.location.href).searchParams.get(
           "cloudOnboardingMode",
@@ -56,14 +102,7 @@ async function installCloudOnboardingHarness(
       } else {
         localStorage.removeItem("eliza:e2e-wallet:autologin");
       }
-      for (const key of [
-        "eliza:first-run-complete",
-        "eliza:onboarding-complete",
-        "eliza:setup:step",
-        "eliza:mobile-runtime-mode",
-        "elizaos:active-server",
-        "steward_session_token",
-      ]) {
+      for (const key of resetKeys) {
         localStorage.removeItem(key);
       }
 
@@ -89,7 +128,7 @@ async function installCloudOnboardingHarness(
         return originalFetch(input, init);
       }) as typeof window.fetch;
     },
-    { privateKey },
+    { privateKey, resetKeys },
   );
 }
 
@@ -134,7 +173,7 @@ async function runCloudOnboardingMode({
 }) {
   test.setTimeout(240_000);
 
-  await installCloudOnboardingHarness(page);
+  await installCloudOnboardingHarness(page, mode);
   const recording = await startAndroidScreenRecord({
     serial: device.serial(),
     artifactDir: path.join(ARTIFACT_DIR, mode),
@@ -173,6 +212,19 @@ async function runCloudOnboardingMode({
     await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
       timeout: 60_000,
     });
+    await expect(page.getByText(/Sign in to Eliza Cloud/i)).toHaveCount(0, {
+      timeout: 60_000,
+    });
+    await expect(page.getByTestId("first-run-chat")).toHaveCount(0);
+    await expect(page.getByTestId("startup-first-run-background")).toHaveCount(
+      0,
+    );
+    await expect(page.getByText(/Setting up/i)).toHaveCount(0, {
+      timeout: 150_000,
+    });
+    await expect(
+      page.getByText(/Logged in to Eliza Cloud successfully/i),
+    ).toHaveCount(0, { timeout: 15_000 });
 
     const homePath = path.join(ARTIFACT_DIR, mode, "home-landing.png");
     await page.screenshot({ path: homePath, fullPage: true });
@@ -182,7 +234,10 @@ async function runCloudOnboardingMode({
     });
 
     const state = await readCloudOnboardingState(page);
-    expect(state.firstRunPostCount).toBe(1);
+    // Direct Cloud agent bases are chat runtimes, not app-shell setup servers;
+    // posting /api/first-run there would be a guaranteed 404. Completion is
+    // proven by durable local state plus the authenticated Cloud server below.
+    expect(state.firstRunPostCount).toBe(0);
     expect(state.firstRunComplete).toBe("1");
     expect(state.stewardSessionPresent).toBe(true);
     expect(state.activeServer).toMatchObject({ kind: "cloud" });

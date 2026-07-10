@@ -47,6 +47,7 @@ env:
   BUN_VERSION: "canary"
   NODE_VERSION: "24.15.0"
   PYTHON_VERSION: "3.12"
+  ELIZA_SKIP_ARTIFACT_SYNC: "1"
 
 jobs:
   manifest-gate:

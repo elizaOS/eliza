@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -49,6 +49,12 @@ export default defineConfig({
 	},
 	test: {
 		include: ["__tests__/**/*.test.ts", "src/**/*.test.{ts,tsx}"],
+		// dist-packaging drives the real build.ts, which is bun-only
+		// (import.meta.dir); it runs under `bun test` in the cloud sweep and can
+		// never execute under vitest — excluded here (extending the defaults) so
+		// the package's vitest lane (incl. the Windows plugins shard) stays green
+		// without weakening the gate.
+		exclude: [...configDefaults.exclude, "__tests__/dist-packaging.test.ts"],
 		environment: "node",
 		server: {
 			deps: {

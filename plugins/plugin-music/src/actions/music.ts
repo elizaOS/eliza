@@ -15,13 +15,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  CONTEXT_ROUTING_STATE_KEY,
-  logger,
-  ModelType,
-  parseKeyValueXml,
-} from "@elizaos/core";
+import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import { sunoGenerateMusicHandler } from "@elizaos/plugin-suno";
+import { selectedContextMatches } from "../utils/selectedContextMatches";
 import { mergedOptions } from "./confirmation";
 import { manageRouting } from "./manageRouting";
 import { manageZones } from "./manageZones";
@@ -564,45 +560,6 @@ function ensurePlaybackMerged(
   return out;
 }
 
-function selectedContextMatches(
-  state: State | undefined,
-  contexts: readonly string[],
-): boolean {
-  const selected = new Set<string>();
-  const collectOne = (value: unknown) => {
-    if (typeof value === "string") selected.add(value);
-  };
-  const collect = (value: unknown) => {
-    if (!Array.isArray(value)) return;
-    for (const item of value) collectOne(item);
-  };
-  collect(
-    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  collect(
-    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
-  );
-  const contextObject = (state?.data as Record<string, unknown> | undefined)
-    ?.contextObject as
-    | {
-        trajectoryPrefix?: { selectedContexts?: unknown };
-        metadata?: { selectedContexts?: unknown };
-      }
-    | undefined;
-  collect(contextObject?.trajectoryPrefix?.selectedContexts);
-  collect(contextObject?.metadata?.selectedContexts);
-  // The v5 planner writes its routing decision to `state.values.__contextRouting`
-  // ({ primaryContext, secondaryContexts }) — never to `selectedContexts` — so
-  // this is the only context signal present when `validate()` runs at planner
-  // action-exposure time. See @elizaos/core CONTEXT_ROUTING_STATE_KEY.
-  const routing = (state?.values as Record<string, unknown> | undefined)?.[
-    CONTEXT_ROUTING_STATE_KEY
-  ] as { primaryContext?: unknown; secondaryContexts?: unknown } | undefined;
-  collectOne(routing?.primaryContext);
-  collect(routing?.secondaryContexts);
-  return contexts.some((context) => selected.has(context));
-}
-
 const musicExamples: ActionExample[][] = [
   ...(musicLibraryAction.examples ?? []),
   ...(playbackOp.examples ?? []),
@@ -776,7 +733,9 @@ export const musicAction: Action = {
   ): Promise<boolean> => {
     const merged = mergedOptions(options);
     if (readExplicitSubaction(merged)) return true;
-    return selectedContextMatches(state, MUSIC_CONTEXTS);
+    return selectedContextMatches(state, MUSIC_CONTEXTS, {
+      includeContextRouting: true,
+    });
   },
   handler: async (
     runtime: IAgentRuntime,

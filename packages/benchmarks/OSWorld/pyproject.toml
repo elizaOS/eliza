@@ -35,7 +35,7 @@ dependencies = [
     "requests~=2.34.2",
     "pytz~=2026.2.0",
     "transformers~=5.13.0",
-    "torch~=2.12.1",
+    "torch~=2.13.0",
     "accelerate",
     "opencv-python~=4.13.0.92",
     "matplotlib~=3.11.0",

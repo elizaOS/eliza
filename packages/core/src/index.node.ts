@@ -76,6 +76,14 @@ export * from "./entities";
 export * from "./env-utils";
 export * from "./errors";
 export {
+	ElizaError,
+	type ElizaErrorOptions,
+	type ElizaErrorSeverity,
+	isElizaError,
+	type ReportedError,
+	toElizaError,
+} from "./errors";
+export {
 	roleAction,
 	updateRoleAction,
 } from "./features/advanced-capabilities/actions/role";
@@ -279,6 +287,13 @@ export * from "./search";
 // Export security utilities
 export * from "./security";
 export * from "./security/basic-email";
+export {
+	isSensitiveKeyName,
+	redactLogArgs,
+	redactObjectSecrets,
+	redactSecrets,
+	redactSensitiveText,
+} from "./security/redact";
 export * from "./security/secret-swap";
 export * from "./sensitive-request-policy";
 export * from "./sensitive-requests";
