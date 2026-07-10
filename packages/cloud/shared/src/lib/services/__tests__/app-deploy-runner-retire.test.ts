@@ -73,6 +73,19 @@ mock.module("../../../db/repositories/containers", () => ({
       return { id };
     },
   },
+  // The runner's enqueue-failure revert validates the read-back status before
+  // handing it to the typed writer; mirror the real vocabulary here.
+  isContainerStatus: (value: string) =>
+    [
+      "pending",
+      "building",
+      "deploying",
+      "running",
+      "stopped",
+      "failed",
+      "deleting",
+      "deleted",
+    ].includes(value),
 }));
 
 mock.module("../apps", () => ({
@@ -144,5 +157,48 @@ describe("DefaultAppDeployRunner — redeploy retires the prior container row (B
     // app stay ≤ 1 (the retired row no longer counts) — no leak across redeploys.
     expect([...rows.values()].some((r) => r.status === "pending")).toBe(true);
     expect(quotaCountForApp(APP_ID)).toBeLessThanOrEqual(1);
+  });
+
+  test("#15826: a failed delete-enqueue reverts the row instead of stranding it in deleting", async () => {
+    rows.clear();
+    rows.set("container-prior", {
+      id: "container-prior",
+      organization_id: ORG_ID,
+      project_name: APP_ID,
+      status: "running",
+    });
+
+    // The delete-enqueue write fails (e.g. the jobs table is unreachable, or the
+    // enqueue-side payload validation throws); the provision enqueue still works
+    // so the new deploy itself proceeds.
+    const enqueued: ContainerJobInsert[] = [];
+    const jobsWriter: ContainerJobsWriter = {
+      async insertJob(job) {
+        if (job.type === JOB_TYPES.CONTAINER_DELETE) {
+          throw new Error("jobs table unavailable");
+        }
+        enqueued.push(job);
+        return { id: `job-${enqueued.length}` };
+      },
+    };
+
+    const runner = new DefaultAppDeployRunner({
+      ensureTenantDb: async () => {
+        throw new Error("ensureTenantDb must NOT be called for a stateless app");
+      },
+      jobsWriter,
+      resolveImage: () => "ghcr.io/elizaos/app:test",
+    });
+
+    await runner.run(APP_ID);
+
+    // The prior row was flipped BACK to its pre-retire status: a `deleting` row
+    // with no CONTAINER_DELETE job is permanently stuck (recovery only fans out
+    // from a claimed legacy job, and `deleting` is excluded from the retire
+    // query), whereas a reverted `running` row is retried by the next deploy.
+    expect(rows.get("container-prior")?.status).toBe("running");
+    // The new deploy still went through — retirement stays best-effort.
+    expect([...rows.values()].some((r) => r.status === "pending")).toBe(true);
+    expect(enqueued.some((j) => j.type === JOB_TYPES.CONTAINER_PROVISION)).toBe(true);
   });
 });

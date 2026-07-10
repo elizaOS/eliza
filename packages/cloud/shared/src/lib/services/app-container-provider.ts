@@ -208,6 +208,27 @@ export class AppContainerProvider {
   async delete(containerName: string): Promise<void> {
     await this.deps.ssh.exec(`docker rm -f ${shellQuote(containerName)}`);
     // Tear down the per-app DB ambassador too (best-effort; no-op if absent).
+    await this.removeDbAmbassador(containerName);
+  }
+
+  /**
+   * Remove a container by its IMMUTABLE docker id. The delete executor prefers
+   * this over the name: `app-<slug>` names are reused by every deploy of an
+   * app, so the id is the only handle that can never resolve to a successor
+   * deploy's live container (#15826). Leaves the shared per-app DB ambassador
+   * alone — whether a live deploy still needs it is the caller's decision
+   * (see {@link removeDbAmbassador}).
+   */
+  async removeByHostContainerId(hostContainerId: string): Promise<void> {
+    await this.deps.ssh.exec(`docker rm -f ${shellQuote(hostContainerId)}`);
+  }
+
+  /**
+   * Tear down the per-app DB ambassador derived from the container name.
+   * Idempotent on the node side (the command is `|| true`-guarded), so a
+   * missing ambassador never fails a teardown.
+   */
+  async removeDbAmbassador(containerName: string): Promise<void> {
     await this.deps.ssh.exec(buildRemoveAmbassadorCmdForContainer(containerName));
   }
 

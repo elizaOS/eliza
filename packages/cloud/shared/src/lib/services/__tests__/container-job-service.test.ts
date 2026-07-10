@@ -36,6 +36,9 @@ function fakeDeps() {
     async findDeletingByOrganization() {
       return [ROW];
     },
+    async findActiveContainerIdsSharingName() {
+      return [];
+    },
     async claimNodeSlot() {
       return true;
     },
