@@ -16,3 +16,10 @@ test("builds the local-inference voice-workbench export before the scenario CLI 
     /package_dirs=\([\s\S]*plugins\/plugin-local-inference[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
   );
 });
+
+test("builds the blocker engine imported by personal-assistant scenarios", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  expect(workflow).toMatch(
+    /package_dirs=\([\s\S]*plugins\/plugin-blocker[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
+  );
+});
