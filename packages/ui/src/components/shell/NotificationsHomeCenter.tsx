@@ -146,8 +146,8 @@ function isInteractiveGestureTarget(target: EventTarget | null): boolean {
  */
 const WHEEL_COLLAPSE_STEP_PX = PULL_COMMIT_PX / 2;
 
-/** Ignore trackpad rebound while the committed 320ms shade settle is running. */
-const WHEEL_COMMIT_LOCK_MS = 360;
+/** Ignore trackpad rebound while the committed shade settle is running. */
+const WHEEL_COMMIT_LOCK_MS = 280;
 
 /** iOS-style visual depth: one, two, or three cards, never more. */
 const MAX_VISIBLE_STACK_LAYERS = 3;
@@ -159,7 +159,8 @@ const STACK_PEEK_OFFSET_PX = 7;
 const STACK_BOTTOM_CLEARANCE_PX = 10;
 
 const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
-const SHADE_CLOSE_FADE_MS = 320;
+const SHADE_CLOSE_FADE_MS = 220;
+const NOTIFICATION_COUNT_RESTORE_MS = 140;
 const NOTIFICATION_ROW_SETTLE_MS = 220;
 const STACK_LAYOUT_TRANSITION = {
   duration: 0.34,
@@ -171,7 +172,7 @@ const STACK_LAYOUT_TRANSITION = {
  * shade renders and commits against. Exported for the gesture tests.
  */
 export function dampenPull(rawDy: number): number {
-  return Math.min(Math.max(0, rawDy - PULL_SLOP_PX) * 0.4, 88);
+  return Math.min(Math.max(0, rawDy - PULL_SLOP_PX) * 0.5, 88);
 }
 
 /**
@@ -184,15 +185,14 @@ export function notificationPullRevealProgress(
   groupIndex: number,
 ): number {
   const progress = Math.min(1, Math.max(0, pullPx / PULL_COMMIT_PX));
-  const easedProgress = progress * progress * (3 - 2 * progress);
   const stagger = Math.min(Math.max(groupIndex, 0), 4) * 0.06;
-  return Math.min(1, Math.max(0, (easedProgress - stagger) / (1 - stagger)));
+  return Math.min(1, Math.max(0, (progress - stagger) / (1 - stagger)));
 }
 
 function notificationPullRevealStyle(progress: number): CSSProperties {
   return {
     opacity: progress,
-    transform: `translate3d(0, ${(1 - progress) * -10}px, 0) scale(${0.985 + progress * 0.015})`,
+    transform: `translate3d(0, ${(1 - progress) * -8}px, 0)`,
   };
 }
 
@@ -210,13 +210,12 @@ function notificationPullRevealStyle(progress: number): CSSProperties {
  *    fades slightly while crossing the scrollport edges — the depth cue of a
  *    platform notification shade. Progressive enhancement only; the fallback
  *    is the plain masked scroll.
- *  - New rows (live arrivals) slide in from the top.
  *  - Rows hidden by the closed shade track pull distance with opacity and
  *    vertical settling, so the user's finger reveals content before release.
  *
- * All of it is opacity/transform/color-only. Reduced motion keeps the direct
- * manipulation transitions that preserve spatial continuity, while omitting
- * scroll-edge decoration and scale-heavy effects.
+ * Reduced motion keeps the direct-manipulation transitions that preserve
+ * spatial continuity, while omitting scroll-edge decoration and scale-heavy
+ * effects.
  */
 const NOTIF_SCROLL_CSS = `
 /* Apple-style entrance: the whole inbox fades + rises a touch the moment it
@@ -265,8 +264,19 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
     opacity ${SHADE_CLOSE_FADE_MS}ms ease-out,
     transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1);
 }
-.eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition {
+.eliza-notif-count-transition {
+  transition:
+    height ${NOTIFICATION_COUNT_RESTORE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    margin-bottom ${NOTIFICATION_COUNT_RESTORE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    opacity ${NOTIFICATION_COUNT_RESTORE_MS}ms ease-out;
+}
+.eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition,
+.eliza-notif-scroll[data-shade-dragging] .eliza-notif-count-transition {
   transition: none;
+}
+.eliza-notif-scroll[data-shade-dragging] .eliza-notif-row,
+.eliza-notif-scroll[data-shade-settling] .eliza-notif-row {
+  animation: none !important;
 }
 .eliza-notif-scroll .eliza-notif-row.eliza-notif-pull-reveal,
 .eliza-notif-scroll .eliza-notif-row.eliza-notif-shade-transition {
@@ -276,20 +286,11 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   scrollbar-width: none;
 }
 .eliza-notif-scroll::-webkit-scrollbar { display: none; }
-@keyframes eliza-notif-row-in {
-  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
-  to   { opacity: 1; transform: none; }
-}
 @keyframes eliza-notif-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
 }
-/* Mount slide-in lives on the row's INNER element; the scroll-driven edge pair
-   lives on the li. Same-property animations on one element fight through their
-   fill states (the later edge animations would pin opacity/transform and
-   swallow the mount slide), so the two effects get separate elements. */
 .eliza-notif-row-inner {
-  animation: eliza-notif-row-in 260ms cubic-bezier(0.22,1,0.36,1) both;
   transition:
     transform ${NOTIFICATION_ROW_SETTLE_MS}ms cubic-bezier(0.22,1,0.36,1),
     opacity ${NOTIFICATION_ROW_SETTLE_MS}ms linear;
@@ -322,7 +323,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
     animation: eliza-notif-fade-in 240ms ease-out both !important;
   }
   .eliza-notif-row-inner {
-    animation: eliza-notif-fade-in 240ms ease-out both !important;
     transition:
       transform ${NOTIFICATION_ROW_SETTLE_MS}ms cubic-bezier(0.22,1,0.36,1),
       opacity ${NOTIFICATION_ROW_SETTLE_MS}ms linear !important;
@@ -341,6 +341,15 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
       transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1) !important;
   }
   .eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition {
+    transition: none !important;
+  }
+  .eliza-notif-count-transition {
+    transition:
+      height ${NOTIFICATION_COUNT_RESTORE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      margin-bottom ${NOTIFICATION_COUNT_RESTORE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      opacity ${NOTIFICATION_COUNT_RESTORE_MS}ms ease-out !important;
+  }
+  .eliza-notif-scroll[data-shade-dragging] .eliza-notif-count-transition {
     transition: none !important;
   }
   .eliza-notif-control-transition {
@@ -911,6 +920,7 @@ export function NotificationsHomeCenter({
 
   const requestShadeCollapse = useCallback(() => {
     if (!shadeExpanded || shadeClosing) return;
+    const draggedFullyClosed = pullPxRef.current <= -PULL_COMMIT_PX;
     cancelClearConfirmation();
     const list = scrollRef.current;
     if (list && list.scrollTop > 0) {
@@ -921,6 +931,13 @@ export function NotificationsHomeCenter({
     // non-zero pull marks the shade as dragging, which intentionally disables
     // child transitions and turns the committed close into a delayed snap.
     setPullPx(0);
+    // A completed direct gesture has already faded the disposable cards to
+    // zero. Remove their layout immediately instead of making the user wait
+    // through a second, invisible close animation.
+    if (draggedFullyClosed) {
+      setShade(false);
+      return;
+    }
     setShadeClosing(true);
     shadeCloseTimer.current = window.setTimeout(() => {
       shadeCloseTimer.current = null;
@@ -1563,10 +1580,10 @@ export function NotificationsHomeCenter({
   const notificationCountVisibility = shadeExpanded
     ? 0
     : 1 - notificationPullRevealProgress(pullPx, 0);
-  // During direct manipulation, keep every expanded card at a stable size and
-  // position. Only the rested count/clear chrome tracks the finger; disposable
-  // rows fade and collapse after release, with transitions enabled.
-  const disposableContentVisibility = 1 - committedCloseProgress;
+  // Visuals track the finger in both directions. Top-level group layout stays
+  // intact while it fades, so every card follows one continuous trajectory
+  // instead of independently reflowing the list during a slow drag.
+  const disposableContentVisibility = 1 - shadeCloseProgress;
   const emptyStateVisibility = shadeExpanded
     ? 1 - shadeCloseProgress
     : notificationPullRevealProgress(pullPx, 0);
@@ -1657,7 +1674,7 @@ export function NotificationsHomeCenter({
         opacity: notificationCountVisibility,
         transition: pullPx ? "none" : undefined,
       }}
-      className="eliza-notif-shade-transition flex shrink-0 items-center justify-center overflow-hidden px-3 text-2xs font-medium text-white/50"
+      className="eliza-notif-count-transition flex shrink-0 items-center justify-center overflow-hidden px-3 text-2xs font-medium text-white/50"
     >
       <button
         type="button"
@@ -1715,6 +1732,7 @@ export function NotificationsHomeCenter({
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
         data-shade-preview={previewingExpansion ? "expanding" : undefined}
         data-shade-dragging={pullPx !== 0 ? "" : undefined}
+        data-shade-settling={shadeClosing ? "" : undefined}
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
@@ -1784,6 +1802,14 @@ export function NotificationsHomeCenter({
           const revealProgress = pullRevealed
             ? notificationPullRevealProgress(pullPx, groupIndex)
             : 1;
+          const closeVisibility = shadeClosing
+            ? 0
+            : shadeExpanded && pullPx < 0
+              ? notificationPullRevealProgress(
+                  PULL_COMMIT_PX + pullPx,
+                  groupIndex,
+                )
+              : 1;
           const stackExpanded = expandedStacks.has(group.key);
           // Every presentation shares one shell, so the top NotificationRow
           // stays under the same parent/key while a fanned stack closes.
@@ -1855,10 +1881,10 @@ export function NotificationsHomeCenter({
                     : stacked
                       ? stackTailPx
                       : 0,
-                  opacity: groupWasRested ? 1 : disposableContentVisibility,
+                  opacity: groupWasRested ? 1 : closeVisibility,
                   transform: groupWasRested
                     ? undefined
-                    : `translate3d(0, ${(1 - disposableContentVisibility) * -8}px, 0)`,
+                    : `translate3d(0, ${(1 - closeVisibility) * -8}px, 0)`,
                   transition: pullPx
                     ? "none"
                     : `padding-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1), opacity ${SHADE_CLOSE_FADE_MS}ms ease-out, transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1)`,
@@ -1920,7 +1946,11 @@ export function NotificationsHomeCenter({
                   </div>
                 ) : null}
                 <motion.ul
-                  layout="position"
+                  layout={
+                    shadeExpanded && pullPx === 0 && !shadeClosing
+                      ? "position"
+                      : false
+                  }
                   transition={{ layout: STACK_LAYOUT_TRANSITION }}
                   className={cn(
                     "relative z-[2] flex flex-col",
@@ -1963,7 +1993,7 @@ export function NotificationsHomeCenter({
                   const peekCloseVisibility = fanned
                     ? shadeCloseProgress
                     : shadeExpanded && !restedNotificationIds.has(peek.id)
-                      ? disposableContentVisibility
+                      ? closeVisibility
                       : 1;
                   return (
                     <button

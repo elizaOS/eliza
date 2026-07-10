@@ -93,7 +93,7 @@ function collapseShade(): HTMLElement {
 }
 
 function finishShadeCollapse(): void {
-  act(() => vi.advanceTimersByTime(350));
+  act(() => vi.advanceTimersByTime(250));
 }
 
 function setOverflowingListGeometry(list: HTMLElement): void {
@@ -500,8 +500,8 @@ describe("dampenPull", () => {
   it("has a slop dead zone, applies deliberate resistance, and clamps", () => {
     expect(dampenPull(0)).toBe(0);
     expect(dampenPull(8)).toBe(0); // inside the dead zone
-    expect(dampenPull(48)).toBe(16); // (48-8) × 0.4
-    expect(dampenPull(128)).toBe(PULL_COMMIT_PX);
+    expect(dampenPull(48)).toBe(20); // (48-8) × 0.5
+    expect(dampenPull(104)).toBe(PULL_COMMIT_PX);
     expect(dampenPull(10_000)).toBe(88); // clamped rubber band
   });
 });
@@ -1302,7 +1302,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.className).toContain("scroll-fade-b-[1.5rem]");
     fireEvent.click(collapse);
     // The total stays out of the expanded layout while rows settle; it fades in
-    // after the 320ms close removes the expanded DOM.
+    // after the short close settle removes the expanded DOM.
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     expect(clearSlot.style.height).toBe("0px");
     expect(clearSlot.style.marginBottom).toBe("-8px");
@@ -1392,7 +1392,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.queryByText("Files updated")).toBeNull();
   });
 
-  it("keeps expanded cards stable during an upward drag, then settles on release", () => {
+  it("fades expanded cards with an upward drag and completes directly on release", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
@@ -1417,7 +1417,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     for (const peek of screen.getAllByTestId("notification-stack-peek")) {
-      expect(Number.parseFloat(peek.style.opacity)).toBeGreaterThan(0);
+      expect(Number.parseFloat(peek.style.opacity)).toBe(0);
     }
 
     fireEvent.pointerUp(list, {
@@ -1427,9 +1427,78 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientY: 20,
     });
     expect(list.getAttribute("data-shade-dragging")).toBeNull();
-    finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+  });
+
+  it("tracks a partial upward drag and reverses it without snapping", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "mail",
+        title: "Urgent mail",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "files",
+        title: "Files updated",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "low",
+        source: "agent",
+        title: "Agent summary",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = expandShade();
+    const filesGroup = screen
+      .getByText("Files updated")
+      .closest("[data-notification-group]")
+      ?.querySelector<HTMLElement>("[data-notification-group-content]");
+    const agentGroup = screen
+      .getByText("Agent summary")
+      .closest("[data-notification-group]")
+      ?.querySelector<HTMLElement>("[data-notification-group-content]");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 83,
+      clientX: 12,
+      clientY: 160,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 83,
+      clientX: 12,
+      clientY: 92,
+    });
+
+    const filesOpacity = Number.parseFloat(filesGroup?.style.opacity ?? "1");
+    const agentOpacity = Number.parseFloat(agentGroup?.style.opacity ?? "1");
+    expect(filesOpacity).toBeGreaterThan(0);
+    expect(filesOpacity).toBeLessThan(1);
+    expect(agentOpacity).toBeLessThan(filesOpacity);
+
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 83,
+      clientX: 12,
+      clientY: 160,
+    });
+    expect(filesGroup?.style.opacity).toBe("1");
+    expect(agentGroup?.style.opacity).toBe("1");
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 83,
+      clientX: 12,
+      clientY: 160,
+    });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
   it("fades fanned controls and extra rows before folding their stable top card", () => {
