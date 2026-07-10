@@ -5534,6 +5534,10 @@ ${cloudBrandUserAgentMarkerLines()}
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        // Cloud builds keep the native glass tier: GlassBridgePlugin has no
+        // local-agent dependencies (android.* + Capacitor only).
+        registerPlugin(GlassBridgePlugin.class);
+
         super.onCreate(savedInstanceState);
 
         if (getBridge() != null) {
