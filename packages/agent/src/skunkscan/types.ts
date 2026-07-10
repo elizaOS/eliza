@@ -74,6 +74,47 @@ export type WalletEvidenceItem = {
   description: string;
 };
 
+export type WalletEvidenceRecord = {
+  id: string;
+
+  category:
+    | "identity"
+    | "activity"
+    | "age"
+    | "funding"
+    | "portfolio"
+    | "defi"
+    | "risk"
+    | "whale"
+    | "behavior"
+    | "exposure"
+    | "relationships"
+    | "compliance"
+    | "custody"
+    | "smart_money"
+    | "transaction_risk";
+
+  fact: string;
+
+  evidenceType:
+    | "on_chain_fact"
+    | "registry_match"
+    | "provider_result"
+    | "calculated_metric"
+    | "analytical_inference";
+
+  sourceId: string;
+  sourceName: string;
+
+  confidence: "low" | "medium" | "high";
+
+  observedAt?: string | null;
+
+  relatedAddresses: string[];
+
+  limitations: string[];
+};
+
 export type WalletExposureSummary = {
   exposureScore: number;
   exposureLevel: "none" | "low" | "medium" | "high";
@@ -447,6 +488,7 @@ export type WalletInvestigationResult = {
   exposure?: WalletExposureSummary;
   relationships?: WalletRelationshipSummary;
   evidence?: WalletEvidenceItem[];
+  evidenceRecords?: WalletEvidenceRecord[];
   recentTransactions?: WalletRecentTransaction[];
   transactionCountSample?: number;
   activity?: WalletActivitySummary;
