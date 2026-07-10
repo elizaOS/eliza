@@ -24,6 +24,9 @@
  * injected on the user content blocks corresponding to the cacheBreakpoints from
  * the provider cache plan. This extends the single system-message breakpoint to
  * up to three more user-content breakpoints under Anthropic's four-block cap.
+ * Anthropic-local cache options are parsed — and strictly validated — only when
+ * the selected model routes to Anthropic; malformed cacheControl or breakpoint
+ * shapes throw a typed ElizaError instead of being silently dropped (#15966).
  */
 import type {
   GenerateTextParams,
@@ -246,10 +249,12 @@ function isAnthropicModel(modelName: string): boolean {
 type WireProviderOptions = NonNullable<SystemModelMessage["providerOptions"]>;
 
 function anthropicCacheProviderOptions(cacheControl: AnthropicCacheControl): WireProviderOptions {
+  // Inputs reach here only through the boundary validators below, so the TTL is
+  // already known-good; this is a key-or-omit materialization, never a coercion.
   return {
     anthropic: {
       cacheControl:
-        cacheControl.ttl === "5m" || cacheControl.ttl === "1h"
+        cacheControl.ttl !== undefined
           ? { type: "ephemeral", ttl: cacheControl.ttl }
           : { type: "ephemeral" },
     },
@@ -331,15 +336,58 @@ function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
 
 type AnthropicCacheBreakpoint = { segmentIndex: number; cacheControl: AnthropicCacheControl };
 
-function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBreakpoint {
-  return (
-    isRecord(value) &&
-    typeof value.segmentIndex === "number" &&
-    Number.isInteger(value.segmentIndex) &&
-    value.segmentIndex >= 0 &&
-    isRecord(value.cacheControl) &&
-    value.cacheControl.type === "ephemeral"
-  );
+// Breakpoints are caller-requested cache placements: silently filtering a
+// malformed entry (the pre-#15966 behavior) emits a request the caller believes
+// is cached when it is not. Every entry is validated and any unsupported shape
+// throws before a provider request can be built.
+function parseAnthropicCacheBreakpoint(value: unknown, index: number): AnthropicCacheBreakpoint {
+  if (!isRecord(value)) {
+    throw new ElizaError(
+      `Invalid anthropic.cacheBreakpoints[${index}]: expected { segmentIndex, cacheControl } object`,
+      {
+        code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+        context: { index, breakpoint: value },
+        severity: "fatal",
+      }
+    );
+  }
+  const segmentIndex = value.segmentIndex;
+  if (typeof segmentIndex !== "number" || !Number.isInteger(segmentIndex) || segmentIndex < 0) {
+    throw new ElizaError(
+      `Invalid anthropic.cacheBreakpoints[${index}].segmentIndex: expected a non-negative integer`,
+      {
+        code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+        context: { index, segmentIndex },
+        severity: "fatal",
+      }
+    );
+  }
+  const cacheControl = value.cacheControl;
+  if (!isRecord(cacheControl) || cacheControl.type !== "ephemeral") {
+    throw new ElizaError(
+      `Invalid anthropic.cacheBreakpoints[${index}].cacheControl: expected { type: 'ephemeral' }`,
+      {
+        code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+        context: { index, cacheControl },
+        severity: "fatal",
+      }
+    );
+  }
+  const ttl = cacheControl.ttl;
+  if (ttl !== undefined && ttl !== "5m" && ttl !== "1h") {
+    throw new ElizaError(
+      `Invalid anthropic.cacheBreakpoints[${index}].cacheControl.ttl: expected '5m' or '1h'`,
+      {
+        code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+        context: { index, ttl },
+        severity: "fatal",
+      }
+    );
+  }
+  return {
+    segmentIndex,
+    cacheControl: { type: "ephemeral", ...(ttl === "5m" || ttl === "1h" ? { ttl } : {}) },
+  };
 }
 
 function readAnthropicCacheBreakpoints(
@@ -347,8 +395,37 @@ function readAnthropicCacheBreakpoints(
   maxBreakpoints: number
 ): AnthropicCacheBreakpoint[] {
   const raw = anthropicOptions?.cacheBreakpoints;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(isAnthropicCacheBreakpoint).slice(0, maxBreakpoints);
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    throw new ElizaError("Invalid anthropic.cacheBreakpoints: expected an array", {
+      code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+      context: { cacheBreakpoints: raw },
+      severity: "fatal",
+    });
+  }
+  // Validate every supplied entry before applying the slot cap so a malformed
+  // entry past the cap still fails loudly instead of being dropped unseen.
+  const breakpoints = raw.map((entry, index) => parseAnthropicCacheBreakpoint(entry, index));
+  return breakpoints.slice(0, maxBreakpoints);
+}
+
+// The slot cap defaults to Anthropic's three user-content breakpoints (the
+// fourth block is the system message). Absent means "use the default"; a
+// present-but-malformed value is a broken cache plan and must not be silently
+// replaced by the default.
+function readAnthropicMaxBreakpoints(
+  anthropicOptions: Record<string, unknown> | undefined
+): number {
+  const raw = anthropicOptions?.maxBreakpoints;
+  if (raw === undefined) return 3;
+  if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+    throw new ElizaError("Invalid anthropic.maxBreakpoints: expected a non-negative integer", {
+      code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+      context: { maxBreakpoints: raw },
+      severity: "fatal",
+    });
+  }
+  return raw;
 }
 
 /**
@@ -615,9 +692,13 @@ function buildGenerateParams(
   const anthropicOptions = isRecord(rawProviderOptions?.anthropic)
     ? rawProviderOptions.anthropic
     : undefined;
-  const anthropicCacheControl =
-    readAnthropicCacheControl(anthropicOptions) ??
-    (isAnthropic ? getRuntimeCacheControl(runtime) : undefined);
+  // Anthropic-local cache options are parsed — and therefore rejected — only
+  // when the selected model actually routes to Anthropic. A non-Anthropic route
+  // neither injects nor consumes this namespace, so its contents pass through
+  // unparsed rather than failing an unrelated request (#15966).
+  const anthropicCacheControl = isAnthropic
+    ? (readAnthropicCacheControl(anthropicOptions) ?? getRuntimeCacheControl(runtime))
+    : undefined;
   const anthropicCacheSystem = anthropicOptions?.cacheSystem !== false;
   const cacheSystemMessage =
     isAnthropic && anthropicCacheSystem
@@ -626,15 +707,11 @@ function buildGenerateParams(
   const shouldInjectMessageLevelCache = Boolean(cacheSystemMessage);
 
   // Collect cacheBreakpoints for per-segment user-content injection.
-  // Only used on the prompt-only path (no messages) together with promptSegments.
-  // maxBreakpoints caps the number of slots used (Anthropic allows up to 3 user-content).
-  const maxBreakpoints =
-    typeof anthropicOptions?.maxBreakpoints === "number" &&
-    Number.isInteger(anthropicOptions.maxBreakpoints) &&
-    anthropicOptions.maxBreakpoints >= 0
-      ? anthropicOptions.maxBreakpoints
-      : 3;
-  const cacheBreakpoints = readAnthropicCacheBreakpoints(anthropicOptions, maxBreakpoints);
+  // Only used on the prompt-only path (no messages) together with promptSegments,
+  // and only parsed on Anthropic routes (same scoping as cacheControl above).
+  const cacheBreakpoints = isAnthropic
+    ? readAnthropicCacheBreakpoints(anthropicOptions, readAnthropicMaxBreakpoints(anthropicOptions))
+    : [];
   const promptSegments = Array.isArray(
     (paramsWithAttachments as { promptSegments?: unknown }).promptSegments
   )
