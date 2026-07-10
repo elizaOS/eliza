@@ -154,6 +154,11 @@ describe("HomeScreen", () => {
     expect(wrapper?.className).toContain("mt-4");
     // The inbox itself fills its wrapper and scrolls internally.
     expect(card.className).toContain("flex-1");
+    // The containing flex column has a definite height. `min-h-full` lets a
+    // large inbox grow to its content height and continue behind the composer.
+    const column = screen.getByTestId("home-content-column");
+    expect(column.className).toContain("h-full");
+    expect(column.className).not.toContain("min-h-full");
     // Rows are grouped by producer physically only — no header eyebrows render.
     expect(screen.getByTestId("notification-row")).toBeTruthy();
     expect(screen.queryByTestId("notification-group-label")).toBeNull();

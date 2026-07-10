@@ -217,8 +217,11 @@ export function HomeScreen({
         )}
       >
         <style>{HOME_ENTER_CSS}</style>
-        {/* The content column owns the FULL height of the scroller (min-h-full)
-          and lays its blocks out as a flex column so the vertical space is
+        {/* The content column owns the definite FULL height of the scroller
+          (`h-full`) so flex children such as the notification inbox receive a
+          bounded height and scroll internally instead of growing behind the
+          floating composer. It lays its blocks out as a flex column so the
+          vertical space is
           distributed on purpose, not left as a void above the composer. The
           editorial header (greeting/clock + weather) anchors the TOP; the
           notification inbox sits directly beneath it; the prioritized widget
@@ -226,7 +229,10 @@ export function HomeScreen({
           space and centres its content within it, so an empty widget set reads
           as calm airiness rather than a broken gap; the AOSP tiles settle at
           the BOTTOM. */}
-        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
+        <div
+          data-testid="home-content-column"
+          className="mx-auto flex h-full w-full max-w-2xl flex-col"
+        >
           {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
