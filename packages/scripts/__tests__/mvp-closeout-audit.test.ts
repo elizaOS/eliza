@@ -120,6 +120,39 @@ describe("atomic MVP closeout audit", () => {
     );
   });
 
+  test("ignores a foreign-repo card absent from the eliza rows", () => {
+    // A Project-15 card from another repository has no eliza open/closed row,
+    // so keying by bare number made validateSnapshot hard-fail with
+    // "Project issue #999 is missing from open/closed snapshot rows". Repo
+    // scoping drops the foreign card instead of demanding an eliza row for it.
+    const crossRepo = snapshot();
+    crossRepo.project.items.push({
+      content: {
+        type: "Issue",
+        number: 999,
+        repository: "other-org/other-repo",
+        title: "Foreign issue 999",
+        url: "https://github.com/other-org/other-repo/issues/999",
+      },
+      title: "Foreign issue 999",
+      status: "Ready",
+      labels: ["mvp"],
+    });
+
+    expect(() => audit.validateSnapshot(crossRepo)).not.toThrow();
+    const report = audit.buildCloseoutReport(crossRepo);
+    expect(report.integrityOk).toBe(true);
+    expect(report.parity.readiness).toEqual([1, 2]);
+    expect(report.parity.evidence).toEqual([1, 2]);
+  });
+
+  test("labels a source-less snapshot unknown, not fixture", () => {
+    const anonymous = snapshot();
+    delete (anonymous as { source?: string }).source;
+    const report = audit.buildCloseoutReport(anonymous);
+    expect(report.snapshot.source).toBe("unknown");
+  });
+
   test("CLI emits one complete fixture report", () => {
     const dir = mkdtempSync(join(tmpdir(), "mvp-closeout-fixture-"));
     const fixture = join(dir, "snapshot.json");

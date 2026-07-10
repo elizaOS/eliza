@@ -171,7 +171,7 @@ function projectItemRepository(item) {
   );
 }
 
-function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
+export function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
   const items = Array.isArray(payload) ? payload : (payload.items ?? []);
   const byNumber = new Map();
   const expectedRepo = normalizeRepository(repo);
