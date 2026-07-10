@@ -21,6 +21,13 @@
 import { useEffect, useState } from "react";
 import { isNativeGlassAvailable } from "./native-bridge";
 
+/**
+ * BREAKING (documented): the native tier value renamed `ios26-native` →
+ * `native` when the Android GlassBridge landed — one value, two platforms.
+ * Migration for downstream code: replace `tier === "ios26-native"` (and the
+ * `[data-glass-tier="ios26-native"]` selector) with `"native"`. No in-repo
+ * consumer used the old literal outside the glass system itself.
+ */
 export type GlassTier = "native" | "css-refraction" | "css-frosted";
 
 function cssTier(): GlassTier {

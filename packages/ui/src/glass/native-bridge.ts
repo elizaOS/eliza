@@ -39,6 +39,16 @@ export interface NativeGlassOptions {
   colorScheme?: "light" | "dark" | "system";
 }
 
+/** Native-truth readback of one region, for diagnostics and device e2e. */
+export interface NativeGlassRegionState {
+  exists: boolean;
+  regionCount: number;
+  /** Present when `exists`: panel z-order relative to the WebView. */
+  attachedBelowWebView?: boolean;
+  /** Present when `exists`: REAL view geometry (device px / iOS points). */
+  rect?: { x: number; y: number; width: number; height: number };
+}
+
 interface GlassBridgePlugin {
   attachGlass(options: NativeGlassOptions): Promise<{ attached: boolean }>;
   updateRect(options: {
@@ -49,6 +59,12 @@ interface GlassBridgePlugin {
   /** UIGlassContainerEffect merge distance for sibling regions. */
   setGrouping(options: { spacing: number }): Promise<void>;
   isAvailable(): Promise<{ available: boolean }>;
+  /**
+   * Reads the region's REAL native view state (existence, count, z-order,
+   * geometry) — the seam device e2e uses to prove the lifecycle against
+   * native truth instead of resolved promises.
+   */
+  getRegionState(options: { id: string }): Promise<NativeGlassRegionState>;
 }
 
 interface CapacitorGlobal {

@@ -1,24 +1,3 @@
-package ai.elizaos.app;
-
-import android.animation.ValueAnimator;
-import android.app.Activity;
-import android.graphics.Color;
-import android.graphics.RectF;
-import android.graphics.drawable.GradientDrawable;
-import android.os.Build;
-import android.view.View;
-import android.view.ViewGroup;
-import android.webkit.WebView;
-
-import com.getcapacitor.JSObject;
-import com.getcapacitor.Plugin;
-import com.getcapacitor.PluginCall;
-import com.getcapacitor.PluginMethod;
-import com.getcapacitor.annotation.CapacitorPlugin;
-
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * Android half of the {@code GlassBridge} Capacitor plugin: renders a native
  * Material overlay panel behind anchored regions of the WebView — the Android
@@ -45,10 +24,37 @@ import java.util.Map;
  * ignored; {@code setGrouping} is stored best-effort for parity, matching the
  * iOS contract.
  */
+package ai.elizaos.app;
+
+import android.animation.ValueAnimator;
+import android.app.Activity;
+import android.graphics.Color;
+import android.graphics.RectF;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.WebView;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/** Native material regions behind the WebView; see the file header. */
 @CapacitorPlugin(name = "GlassBridge")
 public class GlassBridgePlugin extends Plugin {
 
     private static final long RECT_ANIMATION_MS = 150;
+    // Untrusted-boundary rect bounds (CSS px): a dimension must be a finite
+    // positive number and no coordinate may leave this envelope — far above
+    // any real viewport, far below anything that could stress LayoutParams
+    // or the animator with absurd math.
+    private static final double MAX_RECT_COORD_CSS_PX = 100_000d;
 
     /** Attached panel views by caller id. Main-thread only. */
     private final Map<String, View> regions = new HashMap<>();
@@ -71,7 +77,7 @@ public class GlassBridgePlugin extends Plugin {
         String id = call.getString("id");
         RectF rect = parseRect(call.getObject("rect"));
         if (id == null || rect == null) {
-            call.reject("attachGlass requires id and rect{x,y,width,height}");
+            call.reject("attachGlass requires id and a finite, positive rect{x,y,width,height}");
             return;
         }
         if (!glassSupported()) {
@@ -141,7 +147,7 @@ public class GlassBridgePlugin extends Plugin {
         String id = call.getString("id");
         RectF rect = parseRect(call.getObject("rect"));
         if (id == null || rect == null) {
-            call.reject("updateRect requires id and rect{x,y,width,height}");
+            call.reject("updateRect requires id and a finite, positive rect{x,y,width,height}");
             return;
         }
         Activity activity = getActivity();
@@ -205,6 +211,50 @@ public class GlassBridgePlugin extends Plugin {
                 ((ViewGroup) panel.getParent()).removeView(panel);
             }
             call.resolve();
+        });
+    }
+
+    /**
+     * Diagnostic readback for device e2e: reports whether {@code id} has a
+     * live panel, the total region count, and the panel's REAL on-screen
+     * geometry (device px, container coordinates) read from the View itself —
+     * so tests prove insertion/replace/move/detach against native truth, not
+     * just resolved promises.
+     */
+    @PluginMethod
+    public void getRegionState(PluginCall call) {
+        String id = call.getString("id");
+        if (id == null) {
+            call.reject("getRegionState requires id");
+            return;
+        }
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("no activity");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            JSObject result = new JSObject();
+            result.put("regionCount", regions.size());
+            View panel = regions.get(id);
+            boolean exists = panel != null && panel.getParent() != null;
+            result.put("exists", exists);
+            if (exists) {
+                ViewGroup parent = (ViewGroup) panel.getParent();
+                WebView webView = bridge.getWebView();
+                result.put("attachedBelowWebView",
+                        webView != null
+                                && parent.indexOfChild(panel)
+                                        < parent.indexOfChild(webView));
+                JSObject rect = new JSObject();
+                rect.put("x", (double) panel.getX());
+                rect.put("y", (double) panel.getY());
+                ViewGroup.LayoutParams lp = panel.getLayoutParams();
+                rect.put("width", (double) lp.width);
+                rect.put("height", (double) lp.height);
+                result.put("rect", rect);
+            }
+            call.resolve(result);
         });
     }
 
@@ -278,14 +328,25 @@ public class GlassBridgePlugin extends Plugin {
                 cssRect.bottom * density);
     }
 
+    // error-policy:J3 untrusted Capacitor boundary — a malformed rect
+    // (missing/non-finite/non-positive/out-of-envelope values) produces an
+    // explicit null → the method rejects; nothing is clamped into a
+    // fake-valid region that would reach LayoutParams or the animator.
     private static RectF parseRect(JSObject object) {
         if (object == null) return null;
         double x = object.optDouble("x", Double.NaN);
         double y = object.optDouble("y", Double.NaN);
         double width = object.optDouble("width", Double.NaN);
         double height = object.optDouble("height", Double.NaN);
-        if (Double.isNaN(x) || Double.isNaN(y) || Double.isNaN(width)
-                || Double.isNaN(height)) {
+        if (!Double.isFinite(x) || !Double.isFinite(y)
+                || !Double.isFinite(width) || !Double.isFinite(height)) {
+            return null;
+        }
+        if (width <= 0 || height <= 0) return null;
+        if (Math.abs(x) > MAX_RECT_COORD_CSS_PX
+                || Math.abs(y) > MAX_RECT_COORD_CSS_PX
+                || width > MAX_RECT_COORD_CSS_PX
+                || height > MAX_RECT_COORD_CSS_PX) {
             return null;
         }
         return new RectF((float) x, (float) y,
