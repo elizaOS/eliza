@@ -134,6 +134,7 @@ import {
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
+import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
   filterRenderableShellMessages,
@@ -149,41 +150,6 @@ import {
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ConversationNav, ShellController } from "./useShellController";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
-
-/**
- * Wraps a pull-gesture binding so `pressed` tracks whether a pointer is held on
- * the bound element — set on pointerdown, cleared on every terminal (up, cancel,
- * lost-capture). A drag handle that unmounts under a captured pointer drops the
- * capture (Chromium fires pointercancel/lostpointercapture on the dead node and
- * the gesture's settle never runs); the consumer reads this ref in the element's
- * MOUNT gate so the handle stays alive across the whole press, closing the
- * window between pointerdown and the integrator's first frame where a stray
- * re-render would otherwise unmount it.
- */
-function withPressLatch(
-  binding: PullGestureBinding,
-  pressed: React.MutableRefObject<boolean>,
-): PullGestureBinding {
-  return {
-    onPointerDown: (event) => {
-      pressed.current = true;
-      binding.onPointerDown(event);
-    },
-    onPointerMove: binding.onPointerMove,
-    onPointerUp: (event) => {
-      pressed.current = false;
-      binding.onPointerUp(event);
-    },
-    onPointerCancel: (event) => {
-      pressed.current = false;
-      binding.onPointerCancel(event);
-    },
-    onLostPointerCapture: (event) => {
-      pressed.current = false;
-      binding.onLostPointerCapture(event);
-    },
-  };
-}
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
@@ -1501,10 +1467,13 @@ export function ContinuousChatOverlay({
   // sheet's settle springs — the desktop-held FULL→bottom drain then reads the
   // corrupted sheet and never engages, stuck at scale 1.00). Held deliberately
   // OUT of the settle-suppression guards (unlike `draggingRef`): they only keep
-  // the element mounted, and the browser guarantees a pointerup/cancel/lostcapture
-  // terminal for every press, so they clear without a fragile per-callback web.
-  const grabberPressRef = React.useRef(false);
-  const restorePressRef = React.useRef(false);
+  // the element mounted. Each ref holds the ACCEPTED pointer's id (#15824), not
+  // a boolean: only an eligible primary press latches (the browser guarantees a
+  // terminal for a captured press — an ineligible one gets no capture and no
+  // such guarantee), and only that pointer's own terminal clears it, so a
+  // secondary finger's up can never unlatch a still-held primary drag.
+  const grabberPressRef = React.useRef<number | null>(null);
+  const restorePressRef = React.useRef<number | null>(null);
   // Peak RAW (pre-clamp) pull height reached during the current upward drag
   // (#13531). The visible `threadHeight` is rubber-band-clamped at `openH`, so a
   // deliberate over-pull past FULL is invisible to a `threadHeight.get()` read on
@@ -4887,7 +4856,7 @@ export function ContinuousChatOverlay({
         {!firstRunOpen &&
         ((!fullBleed && !restoreDragging) ||
           draggingRef.current ||
-          grabberPressRef.current) ? (
+          grabberPressRef.current != null) ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
           // while a restore drag is in flight (so the strip keeps the pointer
           // capture through the un-maximize) — EXCEPT while a grabber drag is
@@ -5132,7 +5101,9 @@ export function ContinuousChatOverlay({
                 over the top bar fall THROUGH to this strip. Keyboard-operable
                 (Enter/Space/ArrowDown restore) so the gesture-only affordance
                 stays WCAG 2.1.1 operable. */}
-            {(fullBleed || restoreDragging || restorePressRef.current) &&
+            {(fullBleed ||
+              restoreDragging ||
+              restorePressRef.current != null) &&
             !pinnedOpen ? (
               <button
                 {...restoreZoneBinding}
