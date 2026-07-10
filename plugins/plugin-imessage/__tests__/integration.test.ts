@@ -1,8 +1,8 @@
 /**
- * Unit coverage for the plugin's public export surface and the pure
- * target/handle/parsing helpers (`isPhoneNumber`, `isEmail`,
- * `normalizeIMessageTarget`, AppleScript/chat.db parsers, chunking). No macOS,
- * chat.db, or live service — deterministic string/shape assertions only.
+ * Public helper and chat.db reader coverage. Pure target/parsing behavior is
+ * deterministic; supported SQLite runtimes also exercise real temporary
+ * databases through the same joins, cursors, and attachment queries as the
+ * connector and corpus exporter.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -28,6 +28,7 @@ import imessagePlugin, {
   // Type utilities
   isPhoneNumber,
   isValidIMessageTarget,
+  jsMsToAppleDateBounds,
   MAX_IMESSAGE_MESSAGE_LENGTH,
   normalizeContactHandle,
   normalizeIMessageTarget,
@@ -561,6 +562,21 @@ describe("appleDateToJsMs", () => {
   });
 });
 
+describe("jsMsToAppleDateBounds", () => {
+  it("preserves exact millisecond cutoffs without unsafe number multiplication", () => {
+    const cutoff = Date.UTC(2024, 6, 5);
+    const bounds = jsMsToAppleDateBounds(cutoff);
+
+    expect(bounds.seconds).toBe((cutoff - Date.UTC(2001, 0, 1)) / 1000);
+    expect(bounds.nanoseconds).toBe(BigInt(cutoff - Date.UTC(2001, 0, 1)) * 1_000_000n);
+  });
+
+  it("rejects invalid or pre-Apple-epoch bounds", () => {
+    expect(() => jsMsToAppleDateBounds(Number.NaN)).toThrow(/safe epoch-millisecond/);
+    expect(() => jsMsToAppleDateBounds(Date.UTC(2000, 11, 31))).toThrow(/safe epoch-millisecond/);
+  });
+});
+
 describe("chatDbMessageToPublicShape", () => {
   it("maps every ChatDbMessage field onto the public IMessageMessage shape", () => {
     const result = chatDbMessageToPublicShape({
@@ -587,6 +603,8 @@ describe("chatDbMessageToPublicShape", () => {
         {
           guid: "att-1",
           filename: "/tmp/image.png",
+          transferName: "image.png",
+          path: "/tmp/image.png",
           uti: "public.png",
           mimeType: "image/png",
           totalBytes: 123,
@@ -908,6 +926,89 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", () => {
       expect(afterEleven.map((r) => r.rowId)).toEqual([12, 13]);
 
       reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("pages a bounded historical window without join duplicates or cursor gaps", async ({
+    skip,
+  }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const openDatabase = await getDatabase();
+      if (!openDatabase) {
+        skip("No supported SQLite runtime is available for iMessage fixture tests");
+        return;
+      }
+      const cutoff = Date.UTC(2024, 6, 5);
+      const before = BigInt(cutoff - Date.UTC(2001, 0, 1) - 1) * 1_000_000n;
+      const exact = BigInt(cutoff - Date.UTC(2001, 0, 1)) * 1_000_000n;
+      const after = BigInt(cutoff - Date.UTC(2001, 0, 1) + 1) * 1_000_000n;
+      const fixture = openDatabase(path);
+      fixture.run(
+        `INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (14, 'guid-14', 'before', ${before}, 0, 1, 'iMessage')`
+      );
+      fixture.run(
+        `INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (15, 'guid-15', 'exact', ${exact}, 0, 1, 'iMessage')`
+      );
+      fixture.run(
+        `INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (16, 'guid-16', 'after', ${after}, 0, 1, 'iMessage')`
+      );
+      fixture.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 14)");
+      fixture.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 15)");
+      fixture.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (2, 15)");
+      fixture.run("INSERT INTO chat_message_join (chat_id, message_id) VALUES (1, 16)");
+      fixture.close();
+
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const first = reader.pageMessages({
+        sinceMs: cutoff,
+        untilMs: cutoff + 2,
+        afterRowId: 0,
+        throughRowId: 16,
+        limit: 1,
+      });
+      const second = reader.pageMessages({
+        sinceMs: cutoff,
+        untilMs: cutoff + 2,
+        afterRowId: first[0]?.rowId ?? 0,
+        throughRowId: 16,
+        limit: 1,
+      });
+      const eof = reader.pageMessages({
+        sinceMs: cutoff,
+        untilMs: cutoff + 2,
+        afterRowId: second[0]?.rowId ?? 0,
+        throughRowId: 16,
+        limit: 1,
+      });
+
+      expect(first.map((row) => row.rowId)).toEqual([15]);
+      expect(second.map((row) => row.rowId)).toEqual([16]);
+      expect(eof).toEqual([]);
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("throws for invalid bounds and after the strict reader is closed", async ({ skip }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const base = {
+        sinceMs: Date.UTC(2024, 6, 5),
+        untilMs: Date.UTC(2024, 6, 6),
+        afterRowId: 0,
+        throughRowId: 13,
+        limit: 100,
+      };
+      expect(() => reader.pageMessages({ ...base, limit: 0 })).toThrow(/Invalid.*page bounds/);
+      reader.close();
+      expect(() => reader.pageMessages(base)).toThrow(/closed.*reader/);
     } finally {
       cleanup();
     }

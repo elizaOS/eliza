@@ -51,24 +51,34 @@ export const corpusAttachmentSchema = z.object({
   dataBase64: z.string().optional(),
 });
 
-export const corpusMessageSchema = z.object({
-  id: nonEmptyString,
-  platform: z.enum(corpusPlatforms),
-  accountId: nonEmptyString,
-  threadId: nonEmptyString,
-  ts: z.number().int().min(CORPUS_CUTOFF_MS),
-  direction: z.enum(directions),
-  senderId: nonEmptyString,
-  senderDisplay: nonEmptyString,
-  recipients: z.array(corpusRecipientSchema),
-  subject: optionalNonEmptyString,
-  text: nonEmptyString,
-  snippet: optionalNonEmptyString,
-  labels: z.array(nonEmptyString).default([]),
-  attachments: z.array(corpusAttachmentSchema).default([]),
-  replyToId: optionalNonEmptyString,
-  scrubState: z.enum(scrubStates),
-});
+export const corpusMessageSchema = z
+  .object({
+    id: nonEmptyString,
+    platform: z.enum(corpusPlatforms),
+    accountId: nonEmptyString,
+    threadId: nonEmptyString,
+    ts: z.number().int().min(CORPUS_CUTOFF_MS),
+    direction: z.enum(directions),
+    senderId: nonEmptyString,
+    senderDisplay: nonEmptyString,
+    recipients: z.array(corpusRecipientSchema),
+    subject: optionalNonEmptyString,
+    text: z.union([nonEmptyString, z.literal("")]),
+    snippet: optionalNonEmptyString,
+    labels: z.array(nonEmptyString).default([]),
+    attachments: z.array(corpusAttachmentSchema).default([]),
+    replyToId: optionalNonEmptyString,
+    scrubState: z.enum(scrubStates),
+  })
+  .superRefine((message, context) => {
+    if (message.text.length === 0 && message.attachments.length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["text"],
+        message: "text may be empty only for attachment-only messages",
+      });
+    }
+  });
 
 export const corpusContactSchema = z.object({
   id: nonEmptyString,

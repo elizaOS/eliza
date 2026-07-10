@@ -28,7 +28,7 @@ import {
 import { findCorpusShardFiles } from "./validator.ts";
 
 const verificationMessageSchema = corpusMessageSchema
-  .extend({
+  .safeExtend({
     recipients: z.array(corpusRecipientSchema.strict()),
     attachments: z.array(corpusAttachmentSchema.strict()),
   })

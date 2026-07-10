@@ -1,30 +1,20 @@
 /**
- * macOS chat.db reader for @elizaos/plugin-imessage.
- *
- * iMessage stores every message in a SQLite database at
- * `~/Library/Messages/chat.db`. Reading it requires Full Disk Access on
- * whichever process hosts the plugin (the Eliza agent, typically). This
- * module opens that file read-only and exposes a single `fetchNewMessages`
- * method the polling loop uses to walk forward by ROWID.
- *
- * ---
- *
- * Backend: runtime SQLite built-ins. Bun exposes `bun:sqlite`; Node 22+
- * exposes `node:sqlite`. We normalize both to the small query surface this
- * module needs so live chat.db reads keep working in test runners and under
- * either runtime.
- *
- * Prior to this module, the plugin attempted to read messages by running
- * AppleScript against Messages.app's `get messages` verb — a verb that
- * does not exist in Messages.app's scripting dictionary. That code path
- * silently returned an empty list on every poll, so inbound messages
- * never reached the agent.
+ * Read-only access to the macOS Messages database for connector polling, UI
+ * history, and bounded corpus exports. The reader normalizes Bun and Node
+ * SQLite runtimes, decodes Messages typedstream text, and preserves ROWID
+ * ordering across chat joins. Live connector methods have explicit degraded
+ * states; export methods are strict so query and attachment failures cannot be
+ * mistaken for an empty history.
  */
 
+import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import { dirname, join, resolve } from "node:path";
+import { promisify } from "node:util";
+import { ElizaError, logger } from "@elizaos/core";
 import type { IMessagePermissionAction } from "./types.js";
 
 /**
@@ -65,6 +55,30 @@ export function createFullDiskAccessAction(): IMessagePermissionAction {
  */
 const APPLE_EPOCH_MS = Date.UTC(2001, 0, 1);
 
+export interface AppleDateBounds {
+  seconds: number;
+  nanoseconds: bigint;
+}
+
+/**
+ * Convert a JavaScript epoch timestamp into both chat.db date encodings.
+ * Callers use both bounds because a database may contain legacy second-scale
+ * rows alongside modern nanosecond-scale rows after an OS migration.
+ */
+export function jsMsToAppleDateBounds(jsMs: number): AppleDateBounds {
+  if (!Number.isSafeInteger(jsMs) || jsMs < APPLE_EPOCH_MS) {
+    throw new ElizaError("iMessage cutoff must be a safe epoch-millisecond timestamp after 2001", {
+      code: "IMESSAGE_INVALID_DATE_BOUND",
+      context: { jsMs },
+    });
+  }
+  const deltaMs = jsMs - APPLE_EPOCH_MS;
+  return {
+    seconds: Math.ceil(deltaMs / 1000),
+    nanoseconds: BigInt(deltaMs) * 1_000_000n,
+  };
+}
+
 /**
  * Convert an Apple Cocoa date delta to JavaScript milliseconds since
  * epoch. Handles both legacy (seconds) and modern (nanoseconds) storage.
@@ -76,6 +90,7 @@ export function appleDateToJsMs(appleDate: number | string | bigint): number {
     try {
       return appleDateToJsMs(BigInt(trimmed));
     } catch {
+      // error-policy:J3 Invalid database text uses the documented zero timestamp sentinel.
       const parsed = Number(trimmed);
       return Number.isFinite(parsed) ? appleDateToJsMs(parsed) : 0;
     }
@@ -254,6 +269,10 @@ export interface ChatDbAttachment {
   guid: string;
   /** Filename as stored, if known. */
   filename: string | null;
+  /** Display name supplied by Messages for transfer UI. */
+  transferName: string | null;
+  /** On-disk attachment path from chat.db, if the byte payload is local. */
+  path: string | null;
   /** Apple UTI (e.g. `public.jpeg`, `com.apple.quicktime-movie`). */
   uti: string | null;
   /** Best-available MIME type (may be null for some UTIs). */
@@ -372,6 +391,8 @@ export interface ChatDbReader {
    * or if the query fails.
    */
   getLatestRowId(): number;
+  /** Strict variant for bounded exports; throws instead of fabricating an empty database tip. */
+  getLatestRowIdStrict(): number;
   /**
    * Return the timestamp of the most recent outbound message authored by the
    * local Apple account, converted to JavaScript epoch milliseconds.
@@ -384,14 +405,31 @@ export interface ChatDbReader {
    */
   listMessages(options?: { chatId?: string; limit?: number }): ChatDbMessage[];
   /**
+   * Page a stable historical window in ascending ROWID order. Unlike polling
+   * and UI reads, this method is strict: closed readers and SQLite/attachment
+   * failures throw so a corpus collector cannot mistake failure for EOF.
+   */
+  pageMessages(options: ChatDbPageOptions): ChatDbMessage[];
+  /**
    * List every chat the database knows about, joined with participant
    * handles. Reads from `chat`, `chat_handle_join`, and `handle`. This
    * is the replacement for the old AppleScript-based `getChats` path,
    * which was slower and returned less data.
    */
   listChats(): ChatDbChatSummary[];
+  /** Strict variant for exports that require complete participant metadata. */
+  listChatsStrict(): ChatDbChatSummary[];
   /** Close the underlying SQLite handle. Idempotent. */
   close(): void;
+}
+
+export interface ChatDbPageOptions {
+  sinceMs: number;
+  untilMs: number;
+  afterRowId: number;
+  throughRowId: number;
+  chatId?: string;
+  limit: number;
 }
 
 /**
@@ -417,10 +455,78 @@ export interface OpenChatDbOptions {
   diagnosticsLogger?: ChatDbDiagnosticsLogger;
 }
 
+export interface ChatDbSnapshot {
+  path: string;
+  bytes: number;
+  sha256: string;
+}
+
 const runtimeRequire = createRequire(import.meta.url);
+const execFileAsync = promisify(execFile);
 const loggedChatDbOpenFailures = new Set<string>();
 const lastChatDbAccessIssues = new Map<string, ChatDbAccessIssue>();
 let loggedSqliteUnavailable = false;
+
+/**
+ * Create a transaction-consistent logical snapshot of chat.db through
+ * SQLite's online backup operation, avoiding incoherent sequential copies of
+ * the main database, WAL, and shared-memory files.
+ */
+export async function snapshotChatDb(
+  sourcePath: string,
+  destinationPath: string
+): Promise<ChatDbSnapshot> {
+  const source = resolve(sourcePath);
+  const destination = resolve(destinationPath);
+  if (source === destination) {
+    throw new ElizaError("iMessage snapshot destination must differ from its source", {
+      code: "IMESSAGE_INVALID_SNAPSHOT_PATH",
+    });
+  }
+  const sourceStat = await fs.lstat(source);
+  if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) {
+    throw new ElizaError("iMessage snapshot source must be a regular non-symlink file", {
+      code: "IMESSAGE_INVALID_SNAPSHOT_PATH",
+      context: { sourcePath: source },
+    });
+  }
+  await fs.mkdir(dirname(destination), { recursive: true, mode: 0o700 });
+  const temporaryPath = `${destination}.${randomUUID()}.tmp`;
+  try {
+    const escapedDestination = temporaryPath.replaceAll("'", "''");
+    await execFileAsync("/usr/bin/sqlite3", [source, `.backup '${escapedDestination}'`], {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+    await execFileAsync("/usr/bin/sqlite3", [temporaryPath, "PRAGMA journal_mode=DELETE;"], {
+      timeout: 30_000,
+      maxBuffer: 1024 * 1024,
+    });
+    await fs.chmod(temporaryPath, 0o600);
+    await fs.rename(temporaryPath, destination);
+    await fs.chmod(destination, 0o600);
+  } catch (error) {
+    try {
+      // error-policy:J6 A failed atomic write may leave only its private temporary file.
+      await fs.rm(temporaryPath, { force: true });
+    } catch {
+      // error-policy:J6 The primary snapshot write error remains the actionable failure.
+      logger.warn("[imessage] Failed to remove a private temporary database snapshot");
+    }
+    // error-policy:J2 Snapshot publication adds its destination while preserving the filesystem cause.
+    throw new ElizaError("Unable to create the iMessage database snapshot", {
+      code: "IMESSAGE_SNAPSHOT_FAILED",
+      cause: error,
+      context: { sourcePath: source, destinationPath: destination },
+    });
+  }
+  const publishedBytes = await fs.readFile(destination);
+  return {
+    path: destination,
+    bytes: publishedBytes.byteLength,
+    sha256: createHash("sha256").update(publishedBytes).digest("hex"),
+  };
+}
 
 export function getLastChatDbAccessIssue(
   dbPath: string = DEFAULT_CHAT_DB_PATH
@@ -445,7 +551,7 @@ async function tryLoadSqlite(): Promise<
       return (path, options) => new Database(path, options);
     }
   } catch {
-    // Fall through to Node's built-in SQLite runtime.
+    // error-policy:J4 Runtime capability detection falls through to the other supported backend.
   }
 
   try {
@@ -491,6 +597,7 @@ async function tryLoadSqlite(): Promise<
       };
     };
   } catch {
+    // error-policy:J4 Callers render SQLite-unavailable as an explicit send-only connector state.
     return null;
   }
 }
@@ -538,6 +645,7 @@ export async function openChatDb(
   try {
     db = openDatabase(dbPath, { readonly: true });
   } catch (error) {
+    // error-policy:J4 The connector records and renders Full Disk Access failure as send-only.
     const reason = error instanceof Error ? error.message : String(error);
     lastChatDbAccessIssues.set(dbPath, {
       code: "open_failed",
@@ -696,6 +804,70 @@ export async function openChatDb(
     ORDER BY m.ROWID DESC
     LIMIT ?
   `);
+  const historicalPageStmt = db.query(`
+    WITH page_ids AS (
+      SELECT m.ROWID AS row_id
+      FROM message m
+      WHERE m.ROWID > ?
+        AND m.ROWID <= ?
+        AND (
+          (m.date >= 1000000000000 AND m.date >= ? AND m.date < ?)
+          OR (m.date < 1000000000000 AND m.date >= ? AND m.date < ?)
+        )
+        AND (
+          ? IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM chat_message_join filter_cmj
+            JOIN chat filter_chat ON filter_chat.ROWID = filter_cmj.chat_id
+            WHERE filter_cmj.message_id = m.ROWID
+              AND filter_chat.chat_identifier = ?
+          )
+        )
+      ORDER BY m.ROWID ASC
+      LIMIT ?
+    ), chat_choice AS (
+      SELECT
+        cmj.message_id,
+        MIN(CASE WHEN ? IS NOT NULL AND c.chat_identifier = ? THEN c.ROWID END) AS preferred_chat_id,
+        MIN(c.ROWID) AS fallback_chat_id
+      FROM chat_message_join cmj
+      JOIN chat c ON c.ROWID = cmj.chat_id
+      JOIN page_ids page ON page.row_id = cmj.message_id
+      GROUP BY cmj.message_id
+    )
+    SELECT
+      m.ROWID AS row_id,
+      m.guid AS guid,
+      m.text AS text,
+      m.attributedBody AS attributed_body,
+      m.date AS apple_date,
+      m.date_read AS apple_date_read,
+      m.date_edited AS apple_date_edited,
+      m.date_retracted AS apple_date_retracted,
+      m.is_from_me AS is_from_me,
+      m.is_read AS is_read,
+      m.is_sent AS is_sent,
+      m.is_delivered AS is_delivered,
+      m.item_type AS item_type,
+      m.reply_to_guid AS reply_to_guid,
+      m.associated_message_guid AS associated_message_guid,
+      m.associated_message_type AS associated_message_type,
+      m.associated_message_emoji AS associated_message_emoji,
+      m.cache_has_attachments AS cache_has_attachments,
+      m.service AS message_service,
+      h.id AS handle,
+      h.service AS handle_service,
+      c.chat_identifier AS chat_identifier,
+      c.display_name AS display_name,
+      c.style AS chat_style
+    FROM page_ids page
+    JOIN message m ON m.ROWID = page.row_id
+    LEFT JOIN handle h ON m.handle_id = h.ROWID
+    LEFT JOIN chat_choice choice ON choice.message_id = m.ROWID
+    LEFT JOIN chat c ON c.ROWID = COALESCE(choice.preferred_chat_id, choice.fallback_chat_id)
+    ORDER BY m.ROWID ASC
+  `);
 
   // List-chats statement: every chat joined to handles via
   // chat_handle_join, grouped so each chat returns one row with an
@@ -745,7 +917,30 @@ export async function openChatDb(
     chat_style: number | null;
   };
 
-  function materializeMessages(rows: RawMessageRow[]): ChatDbMessage[] {
+  type RawChatRow = {
+    row_id: number;
+    chat_identifier: string | null;
+    display_name: string | null;
+    service_name: string | null;
+    chat_style: number | null;
+    last_read_apple_date: number | null;
+    participant_handles: string | null;
+  };
+
+  function materializeChats(rows: RawChatRow[]): ChatDbChatSummary[] {
+    return rows.map((row) => ({
+      chatId: row.chat_identifier ?? `chat-${row.row_id}`,
+      chatType: row.chat_style === 43 ? "group" : "direct",
+      displayName: row.display_name,
+      serviceName: row.service_name,
+      participants: row.participant_handles
+        ? row.participant_handles.split(",").filter(Boolean)
+        : [],
+      lastReadMessageTimestamp: appleDateToJsMs(row.last_read_apple_date ?? 0),
+    }));
+  }
+
+  function materializeMessages(rows: RawMessageRow[], strict = false): ChatDbMessage[] {
     const out: ChatDbMessage[] = [];
     let undecodable = 0;
 
@@ -793,12 +988,23 @@ export async function openChatDb(
           attachments = attRows.map((a) => ({
             guid: a.guid,
             filename: a.transfer_name ?? a.filename ?? null,
+            transferName: a.transfer_name,
+            path: a.filename,
             uti: a.uti,
             mimeType: a.mime_type,
             totalBytes: a.total_bytes,
             isSticker: a.is_sticker === 1,
           }));
         } catch (error) {
+          if (strict) {
+            // error-policy:J2 Corpus backfills must distinguish attachment-query failure from no attachments.
+            throw new ElizaError("iMessage attachment metadata query failed", {
+              code: "IMESSAGE_ATTACHMENT_QUERY_FAILED",
+              cause: error,
+              context: { rowId: row.row_id },
+            });
+          }
+          // error-policy:J4 Live connector reads explicitly degrade to text-only when attachment metadata is unavailable.
           logger.debug(
             `[imessage] attachment query failed for rowid=${row.row_id}: ${error instanceof Error ? error.message : String(error)}`
           );
@@ -851,6 +1057,7 @@ export async function openChatDb(
       try {
         rows = pollStmt.all(sinceRowId, limit) as typeof rows;
       } catch (error) {
+        // error-policy:J4 Live polling logs and yields an explicit empty batch while connector diagnostics show failure.
         logger.error(
           `[imessage] chat.db query failed: ${error instanceof Error ? error.message : String(error)}`
         );
@@ -865,10 +1072,28 @@ export async function openChatDb(
         const rows = tipStmt.all() as Array<{ max_row_id: number | null }>;
         return rows[0]?.max_row_id ?? 0;
       } catch (error) {
+        // error-policy:J4 Live connector startup retains its send-only state and logs the failed tip read.
         logger.error(
           `[imessage] chat.db tip query failed: ${error instanceof Error ? error.message : String(error)}`
         );
         return 0;
+      }
+    },
+    getLatestRowIdStrict(): number {
+      if (closed) {
+        throw new ElizaError("Cannot inspect a closed iMessage database reader", {
+          code: "IMESSAGE_READER_CLOSED",
+        });
+      }
+      try {
+        const rows = tipStmt.all() as Array<{ max_row_id: number | null }>;
+        return rows[0]?.max_row_id ?? 0;
+      } catch (error) {
+        // error-policy:J2 Corpus exports must distinguish a failed tip query from an empty database.
+        throw new ElizaError("iMessage database tip query failed", {
+          code: "IMESSAGE_TIP_QUERY_FAILED",
+          cause: error,
+        });
       }
     },
     getLatestOwnMessageTimestamp(): number | null {
@@ -880,6 +1105,7 @@ export async function openChatDb(
         const appleDate = rows[0]?.max_apple_date ?? null;
         return appleDate === null ? null : appleDateToJsMs(appleDate);
       } catch (error) {
+        // error-policy:J4 Connector health returns unavailable while preserving the diagnostic log.
         logger.error(
           `[imessage] chat.db latest own message query failed: ${error instanceof Error ? error.message : String(error)}`
         );
@@ -899,6 +1125,7 @@ export async function openChatDb(
           ? (recentMessagesByChatStmt.all(chatId, limit) as RawMessageRow[])
           : (recentMessagesStmt.all(limit) as RawMessageRow[]);
       } catch (error) {
+        // error-policy:J4 UI history renders its existing unavailable state after a logged query failure.
         logger.error(
           `[imessage] chat.db listMessages query failed: ${error instanceof Error ? error.message : String(error)}`
         );
@@ -910,33 +1137,87 @@ export async function openChatDb(
       // natural oldest→newest sequence without a second sort.
       return materializeMessages(rows).reverse();
     },
+    pageMessages(options: ChatDbPageOptions): ChatDbMessage[] {
+      if (closed) {
+        throw new ElizaError("Cannot page a closed iMessage database reader", {
+          code: "IMESSAGE_READER_CLOSED",
+        });
+      }
+      const { sinceMs, untilMs, afterRowId, throughRowId, limit } = options;
+      if (
+        !Number.isSafeInteger(afterRowId) ||
+        afterRowId < 0 ||
+        !Number.isSafeInteger(throughRowId) ||
+        throughRowId < afterRowId ||
+        !Number.isSafeInteger(limit) ||
+        limit < 1 ||
+        limit > 1000
+      ) {
+        throw new ElizaError("Invalid iMessage historical page bounds", {
+          code: "IMESSAGE_INVALID_PAGE_BOUND",
+          context: { afterRowId, throughRowId, limit },
+        });
+      }
+      const chatId = options.chatId?.trim() || null;
+      const sinceBounds = jsMsToAppleDateBounds(sinceMs);
+      const untilBounds = jsMsToAppleDateBounds(untilMs);
+      if (untilMs <= sinceMs) {
+        throw new ElizaError("iMessage historical page end must be after its start", {
+          code: "IMESSAGE_INVALID_DATE_BOUND",
+          context: { sinceMs, untilMs },
+        });
+      }
+      try {
+        const rows = historicalPageStmt.all(
+          afterRowId,
+          throughRowId,
+          sinceBounds.nanoseconds,
+          untilBounds.nanoseconds,
+          sinceBounds.seconds,
+          untilBounds.seconds,
+          chatId,
+          chatId,
+          limit,
+          chatId,
+          chatId
+        ) as RawMessageRow[];
+        return materializeMessages(rows, true);
+      } catch (error) {
+        if (error instanceof ElizaError) throw error;
+        // error-policy:J2 Historical reads add bounded-query context and preserve the SQLite cause.
+        throw new ElizaError("iMessage historical page query failed", {
+          code: "IMESSAGE_HISTORY_QUERY_FAILED",
+          cause: error,
+          context: { afterRowId, throughRowId, limit, scopedToChat: chatId !== null },
+        });
+      }
+    },
     listChats(): ChatDbChatSummary[] {
       if (closed) return [];
       try {
-        const rows = chatsStmt.all() as Array<{
-          row_id: number;
-          chat_identifier: string | null;
-          display_name: string | null;
-          service_name: string | null;
-          chat_style: number | null;
-          last_read_apple_date: number | null;
-          participant_handles: string | null;
-        }>;
-        return rows.map((row) => ({
-          chatId: row.chat_identifier ?? `chat-${row.row_id}`,
-          chatType: row.chat_style === 43 ? "group" : "direct",
-          displayName: row.display_name,
-          serviceName: row.service_name,
-          participants: row.participant_handles
-            ? row.participant_handles.split(",").filter(Boolean)
-            : [],
-          lastReadMessageTimestamp: appleDateToJsMs(row.last_read_apple_date ?? 0),
-        }));
+        return materializeChats(chatsStmt.all() as RawChatRow[]);
       } catch (error) {
+        // error-policy:J4 UI chat inventory renders its existing unavailable state after a logged failure.
         logger.error(
           `[imessage] chat.db listChats query failed: ${error instanceof Error ? error.message : String(error)}`
         );
         return [];
+      }
+    },
+    listChatsStrict(): ChatDbChatSummary[] {
+      if (closed) {
+        throw new ElizaError("Cannot list chats from a closed iMessage database reader", {
+          code: "IMESSAGE_READER_CLOSED",
+        });
+      }
+      try {
+        return materializeChats(chatsStmt.all() as RawChatRow[]);
+      } catch (error) {
+        // error-policy:J2 Corpus exports must distinguish a failed chat query from no chats.
+        throw new ElizaError("iMessage chat metadata query failed", {
+          code: "IMESSAGE_CHAT_QUERY_FAILED",
+          cause: error,
+        });
       }
     },
     close(): void {
@@ -945,8 +1226,8 @@ export async function openChatDb(
       try {
         db.close();
       } catch {
-        // Closing a read-only handle on a file we don't own should
-        // never throw in practice, but we swallow to stay idempotent.
+        // error-policy:J6 Closing a read-only connector handle is idempotent best-effort teardown.
+        logger.warn("[imessage] Failed to close the read-only chat.db handle");
       }
     },
   };

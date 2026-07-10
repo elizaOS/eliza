@@ -15,6 +15,7 @@
     "validate": "bun src/cli.ts validate",
     "corpus:scrub": "bun src/cli.ts scrub",
     "corpus:verify": "bun src/cli.ts verify",
+    "corpus:collect:imessage": "bun --conditions=eliza-source src/cli.ts collect imessage",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src fixtures",
@@ -24,6 +25,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-imessage": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

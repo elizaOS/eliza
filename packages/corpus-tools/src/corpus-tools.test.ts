@@ -77,6 +77,42 @@ describe("@elizaos/corpus-tools", () => {
     });
   });
 
+  it("allows empty text only when an attachment carries the message payload", () => {
+    const base = {
+      id: "imessage-attachment-only",
+      platform: "imessage",
+      accountId: "local",
+      threadId: "thread-attachment",
+      ts: CORPUS_ANCHOR_MS - 60_000,
+      direction: "in",
+      senderId: "sender",
+      senderDisplay: "Sender",
+      recipients: [{ id: "owner", display: "Owner" }],
+      labels: [],
+      scrubState: "raw",
+    } as const;
+
+    expect(
+      validateCorpusMessages([
+        {
+          ...base,
+          text: "",
+          attachments: [
+            {
+              filename: "attachment.bin",
+              mimeType: "application/octet-stream",
+              sha256: "a".repeat(64),
+              bytes: 5,
+            },
+          ],
+        },
+      ]).ok,
+    ).toBe(true);
+    expect(
+      validateCorpusMessages([{ ...base, text: "", attachments: [] }]).ok,
+    ).toBe(false);
+  });
+
   it("maps incoming Gmail rows to LifeOps simulator email fixtures", () => {
     const parsed = validateCorpusMessages([
       {

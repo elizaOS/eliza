@@ -41,15 +41,22 @@ export {
 } from "./accounts.js";
 // chat.db reader (bun:sqlite-backed inbound polling)
 export {
+  type AppleDateBounds,
   appleDateToJsMs,
   type ChatDbAccessIssue,
+  type ChatDbAttachment,
+  type ChatDbChatSummary,
   type ChatDbMessage,
+  type ChatDbPageOptions,
   type ChatDbReader,
+  type ChatDbSnapshot,
   createFullDiskAccessAction,
   DEFAULT_CHAT_DB_PATH,
   getLastChatDbAccessIssue,
+  jsMsToAppleDateBounds,
   MACOS_FULL_DISK_ACCESS_SETTINGS_URL,
   openChatDb,
+  snapshotChatDb,
 } from "./chatdb-reader.js";
 // Apple Contacts reader (display-name resolution for inbound handles)
 export {

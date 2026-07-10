@@ -231,10 +231,17 @@ export async function buildCorpusManifest(
   const shardFiles = await findCorpusShardFiles(targetPath);
   const entries: CorpusShardManifestEntry[] = [];
   const issues: CorpusValidationIssue[] = [];
+  const allMessages: CorpusMessage[] = [];
 
   for (const file of shardFiles) {
     const shard = await readCorpusShard(file, { rootDir });
-    issues.push(...shard.issues);
+    issues.push(
+      ...shard.issues.filter(
+        (issue) =>
+          issue.code !== "reply-missing" && issue.code !== "duplicate-id",
+      ),
+    );
+    allMessages.push(...shard.messages);
     const pathInfo = parseShardPath(file, rootDir);
     if (!pathInfo.platform || !pathInfo.accountId || !pathInfo.month) {
       issues.push({
@@ -259,6 +266,13 @@ export async function buildCorpusManifest(
       sha256: shard.sha256,
     });
   }
+
+  issues.push(
+    ...validateMessages(allMessages).filter(
+      (issue) =>
+        issue.code === "reply-missing" || issue.code === "duplicate-id",
+    ),
+  );
 
   const manifest = corpusManifestSchema.parse({
     schemaVersion: 1,

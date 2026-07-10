@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { collectIMessageCorpus } from "./collectors/imessage.ts";
 /**
  * Command-line boundary for corpus validation. The library returns structured
  * diagnostics; this file is the only place that prints and converts validation
@@ -39,6 +40,15 @@ function requireFlagValue(args: string[], flag: string): string {
   const value = readFlagValue(args, flag);
   if (!value) throw new Error(`${flag} is required`);
   return value;
+}
+
+function readIsoTimestamp(args: string[], flag: string): number | undefined {
+  const value = readFlagValue(args, flag);
+  if (!value) return undefined;
+  const timestamp = Date.parse(value);
+  if (!Number.isSafeInteger(timestamp))
+    throw new Error(`${flag} must be an ISO timestamp`);
+  return timestamp;
 }
 
 function parseVerifyCliOptions(args: string[]): VerifyCorpusOptions {
@@ -114,8 +124,31 @@ async function main(argv: string[]): Promise<number> {
     return result.status === "passed" ? 0 : 1;
   }
 
+  if (command === "collect") {
+    if (maybeTarget !== "imessage")
+      throw new Error("corpus collect currently supports imessage");
+    const pageSizeValue = readFlagValue(rest, "--page-size");
+    const pageSize =
+      pageSizeValue === undefined ? undefined : Number(pageSizeValue);
+    const result = await collectIMessageCorpus({
+      outputRoot: requireFlagValue(rest, "--output"),
+      stateDir: requireFlagValue(rest, "--state-dir"),
+      accountId: requireFlagValue(rest, "--account-id"),
+      ownerId: requireFlagValue(rest, "--owner-id"),
+      ownerDisplay: requireFlagValue(rest, "--owner-display"),
+      ownerAddress: readFlagValue(rest, "--owner-address"),
+      dbPath: readFlagValue(rest, "--db"),
+      attachmentRoot: readFlagValue(rest, "--attachment-root"),
+      sinceMs: readIsoTimestamp(rest, "--since"),
+      untilMs: readIsoTimestamp(rest, "--until"),
+      pageSize,
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return 0;
+  }
+
   process.stderr.write(
-    "usage: corpus validate <file-or-dir>\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n       corpus verify --target <dir> --manifest <file> --candidates <file> --canaries <file> --ledger <file> --gazetteer <file> --deletion-rules <file> --deletion-review-queue <file> --deletion-review-decision <file> --deletion-approval <file> --placeholder-registry <file> --ruleset-version <version> --report <file>\n",
+    "usage: corpus validate <file-or-dir>\n       corpus scrub --target <file-or-dir> --stage <stage|all> --mode <deep|fast-track> [--resume] [--dry-run]\n       corpus collect imessage --output <dir> --state-dir <dir> --account-id <slug> --owner-id <id> --owner-display <name> [--owner-address <address>] [--db <chat.db>] [--attachment-root <dir>] [--since <iso>] [--until <iso>] [--page-size <1..1000>]\n       corpus verify --target <dir> --manifest <file> --candidates <file> --canaries <file> --ledger <file> --gazetteer <file> --deletion-rules <file> --deletion-review-queue <file> --deletion-review-decision <file> --deletion-approval <file> --placeholder-registry <file> --ruleset-version <version> --report <file>\n",
   );
   return 2;
 }
