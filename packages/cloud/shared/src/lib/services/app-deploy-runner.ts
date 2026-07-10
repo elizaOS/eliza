@@ -44,7 +44,8 @@
 
 import { ElizaError } from "@elizaos/core";
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
-import { containersRepository, isContainerStatus } from "../../db/repositories/containers";
+import { isContainerStatus } from "../../db/repositories/container-status";
+import { containersRepository } from "../../db/repositories/containers";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { toNewContainer } from "./app-container-record";

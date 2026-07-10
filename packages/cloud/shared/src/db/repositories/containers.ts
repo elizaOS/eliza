@@ -24,27 +24,15 @@ import { parseOrganizationCreditBalance } from "./organizations-credit-balance-n
 export type Container = InferSelectModel<typeof containers>;
 export type NewContainer = InferInsertModel<typeof containers>;
 
-export const CONTAINER_STATUSES = [
-  "pending",
-  "building",
-  "deploying",
-  "running",
-  "stopped",
-  "failed",
-  "deleting",
-  "deleted",
-] as const;
-
-export type ContainerStatus = (typeof CONTAINER_STATUSES)[number];
-
-/**
- * Runtime guard for the status vocabulary — the `containers.status` column is
- * free text, so a status read back from a row must be validated before being
- * handed to a `ContainerStatus`-typed writer (e.g. reverting a retire flip).
- */
-export function isContainerStatus(value: string): value is ContainerStatus {
-  return (CONTAINER_STATUSES as readonly string[]).includes(value);
-}
+export type ContainerStatus =
+  | "pending"
+  | "building"
+  | "deploying"
+  | "running"
+  | "stopped"
+  | "failed"
+  | "deleting"
+  | "deleted";
 
 export interface QuotaCheckResult {
   allowed: boolean;
