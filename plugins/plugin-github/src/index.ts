@@ -26,7 +26,10 @@ import {
 } from "@elizaos/core";
 import { githubAction } from "./actions/github.js";
 import { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
-import { handleGitHubRoutes } from "./routes/github-routes.js";
+import {
+  type GitHubRouteRuntime,
+  handleGitHubRoutes,
+} from "./routes/github-routes.js";
 import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
 
@@ -39,12 +42,12 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
-    void runtime;
     await handleGitHubRoutes({
       req: httpReq,
       res: httpRes,
       method,
       pathname: url.pathname,
+      runtime: runtime as GitHubRouteRuntime,
     });
   };
 }
@@ -80,6 +83,18 @@ const githubRoutes: Route[] = [
     path: "/api/github/token",
     rawPath: true,
     handler: createGitHubRouteHandler("DELETE"),
+  },
+  {
+    type: "POST",
+    path: "/api/github/device-login/start",
+    rawPath: true,
+    handler: createGitHubRouteHandler("POST"),
+  },
+  {
+    type: "GET",
+    path: "/api/github/device-login/:flowId/status",
+    rawPath: true,
+    handler: createGitHubRouteHandler("GET"),
   },
 ];
 
