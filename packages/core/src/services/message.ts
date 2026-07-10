@@ -6791,6 +6791,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				});
 		}
 
+		// Response-handler evaluators may promote a simple turn to planning and
+		// clobber a COMPLETE stage-0 answer with an "On it." ack (observed live:
+		// stage-0 held the full contributors answer; the promotion flailed through
+		// NOTIFY and the turn ended answerless). Preserve the pre-patch reply so
+		// the planner loop's answer rescue and the answerless-final fallback can
+		// still deliver it.
+		const prePatchStageOneReply =
+			typeof messageHandler.plan.reply === "string" &&
+			messageHandler.plan.reply.trim().length > 0
+				? messageHandler.plan.reply
+				: undefined;
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
@@ -7227,10 +7238,24 @@ export async function runV5MessageRuntimeStage1(args: {
 				// replyText (when answer-shaped) is surfaced instead of the
 				// generic transient-failure apology. Duplicate delivery is safe —
 				// early-reply turns dedup via plannedTextRepeatsEarlyReply.
-				stageOneReplyText:
-					typeof messageHandler.plan.reply === "string"
-						? messageHandler.plan.reply
-						: undefined,
+				stageOneReplyText: (() => {
+					const postPatch =
+						typeof messageHandler.plan.reply === "string"
+							? messageHandler.plan.reply
+							: undefined;
+					// A promotion patch that replaced a substantive stage-0 answer
+					// with a bare progress ack must not also disarm the loop's
+					// answer rescue — feed the preserved pre-patch answer instead.
+					if (
+						prePatchStageOneReply &&
+						postPatch &&
+						postPatch !== prePatchStageOneReply &&
+						PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
+					) {
+						return prePatchStageOneReply;
+					}
+					return postPatch;
+				})(),
 				// Per-turn miss-budget cap for answered turns escalated only by a
 				// view-surface token overlap (see viewOverlapRequiredToolMissBudget);
 				// the loop honors it only when stageOneReplyText is answer-shaped.
@@ -7338,11 +7363,25 @@ export async function runV5MessageRuntimeStage1(args: {
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
 				: "";
+		// Answerless-final fallback: when the planner loop finished with NO final
+		// text and the only thing the user saw was a progress ack ("On it."), a
+		// preserved substantive stage-0 answer is strictly better than silence —
+		// deliver it. The earlyReply/action dedup guards below still apply.
+		const preservedAnswerFallback =
+			!plannedText &&
+			earlyReplySent &&
+			!suppressesPlannerReply &&
+			prePatchStageOneReply &&
+			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
+			normalizeVisibleTextForDuplicateCheck(prePatchStageOneReply) !==
+				normalizeVisibleTextForDuplicateCheck(earlyReplyText)
+				? prePatchStageOneReply
+				: "";
 		const ackFallback =
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? stageOneAck ||
 					(ranNonSilentAction ? "on it, working on that now." : "")
-				: "";
+				: preservedAnswerFallback;
 		const effectiveReplyText = plannedText || ackFallback;
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
