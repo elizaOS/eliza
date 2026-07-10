@@ -76,6 +76,21 @@ test("successful evidence finalization produces the required MP4", async () => {
   ]);
 });
 
+test("missing required video rejects while an intentional VIDEO=0 run succeeds", async () => {
+  const base = {
+    page: { screenshot: async () => {} },
+    context: { close: async () => {} },
+    video: null,
+    outDir: "/tmp/out",
+  };
+  await expect(finalizeSoakEvidence(base)).rejects.toThrow(
+    "recording is required",
+  );
+  await expect(
+    finalizeSoakEvidence({ ...base, videoRequired: false }),
+  ).resolves.toBeNull();
+});
+
 test("MP4 conversion surfaces ffmpeg launch and encoding failures", () => {
   expect(() =>
     convertSoakRecordingToMp4("input.webm", "output.mp4", {

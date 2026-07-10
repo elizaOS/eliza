@@ -701,6 +701,7 @@ async function main() {
     page,
     context: ctx,
     video,
+    videoRequired: VIDEO,
     outDir: OUT,
     onContextClosed: () => {
       activeContext = null;

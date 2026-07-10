@@ -54,6 +54,7 @@ export async function finalizeSoakEvidence({
   page,
   context,
   video,
+  videoRequired = true,
   outDir,
   convertRecording = convertSoakRecordingToMp4,
   onContextClosed = () => {},
@@ -61,7 +62,12 @@ export async function finalizeSoakEvidence({
   await page.screenshot({ path: join(outDir, "soak-final.png") });
   await context.close();
   onContextClosed();
-  if (!video) return null;
+  if (!video) {
+    if (videoRequired) {
+      throw new Error("view-soak recording is required but was not initialized");
+    }
+    return null;
+  }
 
   const source = await video.path();
   const artifact = "audit-views-soak.mp4";
