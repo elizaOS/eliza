@@ -181,6 +181,22 @@ describe("publish-graph guard (#15833)", () => {
       expect(stale).toEqual([]);
     });
 
+    test("violation keys are plain text: space-separated, no NUL bytes", () => {
+      // The key separator was once a literal NUL byte, which made the guard
+      // source read as binary to grep/diff/editors. npm package names and
+      // dependency-field names can never contain a space, so a space-separated
+      // key is equally collision-free — and this pins both the key format and
+      // the file staying NUL-free.
+      expect(
+        violationKey({
+          from: "@x/published",
+          field: "dependencies",
+          dependency: "@x/registry",
+        }),
+      ).toBe("@x/published dependencies @x/registry");
+      expect(readFileSync(GUARD, "utf8")).not.toContain("\u0000");
+    });
+
     test("flags a stale baseline entry that no longer dangles", () => {
       const { stale } = classifyViolations([], new Set(["@x/gone deps @x/x"]));
       expect(stale).toEqual(["@x/gone deps @x/x"]);
