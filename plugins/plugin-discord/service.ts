@@ -760,12 +760,12 @@ export class DiscordService extends Service implements IDiscordService {
 					);
 				}
 
-				// Per-guild registration pushes ONLY the guild-only commands. The
-				// global commands were already registered globally above; a guild
-				// also carrying them made Discord merge the global + guild scopes
-				// and show every command TWICE in the slash menu. Pushing the
-				// guild-only set (often empty) here also CLEARS any stale
-				// guild-scoped duplicates a previous build registered.
+				// Per-guild registration pushes ONLY the guild-only commands: global
+				// commands live in the global scope, and Discord renders a command
+				// present in BOTH scopes twice in the slash menu. Setting the
+				// guild-only set (often empty) also clears any stale guild-scoped
+				// copies of global commands, which is what removes existing
+				// duplicates.
 				const guilds = client.guilds.cache;
 				if (guilds) {
 					await Promise.all(
@@ -776,6 +776,19 @@ export class DiscordService extends Service implements IDiscordService {
 									guildId,
 								);
 							} catch (err) {
+								// error-policy:J7 one guild's failed command write must not
+								// abort the sync fan-out to the remaining guilds; the partial
+								// sync is surfaced to the agent/owner via reportError rather
+								// than left as a healthy-looking startup.
+								this.runtime.reportError(
+									"DiscordService.commandSync",
+									err instanceof Error ? err : new Error(String(err)),
+									{
+										accountId: state.accountId,
+										guildId,
+										guildName: guild.name,
+									},
+								);
 								this.runtime.logger.warn(
 									{
 										src: "plugin:discord",

@@ -78,11 +78,10 @@ export async function handleGuildCreate(
 	const clientApplication = service.client?.application;
 	if (service.slashCommands.length > 0 && clientApplication) {
 		try {
-			// Per-guild registration must NOT include general (non-guild-only)
-			// commands — those are registered GLOBALLY elsewhere, and pushing
-			// them into a guild's scope too made Discord merge the two scopes and
-			// show every command TWICE in the slash menu. Only guild-only and
-			// guild-targeted commands belong in a guild's scope.
+			// Per-guild registration must not include general (non-guild-only)
+			// commands: those live in the GLOBAL scope, and Discord renders a
+			// command present in both scopes twice in the slash menu. Only
+			// guild-only and guild-targeted commands belong in a guild's scope.
 			const guildOnlyGeneralCommands = service.slashCommands.filter(
 				(cmd) => (cmd.guildIds?.length ?? 0) === 0 && isGuildOnlyCommand(cmd),
 			);
@@ -102,10 +101,10 @@ export async function handleGuildCreate(
 			}
 			const commandsToRegister = Array.from(commandMap.values());
 
-			// Always set the guild scope (even to an empty array): when there are
-			// no guild-scoped commands, this CLEARS any stale guild-scoped copies
-			// of global commands a previous build registered, which is what
-			// removes the duplicate slash-menu entries.
+			// Always set the guild scope (even to an empty array): an empty set
+			// clears stale guild-scoped copies of global commands, which is what
+			// removes duplicate slash-menu entries for guilds that already carry
+			// them.
 			const discordCommands = commandsToRegister.map((cmd) =>
 				transformCommandToDiscordApi(cmd),
 			);
@@ -123,6 +122,14 @@ export async function handleGuildCreate(
 				"Guild-scoped commands synced (global commands live globally)",
 			);
 		} catch (error) {
+			// error-policy:J7 a failed guild-join command sync must not abort the
+			// rest of guild onboarding (world/room standardization below); the
+			// partial sync is surfaced to the agent/owner via reportError.
+			service.runtime.reportError(
+				"DiscordService.guildCreateCommandSync",
+				error instanceof Error ? error : new Error(String(error)),
+				{ guildId: fullGuild.id, guildName: fullGuild.name },
+			);
 			service.runtime.logger.warn(
 				{
 					src: "plugin:discord",
