@@ -480,6 +480,113 @@ function taskPlanJson(overrides: Record<string, unknown>): string {
   });
 }
 
+describe("runLifeOperationHandler clarification contract", () => {
+  it("marks a reminder-plan response as user-facing and awaiting owner input", async () => {
+    const clarification =
+      "Please tell me the report name, date, and time before I create the reminder.";
+    const runtime = makeRuntime((prompt) => {
+      if (
+        prompt.includes(
+          "Plan the next step for a LifeOps create_definition request.",
+        )
+      ) {
+        return taskPlanJson({
+          mode: "respond",
+          response: clarification,
+        });
+      }
+      return clarification;
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage(
+        "I need a reminder for an upcoming report deadline, but I still need to provide its name, date, and time.",
+      ),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent:
+            "Create a reminder after asking me for its report name, date, and time.",
+          ownerSurface: "OWNER_REMINDERS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      text: clarification,
+      userFacingText: clarification,
+      values: {
+        success: true,
+        noop: true,
+        awaitingUserInput: true,
+        suggestedOperation: "create",
+      },
+      data: {
+        actionName: "OWNER_REMINDERS",
+        noop: true,
+        awaitingUserInput: true,
+        suggestedOperation: "create",
+      },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+
+  it("marks a missing reminder schedule as user-facing and awaiting owner input", async () => {
+    const clarification = "What day and time should I use?";
+    const runtime = makeRuntime((prompt) => {
+      if (
+        prompt.includes(
+          "Plan the next step for a LifeOps create_definition request.",
+        )
+      ) {
+        return taskPlanJson({
+          mode: "respond",
+          response: clarification,
+          title: "Report deadline",
+        });
+      }
+      return clarification;
+    });
+
+    const result = await runLifeOperationHandler(
+      runtime,
+      makeMessage("Remind me about my report deadline."),
+      undefined,
+      {
+        parameters: {
+          action: "create",
+          intent: "Create a report deadline reminder.",
+          title: "Report deadline",
+          ownerSurface: "OWNER_REMINDERS",
+        },
+      } as HandlerOptions,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      text: "When should it happen?",
+      userFacingText: "When should it happen?",
+      values: {
+        success: false,
+        error: "MISSING_DEFINITION_FIELD",
+        missingField: "schedule",
+        requiresConfirmation: true,
+        awaitingUserInput: true,
+      },
+      data: {
+        actionName: "OWNER_REMINDERS",
+        missingField: "schedule",
+        requiresConfirmation: true,
+        awaitingUserInput: true,
+      },
+    });
+    expect(serviceState.createCalls).toHaveLength(0);
+  });
+});
+
 describe("runLifeOperationHandler snooze durations", () => {
   beforeEach(() => {
     serviceState.snoozeCalls.length = 0;

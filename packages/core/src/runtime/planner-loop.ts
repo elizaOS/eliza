@@ -536,6 +536,24 @@ export async function runPlannerLoop(
 						continue;
 					}
 
+					const missingInputWidgetRelay =
+						deterministicMissingInputPlannerWidgetRelay(trajectory);
+					if (missingInputWidgetRelay) {
+						params.runtime.logger?.warn?.(
+							{ iteration },
+							"[planner-loop] evaluator continued after a missing-input widget; finishing with the user interaction",
+						);
+						return {
+							status: "finished",
+							trajectory,
+							evaluator,
+							finalMessage: userSafeFinalMessage(
+								missingInputWidgetRelay,
+								trajectory,
+							),
+						};
+					}
+
 					terminalOnlyContinuations++;
 					if (terminalOnlyContinuations > config.maxTerminalOnlyContinuations) {
 						const relay =
@@ -3026,10 +3044,57 @@ function deterministicTerminalContinuationLimitRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	return (
+		deterministicMissingInputPlannerWidgetRelay(trajectory) ??
 		deterministicSuccessfulToolRelay(trajectory) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
-		deterministicNoopClarificationRelay(trajectory)
+		deterministicNoopClarificationRelay(trajectory) ??
+		deterministicMissingInputPlannerClarificationRelay(trajectory)
 	);
+}
+
+/**
+ * A planner reply may finish a missing-input turn only when the latest executed
+ * tool structurally declares that it is waiting for the owner. This keeps the
+ * relay from treating arbitrary terminal prose after successful work as safe.
+ * Widgets take precedence over prose because they preserve the fields and input
+ * types the planner selected instead of degrading the turn to another question.
+ */
+function deterministicMissingInputPlannerWidgetRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	return missingInputPlannerTerminalCandidates(trajectory)
+		.map(userSafeWidgetReplyCandidate)
+		.find((candidate): candidate is string => candidate !== undefined);
+}
+
+function deterministicMissingInputPlannerClarificationRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	return missingInputPlannerTerminalCandidates(trajectory)
+		.map(userSafeClarificationReplyCandidate)
+		.find((candidate): candidate is string => candidate !== undefined);
+}
+
+function missingInputPlannerTerminalCandidates(
+	trajectory: PlannerTrajectory,
+): Array<string | undefined> {
+	let latestToolResultIndex = -1;
+	for (let index = trajectory.steps.length - 1; index >= 0; index--) {
+		const step = trajectory.steps[index];
+		if (!step?.toolCall || isTerminalToolCall(step.toolCall) || !step.result) {
+			continue;
+		}
+		latestToolResultIndex = index;
+		if (!hasAwaitingUserInputMarker(step.result)) return [];
+		break;
+	}
+	if (latestToolResultIndex < 0) return [];
+
+	return trajectory.steps
+		.slice(latestToolResultIndex + 1)
+		.filter((step) => step.terminalOnly === true)
+		.map((step) => step.terminalMessage)
+		.reverse();
 }
 
 function deterministicRequiresConfirmationRelay(
@@ -3075,6 +3140,24 @@ function hasNoopMarker(result: PlannerToolResult): boolean {
 		typeof values === "object" &&
 		!Array.isArray(values) &&
 		(values as Record<string, unknown>).noop === true
+	);
+}
+
+function hasAwaitingUserInputMarker(result: PlannerToolResult): boolean {
+	if (hasNoopMarker(result)) return true;
+	const data = result.data;
+	if (!data) return false;
+	if (data.awaitingUserInput === true || getNonEmptyString(data.missingField)) {
+		return true;
+	}
+	const values = data.values;
+	return (
+		values !== null &&
+		typeof values === "object" &&
+		!Array.isArray(values) &&
+		((values as Record<string, unknown>).awaitingUserInput === true ||
+			getNonEmptyString((values as Record<string, unknown>).missingField) !==
+				undefined)
 	);
 }
 
@@ -3734,6 +3817,17 @@ function userSafeCapturedAnswerCandidate(
 		return undefined;
 	}
 	if (PROGRESS_ONLY_ANSWER_REJECT.test(candidate)) return undefined;
+	return candidate;
+}
+
+const CLARIFICATION_REQUEST =
+	/(?:\?\s*(?:$|\n)|\bplease\s+(?:choose|confirm|enter|provide|select|share|specify|tell)\b|^(?:can|could|do|does|how|is|are|what|when|where|which|who|would)\b)/i;
+
+function userSafeClarificationReplyCandidate(
+	message: string | undefined,
+): string | undefined {
+	const candidate = userSafeCapturedAnswerCandidate(message);
+	if (!candidate || !CLARIFICATION_REQUEST.test(candidate)) return undefined;
 	return candidate;
 }
 
