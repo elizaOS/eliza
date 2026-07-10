@@ -139,82 +139,12 @@ jobs:
 
       - name: Build live scenario runtime packages
         id: build
-        # The live runner executes TypeScript sources directly, but several
-        # workspace packages intentionally export dist/* entry points. Because
-        # dependency installation ignores postinstall scripts, build only the
-        # packages that the live scenario runtime imports through those exports.
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        # The live runner executes TypeScript sources directly, but its workspace
+        # dependencies export dist/* entry points. Building the Turbo dependency
+        # closure keeps those transitive exports available after the deliberately
+        # script-free install without duplicating the package graph here.
         run: |
-          echo "::group::Build packages/core"
-          bun run --cwd packages/core build
-          echo "::endgroup::"
-
-          echo "::group::Build packages/shared"
-          # plugin-agent-skills (and others) consume @elizaos/shared via dist
-          # exports (RouteRequestContext, ReadJsonBodyOptions, route schemas).
-          # Must build before any plugin that imports from it.
-          bun run --cwd packages/shared build
-          echo "::endgroup::"
-
-          echo "::group::Build packages/skills"
-          # plugin-agent-skills imports @elizaos/skills via its dist exports
-          # (getSkillsDir, loadSkills, formatSkillsForPrompt). Must build
-          # before plugin-agent-skills typechecks its declaration emit.
-          bun run --cwd packages/skills build
-          echo "::endgroup::"
-
-          echo "::group::Build plugins/plugin-commands"
-          # plugin-telegram's command-registration.ts imports @elizaos/plugin-commands
-          # via its dist exports (ConnectorCommand, getConnectorCommands,
-          # resolveCommand, …). Because installs run with --ignore-scripts this
-          # workspace dependency is never built implicitly, so plugin-telegram's
-          # `tsc` declaration emit fails with TS2307 "Cannot find module
-          # '@elizaos/plugin-commands'". Build it before the connector loop below.
-          bun run --cwd plugins/plugin-commands build
-          echo "::endgroup::"
-
-          provider_package=""
-          if [ -n "${GROQ_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-groq"
-          elif [ -n "${OPENAI_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-openai"
-          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-anthropic"
-          elif [ -n "${GOOGLE_GENERATIVE_AI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-google-genai"
-          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-openrouter"
-          fi
-
-          package_dirs=(
-            plugins/plugin-sql
-            plugins/plugin-blocker
-            plugins/plugin-local-inference
-            plugins/plugin-app-control
-            plugins/plugin-agent-skills
-            plugins/plugin-calendar
-            plugins/plugin-health
-            plugins/plugin-pdf
-            plugins/plugin-telegram
-            plugins/plugin-whatsapp
-            plugins/plugin-signal
-            plugins/plugin-imessage
-          )
-          if [ -n "$provider_package" ]; then
-            package_dirs+=("$provider_package")
-          fi
-
-          for package_dir in "${package_dirs[@]}"; do
-            echo "::group::Build ${package_dir}"
-            bun run --cwd "$package_dir" build
-            echo "::endgroup::"
-          done
+          node packages/scripts/run-turbo.mjs run build --filter=@elizaos/scenario-runner... --concurrency=8
 
       - name: Run EA + connector live scenarios
         id: run

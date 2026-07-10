@@ -1,6 +1,6 @@
 /**
- * Pins the credentialed scenario workflow's clean-checkout build prerequisites
- * to every dist-exported package imported before scenario selection.
+ * Ensures the credentialed scenario workflow builds the scenario runner's full
+ * workspace dependency closure before launching the CLI from a clean checkout.
  */
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -10,24 +10,18 @@ const workflowPath = fileURLToPath(
   new URL("../../../.github/workflows/live-scenarios.yml", import.meta.url),
 );
 
-test("builds the local-inference voice-workbench export before the scenario CLI starts", () => {
+test("builds the scenario runner dependency closure before the scenario CLI starts", () => {
   const workflow = readFileSync(workflowPath, "utf8");
-  expect(workflow).toMatch(
-    /package_dirs=\([\s\S]*plugins\/plugin-local-inference[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
-  );
-});
+  const buildCommand =
+    "node packages/scripts/run-turbo.mjs run build --filter=@elizaos/scenario-runner... --concurrency=8";
+  const runStep = "- name: Run EA + connector live scenarios";
 
-test("builds the blocker engine imported by personal-assistant scenarios", () => {
-  const workflow = readFileSync(workflowPath, "utf8");
-  expect(workflow).toMatch(
-    /package_dirs=\([\s\S]*plugins\/plugin-blocker[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
+  expect(workflow).toContain(buildCommand);
+  expect(workflow.indexOf(buildCommand)).toBeLessThan(
+    workflow.indexOf(runStep),
   );
-});
-
-test("builds the calendar plugin imported by personal-assistant scenarios", () => {
-  const workflow = readFileSync(workflowPath, "utf8");
-  expect(workflow).toMatch(
-    /package_dirs=\([\s\S]*plugins\/plugin-calendar[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
+  expect(workflow).not.toMatch(
+    /package_dirs=\([\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
   );
 });
 
