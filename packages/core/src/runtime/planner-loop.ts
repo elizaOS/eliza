@@ -3328,6 +3328,8 @@ function preferredFinalMessageFromToolOrModel(
 	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
 	const widgetCollectsLatestMissingInput =
 		widgetReply !== undefined && latestToolResultAwaitsUserInput(trajectory);
+	const nonWidgetModelText =
+		widgetReply === undefined ? usableModelText : undefined;
 	// Precedence:
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
@@ -3356,7 +3358,7 @@ function preferredFinalMessageFromToolOrModel(
 		singleVerifiedUserFacingToolResultText(trajectory) ??
 		(widgetCollectsLatestMissingInput ? widgetReply : undefined) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
-		usableModelText ??
+		nonWidgetModelText ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);

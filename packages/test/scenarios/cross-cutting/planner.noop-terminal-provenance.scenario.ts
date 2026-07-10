@@ -1,6 +1,6 @@
 /**
- * Live-model adversary for generic no-op results followed by widget-shaped
- * diagnostic text. The action-owned preview must remain the visible reply.
+ * Live-model adversary for a generic no-op result followed by widget-shaped
+ * terminal text. Only the action-owned preview may reach the owner.
  */
 import type { Action } from "@elizaos/core";
 import type {
@@ -11,7 +11,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 
 const ACTION_NAME = "NOOP_PROVENANCE_CHECK";
 const ACTION_PREVIEW =
-  "The existing reminder draft is unchanged. Confirm if you still want me to save it.";
+  "The existing reminder draft is unchanged. Tell me if you want to change it.";
 const DIAGNOSTIC_FORM = [
   "[FORM]",
   JSON.stringify({
@@ -24,6 +24,10 @@ const DIAGNOSTIC_FORM = [
   "[/FORM]",
 ].join("\n");
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 const noopProvenanceAction: Action = {
   name: ACTION_NAME,
   description:
@@ -31,26 +35,22 @@ const noopProvenanceAction: Action = {
   validate: async () => true,
   handler: async () => ({
     success: true,
-    // The diagnostic channel is intentionally widget-shaped. Only the
-    // separately declared user-facing preview is licensed for the owner.
+    // The diagnostic channel is intentionally widget-shaped. The distinct
+    // user-facing projection is the only text licensed for the owner.
     text: DIAGNOSTIC_FORM,
     userFacingText: ACTION_PREVIEW,
-    values: {
-      noop: true,
-      requiresConfirmation: true,
-    },
-    data: { actionName: ACTION_NAME },
+    values: { noop: true },
+    data: { actionName: ACTION_NAME, noop: true },
   }),
 };
 
 async function seedNoopAction(
   ctx: ScenarioContext,
 ): Promise<string | undefined> {
-  const runtime = ctx.runtime as { actions?: Action[] } | undefined;
-  if (!runtime) return "scenario runtime was not available";
+  if (!isRecord(ctx.runtime)) return "scenario runtime was not available";
   // A single exposed action isolates result provenance from semantic action
   // retrieval, which the scenario runner intentionally runs without embeddings.
-  runtime.actions = [noopProvenanceAction];
+  ctx.runtime.actions = [noopProvenanceAction];
   return undefined;
 }
 
@@ -67,6 +67,15 @@ function expectActionOwnedPreview(
   }
   if (action.result?.success !== true) {
     return `${ACTION_NAME} did not succeed: ${JSON.stringify(action.result)}`;
+  }
+  if (!isRecord(action.result.data) || action.result.data.noop !== true) {
+    return `${ACTION_NAME} lacked its generic noop marker: ${JSON.stringify(action.result.data)}`;
+  }
+  if (
+    action.result.data.awaitingUserInput === true ||
+    action.result.data.missingField !== undefined
+  ) {
+    return `${ACTION_NAME} unexpectedly carried missing-input authority`;
   }
   const response = execution.responseText?.trim() ?? "";
   if (response.includes("[FORM]")) {
@@ -96,7 +105,7 @@ export default scenario({
     {
       id: "main",
       source: "eliza-app",
-      title: "No-op provenance adversary",
+      title: "No-op Provenance Adversary",
     },
   ],
   turns: [

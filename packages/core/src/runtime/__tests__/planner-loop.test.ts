@@ -1010,7 +1010,6 @@ describe("v5 planner loop skeleton", () => {
 			userFacingText: preview,
 			data: {
 				noop: true,
-				requiresConfirmation: true,
 			},
 		}));
 		const evaluate = vi
