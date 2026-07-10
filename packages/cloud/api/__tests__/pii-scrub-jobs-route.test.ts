@@ -1,9 +1,10 @@
 // Exercises cloud API PII scrub job routes (#14808 CLOUD lane) with deterministic Worker route fixtures.
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
-import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
-import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import * as piiScrubJobsActual from "@/lib/services/pii-scrub-jobs";
+import { createPiiScrubCronRoute } from "../cron/process-pii-scrub-jobs/route";
+import { createPiiScrubJobRoute } from "../v1/pii-scrub/jobs/[id]/route";
+import { createPiiScrubJobsRoute } from "../v1/pii-scrub/jobs/route";
 
 const ORG = "00000000-0000-4000-8000-0000000014aa";
 const USER = "00000000-0000-4000-8000-0000000014bb";
@@ -11,40 +12,24 @@ const JOB_ID = "00000000-0000-4000-8000-0000000014cc";
 const CRON_SECRET = "test-cron-secret";
 
 const requireUserOrApiKeyWithOrg = mock();
-mock.module("@/lib/auth/workers-hono-auth", () => ({
-  ...workersHonoAuthActual,
-  requireUserOrApiKeyWithOrg,
-}));
-
-mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
-  ...rateLimitActual,
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
-}));
-
 const enqueuePiiScrubBatch = mock();
 const getPiiScrubJobForOrg = mock();
 const processPendingPiiScrubJobs = mock();
-mock.module("@/lib/services/pii-scrub-jobs", () => ({
-  ...piiScrubJobsActual,
+const bypassRateLimit = () => async (_c: unknown, next: () => Promise<void>) =>
+  next();
+
+const jobsRoute = createPiiScrubJobsRoute({
+  requireUserOrApiKeyWithOrg,
+  rateLimit: bypassRateLimit,
   enqueuePiiScrubBatch,
-  getPiiScrubJobForOrg,
-  processPendingPiiScrubJobs,
-}));
-
-const jobsRoute = (await import("../v1/pii-scrub/jobs/route")).default;
-const jobRoute = (await import("../v1/pii-scrub/jobs/[id]/route")).default;
-const jobRouteWithParam = new Hono().route("/:id", jobRoute);
-const cronRoute = (await import("../cron/process-pii-scrub-jobs/route"))
-  .default;
-
-afterAll(() => {
-  mock.module("@/lib/auth/workers-hono-auth", () => workersHonoAuthActual);
-  mock.module(
-    "@/lib/middleware/rate-limit-hono-cloudflare",
-    () => rateLimitActual,
-  );
-  mock.module("@/lib/services/pii-scrub-jobs", () => piiScrubJobsActual);
 });
+const jobRoute = createPiiScrubJobRoute({
+  requireUserOrApiKeyWithOrg,
+  rateLimit: bypassRateLimit,
+  getPiiScrubJobForOrg,
+});
+const jobRouteWithParam = new Hono().route("/:id", jobRoute);
+const cronRoute = createPiiScrubCronRoute({ processPendingPiiScrubJobs });
 
 function jobRecord(overrides: Record<string, unknown> = {}) {
   return {

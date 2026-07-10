@@ -13,10 +13,6 @@ import {
 } from "@/lib/services/pii-scrub-jobs";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const app = new Hono<AppEnv>();
-
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
-
 const jobIdSchema = z.string().uuid();
 
 /**
@@ -24,16 +20,40 @@ const jobIdSchema = z.string().uuid();
  * row advances pending → in_progress → completed/failed with per-item counts
  * in `progress`. A job belonging to another org reads as 404 — never leaked.
  */
-app.get("/", async (c) => {
-  try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    const jobId = jobIdSchema.parse(c.req.param("id"));
-    const job = await getPiiScrubJobForOrg(jobId, user.organization_id);
-    if (!job) return jsonError(c, 404, "Job not found", "resource_not_found");
-    return c.json({ success: true, job: toPiiScrubJobDto(job) });
-  } catch (error) {
-    return failureResponse(c, error);
-  }
-});
+interface PiiScrubJobRouteDependencies {
+  requireUserOrApiKeyWithOrg: typeof requireUserOrApiKeyWithOrg;
+  rateLimit: typeof rateLimit;
+  getPiiScrubJobForOrg: typeof getPiiScrubJobForOrg;
+}
 
-export default app;
+export function createPiiScrubJobRoute(
+  overrides: Partial<PiiScrubJobRouteDependencies> = {},
+) {
+  const dependencies: PiiScrubJobRouteDependencies = {
+    requireUserOrApiKeyWithOrg,
+    rateLimit,
+    getPiiScrubJobForOrg,
+    ...overrides,
+  };
+  const app = new Hono<AppEnv>();
+  app.use("*", dependencies.rateLimit(RateLimitPresets.STANDARD));
+  app.get("/", async (c) => {
+    try {
+      const user = await dependencies.requireUserOrApiKeyWithOrg(c);
+      const jobId = jobIdSchema.parse(c.req.param("id"));
+      const job = await dependencies.getPiiScrubJobForOrg(
+        jobId,
+        user.organization_id,
+      );
+      if (!job) {
+        return jsonError(c, 404, "Job not found", "resource_not_found");
+      }
+      return c.json({ success: true, job: toPiiScrubJobDto(job) });
+    } catch (error) {
+      return failureResponse(c, error);
+    }
+  });
+  return app;
+}
+
+export default createPiiScrubJobRoute();

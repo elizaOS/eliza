@@ -8,8 +8,6 @@ import { processPendingPiiScrubJobs } from "@/lib/services/pii-scrub-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const app = new Hono<AppEnv>();
-
 /**
  * Drains pending `pii_scrub` jobs (#14808 CLOUD lane): claims batches with
  * FOR UPDATE SKIP LOCKED, skips items whose tenant-scoped content-hash
@@ -23,10 +21,17 @@ const app = new Hono<AppEnv>();
  * therefore FAIL CLOSED (bounded retries, then a loud failed job) instead of
  * passing un-inspected — the seam's throw-never-fabricate contract.
  */
-async function handleProcessPiiScrubJobs(c: Context<AppEnv>) {
+interface PiiScrubCronDependencies {
+  processPendingPiiScrubJobs: typeof processPendingPiiScrubJobs;
+}
+
+async function handleProcessPiiScrubJobs(
+  c: Context<AppEnv>,
+  dependencies: PiiScrubCronDependencies,
+) {
   try {
     requireCronSecret(c);
-    const stats = await processPendingPiiScrubJobs({
+    const stats = await dependencies.processPendingPiiScrubJobs({
       executor: createPiiScrubItemExecutor(),
     });
     logger.info("[PiiScrubCron] pii_scrub drain complete", stats);
@@ -37,6 +42,16 @@ async function handleProcessPiiScrubJobs(c: Context<AppEnv>) {
   }
 }
 
-app.post("/", handleProcessPiiScrubJobs);
+export function createPiiScrubCronRoute(
+  overrides: Partial<PiiScrubCronDependencies> = {},
+) {
+  const dependencies: PiiScrubCronDependencies = {
+    processPendingPiiScrubJobs,
+    ...overrides,
+  };
+  const app = new Hono<AppEnv>();
+  app.post("/", (c) => handleProcessPiiScrubJobs(c, dependencies));
+  return app;
+}
 
-export default app;
+export default createPiiScrubCronRoute();

@@ -17,10 +17,6 @@ import {
 } from "@/lib/services/pii-scrub-jobs";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const app = new Hono<AppEnv>();
-
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
-
 const enqueueSchema = z.object({
   rulesetVersion: z.string().min(1).max(PII_SCRUB_MAX_RULESET_VERSION_LENGTH),
   stage: z.string().min(1).max(64).optional(),
@@ -44,24 +40,43 @@ const enqueueSchema = z.object({
  * re-submitted batches are free: every already-scrubbed item skips at drain
  * time via its tenant-scoped content-hash done-marker.
  */
-app.post("/", async (c) => {
-  try {
-    const user = await requireUserOrApiKeyWithOrg(c);
-    const body = enqueueSchema.parse(await c.req.json());
-    const job = await enqueuePiiScrubBatch({
-      organizationId: user.organization_id,
-      userId: user.id,
-      rulesetVersion: body.rulesetVersion,
-      stage: body.stage,
-      items: body.items,
-    });
-    return c.json({ success: true, job: toPiiScrubJobDto(job) }, 202);
-  } catch (error) {
-    if (error instanceof PiiScrubJobDataError) {
-      return jsonError(c, 400, error.message, "validation_error");
-    }
-    return failureResponse(c, error);
-  }
-});
+interface PiiScrubJobsRouteDependencies {
+  requireUserOrApiKeyWithOrg: typeof requireUserOrApiKeyWithOrg;
+  rateLimit: typeof rateLimit;
+  enqueuePiiScrubBatch: typeof enqueuePiiScrubBatch;
+}
 
-export default app;
+export function createPiiScrubJobsRoute(
+  overrides: Partial<PiiScrubJobsRouteDependencies> = {},
+) {
+  const dependencies: PiiScrubJobsRouteDependencies = {
+    requireUserOrApiKeyWithOrg,
+    rateLimit,
+    enqueuePiiScrubBatch,
+    ...overrides,
+  };
+  const app = new Hono<AppEnv>();
+  app.use("*", dependencies.rateLimit(RateLimitPresets.STANDARD));
+  app.post("/", async (c) => {
+    try {
+      const user = await dependencies.requireUserOrApiKeyWithOrg(c);
+      const body = enqueueSchema.parse(await c.req.json());
+      const job = await dependencies.enqueuePiiScrubBatch({
+        organizationId: user.organization_id,
+        userId: user.id,
+        rulesetVersion: body.rulesetVersion,
+        stage: body.stage,
+        items: body.items,
+      });
+      return c.json({ success: true, job: toPiiScrubJobDto(job) }, 202);
+    } catch (error) {
+      if (error instanceof PiiScrubJobDataError) {
+        return jsonError(c, 400, error.message, "validation_error");
+      }
+      return failureResponse(c, error);
+    }
+  });
+  return app;
+}
+
+export default createPiiScrubJobsRoute();
