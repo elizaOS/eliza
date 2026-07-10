@@ -20,7 +20,30 @@ const requireAuthOrApiKeyWithOrg = mock(async () => ({
   apiKey: null,
 }));
 const assertSafeForPublicUse = mock(async () => undefined);
+const reserveCredits = mock(async () => ({
+  reconcile: async () => undefined,
+}));
+const billUsage = mock(async () => ({
+  totalCost: 0.001,
+  baseTotalCost: 0.001,
+  platformMarkup: 0,
+}));
+const elevenLabsTextToSpeech = mock(
+  async () =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([73, 68, 51]));
+        controller.close();
+      },
+    }),
+);
 let allowKokoroFetch = false;
+let cachedVoiceResponse: {
+  bytes: Uint8Array;
+  byteSize: number;
+  contentType: string;
+  hitCount: number;
+} | null = null;
 const fetchMock = mock<typeof fetch>(async () => {
   if (allowKokoroFetch) {
     return new Response(new Uint8Array([82, 73, 70, 70]), {
@@ -61,11 +84,7 @@ mock.module("@/lib/services/ai-pricing", () => ({
 }));
 
 mock.module("@/lib/services/ai-billing", () => ({
-  billFlatUsage: async () => ({
-    totalCost: 0.001,
-    baseTotalCost: 0.001,
-    platformMarkup: 0,
-  }),
+  billFlatUsage: billUsage,
 }));
 
 mock.module("@/lib/services/credits", () => {
@@ -74,22 +93,18 @@ mock.module("@/lib/services/credits", () => {
   }
   return {
     InsufficientCreditsError,
-    creditsService: {
-      reserve: async () => ({ reconcile: async () => undefined }),
-    },
+    creditsService: { reserve: reserveCredits },
   };
 });
 
 mock.module("@/lib/services/elevenlabs", () => ({
-  getElevenLabsService: () => ({
-    textToSpeech: async () => new ReadableStream(),
-  }),
+  getElevenLabsService: () => ({ textToSpeech: elevenLabsTextToSpeech }),
 }));
 
 mock.module("@/lib/services/tts-first-line-cache", () => ({
   fingerprintCloudVoiceSettings: () => "fp-test",
   getCloudFirstLineCacheService: () => ({
-    get: async () => null,
+    get: async () => cachedVoiceResponse,
     has: async () => true,
     put: async () => true,
   }),
@@ -129,8 +144,12 @@ beforeAll(async () => {
 
 beforeEach(() => {
   allowKokoroFetch = false;
+  cachedVoiceResponse = null;
   fetchMock.mockClear();
   assertSafeForPublicUse.mockClear();
+  reserveCredits.mockClear();
+  billUsage.mockClear();
+  elevenLabsTextToSpeech.mockClear();
 });
 
 afterAll(() => {
@@ -165,6 +184,34 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(assertSafeForPublicUse).toHaveBeenCalledTimes(1);
   });
 
+  test("serves a configured Kokoro cache hit with provider timing headers", async () => {
+    cachedVoiceResponse = {
+      bytes: new Uint8Array([82, 73, 70, 70]),
+      byteSize: 4,
+      contentType: "audio/wav",
+      hitCount: 2,
+    };
+
+    const response = await postTts(
+      { text: "Hello.", voiceId: "af_heart" },
+      {
+        KOKORO_TTS_URL: "https://kokoro.example.test",
+        KOKORO_FIRST_LINE_CACHE: "1",
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("kokoro");
+    expect(response.headers.get("X-TTS-Cache")).toBe(
+      "hit; kokoro; first-sentence",
+    );
+    expect(response.headers.get("Server-Timing")).toContain("synthesis;dur=");
+    expect(await response.arrayBuffer()).toEqual(
+      new Uint8Array([82, 73, 70, 70]).buffer,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("rejects unsupported Kokoro-shaped voice ids with clear 4xx and no upstream call", async () => {
     const response = await postTts(
       { text: "Hello.", voiceId: "af_not_a_voice" },
@@ -182,5 +229,47 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(assertSafeForPublicUse).not.toHaveBeenCalled();
+  });
+
+  test("fails a Kokoro voice fast when the provider is unconfigured", async () => {
+    const response = await postTts({ text: "Hello.", voiceId: "af_heart" });
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("kokoro");
+    expect(response.headers.get("Server-Timing")).toContain("admission;dur=");
+    expect(await response.json()).toEqual({
+      error: "Kokoro TTS is not configured for this environment.",
+      code: "kokoro_unconfigured",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(assertSafeForPublicUse).not.toHaveBeenCalled();
+    expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
+  });
+
+  test("preserves ElevenLabs routing and observability for a custom voice", async () => {
+    const response = await postTts({
+      text: "Hello from a custom voice.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("elevenlabs");
+    const serverTiming = response.headers.get("Server-Timing") ?? "";
+    expect(serverTiming).toContain("auth;dur=");
+    expect(serverTiming).toContain("admission;dur=");
+    expect(serverTiming).toContain("synthesis;dur=");
+    expect(await response.arrayBuffer()).toEqual(
+      new Uint8Array([73, 68, 51]).buffer,
+    );
+    expect(elevenLabsTextToSpeech).toHaveBeenCalledTimes(1);
+    expect(elevenLabsTextToSpeech).toHaveBeenCalledWith({
+      text: "Hello from a custom voice.",
+      voiceId: "custom-elevenlabs-voice",
+      modelId: undefined,
+    });
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
