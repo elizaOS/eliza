@@ -2,8 +2,7 @@ import { ParsedWalletTransaction } from "../parsers/transaction";
 import { SupportedChain, WalletFundingSummary } from "../types";
 import { lookupWalletLabel } from "../labels/labelEngine";
 import {
-  buildConfidenceInput,
-  confidenceLevelFromScore,
+  buildConfidenceAnalysis,
 } from "../confidence/framework";
 
 export function analyzeWalletFunding(
@@ -12,6 +11,8 @@ export function analyzeWalletFunding(
   firstTransaction: ParsedWalletTransaction | null,
 ): WalletFundingSummary {
   if (!firstTransaction) {
+    const confidenceAnalysis = buildConfidenceAnalysis([]);
+
     return {
       firstFundingTransaction: null,
       firstFundingAt: null,
@@ -19,7 +20,15 @@ export function analyzeWalletFunding(
       fundingAmountSol: null,
       fundingSourceType: "unknown",
       fundingSourceLabel: null,
-      evidenceConfidence: "low",
+      evidenceConfidence: confidenceAnalysis.level,
+      confidenceAnalysis: {
+        rawScore: confidenceAnalysis.score,
+        maxScore: 100,
+        displayScore: `${(confidenceAnalysis.score / 10).toFixed(1)} / 10`,
+        maxDisplayScore: 10,
+        level: confidenceAnalysis.level,
+        reasons: confidenceAnalysis.reasons,
+      },
       confidence: "low",
       notes: ["No first transaction details were available."],
     };
@@ -34,7 +43,7 @@ export function analyzeWalletFunding(
   );
 
   if (!incomingFundingTransfer) {
-    const evidenceConfidenceInput = buildConfidenceInput([
+    const confidenceAnalysis = buildConfidenceAnalysis([
       {
         condition: Boolean(firstTransaction.signature),
         score: 30,
@@ -59,9 +68,15 @@ export function analyzeWalletFunding(
       fundingAmountSol: null,
       fundingSourceType: "unknown",
       fundingSourceLabel: null,
-      evidenceConfidence: confidenceLevelFromScore(
-        evidenceConfidenceInput.score,
-      ),
+      evidenceConfidence: confidenceAnalysis.level,
+      confidenceAnalysis: {
+        rawScore: confidenceAnalysis.score,
+        maxScore: 100,
+        displayScore: `${(confidenceAnalysis.score / 10).toFixed(1)} / 10`,
+        maxDisplayScore: 10,
+        level: confidenceAnalysis.level,
+        reasons: confidenceAnalysis.reasons,
+      },
       confidence: "low",
       notes: [
         "No incoming SOL funding transfer was detected in the first known transaction.",
@@ -84,7 +99,7 @@ export function analyzeWalletFunding(
           ? "program"
           : "wallet";
 
-  const evidenceConfidenceInput = buildConfidenceInput([
+  const confidenceAnalysis = buildConfidenceAnalysis([
     {
       condition: Boolean(firstTransaction.signature),
       score: 20,
@@ -126,9 +141,15 @@ export function analyzeWalletFunding(
     fundingAmountSol: incomingFundingTransfer.amountSol,
     fundingSourceType,
     fundingSourceLabel,
-    evidenceConfidence: confidenceLevelFromScore(
-      evidenceConfidenceInput.score,
-    ),
+    evidenceConfidence: confidenceAnalysis.level,
+    confidenceAnalysis: {
+      rawScore: confidenceAnalysis.score,
+      maxScore: 100,
+      displayScore: `${(confidenceAnalysis.score / 10).toFixed(1)} / 10`,
+      maxDisplayScore: 10,
+      level: confidenceAnalysis.level,
+      reasons: confidenceAnalysis.reasons,
+    },
     confidence,
     notes: [
       "Initial funding source was inferred from the first known incoming SOL transfer.",
