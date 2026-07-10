@@ -226,7 +226,7 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         phone,
         stale,
       ]),
-    ).toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    ).toThrow(/unexpected OCR record plugin-retired-gui/);
     expect(() =>
       validateImportedOcrRecords(dir, "ocr.ndjson", shots, [
         {
@@ -264,10 +264,10 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
         "--out",
         join(dir, "ocr-triage.json"),
       ]),
-    ).rejects.toThrow(/unexpected OCR record plugin-social-alpha-gui/);
+    ).rejects.toThrow(/unexpected OCR record plugin-retired-gui/);
     const { status, stderr } = run();
     expect(status).not.toBe(0);
-    expect(stderr).toMatch(/unexpected OCR record plugin-social-alpha-gui/);
+    expect(stderr).toMatch(/unexpected OCR record plugin-retired-gui/);
   });
 
   it("exits non-zero when a report row's screenshot is missing", async () => {
