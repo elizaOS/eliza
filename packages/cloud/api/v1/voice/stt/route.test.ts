@@ -38,6 +38,11 @@ const billFlatUsage = mock(async () => ({
 mock.module("@/lib/services/ai-billing", () => ({ billFlatUsage }));
 mock.module("@/lib/services/ai-pricing", () => ({
   calculateSTTCostFromCatalog: mock(async () => ({ totalCost: 0 })),
+  calculateTTSCostFromCatalog: mock(async () => ({
+    totalCost: 0,
+    baseTotalCost: 0,
+    platformMarkup: 0,
+  })),
 }));
 class MockInsufficientCreditsError extends Error {
   required: number;
@@ -56,16 +61,63 @@ const speechToText = mock(
   async (_args: { audioFile: File; languageCode?: string }) =>
     "elevenlabs transcript",
 );
+const textToSpeech = mock(
+  async (_args: { text: string; voiceId?: string; modelId?: string }) =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([73, 68, 51]));
+        controller.close();
+      },
+    }),
+);
 mock.module("@/lib/services/elevenlabs", () => ({
-  getElevenLabsService: mock(() => ({ speechToText })),
+  getElevenLabsService: mock(() => ({ speechToText, textToSpeech })),
 }));
 const usageCreate = mock(async (_record: Record<string, unknown>) => ({}));
 mock.module("@/lib/services/usage", () => ({
   usageService: { create: usageCreate },
 }));
+// Minimal TTS route seams let this same changed test file cover both changed
+// source files without cross-file Bun mock collisions in the coverage lane.
+mock.module("@/db/repositories/user-voices", () => ({
+  userVoicesRepository: {
+    findByElevenLabsVoiceId: async () => null,
+    incrementUsageCount: async () => undefined,
+  },
+}));
+mock.module("@/lib/services/content-safety", () => ({
+  contentSafetyService: { assertSafeForPublicUse: async () => undefined },
+}));
+mock.module("@/lib/api/cloud-worker-errors", () => ({
+  ApiError: class ApiError extends Error {
+    status = 500;
+    toJSON() {
+      return { error: this.message };
+    }
+  },
+}));
+mock.module("@/lib/services/pcm16-wav", () => ({
+  drainPcm16Stream: async () => new Uint8Array(),
+  pcm16ToWav: () => new Uint8Array(),
+}));
+mock.module("@/lib/services/tts-first-line-cache", () => ({
+  fingerprintCloudVoiceSettings: () => "fp-test",
+  getCloudFirstLineCacheService: () => ({
+    get: async () => null,
+    has: async () => true,
+    put: async () => true,
+  }),
+  shouldBypassCloudFirstLineCache: () => true,
+}));
+mock.module("@/lib/pricing-constants", () => ({
+  CUSTOM_VOICE_TTS_MARKUP: 1.2,
+}));
 
 const sttRoute = (await import("./route")).default;
-const app = new Hono().route("/api/v1/voice/stt", sttRoute);
+const ttsRoute = (await import("../tts/route")).default;
+const app = new Hono()
+  .route("/api/v1/voice/stt", sttRoute)
+  .route("/api/v1/voice/tts", ttsRoute);
 
 /** A real RIFF/WAVE mono PCM16 file so the route's magic-number check passes. */
 function synthWav(durationS = 0.25, rate = 8000): Uint8Array {
@@ -188,6 +240,11 @@ const upstream = Bun.serve({
       }
       return upstreamReply();
     }
+    if (req.method === "POST" && url.pathname === "/api/tts") {
+      return new Response(new Uint8Array([82, 73, 70, 70]), {
+        headers: { "content-type": "audio/wav" },
+      });
+    }
     return new Response("not found", { status: 404 });
   },
 });
@@ -247,6 +304,16 @@ beforeEach(() => {
   reconcile.mockClear();
   speechToText.mockReset();
   speechToText.mockResolvedValue("elevenlabs transcript");
+  textToSpeech.mockReset();
+  textToSpeech.mockImplementation(
+    async () =>
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array([73, 68, 51]));
+          controller.close();
+        },
+      }),
+  );
   upstreamReply = () => Response.json({ text: "" });
 });
 
@@ -618,6 +685,71 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
       error: "Failed to transcribe audio. Please try again.",
     });
     expect(reconcile).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("POST /api/v1/voice/tts — log redaction", () => {
+  test("keeps the paid ElevenLabs response contract", async () => {
+    const res = await app.request(
+      new Request("http://localhost/api/v1/voice/tts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "A normal synthesized response." }),
+      }),
+      undefined,
+      {} as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    expect(await res.arrayBuffer()).toEqual(
+      new Uint8Array([73, 68, 51]).buffer,
+    );
+    expect(textToSpeech).toHaveBeenCalledTimes(1);
+    await Bun.sleep(0);
+    expect(usageCreate).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps the free Kokoro response contract", async () => {
+    const res = await app.request(
+      new Request("http://localhost/api/v1/voice/tts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          text: "A normal synthesized response.",
+          voiceId: "EXAVITQu4vr4xnSDxMaL",
+        }),
+      }),
+      undefined,
+      { KOKORO_TTS_URL: `http://localhost:${upstream.port}` } as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/wav");
+    expect(res.headers.get("x-eliza-tts-provider")).toBe("kokoro");
+    expect(textToSpeech).not.toHaveBeenCalled();
+  });
+
+  test("logs only the error type when synthesis errors contain private text", async () => {
+    textToSpeech.mockRejectedValueOnce(
+      new Error('provider payload echoed: "private medical transcript"'),
+    );
+
+    const res = await app.request(
+      new Request("http://localhost/api/v1/voice/tts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "private medical transcript" }),
+      }),
+      undefined,
+      {} as never,
+    );
+
+    expect(res.status).toBe(500);
+    const logs = allLoggedContent();
+    expect(logs).not.toContain("private medical transcript");
+    expect(logs).not.toContain("provider payload echoed");
+    expect(logs).toContain('"errorType":"Error"');
   });
 });
 
