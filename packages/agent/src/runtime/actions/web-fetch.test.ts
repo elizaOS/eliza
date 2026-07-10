@@ -69,7 +69,7 @@ describe("WEB_FETCH action", () => {
     }
   });
 
-  it("returns the fetched text snippet and fires the callback", async () => {
+  it("returns the fetched text snippet WITHOUT self-delivering it via callback", async () => {
     __setPinnedFetchImplForTests(
       async () => new Response("hello world", { status: 200 }),
     );
@@ -78,7 +78,10 @@ describe("WEB_FETCH action", () => {
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("hello world");
-    expect(captured.text).toBe("hello world");
+    // Success payloads are returned to the planner loop for the evaluator to
+    // compose THE single answer — a raw payload posted via callback doubled
+    // the turn's voice (observed live). Error paths still fire the callback.
+    expect(captured.text).toBeUndefined();
     expect(result.data).toMatchObject({
       actionName: "WEB_FETCH",
       url: TEST_URL,

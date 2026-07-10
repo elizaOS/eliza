@@ -144,12 +144,14 @@ describe("WEB_SEARCH action", () => {
     expect(result.text).toContain("query");
   });
 
-  it("returns parsed results from a JSON-RPC response (parallel)", async () => {
+  it("returns parsed results from a JSON-RPC response (parallel) without callback self-delivery", async () => {
     mockProviders({ parallel: mcpJson("RESULT: best ramen — Tabelog") });
     const { result, captured } = await runHandler({ query: "ramen" });
     expect(result.success).toBe(true);
     expect(result.text).toContain("Tabelog");
-    expect(captured.text).toContain("Tabelog");
+    // Raw provider output (parallel.ai returns first-person prose) must never
+    // self-post as a user-visible message; the evaluator composes the answer.
+    expect(captured.text).toBeUndefined();
     expect(result.data).toMatchObject({
       actionName: "WEB_SEARCH",
       provider: "parallel",

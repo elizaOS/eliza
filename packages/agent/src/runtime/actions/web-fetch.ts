@@ -2,7 +2,7 @@
  * WEB_FETCH — keyless inline HTTP GET of a public URL or data API.
  *
  * Gives every runtime (not just Anthropic, which gets server-side web_search
- * via {@link installAnthropicWebSearch}) an inline live-info capability that
+ * via {@link installServerSideWebSearch}) an inline live-info capability that
  * needs no API key and no backing service. Because its similes include
  * `LOOKUP_WEB` / `WEB_LOOKUP`, the core router's `findWebLookupActionName`
  * picks it up with no core change, so non-Anthropic models can answer

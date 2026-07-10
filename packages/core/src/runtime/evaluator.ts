@@ -651,6 +651,18 @@ function looksLikeUserFacingAnswer(text: string): boolean {
 	if (/\{\s*"(?:action|tool|name|parameters|command)"\s*:/i.test(text)) {
 		return false;
 	}
+	// Native model tool syntax is machine output, never a user-facing answer.
+	// glm/qwen-family models drift to <tool_call>/<arg_key> XML mid-turn, and a
+	// hallucinated bare ALL_CAPS action name followed by a JSON args object
+	// ("GET_WEATHER\n{\"location\":\"Tokyo\"}") evaded both the JSON guard above
+	// (no name/tool/action key) and this gate — delivered verbatim, observed
+	// live. Screen both dialects.
+	if (/<\/?(?:tool_call|function_call|arg_key|arg_value)\b/i.test(text)) {
+		return false;
+	}
+	if (/^\s*[A-Z][A-Z0-9_]{2,}\s*\n\s*\{/.test(text)) {
+		return false;
+	}
 	if (
 		/\b(?:need|needs|should|must|will)\s+(?:to\s+)?(?:run|call|use|invoke|execute)\b/i.test(
 			text,
@@ -806,6 +818,18 @@ function getStructuredEvaluatorObject(
 		typeof raw.object === "object" &&
 		!Array.isArray(raw.object)
 	) {
+		// Same shape gate the text path applies: a structured object that carries
+		// none of success/decision/route is model drift (observed live: a bare
+		// {"command":"curl ..."} shell-style object), not an evaluator verdict.
+		// Accepting it produced a silent default-CONTINUE that burned planner
+		// iterations; route it through the parse-error path instead so the loop
+		// sees a malformed evaluation, not a judgement.
+		if (!isEvaluatorShapedObject(raw.object)) {
+			return {
+				object: null,
+				parseError: `structured evaluator output is not evaluator-shaped: ${JSON.stringify(raw.object).slice(0, 200)}`,
+			};
+		}
 		return { object: raw.object as RawEvaluatorOutput };
 	}
 	if (typeof raw.text === "string") {

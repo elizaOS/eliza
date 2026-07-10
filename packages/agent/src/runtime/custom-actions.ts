@@ -723,8 +723,28 @@ async function performGuardedHttpRequest(
         return { ok: false, status: response.status, text: "", blocked: true };
       }
       const nextSafety = await resolveUrlSafety(nextUrl.toString());
-      if (nextSafety.blocked) {
+      // A null target is resolveUrlSafety's self-API loopback exemption. Fine
+      // for a caller-typed URL; NOT fine as a redirect destination — an
+      // external host must not be able to 301 the agent into its own API.
+      if (nextSafety.blocked || !nextSafety.target) {
         return { ok: false, status: response.status, text: "", blocked: true };
+      }
+      // HTTP redirect semantics + cross-origin hygiene: 303 (and the
+      // conventional 301/302-with-body demotion) becomes a bodyless GET, and
+      // credential-bearing headers never follow a hop to a different origin.
+      if (
+        response.status === 303 ||
+        ((response.status === 301 || response.status === 302) &&
+          fetchOpts.body !== undefined)
+      ) {
+        fetchOpts.method = "GET";
+        delete fetchOpts.body;
+        (fetchOpts.headers as Headers).delete("Content-Type");
+      }
+      if (nextUrl.origin !== new URL(currentUrl).origin) {
+        for (const h of ["authorization", "cookie", "proxy-authorization"]) {
+          (fetchOpts.headers as Headers).delete(h);
+        }
       }
       currentUrl = nextUrl.toString();
       currentSafety = nextSafety;

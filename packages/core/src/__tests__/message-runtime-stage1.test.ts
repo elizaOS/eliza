@@ -2997,7 +2997,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									entityId: "00000000-0000-0000-0000-00000000bb11" as UUID,
 									agentId: runtime.agentId,
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
-									createdAt: 1,
+									createdAt: Date.now() - 180000,
 									content: {
 										text: "Hey, nice to meet shebotdick.",
 										source: "discord",
@@ -3016,7 +3016,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									entityId: "00000000-0000-0000-0000-00000000bb12" as UUID,
 									agentId: runtime.agentId,
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
-									createdAt: 2,
+									createdAt: Date.now() - 120000,
 									content: {
 										text: "i was asking about shedick",
 										source: "discord",
@@ -3096,7 +3096,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									entityId: "00000000-0000-0000-0000-00000000cc11" as UUID,
 									agentId: runtime.agentId,
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
-									createdAt: 1,
+									createdAt: Date.now() - 180000,
 									content: { text: "whats the btc price", source: "discord" },
 									metadata: {
 										type: "message",
@@ -3108,7 +3108,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									entityId: runtime.agentId,
 									agentId: runtime.agentId,
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
-									createdAt: 2,
+									createdAt: Date.now() - 120000,
 									content: {
 										text: "BTC is around $63,000 right now.",
 										source: "discord",
@@ -3119,7 +3119,7 @@ describe("runV5MessageRuntimeStage1", () => {
 									entityId: runtime.agentId,
 									agentId: runtime.agentId,
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
-									createdAt: 3,
+									createdAt: Date.now() - 60000,
 									content: {
 										text: "[sub-agent: price check (opencode) — task_complete]\nraw transcript",
 										source: "acpx:sub-agent-router",
