@@ -92,7 +92,14 @@ concurrency:
   # commit always lands next. This also removes the need for the manual out-of-band
   # deploy-serialization escort. PRs keep a per-PR dedupe group + cancel-in-progress
   # to avoid preview-deploy churn. Refs #11108.
-  group: cloud-cf-deploy-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('branch-{0}', github.ref) }}
+  #
+  # The "-v2" suffix retires a wedged predecessor group: REJECTING a waiting
+  # migrate-db reviewer gate completes the holder run without releasing its
+  # concurrency group, and GitHub never re-evaluates the queue afterward — every
+  # later run in the group sits in "pending" forever (rerun+cancel of the holder
+  # does not unwedge it; renaming the group is the only recovery). If a stale
+  # waiting deploy must be cleared, CANCEL the run; never reject its gate. (#15892)
+  group: cloud-cf-deploy-v2-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('branch-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
@@ -189,7 +196,7 @@ jobs:
           # The migrate entry imports @elizaos/core, whose i18n barrel pulls in the
           # gitignored generated keyword data. Source-mode (eliza-source) migrate
           # never builds core, so generate the file first (mirrors core's prebuild).
-          node packages/shared/scripts/generate-keywords.mjs --target ts
+          node packages/shared/scripts/generate-keywords.mjs
           bun run db:cloud:migrate
 
   # ---------------------------------------------------------------------------
@@ -547,7 +554,15 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler deploy ${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA"
+          KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+        run: |
+          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA")
+          if [ -n "${KOKORO_TTS_URL:-}" ]; then
+            args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
+          else
+            echo "::notice::ELIZA_VOICE_KOKORO_TTS_URL is not configured; deploying without KOKORO_TTS_URL"
+          fi
+          bunx wrangler deploy "${args[@]}"
 
       - name: Verify deployed API commit
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'

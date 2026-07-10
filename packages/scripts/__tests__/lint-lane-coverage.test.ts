@@ -1,8 +1,9 @@
-// Exercises tests lint lane coverage.test automation behavior with deterministic script fixtures.
-import { afterEach, describe, expect, test } from "bun:test";
+/** Exercises the plugin lane analyzer against deterministic temporary repositories. */
+
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { afterEach, describe, expect, test } from "vitest";
 
 const laneCoverage = await import(
   new URL("../lint-lane-coverage.mjs", import.meta.url).href
@@ -111,6 +112,74 @@ describe("lint-lane-coverage analyzer", () => {
     expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_ACTION_E2E);
     expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_VIEW_TESTS);
     expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_VIEW_E2E);
+  });
+
+  test("does not invent action coverage gaps from empty action placeholders", () => {
+    const root = makeRepo();
+    writePlugin(root, "plugin-empty-actions");
+    write(
+      root,
+      "plugins/plugin-empty-actions/src/index.ts",
+      "export default { providers: [] };",
+    );
+    write(
+      root,
+      "plugins/plugin-empty-actions/src/actions/index.ts",
+      "/** Messaging uses connector hooks instead of standalone actions. */\nexport {};",
+    );
+    write(
+      root,
+      "plugins/plugin-empty-actions/src/actions/connector-note.ts",
+      "// The connector owns outbound messaging; no standalone action is registered.",
+    );
+    write(
+      root,
+      "plugins/plugin-empty-actions/src/plugin.test.ts",
+      "import { test, expect } from 'vitest'; test('plugin', () => expect(true).toBe(true));",
+    );
+
+    const result = laneCoverage.analyzeLaneCoverage({
+      repoRoot: root,
+      allowlistPath: null,
+    });
+    const codes = result.unsuppressedIssues.map(
+      (entry: { code: string }) => entry.code,
+    );
+
+    expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_DETERMINISTIC_E2E);
+    expect(codes).not.toContain(laneCoverage.ISSUE_CODES.MISSING_ACTION_TESTS);
+    expect(codes).not.toContain(laneCoverage.ISSUE_CODES.MISSING_ACTION_E2E);
+  });
+
+  test("keeps executable action modules in the action-surface inventory", () => {
+    const root = makeRepo();
+    writePlugin(root, "plugin-handler-action");
+    write(
+      root,
+      "plugins/plugin-handler-action/src/index.ts",
+      "export default { providers: [] };",
+    );
+    write(
+      root,
+      "plugins/plugin-handler-action/src/actions/handler.ts",
+      "export async function runAction() { return { success: true }; }",
+    );
+    write(
+      root,
+      "plugins/plugin-handler-action/src/plugin.test.ts",
+      "import { test, expect } from 'vitest'; test('plugin', () => expect(true).toBe(true));",
+    );
+
+    const result = laneCoverage.analyzeLaneCoverage({
+      repoRoot: root,
+      allowlistPath: null,
+    });
+    const codes = result.unsuppressedIssues.map(
+      (entry: { code: string }) => entry.code,
+    );
+
+    expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_ACTION_TESTS);
+    expect(codes).toContain(laneCoverage.ISSUE_CODES.MISSING_ACTION_E2E);
   });
 
   test("requires explicit allowlist reasons and treats stale entries as errors", () => {

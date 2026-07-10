@@ -159,6 +159,18 @@ export function isHomeWidgetSunset(
   return false;
 }
 
+/**
+ * Test-only session boundary: clears the per-session `seen` guard and re-reads
+ * persisted state, exactly what a page reload does. Lets a test exercise
+ * cross-session sunset behavior (afterSeen retirement) without resetting the
+ * module registry.
+ */
+export function __simulateNewSessionForTests(): void {
+  seenThisSession.clear();
+  state = readPersisted();
+  emit();
+}
+
 /** Test-only reset (state + session guard + listeners). */
 export function __resetHomeDismissalsForTests(): void {
   state = {};

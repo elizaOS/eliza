@@ -423,17 +423,45 @@ function buildLegacyShim(args: {
 
 function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   const buffer = Buffer.concat(captured.chunks);
-  const contentType = captured.headers["content-type"] ?? "";
-  let body: unknown = buffer.length > 0 ? buffer.toString("utf8") : undefined;
-  if (
-    body != null &&
-    typeof body === "string" &&
-    contentType.toLowerCase().includes("application/json")
-  ) {
+  const contentType = (captured.headers["content-type"] ?? "").toLowerCase();
+  const contentEncoding = (captured.headers["content-encoding"] ?? "")
+    .trim()
+    .toLowerCase();
+  if (buffer.length === 0) {
+    return {
+      status: captured.statusCode || 200,
+      headers: captured.headers,
+      body: undefined,
+    };
+  }
+  // Content encodings describe bytes that the client must decode even when the
+  // underlying media type is textual; interpreting either encoded or binary
+  // bytes as UTF-8 would make the downstream IPC base64 envelope lossy.
+  const hasTransferEncoding =
+    contentEncoding !== "" && contentEncoding !== "identity";
+  const isTextual =
+    !hasTransferEncoding &&
+    (contentType === "" ||
+      contentType.startsWith("text/") ||
+      contentType.includes("json") ||
+      contentType.includes("xml") ||
+      contentType.includes("javascript") ||
+      contentType.includes("x-www-form-urlencoded") ||
+      contentType.includes("charset"));
+  if (!isTextual) {
+    return {
+      status: captured.statusCode || 200,
+      headers: captured.headers,
+      body: buffer,
+    };
+  }
+  const text = buffer.toString("utf8");
+  let body: unknown = text;
+  if (contentType.includes("json")) {
     try {
-      body = JSON.parse(body);
+      body = JSON.parse(text);
     } catch {
-      // keep as string
+      // error-policy:J3 malformed JSON stays explicit raw text at this transport boundary
     }
   }
   return {

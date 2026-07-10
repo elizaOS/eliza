@@ -2,8 +2,11 @@
  * Shape tests for Anthropic prompt-cache injection in the OpenRouter text handler.
  * Covers the runtime-fallback cacheControl (Fix 2), internal-field stripping from wire
  * options (Fix 3a), segmented-user-content breakpoints with validated shapes and capping
- * (Fix 3b/3c), and the cacheSystem:false opt-out. AI SDK and provider are mocked —
- * no network calls, deterministic string fixtures.
+ * (Fix 3b/3c), the cacheSystem:false opt-out, verbatim survival of caller-supplied
+ * providerOptions (openrouter + arbitrary keys) alongside injected cacheControl and
+ * multi-breakpoint stamping (#15825), and the explicit boundary failure when a
+ * caller-supplied cacheControl is malformed (#15825, no silent drop). AI SDK and provider
+ * are mocked — no network calls, deterministic string fixtures.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,11 +16,15 @@ function createRuntime(settings: Record<string, string> = {}) {
     character: { system: "system prompt" },
     emitEvent: vi.fn(async () => undefined),
     getSetting: vi.fn((key: string) => {
-      return ({
-        OPENROUTER_API_KEY: "test-key",
-        OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8",
-        ...settings,
-      } as Record<string, string>)[key] ?? null;
+      return (
+        (
+          {
+            OPENROUTER_API_KEY: "test-key",
+            OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8",
+            ...settings,
+          } as Record<string, string>
+        )[key] ?? null
+      );
     }),
   } as IAgentRuntime;
 }
@@ -62,15 +69,15 @@ describe("Anthropic cache injection — runtime cacheControl fallback", () => {
     const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
-    await handleTextLarge(
-      createRuntime({ ANTHROPIC_PROMPT_CACHE_TTL: "1h" }),
-      { prompt: "hello" } as never,
-    );
+    await handleTextLarge(createRuntime({ ANTHROPIC_PROMPT_CACHE_TTL: "1h" }), {
+      prompt: "hello",
+    } as never);
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
     const messages = call.messages as Array<Record<string, unknown>>;
-    const anthropicOpts = (messages?.[0]?.providerOptions as Record<string, unknown>)
-      ?.anthropic as Record<string, unknown> | undefined;
+    const anthropicOpts = (messages?.[0]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
     expect(anthropicOpts?.cacheControl).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
@@ -83,7 +90,7 @@ describe("Anthropic cache injection — runtime cacheControl fallback", () => {
         OPENROUTER_LARGE_MODEL: "google/gemini-2.5-flash",
         ANTHROPIC_PROMPT_CACHE_TTL: "1h",
       }),
-      { prompt: "hello" } as never,
+      { prompt: "hello" } as never
     );
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
@@ -130,18 +137,15 @@ describe("Anthropic cache injection — internal field stripping", () => {
     const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
-    await handleTextLarge(
-      createRuntime({ OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8" }),
-      {
-        messages: [
-          { role: "system", content: "system prompt" },
-          { role: "user", content: "hello" },
-        ],
-        providerOptions: {
-          anthropic: { cacheSystem: true, thinking: { type: "enabled" } },
-        },
-      } as never,
-    );
+    await handleTextLarge(createRuntime({ OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8" }), {
+      messages: [
+        { role: "system", content: "system prompt" },
+        { role: "user", content: "hello" },
+      ],
+      providerOptions: {
+        anthropic: { cacheSystem: true, thinking: { type: "enabled" } },
+      },
+    } as never);
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
     const wireAnthropic = (call.providerOptions as Record<string, unknown> | undefined)
@@ -175,8 +179,9 @@ describe("Anthropic cache injection — segmented user content", () => {
     const content = userMsg?.content as Array<Record<string, unknown>>;
     expect(content).toHaveLength(2);
     expect(content[0]?.text).toBe("seg1");
-    const seg0Opts = (content[0]?.providerOptions as Record<string, unknown>)
-      ?.anthropic as Record<string, unknown> | undefined;
+    const seg0Opts = (content[0]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
     expect(seg0Opts?.cacheControl).toEqual({ type: "ephemeral" });
     expect(content[1]?.text).toBe("seg2");
     expect(content[1]?.providerOptions).toBeUndefined();
@@ -242,12 +247,119 @@ describe("Anthropic cache injection — segmented user content", () => {
     const userMsg = messages?.[1];
     const content = userMsg?.content as Array<Record<string, unknown>>;
     const cachedBlocks = content?.filter(
-      (b) =>
-        (b.providerOptions as Record<string, unknown> | undefined)?.anthropic !== undefined,
+      (b) => (b.providerOptions as Record<string, unknown> | undefined)?.anthropic !== undefined
     );
     // Only segmentIndex 0 survives the cap of 1
     expect(cachedBlocks).toHaveLength(1);
     expect(cachedBlocks?.[0]?.text).toBe("s0");
+  });
+});
+
+describe("Anthropic cache injection — caller providerOptions survive verbatim", () => {
+  it("preserves openrouter.promptCacheKey and arbitrary provider keys alongside injected cacheControl", async () => {
+    const { generateText } = mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await handleTextLarge(createRuntime(), {
+      prompt: "hello",
+      providerOptions: {
+        openrouter: { promptCacheKey: "caller-key-123" },
+        gateway: { caching: "auto" },
+        customProvider: { nested: { flag: true }, count: 7 },
+      },
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    const providerOpts = call.providerOptions as Record<string, unknown>;
+    // Caller keys survive unchanged into the serialized request.
+    expect(providerOpts.openrouter).toEqual({ promptCacheKey: "caller-key-123" });
+    expect(providerOpts.gateway).toEqual({ caching: "auto" });
+    expect(providerOpts.customProvider).toEqual({ nested: { flag: true }, count: 7 });
+    // And the injected message-level cacheControl is still applied on the system message.
+    const messages = call.messages as Array<Record<string, unknown>>;
+    const anthropicOpts = (messages?.[0]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
+    expect(anthropicOpts?.cacheControl).toEqual(expect.objectContaining({ type: "ephemeral" }));
+  });
+
+  it("stamps cacheControl on multiple segment breakpoints while caller providerOptions survive", async () => {
+    const { generateText } = mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await handleTextLarge(createRuntime(), {
+      prompt: "s0s1s2",
+      promptSegments: [
+        { content: "s0", stable: true },
+        { content: "s1", stable: true },
+        { content: "s2", stable: false },
+      ],
+      providerOptions: {
+        openrouter: { promptCacheKey: "multi-bp" },
+        anthropic: {
+          cacheBreakpoints: [
+            { segmentIndex: 0, cacheControl: { type: "ephemeral" } },
+            { segmentIndex: 1, cacheControl: { type: "ephemeral", ttl: "1h" } },
+          ],
+        },
+      },
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    const messages = call.messages as Array<Record<string, unknown>>;
+    const content = messages?.[1]?.content as Array<Record<string, unknown>>;
+    expect(content).toHaveLength(3);
+    const cc0 = (content[0]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
+    const cc1 = (content[1]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
+    expect(cc0?.cacheControl).toEqual({ type: "ephemeral" });
+    expect(cc1?.cacheControl).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(content[2]?.providerOptions).toBeUndefined();
+    // Caller-supplied openrouter option survives.
+    expect((call.providerOptions as Record<string, unknown>).openrouter).toEqual({
+      promptCacheKey: "multi-bp",
+    });
+  });
+});
+
+describe("Anthropic cache injection — malformed cacheControl fails loudly", () => {
+  it("throws when caller-supplied cacheControl has an unsupported type", async () => {
+    mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await expect(
+      handleTextLarge(createRuntime(), {
+        prompt: "hello",
+        providerOptions: { anthropic: { cacheControl: { type: "persistent" } } },
+      } as never)
+    ).rejects.toThrow(/cacheControl/);
+  });
+
+  it("throws when cacheControl is present but not an object", async () => {
+    mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await expect(
+      handleTextLarge(createRuntime(), {
+        prompt: "hello",
+        providerOptions: { anthropic: { cacheControl: "ephemeral" } },
+      } as never)
+    ).rejects.toThrow(/cacheControl/);
+  });
+
+  it("throws when cacheControl.ttl is an unsupported value", async () => {
+    mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await expect(
+      handleTextLarge(createRuntime(), {
+        prompt: "hello",
+        providerOptions: { anthropic: { cacheControl: { type: "ephemeral", ttl: "2h" } } },
+      } as never)
+    ).rejects.toThrow(/ttl/);
   });
 });
 

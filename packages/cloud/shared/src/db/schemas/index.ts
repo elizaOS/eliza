@@ -73,6 +73,7 @@ export * from "./organization-encryption-keys";
 export * from "./organization-invites";
 export * from "./organizations";
 export * from "./phone-gateway-devices";
+export * from "./pii-scrub-markers";
 export * from "./platform-credentials";
 export * from "./pooled-credentials";
 export * from "./press-releases";

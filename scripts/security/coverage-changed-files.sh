@@ -41,7 +41,7 @@ is_excluded_test() {
 
 changed_source() {
   git diff --name-only "$MERGE_BASE" "$HEAD" -- '*.ts' '*.tsx' '*.js' '*.jsx' \
-    | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$' || true
+    | grep -vE '(^|/)(__tests__|test|tests)/|[.](test|spec)[.](ts|tsx|js|jsx|mjs)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
 }
 
 changed_tests() {

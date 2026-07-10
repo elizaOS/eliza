@@ -34,6 +34,7 @@ import type {
 import {
   buildCanonicalSystemPrompt,
   dropDuplicateLeadingSystemMessage,
+  ElizaError,
   ModelType,
   resolveEffectiveSystemPrompt,
 } from "@elizaos/core";
@@ -43,7 +44,9 @@ import {
   jsonSchema,
   type LanguageModel,
   type ModelMessage,
+  type SystemModelMessage,
   streamText,
+  type TextPart,
   type ToolChoice,
   type ToolSet,
   type UserContent,
@@ -235,10 +238,28 @@ function isAnthropicModel(modelName: string): boolean {
   return modelName.toLowerCase().startsWith("anthropic/");
 }
 
+// AI SDK `providerOptions` is typed `Record<string, JSONObject>`, so the
+// optional `ttl` on AnthropicCacheControl (which widens to `... | undefined`,
+// not a JSON value) is materialized here as a concrete key-or-omit shape. This
+// lets the segment/system builders return real `SystemModelMessage` / `TextPart`
+// values that the SDK accepts without an `as unknown` escape hatch.
+type WireProviderOptions = NonNullable<SystemModelMessage["providerOptions"]>;
+
+function anthropicCacheProviderOptions(cacheControl: AnthropicCacheControl): WireProviderOptions {
+  return {
+    anthropic: {
+      cacheControl:
+        cacheControl.ttl === "5m" || cacheControl.ttl === "1h"
+          ? { type: "ephemeral", ttl: cacheControl.ttl }
+          : { type: "ephemeral" },
+    },
+  };
+}
+
 function buildCacheableSystemMessage(
   systemPrompt: string | undefined,
   cacheControl: AnthropicCacheControl | undefined
-): ModelMessage | undefined {
+): SystemModelMessage | undefined {
   if (!systemPrompt) {
     return undefined;
   }
@@ -248,10 +269,8 @@ function buildCacheableSystemMessage(
   return {
     role: "system",
     content: systemPrompt,
-    providerOptions: {
-      anthropic: { cacheControl },
-    },
-  } as unknown as ModelMessage;
+    providerOptions: anthropicCacheProviderOptions(cacheControl),
+  };
 }
 
 function readAnthropicCacheControl(
@@ -261,11 +280,27 @@ function readAnthropicCacheControl(
     return undefined;
   }
   const cacheControl = anthropicOptions.cacheControl;
-  if (isRecord(cacheControl) && cacheControl.type === "ephemeral") {
-    return {
-      type: "ephemeral",
-      ...(cacheControl.ttl === "5m" || cacheControl.ttl === "1h" ? { ttl: cacheControl.ttl } : {}),
-    };
+  // A caller that supplies `cacheControl` is explicitly opting into prompt
+  // caching. A malformed shape must fail loudly: silently dropping it would emit
+  // an uncached request while the caller believes caching is active, and the
+  // wire would still report the option as accepted. Fail fast at the boundary.
+  if (cacheControl !== undefined) {
+    if (!isRecord(cacheControl) || cacheControl.type !== "ephemeral") {
+      throw new ElizaError("Invalid anthropic.cacheControl: expected { type: 'ephemeral' }", {
+        code: "OPENROUTER_INVALID_CACHE_CONTROL",
+        context: { cacheControl },
+        severity: "fatal",
+      });
+    }
+    const ttl = cacheControl.ttl;
+    if (ttl !== undefined && ttl !== "5m" && ttl !== "1h") {
+      throw new ElizaError("Invalid anthropic.cacheControl.ttl: expected '5m' or '1h'", {
+        code: "OPENROUTER_INVALID_CACHE_CONTROL",
+        context: { ttl },
+        severity: "fatal",
+      });
+    }
+    return { type: "ephemeral", ...(ttl === "5m" || ttl === "1h" ? { ttl } : {}) };
   }
   return anthropicOptions.cacheSystem === true ? { type: "ephemeral" } : undefined;
 }
@@ -296,14 +331,6 @@ function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
 
 type AnthropicCacheBreakpoint = { segmentIndex: number; cacheControl: AnthropicCacheControl };
 
-// Extends the AI SDK TextPart shape with provider-metadata so the AI SDK can forward
-// cache_control directives to the wire without losing the type guarantee on type/text.
-type CacheableTextPart = {
-  type: "text";
-  text: string;
-  providerOptions?: Record<string, unknown>;
-};
-
 function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBreakpoint {
   return (
     isRecord(value) &&
@@ -317,7 +344,7 @@ function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBrea
 
 function readAnthropicCacheBreakpoints(
   anthropicOptions: Record<string, unknown> | undefined,
-  maxBreakpoints: number,
+  maxBreakpoints: number
 ): AnthropicCacheBreakpoint[] {
   const raw = anthropicOptions?.cacheBreakpoints;
   if (!Array.isArray(raw)) return [];
@@ -333,13 +360,13 @@ function readAnthropicCacheBreakpoints(
  */
 function buildSegmentedPromptUserContent(
   promptSegments: Array<{ content: string; stable?: boolean }>,
-  cacheBreakpoints: AnthropicCacheBreakpoint[],
-): CacheableTextPart[] {
+  cacheBreakpoints: AnthropicCacheBreakpoint[]
+): TextPart[] {
   if (cacheBreakpoints.length === 0) {
     return promptSegments.map((seg) => ({ type: "text" as const, text: seg.content }));
   }
   const breakpointMap = new Map<number, AnthropicCacheControl>(
-    cacheBreakpoints.map((bp) => [bp.segmentIndex, bp.cacheControl]),
+    cacheBreakpoints.map((bp) => [bp.segmentIndex, bp.cacheControl])
   );
   return promptSegments.map((seg, index) => {
     const cc = breakpointMap.get(index);
@@ -347,7 +374,7 @@ function buildSegmentedPromptUserContent(
       return {
         type: "text" as const,
         text: seg.content,
-        providerOptions: { anthropic: { cacheControl: cc } },
+        providerOptions: anthropicCacheProviderOptions(cc),
       };
     }
     return { type: "text" as const, text: seg.content };
@@ -609,9 +636,10 @@ function buildGenerateParams(
       : 3;
   const cacheBreakpoints = readAnthropicCacheBreakpoints(anthropicOptions, maxBreakpoints);
   const promptSegments = Array.isArray(
-    (paramsWithAttachments as { promptSegments?: unknown }).promptSegments,
+    (paramsWithAttachments as { promptSegments?: unknown }).promptSegments
   )
-    ? ((paramsWithAttachments as { promptSegments?: Array<{ content: string; stable?: boolean }> }).promptSegments ?? [])
+    ? ((paramsWithAttachments as { promptSegments?: Array<{ content: string; stable?: boolean }> })
+        .promptSegments ?? [])
     : [];
 
   let finalWireMessages = wireMessages;
@@ -648,7 +676,7 @@ function buildGenerateParams(
                 // additional breakpoints under Anthropic's four-block cap).
                 content:
                   promptSegments.length > 0 && cacheBreakpoints.length > 0 && !userContent
-                    ? (buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints) as UserContent)
+                    ? buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints)
                     : (userContent ?? buildUserContent(paramsWithAttachments)),
               },
             ],

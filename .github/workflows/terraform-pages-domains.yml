@@ -1,0 +1,130 @@
+name: Terraform — Cloudflare Pages Domains
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/**"
+      - "packages/cloud/infra/tests/terraform-static.test.ts"
+      - ".github/workflows/terraform-pages-domains.yml"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Pages domains environment to target
+        type: choice
+        default: staging
+        options: [staging, production]
+      action:
+        description: Terraform action
+        type: choice
+        default: plan
+        options: [plan, apply]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-pages-domains-${{ github.event.inputs.environment || format('pr-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TF_DIR: packages/cloud/infra/cloud/terraform/cloudflare/pages-domains
+  TF_VERSION: "1.10.5"
+
+jobs:
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "canary"
+      - name: Install test dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Terraform format
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+      - name: Terraform validate
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate -no-color
+      - name: Static ownership contract
+        run: bun test packages/cloud/infra/tests/terraform-static.test.ts
+
+  plan-apply:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    environment: ${{ github.event.inputs.environment }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_STATE_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_STATE_SECRET_ACCESS_KEY }}
+      TF_VAR_environment: ${{ github.event.inputs.environment }}
+      TF_VAR_cloudflare_account_id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_cloudflare_zone_id: ${{ secrets.APPS_CLOUDFLARE_ZONE_ID || vars.APPS_CLOUDFLARE_ZONE_ID }}
+      TF_VAR_staging_agent_wildcard_origins: ${{ vars.STAGING_AGENT_WILDCARD_ORIGINS_JSON || '[]' }}
+      TF_VAR_staging_agent_certificate_pack_id: ${{ vars.STAGING_AGENT_CERTIFICATE_PACK_ID }}
+      TF_VAR_staging_agent_certificate_hosts: ${{ vars.STAGING_AGENT_CERTIFICATE_HOSTS_JSON || '[]' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Preflight required credentials
+        run: |
+          fail=0
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::missing CLOUDFLARE_API_TOKEN"; fail=1; }
+          [ -n "$AWS_ACCESS_KEY_ID" ] || { echo "::error::missing R2_STATE_ACCESS_KEY_ID"; fail=1; }
+          [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing R2_STATE_SECRET_ACCESS_KEY"; fail=1; }
+          [ -n "$TF_VAR_cloudflare_account_id" ] || { echo "::error::missing CLOUDFLARE_ACCOUNT_ID"; fail=1; }
+          [ -n "$TF_VAR_cloudflare_zone_id" ] || { echo "::error::missing APPS_CLOUDFLARE_ZONE_ID"; fail=1; }
+          if [ "$TF_VAR_environment" = "staging" ]; then
+            [ "$TF_VAR_staging_agent_wildcard_origins" != "[]" ] || { echo "::error::missing STAGING_AGENT_WILDCARD_ORIGINS_JSON"; fail=1; }
+            [ -n "$TF_VAR_staging_agent_certificate_pack_id" ] || { echo "::error::missing STAGING_AGENT_CERTIFICATE_PACK_ID"; fail=1; }
+            [ "$TF_VAR_staging_agent_certificate_hosts" != "[]" ] || { echo "::error::missing STAGING_AGENT_CERTIFICATE_HOSTS_JSON"; fail=1; }
+          fi
+          exit "$fail"
+      - name: Terraform format
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform fmt -check -recursive
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false -backend-config="backend-${{ github.event.inputs.environment }}.hcl"
+      - name: Terraform plan
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform plan -no-color -input=false -out=pages-domains.tfplan
+      - name: Terraform apply
+        if: github.event.inputs.action == 'apply'
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform apply -no-color -input=false pages-domains.tfplan
+      - name: Verify domain and certificate state
+        if: github.event.inputs.action == 'apply'
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform output -json pages_domains > "$RUNNER_TEMP/pages-domains.json"
+          terraform output -json staging_agent_edge > "$RUNNER_TEMP/staging-agent-edge.json"
+          node -e '
+            const fs = require("node:fs");
+            const domains = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            for (const [key, entry] of Object.entries(domains)) {
+              if (entry.status !== "active") throw new Error(`${key} domain is ${entry.status}, expected active`);
+              if (!entry.certificate_authority) throw new Error(`${key} has no issued certificate authority`);
+            }
+            const agentEdge = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+            if (process.env.TF_VAR_environment === "staging") {
+              if (Object.keys(agentEdge.dns_records).length !== 2) throw new Error("staging agent wildcard does not have two DNS records");
+              if (agentEdge.certificate_pack.status !== "active") throw new Error(`staging agent certificate is ${agentEdge.certificate_pack.status}, expected active`);
+            }
+          ' "$RUNNER_TEMP/pages-domains.json" "$RUNNER_TEMP/staging-agent-edge.json"
+      - name: Verify staging agent wildcard TLS
+        if: github.event.inputs.action == 'apply' && github.event.inputs.environment == 'staging'
+        run: curl --silent --show-error --output /dev/null https://terraform-probe.staging.elizacloud.ai/api/health
+      - name: Verify live environment routing
+        if: github.event.inputs.action == 'apply'
+        run: node packages/scripts/cloud/verify-environment-routing-cli.mjs --environment "${{ github.event.inputs.environment }}" --require-beacon

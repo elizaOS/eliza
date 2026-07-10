@@ -20,7 +20,6 @@ function runSafely(callback: () => void): void {
 
 export interface ChannelDebouncerOptions {
 	debounceMs?: number;
-	responseCooldownMs?: number;
 	botUserId?: string;
 	getBotUserId?: () => string | undefined;
 	coalesceEnabled?: boolean;
@@ -59,11 +58,9 @@ export function createChannelDebouncer(
 	options: ChannelDebouncerOptions = {},
 ): ChannelDebouncer {
 	const debounceMs = options.debounceMs ?? DEFAULT_CHANNEL_DEBOUNCE_MS;
-	const responseCooldownMs = options.responseCooldownMs ?? 30_000;
 	const coalesceEnabled = options.coalesceEnabled === true;
 	const maxBatch = Math.max(1, options.maxBatch ?? Number.POSITIVE_INFINITY);
 	const pending = new Map<string, ChannelPendingEntry>();
-	const lastResponseTime = new Map<string, number>();
 
 	// Carry recent unaddressed messages forward so a pointer-only addressed
 	// message (e.g. "@bot ^^" pointing at a question typed moments earlier in a
@@ -176,18 +173,6 @@ export function createChannelDebouncer(
 		return !/[\p{L}\p{N}]/u.test(withoutMarkup);
 	};
 
-	const isInCooldown = (channelId: string): boolean => {
-		const lastRespondedAt = lastResponseTime.get(channelId);
-		if (!lastRespondedAt) {
-			return false;
-		}
-		if (Date.now() - lastRespondedAt >= responseCooldownMs) {
-			lastResponseTime.delete(channelId);
-			return false;
-		}
-		return true;
-	};
-
 	const flush = (channelId: string) => {
 		const entry = pending.get(channelId);
 		if (!entry) {
@@ -222,16 +207,11 @@ export function createChannelDebouncer(
 			return;
 		}
 
-		// The response cooldown throttles further REPLIES after the bot answers.
-		// When we buffer unaddressed messages (strict / mention-only mode) those
-		// messages never trigger a reply anyway, so dropping them here would only
-		// discard context the next "@bot ^^" pointer needs. Keep ingesting +
-		// buffering them; the cooldown still gates unaddressed traffic in
-		// respond-to-all mode (bufferUnaddressed is false there).
-		if (isInCooldown(channelId) && !targeted && !bufferUnaddressed) {
-			return;
-		}
-
+		// Every unaddressed message flows through to the message service; whether
+		// the agent actually REPLIES is the shouldRespond model's call, not a
+		// time-based throttle here. (A post-reply "response cooldown" used to
+		// hard-drop unaddressed messages for 30s after each bot reply, which made
+		// natural follow-ups — "@bot hi" → reply → "wyd?" — vanish silently.)
 		if (bufferUnaddressed && !targeted) {
 			rememberRecent(message);
 		}
@@ -262,7 +242,6 @@ export function createChannelDebouncer(
 	return {
 		enqueue,
 		markResponded: (channelId: string) => {
-			lastResponseTime.set(channelId, Date.now());
 			// Buffered chatter has now been answered (or folded into the reply);
 			// drop it so it never re-bundles into a later unrelated response.
 			recentUnaddressed.delete(channelId);
@@ -278,7 +257,6 @@ export function createChannelDebouncer(
 				clearTimeout(entry.timer);
 			}
 			pending.clear();
-			lastResponseTime.clear();
 			recentUnaddressed.clear();
 		},
 	};

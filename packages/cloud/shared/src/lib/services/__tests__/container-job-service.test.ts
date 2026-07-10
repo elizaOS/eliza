@@ -25,6 +25,7 @@ const ROW: AppContainerRow = {
   port: 3000,
   organizationId: "org-1",
   userId: "user-1",
+  hostContainerId: "docker-immutable-1",
 };
 
 function fakeDeps() {
@@ -37,7 +38,7 @@ function fakeDeps() {
       return [ROW];
     },
     async claimNodeSlot() {
-      return true;
+      return "claimed";
     },
     async rollbackNodeSlotClaim() {
       return true;
@@ -47,6 +48,7 @@ function fakeDeps() {
       calls.push("markDeleted");
     },
     async markError() {},
+    async markCleanupRequired() {},
   };
   const provider = {
     targetNodeId: "node-1",
@@ -61,6 +63,9 @@ function fakeDeps() {
       };
     },
     async delete() {
+      calls.push("delete");
+    },
+    async deleteById() {
       calls.push("delete");
     },
     async restart() {

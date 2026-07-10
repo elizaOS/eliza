@@ -71,16 +71,15 @@ export function parseGateCreditBalance(raw: unknown): number {
 }
 
 /**
- * Check whether an organization has sufficient credits for Eliza agent operations.
- *
- * Returns `{ allowed: true }` if `credit_balance > MINIMUM_DEPOSIT`,
- * otherwise returns a user-facing error message directing them to add funds.
- *
- * Fails CLOSED on a corrupt stored balance (distinct observable log) and on
- * any repository/transport failure — never authorizes provisioning against a
- * balance it could not verify.
+ * Shared fail-closed core for the balance gates below: read the org's stored
+ * balance, parse it defensively, and deny when it does not clear
+ * `minimumBalance` (with a threshold-specific user-facing message).
  */
-export async function checkAgentCreditGate(organizationId: string): Promise<CreditGateResult> {
+async function runCreditGate(
+  organizationId: string,
+  minimumBalance: number,
+  insufficientMessage: (balance: number) => string,
+): Promise<CreditGateResult> {
   try {
     const org = await organizationsRepository.findById(organizationId);
     if (!org) {
@@ -93,12 +92,11 @@ export async function checkAgentCreditGate(organizationId: string): Promise<Cred
 
     const balance = parseGateCreditBalance(org.credit_balance);
 
-    if (balance <= AGENT_PRICING.MINIMUM_DEPOSIT) {
-      const deficit = Math.max(AGENT_PRICING.MINIMUM_DEPOSIT - balance, 0.01);
+    if (balance <= minimumBalance) {
       return {
         allowed: false,
         balance,
-        error: `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`,
+        error: insufficientMessage(balance),
       };
     }
 
@@ -128,4 +126,39 @@ export async function checkAgentCreditGate(organizationId: string): Promise<Cred
       error: "Unable to verify credit balance. Please try again.",
     };
   }
+}
+
+/**
+ * Check whether an organization has sufficient credits for Eliza agent operations.
+ *
+ * Returns `{ allowed: true }` if `credit_balance > MINIMUM_DEPOSIT`,
+ * otherwise returns a user-facing error message directing them to add funds.
+ *
+ * Fails CLOSED on a corrupt stored balance (distinct observable log) and on
+ * any repository/transport failure — never authorizes provisioning against a
+ * balance it could not verify.
+ */
+export async function checkAgentCreditGate(organizationId: string): Promise<CreditGateResult> {
+  return runCreditGate(organizationId, AGENT_PRICING.MINIMUM_DEPOSIT, (balance) => {
+    const deficit = Math.max(AGENT_PRICING.MINIMUM_DEPOSIT - balance, 0.01);
+    return `Insufficient credits. A balance greater than $${AGENT_PRICING.MINIMUM_DEPOSIT.toFixed(2)} is required to create or run Eliza agents. Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`;
+  });
+}
+
+/**
+ * Stricter gate for the shared→dedicated tier upgrade (#15355): a dedicated
+ * agent burns hosting credits continuously, so the upgrade requires enough
+ * balance for {@link AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of running
+ * cost instead of the bare MINIMUM_DEPOSIT. Same fail-closed semantics and
+ * result shape as {@link checkAgentCreditGate}, so the canonical 402 body
+ * (`insufficientCredits402`) works unchanged.
+ */
+export async function checkAgentTierUpgradeCreditGate(
+  organizationId: string,
+): Promise<CreditGateResult> {
+  const minimum = AGENT_PRICING.UPGRADE_MINIMUM_BALANCE;
+  return runCreditGate(organizationId, minimum, (balance) => {
+    const deficit = Math.max(minimum - balance, 0.01);
+    return `Insufficient credits to upgrade. A dedicated agent costs $${AGENT_PRICING.DAILY_RUNNING_COST.toFixed(2)}/day of hosting, and upgrading requires a balance above $${minimum.toFixed(2)} (${AGENT_PRICING.UPGRADE_MIN_HOSTING_DAYS} days of hosting). Please add at least $${deficit.toFixed(2)} to your account at /dashboard/billing.`;
+  });
 }

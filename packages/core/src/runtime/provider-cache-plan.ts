@@ -23,8 +23,8 @@ export interface ProviderCachePlanArgs {
 	prefixHash: string;
 	segmentHashes?: readonly string[];
 	promptSegments?:
-		| readonly Pick<PromptSegment, "stable">[]
-		| readonly { stable?: boolean }[];
+		| readonly Pick<PromptSegment, "stable" | "ttl">[]
+		| readonly { stable?: boolean; ttl?: CacheTTL }[];
 	sections?: readonly CacheableSection[];
 	provider?: string;
 	model?: string;
@@ -227,8 +227,8 @@ function selectSectionBreakpoints(
 
 function selectStableRunBreakpoints(
 	promptSegments:
-		| readonly Pick<PromptSegment, "stable">[]
-		| readonly { stable?: boolean }[]
+		| readonly Pick<PromptSegment, "stable" | "ttl">[]
+		| readonly { stable?: boolean; ttl?: CacheTTL }[]
 		| undefined,
 	segmentHashes: readonly string[] | undefined,
 	maxSegmentBreakpoints: number,
@@ -253,12 +253,22 @@ function selectStableRunBreakpoints(
 		runEnds.push(activeStableIndex);
 	}
 
-	return runEnds.slice(0, maxSegmentBreakpoints).map((segmentIndex) => ({
-		segmentIndex,
-		segmentHash: segmentHashes?.[segmentIndex],
-		ttl: "short" as const,
-		cacheControl: ttlToAnthropicCacheControl("short"),
-	}));
+	return runEnds.slice(0, maxSegmentBreakpoints).map((segmentIndex) => {
+		// Per-segment TTL routing: a stable segment may carry its own cache
+		// TTL (e.g. a frozen character persona can use the 1h tier while
+		// per-turn provider data stays on the default). The breakpoint sits on
+		// the run-end segment, so that segment's TTL governs the whole run.
+		// "short" (the default) is later resolved against the runtime-level
+		// ANTHROPIC_PROMPT_CACHE_TTL by the provider adapter.
+		const ttl: CacheTTL =
+			promptSegments[segmentIndex]?.ttl === "long" ? "long" : "short";
+		return {
+			segmentIndex,
+			segmentHash: segmentHashes?.[segmentIndex],
+			ttl,
+			cacheControl: ttlToAnthropicCacheControl(ttl),
+		};
+	});
 }
 
 function ttlToAnthropicCacheControl(ttl: CacheTTL): AnthropicCacheControl {

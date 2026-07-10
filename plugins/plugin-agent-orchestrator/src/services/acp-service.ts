@@ -2019,12 +2019,31 @@ export class AcpService extends Service {
         session.name ?? session.id,
       ]),
     ];
-    await this.runAcpx({
-      sessionId,
-      agentType: session.agentType,
-      workdir: session.workdir,
-      args,
-    });
+    try {
+      await this.runAcpx({
+        sessionId,
+        agentType: session.agentType,
+        workdir: session.workdir,
+        args,
+      });
+    } catch (err: unknown) {
+      // error-policy:J6 best-effort teardown — `sessions close` is cleanup that
+      // runs AFTER the task's real work is done. An agent server that does not
+      // implement `session/close` (e.g. an older elizaos ACP build) answers
+      // "Method not found"; letting that throw here marks a fully-successful
+      // task (files written, app deployed, link returned) as "Couldn't finish".
+      // Log and continue to the stopped-status update so the close never masks
+      // a completed turn.
+      this.runtime.logger.debug(
+        {
+          src: "acp-service",
+          sessionId,
+          agentType: session.agentType,
+          error: errorMessage(err),
+        },
+        "Session close failed (best-effort) — marking stopped anyway",
+      );
+    }
     await this.store.updateStatus(sessionId, "stopped");
     this.emitSessionEvent(sessionId, "stopped", {
       sessionId,

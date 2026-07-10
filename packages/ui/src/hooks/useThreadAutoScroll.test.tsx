@@ -82,7 +82,7 @@ function Harness({
   growthKey: string | number;
   scroller: HTMLDivElement;
 }) {
-  const scrollRef = useThreadAutoScroll<HTMLDivElement>({ growthKey });
+  const { scrollRef } = useThreadAutoScroll<HTMLDivElement>({ growthKey });
   // Point the hook's ref at our geometry-stubbed node without mounting it.
   scrollRef.current = scroller;
   return null;

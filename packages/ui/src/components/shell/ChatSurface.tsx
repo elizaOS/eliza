@@ -79,7 +79,7 @@ export function ChatSurface({
   // Follow the tail while at the bottom and leave a reader who scrolled up
   // alone via the one shared thread-scroll engine.
   const lastMessage = messages.at(-1);
-  const scrollRef = useThreadAutoScroll<HTMLDivElement>({
+  const { scrollRef } = useThreadAutoScroll<HTMLDivElement>({
     growthKey: `${messageCount}:${lastMessage?.id ?? ""}:${lastMessage?.content.length ?? 0}`,
   });
 

@@ -1,8 +1,9 @@
-// Exercises app db ambassador behavior with deterministic cloud-shared lib fixtures.
+/** Exercises app DB ambassador behavior with deterministic cloud-shared fixtures. */
 import { describe, expect, test } from "bun:test";
 import {
   ambassadorName,
   ambassadorNameForContainer,
+  appContainerNameForAmbassador,
   buildEnsureAmbassadorCmds,
   buildRemoveAmbassadorCmdForContainer,
   parseDsnEndpoint,
@@ -20,6 +21,12 @@ describe("ambassador naming", () => {
     expect(ambassadorNameForContainer("app-111111112222")).toBe("app-db-111111112222");
     // round-trips with ambassadorName for the same app
     expect(ambassadorNameForContainer("app-111111112222")).toBe(ambassadorName(APP_ID));
+  });
+
+  test("appContainerNameForAmbassador recovers only complete managed names", () => {
+    expect(appContainerNameForAmbassador("app-db-111111112222")).toBe("app-111111112222");
+    expect(appContainerNameForAmbassador("app-db-")).toBeNull();
+    expect(appContainerNameForAmbassador("app-111111112222")).toBeNull();
   });
 });
 

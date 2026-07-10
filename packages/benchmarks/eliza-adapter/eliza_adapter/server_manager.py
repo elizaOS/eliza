@@ -31,7 +31,9 @@ def _find_repo_root() -> Path:
     for parent in current.parents:
         if (parent / "packages" / "lifeops-bench" / "src" / "server.ts").exists():
             return parent
-        if (parent / "packages" / "app-core" / "src" / "benchmark" / "server.ts").exists():
+        if (
+            parent / "packages" / "app-core" / "src" / "benchmark" / "server.ts"
+        ).exists():
             return parent
         if (parent / "packages" / "eliza" / "src" / "benchmark" / "server.ts").exists():
             return parent
@@ -101,10 +103,10 @@ def _resolve_node() -> str | None:
 def _server_command(server_script: Path) -> list[str]:
     """Return the benchmark server command.
 
-    Match the app-core benchmark script (`node --import tsx`). Running this
-    server with Bun from the app-core package can apply runtime path aliases
-    from tsconfig and resolve React to @types/react, which makes Bun parse a
-    declaration file as JavaScript during startup.
+    Match the app-core benchmark script's Node+tsx runtime while enabling the
+    workspace source export condition. CI does not build @elizaos/* dist files
+    before launching the benchmark server, so Node must resolve workspace
+    packages to TypeScript source.
     """
     forced = os.environ.get("ELIZA_BENCH_SERVER_CMD", "").strip()
     if forced:
@@ -120,10 +122,16 @@ def _server_command(server_script: Path) -> list[str]:
                 node,
                 major,
             )
-        return [node, "--import", "tsx", str(server_script)]
+        return [
+            node,
+            "--conditions=eliza-source",
+            "--import",
+            "tsx",
+            str(server_script),
+        ]
     if shutil.which("bun"):
         return ["bun", "--no-env-file", "run", str(server_script)]
-    return ["node", "--import", "tsx", str(server_script)]
+    return ["node", "--conditions=eliza-source", "--import", "tsx", str(server_script)]
 
 
 CEREBRAS_OPENAI_MODEL_IDS = {"gemma-4-31b", "gpt-oss-120b", "zai-glm-4.7"}
@@ -136,10 +144,10 @@ def _normalize_model_env(env: dict[str, str]) -> None:
     launchers commonly set BENCHMARK_MODEL_* / CEREBRAS_* instead.
     """
     provider = (
-        env.get("BENCHMARK_MODEL_PROVIDER")
-        or env.get("ELIZA_PROVIDER")
-        or ""
-    ).strip().lower()
+        (env.get("BENCHMARK_MODEL_PROVIDER") or env.get("ELIZA_PROVIDER") or "")
+        .strip()
+        .lower()
+    )
     model = (
         env.get("BENCHMARK_MODEL_NAME")
         or env.get("MODEL_NAME")
@@ -275,7 +283,9 @@ class ElizaServerManager:
         self.port = port
         self.timeout = timeout
         self.repo_root = repo_root or _find_repo_root()
-        self.host = os.environ.get("ELIZA_BENCH_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        self.host = (
+            os.environ.get("ELIZA_BENCH_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        )
         client_host = "127.0.0.1" if self.host in {"0.0.0.0", "::"} else self.host
         self._proc: subprocess.Popen[str] | None = None
         self._stdout_log: Path | None = None
@@ -300,10 +310,14 @@ class ElizaServerManager:
     def start(self) -> None:
         """Spawn the benchmark server and block until it reports ready."""
         if getattr(self._client, "_delegate", None) is not None:
-            logger.info("Skipping eliza benchmark server start; client is delegated to selected harness")
+            logger.info(
+                "Skipping eliza benchmark server start; client is delegated to selected harness"
+            )
             return
         if self._proc is not None and self._proc.poll() is None:
-            logger.info("Eliza benchmark server already running (pid=%d)", self._proc.pid)
+            logger.info(
+                "Eliza benchmark server already running (pid=%d)", self._proc.pid
+            )
             return
 
         candidates = [
@@ -312,11 +326,21 @@ class ElizaServerManager:
                 self.repo_root / "packages" / "lifeops-bench",
             ),
             (
-                self.repo_root / "packages" / "app-core" / "src" / "benchmark" / "server.ts",
+                self.repo_root
+                / "packages"
+                / "app-core"
+                / "src"
+                / "benchmark"
+                / "server.ts",
                 self.repo_root / "packages" / "app-core",
             ),
             (
-                self.repo_root / "packages" / "eliza" / "src" / "benchmark" / "server.ts",
+                self.repo_root
+                / "packages"
+                / "eliza"
+                / "src"
+                / "benchmark"
+                / "server.ts",
                 self.repo_root / "packages" / "eliza",
             ),
         ]
@@ -432,10 +456,15 @@ class ElizaServerManager:
         while time.monotonic() < deadline:
             return_code = self._proc.poll()
             if return_code is not None:
-                print(f"DEBUG: Server exited before readiness (code={return_code})!", flush=True)
+                print(
+                    f"DEBUG: Server exited before readiness (code={return_code})!",
+                    flush=True,
+                )
                 self.dump_logs()
                 self._proc = None
-                raise RuntimeError(f"Eliza benchmark server exited before readiness (code={return_code})")
+                raise RuntimeError(
+                    f"Eliza benchmark server exited before readiness (code={return_code})"
+                )
             try:
                 if self._client.is_ready():
                     health = self._client.health(timeout_s=5.0)
@@ -455,7 +484,9 @@ class ElizaServerManager:
 
         print("DEBUG: Timed out waiting for server!", flush=True)
         self.stop()
-        raise TimeoutError(f"Eliza benchmark server not ready after {self.timeout}s: {last_err}")
+        raise TimeoutError(
+            f"Eliza benchmark server not ready after {self.timeout}s: {last_err}"
+        )
 
     def dump_logs(self):
         for handle in (self._stdout_handle, self._stderr_handle):
@@ -501,7 +532,7 @@ class ElizaServerManager:
                 except Exception:
                     self._proc.kill()
                 self._proc.wait()
-        
+
         self.dump_logs()
         self._proc = None
 

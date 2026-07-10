@@ -14,6 +14,12 @@ export default defineConfig({
 			"@elizaos/core": fileURLToPath(
 				new URL("../../packages/core/src/index.node.ts", import.meta.url),
 			),
+			// Core's source entry re-exports the cloud-routing package. A clean
+			// workspace has not built that package's dist entry yet, so source-mode
+			// tests must keep this transitive dependency on the source graph too.
+			"@elizaos/cloud-routing": fileURLToPath(
+				new URL("../../packages/cloud/routing/src/index.ts", import.meta.url),
+			),
 			"@elizaos/logger": fileURLToPath(
 				new URL("../../packages/logger/src/index.ts", import.meta.url),
 			),

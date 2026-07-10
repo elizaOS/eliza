@@ -788,6 +788,17 @@ const COLD_BOOT_JOB_TYPES: ReadonlySet<ProvisioningJobType> = new Set([
 const PROVISION_TRANSPORT_RETRY_DELAY_MS = 2 * 60 * 1000;
 
 /**
+ * Unreachable loopback bridge that E2E preload historically stamped onto
+ * fixture sandboxes (see issue #15737). The preload now seeds fixtures inert
+ * (#15755), but the backup scanner still excludes this sentinel as
+ * defense-in-depth: any row that reaches `running` with this address has no
+ * live state endpoint, so snapshotting it can only `fetch failed` in a loop and
+ * flood the failed-jobs log — the exact noise the reachability carve-out exists
+ * to prevent.
+ */
+const UNREACHABLE_BRIDGE_SENTINEL = "http://127.0.0.1:65535";
+
+/**
  * Per-job execution timeout for the `withTimeout(executeJob(job), …)` wrap,
  * BY JOB TYPE (#10919).
  *
@@ -1586,6 +1597,10 @@ export class ProvisioningJobService {
           // snapshot would just fail with "Sandbox is not running" and burn
           // retries. Requiring bridge_url keeps those out of the queue entirely.
           sql`${agentSandboxes.bridge_url} IS NOT NULL`,
+          // Belt-and-suspenders for the E2E fixture sentinel (#15737): even a
+          // `running` row with a non-null bridge_url is unreachable when that
+          // URL is the loopback sentinel, so it must never be re-enqueued.
+          ne(agentSandboxes.bridge_url, UNREACHABLE_BRIDGE_SENTINEL),
           sql`(${agentSandboxes.last_backup_at} IS NULL OR ${agentSandboxes.last_backup_at} < ${cutoff})`,
         ),
       )

@@ -19,7 +19,13 @@
  * returned ref to its scroller.
  */
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 // Distance from the bottom (px) within which the reader counts as "at the
 // bottom" and the thread follows new content. Wider than a pixel so a
@@ -42,6 +48,19 @@ function scrollToBottom(el: HTMLElement, smooth: boolean): void {
   }
 }
 
+export interface ThreadAutoScrollHandle<T extends HTMLElement> {
+  scrollRef: React.RefObject<T | null>;
+  atBottom: boolean;
+  jumpToLatest: () => void;
+}
+
+export interface ThreadAutoScrollOptions {
+  growthKey: string | number;
+  lineKey?: string | number;
+  enabled?: boolean;
+  reduceMotion?: boolean;
+}
+
 /**
  * Auto-scroll a chat thread: follow the tail while the reader is at the bottom,
  * and leave them alone when they have scrolled up.
@@ -56,17 +75,9 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
   lineKey,
   enabled = true,
   reduceMotion = false,
-}: {
-  /** Changes whenever the thread grows or its tail mutates. */
-  growthKey: string | number;
-  /** Changes only when a new line lands; omit for instant follows. */
-  lineKey?: string | number;
-  /** Gates the engine while the scroller is hidden or unmounted. */
-  enabled?: boolean;
-  /** Skip smooth scrolling to honor reduced-motion. */
-  reduceMotion?: boolean;
-}): React.RefObject<T | null> {
+}: ThreadAutoScrollOptions): ThreadAutoScrollHandle<T> {
   const scrollRef = useRef<T | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
   const followRaf = useRef<number | null>(null);
   const hasPinnedRef = useRef(false);
   const lastLineKeyRef = useRef(lineKey);
@@ -78,9 +89,14 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
   // recovers the true pre-growth position (#12348).
   const lastGrowthHeightRef = useRef(0);
 
-  // Geometry observers need this value synchronously; keeping it in a ref avoids
-  // rerendering the full transcript on every scroll event.
-  const readerAtBottomRef = useRef(true);
+  const atBottomRef = useRef(atBottom);
+  atBottomRef.current = atBottom;
+
+  const syncAtBottom = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setAtBottom(measureAtBottom(el));
+  }, []);
 
   // Track the reader's position independently of thread growth. Passive: this
   // only reads layout. Re-runs on
@@ -90,13 +106,10 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     if (!enabled) return;
     const el = scrollRef.current;
     if (!el) return;
-    const syncAtBottom = () => {
-      readerAtBottomRef.current = measureAtBottom(el);
-    };
     syncAtBottom();
     el.addEventListener("scroll", syncAtBottom, { passive: true });
     return () => el.removeEventListener("scroll", syncAtBottom);
-  }, [enabled]);
+  }, [enabled, syncAtBottom]);
 
   // Re-pin the bottom when the SCROLLER'S OWN GEOMETRY changes while the reader
   // rests at the bottom — a shrink or grow that carries no thread growth so the
@@ -127,10 +140,9 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
       // preserved, so a live measure would read "scrolled up" and wrongly stop
       // following — the same stale-measure trap the growth effect avoids. A
       // reader who has scrolled up is never yanked.
-      if (!readerAtBottomRef.current) return;
+      if (!atBottomRef.current) return;
       node.scrollTop = node.scrollHeight;
       lastGrowthHeightRef.current = node.scrollHeight;
-      readerAtBottomRef.current = true;
     };
     const ro = new ResizeObserver(() => {
       if (raf != null) return;
@@ -149,6 +161,14 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     };
   }, [enabled]);
 
+  const jumpToLatest = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    scrollToBottom(el, !reduceMotion);
+    lastGrowthHeightRef.current = el.scrollHeight;
+    setAtBottom(true);
+  }, [reduceMotion]);
+
   // Follow thread growth. First growth pins pre-paint so the thread never
   // flashes at the top; later growth coalesces into one rAF and only follows
   // when the reader is already at the bottom.
@@ -159,7 +179,6 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
       // thread jumps straight to the newest line.
       hasPinnedRef.current = false;
       lastLineKeyRef.current = lineKey;
-      readerAtBottomRef.current = true;
       return;
     }
     const el = scrollRef.current;
@@ -182,7 +201,7 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
 
     if (!firstPin && !wasAtBottom) {
       // Reader is scrolled up — do not yank them.
-      readerAtBottomRef.current = false;
+      setAtBottom(false);
       return;
     }
 
@@ -206,7 +225,7 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
         scrollToBottom(el, true);
       }
       lastGrowthHeightRef.current = el.scrollHeight;
-      readerAtBottomRef.current = true;
+      setAtBottom(true);
       return;
     }
 
@@ -217,7 +236,7 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
       if (!node) return;
       node.scrollTop = node.scrollHeight;
       lastGrowthHeightRef.current = node.scrollHeight;
-      readerAtBottomRef.current = true;
+      setAtBottom(true);
     });
 
     return () => {
@@ -228,5 +247,5 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     };
   }, [growthKey, lineKey, enabled]);
 
-  return scrollRef;
+  return { scrollRef, atBottom, jumpToLatest };
 }

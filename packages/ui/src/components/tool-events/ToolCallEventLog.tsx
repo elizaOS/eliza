@@ -47,10 +47,12 @@ function formatJson(value: unknown): string {
 }
 
 function StatePill({ state }: { state: ToolCallEventDisplayState }) {
+  // Plain colored text, no pill chrome: the state color alone carries the
+  // signal inside the chat flow (chat-native de-slop).
   const styles = {
-    running: "border-primary/30 bg-primary/5 text-primary",
-    success: "border-success/30 bg-success/5 text-success",
-    failure: "border-danger/30 bg-danger/5 text-danger",
+    running: "text-primary",
+    success: "text-success",
+    failure: "text-danger",
   };
   const labels = {
     running: "Running",
@@ -59,7 +61,7 @@ function StatePill({ state }: { state: ToolCallEventDisplayState }) {
   };
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em] ${styles[state]}`}
+      className={`inline-flex items-center text-[11px] font-semibold uppercase tracking-[0.12em] ${styles[state]}`}
     >
       {labels[state]}
     </span>
@@ -95,10 +97,7 @@ export function ToolCallEventLog({
   const result = event.result ?? event.output ?? event.error;
 
   return (
-    <div
-      className={`rounded-sm border border-border/50 bg-bg/40 px-4 py-3 ${className}`}
-      data-testid="tool-call-event-log"
-    >
+    <div className={`py-1 ${className}`} data-testid="tool-call-event-log">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -137,7 +136,8 @@ export function ToolCallEventLog({
           <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
           JSON details
         </summary>
-        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm border border-border/40 bg-bg/60 px-3 py-3 text-xs leading-6 text-txt">
+        {/* Keeps the code-block fill (it is code), border dropped. */}
+        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-3 py-3 text-xs leading-6 text-txt">
           {formatJson(event)}
         </pre>
       </details>

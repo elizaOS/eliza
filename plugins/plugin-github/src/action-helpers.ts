@@ -127,7 +127,7 @@ export function needsClientError(selection: GitHubAccountSelection): string {
   const accountSuffix = selection.accountId
     ? ` accountId "${selection.accountId}"`
     : ` ${selection.role} account`;
-  return `GitHub${accountSuffix} token not configured (set GITHUB_ACCOUNTS or ${
+  return `GitHub${accountSuffix} token not configured (connect GitHub in Settings → Coding Agents, or set GITHUB_ACCOUNTS or ${
     selection.role === "user" ? "GITHUB_USER_PAT" : "GITHUB_AGENT_PAT"
   })`;
 }

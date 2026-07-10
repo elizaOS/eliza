@@ -36,3 +36,9 @@ f9184d51cc60210ad6be388f3b1f1eae529a9904:packages/research/chip/scripts/test_rel
 # "ELIZA_APP_DISCORD_BOT_TOKEN" and "ELIZA_APP_DISCORD_APPLICATION_ID" match the
 # discord-client-secret regex by identifier shape alone. No secret material here.
 8177acbf458c2c7ae164584e79408aac048bb17b:packages/cloud/shared/src/lib/services/eliza-app/config.error-policy.test.ts:discord-client-secret:13
+
+# Synthetic bridge-verdict unit-test token used to assert canned reply rejection.
+# A later commit renames the fixture constant/value, but promotion PR gitleaks
+# scans the full main..develop commit range and sees this historical false
+# positive. No credential material was committed.
+15ccd4c4713e9dbf86502e21b855d97b48c01761:packages/scripts/cloud/admin/bridge-reply-verdict.test.ts:generic-api-key:14

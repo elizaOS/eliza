@@ -103,7 +103,7 @@ black" the user sees comes from two places, both now being fixed:
 
 - **Merge** Contacts + Phone + Messages → one Comms surface.
 - **Merge** Todos + Goals + Calendar-agenda → one "Today" surface.
-- **Remove** LifeOps stub; demote Social Alpha + Feed out of the default set.
+- **Remove** LifeOps stub; demote Feed out of the default set.
 - **Demote behind "Advanced/Developer"** Logs, Trajectories, Database tables,
   vector-browser, smartglasses, model-tester — most users never need raw
   SQL/logs/traces; the agent answers "show me the last error" in chat.

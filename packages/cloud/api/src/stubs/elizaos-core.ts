@@ -1119,6 +1119,21 @@ export function redactSensitiveRequestMetadata(value: unknown): unknown {
   return redacted;
 }
 
+// PII scrub primitives consumed by the cloud-shared CLOUD-lane job rails
+// (#14808, `lib/services/pii-scrub-executor.ts`). Re-exported from the REAL
+// core modules — `security/pii-detectors.ts` (pure regex + noble hashes) and
+// `security/pii-scrub-seam.ts`'s validators (pure checks over type-only
+// runtime imports) are Worker-safe leaves, and single-sourcing them here
+// keeps the cloud lane's tier-0 floor and fail-closed contract in lockstep
+// with the LOCAL lane instead of drifting behind core's.
+export {
+  detectPii,
+  type PiiMatch,
+} from "../../../../core/src/security/pii-detectors";
+export {
+  assertValidScrubResult,
+  PiiScrubFabricationError,
+} from "../../../../core/src/security/pii-scrub-seam";
 // Log-redaction helpers consumed by the cloud-shared Worker logger on every
 // log call. Re-exported from the REAL core module — `security/redact.ts` is a
 // zero-import pure leaf, so it is Worker-safe, and single-sourcing it here
@@ -1127,6 +1142,7 @@ export {
   isSensitiveKeyName,
   redactLogArgs,
 } from "../../../../core/src/security/redact";
+export type { PiiScrubResult } from "../../../../core/src/types/model";
 
 export const ModelType = {
   TEXT_SMALL: "TEXT_SMALL",

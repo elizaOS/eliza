@@ -60,6 +60,10 @@ export interface ShellVoiceOutputOptions {
   recording: boolean;
   /** True when the latest user turn was voice-originated (`VOICE_DM`). */
   lastTurnVoice: boolean;
+  /** Shared composer/shell mute state from AppContext. */
+  agentVoiceMuted: boolean;
+  /** Toggle the shared composer/shell mute state. */
+  toggleAgentVoiceMute: () => void;
   uiLanguage: string;
   cloudConnected: boolean;
 }
@@ -83,12 +87,13 @@ export function useShellVoiceOutput(
     chatSending,
     recording,
     lastTurnVoice,
+    agentVoiceMuted,
+    toggleAgentVoiceMute,
     uiLanguage,
     cloudConnected,
   } = options;
 
   const { voiceConfig, voiceBootstrapTick } = useVoiceConfig(uiLanguage);
-  const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(false);
 
   const {
     queueAssistantSpeech,
@@ -175,10 +180,6 @@ export function useShellVoiceOutput(
   React.useEffect(() => {
     if (agentVoiceMuted) stopSpeaking();
   }, [agentVoiceMuted, stopSpeaking]);
-
-  const toggleAgentVoiceMute = React.useCallback(() => {
-    setAgentVoiceMuted((muted) => !muted);
-  }, []);
 
   return {
     speaking: isSpeaking,

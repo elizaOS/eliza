@@ -1,4 +1,4 @@
-// Exercises agent billing gate 402 behavior with deterministic cloud-shared lib fixtures.
+/** Exercises canonical agent billing 402 responses with deterministic service fixtures. */
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { AGENT_PRICING } from "../constants/agent-pricing";
 import { logger } from "../utils/logger";
@@ -26,6 +26,16 @@ describe("insufficientCreditsBody", () => {
     expect(body.error).toBe("Insufficient credits");
     expect(body.success).toBe(false);
     expect(body.code).toBe("insufficient_credits");
+  });
+
+  test("reports the stricter balance enforced by a tier-upgrade gate", () => {
+    const body = insufficientCreditsBody(
+      { balance: 0.5, error: "Insufficient credits to upgrade." },
+      { requiredBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE },
+    );
+
+    expect(body.requiredBalance).toBe(0.72);
+    expect(body.currentBalance).toBe(0.5);
   });
 
   test("explains a zero balance caused by a withheld welcome bonus", () => {

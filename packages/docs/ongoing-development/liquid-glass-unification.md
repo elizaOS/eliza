@@ -25,18 +25,22 @@ chat sheet and notification cards used it, each with hand-tuned numbers.
 - **`GlassSurface`** — the one primitive: `<GlassSurface variant="menu">`.
   `GlassStyles` mounts the shared stylesheet + refraction defs once per
   document (App root, next to `AppBackground`).
-- **`useNativeGlass`** — the tier probe: `ios26-native` → `css-refraction`
+- **`useNativeGlass`** — the tier probe: `native` → `css-refraction`
   (Chromium `@supports (backdrop-filter: url(#x))`) → `css-frosted`
   (universal). Resolves synchronously to a CSS tier and upgrades to native
   async — no flash, no layout shift.
-- **`native-bridge.ts` + `GlassBridge.swift`** — real glass. The Swift plugin
+- **`native-bridge.ts` + `GlassBridge.swift` + `GlassBridgePlugin.java`** —
+  real native material on both mobile platforms, one JS API. The Swift plugin
   (`packages/app-core/platforms/ios/App/App/GlassBridge.swift`, same
   registration pattern as `ElizaKeyboardBridge`) attaches a
   `UIVisualEffectView(UIGlassEffect)` **below the webview**, anchored to a
   web-reported rect, and flips the webview transparent on first attach. Gated
-  `#if compiler(>=6.2)` + `if #available(iOS 26, *)`; on anything older,
-  `isAvailable()` answers false and every surface stays on its CSS tier.
-  Reads the bridge-injected `globalThis.Capacitor` — never a static
+  `#if compiler(>=6.2)` + `if #available(iOS 26, *)`. The Java plugin
+  (`packages/app-core/platforms/android/.../GlassBridgePlugin.java`,
+  registered in `MainActivity`) mirrors the API with a Material
+  dynamic-palette panel, gated on API 31+. On anything older on either
+  platform, `isAvailable()` answers false and every surface stays on its CSS
+  tier. Reads the bridge-injected `globalThis.Capacitor` — never a static
   `@capacitor/core` import (`@elizaos/ui` is loaded server-side, #15221).
 
 ## The honest native-glass constraint
@@ -61,8 +65,8 @@ Findings that shaped this (2026-07 research):
   `interactive` / `colorScheme` onto `UIGlassEffect`; `interactive` is
   mount-time-only — our bridge mirrors that contract.
 - Electrobun desktop (macOS) is not Capacitor; real `NSGlassEffectView` there
-  is a separate native-shell work item. Android stays on CSS (or the Cap-go
-  blur backdrop if we adopt it).
+  is a separate native-shell work item. Android now has bridge parity (the
+  Material dynamic-palette panel, API 31+) instead of staying CSS-only.
 
 ## Migration state
 
@@ -75,7 +79,7 @@ Findings that shaped this (2026-07 research):
 | ViewHeader back button / pills | pending — `pill` variant |
 | NotificationBanners (toasts) | pending — `banner` variant |
 | `HOME_GLASS_CLASS` / `WALLPAPER_GLASS` family | pending consolidation into tokens |
-| Native tier wiring (attach pill/sheet regions) | plugin + probe shipped; opt-in per surface once iOS 26 devices are in the capture matrix |
+| Native tier wiring (attach pill/sheet regions) | plugin + probe shipped on iOS AND Android (device e2e: `packages/app/test/android/glass-bridge.android.spec.ts`); surface adoption blocked on native-hosted wallpaper — design + workplan in #15891 |
 
 Each pending row is a small mechanical PR: swap the hand-rolled recipe for a
 variant, delete the local numbers, screenshot before/after.

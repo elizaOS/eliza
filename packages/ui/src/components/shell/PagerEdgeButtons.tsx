@@ -21,7 +21,13 @@ import { Button } from "../ui/button";
  * no blue), positioned on the vertical center of the left/right edges. Each
  * arrow is hidden when there is no page to move to in that direction.
  */
-const FINE_POINTER_EDGE_BUTTON_QUERY = "(hover: hover) and (pointer: fine)";
+/**
+ * Devices that get the resting `<` `>` affordance. FirstSessionSwipeHint keys
+ * off the exact same query (inverted) so the two teaching surfaces are perfect
+ * complements — every device gets exactly one of them, never both.
+ */
+export const FINE_POINTER_EDGE_BUTTON_QUERY =
+  "(hover: hover) and (pointer: fine)";
 
 export function PagerEdgeButtons({
   canPrev,

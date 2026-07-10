@@ -116,6 +116,24 @@ function deterministicStages(): ScrubStageDefinition[] {
 }
 
 describe("scrub pipeline driver", () => {
+  it("refuses the former no-op verify stage", async () => {
+    const dir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "corpus-verify-refusal-"),
+    );
+    await writeShard(dir, [message("msg-1", "Raw owner data")]);
+
+    await expect(
+      runScrubPipeline({
+        targetPath: dir,
+        stage: "verify",
+        mode: "deep",
+        resume: true,
+        dryRun: false,
+        rulesetVersion: "verify-refusal-v1",
+      }),
+    ).rejects.toThrow("per-message verify is disabled");
+  });
+
   it("resumes after interruption to the same final output hash", async () => {
     const uninterruptedDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "corpus-scrub-uninterrupted-"),

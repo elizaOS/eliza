@@ -22,6 +22,59 @@ The GitHub plugin is an elizaOS feature plugin that bridges your agent to the Gi
 
 - GitHub API token (personal access token, fine-grained token, or GitHub App credentials)
 
+## Guided credential setup (dashboard)
+
+The fastest path is the dashboard: **Settings → Coding Agents → GitHub**. The
+connection card offers two ways to connect, and either one makes every
+GitHub-touching capability (issue management, workspace push/PR, repo
+provisioning) work immediately — no restart, no manual env editing:
+
+1. **Sign in with GitHub (device flow)** — shown when the agent has a
+   `GITHUB_OAUTH_CLIENT_ID` setting. The card displays a short code, opens
+   `github.com/login/device`, and waits while you approve. The device code and
+   the granted token never pass through the browser.
+2. **Paste a personal access token** — always available. The card links to a
+   pre-filled token-generation page (`repo`, `read:user` scopes).
+
+Both paths validate the token against GitHub, persist it to the agent's local
+credential store (`<state-dir>/credentials/github.json`, mode 600), and apply
+it to the running agent's per-agent settings so `runtime.getSetting("GITHUB_TOKEN")`
+resolves right away.
+
+### PAT vs device sign-in
+
+| | Personal access token | Device sign-in (OAuth device flow) |
+|---|---|---|
+| Owner setup | none | register a GitHub OAuth app with **device flow enabled**, set `GITHUB_OAUTH_CLIENT_ID` |
+| User steps | create token on github.com, paste it | type a short code on github.com, click approve |
+| Scoping | you choose scopes/repos when creating the token (fine-grained tokens can be repo-allowlisted) | fixed `repo read:user` scope requested by the app |
+| Expiry | you set it at creation | GitHub OAuth app token policy |
+| Best for | single operator, precise scoping | fleets/kiosks where users shouldn't hand-build tokens |
+
+If a GitHub action fails with a credentials error mid-task, the error message
+points back at this card — connect there and retry the task.
+
+### Vault/settings vs environment variables
+
+Prefer per-agent settings (the dashboard card, the agent's vault/secrets, or
+`character.settings`) over process environment variables:
+
+- **Env leaks across agents.** On a multi-tenant host, `GITHUB_TOKEN` in the
+  process environment is visible to *every* agent in that process — one
+  agent's identity silently becomes everyone's.
+- **Settings are per-agent.** A token stored via the dashboard card or the
+  vault resolves through `runtime.getSetting("GITHUB_TOKEN")` for that agent
+  only, and survives restarts through the agent's own credential store.
+- Env still works for single-agent, single-operator installs and always wins
+  over the stored credential at boot (an explicit shell export overrides the
+  saved value).
+
+> **Cloud note:** which GitHub identity a cloud-provisioned agent should get
+> (per-agent bot account vs the owner's PAT vs a GitHub App installation) is a
+> policy decision that is still open — see issue #15796. Until then, cloud
+> agents use whatever token the operator connects via the card or the agent's
+> settings.
+
 ## Minimal Configuration
 
 ```json

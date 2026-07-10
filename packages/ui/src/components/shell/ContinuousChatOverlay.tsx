@@ -55,6 +55,10 @@ import {
   ELIZA_BACK_INTENT_EVENT,
 } from "../../events";
 import {
+  FIRST_RUN_GREETING,
+  FIRST_RUN_SIGN_IN_PROMPT,
+} from "../../first-run/first-run-greeting";
+import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
@@ -140,6 +144,7 @@ import {
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
+import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
   filterRenderableShellMessages,
@@ -155,41 +160,6 @@ import {
 import { type PullGestureBinding, usePullGesture } from "./use-pull-gesture";
 import type { ConversationNav, ShellController } from "./useShellController";
 import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
-
-/**
- * Wraps a pull-gesture binding so `pressed` tracks whether a pointer is held on
- * the bound element — set on pointerdown, cleared on every terminal (up, cancel,
- * lost-capture). A drag handle that unmounts under a captured pointer drops the
- * capture (Chromium fires pointercancel/lostpointercapture on the dead node and
- * the gesture's settle never runs); the consumer reads this ref in the element's
- * MOUNT gate so the handle stays alive across the whole press, closing the
- * window between pointerdown and the integrator's first frame where a stray
- * re-render would otherwise unmount it.
- */
-function withPressLatch(
-  binding: PullGestureBinding,
-  pressed: React.MutableRefObject<boolean>,
-): PullGestureBinding {
-  return {
-    onPointerDown: (event) => {
-      pressed.current = true;
-      binding.onPointerDown(event);
-    },
-    onPointerMove: binding.onPointerMove,
-    onPointerUp: (event) => {
-      pressed.current = false;
-      binding.onPointerUp(event);
-    },
-    onPointerCancel: (event) => {
-      pressed.current = false;
-      binding.onPointerCancel(event);
-    },
-    onLostPointerCapture: (event) => {
-      pressed.current = false;
-      binding.onLostPointerCapture(event);
-    },
-  };
-}
 
 /** No-op slash controller so the overlay renders without a provider (stories). */
 const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
@@ -982,7 +952,7 @@ const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES: ShellMessage[] = [
     role: "assistant",
     source: "first_run",
     createdAt: 0,
-    content: "Hi, I'm Eliza.",
+    content: FIRST_RUN_GREETING,
   },
   {
     id: "first-run:cloud-signin-fallback",
@@ -990,7 +960,7 @@ const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES: ShellMessage[] = [
     source: "first_run",
     createdAt: 1,
     content: [
-      "Let's get you signed in.",
+      FIRST_RUN_SIGN_IN_PROMPT,
       "",
       "[CHOICE:first-run id=runtime]",
       "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
@@ -1084,12 +1054,11 @@ export function ContinuousChatOverlay({
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay opens as the normal full-screen chat and pins
    * there: every collapse path (Escape, outside tap, drag/close) is a no-op,
-   * the drag handle is hidden, and the backdrop is OPAQUE (`bg-bg`) so the
-   * launcher/home behind is hidden. The composer is sign-in-first and locked;
-   * the seeded transcript choice/OAuth widget is the only input until setup
-   * completes. On the falling edge — onboarding just completed — the sheet
-   * settles to half and the opaque backdrop fades to the normal scrim,
-   * revealing the home screen.
+   * the interactive drag handle is hidden, and a neutral scrim preserves the
+   * shared wallpaper while the retained home/launcher surface stays invisible.
+   * The composer is sign-in-first and locked; the seeded transcript choice is
+   * the only input until setup completes. On the falling edge — onboarding just
+   * completed — the sheet settles to half, the scrim fades, and home is shown.
    */
   firstRunOpen?: boolean;
 }): React.JSX.Element {
@@ -1538,10 +1507,13 @@ export function ContinuousChatOverlay({
   // sheet's settle springs — the desktop-held FULL→bottom drain then reads the
   // corrupted sheet and never engages, stuck at scale 1.00). Held deliberately
   // OUT of the settle-suppression guards (unlike `draggingRef`): they only keep
-  // the element mounted, and the browser guarantees a pointerup/cancel/lostcapture
-  // terminal for every press, so they clear without a fragile per-callback web.
-  const grabberPressRef = React.useRef(false);
-  const restorePressRef = React.useRef(false);
+  // the element mounted. Each ref holds the ACCEPTED pointer's id (#15824), not
+  // a boolean: only an eligible primary press latches (the browser guarantees a
+  // terminal for a captured press — an ineligible one gets no capture and no
+  // such guarantee), and only that pointer's own terminal clears it, so a
+  // secondary finger's up can never unlatch a still-held primary drag.
+  const grabberPressRef = React.useRef<number | null>(null);
+  const restorePressRef = React.useRef<number | null>(null);
   // Peak RAW (pre-clamp) pull height reached during the current upward drag
   // (#13531). The visible `threadHeight` is rubber-band-clamped at `openH`, so a
   // deliberate over-pull past FULL is invisible to a `threadHeight.get()` read on
@@ -3263,7 +3235,7 @@ export function ContinuousChatOverlay({
   // own the screen and the chat is undismissable; every collapse path below is
   // also gated on `firstRunOpen`). On the FALLING edge — onboarding just
   // completed — settle to the HALF detent: the sheet springs full → half in
-  // step with the opaque backdrop fade, so the home screen is revealed behind
+  // step with the onboarding scrim fade, so the home screen is revealed behind
   // the top half while the conversation stays in hand. Edge-detected via a ref
   // so an ordinary session (onboarding never active) never triggers it.
   const wasFirstRunOpenRef = React.useRef(firstRunOpen);
@@ -4925,7 +4897,7 @@ export function ContinuousChatOverlay({
         {!firstRunOpen &&
         ((!fullBleed && !restoreDragging) ||
           draggingRef.current ||
-          grabberPressRef.current) ? (
+          grabberPressRef.current != null) ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
           // while a restore drag is in flight (so the strip keeps the pointer
           // capture through the un-maximize) — EXCEPT while a grabber drag is
@@ -5175,7 +5147,9 @@ export function ContinuousChatOverlay({
                 over the top bar fall THROUGH to this strip. Keyboard-operable
                 (Enter/Space/ArrowDown restore) so the gesture-only affordance
                 stays WCAG 2.1.1 operable. */}
-            {(fullBleed || restoreDragging || restorePressRef.current) &&
+            {(fullBleed ||
+              restoreDragging ||
+              restorePressRef.current != null) &&
             !pinnedOpen ? (
               <button
                 {...restoreZoneBinding}
@@ -5793,17 +5767,20 @@ export function ContinuousChatOverlay({
                 // (This surface's strings are plain literals by design — see
                 // the imageError note above.)
                 placeholder={
-                  firstRunOpen
-                    ? "Sign in to start chatting"
-                    : noProviderConfigured
-                      ? "Connect a model provider in Settings to chat"
-                      : modelBlocksSend
-                        ? modelStatus?.kind === "downloading"
-                          ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                          : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                        : booting
-                          ? `Ask ${agentName} — waking up…`
-                          : (viewChatBinding?.placeholder ?? `Ask ${agentName}`)
+                  compactLanding
+                    ? "Ask"
+                    : firstRunOpen
+                      ? "Sign in to start chatting"
+                      : noProviderConfigured
+                        ? "Connect a model provider in Settings to chat"
+                        : modelBlocksSend
+                          ? modelStatus?.kind === "downloading"
+                            ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                            : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                          : booting
+                            ? `Ask ${agentName} — waking up…`
+                            : (viewChatBinding?.placeholder ??
+                              `Ask ${agentName}`)
                 }
                 aria-label="message"
                 data-testid="chat-composer-textarea"

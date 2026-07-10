@@ -31,7 +31,36 @@ function projectItem(
   repository = "elizaOS/eliza",
 ) {
   return {
-    content: { number, repository, title: `Issue ${number}` },
+    content: {
+      type: "Issue",
+      number,
+      repository,
+      title: `Issue ${number}`,
+      url: `https://github.com/${repository}/issues/${number}`,
+    },
+    status,
+  };
+}
+
+function pullRequestItem(number: number, status = "Done") {
+  return {
+    content: {
+      type: "PullRequest",
+      number,
+      repository: "elizaOS/eliza",
+      title: `Pull request ${number}`,
+      url: `https://github.com/elizaOS/eliza/pull/${number}`,
+    },
+    status,
+  };
+}
+
+// Real DraftIssue cards from `gh project item-list` carry only type, title,
+// and body — no number, repository, or url.
+function draftItem(title: string, status = "Todo") {
+  return {
+    content: { type: "DraftIssue", title, body: "Draft note" },
+    title,
     status,
   };
 }
@@ -171,6 +200,63 @@ describe("MVP board readiness audit", () => {
     expect(report.issueCount).toBe(0);
   });
 
+  test("does not treat pull-request cards as project issues", () => {
+    const report = board.auditMvpBoardReadiness([issue(14490, ["mvp"])], {
+      items: [pullRequestItem(14490)],
+    });
+
+    expect(report.ok).toBe(true);
+    expect(report.issueCount).toBe(0);
+    expect(report.rows).toEqual([]);
+  });
+
+  test("does not treat draft cards as project issues", () => {
+    const report = board.auditMvpBoardReadiness(
+      [issue(14335, ["mvp", "needs-human"])],
+      {
+        items: [
+          projectItem(14335, "Needs human review"),
+          draftItem("Loose planning note"),
+        ],
+      },
+    );
+
+    expect(report.ok).toBe(true);
+    expect(report.issueCount).toBe(1);
+    expect(report.rows).toEqual([expect.objectContaining({ number: 14335 })]);
+  });
+
+  test("rejects project cards without a content type", () => {
+    expect(() =>
+      board.auditMvpBoardReadiness([issue(14335, ["mvp", "needs-human"])], {
+        items: [
+          {
+            content: {
+              number: 14335,
+              repository: "elizaOS/eliza",
+              title: "Issue 14335",
+              url: "https://github.com/elizaOS/eliza/issues/14335",
+            },
+            status: "Needs human review",
+          },
+        ],
+      }),
+    ).toThrow("carries no content.type");
+  });
+
+  test("rejects blank and unknown project card types", () => {
+    expect(() =>
+      board.projectItemIsIssue({
+        content: { type: "   ", title: "Blank type" },
+      }),
+    ).toThrow("carries no content.type");
+    expect(() =>
+      board.projectItemIsIssue({
+        content: { type: "Discussion", title: "Future card" },
+      }),
+    ).toThrow('unsupported content.type "Discussion"');
+  });
+
   test("flags human-review status without a blocker label", () => {
     const report = board.auditMvpBoardReadiness([issue(15748, ["testing"])], {
       items: [projectItem(15748, "Needs human review")],
@@ -277,6 +363,48 @@ describe("MVP board readiness audit", () => {
         actual: 0,
       }),
     ]);
+  });
+
+  test("CLI fixture mode fails fast on a project card without a content type", () => {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-board-readiness-untyped-"));
+    const issuesJson = join(dir, "issues.json");
+    const projectJson = join(dir, "project.json");
+    writeFileSync(
+      issuesJson,
+      JSON.stringify([issue(14335, ["mvp", "needs-human"])]),
+    );
+    writeFileSync(
+      projectJson,
+      JSON.stringify({
+        items: [
+          {
+            content: {
+              number: 14335,
+              repository: "elizaOS/eliza",
+              title: "Issue 14335",
+            },
+            status: "Needs human review",
+          },
+        ],
+      }),
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        scriptPath,
+        "--issues-json",
+        issuesJson,
+        "--project-json",
+        projectJson,
+        "--json",
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("carries no content.type");
   });
 
   test("CLI help documents issue-only fixture mode", () => {

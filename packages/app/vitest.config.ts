@@ -20,6 +20,9 @@ const unitExcludes = [
   "**/*.spec.{ts,tsx}",
   "test/ui-smoke/**",
   "test/electrobun-packaged/**",
+  // Uses bun:test and reads sibling source via a file: URL, which vitest's
+  // jsdom transform cannot provide; coverage-gate routes it to `bun test`.
+  "scripts/audit-views-soak-navigation.test.mjs",
 ];
 
 export default defineConfig({

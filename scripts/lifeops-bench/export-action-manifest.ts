@@ -305,6 +305,31 @@ function augmentWithBenchUmbrellas(path: string): void {
   }
 }
 
+function formatJsonWithBiome(path: string): void {
+  const result = spawnSync(
+    "bunx",
+    ["biome", "format", "--stdin-file-path", "actions.manifest.json"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      input: readFileSync(path, "utf8"),
+      stdio: "pipe",
+    },
+  );
+  if (result.status !== 0) {
+    throw new Error(
+      [
+        `Biome failed to format generated manifest at ${path}.`,
+        result.stdout.trim(),
+        result.stderr.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+  }
+  writeFileSync(path, result.stdout, "utf8");
+}
+
 function renderList(values: string[]): string {
   return values.length === 0 ? "none" : values.join(", ");
 }
@@ -443,6 +468,7 @@ function main(): void {
   if (options.benchUmbrellaAugment) {
     augmentWithBenchUmbrellas(options.out);
   }
+  formatJsonWithBiome(options.out);
 
   const finalManifest = JSON.parse(
     readFileSync(options.out, "utf8"),

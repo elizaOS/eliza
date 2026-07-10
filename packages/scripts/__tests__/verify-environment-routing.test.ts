@@ -318,8 +318,16 @@ describe("ENVIRONMENT_ROUTING matrix integrity", () => {
       ...stagingBlock.matchAll(/pattern\s*=\s*"([^"/]+)\/\*"/g),
     ].map((m) => m[1]);
     // Every staging route host EXCEPT the R2 blob host (which serves objects,
-    // not /api/health) must be represented in the matrix as a staging domain.
-    const healthHosts = routeHosts.filter((h) => !h.startsWith("blob-"));
+    // not /api/health) and wildcard routes (the per-agent *.staging wildcard
+    // from #15213 has no fixed hostname to probe) must be represented in the
+    // matrix as a staging domain. The wildcard exemption is pinned to the one
+    // known route: a new or broader wildcard (e.g. *.elizacloud.ai claimed by
+    // staging) must fail here for review instead of being silently skipped.
+    const wildcardHosts = routeHosts.filter((h) => h.includes("*"));
+    expect(wildcardHosts).toEqual(["*.staging.elizacloud.ai"]);
+    const healthHosts = routeHosts.filter(
+      (h) => !h.startsWith("blob-") && !h.includes("*"),
+    );
     const stagingMatrix = new Set(
       ENVIRONMENT_ROUTING.filter((e) => e.environment === "staging").map(
         (e) => e.domain,

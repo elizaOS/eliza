@@ -591,11 +591,9 @@ def main(
                 "GROQ_LARGE_MODEL",
             ):
                 os.environ.setdefault(key, model)
-        # Tell the bench server to load @elizaos/plugin-social-alpha so the
-        # actual TS agent (TrustScoreService, balancedTrustScoreCalculator,
-        # socialAlphaProvider) is the surface under test.
+        # Mark this run as Social Alpha so server logs and result metadata keep
+        # the benchmark context. The deleted runtime plugin is no longer loaded.
         os.environ["ELIZA_BENCH_NAME"] = "social_alpha"
-        os.environ.setdefault("ELIZA_BENCH_LOAD_SOCIAL_ALPHA", "true")
         # Auto-spawn the TS benchmark server (idempotent — no-op if already running)
         try:
             from eliza_adapter.server_manager import ElizaServerManager

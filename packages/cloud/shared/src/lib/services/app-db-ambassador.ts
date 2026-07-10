@@ -29,6 +29,9 @@ export const DEFAULT_AMBASSADOR_IMAGE = "alpine/socat";
 /** The port the ambassador listens on (and that the rewritten DSN points at). */
 export const AMBASSADOR_LISTEN_PORT = 5432;
 
+/** Docker-name prefix reserved for per-app DB ambassadors. */
+export const APP_DB_AMBASSADOR_NAME_PREFIX = "app-db-";
+
 /**
  * Per-app ambassador container name — stable + DNS-safe. Uses the SAME 12-char
  * slug as `containerNameForApp` (`app-<slug>`), so the ambassador is
@@ -39,7 +42,7 @@ export function ambassadorName(appId: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
     .slice(0, 12);
-  return `app-db-${short}`;
+  return `${APP_DB_AMBASSADOR_NAME_PREFIX}${short}`;
 }
 
 /**
@@ -51,7 +54,18 @@ export function ambassadorNameForContainer(containerName: string): string {
   const slug = containerName.startsWith("app-")
     ? containerName.slice("app-".length)
     : containerName;
-  return `app-db-${slug}`;
+  return `${APP_DB_AMBASSADOR_NAME_PREFIX}${slug}`;
+}
+
+/**
+ * Recover the owning app container name from a managed ambassador name. This
+ * lets lifecycle services key both Docker resources to the same `containers`
+ * row without creating a second database record for the infrastructure sidecar.
+ */
+export function appContainerNameForAmbassador(ambassadorContainerName: string): string | null {
+  if (!ambassadorContainerName.startsWith(APP_DB_AMBASSADOR_NAME_PREFIX)) return null;
+  const slug = ambassadorContainerName.slice(APP_DB_AMBASSADOR_NAME_PREFIX.length);
+  return slug ? `app-${slug}` : null;
 }
 
 export interface DbEndpoint {

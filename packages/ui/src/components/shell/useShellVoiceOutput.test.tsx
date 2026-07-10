@@ -74,6 +74,8 @@ const BASE: ShellVoiceOutputOptions = {
   chatSending: false,
   recording: false,
   lastTurnVoice: false,
+  agentVoiceMuted: false,
+  toggleAgentVoiceMute: vi.fn(),
   uiLanguage: "en",
   cloudConnected: false,
 };
@@ -266,16 +268,30 @@ describe("useShellVoiceOutput", () => {
     expect(hoisted.stopSpeaking).toHaveBeenCalled();
   });
 
-  it("mutes: stops in-flight speech and silences later replies", () => {
+  it("uses the shared mute state, stops speech, and silences later replies", () => {
+    const toggleAgentVoiceMute = vi.fn();
+    const firstMessages = [userMsg("u1", "hi"), assistantMsg("a1", "First.")];
     const { result, rerender } = render({
       ...BASE,
       lastTurnVoice: true,
-      conversationMessages: [userMsg("u1", "hi"), assistantMsg("a1", "First.")],
+      toggleAgentVoiceMute,
+      conversationMessages: firstMessages,
     });
     expect(hoisted.queueAssistantSpeech).toHaveBeenCalledTimes(1);
 
     act(() => {
       result.current.toggleAgentVoiceMute();
+    });
+    expect(toggleAgentVoiceMute).toHaveBeenCalledTimes(1);
+
+    // AppContext commits the shared mute state. The shell immediately stops the
+    // same playback and reads muted everywhere the composer does.
+    rerender({
+      ...BASE,
+      lastTurnVoice: true,
+      agentVoiceMuted: true,
+      toggleAgentVoiceMute,
+      conversationMessages: firstMessages,
     });
     expect(result.current.agentVoiceMuted).toBe(true);
     expect(hoisted.stopSpeaking).toHaveBeenCalled();
@@ -284,9 +300,10 @@ describe("useShellVoiceOutput", () => {
     rerender({
       ...BASE,
       lastTurnVoice: true,
+      agentVoiceMuted: true,
+      toggleAgentVoiceMute,
       conversationMessages: [
-        userMsg("u1", "hi"),
-        assistantMsg("a1", "First."),
+        ...firstMessages,
         userMsg("u2", "again"),
         assistantMsg("a2", "Second."),
       ],

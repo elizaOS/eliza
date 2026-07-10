@@ -278,6 +278,16 @@ export interface PromptSegment {
 	content: string;
 	/** true = same across calls for same schema/character; false = changes per call */
 	stable: boolean;
+	/**
+	 * Optional per-segment prompt-cache TTL hint. Routed through the provider
+	 * cache plan into Anthropic `cache_control` (`"short"` → 5m ephemeral,
+	 * `"long"` → 1h ephemeral). When omitted, the breakpoint inherits the
+	 * runtime-level TTL (`ANTHROPIC_PROMPT_CACHE_TTL`). Only meaningful on
+	 * `stable: true` segments — dynamic segments never receive breakpoints.
+	 * Use `"long"` sparingly: a 1h cache write costs 2× base input (vs 1.25×
+	 * for 5m), so it only pays off for prefixes re-read across long idle gaps.
+	 */
+	ttl?: "short" | "long";
 }
 
 /**

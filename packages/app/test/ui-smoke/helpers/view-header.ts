@@ -38,9 +38,7 @@ export async function assertSharedViewHeaderContract(
   const scoped = within
     ? page.locator(within).getByTestId(VIEW_HEADER_TESTID)
     : page.getByTestId(VIEW_HEADER_TESTID);
-  const header = (
-    title ? scoped.filter({ hasText: title }) : scoped
-  ).first();
+  const header = (title ? scoped.filter({ hasText: title }) : scoped).first();
   await expect(
     header,
     "a normal view must render the shared ViewHeader ([data-testid=view-header])",

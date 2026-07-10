@@ -4,7 +4,7 @@
  */
 export type ViewCase = {
   id: string;
-  viewType: "gui" | "tui";
+  viewType: "gui";
   path: string;
   shellPill: "expected" | "suppressed";
 };

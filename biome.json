@@ -126,8 +126,7 @@
         "packages/training/src/benchmark/ModelBenchmarkService.ts",
         "packages/training/src/training/ModelUsageVerifier.ts",
         "packages/app-core/test/stubs/plugin-telegram-module.ts",
-        "packages/agent/scripts/mobile-stubs/onnxruntime-node.cjs",
-        "plugins/plugin-social-alpha/src/clients.ts"
+        "packages/agent/scripts/mobile-stubs/onnxruntime-node.cjs"
       ],
       "linter": {
         "rules": {

@@ -31,7 +31,7 @@ Verdicts: `good` · `needs-work` · `broken`. Newest at bottom.
 
 ## Validation summary (production build, both viewports)
 - **Builtin views**: builtin-views-visual.spec 20/20 pass (10 views × desktop+mobile). Production-build screenshots reviewed — views/settings/plugins/character/automations/memories/database/logs/camera/help all render light, minimal, on-brand. Memories neutral-icon + ViewCatalog launcher + Plugins de-slop confirmed in the built dist at both viewports.
-- **Plugin views (riskiest edits)**: plugin-views-visual.spec pass (exit 0) for social-alpha + feed (hero removals), finances, inbox — fresh bundle build, no page errors.
+- **Plugin views (riskiest edits)**: plugin-views-visual.spec pass (exit 0) for feed (hero removals), finances, inbox — fresh bundle build, no page errors.
 - The single light look + brand normalization is verified end-to-end; the "lots of black" is resolved by the pin (most views were already token-light; Finances/feed/social dark/hero treatments are now light/flat).
 
 ## Honest remaining (lower value / out-of-scope-for-redesign)

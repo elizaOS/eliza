@@ -41,6 +41,7 @@ import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import { resolveWhisperSttModel } from "./whisper-model";
+import { parseWhisperTimestamps } from "./whisper-timestamps";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 
@@ -50,6 +51,9 @@ const SUPPORTED_MIME_TYPES = [
   "audio/mp4",
   "audio/m4a",
   "audio/wav",
+  // Windows clients (and Bun's multipart layer) commonly declare WAV as the
+  // legacy x- form; the magic-number allowlist below already accepts it.
+  "audio/x-wav",
   "audio/webm",
   "audio/ogg",
 ];
@@ -197,6 +201,13 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       const whisperModel = resolveWhisperSttModel(env.WHISPER_STT_MODEL);
       form.append("model", whisperModel);
       if (languageCode) form.append("language", languageCode);
+      // verbose_json + word/segment granularities (#14806): downstream
+      // consumers (transcript fragments, PII audio redaction) need ms spans,
+      // and a server that ignores these OpenAI-spec fields still returns
+      // `text`, so the plain-transcript contract is unchanged.
+      form.append("response_format", "verbose_json");
+      form.append("timestamp_granularities[]", "word");
+      form.append("timestamp_granularities[]", "segment");
       const whisperResponse = await fetch(
         `${whisperBaseUrl.replace(/\/+$/, "")}/v1/audio/transcriptions`,
         { method: "POST", body: form },
@@ -211,13 +222,66 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           { status: 502 },
         );
       }
-      const whisperJson = (await whisperResponse.json()) as { text?: string };
-      const transcript = (whisperJson.text ?? "").trim();
+      // Boundary validation (J3): a 200 whose body is not JSON, not an object,
+      // or lacks the required `text` string is an upstream failure — translate
+      // it to a structured 502, never a healthy empty transcript.
+      let whisperPayload: unknown;
+      try {
+        whisperPayload = await whisperResponse.json();
+      } catch (parseError) {
+        logger.error(
+          `[Voice STT API] Whisper returned unparseable JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+        );
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+      const whisperRecord =
+        whisperPayload !== null &&
+        typeof whisperPayload === "object" &&
+        !Array.isArray(whisperPayload)
+          ? (whisperPayload as Record<string, unknown>)
+          : null;
+      if (!whisperRecord || typeof whisperRecord.text !== "string") {
+        logger.error(
+          `[Voice STT API] Whisper returned a malformed transcription payload (${whisperRecord ? "missing text field" : "non-object body"})`,
+        );
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+      const transcript = whisperRecord.text.trim();
+      const { segments, words, invalidFields } =
+        parseWhisperTimestamps(whisperRecord);
+      if (invalidFields.length > 0) {
+        logger.error("[Voice STT API] Whisper returned malformed timestamps", {
+          invalidFields,
+          model: whisperModel,
+        });
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
       const whisperDuration = Date.now() - whisperStart;
-      logger.info(
-        `[Voice STT API] Whisper (${whisperModel}) completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}"`,
-      );
-      return Response.json({ transcript, duration_ms: whisperDuration });
+      // "timestamps absent" (plain-text response shape) and "zero timed spans"
+      // are different states — log them distinguishably.
+      logger.info("[Voice STT API] Whisper completed", {
+        billing: "free",
+        durationMs: whisperDuration,
+        model: whisperModel,
+        segmentCount: segments?.length,
+        transcriptLength: transcript.length,
+        wordCount: words?.length,
+      });
+      return Response.json({
+        transcript,
+        duration_ms: whisperDuration,
+        ...(segments ? { segments } : {}),
+        ...(words ? { words } : {}),
+      });
     }
 
     const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });

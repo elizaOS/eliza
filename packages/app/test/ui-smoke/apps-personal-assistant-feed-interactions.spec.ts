@@ -20,9 +20,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("Feed route exposes reachable GUI state", async ({
-  page,
-}) => {
+test("Feed route exposes reachable GUI state", async ({ page }) => {
   await openAppPath(page, "/feed");
   await assertReadyChecks(
     page,

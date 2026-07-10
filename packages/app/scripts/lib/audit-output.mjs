@@ -4,13 +4,29 @@
  */
 import path from "node:path";
 
+function containsPath(parent, child) {
+  const relative = path.relative(parent, child);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) &&
+      relative !== ".." &&
+      !path.isAbsolute(relative))
+  );
+}
+
 export function resolveAuditAppOutput({ appDir, repoRoot, configured }) {
   const outputDir = path.resolve(
     appDir,
     configured?.trim() || "aesthetic-audit-output",
   );
-  const forbidden = new Set([path.parse(outputDir).root, repoRoot, appDir]);
-  if (forbidden.has(outputDir)) {
+  const insideRepository = containsPath(repoRoot, outputDir);
+  const insideApp = containsPath(appDir, outputDir);
+  if (
+    outputDir === path.parse(outputDir).root ||
+    containsPath(outputDir, repoRoot) ||
+    containsPath(outputDir, appDir) ||
+    (insideRepository && !insideApp)
+  ) {
     throw new Error(
       `[ui-smoke] refusing to clean unsafe audit output: ${outputDir}`,
     );

@@ -60,7 +60,7 @@ Subpath imports: `import { ... } from "@elizaos/cloud-shared/db"`, `".../billing
 bun run --cwd packages/cloud/shared typecheck              # tsc --noEmit
 bun run --cwd packages/cloud/shared lint                   # biome check
 bun run --cwd packages/cloud/shared lint:fix
-bun run --cwd packages/cloud/shared test                   # bun test
+bun run --cwd packages/cloud/shared test                   # scripts/run-bun-tests.mjs (bun test --isolate; win32: PGlite quarantine, #15785)
 bun run --cwd packages/cloud/shared db:generate            # drizzle-kit generate
 bun run --cwd packages/cloud/shared db:migrate             # migrate-with-diagnostics.ts
 bun run --cwd packages/cloud/shared db:migrate:drizzle     # drizzle-kit migrate
@@ -87,6 +87,7 @@ bun run --cwd packages/cloud/shared generate:email-templates
 - **`src/lib/` is server-only.** Browser code (React, hooks, stores, tailwind utils) lives in `cloud-frontend`, not here. Only pure isomorphic helpers (`billing/`, math/string/validation) are safe to import from the frontend.
 - **Migrations are append-only.** Never edit an applied migration. No `CREATE INDEX CONCURRENTLY` (runs in a transaction). Use `IF NOT EXISTS` / `IF EXISTS`. Keep migrations small and targeted (<100 lines): add objects, backfill, and drop in separate migrations — no omnibus recreate-the-schema files (they lock active prod tables). Never `db:push`.
 - **`typecheck` noise:** errors that surface are often from transitive imports (e.g. `plugins/plugin-elizacloud/...`) pulled in via tsconfig paths, not this package's own source. Filter to your files: `bun run --cwd packages/cloud/shared typecheck 2>&1 | grep <your-file>`.
+- **win32 PGlite quarantine (#15785):** on Windows the `test` entry (`scripts/run-bun-tests.mjs`) runs the PGlite tenant-db placement-claimer suite in its own child `bun test` process and retries it (bounded) ONLY on a Bun native-crash signature (`panic(main thread): Illegal instruction`, exit 3), capturing the panic to `.tmp/bun-pglite-crash/` for the upstream Bun report (`scripts/bun-pglite-crash-upstream-report.md`). Genuine test failures never retry; non-win32 behavior is a plain `bun test --isolate`. Renamed the suite? Update `DEFAULT_QUARANTINED_SUITES` in `scripts/run-bun-tests-helpers.mjs` (the run fails loudly until you do).
 - **Repo-wide rules** (logger-only/no-console, ESM, naming, clean-architecture commandments, CQRS, validate-at-boundary, DTO fields required) live in the root `AGENTS.md`. The WHY docs under `docs/` explain non-obvious choices: `messaging-onboarding-gateway-design.md` and `CLOUD_ONBOARDING_PROVISIONING_REVIEW.md`.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

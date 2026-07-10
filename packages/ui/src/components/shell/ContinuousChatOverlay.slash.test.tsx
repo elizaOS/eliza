@@ -145,6 +145,9 @@ function renderOverlay(
   controller = makeController(),
 ) {
   render(<ContinuousChatOverlay controller={controller} slash={slash} />);
+  expect(
+    (screen.getByLabelText("message") as HTMLTextAreaElement).placeholder,
+  ).toBe("Ask Eliza");
   return {
     controller,
     input: screen.getByLabelText("message") as HTMLInputElement,

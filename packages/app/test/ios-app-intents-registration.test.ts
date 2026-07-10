@@ -351,12 +351,8 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "testHomeScreenWidgetTapForegroundsApp",
     );
-    expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "Ask Eliza",
-    );
-    expect(deviceExtensionSurfaceUITestsSwift).toContain(
-      "Eliza Voice",
-    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("Ask Eliza");
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("Eliza Voice");
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",
     );

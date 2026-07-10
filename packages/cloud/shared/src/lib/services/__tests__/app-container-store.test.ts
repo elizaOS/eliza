@@ -27,7 +27,9 @@ function row(overrides: Partial<ProjectableContainerRow> = {}): ProjectableConta
 
 describe("mapContainerRowToAppContainerRow", () => {
   test("projects columns and carries the per-tenant DSN through env vars", () => {
-    const r = mapContainerRowToAppContainerRow(row());
+    const r = mapContainerRowToAppContainerRow(
+      row({ metadata: { hostContainerId: "docker-immutable-1" } }),
+    );
     expect(r).toEqual({
       id: "c-1",
       appId: "app-id-123", // from project_name (no metadata.appId)
@@ -37,6 +39,7 @@ describe("mapContainerRowToAppContainerRow", () => {
       organizationId: "org-1",
       userId: "user-1",
       environmentVars: { DATABASE_URL: DSN, PORT: "3000" },
+      hostContainerId: "docker-immutable-1",
     });
   });
 

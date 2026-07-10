@@ -24,8 +24,30 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { formatViolation, runGuard } from "./publish-graph-guard.mjs";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+// Refuse to publish when a published package pins an unpublishable workspace
+// target (#15833): the rewritten version would 404 for external `npm install`.
+// Only NEW edges (outside publish-graph-baseline.json) abort — the known
+// pre-existing ones are tracked as follow-up so this stays a usable gate.
+function assertPublishGraphClean() {
+  const { ok, newViolations, stale } = runGuard();
+  if (ok) return;
+  if (newViolations.length > 0) {
+    console.error(
+      `[publish-from-dist] Aborting: ${newViolations.length} NEW unpublishable workspace dependency(ies) would 404 for npm consumers (see #15833):`,
+    );
+    for (const v of newViolations) console.error(formatViolation(v));
+  }
+  if (stale.length > 0) {
+    console.error(
+      `[publish-from-dist] Aborting: ${stale.length} publish-graph-baseline.json entry(ies) no longer dangle — remove them to ratchet the gate down.`,
+    );
+  }
+  process.exit(1);
+}
 
 function npmInvocation(args) {
   if (process.platform === "win32") {
@@ -96,6 +118,7 @@ function walk(dir, depth, out) {
 
 function main() {
   const flags = parseArgs();
+  assertPublishGraphClean();
   const pkgs = walkPackages();
   const filtered = flags.filter
     ? pkgs.filter((p) => flags.filter.includes(p.name))

@@ -58,7 +58,7 @@ not injectable need that refactor first.
 | Polymarket | gamma/clob/data-api.polymarket.com | yes | **validated** | `plugin-polymarket/src/routes.{contract,real}.test.ts`. Fixed UI mock `liquidity` format. |
 | Hyperliquid | api.hyperliquid.xyz/info | yes | **validated** | `plugin-hyperliquid/src/routes.{contract,real}.test.ts`. |
 | Shopify | Admin GraphQL 2025-04 | no (store token) | **contract-tested** | `plugin-shopify/src/routes.contract.test.ts` + customer fields fixed to `numberOfOrders`/`amountSpent` (verified vs live 2025-04 docs). Next: gated live-refresh. |
-| CoinGecko | api.coingecko.com | yes | **validated** | `plugin-wallet/src/routes/wallet-market-overview.{contract,real}.test.ts` — recorded `/coins/markets` replayed through the real route + live-drift. (plugin-social-alpha's coingecko use is still inline.) |
+| CoinGecko | api.coingecko.com | yes | **validated** | `plugin-wallet/src/routes/wallet-market-overview.{contract,real}.test.ts` — recorded `/coins/markets` replayed through the real route + live-drift. |
 | Eliza Cloud | cloud-api worker | n/a | **validated-elsewhere** | `packages/test/cloud-e2e` boots the real cloud-api worker. |
 | Block explorers | bscscan/etherscan/solscan | yes (key for some) | **unvalidated** | `plugin-wallet`. Public read endpoints → recorded contract test (next cheapest win). |
 | Wallet RPC | EVM/Solana RPC + token providers | partial | **unvalidated** | Inline DTO fixtures, no recorded-real tie. |
