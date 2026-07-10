@@ -1,0 +1,68 @@
+name: Develop Format Guard
+
+# Supersession-proof formatting detector for the develop trunk (#15959).
+#
+# The pre-merge gates (develop-pr.yml's lint job and test.yml's
+# merge-quality-gate) run `format:check`, but the repository has no branch
+# protection, so a REST/manual merge can complete while those checks are still
+# pending. The post-merge lanes (test.yml, quality.yml) deliberately share a
+# per-ref concurrency group with cancel-in-progress on push — a merge wave
+# supersedes them, so a formatting regression can sit invisibly on develop
+# until a quality run finally survives, and then it blames the wrong commit.
+#
+# This lane closes the detection gap: a per-sha concurrency group means no
+# develop push can ever cancel another's run, so every trunk commit gets a
+# completed format verdict, and a regression goes red on the exact commit
+# that introduced it. It is detection, not enforcement — blocking merges on
+# pending checks requires a repository ruleset (owner action, see #15959).
+# Hosted-only on purpose: the check must not depend on self-hosted fleet
+# health, and a merge wave costs only that many ~5-minute hosted jobs.
+# ci-merge-gate-contract.mjs enforces this file's trigger, concurrency, and
+# runner invariants.
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+# Per-sha group: every push gets its own group, so cancel-in-progress can
+# never apply across commits and each run completes. Do not key this on
+# github.ref — that reintroduces the supersession this workflow exists to
+# avoid.
+concurrency:
+  group: develop-format-guard-${{ github.sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  format-check:
+    name: Format check (per-commit, never superseded)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.14" # pinned: floating canary hangs bun install on hosted runners and writes lockfileVersion 2 (#11184/#9454)
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          # Biome only needs JS dependencies; the lean install keeps this lane
+          # fast so a merge wave stays cheap on hosted runners.
+          setup-python: "false"
+          install-protoc: "false"
+          run-postinstall: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run biome format check
+        run: bun run format:check

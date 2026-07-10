@@ -5,7 +5,10 @@
  * and required test lanes retain a hosted fallback; `ci-ok` owns lint, format,
  * type, stale-base, and secret checks; and the lightweight develop PR lane runs
  * formatting before merge because superseded post-merge runs cannot reliably
- * be the first detector (#15959).
+ * be the first detector (#15959). Because merges can complete while those PR
+ * checks are pending (no branch protection), the develop format guard must
+ * stay a per-sha, hosted, never-superseded push lane so every trunk commit
+ * still gets a completed format verdict.
  *
  * The checker text-scans YAML to avoid a workflow-time parser dependency. Its
  * synthetic self-test must reject every missing dependency or command so the
@@ -30,9 +33,11 @@ const CONTRACT_WORKFLOWS = [
   "windows-dev-smoke.yml",
   "windows-desktop-preload-smoke.yml",
   "develop-pr.yml",
+  "develop-format-guard.yml",
 ];
 
 const DEVELOP_PR_WORKFLOW = "develop-pr.yml";
+const FORMAT_GUARD_WORKFLOW = "develop-format-guard.yml";
 
 const FLEET_FALLBACK_VAR = "HETZNER_FLEET_ONLINE";
 const BARE_SELF_HOSTED = /runs-on:\s*\[\s*self-hosted\s*,\s*hetzner-robot\s*\]/;
@@ -279,6 +284,36 @@ function checkWorkflowText(fileName, text, problems) {
       }
     }
   }
+
+  if (fileName === FORMAT_GUARD_WORKFLOW) {
+    if (!/ {2}push:\s*\n {4}branches:\s*\[develop\]/.test(text)) {
+      problems.push(
+        `${fileName}: missing 'push: branches: [develop]' trigger — the guard must run on every develop push`,
+      );
+    }
+    if (!/^ {2}group:[^\n]*\$\{\{\s*github\.sha\s*\}\}/m.test(text)) {
+      problems.push(
+        `${fileName}: concurrency group must include github.sha — a per-ref group lets merge waves supersede the run, which is the regression this guard exists to prevent (#15959)`,
+      );
+    }
+    const guardJob = jobBody(text, "format-check");
+    if (guardJob === null) {
+      problems.push(`${fileName}: no 'format-check' job found`);
+    } else {
+      const guardRunsOn =
+        guardJob.match(/^\s+runs-on:\s*(.+?)\s*$/m)?.[1] ?? "";
+      if (!guardRunsOn.startsWith("ubuntu-")) {
+        problems.push(
+          `${fileName}: 'format-check' runs-on is '${guardRunsOn || "missing"}', expected a hosted ubuntu-* runner — the guard must not depend on self-hosted fleet health`,
+        );
+      }
+      if (!/bun run format:check\b/.test(guardJob)) {
+        problems.push(
+          `${fileName}: 'format-check' job is missing bun run format:check`,
+        );
+      }
+    }
+  }
 }
 
 function run(repoRoot) {
@@ -473,8 +508,61 @@ function selfTest() {
       );
     }
   }
+
+  const goodFormatGuard = `on:
+  push:
+    branches: [develop]
+concurrency:
+  group: develop-format-guard-\${{ github.sha }}
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bun run format:check
+`;
+  const guardProblems = [];
+  checkWorkflowText(FORMAT_GUARD_WORKFLOW, goodFormatGuard, guardProblems);
+  if (guardProblems.length !== 0) {
+    throw new Error(
+      `self-test: valid format guard fixture reported problems:\n  ${guardProblems.join("\n  ")}`,
+    );
+  }
+  const badGuardCases = [
+    {
+      name: "guard missing develop push trigger",
+      text: goodFormatGuard.replace(
+        "  push:\n    branches: [develop]\n",
+        "  workflow_dispatch:\n",
+      ),
+    },
+    {
+      name: "guard concurrency keyed per-ref (supersedable)",
+      text: goodFormatGuard.replace(
+        "develop-format-guard-$" + "{{ github.sha }}",
+        "develop-format-guard-$" + "{{ github.ref }}",
+      ),
+    },
+    {
+      name: "guard missing format:check step",
+      text: goodFormatGuard.replace("      - run: bun run format:check\n", ""),
+    },
+    {
+      name: "guard on self-hosted fleet",
+      text: goodFormatGuard.replace(
+        "runs-on: ubuntu-latest",
+        "runs-on: [self-hosted, hetzner-robot]",
+      ),
+    },
+  ];
+  for (const { name, text } of badGuardCases) {
+    const problems = [];
+    checkWorkflowText(FORMAT_GUARD_WORKFLOW, text, problems);
+    if (problems.length === 0) {
+      throw new Error(`self-test: invalid fixture '${name}' was not caught`);
+    }
+  }
   console.log(
-    `ci-merge-gate-contract self-test: ${badCases.length + 4} cases passed`,
+    `ci-merge-gate-contract self-test: ${badCases.length + badGuardCases.length + 5} cases passed`,
   );
 }
 

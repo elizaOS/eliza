@@ -9,6 +9,7 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
 | `test.yml` | Push/PR to develop, manual, schedule | Broader develop tests plus required zero-key deterministic E2E; live jobs are separate |
 | `quality.yml` | Push/PR to main/develop, manual | Develop/main quality gates: format, type-safety ratchet, prompt-secret scan, UI determinism, lint |
+| `develop-format-guard.yml` | Push to develop, manual | Per-sha, never-superseded `format:check` so every trunk commit gets a completed format verdict |
 | `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
 | `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
@@ -77,7 +78,13 @@ in the `changes` job, #13617):
    regression is refused by the merge queue on develop, not just on `main`. It
    runs on `merge_group` + develop `push`. The lightweight `develop-pr.yml`
    lint job also runs `format:check`, so formatting fails on the PR even when a
-   busy push wave supersedes post-merge quality runs (#15959).
+   busy push wave supersedes post-merge quality runs (#15959). Because merges
+   can still complete while PR checks are pending (no branch protection),
+   `develop-format-guard.yml` re-runs `format:check` on every develop push in a
+   per-sha concurrency group on hosted runners — merge waves cannot supersede
+   it, so a formatting regression goes red on the exact commit that introduced
+   it. The contract enforces the guard's trigger, per-sha group, hosted runner,
+   and `format:check` step.
 
 CodeQL is a separate exception: trusted push, scheduled, and manual CodeQL runs
 use `self-hosted, Linux, X64, hetzner-robot` because full JavaScript analysis is
