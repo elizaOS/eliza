@@ -546,6 +546,23 @@ function mimeForFile(fileName: string): string {
   return MIME_BY_EXT[ext] ?? "application/octet-stream";
 }
 
+/** Mime type a stored `<sha256>.<ext>` name serves as (derived, no index). */
+export function mimeForStoredMediaFile(fileName: string): string {
+  return mimeForFile(fileName);
+}
+
+/**
+ * True when a strict content-addressed name currently exists in the store.
+ * Cheap existence probe (no byte read) for variant-cache lookups — absence is
+ * a normal answer (evicted/GC'd), never an error.
+ */
+export function storedMediaFileExists(fileName: string): boolean {
+  if (!MEDIA_FILE_NAME.test(fileName)) return false;
+  const filePath = path.join(mediaDir(), fileName);
+  if (path.dirname(filePath) !== mediaDir()) return false;
+  return fs.existsSync(filePath);
+}
+
 export interface MediaFileInfo {
   fileName: string;
   url: string;
