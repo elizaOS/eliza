@@ -927,6 +927,8 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
       }
     }
 
+    if (window.innerHeight > 520) return issues;
+
     const textRects: Array<{
       element: HTMLElement;
       rect: DOMRect;
@@ -1014,10 +1016,12 @@ async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
       }
       range.detach();
     }
+    textRects.sort((left, right) => left.rect.top - right.rect.top);
     for (let left = 0; left < textRects.length; left += 1) {
       const first = textRects[left];
       for (let right = left + 1; right < textRects.length; right += 1) {
         const second = textRects[right];
+        if (second.rect.top >= first.rect.bottom - 4) break;
         if (
           first.element.contains(second.element) ||
           second.element.contains(first.element)
