@@ -440,6 +440,47 @@ export function useShellController(): ShellController {
   // gesture time. `undefined` until the voice config first loads, which the
   // capture factory treats as "local-inference-or-browser default".
   const asrProviderRef = React.useRef<AsrProvider | undefined>(undefined);
+  // Opt-in (`eliza:voice-cloud-tts`): force the hands-free/dictate capture onto
+  // the cloud STT proxy (`/api/asr/cloud`) regardless of the resolved config.
+  // The hybrid LP3 config never advertises cloud voice, so `asrProviderRef`
+  // stays `undefined` and the capture factory defaults to the native recognizer
+  // — which on that device has no service and feeds an infinite hand-off loop.
+  // Read via the live Capacitor bridge (the `@capacitor/preferences` module
+  // import can resolve to a web-stub that silently returns no value).
+  const forceCloudVoiceRef = React.useRef(false);
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const bridge = (
+          globalThis as {
+            Capacitor?: {
+              Plugins?: {
+                Preferences?: {
+                  get?: (o: { key: string }) => Promise<{ value: string | null }>;
+                };
+              };
+            };
+          }
+        ).Capacitor?.Plugins?.Preferences;
+        let value: string | null = null;
+        if (typeof bridge?.get === "function") {
+          value = (await bridge.get({ key: "eliza:voice-cloud-tts" })).value;
+        } else {
+          const { Preferences } = await import("@capacitor/preferences");
+          value = (await Preferences.get({ key: "eliza:voice-cloud-tts" })).value;
+        }
+        if (!cancelled) {
+          forceCloudVoiceRef.current = value === "1" || value === "true";
+        }
+      } catch {
+        // error-policy:J4 no preferences bridge (web/desktop) → keep default.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Guards the capture-failure notice so the hands-free re-listen loop's retries
   // (which re-call startCapture every ~250ms) don't spam the toast; cleared on
   // the next successful start so a later failure re-notifies.
@@ -966,9 +1007,13 @@ export function useShellController(): ShellController {
         // silently fell through to browser SpeechRecognition instead of
         // `/api/asr/cloud`. Passing the resolved provider makes the documented
         // cloud default reachable from the ambient/hands-free capture surface.
-        ...(asrProviderRef.current
-          ? { asrProvider: asrProviderRef.current }
-          : {}),
+        // Cloud-forced (LP3) pins the cloud STT proxy; otherwise use the
+        // resolved provider (undefined → factory's local/native default).
+        ...(forceCloudVoiceRef.current
+          ? { asrProvider: "eliza-cloud" as const }
+          : asrProviderRef.current
+            ? { asrProvider: asrProviderRef.current }
+            : {}),
         // Push-to-talk dictation ends on release, so the native recognizer must
         // commit its running interim as the final turn even if its silence
         // window hasn't fired. Converse stops only on toggle-off, where a

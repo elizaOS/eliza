@@ -188,6 +188,19 @@ async function resolveBackendKind(
   if (preferred === "browser") {
     return "browser";
   }
+  // An EXPLICIT cloud ASR preference wins over the native recognizer. The caller
+  // deliberately selected the cloud transcriber (e.g. a device whose platform
+  // speech-recognition service is absent or broken — the Light Phone III has no
+  // usable recognizer and routes SpeechRecognizer back into the app's own
+  // RecognitionService, an infinite hand-off loop), so honor it whenever WAV
+  // capture primitives exist rather than silently using the platform recognizer.
+  // A `local-inference`/undefined preference still prefers native talk-mode below.
+  if (
+    (preferred === "eliza-cloud" || preferred === "openai") &&
+    isLocalAsrCaptureSupported()
+  ) {
+    return "cloud";
+  }
   // Native mobile: the platform speech recognizer (TalkMode) is the working STT
   // path and the only one that streams interim transcripts. Prefer it ahead of
   // the local-inference probe — on mobile that probe can report ready while the
