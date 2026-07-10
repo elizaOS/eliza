@@ -1,6 +1,7 @@
 import {
   WalletBehaviorSummary,
   WalletCaseSummary,
+  WalletDecisionSummary,
   WalletDisplaySummary,
   WalletEvidenceItem,
   WalletExecutiveVerdict,
@@ -17,16 +18,56 @@ export function analyzeExecutiveVerdict(
   exposure: WalletExposureSummary,
   risk: WalletRiskSummary,
   trust: WalletTrustSummary,
+  decision?: WalletDecisionSummary,
 ): WalletExecutiveVerdict {
-  const verdict = determineVerdict(risk, exposure, caseSummary);
+  if (decision) {
+    const prioritizedFactors = [
+      ...decision.factors.filter(
+        (factor) => factor.effect === "negative",
+      ),
+      ...decision.factors.filter(
+        (factor) => factor.effect === "positive",
+      ),
+      ...decision.factors.filter(
+        (factor) => factor.effect === "neutral",
+      ),
+    ];
+
+    const why = prioritizedFactors
+      .slice(0, 5)
+      .map((factor) => factor.description);
+
+    return {
+      verdict: decision.decision,
+      headline: buildHeadline(decision.decision),
+      riskDisplay: display.risk.displayScore,
+      trustDisplay: display.trust.displayScore,
+      exposureDisplay: display.exposure.displayScore,
+      profile: behavior.primaryProfile.replace(/_/g, " "),
+      recommendation: decision.recommendation,
+      confidence: decision.confidence,
+      why,
+      suggestedAction: buildSuggestedAction(
+        decision.recommendation,
+      ),
+    };
+  }
+
+  const verdict = determineLegacyVerdict(
+    risk,
+    exposure,
+    caseSummary,
+  );
+
   const why = evidence
-    .filter((item) =>
-      item.severity === "high" ||
-      item.severity === "medium" ||
-      item.category === "age" ||
-      item.category === "exposure" ||
-      item.category === "risk" ||
-      item.category === "behavior",
+    .filter(
+      (item) =>
+        item.severity === "high" ||
+        item.severity === "medium" ||
+        item.category === "age" ||
+        item.category === "exposure" ||
+        item.category === "risk" ||
+        item.category === "behavior",
     )
     .slice(0, 5)
     .map((item) => item.description);
@@ -41,16 +82,21 @@ export function analyzeExecutiveVerdict(
     recommendation: caseSummary.recommendation,
     confidence: trust.confidence,
     why,
-    suggestedAction: buildSuggestedAction(caseSummary.recommendation),
+    suggestedAction: buildSuggestedAction(
+      caseSummary.recommendation,
+    ),
   };
 }
 
-function determineVerdict(
+function determineLegacyVerdict(
   risk: WalletRiskSummary,
   exposure: WalletExposureSummary,
   caseSummary: WalletCaseSummary,
 ): WalletExecutiveVerdict["verdict"] {
-  if (risk.level === "high" || exposure.exposureLevel === "high") {
+  if (
+    risk.level === "high" ||
+    exposure.exposureLevel === "high"
+  ) {
     return "high_risk";
   }
 
