@@ -236,6 +236,14 @@ const NOTIF_SCROLL_CSS = `
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+/* Backdrop refraction has to resample the fixed wallpaper while the complete
+   home pane translates. Keep the same opaque material during a horizontal rail
+   drag/settle, then restore refraction when the pager reaches rest. */
+[data-rail-gesture-active] .eliza-notif-glass {
+  background-color: rgb(22 22 25 / 88%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
 /* Directional specular rim tracing every rounded corner (mask-composite ring)
    — replaces the old one-sided inset hairline that read as a vertical line. */
 ${liquidGlassRimCss(".eliza-notif-glass")}
@@ -1361,7 +1369,7 @@ export function NotificationsHomeCenter({
       // `min-h-0 flex-1` lets a populated inbox fill the home column down to the
       // chat when the parent grows it.
       className={cn(
-        "relative flex min-h-0 flex-1 flex-col overflow-hidden",
+        "relative flex min-h-0 flex-1 flex-col overflow-hidden text-white",
         hasNotifications && "eliza-notif-center-in",
         !hasNotifications && "min-h-14 flex-none",
       )}

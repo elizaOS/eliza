@@ -528,6 +528,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
       // build the layer before the first tracked frame — and the rail-gesture
       // signal opens with it.
       expect(rail.style.willChange).toBe("transform");
+      expect(rail.hasAttribute("data-rail-gesture-active")).toBe(true);
       expect(isRailGestureActive()).toBe(true);
       fireEvent.pointerMove(rail, { ...touch, clientX: 770 });
     });
@@ -544,6 +545,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
     // rail-gesture signal releases on the same edge.
     endTransform(rail);
     expect(rail.style.willChange).toBe("");
+    expect(rail.hasAttribute("data-rail-gesture-active")).toBe(false);
     expect(isRailGestureActive()).toBe(false);
   });
 
@@ -560,6 +562,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
       // release immediately, not linger through the scroll.
       fireEvent.pointerMove(rail, { ...touch, clientX: 505, clientY: 400 });
       expect(rail.style.willChange).toBe("");
+      expect(rail.hasAttribute("data-rail-gesture-active")).toBe(false);
       expect(isRailGestureActive()).toBe(false);
       fireEvent.pointerMove(rail, { ...touch, clientX: 505, clientY: 500 });
       clock = 1120;

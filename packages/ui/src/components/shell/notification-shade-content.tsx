@@ -377,7 +377,7 @@ export const NotificationRow = memo(function NotificationRow({
               />
             </span>
             {notification.body ? (
-              <span className="line-clamp-2 text-xs leading-snug text-white/62">
+              <span className="line-clamp-2 text-xs leading-snug text-white/60">
                 {notification.body}
               </span>
             ) : null}

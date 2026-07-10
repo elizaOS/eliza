@@ -291,7 +291,10 @@ export function useHorizontalPager<
     const rail = railRef.current;
     if (!railPromotedRef.current) return;
     railPromotedRef.current = false;
-    if (rail) rail.style.willChange = "";
+    if (rail) {
+      rail.style.willChange = "";
+      delete rail.dataset.railGestureActive;
+    }
     // The gesture/settle window closed — release any consumer (live-widget
     // flushes) parked on the rail-gesture signal.
     endRailGesture();
@@ -301,6 +304,7 @@ export function useHorizontalPager<
     if (!rail || railPromotedRef.current) return;
     railPromotedRef.current = true;
     rail.style.willChange = "transform";
+    rail.dataset.railGestureActive = "";
     // Broadcast the gesture window so live-widget flushes inside the promoted
     // layer can buffer until the settle ends (they'd repaint the moving
     // surface mid-swipe otherwise).
@@ -473,7 +477,10 @@ export function useHorizontalPager<
     return () => {
       if (!railPromotedRef.current) return;
       railPromotedRef.current = false;
-      if (rail) rail.style.willChange = "";
+      if (rail) {
+        rail.style.willChange = "";
+        delete rail.dataset.railGestureActive;
+      }
       // Mirror dropRailPromotion: an unmount mid-gesture must also release
       // consumers parked on the rail-gesture signal.
       endRailGesture();

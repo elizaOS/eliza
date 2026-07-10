@@ -1388,11 +1388,15 @@ export async function swipeLeftToLauncher(
       );
     }
   } else {
+    // A deliberate mouse drag uses the pager's distance contract rather than
+    // synthetic event timing: cross the 50% threshold so a slow CI pointer is
+    // equivalent to a user dragging past halfway before release.
+    const endX = box.x + box.width * 0.18;
     await page.mouse.move(startX, midY);
     await page.mouse.down();
-    // Several steps so pointermove fires with a clearly-horizontal, > -72px dx.
+    // Several steps keep the tracked rail continuous through the drag.
     for (let i = 1; i <= 6; i++) {
-      await page.mouse.move(startX - i * 40, midY);
+      await page.mouse.move(startX + ((endX - startX) * i) / 6, midY);
     }
     await page.mouse.up();
   }
