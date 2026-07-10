@@ -129,6 +129,22 @@ describe("CalendarView (unified spatial wrapper)", () => {
     expect(agent("mode")).toBeTruthy();
   });
 
+  it("keeps the spatial root at content height so short viewports scroll instead of overprinting rows (#15911)", () => {
+    // The host SpatialSurface is a height-constrained scrollport. If the root
+    // card is allowed to flex-shrink, a short landscape viewport compresses
+    // the toolbar/agenda rows through each other instead of scrolling.
+    const { container } = render(
+      <SpatialSurface modality="gui">
+        <CalendarView />
+      </SpatialSurface>,
+    );
+    const root = container.querySelector(
+      '[data-spatial-surface] > [data-spatial-kind="box"]',
+    ) as HTMLElement | null;
+    expect(root).toBeTruthy();
+    expect(root?.style.flexShrink).toBe("0");
+  });
+
   it("renders populated agenda events from the feed", () => {
     calendarState.current = makeResult({
       events: [

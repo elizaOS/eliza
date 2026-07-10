@@ -84,7 +84,12 @@ export function CalendarSpatialView({
   const eventCount = snapshot.events.length;
 
   return (
-    <Card gap={1} padding={1}>
+    // shrink={0}: the host SpatialSurface is a height-constrained scrollport
+    // (overflow-y auto). Left shrinkable, a short viewport (mobile landscape,
+    // ~390px tall) compresses every toolbar/agenda row below its content
+    // height — the 44px-min buttons and two-line rows then overprint each
+    // other instead of the surface scrolling (#15911).
+    <Card gap={1} padding={1} shrink={0}>
       <HStack gap={1} align="center">
         <Text style="subheading" bold grow={1} wrap={false}>
           {snapshot.periodLabel}
