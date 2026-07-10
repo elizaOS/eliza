@@ -107,7 +107,17 @@ describe("Anthropic native text plumbing", () => {
       providerOptions?: Record<string, unknown>;
       tools?: unknown;
     };
-    expect(call.tools).toEqual(tools);
+    // The (single) tool is the last tool in the set, so it carries the
+    // tools-array cache breakpoint (#15742).
+    expect(call.tools).toEqual({
+      lookup: {
+        description: "Lookup",
+        inputSchema: { type: "object" },
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral", ttl: "5m" } },
+        },
+      },
+    });
     expect(call.messages[0].content).toEqual([
       {
         type: "text",
@@ -311,7 +321,14 @@ describe("Anthropic native text plumbing", () => {
     expect(JSON.stringify(call.messages[0].content)).not.toContain("planner_stage");
     expect(call.messages.find((message) => message.role === "assistant")).toBeDefined();
     expect(call.messages.find((message) => message.role === "tool")).toBeDefined();
-    expect(call.tools).toEqual(tools);
+    // The last tool carries the tools-array cache breakpoint (#15742).
+    expect(call.tools).toEqual({
+      READ: {
+        description: "Read a file",
+        inputSchema: { type: "object" },
+        providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+      },
+    });
   }, 60_000);
 
   it("emits cache metadata on planned stable segments even without ANTHROPIC_PROMPT_CACHE_TTL env var", async () => {
@@ -692,7 +709,14 @@ describe("Anthropic model defaults", () => {
       false
     );
 
-    // Tools still reach the wire.
-    expect(call.tools).toEqual(tools);
+    // Tools still reach the wire — the last tool carries the tools-array
+    // cache breakpoint (#15742).
+    expect(call.tools).toEqual({
+      READ: {
+        description: "Read a file",
+        inputSchema: { type: "object" },
+        providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+      },
+    });
   }, 60_000);
 });

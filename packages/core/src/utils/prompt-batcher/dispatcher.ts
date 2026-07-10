@@ -7,7 +7,7 @@
  * the per-section results plus per-call metadata for the batcher's stats and
  * drain log. Consumed by PromptBatcher.
  */
-import type { GenerateTextParams } from "../../types/model";
+import type { GenerateTextParams, PromptSegment } from "../../types/model";
 import type { ResolvedSection } from "../../types/prompt-batcher";
 import type { IAgentRuntime } from "../../types/runtime";
 import {
@@ -38,7 +38,7 @@ export class PromptDispatcher {
 				await semaphore.acquire();
 				const startedAt = Date.now();
 				try {
-					const prompt = this._buildPrompt(callPlan);
+					const { prompt, promptSegments } = this._buildPrompt(callPlan);
 					const schema = callPlan.sections.flatMap((resolvedSection) => {
 						const prefix = sanitizeIdentifier(resolvedSection.section.id);
 						return resolvedSection.section.schema.map((row) => ({
@@ -61,6 +61,13 @@ export class PromptDispatcher {
 					const modelSize = callPlan.model;
 					const params = {
 						prompt,
+						// Stable/dynamic structure for provider prompt caching: the
+						// fixed batching instructions are stable across every drain,
+						// while packed section contexts vary per drain. Without this
+						// the flat prompt renders as one segment inside
+						// dynamicPromptExecFromState and volatile section contexts can
+						// be marked stable (cache writes that are never read).
+						promptSegments,
 						...mergedExecOptions,
 						// Batcher drains are deferred agent reasoning (autonomy think,
 						// audits, init sections) — background on single-lane local
@@ -271,7 +278,10 @@ export class PromptDispatcher {
 		return priority === "immediate" ? 0 : priority === "normal" ? 1 : 2;
 	}
 
-	private _buildPrompt(callPlan: { sections: ResolvedSection[] }): string {
+	private _buildPrompt(callPlan: { sections: ResolvedSection[] }): {
+		prompt: string;
+		promptSegments: PromptSegment[];
+	} {
 		const sectionBlocks = callPlan.sections.map((resolvedSection, index) => {
 			const fieldList = resolvedSection.section.schema
 				.map((row) => {
@@ -293,15 +303,33 @@ export class PromptDispatcher {
 				.join("\n\n");
 		});
 
-		return [
+		// Segment structure mirrors the exact prompt bytes:
+		// prompt === promptSegments.map((s) => s.content).join("").
+		// The batching instructions are byte-identical across every drain
+		// (stable → eligible for a provider cache breakpoint); each packed
+		// section block carries per-drain context and section numbering that
+		// change with packing, so blocks stay dynamic — marking them stable
+		// would burn cache writes that are never read back.
+		const header = [
 			"You are answering multiple independent structured sections in one response.",
 			"Read each section carefully.",
 			"Use only the context provided for that section.",
 			"Fill every requested field exactly once.",
 			"Do not mix facts between sections.",
 			"",
-			sectionBlocks.join("\n\n====================\n\n"),
+			"",
 		].join("\n");
+		const promptSegments: PromptSegment[] = [
+			{ content: header, stable: true },
+			...sectionBlocks.map((block, index) => ({
+				content: index === 0 ? block : `\n\n====================\n\n${block}`,
+				stable: false,
+			})),
+		];
+		return {
+			prompt: promptSegments.map((segment) => segment.content).join(""),
+			promptSegments,
+		};
 	}
 
 	private _mergeExecOptions(

@@ -423,12 +423,14 @@ function appendAttachments(
 function buildSegmentedUserContent(
   params: GenerateTextParamsWithProviderOptions,
   anthropicOptions?: ProviderOptions["anthropic"],
-  fallbackCacheControl?: AnthropicCacheControl
+  fallbackCacheControl?: AnthropicCacheControl,
+  reservedNonSegmentBreakpoints = 0
 ): UserContent {
   const segmentCacheControls = buildSegmentCacheControls(
     params,
     anthropicOptions,
-    fallbackCacheControl
+    fallbackCacheControl,
+    reservedNonSegmentBreakpoints
   );
   return buildSegmentedUserContentFromSegments(
     params.promptSegments ?? [],
@@ -487,7 +489,8 @@ function buildPlannerWireMessages(
 function buildSegmentCacheControls(
   params: GenerateTextParamsWithProviderOptions,
   anthropicOptions?: ProviderOptions["anthropic"],
-  fallbackCacheControl?: AnthropicCacheControl
+  fallbackCacheControl?: AnthropicCacheControl,
+  reservedNonSegmentBreakpoints = 0
 ): Map<number, AnthropicCacheControl> {
   const controls = new Map<number, AnthropicCacheControl>();
   if (!fallbackCacheControl) {
@@ -499,14 +502,35 @@ function buildSegmentCacheControls(
     typeof maxBreakpointsRaw === "number" && Number.isFinite(maxBreakpointsRaw)
       ? Math.max(0, Math.floor(maxBreakpointsRaw))
       : 4;
+  // Anthropic allows at most 4 cache_control breakpoints per request. The
+  // budget is spent in priority order:
+  //   1. system prompt        (cacheSystem !== false)
+  //   2. non-segment reservations passed by the caller — currently the tools
+  //      array tail breakpoint (tools render before system, so caching them
+  //      is the widest shared prefix for tool-heavy agents)
+  //   3. stable prompt segments (whatever budget remains)
+  // The trajectory-tail breakpoint only exists on the native-messages path,
+  // which never stamps segment breakpoints, so it never competes here.
   const systemConsumesBreakpoint = anthropicOptions?.cacheSystem !== false;
-  const maxSegmentBreakpoints = Math.max(0, maxBreakpoints - (systemConsumesBreakpoint ? 1 : 0));
+  const maxSegmentBreakpoints = Math.max(
+    0,
+    maxBreakpoints -
+      (systemConsumesBreakpoint ? 1 : 0) -
+      Math.max(0, Math.floor(reservedNonSegmentBreakpoints))
+  );
+  if (maxSegmentBreakpoints === 0) {
+    return controls;
+  }
   const plannedBreakpoints = Array.isArray(anthropicOptions?.cacheBreakpoints)
     ? (anthropicOptions.cacheBreakpoints as AnthropicCacheBreakpoint[])
     : undefined;
 
   if (plannedBreakpoints) {
-    for (const breakpoint of plannedBreakpoints.slice(0, maxSegmentBreakpoints)) {
+    // When the plan carries more breakpoints than the remaining budget, keep
+    // the LAST N (highest segment indexes). A breakpoint caches everything
+    // before it, so later breakpoints produce the longest matching prefix;
+    // dropping the earliest ones only loses partial-prefix granularity.
+    for (const breakpoint of plannedBreakpoints.slice(-maxSegmentBreakpoints)) {
       if (typeof breakpoint.segmentIndex !== "number") {
         continue;
       }
@@ -601,11 +625,116 @@ function stripLocalAnthropicCacheOptions(
     cacheBreakpoints: _cacheBreakpoints,
     cacheSystem: _cacheSystem,
     maxBreakpoints: _maxBreakpoints,
+    cacheTools: _cacheTools,
+    cacheTrajectory: _cacheTrajectory,
     ...wireOptions
   } = anthropicOptions as Record<string, unknown>;
   return Object.keys(wireOptions).length > 0
     ? (wireOptions as ProviderOptions["anthropic"])
     : undefined;
+}
+
+/**
+ * Stamp a cache_control breakpoint on the LAST tool in the tool set. Tools
+ * render before `system` and `messages` in Anthropic's prompt, so a single
+ * breakpoint after the last tool caches the entire (stable) tool catalog —
+ * the widest shared prefix for tool-heavy agents. Consumes one of the four
+ * breakpoints; callers must reserve budget for it (see
+ * `buildSegmentCacheControls`). A tool that already carries an explicit
+ * cacheControl wins; the input tool set is never mutated.
+ */
+function applyToolsCacheBreakpoint(tools: ToolSet, cacheControl: AnthropicCacheControl): ToolSet {
+  const names = Object.keys(tools);
+  const lastName = names[names.length - 1];
+  if (!lastName) {
+    return tools;
+  }
+  const lastTool = tools[lastName];
+  if (!isRecord(lastTool)) {
+    return tools;
+  }
+  const existingProviderOptions = isRecord(lastTool.providerOptions)
+    ? lastTool.providerOptions
+    : {};
+  const existingAnthropic = isRecord(existingProviderOptions.anthropic)
+    ? (existingProviderOptions.anthropic as Record<string, unknown>)
+    : {};
+  if (existingAnthropic.cacheControl) {
+    return tools;
+  }
+  return {
+    ...tools,
+    [lastName]: {
+      ...lastTool,
+      providerOptions: {
+        ...existingProviderOptions,
+        anthropic: { ...existingAnthropic, cacheControl },
+      },
+    },
+  } as ToolSet;
+}
+
+const TRAJECTORY_CACHEABLE_PART_TYPES = new Set(["text", "tool-call", "tool-result"]);
+
+/**
+ * Stamp a cache_control breakpoint on the last content part of the final
+ * assistant/tool message — the tail of the kept trajectory history. The
+ * planner loop's assistant/tool suffix grows append-only across iterations,
+ * so a breakpoint at the tail lets every subsequent planner call read the
+ * whole prior trajectory (system + tools + context + earlier tool calls)
+ * from cache and re-process only the newly appended turn.
+ *
+ * Deliberately skipped when the final message is a `user` turn: on this wire
+ * shape the leading user message carries the per-turn dynamic context, and a
+ * `[user]`-only request (planner iteration 1, plain chat) would stamp
+ * volatile content — a cache write that is never read back. String-content
+ * tails (legacy shapes) are also skipped; the planner always emits part
+ * arrays. The input array is never mutated; a part that already carries an
+ * explicit cacheControl wins.
+ */
+function applyTrajectoryTailCacheBreakpoint(
+  messages: ModelMessage[],
+  cacheControl: AnthropicCacheControl
+): ModelMessage[] {
+  const lastIndex = messages.length - 1;
+  const last = messages[lastIndex];
+  if (!last || (last.role !== "assistant" && last.role !== "tool")) {
+    return messages;
+  }
+  if (!Array.isArray(last.content) || last.content.length === 0) {
+    return messages;
+  }
+  const parts = last.content as unknown[];
+  const lastPart = parts[parts.length - 1];
+  if (
+    !isRecord(lastPart) ||
+    typeof lastPart.type !== "string" ||
+    !TRAJECTORY_CACHEABLE_PART_TYPES.has(lastPart.type)
+  ) {
+    return messages;
+  }
+  const existingProviderOptions = isRecord(lastPart.providerOptions)
+    ? lastPart.providerOptions
+    : {};
+  const existingAnthropic = isRecord(existingProviderOptions.anthropic)
+    ? (existingProviderOptions.anthropic as Record<string, unknown>)
+    : {};
+  if (existingAnthropic.cacheControl) {
+    return messages;
+  }
+  const stampedPart = {
+    ...lastPart,
+    providerOptions: {
+      ...existingProviderOptions,
+      anthropic: { ...existingAnthropic, cacheControl },
+    },
+  };
+  const nextMessages = [...messages];
+  nextMessages[lastIndex] = {
+    ...last,
+    content: [...parts.slice(0, -1), stampedPart],
+  } as ModelMessage;
+  return nextMessages;
 }
 
 function firstNumber(...values: unknown[]): number | undefined {
@@ -917,11 +1046,26 @@ async function generateTextWithModel(
     paramsWithAttachments.promptSegments.length > 0;
   const cacheControl = providerOptions.anthropic?.cacheControl;
   const cacheSystem = providerOptions.anthropic?.cacheSystem !== false;
+  // Tools-array breakpoint (one of the four): tools render first in
+  // Anthropic's prompt, so caching the (stable) tool catalog benefits every
+  // call that carries tools. Opt out per call with
+  // providerOptions.anthropic.cacheTools = false.
+  const hasNamedTools = paramsWithAttachments.tools
+    ? Object.keys(paramsWithAttachments.tools).length > 0
+    : false;
+  const cacheToolsEnabled = providerOptions.anthropic?.cacheTools !== false;
+  const toolsCacheControl =
+    hasNamedTools && cacheToolsEnabled && cacheControl ? cacheControl : undefined;
   const system = buildCacheableSystemPrompt(systemPrompt, cacheSystem ? cacheControl : undefined);
   const userContent =
     segmentedPrompt || (paramsWithAttachments.attachments?.length ?? 0) > 0
       ? segmentedPrompt
-        ? buildSegmentedUserContent(paramsWithAttachments, providerOptions.anthropic, cacheControl)
+        ? buildSegmentedUserContent(
+            paramsWithAttachments,
+            providerOptions.anthropic,
+            cacheControl,
+            toolsCacheControl ? 1 : 0
+          )
         : buildUserContent(paramsWithAttachments)
       : undefined;
   const anthropicOptions =
@@ -958,7 +1102,7 @@ async function generateTextWithModel(
     segmentedPrompt && paramsWithAttachments.messages
       ? buildSegmentedUserContentForMessages(paramsWithAttachments)
       : undefined;
-  const promptOrMessages: NativePrompt = paramsWithAttachments.messages
+  const basePromptOrMessages: NativePrompt = paramsWithAttachments.messages
     ? wireMessages && wireMessages.length > 0
       ? segmentedMessageUserContent
         ? { messages: buildPlannerWireMessages(wireMessages, segmentedMessageUserContent) }
@@ -979,6 +1123,20 @@ async function generateTextWithModel(
           },
         ],
       };
+  // Kept-trajectory tail breakpoint (planner/evaluator wire path): stamp the
+  // final assistant/tool turn so the next planner iteration reads the whole
+  // prior trajectory from cache. The helper is a no-op for user-tail message
+  // arrays (dynamic content) and string-content tails, so plain chat calls are
+  // untouched. Opt out per call with providerOptions.anthropic.cacheTrajectory
+  // = false. Budget: this path stamps no segment breakpoints, so system(1) +
+  // tools(0..1) + trajectory(1) stays within Anthropic's four-breakpoint cap.
+  const cacheTrajectoryEnabled = providerOptions.anthropic?.cacheTrajectory !== false;
+  const promptOrMessages: NativePrompt =
+    cacheControl && cacheTrajectoryEnabled && basePromptOrMessages.messages
+      ? {
+          messages: applyTrajectoryTailCacheBreakpoint(basePromptOrMessages.messages, cacheControl),
+        }
+      : basePromptOrMessages;
   const generateParams: NativeTextParams = {
     model: anthropic(modelName),
     ...promptOrMessages,
@@ -990,7 +1148,13 @@ async function generateTextWithModel(
     experimental_telemetry: telemetryConfig,
     maxOutputTokens: resolved.maxTokens,
     topP: resolved.topP,
-    ...(paramsWithAttachments.tools ? { tools: paramsWithAttachments.tools } : {}),
+    ...(paramsWithAttachments.tools
+      ? {
+          tools: toolsCacheControl
+            ? applyToolsCacheBreakpoint(paramsWithAttachments.tools, toolsCacheControl)
+            : paramsWithAttachments.tools,
+        }
+      : {}),
     ...(paramsWithAttachments.toolChoice ? { toolChoice: paramsWithAttachments.toolChoice } : {}),
     ...(paramsWithAttachments.responseSchema
       ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
@@ -1032,15 +1196,24 @@ async function generateTextWithModel(
           return undefined;
         }
 
+        // Normalize BEFORE emitting so the MODEL_USED event (and its
+        // structured cache-usage log) carries cacheReadInputTokens /
+        // cacheCreationInputTokens even in the AI SDK v6 usage shape, where
+        // cache counts ride on inputTokenDetails / providerMetadata instead
+        // of the legacy direct fields.
+        const providerMetadata = await providerMetadataPromise;
+        const normalizedUsage = normalizeAnthropicUsage(
+          usage as AnthropicUsageWithCache,
+          providerMetadata
+        );
         emitModelUsageEvent(
           runtime,
           modelType,
           resolved.prompt,
-          usage as AnthropicUsageWithCache,
+          normalizedUsage ?? (usage as AnthropicUsageWithCache),
           modelName
         );
-        const providerMetadata = await providerMetadataPromise;
-        return normalizeAnthropicUsage(usage as AnthropicUsageWithCache, providerMetadata);
+        return normalizedUsage;
       });
       // error-policy:J5 unhandled-rejection suppression — usage emission is
       // telemetry; the underlying stream failure is observed in
@@ -1110,11 +1283,16 @@ async function generateTextWithModel(
     const response = await executeWithRetry(operationName, () => generateText(generateParams));
 
     if (response.usage) {
+      // Normalize BEFORE emitting so MODEL_USED (and the structured cache
+      // log) carries cache read/write counts in the AI SDK v6 usage shape.
       emitModelUsageEvent(
         runtime,
         modelType,
         resolved.prompt,
-        response.usage as AnthropicUsageWithCache,
+        normalizeAnthropicUsage(
+          response.usage as AnthropicUsageWithCache,
+          response.providerMetadata
+        ) ?? (response.usage as AnthropicUsageWithCache),
         modelName
       );
     }
