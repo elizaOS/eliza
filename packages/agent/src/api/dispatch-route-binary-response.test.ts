@@ -107,6 +107,35 @@ describe("dispatchRoute captured response finalization", () => {
     });
   });
 
+  it("treats absent content-type as textual UTF-8", async () => {
+    const runtime = runtimeWithHandler((response) => {
+      response.end("undeclared text");
+    });
+
+    await expect(dispatch(runtime)).resolves.toMatchObject({
+      body: "undeclared text",
+    });
+  });
+
+  it("keeps identity-encoded and empty content-type responses textual", async () => {
+    const identityRuntime = runtimeWithHandler((response) => {
+      response.setHeader("content-type", "text/plain");
+      response.setHeader("content-encoding", "identity");
+      response.end("identity text");
+    });
+    const emptyTypeRuntime = runtimeWithHandler((response) => {
+      response.setHeader("content-type", "");
+      response.end("empty type text");
+    });
+
+    await expect(dispatch(identityRuntime)).resolves.toMatchObject({
+      body: "identity text",
+    });
+    await expect(dispatch(emptyTypeRuntime)).resolves.toMatchObject({
+      body: "empty type text",
+    });
+  });
+
   it("returns malformed JSON as raw text and empty responses as undefined", async () => {
     const invalidJsonRuntime = runtimeWithHandler((response) => {
       response.setHeader("content-type", "application/json");

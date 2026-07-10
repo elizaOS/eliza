@@ -2,8 +2,14 @@ name: coverage-gate
 
 # SOC2 CC4.1 — track unit-test coverage on changed files. ENFORCED (issue #9943):
 # a PR that changes source under packages/plugins/apps must change at least one
-# unit test that can emit coverage, and changed source files that appear in LCOV
-# must clear the line-coverage floor. Docs-only PRs do not spend coverage time.
+# unit test that can emit coverage. Every surviving changed executable source
+# must appear in LCOV and clear the line-coverage floor. A source-aware
+# classifier strips TypeScript-only syntax before excluding modules with no
+# runtime code; declarations and deleted files are not targets. LCOV LF:0 never
+# proves type-only status. Source covered only by e2e/live lanes still needs a
+# focused unit test in this gate. Docs-only PRs do not spend coverage time.
+# Standalone Node self-tests are excluded only when listed in the manifest that
+# the Develop PR Test Integrity job executes on every PR.
 # A test-only PR (changed tests, no changed source) executes its changed tests —
 # gating the run steps on changed *source* let such PRs go vacuously green with
 # the new test never running (#15849); the per-file floor simply has no source
@@ -56,7 +62,7 @@ jobs:
             "${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Require changed tests for changed source
-        if: steps.changed.outputs.files != '' && steps.changed.outputs.bun_tests == '' && steps.changed.outputs.vitest_tests == ''
+        if: steps.changed.outputs.files != '' && steps.changed.outputs.bun_tests == '' && steps.changed.outputs.vitest_tests == '' && steps.changed.outputs.node_tests == ''
         run: |
           echo "Changed source files require at least one changed Bun or Vitest unit test:"
           printf '%s\n' "${{ steps.changed.outputs.files }}"
@@ -73,6 +79,16 @@ jobs:
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"
+
+      - name: Run changed registered Node self-tests
+        if: steps.changed.outputs.node_tests != ''
+        run: |
+          while IFS= read -r self_test; do
+            [ -n "$self_test" ] || continue
+            node "$self_test"
+          done <<'EOF'
+          ${{ steps.changed.outputs.node_tests }}
+          EOF
 
       - name: Run changed Bun tests with coverage
         if: steps.changed.outputs.bun_tests != ''
@@ -117,7 +133,7 @@ jobs:
         # With no changed source, executing the changed tests is the gate:
         # Bun may not emit LCOV when it only ran tests, and there is no per-file
         # floor to enforce (#15849).
-        if: steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != ''
+        if: steps.changed.outputs.bun_tests != '' || steps.changed.outputs.vitest_tests != '' || steps.changed.outputs.node_tests != ''
         env:
           COVERAGE_GATE_ENFORCE: "1"   # enforced (issue #9943)
         run: |

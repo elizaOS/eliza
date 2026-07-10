@@ -1,10 +1,5 @@
 #!/usr/bin/env node
-/**
- * Regression checks for the changed-file LCOV matcher used by the coverage
- * gate. The gate compares repo-relative changed paths with LCOV paths that may
- * be absolute, so these cases pin the exact path-boundary behavior rather than
- * a permissive substring match.
- */
+/** Verifies exact changed-path attribution and fail-closed missing-source handling. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -25,12 +20,32 @@ function writeLcov(dir, sourcePath, found = 2, hit = 2) {
   return file;
 }
 
+function writeLcovRecords(dir, sourcePaths) {
+  const file = join(dir, "lcov.info");
+  writeFileSync(
+    file,
+    sourcePaths
+      .flatMap((sourcePath) => [
+        `SF:${sourcePath}`,
+        "LF:2",
+        "LH:2",
+        "end_of_record",
+      ])
+      .concat("")
+      .join("\n"),
+  );
+  return file;
+}
+
 function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
+  const changedArgument = changed
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n");
   return spawnSync(
     "awk",
     [
       "-v",
-      `changed=${changed}`,
+      `changed=${changedArgument}`,
       "-v",
       `threshold=${threshold}`,
       "-f",
@@ -82,6 +97,43 @@ try {
     const lcov = writeLcov(dir, "/workspace/eliza/packages/demo/src/notfoo.ts");
     const result = runGate({ changed: "packages/demo/src/foo.ts", lcov });
     assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stdout, /changed source missing from LCOV/);
+  });
+
+  assertGate("fails when any changed source is absent from LCOV", () => {
+    const covered = "packages/demo/src/covered.ts";
+    const missing = "packages/demo/src/missing.ts";
+    const lcov = writeLcov(dir, covered);
+    const result = runGate({ changed: `${covered}\n${missing}`, lcov });
+
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stdout, /100\.00% packages\/demo\/src\/covered\.ts/);
+    assert.match(result.stdout, /MISSING: packages\/demo\/src\/missing\.ts/);
+    assert.match(result.stdout, /changed source missing from LCOV/);
+  });
+
+  assertGate("prefers the longest matching changed path", () => {
+    const rootPath = "src/foo.ts";
+    const nestedPath = "packages/demo/src/foo.ts";
+    const lcov = writeLcovRecords(dir, [
+      `/workspace/eliza/${rootPath}`,
+      `/workspace/eliza/${nestedPath}`,
+    ]);
+    const result = runGate({ changed: `${rootPath}\n${nestedPath}`, lcov });
+
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /100\.00% src\/foo\.ts/);
+    assert.match(result.stdout, /100\.00% packages\/demo\/src\/foo\.ts/);
+    assert.doesNotMatch(result.stdout, /MISSING:/);
+  });
+
+  assertGate("rejects an executable source reported with LF zero", () => {
+    const source = "packages/demo/src/runtime.ts";
+    const lcov = writeLcov(dir, source, 0, 0);
+    const result = runGate({ changed: source, lcov });
+
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stdout, /MISSING: packages\/demo\/src\/runtime[.]ts/);
     assert.match(result.stdout, /changed source missing from LCOV/);
   });
 } finally {
