@@ -16,6 +16,7 @@ import { analyzeWalletDeFi } from "./analyzers/defi";
 import { analyzeWalletBehavior } from "./analyzers/behavior";
 import { analyzeWalletCaseSummary } from "./analyzers/caseSummary";
 import { analyzeWalletEvidence } from "./analyzers/evidence";
+import { analyzeWalletEvidenceRecords } from "./analyzers/evidenceRecords";
 import { analyzeWalletExposure } from "./analyzers/exposure";
 import { analyzeWalletRelationships } from "./analyzers/relationships";
 import { analyzeWalletTrust } from "./analyzers/trust";
@@ -230,6 +231,24 @@ const evidence = analyzeWalletEvidence(
   behavior,
 );
 
+const evidenceRecords =
+  analyzeWalletEvidenceRecords(
+    walletAddress,
+    activity,
+    age,
+    funding,
+    portfolio,
+    defi,
+    exposure,
+    relationships,
+    complianceScreening,
+    custodyProfile,
+    risk,
+    whale,
+    smartMoney,
+    transactionRisk,
+  );
+
 const executiveVerdict = analyzeExecutiveVerdict(
   display,
   behavior,
@@ -276,6 +295,7 @@ intelligenceSources,
 trust,
 investigationReplay,
 evidence,
+evidenceRecords,
 recentTransactions,
 transactionCountSample: recentTransactions.length,
 activity,
