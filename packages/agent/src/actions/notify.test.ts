@@ -124,4 +124,21 @@ describe("notifyAction", () => {
     );
     expect((result as { success: boolean }).success).toBe(false);
   });
+
+  it("is scoped to automation/agent-internal turns, not ordinary chat", () => {
+    // Without explicit contexts NOTIFY fell back to ["general"] and landed on
+    // the action surface of every chat turn; a weak planner then picked it to
+    // "answer" a question (observed live: NOTIFY chosen for "who are the top 3
+    // contributors", posting a self-notification instead of the answer).
+    expect(notifyAction.contexts).toEqual(["automation", "agent_internal"]);
+    expect(notifyAction.contexts).not.toContain("general");
+  });
+
+  it("drops answer-flavored similes that read as 'tell the user'", () => {
+    // NOTIFY_USER / ALERT_USER made a planner treat NOTIFY as the reply path.
+    expect(notifyAction.similes ?? []).not.toContain("NOTIFY_USER");
+    expect(notifyAction.similes ?? []).not.toContain("ALERT_USER");
+    // Genuinely notification-flavored similes are kept.
+    expect(notifyAction.similes ?? []).toContain("SEND_NOTIFICATION");
+  });
 });
