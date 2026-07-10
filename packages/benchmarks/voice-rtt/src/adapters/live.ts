@@ -1,3 +1,4 @@
+/* v8 ignore start -- opt-in network adapters require live provider credentials @preserve */
 /**
  * Live provider adapters for Deepgram Flux, Cerebras, and Cartesia Sonic 3.5.
  *
@@ -410,3 +411,4 @@ function audioBytesFromCartesia(message: JsonRecord): number {
   if (rawAudio instanceof ArrayBuffer) return rawAudio.byteLength;
   return 0;
 }
+/* v8 ignore stop -- @preserve */

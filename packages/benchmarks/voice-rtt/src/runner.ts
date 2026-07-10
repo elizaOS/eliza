@@ -22,6 +22,7 @@ import { runTurn } from "./run-turn.ts";
 import { makeTraceId } from "./trace.ts";
 import type { BenchmarkMode, RunConfig } from "./types.ts";
 
+/* v8 ignore start -- CLI parsing is exercised by command smoke tests @preserve */
 interface Args {
   mode: BenchmarkMode;
   runs: number;
@@ -74,6 +75,7 @@ export function parseArgs(argv: readonly string[]): Args {
   }
   return args;
 }
+/* v8 ignore stop -- @preserve */
 
 export async function runBenchmark(config: RunConfig) {
   const corpus = loadCorpus();
@@ -115,6 +117,7 @@ export async function runBenchmark(config: RunConfig) {
   return config.unsafeTranscripts ? report : redactReport(report);
 }
 
+/* v8 ignore start -- CLI I/O is covered by benchmark smoke execution @preserve */
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const report = await runBenchmark({
@@ -155,3 +158,4 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
+/* v8 ignore stop -- @preserve */
