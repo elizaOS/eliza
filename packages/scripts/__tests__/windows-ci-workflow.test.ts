@@ -71,11 +71,24 @@ describe("Windows CI workflow", () => {
 
   test("still runs the tenant-db suite the whole-package run excludes", () => {
     // Skipping a suite in the matrix without the isolated retry step would be
-    // silent coverage loss, not flake mitigation.
-    expect(workflowText).toContain(
-      "Retry-isolated tenant-db PGlite suite (Windows canary flake, #15785)",
+    // silent coverage loss, not flake mitigation. Pin the step's own block —
+    // not the whole workflow — so repointing $suite at a different suite or
+    // moving the step off the lane that runs packages/cloud/shared cannot
+    // silently drop tenant-db coverage while these substrings survive elsewhere.
+    const stepName =
+      "Retry-isolated tenant-db PGlite suite (Windows canary flake, #15785)";
+    const stepStart = workflowText.indexOf(stepName);
+    expect(stepStart).toBeGreaterThan(-1);
+    const nextStep = workflowText.indexOf("- name:", stepStart);
+    const stepBlock = workflowText.slice(
+      stepStart,
+      nextStep === -1 ? undefined : nextStep,
     );
-    expect(workflowText).toContain(
+    expect(stepBlock).toContain("if: matrix.lane == 'app-and-cli'");
+    expect(stepBlock).toContain(
+      '$suite = "src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts"',
+    );
+    expect(stepBlock).toContain(
       "bun run --cwd packages/cloud/shared test $suite",
     );
   });
