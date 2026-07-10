@@ -257,6 +257,7 @@ jobs:
           # Run controls
           SCENARIO_ROOT: plugins/plugin-app-control/test/scenarios
           SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          SCENARIO_TURN_TIMEOUT_MS: "240000"
           LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
           SCENARIO_ENFORCE_GATE: ${{ github.event_name == 'schedule' && '1' || (inputs.enforce_gate && '1' || '0') }}
           SKIP_REASON: ${{ inputs.skip_reason }}

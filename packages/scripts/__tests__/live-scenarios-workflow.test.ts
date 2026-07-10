@@ -32,3 +32,10 @@ test("runs every live scenario root against workspace source exports", () => {
   ];
   expect(sourceConditionEntries).toHaveLength(3);
 });
+
+test("gives app-control live scenarios enough time for model retry plus action execution", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  expect(workflow).toMatch(
+    /- name: Run app-control live scenarios[\s\S]*SCENARIO_TURN_TIMEOUT_MS: "240000"[\s\S]*run: node packages\/scripts\/run-live-scenarios\.mjs --lane live-only/,
+  );
+});
