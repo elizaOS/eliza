@@ -101,6 +101,11 @@ try {
   write(dir, "packages/demo/src/feature.ts", "export const f = 1;\n");
   write(
     dir,
+    "plugins/plugin-demo/vitest.config.ts",
+    "export default { test: { include: ['scripts/**/*.test.mjs'] } };\n",
+  );
+  write(
+    dir,
     "packages/demo/src/feature.test.ts",
     "import { test } from 'vitest';\ntest('f', () => {});\n",
   );
@@ -174,6 +179,13 @@ try {
     assert.ok(
       out.vitest_tests.includes("packages/demo/src/feature.test.ts"),
       `vitest test missing: ${out.vitest_tests.join(",")}`,
+    );
+  });
+
+  assertCase("vitest config changes are not LCOV-enforced source", () => {
+    assert.ok(
+      !out.files.includes("plugins/plugin-demo/vitest.config.ts"),
+      `vitest config leaked into changed source: ${out.files.join(",")}`,
     );
   });
 } finally {
