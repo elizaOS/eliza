@@ -29,9 +29,12 @@ import {
   type GoogleDriveFile,
   type GoogleDriveFileList,
   type GoogleGmailBulkOperation,
+  type GoogleGmailExportMessage,
   type GoogleGmailFilterCreateResult,
   type GoogleGmailMessageDetail,
+  type GoogleGmailMessagePage,
   type GoogleGmailMessageSummary,
+  type GoogleGmailProfile,
   type GoogleGmailSendResult,
   type GoogleGmailSubscriptionMessageHeaders,
   type GoogleGmailUnrespondedThread,
@@ -108,6 +111,30 @@ export class GoogleWorkspaceService extends Service implements IGoogleWorkspaceS
 
   getOAuthProviderConfig(capabilities: readonly GoogleCapability[]): GoogleOAuthProviderConfig {
     return getGoogleOAuthProviderConfig(capabilities);
+  }
+
+  getGmailProfile(params: GoogleAccountRef): Promise<GoogleGmailProfile> {
+    return this.gmailClient.getGmailProfile(params);
+  }
+
+  listGmailMessagePage(
+    params: GoogleAccountRef & {
+      query: string;
+      pageToken?: string;
+      maxResults?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailMessagePage> {
+    return this.gmailClient.listGmailMessagePage(params);
+  }
+
+  getGmailExportMessage(
+    params: GoogleAccountRef & {
+      messageId: string;
+      includeAttachmentData?: boolean;
+    }
+  ): Promise<GoogleGmailExportMessage> {
+    return this.gmailClient.getGmailExportMessage(params);
   }
 
   searchMessages(

@@ -21,6 +21,7 @@ The plugin object (`googlePlugin`, service name `"google"`) registers:
 ### `GoogleWorkspaceService` methods
 
 Gmail (`src/gmail.ts` via `GoogleGmailClient`):
+- `getGmailProfile` / `listGmailMessagePage` / `getGmailExportMessage` — quota-retried, account-scoped full-history export primitives; exported attachments are always hashed and include bytes only when requested.
 - `searchMessages` / `getMessage` / `sendEmail` — basic message read/send.
 - `listGmailTriageMessages` / `searchGmailMessages` / `getGmailMessage` / `getGmailMessageDetail` — enriched message fetch with triage scoring.
 - `listGmailUnrespondedThreads` — threads needing a reply.

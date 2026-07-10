@@ -5,6 +5,8 @@
  * are stubbed via fake client factories and a stubbed `fetch`; no live Google
  * API is contacted.
  */
+
+import { createHash } from "node:crypto";
 import type {
   ConnectorAccount,
   ConnectorAccountPatch,
@@ -507,6 +509,133 @@ describe("google plugin", () => {
     });
     expect(results[0]?.from).toEqual({ name: "Ada", email: "ada@example.com" });
     expect(sent).toEqual({ id: "sent_1", threadId: "thread_2" });
+  });
+
+  it("paginates and exports full Gmail messages with hashed attachments", async () => {
+    const attachment = Buffer.from("owner attachment", "utf8");
+    const body = Buffer.from("Full message body", "utf8").toString("base64url");
+    const fakeGmail = {
+      users: {
+        getProfile: vi.fn(async () => ({
+          data: {
+            emailAddress: "owner@example.com",
+            historyId: "history-profile",
+            messagesTotal: 42,
+            threadsTotal: 20,
+          },
+        })),
+        messages: {
+          list: vi.fn(async () => ({
+            data: {
+              messages: [{ id: "msg_export" }],
+              nextPageToken: "next-page",
+              resultSizeEstimate: 42,
+            },
+          })),
+          get: vi.fn(async () => ({
+            data: {
+              id: "msg_export",
+              threadId: "thread_export",
+              historyId: "history-message",
+              internalDate: String(Date.parse("2026-05-07T12:00:00.000Z")),
+              labelIds: ["INBOX"],
+              snippet: "Full message",
+              payload: {
+                mimeType: "multipart/mixed",
+                headers: [
+                  { name: "Subject", value: "Export" },
+                  { name: "From", value: "Ada <ada@example.com>" },
+                  { name: "To", value: "Owner <owner@example.com>" },
+                  { name: "Date", value: "Thu, 07 May 2026 12:00:00 GMT" },
+                ],
+                parts: [
+                  {
+                    mimeType: "text/plain",
+                    body: { attachmentId: "body-1", size: body.length },
+                  },
+                  {
+                    filename: "notes.txt",
+                    mimeType: "text/plain",
+                    body: {
+                      attachmentId: "attachment-1",
+                      size: attachment.byteLength,
+                    },
+                  },
+                ],
+              },
+            },
+          })),
+          attachments: {
+            get: vi.fn(async (params: { id: string }) => ({
+              data: {
+                data: params.id === "body-1" ? body : attachment.toString("base64url"),
+              },
+            })),
+          },
+        },
+      },
+    };
+    const factory = {
+      gmail: vi.fn(async () => fakeGmail),
+    } as GoogleApiClientFactory;
+    const client = new GoogleGmailClient(factory);
+
+    await expect(client.getGmailProfile({ accountId: "acct_google_1" })).resolves.toEqual({
+      emailAddress: "owner@example.com",
+      historyId: "history-profile",
+      messagesTotal: 42,
+      threadsTotal: 20,
+    });
+    await expect(
+      client.listGmailMessagePage({
+        accountId: "acct_google_1",
+        query: "after:2024/07/05",
+        pageToken: "page-1",
+        maxResults: 500,
+        includeSpamTrash: true,
+      })
+    ).resolves.toEqual({
+      messageIds: ["msg_export"],
+      nextPageToken: "next-page",
+      resultSizeEstimate: 42,
+    });
+    await expect(
+      client.getGmailExportMessage({
+        accountId: "acct_google_1",
+        messageId: "msg_export",
+        includeAttachmentData: true,
+      })
+    ).resolves.toMatchObject({
+      id: "msg_export",
+      threadId: "thread_export",
+      historyId: "history-message",
+      bodyText: "Full message body",
+      attachments: [
+        {
+          filename: "notes.txt",
+          mimeType: "text/plain",
+          sha256: createHash("sha256").update(attachment).digest("hex"),
+          bytes: attachment.byteLength,
+          dataBase64: attachment.toString("base64"),
+        },
+      ],
+    });
+    expect(fakeGmail.users.messages.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: "after:2024/07/05",
+        pageToken: "page-1",
+        maxResults: 500,
+      }),
+      expect.objectContaining({ retry: true })
+    );
+    expect(fakeGmail.users.messages.attachments.get).toHaveBeenCalledWith(
+      {
+        userId: "me",
+        messageId: "msg_export",
+        id: "attachment-1",
+      },
+      expect.objectContaining({ retry: true })
+    );
   });
 
   it("exposes rich Gmail management methods for LifeOps delegation", async () => {

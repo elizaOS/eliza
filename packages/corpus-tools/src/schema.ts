@@ -62,7 +62,9 @@ export const corpusMessageSchema = z.object({
   senderDisplay: nonEmptyString,
   recipients: z.array(corpusRecipientSchema),
   subject: optionalNonEmptyString,
-  text: nonEmptyString,
+  // Attachment-only mail is a legitimate source record; collectors must not
+  // invent body text merely to satisfy the interchange boundary.
+  text: z.string(),
   snippet: optionalNonEmptyString,
   labels: z.array(nonEmptyString).default([]),
   attachments: z.array(corpusAttachmentSchema).default([]),

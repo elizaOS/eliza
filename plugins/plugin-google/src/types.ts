@@ -85,6 +85,34 @@ export interface GoogleMessageSummary {
   headers?: Record<string, string>;
 }
 
+export interface GoogleGmailMessagePage {
+  messageIds: string[];
+  nextPageToken?: string;
+  resultSizeEstimate?: number;
+}
+
+export interface GoogleGmailExportAttachment {
+  filename: string;
+  mimeType: string;
+  sha256: string;
+  bytes: number;
+  dataBase64?: string;
+}
+
+export interface GoogleGmailExportMessage extends GoogleMessageSummary {
+  threadId: string;
+  internalDateMs: number;
+  historyId?: string;
+  attachments: GoogleGmailExportAttachment[];
+}
+
+export interface GoogleGmailProfile {
+  emailAddress: string;
+  historyId?: string;
+  messagesTotal?: number;
+  threadsTotal?: number;
+}
+
 export interface GoogleSendEmailInput extends GoogleAccountRef {
   to: GoogleEmailAddress[];
   cc?: GoogleEmailAddress[];
@@ -572,6 +600,21 @@ export interface GoogleMeetGenerateReportInput extends GoogleAccountRef {
 }
 
 export interface IGoogleGmailService extends Service {
+  getGmailProfile(params: GoogleAccountRef): Promise<GoogleGmailProfile>;
+  listGmailMessagePage(
+    params: GoogleAccountRef & {
+      query: string;
+      pageToken?: string;
+      maxResults?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailMessagePage>;
+  getGmailExportMessage(
+    params: GoogleAccountRef & {
+      messageId: string;
+      includeAttachmentData?: boolean;
+    }
+  ): Promise<GoogleGmailExportMessage>;
   searchMessages(
     params: GoogleAccountRef & { query: string; limit?: number }
   ): Promise<GoogleMessageSummary[]>;

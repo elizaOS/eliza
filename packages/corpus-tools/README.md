@@ -9,6 +9,31 @@ Raw and intermediate owner data belongs under `packages/corpus-tools/data/`,
 which is ignored by the repo-wide `**/data/` rule. Only synthetic fixtures under
 `fixtures/` are committed.
 
+## Gmail collection
+
+`collectGmailCorpusFromRuntime()` consumes the existing account-scoped
+`GoogleWorkspaceService`; it never reads OAuth tokens or introduces a second
+credential path. Call it from a running agent that already loaded
+`@elizaos/plugin-google`:
+
+```ts
+import { collectGmailCorpusFromRuntime } from "@elizaos/corpus-tools";
+
+const result = await collectGmailCorpusFromRuntime(runtime, {
+  accounts: [{ accountId: "work" }, { accountId: "home" }],
+  outputDir: "packages/corpus-tools/data/raw",
+});
+```
+
+The default query is the frozen corpus window from `CORPUS_CUTOFF_ISO` through
+`CORPUS_ANCHOR_ISO`. Each account is paginated to exhaustion with Gmail read
+retries, full bodies, and attachment hashes. Bytes remain optional. Monthly
+shards are rewritten atomically and de-duplicated by Gmail message id before the
+page checkpoint advances, so a crash between shard and checkpoint writes is
+safe to resume. Completed checkpoints make reruns no-ops; changing the query or
+account identity fails fast instead of silently mixing collections. Delete the
+local checkpoint only when intentionally starting a new full collection.
+
 ## CLI
 
 ```bash

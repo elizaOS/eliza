@@ -9,6 +9,10 @@ work.
 
 - Raw, owner, or intermediate corpus data never enters git. Use ignored
   `data/`; commit only synthetic fixtures under `fixtures/`.
+- Gmail collection consumes the account-scoped `@elizaos/plugin-google`
+  service. OAuth/token resolution stays in that plugin; this package owns only
+  local monthly shards, `.state/gmail-<account>.json` checkpoints, and the
+  canonical manifest.
 - `src/schema.ts` is the boundary contract for collectors and scrub stages.
   Widen additively and update validators/tests with every schema change.
 - Mappers are compatibility adapters, not schema owners. Keep platform-specific

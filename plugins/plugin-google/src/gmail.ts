@@ -6,15 +6,21 @@
  * helpers. Maps Gmail API payloads into the plugin's `GoogleGmail*` DTOs. Each
  * method acquires a scoped googleapis client from `GoogleApiClientFactory`.
  */
+import { createHash } from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import type {
   GoogleAccountRef,
   GoogleEmailAddress,
   GoogleGmailBulkOperation,
+  GoogleGmailExportAttachment,
+  GoogleGmailExportMessage,
   GoogleGmailFilterCreateResult,
   GoogleGmailMessageDetail,
+  GoogleGmailMessagePage,
   GoogleGmailMessageSummary,
+  GoogleGmailProfile,
   GoogleGmailSendResult,
   GoogleGmailSubscriptionMessageHeaders,
   GoogleGmailUnrespondedThread,
@@ -44,9 +50,115 @@ const SUBSCRIPTION_SCAN_QUERY_DEFAULT =
 const GMAIL_LIST_PAGE_SIZE = 500;
 const GMAIL_METADATA_CONCURRENCY = 25;
 const MAX_GMAIL_RESULTS = 1000;
+const GMAIL_READ_RETRY = {
+  retry: true,
+  retryConfig: {
+    retry: 5,
+    retryDelay: 500,
+    retryDelayMultiplier: 2,
+    maxRetryDelay: 30_000,
+    totalTimeout: 120_000,
+  },
+} as const;
 
 export class GoogleGmailClient {
   constructor(private readonly clientFactory: GoogleApiClientFactory) {}
+
+  async getGmailProfile(params: GoogleAccountRef): Promise<GoogleGmailProfile> {
+    const gmail = await this.clientFactory.gmail(params, ["gmail.read"], "gmail.getGmailProfile");
+    const response = await gmail.users.getProfile({ userId: "me" }, GMAIL_READ_RETRY);
+    const emailAddress = response.data.emailAddress?.trim();
+    if (!emailAddress) {
+      throw new ElizaError(`Gmail profile for account ${params.accountId} has no email address.`, {
+        code: "GOOGLE_GMAIL_PROFILE_INVALID",
+        context: { accountId: params.accountId },
+        severity: "fatal",
+      });
+    }
+    return {
+      emailAddress,
+      historyId: response.data.historyId?.trim() || undefined,
+      messagesTotal: response.data.messagesTotal ?? undefined,
+      threadsTotal: response.data.threadsTotal ?? undefined,
+    };
+  }
+
+  async listGmailMessagePage(
+    params: GoogleAccountRef & {
+      query: string;
+      pageToken?: string;
+      maxResults?: number;
+      includeSpamTrash?: boolean;
+    }
+  ): Promise<GoogleGmailMessagePage> {
+    const gmail = await this.clientFactory.gmail(
+      params,
+      ["gmail.read"],
+      "gmail.listGmailMessagePage"
+    );
+    const response = await gmail.users.messages.list(
+      {
+        userId: "me",
+        q: params.query,
+        pageToken: params.pageToken,
+        maxResults: normalizedLimit(params.maxResults, GMAIL_LIST_PAGE_SIZE, GMAIL_LIST_PAGE_SIZE),
+        includeSpamTrash: params.includeSpamTrash === true,
+      },
+      GMAIL_READ_RETRY
+    );
+    return {
+      messageIds: (response.data.messages ?? []).flatMap((message) =>
+        message.id?.trim() ? [message.id.trim()] : []
+      ),
+      nextPageToken: response.data.nextPageToken?.trim() || undefined,
+      resultSizeEstimate: response.data.resultSizeEstimate ?? undefined,
+    };
+  }
+
+  async getGmailExportMessage(
+    params: GoogleAccountRef & {
+      messageId: string;
+      includeAttachmentData?: boolean;
+    }
+  ): Promise<GoogleGmailExportMessage> {
+    const gmail = await this.clientFactory.gmail(
+      params,
+      ["gmail.read"],
+      "gmail.getGmailExportMessage"
+    );
+    const response = await gmail.users.messages.get(
+      {
+        userId: "me",
+        id: params.messageId,
+        format: "full",
+      },
+      GMAIL_READ_RETRY
+    );
+    await hydrateDetachedMessageParts(gmail, params.messageId, response.data.payload);
+    const summary = mapMessage(response.data, true);
+    const threadId = response.data.threadId?.trim();
+    const internalDateMs = Number(response.data.internalDate);
+    if (!summary.id || !threadId || !Number.isSafeInteger(internalDateMs)) {
+      throw new ElizaError(`Gmail message ${params.messageId} lacks required export metadata.`, {
+        code: "GOOGLE_GMAIL_EXPORT_METADATA_MISSING",
+        context: { accountId: params.accountId, messageId: params.messageId },
+        severity: "fatal",
+      });
+    }
+    const attachments = await collectExportAttachments(
+      gmail,
+      summary.id,
+      response.data.payload,
+      params.includeAttachmentData === true
+    );
+    return {
+      ...summary,
+      threadId,
+      internalDateMs,
+      historyId: response.data.historyId?.trim() || undefined,
+      attachments,
+    };
+  }
 
   async searchMessages(
     params: GoogleAccountRef & { query: string; limit?: number }
@@ -666,6 +778,116 @@ function collectMessageBody(
   const body: Pick<GoogleMessageSummary, "bodyHtml" | "bodyText"> = {};
   collectMessagePart(part, body);
   return body;
+}
+
+async function collectExportAttachments(
+  gmail: gmail_v1.Gmail,
+  messageId: string,
+  root: gmail_v1.Schema$MessagePart | undefined,
+  includeData: boolean
+): Promise<GoogleGmailExportAttachment[]> {
+  const parts: gmail_v1.Schema$MessagePart[] = [];
+  collectAttachmentParts(root, parts);
+  return mapWithConcurrency(parts, 8, async (part) => {
+    const attachmentId = part.body?.attachmentId?.trim();
+    const inlineData = part.body?.data?.trim();
+    const encoded = inlineData
+      ? inlineData
+      : attachmentId
+        ? (
+            await gmail.users.messages.attachments.get(
+              {
+                userId: "me",
+                messageId,
+                id: attachmentId,
+              },
+              GMAIL_READ_RETRY
+            )
+          ).data.data?.trim()
+        : undefined;
+    if (!encoded) {
+      throw new ElizaError(
+        `Gmail attachment ${part.filename || attachmentId || "unknown"} on ${messageId} has no bytes.`,
+        {
+          code: "GOOGLE_GMAIL_ATTACHMENT_BYTES_MISSING",
+          context: { attachmentId, filename: part.filename, messageId },
+          severity: "fatal",
+        }
+      );
+    }
+    const bytes = Buffer.from(encoded, "base64url");
+    return {
+      filename: part.filename?.trim() || `attachment-${attachmentId ?? parts.indexOf(part) + 1}`,
+      mimeType: part.mimeType?.trim() || "application/octet-stream",
+      sha256: createHash("sha256").update(bytes).digest("hex"),
+      bytes: bytes.byteLength,
+      ...(includeData ? { dataBase64: bytes.toString("base64") } : {}),
+    };
+  });
+}
+
+async function hydrateDetachedMessageParts(
+  gmail: gmail_v1.Gmail,
+  messageId: string,
+  root: gmail_v1.Schema$MessagePart | undefined
+): Promise<void> {
+  const detached: gmail_v1.Schema$MessagePart[] = [];
+  collectDetachedParts(root, detached);
+  await mapWithConcurrency(detached, 8, async (part) => {
+    const attachmentId = part.body?.attachmentId?.trim();
+    if (!attachmentId) return;
+    const response = await gmail.users.messages.attachments.get(
+      {
+        userId: "me",
+        messageId,
+        id: attachmentId,
+      },
+      GMAIL_READ_RETRY
+    );
+    const data = response.data.data?.trim();
+    if (!data) {
+      throw new ElizaError(
+        `Gmail MIME part ${part.filename || attachmentId} on ${messageId} has no bytes.`,
+        {
+          code: "GOOGLE_GMAIL_MIME_PART_BYTES_MISSING",
+          context: { attachmentId, filename: part.filename, messageId },
+          severity: "fatal",
+        }
+      );
+    }
+    if (!part.body) part.body = {};
+    part.body.data = data;
+  });
+}
+
+function collectDetachedParts(
+  part: gmail_v1.Schema$MessagePart | undefined,
+  output: gmail_v1.Schema$MessagePart[]
+): void {
+  if (!part) return;
+  if (part.body?.attachmentId?.trim() && !part.body.data?.trim()) {
+    output.push(part);
+  }
+  for (const child of part.parts ?? []) {
+    collectDetachedParts(child, output);
+  }
+}
+
+function collectAttachmentParts(
+  part: gmail_v1.Schema$MessagePart | undefined,
+  output: gmail_v1.Schema$MessagePart[]
+): void {
+  if (!part) return;
+  const mimeType = part.mimeType?.trim().toLowerCase();
+  if (
+    part.filename?.trim() ||
+    (part.body?.attachmentId?.trim() && mimeType !== "text/plain" && mimeType !== "text/html")
+  ) {
+    output.push(part);
+  }
+  for (const child of part.parts ?? []) {
+    collectAttachmentParts(child, output);
+  }
 }
 
 function collectMessagePart(
