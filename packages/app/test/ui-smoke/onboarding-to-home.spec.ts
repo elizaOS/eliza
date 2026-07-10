@@ -4,7 +4,8 @@
  */
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { expect, type Locator, test } from "@playwright/test";
+import type { Locator } from "@playwright/test";
+import { expect, test } from "../e2e-artifacts/fixtures";
 import {
   expectOnlyAllowedPageDiagnostics,
   installPageDiagnosticsGuard,
@@ -69,6 +70,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
 
   test("Local onboarding lands on the home and swipe-left opens the launcher", async ({
     page,
+    statecap,
   }) => {
     await rm(SCREENSHOT_DIR, { force: true, recursive: true });
     // No Electrobun RPC bridge is injected: the local first-run path's bridge
@@ -95,6 +97,7 @@ test.describe("in-chat onboarding → home → launcher", () => {
       "true",
     );
     await screenshot(page, "onboarding-chat-first");
+    await statecap("onboarding-chat-first");
 
     const { surface } = await completeOnboardingToHome(page, desktopClick, {
       state,
@@ -124,9 +127,11 @@ test.describe("in-chat onboarding → home → launcher", () => {
     // Capture the populated home.
     await settleHomeEntrance(page);
     await screenshot(page, "home");
+    await statecap("home-after-onboarding");
 
     await swipeLeftToLauncher(page, surface, { input: "mouse" });
     await screenshot(page, "launcher");
+    await statecap("launcher-after-swipe");
   });
 
   test("Cloud onboarding connects, binds an agent, and lands on the home", async ({

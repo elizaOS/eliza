@@ -88,6 +88,13 @@ const AUDIT_APP_DROPDOWN_SPEC = /applications-dropdown-contrast\.spec\.ts/;
 const WEBKIT_SMOKE_SPECS =
   /(browser-workspace|character-editor|wallet-inventory|workflow-editor|ui-smoke|input-modality)\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
+// Per-test artifact bundles (#15972): ELIZA_E2E_ARTIFACTS=1|full appends the
+// bundle reporter and forces video+trace ("full" also every-step screenshots)
+// so each test's e2e/<runId>/tests/<id>/ directory is complete. Unset, the
+// lane's capture behavior is untouched.
+const e2eArtifactsMode = process.env.ELIZA_E2E_ARTIFACTS;
+const e2eArtifactsEnabled =
+  e2eArtifactsMode === "1" || e2eArtifactsMode === "full";
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
     ? "off"
@@ -136,15 +143,18 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   workers: 1,
-  reporter: "list",
+  reporter: e2eArtifactsEnabled
+    ? [["list"], ["./test/e2e-artifacts/reporter.ts"]]
+    : "list",
   outputDir: recording
     ? path.resolve(appDir, "../../e2e-recordings/app/test-results")
     : "./test-results",
   use: {
     baseURL: `http://127.0.0.1:${uiSmokePort}`,
-    trace: recording ? "on" : "retain-on-failure",
-    video: videoMode,
-    screenshot: recording ? "on" : "only-on-failure",
+    trace: e2eArtifactsEnabled ? "on" : recording ? "on" : "retain-on-failure",
+    video: e2eArtifactsEnabled ? "on" : videoMode,
+    screenshot:
+      e2eArtifactsMode === "full" ? "on" : recording ? "on" : "only-on-failure",
   },
   projects: [
     {

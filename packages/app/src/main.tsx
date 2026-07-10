@@ -3835,6 +3835,19 @@ async function main(): Promise<void> {
     void voiceModuleReady.then((voice) => voice?.registerDesktopFusedWake());
   }
   await initializePlatform();
+  // E2e-only PostHog session capture (#15972): the __ELIZA_E2E handshake is
+  // injected by the Playwright artifact fixtures and cannot exist on a real
+  // deployment, so production boots never load the chunk.
+  if ((window as Window & { __ELIZA_E2E?: unknown }).__ELIZA_E2E) {
+    import("./analytics/e2e-session-capture")
+      .then((module) => module.initE2eSessionCapture())
+      .catch((error) => {
+        // error-policy:J1 e2e instrumentation boundary — a capture-bootstrap
+        // failure must not break the app under test; the sink's missing
+        // traffic (and this log) is the observable signal for the harness
+        logger.error("[E2eSessionCapture] init failed", error);
+      });
+  }
 }
 
 // main() awaits fallible pre-mount chunks; a bare invocation would leave any

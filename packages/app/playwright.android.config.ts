@@ -18,7 +18,15 @@ import { defineConfig } from "@playwright/test";
 //   3. The on-device local agent is up (mobile-local-chat-smoke bring-up) OR the
 //      app is pointed at a reachable cloud agent.
 const appDir = path.dirname(fileURLToPath(import.meta.url));
-const reporters = [["list"] as const];
+// Per-test artifact bundles (#15972): ELIZA_E2E_ARTIFACTS=1|full appends the
+// bundle reporter and forces video+trace ("full" also every-step screenshots).
+// Unset, this lane's capture behavior is untouched.
+const e2eArtifactsMode = process.env.ELIZA_E2E_ARTIFACTS;
+const e2eArtifactsEnabled =
+  e2eArtifactsMode === "1" || e2eArtifactsMode === "full";
+const reporters: (readonly [string] | readonly [string, object])[] = [
+  ["list"] as const,
+];
 if (process.env.ELIZA_ANDROID_PLAYWRIGHT_JUNIT) {
   reporters.push([
     "junit",
@@ -33,6 +41,9 @@ if (process.env.ELIZA_ANDROID_PLAYWRIGHT_JSON) {
 }
 if (!process.env.CI) {
   reporters.push(["html", { open: "never" }] as const);
+}
+if (e2eArtifactsEnabled) {
+  reporters.push(["./test/e2e-artifacts/reporter.ts"] as const);
 }
 
 export default defineConfig({
@@ -55,8 +66,10 @@ export default defineConfig({
   globalSetup: path.join(appDir, "test/android/global-setup.ts"),
   use: {
     // Screenshots/trace over the Android CDP socket are slow; capture only on
-    // failure and keep them bounded.
-    screenshot: "only-on-failure",
-    trace: "retain-on-failure",
+    // failure and keep them bounded — unless a per-test artifact bundle was
+    // requested, which needs the full recording regardless of cost.
+    screenshot: e2eArtifactsMode === "full" ? "on" : "only-on-failure",
+    trace: e2eArtifactsEnabled ? "on" : "retain-on-failure",
+    ...(e2eArtifactsEnabled ? { video: "on" as const } : {}),
   },
 });

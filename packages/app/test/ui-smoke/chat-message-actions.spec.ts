@@ -3,7 +3,8 @@
 // exact callbacks; this smoke records the shipped UI at desktop + mobile sizes.
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { expect, test } from "../e2e-artifacts/fixtures";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -163,6 +164,7 @@ for (const viewport of [
   test(`chat overlay message action row works on ${viewport.name}`, async ({
     page,
     context,
+    statecap,
   }) => {
     const consoleLines: string[] = [];
     const pageErrors: string[] = [];
@@ -178,6 +180,7 @@ for (const viewport of [
     await openAppPath(page, "/chat");
     await openThread(page);
     await screenshot(page, `${viewport.name}-chat-open`);
+    await statecap("thread-open");
 
     await page.getByText(ASSISTANT_TEXT).click();
     await expect(page.getByTestId("thread-line-actions")).toBeVisible();
@@ -188,6 +191,7 @@ for (const viewport of [
       page.getByRole("button", { name: /copy conversation/i }),
     ).toHaveCount(0);
     await screenshot(page, `${viewport.name}-assistant-actions`);
+    await statecap("assistant-action-row-revealed");
 
     await page.getByTestId("thread-line-copy").click();
     await expect(page.getByTestId("thread-line-copy")).toHaveAttribute(
@@ -229,6 +233,7 @@ for (const viewport of [
     await page.getByTestId("thread-line-edit-save").click();
 
     await expect.poll(() => streamCalls.length, { timeout: 15_000 }).toBe(1);
+    await statecap("user-edit-saved");
     expect(JSON.stringify(streamCalls[0])).toContain(EDITED_TEXT);
     expect(pageErrors, "no uncaught page errors").toEqual([]);
 
