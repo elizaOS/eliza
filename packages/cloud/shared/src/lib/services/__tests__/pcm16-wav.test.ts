@@ -1,7 +1,7 @@
 /** Verifies PCM16 stream validation and the exact RIFF/WAV bytes consumed by codec-less clients. */
 
 import { describe, expect, test } from "bun:test";
-import { drainPcm16Stream, pcm16ToWav } from "../pcm16-wav";
+import { drainPcm16ToWav, pcm16ToWav } from "../pcm16-wav";
 
 function stream(...chunks: number[][]): ReadableStream<Uint8Array> {
   return new ReadableStream({
@@ -14,8 +14,7 @@ function stream(...chunks: number[][]): ReadableStream<Uint8Array> {
 
 describe("PCM16 WAV encoding", () => {
   test("preserves streamed samples and writes a canonical mono header", async () => {
-    const pcm = await drainPcm16Stream(stream([0x01], [0x02, 0x03, 0x04]), 1024);
-    const wav = pcm16ToWav(pcm, 24_000);
+    const wav = await drainPcm16ToWav(stream([0x01], [0x02, 0x03, 0x04]), 1024, 24_000);
     const view = new DataView(wav.buffer);
 
     expect(new TextDecoder().decode(wav.subarray(0, 4))).toBe("RIFF");
@@ -32,17 +31,31 @@ describe("PCM16 WAV encoding", () => {
   });
 
   test("rejects empty and partial samples", async () => {
-    await expect(drainPcm16Stream(stream(), 1024)).rejects.toMatchObject({
+    await expect(drainPcm16ToWav(stream(), 1024, 24_000)).rejects.toMatchObject({
       code: "TTS_PCM_INVALID",
     });
-    await expect(drainPcm16Stream(stream([0x01, 0x02, 0x03]), 1024)).rejects.toMatchObject({
+    await expect(drainPcm16ToWav(stream([0x01, 0x02, 0x03]), 1024, 24_000)).rejects.toMatchObject({
       code: "TTS_PCM_INVALID",
     });
     expect(() => pcm16ToWav(Uint8Array.of(1), 24_000)).toThrow("complete 16-bit samples");
   });
 
+  test("rejects invalid drain limits and sample rates before reading", async () => {
+    await expect(drainPcm16ToWav(stream([0, 1]), 0, 24_000)).rejects.toMatchObject({
+      code: "TTS_PCM_INVALID",
+      context: { maxBytes: 0 },
+    });
+    await expect(drainPcm16ToWav(stream([0, 1]), 1024, 0)).rejects.toMatchObject({
+      code: "TTS_PCM_INVALID",
+      context: { sampleRate: 0 },
+    });
+    expect(() => pcm16ToWav(Uint8Array.of(0, 1), Number.NaN)).toThrow(
+      "sample rate must be a positive integer",
+    );
+  });
+
   test("cancels and rejects a response beyond the memory limit", async () => {
-    await expect(drainPcm16Stream(stream([0, 1], [2, 3]), 2)).rejects.toMatchObject({
+    await expect(drainPcm16ToWav(stream([0, 1], [2, 3]), 2, 24_000)).rejects.toMatchObject({
       code: "TTS_PCM_INVALID",
       context: { maxBytes: 2, receivedBytes: 4 },
     });

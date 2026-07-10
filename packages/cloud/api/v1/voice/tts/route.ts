@@ -45,7 +45,7 @@ import {
   InsufficientCreditsError,
 } from "@/lib/services/credits";
 import { getElevenLabsService } from "@/lib/services/elevenlabs";
-import { drainPcm16Stream, pcm16ToWav } from "@/lib/services/pcm16-wav";
+import { drainPcm16ToWav } from "@/lib/services/pcm16-wav";
 import {
   fingerprintCloudVoiceSettings,
   getCloudFirstLineCacheService,
@@ -121,7 +121,9 @@ function buildTtsObservabilityHeaders(
 
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24_000;
-const MAX_WAV_PCM_BYTES = 64 * 1024 * 1024;
+// Mono PCM16 at 24 kHz consumes 48,000 bytes/second, so this permits roughly
+// 175 seconds of audio while bounding the two-copy drain/container peak.
+const MAX_WAV_PCM_BYTES = 8 * 1024 * 1024;
 
 /**
  * POST /api/v1/voice/tts
@@ -486,8 +488,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
     });
     const wav = wantWav
-      ? pcm16ToWav(
-          await drainPcm16Stream(audioStream, MAX_WAV_PCM_BYTES),
+      ? await drainPcm16ToWav(
+          audioStream,
+          MAX_WAV_PCM_BYTES,
           WAV_PCM_SAMPLE_RATE,
         )
       : undefined;
@@ -635,10 +638,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // so codec-less clients can decode it. (Buffered, not streamed — fine for
     // short TTS replies; the MP3 path keeps its chunked streaming below.)
     if (wav !== undefined) {
-      return new Response(wav as unknown as BodyInit, {
+      return new Response(wav, {
         headers: {
           "Content-Type": "audio/wav",
           "Cache-Control": "no-cache",
+          ...buildTtsObservabilityHeaders("elevenlabs", timings),
           "X-TTS-Cache": "miss",
         },
       });

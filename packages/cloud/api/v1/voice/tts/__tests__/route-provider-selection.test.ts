@@ -20,24 +20,27 @@ const requireAuthOrApiKeyWithOrg = mock(async () => ({
   apiKey: null,
 }));
 const assertSafeForPublicUse = mock(async () => undefined);
+const reconcileReservation = mock(async () => undefined);
 const reserveCredits = mock(async () => ({
-  reconcile: async () => undefined,
+  reconcile: reconcileReservation,
 }));
 const billUsage = mock(async () => ({
   totalCost: 0.001,
   baseTotalCost: 0.001,
   platformMarkup: 0,
 }));
-const elevenLabsTextToSpeech = mock(
-  async () =>
-    new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new Uint8Array([73, 68, 51]));
-        controller.close();
-      },
-    }),
-);
+let elevenLabsBytes = new Uint8Array([73, 68, 51]);
+const elevenLabsTextToSpeech = mock(async () => {
+  const bytes = elevenLabsBytes;
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+});
 let allowKokoroFetch = false;
+let cacheBypass = true;
 let cachedVoiceResponse: {
   bytes: Uint8Array;
   byteSize: number;
@@ -56,6 +59,8 @@ const fetchMock = Object.assign(
   { preconnect: () => undefined },
 ) satisfies typeof fetch;
 const realFetch = globalThis.fetch;
+const cacheGet = mock(async () => cachedVoiceResponse);
+const cacheHas = mock(async () => true);
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   ApiError: class ApiError extends Error {
@@ -107,11 +112,11 @@ mock.module("@/lib/services/elevenlabs", () => ({
 mock.module("@/lib/services/tts-first-line-cache", () => ({
   fingerprintCloudVoiceSettings: () => "fp-test",
   getCloudFirstLineCacheService: () => ({
-    get: async () => cachedVoiceResponse,
-    has: async () => true,
+    get: cacheGet,
+    has: cacheHas,
     put: async () => true,
   }),
-  shouldBypassCloudFirstLineCache: () => true,
+  shouldBypassCloudFirstLineCache: () => cacheBypass,
 }));
 
 mock.module("@/lib/services/usage", () => ({
@@ -147,12 +152,17 @@ beforeAll(async () => {
 
 beforeEach(() => {
   allowKokoroFetch = false;
+  cacheBypass = true;
   cachedVoiceResponse = null;
+  elevenLabsBytes = new Uint8Array([73, 68, 51]);
   fetchMock.mockClear();
   assertSafeForPublicUse.mockClear();
   reserveCredits.mockClear();
+  reconcileReservation.mockClear();
   billUsage.mockClear();
   elevenLabsTextToSpeech.mockClear();
+  cacheGet.mockClear();
+  cacheHas.mockClear();
 });
 
 afterAll(() => {
@@ -282,5 +292,48 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(reserveCredits).toHaveBeenCalledTimes(1);
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("returns bounded PCM as WAV and bypasses the MP3 first-line cache", async () => {
+    cacheBypass = false;
+    elevenLabsBytes = new Uint8Array([1, 2, 3, 4]);
+
+    const response = await postTts({
+      text: "A complete WAV response.",
+      voiceId: "custom-elevenlabs-voice",
+      format: "wav",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("audio/wav");
+    expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("elevenlabs");
+    expect(response.headers.get("Server-Timing")).toContain("synthesis;dur=");
+    expect(response.headers.get("X-TTS-Cache")).toBe("miss");
+    const wav = new Uint8Array(await response.arrayBuffer());
+    expect(new TextDecoder().decode(wav.subarray(0, 4))).toBe("RIFF");
+    expect([...wav.subarray(44)]).toEqual([1, 2, 3, 4]);
+    expect(elevenLabsTextToSpeech).toHaveBeenCalledWith({
+      text: "A complete WAV response.",
+      voiceId: "custom-elevenlabs-voice",
+      modelId: undefined,
+      outputFormat: "pcm_24000",
+    });
+    expect(cacheGet).not.toHaveBeenCalled();
+    expect(cacheHas).not.toHaveBeenCalled();
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(reconcileReservation).not.toHaveBeenCalled();
+  });
+
+  test("rejects malformed PCM before billing and refunds the reservation", async () => {
+    elevenLabsBytes = new Uint8Array([1, 2, 3]);
+
+    const response = await postTts({
+      text: "This upstream response is malformed.",
+      format: "wav",
+    });
+
+    expect(response.status).toBe(500);
+    expect(billUsage).not.toHaveBeenCalled();
+    expect(reconcileReservation).toHaveBeenCalledWith(0);
   });
 });
