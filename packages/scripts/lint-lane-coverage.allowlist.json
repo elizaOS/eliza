@@ -35,11 +35,6 @@
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
-      "plugin": "plugin-benchmarks",
-      "issues": ["missing-action-tests"],
-      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
-    },
-    {
       "plugin": "plugin-blocker",
       "issues": ["missing-deterministic-e2e", "missing-view-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
