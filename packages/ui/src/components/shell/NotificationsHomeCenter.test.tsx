@@ -89,6 +89,25 @@ function collapseShade(): HTMLElement {
   return list;
 }
 
+function setOverflowingListGeometry(list: HTMLElement): void {
+  Object.defineProperties(list, {
+    scrollHeight: { configurable: true, value: 900 },
+    clientHeight: { configurable: true, value: 300 },
+    scrollTop: { configurable: true, value: 120, writable: true },
+  });
+  vi.spyOn(list, "getBoundingClientRect").mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    right: 300,
+    bottom: 500,
+    left: 0,
+    width: 300,
+    height: 500,
+    toJSON: () => ({}),
+  });
+}
+
 beforeEach(() => {
   seq = 0;
 });
@@ -705,13 +724,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   }
 
-  it("renders one passive total with a small chevron and no button in either shade mode", () => {
+  it("fades the passive total out while expanded and back in when collapsed", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     const count = screen.getByTestId("notifications-count");
     expect(count.textContent).toBe("3 Notifications");
     expect(count.closest("button")).toBeNull();
+    expect(count.style.opacity).toBe("1");
+    expect(count.getAttribute("aria-hidden")).toBeNull();
     const chevron = screen.getByTestId("notifications-count-chevron");
     expect(chevron.classList.contains("h-3")).toBe(true);
     expect(chevron.classList.contains("w-3")).toBe(true);
@@ -719,6 +740,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.queryByText(/more|show less/i)).toBeNull();
     expandShade();
     expect(count.textContent).toBe("3 Notifications");
+    expect(count.style.opacity).toBe("0");
+    expect(count.getAttribute("aria-hidden")).toBe("true");
+    collapseShade();
+    expect(count.style.opacity).toBe("1");
+    expect(count.getAttribute("aria-hidden")).toBeNull();
   });
 
   it("gestures expand to all priorities and compress back", () => {
@@ -777,6 +803,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientY: 140,
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.style.transition).toContain("320ms");
     // Stacks persist through the pull; the peeks carry the revealed rows.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
@@ -820,6 +847,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(2);
+    const countOpacity = Number.parseFloat(
+      screen.getByTestId("notifications-count").style.opacity,
+    );
+    expect(countOpacity).toBeGreaterThan(0);
+    expect(countOpacity).toBeLessThan(1);
     const clear = screen.getByTestId("notifications-clear-all");
     const clearReveal = clear.closest("li") as HTMLElement;
     expect(Number.parseFloat(clearReveal.style.opacity)).toBeGreaterThan(0);
@@ -1012,6 +1044,52 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     fireEvent.touchStart(list, { touches: [{ clientX: 10, clientY: 200 }] });
     fireEvent.touchMove(list, { touches: [{ clientX: 12, clientY: 60 }] });
     fireEvent.touchEnd(list, { touches: [] });
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
+  it("a bottom-edge touch drag UP collapses an overflowing expanded shade", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    expandShade();
+    setOverflowingListGeometry(list);
+
+    fireEvent.touchStart(list, { touches: [{ clientX: 150, clientY: 470 }] });
+    fireEvent.touchMove(list, { touches: [{ clientX: 152, clientY: 330 }] });
+    fireEvent.touchEnd(list, { touches: [] });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
+  it("an upward touch in the middle of overflowing content scrolls instead of collapsing", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    expandShade();
+    setOverflowingListGeometry(list);
+
+    fireEvent.touchStart(list, { touches: [{ clientX: 150, clientY: 250 }] });
+    fireEvent.touchMove(list, { touches: [{ clientX: 152, clientY: 90 }] });
+    fireEvent.touchEnd(list, { touches: [] });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+  });
+
+  it("rebases an upward close when an overflowing touch reaches the list end", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    expandShade();
+    setOverflowingListGeometry(list);
+
+    fireEvent.touchStart(list, { touches: [{ clientX: 150, clientY: 250 }] });
+    fireEvent.touchMove(list, { touches: [{ clientX: 150, clientY: 150 }] });
+    (list as unknown as { scrollTop: number }).scrollTop = 600;
+    fireEvent.touchMove(list, { touches: [{ clientX: 150, clientY: 100 }] });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.touchMove(list, { touches: [{ clientX: 150, clientY: -40 }] });
+    fireEvent.touchEnd(list, { touches: [] });
+
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });
 

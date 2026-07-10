@@ -25,8 +25,9 @@
  * same-direction gesture in the state it already produced is a no-op — this is
  * what makes trackpad momentum safe (the old toggle re-fired on trailing
  * momentum deltas and snapped the shade shut moments after opening it). The
- * footer is a passive total (for example, "3 Notifications"), never a control.
- * Pull/push gestures exclusively own the shade transition.
+ * footer is a passive total (for example, "3 Notifications"), never a control;
+ * it fades away as the shade opens and returns as the shade closes. Pull/push
+ * gestures exclusively own the shade transition.
  *
  * The pull/wheel gesture NEVER fans a stack, and a drag that starts on a stack
  * still belongs to the shade. Tapping a peek fans that producer group and
@@ -101,6 +102,13 @@ export const PULL_COMMIT_PX = 40;
 
 /** Dead zone (px) before a vertical drag starts reading as a pull. */
 const PULL_SLOP_PX = 8;
+
+/**
+ * Height of the upward-close gesture zone at the visible bottom of the shade.
+ * This mirrors the iOS bottom-edge dismissal without stealing ordinary upward
+ * scrolling from an overflowing notification list.
+ */
+const SHADE_CLOSE_EDGE_PX = 96;
 
 /**
  * Per-event cap (px) on a wheel delta's contribution toward the COLLAPSE
@@ -777,7 +785,9 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     // clientY where the drag first reached the top; the pull is measured from
     // here so a continuous drag that scrolled the list up to its top doesn't
     // jump the shade by the pre-top travel and instantly commit.
-    let anchorY: number | null = null;
+    let expandAnchorY: number | null = null;
+    let collapseAnchorY: number | null = null;
+    let closeFromBottomEdge = false;
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
       start =
@@ -785,7 +795,27 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // Already at the top → anchor at the touch start so the whole drag counts
       // as pull. Started scrolled down → leave null; the move handler anchors at
       // the instant scrollTop first reaches 0 (the top crossing).
-      anchorY = start && el.scrollTop <= 0 ? start.y : null;
+      expandAnchorY = start && el.scrollTop <= 0 ? start.y : null;
+
+      const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+      const atBottom = el.scrollTop >= maxScrollTop - 1;
+      const viewportBottom =
+        window.visualViewport?.height ?? window.innerHeight;
+      const visibleBottom = Math.min(
+        el.getBoundingClientRect().bottom,
+        viewportBottom,
+      );
+      closeFromBottomEdge = Boolean(
+        start &&
+          shadeGestureRef.current.canCollapse &&
+          start.y >= visibleBottom - SHADE_CLOSE_EDGE_PX,
+      );
+      collapseAnchorY =
+        start &&
+        shadeGestureRef.current.canCollapse &&
+        (closeFromBottomEdge || maxScrollTop <= 1 || atBottom)
+          ? start.y
+          : null;
     };
     const onTouchMove = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -795,24 +825,41 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // A horizontal gesture belongs to the row swipe; hand it off for good.
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > PULL_SLOP_PX) {
         start = null;
+        expandAnchorY = null;
+        collapseAnchorY = null;
+        closeFromBottomEdge = false;
         return;
       }
       const { canExpand, canCollapse } = shadeGestureRef.current;
       if (dy < -PULL_SLOP_PX) {
-        // Upward push: the collapse gesture. The pan-y scroller owns an upward
-        // drag whenever it has content to scroll, so the shade only claims it
-        // when the expanded list has no overflow (the pan has nothing to do —
-        // no preventDefault needed either).
-        if (canCollapse && el.scrollHeight - el.clientHeight <= 1) {
-          setPullPx(-dampenPull(-dy));
-        } else if (pullPxRef.current !== 0) {
-          setPullPx(0);
+        // An upward push closes from the shade's visible bottom edge. Elsewhere
+        // the pan-y scroller keeps ordinary upward scrolling; once it reaches
+        // the list end, additional travel becomes an overscroll-to-close. The
+        // anchor is rebased at that boundary so the scroll travel itself never
+        // counts toward the close threshold.
+        const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+        const atBottom = el.scrollTop >= maxScrollTop - 1;
+        if (
+          canCollapse &&
+          (closeFromBottomEdge || maxScrollTop <= 1 || atBottom)
+        ) {
+          if (collapseAnchorY === null) collapseAnchorY = t.clientY;
+          const push = collapseAnchorY - t.clientY;
+          if (push > PULL_SLOP_PX) {
+            e.preventDefault();
+            setPullPx(-dampenPull(push));
+          } else if (pullPxRef.current !== 0) {
+            setPullPx(0);
+          }
+        } else {
+          collapseAnchorY = null;
+          if (pullPxRef.current !== 0) setPullPx(0);
         }
         return;
       }
       if (el.scrollTop <= 0 && canExpand) {
-        if (anchorY === null) anchorY = t.clientY;
-        const pull = t.clientY - anchorY;
+        if (expandAnchorY === null) expandAnchorY = t.clientY;
+        const pull = t.clientY - expandAnchorY;
         if (pull > PULL_SLOP_PX) {
           e.preventDefault();
           setPullPx(dampenPull(pull));
@@ -822,15 +869,17 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
           // pointer path).
           setPullPx(0);
         }
-      } else if (anchorY !== null) {
+      } else if (expandAnchorY !== null) {
         // Scrolled back down into content — abandon the pull and re-anchor.
-        anchorY = null;
+        expandAnchorY = null;
         if (pullPxRef.current !== 0) setPullPx(0);
       }
     };
     const onTouchEnd = () => {
       start = null;
-      anchorY = null;
+      expandAnchorY = null;
+      collapseAnchorY = null;
+      closeFromBottomEdge = false;
       commitPull();
     };
     const onTouchCancel = () => {
@@ -838,7 +887,9 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       // rejection) ABORTS: snap back to rest, never change the shade from a
       // gesture the user never completed.
       start = null;
-      anchorY = null;
+      expandAnchorY = null;
+      collapseAnchorY = null;
+      closeFromBottomEdge = false;
       setPullPx(0);
     };
     el.addEventListener("touchstart", onTouchStart, { passive: true });
@@ -994,6 +1045,9 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     restedNotifications.map((notification) => notification.id),
   );
   shadeGestureRef.current = { canExpand, canCollapse: shadeExpanded };
+  const notificationCountVisibility = shadeExpanded
+    ? notificationPullRevealProgress(-pullPx, 0)
+    : 1 - notificationPullRevealProgress(pullPx, 0);
 
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
@@ -1082,7 +1136,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
           transform: pullPx ? `translateY(${pullPx}px)` : undefined,
           transition: pullPx
             ? "none"
-            : "transform 200ms cubic-bezier(0.22,1,0.36,1)",
+            : "transform 320ms cubic-bezier(0.16,1,0.3,1)",
         }}
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
@@ -1308,7 +1362,13 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         })}
         <li
           data-testid="notifications-count"
-          className="flex items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50"
+          aria-hidden={shadeExpanded ? true : undefined}
+          style={{
+            opacity: notificationCountVisibility,
+            transform: `translate3d(0, ${(1 - notificationCountVisibility) * 6}px, 0)`,
+            transition: pullPx ? "none" : undefined,
+          }}
+          className="flex items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50 transition-[opacity,transform] duration-[320ms] ease-out motion-reduce:transition-none"
         >
           {notifications.length === 1
             ? "1 Notification"
