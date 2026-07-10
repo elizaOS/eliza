@@ -33,9 +33,13 @@ export function elizaAgentCreateAdvisoryLockSql(organizationId: string) {
 }
 
 /**
- * Per-source-agent tier-upgrade lock. The target service holds this across its
- * durable re-check and initial insert so concurrent requests can only observe
- * and reattach to the first request's target.
+ * Per-source-agent tier-upgrade lock. The target service holds this across
+ * the durable re-check, the target insert, AND the provision-job enqueue
+ * (one transaction, #15943) so concurrent requests can only observe and
+ * reattach to the first request's committed target-plus-job. Lock order:
+ * this lock is acquired BEFORE the per-agent provision lock (the job enqueue
+ * nests inside the tier-upgrade transaction); no path acquires them in the
+ * reverse order.
  */
 export function elizaAgentTierUpgradeAdvisoryLockSql(
   organizationId: string,
