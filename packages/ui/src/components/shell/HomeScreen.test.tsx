@@ -183,6 +183,42 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
   });
 
+  it("keeps widget taps inert and expands a populated shade from a widget-area pull", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "Priority alert", priority: "urgent" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        id: "22222222-2222-4222-8222-222222222222" as AgentNotification["id"],
+        title: "Quiet summary",
+        priority: "normal",
+      }),
+    );
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const timeWidget = screen.getByTestId("home-time-widget");
+    const center = screen.getByTestId("home-notification-center");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(timeWidget, {
+      touches: [{ clientX: 100, clientY: 80 }],
+    });
+    fireEvent.touchEnd(timeWidget, { touches: [] });
+    fireEvent.click(timeWidget);
+    expect(screen.getByTestId("home-notification-center")).toBe(center);
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+
+    fireEvent.touchStart(timeWidget, {
+      touches: [{ clientX: 100, clientY: 80 }],
+    });
+    fireEvent.touchMove(timeWidget, {
+      touches: [{ clientX: 102, clientY: 230 }],
+    });
+    fireEvent.touchEnd(timeWidget, { touches: [] });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+  });
+
   it("keeps the hydrated empty gesture band quiet without growing the notification region", () => {
     __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} />);

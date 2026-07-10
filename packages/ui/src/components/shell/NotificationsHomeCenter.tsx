@@ -737,7 +737,7 @@ export function NotificationsHomeCenter({
   const [expandedStacks, setExpandedStacks] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const stackSessionStartedFromRest = useRef(false);
+  const [shadeOpenedByStack, setShadeOpenedByStack] = useState(false);
   const [confirmingGroupKey, setConfirmingGroupKey] = useState<string | null>(
     null,
   );
@@ -746,7 +746,7 @@ export function NotificationsHomeCenter({
   const shadeCloseTimer = useRef<number | null>(null);
   const expandStack = useCallback(
     (key: string) => {
-      if (!shadeExpanded) stackSessionStartedFromRest.current = true;
+      if (!shadeExpanded) setShadeOpenedByStack(true);
       setExpandedStacks((prev) => {
         if (prev.has(key)) return prev;
         const next = new Set(prev);
@@ -829,7 +829,7 @@ export function NotificationsHomeCenter({
     setShadeExpanded(expanded);
     setConfirmingClearAll(false);
     setConfirmingGroupKey(null);
-    stackSessionStartedFromRest.current = false;
+    setShadeOpenedByStack(false);
     if (!expanded) {
       // Folding the shade folds every fanned stack with it so the next open
       // starts from a predictable grouped inbox.
@@ -859,13 +859,13 @@ export function NotificationsHomeCenter({
   const foldStack = useCallback(
     (key: string) => {
       const restoresRestedShade =
-        stackSessionStartedFromRest.current &&
+        shadeOpenedByStack &&
         expandedStacks.size === 1 &&
         expandedStacks.has(key);
       collapseStack(key);
       if (restoresRestedShade) requestShadeCollapse();
     },
-    [collapseStack, expandedStacks, requestShadeCollapse],
+    [collapseStack, expandedStacks, requestShadeCollapse, shadeOpenedByStack],
   );
 
   const hasClearConfirmation =
@@ -1195,6 +1195,109 @@ export function NotificationsHomeCenter({
     surfaceReady,
   ]);
 
+  // A populated shade can also be pulled open from non-interactive home space
+  // (clock/weather chrome or an empty widget-grid lane). Events originating in
+  // the notification list stay with its scroll/gesture handler above, and taps
+  // never touch notification state.
+  useEffect(() => {
+    const surface = emptyGestureTargetRef?.current;
+    const list = scrollRef.current;
+    if (!hasNotifications || !surface || !list || surface === list) return;
+    let start: { x: number; y: number } | null = null;
+    let axis: "none" | "x" | "y" = "none";
+    let ownsPull = false;
+
+    const reset = () => {
+      start = null;
+      axis = "none";
+      ownsPull = false;
+    };
+    const onTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      const target = event.target;
+      start =
+        event.touches.length === 1 &&
+        touch &&
+        !isInteractiveGestureTarget(target) &&
+        !(target instanceof Node && list.contains(target))
+          ? { x: touch.clientX, y: touch.clientY }
+          : null;
+      axis = "none";
+      ownsPull = false;
+    };
+    const onTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!start || !touch) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      if (
+        axis === "none" &&
+        (Math.abs(dx) > PULL_SLOP_PX || Math.abs(dy) > PULL_SLOP_PX)
+      ) {
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (axis === "x") {
+        if (ownsPull) setPullPx(0);
+        reset();
+        return;
+      }
+      if (
+        axis === "y" &&
+        dy > PULL_SLOP_PX &&
+        surface.scrollTop <= 0 &&
+        shadeGestureRef.current.canExpand
+      ) {
+        ownsPull = true;
+        event.preventDefault();
+        setPullPx(dampenPull(dy));
+      } else if (ownsPull && pullPxRef.current !== 0) {
+        setPullPx(0);
+      }
+    };
+    const onTouchEnd = () => {
+      const shouldCommit = ownsPull;
+      reset();
+      if (shouldCommit) commitPull();
+    };
+    const onTouchCancel = () => {
+      const shouldResetPull = ownsPull;
+      reset();
+      if (shouldResetPull) setPullPx(0);
+    };
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target;
+      if (
+        event.deltaY >= 0 ||
+        isInteractiveGestureTarget(target) ||
+        (target instanceof Node && list.contains(target))
+      ) {
+        return;
+      }
+      if (handleWheelDelta(event.deltaY, surface.scrollTop)) {
+        event.preventDefault();
+      }
+    };
+
+    surface.addEventListener("touchstart", onTouchStart, { passive: true });
+    surface.addEventListener("touchmove", onTouchMove, { passive: false });
+    surface.addEventListener("touchend", onTouchEnd);
+    surface.addEventListener("touchcancel", onTouchCancel);
+    surface.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      surface.removeEventListener("touchstart", onTouchStart);
+      surface.removeEventListener("touchmove", onTouchMove);
+      surface.removeEventListener("touchend", onTouchEnd);
+      surface.removeEventListener("touchcancel", onTouchCancel);
+      surface.removeEventListener("wheel", onWheel);
+    };
+  }, [
+    commitPull,
+    emptyGestureTargetRef,
+    handleWheelDelta,
+    hasNotifications,
+    setPullPx,
+  ]);
+
   // The clear band beneath the inbox is also a close gesture lane. It lives on
   // the home surface rather than inside the scrollport, so an upward swipe can
   // fold an expanded shade without first finding the final notification row.
@@ -1308,7 +1411,7 @@ export function NotificationsHomeCenter({
   useEffect(() => {
     if (notifications.length === 0) {
       setShadeExpanded(false);
-      stackSessionStartedFromRest.current = false;
+      setShadeOpenedByStack(false);
       setExpandedStacks(new Set());
       setConfirmingGroupKey(null);
       setConfirmingClearAll(false);
@@ -1787,7 +1890,10 @@ export function NotificationsHomeCenter({
             </motion.li>
           );
         })}
-        {shadeExpanded && hasNotifications ? (
+        {shadeExpanded &&
+        hasNotifications &&
+        expandedStacks.size === 0 &&
+        !shadeOpenedByStack ? (
           <li
             style={{
               opacity: collapseControlVisibility,

@@ -1027,13 +1027,14 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
         screen.getAllByTestId("notification-row")[0],
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.getByTestId("notifications-collapse").textContent).toContain(
-      "Collapse",
-    );
+    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     fireEvent.click(screen.getByTestId("notification-stack-collapse"));
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack-collapse")).toBeNull();
+    expect(screen.getByTestId("notifications-collapse").textContent).toContain(
+      "Collapse",
+    );
     expect(
       screen
         .getByTestId("home-notification-list")
