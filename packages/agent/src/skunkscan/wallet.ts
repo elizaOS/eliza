@@ -259,6 +259,7 @@ const executiveVerdict = analyzeExecutiveVerdict(
   exposure,
   risk,
   trust,
+  decision,
 );
 
 const investigationReport =
