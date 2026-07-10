@@ -441,6 +441,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.phrase = phrase;
 
     let tts: CartesiaSonicTtsStream | null = null;
+    // Held phrase (see the streaming loop below): kept back by one so the
+    // terminal phrase can be sent with continue:false to close the Cartesia
+    // context, rather than an empty-transcript finish() the live API rejects.
+    let pendingPhrase: string | null = null;
     const ensureTts = (): CartesiaSonicTtsStream => {
       if (tts) return tts;
       tts = this.cartesiaAdapter.createStream(
@@ -494,11 +498,22 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             this.firstLlmTextEmitted = true;
             this.send({ t: "llm_first_text", traceId });
           }
+          // Cartesia closes a synthesis context via the FINAL phrase carrying
+          // `continue:false` (verified against the LIVE API: a real terminal
+          // phrase with continue:false yields `done`; an empty-transcript
+          // request is rejected with "No valid transcripts passed"). So a phrase
+          // is only safe to send once we know whether ANOTHER follows. We hold
+          // back exactly one phrase: when a new phrase arrives, flush the held
+          // one with continue:true; the held phrase at stream-end is the
+          // terminal one and is sent with continue:false.
           const phrases = phrase.push(delta);
           for (const p of phrases) {
             this.turnTtsChars += p.length;
             const stream = ensureTts();
-            stream.sendPhrase({ text: p, continueContext: phrase.emitted > 1 });
+            if (pendingPhrase !== null) {
+              stream.sendPhrase({ text: pendingPhrase, continueContext: true });
+            }
+            pendingPhrase = p;
           }
         },
       );
@@ -511,17 +526,28 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
 
       const tail = phrase.flush();
-      const stream = tts ?? (tail ? ensureTts() : null);
-      if (tail && stream) {
+      if (tail) {
+        // A trailing phrase remains. Flush any held phrase (continue:true), then
+        // send the tail as the terminal phrase with continue:false.
+        if (pendingPhrase !== null) {
+          ensureTts().sendPhrase({ text: pendingPhrase, continueContext: true });
+          pendingPhrase = null;
+        }
         this.turnTtsChars += tail.length;
-        stream.sendPhrase({ text: tail, continueContext: phrase.emitted > 1 });
-      }
-      if (stream) {
-        stream.finish();
-      } else {
+        ensureTts().sendPhrase({ text: tail, continueContext: false });
+      } else if (pendingPhrase !== null) {
+        // The held phrase is the LAST speakable unit: send it with
+        // continue:false to close the context cleanly (yields `done` ->
+        // onComplete). This replaces the empty-transcript finish() that the
+        // LIVE Cartesia API rejects.
+        ensureTts().sendPhrase({ text: pendingPhrase, continueContext: false });
+        pendingPhrase = null;
+      } else if (!tts) {
         // No speakable output at all (empty LLM reply): close the turn.
         this.finishTurn(traceId);
       }
+      // If tts exists but nothing above matched (all phrases already terminal),
+      // the context was already closed with continue:false; nothing to do.
     } catch (error) {
       if (this.currentVoiceTurnId !== traceId) return;
       this.send({

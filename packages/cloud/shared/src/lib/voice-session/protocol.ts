@@ -53,11 +53,25 @@ export interface ClientByeFrame {
   t: "bye";
 }
 
+/**
+ * Uplink-complete signal: the client has finished sending audio for the current
+ * utterance (e.g. push-to-talk release, or a client that streams a bounded clip
+ * rather than an open mic). Phase 1 turn detection is driven by Deepgram Flux's
+ * SEMANTIC end-of-turn (trailing silence), so this is an advisory hint the
+ * server MAY use to finalize sooner; it is never required for a turn to commit.
+ * Declared as a first-class frame so a well-behaved client is not met with a
+ * spurious `control_unknown_type` error.
+ */
+export interface ClientEndAudioFrame {
+  t: "end_audio";
+}
+
 export type ClientControlFrame =
   | ClientHelloFrame
   | ClientAudioMetaFrame
   | ClientBargeInFrame
-  | ClientByeFrame;
+  | ClientByeFrame
+  | ClientEndAudioFrame;
 
 // --- server -> client control / state frames ------------------------------
 
@@ -123,6 +137,8 @@ export function parseClientControlFrame(
       return { ok: true, value: { t: "barge_in" } };
     case "bye":
       return { ok: true, value: { t: "bye" } };
+    case "end_audio":
+      return { ok: true, value: { t: "end_audio" } };
     default:
       return fail("control_unknown_type", `unsupported control frame type: ${parsed.t}`);
   }

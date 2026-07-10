@@ -94,6 +94,16 @@ describe("protocol framing", () => {
     if (!r.ok) expect(r.code).toBe("control_unknown_type");
   });
 
+  test("accepts the end_audio uplink-complete frame (not control_unknown_type)", () => {
+    // Regression: a bounded-clip client signals uplink-finished with `end_audio`
+    // after its audio. The live evidence run showed the real server surfaced
+    // `control_unknown_type` for this (fatal to the turn once the client treated
+    // the error as terminal). `end_audio` is now a first-class advisory frame.
+    const r = parseClientControlFrame(JSON.stringify({ t: "end_audio" }));
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.t).toBe("end_audio");
+  });
+
   test("validateAudioFrame enforces the size ceiling and non-empty", () => {
     expect(validateAudioFrame(2560).ok).toBe(true);
     expect(validateAudioFrame(0).ok).toBe(false);

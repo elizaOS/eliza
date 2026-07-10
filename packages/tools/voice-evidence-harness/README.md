@@ -46,10 +46,27 @@ bun run src/cli.ts --scenario=baseline
 bun run src/cli.ts --scenario=bargein
 bun run src/cli.ts --scenario=error-auth
 bun run src/cli.ts --scenario=baseline --fixture=fixtures/turn_human.wav
+
+# --target selects what is under test (default: reference):
+bun run src/cli.ts --scenario=all --target=reference   # harness §7 reference server
+bun run src/cli.ts --scenario=all --target=real        # REAL Phase-1 voice-session server
 ```
 
+**`--target=real`** boots the ACTUAL production Phase-1 server code (mint
+consent+JWT precondition chain → `attachVoiceWsHandler` → `VoiceSession` → merged
+Deepgram/Cartesia adapters) on a node WS transport shim, with
+`VOICE_REALTIME_WS_ENABLED=true`, and drives the same 3 scenarios against LIVE
+providers. The shim is transport-only (WebSocketPair→node `ws`, Workers outbound
+upgrade→header-preserving `ws` factory, Redis→MOCK_REDIS, JWKS→test keypair, mint
+auth/tenancy→fixed authed user); every jwt/consent/registry/metering/reframer/
+provider-socket path runs unmodified. See
+`packages/cloud/api/v1/voice/session/lib/harness-real-server.ts` for the exact
+REAL-vs-SHIMMED boundary, and `eliza-fleet/SLICE-EVIDENCE-REPORT.md` for the live
+run + the server bugs it surfaced and fixed. Real-target evidence lands in
+`.../voice-e2e/<timestamp>-real-server/`.
+
 Evidence lands in
-`~/.moltbot/projects/eliza-fleet/evidence/voice-e2e/<timestamp>/<scenario>/`.
+`~/.moltbot/projects/eliza-fleet/evidence/voice-e2e/<timestamp>[-real-server]/<scenario>/`.
 The harness **exits non-zero** if any required stage/artifact is missing — there
 is NO path that turns absent data into a healthy zero (the 16011 closure cited
 exactly that).

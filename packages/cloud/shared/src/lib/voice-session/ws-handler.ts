@@ -54,6 +54,13 @@ export interface VoiceSessionLike {
   bargeIn(): void;
   bye(): void;
   sever(reason: "client_disconnect" | "error"): void;
+  /**
+   * Optional advisory: the client signalled it has finished sending audio for
+   * the current utterance (`end_audio`). Phase-1 turn detection is Flux
+   * semantic EOT, so a session may treat this as a no-op; declared optional so
+   * the frame is accepted without forcing every implementation to react.
+   */
+  endUplink?(): void;
 }
 
 export interface ServerWebSocketLike {
@@ -237,6 +244,13 @@ export function attachVoiceWsHandler(
         return;
       case "barge_in":
         session.bargeIn();
+        return;
+      case "end_audio":
+        // Uplink-complete advisory. Phase-1 finalization is Flux semantic EOT,
+        // so this is a graceful no-op unless the session opts to react. It must
+        // NOT surface a client-facing error (a well-behaved bounded-clip client
+        // sends this after its audio).
+        session.endUplink?.();
         return;
       case "bye":
         session.bye();

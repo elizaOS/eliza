@@ -311,6 +311,47 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("terminal Cartesia phrase carries continue:false and no empty-transcript finish (live-provider fix)", async () => {
+    // Regression from the LIVE-provider evidence run: the session used to send
+    // every phrase with continue:true then an empty-transcript finish(), which
+    // the real Cartesia API rejects with "No valid transcripts passed" (400) ->
+    // tts_error, zero audio. The fix holds one phrase back so the terminal
+    // speakable phrase closes the context with continue:false, and NEVER sends
+    // an empty transcript.
+    const client = new FakeClientSocket();
+    await connectSession({ client, fetchImpl: makeSseFetch(["Hello there.", " The weather is sunny."]) });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "whats the weather");
+    await flush();
+    await flush();
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent.map((s) => JSON.parse(s) as { transcript?: string; continue?: boolean });
+    // No generation request carries an empty transcript.
+    expect(requests.every((r) => typeof r.transcript !== "string" || r.transcript.length > 0)).toBe(true);
+    // Exactly the terminal speakable phrase closes the context (continue:false);
+    // all earlier phrases keep it open (continue:true).
+    const withText = requests.filter((r) => typeof r.transcript === "string" && r.transcript.length > 0);
+    expect(withText.length).toBeGreaterThan(0);
+    expect(withText.at(-1)!.continue).toBe(false);
+    for (const r of withText.slice(0, -1)) expect(r.continue).toBe(true);
+  });
+
+  test("end_audio is a graceful no-op (not control_unknown_type) after ready", async () => {
+    // Regression: a bounded-clip client sends `end_audio` after its audio. The
+    // live run showed the real server errored with `control_unknown_type`, and
+    // the client treated that terminal error as a reason to close before TTS.
+    // `end_audio` post-hello must NOT surface an error and must NOT close.
+    const client = new FakeClientSocket();
+    await connectSession({ client, fetchImpl: makeSseFetch(["ok."]) });
+    const beforeErrors = client.controlFrames.filter((f) => f.t === "error").length;
+    client.clientSend(JSON.stringify({ t: "end_audio" }));
+    await flush();
+    const afterErrors = client.controlFrames.filter((f) => f.t === "error").length;
+    expect(afterErrors).toBe(beforeErrors);
+    expect(client.closedWith).toBeNull();
+  });
+
   test("empty-transcript final closes the turn (usage + clears turn id)", async () => {
     const client = new FakeClientSocket();
     await connectSession({ client, fetchImpl: makeSseFetch(["unused."]) });

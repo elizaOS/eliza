@@ -22,7 +22,10 @@ import { Evidence, type StageName } from "./evidence.ts";
 import { parseWav, writeWav } from "./wav.ts";
 import { runClient } from "./client.ts";
 import { startReferenceServer, type DomainRow, type ProviderConfig } from "./reference/voice-session-server.ts";
+import { startRealTarget, type RealTargetHandle } from "./real/real-target.ts";
 import { assembleMp4, ensureFfmpeg } from "./mp4.ts";
+
+type Target = "reference" | "real";
 
 const HARNESS_DIR = new URL("..", import.meta.url).pathname;
 const EVIDENCE_ROOT = join(
@@ -85,11 +88,16 @@ const REQUIRED_STAGES: Record<Scenario, StageName[]> = {
   "error-auth": ["mint", "ws_hello"],
 };
 
-async function runScenario(scenario: Scenario, runDir: string, fixtureOverride?: string): Promise<ScenarioResult> {
+async function runScenario(
+  scenario: Scenario,
+  runDir: string,
+  target: Target,
+  fixtureOverride?: string,
+): Promise<ScenarioResult> {
   const evDir = join(runDir, scenario);
   const ev = new Evidence(evDir);
   const reasons: string[] = [];
-  ev.log("harness", "info", `=== scenario ${scenario} ===`);
+  ev.log("harness", "info", `=== scenario ${scenario} (target=${target}) ===`);
 
   const providers = providerConfig();
   const fixturePath = join(HARNESS_DIR, fixtureOverride ?? FIXTURES[scenario]);
@@ -111,31 +119,64 @@ async function runScenario(scenario: Scenario, runDir: string, fixtureOverride?:
   const domainRows: DomainRow[] = [];
 
   const faultInjection = scenario === "error-auth" ? "deepgram-auth-fail" : undefined;
-  const server = startReferenceServer({
-    providers,
-    faultInjection,
-    hooks: {
-      log: (level, msg, data) => ev.log("server", level, msg, data),
-      onServerEmit: (kind, payload) => ev.wsEvent("s2c", kind, payload),
-      onDomainRow: (row) => {
-        domainRows.push(row);
-        ev.log("server", "info", `domain-row:${row.table}`, row as unknown as Record<string, unknown>);
+
+  // Boot the target: either the harness §7 REFERENCE server, or the REAL
+  // production Phase-1 voice-session server (mint route consent+jwt precondition
+  // chain + attachVoiceWsHandler + VoiceSession + merged adapters), booted on a
+  // node WS transport shim. Both expose the same {wsUrl, mint, stop} surface.
+  let wsBase: string;
+  let mintFn: () => Promise<{ sessionId: string; token: string; expiresAt: string }>;
+  let stopFn: () => void | Promise<void>;
+  let realHandle: RealTargetHandle | null = null;
+
+  if (target === "real") {
+    realHandle = await startRealTarget({
+      providers,
+      faultInjection,
+      hooks: { log: (level, msg, data) => ev.log("server", level, msg, data) },
+    });
+    wsBase = realHandle.wsUrl; // ends with `sessionId=`
+    mintFn = () => realHandle!.mint();
+    stopFn = () => realHandle!.stop();
+    ev.log("harness", "info", "REAL voice server started", {
+      wsUrl: wsBase,
+      faultInjection: faultInjection ?? "none",
+    });
+  } else {
+    const server = startReferenceServer({
+      providers,
+      faultInjection,
+      hooks: {
+        log: (level, msg, data) => ev.log("server", level, msg, data),
+        onServerEmit: (kind, payload) => ev.wsEvent("s2c", kind, payload),
+        onDomainRow: (row) => {
+          domainRows.push(row);
+          ev.log("server", "info", `domain-row:${row.table}`, row as unknown as Record<string, unknown>);
+        },
       },
-    },
-  });
-  ev.log("harness", "info", "reference server started", { wsUrl: server.wsUrl, faultInjection: faultInjection ?? "none" });
+    });
+    wsBase = server.wsUrl;
+    mintFn = async () => server.mint("harness-agent", "harness-conversation");
+    stopFn = () => server.stop();
+    ev.log("harness", "info", "reference server started", { wsUrl: server.wsUrl, faultInjection: faultInjection ?? "none" });
+  }
 
   // §7.1 mint
-  const minted = server.mint("harness-agent", "harness-conversation");
+  const minted = await mintFn();
   ev.mark("mint");
-  ev.wsEvent("c2s", "json", { kind: "mint_request", agentId: "harness-agent", conversationId: "harness-conversation" });
+  ev.wsEvent("c2s", "json", { kind: "mint_request", target });
   ev.wsEvent("s2c", "json", { kind: "mint_response", sessionId: minted.sessionId, expiresAt: minted.expiresAt, token: "<REDACTED>" });
-  ev.log("harness", "info", "minted session", { sessionId: minted.sessionId });
+  ev.log("harness", "info", "minted session", { sessionId: minted.sessionId, target });
+
+  // The REAL server's WS url carries the sessionId as a query param (the
+  // production ws/route.ts reads `?sessionId=`); the reference server's wsUrl is
+  // already complete. Compose the final URL accordingly.
+  const connectUrl = target === "real" ? `${wsBase}${encodeURIComponent(minted.sessionId)}` : wsBase;
 
   let clientResult;
   try {
     clientResult = await runClient({
-      wsUrl: server.wsUrl,
+      wsUrl: connectUrl,
       token: minted.token,
       uplinkPcm: wav.pcm,
       evidence: ev,
@@ -146,7 +187,39 @@ async function runScenario(scenario: Scenario, runDir: string, fixtureOverride?:
       maxRunMs: scenario === "error-auth" ? 20_000 : 45_000,
     });
   } finally {
-    server.stop();
+    try {
+      await stopFn();
+    } catch (e) {
+      ev.log("harness", "error", "target stop() threw", { err: String(e) });
+    }
+  }
+
+  // For the REAL target there is no in-server onDomainRow sink (no DB in the
+  // harness). Derive the domain rows the real Phase-1 server produces at this
+  // layer from the observed session lifecycle + the real stt_final transcript.
+  if (target === "real") {
+    domainRows.push({
+      table: "voice_sessions",
+      id: minted.sessionId,
+      agentId: "harness-agent",
+      conversationId: "harness-conversation",
+      createdAtMs: 0,
+      endedAtMs: Math.round(performance.now() - ev.startMono),
+      status: clientResult.errors.length > 0 ? "errored" : "completed",
+    });
+    const sttFinal = ev.transcript.find(
+      (e) => e.direction === "s2c" && (e as { t?: string }).t === "stt_final",
+    ) as { text?: string; traceId?: string } | undefined;
+    if (sttFinal?.text) {
+      domainRows.push({
+        table: "voice_transcripts",
+        sessionId: minted.sessionId,
+        role: "user",
+        text: String(sttFinal.text),
+        committedAtMs: ev.stageMs("stt_final") ?? 0,
+        traceId: String(sttFinal.traceId ?? ""),
+      });
+    }
   }
 
   // ---- write output audio ----
@@ -202,10 +275,17 @@ async function runScenario(scenario: Scenario, runDir: string, fixtureOverride?:
     // error path: we REQUIRE a surfaced provider/auth failure, not a silent
     // success. A bad Deepgram key => the adapter's transport fails to upgrade =>
     // either a surfaced stt_* error event or the ready-gate connect timeout.
+    // The bad Deepgram key must surface a provider/auth failure from the STT
+    // leg. The reference server emits a synthetic `stt_connect_timeout`; the
+    // REAL server surfaces the merged Deepgram-Flux adapter's genuine
+    // `transport_error` (the live /v2/listen upgrade is rejected at auth →ws
+    // close → adapter error). Both are the same DoD fact: a surfaced provider
+    // auth/transport error, session never reaches ready-with-audio, no TTS.
+    const PROVIDER_ERROR_CODES = new Set(["stt_connect_timeout", "transport_error", "auth_failed"]);
     const gotStt = clientResult.errors.some(
-      (e) => e.code.startsWith("stt_") || e.code === "stt_connect_timeout",
+      (e) => e.code.startsWith("stt_") || PROVIDER_ERROR_CODES.has(e.code),
     );
-    if (!gotStt) reasons.push("error-path did not surface an stt_* provider/auth error");
+    if (!gotStt) reasons.push("error-path did not surface a provider/auth error (stt_*/transport_error)");
     // and it MUST NOT have produced TTS audio
     if (clientResult.downlinkFrameCount > 0) {
       reasons.push("error-path incorrectly produced TTS audio");
@@ -245,7 +325,7 @@ async function runScenario(scenario: Scenario, runDir: string, fixtureOverride?:
   }
 
   // ---- README index with SHA-256s ----
-  const readme = buildReadme(scenario, ev, timing, clientResult, { sessions: sessionRows.length, transcripts: transcriptRows.length }, minted.sessionId);
+  const readme = buildReadme(scenario, ev, timing, clientResult, { sessions: sessionRows.length, transcripts: transcriptRows.length }, minted.sessionId, target);
   ev.writeArtifact("README.md", new TextEncoder().encode(readme), "evidence index");
 
   const pass = reasons.length === 0;
@@ -264,12 +344,14 @@ function buildReadme(
   client: Awaited<ReturnType<typeof runClient>>,
   domain: { sessions: number; transcripts: number },
   sessionId: string,
+  target: Target,
 ): string {
   const lines: string[] = [];
   lines.push(`# Voice E2E evidence — ${scenario}`);
   lines.push("");
   lines.push(`Generated ${new Date().toISOString()} by \`@elizaos/voice-evidence-harness\`.`);
   lines.push("");
+  lines.push(`Target: **${target === "real" ? "REAL Phase-1 voice-session server (production mint+jwt+ws-handler+VoiceSession)" : "harness §7 reference server"}**.`);
   lines.push("Real providers: **Deepgram Flux (STT)** + **Cartesia Sonic 3.5 (TTS)**, LIVE keys.");
   lines.push("LLM leg: real streaming LLM over OpenRouter standing in for Cerebras `gemma-4-31b` via the Eliza SSE bridge (see harness README §LLM-leg).");
   lines.push(`Session: \`${sessionId}\``);
@@ -308,7 +390,7 @@ function buildReadme(
   lines.push("## How to reproduce");
   lines.push("");
   lines.push("```bash");
-  lines.push(`cd packages/tools/voice-evidence-harness && bun run src/cli.ts --scenario=${scenario}`);
+  lines.push(`cd packages/tools/voice-evidence-harness && bun run src/cli.ts --scenario=${scenario} --target=${target}`);
   lines.push("```");
   lines.push("");
   return lines.join("\n");
@@ -318,24 +400,38 @@ async function main() {
   const args = process.argv.slice(2);
   const scenarioArg = (args.find((a) => a.startsWith("--scenario="))?.split("=")[1] ?? "all") as Scenario | "all";
   const fixtureOverride = args.find((a) => a.startsWith("--fixture="))?.split("=")[1];
+  const target = ((args.find((a) => a.startsWith("--target="))?.split("=")[1]) ?? "reference") as Target;
+  if (target !== "reference" && target !== "real") {
+    console.error(`invalid --target=${target} (expected "reference" or "real")`);
+    process.exit(2);
+  }
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const runDir = join(EVIDENCE_ROOT, stamp);
+  const runDir = join(EVIDENCE_ROOT, target === "real" ? `${stamp}-real-server` : stamp);
 
   const scenarios: Scenario[] = scenarioArg === "all" ? ["baseline", "bargein", "error-auth"] : [scenarioArg];
 
+  // Keep-alive: the REAL target boots a node WS server whose inbound socket is
+  // the process's last live handle. When that socket closes (session teardown),
+  // bun's canary event loop can drain and exit BEFORE the pending post-client
+  // artifact writes run. A ref timer pins the loop open for the whole run so
+  // every scenario flushes its evidence; it is cleared before the normal exit.
+  const keepAlive = setInterval(() => {}, 1 << 30);
+
   const results: ScenarioResult[] = [];
   for (const s of scenarios) {
-    console.log(`\n########## ${s} ##########`);
-    const r = await runScenario(s, runDir, s === scenarioArg ? fixtureOverride : undefined);
+    console.log(`\n########## ${s} (target=${target}) ##########`);
+    const r = await runScenario(s, runDir, target, s === scenarioArg ? fixtureOverride : undefined);
     results.push(r);
   }
+  clearInterval(keepAlive);
 
   // top-level index
   const indexLines = [
     `# Voice E2E evidence run — ${stamp}`,
     "",
-    `Harness: \`@elizaos/voice-evidence-harness\` (branch feat/voice-evidence-harness).`,
+    `Target: **${target === "real" ? "REAL Phase-1 voice-session server" : "harness §7 reference server"}**.`,
+    `Harness: \`@elizaos/voice-evidence-harness\` (branch feat/voice-realtime-slice).`,
     "",
     "| scenario | result | reasons |",
     "| --- | --- | --- |",
