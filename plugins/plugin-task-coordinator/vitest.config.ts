@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const toVitePath = (value: string): string => value.replaceAll("\\", "/");
+const coreSrc = resolve(rootDir, "../../packages/core/src");
 const pluginBrowserSrc = resolve(rootDir, "../plugin-browser/src");
 const pluginCommandsSrc = resolve(rootDir, "../plugin-commands/src");
 const pluginTrainingSrc = resolve(rootDir, "../plugin-training/src");
@@ -17,6 +18,16 @@ const importConversationsSrc = resolve(
 export default defineConfig({
   resolve: {
     alias: [
+      // Changed-test coverage runs before workspace builds, so command imports
+      // must resolve core from source rather than an absent dist entrypoint.
+      {
+        find: /^@elizaos\/core$/,
+        replacement: toVitePath(resolve(coreSrc, "index.ts")),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: `${toVitePath(coreSrc)}/$1`,
+      },
       // `@elizaos/ui` is aliased to source (below). Its module graph imports many
       // `@elizaos/shared/*` subpaths (voice-eot, transcripts, contracts/*, …) that
       // only ship from `dist/`, which is frequently stale or unbuilt when this
