@@ -333,26 +333,6 @@
       "import": "./dist/transcripts.js",
       "default": "./dist/transcripts.js"
     },
-    "./audio-redaction": {
-      "types": "./dist/audio-redaction.d.ts",
-      "eliza-source": {
-        "types": "./src/audio-redaction.ts",
-        "import": "./src/audio-redaction.ts",
-        "default": "./src/audio-redaction.ts"
-      },
-      "import": "./dist/audio-redaction.js",
-      "default": "./dist/audio-redaction.js"
-    },
-    "./audio-redaction-verify": {
-      "types": "./dist/audio-redaction-verify.d.ts",
-      "eliza-source": {
-        "types": "./src/audio-redaction-verify.ts",
-        "import": "./src/audio-redaction-verify.ts",
-        "default": "./src/audio-redaction-verify.ts"
-      },
-      "import": "./dist/audio-redaction-verify.js",
-      "default": "./dist/audio-redaction-verify.js"
-    },
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
