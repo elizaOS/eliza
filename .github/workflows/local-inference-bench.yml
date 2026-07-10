@@ -167,12 +167,15 @@ jobs:
         # Fail fast here with an operator-actionable message instead.
         run: node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-2b
 
-      - name: Install fused-runtime build dependencies
+      - name: Verify fused-runtime build dependencies
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential cmake ninja-build libespeak-ng-dev espeak-ng-data
+          for tool in cmake ninja c++; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::Model-capable runner is missing required build tool: $tool"
+              exit 1
+            fi
+          done
 
       - name: Install dependencies
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
