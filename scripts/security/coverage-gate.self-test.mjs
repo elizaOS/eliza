@@ -84,6 +84,18 @@ try {
     assert.equal(result.status, 1, result.stdout);
     assert.match(result.stdout, /changed source missing from LCOV/);
   });
+
+  assertGate("fails when any changed source is absent from LCOV", () => {
+    const covered = "packages/demo/src/covered.ts";
+    const missing = "packages/demo/src/missing.ts";
+    const lcov = writeLcov(dir, covered);
+    const result = runGate({ changed: `${covered}\n${missing}`, lcov });
+
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stdout, /100\.00% packages\/demo\/src\/covered\.ts/);
+    assert.match(result.stdout, /MISSING: packages\/demo\/src\/missing\.ts/);
+    assert.match(result.stdout, /changed source missing from LCOV/);
+  });
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
