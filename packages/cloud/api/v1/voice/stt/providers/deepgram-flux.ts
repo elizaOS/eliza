@@ -19,6 +19,7 @@ const DEFAULT_EAGER_EOT_THRESHOLD = 0.35;
 const DEFAULT_EOT_THRESHOLD = 0.8;
 const DEFAULT_EOT_TIMEOUT_MS = 5_000;
 const DEFAULT_CLOSE_CODE = 1000;
+const DEFAULT_MIP_OPT_OUT = true;
 
 export type DeepgramFluxMetricName =
   | "deepgram_flux_connected"
@@ -44,6 +45,7 @@ export type DeepgramFluxConfigInput = {
   eagerEotThreshold?: number | string;
   eotThreshold?: number | string;
   eotTimeoutMs?: number | string;
+  mipOptOut?: boolean | string;
 };
 
 export type DeepgramFluxConfig = {
@@ -53,6 +55,7 @@ export type DeepgramFluxConfig = {
   eagerEotThreshold: number;
   eotThreshold: number;
   eotTimeoutMs: number;
+  mipOptOut: boolean;
 };
 
 export type DeepgramFluxTransportRequest = {
@@ -223,6 +226,11 @@ export function resolveDeepgramFluxConfig(
       500,
       10_000,
     ),
+    mipOptOut: resolveBoolean(
+      "mip_opt_out",
+      input.mipOptOut,
+      DEFAULT_MIP_OPT_OUT,
+    ),
   };
 }
 
@@ -235,6 +243,7 @@ export function buildDeepgramFluxListenUrl(config: DeepgramFluxConfig): string {
   url.searchParams.set("eager_eot_threshold", String(config.eagerEotThreshold));
   url.searchParams.set("eot_threshold", String(config.eotThreshold));
   url.searchParams.set("eot_timeout_ms", String(config.eotTimeoutMs));
+  url.searchParams.set("mip_opt_out", String(config.mipOptOut));
   return url.toString();
 }
 
@@ -538,6 +547,20 @@ function resolveTunable(
     );
   }
   return resolved;
+}
+
+function resolveBoolean(
+  name: string,
+  configured: boolean | string | undefined,
+  defaultValue: boolean,
+): boolean {
+  if (configured === undefined) return defaultValue;
+  if (typeof configured === "boolean") return configured;
+  const normalized = configured.trim().toLowerCase();
+  if (normalized === "") return defaultValue;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  throw new DeepgramFluxConfigError(`${name} must be a boolean`);
 }
 
 type ParsedDeepgramFluxMessage =

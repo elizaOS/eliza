@@ -27,6 +27,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * - Credit reservation before processing ensures payment
  */
 
+import {
+  createDurableVoiceUsageStore,
+  InMemoryVoiceUsageStore,
+  type VoiceUsageIdentity,
+  type VoiceUsageStore,
+} from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
 import { fileTypeFromBuffer } from "file-type";
 import { parseBuffer } from "music-metadata";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -44,6 +50,13 @@ import { resolveWhisperSttModel } from "./whisper-model";
 import { parseWhisperTimestamps } from "./whisper-timestamps";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+const DEFAULT_ORG_DAILY_MINUTES = 1_440;
+const DEFAULT_USER_DAILY_MINUTES = 720;
+const voiceUsageStore = new InMemoryVoiceUsageStore();
+
+export function __resetVoiceUsageMeterForTests(): void {
+  voiceUsageStore.clear();
+}
 
 const SUPPORTED_MIME_TYPES = [
   "audio/mp3",
@@ -91,6 +104,12 @@ function estimateAudioDurationMinutes(
   return Math.max(0.1, estimatedMinutes);
 }
 
+function positiveEnvNumber(value: unknown, fallback: number): number {
+  if (typeof value !== "string" || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 /**
  * POST /api/v1/voice/stt
  * Converts speech to text using the voice transcription service.
@@ -102,6 +121,14 @@ function estimateAudioDurationMinutes(
  */
 async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
+  let meteringCompleted = false;
+  let meteringReservation:
+    | {
+        store: VoiceUsageStore;
+        identity: VoiceUsageIdentity;
+        minutes: number;
+      }
+    | undefined;
 
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
@@ -125,12 +152,17 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       );
     }
 
-    if (audioFile.size > MAX_FILE_SIZE) {
+    const maxFileSize = positiveEnvNumber(
+      env.VOICE_STT_MAX_REQUEST_BYTES,
+      MAX_FILE_SIZE,
+    );
+    if (audioFile.size > maxFileSize) {
       return Response.json(
         {
-          error: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+          error: "Audio request exceeds the configured size limit",
+          type: "request_too_large",
         },
-        { status: 400 },
+        { status: 413 },
       );
     }
 
@@ -148,9 +180,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const fileTypeResult = await fileTypeFromBuffer(buffer);
 
     if (!fileTypeResult) {
-      logger.warn(
-        `[Voice STT API] Unable to detect file type for ${audioFile.name} - rejecting`,
-      );
+      logger.warn("[Voice STT API] Unable to detect audio file type", {
+        audioSizeBytes: audioFile.size,
+      });
       return Response.json(
         {
           error:
@@ -161,9 +193,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     }
 
     if (!ALLOWED_AUDIO_SIGNATURES.has(fileTypeResult.mime)) {
-      logger.warn(
-        `[Voice STT API] File signature mismatch for ${audioFile.name}: claimed=${baseMimeType}, actual=${fileTypeResult.mime}`,
-      );
+      logger.warn("[Voice STT API] Audio file signature mismatch", {
+        actualMimeType: fileTypeResult.mime,
+        claimedMimeType: baseMimeType,
+      });
       return Response.json(
         {
           error: `File content does not match the declared format. Detected: ${fileTypeResult.mime}, Expected audio format.`,
@@ -180,9 +213,83 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       finalMimeType = "audio/webm";
     }
 
-    logger.info(
-      `[Voice STT API] Processing for user ${user.id}: ${audioFile.name} (${audioFile.size} bytes, verified: ${fileTypeResult.mime}, final: ${finalMimeType})`,
-    );
+    const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
+    const meteringEnabled = env.VOICE_STT_USAGE_METERING_ENABLED === "true";
+    let durationSeconds = 1;
+    let estimatedDurationMinutes = 1 / 60;
+    if (meteringEnabled || !whisperBaseUrl) {
+      let parsedDurationSeconds: number | undefined;
+      try {
+        const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
+        if (Number.isFinite(metadata.format?.duration)) {
+          parsedDurationSeconds = metadata.format.duration;
+        }
+      } catch {
+        return Response.json(
+          { error: "Unable to parse audio metadata", type: "invalid_audio" },
+          { status: 400 },
+        );
+      }
+      durationSeconds = Math.max(
+        parsedDurationSeconds ??
+          estimateAudioDurationMinutes(audioFile.size, finalMimeType) * 60,
+        1,
+      );
+      estimatedDurationMinutes = durationSeconds / 60;
+    }
+    if (meteringEnabled) {
+      const durableStore = createDurableVoiceUsageStore(env);
+      if (env.ENVIRONMENT === "production" && !durableStore) {
+        return Response.json(
+          {
+            error: "Speech-to-text usage metering is unavailable",
+            type: "service_unavailable",
+          },
+          { status: 503 },
+        );
+      }
+      const store = durableStore ?? voiceUsageStore;
+      const identity = {
+        organizationId: user.organization_id,
+        userId: user.id,
+      };
+      const meteringDecision = await store.checkAndRecord(
+        identity,
+        estimatedDurationMinutes,
+        {
+          organizationDailyMinutes: positiveEnvNumber(
+            env.VOICE_STT_ORG_DAILY_MINUTES,
+            DEFAULT_ORG_DAILY_MINUTES,
+          ),
+          userDailyMinutes: positiveEnvNumber(
+            env.VOICE_STT_USER_DAILY_MINUTES,
+            DEFAULT_USER_DAILY_MINUTES,
+          ),
+        },
+      );
+      if (!meteringDecision.allowed) {
+        return Response.json(
+          {
+            error: "Daily speech-to-text quota exhausted",
+            type: "quota_exhausted",
+            scope: meteringDecision.scope,
+          },
+          { status: 429 },
+        );
+      }
+      meteringReservation = {
+        store,
+        identity,
+        minutes: estimatedDurationMinutes,
+      };
+    }
+
+    logger.info("[Voice STT API] Processing verified audio", {
+      audioSizeBytes: audioFile.size,
+      finalMimeType,
+      userId: user.id,
+      verifiedMimeType: fileTypeResult.mime,
+    });
 
     // -------------------------------------------------------------------------
     // Free default STT: self-hosted Whisper (OpenAI-compatible
@@ -190,7 +297,6 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // default — no credit reservation, no billing. ElevenLabs STT is the path
     // below. Inert when WHISPER_STT_URL is unset.
     // -------------------------------------------------------------------------
-    const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
     if (whisperBaseUrl) {
       const whisperStart = Date.now();
       const form = new FormData();
@@ -213,10 +319,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         { method: "POST", body: form },
       );
       if (!whisperResponse.ok) {
-        const detail = await whisperResponse.text().catch(() => "");
-        logger.error(
-          `[Voice STT API] Whisper failed (${whisperResponse.status}): ${detail.slice(0, 200)}`,
-        );
+        await whisperResponse.body?.cancel().catch(() => undefined);
+        logger.error("[Voice STT API] Whisper request failed", {
+          status: whisperResponse.status,
+        });
         return Response.json(
           { error: "Speech-to-text failed" },
           { status: 502 },
@@ -228,10 +334,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       let whisperPayload: unknown;
       try {
         whisperPayload = await whisperResponse.json();
-      } catch (parseError) {
-        logger.error(
-          `[Voice STT API] Whisper returned unparseable JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-        );
+      } catch {
+        logger.error("[Voice STT API] Whisper returned unparseable JSON");
         return Response.json(
           { error: "Speech-to-text failed" },
           { status: 502 },
@@ -276,6 +380,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         transcriptLength: transcript.length,
         wordCount: words?.length,
       });
+      meteringCompleted = true;
       return Response.json({
         transcript,
         duration_ms: whisperDuration,
@@ -284,15 +389,6 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       });
     }
 
-    const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
-    const parsedDurationSeconds = metadata.format?.duration;
-    const durationSeconds = Number.isFinite(parsedDurationSeconds)
-      ? Math.max(parsedDurationSeconds ?? 0, 1)
-      : Math.max(
-          estimateAudioDurationMinutes(audioFile.size, finalMimeType) * 60,
-          1,
-        );
-    const estimatedDurationMinutes = durationSeconds / 60;
     const sttCost = await calculateSTTCostFromCatalog({
       model: "elevenlabs/scribe_v1",
       durationSeconds,
@@ -346,9 +442,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       reservation,
     );
 
-    logger.info(
-      `[Voice STT API] Completed in ${duration}ms: "${transcript.substring(0, 100)}..."`,
-    );
+    logger.info("[Voice STT API] Completed", {
+      durationMs: duration,
+      transcriptLength: transcript.length,
+    });
 
     (async () => {
       try {
@@ -367,11 +464,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           duration_ms: duration,
           is_successful: true,
           metadata: {
-            audioFileName: audioFile.name,
             audioSizeBytes: audioFile.size,
             estimatedDurationMinutes,
             durationSeconds,
-            languageCode,
             transcriptLength: transcript.length,
             baseTotalCost: billing.baseTotalCost,
             billingSource: "elevenlabs",
@@ -379,17 +474,20 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         });
       } catch (error) {
         logger.error("[Voice STT API] Failed to create usage record", {
-          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : "unknown",
         });
       }
     })();
 
+    meteringCompleted = true;
     return Response.json({
       transcript,
       duration_ms: duration,
     });
   } catch (error) {
-    logger.error("[Voice STT API] Error:", error);
+    logger.error("[Voice STT API] Request failed", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
 
     if (reservation) {
       await reservation.reconcile(0);
@@ -459,6 +557,19 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       { error: "Failed to transcribe audio. Please try again." },
       { status: 500 },
     );
+  } finally {
+    if (meteringReservation && !meteringCompleted) {
+      try {
+        await meteringReservation.store.release(
+          meteringReservation.identity,
+          meteringReservation.minutes,
+        );
+      } catch (error) {
+        logger.error("[Voice STT API] Failed to release usage reservation", {
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+      }
+    }
   }
 }
 

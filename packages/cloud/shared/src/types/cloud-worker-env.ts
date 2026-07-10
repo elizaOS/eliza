@@ -80,6 +80,14 @@ export interface Bindings {
    * different hosted model for a deployment.
    */
   WHISPER_STT_MODEL?: string;
+  /** Enables durable daily org/user STT minute caps. Default false. */
+  VOICE_STT_USAGE_METERING_ENABLED?: string;
+  /** Maximum server-observed multipart audio bytes accepted by batch STT. */
+  VOICE_STT_MAX_REQUEST_BYTES?: string;
+  /** Daily server-metered STT audio-minute ceiling shared by an organization. */
+  VOICE_STT_ORG_DAILY_MINUTES?: string;
+  /** Daily server-metered STT audio-minute ceiling for one user. */
+  VOICE_STT_USER_DAILY_MINUTES?: string;
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;

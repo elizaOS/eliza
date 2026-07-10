@@ -17,6 +17,12 @@ const requireAuthOrApiKeyWithOrg = mock<() => Promise<unknown>>();
 mock.module("@/lib/auth", () => ({
   requireAuthOrApiKeyWithOrg,
 }));
+const logError = mock(() => {});
+const logInfo = mock(() => {});
+const logWarn = mock(() => {});
+mock.module("@/lib/utils/logger", () => ({
+  logger: { error: logError, info: logInfo, warn: logWarn },
+}));
 // Billing and provider modules are mocked so importing the route does not
 // initialize DB-backed services in a unit-test process; their behavior is
 // mutable per test so both lanes (free whisper, billed ElevenLabs) and the
@@ -54,7 +60,8 @@ mock.module("@/lib/services/usage", () => ({
   usageService: { create: mock(async () => ({})) },
 }));
 
-const sttRoute = (await import("./route")).default;
+const sttRouteModule = await import("./route");
+const sttRoute = sttRouteModule.default;
 const app = new Hono().route("/api/v1/voice/stt", sttRoute);
 
 /** A real RIFF/WAVE mono PCM16 file so the route's magic-number check passes. */
@@ -213,6 +220,10 @@ const LIVE_SHAPE = {
 };
 
 beforeEach(() => {
+  sttRouteModule.__resetVoiceUsageMeterForTests();
+  logError.mockClear();
+  logInfo.mockClear();
+  logWarn.mockClear();
   requireAuthOrApiKeyWithOrg.mockReset();
   requireAuthOrApiKeyWithOrg.mockResolvedValue({
     user: { id: "user-1", organization_id: "org-1" },
@@ -225,6 +236,9 @@ beforeEach(() => {
   speechToText.mockReset();
   speechToText.mockResolvedValue("elevenlabs transcript");
   upstreamReply = () => Response.json({ text: "" });
+  captured.fields = {};
+  captured.fileName = null;
+  captured.fileType = null;
 });
 
 describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
@@ -264,9 +278,47 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
       undefined,
       whisperEnv,
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
     expect(await readJson(res)).toEqual({
-      error: "File too large. Maximum size is 25MB",
+      error: "Audio request exceeds the configured size limit",
+      type: "request_too_large",
+    });
+  });
+
+  test("a configured request-size ceiling rejects audio before provider work", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+      VOICE_STT_MAX_REQUEST_BYTES: "100",
+    } as never);
+    expect(res.status).toBe(413);
+    expect(speechToText).not.toHaveBeenCalled();
+  });
+
+  test("server-derived audio duration enforces the per-user daily cap", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+      VOICE_STT_USAGE_METERING_ENABLED: "true",
+      VOICE_STT_USER_DAILY_MINUTES: "0.003",
+    } as never);
+    expect(res.status).toBe(429);
+    expect(await readJson(res)).toEqual({
+      error: "Daily speech-to-text quota exhausted",
+      type: "quota_exhausted",
+      scope: "user",
+    });
+    expect(captured.fileName).toBeNull();
+  });
+
+  test("production metering fails closed without a durable Redis binding", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      ENVIRONMENT: "production",
+      WHISPER_STT_URL: `http://localhost:${upstream.port}`,
+      VOICE_STT_USAGE_METERING_ENABLED: "true",
+    } as never);
+    expect(res.status).toBe(503);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text usage metering is unavailable",
+      type: "service_unavailable",
     });
   });
 
@@ -413,12 +465,17 @@ describe("POST /api/v1/voice/stt — whisper lane (#14806)", () => {
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
   });
 
-  test("an upstream 5xx stays a structured 502", async () => {
-    upstreamReply = () => new Response("boom", { status: 500 });
+  test("an upstream 5xx stays a structured 502 without logging its body", async () => {
+    upstreamReply = () =>
+      new Response("secret transcript and provider token", { status: 500 });
     const res = await app.request(sttRequest(), undefined, whisperEnv);
 
     expect(res.status).toBe(502);
     expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+    expect(JSON.stringify(logError.mock.calls)).not.toContain(
+      "secret transcript",
+    );
+    expect(JSON.stringify(logError.mock.calls)).not.toContain("provider token");
   });
 });
 
@@ -443,6 +500,13 @@ describe("POST /api/v1/voice/stt — billed ElevenLabs lane", () => {
     const call = speechToText.mock.calls[0][0];
     expect(call.audioFile.name).toBe("probe.wav");
     expect(call.languageCode).toBe("fr");
+    const logs = JSON.stringify([
+      ...logError.mock.calls,
+      ...logInfo.mock.calls,
+      ...logWarn.mock.calls,
+    ]);
+    expect(logs).not.toContain("elevenlabs transcript");
+    expect(logs).not.toContain("probe.wav");
   });
 
   test("insufficient credits is a 402 carrying the required amount", async () => {

@@ -630,6 +630,11 @@ export class SocketRedis {
     return asString(v) ?? "PONG";
   }
 
+  async eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown> {
+    const [value] = await this.conn.send([["EVAL", script, keys.length, ...keys, ...args]]);
+    return unwrap(value);
+  }
+
   pipeline(): Pipeline {
     return new Pipeline(this.conn);
   }
