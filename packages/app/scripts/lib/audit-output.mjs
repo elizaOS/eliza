@@ -19,10 +19,13 @@ export function resolveAuditAppOutput({ appDir, repoRoot, configured }) {
     appDir,
     configured?.trim() || "aesthetic-audit-output",
   );
+  const insideRepository = containsPath(repoRoot, outputDir);
+  const insideApp = containsPath(appDir, outputDir);
   if (
     outputDir === path.parse(outputDir).root ||
     containsPath(outputDir, repoRoot) ||
-    containsPath(outputDir, appDir)
+    containsPath(outputDir, appDir) ||
+    (insideRepository && !insideApp)
   ) {
     throw new Error(
       `[ui-smoke] refusing to clean unsafe audit output: ${outputDir}`,

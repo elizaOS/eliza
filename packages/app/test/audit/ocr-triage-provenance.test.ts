@@ -385,6 +385,9 @@ describe("audit runner cleanup", () => {
     expect(() => resolveConfigured(APP_DIR)).toThrow(/unsafe audit output/);
     expect(() => resolveConfigured(repoRoot)).toThrow(/unsafe audit output/);
     expect(() => resolveConfigured("/")).toThrow(/unsafe audit output/);
+    expect(() => resolveConfigured(join(APP_DIR, "..", "ui"))).toThrow(
+      /unsafe audit output/,
+    );
     expect(resolveConfigured(dir)).toBe(dir);
   });
 
@@ -394,7 +397,7 @@ describe("audit runner cleanup", () => {
     writeFileSync(stale, PNG_1x1);
 
     const output = execFileSync(
-      "node",
+      process.execPath,
       [
         join(APP_DIR, "scripts", "run-ui-playwright.mjs"),
         "--config",

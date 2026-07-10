@@ -27,6 +27,7 @@ describe("resolveAuditAppOutput", () => {
       repoRoot,
       path.dirname(appDir),
       appDir,
+      path.join(appDir, "..", "ui"),
     ]) {
       expect(() =>
         resolveAuditAppOutput({ appDir, repoRoot, configured }),
