@@ -191,7 +191,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     );
     const backdrop = screen.getByTestId("chat-first-run-backdrop");
     expect(backdrop.getAttribute("data-first-run-opaque")).toBe("true");
-    expect(backdrop.className).toContain("bg-black/35");
+    expect(backdrop.className).toContain("bg-black/15");
     const surface = screen.getByTestId("chat-sheet-surface");
     expect(surface.style.backgroundColor).toBe("transparent");
     expect(surface.style.backgroundImage).toBe("none");

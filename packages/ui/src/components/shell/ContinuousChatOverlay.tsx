@@ -4823,7 +4823,7 @@ export function ContinuousChatOverlay({
           data-first-run-opaque={
             firstRunBackdrop === "opaque" ? "true" : "false"
           }
-          className="fixed inset-0 bg-black/35"
+          className="fixed inset-0 bg-black/15"
           initial={false}
           animate={{ opacity: firstRunBackdrop === "opaque" ? 1 : 0 }}
           transition={{

@@ -111,6 +111,9 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
       document.querySelectorAll<HTMLElement>("div"),
     ).find((element) => element.classList.contains("backdrop-blur-md"));
     expect(bubble).toBeTruthy();
+    expect(bubble?.classList.contains("border")).toBe(true);
+    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
+    expect(bubble?.classList.contains("rounded-bl-md")).toBe(true);
     expect(bubble?.classList.contains("bg-black/35")).toBe(true);
     expect(screen.queryByTestId("chat-message-action-rail")).toBeNull();
     expect(deleteControl()).toBeNull();

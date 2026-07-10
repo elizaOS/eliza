@@ -928,7 +928,7 @@ export const ChatMessage = memo(function ChatMessage({
       // short greetings from stretching across the full onboarding column;
       // longer copy still wraps at the row's existing 22rem maximum.
       isFirstRun &&
-        "w-fit max-w-full border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
+        "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
