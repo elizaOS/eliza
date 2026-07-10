@@ -33,6 +33,10 @@ const CHARACTER_A = "eeeeeeee-1111-4111-8111-111111111111";
 const SHARED_A = "cccccccc-1111-4111-8111-111111111111";
 const SHARED_A_STOPPED = "cccccccc-3333-4333-8333-333333333333";
 const DEDICATED_A = "cccccccc-4444-4444-8444-444444444444";
+const SHARED_RESUME = "cccccccc-7777-4777-8777-777777777777";
+const STOPPED_TARGET = "cccccccc-8888-4888-8888-888888888888";
+const SLEEPING_TARGET = "cccccccc-9999-4999-8999-999999999999";
+const SHARED_CONCURRENT = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SHARED_B = "cccccccc-2222-4222-8222-222222222222";
 const MISSING = "dddddddd-9999-4999-8999-999999999999";
 
@@ -280,6 +284,52 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     );
   });
 
+  test("stopped and sleeping targets cannot restart below the hosting runway", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { jobs } = await import("@/db/schemas/jobs");
+    await dbWrite.insert(agentSandboxes).values({
+      id: SHARED_RESUME,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      agent_name: "Resume Source",
+      execution_tier: "shared",
+      status: "running",
+      database_status: "none",
+    });
+
+    for (const [targetId, status] of [
+      [STOPPED_TARGET, "stopped"],
+      [SLEEPING_TARGET, "sleeping"],
+    ] as const) {
+      await dbWrite.insert(agentSandboxes).values({
+        id: targetId,
+        organization_id: ORG_A,
+        user_id: USER_A,
+        agent_name: `Resume ${status}`,
+        agent_config: { __agentUpgradedFrom: SHARED_RESUME },
+        execution_tier: "dedicated-always",
+        status,
+        database_status: "none",
+      });
+
+      const res = await upgrade(SHARED_RESUME);
+      expect(res.status).toBe(402);
+      const body = (await res.json()) as { code: string };
+      expect(body.code).toBe("insufficient_credits");
+      const targetJobs = await dbWrite
+        .select()
+        .from(jobs)
+        .where(eq(jobs.agent_id, targetId));
+      expect(targetJobs).toHaveLength(0);
+
+      await dbWrite
+        .delete(agentSandboxes)
+        .where(eq(agentSandboxes.id, targetId));
+    }
+  });
+
   test("funded upgrade mints a dedicated-always target with the identity copied server-side", async () => {
     expect(pgliteReady).toBe(true);
     await setOrgBalance(ORG_A, "10");
@@ -399,6 +449,47 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       .where(eq(jobs.agent_id, target.id));
     expect(jobRows.length).toBe(1);
     expect(body.data.jobId).toBe(jobRows[0]?.id ?? "");
+  });
+
+  test("concurrent upgrades atomically converge on one target and one job", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { jobs } = await import("@/db/schemas/jobs");
+    await dbWrite.insert(agentSandboxes).values({
+      id: SHARED_CONCURRENT,
+      organization_id: ORG_A,
+      user_id: USER_A,
+      agent_name: "Concurrent Source",
+      execution_tier: "shared",
+      status: "running",
+      database_status: "none",
+    });
+
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, () => upgrade(SHARED_CONCURRENT)),
+    );
+    expect(responses.every((response) => response.status === 202)).toBe(true);
+    const bodies = (await Promise.all(
+      responses.map((response) => response.json()),
+    )) as Array<{ data: { dedicatedAgentId: string; jobId: string } }>;
+    const targetIds = new Set(bodies.map((body) => body.data.dedicatedAgentId));
+    const jobIds = new Set(bodies.map((body) => body.data.jobId));
+    expect(targetIds.size).toBe(1);
+    expect(jobIds.size).toBe(1);
+
+    const targets = (await dbWrite.select().from(agentSandboxes)).filter(
+      (agent) =>
+        (agent.agent_config as Record<string, unknown> | null)
+          ?.__agentUpgradedFrom === SHARED_CONCURRENT,
+    );
+    expect(targets).toHaveLength(1);
+    const targetJobs = await dbWrite
+      .select()
+      .from(jobs)
+      .where(eq(jobs.agent_id, targets[0]!.id));
+    expect(targetJobs).toHaveLength(1);
+    expect(targetJobs[0]?.id).toBe([...jobIds][0]);
   });
 
   test("a RUNNING in-flight target reattaches without a job (client goes straight to handoff)", async () => {
