@@ -359,9 +359,9 @@ async function getDistinctFreePort(excludedPorts = new Set()) {
 // Those packages publish an `eliza-source` export condition pointing at `src`;
 // on a fresh CI install (`bun install --ignore-scripts`) they have no `dist`, so
 // under default node conditions the collector resolves a missing
-// `dist/index.js` and the whole lane dies before any spec runs. The tsx import
-// is also required by child Node/Vite processes because source packages retain
-// NodeNext `.js` specifiers while their worktree files are TypeScript.
+// `dist/index.js` and the whole lane dies before any spec runs. Playwright's
+// transform hook owns TypeScript loading; installing another loader here
+// conflicts with its synchronous Node 22 hook.
 env.NODE_OPTIONS = withElizaSourceNodeOptions(env.NODE_OPTIONS);
 
 const runsAppAudit =
