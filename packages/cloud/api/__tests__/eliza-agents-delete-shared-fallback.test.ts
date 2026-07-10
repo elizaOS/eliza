@@ -1,3 +1,12 @@
+/**
+ * Route-level contract for DELETE /api/v1/eliza/agents/:agentId shared-tier
+ * dispatch, with the sandbox service and job queue mocked: a sandboxed shared
+ * agent skips the impossible Worker-side sync teardown and goes straight to
+ * the async agent_delete job (#15802); a sandbox-less shared agent still
+ * attempts the sync delete and falls back to the async job on a
+ * non-terminal failure (#15286). Real-PGlite coverage of the same contract
+ * lives in eliza-agents-delete-async-fallback.test.ts.
+ */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
@@ -96,6 +105,9 @@ const { default: agentRoute } = await import(
 const app = new Hono();
 app.route("/api/v1/eliza/agents/:agentId", agentRoute);
 
+// Default shape is the sandbox-less Tier-0 shared agent — the only shared
+// shape the route still deletes synchronously. Sandboxed cases override
+// `sandbox_id` explicitly.
 function sharedAgent(overrides: Record<string, unknown> = {}) {
   return {
     id: "agent-1",
@@ -103,7 +115,7 @@ function sharedAgent(overrides: Record<string, unknown> = {}) {
     user_id: "user-1",
     status: "running",
     execution_tier: "shared",
-    sandbox_id: "sandbox-agent-1",
+    sandbox_id: null,
     node_id: null,
     container_name: null,
     headscale_ip: null,
@@ -189,5 +201,31 @@ describe("DELETE /api/v1/eliza/agents/:agentId shared-runtime fallback", () => {
       error: "Agent provisioning is in progress",
     });
     expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("sandboxed shared agent skips the impossible sync teardown and goes straight to the async job", async () => {
+    getAgent.mockResolvedValue(sharedAgent({ sandbox_id: "sandbox-agent-1" }));
+
+    const response = await deleteRequest();
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      created: true,
+      data: {
+        jobId: "delete-job-1",
+        agentId: "agent-1",
+        status: "pending",
+      },
+    });
+    // The Worker cannot SSH (ssh2 is stubbed in workerd) — the sync delete
+    // must never even be attempted for a shared agent with a container.
+    expect(deleteAgent).not.toHaveBeenCalled();
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+    });
+    expect(triggerImmediate).toHaveBeenCalledTimes(1);
   });
 });

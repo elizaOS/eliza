@@ -1288,7 +1288,10 @@ export class ElizaSandboxService {
             status: precheck.status,
             error: errorMessage,
           });
-          return { success: false, error: "Failed to delete sandbox" };
+          // Carry the underlying stop failure so the job result / API envelope
+          // is diagnosable without server logs (#15275 shipped as an opaque
+          // "Failed to delete agent" 500 for weeks because this was generic).
+          return { success: false, error: `Failed to delete sandbox: ${errorMessage}` };
         }
       }
     }

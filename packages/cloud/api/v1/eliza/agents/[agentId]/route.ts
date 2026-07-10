@@ -388,7 +388,14 @@ app.delete("/", async (c) => {
       );
     }
 
-    if (existing.execution_tier === "shared") {
+    // Synchronous delete is only attempted when there is NO container to tear
+    // down (`sandbox_id` unset — the pure-DB Tier-0 shared case). A shared
+    // agent WITH a sandbox needs `provider.stop()`, which SSHes into the
+    // docker node — impossible from this Worker (ssh2 is stubbed in workerd,
+    // see packages/cloud/api/src/stubs/ssh2.ts) — so those agents skip the
+    // doomed sync attempt and go straight to the async agent_delete job
+    // below, which the provisioning daemon (real ssh2) completes (#15802).
+    if (existing.execution_tier === "shared" && !existing.sandbox_id) {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
@@ -437,12 +444,15 @@ app.delete("/", async (c) => {
       }
     }
 
-    // Async delete via the same job-queue path agent_provision uses. This
-    // moves the SSH stop, Neon deletion, and per-agent key revoke off the
-    // request thread so a slow / unreachable Hetzner core can no longer
-    // make the API hang or silently return 200 while the container lives
-    // on. Idempotent: a second DELETE while a job is in flight reuses
-    // the existing one.
+    // Async delete via the same job-queue path agent_provision uses — for
+    // dedicated agents, any shared agent that carries a sandbox_id (the
+    // Worker cannot SSH; the daemon does the teardown), and sandbox-less
+    // shared deletes whose sync attempt failed. This moves the SSH stop,
+    // Neon deletion, and per-agent key revoke off the request thread so a
+    // slow / unreachable Hetzner core can no longer make the API hang or
+    // silently return 200 while the container lives on. Enqueue flips the
+    // row to `deletion_pending`. Idempotent: a second DELETE while a job is
+    // in flight reuses the existing one.
     const enqueueResult = await provisioningJobService.enqueueAgentDeleteOnce({
       agentId,
       organizationId: user.organization_id,
