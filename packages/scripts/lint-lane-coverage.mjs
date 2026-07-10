@@ -1,11 +1,8 @@
 #!/usr/bin/env node
 /**
- * lint-lane-coverage.mjs
- *
- * Static coverage gate for the deterministic PR lanes. It inventories plugins,
- * action surfaces, view/app surfaces, deterministic E2E/scenario coverage, and
- * real/live E2E env documentation. Default mode is a CI gate: unsuppressed
- * coverage gaps exit 1. Use --dry-run for local inventory without failing.
+ * Static coverage gate for deterministic plugin PR lanes. It inventories
+ * actions, views, tests, scenarios, and live-test environment documentation;
+ * unsuppressed gaps fail CI while `--dry-run` reports the same inventory.
  */
 
 import fs from "node:fs";
@@ -63,6 +60,17 @@ function readTextIfExists(filePath) {
   } catch {
     return "";
   }
+}
+
+function containsModuleCode(sourceText) {
+  const withoutComments = sourceText
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+    .trim();
+  return (
+    withoutComments.length > 0 &&
+    !/^export\s*\{\s*\}\s*;?$/.test(withoutComments)
+  );
 }
 
 function walkFiles(dir, visitor) {
@@ -207,7 +215,10 @@ function collectPluginFiles(pluginDir) {
 
     if (isSource && !testLike && rel.startsWith("src/")) {
       files.sourceFiles.push(filePath);
-      if (/(?:^|\/)actions?\//.test(rel)) {
+      if (
+        /(?:^|\/)actions?\//.test(rel) &&
+        containsModuleCode(readTextIfExists(filePath))
+      ) {
         files.actionSourceFiles.push(filePath);
       }
       if (
@@ -287,7 +298,7 @@ function sourceDeclaresNonEmptyArray(sourceText, propertyName) {
   return !emptyPattern.test(sourceText);
 }
 
-function detectSurfaces(pluginDir, packageJson, files) {
+function detectSurfaces(packageJson, files) {
   const sourceText = files.sourceFiles
     .map((filePath) => readTextIfExists(filePath))
     .join("\n");
@@ -440,7 +451,7 @@ function analyzePlugin({ repoRoot, envTestKeys, plugin, scenarioFiles }) {
     }
   }
 
-  const surfaces = detectSurfaces(plugin.dir, plugin.packageJson, files);
+  const surfaces = detectSurfaces(plugin.packageJson, files);
   const issues = [];
 
   if (files.allTests.length === 0) {

@@ -41,7 +41,7 @@
     },
     {
       "plugin": "plugin-bluebubbles",
-      "issues": ["missing-action-e2e", "missing-deterministic-e2e"],
+      "issues": ["missing-deterministic-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
@@ -149,11 +149,7 @@
     },
     {
       "plugin": "plugin-feishu",
-      "issues": [
-        "missing-action-e2e",
-        "missing-action-tests",
-        "missing-deterministic-e2e"
-      ],
+      "issues": ["missing-deterministic-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
@@ -178,11 +174,7 @@
     },
     {
       "plugin": "plugin-google-chat",
-      "issues": [
-        "missing-action-e2e",
-        "missing-action-tests",
-        "missing-deterministic-e2e"
-      ],
+      "issues": ["missing-deterministic-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
@@ -202,16 +194,7 @@
     },
     {
       "plugin": "plugin-instagram",
-      "issues": [
-        "missing-action-e2e",
-        "missing-action-tests",
-        "missing-deterministic-e2e"
-      ],
-      "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
-    },
-    {
-      "plugin": "plugin-line",
-      "issues": ["missing-action-tests"],
+      "issues": ["missing-deterministic-e2e"],
       "reason": "Legacy deterministic lane coverage debt tracked in #15856; ratchet by removing entries as tests/scenarios land."
     },
     {
