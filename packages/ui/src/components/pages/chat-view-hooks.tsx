@@ -26,6 +26,14 @@ import {
   type ContinuousChatState,
   useContinuousChat,
 } from "../../hooks/useContinuousChat";
+import {
+  type ContinuousVoiceSessionState,
+  useContinuousVoiceSession,
+} from "../../hooks/useContinuousVoiceSession";
+import {
+  isRealtimeVoiceFlagEnabled,
+  useRealtimeVoiceSession,
+} from "../../hooks/useRealtimeVoiceSession";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
@@ -203,6 +211,21 @@ export function useChatVoiceController(options: {
    * unrelated coding-agent PTY sessions.
    */
   onServerTurnAbort?: () => void;
+  /**
+   * Owner agent UUID for a realtime voice-session mint. When absent (or the
+   * realtime flag is off, or the mint reports the feature disabled), the mic
+   * runs the EXISTING batch path unchanged. Supplied by ChatView from the
+   * resolved cloud runtime; a local/self-hosted runtime leaves it undefined and
+   * the realtime path never arms.
+   */
+  realtimeAgentId?: string | null;
+  /**
+   * Obtain a one-time consent nonce for the realtime session (POST
+   * /api/v1/voice/session/consent). Returning null (feature off / consent store
+   * not configured) keeps the batch path as the fallback. Required only when
+   * `realtimeAgentId` is set.
+   */
+  getRealtimeConsentNonce?: () => Promise<string | null>;
 }) {
   const { setTimeout } = useTimeout();
   const {
@@ -223,6 +246,8 @@ export function useChatVoiceController(options: {
     uiLanguage,
     continuousMode = DEFAULT_VOICE_CONTINUOUS_MODE,
     onServerTurnAbort,
+    realtimeAgentId,
+    getRealtimeConsentNonce,
   } = options;
   const onServerTurnAbortRef = useRef(onServerTurnAbort);
   onServerTurnAbortRef.current = onServerTurnAbort;
@@ -784,19 +809,68 @@ export function useChatVoiceController(options: {
     [voiceLatency],
   );
 
+  // Realtime WebSocket voice session — an ADDITIVE enhancement of the mic, not
+  // a replacement. It only arms when the VITE flag is on AND the server mint
+  // succeeds; otherwise `available` stays false and the composed surface below
+  // falls through to the batch `continuous` path UNCHANGED.
+  const realtimeConsentNonce = useCallback(async () => {
+    if (!getRealtimeConsentNonce) return null;
+    return getRealtimeConsentNonce();
+  }, [getRealtimeConsentNonce]);
+  const realtime = useRealtimeVoiceSession({
+    agentId: realtimeAgentId ?? null,
+    conversationId: activeConversationId,
+    flagEnabled: isRealtimeVoiceFlagEnabled() && Boolean(realtimeAgentId),
+    getConsentNonce: realtimeConsentNonce,
+    speaker: voiceSpeaker,
+  });
+
+  // The batch continuous-chat engine. While the realtime WS session is the
+  // active mic, the batch passive capture must NOT also run (double mic / double
+  // STT). We `disabled` the batch hook whenever realtime is active OR the
+  // composer is locked — the batch bring-up effect keys off `disabled`, so this
+  // keeps its mic fully closed while realtime owns it, and re-opens it the
+  // instant realtime hands back (mode still non-off). When realtime is
+  // unavailable this reduces to the EXISTING `disabled: isComposerLocked`.
   const continuous = useContinuousChat({
     voice,
     mode: continuousMode,
-    disabled: isComposerLocked,
+    disabled: isComposerLocked || realtime.active,
     latency: continuousChatLatency,
     speaker: voiceSpeaker,
     assistantGenerating: chatSending && !chatFirstTokenReceived,
   });
 
+  // The single mic-facing surface: realtime when available, batch otherwise.
+  const voiceSession = useContinuousVoiceSession({
+    batch: continuous,
+    realtime,
+  });
+
+  // Drive the realtime session off the SAME toggle the batch continuous-chat
+  // path uses: when the user turns continuous mode on AND realtime is available,
+  // the WS session becomes the mic; when they turn it off (or realtime becomes
+  // unavailable), the session tears down and the batch path owns the mic again.
+  // This is the enhancement of the EXISTING surface — no new toggle, no new UI.
+  const realtimeWanted =
+    continuousMode !== "off" && !isComposerLocked && realtime.available;
+  const realtimeStartRef = useRef(realtime.start);
+  const realtimeStopRef = useRef(realtime.stop);
+  realtimeStartRef.current = realtime.start;
+  realtimeStopRef.current = realtime.stop;
+  useEffect(() => {
+    if (realtimeWanted && !realtime.active) {
+      void realtimeStartRef.current();
+    } else if (!realtimeWanted && realtime.active) {
+      void realtimeStopRef.current();
+    }
+  }, [realtimeWanted, realtime.active]);
+
   return {
     beginVoiceCapture,
     endVoiceCapture,
     continuous,
+    voiceSession,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
@@ -810,7 +884,7 @@ export type UseChatVoiceControllerReturn = ReturnType<
   typeof useChatVoiceController
 >;
 
-export type { ContinuousChatState };
+export type { ContinuousChatState, ContinuousVoiceSessionState };
 
 /* ── useGameModalMessages ──────────────────────────────────────────── */
 
