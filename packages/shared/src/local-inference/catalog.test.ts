@@ -12,6 +12,7 @@ import {
   ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_PUBLISHED_TIER_SLUGS,
+  ELIZA_1_RELEASE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
   eliza1PublishedManifestId,
@@ -65,7 +66,7 @@ describe("Eliza-1 runtime quant metadata", () => {
   });
 
   it("keeps stable ids but exposes requested size-cased display names", () => {
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.displayName).toBe(EXPECTED_DISPLAY_NAMES[id]);
       expect(entry?.params).toBe(EXPECTED_CHAT_PARAMS[id]);
@@ -96,17 +97,11 @@ describe("Eliza-1 runtime quant metadata", () => {
   });
 
   it("ships every active text tier at or above the 128k floor", () => {
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      expect(entry?.contextLength).toBeGreaterThanOrEqual(131072);
+      expect(entry?.contextLength).toBe(131072);
       expect(entry?.ggufFile).not.toMatch(/-(32k|64k)\.gguf$/);
-      if (id === "eliza-1-27b-256k") {
-        expect(entry?.contextLength).toBe(262144);
-        expect(entry?.ggufFile).toBe("text/eliza-1-31b-256k.gguf");
-      } else {
-        expect(entry?.contextLength).toBe(131072);
-        expect(entry?.ggufFile).toBe(EXPECTED_PUBLISHED_TEXT_FILES[id]);
-      }
+      expect(entry?.ggufFile).toBe(EXPECTED_PUBLISHED_TEXT_FILES[id]);
     }
   });
 
@@ -119,10 +114,13 @@ describe("Eliza-1 runtime quant metadata", () => {
       "eliza-1-27b-256k": "31b-256k",
     });
     for (const id of ELIZA_1_TIER_IDS) {
-      const entry = MODEL_CATALOG.find((model) => model.id === id);
       const publishedSlug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
       expect(eliza1PublishedTierSlug(id)).toBe(publishedSlug);
       expect(eliza1PublishedManifestId(id)).toBe(`eliza-1-${publishedSlug}`);
+    }
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      const publishedSlug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
       expect(entry?.hfPathPrefix).toBe(`bundles/${publishedSlug}`);
       expect(entry?.ggufFile).toBe(EXPECTED_PUBLISHED_TEXT_FILES[id]);
     }
@@ -132,7 +130,7 @@ describe("Eliza-1 runtime quant metadata", () => {
     const hostedMtpTiers: ReadonlySet<string> = new Set(
       ELIZA_1_HOSTED_MTP_TIER_IDS,
     );
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.runtime?.kvCache).toBeUndefined();
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
@@ -158,7 +156,7 @@ describe("Eliza-1 runtime quant metadata", () => {
   });
 
   it("advertises Gemma MTP metadata only for tiers with hosted drafter GGUFs", () => {
-    expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
+    expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_RELEASE_TIER_IDS);
     // 2b/4b host the gemma4-assistant drafters at
     // bundles/<architecture>/mtp/drafter-<architecture>.gguf (converted from
     // google/gemma-4-E2B-it-assistant / google/gemma-4-E4B-it-assistant,
@@ -185,7 +183,7 @@ describe("Eliza-1 runtime quant metadata", () => {
   });
 
   it("points every voice-enabled tier at the bundled Silero VAD GGUF", () => {
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.vad?.file).toBe(
         `bundles/${ELIZA_1_PUBLISHED_TIER_SLUGS[id]}/vad/silero-vad-v5.gguf`,
@@ -194,7 +192,7 @@ describe("Eliza-1 runtime quant metadata", () => {
   });
 
   it("points every voice-enabled tier at its tier-matched ASR mmproj GGUF", () => {
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const slug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.asr?.file).toBe(
@@ -246,7 +244,7 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("never advertises the mobile QAT/LiteRT bundle on desktop tiers", () => {
+  it("does not expose unpublished desktop tiers", () => {
     const desktopTiers = ELIZA_1_TIER_IDS.filter((id) => !isOnDeviceTier(id));
     expect(desktopTiers).toEqual([
       "eliza-1-9b",
@@ -254,22 +252,7 @@ describe("Eliza-1 runtime quant metadata", () => {
       "eliza-1-27b-256k",
     ]);
     for (const id of desktopTiers) {
-      const entry = MODEL_CATALOG.find((model) => model.id === id);
-      const variants = entry?.quantization?.variants ?? [];
-
-      // No variant may carry the mobile-preferred flag or the LiteRT bundle
-      // format on a desktop tier — that would advertise the phone-only QAT
-      // artifact on hardware that runs the post-training GGUF instead.
-      for (const variant of variants) {
-        expect(variant.mobilePreferred).toBeUndefined();
-        expect(variant.artifactFormat).not.toBe("litertlm");
-      }
-      expect(variants.some((variant) => variant.id === "wna8o8")).toBe(false);
-
-      // The shared Q4_0 GGUF variant is present on every tier, but stays
-      // un-flagged on desktop so the on-device selector never picks it.
-      const q4_0 = variants.find((variant) => variant.id === "q4_0");
-      expect(q4_0?.mobilePreferred).toBeUndefined();
+      expect(MODEL_CATALOG.find((model) => model.id === id)).toBeUndefined();
     }
   });
 });

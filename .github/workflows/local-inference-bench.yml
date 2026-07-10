@@ -165,7 +165,9 @@ jobs:
         # otherwise fails the run ~5 minutes in, AFTER a full bun install +
         # agent boot, with an opaque "expected array, received object" trace.
         # Fail fast here with an operator-actionable message instead.
-        run: node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-2b
+        run: |
+          node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-2b
+          node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-4b
 
       - name: Setup Python for fused-runtime build tools
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1

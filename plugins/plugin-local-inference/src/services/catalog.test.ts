@@ -5,7 +5,9 @@ import {
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	ELIZA_1_HOSTED_MTP_TIER_IDS,
 	ELIZA_1_MTP_TIER_IDS,
-	ELIZA_1_TIER_IDS,
+	ELIZA_1_RELEASE_TIER_IDS,
+	type Eliza1TierId,
+	eliza1PublishedTierSlug,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
 	MODEL_CATALOG,
@@ -17,15 +19,15 @@ describe("local inference catalog", () => {
 	it("ships exactly the visible Eliza-1 tiers", () => {
 		const visible = MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog);
 		expect(visible.map((m) => m.id).sort()).toEqual(
-			[...ELIZA_1_TIER_IDS].sort(),
+			[...ELIZA_1_RELEASE_TIER_IDS].sort(),
 		);
 	});
 
 	it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
 		expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
-			[...ELIZA_1_TIER_IDS].sort(),
+			[...ELIZA_1_RELEASE_TIER_IDS].sort(),
 		);
-		for (const id of ELIZA_1_TIER_IDS) {
+		for (const id of ELIZA_1_RELEASE_TIER_IDS) {
 			expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(id), `${id} not eligible`).toBe(
 				true,
 			);
@@ -36,7 +38,7 @@ describe("local inference catalog", () => {
 	});
 
 	it("uses eliza-1 size ids as user-facing display names", () => {
-		for (const id of ELIZA_1_TIER_IDS) {
+		for (const id of ELIZA_1_RELEASE_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model, `${id} missing`).toBeTruthy();
 			expect(model?.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
@@ -49,7 +51,7 @@ describe("local inference catalog", () => {
 
 	it("uses the single elizaOS HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
-			const tier = model.id.slice("eliza-1-".length);
+			const tier = eliza1PublishedTierSlug(model.id as Eliza1TierId);
 			expect(model.hfRepo).toBe("elizaos/eliza-1");
 			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
 			expect(buildHuggingFaceResolveUrl(model)).toContain(
@@ -73,7 +75,7 @@ describe("local inference catalog", () => {
 	it("keeps the visible model hub focused on Eliza-1 only", () => {
 		const visible = localInferenceService.getCatalog();
 		expect(visible.map((model) => model.id).sort()).toEqual(
-			[...ELIZA_1_TIER_IDS].sort(),
+			[...ELIZA_1_RELEASE_TIER_IDS].sort(),
 		);
 		expect(
 			visible.filter((model) => DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id))
@@ -103,9 +105,6 @@ describe("local inference catalog", () => {
 		const expected: Record<string, number> = {
 			"eliza-1-2b": 131072,
 			"eliza-1-4b": 131072,
-			"eliza-1-9b": 131072,
-			"eliza-1-27b": 131072,
-			"eliza-1-27b-256k": 262144,
 		};
 		for (const [id, expectedLength] of Object.entries(expected)) {
 			const model = findCatalogModel(id);
@@ -130,7 +129,7 @@ describe("local inference catalog", () => {
 		const hostedMtpTiers: ReadonlySet<string> = new Set(
 			ELIZA_1_HOSTED_MTP_TIER_IDS,
 		);
-		expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
+		expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_RELEASE_TIER_IDS);
 		// 2b/4b host the gemma4-assistant drafters at
 		// bundles/<tier>/mtp/drafter-<tier>.gguf (converted from
 		// google/gemma-4-E2B-it-assistant / google/gemma-4-E4B-it-assistant,
@@ -140,7 +139,7 @@ describe("local inference catalog", () => {
 			const model = findCatalogModel(id);
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
 			if (hostedMtpTiers.has(id)) {
-				const slug = id.slice("eliza-1-".length);
+				const slug = eliza1PublishedTierSlug(id);
 				expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 				expect(model?.runtime?.mtp?.drafterFile, `${id} drafter`).toBe(
 					`mtp/drafter-${slug}.gguf`,
@@ -156,7 +155,7 @@ describe("local inference catalog", () => {
 		const hostedMtpTiers: ReadonlySet<string> = new Set(
 			ELIZA_1_HOSTED_MTP_TIER_IDS,
 		);
-		for (const id of ELIZA_1_TIER_IDS) {
+		for (const id of ELIZA_1_RELEASE_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
 				"llama-cpp",
@@ -190,7 +189,7 @@ describe("local inference catalog", () => {
 	});
 
 	it("declares the text quantization matrix and voice boundary by tier", () => {
-		for (const id of ELIZA_1_TIER_IDS) {
+		for (const id of ELIZA_1_RELEASE_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
 			const variantIds = model?.quantization?.variants.map((v) => v.id);
@@ -208,11 +207,9 @@ describe("local inference catalog", () => {
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
 		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
-		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual(["kokoro"]);
-		expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual(["kokoro"]);
-		expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
-			"kokoro",
-		]);
+		expect(findCatalogModel("eliza-1-9b")).toBeUndefined();
+		expect(findCatalogModel("eliza-1-27b")).toBeUndefined();
+		expect(findCatalogModel("eliza-1-27b-256k")).toBeUndefined();
 	});
 
 	it("does not leak implementation-family names in visible catalog copy", () => {

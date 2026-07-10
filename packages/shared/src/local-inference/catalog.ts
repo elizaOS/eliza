@@ -44,15 +44,14 @@ export function eliza1PublishedManifestId(id: Eliza1TierId): string {
   return `eliza-1-${eliza1PublishedTierSlug(id)}`;
 }
 
-export const ELIZA_1_RELEASE_TIER_IDS =
-  ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
+export const ELIZA_1_RELEASE_TIER_IDS = [
+  "eliza-1-2b",
+  "eliza-1-4b",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 export const ELIZA_1_VISION_TIER_IDS = [
   "eliza-1-2b",
   "eliza-1-4b",
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
@@ -62,9 +61,6 @@ const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
 export const ELIZA_1_MTP_TIER_IDS = [
   "eliza-1-2b",
   "eliza-1-4b",
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 /**
@@ -116,8 +112,8 @@ export function isOnDeviceTier(id: Eliza1TierId): boolean {
 
 // The quantized 2B (Gemma 4 E2B) is the shipped first-run default chat model:
 // it is the smallest/entry tier, fits 8 GB-class phones comfortably, downloads
-// fast, and is the model bundled into the AOSP image. Larger tiers (4B/9B/27B)
-// remain available for manual selection on higher-memory hosts.
+// fast, and is the model bundled into the AOSP image. A tier enters the release
+// catalog only after its complete manifest and every required artifact publish.
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
@@ -614,8 +610,8 @@ function chatTier(id: Eliza1TierId): CatalogModel {
   };
 }
 
-export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.map((id) =>
-  chatTier(id),
+export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_RELEASE_TIER_IDS.map(
+  (id) => chatTier(id),
 );
 
 export function findCatalogModel(id: string): CatalogModel | undefined {

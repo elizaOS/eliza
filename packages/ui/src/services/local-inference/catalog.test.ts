@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
-  ELIZA_1_TIER_IDS,
+  ELIZA_1_RELEASE_TIER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
   MODEL_CATALOG,
@@ -27,14 +27,14 @@ describe("local inference catalog", () => {
       MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)
         .map((m) => m.id)
         .sort(),
-    ).toEqual([...ELIZA_1_TIER_IDS].sort());
+    ).toEqual([...ELIZA_1_RELEASE_TIER_IDS].sort());
   });
 
   it("marks ONLY the Eliza-1 size tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
+      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
     );
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(id), `${id} not eligible`).toBe(
         true,
       );
@@ -45,7 +45,7 @@ describe("local inference catalog", () => {
   });
 
   it("uses eliza-1 size ids as user-facing display names", () => {
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model, `${id} missing`).toBeTruthy();
       expect(model?.displayName).toBe(EXPECTED_ELIZA_1_DISPLAY_NAMES[id]);
@@ -73,7 +73,7 @@ describe("local inference catalog", () => {
   it("keeps the visible model hub focused on Eliza-1 only", () => {
     const visible = localInferenceService.getCatalog();
     expect(visible.map((model) => model.id).sort()).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
+      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
     );
     expect(
       visible.filter((model) => DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id))
@@ -103,9 +103,6 @@ describe("local inference catalog", () => {
     const expected: Record<string, number> = {
       "eliza-1-2b": 131072,
       "eliza-1-4b": 131072,
-      "eliza-1-9b": 131072,
-      "eliza-1-27b": 131072,
-      "eliza-1-27b-256k": 262144,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);

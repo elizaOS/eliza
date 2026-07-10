@@ -11,8 +11,21 @@ const workflow = readFileSync(
   ),
   "utf8",
 );
+const hostCpuConfig = JSON.parse(
+  readFileSync(
+    path.resolve(import.meta.dir, "../benchmark/configs/host-cpu.json"),
+    "utf8",
+  ),
+) as { models: string[] };
 
 describe("local inference bench workflow", () => {
+  it("preflights and profiles every published release tier", () => {
+    expect(hostCpuConfig.models).toEqual(["eliza-1-2b", "eliza-1-4b"]);
+    for (const modelId of hostCpuConfig.models) {
+      expect(workflow).toContain(`preflight-eliza1-manifest.mjs ${modelId}`);
+    }
+  });
+
   it("schedules the real model profile on model-capable self-hosted runners", () => {
     const nightlyJob = workflow.slice(
       workflow.indexOf("  nightly-real-agent:"),
