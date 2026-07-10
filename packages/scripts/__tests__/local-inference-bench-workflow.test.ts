@@ -13,6 +13,19 @@ const workflow = readFileSync(
 );
 
 describe("local inference bench workflow", () => {
+  it("schedules the real model profile on model-capable self-hosted runners", () => {
+    const nightlyJob = workflow.slice(
+      workflow.indexOf("  nightly-real-agent:"),
+      workflow.indexOf("  cuttlefish-bench:"),
+    );
+
+    expect(nightlyJob).toContain(
+      "vars.LOCAL_INFERENCE_BENCH_RUNNER_LABELS || " +
+        '\'["self-hosted","Linux","X64","eliza"]\'',
+    );
+    expect(nightlyJob).not.toContain("vars.HETZNER_FLEET_ONLINE");
+  });
+
   it("builds and exposes libelizainference before booting the real agent", () => {
     const buildStep = workflow.indexOf(
       "node packages/app-core/scripts/stage-desktop-fused-lib.mjs",
