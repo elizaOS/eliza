@@ -30,6 +30,8 @@
       "@elizaos/cloud-sdk/*": ["../sdk/src/*"],
       "@elizaos/contracts": ["../../contracts/src/index.ts"],
       "@elizaos/contracts/*": ["../../contracts/src/*"],
+      "@elizaos/import-conversations": ["../../import-conversations/src/index.ts"],
+      "@elizaos/import-conversations/*": ["../../import-conversations/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],

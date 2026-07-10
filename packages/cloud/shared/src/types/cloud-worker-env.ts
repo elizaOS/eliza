@@ -112,6 +112,17 @@ export interface Bindings {
    */
   R2_PUBLIC_HOST?: string;
   /**
+   * Conversation-import (#13432) size/quota knobs. All optional; unset falls
+   * back to the conservative defaults from @elizaos/import-conversations
+   * (25 MiB direct / 1 GiB resumable ceiling, 7-day raw retention). Values are
+   * decimal integers (bytes / ms / counts).
+   */
+  IMPORT_MAX_DIRECT_UPLOAD_BYTES?: string;
+  IMPORT_MAX_UPLOAD_BYTES?: string;
+  IMPORT_RAW_RETENTION_MS?: string;
+  IMPORT_MAX_EMBEDDING_UNITS?: string;
+  IMPORT_MAX_CONVERSATIONS?: string;
+  /**
    * Base domain for managed frontend hosting system hosts. When set (e.g.
    * "sites.elizacloud.ai"), a request to `<app-slug>.<suffix>` is served from
    * the app's active frontend deployment by the Worker entry (see

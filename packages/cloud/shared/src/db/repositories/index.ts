@@ -77,6 +77,7 @@ export * from "./container-billing";
 // Deployment Domain (Infrastructure)
 // ============================================
 export * from "./containers";
+export * from "./conversation-imports";
 // ============================================
 // Conversation Domain
 // ============================================

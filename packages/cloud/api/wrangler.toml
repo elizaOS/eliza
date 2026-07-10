@@ -30,6 +30,10 @@ __filename = '"/worker.js"'
 "@elizaos/core" = "./src/stubs/elizaos-core.ts"
 "@elizaos/cloud-sdk" = "../sdk/src/index.ts"
 "@elizaos/cloud-shared" = "../shared/src/index.ts"
+# #13432 conversation-import core primitives (pure; node:crypto only — parsers are NOT aliased and stay off the Worker).
+"@elizaos/import-conversations/core/preflight" = "../../import-conversations/src/core/preflight.ts"
+"@elizaos/import-conversations/core/resumable" = "../../import-conversations/src/core/resumable.ts"
+"@elizaos/import-conversations/core/artifacts" = "../../import-conversations/src/core/artifacts.ts"
 "@elizaos/shared/contracts/cloud-coding-containers" = "../../shared/src/contracts/cloud-coding-containers.ts"
 "@elizaos/shared/local-inference/voice-models" = "../../shared/src/local-inference/voice-models.ts"
 "@brighter/storage-adapter-s3" = "./src/stubs/brighter-storage-adapter-s3.ts"

@@ -41,6 +41,7 @@ export * from "./auth-events";
 export * from "./cli-auth-sessions";
 export * from "./cloud-files";
 export * from "./containers";
+export * from "./conversation-imports";
 export * from "./conversations";
 export * from "./credit-packs";
 export * from "./credit-transactions";
