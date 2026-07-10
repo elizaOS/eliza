@@ -4,7 +4,7 @@ GitHub integration for Eliza agents: pull request listing and review, issue life
 
 ## Purpose / role
 
-Adds GitHub capabilities to any Eliza agent. The plugin is opt-in — add `"@elizaos/plugin-github"` to the agent's plugin list. It registers a `GitHubService` (Octokit REST client pool), three exposed action handlers promoted under one umbrella `GITHUB` action, three API routes for PAT management, and a search category for PR lookup.
+Adds GitHub capabilities to any Eliza agent. The plugin is opt-in — add `"@elizaos/plugin-github"` to the agent's plugin list. It registers a `GitHubService` (Octokit REST client pool), three exposed action handlers promoted under one umbrella `GITHUB` action, five API routes for credential management (PAT paste + OAuth device sign-in — the guided setup step behind the Settings → Coding Agents GitHub card, #15796), and a search category for PR lookup.
 
 ## Plugin surface
 
@@ -33,9 +33,11 @@ Registered at plugin init on the agent's HTTP server:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/github/token` | Returns `{ connected, username?, scopes?, savedAt? }` — token never returned |
-| `POST` | `/api/github/token` | Body `{ token }`. Validates against GitHub `/user`, persists to `<state-dir>/credentials/github.json` |
-| `DELETE` | `/api/github/token` | Clears saved credential |
+| `GET` | `/api/github/token` | Returns `{ connected, deviceFlowAvailable, username?, scopes?, savedAt? }` — token never returned |
+| `POST` | `/api/github/token` | Body `{ token }`. Validates against GitHub `/user`, persists to `<state-dir>/credentials/github.json`, applies to the live runtime's per-agent settings (`setSetting("GITHUB_TOKEN", …, true)`) |
+| `DELETE` | `/api/github/token` | Clears saved credential (disk + live runtime settings) |
+| `POST` | `/api/github/device/start` | Starts a GitHub OAuth device flow (needs the `GITHUB_OAUTH_CLIENT_ID` setting; 409 with an owner-setup message otherwise). Returns `{ flowId, userCode, verificationUri, intervalSeconds, expiresInSeconds }` — the GitHub `device_code` never leaves the server |
+| `POST` | `/api/github/device/poll` | Body `{ flowId }`. One poll: 200 `{ status: "pending" \| "denied" \| "expired" }` or, on grant, validates + persists like the PAT route and returns `{ status: "complete", …connected status }`. Flows are scoped to the agent that started them |
 
 ### Search category
 
@@ -56,6 +58,7 @@ src/
   action-helpers.ts            Shared: service lookup, client resolution, param helpers
   rate-limit.ts                Rate-limit detection and formatting
   github-credentials.ts        Local PAT store: load/save/clear at <state-dir>/credentials/github.json
+  device-flow.ts               GitHub OAuth device-flow state machine (start/poll; per-agent scoped; device_code stays server-side)
   search-category.ts           github_pull_requests search category registration
   connector-account-provider.ts  ConnectorAccountManager bridge (PAT + OAuth flows)
   connector-credential-refs.ts   Credential ref persistence helpers
@@ -91,7 +94,7 @@ bun run --cwd plugins/plugin-github clean       # rm dist .turbo
 | `GITHUB_AGENT_ACCOUNT_ID` | No | Override account ID for the legacy `agent` slot (default: `"agent"`) |
 | `ELIZA_E2E_GITHUB_USER_PAT` | No | E2E fallback for `GITHUB_USER_PAT` |
 | `ELIZA_E2E_GITHUB_AGENT_PAT` | No | E2E fallback for `GITHUB_AGENT_PAT` |
-| `GITHUB_OAUTH_CLIENT_ID` | OAuth only | GitHub OAuth app client ID |
+| `GITHUB_OAUTH_CLIENT_ID` | OAuth only | GitHub OAuth app client ID — also enables the device sign-in path on the settings card (`/api/github/device/*`) |
 | `GITHUB_OAUTH_CLIENT_SECRET` | OAuth only | GitHub OAuth app client secret |
 | `GITHUB_OAUTH_REDIRECT_URI` | OAuth only | OAuth redirect URI registered on the GitHub app |
 
