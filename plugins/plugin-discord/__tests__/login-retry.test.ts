@@ -1,17 +1,24 @@
 /**
  * Drives the real initial-login retry loop (`DiscordService.attemptDiscordLogin`)
- * against a deterministic fake discord.js client whose `login()` rejects N times
- * then resolves and emits ClientReady, plus focused checks of the real backoff
- * (`computeLoginBackoffMs`) and throttled failure heartbeat
- * (`emitLoginFailureHeartbeat`). Guards #15855: a transient boot-time login
- * failure must retry with capped-exponential backoff and eventually reach ready
- * — never settle terminal, leaving the process connected-but-deaf. Collaborators
- * that are not under test (event wiring, onReady backfill, legacy aliasing) are
- * stubbed on the instance; the retry/backoff/heartbeat code runs for real.
+ * against a deterministic fake discord.js client, plus focused checks of the
+ * real backoff (`computeLoginBackoffMs`) and throttled failure heartbeat
+ * (`emitLoginFailureHeartbeat`). Guards #15855 (a transient boot-time login
+ * failure retries with capped-exponential backoff and eventually reaches ready
+ * instead of leaving the process connected-but-deaf) and #15968 (terminal
+ * authentication/configuration failures reject typed and stop retrying; at most
+ * one retry timer per account with no append-only handle history; the real
+ * `stop()` cancels a pending backoff and invalidates in-flight attempts so no
+ * client or timer is ever created after stop). Collaborators that are not under
+ * test (event wiring, onReady backfill, legacy aliasing, voice teardown) are
+ * stubbed on the instance; the retry/backoff/heartbeat/stop code runs for real.
  */
+import { ElizaError } from "@elizaos/core";
 import { Events } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DiscordAccountClientState } from "../account-client-pool.ts";
+import {
+	DiscordAccountClientPool,
+	type DiscordAccountClientState,
+} from "../account-client-pool.ts";
 import { DiscordService } from "../service.ts";
 
 type FakeClient = {
@@ -21,10 +28,24 @@ type FakeClient = {
 	destroy: ReturnType<typeof vi.fn>;
 	isReady: () => boolean;
 	emit: (event: string, ...args: unknown[]) => void;
+	/** Settles a `{ kind: "hang" }` login with a rejection (post-stop races). */
+	rejectPendingLogin: (error: unknown) => void;
 };
 
-function makeFakeClient(shouldSucceed: boolean): FakeClient {
+type LoginBehavior =
+	| { kind: "succeed" }
+	| { kind: "reject"; error: Error }
+	// Login promise stays pending until the test settles it via
+	// rejectPendingLogin (or emits ClientReady), modelling an in-flight attempt.
+	| { kind: "hang" };
+
+function transientSocketError(): Error {
+	return new Error("The socket connection was closed unexpectedly.");
+}
+
+function makeFakeClient(behavior: LoginBehavior): FakeClient {
 	const handlers = new Map<string, (...args: unknown[]) => void>();
+	let rejectPending: ((error: unknown) => void) | undefined;
 	const client: FakeClient = {
 		once(event, cb) {
 			handlers.set(event, cb);
@@ -36,14 +57,22 @@ function makeFakeClient(shouldSucceed: boolean): FakeClient {
 		emit(event, ...args) {
 			handlers.get(event)?.(...args);
 		},
-		login: vi.fn().mockImplementation(async () => {
-			if (!shouldSucceed) {
-				throw new Error("The socket connection was closed unexpectedly.");
+		rejectPendingLogin(error) {
+			rejectPending?.(error);
+		},
+		login: vi.fn().mockImplementation(() => {
+			if (behavior.kind === "reject") {
+				return Promise.reject(behavior.error);
+			}
+			if (behavior.kind === "hang") {
+				return new Promise((_resolve, reject) => {
+					rejectPending = reject;
+				});
 			}
 			// discord.js emits ClientReady asynchronously once the gateway session
 			// is up; mirror that so the ready handler fires after login resolves.
 			queueMicrotask(() => client.emit(Events.ClientReady, client));
-			return "token";
+			return Promise.resolve("token");
 		}),
 	};
 	return client;
@@ -53,6 +82,7 @@ function makeRuntime() {
 	return {
 		agentId: "agent-1",
 		character: { name: "Eliza" },
+		reportError: vi.fn(),
 		logger: {
 			error: vi.fn(),
 			warn: vi.fn(),
@@ -74,7 +104,59 @@ function makeState(accountId: string): DiscordAccountClientState {
 	} as unknown as DiscordAccountClientState;
 }
 
-describe("DiscordService initial-login retry (#15855)", () => {
+// The retry loop's private surface plus the collaborators the real `stop()`
+// touches, exposed for direct driving in tests.
+type TestService = DiscordService & {
+	attemptDiscordLogin: (
+		state: DiscordAccountClientState,
+		token: string,
+		attempt: number,
+		resolve: () => void,
+		reject: (error: unknown) => void,
+		generation: number,
+	) => void;
+	computeLoginBackoffMs: (attempt: number) => number;
+	emitLoginFailureHeartbeat: (
+		state: DiscordAccountClientState,
+		error: unknown,
+		attempt: number,
+		delayMs: number,
+	) => void;
+	timeouts: ReturnType<typeof setTimeout>[];
+	accountPool: DiscordAccountClientPool;
+	onReadyForAccount: ReturnType<typeof vi.fn>;
+	_loginFailed: boolean;
+	lifecycleGeneration: number;
+};
+
+/**
+ * Fabricates a DiscordService around the real prototype: the retry loop,
+ * classification, backoff, heartbeat, and `stop()` run for real; heavy gateway
+ * collaborators are stubbed. `accountPool` is the real pool so `stop()`
+ * exercises genuine state iteration and clearing.
+ */
+function makeService(
+	runtime: ReturnType<typeof makeRuntime>,
+	createClient: () => FakeClient,
+): TestService {
+	return Object.assign(Object.create(DiscordService.prototype), {
+		runtime,
+		defaultAccountId: "default",
+		_loginFailed: false,
+		lifecycleGeneration: 0,
+		timeouts: [] as ReturnType<typeof setTimeout>[],
+		accountPool: new DiscordAccountClientPool(),
+		voiceTargets: { unregisterAccount: vi.fn(), clear: vi.fn() },
+		audioSinks: new Map(),
+		createDiscordJsClient: createClient,
+		// Isolate the retry loop from the heavy gateway/backfill collaborators.
+		setupEventListenersForAccount: vi.fn(),
+		onReadyForAccount: vi.fn().mockResolvedValue(undefined),
+		syncLegacyDefaultAliases: vi.fn(),
+	}) as unknown as TestService;
+}
+
+describe("DiscordService initial-login retry (#15855, #15968)", () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
@@ -87,36 +169,21 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		const clients: FakeClient[] = [];
 		const FAIL_TIMES = 2;
 
-		const service = Object.assign(Object.create(DiscordService.prototype), {
-			runtime,
-			defaultAccountId: "default",
-			_loginFailed: false,
-			timeouts: [] as ReturnType<typeof setTimeout>[],
-			createDiscordJsClient: () => {
-				const client = makeFakeClient(clients.length >= FAIL_TIMES);
-				clients.push(client);
-				return client;
-			},
-			// Isolate the retry loop from the heavy gateway/backfill collaborators.
-			setupEventListenersForAccount: vi.fn(),
-			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
-			syncLegacyDefaultAliases: vi.fn(),
-		}) as unknown as DiscordService & {
-			attemptDiscordLogin: (
-				state: DiscordAccountClientState,
-				token: string,
-				attempt: number,
-				resolve: () => void,
-				reject: (error: unknown) => void,
-			) => void;
-			_loginFailed: boolean;
-		};
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient(
+				clients.length >= FAIL_TIMES
+					? { kind: "succeed" }
+					: { kind: "reject", error: transientSocketError() },
+			);
+			clients.push(client);
+			return client;
+		});
 
 		const state = makeState("default");
 		let readyResolved = false;
 
 		const ready = new Promise<void>((resolve, reject) => {
-			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject);
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
 		}).then(() => {
 			readyResolved = true;
 		});
@@ -161,6 +228,286 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		await vi.advanceTimersByTimeAsync(120_000);
 		expect(runtime.logger.warn.mock.calls.length).toBe(warnCountAtReady);
 		expect(state.loginRetryTimer).toBeUndefined();
+		expect(state.cancelLoginRetry).toBeUndefined();
+
+		// Timer hygiene (#15968): retry handles are tracked per account, never
+		// appended to the service-wide timeouts array as fired-handle history.
+		expect(service.timeouts.length).toBe(0);
+	});
+
+	it("keeps exactly one tracked retry handle across a long transient outage", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const FAIL_TIMES = 8;
+
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient(
+				clients.length >= FAIL_TIMES
+					? { kind: "succeed" }
+					: { kind: "reject", error: transientSocketError() },
+			);
+			clients.push(client);
+			return client;
+		});
+		const state = makeState("default");
+
+		const ready = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
+		});
+
+		// Walk the outage attempt by attempt: after each failure exactly one
+		// handle is armed on the state and nothing accumulates service-wide.
+		for (let attempt = 0; attempt < FAIL_TIMES; attempt += 1) {
+			await vi.advanceTimersByTimeAsync(0);
+			expect(state.loginRetryTimer).toBeDefined();
+			expect(typeof state.cancelLoginRetry).toBe("function");
+			expect(service.timeouts.length).toBe(0);
+			await vi.advanceTimersByTimeAsync(service.computeLoginBackoffMs(attempt));
+		}
+		await ready;
+
+		expect(clients.length).toBe(FAIL_TIMES + 1);
+		expect(state.loginRetryTimer).toBeUndefined();
+		expect(state.cancelLoginRetry).toBeUndefined();
+		expect(service.timeouts.length).toBe(0);
+	});
+
+	it("classifies an invalid token as terminal: typed rejection, owner report, no retry", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient({
+				kind: "reject",
+				error: Object.assign(new Error("An invalid token was provided."), {
+					code: "TokenInvalid",
+				}),
+			});
+			clients.push(client);
+			return client;
+		});
+		const state = makeState("default");
+
+		const ready = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bad-token", 0, resolve, reject, 0);
+		});
+		const rejection = await ready.then(
+			() => {
+				throw new Error("ready promise must reject for a terminal failure");
+			},
+			(error: unknown) => error,
+		);
+
+		expect(rejection).toBeInstanceOf(ElizaError);
+		expect(rejection).toMatchObject({
+			code: "DISCORD_LOGIN_TERMINAL",
+			severity: "fatal",
+			context: { accountId: "default", attempt: 1 },
+		});
+		expect((rejection as ElizaError).cause).toMatchObject({
+			code: "TokenInvalid",
+		});
+
+		// The dead account is raised through the diagnostic boundary so the owner
+		// sees it (RECENT_ERRORS / escalation), not just a debug log.
+		expect(runtime.reportError).toHaveBeenCalledTimes(1);
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"discord:login",
+			rejection,
+			{ accountId: "default" },
+		);
+
+		// Terminal means terminal: no timer armed, and however long we wait no
+		// new client or login attempt appears.
+		expect(state.loginRetryTimer).toBeUndefined();
+		expect(state.cancelLoginRetry).toBeUndefined();
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(clients.length).toBe(1);
+		expect(clients[0]?.login).toHaveBeenCalledTimes(1);
+		expect(state.loginFailed).toBe(true);
+		expect(service._loginFailed).toBe(true);
+		expect(state.client).toBeNull();
+	});
+
+	it("classifies a privileged-intent gateway rejection as terminal", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const service = makeService(runtime, () => {
+			// @discordjs/ws surfaces close code 4014 as a plain Error with exactly
+			// this message via the shard error event / login rejection.
+			const client = makeFakeClient({
+				kind: "reject",
+				error: new Error("Used disallowed intents"),
+			});
+			clients.push(client);
+			return client;
+		});
+		const state = makeState("default");
+
+		const rejection = await new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
+		}).then(
+			() => {
+				throw new Error("ready promise must reject for a terminal failure");
+			},
+			(error: unknown) => error,
+		);
+
+		expect(rejection).toBeInstanceOf(ElizaError);
+		expect(rejection).toMatchObject({ code: "DISCORD_LOGIN_TERMINAL" });
+		expect(runtime.reportError).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(clients.length).toBe(1);
+		expect(state.loginRetryTimer).toBeUndefined();
+	});
+
+	it("treats a terminal gateway Error event as terminal too", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient({ kind: "hang" });
+			clients.push(client);
+			return client;
+		});
+		const state = makeState("default");
+
+		const readyOutcome = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
+		}).then(
+			() => {
+				throw new Error("ready promise must reject for a terminal failure");
+			},
+			(error: unknown) => error,
+		);
+
+		// The gateway Error event (not the login rejection) carries the terminal
+		// close-code failure.
+		clients[0]?.emit(Events.Error, new Error("Authentication failed"));
+		const rejection = await readyOutcome;
+
+		expect(rejection).toBeInstanceOf(ElizaError);
+		expect(rejection).toMatchObject({ code: "DISCORD_LOGIN_TERMINAL" });
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(clients.length).toBe(1);
+	});
+
+	it("stop() during backoff cancels the pending retry and settles the ready promise", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient({
+				kind: "reject",
+				error: transientSocketError(),
+			});
+			clients.push(client);
+			return client;
+		});
+		const state = makeState("default");
+		service.accountPool.set(state);
+
+		const readyOutcome = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
+		}).then(
+			() => {
+				throw new Error("ready promise must not resolve after stop()");
+			},
+			(error: unknown) => error,
+		);
+
+		// Let the first attempt fail and arm the backoff timer.
+		await vi.advanceTimersByTimeAsync(0);
+		expect(state.loginRetryTimer).toBeDefined();
+
+		await service.stop();
+
+		// The armed timer is cleared and the ready promise settles typed.
+		expect(state.loginRetryTimer).toBeUndefined();
+		expect(state.cancelLoginRetry).toBeUndefined();
+		const rejection = await readyOutcome;
+		expect(rejection).toBeInstanceOf(ElizaError);
+		expect(rejection).toMatchObject({ code: "DISCORD_LOGIN_ABORTED" });
+
+		// No resurrection: however long we wait after stop, no new client is
+		// created and no further login fires.
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(clients.length).toBe(1);
+		expect(clients[0]?.login).toHaveBeenCalledTimes(1);
+		expect(service.accountPool.list().length).toBe(0);
+	});
+
+	it("a login rejection landing after stop() cannot arm a timer or create a client", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient({ kind: "hang" });
+			clients.push(client);
+			return client;
+		});
+		const state = makeState("default");
+		service.accountPool.set(state);
+
+		const readyOutcome = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
+		}).then(
+			() => {
+				throw new Error("ready promise must not resolve after stop()");
+			},
+			(error: unknown) => error,
+		);
+
+		await service.stop();
+
+		// The in-flight login() settles only now, after teardown.
+		clients[0]?.rejectPendingLogin(transientSocketError());
+		const rejection = await readyOutcome;
+
+		expect(rejection).toBeInstanceOf(ElizaError);
+		expect(rejection).toMatchObject({ code: "DISCORD_LOGIN_ABORTED" });
+		expect((rejection as ElizaError).cause).toMatchObject({
+			message: "The socket connection was closed unexpectedly.",
+		});
+		expect(state.loginRetryTimer).toBeUndefined();
+
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(clients.length).toBe(1);
+		expect(clients[0]?.login).toHaveBeenCalledTimes(1);
+	});
+
+	it("a ClientReady landing after stop() does not resurrect the connector", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient({ kind: "hang" });
+			clients.push(client);
+			return client;
+		});
+		const state = makeState("default");
+		service.accountPool.set(state);
+
+		const readyOutcome = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
+		}).then(
+			() => {
+				throw new Error("ready promise must not resolve after stop()");
+			},
+			(error: unknown) => error,
+		);
+
+		await service.stop();
+		// stop() already destroyed the pooled client.
+		expect(clients[0]?.destroy).toHaveBeenCalled();
+
+		// A late gateway ready must not run onReady side effects or resolve.
+		clients[0]?.emit(Events.ClientReady, clients[0]);
+		const rejection = await readyOutcome;
+
+		expect(rejection).toBeInstanceOf(ElizaError);
+		expect(rejection).toMatchObject({ code: "DISCORD_LOGIN_ABORTED" });
+		expect(service.onReadyForAccount).not.toHaveBeenCalled();
+		expect(state.client).toBeNull();
+
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(clients.length).toBe(1);
 	});
 
 	it("computes capped exponential backoff per attempt", () => {
@@ -215,38 +562,21 @@ describe("DiscordService initial-login retry (#15855)", () => {
 	it("does not schedule a retry when the first login succeeds", async () => {
 		const runtime = makeRuntime();
 		const clients: FakeClient[] = [];
-
-		const service = Object.assign(Object.create(DiscordService.prototype), {
-			runtime,
-			defaultAccountId: "default",
-			_loginFailed: false,
-			timeouts: [] as ReturnType<typeof setTimeout>[],
-			createDiscordJsClient: () => {
-				const client = makeFakeClient(true);
-				clients.push(client);
-				return client;
-			},
-			setupEventListenersForAccount: vi.fn(),
-			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
-			syncLegacyDefaultAliases: vi.fn(),
-		}) as unknown as DiscordService & {
-			attemptDiscordLogin: (
-				state: DiscordAccountClientState,
-				token: string,
-				attempt: number,
-				resolve: () => void,
-				reject: (error: unknown) => void,
-			) => void;
-			timeouts: ReturnType<typeof setTimeout>[];
-		};
-
+		const service = makeService(runtime, () => {
+			const client = makeFakeClient({ kind: "succeed" });
+			clients.push(client);
+			return client;
+		});
 		const state = makeState("default");
+
 		await new Promise<void>((resolve, reject) => {
-			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject);
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject, 0);
 		});
 
 		expect(clients.length).toBe(1);
 		expect(service.timeouts.length).toBe(0);
+		expect(state.loginRetryTimer).toBeUndefined();
 		expect(runtime.logger.warn).not.toHaveBeenCalled();
+		expect(runtime.reportError).not.toHaveBeenCalled();
 	});
 });

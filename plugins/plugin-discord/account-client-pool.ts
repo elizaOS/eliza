@@ -27,6 +27,10 @@ export interface DiscordAccountClientState {
 	// Pending initial-login retry, tracked so `stop()` can cancel an in-flight
 	// backoff and the ClientReady handler can clear a superseded retry.
 	loginRetryTimer?: ReturnType<typeof setTimeout>;
+	// Cancels the armed retry: clears `loginRetryTimer` and settles the
+	// account's ready promise with a typed abort so awaiting callers cannot
+	// hang on a stopped service. Set only while a retry timer is armed.
+	cancelLoginRetry?: () => void;
 	// Wall-clock of the last login-failure heartbeat, used to throttle the Warn
 	// heartbeat while the account is stuck retrying.
 	lastLoginHeartbeatAt?: number;

@@ -14,6 +14,7 @@ import {
 	type Character,
 	type Content,
 	createUniqueUuid,
+	ElizaError,
 	type EventPayload,
 	getConnectorAdminWhitelist,
 	type IAgentRuntime,
@@ -201,15 +202,59 @@ type DiscordAccountServiceFacade = IDiscordService &
 
 // Initial-login retry schedule. discord.js only auto-reconnects once a gateway
 // session exists, so a transient failure of the FIRST `client.login()` is
-// otherwise terminal — the process stays "active" but deaf (#15855). We retry
-// the initial connect with capped exponential backoff (base doubles per
-// attempt, clamped) and keep retrying indefinitely until a session is
-// established; the network coming back is the only success condition.
+// otherwise terminal — the process stays "active" but deaf (#15855). Transient
+// transport failures retry the initial connect with capped exponential backoff
+// (base doubles per attempt, clamped) until a session is established;
+// authentication/configuration failures are classified terminal (#15968) and
+// stop the loop — retrying an invalid token or disallowed intent never succeeds.
 const DISCORD_LOGIN_RETRY_BASE_MS = 1_000;
 const DISCORD_LOGIN_RETRY_MAX_MS = 60_000;
 // While an account is stuck in the failed state, warn at most this often so the
 // retry storm surfaces as an observable heartbeat without flooding the log.
 const DISCORD_LOGIN_HEARTBEAT_MIN_INTERVAL_MS = 30_000;
+
+// Terminal initial-login failures a retry can never fix. discord.js surfaces
+// them in two shapes: `DiscordjsError`s carrying a string `code`
+// (`DiscordjsErrorCodes` — a 401 from the gateway-info fetch is coerced to
+// `TokenInvalid` inside discord.js), and plain `Error`s thrown by @discordjs/ws
+// for the unrecoverable gateway close codes (4004 authentication failed,
+// 4010–4014 shard/API-version/intent misconfiguration) which carry only these
+// exact messages — message identity is the only classification handle
+// @discordjs/ws exposes for them (see its WebSocketShard close-code switch).
+const DISCORD_TERMINAL_LOGIN_ERROR_CODES: ReadonlySet<string> = new Set([
+	"TokenInvalid",
+	"TokenMissing",
+	"DisallowedIntents",
+	"InvalidIntents",
+	"ShardingRequired",
+]);
+const DISCORD_TERMINAL_LOGIN_ERROR_MESSAGES: ReadonlySet<string> = new Set([
+	"Authentication failed",
+	"Invalid shard",
+	"Sharding is required",
+	"Used an invalid API version",
+	"Used invalid intents",
+	"Used disallowed intents",
+]);
+
+function isTerminalDiscordLoginError(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	const code = (error as { code?: unknown }).code;
+	if (
+		typeof code === "string" &&
+		DISCORD_TERMINAL_LOGIN_ERROR_CODES.has(code)
+	) {
+		return true;
+	}
+	// A REST 401 (DiscordAPIError / HTTPError `status`) that reaches here
+	// uncoerced is still an invalid-credential failure.
+	if ((error as { status?: unknown }).status === 401) {
+		return true;
+	}
+	return DISCORD_TERMINAL_LOGIN_ERROR_MESSAGES.has(error.message);
+}
 
 // Forward Content.metadata onto the persisted Memory (e.g. `transient: true`
 // for orchestrator status posts). Plain-object guard so arrays/instances don't leak through.
@@ -532,6 +577,11 @@ export class DiscordService extends Service implements IDiscordService {
 	voiceManager?: VoiceManager;
 	private channelDebouncer?: ChannelDebouncer;
 	private _loginFailed = false;
+	// Bumped by `stop()` before any teardown. Login attempts capture the value
+	// when the sequence starts and every settle path re-checks it, so a login
+	// rejection, gateway error, or ready event landing after stop cannot create
+	// a client or arm a retry timer on an orphaned account state (#15968).
+	private lifecycleGeneration = 0;
 	private timeouts: ReturnType<typeof setTimeout>[] = [];
 	public clientReadyPromise: Promise<void> | null = null;
 	/**
@@ -1453,12 +1503,20 @@ export class DiscordService extends Service implements IDiscordService {
 		state.voiceManager = new VoiceManager(facade, this.runtime);
 		state.messageManager = new MessageManager(facade, this.runtime);
 
-		// Initial login now retries with backoff instead of settling terminal on
-		// a transient transport failure (#15855). The promise resolves on the
-		// first successful ClientReady (any attempt) and only rejects on a
-		// terminal post-ready onReady failure — never on a login rejection.
+		// Initial login retries transient transport failures with backoff instead
+		// of settling terminal (#15855). The promise resolves on the first
+		// successful ClientReady (any attempt) and rejects on a terminal
+		// authentication/configuration failure, a post-ready onReady failure, or
+		// service stop (#15968) — never on a transient login rejection.
 		state.clientReadyPromise = new Promise<void>((resolve, reject) => {
-			this.attemptDiscordLogin(state, account.token, 0, resolve, reject);
+			this.attemptDiscordLogin(
+				state,
+				account.token,
+				0,
+				resolve,
+				reject,
+				this.lifecycleGeneration,
+			);
 		});
 
 		state.clientReadyPromise.catch((error) => {
@@ -1480,14 +1538,22 @@ export class DiscordService extends Service implements IDiscordService {
 
 	/**
 	 * Drives one initial-login attempt for an account and re-arms the next on
-	 * failure. discord.js destroys the client when `login()` rejects, so each
-	 * attempt binds a fresh client (created here once the prior one was torn
-	 * down), re-attaches the gateway listeners, and races ClientReady against the
-	 * login rejection / gateway Error. Success resolves the ready promise and
-	 * clears the failed state; a transient failure discards the client and
-	 * schedules `attempt + 1` after a capped-exponential backoff, keeping the
-	 * connector self-healing instead of running deaf-but-active (#15855). Once
-	 * ClientReady fires, discord.js owns reconnection — this loop stops.
+	 * transient failure. discord.js destroys the client when `login()` rejects,
+	 * so each attempt binds a fresh client (created here once the prior one was
+	 * torn down), re-attaches the gateway listeners, and races ClientReady
+	 * against the login rejection / gateway Error. Success resolves the ready
+	 * promise and clears the failed state; a transient transport failure
+	 * discards the client and schedules `attempt + 1` after a capped-exponential
+	 * backoff, keeping the connector self-healing instead of running
+	 * deaf-but-active (#15855); a terminal authentication/configuration failure
+	 * rejects with a typed `ElizaError` and reports to the owner instead of
+	 * retrying forever (#15968). Once ClientReady fires, discord.js owns
+	 * reconnection — this loop stops.
+	 *
+	 * `generation` is the service lifecycle generation captured when the login
+	 * sequence started. `stop()` bumps it before tearing anything down, so the
+	 * entry check and every settle path abort on a stale value instead of
+	 * resurrecting the stopped connector.
 	 */
 	private attemptDiscordLogin(
 		state: DiscordAccountClientState,
@@ -1495,7 +1561,12 @@ export class DiscordService extends Service implements IDiscordService {
 		attempt: number,
 		resolve: () => void,
 		reject: (error: unknown) => void,
+		generation: number,
 	): void {
+		if (generation !== this.lifecycleGeneration) {
+			reject(this.loginAbortedError(state, attempt));
+			return;
+		}
 		if (!state.client) {
 			state.client = this.createDiscordJsClient();
 		}
@@ -1509,7 +1580,7 @@ export class DiscordService extends Service implements IDiscordService {
 		// one attempt — settle exactly once so we never both resolve and retry.
 		let settled = false;
 
-		const scheduleRetry = (error: unknown): void => {
+		const failAttempt = (error: unknown): void => {
 			if (settled) {
 				return;
 			}
@@ -1530,14 +1601,58 @@ export class DiscordService extends Service implements IDiscordService {
 				);
 			});
 			state.client = null;
+			if (generation !== this.lifecycleGeneration) {
+				// The failure settled after stop(): the pool is torn down, so settle
+				// the ready promise instead of arming a timer whose callback would
+				// recreate a client on the orphaned state.
+				reject(this.loginAbortedError(state, attempt, error));
+				return;
+			}
+			if (isTerminalDiscordLoginError(error)) {
+				const terminal = new ElizaError(
+					`Discord login for account ${state.accountId} failed terminally: ${
+						error instanceof Error ? error.message : String(error)
+					} — fix the bot token / privileged-intent configuration; retrying cannot recover this`,
+					{
+						code: "DISCORD_LOGIN_TERMINAL",
+						cause: error,
+						severity: "fatal",
+						context: { accountId: state.accountId, attempt: attempt + 1 },
+					},
+				);
+				// Diagnostic boundary (#12263): nothing on the boot path awaits the
+				// ready promise, so surface the dead account to RECENT_ERRORS and
+				// owner escalation instead of failing silently.
+				this.runtime.reportError("discord:login", terminal, {
+					accountId: state.accountId,
+				});
+				reject(terminal);
+				return;
+			}
 			const delayMs = this.computeLoginBackoffMs(attempt);
 			this.emitLoginFailureHeartbeat(state, error, attempt, delayMs);
+			// One tracked handle per account, cleared when it fires and cancelable
+			// by stop() — deliberately NOT appended to the service-wide `timeouts`
+			// array, which would retain every fired handle for the whole outage.
 			const timer = setTimeout(() => {
 				state.loginRetryTimer = undefined;
-				this.attemptDiscordLogin(state, token, attempt + 1, resolve, reject);
+				state.cancelLoginRetry = undefined;
+				this.attemptDiscordLogin(
+					state,
+					token,
+					attempt + 1,
+					resolve,
+					reject,
+					generation,
+				);
 			}, delayMs);
 			state.loginRetryTimer = timer;
-			this.timeouts.push(timer);
+			state.cancelLoginRetry = () => {
+				clearTimeout(timer);
+				state.loginRetryTimer = undefined;
+				state.cancelLoginRetry = undefined;
+				reject(this.loginAbortedError(state, attempt, error));
+			};
 		};
 
 		client.once(Events.ClientReady, async (readyClient) => {
@@ -1548,6 +1663,24 @@ export class DiscordService extends Service implements IDiscordService {
 			if (state.loginRetryTimer) {
 				clearTimeout(state.loginRetryTimer);
 				state.loginRetryTimer = undefined;
+				state.cancelLoginRetry = undefined;
+			}
+			if (generation !== this.lifecycleGeneration) {
+				// Ready raced stop(): tear the client down and settle instead of
+				// running onReady side effects on a stopped service.
+				state.client?.destroy().catch((destroyError) => {
+					// error-policy:J6 best-effort teardown after stop
+					this.runtime.logger.debug(
+						`Discord client teardown after post-stop ready for account ${state.accountId}: ${
+							destroyError instanceof Error
+								? destroyError.message
+								: String(destroyError)
+						}`,
+					);
+				});
+				state.client = null;
+				reject(this.loginAbortedError(state, attempt));
+				return;
 			}
 			state.loginFailed = false;
 			state.lastLoginHeartbeatAt = undefined;
@@ -1574,11 +1707,29 @@ export class DiscordService extends Service implements IDiscordService {
 					error instanceof Error ? error.message : String(error)
 				}`,
 			);
-			scheduleRetry(error);
+			failAttempt(error);
 		});
 		client.login(token).catch((error) => {
-			scheduleRetry(error);
+			failAttempt(error);
 		});
+	}
+
+	// Typed settle for a login sequence interrupted by service stop; `cause`
+	// carries the failure that was in flight when the stop landed, when any.
+	private loginAbortedError(
+		state: DiscordAccountClientState,
+		attempt: number,
+		cause?: unknown,
+	): ElizaError {
+		return new ElizaError(
+			`Discord initial login aborted for account ${state.accountId}: service stopped`,
+			{
+				code: "DISCORD_LOGIN_ABORTED",
+				severity: "ephemeral",
+				context: { accountId: state.accountId, attempt: attempt + 1 },
+				...(cause !== undefined ? { cause } : {}),
+			},
+		);
 	}
 
 	// Capped exponential backoff for the initial-login retry loop: the delay
@@ -3749,11 +3900,19 @@ export class DiscordService extends Service implements IDiscordService {
 	 */
 	public async stop(): Promise<void> {
 		this.runtime.logger.info("Stopping Discord service");
+		// Invalidate every in-flight login attempt BEFORE any teardown: a login
+		// rejection, gateway error, or ready event settling after this line sees
+		// a stale generation and cannot create a client or arm a retry timer on
+		// the orphaned account state (#15968).
+		this.lifecycleGeneration += 1;
 		this.timeouts.forEach(clearTimeout);
 		this.timeouts = [];
 
 		const states = this.accountPool.list();
 		for (const state of states) {
+			// Cancel a pending backoff retry and settle its ready promise so
+			// awaiting callers cannot hang on a stopped service.
+			state.cancelLoginRetry?.();
 			state.channelDebouncer?.destroy();
 			state.channelDebouncer = undefined;
 		}
