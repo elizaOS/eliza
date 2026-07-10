@@ -838,6 +838,29 @@ function getStructuredEvaluatorObject(
 	return { object: null, parseError: "missing evaluator text/object" };
 }
 
+/**
+ * Split a response that BEGINS with a fenced JSON block into the block and the
+ * prose after it. glm-family evaluators love the shape
+ * "```json\n{success,decision,thought}\n```\n\n<the actual answer>" — the
+ * envelope is a valid verdict and the prose is the user-facing message, but a
+ * whole-string parse rejects it and the prose-recovery path then delivered the
+ * ENTIRE text, raw envelope included (observed live).
+ */
+function extractLeadingJsonFence(
+	text: string,
+): { block: string; rest: string } | null {
+	if (!text.startsWith("```")) return null;
+	const firstLineEnd = text.indexOf("\n");
+	if (firstLineEnd < 0) return null;
+	const closeIdx = text.indexOf("\n```", firstLineEnd);
+	if (closeIdx < 0) return null;
+	const afterClose = text.indexOf("\n", closeIdx + 1);
+	const block = text.slice(firstLineEnd + 1, closeIdx).trim();
+	const rest = afterClose < 0 ? "" : text.slice(afterClose + 1);
+	if (!block) return null;
+	return { block, rest };
+}
+
 function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 	const candidate = unwrapJsonFence(text.trim());
 	if (!candidate) {
@@ -853,6 +876,27 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 		}
 		return { object: parsed };
 	} catch {
+		// Envelope-then-prose repair: a leading fenced evaluator verdict with the
+		// answer following it is a SUCCESS, not drift — take the envelope as the
+		// verdict and the prose as messageToUser when the envelope lacks one.
+		const leading = extractLeadingJsonFence(text.trim());
+		if (leading) {
+			try {
+				const parsedBlock = JSON.parse(leading.block);
+				if (isEvaluatorShapedObject(parsedBlock)) {
+					const prose = leading.rest.trim();
+					const record = parsedBlock as RawEvaluatorOutput & {
+						messageToUser?: unknown;
+					};
+					if (prose && typeof record.messageToUser !== "string") {
+						record.messageToUser = prose;
+					}
+					return { object: record };
+				}
+			} catch {
+				// fall through to the tolerant parse below
+			}
+		}
 		const tolerant = parseJsonObject<RawEvaluatorOutput>(candidate);
 		if (isEvaluatorShapedObject(tolerant)) {
 			return {
