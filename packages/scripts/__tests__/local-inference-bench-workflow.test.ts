@@ -27,6 +27,9 @@ describe("local inference bench workflow", () => {
   });
 
   it("builds and exposes libelizainference before booting the real agent", () => {
+    const dependencyStep = workflow.indexOf(
+      "- name: Verify fused-runtime build dependencies",
+    );
     const buildStep = workflow.indexOf(
       "node packages/app-core/scripts/stage-desktop-fused-lib.mjs",
     );
@@ -35,11 +38,14 @@ describe("local inference bench workflow", () => {
     );
     const bootStep = workflow.indexOf("- name: Boot dev agent");
 
+    expect(dependencyStep).toBeGreaterThan(-1);
     expect(buildStep).toBeGreaterThan(-1);
     expect(submoduleStep).toBeGreaterThan(-1);
+    expect(buildStep).toBeGreaterThan(dependencyStep);
     expect(buildStep).toBeGreaterThan(submoduleStep);
     expect(bootStep).toBeGreaterThan(buildStep);
     expect(workflow).toContain("--variant cpu");
+    expect(workflow).not.toContain("sudo apt-get");
     expect(workflow).toContain(
       "ELIZA_INFERENCE_LIB_DIR: $" + "{{ github.workspace }}/.ci-fused-lib",
     );
