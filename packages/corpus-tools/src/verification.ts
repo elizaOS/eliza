@@ -90,6 +90,8 @@ const deletionApprovalSchema = z.object({
   reviewDecisionSha256: z.string().regex(/^[a-f0-9]{64}$/),
   tombstoneIdsSha256: z.string().regex(/^[a-f0-9]{64}$/),
   tombstoneCount: z.number().int().nonnegative(),
+  survivorCount: z.number().int().nonnegative(),
+  attachmentBytesDropped: z.number().int().nonnegative(),
 });
 
 const deletionRuleBaseSchema = z
@@ -250,7 +252,7 @@ const placeholderRegistrySchema = z.object({
         .regex(/^\[\[(?:SECRET|PII):[a-z0-9-]+:[a-f0-9]{12}\]\]$/),
       kind: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
       valueHash: z.string().regex(/^[a-f0-9]{64}$/),
-      stage: z.string().min(1),
+      stage: z.literal("secrets"),
       messageId: z.string().min(1),
     }),
   ),
@@ -887,6 +889,8 @@ async function readGazetteerValues(filePath: string): Promise<string[]> {
 function registryFindings(
   messages: readonly CorpusMessage[],
   registry: z.infer<typeof placeholderRegistrySchema>,
+  candidates: readonly z.infer<typeof candidateSchema>[],
+  ledger: readonly z.infer<typeof ledgerRecordSchema>[],
 ): VerificationFinding[] {
   const byMessageAndPlaceholder = new Map(
     registry.entries.map((entry) => [
@@ -905,11 +909,44 @@ function registryFindings(
         const encoded = placeholder.match(
           /^\[\[(?:SECRET|PII):([a-z0-9-]+):([a-f0-9]{12})\]\]$/,
         );
+        const secretsRecords = ledger.filter(
+          (record) =>
+            record.rulesetVersion === registry.rulesetVersion &&
+            record.messageId === message.id &&
+            record.stage === "secrets" &&
+            !record.tombstone &&
+            record.output,
+        );
+        const secretsRecord = secretsRecords[0];
+        const linkedMineRecord = secretsRecord
+          ? ledger.find(
+              (record) =>
+                record.rulesetVersion === registry.rulesetVersion &&
+                record.messageId === message.id &&
+                record.stage === "mine" &&
+                record.outputHash === secretsRecord.inputHash &&
+                record.output,
+            )
+          : undefined;
+        const transitioned =
+          secretsRecords.length === 1 &&
+          secretsRecord?.output !== undefined &&
+          JSON.stringify(secretsRecord.output).includes(placeholder) &&
+          linkedMineRecord?.output !== undefined &&
+          !JSON.stringify(linkedMineRecord.output).includes(placeholder);
+        const candidateBound = candidates.some(
+          (candidate) =>
+            candidate.msgId === message.id &&
+            candidate.kind === entry?.kind &&
+            candidate.valueHash === entry?.valueHash,
+        );
         if (
           !entry ||
           !encoded ||
           entry.kind !== encoded[1] ||
-          !entry.valueHash.startsWith(encoded[2])
+          !entry.valueHash.startsWith(encoded[2]) ||
+          !candidateBound ||
+          !transitioned
         ) {
           findings.push({
             kind: "placeholder",
@@ -945,15 +982,56 @@ function attachmentFindings(
 ): VerificationFinding[] {
   return messages.flatMap((message) =>
     message.attachments
-      .filter((attachment) => attachment.dataBase64 !== undefined)
+      .filter(
+        (attachment) =>
+          attachment.dataBase64 !== undefined || attachment.bytes !== undefined,
+      )
       .map((attachment) => ({
         kind: "attachment-policy" as const,
         detector: "embedded-attachment-bytes",
         messageId: message.id,
-        field: "message.attachments.dataBase64",
+        field: "message.attachments",
         valueHash: findingHash("embedded-attachment-bytes", attachment.sha256),
       })),
   );
+}
+
+function droppedAttachmentByteCount(
+  messages: readonly CorpusMessage[],
+): number {
+  let total = 0;
+  for (const message of messages) {
+    for (const attachment of message.attachments) {
+      if (attachment.dataBase64 !== undefined) {
+        if (
+          !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+            attachment.dataBase64,
+          )
+        ) {
+          throw new Error(
+            `attachment ${attachment.sha256} has invalid base64 payload`,
+          );
+        }
+        const decoded = Buffer.from(attachment.dataBase64, "base64");
+        if (
+          decoded.toString("base64") !== attachment.dataBase64 ||
+          (attachment.bytes !== undefined &&
+            attachment.bytes !== decoded.length)
+        ) {
+          throw new Error(
+            `attachment ${attachment.sha256} has inconsistent payload bytes`,
+          );
+        }
+        total += decoded.length;
+      } else if (attachment.bytes !== undefined) {
+        total += attachment.bytes;
+      }
+      if (!Number.isSafeInteger(total)) {
+        throw new Error("attachment byte total exceeds safe integer range");
+      }
+    }
+  }
+  return total;
 }
 
 async function validateManifestSnapshots(
@@ -1019,6 +1097,8 @@ function canaryFindings(
   messages: readonly CorpusMessage[],
   manifest: z.infer<typeof canaryManifestSchema>,
   ledger: readonly z.infer<typeof ledgerRecordSchema>[],
+  deletionApproval: z.infer<typeof deletionApprovalSchema>,
+  approvedDeletedIds: ReadonlySet<string>,
 ): VerificationFinding[] {
   const byId = new Map(messages.map((message) => [message.id, message]));
   const findings: VerificationFinding[] = [];
@@ -1036,7 +1116,10 @@ function canaryFindings(
           record.messageId === canary.messageId &&
           record.stage === expectedStage &&
           record.rulesetVersion === manifest.rulesetVersion &&
-          record.tombstone,
+          record.tombstone &&
+          (expectedStage !== "delete" ||
+            (record.stageVersion === deletionApproval.deleteStageVersion &&
+              approvedDeletedIds.has(record.messageId))),
       );
     }
     if (!satisfied) {
@@ -1102,12 +1185,86 @@ function deletionRuleMatches(
       return values.some((value) => {
         const haystack = normalize(value);
         if (match.mode === "substring") return haystack.includes(needle);
-        return haystack
-          .split(/[^\p{L}\p{N}_]+/u)
-          .some((token) => token === needle);
+        let from = 0;
+        for (;;) {
+          const index = haystack.indexOf(needle, from);
+          if (index === -1) return false;
+          const before = index === 0 ? undefined : haystack[index - 1];
+          const after = haystack[index + needle.length];
+          const isWord = (character: string | undefined): boolean =>
+            character !== undefined && /[\p{L}\p{N}_]/u.test(character);
+          if (!isWord(before) && !isWord(after)) return true;
+          from = index + Math.max(needle.length, 1);
+        }
       });
     }
   }
+}
+
+const deletionReviewRedactPatterns: readonly RegExp[] = [
+  /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi,
+  /(?<!\d)(?:\+?[1-9]\d{7,14}|(?:\+?1[ .-]?)?(?:\(\d{3}\)[ .-]?|\d{3}[ .-])\d{3}[ .-]?\d{4})(?!\d)/g,
+  /\b\d{3}[ -]\d{2}[ -]\d{4}\b/g,
+  /\b(?:\d[ -]?){13,19}\b/g,
+  /\b(?:sk-|ghp_|github_pat_|xox[baprs]-|AIza)[A-Za-z0-9_-]{8,}\b/g,
+  /\b(?:password|passcode|token|secret)\s*[:=]\s*\S+/gi,
+];
+
+function deletionRuleSensitiveTerms(
+  rule: z.infer<typeof deletionRuleSchema>,
+): string[] {
+  const match = rule.match;
+  if (match.type === "thread") return [match.threadId];
+  if (match.type === "contact") return [match.contactId];
+  if (match.type === "keyword" || match.type === "label") {
+    return [match.value];
+  }
+  return [];
+}
+
+function replaceDeletionReviewTerm(text: string, value: string): string {
+  if (!value) return text;
+  const normalized = (candidate: string): string =>
+    candidate.normalize("NFKC").toLocaleLowerCase("en-US");
+  const lowerText = normalized(text);
+  const lowerValue = normalized(value);
+  if (lowerText.length !== text.length || lowerValue.length !== value.length) {
+    return text;
+  }
+  let result = text;
+  let search = lowerText;
+  let from = 0;
+  for (;;) {
+    const index = search.indexOf(lowerValue, from);
+    if (index === -1) return result;
+    result = `${result.slice(0, index)}[MATCH]${result.slice(index + value.length)}`;
+    search = normalized(result);
+    from = index + "[MATCH]".length;
+  }
+}
+
+function deletionReviewContext(
+  message: CorpusMessage,
+  sensitiveTerms: readonly string[],
+): string {
+  let value = [message.subject, message.text, message.snippet]
+    .filter((item): item is string => Boolean(item))
+    .join(" — ");
+  for (const term of [...new Set(sensitiveTerms)].sort(
+    (left, right) => right.length - left.length,
+  )) {
+    value = replaceDeletionReviewTerm(value, term);
+  }
+  for (const pattern of deletionReviewRedactPatterns) {
+    pattern.lastIndex = 0;
+    value = value.replace(pattern, "[REDACTED]");
+  }
+  value = value.replace(/\s+/g, " ").trim();
+  if (!value) return "[no textual preview]";
+  const characters = [...value];
+  return characters.length <= 60
+    ? value
+    : `${characters.slice(0, 59).join("")}…`;
 }
 
 function validateDeletionQueueSemantics(
@@ -1128,8 +1285,122 @@ function validateDeletionQueueSemantics(
   const ruleByHash = new Map(
     rules.rules.map((rule) => [sha256(rule.id), rule]),
   );
+  const enabledRules = rules.rules.filter((rule) => rule.enabled);
+  const directMatches = new Map<
+    string,
+    Array<{ rule: z.infer<typeof deletionRuleSchema>; terms: string[] }>
+  >();
+  for (const message of messages) {
+    const matches = enabledRules
+      .filter((rule) => deletionRuleMatches(message, rule, candidateKinds))
+      .map((rule) => ({
+        rule,
+        terms: deletionRuleSensitiveTerms(rule),
+      }));
+    if (matches.length > 0) directMatches.set(message.id, matches);
+  }
+  const threadKey = (message: CorpusMessage): string =>
+    canonicalJson([message.platform, message.accountId, message.threadId]);
+  const selectedThreadKeys = new Set<string>();
+  for (const message of messages) {
+    if (
+      directMatches
+        .get(message.id)
+        ?.some((match) => match.rule.scope === "thread")
+    ) {
+      selectedThreadKeys.add(threadKey(message));
+    }
+  }
+  const expectedGroups: Array<
+    z.infer<typeof deletionReviewQueueSchema>["groups"][number]
+  > = [];
+  const threadCoveredMessages = new Set<string>();
+  for (const key of selectedThreadKeys) {
+    const members = messages
+      .filter((message) => threadKey(message) === key)
+      .sort((left, right) => left.id.localeCompare(right.id));
+    for (const member of members) threadCoveredMessages.add(member.id);
+    const matches = members.flatMap(
+      (member) => directMatches.get(member.id) ?? [],
+    );
+    const groupRules = [
+      ...new Map(matches.map((match) => [match.rule.id, match.rule])).values(),
+    ].sort((left, right) => left.id.localeCompare(right.id));
+    const messageIds = members.map((message) => message.id);
+    const ruleIdHashes = groupRules.map((rule) => sha256(rule.id));
+    const matchClasses = [
+      ...new Set(groupRules.map((rule) => rule.match.type)),
+    ].sort();
+    const preview = members[0];
+    if (!preview) throw new Error("deletion review thread group is empty");
+    expectedGroups.push({
+      groupId: sha256(
+        canonicalJson({
+          scope: "thread",
+          platform: preview.platform,
+          messageIds,
+          ruleIdHashes,
+        }),
+      ),
+      scope: "thread",
+      platform: preview.platform,
+      messageIds,
+      ruleIdHashes,
+      matchClasses,
+      redactedContext: deletionReviewContext(
+        preview,
+        matches.flatMap((match) => match.terms),
+      ),
+      suggestedDecision: "delete",
+    });
+  }
+  for (const message of messages) {
+    if (threadCoveredMessages.has(message.id)) continue;
+    const matches = (directMatches.get(message.id) ?? []).filter(
+      (match) => match.rule.scope === "message",
+    );
+    if (matches.length === 0) continue;
+    const groupRules = [
+      ...new Map(matches.map((match) => [match.rule.id, match.rule])).values(),
+    ].sort((left, right) => left.id.localeCompare(right.id));
+    const messageIds = [message.id];
+    const ruleIdHashes = groupRules.map((rule) => sha256(rule.id));
+    const matchClasses = [
+      ...new Set(groupRules.map((rule) => rule.match.type)),
+    ].sort();
+    expectedGroups.push({
+      groupId: sha256(
+        canonicalJson({
+          scope: "message",
+          platform: message.platform,
+          messageIds,
+          ruleIdHashes,
+        }),
+      ),
+      scope: "message",
+      platform: message.platform,
+      messageIds,
+      ruleIdHashes,
+      matchClasses,
+      redactedContext: deletionReviewContext(
+        message,
+        matches.flatMap((match) => match.terms),
+      ),
+      suggestedDecision: "delete",
+    });
+  }
+  if (
+    canonicalJson(
+      [...queue.groups].sort((a, b) => a.groupId.localeCompare(b.groupId)),
+    ) !==
+    canonicalJson(
+      expectedGroups.sort((a, b) => a.groupId.localeCompare(b.groupId)),
+    )
+  ) {
+    throw new Error("deletion review queue does not match canonical grouping");
+  }
   const expectedPairs = new Set<string>();
-  for (const rule of rules.rules.filter((candidate) => candidate.enabled)) {
+  for (const rule of enabledRules) {
     const direct = messages.filter((message) =>
       deletionRuleMatches(message, rule, candidateKinds),
     );
@@ -1239,8 +1510,13 @@ function validateDeletionQueueSemantics(
 
 function ledgerFindings(
   messages: readonly CorpusMessage[],
+  deletionInputMessages: readonly CorpusMessage[],
   ledger: readonly z.infer<typeof ledgerRecordSchema>[],
   deletionApproval: z.infer<typeof deletionApprovalSchema>,
+  approvedDeletionGroups: ReadonlyMap<
+    string,
+    { scope: "message" | "thread"; ruleIdHashes: readonly string[] }
+  >,
   rulesetVersion: string,
 ): VerificationFinding[] {
   const findings: VerificationFinding[] = [];
@@ -1262,17 +1538,21 @@ function ledgerFindings(
         valueHash: findingHash("invalid-marker-key", record.markerKey),
       });
     }
-    const approvedDeletionTombstone =
-      record.tombstone &&
+    const approvedDeletionRecord =
       record.stage === "delete" &&
       record.stageVersion === deletionApproval.deleteStageVersion;
-    const hasDeletionMetadata =
+    const hasDeletionBinding =
       record.rulesSha256 !== undefined &&
       record.reviewedQueueSha256 !== undefined &&
-      record.reviewDecisionSha256 !== undefined &&
+      record.reviewDecisionSha256 !== undefined;
+    const hasTombstoneMetadata =
+      hasDeletionBinding &&
       record.ruleIdHashes !== undefined &&
       record.scope !== undefined;
-    if (approvedDeletionTombstone && !hasDeletionMetadata) {
+    if (
+      approvedDeletionRecord &&
+      (!hasDeletionBinding || (record.tombstone && !hasTombstoneMetadata))
+    ) {
       findings.push({
         kind: "ledger",
         detector: "missing-deletion-metadata",
@@ -1281,8 +1561,8 @@ function ledgerFindings(
       });
     }
     if (
-      approvedDeletionTombstone &&
-      hasDeletionMetadata &&
+      approvedDeletionRecord &&
+      hasDeletionBinding &&
       (record.rulesSha256 !== deletionApproval.rulesSha256 ||
         record.reviewedQueueSha256 !== deletionApproval.reviewedQueueSha256 ||
         record.reviewDecisionSha256 !== deletionApproval.reviewDecisionSha256)
@@ -1295,7 +1575,7 @@ function ledgerFindings(
       });
     }
     const expectedOutputHash = record.tombstone
-      ? hasDeletionMetadata
+      ? hasTombstoneMetadata
         ? sha256(
             canonicalJson({
               tombstone: true,
@@ -1356,6 +1636,23 @@ function ledgerFindings(
     });
   }
   for (const tombstone of approvedTombstones) {
+    const approvedGroup = approvedDeletionGroups.get(tombstone.messageId);
+    if (
+      !approvedGroup ||
+      tombstone.scope !== approvedGroup.scope ||
+      canonicalJson(tombstone.ruleIdHashes) !==
+        canonicalJson(approvedGroup.ruleIdHashes)
+    ) {
+      findings.push({
+        kind: "ledger",
+        detector: "deletion-tombstone-review-binding",
+        messageId: tombstone.messageId,
+        valueHash: findingHash(
+          "deletion-tombstone-review-binding",
+          tombstone.markerKey,
+        ),
+      });
+    }
     const secretsRecords = current.filter(
       (record) =>
         record.messageId === tombstone.messageId &&
@@ -1395,6 +1692,53 @@ function ledgerFindings(
       ),
     });
   }
+  const deletionInputIds = deletionInputMessages.map((message) => message.id);
+  const liveIds = messages.map((message) => message.id);
+  const partitionIds = [...liveIds, ...tombstoneIds].sort();
+  if (
+    new Set(deletionInputIds).size !== deletionInputIds.length ||
+    new Set(liveIds).size !== liveIds.length ||
+    liveIds.some((messageId) => tombstoned.has(messageId)) ||
+    canonicalJson([...deletionInputIds].sort()) !== canonicalJson(partitionIds)
+  ) {
+    findings.push({
+      kind: "ledger",
+      detector: "deletion-input-partition",
+      valueHash: findingHash(
+        "deletion-input-partition",
+        canonicalJson({
+          deletionInputIds: [...deletionInputIds].sort(),
+          partitionIds,
+        }),
+      ),
+    });
+  }
+  if (messages.length !== deletionApproval.survivorCount) {
+    findings.push({
+      kind: "ledger",
+      detector: "deletion-survivor-count",
+      valueHash: findingHash(
+        "deletion-survivor-count",
+        `${messages.length}:${deletionApproval.survivorCount}`,
+      ),
+    });
+  }
+  const attachmentBytesDropped = droppedAttachmentByteCount(
+    deletionInputMessages,
+  );
+  if (attachmentBytesDropped !== deletionApproval.attachmentBytesDropped) {
+    findings.push({
+      kind: "ledger",
+      detector: "deletion-attachment-drop-count",
+      valueHash: findingHash(
+        "deletion-attachment-drop-count",
+        `${attachmentBytesDropped}:${deletionApproval.attachmentBytesDropped}`,
+      ),
+    });
+  }
+  const deletionInputsById = new Map(
+    deletionInputMessages.map((message) => [message.id, message]),
+  );
   for (const message of messages) {
     if (tombstoned.has(message.id)) {
       findings.push({
@@ -1453,6 +1797,38 @@ function ledgerFindings(
           valueHash: findingHash("stage-chain", downstream.markerKey),
         });
         break;
+      }
+      if (expectedStage === "delete") {
+        const source = deletionInputsById.get(message.id);
+        const expectedOutput = source
+          ? {
+              ...source,
+              attachments: source.attachments.map((attachment) => ({
+                filename: attachment.filename,
+                mimeType: attachment.mimeType,
+                sha256: attachment.sha256,
+              })),
+            }
+          : undefined;
+        const deleteRecord = predecessors[0];
+        if (
+          !source ||
+          !expectedOutput ||
+          deleteRecord.inputHash !== sha256(JSON.stringify(source)) ||
+          deleteRecord.outputHash !== sha256(JSON.stringify(expectedOutput)) ||
+          deleteRecord.output === undefined ||
+          canonicalJson(deleteRecord.output) !== canonicalJson(expectedOutput)
+        ) {
+          findings.push({
+            kind: "ledger",
+            detector: "invalid-deletion-survivor-transform",
+            messageId: message.id,
+            valueHash: findingHash(
+              "invalid-deletion-survivor-transform",
+              deleteRecord.markerKey,
+            ),
+          });
+        }
       }
       downstream = predecessors[0];
     }
@@ -1565,16 +1941,45 @@ export async function verifyCorpus(
     }
     uniqueStageRecords.add(key);
   }
+  const currentMineStageRecords = ledger.filter(
+    (record) =>
+      record.rulesetVersion === options.rulesetVersion &&
+      record.stage === "mine",
+  );
+  const currentSecretsStageRecords = ledger.filter(
+    (record) =>
+      record.rulesetVersion === options.rulesetVersion &&
+      record.stage === "secrets",
+  );
+  const mineByMessageId = new Map(
+    currentMineStageRecords.map((record) => [record.messageId, record]),
+  );
+  const secretsByMessageId = new Map(
+    currentSecretsStageRecords.map((record) => [record.messageId, record]),
+  );
+  if (
+    currentSecretsStageRecords.some((secretsRecord) => {
+      const mineRecord = mineByMessageId.get(secretsRecord.messageId);
+      return (
+        !mineRecord ||
+        mineRecord.tombstone ||
+        secretsRecord.inputHash !== mineRecord.outputHash
+      );
+    }) ||
+    currentMineStageRecords.some((mineRecord) => {
+      const secretsRecord = secretsByMessageId.get(mineRecord.messageId);
+      return mineRecord.tombstone
+        ? secretsRecord !== undefined
+        : !secretsRecord || secretsRecord.inputHash !== mineRecord.outputHash;
+    })
+  ) {
+    throw new Error("mine and secrets ledger stages do not match exactly");
+  }
+  const currentMineRecords = currentMineStageRecords.filter(
+    (record) => !record.tombstone && record.output,
+  );
   const mineOutputs = new Map(
-    ledger
-      .filter(
-        (record) =>
-          record.rulesetVersion === options.rulesetVersion &&
-          record.stage === "mine" &&
-          !record.tombstone &&
-          record.output,
-      )
-      .map((record) => [record.messageId, record.output]),
+    currentMineRecords.map((record) => [record.messageId, record.output]),
   );
   for (const candidate of candidates) {
     const source = mineOutputs.get(candidate.msgId);
@@ -1599,19 +2004,17 @@ export async function verifyCorpus(
   const rerunMine = await minePiiCandidates(mineMessages, {
     hashSalt: options.rulesetVersion,
   });
-  const suppliedCandidateKeys = new Set(
-    candidates.map(
-      (candidate) =>
-        `${candidate.msgId}\0${candidate.kind}\0${candidate.sourceRef.span.start}\0${candidate.sourceRef.span.end}\0${candidate.valueHash}`,
-    ),
-  );
-  for (const expected of rerunMine.candidates) {
-    const key = `${expected.msgId}\0${expected.kind}\0${expected.sourceRef.span.start}\0${expected.sourceRef.span.end}\0${expected.valueHash}`;
-    if (!suppliedCandidateKeys.has(key)) {
-      throw new Error(
-        `mine candidate artifact is incomplete for message ${expected.msgId}`,
-      );
-    }
+  const candidateKey = (candidate: (typeof candidates)[number]): string =>
+    `${candidate.msgId}\0${candidate.kind}\0${candidate.sourceRef.span.start}\0${candidate.sourceRef.span.end}\0${candidate.valueHash}`;
+  const suppliedCandidateKeys = candidates.map(candidateKey).sort();
+  const expectedCandidateKeys = rerunMine.candidates.map(candidateKey).sort();
+  if (
+    canonicalJson(suppliedCandidateKeys) !==
+    canonicalJson(expectedCandidateKeys)
+  ) {
+    throw new Error(
+      "mine candidate artifact does not exactly match mining rerun",
+    );
   }
   const deletionApproval = deletionApprovalSchema.parse(
     JSON.parse(await fs.readFile(options.deletionApprovalPath, "utf8")),
@@ -1631,11 +2034,34 @@ export async function verifyCorpus(
   ) {
     throw new Error("deletion rules contain duplicate ids");
   }
-  const rulesDigest = sha256(canonicalJson(deletionRules));
+  const deletionInputMessages = ledger
+    .filter(
+      (record) =>
+        record.rulesetVersion === options.rulesetVersion &&
+        record.stage === "secrets" &&
+        !record.tombstone &&
+        record.output,
+    )
+    .map((record) => record.output)
+    .filter((message): message is CorpusMessage => message !== undefined);
+  const deletionInputDigest = sha256(
+    canonicalJson(
+      [...deletionInputMessages].sort((left, right) =>
+        left.id.localeCompare(right.id),
+      ),
+    ),
+  );
+  const normalizedDeletionRules = {
+    ...deletionRules,
+    rules: [...deletionRules.rules].sort((left, right) =>
+      left.id.localeCompare(right.id),
+    ),
+  };
+  const rulesDigest = sha256(canonicalJson(normalizedDeletionRules));
   const queueDigest = sha256(canonicalJson(deletionReviewQueue));
   const decisionDigest = sha256(canonicalJson(deletionReviewDecision));
   const deletionBindings = [
-    ["corpus", deletionApproval.corpusDigest, corpusDigest],
+    ["corpus", deletionApproval.corpusDigest, deletionInputDigest],
     ["candidates", deletionApproval.candidatesSha256, deletionCandidatesDigest],
     ["deletion rules", deletionApproval.rulesSha256, rulesDigest],
     [
@@ -1648,14 +2074,18 @@ export async function verifyCorpus(
       deletionApproval.reviewDecisionSha256,
       decisionDigest,
     ],
-    ["queue corpus", deletionReviewQueue.corpusDigest, corpusDigest],
+    ["queue corpus", deletionReviewQueue.corpusDigest, deletionInputDigest],
     ["queue rules", deletionReviewQueue.rulesSha256, rulesDigest],
     [
       "queue candidates",
       deletionReviewQueue.candidatesSha256,
       deletionCandidatesDigest,
     ],
-    ["decision corpus", deletionReviewDecision.corpusDigest, corpusDigest],
+    [
+      "decision corpus",
+      deletionReviewDecision.corpusDigest,
+      deletionInputDigest,
+    ],
     ["decision rules", deletionReviewDecision.rulesSha256, rulesDigest],
     ["decision queue", deletionReviewDecision.reviewedQueueSha256, queueDigest],
   ] as const;
@@ -1663,6 +2093,10 @@ export async function verifyCorpus(
     if (claimed !== actual) {
       throw new Error(`${name} digest does not match deletion approval`);
     }
+  }
+  const expectedDeleteStageVersion = `delete-v1:${rulesDigest.slice(0, 12)}:${queueDigest.slice(0, 12)}:${decisionDigest.slice(0, 12)}`;
+  if (deletionApproval.deleteStageVersion !== expectedDeleteStageVersion) {
+    throw new Error("deletion approval delete stage version is invalid");
   }
   for (const [name, value] of [
     ["deletion rules", deletionRules.rulesetVersion],
@@ -1693,16 +2127,6 @@ export async function verifyCorpus(
       }
     }
   }
-  const deletionInputMessages = ledger
-    .filter(
-      (record) =>
-        record.rulesetVersion === options.rulesetVersion &&
-        record.stage === "secrets" &&
-        !record.tombstone &&
-        record.output,
-    )
-    .map((record) => record.output)
-    .filter((message): message is CorpusMessage => message !== undefined);
   validateDeletionQueueSemantics(
     deletionInputMessages,
     candidates,
@@ -1733,6 +2157,24 @@ export async function verifyCorpus(
       ),
     ),
   ].sort();
+  const approvedDeletionGroups = new Map<
+    string,
+    { scope: "message" | "thread"; ruleIdHashes: readonly string[] }
+  >();
+  for (const group of deletionReviewQueue.groups) {
+    if (decisionsById.get(group.groupId) !== "delete") continue;
+    for (const messageId of group.messageIds) {
+      if (approvedDeletionGroups.has(messageId)) {
+        throw new Error(
+          `message ${messageId} belongs to multiple approved deletion groups`,
+        );
+      }
+      approvedDeletionGroups.set(messageId, {
+        scope: group.scope,
+        ruleIdHashes: group.ruleIdHashes,
+      });
+    }
+  }
   if (
     approvedDeletedIds.length !== deletionApproval.tombstoneCount ||
     sha256(canonicalJson(approvedDeletedIds)) !==
@@ -1800,13 +2242,21 @@ export async function verifyCorpus(
     ...gitleaks.findings,
     ...(await detectorFindings(messages, gazetteerValues)),
     ...originalValueFindings(messages, candidates),
-    ...canaryFindings(messages, canaries, ledger),
-    ...registryFindings(messages, placeholderRegistry),
+    ...canaryFindings(
+      messages,
+      canaries,
+      ledger,
+      deletionApproval,
+      new Set(approvedDeletedIds),
+    ),
+    ...registryFindings(messages, placeholderRegistry, candidates, ledger),
     ...attachmentFindings(messages),
     ...ledgerFindings(
       messages,
+      deletionInputMessages,
       ledger,
       deletionApproval,
+      approvedDeletionGroups,
       options.rulesetVersion,
     ),
   ]);

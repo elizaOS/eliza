@@ -18,6 +18,7 @@ import {
 
 const RULESET = "verification-test-v1";
 const GENERATED_AT = "2026-07-09T00:00:00.000Z";
+const DEFAULT_CANDIDATE = "Original Sender";
 const temporaryDirectories: string[] = [];
 
 function sha256(value: string): string {
@@ -33,6 +34,10 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value);
+}
+
+function defaultCanaryPlaceholder(): string {
+  return `[[PII:person:${sha256(`${RULESET}\0${DEFAULT_CANDIDATE}`).slice(0, 12)}]]`;
 }
 
 function ledgerRecord(
@@ -117,8 +122,8 @@ async function fixture(
   const manifestPath = path.join(artifactDir, "manifest.json");
   await writeJson(manifestPath, manifest);
 
-  const candidate = options.candidate ?? "original-owner-name";
-  const candidateKind = candidate.includes("@") ? "email" : "original";
+  const candidate = options.candidate ?? DEFAULT_CANDIDATE;
+  const candidateKind = candidate.includes("@") ? "email" : "person";
   const candidateHash = sha256(`${RULESET}\0${candidate}`);
   const mineText = `Source ${candidate}`;
   const candidateStart = mineText.indexOf(candidate);
@@ -145,7 +150,7 @@ async function fixture(
   const canaryPlaceholder =
     options.canaryPlaceholder ??
     message.text.match(/\[\[SECRET:[^\]]+\]\]/)?.[0] ??
-    "[[SECRET:openai-key:0123456789ab]]";
+    defaultCanaryPlaceholder();
   const canariesPath = path.join(artifactDir, "canaries.json");
   await writeJson(canariesPath, {
     schemaVersion: 1,
@@ -162,20 +167,32 @@ async function fixture(
   const raw = {
     ...message,
     text: mineText,
+    senderDisplay:
+      options.candidate === undefined ? candidate : message.senderDisplay,
     scrubState: "raw",
   } as CorpusMessage;
   const mined = {
     ...message,
     text: mineText,
+    senderDisplay:
+      options.candidate === undefined ? candidate : message.senderDisplay,
     scrubState: "mined",
   } as CorpusMessage;
   const swapped = { ...message, scrubState: "swapped" } as CorpusMessage;
+  const deleted = {
+    ...swapped,
+    attachments: swapped.attachments.map((attachment) => ({
+      filename: attachment.filename,
+      mimeType: attachment.mimeType,
+      sha256: attachment.sha256,
+    })),
+  } as CorpusMessage;
   const rewritten = { ...message, scrubState: "rewritten" } as CorpusMessage;
   const ledgerRecords = [
     ledgerRecord(raw, mined, "mine"),
     ledgerRecord(mined, swapped, "secrets"),
-    ledgerRecord(swapped, swapped, "delete", "delete-v1"),
-    ledgerRecord(swapped, rewritten, "rewrite"),
+    ledgerRecord(swapped, deleted, "delete", "delete-v1"),
+    ledgerRecord(deleted, rewritten, "rewrite"),
     ledgerRecord(rewritten, rewritten, "llm"),
   ];
   const ledgerPath = path.join(artifactDir, "scrub-ledger.jsonl");
@@ -218,13 +235,7 @@ async function fixture(
     groups: [],
   };
   await writeJson(deletionRulesPath, deletionRules);
-  const shardBytes = await fs.readFile(shardPath);
-  const corpusDigest = createHash("sha256")
-    .update("gmail/work/2026-06.jsonl")
-    .update("\0")
-    .update(shardBytes)
-    .update("\0")
-    .digest("hex");
+  const corpusDigest = sha256(canonicalJson([swapped]));
   deletionQueue.corpusDigest = corpusDigest;
   await writeJson(deletionReviewQueuePath, deletionQueue);
   const reviewedQueueSha256 = sha256(canonicalJson(deletionQueue));
@@ -240,19 +251,45 @@ async function fixture(
     decisions: [],
   };
   await writeJson(deletionReviewDecisionPath, deletionDecision);
+  const reviewDecisionSha256 = sha256(canonicalJson(deletionDecision));
+  const deleteStageVersion = `delete-v1:${rulesSha256.slice(0, 12)}:${reviewedQueueSha256.slice(0, 12)}:${reviewDecisionSha256.slice(0, 12)}`;
+  Object.assign(ledgerRecords[2], {
+    stageVersion: deleteStageVersion,
+    markerKey: [
+      `pii:${ledgerRecords[2].inputHash}:v${RULESET}`,
+      "delete",
+      deleteStageVersion,
+    ].join(":"),
+    rulesSha256,
+    reviewedQueueSha256,
+    reviewDecisionSha256,
+  });
+  await fs.writeFile(
+    ledgerPath,
+    `${ledgerRecords.map((record) => JSON.stringify(record)).join("\n")}\n`,
+  );
   const deletionApprovalPath = path.join(artifactDir, "deletion-approval.json");
   await writeJson(deletionApprovalPath, {
     schemaVersion: 1,
     rulesetVersion: RULESET,
     corpusDigest,
     candidatesSha256: deletionCandidatesSha256,
-    deleteStageVersion: "delete-v1",
+    deleteStageVersion,
     approved: true,
     rulesSha256,
     reviewedQueueSha256,
-    reviewDecisionSha256: sha256(canonicalJson(deletionDecision)),
+    reviewDecisionSha256,
     tombstoneIdsSha256: sha256(canonicalJson([])),
     tombstoneCount: 0,
+    survivorCount: 1,
+    attachmentBytesDropped: swapped.attachments.reduce(
+      (total, attachment) =>
+        total +
+        (attachment.dataBase64 !== undefined
+          ? Buffer.from(attachment.dataBase64, "base64").length
+          : (attachment.bytes ?? 0)),
+      0,
+    ),
   });
   const placeholderRegistryPath = path.join(
     artifactDir,
@@ -265,7 +302,10 @@ async function fixture(
   ].map((match) => ({
     placeholder: match[0],
     kind: match[1],
-    valueHash: `${match[2]}${"0".repeat(52)}`,
+    valueHash:
+      match[2] === candidateHash.slice(0, 12)
+        ? candidateHash
+        : `${match[2]}${"0".repeat(52)}`,
     stage: "secrets",
     messageId: message.id,
   }));
@@ -297,6 +337,74 @@ async function fixture(
   };
 }
 
+async function rebindDeletionArtifacts(
+  options: VerifyCorpusOptions,
+  rules: Record<string, unknown>,
+): Promise<void> {
+  await writeJson(options.deletionRulesPath, rules);
+  const normalizedRules = {
+    ...rules,
+    rules: [...((rules.rules as Record<string, unknown>[]) ?? [])].sort(
+      (left, right) => String(left.id).localeCompare(String(right.id)),
+    ),
+  };
+  const rulesSha256 = sha256(canonicalJson(normalizedRules));
+  const ledger = (await fs.readFile(options.ledgerPath, "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  const deletionInputs = ledger
+    .filter(
+      (record) =>
+        record.stage === "secrets" && !record.tombstone && record.output,
+    )
+    .map((record) => record.output as CorpusMessage)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const corpusDigest = sha256(canonicalJson(deletionInputs));
+  const queue = JSON.parse(
+    await fs.readFile(options.deletionReviewQueuePath, "utf8"),
+  ) as Record<string, unknown>;
+  Object.assign(queue, { corpusDigest, rulesSha256 });
+  await writeJson(options.deletionReviewQueuePath, queue);
+  const reviewedQueueSha256 = sha256(canonicalJson(queue));
+  const decision = JSON.parse(
+    await fs.readFile(options.deletionReviewDecisionPath, "utf8"),
+  ) as Record<string, unknown>;
+  Object.assign(decision, { corpusDigest, rulesSha256, reviewedQueueSha256 });
+  await writeJson(options.deletionReviewDecisionPath, decision);
+  const reviewDecisionSha256 = sha256(canonicalJson(decision));
+  const deleteStageVersion = `delete-v1:${rulesSha256.slice(0, 12)}:${reviewedQueueSha256.slice(0, 12)}:${reviewDecisionSha256.slice(0, 12)}`;
+  const approval = JSON.parse(
+    await fs.readFile(options.deletionApprovalPath, "utf8"),
+  ) as Record<string, unknown>;
+  await writeJson(options.deletionApprovalPath, {
+    ...approval,
+    corpusDigest,
+    rulesSha256,
+    reviewedQueueSha256,
+    reviewDecisionSha256,
+    deleteStageVersion,
+  });
+  for (const record of ledger) {
+    if (record.stage !== "delete" || record.tombstone) continue;
+    record.stageVersion = deleteStageVersion;
+    record.markerKey = [
+      `pii:${record.inputHash}:v${RULESET}`,
+      "delete",
+      deleteStageVersion,
+    ].join(":");
+    Object.assign(record, {
+      rulesSha256,
+      reviewedQueueSha256,
+      reviewDecisionSha256,
+    });
+  }
+  await fs.writeFile(
+    options.ledgerPath,
+    `${ledger.map((record) => JSON.stringify(record)).join("\n")}\n`,
+  );
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -307,7 +415,7 @@ afterEach(async () => {
 
 describe("corpus verification", () => {
   it("binds a green report to exact corpus bytes and rejects tampering", async () => {
-    const placeholder = "[[SECRET:openai-key:0123456789ab]]";
+    const placeholder = defaultCanaryPlaceholder();
     const options = await fixture(
       baseMessage({ text: `Scrubbed body ${placeholder}` }),
       { canaryPlaceholder: placeholder },
@@ -318,6 +426,10 @@ describe("corpus verification", () => {
       [],
     );
     expect(report.status).toBe("passed");
+    const deletionApproval = JSON.parse(
+      await fs.readFile(options.deletionApprovalPath, "utf8"),
+    ) as { corpusDigest: string };
+    expect(deletionApproval.corpusDigest).not.toBe(report.corpusDigest);
     await expect(
       assertFreshGreenVerification(report, options),
     ).resolves.toBeUndefined();
@@ -352,7 +464,7 @@ describe("corpus verification", () => {
     "placeholderRegistryPath",
     "gitleaksConfigPath",
   ] as const)("rejects a report after %s changes", async (pathKey) => {
-    const placeholder = "[[SECRET:openai-key:0123456789ab]]";
+    const placeholder = defaultCanaryPlaceholder();
     const options = await fixture(
       baseMessage({ text: `Scrubbed body ${placeholder}` }),
       { canaryPlaceholder: placeholder },
@@ -427,7 +539,17 @@ describe("corpus verification", () => {
     await fs.writeFile(options.candidatesPath, `${JSON.stringify(line)}\n`);
 
     await expect(verifyCorpus(options)).rejects.toThrow(
-      "mine candidate artifact is incomplete",
+      "mine candidate artifact does not exactly match mining rerun",
+    );
+  });
+
+  it("rejects extra or duplicate mine candidates", async () => {
+    const options = await fixture(baseMessage());
+    const row = (await fs.readFile(options.candidatesPath, "utf8")).trim();
+    await fs.writeFile(options.candidatesPath, `${row}\n${row}\n`);
+
+    await expect(verifyCorpus(options)).rejects.toThrow(
+      "mine candidate artifact does not exactly match mining rerun",
     );
   });
 
@@ -443,6 +565,193 @@ describe("corpus verification", () => {
 
     await expect(verifyCorpus(options)).rejects.toThrow(
       "ambiguous mine ledger history",
+    );
+  });
+
+  it("rejects a mine row without an exact secrets successor", async () => {
+    const options = await fixture(baseMessage());
+    const orphanInput = baseMessage({
+      id: "orphan-mine",
+      threadId: "orphan-thread",
+      scrubState: "raw",
+    });
+    const orphanOutput = {
+      ...orphanInput,
+      scrubState: "mined",
+    } as CorpusMessage;
+    await fs.appendFile(
+      options.ledgerPath,
+      `${JSON.stringify(ledgerRecord(orphanInput, orphanOutput, "mine"))}\n`,
+    );
+
+    await expect(verifyCorpus(options)).rejects.toThrow(
+      "mine and secrets ledger stages do not match exactly",
+    );
+  });
+
+  it("canonicalizes deletion rule order when validating provenance", async () => {
+    const placeholder = defaultCanaryPlaceholder();
+    const options = await fixture(baseMessage({ text: placeholder }), {
+      canaryPlaceholder: placeholder,
+    });
+    const rules = JSON.parse(
+      await fs.readFile(options.deletionRulesPath, "utf8"),
+    ) as Record<string, unknown>;
+    rules.rules = [
+      {
+        id: "z-disabled",
+        enabled: false,
+        scope: "message",
+        match: { type: "label", value: "Z" },
+      },
+      {
+        id: "a-disabled",
+        enabled: false,
+        scope: "message",
+        match: { type: "label", value: "A" },
+      },
+    ];
+    await rebindDeletionArtifacts(options, rules);
+
+    const report = await verifyCorpus(options);
+
+    expect(report.findings, JSON.stringify(report.findings, null, 2)).toEqual(
+      [],
+    );
+    expect(report.status).toBe("passed");
+  });
+
+  it("matches token-mode keyword phrases at word boundaries", async () => {
+    const options = await fixture(baseMessage());
+    const rules = {
+      schemaVersion: 1,
+      rulesetVersion: RULESET,
+      attachmentPolicy: {
+        embeddedBytes: "drop",
+        retainMetadata: ["filename", "mimeType", "sha256"],
+      },
+      rules: [
+        {
+          id: "phrase-match",
+          enabled: true,
+          scope: "message",
+          match: {
+            type: "keyword",
+            value: "scrubbed body",
+            mode: "token",
+            fields: ["text"],
+          },
+        },
+      ],
+    };
+    const ruleIdHashes = [sha256("phrase-match")];
+    const groupId = sha256(
+      canonicalJson({
+        scope: "message",
+        platform: "gmail",
+        messageIds: ["message-1"],
+        ruleIdHashes,
+      }),
+    );
+    const queue = JSON.parse(
+      await fs.readFile(options.deletionReviewQueuePath, "utf8"),
+    ) as Record<string, unknown>;
+    queue.groups = [
+      {
+        groupId,
+        scope: "message",
+        platform: "gmail",
+        messageIds: ["message-1"],
+        ruleIdHashes,
+        matchClasses: ["keyword"],
+        redactedContext: "[MATCH].",
+        suggestedDecision: "delete",
+      },
+    ];
+    await writeJson(options.deletionReviewQueuePath, queue);
+    const decision = JSON.parse(
+      await fs.readFile(options.deletionReviewDecisionPath, "utf8"),
+    ) as Record<string, unknown>;
+    decision.decisions = [{ groupId, decision: "keep" }];
+    await writeJson(options.deletionReviewDecisionPath, decision);
+    await rebindDeletionArtifacts(options, rules);
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.findings).toEqual([
+      expect.objectContaining({ detector: "canary-placeholder" }),
+    ]);
+  });
+
+  it("rejects a forged delete-stage version", async () => {
+    const options = await fixture(baseMessage());
+    const approval = JSON.parse(
+      await fs.readFile(options.deletionApprovalPath, "utf8"),
+    ) as Record<string, unknown>;
+    approval.deleteStageVersion = "delete-v1:forged";
+    await writeJson(options.deletionApprovalPath, approval);
+
+    await expect(verifyCorpus(options)).rejects.toThrow(
+      "deletion approval delete stage version is invalid",
+    );
+  });
+
+  it("rejects a pre-delete message omitted from both survivors and tombstones", async () => {
+    const options = await fixture(baseMessage());
+    const orphan = baseMessage({
+      id: "message-orphan",
+      threadId: "thread-orphan",
+      scrubState: "swapped",
+    });
+    const orphanInput = { ...orphan, scrubState: "mined" } as CorpusMessage;
+    const orphanRaw = { ...orphan, scrubState: "raw" } as CorpusMessage;
+    await fs.appendFile(
+      options.ledgerPath,
+      `${JSON.stringify(ledgerRecord(orphanRaw, orphanInput, "mine"))}\n${JSON.stringify(ledgerRecord(orphanInput, orphan, "secrets"))}\n`,
+    );
+    const rules = JSON.parse(
+      await fs.readFile(options.deletionRulesPath, "utf8"),
+    ) as Record<string, unknown>;
+    await rebindDeletionArtifacts(options, rules);
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ detector: "deletion-input-partition" }),
+    );
+  });
+
+  it("rejects a deletion approval with the wrong survivor count", async () => {
+    const options = await fixture(baseMessage());
+    const approval = JSON.parse(
+      await fs.readFile(options.deletionApprovalPath, "utf8"),
+    ) as Record<string, unknown>;
+    approval.survivorCount = 2;
+    await writeJson(options.deletionApprovalPath, approval);
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ detector: "deletion-survivor-count" }),
+    );
+  });
+
+  it("rejects a deletion approval with the wrong attachment drop count", async () => {
+    const options = await fixture(baseMessage());
+    const approval = JSON.parse(
+      await fs.readFile(options.deletionApprovalPath, "utf8"),
+    ) as Record<string, unknown>;
+    approval.attachmentBytesDropped = 1;
+    await writeJson(options.deletionApprovalPath, approval);
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ detector: "deletion-attachment-drop-count" }),
     );
   });
 
@@ -487,15 +796,134 @@ describe("corpus verification", () => {
     const approval = JSON.parse(
       await fs.readFile(options.deletionApprovalPath, "utf8"),
     ) as Record<string, unknown>;
+    const reviewDecisionSha256 = sha256(canonicalJson(decision));
+    const deleteStageVersion = `delete-v1:${rulesSha256.slice(0, 12)}:${reviewedQueueSha256.slice(0, 12)}:${reviewDecisionSha256.slice(0, 12)}`;
+    await writeJson(options.deletionApprovalPath, {
+      ...approval,
+      deleteStageVersion,
+      rulesSha256,
+      reviewedQueueSha256,
+      reviewDecisionSha256,
+    });
+
+    await expect(verifyCorpus(options)).rejects.toThrow(
+      "deletion review queue does not match canonical grouping",
+    );
+  });
+
+  it("rejects split groups that permit contradictory thread decisions", async () => {
+    const options = await fixture(
+      baseMessage({ labels: ["Sensitive", "Delete"] }),
+    );
+    const rules = {
+      schemaVersion: 1,
+      rulesetVersion: RULESET,
+      attachmentPolicy: {
+        embeddedBytes: "drop",
+        retainMetadata: ["filename", "mimeType", "sha256"],
+      },
+      rules: [
+        {
+          id: "thread-sensitive",
+          enabled: true,
+          scope: "thread",
+          match: { type: "label", value: "Sensitive" },
+        },
+        {
+          id: "message-delete",
+          enabled: true,
+          scope: "message",
+          match: { type: "label", value: "Delete" },
+        },
+      ],
+    };
+    await writeJson(options.deletionRulesPath, rules);
+    const rulesSha256 = sha256(
+      canonicalJson({
+        ...rules,
+        rules: [...rules.rules].sort((a, b) => a.id.localeCompare(b.id)),
+      }),
+    );
+    const queue = JSON.parse(
+      await fs.readFile(options.deletionReviewQueuePath, "utf8"),
+    ) as Record<string, unknown>;
+    const threadRuleHashes = [sha256("thread-sensitive")];
+    const messageRuleHashes = [sha256("message-delete")];
+    const threadGroupId = sha256(
+      canonicalJson({
+        scope: "thread",
+        platform: "gmail",
+        messageIds: ["message-1"],
+        ruleIdHashes: threadRuleHashes,
+      }),
+    );
+    const messageGroupId = sha256(
+      canonicalJson({
+        scope: "message",
+        platform: "gmail",
+        messageIds: ["message-1"],
+        ruleIdHashes: messageRuleHashes,
+      }),
+    );
+    Object.assign(queue, {
+      rulesSha256,
+      groups: [
+        {
+          groupId: threadGroupId,
+          scope: "thread",
+          platform: "gmail",
+          messageIds: ["message-1"],
+          ruleIdHashes: threadRuleHashes,
+          matchClasses: ["label"],
+          redactedContext: "kept thread",
+          suggestedDecision: "delete",
+        },
+        {
+          groupId: messageGroupId,
+          scope: "message",
+          platform: "gmail",
+          messageIds: ["message-1"],
+          ruleIdHashes: messageRuleHashes,
+          matchClasses: ["label"],
+          redactedContext: "deleted message",
+          suggestedDecision: "delete",
+        },
+      ],
+    });
+    await writeJson(options.deletionReviewQueuePath, queue);
+    const reviewedQueueSha256 = sha256(canonicalJson(queue));
+    const decision = {
+      schemaVersion: 1,
+      rulesetVersion: RULESET,
+      corpusDigest: queue.corpusDigest,
+      rulesSha256,
+      reviewedQueueSha256,
+      approved: true,
+      reviewedBy: "test-owner",
+      reviewedAt: GENERATED_AT,
+      decisions: [
+        { groupId: threadGroupId, decision: "keep" },
+        { groupId: messageGroupId, decision: "delete" },
+      ],
+    };
+    await writeJson(options.deletionReviewDecisionPath, decision);
+    const reviewDecisionSha256 = sha256(canonicalJson(decision));
+    const approval = JSON.parse(
+      await fs.readFile(options.deletionApprovalPath, "utf8"),
+    ) as Record<string, unknown>;
     await writeJson(options.deletionApprovalPath, {
       ...approval,
       rulesSha256,
       reviewedQueueSha256,
-      reviewDecisionSha256: sha256(canonicalJson(decision)),
+      reviewDecisionSha256,
+      deleteStageVersion: `delete-v1:${rulesSha256.slice(0, 12)}:${reviewedQueueSha256.slice(0, 12)}:${reviewDecisionSha256.slice(0, 12)}`,
+      tombstoneCount: 1,
+      tombstoneIdsSha256: sha256(canonicalJson(["message-1"])),
+      survivorCount: 0,
     });
 
     await expect(verifyCorpus(options)).rejects.toThrow(
-      "deletion review queue does not match rules and corpus",
+      "deletion review queue does not match canonical grouping",
     );
   });
 
@@ -525,6 +953,45 @@ describe("corpus verification", () => {
       expect.objectContaining({
         kind: "ledger",
         detector: "broken-stage-chain",
+      }),
+    );
+  });
+
+  it("rejects a survivor delete record that changes content", async () => {
+    const options = await fixture(baseMessage());
+    const records = (await fs.readFile(options.ledgerPath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const deleteRecord = records.find((record) => record.stage === "delete");
+    const rewriteRecord = records.find((record) => record.stage === "rewrite");
+    if (!deleteRecord || !rewriteRecord || !deleteRecord.output) {
+      throw new Error("fixture is missing delete/rewrite records");
+    }
+    const maliciousOutput = {
+      ...(deleteRecord.output as CorpusMessage),
+      text: "Delete stage changed content.",
+    };
+    const maliciousHash = sha256(JSON.stringify(maliciousOutput));
+    deleteRecord.output = maliciousOutput;
+    deleteRecord.outputHash = maliciousHash;
+    rewriteRecord.inputHash = maliciousHash;
+    rewriteRecord.markerKey = [
+      `pii:${maliciousHash}:v${RULESET}`,
+      "rewrite",
+      rewriteRecord.stageVersion,
+    ].join(":");
+    await fs.writeFile(
+      options.ledgerPath,
+      `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+    );
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({
+        detector: "invalid-deletion-survivor-transform",
       }),
     );
   });
@@ -565,7 +1032,7 @@ describe("corpus verification", () => {
         messageIds: ["message-1"],
         ruleIdHashes,
         matchClasses: ["label"],
-        redactedContext: "[MATCH]",
+        redactedContext: "Scrubbed body.",
         suggestedDecision: "delete",
       },
     ];
@@ -586,11 +1053,14 @@ describe("corpus verification", () => {
     const approval = JSON.parse(
       await fs.readFile(options.deletionApprovalPath, "utf8"),
     ) as Record<string, unknown>;
+    const reviewDecisionSha256 = sha256(canonicalJson(decision));
+    const deleteStageVersion = `delete-v1:${rulesSha256.slice(0, 12)}:${reviewedQueueSha256.slice(0, 12)}:${reviewDecisionSha256.slice(0, 12)}`;
     await writeJson(options.deletionApprovalPath, {
       ...approval,
+      deleteStageVersion,
       rulesSha256,
       reviewedQueueSha256,
-      reviewDecisionSha256: sha256(canonicalJson(decision)),
+      reviewDecisionSha256,
       tombstoneIdsSha256: sha256(canonicalJson(["message-1"])),
       tombstoneCount: 1,
     });
@@ -598,17 +1068,17 @@ describe("corpus verification", () => {
     const tombstoneMetadata = {
       messageId: "message-1",
       stage: "delete",
-      stageVersion: "delete-v1",
+      stageVersion: deleteStageVersion,
       rulesSha256,
       reviewedQueueSha256,
-      reviewDecisionSha256: sha256(canonicalJson(decision)),
-      ruleIdHashes,
+      reviewDecisionSha256,
+      ruleIdHashes: [sha256("forged-deletion-reason")],
       scope: "message",
     };
     await fs.appendFile(
       options.ledgerPath,
       `${JSON.stringify({
-        markerKey: `pii:${tombstoneInputHash}:v${RULESET}:delete:delete-v1`,
+        markerKey: `pii:${tombstoneInputHash}:v${RULESET}:delete:${deleteStageVersion}`,
         ...tombstoneMetadata,
         rulesetVersion: RULESET,
         inputHash: tombstoneInputHash,
@@ -627,6 +1097,11 @@ describe("corpus verification", () => {
     );
     expect(report.findings).toContainEqual(
       expect.objectContaining({ detector: "broken-tombstone-chain" }),
+    );
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({
+        detector: "deletion-tombstone-review-binding",
+      }),
     );
   });
 
@@ -753,6 +1228,66 @@ describe("corpus verification", () => {
     expect(report.counts["attachment-policy"]).toBe(1);
   });
 
+  it("rejects retained attachment byte counts without base64 payloads", async () => {
+    const options = await fixture(
+      baseMessage({
+        attachments: [
+          {
+            filename: "safe.bin",
+            mimeType: "application/octet-stream",
+            sha256: "a".repeat(64),
+            bytes: 8,
+          },
+        ],
+      }),
+    );
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.counts["attachment-policy"]).toBe(1);
+  });
+
+  it.each([
+    ["malformed", "***", undefined, "invalid base64 payload"],
+    ["size mismatch", "c2VjcmV0", 7, "inconsistent payload bytes"],
+  ])("rejects %s embedded attachment byte evidence", async (_name, dataBase64, bytes, expectedError) => {
+    const options = await fixture(
+      baseMessage({
+        attachments: [
+          {
+            filename: "unsafe.bin",
+            mimeType: "application/octet-stream",
+            sha256: "a".repeat(64),
+            dataBase64,
+            bytes,
+          },
+        ],
+      }),
+    );
+    const rules = JSON.parse(
+      await fs.readFile(options.deletionRulesPath, "utf8"),
+    ) as Record<string, unknown>;
+    await rebindDeletionArtifacts(options, rules);
+
+    await expect(verifyCorpus(options)).rejects.toThrow(expectedError);
+  });
+
+  it("rejects a placeholder without a matching mined candidate", async () => {
+    const forgedPlaceholder = "[[SECRET:openai-key:0123456789ab]]";
+    const options = await fixture(
+      baseMessage({ text: `Scrubbed body ${forgedPlaceholder}` }),
+      { canaryPlaceholder: forgedPlaceholder },
+    );
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ detector: "placeholder-registry" }),
+    );
+  });
+
   it("rejects PII hidden in an unknown top-level message field", async () => {
     const options = await fixture(baseMessage());
     const shardPath = path.join(
@@ -804,7 +1339,7 @@ describe("corpus verification", () => {
   });
 
   it("ignores historical tombstones from a stale delete-stage version", async () => {
-    const placeholder = "[[SECRET:openai-key:0123456789ab]]";
+    const placeholder = defaultCanaryPlaceholder();
     const options = await fixture(
       baseMessage({ text: `Scrubbed body ${placeholder}` }),
       { canaryPlaceholder: placeholder },
@@ -827,6 +1362,42 @@ describe("corpus verification", () => {
     const report = await verifyCorpus(options);
 
     expect(report.status).toBe("passed");
+  });
+
+  it("does not satisfy a delete canary with a stale tombstone", async () => {
+    const options = await fixture(baseMessage());
+    await writeJson(options.canariesPath, {
+      schemaVersion: 1,
+      rulesetVersion: RULESET,
+      canaries: [
+        {
+          id: "delete-canary",
+          messageId: "message-1",
+          expected: { outcome: "tombstone", stage: "delete" },
+        },
+      ],
+    });
+    const staleInputHash = "5".repeat(64);
+    await fs.appendFile(
+      options.ledgerPath,
+      `${JSON.stringify({
+        markerKey: `pii:${staleInputHash}:v${RULESET}:delete:delete-v0`,
+        messageId: "message-1",
+        stage: "delete",
+        stageVersion: "delete-v0",
+        rulesetVersion: RULESET,
+        inputHash: staleInputHash,
+        outputHash: sha256(canonicalJson({ tombstone: true })),
+        tombstone: true,
+      })}\n`,
+    );
+
+    const report = await verifyCorpus(options);
+
+    expect(report.status).toBe("failed");
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ detector: "canary-tombstone" }),
+    );
   });
 
   it("rejects a live chain that passed through a stale delete stage", async () => {
