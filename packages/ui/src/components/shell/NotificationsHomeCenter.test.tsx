@@ -565,6 +565,7 @@ describe("NotificationsHomeCenter", () => {
       clientX: 10,
       clientY: 140,
     });
+    act(() => vi.advanceTimersByTime(16));
     const restingEmptyStyle = {
       opacity: empty.style.opacity,
       transform: empty.style.transform,
@@ -1301,9 +1302,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.className).toContain("scroll-fade");
     expect(list.className).toContain("scroll-fade-b-[1.5rem]");
     fireEvent.click(collapse);
-    // The total stays out of the expanded layout while rows settle; it fades in
-    // after the short close settle removes the expanded DOM.
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    // The total crossfades in while expanded rows settle, so release does not
+    // leave an empty beat before the rested count appears.
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     expect(clearSlot.style.height).toBe("0px");
     expect(clearSlot.style.marginBottom).toBe("-8px");
     expect(screen.getAllByTestId("notification-row")[0]).toBe(priorityRow);
@@ -1385,7 +1386,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       priorityRow.closest("li"),
     );
     expect(quietGroup?.style.opacity).toBe("0");
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
@@ -1415,7 +1416,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     for (const peek of screen.getAllByTestId("notification-stack-peek")) {
       expect(Number.parseFloat(peek.style.opacity)).toBe(0);
     }
@@ -1483,6 +1484,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(filesOpacity).toBeGreaterThan(0);
     expect(filesOpacity).toBeLessThan(1);
     expect(agentOpacity).toBeLessThan(filesOpacity);
+    const countOpacity = Number.parseFloat(
+      screen.getByTestId("notifications-count").style.opacity,
+    );
+    const collapseOpacity = Number.parseFloat(
+      screen.getByTestId("notifications-collapse-footer").style.opacity,
+    );
+    expect(countOpacity).toBeGreaterThan(0);
+    expect(countOpacity).toBeLessThan(1);
+    expect(collapseOpacity).toBeCloseTo(1 - countOpacity);
 
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
@@ -1492,6 +1502,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
     expect(filesGroup?.style.opacity).toBe("1");
     expect(agentGroup?.style.opacity).toBe("1");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(
+      screen.getByTestId("notifications-collapse-footer").style.opacity,
+    ).toBe("1");
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
       pointerId: 83,
@@ -1703,6 +1717,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const clearReveal = clear.closest("li") as HTMLElement;
     expect(Number.parseFloat(clearReveal.style.opacity)).toBeGreaterThan(0);
     expect(Number.parseFloat(clearReveal.style.opacity)).toBeLessThan(1);
+    const collapseReveal = Number.parseFloat(
+      screen.getByTestId("notifications-collapse-footer").style.opacity,
+    );
+    expect(collapseReveal).toBeGreaterThan(0);
+    expect(collapseReveal).toBeLessThan(1);
     const revealedGroups = list.querySelectorAll(
       ":scope > [data-notification-pull-reveal]",
     );
@@ -1828,7 +1847,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     finishShadeCollapse();
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     expect(list.getAttribute("data-shade-mode")).toBe("rested");

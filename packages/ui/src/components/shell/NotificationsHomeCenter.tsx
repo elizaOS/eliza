@@ -196,6 +196,262 @@ function notificationPullRevealStyle(progress: number): CSSProperties {
   };
 }
 
+function notificationPullPresentation(
+  pullPx: number,
+  shadeExpanded: boolean,
+  shadeClosing: boolean,
+) {
+  const dragCloseProgress =
+    shadeExpanded && !shadeClosing
+      ? notificationPullRevealProgress(-pullPx, 0)
+      : 0;
+  const committedCloseProgress = shadeClosing ? 1 : 0;
+  const shadeCloseProgress = Math.max(
+    dragCloseProgress,
+    committedCloseProgress,
+  );
+  const disposableContentVisibility = 1 - shadeCloseProgress;
+  const pullContentVisibility = shadeExpanded
+    ? disposableContentVisibility
+    : notificationPullRevealProgress(pullPx, 0);
+  const notificationCountVisibility = shadeExpanded
+    ? shadeCloseProgress
+    : 1 - notificationPullRevealProgress(pullPx, 0);
+  const clearControlVisibility = shadeExpanded
+    ? disposableContentVisibility
+    : pullPx > 0
+      ? notificationPullRevealProgress(pullPx, 0)
+      : 0;
+  return {
+    shadeCloseProgress,
+    committedCloseProgress,
+    disposableContentVisibility,
+    pullContentVisibility,
+    notificationCountVisibility,
+    notificationCountLayoutVisibility:
+      shadeExpanded && pullPx < 0 && !shadeClosing
+        ? 1
+        : notificationCountVisibility,
+    emptyStateVisibility: shadeExpanded
+      ? disposableContentVisibility
+      : notificationPullRevealProgress(pullPx, 0),
+    collapseControlVisibility: shadeExpanded
+      ? disposableContentVisibility
+      : notificationPullRevealProgress(pullPx, 0),
+    clearControlVisibility,
+    clearControlLayoutVisibility: shadeExpanded
+      ? shadeClosing || pullPx < 0
+        ? 0
+        : 1
+      : pullPx > 0
+        ? 1
+        : 0,
+  };
+}
+
+function notificationGroupContainerOffset(
+  pullPx: number,
+  shadeExpanded: boolean,
+  shadeClosing: boolean,
+): number {
+  if (shadeClosing) return 0;
+  if (shadeExpanded && pullPx < 0) {
+    return (1 - notificationPullRevealProgress(-pullPx, 0)) * 40;
+  }
+  if (!shadeExpanded && pullPx > 0) {
+    return (1 - notificationPullRevealProgress(pullPx, 0)) * -40;
+  }
+  return 0;
+}
+
+function notificationGroupPullOffset(
+  pullPx: number,
+  shadeExpanded: boolean,
+  shadeClosing: boolean,
+  groupVisibility: number,
+): number {
+  const countSlotCompensation =
+    shadeExpanded && pullPx < 0 && !shadeClosing
+      ? (1 - notificationPullRevealProgress(-pullPx, 0)) * -40
+      : 0;
+  return countSlotCompensation + (1 - groupVisibility) * -8;
+}
+
+function notificationGroupPullVisibility(
+  pullPx: number,
+  groupIndex: number,
+  shadeExpanded: boolean,
+  shadeClosing: boolean,
+  pullRevealed: boolean,
+): number {
+  if (pullRevealed) {
+    return notificationPullRevealProgress(pullPx, groupIndex);
+  }
+  if (shadeClosing) return 0;
+  if (shadeExpanded && pullPx < 0) {
+    return notificationPullRevealProgress(PULL_COMMIT_PX + pullPx, groupIndex);
+  }
+  return 1;
+}
+
+function applyNotificationPullPresentation(
+  root: HTMLElement | null,
+  pullPx: number,
+  shadeExpanded: boolean,
+  shadeClosing: boolean,
+  visibleGroups?: readonly HTMLElement[],
+): void {
+  if (!root) return;
+  const presentation = notificationPullPresentation(
+    pullPx,
+    shadeExpanded,
+    shadeClosing,
+  );
+  const count = root.querySelector<HTMLElement>(
+    "[data-notification-count-slot]",
+  );
+  if (count) {
+    count.style.height = `${presentation.notificationCountLayoutVisibility * 32}px`;
+    count.style.marginBottom = `${(presentation.notificationCountLayoutVisibility - 1) * 8}px`;
+    count.style.opacity = String(presentation.notificationCountVisibility);
+  }
+  const clearSlot = root.querySelector<HTMLElement>(
+    "[data-notification-clear-slot]",
+  );
+  if (clearSlot) {
+    clearSlot.style.height = `${presentation.clearControlLayoutVisibility * 32}px`;
+    clearSlot.style.marginBottom = `${(presentation.clearControlLayoutVisibility - 1) * 8}px`;
+    clearSlot.style.opacity = String(presentation.clearControlVisibility);
+    clearSlot.style.transform = `translate3d(0, ${(1 - presentation.clearControlVisibility) * -8}px, 0)`;
+  }
+  const empty = root.querySelector<HTMLElement>("[data-notification-empty]");
+  if (empty) {
+    Object.assign(
+      empty.style,
+      notificationPullRevealStyle(presentation.emptyStateVisibility),
+    );
+  }
+  const collapse = root.querySelector<HTMLElement>(
+    "[data-notification-collapse-footer]",
+  );
+  if (collapse) {
+    collapse.style.opacity = String(presentation.collapseControlVisibility);
+    collapse.style.transform = `translateY(${(1 - presentation.collapseControlVisibility) * 4}px)`;
+  }
+  const groups =
+    visibleGroups ??
+    root.querySelectorAll<HTMLElement>("[data-notification-group]");
+  for (const group of groups) {
+    const groupIndex = Number(group.dataset.notificationGroupIndex ?? 0);
+    const pullRevealed = group.hasAttribute("data-notification-pull-reveal");
+    const groupVisibility = notificationGroupPullVisibility(
+      pullPx,
+      groupIndex,
+      shadeExpanded,
+      shadeClosing,
+      pullRevealed,
+    );
+    const containerOffset = notificationGroupContainerOffset(
+      pullPx,
+      shadeExpanded,
+      shadeClosing,
+    );
+    group.style.transform = `translate3d(0, ${
+      containerOffset + (pullRevealed ? (1 - groupVisibility) * -8 : 0)
+    }px, 0)`;
+    if (pullRevealed) {
+      group.style.opacity = String(groupVisibility);
+    }
+    if (
+      !pullRevealed &&
+      !group.hasAttribute("data-rested-notification-group")
+    ) {
+      const content = group.querySelector<HTMLElement>(
+        ":scope > [data-notification-group-content]",
+      );
+      if (content) {
+        content.style.opacity = String(groupVisibility);
+        content.style.transform = `translate3d(0, ${notificationGroupPullOffset(
+          pullPx,
+          shadeExpanded,
+          shadeClosing,
+          groupVisibility,
+        )}px, 0)`;
+      }
+    }
+    if (!shadeExpanded && pullPx > 0) {
+      const content = group.querySelector<HTMLElement>(
+        ":scope > [data-notification-group-content][data-notification-stacked]",
+      );
+      if (content) {
+        const restedTailPx = Number(
+          content.dataset.notificationRestedTailPx ?? 0,
+        );
+        const expandedTailPx = Number(
+          content.dataset.notificationExpandedTailPx ?? restedTailPx,
+        );
+        const tailProgress = group.hasAttribute(
+          "data-rested-notification-group",
+        )
+          ? notificationPullRevealProgress(pullPx, groupIndex)
+          : 1;
+        const tailPx =
+          restedTailPx + (expandedTailPx - restedTailPx) * tailProgress;
+        content.style.paddingBottom = `${tailPx}px`;
+        for (const peek of content.querySelectorAll<HTMLElement>(
+          "[data-notification-stack-peek]",
+        )) {
+          peek.style.bottom = `${tailPx}px`;
+        }
+      }
+    }
+    const controls = group.querySelector<HTMLElement>(
+      "[data-notification-stack-controls]",
+    );
+    if (controls) {
+      controls.style.opacity = String(presentation.disposableContentVisibility);
+      controls.style.transform = `translate3d(0, ${(1 - presentation.disposableContentVisibility) * -6}px, 0)`;
+    }
+    for (const row of group.querySelectorAll<HTMLElement>(
+      "[data-notification-disposable-row]",
+    )) {
+      row.style.opacity = String(presentation.disposableContentVisibility);
+      row.style.transform = `translate3d(0, ${(1 - presentation.disposableContentVisibility) * -8}px, 0)`;
+    }
+    for (const peek of group.querySelectorAll<HTMLElement>(
+      "[data-notification-peek-mode]",
+    )) {
+      const baseOpacity = Number(peek.dataset.notificationPeekBaseOpacity ?? 1);
+      const mode = peek.dataset.notificationPeekMode;
+      const visibility =
+        mode === "close"
+          ? presentation.shadeCloseProgress
+          : mode === "disposable"
+            ? presentation.pullContentVisibility
+            : 1;
+      peek.style.opacity = String(baseOpacity * visibility);
+    }
+  }
+}
+
+function visibleNotificationGroups(
+  root: HTMLElement | null,
+  scrollport: HTMLElement | null,
+): HTMLElement[] | undefined {
+  if (!root || !scrollport) return undefined;
+  const viewport = scrollport.getBoundingClientRect();
+  const bufferPx = 120;
+  return Array.from(
+    root.querySelectorAll<HTMLElement>("[data-notification-group]"),
+  ).filter((group) => {
+    const bounds = group.getBoundingClientRect();
+    return (
+      bounds.bottom >= viewport.top - bufferPx &&
+      bounds.top <= viewport.bottom + bufferPx
+    );
+  });
+}
+
 /**
  * Scroll + glass polish for the shade, in one inline block (house pattern —
  * see HOME_ENTER_CSS in HomeScreen):
@@ -243,6 +499,16 @@ const NOTIF_SCROLL_CSS = `
     -webkit-backdrop-filter: ${LIQUID_GLASS_REFRACTION};
     backdrop-filter: ${LIQUID_GLASS_REFRACTION};
   }
+}
+/* A dense expanded inbox cannot afford one live backdrop-refraction graph per
+   card. Keep the full material for the small rested triage; while previewing
+   or expanded, the same sheen/rim sits on an opaque translucent fill so drag
+   and scroll stay compositor-cheap even at the 100-row render cap. */
+.eliza-notif-scroll[data-shade-preview] .eliza-notif-glass,
+.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-glass {
+  background-color: rgb(22 22 25 / 88%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 /* Directional specular rim tracing every rounded corner (mask-composite ring)
    — replaces the old one-sided inset hairline that read as a vertical line. */
@@ -685,6 +951,9 @@ const NotificationRow = memo(function NotificationRow({
       data-notification-pull-reveal={
         pullRevealProgress !== undefined ? "" : undefined
       }
+      data-notification-disposable-row={
+        shadeVisibility !== undefined ? "" : undefined
+      }
       aria-hidden={shadeVisibility === 0 ? true : undefined}
       inert={
         pullRevealProgress !== undefined || shadeVisibility === 0
@@ -838,16 +1107,22 @@ export function NotificationsHomeCenter({
     setConfirmingClearAll(false);
   }, []);
   // Dampened live pull (px), SIGNED: positive is a downward pull (expand),
-  // negative an upward push (collapse). State drives the rubber-band
-  // transform; the ref mirrors it for the native touch listeners' commit path.
-  const [pullPx, setPullPxState] = useState(0);
+  // negative an upward push (collapse). React mounts the preview once when a
+  // gesture starts; pointer moves update existing styles directly so a
+  // 100-notification inbox does not rebuild its React tree every frame.
+  const [pullDirection, setPullDirection] = useState<
+    "expand" | "collapse" | null
+  >(null);
+  const pullDirectionRef = useRef<"expand" | "collapse" | null>(null);
   const pullPxRef = useRef(0);
+  const pullPresentationFrame = useRef<number | null>(null);
   // No list-level clock tick here (binding pattern, spec §C.4): relative
   // timestamps live in the `<RelativeTime>` leaf inside each row, which owns the
   // shared visibility-gated ticker. The minute roll re-renders those text nodes
   // only - not this list, not the rows, not the glass surface.
   const centerRef = useRef<HTMLElement | null>(null);
   const scrollRef = useRef<HTMLUListElement | null>(null);
+  const pullVisibleGroupsRef = useRef<HTMLElement[] | undefined>(undefined);
   const pointerPull = useRef<{
     id: number;
     startX: number;
@@ -877,10 +1152,50 @@ export function NotificationsHomeCenter({
   // collapse only from expanded), which is what makes the gestures directional
   // instead of a toggle.
   const shadeGestureRef = useRef({ canExpand: false, canCollapse: false });
+  const shadePresentationRef = useRef({
+    expanded: shadeExpanded,
+    closing: shadeClosing,
+  });
+  shadePresentationRef.current = {
+    expanded: shadeExpanded,
+    closing: shadeClosing,
+  };
 
   const setPullPx = useCallback((px: number) => {
     pullPxRef.current = px;
-    setPullPxState(px);
+    const nextDirection = px > 0 ? "expand" : px < 0 ? "collapse" : null;
+    const directionChanged = pullDirectionRef.current !== nextDirection;
+    if (directionChanged) {
+      pullDirectionRef.current = nextDirection;
+      pullVisibleGroupsRef.current = nextDirection
+        ? visibleNotificationGroups(centerRef.current, scrollRef.current)
+        : undefined;
+      setPullDirection(nextDirection);
+    }
+    // The zero state is rendered declaratively after the dragging marker is
+    // removed, allowing the release transition to run. Non-zero movement is
+    // direct manipulation and must update in the current input event.
+    const applyCurrentPull = () => {
+      pullPresentationFrame.current = null;
+      applyNotificationPullPresentation(
+        centerRef.current,
+        pullPxRef.current,
+        shadePresentationRef.current.expanded,
+        shadePresentationRef.current.closing,
+        pullVisibleGroupsRef.current,
+      );
+    };
+    if (!nextDirection) {
+      if (pullPresentationFrame.current !== null) {
+        window.cancelAnimationFrame(pullPresentationFrame.current);
+        pullPresentationFrame.current = null;
+      }
+    } else if (directionChanged) {
+      applyCurrentPull();
+    } else if (pullPresentationFrame.current === null) {
+      pullPresentationFrame.current =
+        window.requestAnimationFrame(applyCurrentPull);
+    }
   }, []);
 
   const cancelClearConfirmation = useCallback(() => {
@@ -917,6 +1232,22 @@ export function NotificationsHomeCenter({
       scrollRef.current.scrollTop = 0;
     }
   }, [shadeExpanded]);
+
+  useLayoutEffect(() => {
+    if (pullDirection) {
+      pullVisibleGroupsRef.current = visibleNotificationGroups(
+        centerRef.current,
+        scrollRef.current,
+      );
+    }
+    applyNotificationPullPresentation(
+      centerRef.current,
+      pullPxRef.current,
+      shadeExpanded,
+      shadeClosing,
+      pullVisibleGroupsRef.current,
+    );
+  });
 
   const requestShadeCollapse = useCallback(() => {
     if (!shadeExpanded || shadeClosing) return;
@@ -1445,6 +1776,9 @@ export function NotificationsHomeCenter({
     () => () => {
       if (wheelDecayTimer.current) window.clearTimeout(wheelDecayTimer.current);
       if (shadeCloseTimer.current) window.clearTimeout(shadeCloseTimer.current);
+      if (pullPresentationFrame.current !== null) {
+        window.cancelAnimationFrame(pullPresentationFrame.current);
+      }
     },
     [],
   );
@@ -1560,46 +1894,34 @@ export function NotificationsHomeCenter({
   // can communicate its state instead of ignoring the gesture.
   if (!surfaceReady) return null;
 
+  const pullPx = pullPxRef.current;
+  const isPulling = pullDirection !== null;
   const canExpand = !shadeExpanded;
-  const previewingExpansion = canExpand && pullPx > 0;
+  const previewingExpansion = canExpand && pullDirection === "expand";
   const groups = shadeExpanded
     ? expandedGroups
     : previewingExpansion
       ? previewGroups
       : restedGroups;
   shadeGestureRef.current = { canExpand, canCollapse: shadeExpanded };
-  const dragCloseProgress =
-    shadeExpanded && !shadeClosing
-      ? notificationPullRevealProgress(-pullPx, 0)
-      : 0;
-  const committedCloseProgress = shadeClosing ? 1 : 0;
-  const shadeCloseProgress = Math.max(
-    dragCloseProgress,
+  const {
+    shadeCloseProgress,
     committedCloseProgress,
-  );
-  const notificationCountVisibility = shadeExpanded
-    ? 0
-    : 1 - notificationPullRevealProgress(pullPx, 0);
-  // Visuals track the finger in both directions. Top-level group layout stays
-  // intact while it fades, so every card follows one continuous trajectory
-  // instead of independently reflowing the list during a slow drag.
-  const disposableContentVisibility = 1 - shadeCloseProgress;
-  const emptyStateVisibility = shadeExpanded
-    ? 1 - shadeCloseProgress
-    : notificationPullRevealProgress(pullPx, 0);
-  const collapseControlVisibility = shadeExpanded
-    ? 1 - committedCloseProgress
-    : 0;
+    disposableContentVisibility,
+    pullContentVisibility,
+    notificationCountVisibility,
+    notificationCountLayoutVisibility,
+    emptyStateVisibility,
+    collapseControlVisibility,
+    clearControlVisibility,
+    clearControlLayoutVisibility,
+  } = notificationPullPresentation(pullPx, shadeExpanded, shadeClosing);
+  const disposableLayoutVisibility = 1 - committedCloseProgress;
   const showCollapseControl =
-    shadeExpanded &&
+    (shadeExpanded || previewingExpansion) &&
     hasNotifications &&
     expandedStacks.size === 0 &&
     !shadeOpenedByStack;
-  const clearControlVisibility = shadeExpanded
-    ? disposableContentVisibility
-    : previewingExpansion
-      ? notificationPullRevealProgress(pullPx, 0)
-      : 0;
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
     const el = scrollRef.current;
@@ -1666,13 +1988,14 @@ export function NotificationsHomeCenter({
     <li
       key="notification-count"
       data-testid="notifications-count"
+      data-notification-count-slot=""
       aria-hidden={notificationCountVisibility === 0 ? true : undefined}
       inert={notificationCountVisibility === 0 ? true : undefined}
       style={{
-        height: `${notificationCountVisibility * 32}px`,
-        marginBottom: `${(notificationCountVisibility - 1) * 8}px`,
+        height: `${notificationCountLayoutVisibility * 32}px`,
+        marginBottom: `${(notificationCountLayoutVisibility - 1) * 8}px`,
         opacity: notificationCountVisibility,
-        transition: pullPx ? "none" : undefined,
+        transition: isPulling ? "none" : undefined,
       }}
       className="eliza-notif-count-transition flex shrink-0 items-center justify-center overflow-hidden px-3 text-2xs font-medium text-white/50"
     >
@@ -1731,7 +2054,7 @@ export function NotificationsHomeCenter({
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
         data-shade-preview={previewingExpansion ? "expanding" : undefined}
-        data-shade-dragging={pullPx !== 0 ? "" : undefined}
+        data-shade-dragging={isPulling ? "" : undefined}
         data-shade-settling={shadeClosing ? "" : undefined}
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
@@ -1745,11 +2068,12 @@ export function NotificationsHomeCenter({
       >
         {hasNotifications ? (
           <li
+            data-notification-clear-slot=""
             aria-hidden={clearControlVisibility === 0 ? true : undefined}
             inert={clearControlVisibility < 1 ? true : undefined}
             style={{
-              height: clearControlVisibility * 32,
-              marginBottom: (clearControlVisibility - 1) * 8,
+              height: clearControlLayoutVisibility * 32,
+              marginBottom: (clearControlLayoutVisibility - 1) * 8,
               opacity: clearControlVisibility,
               transform: `translate3d(0, ${(1 - clearControlVisibility) * -8}px, 0)`,
             }}
@@ -1781,13 +2105,14 @@ export function NotificationsHomeCenter({
           <li
             role="status"
             data-testid="notifications-empty"
+            data-notification-empty=""
             aria-hidden={
               !shadeExpanded && !previewingExpansion ? true : undefined
             }
             inert={!shadeExpanded && !previewingExpansion ? true : undefined}
             style={{
               ...notificationPullRevealStyle(emptyStateVisibility),
-              transition: pullPx ? "none" : undefined,
+              transition: isPulling ? "none" : undefined,
             }}
             className="eliza-notif-pull-reveal eliza-notif-shade-transition flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45"
           >
@@ -1802,14 +2127,18 @@ export function NotificationsHomeCenter({
           const revealProgress = pullRevealed
             ? notificationPullRevealProgress(pullPx, groupIndex)
             : 1;
-          const closeVisibility = shadeClosing
-            ? 0
-            : shadeExpanded && pullPx < 0
-              ? notificationPullRevealProgress(
-                  PULL_COMMIT_PX + pullPx,
-                  groupIndex,
-                )
-              : 1;
+          const closeVisibility = notificationGroupPullVisibility(
+            pullPx,
+            groupIndex,
+            shadeExpanded,
+            shadeClosing,
+            false,
+          );
+          const groupContainerOffset = notificationGroupContainerOffset(
+            pullPx,
+            shadeExpanded,
+            shadeClosing,
+          );
           const stackExpanded = expandedStacks.has(group.key);
           // Every presentation shares one shell, so the top NotificationRow
           // stays under the same parent/key while a fanned stack closes.
@@ -1833,7 +2162,7 @@ export function NotificationsHomeCenter({
             restedPeekCount * STACK_PEEK_OFFSET_PX +
             (restedPeekCount > 0 ? STACK_BOTTOM_CLEARANCE_PX : 0);
           const stackTailRevealProgress = shadeExpanded
-            ? disposableContentVisibility
+            ? disposableLayoutVisibility
             : previewingExpansion
               ? groupWasRested
                 ? notificationPullRevealProgress(pullPx, groupIndex)
@@ -1850,12 +2179,13 @@ export function NotificationsHomeCenter({
             <motion.li
               key={group.key}
               layout={
-                shadeExpanded && pullPx === 0 && !shadeClosing
+                shadeExpanded && !isPulling && !shadeClosing
                   ? "position"
                   : false
               }
               transition={{ layout: STACK_LAYOUT_TRANSITION }}
               data-notification-group=""
+              data-notification-group-index={groupIndex}
               data-rested-notification-group={groupWasRested ? "" : undefined}
               data-notification-pull-reveal={pullRevealed ? "" : undefined}
               inert={pullRevealed ? true : undefined}
@@ -1865,18 +2195,27 @@ export function NotificationsHomeCenter({
                 fanned && "pb-2",
               )}
               style={
-                pullRevealed
-                  ? notificationPullRevealStyle(revealProgress)
+                pullRevealed || groupContainerOffset !== 0
+                  ? {
+                      opacity: pullRevealed ? revealProgress : undefined,
+                      transform: `translate3d(0, ${
+                        groupContainerOffset +
+                        (pullRevealed ? (1 - revealProgress) * -8 : 0)
+                      }px, 0)`,
+                    }
                   : undefined
               }
             >
               <div
                 data-notification-group-content=""
+                data-notification-stacked={stacked ? "" : undefined}
+                data-notification-rested-tail-px={restedStackTailPx}
+                data-notification-expanded-tail-px={expandedStackTailPx}
                 data-testid={stacked ? "notification-stack" : undefined}
                 className="eliza-notif-shade-transition relative flex flex-col"
                 style={{
                   paddingBottom: fanned
-                    ? disposableContentVisibility * 8 +
+                    ? disposableLayoutVisibility * 8 +
                       shadeCloseProgress * restedStackTailPx
                     : stacked
                       ? stackTailPx
@@ -1884,8 +2223,13 @@ export function NotificationsHomeCenter({
                   opacity: groupWasRested ? 1 : closeVisibility,
                   transform: groupWasRested
                     ? undefined
-                    : `translate3d(0, ${(1 - closeVisibility) * -8}px, 0)`,
-                  transition: pullPx
+                    : `translate3d(0, ${notificationGroupPullOffset(
+                        pullPx,
+                        shadeExpanded,
+                        shadeClosing,
+                        closeVisibility,
+                      )}px, 0)`,
+                  transition: isPulling
                     ? "none"
                     : `padding-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1), opacity ${SHADE_CLOSE_FADE_MS}ms ease-out, transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1)`,
                 }}
@@ -1893,9 +2237,10 @@ export function NotificationsHomeCenter({
                 {fanned ? (
                   <div
                     data-testid="notification-stack-controls"
+                    data-notification-stack-controls=""
                     className="eliza-notif-shade-transition flex items-center justify-between gap-3 overflow-hidden px-2"
                     style={{
-                      height: disposableContentVisibility * 36,
+                      height: disposableLayoutVisibility * 36,
                       opacity: disposableContentVisibility,
                       transform: `translate3d(0, ${(1 - disposableContentVisibility) * -6}px, 0)`,
                     }}
@@ -1947,7 +2292,7 @@ export function NotificationsHomeCenter({
                 ) : null}
                 <motion.ul
                   layout={
-                    shadeExpanded && pullPx === 0 && !shadeClosing
+                    shadeExpanded && !isPulling && !shadeClosing
                       ? "position"
                       : false
                   }
@@ -1973,7 +2318,7 @@ export function NotificationsHomeCenter({
                       }
                       shadeVisibility={
                         fanned && rowIndex > 0
-                          ? disposableContentVisibility
+                          ? disposableLayoutVisibility
                           : undefined
                       }
                       onExpandStack={expandStack}
@@ -1987,14 +2332,20 @@ export function NotificationsHomeCenter({
                     previewingExpansion &&
                     groupWasRested &&
                     !restedNotificationIds.has(peek.id);
-                  const peekRevealProgress = peekPullRevealed
-                    ? notificationPullRevealProgress(pullPx, groupIndex + i)
-                    : 1;
+                  const peekMode = fanned
+                    ? "close"
+                    : groupWasRested &&
+                        ((shadeExpanded &&
+                          !restedNotificationIds.has(peek.id)) ||
+                          peekPullRevealed)
+                      ? "disposable"
+                      : "static";
                   const peekCloseVisibility = fanned
                     ? shadeCloseProgress
-                    : shadeExpanded && !restedNotificationIds.has(peek.id)
-                      ? closeVisibility
+                    : peekMode === "disposable"
+                      ? pullContentVisibility
                       : 1;
+                  const peekBaseOpacity = 0.92 - i * 0.14;
                   return (
                     <button
                       key={peek.id}
@@ -2005,9 +2356,12 @@ export function NotificationsHomeCenter({
                           : undefined
                       }
                       data-notif-control=""
+                      data-notification-stack-peek=""
                       data-notification-pull-reveal={
                         peekPullRevealed ? "" : undefined
                       }
+                      data-notification-peek-mode={peekMode}
+                      data-notification-peek-base-opacity={peekBaseOpacity}
                       tabIndex={
                         peekPullRevealed || peekCloseVisibility < 1
                           ? -1
@@ -2025,14 +2379,11 @@ export function NotificationsHomeCenter({
                       style={{
                         bottom: fanned ? restedStackTailPx : stackTailPx,
                         zIndex: 1 - i,
-                        opacity:
-                          (0.92 - i * 0.14) *
-                          peekRevealProgress *
-                          peekCloseVisibility,
+                        opacity: peekBaseOpacity * peekCloseVisibility,
                         transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
                           1 - (i + 1) * 0.015
                         })`,
-                        transition: pullPx
+                        transition: isPulling
                           ? "none"
                           : `bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1), opacity ${SHADE_CLOSE_FADE_MS}ms ease-out`,
                       }}
@@ -2050,6 +2401,7 @@ export function NotificationsHomeCenter({
       {showCollapseControl ? (
         <div
           data-testid="notifications-collapse-footer"
+          data-notification-collapse-footer=""
           aria-hidden={collapseControlVisibility === 0 ? true : undefined}
           inert={collapseControlVisibility < 1 ? true : undefined}
           style={{

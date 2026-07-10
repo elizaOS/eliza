@@ -117,6 +117,49 @@ function expandShade(): void {
 }
 
 describe("NotificationsHomeCenter render count (#14559)", () => {
+  it("does not rebuild the notification tree for every pull frame", () => {
+    for (let i = 0; i < 100; i += 1) {
+      __ingestNotificationForTests(
+        makeNotification({ priority: i === 0 ? "urgent" : "normal" }),
+      );
+    }
+
+    let listRenders = 0;
+    let rowRenders = 0;
+    __setNotificationsHomeCenterRenderObserverForTests(() => {
+      listRenders += 1;
+    });
+    __setNotificationRowRenderObserverForTests(() => {
+      rowRenders += 1;
+    });
+    render(<NotificationsHomeCenter />);
+    expandShade();
+    listRenders = 0;
+    rowRenders = 0;
+
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 90,
+      clientX: 20,
+      clientY: 200,
+    });
+    for (let y = 190; y >= 110; y -= 4) {
+      fireEvent.pointerMove(list, {
+        pointerType: "mouse",
+        pointerId: 90,
+        clientX: 20,
+        clientY: y,
+      });
+    }
+
+    // One render marks the gesture active. Every subsequent pointer sample is
+    // frame-coalesced DOM presentation work; memoized rows remain untouched.
+    expect(listRenders).toBe(1);
+    expect(rowRenders).toBe(0);
+  });
+
   it("the minute tick re-renders only RelativeTime leaves, not the list container", () => {
     for (let i = 0; i < 8; i++) {
       __ingestNotificationForTests(makeNotification());
