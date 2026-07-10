@@ -1,20 +1,11 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Eliza-1 line:
- * eliza-1-2b, eliza-1-4b, eliza-1-9b, eliza-1-27b,
- * and eliza-1-27b-256k.
- * These ship Gemma 4 bases: E2B/E4B/12B/31B mapped onto the
- * 2B/4B/9B/27B release tiers (the 2026-06-22 cutover from the legacy
- * hybrid line — see #9033 and packages/training/scripts/training/model_registry.py
- * for the active registry). Gemma 4 is a dense SWA + shared-KV + per-layer-embedding
- * (PLE) + MQA architecture; KV is already minimal so the legacy
- * QJL/TurboQuant KV kernels are not used (stock KV), and the shipping
- * GGUF weight quant is stock Q4_K_M unless a manifest proves a tier-specific
- * PolarQuant recipe was actually applied. External Hub search remains custom/opt-in and
- * never enters first-run or default eligibility.
- * Separate-drafter MTP is still the required release shape, but runtime
- * metadata is gated until the Gemma drafter GGUFs are actually hosted.
+ * Stable size-oriented model ids map to the Gemma 4 architecture-oriented
+ * directory and artifact names published in the shared Hugging Face repo.
+ * The mapping is explicit because user-facing ids are durable API keys while
+ * published bundle paths follow their E2B/E4B/12B/31B base architectures.
+ * External Hub search remains opt-in and never enters default eligibility.
  */
 
 import { type HfDownloadBase, resolveHfDownloadBases } from "./hf-proxy.js";
@@ -36,6 +27,14 @@ export const ELIZA_1_TIER_IDS = [
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
+
+export const ELIZA_1_PUBLISHED_TIER_SLUGS = {
+  "eliza-1-2b": "e2b",
+  "eliza-1-4b": "e4b",
+  "eliza-1-9b": "12b",
+  "eliza-1-27b": "31b",
+  "eliza-1-27b-256k": "31b-256k",
+} as const satisfies Record<Eliza1TierId, string>;
 
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
@@ -62,20 +61,20 @@ export const ELIZA_1_MTP_TIER_IDS = [
 
 /**
  * Tiers whose Gemma MTP drafter GGUFs are present at
- * `bundles/<tier>/mtp/drafter-<tier>.gguf` in the active HF tree.
+ * `bundles/<architecture>/mtp/drafter-<architecture>.gguf` in the active HF tree.
  *
- * Current HF state (2026-07-02): `bundles/2b/mtp/drafter-2b.gguf` hosts the
+ * `bundles/e2b/mtp/drafter-e2b.gguf` hosts the
  * gemma4-assistant drafter converted from `google/gemma-4-E2B-it-assistant`
  * (arch `gemma4-assistant`, f16, embedding_length_out=1536; sha256
  * 0495d34e08d0…, manifest `files.mtp` + `lineage.drafter` + `evals.mtp`
  * populated — acceptance 0.84, speedup ~1.53x greedy on M4 Max Metal at
- * `--spec-draft-n-max 1`). `bundles/4b/mtp/drafter-4b.gguf` hosts the
+ * `--spec-draft-n-max 1`). `bundles/e4b/mtp/drafter-e4b.gguf` hosts the
  * drafter converted from `google/gemma-4-E4B-it-assistant` (arch
  * `gemma4-assistant`, f16, embedding_length_out=2560; sha256 e4585e558a74…,
  * manifest populated — acceptance 0.79, speedup ~1.33x greedy on M4 Max
  * Metal at `--spec-draft-n-max 1`). The remaining tiers (9b/27b) still only
  * expose legacy `dflash/` paths; add a tier here only once its
- * `mtp/drafter-<tier>.gguf` is actually hosted, so the runtime and
+ * `mtp/drafter-<architecture>.gguf` is actually hosted, so the runtime and
  * downloader never advertise or fetch missing MTP artifacts.
  */
 export const ELIZA_1_HOSTED_MTP_TIER_IDS = [
@@ -134,7 +133,7 @@ export function isDefaultEligibleId(id: string): boolean {
  *
  * W3-12 audit (2026-05-14): the following areas require publish attention:
  *   - 2B vision: enabled in the catalog and canonical vision tier set;
- *     publish staging must include `vision/mmproj-2b.gguf` or manifest
+ *     publish staging must include `vision/mmproj-e2b.gguf` or manifest
  *     validation fails loudly.
  *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
  *     published under the unified elizaos/eliza-1 `voice/<model-id>/...`
@@ -147,12 +146,9 @@ export function isDefaultEligibleId(id: string): boolean {
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
 > = {
-  // 2026-06-28: the HuggingFace `elizaos/eliza-1` 9b / 27b / 27b-256k text
-  // GGUFs still report `general.architecture = qwen35` (Qwen3.5 / "Qwen3.6
-  // 27B") — the Gemma-4 cutover only landed for the 2b and 4b tiers. Mark the
-  // un-cut tiers `pending` so first-run never recommends a non-Gemma model as
-  // the default Eliza-1; flip back to published once the Gemma-4 fine-tunes are
-  // staged + pass the text-architecture provenance gate (text-provenance.ts).
+  // The larger Gemma text artifacts are hosted, but their complete manifests
+  // and modality companions are not. Pending prevents the downloader from
+  // presenting a text-only directory as an installable full bundle.
   "eliza-1-9b": "pending",
   "eliza-1-27b": "pending",
   "eliza-1-27b-256k": "pending",
@@ -227,7 +223,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 4,
     bucket: "small",
     contextLength: 131072,
-    textFile: "text/eliza-1-2b-128k.gguf",
+    textFile: "text/eliza-1-e2b-128k.gguf",
     // WS2: vision enabled — the 2B tier is the standard "small-phone"
     // default for first-run users, so camera-to-reaction and screen
     // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
@@ -251,7 +247,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 6,
     bucket: "mid",
     contextLength: 131072,
-    textFile: "text/eliza-1-4b-128k.gguf",
+    textFile: "text/eliza-1-e4b-128k.gguf",
     hasEmbedding: true,
     hasVision: true,
     // WS3: 4B uses the same monolithic SD 1.5 default as the rest of the
@@ -266,7 +262,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 12,
     bucket: "large",
     contextLength: 131072,
-    textFile: "text/eliza-1-9b-128k.gguf",
+    textFile: "text/eliza-1-12b-128k.gguf",
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
@@ -282,7 +278,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 32,
     bucket: "large",
     contextLength: 131072,
-    textFile: "text/eliza-1-27b-128k.gguf",
+    textFile: "text/eliza-1-31b-128k.gguf",
     gpuProfile: "rtx-4090",
     hasEmbedding: true,
     hasVision: true,
@@ -297,7 +293,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 48,
     bucket: "large",
     contextLength: 262144,
-    textFile: "text/eliza-1-27b-256k.gguf",
+    textFile: "text/eliza-1-31b-256k.gguf",
     gpuProfile: "h200",
     hasEmbedding: true,
     hasVision: true,
@@ -306,7 +302,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
 };
 
 function tierSlug(id: Eliza1TierId): string {
-  return id.slice("eliza-1-".length);
+  return ELIZA_1_PUBLISHED_TIER_SLUGS[id];
 }
 
 function tierDisplaySlug(id: Eliza1TierId): string {
@@ -400,7 +396,8 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   }
   // Separate-drafter MTP is the Gemma release shape. Advertise the component
   // only for tiers whose gemma4-assistant drafter GGUF is actually hosted at
-  // `bundles/<tier>/mtp/drafter-<tier>.gguf` (ELIZA_1_HOSTED_MTP_TIER_IDS);
+  // `bundles/<architecture>/mtp/drafter-<architecture>.gguf`
+  // (ELIZA_1_HOSTED_MTP_TIER_IDS);
   // the `dflash/` files still present on other tiers are legacy artifacts.
   if (hostedMtpDrafterAvailableForTier(id)) {
     components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
@@ -441,7 +438,8 @@ function runtimeForTier(
 
   if (hostedMtpDrafterAvailableForTier(id)) {
     // Separate-drafter MTP: Gemma 4 ships an official standalone drafter
-    // GGUF, loaded via `-md mtp/drafter-<tier>.gguf --spec-type draft-mtp`.
+    // GGUF, loaded via
+    // `-md mtp/drafter-<architecture>.gguf --spec-type draft-mtp`.
     //
     // Draft window = 1 (single speculative token). The bionic/desktop FFI
     // MTP engine uses a FIXED window equal to `draftMax` (no adaptive

@@ -11,6 +11,7 @@ import {
   ELIZA_1_HOSTED_MTP_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_ON_DEVICE_TIER_IDS,
+  ELIZA_1_PUBLISHED_TIER_SLUGS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
   eliza1TierPublishStatus,
@@ -31,6 +32,13 @@ const EXPECTED_CHAT_PARAMS: Record<string, string> = {
   "eliza-1-9b": "9B",
   "eliza-1-27b": "27B",
   "eliza-1-27b-256k": "27B",
+};
+const EXPECTED_PUBLISHED_TEXT_FILES: Record<string, string> = {
+  "eliza-1-2b": "text/eliza-1-e2b-128k.gguf",
+  "eliza-1-4b": "text/eliza-1-e4b-128k.gguf",
+  "eliza-1-9b": "text/eliza-1-12b-128k.gguf",
+  "eliza-1-27b": "text/eliza-1-31b-128k.gguf",
+  "eliza-1-27b-256k": "text/eliza-1-31b-256k.gguf",
 };
 
 describe("Eliza-1 runtime quant metadata", () => {
@@ -59,7 +67,7 @@ describe("Eliza-1 runtime quant metadata", () => {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.displayName).toBe(EXPECTED_DISPLAY_NAMES[id]);
       expect(entry?.params).toBe(EXPECTED_CHAT_PARAMS[id]);
-      expect(entry?.ggufFile).toContain(id);
+      expect(entry?.ggufFile).toBe(EXPECTED_PUBLISHED_TEXT_FILES[id]);
     }
   });
 
@@ -92,11 +100,27 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.ggufFile).not.toMatch(/-(32k|64k)\.gguf$/);
       if (id === "eliza-1-27b-256k") {
         expect(entry?.contextLength).toBe(262144);
-        expect(entry?.ggufFile).toBe("text/eliza-1-27b-256k.gguf");
+        expect(entry?.ggufFile).toBe("text/eliza-1-31b-256k.gguf");
       } else {
         expect(entry?.contextLength).toBe(131072);
-        expect(entry?.ggufFile).toBe(`text/${id}-128k.gguf`);
+        expect(entry?.ggufFile).toBe(EXPECTED_PUBLISHED_TEXT_FILES[id]);
       }
+    }
+  });
+
+  it("maps stable model ids to the published Gemma bundle layout", () => {
+    expect(ELIZA_1_PUBLISHED_TIER_SLUGS).toEqual({
+      "eliza-1-2b": "e2b",
+      "eliza-1-4b": "e4b",
+      "eliza-1-9b": "12b",
+      "eliza-1-27b": "31b",
+      "eliza-1-27b-256k": "31b-256k",
+    });
+    for (const id of ELIZA_1_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      const publishedSlug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
+      expect(entry?.hfPathPrefix).toBe(`bundles/${publishedSlug}`);
+      expect(entry?.ggufFile).toBe(EXPECTED_PUBLISHED_TEXT_FILES[id]);
     }
   });
 
@@ -132,14 +156,14 @@ describe("Eliza-1 runtime quant metadata", () => {
   it("advertises Gemma MTP metadata only for tiers with hosted drafter GGUFs", () => {
     expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
     // 2b/4b host the gemma4-assistant drafters at
-    // bundles/<tier>/mtp/drafter-<tier>.gguf (converted from
+    // bundles/<architecture>/mtp/drafter-<architecture>.gguf (converted from
     // google/gemma-4-E2B-it-assistant / google/gemma-4-E4B-it-assistant,
     // 2026-07-02).
     expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual(["eliza-1-2b", "eliza-1-4b"]);
     const hosted: ReadonlySet<string> = new Set(ELIZA_1_HOSTED_MTP_TIER_IDS);
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      const slug = id.slice("eliza-1-".length);
+      const slug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
       if (hosted.has(id)) {
         expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
         expect(entry?.runtime?.mtp?.drafterFile).toBe(
@@ -160,14 +184,14 @@ describe("Eliza-1 runtime quant metadata", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.vad?.file).toBe(
-        `bundles/${id.slice("eliza-1-".length)}/vad/silero-vad-v5.gguf`,
+        `bundles/${ELIZA_1_PUBLISHED_TIER_SLUGS[id]}/vad/silero-vad-v5.gguf`,
       );
     }
   });
 
   it("points every voice-enabled tier at its tier-matched ASR mmproj GGUF", () => {
     for (const id of ELIZA_1_TIER_IDS) {
-      const slug = id.slice("eliza-1-".length);
+      const slug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.asr?.file).toBe(
         `bundles/${slug}/asr/mmproj-audio-${slug}-bf16.gguf`,
@@ -177,7 +201,7 @@ describe("Eliza-1 runtime quant metadata", () => {
 
   it("points every vision-enabled tier at its tier-matched mmproj GGUF", () => {
     for (const id of ELIZA_1_VISION_TIER_IDS) {
-      const slug = id.slice("eliza-1-".length);
+      const slug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.vision?.file).toBe(
         `bundles/${slug}/vision/mmproj-${slug}.gguf`,
