@@ -65,7 +65,11 @@ export async function runAuthAdoptCodex(
     };
   }
 
-  const { adoptCodexCliLogin } = await import("@elizaos/auth");
+  // Concrete subpath import — the documented consumption pattern for the
+  // @elizaos/auth leaf package (see its package guide).
+  const { adoptCodexCliLogin } = await import(
+    "@elizaos/auth/subscription-auth/adopt-codex-cli-login"
+  );
   try {
     const result = adoptCodexCliLogin({
       accountId,

@@ -342,16 +342,18 @@ export function adoptCodexCliLogin(
   // copy we just retired may already hold consumed tokens. Committing it to
   // the pool would set up the exact dual-refresher revocation this operation
   // exists to prevent.
-  let sourceReappeared = false;
-  try {
-    lstatSync(authPath);
-    sourceReappeared = true;
-  } catch {
-    // error-policy:J3 ENOENT is the healthy outcome here (the source stayed
-    // retired); any other stat failure is also treated as "not reappeared"
-    // because the reappearance check is a best-effort live-refresher detector,
-    // not a correctness gate — the pool==retired invariant holds regardless.
-  }
+  const sourceReappeared = (() => {
+    try {
+      lstatSync(authPath);
+      return true;
+    } catch {
+      // error-policy:J3 ENOENT is the healthy outcome (the source stayed
+      // retired); any other stat failure also reads as "not reappeared"
+      // because this is a best-effort live-refresher detector, not a
+      // correctness gate — the pool==retired invariant holds regardless.
+      return false;
+    }
+  })();
   if (sourceReappeared) {
     throw adoptError(
       "adopt_codex.concurrent_refresher",
