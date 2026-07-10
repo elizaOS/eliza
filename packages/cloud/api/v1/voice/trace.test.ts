@@ -37,7 +37,8 @@ describe("cloud voice trace headers", () => {
     expect(response.headers.get("Server-Timing")).toBe(
       "admission;dur=3, transcribe;dur=13, provider;dur=13",
     );
-    expect(await response.json()).toEqual({ transcript: "ok" });
+    const payload = (await response.json()) as { transcript: string };
+    expect(payload).toEqual({ transcript: "ok" });
   });
 
   it("keeps Server-Timing on untraced error responses", () => {
