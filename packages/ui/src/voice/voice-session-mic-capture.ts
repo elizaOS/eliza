@@ -182,9 +182,9 @@ class StreamingResampler {
       const idx = this.position;
       const i0 = Math.floor(idx);
       const frac = idx - i0;
-      const s0 =
-        i0 < 0 ? (this.hasTail ? this.tail : block[0]) : block[i0];
-      const s1 = i0 + 1 < block.length ? block[i0 + 1] : block[block.length - 1];
+      const s0 = i0 < 0 ? (this.hasTail ? this.tail : block[0]) : block[i0];
+      const s1 =
+        i0 + 1 < block.length ? block[i0 + 1] : block[block.length - 1];
       out.push(s0 + (s1 - s0) * frac);
       this.position += this.ratio;
     }
@@ -225,14 +225,22 @@ export async function startVoiceMicCapture(
     (() => {
       const Ctor =
         typeof window !== "undefined"
-          ? (window as unknown as { AudioContext?: new () => MicAudioContextLike })
-              .AudioContext ??
-            (window as unknown as {
-              webkitAudioContext?: new () => MicAudioContextLike;
-            }).webkitAudioContext
+          ? ((
+              window as unknown as {
+                AudioContext?: new () => MicAudioContextLike;
+              }
+            ).AudioContext ??
+            (
+              window as unknown as {
+                webkitAudioContext?: new () => MicAudioContextLike;
+              }
+            ).webkitAudioContext)
           : undefined;
       if (!Ctor) {
-        throw new VoiceMicCaptureError("AudioContext unavailable", "unsupported");
+        throw new VoiceMicCaptureError(
+          "AudioContext unavailable",
+          "unsupported",
+        );
       }
       return new Ctor();
     });
@@ -251,7 +259,11 @@ export async function startVoiceMicCapture(
   } catch (err) {
     const name = (err as { name?: string })?.name;
     if (name === "NotAllowedError" || name === "SecurityError") {
-      throw new VoiceMicCaptureError("microphone permission denied", "permission_denied", err);
+      throw new VoiceMicCaptureError(
+        "microphone permission denied",
+        "permission_denied",
+        err,
+      );
     }
     if (name === "NotFoundError" || name === "OverconstrainedError") {
       throw new VoiceMicCaptureError("no microphone device", "no_device", err);
@@ -264,7 +276,8 @@ export async function startVoiceMicCapture(
   if (ctx.state === "suspended") {
     try {
       await ctx.resume();
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       // best-effort; a running graph is confirmed by frame delivery.
     }
   }
@@ -307,10 +320,12 @@ export async function startVoiceMicCapture(
     } finally {
       URL.revokeObjectURL(url);
     }
-    workletNode = new (AudioWorkletNode as unknown as new (
-      c: MicAudioContextLike,
-      name: string,
-    ) => AudioWorkletNodeLike)(ctx, WORKLET_NAME);
+    workletNode = new (
+      AudioWorkletNode as unknown as new (
+        c: MicAudioContextLike,
+        name: string,
+      ) => AudioWorkletNodeLike
+    )(ctx, WORKLET_NAME);
     workletNode.port.onmessage = (event) => {
       const data = event.data as { pcm?: Float32Array } | undefined;
       if (data?.pcm) emitResampled(data.pcm);

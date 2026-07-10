@@ -48,16 +48,38 @@ export interface ProviderConfig {
 
 export interface ServerHooks {
   /** structured server-side log sink (evidence). */
-  log: (level: "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => void;
+  log: (
+    level: "info" | "warn" | "error",
+    msg: string,
+    data?: Record<string, unknown>,
+  ) => void;
   /** record an s2c control/audio event as it leaves the server (evidence). */
-  onServerEmit?: (kind: "json" | "binary", payload: Record<string, unknown>) => void;
+  onServerEmit?: (
+    kind: "json" | "binary",
+    payload: Record<string, unknown>,
+  ) => void;
   /** the domain-artifact sink: session + transcript rows the server "persists". */
   onDomainRow?: (row: DomainRow) => void;
 }
 
 export type DomainRow =
-  | { table: "voice_sessions"; id: string; agentId: string; conversationId: string; createdAtMs: number; endedAtMs?: number; status: string }
-  | { table: "voice_transcripts"; sessionId: string; role: "user" | "assistant"; text: string; committedAtMs: number; traceId: string };
+  | {
+      table: "voice_sessions";
+      id: string;
+      agentId: string;
+      conversationId: string;
+      createdAtMs: number;
+      endedAtMs?: number;
+      status: string;
+    }
+  | {
+      table: "voice_transcripts";
+      sessionId: string;
+      role: "user" | "assistant";
+      text: string;
+      committedAtMs: number;
+      traceId: string;
+    };
 
 interface SessionState {
   sessionId: string;
@@ -77,28 +99,52 @@ interface SessionState {
 }
 
 // ---- §7.1 mint (HARNESS token, not production JWT) ----
-export function mintHarnessToken(agentId: string, conversationId: string): {
+export function mintHarnessToken(
+  agentId: string,
+  conversationId: string,
+): {
   sessionId: string;
   token: string;
   expiresAt: number;
 } {
   const sessionId = randomUUID();
   const expiresAt = Date.now() + TOKEN_TTL_MS;
-  const payload = JSON.stringify({ sessionId, agentId, conversationId, aud: "voice-session", exp: expiresAt });
-  const sig = createHmac("sha256", HARNESS_MINT_SECRET).update(payload).digest("base64url");
+  const payload = JSON.stringify({
+    sessionId,
+    agentId,
+    conversationId,
+    aud: "voice-session",
+    exp: expiresAt,
+  });
+  const sig = createHmac("sha256", HARNESS_MINT_SECRET)
+    .update(payload)
+    .digest("base64url");
   const token = Buffer.from(payload).toString("base64url") + "." + sig;
   return { sessionId, token, expiresAt };
 }
 
-function verifyHarnessToken(token: string): { sessionId: string; agentId: string; conversationId: string } | null {
+function verifyHarnessToken(
+  token: string,
+): { sessionId: string; agentId: string; conversationId: string } | null {
   const [body, sig] = token.split(".");
   if (!body || !sig) return null;
   const payload = Buffer.from(body, "base64url").toString("utf8");
-  const expect = createHmac("sha256", HARNESS_MINT_SECRET).update(payload).digest("base64url");
+  const expect = createHmac("sha256", HARNESS_MINT_SECRET)
+    .update(payload)
+    .digest("base64url");
   if (sig !== expect) return null;
   const j = JSON.parse(payload);
-  if (j.aud !== "voice-session" || typeof j.exp !== "number" || Date.now() > j.exp) return null;
-  return { sessionId: j.sessionId, agentId: j.agentId, conversationId: j.conversationId };
+  if (
+    j.aud !== "voice-session" ||
+    typeof j.exp !== "number" ||
+    Date.now() > j.exp
+  )
+    return null;
+  return {
+    sessionId: j.sessionId,
+    agentId: j.agentId,
+    conversationId: j.conversationId,
+  };
 }
 
 interface WsData {
@@ -120,7 +166,10 @@ export interface StartServerOptions {
 export interface RunningServer {
   port: number;
   wsUrl: string;
-  mint(agentId: string, conversationId: string): { sessionId: string; token: string; wsUrl: string; expiresAt: number };
+  mint(
+    agentId: string,
+    conversationId: string,
+  ): { sessionId: string; token: string; wsUrl: string; expiresAt: number };
   stop(): void;
 }
 
@@ -132,7 +181,11 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     hooks.onServerEmit?.("json", obj);
     ws.send(JSON.stringify(obj));
   };
-  const emitBinary = (ws: ServerWebSocket<WsData>, bytes: Uint8Array, meta: Record<string, unknown>) => {
+  const emitBinary = (
+    ws: ServerWebSocket<WsData>,
+    bytes: Uint8Array,
+    meta: Record<string, unknown>,
+  ) => {
     hooks.onServerEmit?.("binary", { ...meta, byteLength: bytes.byteLength });
     ws.send(bytes);
   };
@@ -162,7 +215,8 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
         let ctrl: Record<string, unknown>;
         try {
           ctrl = JSON.parse(String(message));
-        } catch {
+        } catch (ignoredError) {
+          void ignoredError;
           emit(ws, { t: "error", code: "bad_json", retryable: false });
           return;
         }
@@ -184,7 +238,10 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     },
   });
 
-  async function handleHello(ws: ServerWebSocket<WsData>, ctrl: Record<string, unknown>) {
+  async function handleHello(
+    ws: ServerWebSocket<WsData>,
+    ctrl: Record<string, unknown>,
+  ) {
     const token = String(ctrl.token ?? "");
     const claims = verifyHarnessToken(token);
     if (!claims) {
@@ -242,7 +299,9 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
         },
         onEvent: (ev) => onFluxEvent(ws, ev),
       });
-      hooks.log("info", "deepgram flux session created", { url: state.flux.url });
+      hooks.log("info", "deepgram flux session created", {
+        url: state.flux.url,
+      });
     } catch (err) {
       hooks.log("error", "flux session create failed", { error: String(err) });
       emit(ws, { t: "error", code: "stt_init_failed", retryable: false });
@@ -266,7 +325,10 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     hooks.log("info", "session ready", { sessionId: state.sessionId, traceId });
   }
 
-  function onFluxEvent(ws: ServerWebSocket<WsData>, ev: DeepgramFluxRealtimeEvent) {
+  function onFluxEvent(
+    ws: ServerWebSocket<WsData>,
+    ev: DeepgramFluxRealtimeEvent,
+  ) {
     const state = ws.data.session;
     if (!state) return;
     switch (ev.type) {
@@ -274,7 +336,11 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
         hooks.log("info", "flux start-of-turn");
         break;
       case "transcript-update":
-        emit(ws, { t: "stt_partial", text: ev.transcript, traceId: state.traceId });
+        emit(ws, {
+          t: "stt_partial",
+          text: ev.transcript,
+          traceId: state.traceId,
+        });
         break;
       case "eager-end-of-turn":
         emit(ws, { t: "stt_eager_eot", traceId: state.traceId });
@@ -290,12 +356,19 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
         const benignHandshake =
           ev.code === "malformed_event" && /Connected/.test(ev.message);
         if (benignHandshake) {
-          hooks.log("warn", "flux benign Connected frame not modeled by adapter (#15950 gap)", {
-            message: ev.message,
-          });
+          hooks.log(
+            "warn",
+            "flux benign Connected frame not modeled by adapter (#15950 gap)",
+            {
+              message: ev.message,
+            },
+          );
           break;
         }
-        hooks.log("error", "flux provider error", { code: ev.code, message: ev.message });
+        hooks.log("error", "flux provider error", {
+          code: ev.code,
+          message: ev.message,
+        });
         emit(ws, { t: "error", code: `stt_${ev.code}`, retryable: false });
         break;
       }
@@ -311,13 +384,18 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     // §7.2: service re-frames to Deepgram's exact 2560-byte chunk boundary.
     // The harness client already sends exact chunks, but re-assert the invariant.
     if (bytes.byteLength !== DEEPGRAM_FLUX_CHUNK_BYTES) {
-      hooks.log("warn", "uplink chunk wrong size (dropping)", { byteLength: bytes.byteLength });
+      hooks.log("warn", "uplink chunk wrong size (dropping)", {
+        byteLength: bytes.byteLength,
+      });
       return;
     }
     try {
       state.flux.sendAudioChunk(bytes);
       // mid-stream-disconnect fault: after some audio, kill the flux socket
-      if (ws.data.faultInjection === "mid-stream-disconnect" && Math.random() < 0.02) {
+      if (
+        ws.data.faultInjection === "mid-stream-disconnect" &&
+        Math.random() < 0.02
+      ) {
         hooks.log("warn", "fault: forcing mid-stream flux disconnect");
         state.flux.cancel("fault-injection-disconnect");
       }
@@ -326,7 +404,10 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     }
   }
 
-  async function commitFinalAndReply(ws: ServerWebSocket<WsData>, transcript: string) {
+  async function commitFinalAndReply(
+    ws: ServerWebSocket<WsData>,
+    transcript: string,
+  ) {
     const state = ws.data.session;
     if (!state || state.finalCommitted) return;
     state.finalCommitted = true;
@@ -363,19 +444,32 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
           if (state.interrupted) {
             // §7.5 correctness assertion: NO downlink frames after interrupt.
             state.postInterruptFrameCount++;
-            hooks.log("error", "POST-INTERRUPT FRAME LEAKED", { sequence: f.sequence });
+            hooks.log("error", "POST-INTERRUPT FRAME LEAKED", {
+              sequence: f.sequence,
+            });
             return;
           }
           state.ttsFrameCount++;
-          emitBinary(ws, f.bytes, { t: "audio", codec: "pcm16", sequence: f.sequence });
+          emitBinary(ws, f.bytes, {
+            t: "audio",
+            codec: "pcm16",
+            sequence: f.sequence,
+          });
         },
         onComplete: (c) => {
           emit(ws, { t: "speaking_end", traceId: state.traceId });
           hooks.log("info", "cartesia complete", { frameCount: c.frameCount });
         },
         onProviderError: (e) => {
-          hooks.log("error", "cartesia provider error", { code: e.code, message: e.message });
-          emit(ws, { t: "error", code: `tts_${e.code ?? "provider_error"}`, retryable: false });
+          hooks.log("error", "cartesia provider error", {
+            code: e.code,
+            message: e.message,
+          });
+          emit(ws, {
+            t: "error",
+            code: `tts_${e.code ?? "provider_error"}`,
+            retryable: false,
+          });
         },
         onCancelled: () => {
           hooks.log("info", "cartesia cancelled");
@@ -404,7 +498,8 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
         tts.sendPhrase({ text, continueContext: !last });
         firstPhrase = false;
         phrasesSent++;
-      } catch {
+      } catch (ignoredError) {
+        void ignoredError;
         /* stream may be cancelled by interrupt */
       }
     };
@@ -437,7 +532,8 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
           } else if (phrasesSent > 0) {
             try {
               tts.finish();
-            } catch {
+            } catch (ignoredError) {
+              void ignoredError;
               /* already closing */
             }
           }
@@ -452,7 +548,10 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
             });
           }
         }
-        hooks.log("info", "llm done", { chars: full.length, interrupted: state.interrupted });
+        hooks.log("info", "llm done", {
+          chars: full.length,
+          interrupted: state.interrupted,
+        });
       },
       onError: (err) => {
         hooks.log("error", "llm error", { error: String(err) });
@@ -461,7 +560,10 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     });
   }
 
-  function handleBargeIn(ws: ServerWebSocket<WsData>, reason: "acoustic" | "explicit") {
+  function handleBargeIn(
+    ws: ServerWebSocket<WsData>,
+    reason: "acoustic" | "explicit",
+  ) {
     const state = ws.data.session;
     if (!state || state.interrupted) return;
     state.interrupted = true;
@@ -470,13 +572,15 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     // 1. cancel Cartesia (adapter guarantees no post-cancel frames)
     try {
       state.tts?.cancel("barge-in");
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       /* noop */
     }
     // 2. abort in-flight LLM
     try {
       state.llmAbort?.abort();
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       /* noop */
     }
     // 3+4. downlink flush + drop pending phrase are implicit: interrupted gate
@@ -490,17 +594,20 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
     if (!state) return;
     try {
       state.tts?.cancel(reason);
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       /* noop */
     }
     try {
       state.flux?.close(reason);
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       /* noop */
     }
     try {
       state.llmAbort?.abort();
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       /* noop */
     }
     hooks.onDomainRow?.({
@@ -512,7 +619,11 @@ export function startReferenceServer(opts: StartServerOptions): RunningServer {
       endedAtMs: Date.now(),
       status: "closed",
     });
-    hooks.log("info", "session torn down", { reason, ttsFrames: state.ttsFrameCount, postInterruptFrames: state.postInterruptFrameCount });
+    hooks.log("info", "session torn down", {
+      reason,
+      ttsFrames: state.ttsFrameCount,
+      postInterruptFrames: state.postInterruptFrameCount,
+    });
     ws.data.session = undefined;
   }
 

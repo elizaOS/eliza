@@ -9,7 +9,11 @@ import { spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-export function ensureFfmpeg(): { ok: boolean; version?: string; installHint: string } {
+export function ensureFfmpeg(): {
+  ok: boolean;
+  version?: string;
+  installHint: string;
+} {
   const installHint =
     "ffmpeg is required for MP4 evidence. Install: `sudo apt-get install -y ffmpeg` (Debian/Ubuntu) or `brew install ffmpeg` (macOS).";
   const r = spawnSync("ffmpeg", ["-version"], { encoding: "utf8" });
@@ -37,30 +41,58 @@ export function assembleMp4(params: {
   const outMp4 = join(params.dir, params.out);
   const cardPath = join(params.dir, "timeline-card.png");
 
-  if (!existsSync(inPath)) return { ok: false, error: `missing input wav ${inPath}` };
+  if (!existsSync(inPath))
+    return { ok: false, error: `missing input wav ${inPath}` };
 
   // 1) render the timeline card
   const text = params.timelineLines
     .map((l) => l.replace(/[:\\]/g, (m) => "\\" + m).replace(/'/g, ""))
     .join("\n");
-  const drawFilter =
-    `drawtext=text='${text.replace(/\n/g, "\\n")}':fontcolor=white:fontsize=22:x=40:y=40:line_spacing=10`;
+  const drawFilter = `drawtext=text='${text.replace(/\n/g, "\\n")}':fontcolor=white:fontsize=22:x=40:y=40:line_spacing=10`;
   const card = spawnSync(
     "ffmpeg",
-    ["-y", "-f", "lavfi", "-i", "color=c=0x101418:s=1280x720:d=1", "-vf", drawFilter, "-frames:v", "1", cardPath],
+    [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0x101418:s=1280x720:d=1",
+      "-vf",
+      drawFilter,
+      "-frames:v",
+      "1",
+      cardPath,
+    ],
     { encoding: "utf8" },
   );
   if (card.status !== 0) {
-    return { ok: false, error: `card render failed: ${card.stderr?.slice(-400)}` };
+    return {
+      ok: false,
+      error: `card render failed: ${card.stderr?.slice(-400)}`,
+    };
   }
 
   // 2) concat input + output audio into one track
   const concatAudio = join(params.dir, "combined-audio.wav");
   const listPath = join(params.dir, "concat-list.txt");
-  Bun.write(listPath, `file '${inPath}'\nfile '${existsSync(outAudioPath) ? outAudioPath : inPath}'\n`);
+  Bun.write(
+    listPath,
+    `file '${inPath}'\nfile '${existsSync(outAudioPath) ? outAudioPath : inPath}'\n`,
+  );
   const cat = spawnSync(
     "ffmpeg",
-    ["-y", "-f", "concat", "-safe", "0", "-i", listPath, "-c", "copy", concatAudio],
+    [
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      listPath,
+      "-c",
+      "copy",
+      concatAudio,
+    ],
     { encoding: "utf8" },
   );
   if (cat.status !== 0) {
@@ -73,10 +105,22 @@ export function assembleMp4(params: {
     "ffmpeg",
     [
       "-y",
-      "-loop", "1", "-i", cardPath,
-      "-i", concatAudio,
-      "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
-      "-c:a", "aac", "-b:a", "128k",
+      "-loop",
+      "1",
+      "-i",
+      cardPath,
+      "-i",
+      concatAudio,
+      "-c:v",
+      "libx264",
+      "-tune",
+      "stillimage",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "128k",
       "-shortest",
       outMp4,
     ],
@@ -91,7 +135,8 @@ export function assembleMp4(params: {
   for (const f of [cardPath, concatAudio, listPath]) {
     try {
       if (existsSync(f)) rmSync(f);
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       /* best-effort */
     }
   }

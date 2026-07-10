@@ -72,8 +72,14 @@ export interface VoiceWebSocketLike {
   send(data: string | ArrayBufferLike | ArrayBufferView): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: "open", listener: () => void): void;
-  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
-  addEventListener(type: "close", listener: (event: { code?: number; reason?: string }) => void): void;
+  addEventListener(
+    type: "message",
+    listener: (event: { data: unknown }) => void,
+  ): void;
+  addEventListener(
+    type: "close",
+    listener: (event: { code?: number; reason?: string }) => void,
+  ): void;
   addEventListener(type: "error", listener: () => void): void;
 }
 
@@ -116,7 +122,10 @@ export interface VoiceSessionClientOptions {
   downlinkCodec?: VoiceSessionCodec;
 
   /** Fired on every state change with the new machine state + unified status. */
-  onState?: (state: VoiceSessionMachineState, status: VoiceContinuousStatus) => void;
+  onState?: (
+    state: VoiceSessionMachineState,
+    status: VoiceContinuousStatus,
+  ) => void;
   /** Fired for each raw server control event (after state fold). */
   onServerEvent?: (event: ServerControlFrame) => void;
   /** Fired for each client playout trace mark. */
@@ -167,7 +176,9 @@ export function createVoiceSessionClient(
   const wsFactory =
     options.webSocketFactory ??
     ((url: string) => {
-      const Ctor = WebSocket as unknown as new (u: string) => VoiceWebSocketLike;
+      const Ctor = WebSocket as unknown as new (
+        u: string,
+      ) => VoiceWebSocketLike;
       return new Ctor(url);
     });
   const preferredUplink = options.uplinkCodec ?? DEFAULT_UPLINK_CODEC;
@@ -223,7 +234,8 @@ export function createVoiceSessionClient(
     if (!ws || connPhase !== "open") return;
     try {
       ws.send(encodeClientControl(frame));
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       // socket closing; the close handler will drive reconnect/teardown.
     }
   }
@@ -234,7 +246,8 @@ export function createVoiceSessionClient(
       // Copy into a standalone ArrayBuffer so a shared/pooled backing store from
       // the capture path is never observed mutated after send.
       ws.send(bytes.slice().buffer);
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       // dropped; reconnect logic handles a dead socket.
     }
   }
@@ -342,7 +355,9 @@ export function createVoiceSessionClient(
     }
   }
 
-  async function openConnection(minted: VoiceSessionMintResponse): Promise<void> {
+  async function openConnection(
+    minted: VoiceSessionMintResponse,
+  ): Promise<void> {
     const uplink = negotiateCodec(preferredUplink, minted.uplink?.codecs);
     const downlink = negotiateCodec(preferredDownlink, minted.downlink?.codecs);
     if (!uplink || !downlink) {
@@ -435,13 +450,15 @@ export function createVoiceSessionClient(
       connPhase = "closing";
       try {
         ws.close(1000, "client bye");
-      } catch {
+      } catch (ignoredError) {
+        void ignoredError;
         /* already closing */
       }
     } else if (ws) {
       try {
         ws.close(1000, "client bye");
-      } catch {
+      } catch (ignoredError) {
+        void ignoredError;
         /* noop */
       }
     }

@@ -27,10 +27,7 @@ import {
   VOICE_SESSION_PROTOCOL_VERSION,
 } from "./protocol";
 import type { ServerControlFrame } from "./protocol";
-import {
-  verifyVoiceSessionToken,
-  type VoiceSessionTokenClaims,
-} from "./jwt";
+import { verifyVoiceSessionToken, type VoiceSessionTokenClaims } from "./jwt";
 
 /**
  * The downlink surface the handler wires the socket into. Mirrors the session's
@@ -66,10 +63,7 @@ export interface VoiceSessionLike {
 export interface ServerWebSocketLike {
   send(data: string | ArrayBuffer | Uint8Array): void;
   close(code?: number, reason?: string): void;
-  addEventListener(
-    type: "message",
-    listener: (event: { data: unknown }) => void,
-  ): void;
+  addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
   addEventListener(type: "close", listener: () => void): void;
   addEventListener(type: "error", listener: () => void): void;
 }
@@ -108,10 +102,7 @@ export interface VoiceWsHandlerDeps {
 
 type HandlerState = "awaiting_hello" | "active" | "closed";
 
-export function attachVoiceWsHandler(
-  socket: ServerWebSocketLike,
-  deps: VoiceWsHandlerDeps,
-): void {
+export function attachVoiceWsHandler(socket: ServerWebSocketLike, deps: VoiceWsHandlerDeps): void {
   const verify = deps.verifyToken ?? verifyVoiceSessionToken;
   let state: HandlerState = "awaiting_hello";
   let session: VoiceSessionLike | null = null;
@@ -134,7 +125,8 @@ export function attachVoiceWsHandler(
     close(code: number, reason: string) {
       try {
         socket.close(code, reason);
-      } catch {
+      } catch (ignoredError) {
+        void ignoredError;
         // already closing.
       }
     },
@@ -145,7 +137,8 @@ export function attachVoiceWsHandler(
     state = "closed";
     try {
       socket.close(closeCode, message.slice(0, 120));
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       // ignore.
     }
   };
@@ -186,10 +179,7 @@ export function attachVoiceWsHandler(
         // Oversized/empty audio is a protocol error but not necessarily fatal to
         // the session; drop the frame and tell the client. A persistently
         // misbehaving client trips the byte-rate/metering caps.
-        safeSend(
-          socket,
-          serializeServerFrame({ t: "error", code: check.code, retryable: true }),
-        );
+        safeSend(socket, serializeServerFrame({ t: "error", code: check.code, retryable: true }));
         return;
       }
       session.pushUplinkAudio(bytes);
@@ -303,7 +293,8 @@ export function attachVoiceWsHandler(
       let claimed: boolean;
       try {
         claimed = await deps.claimToken(verified.jti, verified.expSeconds);
-      } catch {
+      } catch (ignoredError) {
+        void ignoredError;
         fail("token_claim_failed", "could not claim voice token");
         return;
       }
@@ -330,7 +321,8 @@ export function attachVoiceWsHandler(
       });
       state = "active";
       session.start();
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       // Runtime-config failures (e.g. an invalid Cartesia voiceId rejected by
       // the adapter) must surface as a clean retryable error + close, not a
       // hung socket with a consumed token.
@@ -351,7 +343,8 @@ export function attachVoiceWsHandler(
 function safeSend(socket: ServerWebSocketLike, data: string | Uint8Array): void {
   try {
     socket.send(data);
-  } catch {
+  } catch (ignoredError) {
+    void ignoredError;
     // socket closing/closed; drop.
   }
 }

@@ -36,7 +36,9 @@ export interface ClientRunResult {
   firstSilenceAfterBargeInMonoMs: number | null;
 }
 
-export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult> {
+export async function runClient(
+  opts: ClientRunOptions,
+): Promise<ClientRunResult> {
   const { evidence: ev } = opts;
   const NativeWebSocket = WebSocket as unknown as new (u: string) => WebSocket;
   const ws = new NativeWebSocket(opts.wsUrl);
@@ -70,7 +72,8 @@ export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult
     clearTimeout(guard);
     try {
       ws.close();
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       /* noop */
     }
     resolveDone();
@@ -99,14 +102,23 @@ export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult
       const monoMs = performance.now() - ev.startMono;
       if (result.sawInterrupted) {
         result.postBargeInFrameCount++;
-        ev.log("client", "error", "downlink frame AFTER interrupt (should be zero)", {
-          byteLength: bytes.byteLength,
-        });
+        ev.log(
+          "client",
+          "error",
+          "downlink frame AFTER interrupt (should be zero)",
+          {
+            byteLength: bytes.byteLength,
+          },
+        );
       }
       downlinkChunks.push(bytes);
       result.downlinkFrameCount++;
       lastFrameMonoMs = monoMs;
-      ev.wsEvent("s2c", "binary", { kind: "audio_frame", byteLength: bytes.byteLength, frameNo: result.downlinkFrameCount });
+      ev.wsEvent("s2c", "binary", {
+        kind: "audio_frame",
+        byteLength: bytes.byteLength,
+        frameNo: result.downlinkFrameCount,
+      });
       if (result.downlinkFrameCount === 1) {
         ev.mark("tts_first_frame");
         // schedule barge-in relative to first audio if configured
@@ -120,7 +132,8 @@ export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult
     let msg: Record<string, unknown>;
     try {
       msg = JSON.parse(String(data));
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       ev.log("client", "warn", "unparseable control frame");
       return;
     }
@@ -157,15 +170,22 @@ export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult
         break;
       case "interrupted":
         result.sawInterrupted = true;
-        result.firstSilenceAfterBargeInMonoMs = performance.now() - ev.startMono;
+        result.firstSilenceAfterBargeInMonoMs =
+          performance.now() - ev.startMono;
         ev.mark("interrupt_to_silence");
         ev.log("client", "info", "interrupted", { reason: msg.reason });
         // give a short window to catch any (illegal) trailing frames, then finish
         setTimeout(finish, 800);
         break;
       case "error":
-        result.errors.push({ code: String(msg.code), retryable: Boolean(msg.retryable) });
-        ev.log("client", "error", "server error event", { code: msg.code, retryable: msg.retryable });
+        result.errors.push({
+          code: String(msg.code),
+          retryable: Boolean(msg.retryable),
+        });
+        ev.log("client", "error", "server error event", {
+          code: msg.code,
+          retryable: msg.retryable,
+        });
         // error-path scenario: end shortly after the error is surfaced
         setTimeout(finish, 500);
         break;
@@ -181,8 +201,14 @@ export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult
   });
 
   async function pumpUplink() {
-    const { chunks, paddedBytes } = frameFixedChunks(opts.uplinkPcm, DEEPGRAM_FLUX_CHUNK_BYTES);
-    ev.log("client", "info", "streaming uplink", { chunks: chunks.length, paddedTailBytes: paddedBytes });
+    const { chunks, paddedBytes } = frameFixedChunks(
+      opts.uplinkPcm,
+      DEEPGRAM_FLUX_CHUNK_BYTES,
+    );
+    ev.log("client", "info", "streaming uplink", {
+      chunks: chunks.length,
+      paddedTailBytes: paddedBytes,
+    });
     // Realtime pacing: each 2560-byte chunk is exactly 80 ms of 16 kHz linear16
     // audio. Pacing at ~50 ms/chunk (1.6x realtime) keeps Flux's semantic turn
     // detector honest (it needs a plausible audio timeline to fire end-of-turn)
@@ -190,7 +216,10 @@ export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult
     for (const chunk of chunks) {
       if (ws.readyState !== 1) break;
       ws.send(chunk);
-      ev.wsEvent("c2s", "binary", { kind: "audio_chunk", byteLength: chunk.byteLength });
+      ev.wsEvent("c2s", "binary", {
+        kind: "audio_chunk",
+        byteLength: chunk.byteLength,
+      });
       await sleep(50);
     }
     // Flux's SEMANTIC turn detector fires end-of-turn on end-of-speech (trailing
@@ -201,7 +230,10 @@ export async function runClient(opts: ClientRunOptions): Promise<ClientRunResult
     for (let i = 0; i < 15; i++) {
       if (ws.readyState !== 1) break;
       ws.send(silence);
-      ev.wsEvent("c2s", "binary", { kind: "silence_chunk", byteLength: silence.byteLength });
+      ev.wsEvent("c2s", "binary", {
+        kind: "silence_chunk",
+        byteLength: silence.byteLength,
+      });
       await sleep(50);
     }
     // signal end of audio so Flux flushes/finalizes the turn (CloseStream)

@@ -99,7 +99,8 @@ export async function streamLlmReply(
             full += delta;
             handlers.onDelta(delta);
           }
-        } catch {
+        } catch (ignoredError) {
+          void ignoredError;
           // skip keepalive/comment lines
         }
       }

@@ -101,9 +101,7 @@ export async function streamElizaConversation(
         agentId: request.agentId,
         conversationId: request.conversationId,
         messages: [
-          ...(request.systemPrompt
-            ? [{ role: "system", content: request.systemPrompt }]
-            : []),
+          ...(request.systemPrompt ? [{ role: "system", content: request.systemPrompt }] : []),
           { role: "user", content: request.transcript },
         ],
       }),
@@ -156,7 +154,7 @@ export async function streamElizaConversation(
         buffered = buffered.slice(newlineIndex + 1);
         if (!line.startsWith("data:")) continue;
         const payload = line.slice(5).trim();
-        if (payload === "" ) continue;
+        if (payload === "") continue;
         if (payload === "[DONE]") {
           return { completed: true, aborted: false };
         }
@@ -167,7 +165,8 @@ export async function streamElizaConversation(
   } finally {
     try {
       await reader.cancel();
-    } catch {
+    } catch (ignoredError) {
+      void ignoredError;
       // best-effort; the response is already ending.
     }
   }
@@ -180,7 +179,8 @@ function extractDeltaContent(payload: string): string | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(payload);
-  } catch {
+  } catch (ignoredError) {
+    void ignoredError;
     // A non-JSON data line (keepalive comment, etc.) is not a protocol error;
     // skip it rather than tearing down a live turn.
     return null;
@@ -197,8 +197,5 @@ function extractDeltaContent(payload: string): string | null {
 }
 
 function isAbortError(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    (error.name === "AbortError" || error.name === "TimeoutError")
-  );
+  return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
 }
