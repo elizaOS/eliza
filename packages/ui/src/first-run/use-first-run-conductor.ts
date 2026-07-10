@@ -108,11 +108,11 @@ import {
   resetFirstRunPersistGuard,
   runFirstRunFinish,
 } from "./first-run-finish";
+import { FIRST_RUN_GREETING } from "./first-run-greeting";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
 import { revertLocalRuntimeCommitment } from "./revert-local-runtime-commitment";
 
-const GREETING =
-  "Hi — I'm Eliza. Let's get you set up. First, where should your agent run?";
+const GREETING = `${FIRST_RUN_GREETING} First, where should your agent run?`;
 
 // Cloud-only greetings (#13377). The sign-in button reuses the runtime:cloud
 // action value on purpose: the tap IS the user gesture that launches the real
@@ -120,7 +120,7 @@ const GREETING =
 // open, same-tab /login navigation where popups are blocked or hostile,
 // #15143). Keep this as one obvious CTA; the Cloud flow itself owns OAuth and
 // provisioning, so there is no second in-chat "Connect" step.
-const CLOUD_SIGN_IN_GREETING = "Hi — I'm Eliza.";
+const CLOUD_SIGN_IN_GREETING = FIRST_RUN_GREETING;
 const CLOUD_SIGN_IN_CHOICE = [
   "[CHOICE:first-run id=runtime]",
   `${FIRST_RUN_ACTION_PREFIX}runtime:cloud=Sign in to Eliza Cloud`,

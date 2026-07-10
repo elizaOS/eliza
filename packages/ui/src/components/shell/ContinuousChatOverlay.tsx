@@ -55,6 +55,7 @@ import {
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
 } from "../../events";
+import { FIRST_RUN_GREETING } from "../../first-run/first-run-greeting";
 import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
@@ -959,8 +960,10 @@ const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE: ShellMessage = {
   role: "assistant",
   source: "first_run",
   createdAt: 0,
+  // Byte-identical to the conductor's seeded greeting so the latest-turn
+  // dedupe collapses fallback + real greeting into one message.
   content: [
-    "Hi — I'm Eliza.",
+    FIRST_RUN_GREETING,
     "",
     "[CHOICE:first-run id=runtime]",
     "__first_run__:runtime:cloud=Sign in to Eliza Cloud",

@@ -12,6 +12,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FIRST_RUN_GREETING } from "./first-run-greeting";
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -1277,7 +1278,7 @@ describe("surfaceCloudLoginRetryTurn", () => {
 
     expect(messages[0]?.id).toBe("first-run:cloud-oauth");
     expect(messages[0]?.secretRequest).toBeUndefined();
-    expect(messages[0]?.text).toContain("Hi — I'm Eliza.");
+    expect(messages[0]?.text).toContain(FIRST_RUN_GREETING);
     expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:local=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:remote=");
@@ -1708,7 +1709,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     const retry = await waitForTurn(turn, "first-run:cloud-oauth");
     expect(retry.secretRequest).toBeUndefined();
-    expect(retry.text).toContain("Hi — I'm Eliza.");
+    expect(retry.text).toContain(FIRST_RUN_GREETING);
     expect(retry.text).toContain("__first_run__:runtime:cloud=");
     expect(retry.text).not.toContain("__first_run__:runtime:local=");
     unmount();

@@ -1018,12 +1018,13 @@ export async function expectCloudOnlySignInOnboarding(
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
   // Cloud-only greeting (#13377): the conductor seeds CLOUD_SIGN_IN_GREETING
-  // ("Hi — I'm Eliza.") with the single "Sign in to Eliza Cloud" CTA
+  // ("Hi, I'm Eliza! Seems like you're new here — let's get started.")
+  // with the single "Sign in to Eliza Cloud" CTA
   // (`runtime:cloud`); the same-text fallback (ContinuousChatOverlay's
   // FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE) covers the pre-seed race. There is no
   // "First, where should your agent run?" chooser question in this mode.
   await expect(
-    page.getByText("Hi — I'm Eliza.", { exact: false }).first(),
+    page.getByText("Hi, I'm Eliza!", { exact: false }).first(),
   ).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
     timeout: 15_000,
