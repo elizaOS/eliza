@@ -23,7 +23,6 @@
 import {
   type Action,
   type ActionResult,
-  type Content,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -237,12 +236,13 @@ export const webSearch: Action & Record<string, unknown> = {
       }
 
       const value = results.slice(0, WEB_SEARCH_RESULT_CHARS);
-      const content: Content = {
-        text: value,
-        actions: ["WEB_SEARCH"],
-        data: { actionName: "WEB_SEARCH", query, provider, value },
-      };
-      callback?.(content);
+      // Do NOT self-deliver the payload via callback: the raw provider output
+      // posts to the channel as a user-visible message with no log line and no
+      // trajectory stage, then the evaluator's composed answer follows — a
+      // two-voice double-post. parallel.ai returns first-person prose ("I
+      // found two matches for..."), indistinguishable from the agent speaking
+      // (observed live). The planner loop captures ActionResult.text and the
+      // evaluation composes THE single user-facing answer from it.
       return {
         text: value,
         success: true,

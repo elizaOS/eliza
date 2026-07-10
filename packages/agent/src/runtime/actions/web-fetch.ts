@@ -19,7 +19,6 @@
 import {
   type Action,
   type ActionResult,
-  type Content,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -200,12 +199,11 @@ export const webFetch: Action & Record<string, unknown> = {
       }
 
       const value = extractValue(result.text, extract);
-      const content: Content = {
-        text: value,
-        actions: ["WEB_FETCH"],
-        data: { actionName: "WEB_FETCH", url, value },
-      };
-      callback?.(content);
+      // No payload self-delivery (same rationale as WEB_SEARCH): a raw fetched
+      // value posted straight to the channel gives the turn two voices — the
+      // bare payload, then the evaluator's composed answer. The connector's
+      // numeric-fact dedup collapses short numeric cases (price turns) but a
+      // longer body always doubles. Return the value for the loop to compose.
       return {
         text: value,
         success: true,
