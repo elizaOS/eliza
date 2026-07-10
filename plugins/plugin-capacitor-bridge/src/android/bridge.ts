@@ -398,17 +398,29 @@ export async function runAndroidBridgeCli(): Promise<void> {
 		console.error("[android-bridge] unhandled rejection:", msg);
 	});
 	process.on("uncaughtException", (error) => {
-		_logToFile(
-			`[android-bridge] uncaughtException: ${error.stack || error.message}`,
-		);
-		_appendDiagnostics("agent-fatal", {
+		const msg = error.stack || error.message;
+		_logToFile(`[android-bridge] uncaughtException: ${msg}`);
+		// A ReadableStream/controller close-race that surfaces AFTER a response is
+		// already delivered (e.g. "Invalid state: Controller is already closed" at
+		// endReadableNT, seen on the SSE chat-reply teardown) is recoverable — the
+		// reply was sent. Killing the whole agent over a harmless post-delivery
+		// stream teardown takes chat AND voice down for the entire app and the
+		// supervisor does not always relaunch, so the phone silently "breaks" mid
+		// session. Survive that specific class; exit loudly for everything else so
+		// a genuinely fatal fault still lets the supervisor recover instead of
+		// leaving a zombie.
+		const recoverable =
+			/Controller is already closed|Invalid state|readable ?stream/i.test(msg);
+		_appendDiagnostics(recoverable ? "agent-recovered-uncaught" : "agent-fatal", {
 			kind: "uncaughtException",
-			message: (error.stack || error.message).slice(0, 2000),
+			recoverable: String(recoverable),
+			message: msg.slice(0, 2000),
 		});
 		console.error(
-			"[android-bridge] uncaught exception:",
-			error.stack || error.message,
+			`[android-bridge] uncaught exception${recoverable ? " (recovered)" : ""}:`,
+			msg,
 		);
+		if (recoverable) return;
 		// Installing this handler suppresses the runtime's default fatal exit;
 		// without an explicit exit a post-boot uncaught exception leaves a
 		// zombie agent the supervisor never learns about. Exit loudly instead.
