@@ -167,15 +167,24 @@ jobs:
         # Fail fast here with an operator-actionable message instead.
         run: node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-2b
 
-      - name: Verify fused-runtime build dependencies
+      - name: Setup Python for fused-runtime build tools
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+
+      - name: Provision fused-runtime build tools
         run: |
           set -euo pipefail
-          for tool in cmake ninja c++; do
-            if ! command -v "$tool" >/dev/null 2>&1; then
-              echo "::error::Model-capable runner is missing required build tool: $tool"
-              exit 1
-            fi
-          done
+          python -m venv "$RUNNER_TEMP/fused-build-tools"
+          "$RUNNER_TEMP/fused-build-tools/bin/python" -m pip install \
+            "cmake>=3.28,<5" "ninja>=1.11,<2"
+          echo "$RUNNER_TEMP/fused-build-tools/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/fused-build-tools/bin/cmake" --version
+          "$RUNNER_TEMP/fused-build-tools/bin/ninja" --version
+          if ! command -v c++ >/dev/null 2>&1; then
+            echo "::error::Model-capable runner is missing required C++ compiler"
+            exit 1
+          fi
 
       - name: Install dependencies
         run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
