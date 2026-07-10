@@ -17,14 +17,14 @@
  * window runs instantly.
  */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { DockerSandboxProvider } from "../docker-sandbox-provider";
+import { classifyHealthTimeoutDetail, DockerSandboxProvider } from "../docker-sandbox-provider";
 import { DockerSSHClient } from "../docker-ssh";
 
 type PollInternals = {
   pollSshDockerHealth: (
     meta: ContainerMetaShape,
     deadline: number,
-  ) => Promise<{ ready: boolean; verdict: string }>;
+  ) => Promise<{ ready: boolean; verdict: string; detail?: string; diagnostics?: string }>;
   hydrateContainerFromDb: (sandboxId: string) => Promise<ContainerMetaShape | null>;
 };
 
@@ -165,5 +165,60 @@ describe("pollSshDockerHealth transport-vs-not-ready classification (#15310 #6)"
     const outcome = await internals.pollSshDockerHealth(META, Date.now() + 50);
     expect(outcome.ready).toBe(true);
     expect(outcome.verdict).toBe("ready");
+  });
+
+  test("not_ready timeout carries the classified reason + boot-log tail (#13406)", async () => {
+    const provider = new DockerSandboxProvider();
+    const internals = provider as unknown as PollInternals;
+    spyOn(internals, "hydrateContainerFromDb").mockResolvedValue(META);
+    stubPollWaitsWithClock();
+
+    // Reached-but-unhealthy for the whole budget (→ not_ready), and the FINAL
+    // diagnostics collection (the joined command carrying `--- inspect ---`)
+    // returns a realistic docker inspect + boot-log tail.
+    fakeSsh((command: string) => {
+      if (command.includes("--- inspect ---")) {
+        return [
+          "--- inspect ---",
+          "state=exited health= exit=1 error=OOMKilled",
+          "--- ports ---",
+          "",
+          "--- logs ---",
+          "[boot] FATAL: SANDBOX_ROUTE_AGENT_ID missing, cannot start",
+        ].join("\n");
+      }
+      if (command.includes("docker inspect")) return "starting"; // probe: reached, unhealthy
+      return REMOTE_NOT_READY(); // host probe: reached (exit 1)
+    });
+
+    const outcome = await internals.pollSshDockerHealth(META, Date.now() + 50);
+
+    expect(outcome.ready).toBe(false);
+    expect(outcome.verdict).toBe("not_ready");
+    // The opaque "health check timed out" now carries WHY the container failed.
+    expect(outcome.detail).toBe("container not running (state=exited exit=1) error=OOMKilled");
+    expect(outcome.diagnostics).toContain("FATAL: SANDBOX_ROUTE_AGENT_ID missing");
+  });
+});
+
+describe("classifyHealthTimeoutDetail", () => {
+  test("exited container → not-running reason with exit code + docker error", () => {
+    expect(
+      classifyHealthTimeoutDetail(
+        "--- inspect ---\nstate=exited health= exit=137 error=OOMKilled\n--- logs ---\nkilled",
+      ),
+    ).toBe("container not running (state=exited exit=137) error=OOMKilled");
+  });
+
+  test("running but unhealthy → surfaces the health status", () => {
+    expect(classifyHealthTimeoutDetail("state=running health=unhealthy exit=0 error=")).toBe(
+      "container running but health=unhealthy",
+    );
+  });
+
+  test("no inspect line → undefined so the caller keeps the generic message", () => {
+    expect(
+      classifyHealthTimeoutDetail("--- logs ---\nonly logs, the inspect step failed"),
+    ).toBeUndefined();
   });
 });

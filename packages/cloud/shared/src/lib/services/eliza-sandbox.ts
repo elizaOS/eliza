@@ -1700,7 +1700,11 @@ export class ElizaSandboxService {
                 "leaving the container in place for retry/reconciliation",
             );
           }
-          throw new Error("Sandbox health check timed out");
+          throw new Error(
+            `Sandbox health check timed out${health.detail ? `: ${health.detail}` : ""}${
+              health.diagnostics ? `\n--- container diagnostics ---\n${health.diagnostics}` : ""
+            }`,
+          );
         }
 
         // C1b attribution guard (audit §C1b/§C5): a docker-fleet container MUST
