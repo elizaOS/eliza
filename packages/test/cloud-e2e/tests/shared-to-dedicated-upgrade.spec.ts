@@ -32,7 +32,6 @@ import {
 } from "@elizaos/shared/steward-session-client";
 import { ElizaClient } from "@elizaos/ui/api";
 import { getBootConfig, setBootConfig } from "@elizaos/ui/config";
-import { eq } from "drizzle-orm";
 // Relative source import (Playwright transpiles the two-file TS graph): the
 // `./cloud/*` subpath of @elizaos/ui resolves to dist, which is built from the
 // primary checkout and may not carry this module yet. `ElizaClient` above still
@@ -50,14 +49,10 @@ test.use({ stackOptions: { frontend: false, mockLlmEchoContext: true } });
 const MODEL = "openai/gpt-4o-mini";
 
 async function setOrgBalance(orgId: string, balance: string): Promise<void> {
-  const { dbWrite } = await import("@elizaos/cloud-shared/db/helpers");
-  const { organizations } = await import(
-    "@elizaos/cloud-shared/db/schemas/organizations"
+  const { organizationsRepository } = await import(
+    "@elizaos/cloud-shared/db/repositories/organizations"
   );
-  await dbWrite
-    .update(organizations)
-    .set({ credit_balance: balance })
-    .where(eq(organizations.id, orgId));
+  await organizationsRepository.update(orgId, { credit_balance: balance });
 }
 
 test.describe("shared→dedicated tier upgrade", () => {

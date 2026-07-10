@@ -12,15 +12,34 @@
  * import is idempotent per conversation).
  */
 
-import type { ElizaClient } from "../../api";
 import { buildCloudSharedAgentApiBase } from "../../utils/cloud-agent-base";
 import type { ConversationHandoffResult } from "./conversation-handoff";
 
-/** The two client methods the upgrade handoff drives — a seam for unit tests. */
-export type TierUpgradeHandoffClient = Pick<
-  ElizaClient,
-  "startCloudAgentHandoff" | "deleteSharedBridgeAgent"
->;
+/**
+ * The two client methods the upgrade handoff drives. Deliberately a structural
+ * type (satisfied by `ElizaClient`) instead of a `Pick` of it: consumers
+ * outside this package (the cloud-e2e suite imports this module by relative
+ * source path) must not drag the whole `../../api` type graph in, and unit
+ * tests double it directly.
+ */
+export interface TierUpgradeHandoffClient {
+  startCloudAgentHandoff(options: {
+    agentId: string;
+    sharedApiBase: string;
+    conversationId: string;
+    cloudApiBase: string;
+    authToken: string;
+    dedicatedAgentId?: string;
+    onSwitch: (containerBase: string) => void | Promise<void>;
+    intervalMs?: number;
+    timeoutMs?: number;
+    log?: (message: string) => void;
+  }): Promise<ConversationHandoffResult>;
+  deleteSharedBridgeAgent(
+    agentId: string,
+    options: { cloudApiBase: string; authToken: string },
+  ): Promise<{ success: boolean; error?: string }>;
+}
 
 export interface TierUpgradeHandoffParams {
   /** The shared agent the user has been chatting on (conversation source). */
