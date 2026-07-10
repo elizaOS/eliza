@@ -78,8 +78,13 @@ export async function handleGuildCreate(
 	const clientApplication = service.client?.application;
 	if (service.slashCommands.length > 0 && clientApplication) {
 		try {
-			const generalCommands = service.slashCommands.filter(
-				(cmd) => (cmd.guildIds?.length ?? 0) === 0,
+			// Per-guild registration must NOT include general (non-guild-only)
+			// commands — those are registered GLOBALLY elsewhere, and pushing
+			// them into a guild's scope too made Discord merge the two scopes and
+			// show every command TWICE in the slash menu. Only guild-only and
+			// guild-targeted commands belong in a guild's scope.
+			const guildOnlyGeneralCommands = service.slashCommands.filter(
+				(cmd) => (cmd.guildIds?.length ?? 0) === 0 && isGuildOnlyCommand(cmd),
 			);
 
 			const targetedCommandsForThisGuild = service.slashCommands.filter((cmd) =>
@@ -87,32 +92,36 @@ export async function handleGuildCreate(
 			);
 
 			const commandMap = new Map<string, DiscordSlashCommand>();
-			for (const cmd of [...generalCommands, ...targetedCommandsForThisGuild]) {
+			for (const cmd of [
+				...guildOnlyGeneralCommands,
+				...targetedCommandsForThisGuild,
+			]) {
 				if (cmd.name) {
 					commandMap.set(cmd.name, cmd);
 				}
 			}
 			const commandsToRegister = Array.from(commandMap.values());
 
-			if (commandsToRegister.length > 0) {
-				const discordCommands = commandsToRegister.map((cmd) =>
-					transformCommandToDiscordApi(cmd),
-				);
-
-				await clientApplication.commands.set(discordCommands, fullGuild.id);
-				service.runtime.logger.info(
-					{
-						src: "plugin:discord",
-						agentId: service.runtime.agentId,
-						guildId: fullGuild.id,
-						guildName: fullGuild.name,
-						generalCount: generalCommands.length,
-						targetedCount: targetedCommandsForThisGuild.length,
-						totalCount: discordCommands.length,
-					},
-					"Commands registered to newly joined guild",
-				);
-			}
+			// Always set the guild scope (even to an empty array): when there are
+			// no guild-scoped commands, this CLEARS any stale guild-scoped copies
+			// of global commands a previous build registered, which is what
+			// removes the duplicate slash-menu entries.
+			const discordCommands = commandsToRegister.map((cmd) =>
+				transformCommandToDiscordApi(cmd),
+			);
+			await clientApplication.commands.set(discordCommands, fullGuild.id);
+			service.runtime.logger.info(
+				{
+					src: "plugin:discord",
+					agentId: service.runtime.agentId,
+					guildId: fullGuild.id,
+					guildName: fullGuild.name,
+					guildOnlyCount: guildOnlyGeneralCommands.length,
+					targetedCount: targetedCommandsForThisGuild.length,
+					totalCount: discordCommands.length,
+				},
+				"Guild-scoped commands synced (global commands live globally)",
+			);
 		} catch (error) {
 			service.runtime.logger.warn(
 				{
