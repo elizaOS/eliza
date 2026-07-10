@@ -30,6 +30,17 @@ export const AGENT_PRICING = {
   // ── Thresholds ────────────────────────────────────────────────────
   /** Minimum credit balance required before creating, provisioning, or resuming an agent. */
   MINIMUM_DEPOSIT: 0.1,
+  /**
+   * Days of dedicated hosting a shared→dedicated tier upgrade must be able to
+   * fund up front (#15355). Dedicated agents burn credits continuously, so the
+   * upgrade gate demands a runway instead of the bare MINIMUM_DEPOSIT — an
+   * upgrade that would run dry within hours is a worse product than no upgrade.
+   */
+  UPGRADE_MIN_HOSTING_DAYS: 3,
+  /** Minimum credit balance required to upgrade a shared agent to dedicated ($0.72). */
+  get UPGRADE_MINIMUM_BALANCE(): number {
+    return Math.round(this.DAILY_RUNNING_COST * this.UPGRADE_MIN_HOSTING_DAYS * 100) / 100;
+  },
   /** Warn user when balance drops below this. */
   LOW_CREDIT_WARNING: 2.0,
   /** Hours between warning and forced shutdown. */
