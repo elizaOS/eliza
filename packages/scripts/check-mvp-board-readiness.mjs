@@ -171,13 +171,23 @@ function projectItemRepository(item) {
   );
 }
 
+/**
+ * True when a project card belongs to `repo`. Cards carrying no repository
+ * signal at all are kept — a metadata gap must widen the audit, not silently
+ * shrink it. Shared by the closeout audit so board, readiness, and evidence
+ * analyzers scope cards identically (#15852).
+ */
+export function projectItemMatchesRepo(item, repo = DEFAULT_REPO) {
+  const expectedRepo = normalizeRepository(repo);
+  const itemRepo = projectItemRepository(item);
+  return !expectedRepo || !itemRepo || itemRepo === expectedRepo;
+}
+
 export function normalizeProjectItems(payload, repo = DEFAULT_REPO) {
   const items = Array.isArray(payload) ? payload : (payload.items ?? []);
   const byNumber = new Map();
-  const expectedRepo = normalizeRepository(repo);
   for (const item of items) {
-    const itemRepo = projectItemRepository(item);
-    if (expectedRepo && itemRepo && itemRepo !== expectedRepo) continue;
+    if (!projectItemMatchesRepo(item, repo)) continue;
     const number = projectItemNumber(item);
     if (typeof number === "number") {
       byNumber.set(number, item);

@@ -15,14 +15,19 @@ const audit = await import(
 const scriptPath = new URL("../run-mvp-closeout-audit.mjs", import.meta.url)
   .pathname;
 
-function projectItem(number: number, status: string, labels: string[]) {
+function projectItem(
+  number: number,
+  status: string,
+  labels: string[],
+  repository = "elizaOS/eliza",
+) {
   return {
     content: {
       type: "Issue",
       number,
-      repository: "elizaOS/eliza",
+      repository,
       title: `Issue ${number}`,
-      url: `https://github.com/elizaOS/eliza/issues/${number}`,
+      url: `https://github.com/${repository}/issues/${number}`,
     },
     title: `Issue ${number}`,
     status,
@@ -95,6 +100,7 @@ describe("atomic MVP closeout audit", () => {
   test("rejects empty, duplicate, and cross-state snapshots", () => {
     expect(() =>
       audit.validateSnapshot({
+        source: "fixture",
         project: { items: [] },
         openIssues: [],
         closedIssues: [],
@@ -120,37 +126,40 @@ describe("atomic MVP closeout audit", () => {
     );
   });
 
-  test("ignores a foreign-repo card absent from the eliza rows", () => {
-    // A Project-15 card from another repository has no eliza open/closed row,
-    // so keying by bare number made validateSnapshot hard-fail with
-    // "Project issue #999 is missing from open/closed snapshot rows". Repo
-    // scoping drops the foreign card instead of demanding an eliza row for it.
-    const crossRepo = snapshot();
-    crossRepo.project.items.push({
-      content: {
-        type: "Issue",
-        number: 999,
-        repository: "other-org/other-repo",
-        title: "Foreign issue 999",
-        url: "https://github.com/other-org/other-repo/issues/999",
-      },
-      title: "Foreign issue 999",
-      status: "Ready",
-      labels: ["mvp"],
-    });
-
-    expect(() => audit.validateSnapshot(crossRepo)).not.toThrow();
-    const report = audit.buildCloseoutReport(crossRepo);
-    expect(report.integrityOk).toBe(true);
-    expect(report.parity.readiness).toEqual([1, 2]);
-    expect(report.parity.evidence).toEqual([1, 2]);
+  test("requires explicit snapshot provenance instead of a fixture default", () => {
+    const { source: _omitted, ...sourceless } = snapshot();
+    expect(() => audit.validateSnapshot(sourceless)).toThrow(
+      "snapshot.source must be a non-empty string",
+    );
+    expect(() => audit.validateSnapshot({ ...snapshot(), source: "" })).toThrow(
+      "snapshot.source must be a non-empty string",
+    );
   });
 
-  test("labels a source-less snapshot unknown, not fixture", () => {
-    const anonymous = snapshot();
-    delete (anonymous as { source?: string }).source;
-    const report = audit.buildCloseoutReport(anonymous);
-    expect(report.snapshot.source).toBe("unknown");
+  test("scopes project cards to the audited repository", () => {
+    // A card from another repo must not hard-fail validation as a phantom
+    // missing issue, and must stay out of the board counts.
+    const withForeignCard = snapshot();
+    withForeignCard.project.items.push(
+      projectItem(99, "Ready", ["mvp"], "elizaOS/other-repo"),
+    );
+    const report = audit.buildCloseoutReport(withForeignCard);
+    expect(report.integrityOk).toBe(true);
+    expect(report.board.counts.projectIssues).toBe(3);
+    expect(report.parity.readiness).toEqual([1, 2]);
+
+    // A same-numbered foreign card must not stand in for an eliza issue whose
+    // own card is gone — that divergence has to stay observable.
+    const masked = snapshot();
+    masked.project.items = masked.project.items.filter(
+      (item) => item.content.number !== 1,
+    );
+    masked.project.items.push(
+      projectItem(1, "Ready", ["testing"], "elizaOS/other-repo"),
+    );
+    expect(() => audit.validateSnapshot(masked)).toThrow(
+      "issue #1 is not present in snapshot project.items",
+    );
   });
 
   test("CLI emits one complete fixture report", () => {
