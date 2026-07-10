@@ -1,11 +1,14 @@
 /**
  * Characterization tests for `sanitizeOutboundText` — the shared outbound
- * sanitizer moved verbatim from the Discord-local pre-send sanitizer
- * (plugin-discord `reasoning-tags.ts`, #15812 → #15888). The corpus locks the
- * exact Discord semantics (paired, unclosed, nested, malformed, and
- * adversarial tag shapes; fenced-code preservation; sentinel removal;
- * whitespace collapse; idempotence) so the move to `packages/core` is
- * behavior-preserving for every connector.
+ * sanitizer moved from the Discord-local pre-send sanitizer (plugin-discord
+ * `reasoning-tags.ts`, #15812 → #15888). The corpus locks the Discord
+ * semantics (paired, unclosed, nested, malformed, and adversarial tag shapes;
+ * fenced-code preservation; sentinel removal; whitespace collapse;
+ * idempotence) so the move to `packages/core` is behavior-preserving for
+ * every connector, and pins the four deliberate deltas fixed at the promotion
+ * moment: the lone-`eot_id` pre-filter gap, `$`-replacement-pattern corruption
+ * during fence restore, blank-line collapse inside restored fences, and
+ * inline code-span protection. Each delta has a dedicated test naming it.
  */
 import { describe, expect, it } from "vitest";
 import { sanitizeOutboundText } from "./outbound-sanitize";
@@ -53,11 +56,11 @@ describe("sanitizeOutboundText — reasoning tags (Discord characterization)", (
 		expect(sanitizeOutboundText("All done.<end_turn />")).toBe("All done.");
 	});
 
-	it("removes a lone eot_id sentinel (quick-filter gap fixed in the move)", () => {
+	it("removes a lone eot_id sentinel (delta: quick-filter gap)", () => {
 		// The Discord original stripped `<|eot_id|>` only when another marker was
 		// also present — its quick pre-filter did not list `eot_id`, so the lone
 		// sentinel bypassed sanitization entirely. The shared sanitizer closes
-		// that gap; this is the one deliberate delta from the Discord semantics.
+		// that gap.
 		expect(sanitizeOutboundText("All done.<|eot_id|>")).toBe("All done.");
 		expect(sanitizeOutboundText("All done.<eot_id/>")).toBe("All done.");
 	});
@@ -205,10 +208,63 @@ describe("sanitizeOutboundText — fenced code preservation", () => {
 		expect(sanitizeOutboundText(input)).toBe(expected);
 	});
 
-	it("does not protect inline single-backtick code spans (locked Discord behavior)", () => {
+	it("preserves code with $-replacement patterns inside fences (delta: function-replacement restore)", () => {
+		// The Discord original restored fences with a STRING `.replace`, so `$$`
+		// collapsed to `$` and `$&` re-inserted the raw NUL sentinel onto the
+		// wire. Fixed at the promotion moment; all four `$` patterns pinned.
+		const dollarDollar = "Run this:\n```bash\nkill -9 $$\n```";
 		expect(
-			sanitizeOutboundText("The `<tool_call>` tag wraps a native call."),
-		).toBe("The `");
+			sanitizeOutboundText(`${dollarDollar}\n<tool_call>x</tool_call>`),
+		).toBe(dollarDollar);
+
+		const dollarAmp = "Try:\n```bash\nsed 's/x/$&/'\n```";
+		expect(sanitizeOutboundText(`${dollarAmp}\n<tool_call>x</tool_call>`)).toBe(
+			dollarAmp,
+		);
+		expect(
+			sanitizeOutboundText(`${dollarAmp}\n<tool_call>x</tool_call>`),
+		).not.toContain("\x00");
+
+		const dollarBacktick = "F:\n```\necho $`\n```";
+		expect(
+			sanitizeOutboundText(`${dollarBacktick}\n<tool_call>x</tool_call>`),
+		).toBe(dollarBacktick);
+
+		const dollarQuote = "F:\n```\necho $'\n```";
+		expect(
+			sanitizeOutboundText(`${dollarQuote}\n<tool_call>x</tool_call>`),
+		).toBe(dollarQuote);
+	});
+
+	it("preserves blank-line spacing inside fences (delta: collapse runs before restore)", () => {
+		// The Discord original ran the cosmetic `\n{3,}` collapse on the RESTORED
+		// text, reformatting e.g. PEP8 two-blank-line spacing inside a fence.
+		const fence = "```py\ndef a():\n    pass\n\n\ndef b():\n    pass\n```";
+		expect(sanitizeOutboundText(`Fence:\n${fence}\n<thinking>drop`)).toBe(
+			`Fence:\n${fence}`,
+		);
+	});
+
+	it("protects inline code spans (delta: span protection)", () => {
+		// The Discord original treated `` `<tool_call>` `` as an unclosed tag and
+		// truncated the whole rest of the reply to "The `". Now that the
+		// sanitizer runs on every surface and the persisted memory, a coding
+		// answer that mentions the syntax in an inline span must survive.
+		const single = "The `<tool_call>` tag wraps a native call.";
+		expect(sanitizeOutboundText(single)).toBe(single);
+
+		expect(
+			sanitizeOutboundText(
+				"Use ``<function_call>`` here. <tool_call>x</tool_call>",
+			),
+		).toBe("Use ``<function_call>`` here.");
+
+		// Protection is span-scoped: the same tag outside a span still strips.
+		expect(
+			sanitizeOutboundText(
+				"See `<thinking>` and strip <thinking>gone</thinking> done.",
+			),
+		).toBe("See `<thinking>` and strip  done.");
 	});
 
 	it("treats an unclosed fence as unprotected", () => {
@@ -252,6 +308,12 @@ describe("sanitizeOutboundText — pass-through and idempotence", () => {
 			"Bitcoin is at $63,217.",
 			"Odd.</tool_call> Right.",
 			"The `<tool_call>` tag wraps a native call.",
+			"Run this:\n```bash\nkill -9 $$\n```\n<tool_call>x</tool_call>",
+			"Try:\n```bash\nsed 's/x/$&/'\n```\n<tool_call>x</tool_call>",
+			"Fence:\n```py\ndef a():\n    pass\n\n\ndef b():\n    pass\n```\n<thinking>drop",
+			"Use ``<function_call>`` here. <tool_call>x</tool_call>",
+			"See `<thinking>` and strip <thinking>gone</thinking> done.",
+			"All done.<|eot_id|>",
 		];
 		for (const text of corpus) {
 			const once = sanitizeOutboundText(text);
