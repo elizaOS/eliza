@@ -391,6 +391,11 @@ function selectedStages(
   if (selector === "all") return [...stages];
   const found = stages.find((stage) => stage.name === selector);
   if (!found) {
+    if (selector === "verify") {
+      throw new Error(
+        "per-message verify is disabled; use `corpus verify` with all corpus-wide artifacts",
+      );
+    }
     throw new Error(`unknown scrub stage ${selector}`);
   }
   return [found];
@@ -403,6 +408,11 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
     version: "1",
     targetState,
     async run(message, context) {
+      if (stage === "verify") {
+        throw new Error(
+          "per-message verify cannot establish a corpus-wide privacy verdict",
+        );
+      }
       assertScrubStateTransition(message.scrubState, targetState);
       if (stage === "secrets") {
         const swapped = swapPermanentSecrets(message, {
@@ -482,7 +492,9 @@ function defaultStage(stage: ScrubStageName): ScrubStageDefinition {
 }
 
 export function defaultScrubStages(): ScrubStageDefinition[] {
-  return SCRUB_STAGE_NAMES.map(defaultStage);
+  return SCRUB_STAGE_NAMES.filter((stage) => stage !== "verify").map(
+    defaultStage,
+  );
 }
 
 /**
