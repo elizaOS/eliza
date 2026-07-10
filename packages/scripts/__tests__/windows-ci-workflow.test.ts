@@ -23,7 +23,11 @@ const EXPECTED_COMMANDS = [
   "bun run --cwd packages/shared test",
   "bun run --cwd packages/app-core test",
   "bun run --cwd packages/elizaos test",
-  "bun run --cwd packages/cloud/shared test",
+  // #15785: the tenant-db placement-claimer suite panics intermittently under
+  // Bun canary/PGlite on Windows, so the whole-package run skips it and a
+  // dedicated retry-isolated step (asserted below) re-runs it with a bounded
+  // retry. The exclusion is only sound while that step exists.
+  'bun run --cwd packages/cloud/shared test --path-ignore-patterns "**/tenant-db-placement-claimer.test.ts"',
   "bun run --cwd packages/scenario-runner test",
   "bun run --cwd packages/vault test",
   "bun run --cwd packages/security test",
@@ -49,9 +53,7 @@ function extractMatrixLanes(): string[] {
 }
 
 function extractMatrixCommands(): string[] {
-  return [...workflowText.matchAll(/^ {14}- (.+)$/gm)].map(
-    (match) => match[1],
-  );
+  return [...workflowText.matchAll(/^ {14}- (.+)$/gm)].map((match) => match[1]);
 }
 
 describe("Windows CI workflow", () => {
@@ -65,5 +67,16 @@ describe("Windows CI workflow", () => {
     expect(commands).toHaveLength(EXPECTED_COMMANDS.length);
     expect(commands).toEqual(EXPECTED_COMMANDS);
     expect(new Set(commands).size).toBe(commands.length);
+  });
+
+  test("still runs the tenant-db suite the whole-package run excludes", () => {
+    // Skipping a suite in the matrix without the isolated retry step would be
+    // silent coverage loss, not flake mitigation.
+    expect(workflowText).toContain(
+      "Retry-isolated tenant-db PGlite suite (Windows canary flake, #15785)",
+    );
+    expect(workflowText).toContain(
+      "bun run --cwd packages/cloud/shared test $suite",
+    );
   });
 });
