@@ -56,6 +56,7 @@ import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
+import { selectTtsProvider, type TtsProvider } from "./provider-selection";
 
 /**
  * Default ElevenLabs output format. Must stay in sync with the ElevenLabs
@@ -84,6 +85,34 @@ const TtsBody = z.object({
   modelId: z.string().optional(),
 });
 
+interface TtsTimings {
+  authMs?: number;
+  admissionMs?: number;
+  synthesisMs?: number;
+}
+
+function buildTtsObservabilityHeaders(
+  provider: TtsProvider,
+  timings: TtsTimings,
+): Record<string, string> {
+  const serverTiming = [
+    timings.authMs !== undefined ? `auth;dur=${timings.authMs}` : null,
+    timings.admissionMs !== undefined
+      ? `admission;dur=${timings.admissionMs}`
+      : null,
+    timings.synthesisMs !== undefined
+      ? `synthesis;dur=${timings.synthesisMs}`
+      : null,
+  ].filter((entry): entry is string => entry !== null);
+
+  return {
+    "X-Eliza-TTS-Provider": provider,
+    ...(serverTiming.length > 0
+      ? { "Server-Timing": serverTiming.join(", ") }
+      : {}),
+  };
+}
+
 /**
  * POST /api/v1/voice/tts
  * Converts text to speech using the voice synthesis service.
@@ -93,32 +122,15 @@ const TtsBody = z.object({
  * @param request - Request body with text, voiceId, and optional modelId.
  * @returns Streaming audio response (audio/mpeg).
  */
-/**
- * The Kokoro voice ids the self-hosted service ships. Map an incoming voiceId to
- * a Kokoro voice when it matches; otherwise fall back to the default `af_heart`.
- */
-const KOKORO_VOICE_IDS = new Set([
-  "af_heart",
-  "af_bella",
-  "af_sarah",
-  "af_nicole",
-  "af_sky",
-  "am_michael",
-  "am_adam",
-  "bf_emma",
-  "bf_isabella",
-  "bm_george",
-  "bm_lewis",
-]);
-function resolveKokoroVoice(voiceId?: string): string {
-  return voiceId && KOKORO_VOICE_IDS.has(voiceId) ? voiceId : "af_heart";
-}
-
 async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
+  const requestStart = Date.now();
+  const timings: TtsTimings = {};
 
   try {
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
+    timings.authMs = Date.now() - requestStart;
+    const admissionStart = Date.now();
 
     const rawBody = await request.json();
     const parsed = TtsBody.safeParse(rawBody);
@@ -129,6 +141,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       );
     }
     const { text, voiceId, modelId } = parsed.data;
+    const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
+    const providerSelection = selectTtsProvider({
+      voiceId,
+      kokoroConfigured: Boolean(kokoroBaseUrl),
+    });
 
     if (!text) {
       return Response.json({ error: "No text provided" }, { status: 400 });
@@ -147,6 +164,28 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       );
     }
 
+    if (!providerSelection.ok) {
+      timings.admissionMs = Date.now() - admissionStart;
+      logger.warn?.("[Voice TTS API] TTS provider selection failed", {
+        provider: providerSelection.provider,
+        fallbackReason: providerSelection.fallbackReason,
+        code: providerSelection.code,
+      });
+      return Response.json(
+        {
+          error: providerSelection.error,
+          code: providerSelection.code,
+        },
+        {
+          status: providerSelection.status,
+          headers: buildTtsObservabilityHeaders(
+            providerSelection.provider,
+            timings,
+          ),
+        },
+      );
+    }
+
     await contentSafetyService.assertSafeForPublicUse({
       surface: "media_generation_prompt",
       organizationId: user.organization_id,
@@ -158,16 +197,20 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
+    logger.info("[Voice TTS API] Selected TTS provider", {
+      provider: providerSelection.provider,
+      fallbackReason: providerSelection.fallbackReason,
+      voiceId: providerSelection.voiceId ?? "default",
+    });
 
     // -------------------------------------------------------------------------
     // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
-    // is the product default — no credit reservation, no billing. ElevenLabs
-    // (custom voices / opt-in) is the path below. Inert when KOKORO_TTS_URL is
-    // unset, so existing ElevenLabs behavior is unchanged.
+    // is the product default — no credit reservation, no billing. Explicit
+    // custom/ElevenLabs voice ids continue down the paid provider path.
     // -------------------------------------------------------------------------
-    const kokoroBaseUrl = env.KOKORO_TTS_URL?.trim();
-    if (kokoroBaseUrl) {
-      const kokoroVoice = resolveKokoroVoice(voiceId);
+    if (providerSelection.provider === "kokoro") {
+      const kokoroVoice = providerSelection.voiceId;
+      timings.admissionMs = Date.now() - admissionStart;
 
       // First-line cache (#14375), gated on the #14370 TTFB benchmark and off by
       // default. Only WHOLE-input short openers ("Got it.") are cacheable — the
@@ -189,9 +232,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
       if (kokoroCacheKey) {
         try {
+          const cacheStart = Date.now();
           const cached =
             await getCloudFirstLineCacheService().get(kokoroCacheKey);
           if (cached) {
+            timings.synthesisMs = Date.now() - cacheStart;
             logger.info(
               `[Voice TTS API] Kokoro first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount}, voice=${kokoroVoice}) — no upstream request`,
             );
@@ -200,6 +245,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
               headers: {
                 "Content-Type": cached.contentType,
                 "Cache-Control": "no-cache",
+                ...buildTtsObservabilityHeaders("kokoro", timings),
                 "X-TTS-Cache": "hit; kokoro; first-sentence",
               },
             });
@@ -215,7 +261,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
       const kokoroStart = Date.now();
       const kokoroResponse = await fetch(
-        `${kokoroBaseUrl.replace(/\/+$/, "")}/api/tts`,
+        `${kokoroBaseUrl!.replace(/\/+$/, "")}/api/tts`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -223,10 +269,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           signal: AbortSignal.timeout(30_000),
         },
       );
+      timings.synthesisMs = Date.now() - kokoroStart;
       if (!kokoroResponse.ok || !kokoroResponse.body) {
-        const detail = await kokoroResponse.text().catch(() => "");
         logger.error(
-          `[Voice TTS API] Kokoro synthesis failed (${kokoroResponse.status}): ${detail.slice(0, 200)}`,
+          `[Voice TTS API] Kokoro synthesis failed (${kokoroResponse.status})`,
         );
         return Response.json(
           { error: "TTS synthesis failed" },
@@ -256,7 +302,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           .then((ok) => {
             if (ok) {
               logger.info(
-                `[Voice TTS API] Kokoro first-line cache POPULATE ok (${bytes.byteLength}B, "${kokoroSnip.normalized}")`,
+                `[Voice TTS API] Kokoro first-line cache POPULATE ok (${bytes.byteLength}B, words=${kokoroSnip.wordCount})`,
               );
             }
           })
@@ -273,6 +319,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           headers: {
             "Content-Type": kokoroContentType,
             "Cache-Control": "no-store",
+            ...buildTtsObservabilityHeaders("kokoro", timings),
             "X-TTS-Cache": "miss; kokoro",
           },
         });
@@ -283,6 +330,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         headers: {
           "Content-Type": kokoroContentType,
           "Cache-Control": "no-store",
+          ...buildTtsObservabilityHeaders("kokoro", timings),
         },
       });
     }
@@ -333,6 +381,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
     });
+    timings.admissionMs = Date.now() - admissionStart;
 
     if (
       snipResult &&
@@ -342,6 +391,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       snipResult.endOffset === text.trimEnd().length
     ) {
       try {
+        const cacheStart = Date.now();
         const cacheService = getCloudFirstLineCacheService();
         const cached = await cacheService.get({
           algoVersion: FIRST_SENTENCE_SNIP_VERSION,
@@ -358,6 +408,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           scope: cacheScope,
         });
         if (cached) {
+          timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
             `[Voice TTS API] first-line cache HIT (${cacheScope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
           );
@@ -365,12 +416,14 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             headers: {
               "Content-Type": cached.contentType,
               "Cache-Control": "no-cache",
+              ...buildTtsObservabilityHeaders("elevenlabs", timings),
               "X-TTS-Cache": "hit; first-sentence",
             },
           });
         }
       } catch (err) {
-        // Cache failure is non-fatal — fall through to normal synthesis.
+        // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
+        // ElevenLabs request below remains the source of truth.
         logger.warn?.(
           `[Voice TTS API] first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -405,6 +458,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       }
       throw error;
     }
+    timings.admissionMs = Date.now() - admissionStart;
 
     const elevenlabs = getElevenLabsService(env);
 
@@ -415,8 +469,13 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       modelId,
     });
     const duration = Date.now() - startTime;
+    timings.synthesisMs = duration;
 
-    logger.info(`[Voice TTS API] Stream started in ${duration}ms`);
+    logger.info("[Voice TTS API] Stream started", {
+      provider: "elevenlabs",
+      fallbackReason: providerSelection.fallbackReason,
+      durationMs: duration,
+    });
 
     const billing = await billFlatUsage(
       {
@@ -539,7 +598,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             wordCount: snipResult.wordCount,
           });
           logger.info(
-            `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${total}B, "${snipResult.normalized}")`,
+            `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${total}B, words=${snipResult.wordCount})`,
           );
         } catch (err) {
           logger.warn?.(
@@ -554,6 +613,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         "Content-Type": "audio/mpeg",
         "Transfer-Encoding": "chunked",
         "Cache-Control": "no-cache",
+        ...buildTtsObservabilityHeaders("elevenlabs", timings),
         "X-TTS-Cache": "miss",
       },
     });
