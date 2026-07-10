@@ -44,14 +44,17 @@ let cachedVoiceResponse: {
   contentType: string;
   hitCount: number;
 } | null = null;
-const fetchMock = mock<typeof fetch>(async () => {
-  if (allowKokoroFetch) {
-    return new Response(new Uint8Array([82, 73, 70, 70]), {
-      headers: { "Content-Type": "audio/wav" },
-    });
-  }
-  throw new Error("fetch must not be called for selection failures");
-});
+const fetchMock = Object.assign(
+  mock(async (..._args: Parameters<typeof fetch>): Promise<Response> => {
+    if (allowKokoroFetch) {
+      return new Response(new Uint8Array([82, 73, 70, 70]), {
+        headers: { "Content-Type": "audio/wav" },
+      });
+    }
+    throw new Error("fetch must not be called for selection failures");
+  }),
+  { preconnect: () => undefined },
+) satisfies typeof fetch;
 const realFetch = globalThis.fetch;
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
@@ -223,7 +226,11 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     const serverTiming = response.headers.get("Server-Timing") ?? "";
     expect(serverTiming).toContain("auth;dur=");
     expect(serverTiming).toContain("admission;dur=");
-    expect(await response.json()).toEqual({
+    const body = (await response.json()) as {
+      error: string;
+      code: string;
+    };
+    expect(body).toEqual({
       error: "Unsupported Kokoro voice ID: af_not_a_voice",
       code: "unsupported_kokoro_voice",
     });
@@ -237,7 +244,11 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("X-Eliza-TTS-Provider")).toBe("kokoro");
     expect(response.headers.get("Server-Timing")).toContain("admission;dur=");
-    expect(await response.json()).toEqual({
+    const body = (await response.json()) as {
+      error: string;
+      code: string;
+    };
+    expect(body).toEqual({
       error: "Kokoro TTS is not configured for this environment.",
       code: "kokoro_unconfigured",
     });
