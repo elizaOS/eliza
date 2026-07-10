@@ -1,6 +1,8 @@
 import {
   SupportedChain,
   WalletCaseSummary,
+  WalletDecisionSummary,
+  WalletEvidenceRecord,
   WalletExecutiveVerdict,
   WalletInvestigationReport,
 } from "../types";
@@ -10,7 +12,22 @@ export function analyzeInvestigationReport(
   address: string,
   executiveVerdict: WalletExecutiveVerdict,
   caseSummary: WalletCaseSummary,
+  decision?: WalletDecisionSummary,
+  evidenceRecords?: WalletEvidenceRecord[],
 ): WalletInvestigationReport {
+  const highlights =
+    decision && evidenceRecords
+      ? [
+          executiveVerdict.headline,
+          ...decision.factors
+            .slice(0, 4)
+            .map((factor) => factor.description),
+        ]
+      : [
+          executiveVerdict.headline,
+          ...caseSummary.keyFindings,
+        ];
+
   return {
     generatedAt: new Date().toISOString(),
 
@@ -18,12 +35,11 @@ export function analyzeInvestigationReport(
 
     executiveSummary: caseSummary.executiveSummary,
 
-    overallRecommendation: executiveVerdict.recommendation,
+    overallRecommendation:
+      decision?.recommendation ??
+      executiveVerdict.recommendation,
 
-    highlights: [
-      executiveVerdict.headline,
-      ...caseSummary.keyFindings,
-    ],
+    highlights,
 
     investigationScope: {
       blockchain: chain,
