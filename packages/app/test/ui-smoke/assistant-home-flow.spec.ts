@@ -316,9 +316,9 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       // A `before` cursor asks for older history; this fixture conversation has
       // none, so return an empty page with `hasMore:false` to stop the scroll
       // from refetching the same cursor.
-      const hasBeforeCursor = new URL(
-        route.request().url(),
-      ).searchParams.has("before");
+      const hasBeforeCursor = new URL(route.request().url()).searchParams.has(
+        "before",
+      );
       await fulfillJson(route, {
         messages: hasBeforeCursor ? [] : messages,
         hasMore: false,

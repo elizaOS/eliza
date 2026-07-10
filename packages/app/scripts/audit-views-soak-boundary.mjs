@@ -64,7 +64,9 @@ export async function finalizeSoakEvidence({
   onContextClosed();
   if (!video) {
     if (videoRequired) {
-      throw new Error("view-soak recording is required but was not initialized");
+      throw new Error(
+        "view-soak recording is required but was not initialized",
+      );
     }
     return null;
   }
