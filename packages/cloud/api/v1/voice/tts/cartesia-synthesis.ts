@@ -17,7 +17,7 @@ import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
   type CartesiaWebSocketLike,
-} from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
+} from "@/lib/services/cartesia-sonic-tts";
 import { pcm16ToWav } from "@/lib/services/pcm16-wav";
 
 /**

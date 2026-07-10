@@ -4,8 +4,9 @@
  * asserting audio frames are buffered and wrapped into a valid WAV, and that a
  * provider error / silent socket surfaces as a throw so the route can fall back.
  */
+
+import type { CartesiaWebSocketFactory } from "@/lib/services/cartesia-sonic-tts";
 import { describe, expect, it } from "vitest";
-import type { CartesiaWebSocketFactory } from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import { synthesizeCartesiaWav } from "../cartesia-synthesis";
 
 /** In-memory Cartesia socket: on the generation request, replay frames+done. */

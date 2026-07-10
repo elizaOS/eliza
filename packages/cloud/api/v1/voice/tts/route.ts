@@ -53,11 +53,16 @@ import {
 } from "@/lib/services/tts-first-line-cache";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
+import { synthesizeCartesiaWav } from "./cartesia-synthesis";
 import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
-import { selectTtsProvider, type TtsProvider } from "./provider-selection";
+import {
+  LEGACY_DEFAULT_ELEVENLABS_VOICE_ID,
+  selectTtsProvider,
+  type TtsProvider,
+} from "./provider-selection";
 
 /**
  * Default ElevenLabs output format. Must stay in sync with the ElevenLabs
@@ -98,7 +103,10 @@ interface TtsTimings {
 }
 
 function buildTtsObservabilityHeaders(
-  provider: TtsProvider,
+  // "cartesia" is a synthesis ENGINE substitution inside the elevenlabs
+  // selection branch, not a third selectable provider — hence the widening
+  // here rather than in TtsProvider.
+  provider: TtsProvider | "cartesia",
   timings: TtsTimings,
 ): Record<string, string> {
   const serverTiming = [
@@ -122,6 +130,14 @@ function buildTtsObservabilityHeaders(
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24_000;
 const MAX_WAV_PCM_BYTES = 64 * 1024 * 1024;
+
+/**
+ * Default Cartesia voice for un-pinned WAV requests ("Skylar — Friendly
+ * Guide", verified live). Override per-environment with
+ * CARTESIA_DEFAULT_VOICE_ID; callers that pin any voice identity (custom
+ * voices, explicit ElevenLabs ids) never reach the Cartesia engine.
+ */
+const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
 
 /**
  * POST /api/v1/voice/tts
@@ -477,25 +493,69 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const elevenlabs = getElevenLabsService(env);
 
     const startTime = Date.now();
-    const audioStream = await elevenlabs.textToSpeech({
-      text,
-      voiceId,
-      modelId,
-      // WAV path requests raw PCM (wrapped in a WAV header below); default
-      // callers get the service's MP3 default.
-      ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
-    });
-    const wav = wantWav
-      ? pcm16ToWav(
+    // WAV fast path: Cartesia Sonic streams raw PCM (~150 ms to first audio,
+    // ~0.6 s total, measured live) where the buffered ElevenLabs PCM
+    // round-trip takes ~3 s — and WAV requests can't use the MP3 first-line
+    // cache. The engine is only substitutable when the caller did NOT pin a
+    // voice identity: custom voices and explicit (non-proxy-default)
+    // ElevenLabs voice ids keep ElevenLabs. Billing below charges the same
+    // ElevenLabs catalog rate either way, so the engine choice never changes
+    // the user's price (Cartesia's upstream cost is lower, not higher).
+    let wav: Uint8Array | undefined;
+    let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
+    const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
+    const callerPinnedVoice =
+      Boolean(voiceId) && voiceId !== LEGACY_DEFAULT_ELEVENLABS_VOICE_ID;
+    if (wantWav && cartesiaApiKey && !isCustomVoice && !callerPinnedVoice) {
+      try {
+        const cartesia = await synthesizeCartesiaWav({
+          apiKey: cartesiaApiKey,
+          voiceId:
+            env.CARTESIA_DEFAULT_VOICE_ID?.trim() || DEFAULT_CARTESIA_VOICE_ID,
+          text,
+          sampleRate: WAV_PCM_SAMPLE_RATE,
+          maxPcmBytes: MAX_WAV_PCM_BYTES,
+        });
+        wav = cartesia.wav;
+        synthesisEngine = "cartesia";
+        logger.info("[Voice TTS API] Cartesia WAV synthesis", {
+          firstAudioMs: cartesia.firstAudioMs,
+          totalMs: cartesia.totalMs,
+          pcmBytes: cartesia.pcmBytes,
+        });
+      } catch (error) {
+        // error-policy:J4 designed engine degrade — a Cartesia outage must not
+        // drop voice: the ElevenLabs synthesis below is the fallback engine at
+        // the identical billed rate, and the failure is surfaced here.
+        logger.warn(
+          "[Voice TTS API] Cartesia synthesis failed; falling back to ElevenLabs",
+          { error: error instanceof Error ? error.message : String(error) },
+        );
+      }
+    }
+
+    let audioStream: ReadableStream<Uint8Array> | undefined;
+    if (wav === undefined) {
+      audioStream = await elevenlabs.textToSpeech({
+        text,
+        voiceId,
+        modelId,
+        // WAV path requests raw PCM (wrapped in a WAV header below); default
+        // callers get the service's MP3 default.
+        ...(wantWav ? { outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}` } : {}),
+      });
+      if (wantWav) {
+        wav = pcm16ToWav(
           await drainPcm16Stream(audioStream, MAX_WAV_PCM_BYTES),
           WAV_PCM_SAMPLE_RATE,
-        )
-      : undefined;
+        );
+      }
+    }
     const duration = Date.now() - startTime;
     timings.synthesisMs = duration;
 
     logger.info("[Voice TTS API] Stream started", {
-      provider: "elevenlabs",
+      provider: synthesisEngine,
       fallbackReason: providerSelection.fallbackReason,
       durationMs: duration,
     });
@@ -535,8 +595,15 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           user_id: user.id,
           api_key_id: apiKey?.id ?? null,
           type: "tts",
-          model: modelId || "eleven_flash_v2_5",
-          provider: "elevenlabs",
+          // Attribute the engine that actually synthesized; the CHARGE always
+          // comes from the ElevenLabs catalog rate (billingSource below), so a
+          // Cartesia-served request costs the user exactly what the
+          // ElevenLabs-served one would.
+          model:
+            synthesisEngine === "cartesia"
+              ? "sonic-3.5"
+              : modelId || "eleven_flash_v2_5",
+          provider: synthesisEngine,
           input_tokens: Math.ceil(text.length / 4),
           output_tokens: 0,
           input_cost: String(billing.totalCost),
@@ -553,6 +620,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             isCustomVoice,
             baseTotalCost: billing.baseTotalCost,
             billingSource: "elevenlabs",
+            synthesisEngine,
           },
         });
       } catch (error) {
@@ -631,14 +699,16 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       })();
     }
 
-    // WAV path: ElevenLabs streamed raw PCM; buffer it and wrap in a WAV header
-    // so codec-less clients can decode it. (Buffered, not streamed — fine for
-    // short TTS replies; the MP3 path keeps its chunked streaming below.)
+    // WAV path: raw PCM (Cartesia frames or the ElevenLabs PCM stream)
+    // buffered and wrapped in a WAV header so codec-less clients can decode
+    // it. (Buffered, not streamed — fine for short TTS replies; the MP3 path
+    // keeps its chunked streaming below.)
     if (wav !== undefined) {
       return new Response(wav as unknown as BodyInit, {
         headers: {
           "Content-Type": "audio/wav",
           "Cache-Control": "no-cache",
+          ...buildTtsObservabilityHeaders(synthesisEngine, timings),
           "X-TTS-Cache": "miss",
         },
       });
