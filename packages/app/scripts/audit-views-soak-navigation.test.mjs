@@ -25,6 +25,12 @@ test("context teardown owns video finalization without a redundant page close", 
 });
 
 test("the soak completes current in-chat onboarding before view churn", () => {
+  expect(source).toContain("async function waitForRuntimeReady");
+  expect(source).toContain("/api/health");
+  expect(source).toContain('attempt.value.body.runtime === "ok"');
+  expect(source.indexOf("await waitForRuntimeReady()")).toBeLessThan(
+    source.indexOf("await completeFirstRunIfNeeded()"),
+  );
   expect(source).toContain("/api/first-run/status");
   expect(source).toContain("/api/first-run");
   expect(source).toContain('getByTestId("chat-first-run-backdrop")');

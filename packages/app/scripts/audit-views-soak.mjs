@@ -317,6 +317,37 @@ async function isFirstRunBlocking(page) {
     .catch(() => false);
 }
 
+async function waitForRuntimeReady(timeoutMs = 180_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastHealth = { state: "not-requested" };
+
+  while (Date.now() < deadline) {
+    const [attempt] = await Promise.allSettled([
+      fetch(`${API}/api/health`).then(async (response) => ({
+        status: response.status,
+        body: await response.json(),
+      })),
+    ]);
+    if (attempt.status === "fulfilled") {
+      lastHealth = attempt.value;
+      if (
+        attempt.value.status === 200 &&
+        attempt.value.body.ready === true &&
+        attempt.value.body.runtime === "ok"
+      ) {
+        return attempt.value.body;
+      }
+    } else {
+      lastHealth = { state: "request-failed", reason: String(attempt.reason) };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+
+  throw new Error(
+    `runtime did not become ready before first-run setup: ${JSON.stringify(lastHealth)}`,
+  );
+}
+
 async function completeFirstRunIfNeeded() {
   const status = await fetch(`${API}/api/first-run/status`).then((response) => {
     if (!response.ok) {
@@ -360,6 +391,7 @@ assert(
 const byKind = {};
 for (const v of views) byKind[viewKind(v)] = (byKind[viewKind(v)] || 0) + 1;
 console.log(`[soak] view kinds: ${JSON.stringify(byKind)}`);
+await waitForRuntimeReady();
 const firstRunSetup = await completeFirstRunIfNeeded();
 
 // `--enable-precise-memory-info` makes `performance.memory.usedJSHeapSize`
