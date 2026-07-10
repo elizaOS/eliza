@@ -31,6 +31,12 @@ test("the soak completes current in-chat onboarding before view churn", () => {
   expect(source.indexOf("await waitForRuntimeReady()")).toBeLessThan(
     source.indexOf("await completeFirstRunIfNeeded()"),
   );
+  expect(source).toContain(
+    'localStorage.setItem("eliza:first-run-complete", "1")',
+  );
+  expect(source).toContain(
+    'localStorage.setItem("eliza:setup:step", "activate")',
+  );
   expect(source).toContain("/api/first-run/status");
   expect(source).toContain("/api/first-run");
   expect(source).toContain('getByTestId("chat-first-run-backdrop")');

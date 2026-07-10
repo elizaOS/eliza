@@ -418,6 +418,13 @@ const video = page.video();
 // ViewTelemetryProfiler / module caches push into them (cache-telemetry only
 // records when the ring array already exists).
 await page.addInitScript(() => {
+  // The browser-side startup snapshot is the second half of first-run
+  // completion. API persistence alone leaves a fresh CI profile in the
+  // onboarding transition even though the server reports complete.
+  localStorage.setItem("eliza:first-run-complete", "1");
+  localStorage.setItem("eliza:setup:step", "activate");
+  localStorage.setItem("eliza:ui-shell-mode", "native");
+  localStorage.setItem("eliza:chat:voiceMuted", "true");
   // The module-cache ring only records when its array already exists; the
   // view-runtime + render rings self-create, but pre-seed all three so nothing
   // emitted during early boot is lost.
