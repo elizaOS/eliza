@@ -470,6 +470,66 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       }
     }
 
+    // WAV/Cartesia first-line cache twin: the MP3 cache above never serves
+    // WAV callers, so codec-less clients paid full synthesis for every short
+    // opener. Same whole-input gate; key is codec/provider/rate-specific so
+    // MP3 and WAV entries can never collide.
+    const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
+    const callerPinnedVoice =
+      Boolean(voiceId) && voiceId !== LEGACY_DEFAULT_ELEVENLABS_VOICE_ID;
+    const cartesiaVoiceId =
+      env.CARTESIA_DEFAULT_VOICE_ID?.trim() || DEFAULT_CARTESIA_VOICE_ID;
+    const cartesiaEligible =
+      wantWav &&
+      Boolean(cartesiaApiKey) &&
+      !isCustomVoice &&
+      !callerPinnedVoice;
+    const wavCacheKey =
+      cartesiaEligible &&
+      snipResult &&
+      !cacheBypass &&
+      snipResult.endOffset === text.trimEnd().length
+        ? {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: "cartesia",
+            voiceId: cartesiaVoiceId,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            sampleRate: WAV_PCM_SAMPLE_RATE,
+            codec: "wav" as const,
+            voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
+              outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}`,
+            }),
+            normalizedText: snipResult.normalized,
+            scope: "global",
+          }
+        : null;
+    if (wavCacheKey) {
+      try {
+        const cacheStart = Date.now();
+        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
+        if (cached) {
+          timings.synthesisMs = Date.now() - cacheStart;
+          logger.info(
+            `[Voice TTS API] WAV first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount})`,
+          );
+          return new Response(cached.bytes as unknown as BodyInit, {
+            headers: {
+              "Content-Type": "audio/wav",
+              "Cache-Control": "no-cache",
+              ...buildTtsObservabilityHeaders("cartesia", timings),
+              "X-TTS-Cache": "hit; first-sentence; wav",
+            },
+          });
+        }
+      } catch (err) {
+        // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
+        // Cartesia request below remains the source of truth.
+        logger.warn?.(
+          `[Voice TTS API] WAV first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     const ttsCost = await calculateTTSCostFromCatalog({
       model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
       characterCount: text.length,
@@ -513,21 +573,41 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     // the user's price (Cartesia's upstream cost is lower, not higher).
     let wav: Uint8Array | undefined;
     let synthesisEngine: "elevenlabs" | "cartesia" = "elevenlabs";
-    const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
-    const callerPinnedVoice =
-      Boolean(voiceId) && voiceId !== LEGACY_DEFAULT_ELEVENLABS_VOICE_ID;
-    if (wantWav && cartesiaApiKey && !isCustomVoice && !callerPinnedVoice) {
+    if (cartesiaEligible && cartesiaApiKey) {
       try {
         const cartesia = await synthesizeCartesiaWav({
           apiKey: cartesiaApiKey,
-          voiceId:
-            env.CARTESIA_DEFAULT_VOICE_ID?.trim() || DEFAULT_CARTESIA_VOICE_ID,
+          voiceId: cartesiaVoiceId,
           text,
           sampleRate: WAV_PCM_SAMPLE_RATE,
           maxPcmBytes: MAX_CARTESIA_PCM_BYTES,
         });
         wav = cartesia.wav;
         synthesisEngine = "cartesia";
+        if (wavCacheKey) {
+          const wavBytes = cartesia.wav;
+          void (async () => {
+            try {
+              await getCloudFirstLineCacheService().put({
+                ...wavCacheKey,
+                bytes: wavBytes,
+                rawText: snipResult?.raw ?? text,
+                contentType: "audio/wav",
+                durationMs: 0,
+                wordCount: snipResult?.wordCount ?? 0,
+              });
+              logger.info(
+                `[Voice TTS API] WAV first-line cache POPULATE ok (${wavBytes.byteLength}B)`,
+              );
+            } catch (err) {
+              // error-policy:J7 cache populate is diagnostics-adjacent decoration;
+              // a failed put must not affect the served reply.
+              logger.warn?.(
+                `[Voice TTS API] WAV first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            }
+          })();
+        }
         logger.info("[Voice TTS API] Cartesia WAV synthesis", {
           firstAudioMs: cartesia.firstAudioMs,
           totalMs: cartesia.totalMs,
