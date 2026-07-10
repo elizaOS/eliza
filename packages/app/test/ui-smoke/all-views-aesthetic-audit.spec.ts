@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   type AestheticMetricBudget,
   type AestheticVerdictDebt,
@@ -365,6 +365,39 @@ interface ViewFinding {
   quality: ScreenshotQuality | null;
   qualityIssues: string[];
   verdict: "good" | "needs-work" | "needs-eyeball" | "broken";
+}
+
+interface ViewPaintState {
+  readableChars: number;
+  overlayPresent: boolean;
+  loadingViewPresent: boolean;
+}
+
+async function readViewPaint(
+  viewRoot: Locator,
+  overlay: Locator,
+  loadingView: Locator,
+): Promise<ViewPaintState> {
+  const readableChars = await viewRoot.evaluate(
+    (root) =>
+      (root as HTMLElement).innerText.trim().replace(/\s+/g, " ").length,
+  );
+  const overlayPresent = await overlay.evaluateAll((nodes) =>
+    nodes.some((node) => {
+      const element = node as HTMLElement;
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      return (
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number(style.opacity || "1") !== 0 &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    }),
+  );
+  const loadingViewPresent = await loadingView.isVisible();
+  return { readableChars, overlayPresent, loadingViewPresent };
 }
 
 /**
@@ -1265,6 +1298,40 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     ).toEqual([]);
   });
 
+  test("view readiness surfaces loading and measurement failures", async ({
+    page,
+  }) => {
+    await page.setContent(`
+      <main data-test-root>Loaded production view</main>
+      <div data-test-overlay>Composer</div>
+    `);
+    const overlay = page.locator("[data-test-overlay]");
+    const loadingView = page.locator('[data-view-status="loading"]');
+
+    await expect(
+      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
+    ).resolves.toEqual({
+      readableChars: "Loaded production view".length,
+      overlayPresent: true,
+      loadingViewPresent: false,
+    });
+
+    await page.locator("main").evaluate((root) => {
+      root.insertAdjacentHTML(
+        "beforeend",
+        '<div data-view-status="loading">Loading view</div>',
+      );
+    });
+    await expect(
+      readViewPaint(page.locator("[data-test-root]"), overlay, loadingView),
+    ).resolves.toMatchObject({ loadingViewPresent: true });
+
+    await page.setContent("<main>first</main><main>second</main>");
+    await expect(
+      readViewPaint(page.locator("main"), overlay, loadingView),
+    ).rejects.toThrow(/strict mode violation/);
+  });
+
   for (const view of buildAuditCases()) {
     for (const vp of VIEWPORTS) {
       test(`${view.slug} ${vp.name}`, async ({ page }) => {
@@ -1333,37 +1400,12 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           "[data-testid='chat-pill']",
           "[data-testid='chat-composer-textarea']",
         ].join(", ");
-        const readPaint = async (): Promise<{
-          readableChars: number;
-          overlayPresent: boolean;
-          loadingViewPresent: boolean;
-        }> => {
-          const readableChars = await viewRoot.evaluate(
-            (root) =>
-              (root as HTMLElement).innerText.trim().replace(/\s+/g, " ")
-                .length,
+        const readPaint = () =>
+          readViewPaint(
+            viewRoot,
+            page.locator(overlaySelector),
+            page.locator('[data-view-status="loading"]'),
           );
-          const overlayPresent = await page
-            .locator(overlaySelector)
-            .evaluateAll((nodes) =>
-              nodes.some((node) => {
-                const el = node as HTMLElement;
-                const style = getComputedStyle(el);
-                const rect = el.getBoundingClientRect();
-                return (
-                  style.display !== "none" &&
-                  style.visibility !== "hidden" &&
-                  Number(style.opacity || "1") !== 0 &&
-                  rect.width > 0 &&
-                  rect.height > 0
-                );
-              }),
-            );
-          const loadingViewPresent = await page
-            .locator('[data-view-status="loading"]')
-            .isVisible();
-          return { readableChars, overlayPresent, loadingViewPresent };
-        };
         let paint = await readPaint();
         for (
           let attempt = 0;
