@@ -13,6 +13,11 @@
     "packages/feed/packages/tsconfig.base.json"
   ],
   "globalEnv": [
+    "ELIZA_E2E_ARTIFACTS",
+    "ELIZA_E2E_ARTIFACTS_DIR",
+    "ELIZA_E2E_LANE",
+    "ELIZA_E2E_POSTHOG_HOST",
+    "ELIZA_E2E_RUN_ID",
     "BUN_PATH",
     "ELIZA_CERT_QUEUE_HOST",
     "ELIZA_GPU_VISION_CACHE",
