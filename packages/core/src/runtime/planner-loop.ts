@@ -548,7 +548,7 @@ export async function runPlannerLoop(
 									maxTerminalOnlyContinuations:
 										config.maxTerminalOnlyContinuations,
 								},
-								"[planner-loop] terminal-only continuation limit reached; relaying the completed tool result instead of discarding the turn",
+								"[planner-loop] terminal-only continuation limit reached; relaying the turn's best user-safe reply instead of discarding it",
 							);
 							return {
 								status: "finished",
@@ -3022,14 +3022,57 @@ function deterministicSuccessfulToolRelay(
 	return undefined;
 }
 
+/**
+ * Deterministic (no model call) recovery at the terminal-only-continuation
+ * limit: the evaluator kept answering CONTINUE while the planner produced only
+ * terminal text, so the loop is about to throw and the caller would surface a
+ * synthetic apology. Before that, surface the best reply the turn ALREADY
+ * produced. Precedence (#15918):
+ *
+ *   1. The latest grammar-valid widget reply ([FORM]/[CHOICE]/…) the planner
+ *      emitted as terminal output. A parse-valid widget that collects the
+ *      missing input is the model's actual reply — strictly better than the
+ *      tool question it refines — and the strict block parser authenticates
+ *      it (a pre-tool thought never contains a parse-valid block).
+ *   2. Tool-result relays (opt-in `userFacingText`, confirmation-required
+ *      preview, noop clarification) — structurally-marked, designed shapes.
+ *   3. The latest user-DIRECTED terminal ask ("Please provide…", "…would you
+ *      like?") — last resort for marker-less clarify turns where neither the
+ *      tool result nor the planner produced a structured shape (live
+ *      gpt-oss-120b runs crashed exactly here, discarding the model's ask).
+ */
 function deterministicTerminalContinuationLimitRelay(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	return (
+		deterministicTerminalWidgetReplyRelay(trajectory) ??
 		deterministicSuccessfulToolRelay(trajectory) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
-		deterministicNoopClarificationRelay(trajectory)
+		deterministicNoopClarificationRelay(trajectory) ??
+		deterministicTerminalMissingInputAskRelay(trajectory)
 	);
+}
+
+function deterministicTerminalWidgetReplyRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.terminalOnly) continue;
+		const candidate = userSafeWidgetReplyCandidate(step.terminalMessage);
+		if (candidate) return candidate;
+	}
+	return undefined;
+}
+
+function deterministicTerminalMissingInputAskRelay(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.terminalOnly) continue;
+		const candidate = userSafeMissingInputAskCandidate(step.terminalMessage);
+		if (candidate) return candidate;
+	}
+	return undefined;
 }
 
 function deterministicRequiresConfirmationRelay(
@@ -3765,6 +3808,59 @@ function userSafeWidgetReplyCandidate(
 	const candidate = sanitizePlannerMessage(message);
 	if (!candidate) return undefined;
 	if (parseInteractionBlocks(candidate).blocks.length === 0) return undefined;
+	if (isUnsafeUserVisibleText(candidate)) return undefined;
+	if (looksLikePreToolThought(candidate)) return undefined;
+	if (WIDGET_REPLY_IN_FLIGHT_CLAIM.some((pattern) => pattern.test(candidate))) {
+		return undefined;
+	}
+	return candidate;
+}
+
+// Positive markers that a terminal text is a user-DIRECTED request for input —
+// the only prose shape the terminal-continuation limit may relay. An allowlist
+// in the REFUSAL_MARKERS mold: deliberation narration ("We should wait for the
+// sub-agent result before replying.") carries none of these, and a trailing
+// "?" only qualifies when the sentence addresses the user ("What time would
+// you like…?"), so a self-directed planning question ("Which tool should I
+// use?") never ships.
+const USER_DIRECTED_ASK_MARKERS = [
+	/\bplease\s+(?:provide|share|tell|give|send|specify|confirm|enter|choose|pick|select|reply|clarify|include|upload|attach)\b/i,
+	/\b(?:could|can|would)\s+you\b/i,
+	/\btell me\b/i,
+	/\blet me know\b/i,
+];
+
+function isUserDirectedAsk(text: string): boolean {
+	if (USER_DIRECTED_ASK_MARKERS.some((pattern) => pattern.test(text))) {
+		return true;
+	}
+	return /\?\s*$/.test(text) && /\byour?\b/i.test(text);
+}
+
+// Any widget wire-marker token, open or close, valid or not. Used to keep
+// widget-bearing text out of the prose-ask relay below.
+const WIDGET_MARKER_TOKEN =
+	/\[\/?(?:FORM\]|CHOICE[:\]]|FOLLOWUPS[\s\]]|TASK[:\]])/;
+
+// Missing-input ask gate for the terminal-continuation limit (#15918). When a
+// missing-input turn produces neither a structured tool shape (userFacingText /
+// requiresConfirmation / noop) nor a widget block, the planner's own prose ask
+// ("Please provide the report name, the date, and the time…") is the turn's
+// real reply — discarding it throws TrajectoryLimitExceeded and ships a
+// synthetic apology. Requires a POSITIVE user-directed-ask marker, then applies
+// the same safety rejects as the widget gate. Uses the widget variant of the
+// in-flight reject deliberately: an ask legitimately says "let me know" or
+// promises follow-through conditioned on the user's input, and the ask marker
+// itself proves the turn ends by asking the user. Widget-marker text is
+// rejected wholesale — a block that failed the strict parse (or the widget
+// gate's rejects) must not ship as prose through this side door.
+function userSafeMissingInputAskCandidate(
+	message: string | undefined,
+): string | undefined {
+	const candidate = sanitizePlannerMessage(message);
+	if (!candidate) return undefined;
+	if (WIDGET_MARKER_TOKEN.test(candidate)) return undefined;
+	if (!isUserDirectedAsk(candidate)) return undefined;
 	if (isUnsafeUserVisibleText(candidate)) return undefined;
 	if (looksLikePreToolThought(candidate)) return undefined;
 	if (WIDGET_REPLY_IN_FLIGHT_CLAIM.some((pattern) => pattern.test(candidate))) {
