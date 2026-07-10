@@ -105,6 +105,28 @@ describe("useChatState prependConversationMessages", () => {
     expect(kept[kept.length - 1].id).toBe(`new-${newestCount - 1}`);
     expect(result.current.conversationMessagesRef.current).toEqual(kept);
   });
+
+  it("only grows the transcript while preserving active and unread metadata", () => {
+    const { result } = renderHook(() => useChatState());
+    act(() => {
+      result.current.addUnread("active");
+      result.current.addUnread("other");
+      result.current.setActiveConversationId("active");
+      result.current.setConversationMessages([msg("new", 20)]);
+    });
+
+    act(() => {
+      result.current.prependConversationMessages([msg("old", 10)]);
+    });
+
+    expect(result.current.state.activeConversationId).toBe("active");
+    expect(result.current.state.unreadConversations.has("active")).toBe(false);
+    expect(result.current.state.unreadConversations.has("other")).toBe(true);
+    expect(ids(result.current.state.conversationMessages)).toEqual([
+      "old",
+      "new",
+    ]);
+  });
 });
 
 // ── Single-greeting invariant across pagination (duplicate-greeting defect) ──

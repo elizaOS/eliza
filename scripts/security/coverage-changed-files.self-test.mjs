@@ -146,6 +146,16 @@ try {
     "packages/demo/test/e2e/flow.test.ts",
     "import { test } from 'bun:test';\ntest('e2e', () => {});\n",
   );
+  write(
+    dir,
+    "packages/demo/src/__e2e__/fixture.tsx",
+    "export const Fixture = () => null;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/feature.stories.tsx",
+    "export default { title: 'Feature' };\n",
+  );
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "feature work");
   const featureTip = git(dir, "rev-parse", "HEAD"); // HEAD
@@ -191,6 +201,14 @@ try {
         !out.vitest_tests.includes("packages/demo/test/e2e/flow.test.ts"),
         `e2e-dir test leaked into vitest lane: ${out.vitest_tests.join(",")}`,
       );
+    },
+  );
+
+  assertCase(
+    "e2e fixtures and stories are not product coverage targets",
+    () => {
+      assert.ok(!out.files.includes("packages/demo/src/__e2e__/fixture.tsx"));
+      assert.ok(!out.files.includes("packages/demo/src/feature.stories.tsx"));
     },
   );
 

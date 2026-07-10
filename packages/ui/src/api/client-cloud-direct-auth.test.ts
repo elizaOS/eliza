@@ -1172,21 +1172,22 @@ describe("ElizaClient direct Cloud auth on native", () => {
     });
 
     const client = new ElizaClient("http://localhost:31337");
-    await expect(
-      client.provisionCloudSandbox({
-        cloudApiBase: "https://www.elizacloud.ai",
-        authToken: "dev-js-bearer",
-        name: "Shared Agent",
-        bio: ["Native package-mode test agent."],
-        allowSharedRuntime: true,
-      }),
-    ).resolves.toEqual({
+    const result = await client.provisionCloudSandbox({
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "dev-js-bearer",
+      name: "Shared Agent",
+      bio: ["Native package-mode test agent."],
+      allowSharedRuntime: true,
+    });
+
+    expect(result).toEqual({
       agentId: "shared-agent",
       bridgeUrl:
         "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent/bridge",
       webUiUrl: "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent",
       executionTier: "shared",
     });
+    expect(result.bridgeUrl).toContain("/api/v1/eliza/agents/shared-agent/");
     expect(capacitorMocks.request).toHaveBeenCalledTimes(2);
     expect(fetchSpy).not.toHaveBeenCalled();
     expectNoLocalPersistOrStatusProbe();

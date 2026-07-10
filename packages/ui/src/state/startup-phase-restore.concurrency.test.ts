@@ -10,6 +10,14 @@
 // boundaries are stubbed.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearPendingCloudHandoff,
+  savePendingCloudHandoff,
+} from "../cloud/handoff/pending-handoff-store";
+import {
+  DEFAULT_BOOT_CONFIG,
+  setBootConfig,
+} from "../config/boot-config-store";
 import type { PersistedActiveServer } from "./persistence";
 import {
   clearPersistedActiveServer,
@@ -81,6 +89,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
 
   beforeEach(() => {
     localStorage.clear();
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     pendingRequests.length = 0;
     fetchMock = vi.fn(
       (input: RequestInfo | URL) =>
@@ -101,6 +110,8 @@ describe("cloud restore routes the client without waiting on the Steward refresh
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+    clearPendingCloudHandoff();
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     localStorage.clear();
     vi.restoreAllMocks();
   });
@@ -158,6 +169,41 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     expect(clientRef.setBaseUrl.mock.invocationCallOrder[0]).toBeLessThan(
       clientRef.setToken.mock.invocationCallOrder.at(-1) as number,
     );
+  });
+
+  it("repairs a pending shared adapter unless the host explicitly enables shared tier", async () => {
+    const sharedApiBase =
+      "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent";
+    savePendingCloudHandoff({
+      sharedAgentId: "shared-agent",
+      dedicatedAgentId: "dedicated-agent",
+      sharedApiBase,
+      cloudApiBase: "https://elizacloud.ai",
+      startedAt: Date.now(),
+    });
+    const restored: PersistedActiveServer = {
+      id: "cloud:shared-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: sharedApiBase,
+    };
+
+    const dedicatedClient = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef: dedicatedClient,
+    });
+    expect(dedicatedClient.setBaseUrl).toHaveBeenCalledWith(
+      "https://shared-agent.elizacloud.ai",
+    );
+
+    setBootConfig({ ...DEFAULT_BOOT_CONFIG, preferSharedCloudTier: true });
+    const sharedClient = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef: sharedClient,
+    });
+    expect(sharedClient.setBaseUrl).toHaveBeenCalledWith(sharedApiBase);
   });
 });
 
