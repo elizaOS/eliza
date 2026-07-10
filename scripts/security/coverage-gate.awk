@@ -61,8 +61,12 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
     # the changed list is repo-relative, so accept only exact path-segment
     # suffixes; raw substring matching lets foo.ts pass via foo.tsx.
     matched = ""
+    matched_len = 0
     for (cf in changed_map) {
-      if (path_matches_lcov(current, cf)) { matched = cf; break }
+      if (path_matches_lcov(current, cf) && length(cf) > matched_len) {
+        matched = cf
+        matched_len = length(cf)
+      }
     }
     if (matched != "") {
       matched_map[matched] = 1

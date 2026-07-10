@@ -25,6 +25,23 @@ function writeLcov(dir, sourcePath, found = 2, hit = 2) {
   return file;
 }
 
+function writeLcovRecords(dir, sourcePaths) {
+  const file = join(dir, "lcov.info");
+  writeFileSync(
+    file,
+    sourcePaths
+      .flatMap((sourcePath) => [
+        `SF:${sourcePath}`,
+        "LF:2",
+        "LH:2",
+        "end_of_record",
+      ])
+      .concat("")
+      .join("\n"),
+  );
+  return file;
+}
+
 function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
   const changedArgument = changed.replaceAll("\\", "\\\\").replaceAll("\n", "\\n");
   return spawnSync(
@@ -96,6 +113,21 @@ try {
     assert.match(result.stdout, /100\.00% packages\/demo\/src\/covered\.ts/);
     assert.match(result.stdout, /MISSING: packages\/demo\/src\/missing\.ts/);
     assert.match(result.stdout, /changed source missing from LCOV/);
+  });
+
+  assertGate("prefers the longest matching changed path", () => {
+    const rootPath = "src/foo.ts";
+    const nestedPath = "packages/demo/src/foo.ts";
+    const lcov = writeLcovRecords(dir, [
+      `/workspace/eliza/${rootPath}`,
+      `/workspace/eliza/${nestedPath}`,
+    ]);
+    const result = runGate({ changed: `${rootPath}\n${nestedPath}`, lcov });
+
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /100\.00% src\/foo\.ts/);
+    assert.match(result.stdout, /100\.00% packages\/demo\/src\/foo\.ts/);
+    assert.doesNotMatch(result.stdout, /MISSING:/);
   });
 } finally {
   rmSync(dir, { recursive: true, force: true });
