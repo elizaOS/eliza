@@ -169,6 +169,28 @@ Native transport is an ACP JSON-RPC client. It currently handles `initialize`, `
 
 Use the CLI transport only when you need the existing `acpx` command wrapper semantics.
 
+## GitHub credentials
+
+Every GitHub-touching capability needs a credential before it can act. Without one, the operation fails with a clean error naming both accepted settings (`ensureGitHubClient` in `src/services/workspace-github.ts`).
+
+**Which capabilities need a token:**
+
+| Capability | What breaks without a token |
+| --- | --- |
+| `TASKS_MANAGE_ISSUES` | create / list / get / update / comment / close / reopen / add-labels on GitHub issues (`src/services/workspace-github.ts`). |
+| `TASKS_SUBMIT_WORKSPACE` | authenticated `commit` / `push` / open-PR against the remote (`src/services/workspace-service.ts` → `workspace-git-ops.ts`). |
+
+Read-only actions (spawn, provision-workspace against a public repo) do not require a token; anything that writes to GitHub does.
+
+**Two ways to supply the credential:**
+
+1. **Personal access token (PAT)** — set `GITHUB_TOKEN`. Read at act-time via `runtime.getSetting("GITHUB_TOKEN")`, so it can be stored per-agent in the vault/settings and rotated without a restart. This is the path a live multi-tenant deployment uses: the agent acts as its own bot account with zero `GITHUB_*` in process env.
+2. **OAuth device flow** — set `GITHUB_OAUTH_CLIENT_ID` (via `getSetting`) and the server-side `GITHUB_OAUTH_CLIENT_SECRET` (read directly from process env, deliberately kept out of the plugin `getSetting` allowlist). On first GitHub access the agent surfaces a device-code prompt (verification URI + user code) through an immediate, user-visible channel and polls until the user completes login. The flow requires an `authPromptCallback` wired to a live chat path — a buffered action callback is unsafe because the flow blocks on user consent.
+
+When both are present, `GITHUB_TOKEN` wins.
+
+**Multi-tenant safety — prefer vault/settings over process env.** A `GITHUB_TOKEN` placed in the host **process environment** is visible to *every* agent sharing that host, so on a shared/cloud deployment one tenant's token would act on behalf of all of them. Store the token **per-agent in the runtime settings/vault** instead, where `runtime.getSetting("GITHUB_TOKEN")` scopes it to the single agent. The service does fall back to `process.env.GITHUB_TOKEN` for the git push/PR path, but that fallback is a single-tenant/local-dev convenience — do not rely on it on a shared host.
+
 ## Persistence
 
 Session state is persisted with a tiered backend:

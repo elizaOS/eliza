@@ -34,7 +34,10 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PROBE_FAMILIES } from "./credential-probes.mjs";
+import {
+  PROBE_FAMILIES,
+  parseSignalAccountLines,
+} from "./credential-probes.mjs";
 
 /** Path kinds — how the credential is obtained/held, not which provider. */
 export const CONNECTOR_PATH_KINDS = [
@@ -500,6 +503,7 @@ export const CONNECTOR_PATHS = [
               type: "command-output-nonempty",
               command: "signal-cli",
               args: ["listAccounts"],
+              outputFilter: "signal-accounts",
               reason: "no linked Signal account",
             },
           ],
@@ -507,7 +511,7 @@ export const CONNECTOR_PATHS = [
       ],
     },
     notes:
-      "Availability executes the read-only listAccounts command: an installed-but-unrunnable binary and a runnable client with no linked account remain distinct skip states.",
+      "Availability executes the read-only listAccounts command: an installed-but-unrunnable binary, a listAccounts run failure, and a runnable client with no linked account (warning-only output included) remain distinct skip states.",
   }),
 
   // --- WhatsApp -----------------------------------------------------------------------
@@ -871,16 +875,45 @@ export function defaultAvailabilityCtx() {
       return {
         ok: !result.error && result.status === 0,
         stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+        // null on spawn failure (ENOENT, timeout kill) — the reason renders
+        // it as "spawn-error" so a crash never masquerades as empty output.
+        status: result.status,
       };
     },
   };
 }
 
+// Declarative specs are data, so a spec cannot carry a filter function;
+// `outputFilter` names one of these instead. The signal filter is the exact
+// parser probeSignal uses, keeping the coarse availability leaf and the deep
+// probe in agreement on what counts as a linked account (#15848).
+const COMMAND_OUTPUT_FILTERS = {
+  "signal-accounts": parseSignalAccountLines,
+};
+
+// A command that failed to run is a distinct skip state from one that ran and
+// printed nothing; surfacing exit code + first stderr line keeps the
+// dashboard from misdiagnosing e.g. locked signal-cli account storage as "no
+// linked Signal account".
+function commandRunFailureReason(spec, result) {
+  const stderrLine =
+    typeof result.stderr === "string"
+      ? (result.stderr.trim().split(/\r?\n/)[0] ?? "").slice(0, 160)
+      : "";
+  return `${spec.command} ${spec.args.join(" ")} failed (status=${
+    result.status ?? "spawn-error"
+  })${stderrLine ? `: ${stderrLine}` : ""}`;
+}
+
 /**
  * Evaluate a declarative availability spec to { available, reason }. Leaf
- * failures surface their spec's reason; any-of joins all branch reasons,
- * all-of reports the first failing requirement. Unknown spec types throw —
- * a malformed registry entry is a bug, not a skip.
+ * failures surface their spec's reason — except a command that fails to run
+ * under command-output-nonempty, which reports the run failure (exit code +
+ * stderr snippet) so a crash is never labeled with the empty-output reason.
+ * any-of joins all branch reasons, all-of reports the first failing
+ * requirement. Unknown spec types and unknown outputFilter names throw — a
+ * malformed registry entry is a bug, not a skip.
  */
 export function checkAvailability(spec, ctx = defaultAvailabilityCtx()) {
   const ok = { available: true, reason: null };
@@ -927,10 +960,25 @@ export function checkAvailability(spec, ctx = defaultAvailabilityCtx()) {
               spec.reason ?? `${spec.command} ${spec.args.join(" ")} failed`,
           };
     case "command-output-nonempty": {
+      const filter =
+        spec.outputFilter === undefined
+          ? null
+          : COMMAND_OUTPUT_FILTERS[spec.outputFilter];
+      if (spec.outputFilter !== undefined && !filter) {
+        throw new Error(
+          `Unknown command-output filter: ${JSON.stringify(spec.outputFilter)}`,
+        );
+      }
       const result = ctx.runCommand(spec.command, spec.args);
-      return result.ok &&
-        typeof result.stdout === "string" &&
-        result.stdout.trim().length > 0
+      if (!result.ok) {
+        return {
+          available: false,
+          reason: commandRunFailureReason(spec, result),
+        };
+      }
+      const stdout = typeof result.stdout === "string" ? result.stdout : "";
+      const meaningful = filter ? filter(stdout).join("\n") : stdout;
+      return meaningful.trim().length > 0
         ? ok
         : {
             available: false,
@@ -1039,6 +1087,12 @@ function validateAvailabilitySpec(spec, id, problems) {
   }
   if (spec.type === "never" && !spec.reason) {
     problems.push(`${id}: never spec must carry a reason`);
+  }
+  if (
+    spec.outputFilter !== undefined &&
+    !Object.hasOwn(COMMAND_OUTPUT_FILTERS, spec.outputFilter)
+  ) {
+    problems.push(`${id}: unknown command-output filter ${spec.outputFilter}`);
   }
 }
 

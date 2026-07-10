@@ -27,7 +27,7 @@
  * bug stays visible without wedging CI while a NEW pixel-broken render fails it.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { OVERLAY_NATIVE_OR_CANVAS_SLUGS } from "../test/ui-smoke/aesthetic-audit-rules";
 import {
   evaluateOcrContent,
@@ -181,6 +181,63 @@ function viewportOf(path: string): string {
   return basename(dirname(path));
 }
 
+function recordMatchesShotPath(
+  auditDir: string,
+  recordPath: string,
+  shotPath: string,
+): boolean {
+  const expected = resolve(shotPath);
+  if (resolve(recordPath) === expected) return true;
+  return !isAbsolute(recordPath) && resolve(auditDir, recordPath) === expected;
+}
+
+/**
+ * Bind imported OCR evidence one-to-one to the screenshots authorized by the
+ * current report. Filtering an over-broad NDJSON file would make a combined or
+ * stale evidence bundle look healthy after the bad records disappeared, so
+ * every missing, duplicate, unexpected, or path-mismatched record fails.
+ */
+export function validateImportedOcrRecords(
+  auditDir: string,
+  sourcePath: string,
+  shots: AuthorizedShot[],
+  records: OcrRecord[],
+): OcrRecord[] {
+  const expected = new Map(shots.map((shot) => [shot.key, shot]));
+  const byKey = new Map<string, OcrRecord>();
+
+  for (const record of records) {
+    const key = `${slugOf(record.path)}::${viewportOf(record.path)}`;
+    if (byKey.has(key)) {
+      throw new Error(
+        `[ocr-triage] duplicate OCR record ${key} in ${sourcePath} — each report row must have exactly one record.`,
+      );
+    }
+    const shot = expected.get(key);
+    if (!shot) {
+      throw new Error(
+        `[ocr-triage] unexpected OCR record ${key} in ${sourcePath} — imported OCR must exactly match the current report.`,
+      );
+    }
+    if (!recordMatchesShotPath(auditDir, record.path, shot.path)) {
+      throw new Error(
+        `[ocr-triage] OCR record ${key} points to ${record.path}, expected ${shot.path}.`,
+      );
+    }
+    byKey.set(key, record);
+  }
+
+  return shots.map((shot) => {
+    const record = byKey.get(shot.key);
+    if (!record) {
+      throw new Error(
+        `[ocr-triage] report row ${shot.key} has no OCR record in ${sourcePath} — the OCR input is out of sync with report.json.`,
+      );
+    }
+    return record;
+  });
+}
+
 export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   const args = parseArgs(argv);
   const auditDir = args["audit-dir"] ?? "aesthetic-audit-output";
@@ -209,25 +266,11 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
 
   let ocr: OcrRecord[];
   if (args.ocr) {
-    // A precomputed OCR ndjson (CI / deterministic tests) is still filtered to
-    // the report: index its records by slug::viewport, then select exactly one
-    // per report row. A row with no matching record means the OCR input is out
-    // of sync with the report — fail loudly instead of skipping the view.
-    const byKey = new Map<string, OcrRecord>();
-    for (const line of readFileSync(args.ocr, "utf8").split("\n")) {
-      if (!line.trim()) continue;
-      const rec = JSON.parse(line) as OcrRecord;
-      byKey.set(`${slugOf(rec.path)}::${viewportOf(rec.path)}`, rec);
-    }
-    ocr = shots.map((s) => {
-      const rec = byKey.get(s.key);
-      if (!rec) {
-        throw new Error(
-          `[ocr-triage] report row ${s.key} has no OCR record in ${args.ocr} — the OCR input is out of sync with report.json.`,
-        );
-      }
-      return rec;
-    });
+    const records = readFileSync(args.ocr, "utf8")
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as OcrRecord);
+    ocr = validateImportedOcrRecords(auditDir, args.ocr, shots, records);
   } else {
     ocr = await runPackagedOcr(shots.map((s) => s.path));
   }
