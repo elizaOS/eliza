@@ -253,19 +253,29 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         );
       }
       const transcript = whisperRecord.text.trim();
-      const { segments, words, dropped } =
+      const { segments, words, invalidFields } =
         parseWhisperTimestamps(whisperRecord);
-      if (dropped > 0) {
-        logger.warn(
-          `[Voice STT API] Dropped ${dropped} malformed timestamp entries from Whisper verbose_json`,
+      if (invalidFields.length > 0) {
+        logger.error("[Voice STT API] Whisper returned malformed timestamps", {
+          invalidFields,
+          model: whisperModel,
+        });
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
         );
       }
       const whisperDuration = Date.now() - whisperStart;
       // "timestamps absent" (plain-text response shape) and "zero timed spans"
       // are different states — log them distinguishably.
-      logger.info(
-        `[Voice STT API] Whisper (${whisperModel}) completed in ${whisperDuration}ms (free): "${transcript.substring(0, 100)}" (segments ${segments ? segments.length : "absent"}, words ${words ? words.length : "absent"})`,
-      );
+      logger.info("[Voice STT API] Whisper completed", {
+        billing: "free",
+        durationMs: whisperDuration,
+        model: whisperModel,
+        segmentCount: segments?.length,
+        transcriptLength: transcript.length,
+        wordCount: words?.length,
+      });
       return Response.json({
         transcript,
         duration_ms: whisperDuration,

@@ -1,7 +1,7 @@
 /**
  * Unit coverage for the Whisper verbose_json timestamp parser (#14806). Pure
- * function — proves seconds→ms conversion, the per-entry J3 validation (drop,
- * never coerce), and that a plain `{text}` payload yields no timestamp keys —
+ * function — proves seconds→ms conversion, fail-closed J3 validation, and that
+ * a plain `{text}` payload yields no timestamp keys —
  * without booting the route's billing/service graph. The live round-trip
  * against the hosted faster-whisper belongs to voice-kokoro-whisper-live.
  */
@@ -32,17 +32,17 @@ describe("parseWhisperTimestamps (#14806)", () => {
       { text: "there", startMs: 700, endMs: 1280 },
       { text: "world", startMs: 1500, endMs: 2000 },
     ]);
-    expect(parsed.dropped).toBe(0);
+    expect(parsed.invalidFields).toEqual([]);
   });
 
   it("yields no timestamp keys for a plain {text} payload (server ignored the format)", () => {
     const parsed = parseWhisperTimestamps({ text: "hello" });
     expect("segments" in parsed).toBe(false);
     expect("words" in parsed).toBe(false);
-    expect(parsed.dropped).toBe(0);
+    expect(parsed.invalidFields).toEqual([]);
   });
 
-  it("drops malformed entries instead of coercing them (J3)", () => {
+  it("marks a whole field invalid instead of returning a partial span set (J3)", () => {
     const parsed = parseWhisperTimestamps({
       segments: [
         { text: "ok", start: 0, end: 1 },
@@ -55,9 +55,9 @@ describe("parseWhisperTimestamps (#14806)", () => {
       ],
       words: [{ word: "fine", start: 0.1, end: 0.2 }, { word: "no-times" }],
     });
-    expect(parsed.segments).toEqual([{ text: "ok", startMs: 0, endMs: 1000 }]);
-    expect(parsed.words).toEqual([{ text: "fine", startMs: 100, endMs: 200 }]);
-    expect(parsed.dropped).toBe(7);
+    expect(parsed.invalidFields).toEqual(["segments", "words"]);
+    expect("segments" in parsed).toBe(false);
+    expect("words" in parsed).toBe(false);
   });
 
   it("omits a key entirely when every entry in that array is malformed", () => {
@@ -68,7 +68,16 @@ describe("parseWhisperTimestamps (#14806)", () => {
     });
     expect("segments" in parsed).toBe(false);
     expect("words" in parsed).toBe(false);
-    expect(parsed.dropped).toBe(1);
+    expect(parsed.invalidFields).toEqual(["segments"]);
+  });
+
+  it("marks a present non-array timestamp field invalid", () => {
+    const parsed = parseWhisperTimestamps({
+      text: "x",
+      segments: { text: "not-an-array", start: 0, end: 1 },
+    });
+    expect(parsed.invalidFields).toEqual(["segments"]);
+    expect("segments" in parsed).toBe(false);
   });
 
   it("accepts a zero-length span (start === end) as valid", () => {
@@ -76,6 +85,6 @@ describe("parseWhisperTimestamps (#14806)", () => {
       words: [{ word: "uh", start: 1.0, end: 1.0 }],
     });
     expect(parsed.words).toEqual([{ text: "uh", startMs: 1000, endMs: 1000 }]);
-    expect(parsed.dropped).toBe(0);
+    expect(parsed.invalidFields).toEqual([]);
   });
 });

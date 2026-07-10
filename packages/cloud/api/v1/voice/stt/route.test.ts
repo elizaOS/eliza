@@ -370,6 +370,21 @@ describe("POST /api/v1/voice/stt — whisper lane (#14806)", () => {
     expect("words" in body).toBe(false);
   });
 
+  test("a partially malformed timestamp field fails closed instead of returning incomplete anchors", async () => {
+    upstreamReply = () =>
+      Response.json({
+        text: "PII appears in the missing span",
+        words: [
+          { word: "PII", start: 0, end: 0.2 },
+          { word: "missing", start: 0.3, end: "invalid" },
+        ],
+      });
+    const res = await app.request(sttRequest(), undefined, whisperEnv);
+
+    expect(res.status).toBe(502);
+    expect(await readJson(res)).toEqual({ error: "Speech-to-text failed" });
+  });
+
   test("a 200 with a non-object JSON body is a structured 502, not an empty transcript", async () => {
     upstreamReply = () => Response.json("not an object");
     const res = await app.request(sttRequest(), undefined, whisperEnv);

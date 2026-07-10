@@ -12,10 +12,11 @@
  * structured 502 — this parser only ever receives that validated record and
  * extracts the OPTIONAL timestamp arrays from it. Each entry is validated
  * structurally — non-empty text, finite non-negative start/end, end >= start.
- * Malformed entries are DROPPED and counted in `dropped` (the route logs it),
- * never coerced into fake-valid spans. Absent/empty timestamp arrays yield
- * ABSENT keys in the DTO — "no timestamps" is signaled by omission, never by
- * fabricated zeros.
+ * A present malformed array is reported explicitly through `invalidFields`;
+ * the route rejects that provider response instead of returning a valid-looking
+ * subset that could leave gaps in downstream audio redaction. Absent/empty
+ * timestamp arrays yield absent DTO keys because providers may ignore the
+ * optional timestamp request.
  */
 
 /** One timed span in ms-from-audio-start (`text` is a word or segment body). */
@@ -30,8 +31,8 @@ export interface WhisperTimestamps {
   segments?: SttTimedSpan[];
   /** Word-level spans, present only when at least one valid entry parsed. */
   words?: SttTimedSpan[];
-  /** Count of malformed entries rejected across both arrays. */
-  dropped: number;
+  /** Present provider fields that cannot be represented without data loss. */
+  invalidFields: Array<"segments" | "words">;
 }
 
 function toSpan(
@@ -64,14 +65,14 @@ function toSpan(
 export function parseWhisperTimestamps(
   record: Record<string, unknown>,
 ): WhisperTimestamps {
-  let dropped = 0;
-
   const parseArray = (
     value: unknown,
     textKey: "text" | "word",
-  ): SttTimedSpan[] => {
-    if (!Array.isArray(value)) return [];
+  ): { spans: SttTimedSpan[]; invalid: boolean } => {
+    if (value === undefined) return { spans: [], invalid: false };
+    if (!Array.isArray(value)) return { spans: [], invalid: true };
     const spans: SttTimedSpan[] = [];
+    let invalid = false;
     for (const entry of value) {
       const row =
         entry && typeof entry === "object"
@@ -81,18 +82,23 @@ export function parseWhisperTimestamps(
       if (span) {
         spans.push(span);
       } else {
-        dropped++;
+        invalid = true;
       }
     }
-    return spans;
+    return { spans, invalid };
   };
 
   const segments = parseArray(record.segments, "text");
   const words = parseArray(record.words, "word");
+  const invalidFields: Array<"segments" | "words"> = [];
+  if (segments.invalid) invalidFields.push("segments");
+  if (words.invalid) invalidFields.push("words");
 
   return {
-    ...(segments.length > 0 ? { segments } : {}),
-    ...(words.length > 0 ? { words } : {}),
-    dropped,
+    ...(!segments.invalid && segments.spans.length > 0
+      ? { segments: segments.spans }
+      : {}),
+    ...(!words.invalid && words.spans.length > 0 ? { words: words.spans } : {}),
+    invalidFields,
   };
 }
