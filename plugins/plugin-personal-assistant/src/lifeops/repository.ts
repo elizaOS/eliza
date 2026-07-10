@@ -3907,9 +3907,9 @@ export class LifeOpsRepository {
 
     // Mirror into the canonical telemetry store. Dedupes on
     // (agent_id, dedupe_key) so re-persists and migrator replays are safe.
-    // Failures here must not block signal persistence, but they are counted
-    // and logged (first + every 100th) so broken mirrors surface in
-    // observability.
+    // Failures here must not block signal persistence, but they are counted,
+    // logged, and reported to the agent (first + every 100th) so broken
+    // mirrors surface in observability.
     try {
       const telemetry = buildTelemetryEventFromSignal(
         signal,
@@ -3922,6 +3922,13 @@ export class LifeOpsRepository {
       }
       LifeOpsRepository.telemetryMirrorFailures.delete(signal.agentId);
     } catch (error) {
+      // error-policy:J7 diagnostics-must-not-kill-the-loop — the telemetry
+      // mirror is a derived copy of the signal row that already committed
+      // above, so a mirror failure must not undo or re-error the primary
+      // insert. It must still surface observably: reportError (throttled with
+      // the warn to the first and every 100th consecutive failure, because
+      // passive signals arrive at sampling frequency) puts the typed failure
+      // in front of the agent and drives owner escalation when systemic.
       const nextCount =
         (LifeOpsRepository.telemetryMirrorFailures.get(signal.agentId) ?? 0) +
         1;
@@ -3936,6 +3943,22 @@ export class LifeOpsRepository {
             error: error instanceof Error ? error.message : String(error),
           },
           "[lifeops] Telemetry mirror failed for activity signal.",
+        );
+        this.runtime.reportError(
+          "lifeops.repository",
+          new ElizaError(
+            "Activity-signal telemetry mirror failed; the signal row committed without a telemetry copy",
+            {
+              code: "LIFEOPS_ACTIVITY_TELEMETRY_MIRROR_FAILED",
+              context: {
+                agentId: signal.agentId,
+                source: signal.source,
+                platform: signal.platform,
+                consecutiveFailures: nextCount,
+              },
+              cause: error,
+            },
+          ),
         );
       }
     }
