@@ -740,10 +740,6 @@ export class DiscordService extends Service implements IDiscordService {
 				const transformedGuildOnlyCommands = guildOnlyCommands.map((cmd) =>
 					transformCommandToDiscordApi(cmd),
 				);
-				const transformedAllGeneralCommands = [
-					...transformedGlobalCommands,
-					...transformedGuildOnlyCommands,
-				];
 
 				const clientApp = client.application;
 				if (!clientApp) {
@@ -764,13 +760,19 @@ export class DiscordService extends Service implements IDiscordService {
 					);
 				}
 
+				// Per-guild registration pushes ONLY the guild-only commands. The
+				// global commands were already registered globally above; a guild
+				// also carrying them made Discord merge the global + guild scopes
+				// and show every command TWICE in the slash menu. Pushing the
+				// guild-only set (often empty) here also CLEARS any stale
+				// guild-scoped duplicates a previous build registered.
 				const guilds = client.guilds.cache;
-				if (guilds && transformedAllGeneralCommands.length > 0) {
+				if (guilds) {
 					await Promise.all(
 						[...guilds].map(async ([guildId, guild]) => {
 							try {
 								await clientApp.commands.set(
-									transformedAllGeneralCommands,
+									transformedGuildOnlyCommands,
 									guildId,
 								);
 							} catch (err) {
