@@ -301,6 +301,42 @@ describe("interrupt priority projection", () => {
     expect(navigateDeepLink).not.toHaveBeenCalled();
   });
 
+  it("does not fan a stack from the synthetic click after a vertical touch drag", () => {
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "urgent",
+        source: "calendar",
+        title: "Calendar alert",
+      }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        priority: "normal",
+        source: "calendar",
+        title: "Calendar summary",
+      }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(list, {
+      touches: [{ clientX: 10, clientY: 10 }],
+    });
+    fireEvent.touchMove(list, {
+      touches: [{ clientX: 12, clientY: 75 }],
+    });
+    fireEvent.touchEnd(list, { touches: [] });
+    fireEvent.click(screen.getByTestId("notification-row"));
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
+    expect(__getStateForTests().notifications).toHaveLength(2);
+
+    fireEvent.click(screen.getByTestId("notification-row"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
+  });
+
   it("keeps 50 priority producer stacks visible while folding their quiet siblings", () => {
     for (let i = 0; i < 50; i += 1) {
       const source = `plugin-${i}`;

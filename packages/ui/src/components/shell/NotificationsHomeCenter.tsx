@@ -785,6 +785,11 @@ export function NotificationsHomeCenter({
     // first scrolled the list up to its top doesn't arrive already maxed.
     anchorY: number | null;
   } | null>(null);
+  // A touch drag can end in `pointercancel` before the row sees enough pointer
+  // movement to suppress the browser's synthetic click. The list owns the
+  // vertical shade gesture, so it also blocks that one immediate follow-up
+  // click; the next intentional tap remains available.
+  const suppressNotificationClickUntil = useRef(0);
   // Wheel accumulation toward a shade commit: one direction at a time; a
   // direction flip abandons the previous run.
   const wheelPull = useRef<{ dir: 1 | -1; px: number }>({ dir: 1, px: 0 });
@@ -1050,6 +1055,9 @@ export function NotificationsHomeCenter({
         collapseAnchorY = null;
         closeFromBottomEdge = false;
         return;
+      }
+      if (Math.abs(dy) > PULL_SLOP_PX && Math.abs(dy) >= Math.abs(dx)) {
+        suppressNotificationClickUntil.current = Date.now() + 500;
       }
       if (closeFromBottomEdge && dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
         // Claim the bottom-edge close from its first vertical pixel so the
@@ -1433,6 +1441,12 @@ export function NotificationsHomeCenter({
     pointerPull.current = null;
     commitPull();
   };
+  const onListClickCapture = (e: React.MouseEvent) => {
+    if (Date.now() >= suppressNotificationClickUntil.current) return;
+    suppressNotificationClickUntil.current = 0;
+    e.preventDefault();
+    e.stopPropagation();
+  };
   return (
     <section
       ref={centerRef}
@@ -1464,6 +1478,7 @@ export function NotificationsHomeCenter({
         onPointerMove={onListPointerMove}
         onPointerUp={onListPointerEnd}
         onPointerCancel={onListPointerEnd}
+        onClickCapture={onListClickCapture}
         onWheel={onListWheel}
         data-testid="home-notification-list"
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
