@@ -438,6 +438,105 @@ describe("createVoiceCapture", () => {
     expect(onTranscript).not.toHaveBeenCalled();
   });
 
+  it("explicit eliza-cloud ASR wins over an available native TalkMode recognizer", async () => {
+    // A device can expose a TalkMode plugin whose platform recognizer is absent
+    // or broken (the Light Phone III routes SpeechRecognizer back into the
+    // app's own RecognitionService — an infinite hand-off loop). When the
+    // resolved config EXPLICITLY selects cloud STT, the factory must honor it
+    // instead of silently preferring the native recognizer.
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const wav = new Uint8Array([5, 6, 7]);
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(wav),
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const onTranscript = vi.fn();
+    const capture = createVoiceCapture({
+      asrProvider: "eliza-cloud",
+      onTranscript,
+    });
+
+    await capture.start();
+    // The WAV recorder is the capture engine; the native recognizer never starts.
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+    expect(talkMode.start).not.toHaveBeenCalled();
+
+    await capture.stop();
+    expect(transcribeCloudWavMock).toHaveBeenCalledWith(wav);
+    expect(onTranscript).toHaveBeenCalledWith(
+      expect.objectContaining({ backend: "cloud", text: "Grace Hopper" }),
+    );
+  });
+
+  it("explicit openai ASR also wins over an available native TalkMode recognizer", async () => {
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(new Uint8Array([8])),
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const onTranscript = vi.fn();
+    const capture = createVoiceCapture({ asrProvider: "openai", onTranscript });
+
+    await capture.start();
+    expect(talkMode.start).not.toHaveBeenCalled();
+
+    await capture.stop();
+    expect(onTranscript).toHaveBeenCalledWith(
+      expect.objectContaining({ backend: "cloud" }),
+    );
+  });
+
+  it("explicit cloud ASR degrades to native TalkMode when WAV capture is unsupported", async () => {
+    // Without getUserMedia/AudioContext there is no WAV to POST, so the cloud
+    // preference is unfulfillable — the working native recognizer is the honest
+    // remaining STT path, not a dead browser recognizer.
+    isNativePlatformMock.mockReturnValue(true);
+    isLocalAsrCaptureSupportedMock.mockReturnValue(false);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const onTranscript = vi.fn();
+    const capture = createVoiceCapture({
+      asrProvider: "eliza-cloud",
+      onTranscript,
+    });
+
+    await capture.start();
+    expect(talkMode.start).toHaveBeenCalledTimes(1);
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+
+    talkMode.emit("transcript", { transcript: "native path", isFinal: true });
+    expect(onTranscript).toHaveBeenLastCalledWith({
+      text: "native path",
+      final: true,
+      backend: "talkmode",
+    });
+  });
+
+  it("browser preference is a passthrough even when native TalkMode is available", async () => {
+    // `asrProvider: "browser"` is the caller's forced test/dev escape hatch —
+    // it must short-circuit every probe, including the native recognizer.
+    // jsdom has no SpeechRecognition, so start() rejects; the point is that
+    // neither TalkMode nor the WAV recorder was consulted.
+    isNativePlatformMock.mockReturnValue(true);
+    const talkMode = makeFakeTalkMode();
+    getTalkModePluginMock.mockReturnValue(talkMode as never);
+    const capture = createVoiceCapture({
+      asrProvider: "browser",
+      onTranscript: vi.fn(),
+    });
+
+    await expect(capture.start()).rejects.toThrow(/SpeechRecognition/);
+    expect(talkMode.start).not.toHaveBeenCalled();
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+    expect(isLocalInferenceAsrReadyMock).not.toHaveBeenCalled();
+  });
+
   it("falls back to browser ONLY when WAV capture is unsupported for eliza-cloud", async () => {
     // No getUserMedia/AudioContext → no WAV path exists, so the honest fallback
     // is the browser recognizer. jsdom has no SpeechRecognition, so start()
