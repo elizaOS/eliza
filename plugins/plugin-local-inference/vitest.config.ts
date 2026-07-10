@@ -14,11 +14,9 @@ export default defineConfig({
 			"@elizaos/core": fileURLToPath(
 				new URL("../../packages/core/src/index.node.ts", import.meta.url),
 			),
-			// Core's src re-exports the cloud routing surface from
-			// `@elizaos/cloud-routing`, which ships no dist. With @elizaos/core
-			// pinned to source above, that re-export only resolves when
-			// cloud-routing is source-aliased too — otherwise vite falls through
-			// to its missing `dist/index.js` and fails to resolve the entry.
+			// Core's source entry re-exports the cloud-routing package. A clean
+			// workspace has not built that package's dist entry yet, so source-mode
+			// tests must keep this transitive dependency on the source graph too.
 			"@elizaos/cloud-routing": fileURLToPath(
 				new URL("../../packages/cloud/routing/src/index.ts", import.meta.url),
 			),
