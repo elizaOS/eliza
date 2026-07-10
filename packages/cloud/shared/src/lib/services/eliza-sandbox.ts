@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import { isIP } from "node:net";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
 import {
@@ -170,6 +171,66 @@ export class AgentQuotaExceededError extends Error {
     this.name = "AgentQuotaExceededError";
     this.count = count;
     this.max = max;
+  }
+}
+
+/**
+ * Canonical value builder for a fresh `agent_sandboxes` insert. Every create
+ * path — the sandbox service's own create/coding-container methods and the
+ * tier-upgrade target mint (#15943) — MUST assemble its insert through this
+ * function so config sanitization, character ownership, tier→status derivation,
+ * and column defaults cannot drift between paths. `environmentVars` is expected
+ * storage-ready (already passed through `encryptAgentEnvVarsForStorage`).
+ */
+export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAgentSandbox {
+  const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
+  const agentConfig = params.characterId
+    ? withReusedElizaCharacterOwnership(sanitizedConfig)
+    : sanitizedConfig;
+
+  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
+  const status = executionTier === "shared" ? "running" : "pending";
+
+  return {
+    organization_id: params.organizationId,
+    user_id: params.userId,
+    agent_name: params.agentName,
+    agent_config: agentConfig,
+    environment_vars: params.environmentVars ?? {},
+    status,
+    execution_tier: executionTier,
+    database_status: "none",
+    ...(params.characterId && { character_id: params.characterId }),
+    ...(params.dockerImage && { docker_image: params.dockerImage }),
+  };
+}
+
+/**
+ * Enforce `maxNonTerminalAgents` for an org: count its quota-holding
+ * ({@link QUOTA_COUNTED_STATUSES}), non-pool sandboxes and throw
+ * {@link AgentQuotaExceededError} at/past the cap. MUST run inside a
+ * transaction that already holds an org-serializing advisory lock (the
+ * agent-create lock, or the tier-upgrade lock for a fixed source agent) so
+ * the count→insert is atomic — two concurrent creates can't both read
+ * `count = max-1` and both insert.
+ */
+export async function assertOrgAgentQuota(
+  tx: DbTransaction,
+  organizationId: string,
+  cap: number,
+): Promise<void> {
+  const [{ count } = { count: 0 }] = await tx
+    .select({ count: sql<number>`count(*)::int` })
+    .from(agentSandboxes)
+    .where(
+      and(
+        eq(agentSandboxes.organization_id, organizationId),
+        sql`${agentSandboxes.pool_status} IS NULL`,
+        inArray(agentSandboxes.status, QUOTA_COUNTED_STATUSES),
+      ),
+    );
+  if (count >= cap) {
+    throw new AgentQuotaExceededError(count, cap);
   }
 }
 
@@ -935,57 +996,6 @@ export class ElizaSandboxService {
 
   // Agent CRUD
 
-  private buildAgentInsertData(params: CreateAgentParams): NewAgentSandbox {
-    const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
-    const agentConfig = params.characterId
-      ? withReusedElizaCharacterOwnership(sanitizedConfig)
-      : sanitizedConfig;
-
-    const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
-    const status = executionTier === "shared" ? "running" : "pending";
-
-    return {
-      organization_id: params.organizationId,
-      user_id: params.userId,
-      agent_name: params.agentName,
-      agent_config: agentConfig,
-      environment_vars: params.environmentVars ?? {},
-      status,
-      execution_tier: executionTier,
-      database_status: "none",
-      ...(params.characterId && { character_id: params.characterId }),
-      ...(params.dockerImage && { docker_image: params.dockerImage }),
-    };
-  }
-
-  /**
-   * Enforce `maxNonTerminalAgents` for an org: count its quota-holding
-   * ({@link QUOTA_COUNTED_STATUSES}), non-pool sandboxes and throw
-   * {@link AgentQuotaExceededError} at/past the cap. MUST run inside a
-   * transaction that already holds the org's agent-create advisory lock so
-   * the count→insert is atomic — two concurrent creates can't both read
-   * `count = max-1` and both insert.
-   */
-  private async assertOrgAgentQuota(
-    tx: LifecycleTx,
-    organizationId: string,
-    cap: number,
-  ): Promise<void> {
-    const [{ count } = { count: 0 }] = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(agentSandboxes)
-      .where(
-        and(
-          eq(agentSandboxes.organization_id, organizationId),
-          sql`${agentSandboxes.pool_status} IS NULL`,
-          inArray(agentSandboxes.status, QUOTA_COUNTED_STATUSES),
-        ),
-      );
-    if (count >= cap) {
-      throw new AgentQuotaExceededError(count, cap);
-    }
-  }
-
   async createAgent(params: CreateAgentParams): Promise<{
     agent: AgentSandbox;
     idempotent: boolean;
@@ -1020,7 +1030,9 @@ export class ElizaSandboxService {
     if (!params.reuseExistingNonTerminal) {
       // Uncapped fast path for trusted internal multi-agent callers.
       if (params.maxNonTerminalAgents === undefined) {
-        const created = await agentSandboxesRepository.create(this.buildAgentInsertData(params));
+        const created = await agentSandboxesRepository.create(
+          buildAgentSandboxInsertValues(params),
+        );
         return { agent: created, idempotent: false };
       }
 
@@ -1031,11 +1043,11 @@ export class ElizaSandboxService {
       const cap = params.maxNonTerminalAgents;
       return dbWrite.transaction(async (tx) => {
         await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
-        await this.assertOrgAgentQuota(tx, params.organizationId, cap);
+        await assertOrgAgentQuota(tx, params.organizationId, cap);
 
         const [created] = await tx
           .insert(agentSandboxes)
-          .values(this.buildAgentInsertData(params))
+          .values(buildAgentSandboxInsertValues(params))
           .returning();
         if (!created) throw new Error("Failed to create agent record");
         return { agent: created, idempotent: false };
@@ -1075,12 +1087,12 @@ export class ElizaSandboxService {
       // (#11023 residual). Enforce the same per-org ceiling, still under the
       // org advisory lock.
       if (params.maxNonTerminalAgents !== undefined) {
-        await this.assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
+        await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
       }
 
       const [created] = await tx
         .insert(agentSandboxes)
-        .values(this.buildAgentInsertData(params))
+        .values(buildAgentSandboxInsertValues(params))
         .returning();
       if (!created) throw new Error("Failed to create agent record");
       return { agent: created, idempotent: false };
@@ -1149,7 +1161,7 @@ export class ElizaSandboxService {
       // the org lock so the count→insert is atomic against concurrent creates.
       // Trusted internal callers pass no cap and stay uncapped.
       if (createParams.maxNonTerminalAgents !== undefined) {
-        await this.assertOrgAgentQuota(
+        await assertOrgAgentQuota(
           tx,
           createParams.organizationId,
           createParams.maxNonTerminalAgents,
@@ -1158,7 +1170,7 @@ export class ElizaSandboxService {
 
       const [created] = await tx
         .insert(agentSandboxes)
-        .values(this.buildAgentInsertData(createParams))
+        .values(buildAgentSandboxInsertValues(createParams))
         .returning();
       if (!created) throw new Error("Failed to create coding-container agent record");
       return { agent: created, idempotent: false };
@@ -1720,7 +1732,7 @@ export class ElizaSandboxService {
         //
         // Non-docker providers (local-docker, memory) have no node concept and
         // are unaffected. This does NOT touch the shared-tier insert path
-        // (buildAgentInsertData), which is running-with-null-node BY DESIGN.
+        // (buildAgentSandboxInsertValues), which is running-with-null-node BY DESIGN.
         if (isDockerBackedMetadata(handle.metadata) && !dockerMeta?.nodeId) {
           logger.warn(
             "[agent-sandbox] Refusing to flip running: docker-backed handle has no durable node_id",
