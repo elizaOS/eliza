@@ -15,7 +15,8 @@
  * Two shade modes:
  *
  *  - RESTED is triage: interrupt-tier (`high`/`urgent`) producer stacks remain
- *    visible above the passive total while quieter notifications stay folded.
+ *    visible above the passive total while quieter notifications stay folded
+ *    behind the same producer's visible stack depth.
  *  - EXPANDED shows every priority and preserves each producer stack until the
  *    user fans that group out in place; the list is height-capped and scrolls
  *    internally.
@@ -241,6 +242,16 @@ const NOTIF_SCROLL_CSS = `
    drag/settle, then restore refraction when the pager reaches rest. */
 [data-rail-gesture-active] .eliza-notif-glass {
   background-color: rgb(22 22 25 / 88%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* A collapsed stack is a set of physical cards, not translucent glass panes.
+   Keep its front card and peeks solid through every shade/pager material
+   override so the wallpaper and adjacent rows cannot show through. */
+.eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass,
+.eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek {
+  background-color: rgb(28 28 30);
+  background-image: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
@@ -1178,15 +1189,12 @@ export function NotificationsHomeCenter({
     previewGroups,
     restedGroupKeys,
     restedGroups,
-    restedGroupsByKey,
-    restedNotificationIds,
   } = useMemo(() => {
     const capped = orderDashboardNotifications(notifications).slice(
       0,
       MAX_RENDERED_ROWS,
     );
     const expanded = groupDashboardNotifications(capped);
-    const restedNotifications = capped.filter(isInterruptPriority);
     const rested = expanded.flatMap((group) => {
       const rows = group.rows.filter(isInterruptPriority);
       return rows.length > 0 ? [{ ...group, rows }] : [];
@@ -1215,10 +1223,6 @@ export function NotificationsHomeCenter({
       previewGroups: preview,
       restedGroupKeys: new Set(rested.map((group) => group.key)),
       restedGroups: rested,
-      restedGroupsByKey: restedByKey,
-      restedNotificationIds: new Set(
-        restedNotifications.map((notification) => notification.id),
-      ),
     };
   }, [notifications]);
 
@@ -1480,11 +1484,17 @@ export function NotificationsHomeCenter({
           // Every presentation shares one shell, so the top NotificationRow
           // stays under the same parent/key while a fanned stack closes.
           const fanned = stackExpanded && group.rows.length > 1;
-          const stacked = !fanned && group.rows.length > 1;
-          const restedGroupRows = restedGroupsByKey.get(group.key)?.rows ?? [];
-          // Resting priority peeks remain mounted invisibly behind a fan so
-          // full cards can fold back into them without a last-frame pop.
-          const peeks = (fanned ? restedGroupRows : group.rows).slice(
+          // A rested priority card keeps the visual depth of every folded
+          // sibling from the same producer, including quiet rows. The content
+          // remains priority-only; the peeks communicate that tapping fans a
+          // real stack instead of opening a lone notification.
+          const restedStackRows = groupWasRested ? allGroupRows : [];
+          const collapsedStackRows =
+            !shadeExpanded && groupWasRested ? restedStackRows : group.rows;
+          const stacked = !fanned && collapsedStackRows.length > 1;
+          // Resting peeks remain mounted invisibly behind a fan so full cards
+          // can fold back into them without a last-frame pop.
+          const peeks = (fanned ? restedStackRows : collapsedStackRows).slice(
             1,
             MAX_VISIBLE_STACK_LAYERS,
           );
@@ -1492,7 +1502,7 @@ export function NotificationsHomeCenter({
             peeks.length * STACK_PEEK_OFFSET_PX +
             (peeks.length > 0 ? STACK_BOTTOM_CLEARANCE_PX : 0);
           const restedPeekCount = Math.min(
-            Math.max((restedGroupRows.length || 1) - 1, 0),
+            Math.max(restedStackRows.length - 1, 0),
             MAX_VISIBLE_STACK_LAYERS - 1,
           );
           const restedStackTailPx =
@@ -1665,24 +1675,16 @@ export function NotificationsHomeCenter({
                   ))}
                 </motion.ul>
                 {peeks.map((peek, i) => {
-                  const peekPullRevealed =
-                    previewingExpansion &&
-                    groupWasRested &&
-                    !restedNotificationIds.has(peek.id);
                   const peekMode = fanned
                     ? "close"
-                    : groupWasRested &&
-                        ((shadeExpanded &&
-                          !restedNotificationIds.has(peek.id)) ||
-                          peekPullRevealed)
-                      ? "disposable"
-                      : "static";
+                    : groupWasRested
+                      ? "static"
+                      : "disposable";
                   const peekCloseVisibility = fanned
                     ? shadeCloseProgress
                     : peekMode === "disposable"
                       ? pullContentVisibility
                       : 1;
-                  const peekBaseOpacity = 0.92 - i * 0.14;
                   return (
                     <button
                       key={peek.id}
@@ -1694,29 +1696,19 @@ export function NotificationsHomeCenter({
                       }
                       data-notif-control=""
                       data-notification-stack-peek=""
-                      data-notification-pull-reveal={
-                        peekPullRevealed ? "" : undefined
-                      }
                       data-notification-peek-mode={peekMode}
-                      data-notification-peek-base-opacity={peekBaseOpacity}
-                      tabIndex={
-                        peekPullRevealed || peekCloseVisibility < 1
-                          ? -1
-                          : undefined
-                      }
+                      tabIndex={peekCloseVisibility < 1 ? -1 : undefined}
                       aria-hidden={peekCloseVisibility === 0 ? true : undefined}
                       aria-label={`Show all ${allGroupRows.length} ${group.label} notifications`}
                       onClick={() => expandStack(group.key)}
                       className={cn(
-                        "eliza-notif-glass eliza-notif-shade-transition absolute inset-x-0 top-0 rounded-2xl",
+                        "eliza-notif-glass eliza-notif-stack-peek eliza-notif-shade-transition absolute inset-x-0 top-0 rounded-2xl",
                         fanned && "pointer-events-none",
-                        peekPullRevealed &&
-                          "eliza-notif-pull-reveal pointer-events-none",
                       )}
                       style={{
                         bottom: fanned ? restedStackTailPx : stackTailPx,
                         zIndex: 1 - i,
-                        opacity: peekBaseOpacity * peekCloseVisibility,
+                        opacity: peekCloseVisibility,
                         transform: `translateY(${(i + 1) * STACK_PEEK_OFFSET_PX}px) scale(${
                           1 - (i + 1) * 0.015
                         })`,
