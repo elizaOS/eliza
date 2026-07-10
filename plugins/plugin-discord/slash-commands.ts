@@ -131,9 +131,34 @@ const helpCommand: SlashCommand = {
 	name: "help",
 	description: "Show available commands and usage information",
 	ephemeral: true,
-	async execute(interaction) {
+	async execute(interaction, runtime) {
+		// List ONLY the commands Discord has actually accepted (global ∪ this
+		// guild's scope), read from DiscordService's LOCAL post-sync snapshot —
+		// no Discord API call from /help (no added latency or rate-limit
+		// exposure). The in-process registry also holds "catalog" commands that
+		// are filtered out of the Discord push; listing those made /help
+		// advertise commands a user cannot pick from the slash menu. When no
+		// successful sync has happened yet (snapshot is null), return an explicit
+		// retryable unavailable state instead of a stale or fabricated list.
+		const service = runtime?.getService?.("discord") as
+			| { getSyncedCommandNames?: (g?: string | null) => Set<string> | null }
+			| undefined;
+		const registeredNames = service?.getSyncedCommandNames?.(
+			interaction.guildId,
+		);
+		if (registeredNames === null) {
+			await interaction.reply({
+				content:
+					"Commands are still syncing with Discord — try `/help` again in a moment.",
+				ephemeral: true,
+			});
+			return;
+		}
 		const lines: string[] = ["**Available Commands**\n"];
 		for (const [name, command] of commands) {
+			// undefined snapshot (older service without the accessor) falls back to
+			// the full registry — the pre-existing behavior, never a hard failure.
+			if (registeredNames && !registeredNames.has(name)) continue;
 			const options = command.options
 				? command.options
 						.map((option) =>

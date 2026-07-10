@@ -553,6 +553,33 @@ export class DiscordService extends Service implements IDiscordService {
 	private commandRegistrationQueue: Promise<void> = Promise.resolve();
 	public allowAllSlashCommands: Set<string> = new Set();
 
+	// The command-name sets that Discord ACTUALLY accepted, updated only AFTER a
+	// successful `commands.set()` (global + per guild). `/help` reads this local
+	// snapshot instead of calling Discord's application-command API on every
+	// invocation, so it stays fast, rate-limit-free, and always matches the
+	// slash menu. `null` global means no successful sync has happened yet →
+	// `/help` returns a retryable "still syncing" state rather than a stale or
+	// fabricated list.
+	private syncedGlobalCommandNames: Set<string> | null = null;
+	private readonly syncedGuildCommandNames = new Map<string, Set<string>>();
+
+	/**
+	 * The set of slash-command names Discord has actually accepted for the given
+	 * guild context (global ∪ that guild's scope), or `null` when no successful
+	 * global sync has happened yet. `/help` reads this to list exactly what the
+	 * user can invoke from the slash menu, with zero Discord API calls. A `null`
+	 * return is the retryable "commands still syncing" state.
+	 */
+	public getSyncedCommandNames(guildId?: string | null): Set<string> | null {
+		if (this.syncedGlobalCommandNames === null) return null;
+		const names = new Set(this.syncedGlobalCommandNames);
+		if (guildId) {
+			for (const name of this.syncedGuildCommandNames.get(guildId) ?? [])
+				names.add(name);
+		}
+		return names;
+	}
+
 	/**
 	 * Resolves Discord IDs that should alias to the canonical owner entity.
 	 * Discord team members stay separate entities and are registered only as
@@ -752,6 +779,12 @@ export class DiscordService extends Service implements IDiscordService {
 
 				try {
 					await clientApp.commands.set(transformedGlobalCommands);
+					// Snapshot ONLY after Discord accepts the set — /help reads this.
+					this.syncedGlobalCommandNames = new Set(
+						transformedGlobalCommands.map(
+							(cmd) => (cmd as { name: string }).name,
+						),
+					);
 				} catch (err) {
 					this.runtime.logger.error(
 						{
@@ -772,6 +805,15 @@ export class DiscordService extends Service implements IDiscordService {
 								await clientApp.commands.set(
 									transformedAllGeneralCommands,
 									guildId,
+								);
+								// Snapshot this guild's scope only after a successful set.
+								this.syncedGuildCommandNames.set(
+									guildId,
+									new Set(
+										transformedGuildOnlyCommands.map(
+											(cmd) => (cmd as { name: string }).name,
+										),
+									),
 								);
 							} catch (err) {
 								this.runtime.logger.warn(
@@ -812,6 +854,13 @@ export class DiscordService extends Service implements IDiscordService {
 									} else {
 										await fullGuild.commands.create(transformedCmd);
 									}
+									// Add the accepted targeted command to this guild's
+									// snapshot so /help includes it for that guild.
+									const set =
+										this.syncedGuildCommandNames.get(guildId) ??
+										new Set<string>();
+									set.add(cmd.name);
+									this.syncedGuildCommandNames.set(guildId, set);
 								} catch (error) {
 									this.runtime.logger.error(
 										{
