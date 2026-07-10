@@ -173,6 +173,53 @@ describe("HomeScreen", () => {
     expect(hostWrapper?.className).toContain("justify-center");
   });
 
+  it("reveals the empty state from a pull on the quiet home background", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(home, {
+      touches: [{ clientX: 200, clientY: 300 }],
+    });
+    fireEvent.touchMove(home, {
+      touches: [{ clientX: 202, clientY: 440 }],
+    });
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
+    fireEvent.touchEnd(home, { touches: [] });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+
+    fireEvent.touchStart(home, {
+      touches: [{ clientX: 200, clientY: 440 }],
+    });
+    fireEvent.touchMove(home, {
+      touches: [{ clientX: 202, clientY: 300 }],
+    });
+    fireEvent.touchEnd(home, { touches: [] });
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+  });
+
+  it("does not steal an empty-inbox pull that begins on a home control", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
+    const tile = screen.getByTestId("home-tile-camera");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(tile, {
+      touches: [{ clientX: 200, clientY: 300 }],
+    });
+    fireEvent.touchMove(tile, {
+      touches: [{ clientX: 202, clientY: 440 }],
+    });
+    fireEvent.touchEnd(tile, { touches: [] });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+  });
+
   it("tapping an inline row follows its safe deep link directly", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),

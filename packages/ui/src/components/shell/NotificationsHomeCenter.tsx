@@ -50,6 +50,7 @@ import { ChevronDown, X } from "lucide-react";
 import {
   type CSSProperties,
   memo,
+  type RefObject,
   useCallback,
   useEffect,
   useRef,
@@ -659,7 +660,15 @@ NotificationRow.displayName = "NotificationRow";
  * state. Mounted inline on the home column (HomeScreen), directly beneath the
  * time/weather header — the same layer as the widgets.
  */
-export function NotificationsHomeCenter(): React.JSX.Element | null {
+export function NotificationsHomeCenter({
+  emptyGestureTargetRef,
+}: {
+  /**
+   * Larger background surface that may start the pull only while the inbox is
+   * empty. Populated shades continue to own their list gestures directly.
+   */
+  emptyGestureTargetRef?: RefObject<HTMLElement | null>;
+} = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated } = useNotifications();
   // Shade mode: rested (priority triage) vs expanded (all priority tiers).
@@ -783,8 +792,13 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
   const hasNotifications = notifications.length > 0;
   const surfaceReady = hydrated || hasNotifications;
   useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !surfaceReady) return;
+    const list = scrollRef.current;
+    if (!list || !surfaceReady) return;
+    const gestureTarget =
+      !hasNotifications && emptyGestureTargetRef?.current
+        ? emptyGestureTargetRef.current
+        : list;
+    const usesEmptyBackground = gestureTarget !== list;
     let start: { x: number; y: number } | null = null;
     // clientY where the drag first reached the top; the pull is measured from
     // here so a continuous drag that scrolled the list up to its top doesn't
@@ -794,19 +808,36 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     let closeFromBottomEdge = false;
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
+      const target = e.target;
+      if (
+        usesEmptyBackground &&
+        target instanceof Element &&
+        target.closest(
+          "button, a, input, textarea, select, [role='button'], [contenteditable='true']",
+        )
+      ) {
+        start = null;
+        expandAnchorY = null;
+        collapseAnchorY = null;
+        closeFromBottomEdge = false;
+        return;
+      }
       start =
         e.touches.length === 1 && t ? { x: t.clientX, y: t.clientY } : null;
       // Already at the top → anchor at the touch start so the whole drag counts
       // as pull. Started scrolled down → leave null; the move handler anchors at
       // the instant scrollTop first reaches 0 (the top crossing).
-      expandAnchorY = start && el.scrollTop <= 0 ? start.y : null;
+      expandAnchorY = start && gestureTarget.scrollTop <= 0 ? start.y : null;
 
-      const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-      const atBottom = el.scrollTop >= maxScrollTop - 1;
+      const maxScrollTop = Math.max(
+        0,
+        gestureTarget.scrollHeight - gestureTarget.clientHeight,
+      );
+      const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
       const viewportBottom =
         window.visualViewport?.height ?? window.innerHeight;
       const visibleBottom = Math.min(
-        el.getBoundingClientRect().bottom,
+        gestureTarget.getBoundingClientRect().bottom,
         viewportBottom,
       );
       closeFromBottomEdge = Boolean(
@@ -817,7 +848,10 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       collapseAnchorY =
         start &&
         shadeGestureRef.current.canCollapse &&
-        (closeFromBottomEdge || maxScrollTop <= 1 || atBottom)
+        (usesEmptyBackground ||
+          closeFromBottomEdge ||
+          maxScrollTop <= 1 ||
+          atBottom)
           ? start.y
           : null;
     };
@@ -841,11 +875,17 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         // the list end, additional travel becomes an overscroll-to-close. The
         // anchor is rebased at that boundary so the scroll travel itself never
         // counts toward the close threshold.
-        const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
-        const atBottom = el.scrollTop >= maxScrollTop - 1;
+        const maxScrollTop = Math.max(
+          0,
+          gestureTarget.scrollHeight - gestureTarget.clientHeight,
+        );
+        const atBottom = gestureTarget.scrollTop >= maxScrollTop - 1;
         if (
           canCollapse &&
-          (closeFromBottomEdge || maxScrollTop <= 1 || atBottom)
+          (usesEmptyBackground ||
+            closeFromBottomEdge ||
+            maxScrollTop <= 1 ||
+            atBottom)
         ) {
           if (collapseAnchorY === null) collapseAnchorY = t.clientY;
           const push = collapseAnchorY - t.clientY;
@@ -861,7 +901,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         }
         return;
       }
-      if (el.scrollTop <= 0 && canExpand) {
+      if (gestureTarget.scrollTop <= 0 && canExpand) {
         if (expandAnchorY === null) expandAnchorY = t.clientY;
         const pull = t.clientY - expandAnchorY;
         if (pull > PULL_SLOP_PX) {
@@ -896,17 +936,27 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
       closeFromBottomEdge = false;
       setPullPx(0);
     };
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd);
-    el.addEventListener("touchcancel", onTouchCancel);
+    gestureTarget.addEventListener("touchstart", onTouchStart, {
+      passive: true,
+    });
+    gestureTarget.addEventListener("touchmove", onTouchMove, {
+      passive: false,
+    });
+    gestureTarget.addEventListener("touchend", onTouchEnd);
+    gestureTarget.addEventListener("touchcancel", onTouchCancel);
     return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      el.removeEventListener("touchcancel", onTouchCancel);
+      gestureTarget.removeEventListener("touchstart", onTouchStart);
+      gestureTarget.removeEventListener("touchmove", onTouchMove);
+      gestureTarget.removeEventListener("touchend", onTouchEnd);
+      gestureTarget.removeEventListener("touchcancel", onTouchCancel);
     };
-  }, [commitPull, setPullPx, surfaceReady]);
+  }, [
+    commitPull,
+    emptyGestureTargetRef,
+    hasNotifications,
+    setPullPx,
+    surfaceReady,
+  ]);
 
   // Clear the wheel-decay timer on unmount (the only timer that outlives a
   // single gesture).

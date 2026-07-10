@@ -174,6 +174,7 @@ export function HomeScreen({
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
+  const homeScreenRef = useRef<HTMLDivElement>(null);
 
   // When the inbox has notifications it becomes the home's primary content and
   // grows to fill the column down to the chat; the ranked widget host then sits
@@ -185,6 +186,7 @@ export function HomeScreen({
   return (
     <>
       <div
+        ref={homeScreenRef}
         data-testid="home-screen"
         className={cn(
           // `touch-pan-y`: this scroller covers the whole home half, and a
@@ -247,7 +249,7 @@ export function HomeScreen({
             )}
             style={{ animationDelay: "90ms" }}
           >
-            <NotificationsHomeCenter />
+            <NotificationsHomeCenter emptyGestureTargetRef={homeScreenRef} />
           </div>
 
           {/* The prioritized data widgets (#9143). With notifications present
