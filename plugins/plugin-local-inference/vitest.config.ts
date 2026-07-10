@@ -11,6 +11,9 @@ export default defineConfig({
 	resolve: {
 		extensions: [".ts", ".tsx", ".mts", ".js", ".mjs", ".json"],
 		alias: {
+			"@elizaos/cloud-routing": fileURLToPath(
+				new URL("../../packages/cloud/routing/src/index.ts", import.meta.url),
+			),
 			"@elizaos/core": fileURLToPath(
 				new URL("../../packages/core/src/index.node.ts", import.meta.url),
 			),
