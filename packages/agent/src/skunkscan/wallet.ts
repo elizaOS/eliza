@@ -275,6 +275,8 @@ const investigationNarrative =
     executiveVerdict,
     caseSummary,
     trust,
+    decision,
+    evidenceRecords,
   );
         
         return {
