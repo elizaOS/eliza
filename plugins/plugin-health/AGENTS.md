@@ -4,11 +4,11 @@ Health, sleep, circadian-regularity, and screen-time domain plugin for elizaOS.
 
 ## Purpose / role
 
-Provides the health and sleep domain layer for Eliza agents — connector registrations (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity inference engines, screen-time type contracts, wake/bedtime anchor contributions, `ActivitySignalBus` family declarations, and default scheduled-task packs (bedtime, wake-up, sleep-recap). Loaded as `healthPlugin` (package `@elizaos/plugin-health`). Opt-in; consumed by plugins such as `@elizaos/plugin-personal-assistant`. All registry contributions are soft-dependency: if `connectorRegistry`, `anchorRegistry`, `busFamilyRegistry`, or `defaultPackRegistry` are absent on the runtime, the plugin logs a one-line skip and continues without error.
+Provides the health and sleep domain layer for Eliza agents — connector registrations (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity inference engines, screen-time type contracts, owner-telemetry routing, wake/bedtime anchor contributions, `ActivitySignalBus` family declarations, and default scheduled-task packs (bedtime, wake-up, sleep-recap). Loaded as `healthPlugin` (package `@elizaos/plugin-health`). Opt-in; consumed by plugins such as `@elizaos/plugin-personal-assistant`. All registry contributions are soft-dependency: if `connectorRegistry`, `anchorRegistry`, `busFamilyRegistry`, or `defaultPackRegistry` are absent on the runtime, the plugin logs a one-line skip and continues without error.
 
 ## Plugin surface
 
-The plugin object (`healthPlugin`) registers no runtime actions, providers, or evaluators directly. Health owns the reusable action/provider/route/service surfaces (`createOwnerHealthAction`, `createOwnerScreenTimeAction`, `createHealthActionRunner`, `createScreenTimeActionRunner`, `createHealthProvider`, `createHealthSleepRouteHandler`, `createHealthSleepServiceMethods`) so host plugins inject access checks, route context, and storage/service adapters instead of duplicating health metadata. Its `init` function calls four registration helpers:
+The plugin object (`healthPlugin`) registers no runtime actions or providers directly. It registers one response-handler evaluator for explicit owner telemetry reads. Health owns the reusable action/provider/route/service surfaces (`createOwnerHealthAction`, `createOwnerScreenTimeAction`, `createHealthActionRunner`, `createScreenTimeActionRunner`, `createHealthProvider`, `createHealthSleepRouteHandler`, `createHealthSleepServiceMethods`) so host plugins inject access checks, route context, and storage/service adapters instead of duplicating health metadata. Its `init` function calls four registration helpers:
 
 | Registration call | What it contributes |
 |---|---|
@@ -17,7 +17,7 @@ The plugin object (`healthPlugin`) registers no runtime actions, providers, or e
 | `registerHealthBusFamilies(runtime)` | 8 `BusFamilyContribution`s: `health.sleep.detected`, `health.sleep.ended`, `health.wake.observed`, `health.wake.confirmed`, `health.nap.detected`, `health.bedtime.imminent`, `health.regularity.changed`, `health.workout.completed` |
 | `registerHealthDefaultPacks(runtime)` | 3 `DefaultPack`s: `bedtime`, `wake-up`, `sleep-recap` |
 
-`init` also calls `registerCircadianInsightContract(runtime, createDefaultCircadianInsightContract())` to attach the `CircadianInsightContract` seam on the runtime symbol `Symbol.for("@elizaos/plugin-health:circadian-insight-contract")`.
+`init` also calls `registerCircadianInsightContract(runtime, createDefaultCircadianInsightContract())` to attach the `CircadianInsightContract` seam on the runtime symbol `Symbol.for("@elizaos/plugin-health:circadian-insight-contract")`. The `health.owner-telemetry-routing` response-handler evaluator routes explicit first-person sleep, recovery, activity, and wearable reads to a host-registered `OWNER_HEALTH` action; it stays inactive when that action is absent and excludes clinical-advice requests.
 
 ### Key exported constants
 
@@ -42,6 +42,7 @@ src/
   actions/
     index.ts                    Health/screen-time action factories and runner adapters for host plugins
     health.ts                   Health action implementation
+    owner-health-routing.ts     Deterministic Stage-1 routing for owner telemetry reads
     owner-health.ts             Owner health action factory
     owner-screentime.ts         Owner screen-time action factory
     screen-time.ts              Screen-time action implementation

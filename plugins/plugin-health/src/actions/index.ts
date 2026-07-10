@@ -10,6 +10,7 @@
 
 export * from "./health.js";
 export * from "./optimized-prompt-instructions.js";
+export * from "./owner-health-routing.js";
 export * from "./screen-time.js";
 
 export const HEALTH_ACTION_SURFACES_EXTRACTED = true as const;
