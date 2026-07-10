@@ -17,7 +17,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 
-const wakeSchema = z.object({
+// Strict: this body selects between integrity-relevant wake modes, so an
+// unrecognized key (e.g. a typo'd `restoreBackupID`) must be a 400, not a
+// silently-ignored field that turns an explicit restore-point/fresh-boot
+// choice into the default latest-backup wake.
+const wakeSchema = z.strictObject({
   restoreBackupId: z.string().uuid().optional(),
   forceFreshBoot: z.boolean().optional(),
 });
