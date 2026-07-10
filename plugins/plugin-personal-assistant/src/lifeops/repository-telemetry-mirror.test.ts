@@ -4,7 +4,10 @@
  */
 
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsActivitySignal } from "@elizaos/shared";
+import type {
+  LifeOpsActivitySignal,
+  LifeOpsTelemetryPayload,
+} from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __resetSignalSourceRegistryForTests,
@@ -12,7 +15,6 @@ import {
   registerSignalSourceRegistry,
 } from "./registries/signal-source-registry.js";
 import { LifeOpsRepository } from "./repository.js";
-import { registerBuiltinSignalSources } from "./telemetry-mapping.js";
 
 function activitySignal(): LifeOpsActivitySignal {
   return {
@@ -50,7 +52,19 @@ describe("LifeOpsRepository activity telemetry mirror", () => {
       reportError,
     } as unknown as IAgentRuntime;
     const registry = createSignalSourceRegistry();
-    registerBuiltinSignalSources(registry);
+    registry.register({
+      source: "desktop_interaction",
+      description: "Deterministic repository telemetry fixture.",
+      contributor: "test",
+      telemetryMapper: (signal): LifeOpsTelemetryPayload => ({
+        family: "desktop_idle_sample",
+        platform: "macos_desktop",
+        idleSeconds: signal.idleTimeSeconds ?? 0,
+        source: "iokit_hid",
+        isThresholdCrossing: false,
+      }),
+      reliability: () => 1,
+    });
     registerSignalSourceRegistry(runtime, registry);
 
     await expect(
