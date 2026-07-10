@@ -241,6 +241,8 @@ interface CapturedResponse {
  * `ROUTE_HANDLER_PARTIAL_WRITE_FAILURE` error context. The full captured body
  * may be arbitrarily large (a failed streaming route); the context exists for
  * diagnosis, not replay, so only a bounded prefix travels with the error.
+ * The prefix may still contain response payload — J1 boundaries handling this
+ * error must not log the full context verbatim for sensitive routes.
  */
 const PARTIAL_BODY_CONTEXT_LIMIT = 512;
 

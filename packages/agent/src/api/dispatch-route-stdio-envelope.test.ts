@@ -1,6 +1,6 @@
 /**
  * Process-boundary round-trip proof for the IPC response envelope: spawns
- * `__fixtures__/stdio-envelope-child.ts` under a real Bun child process, writes
+ * `__tests__/stdio-envelope-child.ts` under a real Bun child process, writes
  * request frames to its actual stdin, reads `{ok, result}` frames from its
  * actual stdout, and asserts sha256 byte-equality of the binary body across the
  * base64 envelope — plus typed `{ok:false}` failure frames for a partial-write
@@ -8,9 +8,10 @@
  * shape the Android UDS bridge, iOS stdio pipe, and Electrobun local-agent
  * child use, exercised over a true OS pipe rather than an in-process call.
  *
- * Like `server-skip-listen.test.ts`, the subprocess needs the installed
- * workspace module graph; when it cannot boot (sparse checkout) the behavioral
- * cases skip explicitly instead of claiming coverage.
+ * The subprocess needs the installed workspace module graph (resolved from
+ * sources via `--conditions=eliza-source`, no dist required). When it cannot
+ * boot, the behavioral case skips explicitly on a local sparse checkout and
+ * hard-fails in CI so a child-boot regression can never go green.
  */
 
 import { Buffer } from "node:buffer";
@@ -27,9 +28,24 @@ import { describe, expect, it } from "vitest";
 
 const CHILD_PATH = join(
   import.meta.dirname,
-  "__fixtures__",
+  "__tests__",
   "stdio-envelope-child.ts",
 );
+
+/**
+ * Locally a missing bun / unbootable child skips with a warning (sparse
+ * checkout); in CI that same skip would hide a child-boot regression behind a
+ * green run, so it hard-fails there instead.
+ */
+function failOrSkip(reason: string): boolean {
+  if (process.env.CI) {
+    throw new Error(
+      `[stdio-envelope] required process-boundary case cannot run in CI: ${reason}`,
+    );
+  }
+  console.warn(`[stdio-envelope] skipping process-boundary case: ${reason}`);
+  return true;
+}
 
 /** Locate a `bun` executable; the fixture imports the TS module graph. */
 function resolveBunExecutable(): string | null {
@@ -102,9 +118,12 @@ async function runEnvelopeChild(
     { id: 2, path: "/api/envelope/partial" },
     { id: 3, path: "/api/envelope/bad-json" },
   ];
+  // `--conditions=eliza-source` resolves @elizaos/* package entries to their
+  // TS sources (the same condition the coverage gate's bun lane uses), so the
+  // child needs no built dist.
   const child: ChildProcessWithoutNullStreams = spawn(
     bun,
-    [CHILD_PATH, payload.toString("base64")],
+    ["--conditions=eliza-source", CHILD_PATH, payload.toString("base64")],
     { env: { ...process.env, LOG_LEVEL: "error" }, stdio: "pipe" },
   );
 
@@ -170,9 +189,7 @@ describe("IPC byte envelope — real child process over real stdio", () => {
   it("round-trips binary bytes sha256-exact and surfaces typed failures", async () => {
     const bun = resolveBunExecutable();
     if (!bun) {
-      console.warn(
-        "[stdio-envelope] bun executable not found; skipping process-boundary case",
-      );
+      failOrSkip("bun executable not found on this host");
       return;
     }
     // Guaranteed-invalid UTF-8 prefix + RIFF magic + random tail: any UTF-8
@@ -187,10 +204,8 @@ describe("IPC byte envelope — real child process over real stdio", () => {
     const outcome = await runEnvelopeChild(bun, payload);
     if ("bootError" in outcome) {
       // Sparse checkout: the fixture's module graph needs the installed
-      // workspace. Skip explicitly rather than claiming coverage.
-      console.warn(
-        `[stdio-envelope] child unavailable in this environment: ${outcome.bootError}`,
-      );
+      // workspace. Never a silent skip in CI.
+      failOrSkip(`child unavailable in this environment: ${outcome.bootError}`);
       return;
     }
 

@@ -17,6 +17,10 @@
  * stdout carries ONLY protocol frames plus whatever the runtime logger emits;
  * the parent filters to JSON frames keyed by request id, exactly like the
  * production Electrobun dispatcher does on the shared pipe.
+ *
+ * Lives under `__tests__/` (without a `.test.ts` suffix) so the coverage
+ * changed-source classifier treats it as test support while no test collector
+ * tries to run it in-process; spawn it with `bun --conditions=eliza-source`.
  */
 
 import { Buffer } from "node:buffer";
@@ -28,14 +32,18 @@ import {
   type Route,
   type RouteResponse,
 } from "@elizaos/core";
+// Package-entry imports (not relative paths into the sibling package): the
+// agent build's boundary guard forbids relative escapes, and the spawn runs
+// with `--conditions=eliza-source` so these resolve to the plugin's TS sources
+// without requiring a built dist.
 import {
   type AndroidRequestPayload,
   dispatchBufferedRequest,
-} from "../../../../../plugins/plugin-capacitor-bridge/src/android/dispatch.ts";
+} from "@elizaos/plugin-capacitor-bridge/android/dispatch";
 import {
   createStdioBridge,
   type StdioBridgeRequestFrame,
-} from "../../../../../plugins/plugin-capacitor-bridge/src/shared/stdio-bridge.ts";
+} from "@elizaos/plugin-capacitor-bridge/shared/stdio-bridge";
 import { dispatchRoute } from "../dispatch-route.ts";
 
 interface ShimResponse extends RouteResponse {
