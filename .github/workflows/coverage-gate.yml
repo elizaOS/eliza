@@ -93,6 +93,12 @@ jobs:
           # different path, surface it here.
           BUN_COVERAGE_DIR: coverage/bun
 
+      - name: Build core for changed Vitest tests
+        if: steps.changed.outputs.vitest_tests != ''
+        # Vitest package configs may exercise source graphs that still depend on
+        # the standard built core/logger/contracts/cloud-routing entrypoints.
+        run: bun run --cwd packages/core build
+
       - name: Run changed Vitest tests with coverage
         if: steps.changed.outputs.vitest_tests != ''
         run: |
