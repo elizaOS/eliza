@@ -24,9 +24,10 @@ test("builds the blocker engine imported by personal-assistant scenarios", () =>
   );
 });
 
-test("builds the wallet diagnostics imported by the agent server", () => {
+test("runs every live scenario root against workspace source exports", () => {
   const workflow = readFileSync(workflowPath, "utf8");
-  expect(workflow).toMatch(
-    /package_dirs=\([\s\S]*plugins\/plugin-wallet[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
-  );
+  const sourceConditionEntries = [
+    ...workflow.matchAll(/NODE_OPTIONS: "--conditions=eliza-source"/g),
+  ];
+  expect(sourceConditionEntries).toHaveLength(3);
 });

@@ -200,7 +200,6 @@ jobs:
             plugins/plugin-agent-skills
             plugins/plugin-health
             plugins/plugin-pdf
-            plugins/plugin-wallet
             plugins/plugin-telegram
             plugins/plugin-whatsapp
             plugins/plugin-signal
@@ -219,6 +218,10 @@ jobs:
       - name: Run EA + connector live scenarios
         id: run
         env:
+          # The scenario runner executes workspace TypeScript directly. Keep
+          # transitive workspace imports on source exports; the build step above
+          # remains responsible only for generated and native artifacts.
+          NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -281,6 +284,7 @@ jobs:
       - name: Run plugin-health live scenarios
         id: run-health
         env:
+          NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -307,6 +311,7 @@ jobs:
         id: run-app-control
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
+          NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
