@@ -3,10 +3,21 @@
  * the process database singleton so real Postgres tests can inject an isolated DB.
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import type { dbWrite } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
+
+/**
+ * Statuses under which an `app-<slug>` container name is backing a LIVE app: a
+ * deploy that is pending/building/deploying or actively `running`. A stuck
+ * `deleting` row (or a terminal stopped/failed/deleted row) is deliberately NOT
+ * here — teardown owns a `deleting` row and a terminal one is already gone.
+ * Used to guard rm-by-shared-name (#15826): the deterministic name is reused
+ * across every deploy, so a legacy id-less delete must never `docker rm -f` a
+ * name a later redeploy has re-pointed at a live container.
+ */
+const LIVE_APP_CONTAINER_STATUSES = ["pending", "building", "deploying", "running"] as const;
 
 export interface ProjectableContainerRow {
   id: string;
@@ -59,6 +70,30 @@ export function findDeletingAppContainerRows(
     .select(appContainerSelection)
     .from(containers)
     .where(and(eq(containers.organization_id, organizationId), eq(containers.status, "deleting")));
+}
+
+/**
+ * Ids of LIVE containers (see {@link LIVE_APP_CONTAINER_STATUSES}) that share a
+ * container name with, but are not, the row being deleted. A non-empty result
+ * means a later deploy re-pointed the deterministic `app-<slug>` name at a live
+ * container, so removing that name would kill a running app (#15826).
+ */
+export async function findLiveAppContainerIdsSharingName(
+  database: AppContainerReadDatabase,
+  containerName: string,
+  excludeContainerId: string,
+): Promise<string[]> {
+  const rows = await database
+    .select({ id: containers.id })
+    .from(containers)
+    .where(
+      and(
+        eq(containers.name, containerName),
+        ne(containers.id, excludeContainerId),
+        inArray(containers.status, [...LIVE_APP_CONTAINER_STATUSES]),
+      ),
+    );
+  return rows.map((row) => row.id);
 }
 
 /** Atomically attributes a container to a node and reserves one available slot. */

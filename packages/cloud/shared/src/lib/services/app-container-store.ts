@@ -15,6 +15,7 @@ import {
   claimAppContainerNodeSlot,
   findAppContainerRowById,
   findDeletingAppContainerRows,
+  findLiveAppContainerIdsSharingName,
   type ProjectableContainerRow,
   rollbackAppContainerNodeSlotClaim,
 } from "./app-container-store-queries";
@@ -56,6 +57,10 @@ export interface ContainerRepoAppContainerStoreDeps {
 export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): AppContainerRow {
   const metaAppId =
     typeof row.metadata?.appId === "string" ? (row.metadata.appId as string) : undefined;
+  const hostContainerId =
+    typeof row.metadata?.hostContainerId === "string"
+      ? (row.metadata.hostContainerId as string)
+      : undefined;
   return {
     id: row.id,
     // project_name is set to the appId by the deploy orchestrator's
@@ -68,6 +73,10 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
     userId: row.user_id,
     environmentVars: row.environment_vars ?? undefined,
     nodeId: row.node_id ?? undefined,
+    // Immutable Docker id of the container this row provisioned (metadata sink;
+    // the 2AM schema has no host columns). Lets delete target the exact
+    // container by id instead of the shared `app-<slug>` name (#15826).
+    hostContainerId,
   };
 }
 
@@ -110,6 +119,21 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     // real deleting row into a terminal no-op.
     const rows = await findDeletingAppContainerRows(this.deps.writeDatabase, organizationId);
     return rows.map(mapContainerRowToAppContainerRow);
+  }
+
+  async findLiveContainerIdsSharingName(
+    containerName: string,
+    excludeContainerId: string,
+  ): Promise<string[]> {
+    // Reads from the primary, not a replica: this gates a destructive rm, so
+    // replica lag that hid a freshly-`running` redeploy would let the delete
+    // kill a live container (#15826). The safe failure direction is "a live row
+    // exists" — primary reads guarantee it.
+    return findLiveAppContainerIdsSharingName(
+      this.deps.writeDatabase,
+      containerName,
+      excludeContainerId,
+    );
   }
 
   async claimNodeSlot(

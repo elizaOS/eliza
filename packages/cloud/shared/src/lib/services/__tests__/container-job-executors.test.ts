@@ -21,7 +21,7 @@ const ROW: AppContainerRow = {
   environmentVars: { DATABASE_URL: "postgresql://app_x:pw@cluster1/db_app_x" },
 };
 
-function fakeStore(row: AppContainerRow | null = ROW) {
+function fakeStore(row: AppContainerRow | null = ROW, liveSharesByName: string[] = []) {
   const events: Array<{ op: string; id: string; info?: unknown }> = [];
   const slotEvents: Array<{ op: "claim" | "rollback"; nodeId: string }> = [];
   const store: AppContainerStore = {
@@ -30,6 +30,9 @@ function fakeStore(row: AppContainerRow | null = ROW) {
     },
     async findDeletingByOrganization() {
       return row ? [row] : [];
+    },
+    async findLiveContainerIdsSharingName() {
+      return liveSharesByName;
     },
     async claimNodeSlot(_id, _organizationId, nodeId) {
       slotEvents.push({ op: "claim", nodeId });
@@ -383,6 +386,39 @@ describe("executeContainerDelete / restart / logs", () => {
     });
 
     expect(calls.find((call) => call.op === "delete")?.arg).toBe("app-nubilio");
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("recovery must NOT rm a live container that shares the stuck row's name (#15826)", async () => {
+    // A legacy id-less `deleting` row whose deterministic `app-<slug>` name a
+    // later redeploy re-pointed at a live `running` container. Recovering the
+    // legacy org-only job must reconcile the stuck row WITHOUT killing that live
+    // container — the org-wide-outage hazard this issue reports.
+    const stuckRow: AppContainerRow = { ...ROW, id: "stuck-old", hostContainerId: undefined };
+    const { events, store } = fakeStore(stuckRow, ["live-new"]);
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), { provider, store });
+
+    // The live container sharing the name was NOT removed...
+    expect(calls.find((call) => call.op === "delete")).toBeUndefined();
+    // ...yet the stuck row still completes its terminal DB transition.
+    expect(events).toEqual([{ op: "deleted", id: "stuck-old" }]);
+  });
+
+  test("delete removes by the immutable host id, never the shared name (#15826)", async () => {
+    // With a host id present, delete targets that exact container — a redeploy's
+    // replacement (same name, different id) can never be hit.
+    const rowWithId: AppContainerRow = { ...ROW, hostContainerId: "docker-immutable-9f" };
+    const { events, store } = fakeStore(rowWithId);
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ containerId: "container-1", organizationId: "org-1" }), {
+      provider,
+      store,
+    });
+
+    expect(calls.find((call) => call.op === "delete")?.arg).toBe("docker-immutable-9f");
     expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
   });
 

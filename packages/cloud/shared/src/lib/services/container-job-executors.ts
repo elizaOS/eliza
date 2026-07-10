@@ -37,12 +37,28 @@ export interface AppContainerRow {
   /** Caller env incl. the app's per-tenant DATABASE_URL (never the shared one). */
   environmentVars?: Record<string, string>;
   nodeId?: string;
+  /**
+   * Immutable Docker id of the container this row provisioned. Present once the
+   * row reached `running`; undefined for rows that never got that far (the
+   * id-less legacy delete payloads). Delete prefers this over the shared
+   * `app-<slug>` name so it can never remove a redeploy's live container (#15826).
+   */
+  hostContainerId?: string;
 }
 
 /** Read/write seam for app container state (over the `containers` table). */
 export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
   findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]>;
+  /**
+   * Ids of LIVE containers sharing `containerName` other than `excludeContainerId`
+   * — a non-empty result means a later deploy re-pointed the shared name at a
+   * running app, so removing by that name would kill it (#15826).
+   */
+  findLiveContainerIdsSharingName(
+    containerName: string,
+    excludeContainerId: string,
+  ): Promise<string[]>;
   claimNodeSlot(containerId: string, organizationId: string, nodeId: string): Promise<boolean>;
   rollbackNodeSlotClaim(
     containerId: string,
@@ -237,6 +253,67 @@ export async function executeContainerProvision(
   }
 }
 
+/**
+ * `docker rm -f <target>`, treating an already-absent container as success — a
+ * peer teardown may have removed it, and the terminal DB transition must still
+ * complete.
+ */
+async function removeIgnoringAbsent(
+  deps: ContainerExecutorDeps,
+  target: string,
+  row: AppContainerRow,
+): Promise<void> {
+  try {
+    await deps.provider.delete(target);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/no such container/i.test(message)) throw error;
+    // error-policy:J6 another teardown worker already removed the target; the terminal DB transition still must complete.
+    logger.info("[ContainerExecutor] container already absent during delete", {
+      containerId: row.id,
+      containerName: row.containerName,
+    });
+  }
+}
+
+/**
+ * Remove the container backing a delete target WITHOUT risking a live app.
+ *
+ * The deterministic `app-<slug>` name is shared by every deploy of an app
+ * (`containers.name` has no unique constraint), and a stuck `deleting` row
+ * survives later redeploys — so by the time its delete is retried, that name can
+ * point at the app's CURRENT live container (#15826). Two safeguards:
+ *   1. Prefer the immutable Docker id (`hostContainerId`): it names the exact
+ *      container this row provisioned, so a redeploy's replacement (same name,
+ *      new id) can never be hit, and an already-gone old container is a no-op.
+ *   2. Id-less legacy rows fall back to rm-by-name — but only when no LIVE row
+ *      shares the name. If one does, a redeploy re-pointed it: skip the rm and
+ *      let the terminal DB transition + orphan reconciler settle the row instead
+ *      of killing a running app.
+ */
+async function removeContainerForDelete(
+  deps: ContainerExecutorDeps,
+  containerId: string,
+  row: AppContainerRow,
+): Promise<void> {
+  if (row.hostContainerId) {
+    await removeIgnoringAbsent(deps, row.hostContainerId, row);
+    return;
+  }
+  const liveShares = await deps.store.findLiveContainerIdsSharingName(
+    row.containerName,
+    containerId,
+  );
+  if (liveShares.length > 0) {
+    logger.warn(
+      "[ContainerExecutor] skipping rm-by-name: a live container shares this app name — a redeploy re-pointed it; reconciling the row without killing the live app (#15826)",
+      { containerId, containerName: row.containerName, liveContainerIds: liveShares },
+    );
+    return;
+  }
+  await removeIgnoringAbsent(deps, row.containerName, row);
+}
+
 export async function executeContainerDelete(
   job: JobLike,
   deps: ContainerExecutorDeps,
@@ -277,17 +354,7 @@ export async function executeContainerDelete(
 
   for (const { id, organizationId, row } of targets) {
     if (row) {
-      try {
-        await deps.provider.delete(row.containerName);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!/no such container/i.test(message)) throw error;
-        // error-policy:J6 another teardown worker already removed the target; the terminal DB transition still must complete.
-        logger.info("[ContainerExecutor] container already absent during delete", {
-          containerId: id,
-          containerName: row.containerName,
-        });
-      }
+      await removeContainerForDelete(deps, id, row);
     }
     // Remove the ingress route (best-effort; a reconciler sweeps any orphan).
     const endpoint = deriveAppPublicUrl(id);
