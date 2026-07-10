@@ -40,6 +40,7 @@ import { organizations } from "../../db/schemas/organizations";
 import { usageRecords } from "../../db/schemas/usage-records";
 import { userCharacters } from "../../db/schemas/user-characters";
 import { users } from "../../db/schemas/users";
+import { JOB_TYPES } from "./provisioning-job-types";
 import { provisioningJobService } from "./provisioning-jobs";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -287,5 +288,234 @@ describe("enqueueScheduledBackups — enqueue behavior", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+});
+
+/**
+ * Enqueue side of the same service, driven against the real PGlite so the
+ * shared `enqueueLifecycleJob` transaction (advisory lock, sandbox read,
+ * in-flight idempotency, row insert) and every per-type wrapper's job-data
+ * shaping actually run. The scheduled-backup scan above only exercises the
+ * snapshot enqueue; these cover the lifecycle enqueue surface the route layer
+ * calls into, so a regression in the job-data record shape or the reuse
+ * predicate is a red test rather than a silent bad row on the queue.
+ */
+describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
+  async function seedAgent(): Promise<{ agentId: string; orgId: string; userId: string }> {
+    const { orgId, userId } = await seedOwner();
+    const [sandbox] = await dbWrite
+      .insert(agentSandboxes)
+      .values({
+        organization_id: orgId,
+        user_id: userId,
+        agent_name: uniq("agent"),
+        status: "running" as never,
+        bridge_url: REACHABLE_BRIDGE,
+      })
+      .returning();
+    return { agentId: sandbox.id, orgId, userId };
+  }
+
+  async function jobsOfType(
+    agentId: string,
+    type: string,
+  ): Promise<Array<Record<string, unknown>>> {
+    return (await dbWrite
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.agent_id, agentId), eq(jobs.type, type as never)))) as Array<
+      Record<string, unknown>
+    >;
+  }
+
+  test("provision enqueues a single pending agent_provision job and reuses it on a second call", async () => {
+    const { agentId, orgId, userId } = await seedAgent();
+    const first = await provisioningJobService.enqueueAgentProvisionOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      agentName: "prov-agent",
+    });
+    expect(first.created).toBe(true);
+    expect(first.job.type).toBe(JOB_TYPES.AGENT_PROVISION);
+    expect(first.job.status).toBe("pending");
+
+    // Second enqueue while the first is still pending reuses it (idempotent
+    // enqueueLifecycleJob) rather than queuing a duplicate provision.
+    const second = await provisioningJobService.enqueueAgentProvisionOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      agentName: "prov-agent",
+    });
+    expect(second.created).toBe(false);
+    expect(second.job.id).toBe(first.job.id);
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_PROVISION)).toHaveLength(1);
+  });
+
+  test("the enqueueAgentProvision convenience wrapper returns the queued job", async () => {
+    const { agentId, orgId, userId } = await seedAgent();
+    const job = await provisioningJobService.enqueueAgentProvision({
+      agentId,
+      organizationId: orgId,
+      userId,
+      agentName: "prov-agent",
+    });
+    expect(job.type).toBe(JOB_TYPES.AGENT_PROVISION);
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_PROVISION)).toHaveLength(1);
+  });
+
+  test("suspend/resume/sleep/restart each enqueue their own pending job", async () => {
+    const cases: Array<{
+      type: string;
+      call: (a: { agentId: string; organizationId: string; userId: string }) => Promise<unknown>;
+    }> = [
+      {
+        type: JOB_TYPES.AGENT_SUSPEND,
+        call: (p) => provisioningJobService.enqueueAgentSuspendOnce(p),
+      },
+      {
+        type: JOB_TYPES.AGENT_RESUME,
+        call: (p) => provisioningJobService.enqueueAgentResumeOnce(p),
+      },
+      { type: JOB_TYPES.AGENT_SLEEP, call: (p) => provisioningJobService.enqueueAgentSleepOnce(p) },
+      {
+        type: JOB_TYPES.AGENT_RESTART,
+        call: (p) => provisioningJobService.enqueueAgentRestartOnce(p),
+      },
+    ];
+    for (const c of cases) {
+      const { agentId, orgId, userId } = await seedAgent();
+      const res = (await c.call({ agentId, organizationId: orgId, userId })) as {
+        created: boolean;
+        job: { type: string };
+      };
+      expect(res.created).toBe(true);
+      expect(res.job.type).toBe(c.type);
+      expect(await jobsOfType(agentId, c.type)).toHaveLength(1);
+    }
+  });
+
+  test("wake echoes the applied restore params and records them on the job data", async () => {
+    const { agentId, orgId, userId } = await seedAgent();
+    const res = await provisioningJobService.enqueueAgentWakeOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      restoreBackupId: "backup-xyz",
+      forceFreshBoot: false,
+    });
+    expect(res.created).toBe(true);
+    expect(res.job.type).toBe(JOB_TYPES.AGENT_WAKE);
+    expect(res.appliedRestoreBackupId).toBe("backup-xyz");
+    expect(res.appliedForceFreshBoot).toBe(false);
+    expect((res.job.data as { restoreBackupId?: string }).restoreBackupId).toBe("backup-xyz");
+  });
+
+  test("upgrade and downgrade carry their image/digest job data", async () => {
+    const { agentId, orgId, userId } = await seedAgent();
+    const up = await provisioningJobService.enqueueAgentUpgradeOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      dockerImage: "eliza/agent",
+      fromDigest: "sha256:old",
+      toDigest: "sha256:new",
+    });
+    expect(up.created).toBe(true);
+    expect((up.job.data as { toDigest?: string }).toDigest).toBe("sha256:new");
+
+    const down = await provisioningJobService.enqueueAgentDowngradeOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      dockerImage: "eliza/agent",
+      fromDigest: "sha256:new",
+    });
+    expect(down.created).toBe(true);
+    expect(down.job.type).toBe(JOB_TYPES.AGENT_DOWNGRADE);
+    expect((down.job.data as { fromDigest?: string }).fromDigest).toBe("sha256:new");
+  });
+
+  test("logs enqueues with the requested tail and dedupes on the tail predicate", async () => {
+    const { agentId, orgId, userId } = await seedAgent();
+    const first = await provisioningJobService.enqueueAgentLogsOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      tail: 250,
+    });
+    expect(first.created).toBe(true);
+    expect((first.job.data as { tail?: number }).tail).toBe(250);
+    // Same tail while in-flight → reuse.
+    const same = await provisioningJobService.enqueueAgentLogsOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+      tail: 250,
+    });
+    expect(same.created).toBe(false);
+    expect(same.job.id).toBe(first.job.id);
+  });
+
+  test("each message turn is a fresh job (nonce idempotency never reuses)", async () => {
+    const { agentId, orgId, userId } = await seedAgent();
+    const a = await provisioningJobService.enqueueAgentMessage({
+      agentId,
+      organizationId: orgId,
+      userId,
+      text: "hello",
+    });
+    const b = await provisioningJobService.enqueueAgentMessage({
+      agentId,
+      organizationId: orgId,
+      userId,
+      text: "hello again",
+    });
+    expect(a.created).toBe(true);
+    expect(b.created).toBe(true);
+    expect(a.job.id).not.toBe(b.job.id);
+    expect(await jobsOfType(agentId, JOB_TYPES.AGENT_MESSAGE)).toHaveLength(2);
+  });
+
+  test("delete flips the sandbox to deletion_pending and cancels other in-flight jobs", async () => {
+    const { agentId, orgId, userId } = await seedAgent();
+    // A queued suspend that the delete must supersede.
+    await provisioningJobService.enqueueAgentSuspendOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+    });
+
+    const del = await provisioningJobService.enqueueAgentDeleteOnce({
+      agentId,
+      organizationId: orgId,
+      userId,
+    });
+    expect(del.created).toBe(true);
+    expect(del.job.type).toBe(JOB_TYPES.AGENT_DELETE);
+
+    const [sandbox] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, agentId));
+    expect(sandbox?.status).toBe("deletion_pending");
+
+    // The superseded suspend is cancelled (delete wins), the delete itself is not.
+    const suspendRows = await jobsOfType(agentId, JOB_TYPES.AGENT_SUSPEND);
+    expect(suspendRows[0]?.status).toBe("cancelled");
+    const deleteRows = await jobsOfType(agentId, JOB_TYPES.AGENT_DELETE);
+    expect(deleteRows[0]?.status).toBe("pending");
+  });
+
+  test("enqueue against a missing agent throws Agent not found", async () => {
+    const { orgId, userId } = await seedOwner();
+    await expect(
+      provisioningJobService.enqueueAgentSuspendOnce({
+        agentId: "00000000-0000-4000-8000-000000000000",
+        organizationId: orgId,
+        userId,
+      }),
+    ).rejects.toThrow("Agent not found");
   });
 });
