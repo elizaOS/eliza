@@ -262,6 +262,23 @@ describe("ElizaClient direct Cloud auth on native", () => {
         }),
       ],
     });
+    if (!result.success) throw new Error("Expected the agent list to load");
+    const selected = await client.selectOrProvisionCloudAgent({
+      cloudApiBase: "https://api.elizacloud.ai/api/v1",
+      authToken: "cloud-api-key",
+      name: "My Agent",
+      knownAgents: result.data,
+      preferSharedTier: true,
+      preferStewardAgentAdapter: true,
+    });
+    expect(selected).toEqual(
+      expect.objectContaining({
+        agentId: "agent-1",
+        apiBase: "https://agent-1.example.test",
+        created: false,
+      }),
+    );
+    expect(capacitorMocks.request).toHaveBeenCalledTimes(1);
     expectNoLocalPersistOrStatusProbe();
   });
 

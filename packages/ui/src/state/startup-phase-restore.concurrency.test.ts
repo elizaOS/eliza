@@ -187,6 +187,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
       kind: "cloud",
       label: "Eliza Cloud",
       apiBase: sharedApiBase,
+      accessToken: "paired-token",
     };
 
     const dedicatedClient = { setBaseUrl: vi.fn(), setToken: vi.fn() };
@@ -197,6 +198,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     expect(dedicatedClient.setBaseUrl).toHaveBeenCalledWith(
       "https://shared-agent.elizacloud.ai",
     );
+    expect(dedicatedClient.setToken).toHaveBeenCalledWith("paired-token");
 
     setBootConfig({ ...DEFAULT_BOOT_CONFIG, preferSharedCloudTier: true });
     const sharedClient = { setBaseUrl: vi.fn(), setToken: vi.fn() };
@@ -205,6 +207,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
       clientRef: sharedClient,
     });
     expect(sharedClient.setBaseUrl).toHaveBeenCalledWith(sharedApiBase);
+    expect(sharedClient.setToken).toHaveBeenCalledWith("paired-token");
   });
 });
 
