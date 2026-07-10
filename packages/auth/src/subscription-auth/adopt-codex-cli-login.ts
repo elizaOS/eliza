@@ -64,7 +64,7 @@ function adoptError(
 ): ElizaError {
   return new ElizaError(message, {
     code,
-    severity: "error",
+    severity: "fatal",
     ...(context ? { context } : {}),
     ...(cause !== undefined ? { cause } : {}),
   });
