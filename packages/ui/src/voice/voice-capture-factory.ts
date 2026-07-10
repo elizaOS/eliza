@@ -188,13 +188,17 @@ async function resolveBackendKind(
   if (preferred === "browser") {
     return "browser";
   }
-  // An EXPLICIT cloud ASR preference wins over the native recognizer. The caller
-  // deliberately selected the cloud transcriber (e.g. a device whose platform
-  // speech-recognition service is absent or broken — the Light Phone III has no
-  // usable recognizer and routes SpeechRecognizer back into the app's own
-  // RecognitionService, an infinite hand-off loop), so honor it whenever WAV
-  // capture primitives exist rather than silently using the platform recognizer.
-  // A `local-inference`/undefined preference still prefers native talk-mode below.
+  // Eliza-cloud / OpenAI ASR: capture the same WAV as the local path and POST
+  // it to the cloud STT proxy (`/api/asr/cloud`) — the real transcriber for the
+  // documented web/cloud `eliza-cloud` default (the browser recognizer is
+  // engine-dependent, or absent, and is NOT the cloud path). An EXPLICIT cloud
+  // preference wins over the native recognizer: the caller deliberately selected
+  // the cloud transcriber (e.g. a device whose platform speech-recognition
+  // service is absent or broken — the Light Phone III has no usable recognizer
+  // and routes SpeechRecognizer back into the app's own RecognitionService, an
+  // infinite hand-off loop), so honor it whenever WAV capture primitives exist
+  // rather than silently using the platform recognizer. A `local-inference`/
+  // undefined preference still prefers native talk-mode below.
   if (
     (preferred === "eliza-cloud" || preferred === "openai") &&
     isLocalAsrCaptureSupported()
@@ -219,16 +223,6 @@ async function resolveBackendKind(
     (await isLocalInferenceAsrReady())
   ) {
     return "local-inference";
-  }
-  // Eliza-cloud / OpenAI ASR: capture the same WAV as the local path and POST
-  // it to the cloud STT proxy (`/api/asr/cloud`). This is the real transcriber
-  // for the documented web/cloud `eliza-cloud` default — the browser recognizer
-  // is engine-dependent (or absent) and is NOT the cloud path.
-  if (
-    (preferred === "eliza-cloud" || preferred === "openai") &&
-    isLocalAsrCaptureSupported()
-  ) {
-    return "cloud";
   }
   // Browser SpeechRecognition is the fallback ONLY where no WAV path exists —
   // a renderer without `getUserMedia`/`AudioContext` can't record a WAV to POST,
