@@ -1,3 +1,4 @@
+/// <reference path="./web-bluetooth.d.ts" />
 /**
  * WebBluetoothPendantTransport — the `navigator.bluetooth` implementation of
  * {@link PendantTransport}.

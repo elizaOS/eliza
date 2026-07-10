@@ -118,8 +118,16 @@ export function classifyPendantConnectionError(
   ) {
     return createPendantError("permission-denied");
   }
-  const detail = chain.findLast(
-    (cause): cause is Error => cause instanceof Error,
-  )?.message;
+  // Deepest Error in the chain carries the most specific message. Manual
+  // reverse scan instead of Array#findLast: consumer packages type-check these
+  // sources under lib targets older than es2023.
+  let detail: string | undefined;
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const cause = chain[i];
+    if (cause instanceof Error) {
+      detail = cause.message;
+      break;
+    }
+  }
   return createPendantError("connection", detail);
 }
