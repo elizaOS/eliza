@@ -533,7 +533,7 @@ export function useChatVoiceController(options: {
     companionBootstrapAutoSpeakRef.current = null;
   }, [voiceUnlockedGeneration]);
 
-  const beginVoiceCapture = useCallback(
+  const beginBatchVoiceCapture = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (isComposerLocked || voice.isListening) return;
       const latestAssistant = findLatestAssistantMessage(conversationMessages);
@@ -554,7 +554,7 @@ export function useChatVoiceController(options: {
     ],
   );
 
-  const endVoiceCapture = useCallback(
+  const endBatchVoiceCapture = useCallback(
     (captureOptions?: { submit?: boolean }) => {
       if (!voice.isListening) return;
       void stopListening(captureOptions);
@@ -825,6 +825,12 @@ export function useChatVoiceController(options: {
     speaker: voiceSpeaker,
   });
 
+  const realtimeWanted =
+    continuousMode !== "off" &&
+    !isComposerLocked &&
+    realtime.available &&
+    !realtime.error;
+
   // The batch continuous-chat engine. While the realtime WS session is the
   // active mic, the batch passive capture must NOT also run (double mic / double
   // STT). We `disabled` the batch hook whenever realtime is active OR the
@@ -835,7 +841,7 @@ export function useChatVoiceController(options: {
   const continuous = useContinuousChat({
     voice,
     mode: continuousMode,
-    disabled: isComposerLocked || realtime.active,
+    disabled: isComposerLocked || realtime.active || realtimeWanted,
     latency: continuousChatLatency,
     speaker: voiceSpeaker,
     assistantGenerating: chatSending && !chatFirstTokenReceived,
@@ -852,8 +858,6 @@ export function useChatVoiceController(options: {
   // the WS session becomes the mic; when they turn it off (or realtime becomes
   // unavailable), the session tears down and the batch path owns the mic again.
   // This is the enhancement of the EXISTING surface — no new toggle, no new UI.
-  const realtimeWanted =
-    continuousMode !== "off" && !isComposerLocked && realtime.available;
   const realtimeStartRef = useRef(realtime.start);
   const realtimeStopRef = useRef(realtime.stop);
   realtimeStartRef.current = realtime.start;
@@ -865,6 +869,43 @@ export function useChatVoiceController(options: {
       void realtimeStopRef.current();
     }
   }, [realtimeWanted, realtime.active]);
+
+  const beginVoiceCapture = useCallback(
+    (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
+      if (isComposerLocked) return;
+      if (voiceSession.realtimeAvailable && !voiceSession.realtimeError) {
+        const latestAssistant =
+          findLatestAssistantMessage(conversationMessages);
+        suppressedAssistantSpeechRef.current = latestAssistant
+          ? { messageId: latestAssistant.id, text: latestAssistant.text }
+          : null;
+        voiceDraftBaseInputRef.current = chatInput;
+        stopSpeaking();
+        void voiceSession.start();
+        return;
+      }
+      beginBatchVoiceCapture(mode);
+    },
+    [
+      beginBatchVoiceCapture,
+      chatInput,
+      conversationMessages,
+      isComposerLocked,
+      stopSpeaking,
+      voiceSession,
+    ],
+  );
+
+  const endVoiceCapture = useCallback(
+    (captureOptions?: { submit?: boolean }) => {
+      if (voiceSession.realtimeActive) {
+        void voiceSession.stop();
+        return;
+      }
+      endBatchVoiceCapture(captureOptions);
+    },
+    [endBatchVoiceCapture, voiceSession],
+  );
 
   return {
     beginVoiceCapture,

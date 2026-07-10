@@ -164,8 +164,7 @@ function classifyError(error: Error): RealtimeVoiceError {
     if (error.code === "permission_denied") {
       return {
         kind: "permission",
-        message:
-          "Microphone access was blocked. Enable it to talk with voice.",
+        message: "Microphone access was blocked. Enable it to talk with voice.",
         actionable: true,
       };
     }
@@ -326,7 +325,8 @@ export function useRealtimeVoiceSession(
       startingRef.current = false;
       setError({
         kind: "consent",
-        message: "Couldn't confirm consent for a realtime voice session.",
+        message:
+          "Couldn't confirm consent for a realtime voice session. Falling back to batch voice.",
         actionable: false,
       });
       return;
@@ -361,15 +361,18 @@ export function useRealtimeVoiceSession(
         // it as a fall-back-to-batch signal, NOT an error surface: latch
         // `featureDisabled` so `available` flips false and the caller uses the
         // batch path. Any other error is a real, surfaced failure.
-        if (
-          err instanceof VoiceSessionMintError &&
-          err.isFeatureDisabled
-        ) {
+        if (err instanceof VoiceSessionMintError) {
           disabledThisSession = true;
           setFeatureDisabled(true);
-          return;
+          if (err.isFeatureDisabled) return;
         }
-        setError(classifyError(err));
+        const classified = classifyError(err);
+        setError(classified);
+        if (classified.kind === "transport" || classified.kind === "mint") {
+          disabledThisSession = true;
+          setFeatureDisabled(true);
+          setActive(false);
+        }
         clientOptionsRef.current?.onError?.(err);
       },
     });
@@ -404,7 +407,15 @@ export function useRealtimeVoiceSession(
       }
     } catch (err) {
       const realError = err instanceof Error ? err : new Error(String(err));
-      setError(classifyError(realError));
+      const classified = classifyError(realError);
+      setError(classified);
+      if (
+        classified.kind === "transport" ||
+        classified.kind === "mint" ||
+        classified.kind === "unknown"
+      ) {
+        setFeatureDisabled(true);
+      }
       clientRef.current = null;
       await client.stop().catch(() => {});
       setActive(false);

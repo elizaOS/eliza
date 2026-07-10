@@ -65,6 +65,8 @@ export interface ChatVoiceStatusBarProps {
    * additive: when false the bar is byte-for-byte the existing batch bar.
    */
   realtimeActive?: boolean;
+  /** True when realtime is armed/selected but the socket is not connected yet. */
+  realtimeAvailable?: boolean;
   /**
    * True when the realtime session is paused by a visibility-hide (a paused
    * state, NOT a broken one). Renders a "Paused" pill instead of a dead bar.
@@ -132,6 +134,7 @@ export function ChatVoiceStatusBar({
   micReconnected = false,
   ttsError = null,
   realtimeActive = false,
+  realtimeAvailable = false,
   realtimePaused = false,
   realtimeErrorMessage = null,
   visible = true,
@@ -197,6 +200,15 @@ export function ChatVoiceStatusBar({
             <span>Live</span>
           </span>
         )
+      ) : realtimeAvailable ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/5 px-2 py-0.5 font-medium text-accent"
+          data-testid="chat-voice-realtime-armed"
+          title="Realtime voice armed, connecting on mic start"
+        >
+          <Radio className="h-3 w-3" aria-hidden="true" />
+          <span>Realtime armed</span>
+        </span>
       ) : null}
 
       {realtimeErrorMessage ? (
