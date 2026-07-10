@@ -3768,6 +3768,16 @@ async function main(): Promise<void> {
     initializeCapacitorBridge();
     mountReactApp();
     scheduleDeferredAppModuleLoadsAfterPaint();
+    // In dockless desktop mode the chat-overlay pill IS the app's main (and
+    // only resting) window, so it owns the desktop shell wiring — tray menu,
+    // global shortcuts, deep-link/share subscriptions — that
+    // initializePlatform() installs via initializeDesktopShell(). Without
+    // this, the tray icon has no menu (no Quit) and the summon hotkey never
+    // registers. Other standalone shells (settings/surface/tray-popover)
+    // must NOT wire it: the tray menu has exactly one owner.
+    if (isChatOverlayWindowShell(windowShellRoute) && isDesktopPlatform()) {
+      await initializePlatform();
+    }
     return;
   }
 
