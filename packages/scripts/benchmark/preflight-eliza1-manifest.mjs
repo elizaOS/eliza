@@ -1,46 +1,31 @@
 #!/usr/bin/env node
-// Loud preflight for the Local Inference Bench nightly lane.
-//
-// The nightly job boots `bun run dev`, then `profile-inference.mjs --ensure-models`
-// asks the running agent to download the bench models. The agent fetches the
-// PUBLISHED HuggingFace bundle manifest and validates it against the Eliza-1
-// manifest schema before touching any weight byte. When a published manifest is
-// malformed (e.g. `files.vision` emitted as an object instead of an array, as
-// happened during the 2026-06→07 Gemma-4 cutover), the download fails with a
-// mid-run stack trace ~5 minutes into the run — AFTER a full `bun install` +
-// agent boot. That is a confusing, expensive red for what is really a
-// bad-published-artifact problem the CI runner cannot fix.
-//
-// This preflight fetches the published manifest(s) for the bench tiers and
-// asserts the shape the runtime schema requires (packages/shared manifest
-// schema: every `files.<kind>` bucket is an ARRAY). It runs in seconds, before
-// the install/boot, and fails LOUDLY with an operator-actionable message so the
-// lane stops burning minutes on an unfixable artifact defect.
-//
-// Usage:
-//   node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-2b [eliza-1-4b ...]
-//
-// Exit codes: 0 = manifest(s) valid; 2 = malformed/unreachable manifest.
+/**
+ * Validates published Eliza-1 bundle manifests before the nightly inference
+ * lane pays the cost of dependency installation and agent boot. Stable runtime
+ * model ids map explicitly to the architecture-oriented Hugging Face layout so
+ * this boundary checks the same artifacts that the downloader will consume.
+ */
+
+import { pathToFileURL } from "node:url";
 
 const HF_REPO = "elizaos/eliza-1";
-const HF_BASE = (process.env.ELIZA_HF_BASE_URL || "https://huggingface.co").replace(/\/+$/, "");
+const HF_BASE = (
+  process.env.ELIZA_HF_BASE_URL || "https://huggingface.co"
+).replace(/\/+$/, "");
 
-// tier id -> published bundle prefix (mirrors catalog `bundleRemotePrefix`)
-const TIER_SLUG = {
-  "eliza-1-2b": "2b",
-  "eliza-1-4b": "4b",
-  "eliza-1-9b": "9b",
-  "eliza-1-27b": "27b",
-  "eliza-1-27b-256k": "27b-256k",
+export const PUBLISHED_TIER_SLUG = {
+  "eliza-1-2b": "e2b",
+  "eliza-1-4b": "e4b",
+  "eliza-1-9b": "12b",
+  "eliza-1-27b": "31b",
+  "eliza-1-27b-256k": "31b-256k",
 };
 
-// Buckets the runtime schema requires to be a NON-EMPTY array.
 const REQUIRED_ARRAY = ["text", "voice", "cache"];
-// Buckets the runtime schema requires to be an array (may be empty).
 const ARRAY_KINDS = ["asr", "vision", "mtp"];
 
-function manifestUrl(tierId) {
-  const slug = TIER_SLUG[tierId];
+export function manifestUrl(tierId) {
+  const slug = PUBLISHED_TIER_SLUG[tierId];
   if (!slug) throw new Error(`unknown tier id: ${tierId}`);
   return `${HF_BASE}/${HF_REPO}/resolve/main/bundles/${slug}/eliza-1.manifest.json?download=true`;
 }
@@ -53,7 +38,7 @@ async function fetchManifest(url) {
   return res.json();
 }
 
-function validateShape(tierId, manifest) {
+export function validateShape(manifest) {
   const problems = [];
   const files = manifest?.files;
   if (files == null || typeof files !== "object" || Array.isArray(files)) {
@@ -69,7 +54,9 @@ function validateShape(tierId, manifest) {
       continue;
     }
     if (REQUIRED_ARRAY.includes(kind) && v.length === 0) {
-      problems.push(`files.${kind}: required non-empty array, received empty array`);
+      problems.push(
+        `files.${kind}: required non-empty array, received empty array`,
+      );
     }
   }
   return problems;
@@ -86,7 +73,7 @@ async function main() {
     const url = manifestUrl(tierId);
     try {
       const manifest = await fetchManifest(url);
-      const problems = validateShape(tierId, manifest);
+      const problems = validateShape(manifest);
       if (problems.length > 0) {
         failed = true;
         process.stderr.write(
@@ -100,8 +87,11 @@ async function main() {
         );
       }
     } catch (err) {
+      // error-policy:J1 Report each requested tier at the CLI boundary.
       failed = true;
-      process.stderr.write(`\n[preflight-manifest] ✗ ${tierId}: ${err.message}\n`);
+      process.stderr.write(
+        `\n[preflight-manifest] ✗ ${tierId}: ${err.message}\n`,
+      );
     }
   }
   if (failed) {
@@ -119,7 +109,14 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`[preflight-manifest] FATAL: ${err?.stack || err}\n`);
-  process.exit(2);
-});
+const isMain =
+  process.argv[1] !== undefined &&
+  pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (isMain) {
+  main().catch((err) => {
+    // error-policy:J1 Translate an unexpected CLI failure into the documented exit code.
+    process.stderr.write(`[preflight-manifest] FATAL: ${err?.stack || err}\n`);
+    process.exit(2);
+  });
+}
