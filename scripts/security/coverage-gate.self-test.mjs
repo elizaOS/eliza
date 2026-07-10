@@ -1,10 +1,5 @@
 #!/usr/bin/env node
-/**
- * Regression checks for the changed-file LCOV matcher used by the coverage
- * gate. The gate compares repo-relative changed paths with LCOV paths that may
- * be absolute, so these cases pin the exact path-boundary behavior rather than
- * a permissive substring match.
- */
+/** Verifies exact changed-path attribution, missing-source failure, and type-only LCOV handling. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -43,7 +38,9 @@ function writeLcovRecords(dir, sourcePaths) {
 }
 
 function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
-  const changedArgument = changed.replaceAll("\\", "\\\\").replaceAll("\n", "\\n");
+  const changedArgument = changed
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n");
   return spawnSync(
     "awk",
     [
@@ -127,6 +124,19 @@ try {
     assert.equal(result.status, 0, result.stdout);
     assert.match(result.stdout, /100\.00% src\/foo\.ts/);
     assert.match(result.stdout, /100\.00% packages\/demo\/src\/foo\.ts/);
+    assert.doesNotMatch(result.stdout, /MISSING:/);
+  });
+
+  assertGate("accepts an LCOV-present type-only source with LF zero", () => {
+    const source = "packages/demo/src/types.ts";
+    const lcov = writeLcov(dir, source, 0, 0);
+    const result = runGate({ changed: source, lcov });
+
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(
+      result.stdout,
+      /TYPE-ONLY: packages\/demo\/src\/types[.]ts \(LF:0\)/,
+    );
     assert.doesNotMatch(result.stdout, /MISSING:/);
   });
 } finally {

@@ -42,11 +42,13 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
   current = $0
   lines_found = 0
   lines_hit = 0
+  saw_lf = 0
 }
 
 /^LF:/ {
   sub(/^LF:/, "", $0)
   lines_found = $0 + 0
+  saw_lf = 1
 }
 
 /^LH:/ {
@@ -55,28 +57,32 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
 }
 
 /^end_of_record/ {
-  if (lines_found > 0) {
-    pct = (lines_hit / lines_found) * 100
-    # Check if this file is in changed list. LCOV paths may be absolute while
-    # the changed list is repo-relative, so accept only exact path-segment
-    # suffixes; raw substring matching lets foo.ts pass via foo.tsx.
-    matched = ""
-    matched_len = 0
-    for (cf in changed_map) {
-      if (path_matches_lcov(current, cf) && length(cf) > matched_len) {
-        matched = cf
-        matched_len = length(cf)
-      }
+  # LCOV paths may be absolute while the changed list is repo-relative. Pick
+  # the longest exact path-segment suffix so overlapping paths are deterministic.
+  matched = ""
+  matched_len = 0
+  for (cf in changed_map) {
+    if (path_matches_lcov(current, cf) && length(cf) > matched_len) {
+      matched = cf
+      matched_len = length(cf)
     }
-    if (matched != "") {
-      matched_map[matched] = 1
+  }
+  if (matched != "" && saw_lf) {
+    matched_map[matched] = 1
+    matched_record_count++
+    if (lines_found > 0) {
+      pct = (lines_hit / lines_found) * 100
       changed_count++
       changed_sum += pct
       printf "  %6.2f%% %s\n", pct, matched
       if (pct + 0 < threshold + 0) below[matched] = pct
+    } else {
+      # A present LF:0 record is a type-only module with no executable lines;
+      # requiring a percentage would make its coverage target impossible.
+      printf "  TYPE-ONLY: %s (LF:0)\n", matched
     }
   }
-  current = ""; lines_found = 0; lines_hit = 0
+  current = ""; lines_found = 0; lines_hit = 0; saw_lf = 0
 }
 
 END {
@@ -88,8 +94,10 @@ END {
     }
   }
 
-  if (changed_count == 0) {
+  if (matched_record_count == 0) {
     print "no changed files matched the LCOV report"
+  } else if (changed_count == 0) {
+    print "changed LCOV records contain no executable lines"
   } else {
     avg = changed_sum / changed_count
     printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: %d%%\n", \
