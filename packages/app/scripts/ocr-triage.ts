@@ -78,6 +78,38 @@ interface OcrRecord extends OcrResult {
 /** A report-authorized screenshot and its canonical evidence key. */
 export type AuthorizedShot = ReturnType<typeof buildAuditCaptureManifest>[number];
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseOcrRecord(value: unknown, index: number): OcrRecord {
+  if (
+    !isRecord(value) ||
+    typeof value.path !== "string" ||
+    !value.path ||
+    typeof value.ok !== "boolean" ||
+    typeof value.text !== "string" ||
+    !Array.isArray(value.lines) ||
+    !value.lines.every((line) => typeof line === "string") ||
+    typeof value.words !== "number" ||
+    !Number.isFinite(value.words) ||
+    typeof value.meanConfidence !== "number" ||
+    !Number.isFinite(value.meanConfidence) ||
+    (value.reason !== undefined && typeof value.reason !== "string")
+  ) {
+    throw new Error(`Invalid OCR input record at line ${index + 1}`);
+  }
+  return {
+    path: value.path,
+    ok: value.ok,
+    text: value.text,
+    lines: value.lines,
+    words: value.words,
+    meanConfidence: value.meanConfidence,
+    reason: value.reason,
+  };
+}
+
 export interface TriageEntry {
   slug: string;
   viewport: string;
@@ -246,7 +278,7 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
     ? readFileSync(args.ocr, "utf8")
         .split("\n")
         .filter((l) => l.trim())
-        .map((l) => JSON.parse(l) as OcrRecord)
+        .map((line, index) => parseOcrRecord(JSON.parse(line), index))
     : await runPackagedOcr(manifest.map((entry) => entry.path));
   validateOcrRecordPaths(ocr, manifest, auditDir);
 

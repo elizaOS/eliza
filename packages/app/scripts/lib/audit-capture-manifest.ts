@@ -19,6 +19,10 @@ export interface AuditScreenshot {
   viewport: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function assertPathSegment(
   value: unknown,
   field: string,
@@ -39,30 +43,26 @@ export function parseAuditReport(value: unknown): AuditReportRow[] {
     throw new Error("Audit report must be an array");
   }
   return value.map((row, index) => {
-    if (typeof row !== "object" || row === null) {
+    if (!isRecord(row)) {
       throw new Error(`Invalid audit report row at index ${index}`);
     }
-    const candidate = row as Record<string, unknown>;
-    assertPathSegment(candidate.slug, `slug at index ${index}`);
-    assertPathSegment(candidate.viewport, `viewport at index ${index}`);
+    assertPathSegment(row.slug, `slug at index ${index}`);
+    assertPathSegment(row.viewport, `viewport at index ${index}`);
     if (
-      candidate.viewType !== undefined &&
-      candidate.viewType !== "gui" &&
-      candidate.viewType !== "tui"
+      row.viewType !== undefined &&
+      row.viewType !== "gui" &&
+      row.viewType !== "tui"
     ) {
       throw new Error(`Invalid audit viewType at index ${index}`);
     }
-    if (
-      candidate.verdict !== undefined &&
-      typeof candidate.verdict !== "string"
-    ) {
+    if (row.verdict !== undefined && typeof row.verdict !== "string") {
       throw new Error(`Invalid audit verdict at index ${index}`);
     }
     return {
-      slug: candidate.slug,
-      viewport: candidate.viewport,
-      viewType: candidate.viewType,
-      verdict: candidate.verdict,
+      slug: row.slug,
+      viewport: row.viewport,
+      viewType: row.viewType,
+      verdict: row.verdict,
     };
   });
 }

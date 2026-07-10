@@ -21,7 +21,13 @@ describe("resolveAuditAppOutput", () => {
   });
 
   it("rejects destructive roots", () => {
-    for (const configured of [path.parse(appDir).root, repoRoot, appDir]) {
+    for (const configured of [
+      path.parse(appDir).root,
+      path.dirname(repoRoot),
+      repoRoot,
+      path.dirname(appDir),
+      appDir,
+    ]) {
       expect(() =>
         resolveAuditAppOutput({ appDir, repoRoot, configured }),
       ).toThrow("refusing to clean unsafe audit output");

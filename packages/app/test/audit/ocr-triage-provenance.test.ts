@@ -348,6 +348,26 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
       /screenshot is missing: builtin-phone::desktop-landscape/,
     );
   });
+
+  it("rejects a malformed precomputed OCR record at the input boundary", async () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      `${JSON.stringify({ path: join(dir, "desktop-landscape", "builtin-chat.png"), ok: true })}\n`,
+    );
+
+    await expect(
+      runOcrTriage([
+        "--audit-dir",
+        dir,
+        "--ocr",
+        join(dir, "ocr.ndjson"),
+        "--out",
+        join(dir, "ocr-triage.json"),
+      ]),
+    ).rejects.toThrow(/Invalid OCR input record at line 1/);
+  });
 });
 
 describe("audit runner cleanup", () => {
