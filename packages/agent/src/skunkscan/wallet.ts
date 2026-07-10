@@ -220,17 +220,6 @@ const investigationReplay = analyzeInvestigationReplay(
   caseSummary,
 );
 
-const evidence = analyzeWalletEvidence(
-  activity,
-  age,
-  funding,
-  portfolio,
-  defi,
-  risk,
-  whale,
-  behavior,
-);
-
 const evidenceRecords =
   analyzeWalletEvidenceRecords(
     walletAddress,
@@ -248,6 +237,10 @@ const evidenceRecords =
     smartMoney,
     transactionRisk,
   );
+
+const evidence = analyzeWalletEvidence(
+  evidenceRecords,
+);
 
 const executiveVerdict = analyzeExecutiveVerdict(
   display,
