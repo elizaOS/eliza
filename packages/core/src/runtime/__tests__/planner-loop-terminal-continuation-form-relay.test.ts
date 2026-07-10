@@ -1,9 +1,11 @@
 /**
- * Covers terminal-continuation recovery for missing-input turns whose real
- * reply is the PLANNER's own terminal output — a grammar-valid [FORM] or a
- * user-directed prose ask — rather than a structurally-marked tool result
- * (#15918). Deterministic: vitest-mocked `useModel` + injected evaluator
- * replaying the live gpt-oss-120b rule-19 CONTINUE-loop shapes; no live model.
+ * Covers missing-input turns whose real reply is the MODEL's own output — a
+ * grammar-valid [FORM] or a user-directed prose ask — rather than a
+ * structurally-marked tool result (#15918): terminal-continuation-limit
+ * recovery when the evaluator CONTINUE-loops past rule 19, and final-message
+ * precedence when it FINISHes with a widget reply the confirmation-question
+ * relay used to drop. Deterministic: vitest-mocked `useModel` + injected
+ * evaluator replaying the live gpt-oss-120b trajectory shapes; no live model.
  */
 import { describe, expect, it, vi } from "vitest";
 import type { TrajectoryLimitExceeded } from "../limits";
@@ -196,6 +198,75 @@ describe("planner-loop - terminal continuation [FORM]/ask relay (#15918)", () =>
 		).rejects.toMatchObject({
 			kind: "terminal_only_continuations",
 		} satisfies Partial<TrajectoryLimitExceeded>);
+	});
+
+	it("delivers a FINISH [FORM] reply over the tool's missing-input confirmation question", async () => {
+		// Live 5-run shape on current develop: the evaluator honors rule 19 and
+		// FINISHes with a grammar-valid [FORM] in messageToUser, but the final-
+		// message precedence used to drop it for the tool's requiresConfirmation
+		// prose question.
+		const formFinish = `I can set that up — details below:\n${FORM_REPLY}`;
+		const runtime = plannerEmitsToolCallThenTerminalTexts([]);
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: "Sure! Please tell me the report name, the day, and the time you'd like the reminder.",
+			data: {
+				error: "MISSING_DEFINITION_FIELD",
+				missingField: "schedule",
+				requiresConfirmation: true,
+			},
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "Missing input; surface the collection form.",
+			messageToUser: formFinish,
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(formFinish);
+	});
+
+	it("keeps a lifeDraft confirm preview ahead of a widget FINISH reply", async () => {
+		// Action-owned draft-confirm copy must reach the user verbatim so they
+		// approve the exact draft — a FORM must not displace it into a re-ask.
+		const preview =
+			"I can save this as a goal. Success looks like walking three times a week. Confirm and I'll save it.";
+		const runtime = plannerEmitsToolCallThenTerminalTexts([]);
+		const executeToolCall = vi.fn(async () => ({
+			success: false,
+			text: preview,
+			data: {
+				requiresConfirmation: true,
+				lifeDraft: {
+					operation: "create_goal",
+					request: { title: "Leave the apartment more" },
+				},
+			},
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "FINISH" as const,
+			thought: "Draft ready; asking for confirmation.",
+			messageToUser: `Fill this in to confirm:\n${FORM_REPLY}`,
+		}));
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(preview);
 	});
 
 	it("keeps the structured tool-result relays ahead of the prose ask", async () => {

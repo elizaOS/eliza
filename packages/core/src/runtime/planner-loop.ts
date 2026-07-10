@@ -3287,13 +3287,28 @@ function preferredFinalMessageFromToolOrModel(
 	const modelText = getNonEmptyString(modelMessage);
 	const usableModelText =
 		modelText && !isToolMetaNarration(modelText) ? modelText : undefined;
+	// A parse-valid, user-safe widget reply ([FORM]/[CHOICE]/…) from the
+	// model/evaluator supersedes a missing-input confirmation QUESTION: the
+	// widget is the model's designed collection UI for exactly the fields the
+	// tool asked about, authenticated by the strict block parser — not the
+	// paraphrase risk precedence 2 guards against (#15918; live gpt-oss-120b
+	// FINISHed with a grammar-valid [FORM] that this precedence then dropped
+	// for the tool's prose question). A lifeDraft draft-confirm preview keeps
+	// its priority: action-owned "confirm and I'll save it" copy must never
+	// be displaced into a re-ask.
+	const widgetReply = userSafeWidgetReplyCandidate(usableModelText);
+	const widgetBeatsConfirmation =
+		widgetReply !== undefined &&
+		!latestConfirmationMarkedResultHasLifeDraft(trajectory);
 	// Precedence:
 	//   1. A single successful tool whose result was explicitly marked
 	//      `verifiedUserFacing: true` — used for structured outputs
 	//      (paths, ids, counts) where evaluator paraphrase risks
 	//      hallucinating a value.
 	//   2. A confirmation-required tool preview — action-owned copy must not be
-	//      paraphrased into a vague extra question or a false save.
+	//      paraphrased into a vague extra question or a false save. A widget
+	//      reply outranks it ONLY when the marked result is a missing-input
+	//      question rather than a lifeDraft preview (see above).
 	//   3. The model/evaluator's explicit `messageToUser` — authoritative
 	//      by default; the evaluator has seen the full trajectory and
 	//      chose what the user should read.
@@ -3308,13 +3323,34 @@ function preferredFinalMessageFromToolOrModel(
 	//   - `planner-happy-path.test.ts` → "prefers a single tool's verified
 	//     user-facing text over evaluator paraphrase" — tool wins when it
 	//     opts in via `verifiedUserFacing: true`.
+	//   - `planner-loop-terminal-continuation-form-relay.test.ts` → widget
+	//     vs confirmation-question and lifeDraft-keeps-priority cases.
 	return (
 		singleVerifiedUserFacingToolResultText(trajectory) ??
+		(widgetBeatsConfirmation ? widgetReply : undefined) ??
 		deterministicRequiresConfirmationRelay(trajectory) ??
 		usableModelText ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);
+}
+
+// True when the most recent confirmation-marked tool result is a lifeDraft
+// draft-confirm preview (as opposed to a missing-input question). The lifeDraft
+// marker is what distinguishes "confirm and I'll save it" copy — which must
+// reach the user verbatim so the user can approve the exact draft — from a
+// clarify question a widget reply may legitimately supersede.
+function latestConfirmationMarkedResultHasLifeDraft(
+	trajectory: PlannerTrajectory,
+): boolean {
+	for (const step of [...trajectory.steps].reverse()) {
+		if (!step.toolCall || isTerminalToolCall(step.toolCall)) continue;
+		const result = step.result;
+		if (!result) continue;
+		if (!hasRequiresConfirmationMarker(result)) continue;
+		return result.data?.lifeDraft !== undefined;
+	}
+	return false;
 }
 
 function isToolMetaNarration(text: string): boolean {
