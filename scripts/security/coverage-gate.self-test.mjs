@@ -26,11 +26,12 @@ function writeLcov(dir, sourcePath, found = 2, hit = 2) {
 }
 
 function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
+  const changedArgument = changed.replaceAll("\\", "\\\\").replaceAll("\n", "\\n");
   return spawnSync(
     "awk",
     [
       "-v",
-      `changed=${changed}`,
+      `changed=${changedArgument}`,
       "-v",
       `threshold=${threshold}`,
       "-f",
