@@ -27,6 +27,7 @@ import {
   type AccessContext,
   type AgentRuntime,
   assertPublicRouteIntent,
+  ElizaError,
   type IAgentRuntime,
   type LegacyRouteHandler,
   logger,
@@ -434,34 +435,37 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
       body: undefined,
     };
   }
-  // Content encodings describe bytes that the client must decode even when the
-  // underlying media type is textual; interpreting either encoded or binary
-  // bytes as UTF-8 would make the downstream IPC base64 envelope lossy.
-  const hasTransferEncoding =
-    contentEncoding !== "" && contentEncoding !== "identity";
+  const mediaType = contentType.split(";", 1)[0]?.trim() ?? "";
+  // Content-Encoding describes the bytes on the wire, so even a textual MIME
+  // type remains binary until the receiving HTTP stack decompresses it.
+  const isEncoded = contentEncoding !== "" && contentEncoding !== "identity";
   const isTextual =
-    !hasTransferEncoding &&
-    (contentType === "" ||
-      contentType.startsWith("text/") ||
-      contentType.includes("json") ||
-      contentType.includes("xml") ||
-      contentType.includes("javascript") ||
-      contentType.includes("x-www-form-urlencoded") ||
-      contentType.includes("charset"));
-  if (!isTextual) {
+    mediaType === "" ||
+    mediaType.startsWith("text/") ||
+    mediaType === "application/json" ||
+    mediaType.endsWith("+json") ||
+    mediaType === "application/xml" ||
+    mediaType.endsWith("+xml") ||
+    mediaType === "application/javascript" ||
+    mediaType === "application/x-javascript" ||
+    mediaType === "application/x-www-form-urlencoded";
+  if (isEncoded || !isTextual) {
     return {
       status: captured.statusCode || 200,
       headers: captured.headers,
       body: buffer,
     };
   }
-  const text = buffer.toString("utf8");
-  let body: unknown = text;
-  if (contentType.includes("json")) {
+  let body: unknown = buffer.toString("utf8");
+  if (mediaType === "application/json" || mediaType.endsWith("+json")) {
     try {
-      body = JSON.parse(text);
-    } catch {
-      // error-policy:J3 malformed JSON stays explicit raw text at this transport boundary
+      body = JSON.parse(body as string);
+    } catch (error) {
+      throw new ElizaError("legacy route emitted malformed JSON", {
+        code: "ROUTE_RESPONSE_INVALID_JSON",
+        cause: error,
+        context: { contentType, status: captured.statusCode },
+      });
     }
   }
   return {
