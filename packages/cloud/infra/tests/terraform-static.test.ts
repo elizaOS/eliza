@@ -168,6 +168,10 @@ describe("Cloudflare Pages domain durability", () => {
   });
 
   test("keeps real writes manual and verifies certificate plus routing after apply", () => {
+    expect(workflow).toContain("oven-sh/setup-bun@");
+    expect(workflow).toContain(
+      "bun install --frozen-lockfile --ignore-scripts",
+    );
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("options: [plan, apply]");
     expect(workflow).toContain("terraform apply -no-color -input=false");
