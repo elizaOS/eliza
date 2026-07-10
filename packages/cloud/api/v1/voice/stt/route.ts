@@ -148,9 +148,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const fileTypeResult = await fileTypeFromBuffer(buffer);
 
     if (!fileTypeResult) {
-      logger.warn(
-        `[Voice STT API] Unable to detect file type for ${audioFile.name} - rejecting`,
-      );
+      logger.warn("[Voice STT API] Unable to detect audio file type", {
+        audioSizeBytes: audioFile.size,
+      });
       return Response.json(
         {
           error:
@@ -161,9 +161,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     }
 
     if (!ALLOWED_AUDIO_SIGNATURES.has(fileTypeResult.mime)) {
-      logger.warn(
-        `[Voice STT API] File signature mismatch for ${audioFile.name}: claimed=${baseMimeType}, actual=${fileTypeResult.mime}`,
-      );
+      logger.warn("[Voice STT API] Audio file signature mismatch", {
+        actualMimeType: fileTypeResult.mime,
+        claimedMimeType: baseMimeType,
+      });
       return Response.json(
         {
           error: `File content does not match the declared format. Detected: ${fileTypeResult.mime}, Expected audio format.`,
@@ -180,9 +181,12 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       finalMimeType = "audio/webm";
     }
 
-    logger.info(
-      `[Voice STT API] Processing for user ${user.id}: ${audioFile.name} (${audioFile.size} bytes, verified: ${fileTypeResult.mime}, final: ${finalMimeType})`,
-    );
+    logger.info("[Voice STT API] Processing verified audio", {
+      audioSizeBytes: audioFile.size,
+      finalMimeType,
+      userId: user.id,
+      verifiedMimeType: fileTypeResult.mime,
+    });
 
     // -------------------------------------------------------------------------
     // Free default STT: self-hosted Whisper (OpenAI-compatible
@@ -213,10 +217,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         { method: "POST", body: form },
       );
       if (!whisperResponse.ok) {
-        const detail = await whisperResponse.text().catch(() => "");
-        logger.error(
-          `[Voice STT API] Whisper failed (${whisperResponse.status}): ${detail.slice(0, 200)}`,
-        );
+        await whisperResponse.body?.cancel().catch(() => undefined);
+        logger.error("[Voice STT API] Whisper request failed", {
+          status: whisperResponse.status,
+        });
         return Response.json(
           { error: "Speech-to-text failed" },
           { status: 502 },
@@ -228,10 +232,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       let whisperPayload: unknown;
       try {
         whisperPayload = await whisperResponse.json();
-      } catch (parseError) {
-        logger.error(
-          `[Voice STT API] Whisper returned unparseable JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
-        );
+      } catch {
+        logger.error("[Voice STT API] Whisper returned unparseable JSON");
         return Response.json(
           { error: "Speech-to-text failed" },
           { status: 502 },
@@ -346,9 +348,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       reservation,
     );
 
-    logger.info(
-      `[Voice STT API] Completed in ${duration}ms: "${transcript.substring(0, 100)}..."`,
-    );
+    logger.info("[Voice STT API] Completed", {
+      durationMs: duration,
+      transcriptLength: transcript.length,
+    });
 
     (async () => {
       try {
@@ -367,7 +370,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           duration_ms: duration,
           is_successful: true,
           metadata: {
-            audioFileName: audioFile.name,
+            // audioFileName removed: user-supplied filenames can carry PII
+            // (e.g. "john-therapy-session.wav"). languageCode is a BCP-47 enum,
+            // not sensitive content, so it stays.
             audioSizeBytes: audioFile.size,
             estimatedDurationMinutes,
             durationSeconds,
@@ -379,7 +384,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         });
       } catch (error) {
         logger.error("[Voice STT API] Failed to create usage record", {
-          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : "unknown",
         });
       }
     })();
@@ -389,7 +394,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       duration_ms: duration,
     });
   } catch (error) {
-    logger.error("[Voice STT API] Error:", error);
+    // Redaction boundary: provider SDK errors can embed request/response
+    // bodies (transcripts, tokens) in their message — log only the error type.
+    logger.error("[Voice STT API] Request failed", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
 
     if (reservation) {
       await reservation.reconcile(0);
