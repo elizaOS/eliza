@@ -325,6 +325,8 @@ interface ViewFinding {
   viewport: string;
   path: string;
   consoleErrors: string[];
+  /** User-visible loading persistence, overlap, or composer legibility failures. */
+  renderStateIssues: string[];
   blueColors: string[];
   hoverViolations: string[];
   /** Buttons the hover probe could not drive (hover timeout / detach) — a
@@ -867,6 +869,82 @@ async function collectOverlayClearanceIssues(
   }, overlaySelector);
 }
 
+/** Spatial column siblings must flow rather than paint through each other. */
+async function collectSpatialOverlapIssues(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const issues: string[] = [];
+    const label = (element: HTMLElement): string =>
+      (
+        element.getAttribute("data-agent-id") ||
+        element.textContent?.trim().replace(/\s+/g, " ") ||
+        element.getAttribute("data-spatial-kind") ||
+        element.tagName.toLowerCase()
+      ).slice(0, 48);
+    for (const box of document.querySelectorAll<HTMLElement>(
+      '[data-spatial-kind="box"]',
+    )) {
+      const style = getComputedStyle(box);
+      if (style.display !== "flex" || style.flexDirection !== "column") {
+        continue;
+      }
+      const children = Array.from(box.children).filter(
+        (child): child is HTMLElement => {
+          if (!(child instanceof HTMLElement)) return false;
+          const childStyle = getComputedStyle(child);
+          const rect = child.getBoundingClientRect();
+          return (
+            childStyle.display !== "none" &&
+            childStyle.visibility !== "hidden" &&
+            childStyle.position !== "absolute" &&
+            childStyle.position !== "fixed" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        },
+      );
+      for (let index = 1; index < children.length; index += 1) {
+        const previous = children[index - 1];
+        const current = children[index];
+        const previousRect = previous.getBoundingClientRect();
+        const currentRect = current.getBoundingClientRect();
+        const horizontalIntersection =
+          Math.min(previousRect.right, currentRect.right) -
+          Math.max(previousRect.left, currentRect.left);
+        const verticalOverlap = previousRect.bottom - currentRect.top;
+        if (horizontalIntersection > 1 && verticalOverlap > 1) {
+          issues.push(
+            `spatial column overlaps "${label(previous)}" with "${label(current)}" by ${Math.round(verticalOverlap)}px`,
+          );
+          if (issues.length >= 5) return issues;
+        }
+      }
+    }
+    return issues;
+  });
+}
+
+/** A resting empty composer must not grow just to wrap its placeholder. */
+async function collectComposerLegibilityIssues(page: Page): Promise<string[]> {
+  return page
+    .locator('[data-testid="chat-composer-textarea"]')
+    .evaluateAll((nodes) =>
+      nodes.flatMap((node) => {
+        if (!(node instanceof HTMLTextAreaElement) || node.value) return [];
+        const placeholder = node.placeholder.trim();
+        const lineHeight = Number.parseFloat(getComputedStyle(node).lineHeight);
+        const height = node.getBoundingClientRect().height;
+        if (!placeholder || !Number.isFinite(lineHeight) || lineHeight <= 0) {
+          return [];
+        }
+        return height > lineHeight * 2.25
+          ? [
+              `composer placeholder wraps beyond two lines (${Math.round(height / lineHeight)} lines): "${placeholder.slice(0, 48)}"`,
+            ]
+          : [];
+      }),
+    );
+}
+
 function renderManualReviewStub(finding: ViewFinding): string {
   const lines = [
     `# ${finding.slug} (${finding.viewport})`,
@@ -877,6 +955,7 @@ function renderManualReviewStub(finding: ViewFinding): string {
     `- **bundle view id:** ${finding.bundleViewId ?? "n/a"}`,
     `- **verdict:** ${finding.verdict}`,
     `- **console errors:** ${finding.consoleErrors.length}`,
+    `- **render-state issues:** ${finding.renderStateIssues.length ? finding.renderStateIssues.join("; ") : "none"}`,
     `- **blue colors (banned):** ${finding.blueColors.length ? finding.blueColors.join(", ") : "none"}`,
     `- **border-radius violations (off-token):** ${finding.borderRadiusViolations.length ? finding.borderRadiusViolations.join(", ") : "none"}`,
     `- **orange↔black hover violations:** ${finding.hoverViolations.length ? finding.hoverViolations.join("; ") : "none"}`,
@@ -1108,6 +1187,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
         const readPaint = async (): Promise<{
           readableChars: number;
           overlayPresent: boolean;
+          loadingViewPresent: boolean;
         }> => {
           const readableChars = await viewRoot
             .evaluate(
@@ -1133,20 +1213,32 @@ test.describe("all-views aesthetic audit (#8796)", () => {
               }),
             )
             .catch(() => false);
-          return { readableChars, overlayPresent };
+          const loadingViewPresent = await page
+            .locator('[data-view-status="loading"]')
+            .isVisible()
+            .catch(() => false);
+          return { readableChars, overlayPresent, loadingViewPresent };
         };
         let paint = await readPaint();
         for (
           let attempt = 0;
           attempt < 12 &&
           (paint.readableChars < 10 ||
-            (overlayRequired && !paint.overlayPresent));
+            (overlayRequired && !paint.overlayPresent) ||
+            paint.loadingViewPresent);
           attempt += 1
         ) {
           await page.waitForTimeout(1000);
           paint = await readPaint();
         }
         const { readableChars, overlayPresent } = paint;
+        const renderStateIssues = [
+          ...(paint.loadingViewPresent
+            ? ["dynamic view remained in its loading state after 12 seconds"]
+            : []),
+          ...(await collectSpatialOverlapIssues(page)),
+          ...(await collectComposerLegibilityIssues(page)),
+        ];
 
         // Document-level horizontal-overflow invariant (WS5). Measured, not
         // swallowed: a genuine measurement failure throws and fails the view
@@ -1233,6 +1325,7 @@ test.describe("all-views aesthetic audit (#8796)", () => {
           bundleComponent: bundleResponse?.headers()["x-eliza-view-component"],
           bundleViewId: bundleResponse?.headers()["x-eliza-view-id"],
           consoleErrors,
+          renderStateIssues,
           blueColors,
           hoverViolations,
           hoverFailures,

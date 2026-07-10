@@ -1044,7 +1044,9 @@ describe("DynamicViewLoader", () => {
     const rendered = render(
       <DynamicViewLoader bundleUrl={bundleUrl} viewId="late.cleanup.view" />,
     );
-    expect(screen.getByText("Loading view…")).toBeTruthy();
+    expect(
+      screen.getByText("Loading view…").closest('[data-view-status="loading"]'),
+    ).toBeTruthy();
 
     rendered.unmount();
     expect(resolveImport).toBeTruthy();

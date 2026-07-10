@@ -183,6 +183,11 @@ describe("computeVerdict (#8796 verdict precedence)", () => {
       "broken",
     );
     expect(computeVerdict(finding({ readableChars: 0 }))).toBe("broken");
+    expect(
+      computeVerdict(
+        finding({ renderStateIssues: ["dynamic view remained loading"] }),
+      ),
+    ).toBe("broken");
   });
 
   it("TUI and overlay surfaces are exempt from the quality/content floors", () => {

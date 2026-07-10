@@ -73,6 +73,8 @@ export interface VerdictFinding {
   viewType: "gui" | "tui";
   consoleErrors: string[];
   qualityIssues: string[];
+  /** User-visible state/layout failures detected from the live DOM. */
+  renderStateIssues?: string[];
   /** Readable text length in the view root; ~0 means the view never painted. */
   readableChars: number;
   /** Border/divider edges per 1M viewport pixels. */
@@ -500,6 +502,7 @@ export function computeVerdict(finding: VerdictFinding): AestheticVerdict {
   // floors are waived for them.
   if (
     finding.consoleErrors.length > 0 ||
+    (finding.renderStateIssues?.length ?? 0) > 0 ||
     (!exempt &&
       (finding.qualityIssues.length > 0 || finding.readableChars < 10))
   ) {
