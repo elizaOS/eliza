@@ -193,14 +193,18 @@ export function projectItemMatchesRepo(item, repo = DEFAULT_REPO) {
  */
 export function projectItemIsIssue(item) {
   const type = item?.content?.type;
-  if (typeof type !== "string" || type.length === 0) {
-    const label =
-      item?.content?.url ?? item?.title ?? item?.id ?? "unidentified card";
+  const label =
+    item?.content?.url ?? item?.title ?? item?.id ?? "unidentified card";
+  if (typeof type !== "string" || type.trim().length === 0) {
     throw new Error(
       `Project card ${label} carries no content.type; refusing to classify an untyped card as issue or non-issue`,
     );
   }
-  return type === "Issue";
+  if (type === "Issue") return true;
+  if (type === "PullRequest" || type === "DraftIssue") return false;
+  throw new Error(
+    `Project card ${label} carries unsupported content.type ${JSON.stringify(type)}; refusing to exclude an unknown card type`,
+  );
 }
 
 export function normalizeProjectItems(payload, repo = DEFAULT_REPO) {

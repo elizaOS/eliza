@@ -244,6 +244,19 @@ describe("MVP board readiness audit", () => {
     ).toThrow("carries no content.type");
   });
 
+  test("rejects blank and unknown project card types", () => {
+    expect(() =>
+      board.projectItemIsIssue({
+        content: { type: "   ", title: "Blank type" },
+      }),
+    ).toThrow("carries no content.type");
+    expect(() =>
+      board.projectItemIsIssue({
+        content: { type: "Discussion", title: "Future card" },
+      }),
+    ).toThrow('unsupported content.type "Discussion"');
+  });
+
   test("flags human-review status without a blocker label", () => {
     const report = board.auditMvpBoardReadiness([issue(15748, ["testing"])], {
       items: [projectItem(15748, "Needs human review")],
