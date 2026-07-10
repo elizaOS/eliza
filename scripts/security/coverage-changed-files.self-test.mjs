@@ -106,6 +106,11 @@ try {
   );
   write(
     dir,
+    "packages/demo/playwright.ui-smoke.config.ts",
+    "export default { testDir: './test/ui-smoke' };\n",
+  );
+  write(
+    dir,
     "packages/demo/src/feature.test.ts",
     "import { test } from 'vitest';\ntest('f', () => {});\n",
   );
@@ -182,10 +187,16 @@ try {
     );
   });
 
-  assertCase("vitest config changes are not LCOV-enforced source", () => {
+  assertCase("test-runner config changes are not LCOV-enforced source", () => {
     assert.ok(
       !out.files.includes("plugins/plugin-demo/vitest.config.ts"),
       `vitest config leaked into changed source: ${out.files.join(",")}`,
+    );
+    // Playwright configs (including variants like playwright.ui-smoke.config.ts)
+    // configure a runner, not shippable source; no unit test can put them in LCOV.
+    assert.ok(
+      !out.files.includes("packages/demo/playwright.ui-smoke.config.ts"),
+      `playwright config leaked into changed source: ${out.files.join(",")}`,
     );
   });
 } finally {
