@@ -54,9 +54,23 @@ function hasPersistedExistingInstallConfig(
   );
 }
 
+/** Delay between existing-install probes while waiting for a booting agent. */
+const BOOTING_AGENT_RETRY_MS = 1_000;
+
 export async function detectExistingFirstRunConnection(args: {
   client: ExistingFirstRunProbeClient;
   timeoutMs: number;
+  /**
+   * True when a committed on-device runtime (mobile `cloud-hybrid` / `local`)
+   * is persisted, so the native service WILL bring the bundled agent up. The
+   * agent's cold boot takes ~30s on a low-power phone (LP3) — far longer than
+   * the single-shot probe — so without waiting, a returning hybrid user is
+   * dropped back into first-run on every cold launch while the agent is still
+   * booting. When set, keep retrying the unreachable probe until the agent
+   * answers or the outer timeout fires. A genuinely fresh install leaves this
+   * false and keeps the fast single-shot (no re-onboarding delay).
+   */
+  waitForBootingAgent?: boolean;
 }): Promise<ExistingFirstRunProbeResult | null> {
   if (!args.client.apiAvailable) {
     return null;
@@ -64,36 +78,54 @@ export async function detectExistingFirstRunConnection(args: {
 
   const timeoutToken = Symbol("first-run-bootstrap-timeout");
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let timedOut = false;
   const result = await Promise.race([
     (async () => {
-      // error-policy:J4 existing-install probe — an unreachable agent means
-      // "no existing install detected" and first-run proceeds normally
-      const status = await args.client.getFirstRunStatus().catch(() => null);
-      if (!status) {
-        return null;
-      }
+      for (;;) {
+        if (timedOut) {
+          return null;
+        }
+        // error-policy:J4 existing-install probe — an unreachable agent means
+        // "no existing install detected" and first-run proceeds normally,
+        // unless we are waiting for a known-booting on-device agent (below).
+        const status = await args.client.getFirstRunStatus().catch(() => null);
+        if (status) {
+          if (status.complete) {
+            return {
+              activeServer: LOCAL_ACTIVE_SERVER,
+              detectedExistingInstall: true,
+            } satisfies ExistingFirstRunProbeResult;
+          }
 
-      if (status.complete) {
-        return {
-          activeServer: LOCAL_ACTIVE_SERVER,
-          detectedExistingInstall: true,
-        } satisfies ExistingFirstRunProbeResult;
-      }
+          // error-policy:J4 same probe semantics — the agent answered but has
+          // no existing install, so first-run proceeds normally.
+          const config = await args.client.getConfig().catch(() => null);
+          if (!hasPersistedExistingInstallConfig(config)) {
+            return null;
+          }
 
-      // error-policy:J4 same probe semantics — no readable config means "no
-      // existing install detected"
-      const config = await args.client.getConfig().catch(() => null);
-      if (!hasPersistedExistingInstallConfig(config)) {
-        return null;
-      }
+          return {
+            activeServer: LOCAL_ACTIVE_SERVER,
+            detectedExistingInstall: true,
+          } satisfies ExistingFirstRunProbeResult;
+        }
 
-      return {
-        activeServer: LOCAL_ACTIVE_SERVER,
-        detectedExistingInstall: true,
-      } satisfies ExistingFirstRunProbeResult;
+        // Agent unreachable. A fresh install proceeds straight to first-run; a
+        // committed on-device runtime waits for its still-booting agent (the
+        // outer Promise.race caps the total wait at timeoutMs).
+        if (!args.waitForBootingAgent) {
+          return null;
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, BOOTING_AGENT_RETRY_MS),
+        );
+      }
     })(),
     new Promise<typeof timeoutToken>((resolve) => {
-      timeoutId = setTimeout(() => resolve(timeoutToken), args.timeoutMs);
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        resolve(timeoutToken);
+      }, args.timeoutMs);
     }),
   ]);
   if (timeoutId !== null) {

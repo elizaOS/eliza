@@ -1148,7 +1148,16 @@ async function buildWeb(platform) {
       process.env.ELIZA_RELEASE_AUTHORITY || releaseAuthority,
     ...(androidRuntimeMode
       ? {
-          VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
+          // A pre-set VITE_ELIZA_ANDROID_RUNTIME_MODE (the value Vite bakes into
+          // the renderer) wins over the platform-policy default, mirroring the
+          // iOS override below and ELIZA_BUILD_VARIANT above. This is the env
+          // knob for an off-catalog Android runtime mode — e.g.
+          // `VITE_ELIZA_ANDROID_RUNTIME_MODE=cloud-hybrid bun run build:android`
+          // builds a hybrid APK (cloud inference, on-device agent, 4 GB floor)
+          // without a dedicated platform target. Without this, spreading the
+          // policy value clobbered an explicitly chosen mode.
+          VITE_ELIZA_ANDROID_RUNTIME_MODE:
+            process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE || androidRuntimeMode,
         }
       : {}),
     ...(iosRuntimeMode

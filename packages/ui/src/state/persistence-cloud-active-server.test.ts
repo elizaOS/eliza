@@ -314,6 +314,27 @@ describe("Cloud active server persistence", () => {
     });
   });
 
+  it("keeps the on-device agent record under cloud-hybrid (LP3 hybrid re-onboarded every cold launch)", () => {
+    // cloud-hybrid = on-device agent chat + cloud inference, so the persisted
+    // mobile-local record is valid — rejecting it here cleared it +
+    // savePersistedFirstRunComplete(false) on every cold launch, bouncing a
+    // returning hybrid user into first-run while the still-booting agent (~30s
+    // on the LP3) was unreachable.
+    const server = {
+      id: "local:android",
+      kind: "remote" as const,
+      label: "On-device agent",
+      apiBase: "eliza-local-agent://ipc",
+    };
+    expect(
+      reconcileMobileRestoredActiveServer({
+        platform: "android",
+        mobileRuntimeMode: "cloud-hybrid",
+        server,
+      }),
+    ).toBeUndefined();
+  });
+
   it("logs a warning instead of silently swallowing a failed active-server persist", () => {
     const server = createPersistedActiveServer({
       id: "cloud:agent-warn",

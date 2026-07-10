@@ -205,7 +205,18 @@ export function reconcileMobileRestoredActiveServer(args: {
 }): PersistedActiveServer | null | undefined {
   const { server, mobileRuntimeMode, platform } = args;
   const mobileLocal = isMobileLocalActiveServer(server);
-  if (mobileLocal && mobileRuntimeMode !== "local") {
+  // The on-device agent is the chat target for BOTH "local" and "cloud-hybrid"
+  // runtimes — cloud-hybrid = on-device agent + cloud inference, and
+  // first-run-finish persists active-server=local:android together with
+  // mode=cloud-hybrid. Rejecting the mobile-local record for cloud-hybrid
+  // cleared it + savePersistedFirstRunComplete(false) on every cold launch,
+  // dropping a returning hybrid user back into first-run while the still-booting
+  // on-device agent was unreachable (LP3 ~30s boot).
+  if (
+    mobileLocal &&
+    mobileRuntimeMode !== "local" &&
+    mobileRuntimeMode !== "cloud-hybrid"
+  ) {
     return null;
   }
 
@@ -614,13 +625,26 @@ export async function runRestoringSession(
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI firstRun).
+  // A committed mobile on-device runtime (cloud-hybrid / local) means the
+  // native service is bringing the bundled agent up right now; its ~30s cold
+  // boot on a low-power phone outlasts the 3.5s single-shot probe, so wait for
+  // it instead of dropping the returning user back into first-run every cold
+  // launch. A fresh install (no committed mode) keeps the fast single-shot.
+  const committedMobileOnDeviceMode =
+    (isAndroid || isIOS) &&
+    ((mode) => mode === "local" || mode === "cloud-hybrid")(
+      readPersistedMobileRuntimeMode(),
+    );
   const probed =
     !forceFreshFirstRun && !persistedActiveServer && !isDevUiPort()
       ? await detectExistingFirstRunConnection({
           client,
           timeoutMs: isDesktop
             ? Math.min(getBackendStartupTimeoutMs(), 30_000)
-            : Math.min(getBackendStartupTimeoutMs(), 3_500),
+            : committedMobileOnDeviceMode
+              ? Math.min(getBackendStartupTimeoutMs(), 45_000)
+              : Math.min(getBackendStartupTimeoutMs(), 3_500),
+          waitForBootingAgent: committedMobileOnDeviceMode,
         })
       : null;
   if (cancelled.current) return;

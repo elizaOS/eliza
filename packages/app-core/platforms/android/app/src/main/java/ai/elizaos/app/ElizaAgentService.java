@@ -3842,8 +3842,9 @@ public class ElizaAgentService extends Service {
         String mode = readRuntimeMode(context);
         long totalMemBytes = readDeviceTotalMemBytes(context);
         boolean deviceAllowsLocalAgent = DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes);
+        boolean deviceAllowsHybridAgent = DeviceRamTierPolicy.allowsHybridAgent(totalMemBytes);
         boolean start = shouldAutoStartForRuntimeMode(
-            isBrandedDevice(), mode, deviceAllowsLocalAgent);
+            isBrandedDevice(), mode, deviceAllowsLocalAgent, deviceAllowsHybridAgent);
         String trimmed = mode == null ? null : mode.trim();
         if (!start && "local".equals(trimmed) && !deviceAllowsLocalAgent) {
             // Fail loud (#14390): a persisted local choice on a device below the
@@ -3860,9 +3861,18 @@ public class ElizaAgentService extends Service {
     }
 
     static boolean shouldAutoStartForRuntimeMode(
-            boolean brandedDevice, String mode, boolean deviceAllowsLocalAgent) {
+            boolean brandedDevice, String mode, boolean deviceAllowsLocalAgent,
+            boolean deviceAllowsHybridAgent) {
         if (brandedDevice) return true;
         String trimmed = mode == null ? null : mode.trim();
+        // A committed cloud-hybrid runtime (cloud inference + an on-device agent
+        // process that still owns plugins, the voice bridge, and device control)
+        // needs the agent booted on cold launch — it just clears the lower 4 GB
+        // hybrid floor instead of the 8 GB local floor (DeviceRamTierPolicy,
+        // #15577). A fresh install (mode == null) matches neither branch, so it
+        // still never auto-starts before the user commits a choice (#15189);
+        // the shipped cloud-only APK (mode "cloud") likewise never starts one.
+        if ("cloud-hybrid".equals(trimmed)) return deviceAllowsHybridAgent;
         return "local".equals(trimmed) && deviceAllowsLocalAgent;
     }
 
