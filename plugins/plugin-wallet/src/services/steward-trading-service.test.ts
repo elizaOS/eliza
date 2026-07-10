@@ -37,10 +37,14 @@ function runtime(
   } as unknown as IAgentRuntime;
 }
 
-function configuredService(fetchMock: typeof fetch, maxRetries = 3) {
+function configuredService(
+  fetchMock: typeof fetch,
+  maxRetries = 3,
+  apiUrl = "https://steward.local",
+) {
   return new StewardTradingService(
     runtime({
-      STEWARD_API_URL: "https://steward.local",
+      STEWARD_API_URL: apiUrl,
       STEWARD_AGENT_ID: "agent-fixture",
       STEWARD_AGENT_TOKEN: "token-fixture",
     }),
@@ -71,6 +75,30 @@ describe("StewardTradingService", () => {
       agentId: "agent-fixture",
       apiUrl: "https://steward.local",
     });
+  });
+
+  it("allows bracketed IPv6 loopback Steward sidecar URLs", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, stewardFixtures.tokenStatusObserved),
+    );
+    const service = configuredService(
+      fetchMock as unknown as typeof fetch,
+      3,
+      "http://[::1]:8787",
+    );
+
+    expect(service.capability()).toMatchObject({
+      kind: "steward-self",
+      canTrade: true,
+      agentId: "agent-fixture",
+      apiUrl: "http://[::1]:8787",
+    });
+
+    await service.tokenStatus();
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "http://[::1]:8787/v1/trade/token-status?agentId=agent-fixture",
+    );
   });
 
   it("opens sessions through the versioned route with Steward request names", async () => {
@@ -302,6 +330,15 @@ describe("StewardTradingService", () => {
         },
       },
       {
+        status: 401,
+        body: { ok: false, error: "expired bearer credential" },
+        expected: {
+          outcome: "not_attempted",
+          error: "PROVIDER_AUTH_MISSING",
+          retryable: false,
+        },
+      },
+      {
         status: 409,
         body: stewardFixtures.idempotencyConflict,
         expected: {
@@ -360,6 +397,31 @@ describe("StewardTradingService", () => {
 
       expect(result).toMatchObject({ ok: false, ...c.expected });
     }
+  });
+
+  it("keeps venue instrument token rejections out of credential handling", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(400, { ok: false, error: "token not supported" }),
+    );
+    const service = configuredService(fetchMock as unknown as typeof fetch, 1);
+
+    const result = await service.submitOrder({
+      venue: "polymarket",
+      sessionId: "sess_pm_fixture",
+      tokenId: "123456789",
+      side: "buy",
+      amount: "5",
+      price: "0.42",
+      idempotencyKey: "idem-fixture",
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      outcome: "rejected",
+      error: "PROVIDER_REJECTED",
+      detail: "token not supported",
+      retryable: false,
+    });
   });
 
   it("resolves an active governed account from token and session state", async () => {

@@ -125,7 +125,8 @@ function isSecureStewardApiUrl(value: string): boolean {
       url.protocol === "http:" &&
       (url.hostname === "localhost" ||
         url.hostname === "127.0.0.1" ||
-        url.hostname === "::1")
+        url.hostname === "::1" ||
+        url.hostname === "[::1]")
     );
   } catch {
     return false;
@@ -198,6 +199,19 @@ function retryAfterMs(headers: Headers): number | undefined {
 function bodySaysStatusUnknown(body: unknown): boolean {
   const detail = detailFromBody(body, "");
   return /status unknown|submission status unknown/i.test(detail);
+}
+
+function isStewardCredentialFailure(status: number, detail: string): boolean {
+  if (status === 401) return true;
+  return (
+    /\bagent\s+jwt\s+(?:required|missing|invalid|expired)\b/i.test(detail) ||
+    /\bauth(?:entication)?[-_\s]?token\s+(?:required|missing|invalid|expired)\b/i.test(
+      detail,
+    ) ||
+    /\b(?:required|missing|invalid|expired)\s+auth(?:entication)?[-_\s]?token\b/i.test(
+      detail,
+    )
+  );
 }
 
 function isTimeoutError(error: unknown): boolean {
@@ -315,7 +329,7 @@ function mapFailure<T>(
       retryable: false,
     };
   }
-  if (status === 401 || /agent jwt required|auth|token/i.test(detail)) {
+  if (isStewardCredentialFailure(status, detail)) {
     return {
       ok: false,
       outcome: "not_attempted",
