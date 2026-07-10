@@ -84,4 +84,63 @@ describe("dispatchRoute legacy response bodies", () => {
       code: "ROUTE_RESPONSE_INVALID_JSON",
     });
   });
+
+  it("keeps authorization ahead of response-body handling", async () => {
+    const privateRoute: Route = {
+      type: "GET",
+      path: "/api/private",
+      handler: async () => {
+        throw new Error("private handler must not execute");
+      },
+    } as unknown as Route;
+
+    const result = await dispatchRoute({
+      runtime: { routes: [privateRoute] } as unknown as IAgentRuntime,
+      method: "GET",
+      path: "/api/private",
+      headers: {},
+      inProcess: true,
+      isAuthorized: () => false,
+    });
+
+    expect(result).toMatchObject({
+      status: 401,
+      body: { error: "Unauthorized" },
+    });
+  });
+
+  it("passes parsed request state through return-shape handlers", async () => {
+    const route: Route = {
+      type: "POST",
+      path: "/api/items/:id",
+      routeHandler: async (ctx) => ({
+        status: 201,
+        body: {
+          id: ctx.params.id,
+          body: ctx.body,
+          query: ctx.query,
+        },
+      }),
+    } as Route;
+
+    const result = await dispatchRoute({
+      runtime: { routes: [route] } as unknown as IAgentRuntime,
+      method: "POST",
+      path: "/api/items/item-1",
+      query: { mode: "strict" },
+      body: '{"name":"sample"}',
+      headers: { "content-type": "application/json" },
+      inProcess: true,
+      isAuthorized: () => true,
+    });
+
+    expect(result).toEqual({
+      status: 201,
+      body: {
+        id: "item-1",
+        body: { name: "sample" },
+        query: { mode: "strict" },
+      },
+    });
+  });
 });
