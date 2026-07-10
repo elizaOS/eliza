@@ -880,6 +880,7 @@ export function ChatView({
           micReconnected={voiceSession.micReconnected}
           ttsError={voiceSession.ttsError}
           realtimeActive={voiceSession.realtimeActive}
+          realtimeAvailable={voiceSession.realtimeAvailable}
           realtimePaused={voiceSession.paused}
           realtimeErrorMessage={
             voiceSession.realtimeError?.actionable

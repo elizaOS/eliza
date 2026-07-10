@@ -6,11 +6,50 @@
  * gesture that unlocks audio is not cancelled) and message-play telemetry.
  */
 
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useContinuousChat } from "../../hooks/useContinuousChat";
+import { useRealtimeVoiceSession } from "../../hooks/useRealtimeVoiceSession";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { VoiceChatState } from "../../voice/voice-chat-types";
 import { useChatVoiceController } from "./chat-view-hooks";
+
+const realtimeHarness = vi.hoisted(() => ({
+  state: {
+    available: false,
+    active: false,
+    status: "idle" as const,
+    transcriptPartial: "",
+    transcriptFinal: "",
+    agentSpeaking: false,
+    paused: false,
+    error: null,
+    speaker: null,
+    start: vi.fn(async () => {}),
+    stop: vi.fn(async () => {}),
+    bargeIn: vi.fn(),
+    unlock: vi.fn(async () => {}),
+  },
+}));
+
+const continuousHarness = vi.hoisted(() => ({
+  state: {
+    enabled: false,
+    setEnabled: vi.fn(),
+    mode: "off",
+    setMode: vi.fn(),
+    status: "idle" as const,
+    interimTranscript: "",
+    latency: {},
+    speaker: null,
+    needsAudioUnlock: false,
+    unlockAudio: vi.fn(),
+    micReconnected: false,
+    ttsError: null,
+    resume: vi.fn(async () => {}),
+    pause: vi.fn(async () => {}),
+  },
+}));
 
 vi.mock("../../api/client", () => ({
   client: {
@@ -21,12 +60,13 @@ vi.mock("../../api/client", () => ({
 
 vi.mock("../../hooks/useContinuousChat", () => ({
   DEFAULT_VOICE_CONTINUOUS_MODE: "off",
-  useContinuousChat: vi.fn(() => ({
-    enabled: false,
-    setEnabled: vi.fn(),
-    mode: "off",
-    setMode: vi.fn(),
-  })),
+  useContinuousChat: vi.fn(() => continuousHarness.state),
+}));
+
+vi.mock("../../hooks/useRealtimeVoiceSession", () => ({
+  VoiceSessionMintError: class VoiceSessionMintError extends Error {},
+  isRealtimeVoiceFlagEnabled: vi.fn(() => true),
+  useRealtimeVoiceSession: vi.fn(() => realtimeHarness.state),
 }));
 
 vi.mock("../../hooks/useDefaultProviderPresets", () => ({
@@ -48,6 +88,8 @@ vi.mock("../../hooks/useVoiceChat", () => ({
 }));
 
 const useVoiceChatMock = vi.mocked(useVoiceChat);
+const useContinuousChatMock = vi.mocked(useContinuousChat);
+const useRealtimeVoiceSessionMock = vi.mocked(useRealtimeVoiceSession);
 
 function makeVoiceState(
   overrides: Partial<VoiceChatState> = {},
@@ -96,6 +138,17 @@ describe("useChatVoiceController voice playback unlock", () => {
   beforeEach(() => {
     voiceState = makeVoiceState();
     useVoiceChatMock.mockImplementation(() => voiceState);
+    realtimeHarness.state.available = false;
+    realtimeHarness.state.active = false;
+    realtimeHarness.state.status = "idle";
+    realtimeHarness.state.error = null;
+    realtimeHarness.state.start.mockClear();
+    realtimeHarness.state.stop.mockClear();
+    realtimeHarness.state.bargeIn.mockClear();
+    continuousHarness.state.resume.mockClear();
+    continuousHarness.state.pause.mockClear();
+    useContinuousChatMock.mockClear();
+    useRealtimeVoiceSessionMock.mockClear();
   });
 
   afterEach(() => {
@@ -129,5 +182,73 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(voiceState.speak).toHaveBeenCalledWith("hello from Eliza", {
       telemetry: { messageId: "message-1" },
     });
+  });
+
+  it("routes the primary mic to realtime when the force-armed session is available", () => {
+    realtimeHarness.state.available = true;
+    const { result } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    act(() => {
+      result.current.beginVoiceCapture("compose");
+    });
+
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+    expect(voiceState.startListening).not.toHaveBeenCalled();
+  });
+
+  it("keeps batch passive capture disabled while realtime is armed for continuous mode", async () => {
+    realtimeHarness.state.available = true;
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        continuousMode: "vad-gated",
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await waitFor(() =>
+      expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1),
+    );
+    expect(useContinuousChatMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ disabled: true, mode: "vad-gated" }),
+    );
+    expect(continuousHarness.state.resume).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the batch path after realtime becomes unavailable", () => {
+    realtimeHarness.state.available = true;
+    const { rerender } = renderHook(
+      (available: boolean) => {
+        realtimeHarness.state.available = available;
+        return useChatVoiceController({
+          ...baseOptions,
+          continuousMode: "vad-gated",
+          realtimeAgentId: available
+            ? "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+            : null,
+          getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+        });
+      },
+      { initialProps: true },
+    );
+
+    expect(useContinuousChatMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ disabled: true, mode: "vad-gated" }),
+    );
+
+    act(() => {
+      rerender(false);
+    });
+
+    expect(useContinuousChatMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ disabled: false, mode: "vad-gated" }),
+    );
   });
 });
