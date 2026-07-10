@@ -1,6 +1,7 @@
-// Covers the `/orchestrator-status` slash command: view-scoped/agent-target
-// registration, slash-only validate(), the deterministic callback reply with no
-// LLM call, and the GUI wire serialization. Deterministic, no live model.
+/**
+ * Exercises the task coordinator's slash-command action through the real
+ * per-runtime registry, parser, handler, callback, and GUI wire projection.
+ */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import {
   commandVisibleForSurface,
@@ -18,13 +19,6 @@ import {
   registerOrchestratorCommands,
 } from "../../src/orchestrator-command";
 
-/**
- * Locks the only non-core-plugin slash-command contribution on develop
- * (task-coordinator's `/orchestrator-status`, #8790 / PR #9104), which shipped
- * untested. Proves a view-owning app plugin lights up the universal command
- * surface end to end: registration shape, slash-only validate (the misrouting
- * guard), a deterministic no-LLM handler, and the GUI surface contract.
- */
 const AGENT = "agent-orchestrator-command-test";
 
 const runtime = { agentId: AGENT } as IAgentRuntime;
