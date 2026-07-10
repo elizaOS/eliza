@@ -705,14 +705,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   }
 
-  it("renders one passive total with no arrow or button in either shade mode", () => {
+  it("renders one passive total with a small chevron and no button in either shade mode", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     const count = screen.getByTestId("notifications-count");
     expect(count.textContent).toBe("3 Notifications");
     expect(count.closest("button")).toBeNull();
-    expect(count.querySelector("svg")).toBeNull();
+    const chevron = screen.getByTestId("notifications-count-chevron");
+    expect(chevron.classList.contains("h-3")).toBe(true);
+    expect(chevron.classList.contains("w-3")).toBe(true);
     expect(screen.queryByTestId("notifications-expand-toggle")).toBeNull();
     expect(screen.queryByText(/more|show less/i)).toBeNull();
     expandShade();

@@ -42,7 +42,7 @@
  */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { tierForPriority } from "@elizaos/core";
-import { X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import {
   type CSSProperties,
   memo,
@@ -376,7 +376,7 @@ function NotificationSourceIcon({
         <span
           data-testid="notification-source-count"
           aria-hidden
-          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black ring-2 ring-black/70 shadow-[0_1px_4px_rgba(0,0,0,0.45)]"
+          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
         >
           {count > 99 ? "99+" : count}
         </span>
@@ -1308,11 +1308,16 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
         })}
         <li
           data-testid="notifications-count"
-          className="flex items-center justify-center px-3 py-2 text-2xs font-medium text-white/50"
+          className="flex items-center justify-center gap-1 px-3 py-2 text-2xs font-medium text-white/50"
         >
           {notifications.length === 1
             ? "1 Notification"
             : `${notifications.length} Notifications`}
+          <ChevronDown
+            aria-hidden
+            data-testid="notifications-count-chevron"
+            className="h-3 w-3 shrink-0"
+          />
         </li>
       </ul>
     </section>
