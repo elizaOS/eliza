@@ -343,10 +343,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   .eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition {
     transition: none !important;
   }
-  .eliza-notif-scroll {
-    transition-duration: 420ms !important;
-    transition-timing-function: cubic-bezier(0.16,1,0.3,1) !important;
-  }
   .eliza-notif-control-transition {
     transition-duration: 220ms !important;
   }
@@ -921,10 +917,13 @@ export function NotificationsHomeCenter({
       list.scrollTo?.({ top: 0, behavior: "smooth" });
     }
     wheelCommitLockUntil.current = Date.now() + WHEEL_COMMIT_LOCK_MS;
+    // End direct manipulation before starting the close settle. Leaving a
+    // non-zero pull marks the shade as dragging, which intentionally disables
+    // child transitions and turns the committed close into a delayed snap.
+    setPullPx(0);
     setShadeClosing(true);
     shadeCloseTimer.current = window.setTimeout(() => {
       shadeCloseTimer.current = null;
-      setPullPx(0);
       setShade(false);
     }, SHADE_CLOSE_FADE_MS);
   }, [
@@ -1552,20 +1551,27 @@ export function NotificationsHomeCenter({
       ? previewGroups
       : restedGroups;
   shadeGestureRef.current = { canExpand, canCollapse: shadeExpanded };
-  const shadeCloseProgress = shadeExpanded
-    ? shadeClosing
-      ? 1
-      : notificationPullRevealProgress(-pullPx, 0)
-    : 0;
+  const dragCloseProgress =
+    shadeExpanded && !shadeClosing
+      ? notificationPullRevealProgress(-pullPx, 0)
+      : 0;
+  const committedCloseProgress = shadeClosing ? 1 : 0;
+  const shadeCloseProgress = Math.max(
+    dragCloseProgress,
+    committedCloseProgress,
+  );
   const notificationCountVisibility = shadeExpanded
-    ? shadeCloseProgress
+    ? 0
     : 1 - notificationPullRevealProgress(pullPx, 0);
-  const disposableContentVisibility = 1 - shadeCloseProgress;
+  // During direct manipulation, keep every expanded card at a stable size and
+  // position. Only the rested count/clear chrome tracks the finger; disposable
+  // rows fade and collapse after release, with transitions enabled.
+  const disposableContentVisibility = 1 - committedCloseProgress;
   const emptyStateVisibility = shadeExpanded
-    ? disposableContentVisibility
+    ? 1 - shadeCloseProgress
     : notificationPullRevealProgress(pullPx, 0);
   const collapseControlVisibility = shadeExpanded
-    ? disposableContentVisibility
+    ? 1 - committedCloseProgress
     : 0;
   const showCollapseControl =
     shadeExpanded &&
@@ -1577,10 +1583,6 @@ export function NotificationsHomeCenter({
     : previewingExpansion
       ? notificationPullRevealProgress(pullPx, 0)
       : 0;
-  // The scrollport follows only a populated opening pull. Empty feedback and
-  // closing content animate independently so neither can rebound on release.
-  const shadeTranslatePx = hasNotifications && pullPx > 0 ? pullPx : 0;
-
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
     const el = scrollRef.current;
@@ -1713,17 +1715,6 @@ export function NotificationsHomeCenter({
         data-shade-mode={shadeExpanded ? "expanded" : "rested"}
         data-shade-preview={previewingExpansion ? "expanding" : undefined}
         data-shade-dragging={pullPx !== 0 ? "" : undefined}
-        style={{
-          // Only the opening pull rubber-bands the scrollport. Closing fades
-          // its contents in place, so releasing an upward gesture cannot make
-          // the count or list rebound downward.
-          transform: shadeTranslatePx
-            ? `translateY(${shadeTranslatePx}px)`
-            : undefined,
-          transition: shadeTranslatePx
-            ? "none"
-            : "transform 420ms cubic-bezier(0.16,1,0.3,1)",
-        }}
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).

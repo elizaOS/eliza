@@ -817,7 +817,6 @@ describe("NotificationsHomeCenter", () => {
     expect(css).toContain(".eliza-notif-glass");
     expect(css).toContain("backdrop-filter");
     expect(css).toContain("box-shadow");
-    expect(css).toContain("transition-duration: 420ms !important");
     expect(css).toContain(".eliza-notif-row-inner[data-swipe-dragging]");
     expect(surface.getAttribute("data-swipe-dragging")).toBeNull();
   });
@@ -1302,9 +1301,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.className).toContain("scroll-fade");
     expect(list.className).toContain("scroll-fade-b-[1.5rem]");
     fireEvent.click(collapse);
-    // The count starts its crossfade on the same frame as the notification
-    // exit; the expanded DOM remains only for the 320ms fade.
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    // The total stays out of the expanded layout while rows settle; it fades in
+    // after the 320ms close removes the expanded DOM.
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     expect(clearSlot.style.height).toBe("0px");
     expect(clearSlot.style.marginBottom).toBe("-8px");
     expect(screen.getAllByTestId("notification-row")[0]).toBe(priorityRow);
@@ -1316,6 +1315,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     finishShadeCollapse();
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
   });
 
   it("opens from the notification total without treating a pointer drag as a click", () => {
@@ -1385,14 +1385,14 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       priorityRow.closest("li"),
     );
     expect(quietGroup?.style.opacity).toBe("0");
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
     expect(screen.queryByText("Files updated")).toBeNull();
   });
 
-  it("tracks an upward drag without fading or remounting the priority row", () => {
+  it("keeps expanded cards stable during an upward drag, then settles on release", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
@@ -1415,9 +1415,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     for (const peek of screen.getAllByTestId("notification-stack-peek")) {
-      expect(peek.style.opacity).toBe("0");
+      expect(Number.parseFloat(peek.style.opacity)).toBeGreaterThan(0);
     }
 
     fireEvent.pointerUp(list, {
@@ -1426,6 +1426,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientX: 12,
       clientY: 20,
     });
+    expect(list.getAttribute("data-shade-dragging")).toBeNull();
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
@@ -1579,7 +1580,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientY: 140,
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(list.style.transition).toContain("420ms");
+    expect(list.style.transform).toBe("");
+    expect(list.style.transition).toBe("");
     // Stacks persist through the pull; the peeks carry the revealed rows.
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getAllByTestId("notification-stack-peek")).toHaveLength(2);
@@ -1757,8 +1759,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     fireEvent.wheel(list, { deltaY: PULL_COMMIT_PX + 10 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     finishShadeCollapse();
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });
