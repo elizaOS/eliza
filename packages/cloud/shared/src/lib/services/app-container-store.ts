@@ -11,6 +11,7 @@ import { containersRepository } from "../../db/repositories/containers";
 import { containers } from "../../db/schemas/containers";
 import { logger } from "../utils/logger";
 import {
+  findActiveContainerIdsSharingName,
   findAppContainerRowById,
   findDeletingAppContainerRows,
   type ProjectableContainerRow,
@@ -28,6 +29,14 @@ export type { ProjectableContainerRow } from "./app-container-store-queries";
 export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): AppContainerRow {
   const metaAppId =
     typeof row.metadata?.appId === "string" ? (row.metadata.appId as string) : undefined;
+  // The immutable docker id markRunning merged into metadata — the delete
+  // executor's preferred removal handle (#15826). Legacy rows and rows that
+  // never reached markRunning legitimately lack it.
+  const metaHostContainerId = row.metadata?.hostContainerId;
+  const hostContainerId =
+    typeof metaHostContainerId === "string" && metaHostContainerId.trim().length > 0
+      ? metaHostContainerId
+      : undefined;
   return {
     id: row.id,
     // project_name is set to the appId by the deploy orchestrator's
@@ -39,6 +48,7 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
     organizationId: row.organization_id,
     userId: row.user_id,
     environmentVars: row.environment_vars ?? undefined,
+    ...(hostContainerId ? { hostContainerId } : {}),
   };
 }
 
@@ -79,6 +89,17 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     // real deleting row into a terminal no-op.
     const rows = await findDeletingAppContainerRows(dbWrite, organizationId);
     return rows.map(mapContainerRowToAppContainerRow);
+  }
+
+  async findActiveContainerIdsSharingName(
+    containerName: string,
+    excludeContainerId: string,
+  ): Promise<string[]> {
+    // Primary read on purpose: this guard is what stands between a delete job
+    // and another deploy's LIVE container sharing the reused `app-<slug>` name
+    // (#15826). Replica lag hiding a just-marked-running row would green-light
+    // removing it.
+    return findActiveContainerIdsSharingName(dbWrite, containerName, excludeContainerId);
   }
 
   async markRunning(

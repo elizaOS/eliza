@@ -21,7 +21,10 @@ const ROW: AppContainerRow = {
   environmentVars: { DATABASE_URL: "postgresql://app_x:pw@cluster1/db_app_x" },
 };
 
-function fakeStore(row: AppContainerRow | null = ROW) {
+function fakeStore(
+  row: AppContainerRow | null = ROW,
+  opts: { activeIdsSharingName?: string[] } = {},
+) {
   const events: Array<{ op: string; id: string; info?: unknown }> = [];
   const store: AppContainerStore = {
     async getById() {
@@ -29,6 +32,9 @@ function fakeStore(row: AppContainerRow | null = ROW) {
     },
     async findDeletingByOrganization() {
       return row ? [row] : [];
+    },
+    async findActiveContainerIdsSharingName() {
+      return opts.activeIdsSharingName ?? [];
     },
     async markRunning(id, info) {
       events.push({ op: "running", id, info });
@@ -52,6 +58,12 @@ function fakeProvider(over: Partial<Record<keyof AppContainerProvider, unknown>>
     },
     async delete(name: string) {
       calls.push({ op: "delete", arg: name });
+    },
+    async removeByHostContainerId(hostContainerId: string) {
+      calls.push({ op: "removeById", arg: hostContainerId });
+    },
+    async removeDbAmbassador(name: string) {
+      calls.push({ op: "removeAmbassador", arg: name });
     },
     async restart(name: string) {
       calls.push({ op: "restart", arg: name });
@@ -325,6 +337,82 @@ describe("executeContainerDelete / restart / logs", () => {
       store,
     });
 
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("#15826: recovery never rm's by name when a live row shares the containerName", async () => {
+    // A stuck `deleting` row whose deterministic `app-<slug>` name now points at
+    // the app's CURRENT live container (post-redeploy). No hostContainerId was
+    // recorded, so there is nothing safe to remove — recovery must only finish
+    // the DB transition.
+    const { events, store } = fakeStore(ROW, { activeIdsSharingName: ["container-2-live"] });
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), { provider, store });
+
+    expect(calls).toEqual([]); // no docker rm of any kind, no ambassador teardown
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("#15826: removal targets the immutable host container id when recorded", async () => {
+    const { events, store } = fakeStore({ ...ROW, hostContainerId: "docker-old-123" });
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), { provider, store });
+
+    expect(calls.find((c) => c.op === "removeById")?.arg).toBe("docker-old-123");
+    expect(calls.filter((c) => c.op === "delete")).toEqual([]); // never by shared name
+    // No live deploy shares the name, so the per-app DB ambassador is torn down.
+    expect(calls.find((c) => c.op === "removeAmbassador")?.arg).toBe("app-nubilio");
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("#15826: id-based removal leaves the shared DB ambassador while a live deploy owns the name", async () => {
+    const { events, store } = fakeStore(
+      { ...ROW, hostContainerId: "docker-old-123" },
+      { activeIdsSharingName: ["container-2-live"] },
+    );
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), { provider, store });
+
+    expect(calls.find((c) => c.op === "removeById")?.arg).toBe("docker-old-123");
+    expect(calls.filter((c) => c.op === "delete")).toEqual([]);
+    expect(calls.filter((c) => c.op === "removeAmbassador")).toEqual([]); // live app still needs it
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("#15826: an already-gone host container id still completes the terminal transition", async () => {
+    const { events, store } = fakeStore({ ...ROW, hostContainerId: "docker-old-123" });
+    const { calls, provider } = fakeProvider({
+      async removeByHostContainerId() {
+        throw new Error("No such container: docker-old-123");
+      },
+    });
+
+    await executeContainerDelete(job({ organizationId: "org-1" }), { provider, store });
+
+    // The rm was tolerated as already-absent; ambassador teardown and the DB
+    // transition still ran (no live deploy shares the name).
+    expect(calls.find((c) => c.op === "removeAmbassador")?.arg).toBe("app-nubilio");
+    expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
+  });
+
+  test("#15826: the well-formed delete path applies the same id-first discipline", async () => {
+    const { events, store } = fakeStore(
+      { ...ROW, hostContainerId: "docker-old-123" },
+      { activeIdsSharingName: ["container-2-live"] },
+    );
+    const { calls, provider } = fakeProvider();
+
+    await executeContainerDelete(job({ containerId: "container-1", organizationId: "org-1" }), {
+      provider,
+      store,
+    });
+
+    expect(calls.find((c) => c.op === "removeById")?.arg).toBe("docker-old-123");
+    expect(calls.filter((c) => c.op === "delete")).toEqual([]);
+    expect(calls.filter((c) => c.op === "removeAmbassador")).toEqual([]);
     expect(events).toEqual([{ op: "deleted", id: "container-1" }]);
   });
 

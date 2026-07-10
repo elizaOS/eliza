@@ -48,6 +48,24 @@ describe("mapContainerRowToAppContainerRow", () => {
   test("null image_tag becomes empty string", () => {
     expect(mapContainerRowToAppContainerRow(row({ image_tag: null })).image).toBe("");
   });
+
+  test("#15826: projects metadata.hostContainerId so deletes can target the immutable id", () => {
+    expect(
+      mapContainerRowToAppContainerRow(row({ metadata: { hostContainerId: "docker-9" } }))
+        .hostContainerId,
+    ).toBe("docker-9");
+  });
+
+  test("#15826: absent/blank/non-string hostContainerId stays undefined (name-guard path)", () => {
+    expect(mapContainerRowToAppContainerRow(row()).hostContainerId).toBeUndefined();
+    expect(
+      mapContainerRowToAppContainerRow(row({ metadata: { hostContainerId: "  " } }))
+        .hostContainerId,
+    ).toBeUndefined();
+    expect(
+      mapContainerRowToAppContainerRow(row({ metadata: { hostContainerId: 42 } })).hostContainerId,
+    ).toBeUndefined();
+  });
 });
 
 describe("mergeHostPlacementMetadata", () => {
