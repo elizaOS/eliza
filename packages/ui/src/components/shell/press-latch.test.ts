@@ -1,6 +1,7 @@
-// Deterministic contract tests for the drag-handle press latch (#15824):
-// pointer-identity latching against a spied gesture binding — no DOM, no
-// timers; events are hand-built React.PointerEvent shapes.
+/**
+ * Deterministic contract tests for the drag-handle press latch (#15824):
+ * pointer-identity latching against a spied gesture binding — no DOM, no timers.
+ */
 import { describe, expect, it, vi } from "vitest";
 import { withPressLatch } from "./press-latch";
 import type { PullGestureBinding } from "./use-pull-gesture";
