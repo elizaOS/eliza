@@ -39,7 +39,10 @@ export interface AdoptCodexCliResult {
 export async function runAuthAdoptCodex(
   params: AdoptCodexCliParams = {},
 ): Promise<AdoptCodexCliResult> {
-  const log = params.log ?? ((line: string) => console.log(line));
+  // CLI stdout is the interface here; write directly rather than console.*
+  // (the logger-only rule covers server runtime paths).
+  const log =
+    params.log ?? ((line: string) => process.stdout.write(`${line}\n`));
   const accountId = params.accountId ?? "default";
 
   if (!params.yes) {
@@ -133,7 +136,7 @@ export function registerAuthAdoptCodexSubcommand(program: Command): void {
           overwrite: opts.overwrite,
           yes: opts.yes,
         });
-        if (opts.json) console.log(JSON.stringify(result));
+        if (opts.json) process.stdout.write(`${JSON.stringify(result)}\n`);
         if (!result.ok) process.exitCode = 1;
       },
     );
