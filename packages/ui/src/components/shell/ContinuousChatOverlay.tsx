@@ -2502,9 +2502,6 @@ export function ContinuousChatOverlay({
     !hasImages &&
     !recording &&
     !responding &&
-    !noProviderConfigured &&
-    !modelBlocksSend &&
-    !booting &&
     !pinnedOpen;
 
   // In short landscape the resting composer moves to the bottom inline-end
