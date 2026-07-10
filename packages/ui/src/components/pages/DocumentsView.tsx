@@ -134,15 +134,30 @@ const SCOPE_FILTER_OPTIONS: ReadonlyArray<{
 
 /* ── Search Result Item ─────────────────────────────────────────────── */
 
+/** `m:ss` from ms for the transcript time-anchor badge (#14806). */
+function formatAnchorClock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 const SearchResultListItem = memo(function SearchResultListItem({
   result,
   onSelect,
 }: {
   result: DocumentSearchResult;
-  onSelect: (documentId: string) => void;
+  /** `seekMs` is the fragment's audio anchor when the hit is a transcript. */
+  onSelect: (documentId: string, seekMs?: number) => void;
 }) {
   const { t } = useTranslation();
   const documentId = result.documentId || result.id;
+  // The fragment's startMs anchor rides the selection so the reader opens the
+  // player at the matching audio offset instead of t=0 (#14806).
+  const seekMs =
+    typeof result.startMs === "number" && Number.isFinite(result.startMs)
+      ? result.startMs
+      : undefined;
   const title =
     result.documentTitle ||
     t("documentsview.UnknownDocument", {
@@ -154,14 +169,14 @@ const SearchResultListItem = memo(function SearchResultListItem({
     label: title,
     group: "documents-results",
     description: `Open search result "${title}"`,
-    onActivate: () => onSelect(documentId),
+    onActivate: () => onSelect(documentId, seekMs),
   });
 
   return (
     <Button
       ref={ref}
       {...agentProps}
-      onClick={() => onSelect(documentId)}
+      onClick={() => onSelect(documentId, seekMs)}
       variant="ghost"
       className="group flex h-auto w-full items-start justify-start whitespace-normal rounded-none px-0 py-3 text-left font-normal transition-colors hover:bg-bg-hover"
     >
@@ -172,6 +187,17 @@ const SearchResultListItem = memo(function SearchResultListItem({
         <div className="flex min-w-0 items-center gap-1.5">
           <FileSearch className="h-3.5 w-3.5 shrink-0 text-muted" aria-hidden />
           <div className="truncate text-sm font-semibold text-txt">{title}</div>
+          {seekMs !== undefined ? (
+            <span
+              data-testid={`result-anchor-${result.id}`}
+              className="shrink-0 rounded-sm bg-accent/12 px-1.5 py-0.5 text-2xs font-semibold tabular-nums text-accent-fg"
+            >
+              {formatAnchorClock(seekMs)}
+              {typeof result.endMs === "number" && Number.isFinite(result.endMs)
+                ? `–${formatAnchorClock(result.endMs)}`
+                : ""}
+            </span>
+          ) : null}
         </div>
         <div className="mt-1 line-clamp-2 text-xs text-muted">
           {result.text}
@@ -397,8 +423,15 @@ export function DocumentsView({
   const [isServiceLoading, setIsServiceLoading] = useState(false);
   const serviceRetryRef = useRef(0);
   const selectedDocId = selectedDocumentId ?? internalSelectedDocId;
+  // Entry offset for the reader's transcript player (#14806): set when the
+  // selection came from an anchored search hit, cleared on every other
+  // selection so a stale seek never leaks into the next document.
+  const [pendingSeekMs, setPendingSeekMs] = useState<number | null>(null);
   const setSelectedDocId = useCallback(
-    (documentId: string | null) => {
+    (documentId: string | null, seekMs?: number) => {
+      setPendingSeekMs(
+        typeof seekMs === "number" && Number.isFinite(seekMs) ? seekMs : null,
+      );
       if (selectedDocumentId === undefined) {
         setInternalSelectedDocId(documentId);
       }
@@ -1183,6 +1216,7 @@ export function DocumentsView({
         <div className="flex min-h-0 flex-1 flex-col">
           <DocumentViewer
             documentId={selectedDocId}
+            initialSeekMs={pendingSeekMs}
             onUpdated={() => {
               void loadData();
             }}

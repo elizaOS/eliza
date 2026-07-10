@@ -552,6 +552,14 @@ export interface DocumentSearchResult {
   documentTitle?: string;
   documentProvenance?: DocumentProvenance;
   position?: number;
+  /**
+   * Transcript time anchors (#14806) — present only on hits from
+   * segment-boundary transcript fragments; `startMs`/`endMs` are ms from
+   * audio start and drive the search-to-player deep-link seek.
+   */
+  transcriptId?: string;
+  startMs?: number;
+  endMs?: number;
 }
 
 export interface DocumentSearchResponse {

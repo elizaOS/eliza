@@ -8,7 +8,7 @@
 
 import type { Transcript } from "@elizaos/shared/transcripts";
 import { Pause, Play } from "lucide-react";
-import type * as React from "react";
+import * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -19,6 +19,14 @@ export interface TranscriptPlayerProps {
   transcript: Transcript;
   /** Served audio URL; when absent the player is read-only (no transport). */
   audioUrl?: string;
+  /**
+   * Entry offset in ms — the player opens seeked here instead of t=0
+   * (#14806): a knowledge-search hit carries its fragment's `startMs` so
+   * "open the match" lands on the matching audio. Applied once when the
+   * audio duration is known (clamped into range); user scrubbing afterwards
+   * is never overridden.
+   */
+  initialSeekMs?: number;
   className?: string;
 }
 
@@ -33,10 +41,25 @@ function formatMs(ms: number): string {
 export function TranscriptPlayer({
   transcript,
   audioUrl,
+  initialSeekMs,
   className,
 }: TranscriptPlayerProps): React.JSX.Element {
   const audio = useAudioElement();
   const durationMs = audio.durationMs || transcript.durationMs;
+
+  // One-shot entry seek: wait for the element to know its duration (seeking
+  // before metadata is dropped by the media element), clamp, apply once.
+  const appliedInitialSeek = React.useRef(false);
+  const { seekMs } = audio;
+  React.useEffect(() => {
+    if (appliedInitialSeek.current) return;
+    if (typeof initialSeekMs !== "number" || !Number.isFinite(initialSeekMs)) {
+      return;
+    }
+    if (!audioUrl || audio.durationMs <= 0) return;
+    appliedInitialSeek.current = true;
+    seekMs(Math.max(0, Math.min(initialSeekMs, audio.durationMs)));
+  }, [initialSeekMs, audioUrl, audio.durationMs, seekMs]);
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>

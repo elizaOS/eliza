@@ -60,9 +60,16 @@ function formatDocumentTimestamp(value?: number): string | null {
 
 export function DocumentViewer({
   documentId,
+  initialSeekMs,
   onUpdated,
 }: {
   documentId: string | null;
+  /**
+   * Entry offset (ms) for a transcript-backed record (#14806): a knowledge
+   * search hit carries its fragment's startMs so opening the match seeks the
+   * player to the matching audio instead of t=0.
+   */
+  initialSeekMs?: number | null;
   onUpdated?: () => void;
 }) {
   const t = useAppSelector((s) => s.t);
@@ -279,6 +286,9 @@ export function DocumentViewer({
           <TranscriptPlayer
             transcript={transcript}
             audioUrl={mediaUrl || undefined}
+            initialSeekMs={
+              typeof initialSeekMs === "number" ? initialSeekMs : undefined
+            }
           />
         </PagePanel>
       ) : mediaUrl ? (
@@ -286,7 +296,13 @@ export function DocumentViewer({
         <audio
           data-testid="reader-audio"
           controls
-          src={mediaUrl}
+          // A media-fragment `#t=` carries the search-hit entry offset for the
+          // plain-audio fallback (no rich transcript record to seek through).
+          src={
+            typeof initialSeekMs === "number" && initialSeekMs > 0
+              ? `${mediaUrl}#t=${(initialSeekMs / 1000).toFixed(3)}`
+              : mediaUrl
+          }
           className="w-full"
         />
       ) : null;

@@ -61,4 +61,63 @@ describe("TranscriptPlayer", () => {
     // The transcript text is still readable.
     expect(screen.getByTestId("transcript-word-0-1").textContent).toBe("there");
   });
+
+  // Entry-offset seek (#14806): a search hit's fragment startMs opens the
+  // player at the matching audio instead of t=0.
+  function loadMetadata(seconds: number): HTMLAudioElement {
+    const audio = document.querySelector("audio") as HTMLAudioElement;
+    Object.defineProperty(audio, "duration", {
+      configurable: true,
+      value: seconds,
+    });
+    fireEvent(audio, new Event("durationchange"));
+    return audio;
+  }
+
+  it("applies initialSeekMs once the audio duration is known", () => {
+    render(
+      <TranscriptPlayer
+        transcript={transcript}
+        audioUrl="/a.wav"
+        initialSeekMs={1200}
+      />,
+    );
+    const audio = loadMetadata(2.0);
+    expect(audio.currentTime).toBeCloseTo(1.2, 3);
+  });
+
+  it("clamps an out-of-range initialSeekMs into the audio duration", () => {
+    render(
+      <TranscriptPlayer
+        transcript={transcript}
+        audioUrl="/a.wav"
+        initialSeekMs={99_000}
+      />,
+    );
+    const audio = loadMetadata(2.0);
+    expect(audio.currentTime).toBeCloseTo(2.0, 3);
+  });
+
+  it("never re-applies the entry seek over a user scrub", () => {
+    render(
+      <TranscriptPlayer
+        transcript={transcript}
+        audioUrl="/a.wav"
+        initialSeekMs={1200}
+      />,
+    );
+    const audio = loadMetadata(2.0);
+    const scrub = screen.getByTestId("transcript-scrub") as HTMLInputElement;
+    fireEvent.change(scrub, { target: { value: "500" } });
+    expect(audio.currentTime).toBeCloseTo(0.5, 3);
+    // A later metadata event (e.g. durationchange refire) must not snap back.
+    fireEvent(audio, new Event("durationchange"));
+    expect(audio.currentTime).toBeCloseTo(0.5, 3);
+  });
+
+  it("opens at t=0 without initialSeekMs", () => {
+    render(<TranscriptPlayer transcript={transcript} audioUrl="/a.wav" />);
+    const audio = loadMetadata(2.0);
+    expect(audio.currentTime).toBe(0);
+  });
 });
