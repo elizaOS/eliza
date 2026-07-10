@@ -84,7 +84,7 @@ export function CalendarSpatialView({
   const eventCount = snapshot.events.length;
 
   return (
-    <Card gap={1} padding={1}>
+    <Card gap={1} padding={1} shrink={0}>
       <HStack gap={1} align="center">
         <Text style="subheading" bold grow={1} wrap={false}>
           {snapshot.periodLabel}

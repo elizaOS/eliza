@@ -534,7 +534,16 @@ describe("ContinuousChatOverlay", () => {
         "--eliza-continuous-chat-side-clearance",
       );
 
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(
+        <ContinuousChatOverlay
+          controller={makeController()}
+          agentName="Playwright Smoke"
+        />,
+      );
+
+      expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
+        "Ask",
+      );
 
       expect(
         document.documentElement.style.getPropertyValue(
@@ -543,6 +552,10 @@ describe("ContinuousChatOverlay", () => {
       ).toBe("232px");
 
       fireEvent.focus(screen.getByLabelText("message"));
+
+      expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
+        "Ask Playwright Smoke",
+      );
 
       expect(
         document.documentElement.style.getPropertyValue(

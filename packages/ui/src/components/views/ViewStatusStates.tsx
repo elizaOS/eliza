@@ -55,7 +55,10 @@ export function ViewStatusFrame({
         : "border-primary/20 bg-primary/5 text-primary";
 
   return (
-    <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6">
+    <div
+      className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-6"
+      data-view-status={tone}
+    >
       <div
         className={`flex w-full max-w-sm flex-col gap-3 rounded-lg border p-4 ${toneClass}`}
       >

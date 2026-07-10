@@ -122,6 +122,10 @@ describe("CalendarView (unified spatial wrapper)", () => {
       </SpatialSurface>,
     );
     expect(container.querySelector("[data-spatial-surface]")).toBeTruthy();
+    expect(
+      (container.querySelector('[data-spatial-kind="box"]') as HTMLElement)
+        .style.flexShrink,
+    ).toBe("0");
     expect(agent("prev")).toBeTruthy();
     expect(agent("today")).toBeTruthy();
     expect(agent("next")).toBeTruthy();
