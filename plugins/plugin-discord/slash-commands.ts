@@ -133,7 +133,36 @@ const helpCommand: SlashCommand = {
 	ephemeral: true,
 	async execute(interaction) {
 		const lines: string[] = ["**Available Commands**\n"];
+		// List ONLY the commands actually registered with Discord (global + this
+		// guild's scope), so /help matches the slash menu exactly. The in-process
+		// registry also holds "catalog" commands that are filtered out of the
+		// Discord push (guild-context classification); listing those made /help
+		// advertise commands a user cannot pick from the / menu. Falls back to the
+		// full registry if the registered set can't be read.
+		let registeredNames: Set<string> | null = null;
+		try {
+			const app = interaction.client.application;
+			if (app) {
+				const names = new Set<string>();
+				const global = app.commands.cache.size
+					? app.commands.cache
+					: await app.commands.fetch();
+				for (const cmd of global.values()) names.add(cmd.name);
+				if (interaction.guildId) {
+					const guildCmds = await app.commands.fetch({
+						guildId: interaction.guildId,
+					});
+					for (const cmd of guildCmds.values()) names.add(cmd.name);
+				}
+				if (names.size > 0) registeredNames = names;
+			}
+		} catch {
+			// error-policy:J4 degrade — an unreadable registered set falls back to
+			// the full in-process registry (the pre-existing behavior).
+			registeredNames = null;
+		}
 		for (const [name, command] of commands) {
+			if (registeredNames && !registeredNames.has(name)) continue;
 			const options = command.options
 				? command.options
 						.map((option) =>
