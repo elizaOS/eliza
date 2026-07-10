@@ -1,11 +1,13 @@
 /**
- * Browser fallback for the Desktop Capacitor plugin — implements every
- * `DesktopPlugin` method with Web APIs (Notifications, Clipboard, Fullscreen,
- * Battery, `navigator.permissions`) or an explicit unavailable/no-op result
- * where no browser equivalent exists. Loaded via `registerPlugin`'s `web`
- * handler in `index.ts` whenever the Electrobun native bridge
- * (`__ELIZA_ELECTROBUN_RPC__`) is absent, so every device capability this
- * plugin exposes must degrade gracefully here rather than throw.
+ * Web-side implementation of the Desktop Capacitor plugin. Capacitor always
+ * resolves this class in the renderer (there is no Capacitor-native desktop
+ * container), so every method is bridge-first: when the Electrobun host has
+ * injected `__ELIZA_ELECTROBUN_RPC__`, calls proxy to the host's `desktop*`
+ * RPC handlers (tray, shortcuts, window management, quit, version, …) and
+ * events subscribe to the host's `desktop*` bridge messages. Without the
+ * bridge (a plain browser tab) each method degrades to a Web API equivalent
+ * (Notifications, Clipboard, Fullscreen, Battery, `navigator.permissions`)
+ * or an explicit unavailable/no-op result — never a throw.
  */
 import { WebPlugin } from "@capacitor/core";
 
@@ -34,8 +36,17 @@ type DesktopEventData =
   | undefined;
 
 type ElectrobunRequestHandler = (params?: unknown) => Promise<unknown>;
+type ElectrobunMessageListener = (payload: unknown) => void;
 type ElectrobunRendererRpc = {
   request?: Record<string, ElectrobunRequestHandler>;
+  onMessage?: (
+    messageName: string,
+    listener: ElectrobunMessageListener,
+  ) => void;
+  offMessage?: (
+    messageName: string,
+    listener: ElectrobunMessageListener,
+  ) => void;
 };
 
 interface DesktopBridgeWindow extends Window {
@@ -76,6 +87,31 @@ function getDesktopRpc(): ElectrobunRendererRpc | undefined {
     return (window as DesktopBridgeWindow).__ELIZA_ELECTROBUN_RPC__;
   }
   return g.window?.__ELIZA_ELECTROBUN_RPC__ ?? g.__ELIZA_ELECTROBUN_RPC__;
+}
+
+/**
+ * Sentinel distinguishing "the Electrobun bridge is absent (or lacks this
+ * method)" from a legitimate `undefined` RPC response, so void RPC methods
+ * don't get double-handled by the browser fallback.
+ */
+const BRIDGE_ABSENT: unique symbol = Symbol("desktop-bridge-absent");
+
+/**
+ * Invoke the Electrobun host's Desktop RPC method for a plugin method name.
+ * The host registers every handler as `desktop` + PascalCase(method) (see the
+ * Electrobun shell's rpc-schema), so `setTrayMenu` → `desktopSetTrayMenu`.
+ * Returns BRIDGE_ABSENT when no bridge (plain browser tab) or the host build
+ * doesn't expose the method — callers then run their Web API fallback.
+ */
+async function bridgeRequest(
+  method: string,
+  params?: unknown,
+): Promise<unknown> {
+  const rpc = getDesktopRpc();
+  const rpcMethod = `desktop${method[0].toUpperCase()}${method.slice(1)}`;
+  const request = rpc?.request?.[rpcMethod];
+  if (!request || !rpc?.request) return BRIDGE_ABSENT;
+  return await request.call(rpc.request, params);
 }
 
 function currentPlatform(): DesktopPermissionState["platform"] {
@@ -225,40 +261,94 @@ export class DesktopWeb extends WebPlugin {
     eventName: string;
     callback: (event: DesktopEventData) => void;
     windowListener?: () => void;
+    bridgeListener?: (payload: unknown) => void;
+    bridgeMessageName?: string;
   }> = [];
 
-  // System Tray - Not available in browser
-  async createTray(_options: TrayOptions): Promise<void> {}
-  async updateTray(_options: Partial<TrayOptions>): Promise<void> {}
-  async destroyTray(): Promise<void> {}
-  async setTrayMenu(_options: { menu: TrayMenuItem[] }): Promise<void> {}
+  // System Tray — Electrobun host via RPC; not available in a browser tab
+  async createTray(options: TrayOptions): Promise<void> {
+    await bridgeRequest("createTray", options);
+  }
+  async updateTray(options: Partial<TrayOptions>): Promise<void> {
+    await bridgeRequest("updateTray", options);
+  }
+  async destroyTray(): Promise<void> {
+    await bridgeRequest("destroyTray");
+  }
+  async setTrayMenu(options: { menu: TrayMenuItem[] }): Promise<void> {
+    await bridgeRequest("setTrayMenu", options);
+  }
 
-  // Global Shortcuts - Not available in browser
+  // Global Shortcuts — Electrobun host via RPC; not available in a browser tab
   async registerShortcut(
-    _options: GlobalShortcut,
+    options: GlobalShortcut,
   ): Promise<{ success: boolean }> {
+    const bridged = await bridgeRequest("registerShortcut", options);
+    if (bridged !== BRIDGE_ABSENT) {
+      return isRecord(bridged) && typeof bridged.success === "boolean"
+        ? { success: bridged.success }
+        : { success: true };
+    }
     return { success: false };
   }
-  async unregisterShortcut(_options: { id: string }): Promise<void> {}
-  async unregisterAllShortcuts(): Promise<void> {}
-  async isShortcutRegistered(_options: {
+  async unregisterShortcut(options: { id: string }): Promise<void> {
+    await bridgeRequest("unregisterShortcut", options);
+  }
+  async unregisterAllShortcuts(): Promise<void> {
+    await bridgeRequest("unregisterAllShortcuts");
+  }
+  async isShortcutRegistered(options: {
     accelerator: string;
   }): Promise<{ registered: boolean }> {
+    const bridged = await bridgeRequest("isShortcutRegistered", options);
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.registered === "boolean"
+    ) {
+      return { registered: bridged.registered };
+    }
     return { registered: false };
   }
 
-  // Auto Launch - Not available in browser
-  async setAutoLaunch(_options: AutoLaunchOptions): Promise<void> {}
+  // Auto Launch — Electrobun host via RPC; not available in a browser tab
+  async setAutoLaunch(options: AutoLaunchOptions): Promise<void> {
+    await bridgeRequest("setAutoLaunch", options);
+  }
   async getAutoLaunchStatus(): Promise<{
     enabled: boolean;
     openAsHidden: boolean;
   }> {
+    const bridged = await bridgeRequest("getAutoLaunchStatus");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.enabled === "boolean"
+    ) {
+      return {
+        enabled: bridged.enabled,
+        openAsHidden:
+          typeof bridged.openAsHidden === "boolean"
+            ? bridged.openAsHidden
+            : false,
+      };
+    }
     return { enabled: false, openAsHidden: false };
   }
 
-  // Window Management - Limited in browser
-  async setWindowOptions(_options: WindowOptions): Promise<void> {}
+  // Window Management — Electrobun host via RPC; limited in a browser tab
+  async setWindowOptions(options: WindowOptions): Promise<void> {
+    await bridgeRequest("setWindowOptions", options);
+  }
   async getWindowBounds(): Promise<WindowBounds> {
+    const bridged = await bridgeRequest("getWindowBounds");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.x === "number"
+    ) {
+      return bridged as unknown as WindowBounds;
+    }
     return {
       x: window.screenX,
       y: window.screenY,
@@ -266,44 +356,106 @@ export class DesktopWeb extends WebPlugin {
       height: window.outerHeight,
     };
   }
-  async setWindowBounds(_options: WindowBounds): Promise<void> {}
-  async minimizeWindow(): Promise<void> {}
-  async maximizeWindow(): Promise<void> {}
-  async unmaximizeWindow(): Promise<void> {}
+  async setWindowBounds(options: WindowBounds): Promise<void> {
+    await bridgeRequest("setWindowBounds", options);
+  }
+  async minimizeWindow(): Promise<void> {
+    await bridgeRequest("minimizeWindow");
+  }
+  async maximizeWindow(): Promise<void> {
+    await bridgeRequest("maximizeWindow");
+  }
+  async unmaximizeWindow(): Promise<void> {
+    await bridgeRequest("unmaximizeWindow");
+  }
   async closeWindow(): Promise<void> {
+    if ((await bridgeRequest("closeWindow")) !== BRIDGE_ABSENT) return;
     window.close();
   }
   async showWindow(): Promise<void> {
+    if ((await bridgeRequest("showWindow")) !== BRIDGE_ABSENT) return;
     window.focus();
   }
-  async hideWindow(): Promise<void> {}
+  async hideWindow(): Promise<void> {
+    await bridgeRequest("hideWindow");
+  }
   async focusWindow(): Promise<void> {
+    if ((await bridgeRequest("focusWindow")) !== BRIDGE_ABSENT) return;
     window.focus();
   }
   async isWindowMaximized(): Promise<{ maximized: boolean }> {
+    const bridged = await bridgeRequest("isWindowMaximized");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.maximized === "boolean"
+    ) {
+      return { maximized: bridged.maximized };
+    }
     return { maximized: false };
   }
   async isWindowMinimized(): Promise<{ minimized: boolean }> {
+    const bridged = await bridgeRequest("isWindowMinimized");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.minimized === "boolean"
+    ) {
+      return { minimized: bridged.minimized };
+    }
     return { minimized: document.hidden };
   }
   async isWindowVisible(): Promise<{ visible: boolean }> {
+    const bridged = await bridgeRequest("isWindowVisible");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.visible === "boolean"
+    ) {
+      return { visible: bridged.visible };
+    }
     return { visible: !document.hidden };
   }
   async isWindowFocused(): Promise<{ focused: boolean }> {
+    const bridged = await bridgeRequest("isWindowFocused");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.focused === "boolean"
+    ) {
+      return { focused: bridged.focused };
+    }
     return { focused: document.hasFocus() };
   }
-  async setAlwaysOnTop(_options: { flag: boolean }): Promise<void> {}
+  async setAlwaysOnTop(options: { flag: boolean }): Promise<void> {
+    await bridgeRequest("setAlwaysOnTop", options);
+  }
   async setFullscreen(options: { flag: boolean }): Promise<void> {
+    if ((await bridgeRequest("setFullscreen", options)) !== BRIDGE_ABSENT) {
+      return;
+    }
     options.flag
       ? document.documentElement.requestFullscreen()
       : document.exitFullscreen();
   }
-  async setOpacity(_options: { opacity: number }): Promise<void> {}
+  async setOpacity(options: { opacity: number }): Promise<void> {
+    await bridgeRequest("setOpacity", options);
+  }
 
   // Notifications - Using Web Notification API
   async showNotification(
     options: NotificationOptions,
   ): Promise<{ id: string; shown: boolean; error?: string }> {
+    const bridged = await bridgeRequest("showNotification", options);
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.id === "string" &&
+      typeof bridged.shown === "boolean"
+    ) {
+      return bridged as { id: string; shown: boolean; error?: string };
+    }
+
     const id = `notification_${Date.now()}`;
 
     if (!("Notification" in window)) {
@@ -338,13 +490,23 @@ export class DesktopWeb extends WebPlugin {
     return { id, shown: true };
   }
 
-  async closeNotification(_options: { id: string }): Promise<void> {
+  async closeNotification(options: { id: string }): Promise<void> {
     // Web Notification API doesn't provide a way to close notifications by ID.
     // Notifications auto-close or the user dismisses them.
+    await bridgeRequest("closeNotification", options);
   }
 
   // Power Monitor
   async getPowerState(): Promise<PowerMonitorState> {
+    const bridged = await bridgeRequest("getPowerState");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.onBattery === "boolean"
+    ) {
+      return bridged as unknown as PowerMonitorState;
+    }
+
     type BatteryManager = { level?: unknown; charging?: unknown };
     const getBattery = (
       navigator as Navigator & { getBattery?: () => Promise<BatteryManager> }
@@ -385,9 +547,11 @@ export class DesktopWeb extends WebPlugin {
 
   // App
   async quit(): Promise<void> {
+    if ((await bridgeRequest("quit")) !== BRIDGE_ABSENT) return;
     window.close();
   }
   async relaunch(): Promise<void> {
+    if ((await bridgeRequest("relaunch")) !== BRIDGE_ABSENT) return;
     window.location.reload();
   }
   async getVersion(): Promise<{
@@ -397,6 +561,28 @@ export class DesktopWeb extends WebPlugin {
     chrome: string;
     node: string;
   }> {
+    // The `runtime` field is load-bearing: the app shell only wires desktop
+    // features (tray menu, global shortcuts, quit) when it is a real value —
+    // "N/A"/"unknown" means "plain browser tab, skip desktop wiring".
+    const bridged = await bridgeRequest("getVersion");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.version === "string"
+    ) {
+      const chrome =
+        typeof bridged.chrome === "string" ? bridged.chrome : "unknown";
+      return {
+        version: bridged.version,
+        name: typeof bridged.name === "string" ? bridged.name : "unknown",
+        runtime:
+          typeof bridged.runtime === "string" && bridged.runtime.length > 0
+            ? bridged.runtime
+            : "electrobun",
+        chrome,
+        node: typeof bridged.node === "string" ? bridged.node : "N/A",
+      };
+    }
     return {
       version: "unknown", // App version not available on web - would need to be injected at build time
       name: "unknown", // App name not available on web - would need to be injected at build time
@@ -406,9 +592,25 @@ export class DesktopWeb extends WebPlugin {
     };
   }
   async isPackaged(): Promise<{ packaged: boolean }> {
+    const bridged = await bridgeRequest("isPackaged");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.packaged === "boolean"
+    ) {
+      return { packaged: bridged.packaged };
+    }
     return { packaged: false };
   }
-  async getPath(_options: { name: string }): Promise<{ path: string }> {
+  async getPath(options: { name: string }): Promise<{ path: string }> {
+    const bridged = await bridgeRequest("getPath", options);
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.path === "string"
+    ) {
+      return { path: bridged.path };
+    }
     throw new Error(
       "File system paths are not available in browser environment",
     );
@@ -419,6 +621,9 @@ export class DesktopWeb extends WebPlugin {
     text?: string;
     html?: string;
   }): Promise<void> {
+    if ((await bridgeRequest("writeToClipboard", options)) !== BRIDGE_ABSENT) {
+      return;
+    }
     if (options.text) {
       await navigator.clipboard.writeText(options.text);
       return;
@@ -437,19 +642,42 @@ export class DesktopWeb extends WebPlugin {
     rtf?: string;
     hasImage: boolean;
   }> {
+    const bridged = await bridgeRequest("readFromClipboard");
+    if (
+      bridged !== BRIDGE_ABSENT &&
+      isRecord(bridged) &&
+      typeof bridged.hasImage === "boolean"
+    ) {
+      return bridged as {
+        text?: string;
+        html?: string;
+        rtf?: string;
+        hasImage: boolean;
+      };
+    }
     return { text: await navigator.clipboard.readText(), hasImage: false };
   }
   async clearClipboard(): Promise<void> {
+    if ((await bridgeRequest("clearClipboard")) !== BRIDGE_ABSENT) return;
     await navigator.clipboard.writeText("");
   }
 
   // Shell
   async openExternal(options: { url: string }): Promise<void> {
-    window.open(assertSafeExternalUrl(options.url), "_blank", "noopener");
+    const safeUrl = assertSafeExternalUrl(options.url);
+    if (
+      (await bridgeRequest("openExternal", { url: safeUrl })) !== BRIDGE_ABSENT
+    ) {
+      return;
+    }
+    window.open(safeUrl, "_blank", "noopener");
   }
-  async showItemInFolder(_options: { path: string }): Promise<void> {}
+  async showItemInFolder(options: { path: string }): Promise<void> {
+    await bridgeRequest("showItemInFolder", options);
+  }
 
   async beep(): Promise<void> {
+    if ((await bridgeRequest("beep")) !== BRIDGE_ABSENT) return;
     const ctx = new AudioContext();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -462,7 +690,10 @@ export class DesktopWeb extends WebPlugin {
     osc.stop(ctx.currentTime + 0.1);
   }
 
-  // Events
+  // Events. On the Electrobun host, desktop events arrive as bridge messages
+  // named `desktop` + PascalCase(eventName) (`trayMenuClick` →
+  // `desktopTrayMenuClick`); in a plain browser tab only the window
+  // focus/blur events have an equivalent.
   async addListener(
     eventName: string,
     listenerFunc: (event: DesktopEventData) => void,
@@ -471,10 +702,18 @@ export class DesktopWeb extends WebPlugin {
       eventName: string;
       callback: (event: DesktopEventData) => void;
       windowListener?: () => void;
+      bridgeListener?: (payload: unknown) => void;
+      bridgeMessageName?: string;
     } = { eventName, callback: listenerFunc };
 
-    // Create and track window event listeners to avoid memory leaks
-    if (eventName === "windowFocus") {
+    const rpc = getDesktopRpc();
+    if (rpc && typeof rpc.onMessage === "function") {
+      entry.bridgeMessageName = `desktop${eventName[0].toUpperCase()}${eventName.slice(1)}`;
+      entry.bridgeListener = (payload: unknown) =>
+        listenerFunc(payload as DesktopEventData);
+      rpc.onMessage(entry.bridgeMessageName, entry.bridgeListener);
+    } else if (eventName === "windowFocus") {
+      // Create and track window event listeners to avoid memory leaks
       entry.windowListener = () => listenerFunc(undefined);
       window.addEventListener("focus", entry.windowListener);
     } else if (eventName === "windowBlur") {
@@ -488,27 +727,36 @@ export class DesktopWeb extends WebPlugin {
       remove: async () => {
         const i = this.pluginListeners.indexOf(entry);
         if (i >= 0) {
-          if (entry.windowListener) {
-            if (entry.eventName === "windowFocus")
-              window.removeEventListener("focus", entry.windowListener);
-            else if (entry.eventName === "windowBlur")
-              window.removeEventListener("blur", entry.windowListener);
-          }
+          this.detachListenerEntry(entry);
           this.pluginListeners.splice(i, 1);
         }
       },
     };
   }
 
+  private detachListenerEntry(entry: {
+    eventName: string;
+    windowListener?: () => void;
+    bridgeListener?: (payload: unknown) => void;
+    bridgeMessageName?: string;
+  }): void {
+    if (entry.bridgeListener && entry.bridgeMessageName) {
+      getDesktopRpc()?.offMessage?.(
+        entry.bridgeMessageName,
+        entry.bridgeListener,
+      );
+    }
+    if (entry.windowListener) {
+      if (entry.eventName === "windowFocus")
+        window.removeEventListener("focus", entry.windowListener);
+      else if (entry.eventName === "windowBlur")
+        window.removeEventListener("blur", entry.windowListener);
+    }
+  }
+
   async removeAllListeners(): Promise<void> {
-    // Clean up all window event listeners before clearing
     for (const entry of this.pluginListeners) {
-      if (entry.windowListener) {
-        if (entry.eventName === "windowFocus")
-          window.removeEventListener("focus", entry.windowListener);
-        else if (entry.eventName === "windowBlur")
-          window.removeEventListener("blur", entry.windowListener);
-      }
+      this.detachListenerEntry(entry);
     }
     this.pluginListeners = [];
   }

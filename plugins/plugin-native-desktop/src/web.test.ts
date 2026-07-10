@@ -269,3 +269,104 @@ describe("DesktopWeb browser fallback contracts", () => {
     });
   });
 });
+
+describe("DesktopWeb Electrobun bridge proxying", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("routes tray, shortcut, window, and app calls to the desktop* RPC methods", async () => {
+    const calls: Array<[string, unknown]> = [];
+    const handler =
+      (name: string, result?: unknown) => async (params?: unknown) => {
+        calls.push([name, params]);
+        return result;
+      };
+    setWindow({
+      __ELIZA_ELECTROBUN_RPC__: {
+        request: {
+          desktopSetTrayMenu: handler("desktopSetTrayMenu"),
+          desktopRegisterShortcut: handler("desktopRegisterShortcut", {
+            success: true,
+          }),
+          desktopShowWindow: handler("desktopShowWindow"),
+          desktopIsWindowFocused: handler("desktopIsWindowFocused", {
+            focused: true,
+          }),
+          desktopQuit: handler("desktopQuit"),
+          desktopGetVersion: handler("desktopGetVersion", {
+            version: "1.2.3",
+            name: "Eliza",
+            runtime: "electrobun/1.3.13",
+          }),
+        },
+      },
+    });
+
+    const desktop = new DesktopWeb();
+    const menu = [{ id: "quit", label: "Quit", type: "normal" as const }];
+    await desktop.setTrayMenu({ menu });
+    await expect(
+      desktop.registerShortcut({ id: "chat-overlay", accelerator: "Cmd+E" }),
+    ).resolves.toEqual({ success: true });
+    await desktop.showWindow();
+    await expect(desktop.isWindowFocused()).resolves.toEqual({
+      focused: true,
+    });
+    await desktop.quit();
+    await expect(desktop.getVersion()).resolves.toMatchObject({
+      version: "1.2.3",
+      name: "Eliza",
+      runtime: "electrobun/1.3.13",
+    });
+
+    expect(calls.map(([name]) => name)).toEqual([
+      "desktopSetTrayMenu",
+      "desktopRegisterShortcut",
+      "desktopShowWindow",
+      "desktopIsWindowFocused",
+      "desktopQuit",
+      "desktopGetVersion",
+    ]);
+    expect(calls[0][1]).toEqual({ menu });
+  });
+
+  it("getVersion reports the browser fallback (runtime N/A) without a bridge", async () => {
+    setWindow({});
+    setNavigator({ userAgent: "Chrome/120.0.0" } as Partial<Navigator>);
+    await expect(new DesktopWeb().getVersion()).resolves.toMatchObject({
+      runtime: "N/A",
+    });
+  });
+
+  it("bridges plugin event listeners onto desktop* bridge messages", async () => {
+    const listeners = new Map<string, Set<(payload: unknown) => void>>();
+    setWindow({
+      __ELIZA_ELECTROBUN_RPC__: {
+        request: {},
+        onMessage: (name: string, cb: (payload: unknown) => void) => {
+          if (!listeners.has(name)) listeners.set(name, new Set());
+          listeners.get(name)?.add(cb);
+        },
+        offMessage: (name: string, cb: (payload: unknown) => void) => {
+          listeners.get(name)?.delete(cb);
+        },
+      },
+    });
+
+    const desktop = new DesktopWeb();
+    const seen: unknown[] = [];
+    const sub = await desktop.addListener("trayMenuClick", (event) => {
+      seen.push(event);
+    });
+
+    const emit = listeners.get("desktopTrayMenuClick");
+    expect(emit?.size).toBe(1);
+    for (const cb of emit ?? []) cb({ itemId: "quit", checked: false });
+    expect(seen).toEqual([{ itemId: "quit", checked: false }]);
+
+    await sub.remove();
+    expect(listeners.get("desktopTrayMenuClick")?.size).toBe(0);
+  });
+});
