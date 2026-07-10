@@ -250,7 +250,7 @@
         "./plugins/plugin-elevenlabs/dist/index.d.ts"
       ],
       "@elizaos/plugin-elizacloud": [
-        "./plugins/plugin-elizacloud/dist/node/index.d.ts"
+        "./plugins/plugin-elizacloud/dist/index.node.d.ts"
       ],
       "@elizaos/plugin-embeddings": [
         "./plugins/plugin-embeddings/dist/node/index.d.ts"
