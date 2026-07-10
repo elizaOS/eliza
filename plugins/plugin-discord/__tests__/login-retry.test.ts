@@ -1,10 +1,12 @@
 /**
  * Drives the real initial-login retry loop (`DiscordService.attemptDiscordLogin`)
  * against a deterministic fake discord.js client whose `login()` rejects N times
- * then resolves and emits ClientReady. Guards #15855: a transient boot-time
- * login failure must retry with backoff and eventually reach ready — never
- * settle terminal, leaving the process connected-but-deaf. Collaborators that
- * are not under test (event wiring, onReady backfill, legacy aliasing) are
+ * then resolves and emits ClientReady, plus focused checks of the real backoff
+ * (`computeLoginBackoffMs`) and throttled failure heartbeat
+ * (`emitLoginFailureHeartbeat`). Guards #15855: a transient boot-time login
+ * failure must retry with capped-exponential backoff and eventually reach ready
+ * — never settle terminal, leaving the process connected-but-deaf. Collaborators
+ * that are not under test (event wiring, onReady backfill, legacy aliasing) are
  * stubbed on the instance; the retry/backoff/heartbeat code runs for real.
  */
 import { Events } from "discord.js";
@@ -144,10 +146,70 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		);
 		expect(heartbeat).toBeDefined();
 		expect(String(heartbeat?.[1])).toContain("default");
+		// The first retry waits the backoff base (1s) and names the attempt.
 		expect(heartbeat?.[0]).toMatchObject({
 			accountId: "default",
+			attempt: 1,
+			retryInMs: 1_000,
 			error: "The socket connection was closed unexpectedly.",
 		});
+
+		// Once connected, the loop stops: discord.js owns reconnection from here,
+		// so no further warn heartbeat fires however long we wait, and no retry
+		// timer stays armed on the account.
+		const warnCountAtReady = runtime.logger.warn.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(runtime.logger.warn.mock.calls.length).toBe(warnCountAtReady);
+		expect(state.loginRetryTimer).toBeUndefined();
+	});
+
+	it("computes capped exponential backoff per attempt", () => {
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime: makeRuntime(),
+		}) as unknown as DiscordService & {
+			computeLoginBackoffMs: (attempt: number) => number;
+		};
+
+		// Delay doubles from the 1s base each attempt, then clamps at the 60s cap
+		// so an indefinitely-down network settles into a steady retry cadence.
+		expect(service.computeLoginBackoffMs(0)).toBe(1_000);
+		expect(service.computeLoginBackoffMs(1)).toBe(2_000);
+		expect(service.computeLoginBackoffMs(2)).toBe(4_000);
+		expect(service.computeLoginBackoffMs(5)).toBe(32_000);
+		expect(service.computeLoginBackoffMs(6)).toBe(60_000);
+		expect(service.computeLoginBackoffMs(20)).toBe(60_000);
+	});
+
+	it("throttles the failure heartbeat to at most one per interval", () => {
+		const runtime = makeRuntime();
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+		}) as unknown as DiscordService & {
+			emitLoginFailureHeartbeat: (
+				state: DiscordAccountClientState,
+				error: unknown,
+				attempt: number,
+				delayMs: number,
+			) => void;
+		};
+		const state = makeState("default");
+		const error = new Error("The socket connection was closed unexpectedly.");
+
+		vi.setSystemTime(0);
+		service.emitLoginFailureHeartbeat(state, error, 0, 1_000);
+		expect(runtime.logger.warn).toHaveBeenCalledTimes(1);
+
+		// Inside the 30s throttle window a fast retry storm is suppressed so it
+		// cannot flood the log.
+		vi.setSystemTime(10_000);
+		service.emitLoginFailureHeartbeat(state, error, 1, 2_000);
+		expect(runtime.logger.warn).toHaveBeenCalledTimes(1);
+
+		// Past the window the heartbeat fires again, keeping a stuck account
+		// observably surfaced.
+		vi.setSystemTime(41_000);
+		service.emitLoginFailureHeartbeat(state, error, 2, 4_000);
+		expect(runtime.logger.warn).toHaveBeenCalledTimes(2);
 	});
 
 	it("does not schedule a retry when the first login succeeds", async () => {

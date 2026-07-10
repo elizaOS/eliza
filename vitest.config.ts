@@ -156,6 +156,32 @@ export default defineConfig({
         find: /^@elizaos\/vault\/(.+)$/,
         replacement: path.join(root, "packages/vault/src/$1"),
       },
+      {
+        // plugin-commands ships only a built `dist/` entry, so a test run
+        // straight from source (targeted package tests, the changed-files
+        // coverage gate) fails to resolve its `.`/`./*` exports with "Failed to
+        // resolve entry for @elizaos/plugin-commands" whenever a graph pulls in
+        // the Discord connector (service.ts → catalog-commands.ts). Pin barrel
+        // and subpaths to source; mirrors plugin-discord/vitest.config.ts so the
+        // per-package lane and this root lane resolve identically.
+        find: /^@elizaos\/plugin-commands$/,
+        replacement: path.join(root, "plugins/plugin-commands/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-commands\/(.+)$/,
+        replacement: path.join(root, "plugins/plugin-commands/src/$1"),
+      },
+      {
+        // Same source-resolution story for @elizaos/plugin-meetings: the Discord
+        // voice-meeting seams import its barrel, and it too ships no dist in the
+        // test lane.
+        find: /^@elizaos\/plugin-meetings$/,
+        replacement: path.join(root, "plugins/plugin-meetings/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-meetings\/(.+)$/,
+        replacement: path.join(root, "plugins/plugin-meetings/src/$1"),
+      },
     ],
   },
 });
