@@ -154,3 +154,15 @@ test("the soak recognizes unavailable optional services and protected boundaries
   expect(source).toContain("entry.status === 401");
   expect(source).toContain("protected_route_without_session");
 });
+
+test("the soak records and fails on browser console errors", () => {
+  expect(source).toContain(
+    'const consoleErrors = consoleLog.filter((entry) => entry.type === "error")',
+  );
+  expect(source).toContain("unexpectedConsoleErrors.length === 0");
+  expect(source).toContain("isExpectedConsoleError(");
+  expect(source).toContain("networkEntry.classification.expected");
+  expect(source).toContain('writeJson("audit-views-frontend-log.json"');
+  expect(source).toContain("consoleErrors,");
+  expect(source).toContain("unexpectedConsoleErrors,");
+});
