@@ -93,7 +93,7 @@ function collapseShade(): HTMLElement {
 }
 
 function finishShadeCollapse(): void {
-  act(() => vi.advanceTimersByTime(300));
+  act(() => vi.advanceTimersByTime(350));
 }
 
 function setOverflowingListGeometry(list: HTMLElement): void {
@@ -593,7 +593,7 @@ describe("NotificationsHomeCenter", () => {
     fireEvent.click(document.body);
     const fadingEmpty = screen.getByTestId("notifications-empty");
     expect(fadingEmpty.style.opacity).toBe("0");
-    expect(fadingEmpty.className).toContain("duration-200");
+    expect(fadingEmpty.className).toContain("eliza-notif-shade-transition");
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     act(() => vi.advanceTimersByTime(200));
     expect(screen.getByTestId("notifications-empty")).toBe(fadingEmpty);
@@ -817,6 +817,9 @@ describe("NotificationsHomeCenter", () => {
     expect(css).toContain(".eliza-notif-glass");
     expect(css).toContain("backdrop-filter");
     expect(css).toContain("box-shadow");
+    expect(css).toContain("transition-duration: 420ms !important");
+    expect(css).toContain(".eliza-notif-row-inner[data-swipe-dragging]");
+    expect(surface.getAttribute("data-swipe-dragging")).toBeNull();
   });
 
   it("acting on a row removes it; surviving rows keep their stable order", () => {
@@ -1275,6 +1278,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(chevron.classList.contains("w-3")).toBe(true);
     expect(screen.queryByTestId("notifications-expand-toggle")).toBeNull();
     expect(screen.queryByText(/more|show less/i)).toBeNull();
+    expect(list.className).toContain("flex-1");
+    expect(list.className).not.toContain("flex-[0_1_auto]");
     expandShade();
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     const collapse = screen.getByTestId("notifications-collapse");
@@ -1292,12 +1297,13 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.contains(collapse)).toBe(false);
     expect(collapseFooter.className).toContain("shrink-0");
     expect(collapseFooter.className).not.toContain("absolute");
+    expect(list.className).toContain("flex-[0_1_auto]");
     expect(list.className).toContain("pb-2");
     expect(list.className).toContain("scroll-fade");
     expect(list.className).toContain("scroll-fade-b-[1.5rem]");
     fireEvent.click(collapse);
     // The count starts its crossfade on the same frame as the notification
-    // exit; the expanded DOM remains only for the 260ms fade.
+    // exit; the expanded DOM remains only for the 320ms fade.
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
     expect(clearSlot.style.height).toBe("0px");
     expect(clearSlot.style.marginBottom).toBe("-8px");
@@ -1822,6 +1828,35 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     fireEvent.touchMove(list, { touches: [{ clientX: 12, clientY: 60 }] });
     fireEvent.touchEnd(list, { touches: [] });
     expect(list.style.transform).toBe("");
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
+  it("an upward touch below a short list collapses the expanded shade", () => {
+    seedTriage();
+    const surfaceRef = { current: null as HTMLElement | null };
+    render(
+      <div
+        ref={(node) => {
+          surfaceRef.current = node;
+        }}
+        data-testid="home-gesture-surface"
+      >
+        <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
+      </div>,
+    );
+    const list = expandShade();
+    const center = screen.getByTestId("home-notification-center");
+    expect(list.className).toContain("flex-[0_1_auto]");
+
+    fireEvent.touchStart(center, {
+      touches: [{ clientX: 150, clientY: 420 }],
+    });
+    fireEvent.touchMove(center, {
+      touches: [{ clientX: 152, clientY: 280 }],
+    });
+    fireEvent.touchEnd(center, { touches: [] });
+
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
   });

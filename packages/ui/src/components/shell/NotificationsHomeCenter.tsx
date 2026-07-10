@@ -159,7 +159,8 @@ const STACK_PEEK_OFFSET_PX = 7;
 const STACK_BOTTOM_CLEARANCE_PX = 10;
 
 const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
-const SHADE_CLOSE_FADE_MS = 260;
+const SHADE_CLOSE_FADE_MS = 320;
+const NOTIFICATION_ROW_SETTLE_MS = 220;
 const STACK_LAYOUT_TRANSITION = {
   duration: 0.34,
   ease: [0.22, 1, 0.36, 1],
@@ -213,7 +214,9 @@ function notificationPullRevealStyle(progress: number): CSSProperties {
  *  - Rows hidden by the closed shade track pull distance with opacity and
  *    vertical settling, so the user's finger reveals content before release.
  *
- * All of it is opacity/transform/color-only and disabled under reduced motion.
+ * All of it is opacity/transform/color-only. Reduced motion keeps the direct
+ * manipulation transitions that preserve spatial continuity, while omitting
+ * scroll-edge decoration and scale-heavy effects.
  */
 const NOTIF_SCROLL_CSS = `
 /* Apple-style entrance: the whole inbox fades + rises a touch the moment it
@@ -225,9 +228,6 @@ const NOTIF_SCROLL_CSS = `
 }
 .eliza-notif-center-in {
   animation: eliza-notif-center-in 320ms cubic-bezier(0.22,1,0.36,1) both;
-}
-@media (prefers-reduced-motion: reduce) {
-  .eliza-notif-center-in { animation: none; }
 }
 .eliza-notif-glass {
   background-color: rgb(12 12 14 / 34%);
@@ -260,6 +260,8 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
     grid-template-rows ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
     height ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
     margin-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    padding-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
     opacity ${SHADE_CLOSE_FADE_MS}ms ease-out,
     transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1);
 }
@@ -278,12 +280,22 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   from { opacity: 0; transform: translateY(-8px) scale(0.98); }
   to   { opacity: 1; transform: none; }
 }
+@keyframes eliza-notif-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
 /* Mount slide-in lives on the row's INNER element; the scroll-driven edge pair
    lives on the li. Same-property animations on one element fight through their
    fill states (the later edge animations would pin opacity/transform and
    swallow the mount slide), so the two effects get separate elements. */
 .eliza-notif-row-inner {
   animation: eliza-notif-row-in 260ms cubic-bezier(0.22,1,0.36,1) both;
+  transition:
+    transform ${NOTIFICATION_ROW_SETTLE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    opacity ${NOTIFICATION_ROW_SETTLE_MS}ms linear;
+}
+.eliza-notif-row-inner[data-swipe-dragging] {
+  transition: none;
 }
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
@@ -305,8 +317,39 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .eliza-notif-row, .eliza-notif-row-inner { animation: none; }
-  .eliza-notif-shade-transition { transition: none !important; }
+  .eliza-notif-row { animation: none; }
+  .eliza-notif-center-in {
+    animation: eliza-notif-fade-in 240ms ease-out both !important;
+  }
+  .eliza-notif-row-inner {
+    animation: eliza-notif-fade-in 240ms ease-out both !important;
+    transition:
+      transform ${NOTIFICATION_ROW_SETTLE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      opacity ${NOTIFICATION_ROW_SETTLE_MS}ms linear !important;
+  }
+  .eliza-notif-row-inner[data-swipe-dragging] {
+    transition: none !important;
+  }
+  .eliza-notif-shade-transition {
+    transition:
+      grid-template-rows ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      height ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      margin-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      padding-bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      bottom ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1),
+      opacity ${SHADE_CLOSE_FADE_MS}ms ease-out,
+      transform ${SHADE_CLOSE_FADE_MS}ms cubic-bezier(0.22,1,0.36,1) !important;
+  }
+  .eliza-notif-scroll[data-shade-dragging] .eliza-notif-shade-transition {
+    transition: none !important;
+  }
+  .eliza-notif-scroll {
+    transition-duration: 420ms !important;
+    transition-timing-function: cubic-bezier(0.16,1,0.3,1) !important;
+  }
+  .eliza-notif-control-transition {
+    transition-duration: 220ms !important;
+  }
 }
 `;
 
@@ -396,14 +439,14 @@ function ClearConfirmationContent({
       <X
         aria-hidden
         className={cn(
-          "absolute h-3.5 w-3.5 transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity",
+          "eliza-notif-control-transition absolute h-3.5 w-3.5 transition-[opacity,transform] duration-200 ease-out",
           confirming ? "scale-75 opacity-0" : "scale-100 opacity-100",
         )}
       />
       <span
         aria-hidden={!confirming}
         className={cn(
-          "absolute transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity",
+          "eliza-notif-control-transition absolute transition-[opacity,transform] duration-200 ease-out",
           confirming
             ? "translate-y-0 scale-100 opacity-100"
             : "translate-y-0.5 scale-95 opacity-0",
@@ -658,6 +701,7 @@ const NotificationRow = memo(function NotificationRow({
     >
       <div
         data-testid="notification-row-swipe"
+        data-swipe-dragging={dragging ? "" : undefined}
         style={{
           // Only apply a transform while actually swiping/dismissing: a resting
           // `translateX(0)` would create a stacking context on every row.
@@ -667,9 +711,6 @@ const NotificationRow = memo(function NotificationRow({
               ? `translateX(${swipeX}px)`
               : undefined,
           opacity: dismissing ? 0 : Math.max(0, 1 - Math.abs(swipeX) / 220),
-          transition: dragging
-            ? "none"
-            : "transform 180ms cubic-bezier(0.22,1,0.36,1), opacity 180ms linear",
           touchAction: "pan-y",
         }}
         onPointerDown={onPointerDown}
@@ -1321,13 +1362,15 @@ export function NotificationsHomeCenter({
     setPullPx,
   ]);
 
-  // The clear band beneath the inbox is also a close gesture lane. It lives on
-  // the home surface rather than inside the scrollport, so an upward swipe can
-  // fold an expanded shade without first finding the final notification row.
+  // The unused center space beneath a short inbox and the clear band around it
+  // are also close gesture lanes. They live outside the scrollport, so an
+  // upward swipe can fold an expanded shade without first finding the final
+  // notification row.
   useEffect(() => {
     const surface = emptyGestureTargetRef?.current;
     const center = centerRef.current;
-    if (!shadeExpanded || !surface || !center) return;
+    const list = scrollRef.current;
+    if (!shadeExpanded || !surface || !center || !list) return;
     let start: { x: number; y: number } | null = null;
 
     const onTouchStart = (event: TouchEvent) => {
@@ -1337,7 +1380,8 @@ export function NotificationsHomeCenter({
         event.touches.length === 1 &&
         touch &&
         target instanceof Node &&
-        !center.contains(target)
+        !list.contains(target) &&
+        !isInteractiveGestureTarget(target)
           ? { x: touch.clientX, y: touch.clientY }
           : null;
     };
@@ -1611,7 +1655,7 @@ export function NotificationsHomeCenter({
         opacity: notificationCountVisibility,
         transition: pullPx ? "none" : undefined,
       }}
-      className="flex shrink-0 items-center justify-center overflow-hidden px-3 text-2xs font-medium text-white/50 transition-[height,margin,opacity] duration-200 ease-out motion-reduce:transition-none"
+      className="eliza-notif-shade-transition flex shrink-0 items-center justify-center overflow-hidden px-3 text-2xs font-medium text-white/50"
     >
       <button
         type="button"
@@ -1683,8 +1727,8 @@ export function NotificationsHomeCenter({
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
-          "eliza-notif-scroll relative flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pt-1",
-          showCollapseControl ? "pb-2" : "pb-10",
+          "eliza-notif-scroll relative flex min-h-0 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pt-1",
+          showCollapseControl ? "flex-[0_1_auto] pb-2" : "flex-1 pb-10",
           hasNotifications &&
             "scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem]",
           shadeClosing && "pointer-events-none",
@@ -1715,7 +1759,7 @@ export function NotificationsHomeCenter({
                 }
                 onClick={clearAll}
                 className={cn(
-                  "h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
+                  "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
                   confirmingClearAll ? "w-12 text-white" : "w-8",
                 )}
               >
@@ -1736,7 +1780,7 @@ export function NotificationsHomeCenter({
               ...notificationPullRevealStyle(emptyStateVisibility),
               transition: pullPx ? "none" : undefined,
             }}
-            className="eliza-notif-pull-reveal flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45 transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none"
+            className="eliza-notif-pull-reveal eliza-notif-shade-transition flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45"
           >
             No Notifications
           </li>
@@ -1871,7 +1915,7 @@ export function NotificationsHomeCenter({
                           )
                         }
                         className={cn(
-                          "h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
+                          "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
                           confirmingGroupKey === group.key
                             ? "w-12 text-white"
                             : "w-8",
@@ -1991,7 +2035,7 @@ export function NotificationsHomeCenter({
             opacity: collapseControlVisibility,
             transform: `translateY(${(1 - collapseControlVisibility) * 4}px)`,
           }}
-          className="eliza-notif-shade-transition pointer-events-none flex shrink-0 justify-center px-3 motion-reduce:transform-none"
+          className="eliza-notif-shade-transition pointer-events-none flex shrink-0 justify-center px-3"
         >
           <button
             type="button"
