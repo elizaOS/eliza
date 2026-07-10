@@ -133,7 +133,11 @@ jobs:
     name: Nightly real-agent profile
     needs: stub-validation
     if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_real_agent == true) }}
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # The E2B target alone is 4.6 GiB, while GitHub-hosted runners expose only
+    # enough effective CPU model memory for the runtime's 3 GiB POOR tier.
+    # Keep the real profile on the model-capable fleet independently of the
+    # generic CI fleet toggle; operators can redirect this lane with one var.
+    runs-on: ${{ fromJSON(vars.LOCAL_INFERENCE_BENCH_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
     timeout-minutes: 60
     steps:
       - name: Checkout
