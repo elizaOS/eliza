@@ -4,7 +4,8 @@
  * The wake boundary landed in #15789 with service-level coverage only; this
  * suite proves the public HTTP contract through the REAL route module with
  * NOTHING mocked: real API-key authentication (seeded sha256 hashes resolved
- * by `requireAuthOrApiKey` against the DB), real `elizaSandboxService` agent
+ * by `requireAuthOrApiKeyWithOrg` against the DB), real `elizaSandboxService`
+ * agent
  * and backup-metadata lookups, the real credit gate reading
  * `organizations.credit_balance`, the real provisioning-worker health check
  * against the process-global MOCK_REDIS store, and the real

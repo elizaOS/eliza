@@ -75,22 +75,23 @@ function parsePGliteDataDir(url: string): string {
 }
 
 /**
+ * The live PGlite instance behind the write connection, captured for
+ * `getPgliteClientForTests`. Test-only surface: PGlite-backed suites need the
+ * raw client to apply generated DDL (drizzle-kit `pushSchema`) to the SAME
+ * in-memory database the exported `db`/`dbRead`/`dbWrite` proxies query.
+ * `instanceof` probing from callers cannot do this — the CJS require in
+ * `createPGliteClient` and an ESM `import` resolve two distinct copies of the
+ * PGlite class.
+ */
+let pgliteClientForTests: import("@electric-sql/pglite").PGlite | null = null;
+
+/**
  * Build a PGlite instance with the `vector` extension loaded so the
  * cloud schema's pgvector columns (used by trajectories, embeddings, etc.)
  * resolve at migration and query time. Synchronous module require keeps the
  * call site type as `Database`; PGlite is bun/node-only and does not exist
  * on the Workers runtime.
  */
-/**
- * The live PGlite instance behind the write connection, captured for
- * `getPgliteClientForTests`. Test-only surface: PGlite-backed suites need the
- * raw client to apply generated DDL (drizzle-kit `pushSchema`) to the SAME
- * in-memory database the exported `db`/`dbRead`/`dbWrite` proxies query.
- * `instanceof` probing from callers cannot do this — the CJS require below
- * and an ESM `import` resolve two distinct copies of the PGlite class.
- */
-let pgliteClientForTests: import("@electric-sql/pglite").PGlite | null = null;
-
 function createPGliteClient(dataDir: string): Database {
   const { PGlite } = require("@electric-sql/pglite") as typeof import("@electric-sql/pglite");
   const { vector } =
