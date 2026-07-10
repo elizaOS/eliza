@@ -1249,10 +1249,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(collapse.parentElement).toBe(list.lastElementChild);
     expect(collapse.parentElement?.className).toContain("-mt-4");
     expect(list.className).toContain("pb-10");
-    const css = [...document.querySelectorAll("style")]
-      .map((style) => style.textContent ?? "")
-      .join("\n");
-    expect(css).toContain("black calc(100% - 1.5rem), transparent 100%");
+    expect(list.className).toContain("scroll-fade");
+    expect(list.className).toContain("scroll-fade-b-[1.5rem]");
     fireEvent.click(collapse);
     // The count starts its crossfade on the same frame as the notification
     // exit; the expanded DOM remains only for the 260ms fade.

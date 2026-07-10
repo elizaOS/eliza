@@ -65,7 +65,6 @@ import {
 } from "../../hooks/useLayoutShiftMonitor";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
-import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
@@ -126,6 +125,13 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "../ui/message-scroller";
 import { Textarea } from "../ui/textarea";
 import {
   isShortLandscapeViewport,
@@ -1756,17 +1762,10 @@ export function ContinuousChatOverlay({
   // The thread body is mounted while the sheet is open OR during an upward
   // drag's inert preview; the auto-scroll engine runs exactly then.
   const threadPresented = sheetOpen || dragPreviewVisible;
-  // Keep the transcript pinned to the latest line via the one shared
-  // thread-scroll engine (useThreadAutoScroll): first reveal pins instantly
-  // (pre-paint — the thread never flashes at the top), a NEW line re-pins with
-  // a smooth glide while the reader rests at the bottom, streaming growth
-  // follows in a single rAF, and a reader who scrolled up is never yanked.
-  const threadRef = useThreadAutoScroll<HTMLDivElement>({
-    growthKey: `${visibleMessages.length}:${lastId ?? ""}:${lastContent.length}`,
-    lineKey: lastId ?? "",
-    enabled: threadPresented,
-    reduceMotion: reduce,
-  });
+  // The official shadcn MessageScroller owns bottom-follow, turn anchoring, and
+  // streamed-content growth. The ref remains local because search, keyboard
+  // focus, topic jumps, and infinite-history prefetch address the same viewport.
+  const threadRef = React.useRef<HTMLDivElement>(null);
   // Focus the thread for keyboard scrolling when an opener requested it —
   // consumed on the reveal edge, separate from the scroll engine above.
   React.useLayoutEffect(() => {
@@ -1774,7 +1773,7 @@ export function ContinuousChatOverlay({
       threadRef.current?.focus();
       focusThreadRef.current = false;
     }
-  }, [sheetOpen, threadRef]);
+  }, [sheetOpen]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values are the event keys for transient layout-motion intent.
   React.useEffect(() => {
     markLayoutShiftIntent();
@@ -1811,11 +1810,11 @@ export function ContinuousChatOverlay({
   );
 
   // ── Infinite upward scroll (#13532/#14329), wired into the overlay per #14279
-  // The overlay is the primary mobile/PWA chat surface. Share the SAME scroller
-  // (`threadRef`, owned by useThreadAutoScroll for bottom-follow) plus a top
-  // sentinel so a scroll toward the oldest line seamlessly reveals/prepends an
-  // older page — viewport anchored (no jump) by useLoadOlderOnScroll. Paging +
-  // windowing state lives in the shared useConversationRenderWindow above.
+  // The overlay is the primary mobile/PWA chat surface. The shadcn
+  // MessageScroller owns bottom-follow and streamed growth on `threadRef`; the
+  // top sentinel lets useLoadOlderOnScroll own the opposite direction and
+  // preserve the viewport when an older page is prepended. Paging + windowing
+  // state lives in the shared useConversationRenderWindow above.
   const topSentinelRef = React.useRef<HTMLDivElement>(null);
   useLoadOlderOnScroll<HTMLDivElement>({
     scrollRef: threadRef,
@@ -1954,7 +1953,6 @@ export function ContinuousChatOverlay({
     [],
   );
   // Tapping a chip expands its group and scrolls its header into view.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: threadRef is the stable ref object returned by useThreadAutoScroll (a useRef); reading .current in the rAF is not a dependency.
   const scrollToTopic = React.useCallback((topic: string) => {
     setCollapsedTopics((prev) => {
       if (!prev.has(topic)) return prev;
@@ -2010,31 +2008,31 @@ export function ContinuousChatOverlay({
             }
           : undefined;
       return (
-        <ChatMessage
+        <MessageScrollerItem
           key={m.id}
-          // Always the app's canonical glass chrome — onboarding included. The
-          // first-run greeting used to force "panel" (a bordered card), a
-          // different, duplicate-looking bubble from the real in-app chat; glass
-          // is the chromeless bubble with the same rise/fade entrance, matching
-          // the app and the documented first-run intent (agent prose floats as
-          // plain wallpaper text with its CTA beneath).
-          appearance="glass"
-          agentName={agentName}
-          message={shellToChatMessageData(m)}
-          reduceMotion={reduce}
-          onCopy={handleCopyMessage}
-          onLongPressCopy={handleLongPressCopy}
-          onSpeak={handleSpeakMessage}
-          onEdit={handleEditResend}
-          onDelete={handleDeleteMessage}
-          onReply={handleReplyMessage}
-          onRetry={handleRetry}
-          playing={speaking && playingMessageId === m.id}
-          renderContent={renderRowBody}
-          renderContext={renderContext}
-          onAcceptSuggestion={handleAcceptSuggestion}
-          onDismissSuggestion={handleDismissSuggestion}
-        />
+          messageId={m.id}
+          scrollAnchor={m.role === "user"}
+          className="w-full"
+        >
+          <ChatMessage
+            appearance="glass"
+            agentName={agentName}
+            message={shellToChatMessageData(m)}
+            reduceMotion={reduce}
+            onCopy={handleCopyMessage}
+            onLongPressCopy={handleLongPressCopy}
+            onSpeak={handleSpeakMessage}
+            onEdit={handleEditResend}
+            onDelete={handleDeleteMessage}
+            onReply={handleReplyMessage}
+            onRetry={handleRetry}
+            playing={speaking && playingMessageId === m.id}
+            renderContent={renderRowBody}
+            renderContext={renderContext}
+            onAcceptSuggestion={handleAcceptSuggestion}
+            onDismissSuggestion={handleDismissSuggestion}
+          />
+        </MessageScrollerItem>
       );
     },
     [
@@ -3281,7 +3279,6 @@ export function ContinuousChatOverlay({
   // moment the chat is dismissed (pull-down, Escape, or click-out) — the chat is
   // no longer "focused". Blurring (rather than the old refocus dance) also means
   // there's no focus→expand bounce to guard against, so the model stays simple.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: threadRef is the stable ref object returned by useThreadAutoScroll (a useRef); reading .current is not a dependency.
   const collapse = React.useCallback(() => {
     // Undismissable during onboarding: Escape (document, thread, composer),
     // outside taps, the grabber close, and the sheet-open grabber tap all
@@ -5305,163 +5302,179 @@ export function ContinuousChatOverlay({
                     />
                   </div>
                 ) : null}
-                <motion.div
-                  id="continuous-thread"
-                  data-testid="chat-thread-scroll"
-                  ref={threadRef}
-                  role="log"
-                  aria-label="conversation history"
-                  aria-live="polite"
-                  aria-hidden={!sheetOpen ? true : undefined}
-                  tabIndex={sheetOpen ? 0 : -1}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      collapse();
-                    }
-                  }}
-                  // `flex-1 min-h-0` (not `h-full`): as the single child of the
-                  // flex-column thread above, the scroller fills the parent's
-                  // BOUNDED height via the flex algorithm — a resolution that is
-                  // definite on every engine, unlike `height:100%` against a
-                  // flex-basis-sized parent (auto on iOS Safari → content-sized →
-                  // unscrollable, #chat-scroll-web). `min-h-0` lets it shrink
-                  // below its content so `overflow-y-auto` actually engages.
-                  // `[-webkit-overflow-scrolling:touch]`: iOS Safari needs this
-                  // legacy hint to give an `overflow-y-auto` region its own
-                  // momentum-scroll compositor layer; without it a nested
-                  // overflow region on iOS can fail to take the touch-scroll at
-                  // all (the transcript reads as "stuck" — #chat-scroll-web).
-                  // Harmless/ignored on every non-WebKit engine.
-                  // `overflow-x-hidden`: `overflow-y-auto` alone computes the
-                  // cross axis to `auto` too, so a child a hair too wide (a
-                  // long code line, the full-bleed chips rail) surfaces a
-                  // horizontal scrollbar strip across the sheet on iOS — the
-                  // "weird side scroll thingy." This transcript only ever scrolls
-                  // vertically; pin the horizontal axis closed.
-                  className="scrollbar-hide relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
-                  style={{ opacity: threadContentOpacity }}
+                <MessageScrollerProvider
+                  key={activeConversationId ?? "unbound"}
+                  autoScroll={!firstRunOpen}
+                  defaultScrollPosition={firstRunOpen ? "start" : "end"}
                 >
-                  {/* Empty-thread loading: a fresh/cleared chat awaiting its
+                  <MessageScroller>
+                    <motion.div
+                      className="flex size-full min-h-0 flex-col"
+                      style={{ opacity: threadContentOpacity }}
+                    >
+                      <MessageScrollerViewport
+                        id="continuous-thread"
+                        data-testid="chat-thread-scroll"
+                        ref={threadRef}
+                        preserveScrollOnPrepend={false}
+                        aria-label="conversation history"
+                        aria-live="polite"
+                        aria-hidden={!sheetOpen ? true : undefined}
+                        tabIndex={sheetOpen ? 0 : -1}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            collapse();
+                          }
+                        }}
+                        // `flex-1 min-h-0` keeps the scroll viewport bounded by
+                        // the motion-sized sheet on iOS. Momentum scrolling and
+                        // the closed horizontal axis remain explicit because the
+                        // outer draggable surface only negotiates vertical input.
+                        className="scrollbar-hide relative min-h-0 w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+                      >
+                        {/* Empty-thread loading: a fresh/cleared chat awaiting its
                       greeting, or a swipe past the prefetch window. Centered
                       spinner so the open sheet reads as "loading," never as a
                       broken empty box. Cache-hit swipes paint instantly, so this
                       only shows on a genuine network wait. */}
-                  {visibleMessages.length === 0 && conversationLoading ? (
-                    <div
-                      data-testid="chat-thread-loading"
-                      className="pointer-events-none absolute inset-0 grid place-items-center"
-                    >
-                      <Loader2 className="h-6 w-6 animate-spin text-accent" />
-                    </div>
-                  ) : null}
-                  {/* Topic chips bar (#8928): the channel's current topics,
+                        {visibleMessages.length === 0 && conversationLoading ? (
+                          <div
+                            data-testid="chat-thread-loading"
+                            className="pointer-events-none absolute inset-0 grid place-items-center"
+                          >
+                            <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                          </div>
+                        ) : null}
+                        {/* Topic chips bar (#8928): the channel's current topics,
                       sticky above the scrolling transcript. Tap a chip to jump
                       to (and expand) its group. Hidden when nothing is tagged. */}
-                  {hasTopics ? (
-                    <TopicChipsBar
-                      topics={channelTopics}
-                      onSelectTopic={scrollToTopic}
-                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
-                    />
-                  ) : null}
-                  {/* Normal chat keeps the latest line near the composer. First-run
+                        {hasTopics ? (
+                          <TopicChipsBar
+                            topics={channelTopics}
+                            onSelectTopic={scrollToTopic}
+                            className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
+                          />
+                        ) : null}
+                        {/* Normal chat keeps the latest line near the composer. First-run
                   starts at the top of the transcript so the opening prompt reads
                   like the first turn in a conversation. */}
-                  <div
-                    ref={threadContentRef}
-                    className={cn(
-                      "flex flex-col",
-                      firstRunOpen ? "shrink-0 pt-8" : "mt-auto pb-3 pt-1",
-                    )}
-                  >
-                    {/* Top sentinel for infinite upward scroll (#13532, #14279):
+                        <MessageScrollerContent
+                          ref={threadContentRef}
+                          className={cn(
+                            "flex flex-col gap-0",
+                            firstRunOpen
+                              ? "shrink-0 pt-8"
+                              : "mt-auto pb-3 pt-1",
+                          )}
+                        >
+                          {/* Top sentinel for infinite upward scroll (#13532, #14279):
                         a zero-height marker just above the oldest turn. When it
                         nears the top of the scroller, useLoadOlderOnScroll
                         prefetches + prepends an older page a viewport early and
                         preserves the reader's anchor so the thread never jumps.
                         Only meaningful in the flat (non-topic) transcript. */}
-                    {!firstRunOpen &&
-                    !hasTopics &&
-                    renderWindow.canLoadOlder &&
-                    visibleMessages.length > 0 ? (
-                      <div
-                        ref={topSentinelRef}
-                        data-testid="chat-transcript-top-sentinel"
-                        aria-hidden="true"
-                        className="pointer-events-none flex h-5 shrink-0 items-center justify-center"
-                      >
-                        <Loader2
-                          className={cn(
-                            "h-4 w-4 text-muted-strong opacity-60",
-                            reduce ? "" : "animate-spin",
+                          {!firstRunOpen &&
+                          !hasTopics &&
+                          renderWindow.canLoadOlder &&
+                          visibleMessages.length > 0 ? (
+                            <div
+                              ref={topSentinelRef}
+                              data-testid="chat-transcript-top-sentinel"
+                              aria-hidden="true"
+                              className="pointer-events-none flex h-5 shrink-0 items-center justify-center"
+                            >
+                              <Loader2
+                                className={cn(
+                                  "h-4 w-4 text-muted-strong opacity-60",
+                                  reduce ? "" : "animate-spin",
+                                )}
+                                aria-hidden="true"
+                              />
+                            </div>
+                          ) : null}
+                          {hasTopics
+                            ? // Topic-grouped transcript: each cluster collapses via a
+                              // gesture on its header (no visible buttons).
+                              (() => {
+                                let lineIndex = 0;
+                                return topicSegments.map((segment) => {
+                                  const lines = segment.messages.map((m) =>
+                                    renderThreadLine(m, lineIndex++),
+                                  );
+                                  return (
+                                    // The React key is the segment's first message id
+                                    // (stable + unique) because a topic can recur in a
+                                    // non-adjacent run (A → B → A). Collapse state stays
+                                    // keyed by topic (`segment.key`) so a chip tap
+                                    // expands every run of that topic.
+                                    <MessageScrollerItem
+                                      key={
+                                        segment.messages[0]?.id ?? segment.key
+                                      }
+                                      messageId={`topic:${segment.messages[0]?.id ?? segment.key}`}
+                                      scrollAnchor={
+                                        segment.messages[0]?.role === "user"
+                                      }
+                                      className="w-full"
+                                    >
+                                      <TopicGroup
+                                        topic={segment.topic}
+                                        count={segment.messages.length}
+                                        collapsed={collapsedTopics.has(
+                                          segment.key,
+                                        )}
+                                        onCollapsedChange={(collapsed) =>
+                                          setTopicCollapsed(
+                                            segment.key,
+                                            collapsed,
+                                          )
+                                        }
+                                      >
+                                        <AnimatePresence initial={false}>
+                                          {lines}
+                                        </AnimatePresence>
+                                      </TopicGroup>
+                                    </MessageScrollerItem>
+                                  );
+                                });
+                              })()
+                            : // Flat transcript (no topic tags) — unchanged behavior.
+                              // Only the LAST, content-less assistant turn (the
+                              // in-flight one) reads turnStatus — every settled bubble
+                              // gets undefined so its memo identity is unchanged.
+                              null}
+                          {hasTopics ? null : (
+                            <AnimatePresence initial={false}>
+                              {visibleMessages.map((m, i) =>
+                                renderThreadLine(m, i),
+                              )}
+                            </AnimatePresence>
                           )}
-                          aria-hidden="true"
-                        />
-                      </div>
-                    ) : null}
-                    {hasTopics
-                      ? // Topic-grouped transcript: each cluster collapses via a
-                        // gesture on its header (no visible buttons).
-                        (() => {
-                          let lineIndex = 0;
-                          return topicSegments.map((segment) => {
-                            const lines = segment.messages.map((m) =>
-                              renderThreadLine(m, lineIndex++),
-                            );
-                            return (
-                              // The React key is the segment's first message id
-                              // (stable + unique) because a topic can recur in a
-                              // non-adjacent run (A → B → A). Collapse state stays
-                              // keyed by topic (`segment.key`) so a chip tap
-                              // expands every run of that topic.
-                              <TopicGroup
-                                key={segment.messages[0]?.id ?? segment.key}
-                                topic={segment.topic}
-                                count={segment.messages.length}
-                                collapsed={collapsedTopics.has(segment.key)}
-                                onCollapsedChange={(collapsed) =>
-                                  setTopicCollapsed(segment.key, collapsed)
-                                }
-                              >
-                                <AnimatePresence initial={false}>
-                                  {lines}
-                                </AnimatePresence>
-                              </TopicGroup>
-                            );
-                          });
-                        })()
-                      : // Flat transcript (no topic tags) — unchanged behavior.
-                        // Only the LAST, content-less assistant turn (the
-                        // in-flight one) reads turnStatus — every settled bubble
-                        // gets undefined so its memo identity is unchanged.
-                        null}
-                    {hasTopics ? null : (
-                      <AnimatePresence initial={false}>
-                        {visibleMessages.map((m, i) => renderThreadLine(m, i))}
-                      </AnimatePresence>
-                    )}
-                    <AnimatePresence>
-                      {/* Rich status row (#8813): what the agent is doing —
+                          <AnimatePresence>
+                            {/* Rich status row (#8813): what the agent is doing —
                           thinking / running an action / waking / speaking — for
                           the brief window where we're responding but the assistant
                           placeholder turn isn't in the thread yet. Once the
                           in-flight assistant bubble exists it carries the same
                           status row inline (anchored where the reply fills in),
                           so don't double up. */}
-                      {responding &&
-                      !(
-                        visibleMessages.at(-1)?.role === "assistant" &&
-                        !visibleMessages.at(-1)?.content.trim()
-                      ) ? (
-                        <TurnStatusIndicator
-                          status={turnStatus}
-                          reduce={reduce}
-                        />
-                      ) : null}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
+                            {responding &&
+                            !(
+                              visibleMessages.at(-1)?.role === "assistant" &&
+                              !visibleMessages.at(-1)?.content.trim()
+                            ) ? (
+                              <TurnStatusIndicator
+                                status={turnStatus}
+                                reduce={reduce}
+                              />
+                            ) : null}
+                          </AnimatePresence>
+                        </MessageScrollerContent>
+                      </MessageScrollerViewport>
+                    </motion.div>
+                  </MessageScroller>
+                </MessageScrollerProvider>
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just

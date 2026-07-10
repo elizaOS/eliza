@@ -201,9 +201,9 @@ function notificationPullRevealStyle(progress: number): CSSProperties {
  *  - `.eliza-notif-glass` is the liquid-glass card recipe every notification
  *    (and stack peek) carries: frosted translucent fill, the shared specular
  *    sheen + inset edge stack from ./liquid-glass, hover as a neutral lighten.
- *  - `.eliza-notif-scroll` carries the top/bottom edge fade masks, toggled by
- *    the `data-fade-top` / `data-fade-bottom` attributes the scroll handler
- *    maintains, so rows dissolve at the clipped edges instead of hard-cutting.
+ *  - The shadcn `scroll-fade` utility derives top/bottom edge masks from the
+ *    scroll timeline, so rows dissolve at clipped edges without a JS scroll
+ *    listener mutating data attributes.
  *  - Where `animation-timeline: view()` is supported, each row also scales and
  *    fades slightly while crossing the scrollport edges — the depth cue of a
  *    platform notification shade. Progressive enhancement only; the fallback
@@ -273,15 +273,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   scrollbar-width: none;
 }
 .eliza-notif-scroll::-webkit-scrollbar { display: none; }
-.eliza-notif-scroll[data-fade-top] {
-  mask-image: linear-gradient(to bottom, transparent 0, black 1.25rem, black 100%);
-}
-.eliza-notif-scroll[data-fade-bottom] {
-  mask-image: linear-gradient(to bottom, black 0, black calc(100% - 1.5rem), transparent 100%);
-}
-.eliza-notif-scroll[data-fade-top][data-fade-bottom] {
-  mask-image: linear-gradient(to bottom, transparent 0, black 1.25rem, black calc(100% - 1.5rem), transparent 100%);
-}
 @keyframes eliza-notif-row-in {
   from { opacity: 0; transform: translateY(-8px) scale(0.98); }
   to   { opacity: 1; transform: none; }
@@ -1013,21 +1004,6 @@ export function NotificationsHomeCenter({
     [handleWheelDelta],
   );
 
-  // Maintain the edge-fade attributes from real scroll geometry. Runs on
-  // scroll and whenever content can change the scroll height.
-  const syncEdgeFades = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const canUp = el.scrollTop > 2;
-    const canDown = el.scrollTop < el.scrollHeight - el.clientHeight - 2;
-    el.toggleAttribute("data-fade-top", canUp);
-    el.toggleAttribute("data-fade-bottom", canDown);
-  }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-measure after shade/stack layout changes
-  useEffect(() => {
-    syncEdgeFades();
-  }, [syncEdgeFades, notifications.length, shadeExpanded, expandedStacks]);
-
   // The pull gesture's TOUCH path binds native listeners: the list is a real
   // `touch-action: pan-y` scroller, so the browser claims a downward pan for
   // scrolling the moment it starts — a React (passive) touchmove can't take it
@@ -1666,7 +1642,6 @@ export function NotificationsHomeCenter({
           the list rather than floating over it. */}
       <ul
         ref={scrollRef}
-        onScroll={syncEdgeFades}
         onPointerDown={onListPointerDown}
         onPointerMove={onListPointerMove}
         onPointerUp={onListPointerEnd}
@@ -1691,7 +1666,7 @@ export function NotificationsHomeCenter({
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
-          "eliza-notif-scroll relative flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-10 pt-1",
+          "eliza-notif-scroll scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem] relative flex min-h-0 flex-1 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pb-10 pt-1",
           shadeClosing && "pointer-events-none",
         )}
       >

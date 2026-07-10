@@ -39,6 +39,11 @@ import { findChoiceRegions } from "../../chat/message-choice-parser";
 import { findFollowupsRegions } from "../../chat/message-followups-parser";
 import { findFormRegions } from "../../chat/message-form-parser";
 import { Button } from "../../ui/button";
+import {
+  Message as MessageRow,
+  MessageContent as MessageRowContent,
+  MessageFooter as MessageRowFooter,
+} from "../../ui/message";
 import { Textarea } from "../../ui/textarea";
 import { ChatBubble, GLASS_EASE } from "./chat-bubble";
 import { ChatMessageActions } from "./chat-message-actions";
@@ -56,6 +61,8 @@ import type {
 } from "./chat-types";
 
 export type ChatMessageAppearance = "panel" | "glass";
+
+const MotionMessageRow = motion.create(MessageRow);
 
 export interface ChatMessageProps {
   agentName?: string;
@@ -522,6 +529,7 @@ export const ChatMessage = memo(function ChatMessage({
   // Proactive interaction comments (#8792) are agent-initiated *suggestions*, not
   // replies; render them with a distinct, one-tap-dismissible affordance.
   const isSuggestion = !isUser && normalizedSource === "proactive-interaction";
+  const isFlatAssistant = !isUser && !isFirstRun && !isSuggestion;
   const canReply =
     typeof onReply === "function" &&
     !message.id.startsWith("temp-") &&
@@ -916,6 +924,10 @@ export const ChatMessage = memo(function ChatMessage({
       // enough room and contrast for its full-width next-step action.
       isFirstRun &&
         "w-full border-white/20 bg-white/[0.07] px-4 py-3.5 sm:px-5 sm:py-4",
+      // shadcn's assistant-message pattern uses a full-width ghost surface:
+      // content remains selectable and interactive without drawing a nested
+      // bordered card inside the already-glassy chat sheet.
+      isFlatAssistant && "w-full px-0 py-1",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -924,8 +936,9 @@ export const ChatMessage = memo(function ChatMessage({
     );
 
     return (
-      <motion.div
+      <MotionMessageRow
         ref={articleRef as React.RefObject<HTMLDivElement>}
+        align={isUser ? "end" : "start"}
         data-testid="thread-line"
         data-role={message.role}
         // New turns rise+fade in. Transform/opacity only; reduced motion
@@ -934,25 +947,24 @@ export const ChatMessage = memo(function ChatMessage({
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
         transition={{ duration: reduceMotion ? 0.15 : 0.52, ease: GLASS_EASE }}
-        className={cn(
-          "mb-1.5 flex w-full",
-          isUser ? "justify-end" : "justify-start",
-        )}
+        className="mb-1.5"
       >
         {/* Bubble + its click-to-reveal action row stack vertically, aligned to
             the turn's side (#10713). */}
-        <div
+        <MessageRowContent
           className={cn(
             "flex flex-col gap-1",
             isFirstRun
               ? "max-w-[22rem] items-start"
-              : cn("max-w-[80%]", isUser ? "items-end" : "items-start"),
+              : isUser
+                ? "max-w-[80%] items-end"
+                : "w-full items-start",
           )}
         >
           {bubbleInteractive ? (
             <ChatBubble
               variant="glass"
-              bare={false}
+              bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               role="button"
@@ -971,7 +983,7 @@ export const ChatMessage = memo(function ChatMessage({
           ) : (
             <ChatBubble
               variant="glass"
-              bare={false}
+              bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               className={bubbleExtraClassName}
@@ -981,10 +993,10 @@ export const ChatMessage = memo(function ChatMessage({
             </ChatBubble>
           )}
           {actionsVisible && !isEditing && hasActions ? (
-            <div
+            <MessageRowFooter
               data-testid="thread-line-actions"
               className={cn(
-                "flex items-center gap-1.5",
+                "flex items-center gap-1.5 px-0 text-white/70",
                 isUser ? "pr-1" : "pl-1",
               )}
             >
@@ -1003,7 +1015,7 @@ export const ChatMessage = memo(function ChatMessage({
                 onReply={handleReply}
                 playing={playing}
               />
-            </div>
+            </MessageRowFooter>
           ) : null}
           {/* Retry a recoverable failure by re-sending the preceding user turn.
               Always visible on the failed turn (not gated behind the reveal
@@ -1024,8 +1036,8 @@ export const ChatMessage = memo(function ChatMessage({
               Retry
             </Button>
           ) : null}
-        </div>
-      </motion.div>
+        </MessageRowContent>
+      </MotionMessageRow>
     );
   }
 

@@ -1219,8 +1219,9 @@ describe("ContinuousChatOverlay", () => {
     expect(lines?.length).toBe(2);
     const assistant = log?.querySelector('[data-role="assistant"]');
     const user = log?.querySelector('[data-role="user"]');
-    expect(assistant?.className).toContain("justify-start");
-    expect(user?.className).toContain("justify-end");
+    expect(assistant?.getAttribute("data-align")).toBe("start");
+    expect(user?.getAttribute("data-align")).toBe("end");
+    expect(user?.className).not.toContain("justify-end");
   });
 
   it("anchors the in-flight status row as an assistant-aligned transcript row", () => {
@@ -1752,7 +1753,7 @@ describe("ContinuousChatOverlay", () => {
     ).toHaveLength(0);
   });
 
-  it("scrolls to the latest line when a new message arrives while open", () => {
+  it("anchors a new user turn without restarting a smooth stream scroll", async () => {
     const base = [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }];
     const { rerender } = render(
       <ContinuousChatOverlay
@@ -1762,12 +1763,20 @@ describe("ContinuousChatOverlay", () => {
       />,
     );
     fireEvent.focus(screen.getByLabelText("message")); // open the sheet
-    // The shared thread-scroll engine glides to a NEW line with a smooth
-    // el.scrollTo (jsdom has neither smooth scrolling nor Element.scrollTo,
-    // so stub it to observe the call).
+    const viewport = screen.getByTestId("chat-thread-scroll");
+    let scrollHeight = 400;
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, get: () => 100 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      scrollTop: { configurable: true, value: 300, writable: true },
+    });
+    // shadcn's MessageScroller anchors a new user turn with an immediate scroll
+    // and reserves smooth scrolling for explicit navigation. That keeps streamed
+    // token growth from restarting a smooth animation on every frame.
     const scrollTo = vi.fn();
     Element.prototype.scrollTo = scrollTo as unknown as Element["scrollTo"];
     try {
+      scrollHeight = 500;
       rerender(
         <ContinuousChatOverlay
           controller={makeController({
@@ -1778,9 +1787,11 @@ describe("ContinuousChatOverlay", () => {
           } as unknown as Partial<ShellController>)}
         />,
       );
-      expect(scrollTo).toHaveBeenCalledWith(
-        expect.objectContaining({ behavior: "smooth" }),
-      );
+      await waitFor(() => {
+        expect(scrollTo).toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: "auto" }),
+        );
+      });
     } finally {
       delete (Element.prototype as { scrollTo?: unknown }).scrollTo;
     }
@@ -2629,7 +2640,7 @@ describe("ContinuousChatOverlay", () => {
       );
     });
 
-    it("shows dots-only status inside the empty in-flight assistant bubble", () => {
+    it("shows one shimmering status marker inside the in-flight assistant row", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -2649,8 +2660,10 @@ describe("ContinuousChatOverlay", () => {
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
       expect(indicators[0].getAttribute("data-status-kind")).toBe("waking");
-      expect(screen.queryByTestId("turn-status-label")).toBeNull();
-      expect(screen.getByTestId("typing-dots")).toBeTruthy();
+      const label = screen.getByTestId("turn-status-label");
+      expect(label.textContent).toBe("Waking the agent");
+      expect(label.className).toContain("shimmer");
+      expect(screen.queryByTestId("typing-dots")).toBeNull();
     });
 
     it("hides reasoning disclosure while the latest assistant turn is streaming", () => {
