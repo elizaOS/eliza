@@ -385,6 +385,59 @@ async function waitForSurfacePageSettled(p, pageName) {
     return railSettled && transitionsDone;
   }, pageName);
 }
+async function waitForRenderedHomeSettled(page) {
+  const viewportWidth = page.viewportSize()?.width;
+  assert(viewportWidth, "mobile viewport width is available");
+  await page.waitForFunction(
+    async (expectedViewportWidth) => {
+      const sample = () => {
+        const surface = document.querySelector(
+          '[data-testid="home-launcher-surface"]',
+        );
+        const rail = document.querySelector(
+          '[data-testid="home-launcher-rail"]',
+        );
+        const home = document.querySelector(
+          '[data-testid="home-launcher-home-page"]',
+        );
+        if (
+          !(surface instanceof HTMLElement) ||
+          !(rail instanceof HTMLElement) ||
+          !(home instanceof HTMLElement)
+        ) {
+          return null;
+        }
+        const railRect = rail.getBoundingClientRect();
+        const homeRect = home.getBoundingClientRect();
+        return {
+          railLeft: railRect.left,
+          homeLeft: homeRect.left,
+          homeRight: homeRect.right,
+          viewportWidth: window.innerWidth,
+        };
+      };
+      const first = sample();
+      if (!first) return false;
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      );
+      const second = sample();
+      if (!second) return false;
+      const stable = ["railLeft", "homeLeft", "homeRight"].every(
+        (key) => Math.abs(first[key] - second[key]) < 0.5,
+      );
+      return (
+        stable &&
+        Math.abs(second.viewportWidth - expectedViewportWidth) < 1 &&
+        Math.abs(second.railLeft) < 1 &&
+        Math.abs(second.homeLeft) < 1 &&
+        Math.abs(second.homeRight - expectedViewportWidth) < 1
+      );
+    },
+    viewportWidth,
+    { timeout: 15000 },
+  );
+}
 function medianNumber(values) {
   const sorted = values
     .filter((value) => Number.isFinite(value))
@@ -508,8 +561,26 @@ try {
   );
   await mobile.reload();
   await mobile.waitForSelector('[data-testid="home-launcher-surface"]');
+  await waitForSurfacePageSettled(mobile, "home");
   await waitForHomeEnterSettled(mobile);
   await mobile.waitForTimeout(SWIPE_HINT_SHOW_DELAY_MS + 1_000);
+  await Promise.all([
+    mobile.getByTestId("home-time-widget").waitFor({ state: "visible" }),
+    mobile.getByTestId("home-weather").waitFor({ state: "visible" }),
+    mobile.getByText("Buy groceries", { exact: true }).waitFor({
+      state: "visible",
+    }),
+    mobile.getByText("Design review", { exact: true }).waitFor({
+      state: "visible",
+    }),
+  ]);
+  await mobile.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+  });
+  await waitForRenderedHomeSettled(mobile);
   assert(
     (await mobile.getByTestId("home-launcher-surface").getAttribute(
       "data-page",
