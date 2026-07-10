@@ -95,6 +95,9 @@ export function parseWindowsCommands(repoRoot = DEFAULT_REPO_ROOT) {
       listIndent = null;
       continue;
     }
+    // YAML comments are legitimate inside the list (e.g. rationale above a
+    // split-out suite) and are not command items.
+    if (line.slice(itemIndent).startsWith("#")) continue;
     const item = line.slice(itemIndent).match(/^-\s+(.+?)\s*$/);
     assert(
       item !== null,

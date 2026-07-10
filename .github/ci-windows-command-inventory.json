@@ -6,7 +6,7 @@
     "bun run --cwd packages/shared test",
     "bun run --cwd packages/app-core test",
     "bun run --cwd packages/elizaos test",
-    "bun run --cwd packages/cloud/shared test",
+    "bun run --cwd packages/cloud/shared test --path-ignore-patterns \"**/tenant-db-placement-claimer.test.ts\"",
     "bun run --cwd packages/scenario-runner test",
     "bun run --cwd packages/vault test",
     "bun run --cwd packages/security test",
