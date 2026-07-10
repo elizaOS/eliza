@@ -901,6 +901,10 @@ test.describe("all-views aesthetic audit (#8796)", () => {
     process.env.ELIZA_AUDIT_APP_DIR ??
     path.join(process.cwd(), "aesthetic-audit-output");
 
+  // The outer Playwright runner resets this directory exactly once. Cleanup
+  // cannot live in a test hook because Playwright reruns hooks in replacement
+  // workers, which would erase screenshots from tests that passed before a retry.
+
   // Coverage guard: the audit must walk EVERY built-in view. Fails on a phantom
   // key, a path drift, or any distinct navigation route the audit doesn't cover —
   // so a newly-added tab fails the suite until it is added to BUILTIN_TAB_PATHS.
