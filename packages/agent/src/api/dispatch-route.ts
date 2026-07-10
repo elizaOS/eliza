@@ -424,6 +424,9 @@ function buildLegacyShim(args: {
 function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   const buffer = Buffer.concat(captured.chunks);
   const contentType = (captured.headers["content-type"] ?? "").toLowerCase();
+  const contentEncoding = (captured.headers["content-encoding"] ?? "")
+    .trim()
+    .toLowerCase();
   if (buffer.length === 0) {
     return {
       status: captured.statusCode || 200,
@@ -431,20 +434,20 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
       body: undefined,
     };
   }
-  // Binary responses (audio/*, image/*, octet-stream, …) MUST stay a Buffer.
-  // `buffer.toString("utf8")` replaces every non-ASCII byte with U+FFFD
-  // (ef bf bd) and PERMANENTLY corrupts the payload — this silently mangled all
-  // on-device TTS/audio over the local-agent IPC bridge (the resultBodyBytes /
-  // bodyBase64 stage downstream is lossless only if it receives the raw bytes).
-  // Only decode to a string for known-textual types.
+  // Content encodings describe bytes that the client must decode even when the
+  // underlying media type is textual; interpreting either encoded or binary
+  // bytes as UTF-8 would make the downstream IPC base64 envelope lossy.
+  const hasTransferEncoding =
+    contentEncoding !== "" && contentEncoding !== "identity";
   const isTextual =
-    contentType === "" ||
-    contentType.startsWith("text/") ||
-    contentType.includes("json") ||
-    contentType.includes("xml") ||
-    contentType.includes("javascript") ||
-    contentType.includes("x-www-form-urlencoded") ||
-    contentType.includes("charset");
+    !hasTransferEncoding &&
+    (contentType === "" ||
+      contentType.startsWith("text/") ||
+      contentType.includes("json") ||
+      contentType.includes("xml") ||
+      contentType.includes("javascript") ||
+      contentType.includes("x-www-form-urlencoded") ||
+      contentType.includes("charset"));
   if (!isTextual) {
     return {
       status: captured.statusCode || 200,
@@ -452,12 +455,13 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
       body: buffer,
     };
   }
-  let body: unknown = buffer.toString("utf8");
-  if (contentType.includes("application/json")) {
+  const text = buffer.toString("utf8");
+  let body: unknown = text;
+  if (contentType.includes("json")) {
     try {
-      body = JSON.parse(body as string);
+      body = JSON.parse(text);
     } catch {
-      // keep as string
+      // error-policy:J3 malformed JSON stays explicit raw text at this transport boundary
     }
   }
   return {
