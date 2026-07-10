@@ -29,6 +29,7 @@
  * and identity-copy inputs before calling in.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
@@ -120,8 +121,13 @@ export async function findLiveTierUpgradeTarget(
 /**
  * Best-effort teardown of the credentials prepared for a prospective target
  * that never became durable (lost the mint race, or the mint transaction
- * failed). The key is bound to the prospective id's name, so this can never
- * touch a live target's credentials.
+ * failed). The key is bound to the prospective id's name, so a race loser can
+ * never touch the winner's credentials. One caveat: an AMBIGUOUS commit
+ * failure (commit landed, acknowledgment lost) reaches this via the catch with
+ * a targetId that IS now live — the revoke then removes a live target's key.
+ * That state self-heals: the provision executor re-mints the agent key
+ * unconditionally (`createForAgent` revokes-then-mints on every provision
+ * run), so the container still boots with working credentials.
  */
 async function revokeAbandonedTargetCredentials(prospectiveTargetId: string): Promise<void> {
   try {
@@ -219,7 +225,12 @@ export async function createTierUpgradeTargetWithProvision(
           },
         })
         .returning();
-      if (!created) throw new Error("Failed to create tier-upgrade target");
+      if (!created) {
+        throw new ElizaError("Failed to create tier-upgrade target", {
+          code: "TIER_UPGRADE_TARGET_INSERT_FAILED",
+          context: { sourceAgentId: params.sourceAgentId, organizationId: params.organizationId },
+        });
+      }
 
       const { job } = await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
         agentId: created.id,

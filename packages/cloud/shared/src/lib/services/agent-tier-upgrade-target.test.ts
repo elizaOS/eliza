@@ -20,32 +20,40 @@ import { eq, like } from "drizzle-orm";
 import * as managedConfigActual from "./managed-eliza-config";
 
 // ---- instrumented prep seam: delay / fail / count, delegating to the real fn ----
-// The namespace import is a LIVE binding that mock.module rewires, so the real
-// implementation must be captured by value here or the wrapper would recurse.
+// VALUE snapshot taken at module evaluation, while no mock is installed: the
+// namespace import is a LIVE binding that mock.module rewires, so both the
+// delegate and the afterAll restore must hold the original references by value
+// or they would re-capture the mock.
+const managedConfigSnapshot = { ...managedConfigActual };
 const realPrepareManagedElizaSharedEnvironment =
-  managedConfigActual.prepareManagedElizaSharedEnvironment;
+  managedConfigSnapshot.prepareManagedElizaSharedEnvironment;
 let prepDelayMs = 0;
 let prepFailNext = false;
 let prepCalls = 0;
 
-mock.module("./managed-eliza-config", () => ({
-  ...managedConfigActual,
-  prepareManagedElizaSharedEnvironment: async (
-    params: Parameters<typeof realPrepareManagedElizaSharedEnvironment>[0],
-  ) => {
-    prepCalls += 1;
-    if (prepFailNext) {
-      prepFailNext = false;
-      throw new Error("simulated credential-mint failure");
-    }
-    if (prepDelayMs > 0) {
-      const delay = prepDelayMs;
-      prepDelayMs = 0;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-    return realPrepareManagedElizaSharedEnvironment(params);
-  },
-}));
+// Installed in beforeAll — never at module scope: `bun test` evaluates every
+// test file's module scope up front, so a module-scope mock would clobber the
+// shared bindings under every OTHER suite in a multi-file run (#15943).
+function installPrepSeam(): void {
+  mock.module("./managed-eliza-config", () => ({
+    ...managedConfigSnapshot,
+    prepareManagedElizaSharedEnvironment: async (
+      params: Parameters<typeof realPrepareManagedElizaSharedEnvironment>[0],
+    ) => {
+      prepCalls += 1;
+      if (prepFailNext) {
+        prepFailNext = false;
+        throw new Error("simulated credential-mint failure");
+      }
+      if (prepDelayMs > 0) {
+        const delay = prepDelayMs;
+        prepDelayMs = 0;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      return realPrepareManagedElizaSharedEnvironment(params);
+    },
+  }));
+}
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_QUOTA = "22222222-2222-4222-8222-222222222222";
@@ -75,6 +83,7 @@ let svc: typeof import("./agent-tier-upgrade-target");
 
 beforeAll(async () => {
   try {
+    installPrepSeam();
     const client = await import("../../db/client");
     dbWrite = client.dbWrite;
     closeDb = client.closeDatabaseConnectionsForTests;
@@ -84,26 +93,14 @@ beforeAll(async () => {
     const { userCharacters } = await import("../../db/schemas/user-characters");
     ({ agentSandboxes } = await import("../../db/schemas/agent-sandboxes"));
     ({ apiKeys } = await import("../../db/schemas/api-keys"));
-    // jobs → generations → usage_records is a pure FK chain; the extra tables
-    // exist only so the pushed schema's constraints resolve.
-    const { usageRecords } = await import("../../db/schemas/usage-records");
-    const { generations } = await import("../../db/schemas/generations");
     ({ jobs } = await import("../../db/schemas/jobs"));
-    const { pushSchema } = await import("../../db/push-schema-for-tests");
-    const { apply } = await pushSchema(
-      {
-        organizations,
-        users,
-        userCharacters,
-        agentSandboxes,
-        apiKeys,
-        usageRecords,
-        generations,
-        jobs,
-      } as never,
-      dbWrite as never,
-    );
-    await apply();
+    // Plain DDL instead of drizzle-kit pushSchema: the coverage lane co-runs
+    // every changed suite in ONE bun process, and drizzle-kit answers internal
+    // errors there with a silent process.exit(1) that kills the whole run.
+    const { TIER_UPGRADE_TEST_TABLES } = await import("./__tests__/tier-upgrade-pglite-schema");
+    for (const ddl of TIER_UPGRADE_TEST_TABLES) {
+      await dbWrite.execute(ddl);
+    }
 
     await dbWrite.insert(organizations).values([
       { id: ORG_A, name: "Org A", slug: "org-a", credit_balance: "100" },
@@ -424,6 +421,41 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
   );
 
   test(
+    "enqueueAgentProvisionOnceInTx reuses the in-flight job instead of minting a second one (reuse branch, real tx)",
+    async () => {
+      expect(pgliteReady).toBe(true);
+      const { provisioningJobService } = await import("./provisioning-jobs");
+
+      const minted = await svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_BASIC));
+      expect(minted.created).toBe(false); // SRC_BASIC target exists from earlier tests
+      const target = minted.agent;
+
+      const [first, second] = await dbWrite.transaction(async (tx) => [
+        await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
+          agentId: target.id,
+          organizationId: ORG_A,
+          userId: USER_A,
+          agentName: target.agent_name ?? target.id,
+        }),
+        await provisioningJobService.enqueueAgentProvisionOnceInTx(tx, {
+          agentId: target.id,
+          organizationId: ORG_A,
+          userId: USER_A,
+          agentName: target.agent_name ?? target.id,
+        }),
+      ]);
+      // The target's original provision job is still pending, so BOTH calls
+      // must reattach to it — the tx variant keeps the same idempotency
+      // contract as enqueueAgentProvisionOnce.
+      expect(first.created).toBe(false);
+      expect(second.created).toBe(false);
+      expect(second.job.id).toBe(first.job.id);
+      expect(await jobsForAgent(target.id)).toHaveLength(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "an over-quota upgrade is refused before any credential is minted",
     async () => {
       expect(pgliteReady).toBe(true);
@@ -479,4 +511,8 @@ describe("findLiveTierUpgradeTarget", () => {
 afterAll(async () => {
   if (closeDb) await closeDb();
   mock.restore();
+  // Hand the pristine module back to whatever test file runs after this one in
+  // the same process — a leaked module mock patches itself into later suites'
+  // imports.
+  mock.module("./managed-eliza-config", () => managedConfigSnapshot);
 });

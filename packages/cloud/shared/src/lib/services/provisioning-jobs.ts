@@ -13,6 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
@@ -965,7 +966,16 @@ export class ProvisioningJobService {
       .limit(1);
 
     if (!sandbox) {
-      throw new Error("Agent not found");
+      // The exact message is load-bearing: several route boundaries map
+      // `message === "Agent not found"` to a 404.
+      throw new ElizaError("Agent not found", {
+        code: "PROVISION_ENQUEUE_AGENT_NOT_FOUND",
+        context: {
+          agentId: opts.agentId,
+          organizationId: opts.organizationId,
+          jobType: opts.jobType,
+        },
+      });
     }
 
     opts.validateSandbox?.(sandbox);

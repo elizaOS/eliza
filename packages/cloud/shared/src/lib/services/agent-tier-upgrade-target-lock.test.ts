@@ -15,7 +15,7 @@
  * transaction, drop either lock, or reorder the re-check, and this fails.
  */
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 
 process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
@@ -25,6 +25,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import * as helpersActual from "../../db/helpers";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
+import * as loggerActual from "../utils/logger";
 import * as apiKeysActual from "./api-keys";
 import * as managedConfigActual from "./managed-eliza-config";
 
@@ -116,41 +117,69 @@ const transaction = mock(async (fn: (tx: ReturnType<typeof makeTx>) => Promise<u
   return fn(makeTx(txCounter));
 });
 
-mock.module("../../db/helpers", () => ({
-  ...helpersActual,
-  dbWrite: { transaction },
-  writeTransaction: (fn: (tx: ReturnType<typeof makeTx>) => Promise<unknown>) => transaction(fn),
-}));
+// VALUE snapshots taken at module evaluation, while no mock is installed.
+// `db/helpers` re-exports `dbWrite` from `db/client`, so bun's module mocks
+// patch the SHARED live binding — a restore built from the live namespace
+// would re-capture the mock. Snapshot objects freeze the original references.
+const helpersSnapshot = { ...helpersActual };
+const managedConfigSnapshot = { ...managedConfigActual };
+const apiKeysSnapshot = { ...apiKeysActual };
+const loggerSnapshot = { ...loggerActual };
 
-// Spread the actual module so its OTHER named exports (consumed by transitive
-// importers like eliza-managed-launch) still resolve — a partial mock.module
-// throws "Export not found" at link time.
-mock.module("./managed-eliza-config", () => ({
-  ...managedConfigActual,
-  prepareManagedElizaSharedEnvironment: async (params: { agentSandboxId: string }) => {
-    prepCalls += 1;
-    return {
-      apiToken: "agent_locktest",
-      changed: true,
-      environmentVars: {
-        ELIZA_API_TOKEN: "agent_locktest",
-        ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
-      },
-      agentApiKey: "ek_locktest",
-    };
-  },
-}));
+let createTierUpgradeTargetWithProvision: typeof import("./agent-tier-upgrade-target").createTierUpgradeTargetWithProvision;
 
-mock.module("./api-keys", () => ({
-  ...apiKeysActual,
-  apiKeysService: { revokeForAgent },
-}));
+// Mocks are installed in beforeAll — NEVER at module scope: `bun test`
+// evaluates every test file's module scope up front, so a module-scope mock
+// would clobber the shared bindings under every OTHER suite in a multi-file
+// run (the coverage lane co-runs all changed suites in one process, #15943).
+beforeAll(async () => {
+  mock.module("../../db/helpers", () => ({
+    ...helpersSnapshot,
+    dbWrite: { transaction },
+    writeTransaction: (fn: (tx: ReturnType<typeof makeTx>) => Promise<unknown>) => transaction(fn),
+  }));
 
-mock.module("../utils/logger", () => ({
-  logger: { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} },
-}));
+  // Spread the snapshot so the module's OTHER named exports (consumed by
+  // transitive importers like eliza-managed-launch) still resolve — a partial
+  // mock.module throws "Export not found" at link time.
+  mock.module("./managed-eliza-config", () => ({
+    ...managedConfigSnapshot,
+    prepareManagedElizaSharedEnvironment: async (params: { agentSandboxId: string }) => {
+      prepCalls += 1;
+      return {
+        apiToken: "agent_locktest",
+        changed: true,
+        environmentVars: {
+          ELIZA_API_TOKEN: "agent_locktest",
+          ELIZA_CLOUD_AGENT_ID: params.agentSandboxId,
+        },
+        agentApiKey: "ek_locktest",
+      };
+    },
+  }));
 
-const { createTierUpgradeTargetWithProvision } = await import("./agent-tier-upgrade-target");
+  mock.module("./api-keys", () => ({
+    ...apiKeysSnapshot,
+    apiKeysService: { revokeForAgent },
+  }));
+
+  mock.module("../utils/logger", () => ({
+    ...loggerSnapshot,
+    logger: { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} },
+  }));
+
+  ({ createTierUpgradeTargetWithProvision } = await import("./agent-tier-upgrade-target"));
+});
+
+// Hand the pristine modules back to whatever test file runs after this one in
+// the same process — a leaked module mock patches itself into later suites'
+// imports.
+afterAll(() => {
+  mock.module("../../db/helpers", () => helpersSnapshot);
+  mock.module("./managed-eliza-config", () => managedConfigSnapshot);
+  mock.module("./api-keys", () => apiKeysSnapshot);
+  mock.module("../utils/logger", () => loggerSnapshot);
+});
 
 afterEach(() => {
   events.length = 0;
