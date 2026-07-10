@@ -121,6 +121,86 @@ describe("dispatchRoute captured response finalization", () => {
     });
   });
 
+  it.each([
+    "application/xml",
+    "application/problem+xml",
+    "application/javascript",
+    "application/x-javascript",
+    "application/x-www-form-urlencoded",
+  ])("keeps %s responses textual", async (contentType) => {
+    const runtime = runtimeWithHandler((response) => {
+      response.setHeader("content-type", contentType);
+      response.end("route text");
+    });
+
+    await expect(dispatch(runtime)).resolves.toMatchObject({
+      body: "route text",
+    });
+  });
+
+  it("keeps authorization ahead of response-body handling", async () => {
+    const privateRoute = {
+      type: "GET",
+      path: "/api/private",
+      handler: async () => {
+        throw new Error("private handler must not execute");
+      },
+    } as unknown as Route;
+
+    await expect(
+      dispatchRoute({
+        runtime: { routes: [privateRoute] } as unknown as IAgentRuntime,
+        method: "GET",
+        path: "/api/private",
+        headers: {},
+        inProcess: true,
+        isAuthorized: () => false,
+      }),
+    ).resolves.toMatchObject({
+      status: 401,
+      body: { error: "Unauthorized" },
+    });
+  });
+
+  it("passes parsed request state through return-shape handlers", async () => {
+    const route = {
+      type: "POST",
+      path: "/api/items/:id",
+      routeHandler: async (context: {
+        params: Record<string, string>;
+        body: unknown;
+        query: Record<string, string | string[]>;
+      }) => ({
+        status: 201,
+        body: {
+          id: context.params.id,
+          body: context.body,
+          query: context.query,
+        },
+      }),
+    } as unknown as Route;
+
+    await expect(
+      dispatchRoute({
+        runtime: { routes: [route] } as unknown as IAgentRuntime,
+        method: "POST",
+        path: "/api/items/item-1",
+        query: { mode: "strict" },
+        body: '{"name":"sample"}',
+        headers: { "content-type": "application/json" },
+        inProcess: true,
+        isAuthorized: () => true,
+      }),
+    ).resolves.toEqual({
+      status: 201,
+      body: {
+        id: "item-1",
+        body: { name: "sample" },
+        query: { mode: "strict" },
+      },
+    });
+  });
+
   it("rejects malformed declared JSON and returns empty responses as undefined", async () => {
     const invalidJsonRuntime = runtimeWithHandler((response) => {
       response.setHeader("content-type", "application/json");
