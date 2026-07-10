@@ -544,15 +544,22 @@ function transcriptAnchorPrefix(
 ): string {
 	const startMs = metadata?.startMs;
 	const endMs = metadata?.endMs;
-	if (typeof startMs !== "number" || !Number.isFinite(startMs)) return "";
+	// Only a well-formed anchor renders: a finite, non-negative start, and an
+	// end that is finite, non-negative, and not before the start. A malformed
+	// value is dropped rather than shown as a nonsensical `[-0:01]`/inverted span.
+	if (typeof startMs !== "number" || !Number.isFinite(startMs) || startMs < 0) {
+		return "";
+	}
 	const end =
-		typeof endMs === "number" && Number.isFinite(endMs)
+		typeof endMs === "number" && Number.isFinite(endMs) && endMs >= startMs
 			? `–${formatMsClock(endMs)}`
 			: "";
 	return `[${formatMsClock(startMs)}${end}] `;
 }
 
-async function handleSearch(
+// Exported for the deterministic render test (#14806): the anchored-hit clock
+// prefix is the one net-new agent-facing behavior and must be pinned directly.
+export async function handleSearch(
 	service: DocumentService,
 	message: Memory,
 	params: DocumentActionParameters,

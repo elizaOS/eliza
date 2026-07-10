@@ -42,6 +42,7 @@ import {
 	createDocumentMemory,
 	extractTextFromDocument,
 	processFragmentsSynchronously,
+	validatePreChunkedFragments,
 } from "./document-processor.ts";
 import { embedRecallQuery } from "./recall-embed.ts";
 import type {
@@ -861,6 +862,13 @@ export class DocumentService extends Service {
 				roomId: roomId || agentId,
 				entityId: targetEntityId,
 			};
+
+			// Validate the producer fragment batch BEFORE the parent DOCUMENT row is
+			// written, so a malformed batch (empty/inverted/non-finite anchor) throws
+			// without leaving an orphaned zero-fragment document stub (#14806).
+			if (fragments) {
+				validatePreChunkedFragments(fragments, clientDocumentId as UUID);
+			}
 
 			await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
 

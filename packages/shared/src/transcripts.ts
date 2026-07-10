@@ -308,6 +308,36 @@ export function transcriptKnowledgeFragments(
   segments: ReadonlyArray<TranscriptSegment>,
   maxChars = TRANSCRIPT_FRAGMENT_MAX_CHARS,
 ): TranscriptFragmentInput[] {
+  // The anchors this produces feed a security-sensitive audio-span projection
+  // (#14807 PII redaction), so a malformed budget or segment timing must fail
+  // fast at the producer boundary rather than emit a fragment that claims a
+  // garbage `startMs`/`endMs`.
+  if (!Number.isFinite(maxChars) || maxChars <= 0) {
+    throw new Error(
+      `transcriptKnowledgeFragments: maxChars must be a positive finite number, got ${String(maxChars)}`,
+    );
+  }
+  for (const segment of segments) {
+    if (segment.text.trim() === "") continue;
+    if (typeof segment.id !== "string" || segment.id === "") {
+      throw new Error(
+        "transcriptKnowledgeFragments: a non-empty segment is missing a stable id",
+      );
+    }
+    if (
+      !Number.isFinite(segment.startMs) ||
+      !Number.isFinite(segment.endMs) ||
+      segment.startMs < 0 ||
+      segment.endMs < segment.startMs
+    ) {
+      throw new Error(
+        `transcriptKnowledgeFragments: segment ${segment.id} has invalid timing startMs=${String(
+          segment.startMs,
+        )} endMs=${String(segment.endMs)}`,
+      );
+    }
+  }
+
   const fragments: TranscriptFragmentInput[] = [];
   let lines: string[] = [];
   let group: TranscriptSegment[] = [];

@@ -194,6 +194,66 @@ describe("document routes", () => {
     expect(body.results[1].endMs).toBeUndefined();
   });
 
+  it("drops malformed anchors at the DTO boundary (NaN/negative/inverted)", async () => {
+    searchDocuments.mockResolvedValueOnce([
+      {
+        id: "frag-nan",
+        similarity: 0.9,
+        content: { text: "nan anchor" },
+        metadata: {
+          type: "fragment",
+          documentId: "doc-1",
+          transcriptId: "t-1",
+          startMs: Number.NaN,
+          endMs: 1000,
+        },
+      },
+      {
+        id: "frag-negative",
+        similarity: 0.85,
+        content: { text: "negative anchor" },
+        metadata: {
+          type: "fragment",
+          documentId: "doc-2",
+          transcriptId: "t-2",
+          startMs: -500,
+          endMs: 1000,
+        },
+      },
+      {
+        id: "frag-inverted",
+        similarity: 0.8,
+        content: { text: "inverted anchor" },
+        metadata: {
+          type: "fragment",
+          documentId: "doc-3",
+          transcriptId: "t-3",
+          startMs: 5000,
+          endMs: 1000,
+        },
+      },
+    ]);
+    const { ctx, res } = buildCtx({
+      method: "GET",
+      pathname: "/api/documents/search",
+    });
+    ctx.url = new URL("http://localhost/api/documents/search?q=anchor");
+
+    await expect(handleDocumentsRoutes(ctx)).resolves.toBe(true);
+
+    const body = res.body as { results: Array<Record<string, unknown>> };
+    expect(body.results).toHaveLength(3);
+    // NaN start is not a valid seek anchor — no startMs published (endMs kept).
+    expect(body.results[0].startMs).toBeUndefined();
+    expect(body.results[0].endMs).toBe(1000);
+    // Negative start dropped.
+    expect(body.results[1].startMs).toBeUndefined();
+    // Inverted pair (endMs < startMs) publishes NEITHER anchor.
+    expect(body.results[2].startMs).toBeUndefined();
+    expect(body.results[2].endMs).toBeUndefined();
+    expect(body.results[2].transcriptId).toBeUndefined();
+  });
+
   it("rejects image uploads that would otherwise store placeholder text", async () => {
     const { ctx, res } = buildCtx({
       method: "POST",

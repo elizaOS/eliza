@@ -219,6 +219,80 @@ describe("processFragmentsSynchronously — pre-chunked fragments", () => {
 		expect(fragmentWrites(writes)).toHaveLength(0);
 	});
 
+	it("all-or-nothing: a single embed failure throws and persists no fragment", async () => {
+		// One fragment embeds fine, the next returns a zero vector (embed failure).
+		// The pre-chunked path must reject the whole batch rather than index a
+		// partial set that would leave an anchor gap the PII projection trusts.
+		const { runtime, writes } = buildRuntime();
+		runtime.useModel = vi.fn(async (modelType: string, args: unknown) => {
+			if (modelType !== ModelType.TEXT_EMBEDDING) {
+				throw new Error(`Unexpected model call: ${modelType}`);
+			}
+			const text = (args as { text: string }).text;
+			return text === "Bob: hi" ? [] : [0.1, 0.2, 0.3];
+		}) as never;
+
+		await expect(
+			processFragmentsSynchronously({
+				runtime: runtime as never,
+				documentId: DOC_ID,
+				fullDocumentText: "Alice: hello there\nBob: hi",
+				agentId: runtime.agentId,
+				fragments: [
+					{
+						text: "Alice: hello there",
+						metadata: { segmentIds: ["s1"], startMs: 0, endMs: 1000 },
+					},
+					{
+						text: "Bob: hi",
+						metadata: { segmentIds: ["s2"], startMs: 1200, endMs: 2000 },
+					},
+				],
+			}),
+		).rejects.toThrow(/pre-chunked fragment/i);
+
+		// Atomic: the fragment that embedded fine is NOT persisted either —
+		// embeddings are all validated before any write.
+		expect(fragmentWrites(writes)).toHaveLength(0);
+	});
+
+	it("pre-chunked fragments bypass contextual retrieval (verbatim text)", async () => {
+		// With CTX_DOCUMENTS_ENABLED the splitter path would prepend LLM context to
+		// each chunk's stored text; the pre-chunked path must NOT, or the stored
+		// text stops matching its byte-exact time anchors. buildRuntime's useModel
+		// throws on any non-embedding call, so a stored-verbatim result also proves
+		// the contextualization TEXT model was never invoked.
+		const { runtime, writes } = buildRuntime();
+		runtime.getSetting = vi.fn((key: string) => {
+			if (key === "EMBEDDING_PROVIDER") return "local";
+			if (key === "RATE_LIMIT_ENABLED") return "false";
+			if (key === "CTX_DOCUMENTS_ENABLED") return "true";
+			return undefined;
+		}) as never;
+
+		const count = await processFragmentsSynchronously({
+			runtime: runtime as never,
+			documentId: DOC_ID,
+			fullDocumentText: "Alice: hello there\nBob: hi",
+			agentId: runtime.agentId,
+			fragments: [
+				{
+					text: "Alice: hello there",
+					metadata: { segmentIds: ["s1"], startMs: 0, endMs: 1000 },
+				},
+				{
+					text: "Bob: hi",
+					metadata: { segmentIds: ["s2"], startMs: 1200, endMs: 2000 },
+				},
+			],
+		});
+		expect(count).toBe(2);
+		expect(fragmentWrites(writes).map((r) => r.content.text)).toEqual([
+			"Alice: hello there",
+			"Bob: hi",
+		]);
+	});
+
 	it("without fragments the splitter path is unchanged (no anchor keys)", async () => {
 		const { runtime, writes } = buildRuntime();
 		const count = await processFragmentsSynchronously({
@@ -278,11 +352,49 @@ describe("DocumentService.addDocument — fragments plumb through end to end", (
 		expect(meta.position).toBe(1);
 	});
 
+	it("a malformed batch persists no document row and no fragment row", async () => {
+		// Regression for the partial-write bug: validation is hoisted ahead of the
+		// document-row write, so a rejected batch leaves NO orphaned zero-fragment
+		// document stub in the documents table.
+		const { runtime, writes } = buildRuntime();
+		const svc = new (
+			DocumentService as new (
+				runtime: unknown,
+			) => DocumentService
+		)(runtime);
+
+		await expect(
+			svc.addDocument({
+				worldId: runtime.agentId,
+				roomId: runtime.agentId,
+				entityId: runtime.agentId,
+				clientDocumentId: DOC_ID,
+				contentType: "text/plain",
+				originalFilename: "standup.txt",
+				content: "Alice: hello there\nBob: hi",
+				metadata: { transcriptId: "t-1", source: "transcript" },
+				fragments: [
+					{
+						text: "Alice: hello there",
+						metadata: { segmentIds: ["s1"], startMs: 0, endMs: 1000 },
+					},
+					// endMs precedes startMs — invalid ASR segment.
+					{ text: "Bob: hi", metadata: { startMs: 2000, endMs: 100 } },
+				],
+			}),
+		).rejects.toThrow(/endMs 100 before startMs 2000/);
+
+		expect(writes.filter((w) => w.tableName === "documents")).toHaveLength(0);
+		expect(fragmentWrites(writes)).toHaveLength(0);
+	});
+
 	it("searchDocuments round-trips the anchors on stored fragments", async () => {
 		const { runtime, writes } = buildRuntime();
-		const svc = new (DocumentService as new (
-			runtime: unknown,
-		) => DocumentService)(runtime);
+		const svc = new (
+			DocumentService as new (
+				runtime: unknown,
+			) => DocumentService
+		)(runtime);
 
 		await svc.addDocument({
 			worldId: runtime.agentId,

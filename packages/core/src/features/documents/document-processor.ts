@@ -12,6 +12,7 @@
  */
 import type { Buffer } from "node:buffer";
 import { v4 as uuidv4 } from "uuid";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import {
 	type IAgentRuntime,
@@ -125,14 +126,13 @@ export async function processFragmentsSynchronously({
 	 */
 	fragments?: PreChunkedFragmentInput[];
 }): Promise<number> {
-	if (!fullDocumentText || fullDocumentText.trim() === "") {
-		logger.warn(`No text content available for document ${documentId}`);
-		return 0;
-	}
-
 	let chunks: string[];
 	let fragmentMetadatas: Array<Record<string, unknown> | undefined> | undefined;
+	const preChunked = fragments !== undefined;
 	if (fragments) {
+		// The seam is public API (AddDocumentOptions.fragments); a producer that
+		// hands us fragments but no body has a broken pipeline — fail fast rather
+		// than silently drop the batch.
 		validatePreChunkedFragments(fragments, documentId);
 		chunks = fragments.map((f) => f.text);
 		fragmentMetadatas = fragments.map((f) => f.metadata);
@@ -140,6 +140,10 @@ export async function processFragmentsSynchronously({
 			`Using ${chunks.length} producer-supplied pre-chunked fragments`,
 		);
 	} else {
+		if (!fullDocumentText || fullDocumentText.trim() === "") {
+			logger.warn(`No text content available for document ${documentId}`);
+			return 0;
+		}
 		chunks = await splitDocumentIntoChunks(fullDocumentText);
 
 		if (chunks.length === 0) {
@@ -163,6 +167,7 @@ export async function processFragmentsSynchronously({
 		documentId,
 		chunks,
 		fragmentMetadatas,
+		preChunked,
 		fullDocumentText,
 		contentType,
 		agentId,
@@ -290,21 +295,28 @@ async function splitDocumentIntoChunks(
  * Reject malformed producer-supplied fragments before anything is persisted —
  * a fragment with empty text or an inverted/non-finite time anchor would
  * silently poison search results and the PII span projection built on top of
- * the anchors, so the whole batch fails fast instead.
+ * the anchors, so the whole batch fails fast instead. Callers must run this
+ * BEFORE the parent DOCUMENT row is written (see `DocumentService.addDocument`)
+ * so a rejected batch leaves no orphaned zero-fragment document stub.
  */
-function validatePreChunkedFragments(
+export function validatePreChunkedFragments(
 	fragments: PreChunkedFragmentInput[],
 	documentId: UUID,
 ): void {
 	if (fragments.length === 0) {
-		throw new Error(
+		throw new ElizaError(
 			`Pre-chunked fragments for document ${documentId} must be non-empty when provided`,
+			{ code: "DOCUMENT_FRAGMENTS_EMPTY", context: { documentId } },
 		);
 	}
 	fragments.forEach((fragment, index) => {
 		if (!fragment.text || fragment.text.trim() === "") {
-			throw new Error(
+			throw new ElizaError(
 				`Pre-chunked fragment ${index} for document ${documentId} has empty text`,
+				{
+					code: "DOCUMENT_FRAGMENT_EMPTY_TEXT",
+					context: { documentId, index },
+				},
 			);
 		}
 		const { startMs, endMs } = (fragment.metadata ?? {}) as {
@@ -319,8 +331,12 @@ function validatePreChunkedFragments(
 				value !== undefined &&
 				(typeof value !== "number" || !Number.isFinite(value) || value < 0)
 			) {
-				throw new Error(
+				throw new ElizaError(
 					`Pre-chunked fragment ${index} for document ${documentId} has invalid ${key}: ${String(value)}`,
+					{
+						code: "DOCUMENT_FRAGMENT_INVALID_ANCHOR",
+						context: { documentId, index, key, value: String(value) },
+					},
 				);
 			}
 		}
@@ -329,8 +345,12 @@ function validatePreChunkedFragments(
 			typeof endMs === "number" &&
 			endMs < startMs
 		) {
-			throw new Error(
+			throw new ElizaError(
 				`Pre-chunked fragment ${index} for document ${documentId} has endMs ${endMs} before startMs ${startMs}`,
+				{
+					code: "DOCUMENT_FRAGMENT_INVERTED_ANCHOR",
+					context: { documentId, index, startMs, endMs },
+				},
 			);
 		}
 	});
@@ -341,6 +361,7 @@ async function processAndSaveFragments({
 	documentId,
 	chunks,
 	fragmentMetadatas,
+	preChunked = false,
 	fullDocumentText,
 	contentType,
 	agentId,
@@ -358,6 +379,13 @@ async function processAndSaveFragments({
 	chunks: string[];
 	/** Per-chunk producer metadata, indexed like `chunks` (pre-chunked path). */
 	fragmentMetadatas?: Array<Record<string, unknown> | undefined>;
+	/**
+	 * Producer-owned chunk boundaries (#14806): skip contextual retrieval so the
+	 * stored FRAGMENT text stays byte-exact against the segment anchors, and make
+	 * persistence all-or-nothing — any embed/save failure throws instead of
+	 * silently dropping a fragment, which would make redacted audio look covered.
+	 */
+	preChunked?: boolean;
 	fullDocumentText: string;
 	contentType?: string;
 	agentId: UUID;
@@ -377,6 +405,31 @@ async function processAndSaveFragments({
 	let savedCount = 0;
 	let failedCount = 0;
 	const failedChunks: number[] = [];
+
+	// Pre-chunked producer fragments (#14806) take an all-or-nothing path:
+	// contextual retrieval is skipped (the stored text must stay byte-exact
+	// against the segment anchors) and every embedding is generated + validated
+	// BEFORE any fragment is persisted, so a failure can never leave a partial
+	// index that hides an anchor gap — which would make redacted audio look
+	// fully covered to the #14807 PII projection.
+	if (preChunked) {
+		const saved = await persistPreChunkedFragmentsAtomically({
+			runtime,
+			documentId,
+			chunks,
+			fragmentMetadatas,
+			agentId,
+			roomId,
+			entityId,
+			worldId,
+			rateLimiter,
+			concurrencyLimit,
+			documentTitle,
+			documentMetadata,
+			batchDelayMs,
+		});
+		return { savedCount: saved, failedCount: 0, failedChunks: [] };
+	}
 
 	for (let i = 0; i < chunks.length; i += concurrencyLimit) {
 		const batchChunks = chunks.slice(i, i + concurrencyLimit);
@@ -422,33 +475,19 @@ async function processAndSaveFragments({
 			}
 
 			try {
-				const fragmentSource =
-					typeof documentMetadata?.source === "string"
-						? documentMetadata.source
-						: "upload";
-				// Producer metadata (time anchors etc.) sits between the inherited
-				// document metadata and the structural fields, so it can annotate a
-				// fragment but never corrupt type/documentId/position.
-				const fragmentMetadata: DocumentFragmentMemoryMetadata = {
-					...(documentMetadata ?? {}),
-					...(fragmentMetadatas?.[originalChunkIndex] ?? {}),
-					type: MemoryType.FRAGMENT,
+				const fragmentMemory = buildFragmentMemory({
 					documentId,
-					position: originalChunkIndex,
-					timestamp: Date.now(),
-					source: fragmentSource,
-					documentTitle,
-				};
-				const fragmentMemory: Memory = {
-					id: uuidv4() as UUID,
-					agentId,
-					roomId: roomId || agentId,
-					worldId: worldId || agentId,
-					entityId: entityId || agentId,
+					originalChunkIndex,
+					text: contextualizedChunkText,
 					embedding,
-					content: { text: contextualizedChunkText },
-					metadata: fragmentMetadata,
-				};
+					fragmentMetadata: fragmentMetadatas?.[originalChunkIndex],
+					documentMetadata,
+					documentTitle,
+					agentId,
+					roomId,
+					entityId,
+					worldId,
+				});
 
 				await runtime.createMemory(fragmentMemory, "document_fragments");
 				savedCount++;
@@ -469,6 +508,180 @@ async function processAndSaveFragments({
 	}
 
 	return { savedCount, failedCount, failedChunks };
+}
+
+/** Assemble a FRAGMENT memory, merging producer metadata under structural fields. */
+function buildFragmentMemory({
+	documentId,
+	originalChunkIndex,
+	text,
+	embedding,
+	fragmentMetadata,
+	documentMetadata,
+	documentTitle,
+	agentId,
+	roomId,
+	entityId,
+	worldId,
+}: {
+	documentId: UUID;
+	originalChunkIndex: number;
+	text: string;
+	embedding: number[];
+	fragmentMetadata?: Record<string, unknown>;
+	documentMetadata?: Record<string, unknown>;
+	documentTitle?: string;
+	agentId: UUID;
+	roomId?: UUID;
+	entityId?: UUID;
+	worldId?: UUID;
+}): Memory {
+	const fragmentSource =
+		typeof documentMetadata?.source === "string"
+			? documentMetadata.source
+			: "upload";
+	// Producer metadata (time anchors etc.) sits between the inherited document
+	// metadata and the structural fields, so it can annotate a fragment but never
+	// corrupt type/documentId/position.
+	const metadata: DocumentFragmentMemoryMetadata = {
+		...(documentMetadata ?? {}),
+		...(fragmentMetadata ?? {}),
+		type: MemoryType.FRAGMENT,
+		documentId,
+		position: originalChunkIndex,
+		timestamp: Date.now(),
+		source: fragmentSource,
+		documentTitle,
+	};
+	return {
+		id: uuidv4() as UUID,
+		agentId,
+		roomId: roomId || agentId,
+		worldId: worldId || agentId,
+		entityId: entityId || agentId,
+		embedding,
+		content: { text },
+		metadata,
+	};
+}
+
+/**
+ * Persist producer-supplied pre-chunked fragments (#14806) atomically: embed
+ * every chunk first (throwing on the first embed failure, before any write),
+ * then persist all fragments. Because no fragment is written until every
+ * embedding is in hand, an embed failure leaves the index untouched rather than
+ * partially populated. Contextual retrieval is deliberately not run — the stored
+ * text must equal the producer's chunk byte-for-byte to stay aligned with its
+ * `startMs`/`endMs` anchors. Returns the number of fragments persisted.
+ */
+async function persistPreChunkedFragmentsAtomically({
+	runtime,
+	documentId,
+	chunks,
+	fragmentMetadatas,
+	agentId,
+	roomId,
+	entityId,
+	worldId,
+	rateLimiter,
+	concurrencyLimit,
+	documentTitle,
+	documentMetadata,
+	batchDelayMs = 0,
+}: {
+	runtime: IAgentRuntime;
+	documentId: UUID;
+	chunks: string[];
+	fragmentMetadatas?: Array<Record<string, unknown> | undefined>;
+	agentId: UUID;
+	roomId?: UUID;
+	entityId?: UUID;
+	worldId?: UUID;
+	rateLimiter: (estimatedTokens?: number) => Promise<void>;
+	concurrencyLimit: number;
+	documentTitle?: string;
+	documentMetadata?: Record<string, unknown>;
+	batchDelayMs?: number;
+}): Promise<number> {
+	const embeddings: number[][] = new Array(chunks.length);
+
+	for (let i = 0; i < chunks.length; i += concurrencyLimit) {
+		const batchChunks = chunks.slice(i, i + concurrencyLimit);
+		const batchOriginalIndices = Array.from(
+			{ length: batchChunks.length },
+			(_, k) => i + k,
+		);
+		// Identity-map: no contextualization on the byte-exact anchor path.
+		const contextualizedChunks = batchChunks.map((chunkText, idx) => ({
+			contextualizedText: chunkText,
+			index: batchOriginalIndices[idx],
+			success: true,
+		}));
+
+		const embeddingResults = await generateEmbeddingsForChunks(
+			runtime,
+			contextualizedChunks,
+			rateLimiter,
+		);
+
+		for (const result of embeddingResults) {
+			if (
+				!result.success ||
+				!result.embedding ||
+				result.embedding.length === 0
+			) {
+				throw new ElizaError(
+					`Failed to embed pre-chunked fragment ${result.index} for document ${documentId}`,
+					{
+						code: "DOCUMENT_FRAGMENT_EMBED_FAILED",
+						context: { documentId, index: result.index },
+						cause: result.error,
+					},
+				);
+			}
+			embeddings[result.index] = result.embedding;
+		}
+
+		if (i + concurrencyLimit < chunks.length && batchDelayMs > 0) {
+			await new Promise((resolve) => setTimeout(resolve, batchDelayMs));
+		}
+	}
+
+	// Every embedding is in hand — now persist. A createMemory failure here is a
+	// genuine store fault: throw (context-adding) rather than log-and-continue, so
+	// the caller sees a broken write instead of a silently short fragment set.
+	let savedCount = 0;
+	for (let index = 0; index < chunks.length; index++) {
+		const fragmentMemory = buildFragmentMemory({
+			documentId,
+			originalChunkIndex: index,
+			text: chunks[index],
+			embedding: embeddings[index],
+			fragmentMetadata: fragmentMetadatas?.[index],
+			documentMetadata,
+			documentTitle,
+			agentId,
+			roomId,
+			entityId,
+			worldId,
+		});
+		try {
+			await runtime.createMemory(fragmentMemory, "document_fragments");
+		} catch (saveError) {
+			// error-policy:J2 context-adding rethrow — a store fault on the atomic
+			// path must surface, not degrade to a partial index.
+			throw new ElizaError(
+				`Failed to persist pre-chunked fragment ${index} for document ${documentId}`,
+				{
+					code: "DOCUMENT_FRAGMENT_SAVE_FAILED",
+					context: { documentId, index },
+					cause: saveError,
+				},
+			);
+		}
+		savedCount++;
+	}
+	return savedCount;
 }
 
 const EMBEDDING_BATCH_SIZE = 100;

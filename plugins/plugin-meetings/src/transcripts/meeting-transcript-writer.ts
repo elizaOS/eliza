@@ -72,6 +72,11 @@ export interface MeetingTranscriptRuntime {
     memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
   ): Promise<boolean>;
   getService(name: string): unknown;
+  reportError(
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ): void;
 }
 
 /** The documents/knowledge service surface the mirror needs (structural). */
@@ -442,12 +447,15 @@ export class MeetingTranscriptWriter {
       });
       return res.storedDocumentMemoryId;
     } catch (err) {
-      logger.warn(
-        {
-          transcriptId: transcript.id,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        "[MeetingService] transcript knowledge mirror failed",
+      // error-policy:J7 the transcript row is the source of truth and persists
+      // regardless; the knowledge mirror is a secondary search index. But a
+      // mirror failure (e.g. a rejected malformed fragment batch) must be
+      // OBSERVABLE — reportError surfaces it to the agent via RECENT_ERRORS and
+      // drives owner escalation on repeated failure, rather than vanishing.
+      this.runtime.reportError(
+        "MeetingTranscriptWriter.mirrorToKnowledge",
+        err,
+        { transcriptId: transcript.id },
       );
       return undefined;
     }

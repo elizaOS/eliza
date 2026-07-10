@@ -44,6 +44,11 @@ interface DocumentsLike {
 /** Store runtime + service resolution (the real IAgentRuntime satisfies it). */
 export interface TranscriptServiceRuntime extends TranscriptStoreRuntime {
 	getService<T>(name: string): T | null;
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 }
 
 export interface CreateTranscriptInput {
@@ -203,13 +208,14 @@ export class TranscriptService {
 			});
 			return res.storedDocumentMemoryId;
 		} catch (err) {
-			logger.warn(
-				{
-					transcriptId: transcript.id,
-					error: err instanceof Error ? err.message : String(err),
-				},
-				"[TranscriptService] knowledge mirror failed",
-			);
+			// error-policy:J7 the recording is the source of truth and persists
+			// regardless; the knowledge mirror is a secondary search index. But a
+			// mirror failure (e.g. a rejected malformed fragment batch) must be
+			// OBSERVABLE — reportError surfaces it to the agent via RECENT_ERRORS and
+			// drives owner escalation on repeated failure, rather than vanishing.
+			this.runtime.reportError("TranscriptService.mirrorToKnowledge", err, {
+				transcriptId: transcript.id,
+			});
 			return undefined;
 		}
 	}

@@ -52,6 +52,7 @@ function fakeRuntime(opts: {
 		rows,
 		addDocument,
 		agentId: "agent-1" as UUID,
+		reportError: vi.fn(),
 		async createMemory(memory) {
 			rows.set(memory.id as string, memory);
 			return memory.id as UUID;

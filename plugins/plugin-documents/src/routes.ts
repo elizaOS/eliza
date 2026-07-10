@@ -329,6 +329,39 @@ function isDocumentMemory(memory: Memory, agentId: UUID): boolean {
   );
 }
 
+/**
+ * Project the transcript seek anchors off a fragment's metadata for the search
+ * DTO (#14806). Only well-formed anchors are published: a `startMs`/`endMs`
+ * must be a finite, non-negative number, and a present pair must be ordered
+ * (`endMs >= startMs`). A malformed anchor (NaN/Infinity/negative/inverted)
+ * would drive a downstream seek to garbage or make redacted audio look covered,
+ * so it is dropped rather than emitted at this public DTO boundary.
+ */
+function transcriptAnchorFields(meta: Record<string, unknown> | undefined): {
+  transcriptId?: string;
+  startMs?: number;
+  endMs?: number;
+} {
+  const validMs = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
+  const startMs = validMs(meta?.startMs) ? meta?.startMs : undefined;
+  const endMs = validMs(meta?.endMs) ? meta?.endMs : undefined;
+  if (
+    typeof startMs === "number" &&
+    typeof endMs === "number" &&
+    endMs < startMs
+  ) {
+    return {};
+  }
+  return {
+    ...(typeof meta?.transcriptId === "string"
+      ? { transcriptId: meta.transcriptId }
+      : {}),
+    ...(startMs !== undefined ? { startMs } : {}),
+    ...(endMs !== undefined ? { endMs } : {}),
+  };
+}
+
 function matchesDocumentFilter(
   memory: DocumentReadableMemory,
   filters: DocumentFilter,
@@ -830,15 +863,10 @@ export async function handleDocumentsRoutes(
           documentProvenance: meta ? getDocumentProvenance(meta) : undefined,
           position: meta?.position,
           // Transcript time anchors (#14806): present only on fragments the
-          // segment-boundary producers wrote, so a hit can deep-link the
-          // player at the matching audio offset instead of t=0.
-          ...(typeof meta?.transcriptId === "string"
-            ? { transcriptId: meta.transcriptId }
-            : {}),
-          ...(typeof meta?.startMs === "number"
-            ? { startMs: meta.startMs }
-            : {}),
-          ...(typeof meta?.endMs === "number" ? { endMs: meta.endMs } : {}),
+          // segment-boundary producers wrote, and only when well-formed, so a
+          // hit can deep-link the player at the matching audio offset instead
+          // of t=0. Malformed anchors are dropped at this DTO boundary.
+          ...transcriptAnchorFields(meta),
         };
       });
 
