@@ -47,6 +47,7 @@ import {
 } from "../../state/notifications/notification-store";
 import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-store";
 import { HomeScreen } from "./HomeScreen";
+import { PULL_COMMIT_PX } from "./NotificationsHomeCenter";
 
 afterEach(() => {
   cleanup();
@@ -202,7 +203,27 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-empty")).toBeNull();
   });
 
-  it("does not steal an empty-inbox pull that begins on a home control", () => {
+  it("reveals and closes the empty state from a trackpad swipe on the home background", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.wheel(home, { deltaY: -(PULL_COMMIT_PX + 10) });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
+
+    // Collapse is intentionally a two-event commit so ordinary scrolling
+    // cannot dismiss a populated shade on one aggressive wheel event.
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notifications-empty")).toBeNull();
+  });
+
+  it("does not steal an empty-inbox gesture that begins on a home control", () => {
     __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
     const tile = screen.getByTestId("home-tile-camera");
@@ -215,6 +236,7 @@ describe("HomeScreen", () => {
       touches: [{ clientX: 202, clientY: 440 }],
     });
     fireEvent.touchEnd(tile, { touches: [] });
+    fireEvent.wheel(tile, { deltaY: -(PULL_COMMIT_PX + 10) });
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.queryByTestId("notifications-empty")).toBeNull();

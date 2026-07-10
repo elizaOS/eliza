@@ -114,6 +114,16 @@ const PULL_SLOP_PX = 8;
  */
 const SHADE_CLOSE_EDGE_PX = 96;
 
+const INTERACTIVE_GESTURE_TARGET_SELECTOR =
+  "button, a, input, textarea, select, [role='button'], [contenteditable='true']";
+
+function isInteractiveGestureTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(INTERACTIVE_GESTURE_TARGET_SELECTOR) !== null
+  );
+}
+
 /**
  * Per-event cap (px) on a wheel delta's contribution toward the COLLAPSE
  * commit. Collapse shares its direction with ordinary downward scrolling, so
@@ -766,6 +776,55 @@ export function NotificationsHomeCenter({
     setPullPx(0);
   }, [setPullPx, setShade]);
 
+  // Shared wheel accumulator for both the list and, while empty, the wider
+  // home background. Returns whether the shade consumed this delta so the
+  // native background listener can suppress browser overscroll.
+  const handleWheelDelta = useCallback(
+    (deltaY: number, scrollTop: number): boolean => {
+      // Away from the top the scroller owns every wheel event.
+      if (scrollTop > 0) {
+        wheelPull.current.px = 0;
+        return false;
+      }
+      const { canExpand, canCollapse } = shadeGestureRef.current;
+      const dir: 1 | -1 = deltaY < 0 ? 1 : -1;
+      if (dir === 1 ? !canExpand : !canCollapse) {
+        wheelPull.current.px = 0;
+        return false;
+      }
+      if (wheelPull.current.dir !== dir) {
+        wheelPull.current = { dir, px: 0 };
+      }
+      // Collapse shares its direction with ordinary downward scrolling, so a
+      // single flick must never commit it on its first event (see
+      // WHEEL_COLLAPSE_STEP_PX); the first real scroll resets the run above.
+      wheelPull.current.px +=
+        dir === 1 ? -deltaY : Math.min(deltaY, WHEEL_COLLAPSE_STEP_PX);
+      // A wheel gesture has no end event: decay the accumulator after a short
+      // quiet period so two separate nudges don't sum into a transition.
+      if (wheelDecayTimer.current) window.clearTimeout(wheelDecayTimer.current);
+      wheelDecayTimer.current = window.setTimeout(() => {
+        wheelPull.current.px = 0;
+      }, 220);
+      if (wheelPull.current.px >= PULL_COMMIT_PX) {
+        wheelPull.current.px = 0;
+        if (wheelDecayTimer.current)
+          window.clearTimeout(wheelDecayTimer.current);
+        setShade(dir === 1);
+      }
+      return true;
+    },
+    [setShade],
+  );
+
+  const onListWheel = useCallback(
+    (e: React.WheelEvent) => {
+      const el = scrollRef.current;
+      if (el) handleWheelDelta(e.deltaY, el.scrollTop);
+    },
+    [handleWheelDelta],
+  );
+
   // Maintain the edge-fade attributes from real scroll geometry. Runs on
   // scroll and whenever the row count changes (a dismiss can end the overflow).
   const syncEdgeFades = useCallback(() => {
@@ -809,13 +868,7 @@ export function NotificationsHomeCenter({
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
       const target = e.target;
-      if (
-        usesEmptyBackground &&
-        target instanceof Element &&
-        target.closest(
-          "button, a, input, textarea, select, [role='button'], [contenteditable='true']",
-        )
-      ) {
+      if (usesEmptyBackground && isInteractiveGestureTarget(target)) {
         start = null;
         expandAnchorY = null;
         collapseAnchorY = null;
@@ -936,6 +989,21 @@ export function NotificationsHomeCenter({
       closeFromBottomEdge = false;
       setPullPx(0);
     };
+    const onEmptyBackgroundWheel = (e: WheelEvent) => {
+      const target = e.target;
+      // The list's React handler owns wheel input inside the narrow inline
+      // surface. The home listener only fills the otherwise dead background.
+      if (
+        !usesEmptyBackground ||
+        isInteractiveGestureTarget(target) ||
+        (target instanceof Node && list.contains(target))
+      ) {
+        return;
+      }
+      if (handleWheelDelta(e.deltaY, gestureTarget.scrollTop)) {
+        e.preventDefault();
+      }
+    };
     gestureTarget.addEventListener("touchstart", onTouchStart, {
       passive: true,
     });
@@ -944,15 +1012,22 @@ export function NotificationsHomeCenter({
     });
     gestureTarget.addEventListener("touchend", onTouchEnd);
     gestureTarget.addEventListener("touchcancel", onTouchCancel);
+    if (usesEmptyBackground) {
+      gestureTarget.addEventListener("wheel", onEmptyBackgroundWheel, {
+        passive: false,
+      });
+    }
     return () => {
       gestureTarget.removeEventListener("touchstart", onTouchStart);
       gestureTarget.removeEventListener("touchmove", onTouchMove);
       gestureTarget.removeEventListener("touchend", onTouchEnd);
       gestureTarget.removeEventListener("touchcancel", onTouchCancel);
+      gestureTarget.removeEventListener("wheel", onEmptyBackgroundWheel);
     };
   }, [
     commitPull,
     emptyGestureTargetRef,
+    handleWheelDelta,
     hasNotifications,
     setPullPx,
     surfaceReady,
@@ -1018,53 +1093,6 @@ export function NotificationsHomeCenter({
       setPullPx(0);
     }
   }, [notifications.length, setPullPx]);
-
-  // Hook placement: MUST stay above the empty-inbox early return below.
-  //
-  // The desktop shade gesture. DIRECTIONAL, never a toggle: fingers-down on
-  // the trackpad (deltaY < 0, natural scrolling) at the list top only EXPANDS
-  // the rested shade; fingers-up (deltaY > 0) at the top only COLLAPSES the
-  // expanded one. Trailing same-direction momentum after a commit is a no-op —
-  // the old toggle re-fired on momentum deltas and snapped the shade shut
-  // right after opening it (the "expands for a second" bug).
-  const onListWheel = useCallback(
-    (e: React.WheelEvent) => {
-      const el = scrollRef.current;
-      if (!el) return;
-      // Away from the top the scroller owns every wheel event.
-      if (el.scrollTop > 0) {
-        wheelPull.current.px = 0;
-        return;
-      }
-      const { canExpand, canCollapse } = shadeGestureRef.current;
-      const dir: 1 | -1 = e.deltaY < 0 ? 1 : -1;
-      if (dir === 1 ? !canExpand : !canCollapse) {
-        wheelPull.current.px = 0;
-        return;
-      }
-      if (wheelPull.current.dir !== dir) {
-        wheelPull.current = { dir, px: 0 };
-      }
-      // Collapse shares its direction with ordinary downward scrolling, so a
-      // single flick must never commit it on its first event (see
-      // WHEEL_COLLAPSE_STEP_PX); the first real scroll resets the run above.
-      wheelPull.current.px +=
-        dir === 1 ? -e.deltaY : Math.min(e.deltaY, WHEEL_COLLAPSE_STEP_PX);
-      // A wheel gesture has no end event: decay the accumulator after a short
-      // quiet period so two separate nudges don't sum into a transition.
-      if (wheelDecayTimer.current) window.clearTimeout(wheelDecayTimer.current);
-      wheelDecayTimer.current = window.setTimeout(() => {
-        wheelPull.current.px = 0;
-      }, 220);
-      if (wheelPull.current.px >= PULL_COMMIT_PX) {
-        wheelPull.current.px = 0;
-        if (wheelDecayTimer.current)
-          window.clearTimeout(wheelDecayTimer.current);
-        setShade(dir === 1);
-      }
-    },
-    [setShade],
-  );
 
   // Do not flash an empty result while the initial request is still in flight.
   // Once hydrated, keep the transparent pull target mounted so an empty shade
