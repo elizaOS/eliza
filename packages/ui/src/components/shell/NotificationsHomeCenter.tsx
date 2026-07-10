@@ -1569,6 +1569,30 @@ export function NotificationsHomeCenter({
     e.preventDefault();
     e.stopPropagation();
   };
+  const notificationCountAfterGroupIndex = restedGroups.length - 1;
+  const notificationCount = hasNotifications ? (
+    <li
+      key="notification-count"
+      data-testid="notifications-count"
+      aria-hidden={notificationCountVisibility === 0 ? true : undefined}
+      inert={notificationCountVisibility === 0 ? true : undefined}
+      style={{
+        height: `${notificationCountVisibility * 32}px`,
+        opacity: notificationCountVisibility,
+        transition: pullPx ? "none" : undefined,
+      }}
+      className="pointer-events-none flex shrink-0 items-center justify-center gap-1 overflow-hidden px-3 text-2xs font-medium text-white/50 transition-[height,opacity] duration-200 ease-out motion-reduce:transition-none"
+    >
+      {notifications.length === 1
+        ? "1 Notification"
+        : `${notifications.length} Notifications`}
+      <ChevronDown
+        aria-hidden
+        data-testid="notifications-count-chevron"
+        className="h-3 w-3 shrink-0"
+      />
+    </li>
+  ) : null;
   return (
     <section
       ref={centerRef}
@@ -1676,7 +1700,8 @@ export function NotificationsHomeCenter({
             No Notifications
           </li>
         ) : null}
-        {groups.map((group, groupIndex) => {
+        {notificationCountAfterGroupIndex < 0 ? notificationCount : null}
+        {groups.flatMap((group, groupIndex) => {
           const allGroupRows = allGroupRowsByKey.get(group.key) ?? group.rows;
           const groupWasRested = restedGroupKeys.has(group.key);
           const pullRevealed = previewingExpansion && !groupWasRested;
@@ -1714,7 +1739,7 @@ export function NotificationsHomeCenter({
           const fanned = stackExpanded && group.rows.length > 1;
           const collapsedGroupHasMore =
             !stackExpanded && allGroupRows.length > 1;
-          return (
+          const groupElement = (
             <motion.li
               key={group.key}
               layout={
@@ -1889,6 +1914,9 @@ export function NotificationsHomeCenter({
               )}
             </motion.li>
           );
+          return groupIndex === notificationCountAfterGroupIndex
+            ? [groupElement, notificationCount]
+            : [groupElement];
         })}
         {shadeExpanded &&
         hasNotifications &&
@@ -1913,27 +1941,6 @@ export function NotificationsHomeCenter({
           </li>
         ) : null}
       </ul>
-      {hasNotifications ? (
-        <div
-          data-testid="notifications-count"
-          aria-hidden={notificationCountVisibility === 0 ? true : undefined}
-          inert={notificationCountVisibility === 0 ? true : undefined}
-          style={{
-            opacity: notificationCountVisibility,
-            transition: pullPx ? "none" : undefined,
-          }}
-          className="pointer-events-none flex h-8 shrink-0 items-center justify-center gap-1 px-3 text-2xs font-medium text-white/50 transition-opacity duration-200 ease-out motion-reduce:transition-none"
-        >
-          {notifications.length === 1
-            ? "1 Notification"
-            : `${notifications.length} Notifications`}
-          <ChevronDown
-            aria-hidden
-            data-testid="notifications-count-chevron"
-            className="h-3 w-3 shrink-0"
-          />
-        </div>
-      ) : null}
     </section>
   );
 }

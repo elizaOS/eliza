@@ -1222,9 +1222,13 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(count.style.opacity).toBe("1");
     expect(count.getAttribute("aria-hidden")).toBeNull();
     expect(count.className).toContain("shrink-0");
-    expect(count).toBe(
-      screen.getByTestId("home-notification-center").lastElementChild,
-    );
+    const list = screen.getByTestId("home-notification-list");
+    expect(count.parentElement).toBe(list);
+    expect(
+      count.previousElementSibling?.querySelector(
+        '[data-testid="notification-row"]',
+      ),
+    ).toBeTruthy();
     const chevron = screen.getByTestId("notifications-count-chevron");
     expect(chevron.classList.contains("h-3")).toBe(true);
     expect(chevron.classList.contains("w-3")).toBe(true);
@@ -1233,7 +1237,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expandShade();
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     const collapse = screen.getByTestId("notifications-collapse");
-    const list = screen.getByTestId("home-notification-list");
     expect(collapse.textContent).toContain("Collapse");
     expect(collapse.parentElement).toBe(list.lastElementChild);
     expect(collapse.parentElement?.className).toContain("-mt-4");
