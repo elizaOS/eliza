@@ -411,7 +411,7 @@ export class HealthDomain {
         config.mode,
         side,
       ));
-    const token = readStoredHealthToken(grant.tokenRef);
+    const token = readStoredHealthToken(grant?.tokenRef);
     const syncState = grant
       ? await this.ctx.repository.getHealthSyncState(
           this.ctx.agentId(),
@@ -420,7 +420,7 @@ export class HealthDomain {
         )
       : null;
     const metadataAuthState =
-      typeof grant.metadata.authState === "string"
+      typeof grant?.metadata.authState === "string"
         ? grant.metadata.authState
         : null;
     const connected = Boolean(
@@ -438,26 +438,27 @@ export class HealthDomain {
     return {
       provider,
       side,
-      mode: grant.mode,
+      mode: grant?.mode ?? config.mode,
       defaultMode: config.defaultMode,
       availableModes: config.availableModes,
-      executionTarget: grant.executionTarget,
-      sourceOfTruth: grant.sourceOfTruth,
+      executionTarget: grant?.executionTarget ?? "local",
+      sourceOfTruth: grant?.sourceOfTruth ?? "local_storage",
       configured: config.configured,
       connected,
       reason,
-      identity: token?.identity ?? grant.identity,
+      identity: token?.identity ?? grant?.identity ?? null,
       grantedCapabilities: grant
         ? healthCapabilitiesFromGrant(grant.capabilities)
         : healthConnectorCapabilities(provider),
-      grantedScopes: token?.grantedScopes ?? grant.grantedScopes,
+      grantedScopes: token?.grantedScopes ?? grant?.grantedScopes ?? [],
       expiresAt: token?.expiresAt
         ? new Date(token.expiresAt).toISOString()
-        : typeof grant.metadata.expiresAt === "string"
+        : typeof grant?.metadata.expiresAt === "string"
           ? grant.metadata.expiresAt
           : null,
       hasRefreshToken:
-        Boolean(token?.refreshToken) || Boolean(grant.metadata.hasRefreshToken),
+        Boolean(token?.refreshToken) ||
+        Boolean(grant?.metadata.hasRefreshToken),
       lastSyncAt: syncState?.lastSyncedAt ?? null,
       grant,
       degradations: syncState?.lastSyncError

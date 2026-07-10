@@ -39,12 +39,12 @@ export default scenario({
     {
       type: "selectedActionArguments",
       name: "overnight recovery routes through an owner health read",
-      actionName: "OWNER_HEALTH",
+      actionName: "OWNER_HEALTH_TODAY",
       includesAny: ["today", "trend", "by_metric", "status"],
     },
     {
       type: "actionCalled",
-      actionName: "OWNER_HEALTH",
+      actionName: "OWNER_HEALTH_TODAY",
       status: "success",
       minCount: 1,
     },
