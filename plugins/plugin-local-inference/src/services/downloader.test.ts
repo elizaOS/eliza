@@ -42,12 +42,12 @@ function eliza1Manifest(overrides: {
 	>;
 	shaFor: (key: string) => string;
 }): string {
-	const textPath = "text/eliza-1-2b-128k.gguf";
+	const textPath = "text/eliza-1-e2b-128k.gguf";
 	const voicePath = "tts/voice.gguf";
 	const asrPath = "asr/asr.gguf";
 	const cachePath = "cache/voice-preset-default.bin";
 	const vadPath = "vad/eliza-1-vad.onnx";
-	const visionPath = "vision/mmproj-2b.gguf";
+	const visionPath = "vision/mmproj-e2b.gguf";
 	const verifiedBackends = overrides.verifiedBackends ?? {
 		metal: { status: "pass", atCommit: "t", report: "metal" },
 		vulkan: { status: "pass", atCommit: "t", report: "vulkan" },
@@ -56,7 +56,7 @@ function eliza1Manifest(overrides: {
 		cpu: { status: "pass", atCommit: "t", report: "cpu" },
 	};
 	return JSON.stringify({
-		id: "eliza-1-2b",
+		id: "eliza-1-e2b",
 		tier: "2b",
 		version: "1.0.0",
 		publishedAt: "2026-05-11T00:00:00.000Z",
@@ -281,7 +281,7 @@ function freshBundleFixtureFiles(): Map<string, string> {
 	return new Map([
 		[eliza1BundleManifestPath(), manifest],
 		[
-			eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"),
+			eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf"),
 			freshBundleBytes.text,
 		],
 		[eliza1BundleRemotePath("tts/voice.gguf"), freshBundleBytes.voice],
@@ -291,7 +291,7 @@ function freshBundleFixtureFiles(): Map<string, string> {
 			eliza1BundleRemotePath("cache/voice-preset-default.bin"),
 			freshBundleBytes.cache,
 		],
-		[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), freshBundleBytes.vision],
+		[eliza1BundleRemotePath("vision/mmproj-e2b.gguf"), freshBundleBytes.vision],
 	]);
 }
 
@@ -380,14 +380,14 @@ describe("local inference downloader status", () => {
 		const vad = "VAD model";
 		const cache = "voice preset";
 		const vision = "vision projector";
-		const textPath = "text/eliza-1-2b-128k.gguf";
+		const textPath = "text/eliza-1-e2b-128k.gguf";
 		const voicePath = "tts/voice.gguf";
 		const asrPath = "asr/asr.gguf";
 		const vadPath = "vad/eliza-1-vad.onnx";
 		const cachePath = "cache/voice-preset-default.bin";
-		const visionPath = "vision/mmproj-2b.gguf";
+		const visionPath = "vision/mmproj-e2b.gguf";
 		const manifest = JSON.stringify({
-			id: "eliza-1-2b",
+			id: "eliza-1-e2b",
 			tier: "2b",
 			version: "1.0.0",
 			publishedAt: "2026-05-11T00:00:00.000Z",
@@ -598,8 +598,8 @@ describe("local inference downloader status", () => {
 		const model = {
 			...baseModel,
 			id: "eliza-1-27b-256k",
-			hfPathPrefix: "bundles/27b-256k",
-			ggufFile: "text/eliza-1-27b-256k-256k.gguf",
+			hfPathPrefix: "bundles/31b-256k",
+			ggufFile: "text/eliza-1-31b-256k.gguf",
 			bundleManifestFile: "eliza-1.manifest.json",
 			companionModelIds: [],
 		};
@@ -609,9 +609,9 @@ describe("local inference downloader status", () => {
 		const textPath = model.ggufFile;
 		const voicePath = "tts/voice.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
-		const visionPath = "vision/mmproj-27b-256k.gguf";
+		const visionPath = "vision/mmproj-31b-256k.gguf";
 		const manifest = JSON.stringify({
-			id: "eliza-1-27b-256k",
+			id: "eliza-1-31b-256k",
 			tier: "27b-256k",
 			version: "1.0.0",
 			publishedAt: "2026-05-11T00:00:00.000Z",
@@ -738,12 +738,12 @@ describe("local inference downloader status", () => {
 		installFetchFixture(
 			new Map([
 				[eliza1BundleManifestPath(), manifest],
-				[eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"), bytes.text],
+				[eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf"), bytes.text],
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
-				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
+				[eliza1BundleRemotePath("vision/mmproj-e2b.gguf"), bytes.vision],
 			]),
 		);
 
@@ -775,7 +775,7 @@ describe("local inference downloader status", () => {
 		expect(
 			path
 				.normalize(verifyCalls[0]?.textGgufPath ?? "")
-				.endsWith(path.normalize("text/eliza-1-2b-128k.gguf")),
+				.endsWith(path.normalize("text/eliza-1-e2b-128k.gguf")),
 		).toBe(true);
 		const installed = readOwnedRegistryModels();
 		const main = installed.find((m) => m.id === model.id);
@@ -808,12 +808,12 @@ describe("local inference downloader status", () => {
 		installFetchFixture(
 			new Map([
 				[eliza1BundleManifestPath(), manifest],
-				[eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"), bytes.text],
+				[eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf"), bytes.text],
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
-				[eliza1BundleRemotePath("vision/mmproj-2b.gguf"), bytes.vision],
+				[eliza1BundleRemotePath("vision/mmproj-e2b.gguf"), bytes.vision],
 			]),
 		);
 
@@ -1243,7 +1243,7 @@ describe("local inference downloader status", () => {
 
 /**
  * Hub re-publish robustness: HuggingFace re-uploads bundle files under STABLE
- * filenames (the real incident: `bundles/2b/text/eliza-1-2b-128k.gguf` went
+ * filenames (the real incident: `bundles/e2b/text/eliza-1-e2b-128k.gguf` went
  * from qwen35 1211MB to gemma4 4737MB). A device holding the old bytes — as a
  * completed install or an interrupted `.part` — must detect the mismatch
  * against the freshly fetched manifest and re-pull cleanly, never resume the
@@ -1264,7 +1264,7 @@ describe("local inference downloader stale-content robustness", () => {
 
 		// The incident: a previous install left the OLD model at the SAME final
 		// path inside the bundle root, and the registry considers it installed.
-		const textFinal = eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf");
+		const textFinal = eliza1BundleFinalPath(root, "text/eliza-1-e2b-128k.gguf");
 		fs.mkdirSync(path.dirname(textFinal), { recursive: true });
 		fs.writeFileSync(
 			textFinal,
@@ -1300,7 +1300,7 @@ describe("local inference downloader stale-content robustness", () => {
 		// - voice: `.part` with no sidecar at all (pre-fix partial, unknown
 		//   provenance).
 		// Resuming either would append new-version bytes onto old-version bytes.
-		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
+		const textPart = eliza1StagingPartPath(root, "text/eliza-1-e2b-128k.gguf");
 		fs.mkdirSync(path.dirname(textPart), { recursive: true });
 		fs.writeFileSync(textPart, "GGUF qwen35 partial");
 		fs.writeFileSync(
@@ -1320,7 +1320,7 @@ describe("local inference downloader stale-content robustness", () => {
 		expect(job.state).toBe("completed");
 		// Neither stale partial was resumed: no Range request went out for them.
 		expect(
-			rangeRequests.get(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf")),
+			rangeRequests.get(eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf")),
 		).toBeUndefined();
 		expect(
 			rangeRequests.get(eliza1BundleRemotePath("tts/voice.gguf")),
@@ -1328,7 +1328,7 @@ describe("local inference downloader stale-content robustness", () => {
 		// The installed files are the current content, byte for byte.
 		expect(
 			fs.readFileSync(
-				eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf"),
+				eliza1BundleFinalPath(root, "text/eliza-1-e2b-128k.gguf"),
 				"utf8",
 			),
 		).toBe(freshBundleBytes.text);
@@ -1354,7 +1354,7 @@ describe("local inference downloader stale-content robustness", () => {
 		// A genuine interrupted download of the CURRENT content: the partial is
 		// a strict prefix and the sidecar records the current manifest sha.
 		const prefixLen = 17;
-		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
+		const textPart = eliza1StagingPartPath(root, "text/eliza-1-e2b-128k.gguf");
 		fs.mkdirSync(path.dirname(textPart), { recursive: true });
 		fs.writeFileSync(textPart, freshBundleBytes.text.slice(0, prefixLen));
 		fs.writeFileSync(`${textPart}.expected`, sha256(freshBundleBytes.text));
@@ -1369,12 +1369,12 @@ describe("local inference downloader stale-content robustness", () => {
 		expect(job.state).toBe("completed");
 		// The resume path fired: one Range request from the partial's offset...
 		expect(
-			rangeRequests.get(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf")),
+			rangeRequests.get(eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf")),
 		).toEqual([`bytes=${prefixLen}-`]);
 		// ...and prefix + tail joined into the exact current content.
 		expect(
 			fs.readFileSync(
-				eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf"),
+				eliza1BundleFinalPath(root, "text/eliza-1-e2b-128k.gguf"),
 				"utf8",
 			),
 		).toBe(freshBundleBytes.text);
@@ -1391,7 +1391,7 @@ describe("local inference downloader stale-content robustness", () => {
 		// First fetch of the text file serves stale bytes (e.g. a CDN edge that
 		// has not seen the re-publish yet); the second serves the current bytes.
 		const files = freshBundleFixtureFiles();
-		const textRemote = eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf");
+		const textRemote = eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf");
 		let textServes = 0;
 		globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
 			const remotePath = remotePathOf(url);
@@ -1420,7 +1420,7 @@ describe("local inference downloader stale-content robustness", () => {
 		expect(textServes).toBe(2);
 		expect(
 			fs.readFileSync(
-				eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf"),
+				eliza1BundleFinalPath(root, "text/eliza-1-e2b-128k.gguf"),
 				"utf8",
 			),
 		).toBe(freshBundleBytes.text);
@@ -1437,7 +1437,7 @@ describe("local inference downloader stale-content robustness", () => {
 		// The hub persistently serves bytes that do not match the manifest sha
 		// (manifest and weights out of sync). Every attempt must be discarded.
 		const files = freshBundleFixtureFiles();
-		const textRemote = eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf");
+		const textRemote = eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf");
 		files.set(textRemote, "GGUF qwen35 stale text model");
 
 		installFetchFixture(files);
@@ -1457,16 +1457,16 @@ describe("local inference downloader stale-content robustness", () => {
 		const job = await failed;
 
 		expect(job.error).toMatch(
-			/SHA256 mismatch for bundle file text\/eliza-1-2b-128k\.gguf after 2 attempts/,
+			/SHA256 mismatch for bundle file text\/eliza-1-e2b-128k\.gguf after 2 attempts/,
 		);
 		// The wrong bytes never survive under the final name, nothing is
 		// registered, and no staging residue remains.
-		const textFinal = eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf");
+		const textFinal = eliza1BundleFinalPath(root, "text/eliza-1-e2b-128k.gguf");
 		expect(fs.existsSync(textFinal)).toBe(false);
 		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
 			false,
 		);
-		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
+		const textPart = eliza1StagingPartPath(root, "text/eliza-1-e2b-128k.gguf");
 		expect(fs.existsSync(textPart)).toBe(false);
 		expect(fs.existsSync(`${textPart}.expected`)).toBe(false);
 	});
@@ -1558,7 +1558,7 @@ describe("local inference downloader keep-awake (idle-timer) wiring (#11841)", (
 		// Serve the manifest but 404 the text weight so the job fails after the
 		// keep-awake hold has already been acquired.
 		const files = freshBundleFixtureFiles();
-		files.delete(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"));
+		files.delete(eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf"));
 		installFetchFixture(files);
 		const spy = installKeepAwakeSpy();
 		try {
@@ -1762,7 +1762,7 @@ describe("local inference downloader native background URLSession path (#11841)"
 		// Serve the manifest but drop the text weight so the native transfer for
 		// that file reports `failed` and the job surfaces the failure.
 		const files = freshBundleFixtureFiles();
-		files.delete(eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"));
+		files.delete(eliza1BundleRemotePath("text/eliza-1-e2b-128k.gguf"));
 		globalThis.fetch = vi.fn(async () => {
 			throw new Error(
 				"fetch must not be used when the native bridge is present",

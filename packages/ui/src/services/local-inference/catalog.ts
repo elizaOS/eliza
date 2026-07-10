@@ -18,6 +18,8 @@ export {
   ELIZA_1_TIER_IDS,
   ELIZA_1_TIER_PUBLISH_STATUS,
   type Eliza1TierId,
+  eliza1PublishedManifestId,
+  eliza1PublishedTierSlug,
   eliza1TierPublishStatus,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,

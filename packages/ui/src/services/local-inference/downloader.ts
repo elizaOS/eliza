@@ -25,6 +25,8 @@ import { ensureDefaultAssignment } from "./assignments";
 import {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
+  type Eliza1TierId,
+  eliza1PublishedManifestId,
   findCatalogModel,
   isDefaultEligibleId,
 } from "./catalog";
@@ -214,9 +216,12 @@ function parseBundleManifestOrThrow(
   catalogEntry: CatalogModel,
 ): Eliza1Manifest {
   const manifest = parseManifestOrThrow(input);
-  if (manifest.id !== catalogEntry.id) {
+  const expectedManifestId = eliza1PublishedManifestId(
+    catalogEntry.id as Eliza1TierId,
+  );
+  if (manifest.id !== expectedManifestId) {
     throw new Error(
-      `Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id}`,
+      `Invalid Eliza-1 manifest: id ${manifest.id} does not match ${expectedManifestId}`,
     );
   }
   if (

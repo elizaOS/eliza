@@ -36,6 +36,14 @@ export const ELIZA_1_PUBLISHED_TIER_SLUGS = {
   "eliza-1-27b-256k": "31b-256k",
 } as const satisfies Record<Eliza1TierId, string>;
 
+export function eliza1PublishedTierSlug(id: Eliza1TierId): string {
+  return ELIZA_1_PUBLISHED_TIER_SLUGS[id];
+}
+
+export function eliza1PublishedManifestId(id: Eliza1TierId): string {
+  return `eliza-1-${eliza1PublishedTierSlug(id)}`;
+}
+
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
 
@@ -302,7 +310,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
 };
 
 function tierSlug(id: Eliza1TierId): string {
-  return ELIZA_1_PUBLISHED_TIER_SLUGS[id];
+  return eliza1PublishedTierSlug(id);
 }
 
 function tierDisplaySlug(id: Eliza1TierId): string {

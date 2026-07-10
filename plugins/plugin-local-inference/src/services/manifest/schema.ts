@@ -29,7 +29,11 @@
 //   per-tier set of files; the voice-models module ships the *history* the
 //   auto-updater walks.
 
-import type { LocalRuntimeKernel } from "@elizaos/shared";
+import {
+	type Eliza1TierId,
+	eliza1PublishedManifestId,
+	type LocalRuntimeKernel,
+} from "@elizaos/shared";
 import z from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
@@ -137,28 +141,22 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 // Required-kernel set per tier. Mirrors the active Gemma 4 Eliza-1 release
 // policy:
 // - Every tier requires the geometry-agnostic GGUF weight-quant
-//   (`turboquant_q4`) plus native MTP speculative decoding (`mtp`). Weight
+//   (`turboquant_q4`) plus the long-context TCQ kernel (`turbo3_tcq`). Weight
 //   quant operates on (out_features, in_features) matmul tensors and is
 //   independent of attention head geometry, so it applies to Gemma's dense
-//   MQA backbone unchanged. MTP is not a KV-cache kernel; it is listed here
-//   because the shipped Gemma path must load a drafter-backed speculative
-//   decode graph rather than silently running plain greedy decode.
-// - The KV-cache kernels (`qjl`, `polarquant`, `turbo3_tcq`, and the
-//   `turbo3`/`turbo4` runtime handles) are 128-element FWHT-group kernels
-//   that are head_dim-coupled. They do NOT match Gemma's MQA geometry
-//   (n_head_kv=1) with dual head dims (512 global / 256 SWA), so Gemma 4
-//   ships stock q8_0 KV and these kernels are OPTIONAL, never required.
-//   They stay compiled into the shared lib for legacy non-Gemma tiers and the
-//   shared OmniVoice/ASR FFI symbols, but no Gemma tier declares them
-//   required.
+//   MQA backbone unchanged. MTP is enforced structurally through the drafter
+//   file, lineage, and eval gates rather than represented as a quant kernel.
+// - QJL and PolarQuant remain optional. The publish-side Python contract,
+//   runtime catalog, and downloader must agree on the required pair so a
+//   bundle accepted during publication is accepted by the product runtime.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"2b": ["turboquant_q4", "mtp"],
-	"4b": ["turboquant_q4", "mtp"],
-	"9b": ["turboquant_q4", "mtp"],
-	"27b": ["turboquant_q4", "mtp"],
-	"27b-256k": ["turboquant_q4", "mtp"],
+	"2b": ["turboquant_q4", "turbo3_tcq"],
+	"4b": ["turboquant_q4", "turbo3_tcq"],
+	"9b": ["turboquant_q4", "turbo3_tcq"],
+	"27b": ["turboquant_q4", "turbo3_tcq"],
+	"27b-256k": ["turboquant_q4", "turbo3_tcq"],
 };
 
 // KV-cache kernels that remain available but are NOT required for any Gemma 4
@@ -167,11 +165,11 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 export const OPTIONAL_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"2b": ["qjl", "polarquant", "turbo3_tcq"],
-	"4b": ["qjl", "polarquant", "turbo3_tcq"],
-	"9b": ["qjl", "polarquant", "turbo3_tcq"],
-	"27b": ["qjl", "polarquant", "turbo3_tcq"],
-	"27b-256k": ["qjl", "polarquant", "turbo3_tcq"],
+	"2b": ["qjl", "polarquant"],
+	"4b": ["qjl", "polarquant"],
+	"9b": ["qjl", "polarquant"],
+	"27b": ["qjl", "polarquant"],
+	"27b-256k": ["qjl", "polarquant"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -743,13 +741,13 @@ export const Eliza1ManifestSchema = z
 		kv: z.string().min(1).optional(),
 		mtp: z.enum(ELIZA_1_MTP_MODES).optional(),
 	})
-	// The id MUST encode the tier so catalogs can derive tier from id without
-	// re-reading the manifest. Example: `id: "eliza-1-9b"`.
+	// Published ids encode the base architecture while `tier` remains the
+	// stable size-oriented runtime key (for example, e2b maps to tier 2b).
 	.refine(
 		(m) =>
-			m.id === `eliza-1-${m.tier}` || m.id.startsWith(`eliza-1-${m.tier}-`),
+			m.id === eliza1PublishedManifestId(`eliza-1-${m.tier}` as Eliza1TierId),
 		{
-			message: "id must start with `eliza-1-<tier>`",
+			message: "id must match the published architecture for its tier",
 			path: ["id"],
 		},
 	)

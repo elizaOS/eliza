@@ -1,4 +1,10 @@
 /** Validates the Eliza-1 bundle manifest schema constants and `validateManifest` accept/reject behavior. Deterministic. */
+
+import {
+	type Eliza1TierId,
+	eliza1PublishedManifestId,
+	eliza1PublishedTierSlug,
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
 	canSetAsDefault,
@@ -39,8 +45,10 @@ function textFileForTier(tier: Eliza1Tier): { path: string; ctx: number } {
 function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 	const hasVision = VISION_TIERS.has(tier);
 	const hasMtp = MTP_TIERS.has(tier);
+	const catalogId = `eliza-1-${tier}` as Eliza1TierId;
+	const publishedSlug = eliza1PublishedTierSlug(catalogId);
 	const manifest: Eliza1Manifest = {
-		id: `eliza-1-${tier}`,
+		id: eliza1PublishedManifestId(catalogId),
 		tier,
 		version: "1.0.0",
 		publishedAt: "2026-05-10T00:00:00Z",
@@ -94,7 +102,9 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		manifest.evals.mtp = { acceptanceRate: 0.72, speedup: 1.8, passed: true };
 		// Gemma 4 separate-drafter MTP: every MTP tier bundles its drafter GGUF
 		// at `mtp/drafter-<tier>.gguf` with its own lineage and declares the mode.
-		manifest.files.mtp = [{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA }];
+		manifest.files.mtp = [
+			{ path: `mtp/drafter-${publishedSlug}.gguf`, sha256: SHA },
+		];
 		manifest.lineage.drafter = {
 			base: "eliza-1-drafter",
 			license: "apache-2.0",
@@ -115,13 +125,14 @@ describe("Eliza-1 manifest schema constants", () => {
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["2b", "4b"]),
 		);
-		// Gemma 4 cutover: REQUIRED is the geometry-agnostic turboquant_q4
-		// weight-quant plus native MTP. The KV-cache kernels (qjl/polarquant/
-		// turbo3_tcq) are head_dim=128-coupled and OPTIONAL for Gemma's stock
-		// q8_0 KV path.
+		// The runtime and publish-side validator share the same required pair;
+		// MTP is enforced through its component, lineage, and eval contracts.
 		for (const tier of ELIZA_1_TIERS) {
-			expect(REQUIRED_KERNELS_BY_TIER[tier]).toEqual(["turboquant_q4", "mtp"]);
-			expect(REQUIRED_KERNELS_BY_TIER[tier]).not.toContain("turbo3_tcq");
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).toEqual([
+				"turboquant_q4",
+				"turbo3_tcq",
+			]);
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).not.toContain("mtp");
 		}
 	});
 });
@@ -190,7 +201,7 @@ describe("validateManifest — valid input", () => {
 			enabled: true,
 			capability: "spec-decode",
 			specType: "draft-mtp",
-			model: "mtp/drafter-2b.gguf",
+			model: "mtp/drafter-e2b.gguf",
 			maxDraftTokens: 15,
 		};
 		m.evals.specDecode = {
@@ -203,7 +214,9 @@ describe("validateManifest — valid input", () => {
 		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
 			"specDecode",
 		);
-		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).toContain("mtp");
+		expect([...REQUIRED_KERNELS_BY_TIER["2b"]] as string[]).not.toContain(
+			"mtp",
+		);
 		expect(result.ok).toBe(true);
 		if (result.ok) {
 			expect(result.manifest.kernels.specDecode?.capability).toBe(
@@ -354,7 +367,7 @@ describe("validateManifest — schema-level rejections", () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it("rejects an id that does not encode the tier", () => {
+	it("rejects an id that does not match the tier's published architecture", () => {
 		const m = baseManifest();
 		m.id = "eliza-1-foo";
 		const result = validateManifest(m);
@@ -365,14 +378,14 @@ describe("validateManifest — schema-level rejections", () => {
 describe("validateManifest — contract rejections", () => {
 	it("rejects a manifest missing a required kernel for its tier", () => {
 		const m = baseManifest("9b");
-		// Gemma required set is turboquant_q4 + mtp; drop both (leaving only
+		// Gemma required set is turboquant_q4 + turbo3_tcq; drop both (leaving only
 		// optional KV kernels) to trip the missing-required-kernel check.
 		m.kernels.required = ["qjl", "polarquant"];
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
 			expect(result.errors.some((e) => e.includes("turboquant_q4"))).toBe(true);
-			expect(result.errors.some((e) => e.includes("mtp"))).toBe(true);
+			expect(result.errors.some((e) => e.includes("turbo3_tcq"))).toBe(true);
 		}
 	});
 
@@ -434,7 +447,7 @@ describe("validateManifest — contract rejections", () => {
 			base: "eliza-1-mtp-drafter",
 			license: "apache-2.0",
 		};
-		m.files.mtp = [{ path: "mtp/drafter-9b.gguf", sha256: SHA }];
+		m.files.mtp = [{ path: "mtp/drafter-12b.gguf", sha256: SHA }];
 		const result = validateManifest(m);
 		expect(result.ok).toBe(true);
 	});
@@ -606,21 +619,18 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
-	it("accepts turbo3_tcq as optional-only when ctx > 64k", () => {
+	it("rejects turbo3_tcq as optional-only when ctx > 64k", () => {
 		const m = baseManifest("9b");
 		m.files.text[0].ctx = 131072;
-		// Gemma 4: turbo3_tcq is an optional KV accelerator, not required for
-		// long context — a 128k bundle that lists it only under `optional`
-		// (stock q8_0 KV) is contract-valid.
+		// Runtime catalog and publish-side validation require TCQ for every
+		// active 128k+ tier, so moving it to optional must fail closed.
 		m.kernels.required = m.kernels.required.filter((k) => k !== "turbo3_tcq");
 		m.kernels.optional = ["turbo3_tcq"];
 		const result = validateManifest(m);
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.errors ?? []).toEqual([]);
-		} else {
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
 			expect(result.errors.some((e) => e.includes("kernels.required"))).toBe(
-				false,
+				true,
 			);
 		}
 	});

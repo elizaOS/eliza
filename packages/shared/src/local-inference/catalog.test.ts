@@ -14,6 +14,8 @@ import {
   ELIZA_1_PUBLISHED_TIER_SLUGS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
+  eliza1PublishedManifestId,
+  eliza1PublishedTierSlug,
   eliza1TierPublishStatus,
   isOnDeviceTier,
   MODEL_CATALOG,
@@ -119,6 +121,8 @@ describe("Eliza-1 runtime quant metadata", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       const publishedSlug = ELIZA_1_PUBLISHED_TIER_SLUGS[id];
+      expect(eliza1PublishedTierSlug(id)).toBe(publishedSlug);
+      expect(eliza1PublishedManifestId(id)).toBe(`eliza-1-${publishedSlug}`);
       expect(entry?.hfPathPrefix).toBe(`bundles/${publishedSlug}`);
       expect(entry?.ggufFile).toBe(EXPECTED_PUBLISHED_TEXT_FILES[id]);
     }
