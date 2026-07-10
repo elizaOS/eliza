@@ -310,6 +310,43 @@ describe("PhraseChunkedTts", () => {
 });
 
 describe("PhraseChunkedTts — latency benchmark assertions", () => {
+  it("deterministically measures transcript commit → first token → first speakable phrase", async () => {
+    let now = 10_000;
+    const transcriptCommittedAt = now;
+    let firstTokenAt: number | null = null;
+    let firstPhraseAt: number | null = null;
+    const phrases: string[] = [];
+    const pipe = new PhraseChunkedTts(
+      async (text: string) => {
+        firstPhraseAt ??= now;
+        phrases.push(text);
+        return text;
+      },
+      { clock: () => now },
+    );
+
+    // Virtual time only: 35 ms chat admission + 45 ms provider TTFT, followed
+    // by three 8 ms token intervals before punctuation makes phrase one
+    // speakable. No live provider or wall-clock scheduler participates in CI.
+    now += 35 + 45;
+    firstTokenAt = now;
+    pipe.push("Hello");
+    now += 8;
+    pipe.push(" there");
+    now += 8;
+    pipe.push("!");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(firstTokenAt - transcriptCommittedAt).toBe(80);
+    expect(firstPhraseAt).not.toBeNull();
+    expect((firstPhraseAt as number) - transcriptCommittedAt).toBe(96);
+    expect((firstPhraseAt as number) - firstTokenAt).toBe(16);
+    expect(phrases[0]).toBe("Hello there!");
+
+    await pipe.finish();
+  });
+
   it("for a realistic streaming response, first TTS call lands within 50 ms of stream start", async () => {
     const dispatchAt: number[] = [];
     const start = performance.now();
