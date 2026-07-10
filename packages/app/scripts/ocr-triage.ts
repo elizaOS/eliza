@@ -51,6 +51,12 @@ const BLANK_EXEMPT_SLUGS = new Set<string>([
   ...OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   "builtin-background",
   "plugin-focus-gui",
+  // Legacy alias route that resolves to the launcher-grid fallback (see
+  // launcher-curation.ts and the ocr-view-expectations.ts trailer). The grid's
+  // white-on-gradient icon labels sit right at the engine's blank word floor
+  // (1–2 garbled words across runs), so without the exemption the same healthy
+  // render flaps between needs-eyeball and blank-broken run to run.
+  "builtin-rolodex",
 ]);
 
 export interface ReportEntry {
