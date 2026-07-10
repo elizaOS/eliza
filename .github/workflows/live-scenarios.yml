@@ -200,6 +200,7 @@ jobs:
             plugins/plugin-agent-skills
             plugins/plugin-health
             plugins/plugin-pdf
+            plugins/plugin-wallet
             plugins/plugin-telegram
             plugins/plugin-whatsapp
             plugins/plugin-signal

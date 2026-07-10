@@ -23,3 +23,10 @@ test("builds the blocker engine imported by personal-assistant scenarios", () =>
     /package_dirs=\([\s\S]*plugins\/plugin-blocker[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
   );
 });
+
+test("builds the wallet diagnostics imported by the agent server", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  expect(workflow).toMatch(
+    /package_dirs=\([\s\S]*plugins\/plugin-wallet[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
+  );
+});
