@@ -36,6 +36,12 @@ function fakeDeps() {
     async findDeletingByOrganization() {
       return [ROW];
     },
+    async claimNodeSlot() {
+      return true;
+    },
+    async rollbackNodeSlotClaim() {
+      return true;
+    },
     async markRunning() {},
     async markDeleted() {
       calls.push("markDeleted");
@@ -43,9 +49,16 @@ function fakeDeps() {
     async markError() {},
   };
   const provider = {
+    targetNodeId: "node-1",
     async provision() {
       calls.push("provision");
-      return { containerId: "c", hostPort: 1, network: "n" };
+      return {
+        containerId: "c",
+        hostPort: 1,
+        network: "n",
+        nodeId: "node-1",
+        nodeHost: "node.example.test",
+      };
     },
     async delete() {
       calls.push("delete");

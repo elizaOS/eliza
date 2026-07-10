@@ -392,12 +392,11 @@ async function finishLocal(
   sourceDraft: FirstRunProfileDraft,
   ports: FirstRunFinishPorts,
 ): Promise<FirstRunFinishOutcome> {
-  // RAM-tier gate (#14390), enforced BEFORE any side effect: a device below
-  // the 8 GB floor may not run the on-device agent at all, and one below the
-  // 12 GB floor may not download/run on-device models. The onboarding UI
-  // already blocks these picks, but this is the fail-loud backstop for every
-  // caller — the throw surfaces as the onboarding error turn with the
-  // runtime-recovery choice.
+  // RAM-tier gate (#14390), enforced BEFORE any side effect: hybrid mode uses
+  // the 4 GB runtime-only floor, an unconfigured/full local runtime uses 8 GB,
+  // and on-device models use 12 GB. The onboarding UI already blocks these
+  // picks, but this is the fail-loud backstop for every caller — the throw
+  // surfaces as the onboarding error turn with the runtime-recovery choice.
   await assertDeviceRamTierAllowsLocalRuntime(sourceDraft.localInference);
   syncIdentity(sourceDraft, ports);
   // Local + cloud-inference (hybrid) routes inference through Eliza Cloud, so

@@ -1,6 +1,6 @@
 /**
  * Unit coverage for the pure RAM-tier policy (#14390): marketed-GB recovery
- * from raw device totals and the 8/12/16 GB tier boundaries, pinned against
+ * from raw device totals and the 4/8/12/16 GB boundaries, pinned against
  * real observed device readings. Pure functions, no device.
  */
 
@@ -42,10 +42,11 @@ describe("marketedRamGbFromTotalRamMb", () => {
 });
 
 describe("classifyDeviceRamTier", () => {
-  it("blocks the local agent entirely under 8 GB (cloud-only)", () => {
-    for (const gb of [1, 4, 6, 7]) {
+  it("blocks every local agent mode under the 4 GB hybrid floor", () => {
+    for (const gb of [1, 2, 3]) {
       const a = classifyDeviceRamTier(gb);
       expect(a.tier).toBe("cloud-only");
+      expect(a.allowsHybridAgent).toBe(false);
       expect(a.allowsLocalAgent).toBe(false);
       expect(a.allowsLocalModels).toBe(false);
       expect(a.localModelsWarning).toBe(false);
@@ -54,28 +55,22 @@ describe("classifyDeviceRamTier", () => {
     }
   });
 
-  it("lifts the agent floor for a floor-exempt device (LP3) but keeps the local-models floor", () => {
-    // A curated exempt device below 8 GB (the LP3 at ~6 GB) may run the
-    // on-device agent (hybrid/cloud-inference — no local model mmap) but still
-    // may not run local MODELS, which are gated by the unchanged 12 GB floor.
+  it("allows hybrid cloud inference from 4 GB without a device allowlist", () => {
     for (const gb of [4, 6, 7]) {
-      const a = classifyDeviceRamTier(gb, true);
+      const a = classifyDeviceRamTier(gb);
       expect(a.tier).toBe("no-local-models");
-      expect(a.allowsLocalAgent).toBe(true);
+      expect(a.allowsHybridAgent).toBe(true);
+      expect(a.allowsLocalAgent).toBe(false);
       expect(a.allowsLocalModels).toBe(false);
       expect(a.marketedRamGb).toBe(gb);
     }
-    // The exemption never downgrades a device that already clears a floor:
-    // a 16 GB exempt device is still fully unrestricted.
-    expect(classifyDeviceRamTier(16, true).tier).toBe("full-local");
-    // And it does not fabricate capability from an unreadable total.
-    expect(classifyDeviceRamTier(null, true).tier).toBe("unknown");
   });
 
   it("allows the agent but blocks on-device models on 8-11 GB", () => {
     for (const gb of [8, 10, 11]) {
       const a = classifyDeviceRamTier(gb);
       expect(a.tier).toBe("no-local-models");
+      expect(a.allowsHybridAgent).toBe(true);
       expect(a.allowsLocalAgent).toBe(true);
       expect(a.allowsLocalModels).toBe(false);
       expect(a.localModelsWarning).toBe(false);
@@ -86,6 +81,7 @@ describe("classifyDeviceRamTier", () => {
     for (const gb of [12, 15]) {
       const a = classifyDeviceRamTier(gb);
       expect(a.tier).toBe("local-models-warn");
+      expect(a.allowsHybridAgent).toBe(true);
       expect(a.allowsLocalAgent).toBe(true);
       expect(a.allowsLocalModels).toBe(true);
       expect(a.localModelsWarning).toBe(true);
@@ -96,6 +92,7 @@ describe("classifyDeviceRamTier", () => {
     for (const gb of [16, 24, 64]) {
       const a = classifyDeviceRamTier(gb);
       expect(a.tier).toBe("full-local");
+      expect(a.allowsHybridAgent).toBe(true);
       expect(a.allowsLocalAgent).toBe(true);
       expect(a.allowsLocalModels).toBe(true);
       expect(a.localModelsWarning).toBe(false);
@@ -106,6 +103,7 @@ describe("classifyDeviceRamTier", () => {
     const a = classifyDeviceRamTier(null);
     expect(a.tier).toBe("unknown");
     expect(a.marketedRamGb).toBeNull();
+    expect(a.allowsHybridAgent).toBe(true);
     expect(a.allowsLocalAgent).toBe(true);
     expect(a.allowsLocalModels).toBe(true);
     expect(a.localModelsWarning).toBe(false);

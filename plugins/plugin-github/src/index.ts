@@ -30,6 +30,31 @@ import { handleGitHubRoutes } from "./routes/github-routes.js";
 import { registerGitHubSearchCategory } from "./search-category.js";
 import { GitHubService } from "./services/github-service.js";
 
+/**
+ * Remove the GitHub token from the live runtime's per-agent settings.
+ * `runtime.setSetting` has no delete form (null values are ignored by
+ * design), so disconnect clears the two per-agent records `getSetting`
+ * consults: `character.secrets` and `character.settings.secrets`.
+ */
+function clearRuntimeGitHubToken(runtime: IAgentRuntime): void {
+  const secrets = runtime.character.secrets;
+  if (secrets && "GITHUB_TOKEN" in secrets) {
+    delete secrets.GITHUB_TOKEN;
+  }
+  const settings = runtime.character.settings;
+  const nestedSecrets =
+    settings &&
+    typeof settings === "object" &&
+    "secrets" in settings &&
+    typeof settings.secrets === "object" &&
+    settings.secrets !== null
+      ? (settings.secrets as Record<string, unknown>)
+      : undefined;
+  if (nestedSecrets && "GITHUB_TOKEN" in nestedSecrets) {
+    delete nestedSecrets.GITHUB_TOKEN;
+  }
+}
+
 function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
   return async (
     req: unknown,
@@ -39,12 +64,25 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const url = new URL(httpReq.url ?? "/api/github/token", "http://localhost");
-    void runtime;
+    const agentRuntime = runtime as IAgentRuntime;
     await handleGitHubRoutes({
       req: httpReq,
       res: httpRes,
       method,
       pathname: url.pathname,
+      // Device flows are scoped to the agent that started them.
+      agentKey: String(agentRuntime.agentId),
+      getOauthClientId: () => {
+        const clientId = agentRuntime.getSetting("GITHUB_OAUTH_CLIENT_ID");
+        return typeof clientId === "string" ? clientId : undefined;
+      },
+      // Per-agent settings (character.secrets), NOT process.env — env would
+      // leak the token to every agent on a multi-tenant host. The on-disk
+      // credential record still re-applies at next boot via
+      // `applySavedTokenToEnv` for gh/git subprocess inheritance.
+      applyRuntimeToken: (token) =>
+        agentRuntime.setSetting("GITHUB_TOKEN", token, true),
+      clearRuntimeToken: () => clearRuntimeGitHubToken(agentRuntime),
     });
   };
 }
@@ -80,6 +118,18 @@ const githubRoutes: Route[] = [
     path: "/api/github/token",
     rawPath: true,
     handler: createGitHubRouteHandler("DELETE"),
+  },
+  {
+    type: "POST",
+    path: "/api/github/device/start",
+    rawPath: true,
+    handler: createGitHubRouteHandler("POST"),
+  },
+  {
+    type: "POST",
+    path: "/api/github/device/poll",
+    rawPath: true,
+    handler: createGitHubRouteHandler("POST"),
   },
 ];
 

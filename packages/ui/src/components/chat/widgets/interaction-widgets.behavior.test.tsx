@@ -326,11 +326,14 @@ describe("ChoiceWidget — pick an option", () => {
       />,
     );
 
-    // Multi-option keeps the shell (title + count chip), chip on a readable
-    // surface token rather than the near-transparent bg-bg.
+    // Multi-option keeps the shell (title + count label). The count is plain
+    // theme-token text — no pill background, no border (chat-native de-slop;
+    // the theme text token stays readable on every surface).
     expect(screen.getByText("Choose next step")).toBeTruthy();
     const chip = screen.getByText("2 options");
-    expect(chip.className).toContain("bg-surface");
+    expect(chip.className).toContain("text-muted");
+    expect(chip.className).not.toContain("bg-surface");
+    expect(chip.className).not.toContain("bg-bg");
 
     const cloudBeforePick = screen.getByTestId("choice-cloud");
     const localBeforePick = screen.getByTestId("choice-local");

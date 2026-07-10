@@ -67,13 +67,17 @@ All write operations require confirmation before they execute.
 
 ## HTTP routes
 
-The plugin registers three routes on the agent's server for PAT management:
+The plugin registers five routes on the agent's server for credential
+management — they power the guided GitHub connection card in Settings →
+Coding Agents (PAT paste or OAuth device sign-in):
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/github/token` | Returns connection status (token never exposed) |
-| `POST` | `/api/github/token` | Save a PAT (validated against GitHub `/user` before save) |
-| `DELETE` | `/api/github/token` | Remove the saved PAT |
+| `GET` | `/api/github/token` | Returns connection status incl. `deviceFlowAvailable` (token never exposed) |
+| `POST` | `/api/github/token` | Save a PAT (validated against GitHub `/user` before save; applied to the live runtime's per-agent settings) |
+| `DELETE` | `/api/github/token` | Remove the saved PAT (disk + live runtime) |
+| `POST` | `/api/github/device/start` | Start a GitHub OAuth device sign-in (needs `GITHUB_OAUTH_CLIENT_ID`); the device code never leaves the server |
+| `POST` | `/api/github/device/poll` | Poll a pending sign-in: `pending` / `denied` / `expired`, or validate + save the granted token |
 
 ## Development
 

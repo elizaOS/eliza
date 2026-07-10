@@ -2,12 +2,10 @@
  * Pure RAM-tier classification for the mobile runtime policy (#14390): which
  * runtime options a phone may be offered, keyed on marketed RAM size.
  *
- * Low-RAM phones cannot sustain the on-device agent — a 4 GB Moto G Play
- * wedges boot for the full 180 s startup budget — so the policy is RAM-driven,
- * not build-driven: under 8 GB the local agent is disabled outright (cloud
- * only); under 12 GB the agent may run but on-device models are disabled
- * (cloud-inference only); under 16 GB on-device models are allowed with a
- * performance/thermal warning; 16 GB and up is unrestricted.
+ * The policy separates the Bun runtime from model loading: hybrid mode may run
+ * from 4 GB because inference stays in the cloud, an unconfigured/full local
+ * runtime needs 8 GB, and on-device models need 12 GB. Under 16 GB local
+ * models carry a performance/thermal warning; 16 GB and up is unrestricted.
  *
  * The OS under-reports marketed capacity (kernel/carveout reserve a slice: a
  * "4 GB" device reads ~3.6 GiB, an "8 GB" one ~7.2-7.6 GiB), so raw readings
@@ -30,6 +28,8 @@ export interface DeviceRamTierAssessment {
   tier: DeviceRamTier;
   /** Marketed RAM size in GB, or null when the device total is unreadable. */
   marketedRamGb: number | null;
+  /** May this device run the on-device agent with cloud inference (>= 4 GB)? */
+  allowsHybridAgent: boolean;
   /** May this device run the on-device agent at all (>= 8 GB)? */
   allowsLocalAgent: boolean;
   /** May this device download/run on-device models (>= 12 GB)? */
@@ -40,6 +40,7 @@ export interface DeviceRamTierAssessment {
   reason: string;
 }
 
+export const HYBRID_AGENT_MIN_MARKETED_RAM_GB = 4;
 export const LOCAL_AGENT_MIN_MARKETED_RAM_GB = 8;
 export const LOCAL_MODELS_MIN_MARKETED_RAM_GB = 12;
 export const LOCAL_MODELS_WARN_BELOW_MARKETED_RAM_GB = 16;
@@ -72,47 +73,48 @@ export function marketedRamGbFromTotalRamMb(
  */
 export function classifyDeviceRamTier(
   marketedRamGb: number | null,
-  // Curated devices (the LP3) that clear the on-device-agent floor by allowlist
-  // rather than by raw RAM — mirrors the native
-  // ElizaAgentService.isLocalAgentRamFloorExemptDevice via the ElizaNative
-  // bridge. Lifts ONLY the local-agent floor (hybrid/cloud-inference runs with
-  // no local model mmap); the 12 GB local-MODELS floor still applies normally.
-  ramFloorExempt = false,
 ): DeviceRamTierAssessment {
   if (marketedRamGb === null || !Number.isFinite(marketedRamGb)) {
     return {
       tier: "unknown",
       marketedRamGb: null,
+      allowsHybridAgent: true,
       allowsLocalAgent: true,
       allowsLocalModels: true,
       localModelsWarning: false,
       reason: "device memory could not be determined",
     };
   }
-  if (marketedRamGb < LOCAL_AGENT_MIN_MARKETED_RAM_GB && !ramFloorExempt) {
+  if (marketedRamGb < HYBRID_AGENT_MIN_MARKETED_RAM_GB) {
     return {
       tier: "cloud-only",
       marketedRamGb,
+      allowsHybridAgent: false,
       allowsLocalAgent: false,
       allowsLocalModels: false,
       localModelsWarning: false,
-      reason: `this device has ~${marketedRamGb} GB RAM and the on-device agent needs ${LOCAL_AGENT_MIN_MARKETED_RAM_GB} GB or more`,
+      reason: `this device has ~${marketedRamGb} GB RAM and the hybrid on-device agent needs ${HYBRID_AGENT_MIN_MARKETED_RAM_GB} GB or more`,
     };
   }
   if (marketedRamGb < LOCAL_MODELS_MIN_MARKETED_RAM_GB) {
     return {
       tier: "no-local-models",
       marketedRamGb,
-      allowsLocalAgent: true,
+      allowsHybridAgent: true,
+      allowsLocalAgent: marketedRamGb >= LOCAL_AGENT_MIN_MARKETED_RAM_GB,
       allowsLocalModels: false,
       localModelsWarning: false,
-      reason: `this device has ~${marketedRamGb} GB RAM and on-device models need ${LOCAL_MODELS_MIN_MARKETED_RAM_GB} GB or more`,
+      reason:
+        marketedRamGb < LOCAL_AGENT_MIN_MARKETED_RAM_GB
+          ? `this device has ~${marketedRamGb} GB RAM; hybrid cloud inference is supported, while a local runtime needs ${LOCAL_AGENT_MIN_MARKETED_RAM_GB} GB or more`
+          : `this device has ~${marketedRamGb} GB RAM and on-device models need ${LOCAL_MODELS_MIN_MARKETED_RAM_GB} GB or more`,
     };
   }
   if (marketedRamGb < LOCAL_MODELS_WARN_BELOW_MARKETED_RAM_GB) {
     return {
       tier: "local-models-warn",
       marketedRamGb,
+      allowsHybridAgent: true,
       allowsLocalAgent: true,
       allowsLocalModels: true,
       localModelsWarning: true,
@@ -122,6 +124,7 @@ export function classifyDeviceRamTier(
   return {
     tier: "full-local",
     marketedRamGb,
+    allowsHybridAgent: true,
     allowsLocalAgent: true,
     allowsLocalModels: true,
     localModelsWarning: false,

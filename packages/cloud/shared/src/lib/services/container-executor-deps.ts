@@ -17,12 +17,15 @@
  */
 
 import { Buffer } from "node:buffer";
+import { ElizaError } from "@elizaos/core";
+import { dbRead, dbWrite } from "../../db/helpers";
+import { containersRepository } from "../../db/repositories/containers";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { isValidUUID } from "../utils/validation";
 import { decideBuilderArming, selectBuilderHost } from "./app-builder-host";
 import { AppContainerProvider, type AppContainerSsh } from "./app-container-provider";
-import { appContainerStore } from "./app-container-store";
+import { ContainerRepoAppContainerStore } from "./app-container-store";
 import type { BuildExec } from "./app-image-builder";
 import { waitForUrlReachable } from "./app-reachability";
 import { appsService } from "./apps";
@@ -178,17 +181,32 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
   }
   const ssh = makeNodeSsh();
   const nodeHost = selectNodeHost();
+  const nodeId = parseSeedNodeIdOrNull();
+  if (!nodeId) {
+    throw new ElizaError("CONTAINERS_DOCKER_NODES has no durable node id", {
+      code: "APP_CONTAINER_NODE_ID_MISSING",
+      context: { seedNodesConfigured: Boolean(containersEnv.seedNodes()) },
+      severity: "fatal",
+    });
+  }
   const egressProxyUrl = process.env.CONTAINERS_EGRESS_PROXY_URL || undefined;
   // The DB ambassador's egress network (it reaches the tenant DB) + socat image.
   const dbEgressNetwork = process.env.APPS_DB_EGRESS_NETWORK || undefined;
   const ambassadorImage = process.env.APPS_DB_AMBASSADOR_IMAGE || undefined;
   const provider = new AppContainerProvider({
     ssh,
+    nodeId,
     allocateHostPort,
     egressProxyUrl,
     dbEgressNetwork,
     ambassadorImage,
     nodeHost,
+  });
+  const store = new ContainerRepoAppContainerStore({
+    readDatabase: dbRead,
+    writeDatabase: dbWrite,
+    repository: containersRepository,
+    errorFactory: (message, options) => new ElizaError(message, options),
   });
 
   // Ingress route hooks — wired only when a Caddy admin URL is configured.
@@ -210,14 +228,15 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
     : {};
 
   logger.info("[container-executor-deps] built apps container backend", {
-    node: nodeHost,
+    nodeId,
+    nodeHost,
     egressProxy: Boolean(egressProxyUrl),
     dbEgressNetwork: dbEgressNetwork ?? "bridge",
     ingress: Boolean(caddyAdminUrl),
   });
   return {
     provider,
-    store: appContainerStore,
+    store,
     // Verified custom domains for the app -> bare hostnames, folded into the
     // ingress route's host-match. Reuses the existing CORS verified-origin query
     // (status='active' AND verified=true); only invoked when ingress is wired.

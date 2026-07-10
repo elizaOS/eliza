@@ -32,6 +32,10 @@ const visualVerify = await import("../../scripts/mvp-visual-verify.mjs");
 const appPackageJson = JSON.parse(
   readFileSync(path.resolve(__dirname, "../../package.json"), "utf8"),
 ) as { scripts: Record<string, string> };
+const uiPlaywrightRunnerSource = readFileSync(
+  path.resolve(__dirname, "../../scripts/run-ui-playwright.mjs"),
+  "utf8",
+);
 
 describe("color-bucket", () => {
   it("parses rgb and rgba", () => {
@@ -670,6 +674,12 @@ describe("audit:app OCR command contract", () => {
     );
     expect(appPackageJson.scripts["audit:app:verify"]).toContain(
       "--require-baseline-states",
+    );
+    expect(uiPlaywrightRunnerSource).toContain(
+      'hasPlaywrightProject("audit-app")',
+    );
+    expect(uiPlaywrightRunnerSource).toContain(
+      'env.ELIZA_UI_SMOKE_REQUIRE_REAL_BUNDLES = "1"',
     );
   });
 });

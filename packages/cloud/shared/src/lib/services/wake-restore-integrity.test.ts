@@ -211,7 +211,7 @@ describe("readWakeRestoreGateConfig", () => {
     expect(config.alternativeScanLimit).toBe(25);
   });
 
-  test("kill switch and tunables parse; garbage falls back to defaults", () => {
+  test("kill switch and tunables parse", () => {
     expect(
       readWakeRestoreGateConfig({ WAKE_RESTORE_INTEGRITY_ENABLED: "0" } as NodeJS.ProcessEnv)
         .enabled,
@@ -226,12 +226,19 @@ describe("readWakeRestoreGateConfig", () => {
     } as NodeJS.ProcessEnv);
     expect(tuned.verifiedFreshnessMs).toBe(6 * 3_600_000);
     expect(tuned.alternativeScanLimit).toBe(5);
-    const garbage = readWakeRestoreGateConfig({
-      WAKE_RESTORE_VERIFIED_FRESHNESS_HOURS: "-3",
-      WAKE_RESTORE_ALTERNATIVE_SCAN_LIMIT: "banana",
-    } as NodeJS.ProcessEnv);
-    expect(garbage.verifiedFreshnessMs).toBe(24 * 3_600_000);
-    expect(garbage.alternativeScanLimit).toBe(25);
+  });
+
+  test.each([
+    ["WAKE_RESTORE_INTEGRITY_ENABLED", "sometimes"],
+    ["WAKE_RESTORE_INTEGRITY_ENABLED", ""],
+    ["WAKE_RESTORE_VERIFIED_FRESHNESS_HOURS", "-3"],
+    ["WAKE_RESTORE_VERIFIED_FRESHNESS_HOURS", "1.5"],
+    ["WAKE_RESTORE_ALTERNATIVE_SCAN_LIMIT", "banana"],
+    ["WAKE_RESTORE_ALTERNATIVE_SCAN_LIMIT", "0"],
+  ])("present invalid config %s=%j fails fast", (name, value) => {
+    expect(() => readWakeRestoreGateConfig({ [name]: value } as NodeJS.ProcessEnv)).toThrow(
+      /Invalid WAKE_RESTORE_/,
+    );
   });
 });
 
@@ -297,6 +304,25 @@ describe("runWakeRestoreIntegrityGate", () => {
     const row = await readBackupRow(backupId);
     expect(row.verification_status).toBe("failed");
     expect(alerts.map((a) => a.dedupKey)).toEqual(["agent-wake-restore-integrity"]);
+  });
+
+  test("a future 'verified' stamp re-verifies for real and catches corruption", async () => {
+    const { sandboxId } = await seedSandbox();
+    const backupId = await seedFullBackup(sandboxId, sampleState("future-stamp"), NOW);
+    await stampRow(backupId, "verified", new Date(NOW.getTime() + 60_000));
+    await corruptBackupCiphertext(backupId);
+
+    const { alerts, alert } = makeAlertSpy();
+    const result = await runWakeRestoreIntegrityGate(
+      { sandboxRecordId: sandboxId },
+      { config: GATE_CONFIG, now: () => NOW, alert },
+    );
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.failure.kind).toBe("decrypt-failed");
+    expect((await readBackupRow(backupId)).verification_status).toBe("failed");
+    expect(alerts.map((entry) => entry.dedupKey)).toEqual(["agent-wake-restore-integrity"]);
   });
 
   test("freshness window is tunable: a 1h window re-verifies a 2h-old stamp", async () => {

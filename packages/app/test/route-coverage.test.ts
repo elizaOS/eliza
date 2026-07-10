@@ -355,7 +355,7 @@ function pluginViewCasesFromVisualSpec(): PluginViewCase[] {
   const source = readFileSync(PLUGIN_VIEW_CASES_SOURCE, "utf8");
   return [
     ...source.matchAll(
-      /\["([^"]+)",\s*"(gui|tui)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
+      /\["([^"]+)",\s*"(gui|tui|xr)",\s*"([^"]+)"(?:,\s*\{[^}\]]*\})?\]/g,
     ),
   ].map((match) => ({
     manifestPath: PLUGIN_VIEW_CASES_SOURCE,
@@ -544,7 +544,7 @@ describe("app route coverage gate", () => {
   it("plugin views visual matrix covers every bundled gui view", () => {
     const expectedCases = PLUGIN_VIEW_MANIFESTS.flatMap((manifestPath) =>
       pluginViewCasesFromManifest(manifestPath),
-    ).filter((viewCase) => viewCase.viewType !== "xr");
+    ).filter((viewCase) => viewCase.viewType === "gui");
     const visualCases = pluginViewCasesFromVisualSpec();
     const expectedByKey = new Map(
       expectedCases.map((viewCase) => [pluginViewCaseKey(viewCase), viewCase]),
@@ -585,6 +585,10 @@ describe("app route coverage gate", () => {
     expect(
       pathMismatches,
       `Plugin-views visual paths drifted from manifests: ${pathMismatches.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      visualCases.filter((viewCase) => viewCase.viewType !== "gui"),
+      "Plugin-views visual coverage must stay GUI-only until a non-GUI surface ships again.",
     ).toEqual([]);
   });
 
@@ -651,7 +655,7 @@ describe("app route coverage gate", () => {
     const report = readFileSync(PLUGIN_VIEW_VISUAL_REVIEW_REPORT, "utf8");
     const reportRows = [
       ...report.matchAll(
-        /^\| `([^`]+)` \| `(gui|tui)` \| `([^`]+)` \| .+ \| .+ \| .+ \|$/gm,
+        /^\| `([^`]+)` \| `(gui|tui|xr)` \| `([^`]+)` \| .+ \| .+ \| .+ \|$/gm,
       ),
     ].map((match) => ({
       id: match[1] ?? "",
@@ -697,6 +701,10 @@ describe("app route coverage gate", () => {
     expect(
       pathMismatches,
       `Tracked visual-review report paths drifted: ${pathMismatches.join(", ")}`,
+    ).toEqual([]);
+    expect(
+      reportRows.filter((viewCase) => viewCase.viewType !== "gui"),
+      "Plugin-view visual review report must stay GUI-only until a non-GUI surface ships again.",
     ).toEqual([]);
   });
 

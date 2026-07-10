@@ -32,6 +32,7 @@ vi.mock("../../utils/clipboard", () => ({
 }));
 
 import { CHAT_PREFILL_EVENT } from "../../events";
+import { FIRST_RUN_GREETING } from "../../first-run/first-run-greeting";
 import { __setAppValueForTests } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
@@ -353,13 +354,13 @@ describe("ContinuousChatOverlay first-run gating", () => {
         <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
       );
 
-      expect(screen.queryByText("Hi — I'm Eliza.")).toBeNull();
+      expect(screen.queryByText(FIRST_RUN_GREETING)).toBeNull();
 
       act(() => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByText("Hi — I'm Eliza.")).toBeTruthy();
+      expect(screen.getByText(FIRST_RUN_GREETING)).toBeTruthy();
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
       expect(
         screen.getByTestId("choice-__first_run__:runtime:cloud"),
@@ -376,7 +377,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
       id: "first-run:greeting",
       role: "assistant",
       content: [
-        "Hi — I'm Eliza.",
+        FIRST_RUN_GREETING,
         "",
         "[CHOICE:first-run id=runtime]",
         "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
@@ -407,7 +408,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
         vi.advanceTimersByTime(600);
       });
 
-      expect(screen.getByText("Hi — I'm Eliza.")).toBeTruthy();
+      expect(screen.getByText(FIRST_RUN_GREETING)).toBeTruthy();
       expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
     } finally {
       vi.useRealTimers();
@@ -422,7 +423,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
           id: "first-run:greeting",
           role: "assistant",
           content: [
-            "Hi — I'm Eliza.",
+            FIRST_RUN_GREETING,
             "",
             "[CHOICE:first-run id=runtime]",
             "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
@@ -434,7 +435,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
           id: "first-run:cloud-oauth",
           role: "assistant",
           content: [
-            "Hi — I'm Eliza.",
+            FIRST_RUN_GREETING,
             "",
             "[CHOICE:first-run id=runtime]",
             "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
@@ -448,7 +449,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
 
     expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
-    expect(screen.queryAllByText("Hi — I'm Eliza.").length).toBe(1);
+    expect(screen.queryAllByText(FIRST_RUN_GREETING).length).toBe(1);
   });
 
   it("exposes the sr-only onboarding-state probe with the current step + choice ids while onboarding is open", () => {

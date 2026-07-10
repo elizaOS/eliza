@@ -194,13 +194,30 @@ self.addEventListener("fetch", (event) => {
   // callback must always load the freshest shell from the network. A stale
   // cached shell can carry an outdated build — e.g. one baked with the wrong
   // Steward tenant — which makes the code exchange fail with 401, and caching a
-  // one-time `?code=` callback URL risks replaying a consumed code. Bypassing
-  // (no respondWith) lets the browser fetch directly, uncached.
+  // one-time `?code=` callback URL risks replaying a consumed code. We take
+  // over the response only to drain the already-issued navigation-preload fetch
+  // (`event.preloadResponse`) — otherwise the browser logs "navigation preload
+  // request was cancelled" and wastes that round-trip on the sign-in golden
+  // path. The invariant above is preserved: both the preload and the fallback
+  // are uncached network fetches, so no cached shell is ever served here.
   if (
     pathname === "/login" ||
     url.searchParams.has("code") ||
     url.searchParams.has("token")
   ) {
+    event.respondWith(
+      (async () => {
+        try {
+          const preloaded = await event.preloadResponse;
+          if (preloaded) return preloaded;
+        } catch (_err) {
+          // error-policy:J4 a failed/aborted preload must not fail the sign-in
+          // navigation — fall through to the same direct network fetch the
+          // pre-takeover bypass delegated to the browser.
+        }
+        return fetch(request);
+      })(),
+    );
     return;
   }
 

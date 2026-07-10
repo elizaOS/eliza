@@ -1,0 +1,111 @@
+name: Headscale API Key Health
+
+# The Headscale admin key expires independently of deploy cadence. Probe the
+# daemon-local API from the control-plane host so an expired or rebuild-lost key
+# turns the nightly red without copying the admin credential into GitHub Actions.
+
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Control-plane environment to probe"
+        type: choice
+        default: staging
+        options: [staging, production]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: headscale-api-key-health-${{ github.event.inputs.environment || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Probe ${{ github.event.inputs.environment || 'staging' }} Headscale key
+    runs-on: ubuntu-24.04
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    timeout-minutes: 5
+    env:
+      DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
+    steps:
+      - name: Check probe configuration
+        run: |
+          fail=0
+          [ -n "$DEPLOY_HOST" ] || { echo "::error::missing secret ELIZA_PROVISIONING_HOST"; fail=1; }
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::missing secret ELIZA_PROVISIONING_SSH_KEY"; fail=1; }
+          [ "$fail" = 0 ] || exit 1
+
+      - name: Probe daemon-local Headscale API
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: deploy
+          key: ${{ env.DEPLOY_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -eu
+            ENV_FILE=/opt/eliza/cloud/.env.local
+            RESPONSE_FILE=$(mktemp)
+            trap 'rm -f "$RESPONSE_FILE"' EXIT
+
+            read_env_value() {
+              key="$1"
+              line=$(sudo grep -m1 "^${key}=" "$ENV_FILE" || true)
+              value="${line#*=}"
+              if [ "${value#\"}" != "$value" ] && [ "${value%\"}" != "$value" ]; then
+                value="${value#\"}"
+                value="${value%\"}"
+              fi
+              printf '%s' "$value"
+            }
+
+            sudo test -r "$ENV_FILE" || {
+              echo "::error::Headscale environment file is unreadable on the control-plane host"
+              exit 1
+            }
+
+            HEADSCALE_API_URL=$(read_env_value HEADSCALE_API_URL)
+            HEADSCALE_API_KEY=$(read_env_value HEADSCALE_API_KEY)
+            [ -n "$HEADSCALE_API_URL" ] || {
+              echo "::error::HEADSCALE_API_URL is missing from the control-plane environment"
+              exit 1
+            }
+            [ -n "$HEADSCALE_API_KEY" ] || {
+              echo "::error::HEADSCALE_API_KEY is missing from the control-plane environment"
+              exit 1
+            }
+
+            endpoint="${HEADSCALE_API_URL%/}/api/v1/user"
+            status=$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+              --output "$RESPONSE_FILE" --write-out '%{http_code}' \
+              --header "Authorization: Bearer $HEADSCALE_API_KEY" \
+              "$endpoint") || {
+                echo "::error::Headscale API probe could not reach the daemon-local endpoint"
+                exit 1
+              }
+
+            case "$status" in
+              200)
+                node -e '
+                  const fs = require("node:fs");
+                  const payload = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+                  if (!payload || !Array.isArray(payload.users)) process.exit(1);
+                ' "$RESPONSE_FILE" || {
+                  echo "::error::Headscale API returned HTTP 200 with an invalid user-list payload"
+                  exit 1
+                }
+                echo "Headscale API key accepted by the daemon-local endpoint."
+                ;;
+              401|403)
+                echo "::error::Headscale rejected the configured API key with HTTP $status; rotate it before provisioning fails"
+                exit 1
+                ;;
+              *)
+                echo "::error::Headscale API key probe returned unexpected HTTP $status"
+                exit 1
+                ;;
+            esac

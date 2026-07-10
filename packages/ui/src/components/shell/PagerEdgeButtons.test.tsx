@@ -6,7 +6,10 @@
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { PagerEdgeButtons } from "./PagerEdgeButtons";
+import {
+  FINE_POINTER_EDGE_BUTTON_QUERY,
+  PagerEdgeButtons,
+} from "./PagerEdgeButtons";
 
 function mockPointerCapability({ finePointer }: { finePointer: boolean }) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -102,5 +105,27 @@ describe("PagerEdgeButtons (#10717)", () => {
     expect(cls).toContain("text-white/55");
     expect(cls).toContain("hover:text-white");
     expect(cls).not.toMatch(/border|rounded-|bg-(black|white|blue)/);
+  });
+});
+
+// The first-session swipe hint (#13453 debt 5) renders exactly where these
+// buttons do not: both surfaces evaluate this ONE exported query, so the
+// complement cannot drift into showing both teaching affordances (or neither)
+// on a single device.
+describe("FINE_POINTER_EDGE_BUTTON_QUERY complement contract", () => {
+  it("is the exact fine-pointer query FirstSessionSwipeHint inverts", () => {
+    expect(FINE_POINTER_EDGE_BUTTON_QUERY).toBe(
+      "(hover: hover) and (pointer: fine)",
+    );
+  });
+
+  it("gates the buttons on exactly this query, nothing else", () => {
+    mockPointerCapability({ finePointer: true });
+    render(
+      <PagerEdgeButtons canPrev canNext goPrev={vi.fn()} goNext={vi.fn()} />,
+    );
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      FINE_POINTER_EDGE_BUTTON_QUERY,
+    );
   });
 });

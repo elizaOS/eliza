@@ -5,20 +5,48 @@
  * while terminal `deleted` status is required to release organization quota.
  */
 
-import { eq } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../db/helpers";
-import { containersRepository } from "../../db/repositories/containers";
+import { and, eq } from "drizzle-orm";
+import type { dbWrite } from "../../db/helpers";
+import type { containersRepository } from "../../db/repositories/containers";
 import { containers } from "../../db/schemas/containers";
-import { logger } from "../utils/logger";
 import {
+  type AppContainerReadDatabase,
+  type AppContainerTransactionDatabase,
+  claimAppContainerNodeSlot,
   findAppContainerRowById,
   findDeletingAppContainerRows,
   type ProjectableContainerRow,
+  rollbackAppContainerNodeSlotClaim,
 } from "./app-container-store-queries";
 import { deriveAppPublicUrl } from "./app-url";
 import type { AppContainerRow, AppContainerStore } from "./container-job-executors";
 
 export type { ProjectableContainerRow } from "./app-container-store-queries";
+
+type AppContainerWriteDatabase = AppContainerReadDatabase &
+  AppContainerTransactionDatabase &
+  Pick<typeof dbWrite, "update">;
+
+/** Existing container-repository operations used for lifecycle side effects. */
+export type AppContainerStoreRepository = Pick<
+  typeof containersRepository,
+  "tryReleaseNodeSlot" | "update" | "updateStatus"
+>;
+
+/** Structural error metadata translated to ElizaError by runtime composition. */
+export interface AppContainerStoreErrorOptions {
+  code: string;
+  context: Record<string, unknown>;
+  severity: "ephemeral" | "fatal";
+}
+
+/** Injectable persistence and error boundaries for the app-container store. */
+export interface ContainerRepoAppContainerStoreDeps {
+  readDatabase: AppContainerReadDatabase;
+  writeDatabase: AppContainerWriteDatabase;
+  repository: AppContainerStoreRepository;
+  errorFactory: (message: string, options: AppContainerStoreErrorOptions) => Error;
+}
 
 /**
  * Project a `containers` row onto the executor's {@link AppContainerRow}. Pure,
@@ -39,6 +67,7 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
     organizationId: row.organization_id,
     userId: row.user_id,
     environmentVars: row.environment_vars ?? undefined,
+    nodeId: row.node_id ?? undefined,
   };
 }
 
@@ -65,11 +94,13 @@ export function mergeHostPlacementMetadata(
 
 /** Read/write seam impl over `containersRepository` + a direct id-scoped read. */
 export class ContainerRepoAppContainerStore implements AppContainerStore {
+  constructor(private readonly deps: ContainerRepoAppContainerStoreDeps) {}
+
   async getById(containerId: string): Promise<AppContainerRow | null> {
     // The executor only has the container id (from the job payload), but the
     // repo's findById is org-scoped. Read by primary key directly to recover the
     // full row (incl. organization_id), then project onto AppContainerRow.
-    const row = await findAppContainerRowById(dbRead, containerId);
+    const row = await findAppContainerRowById(this.deps.readDatabase, containerId);
     if (!row) return null;
     return mapContainerRowToAppContainerRow(row);
   }
@@ -77,22 +108,60 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
   async findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]> {
     // A recovered legacy job is consumed once, so replica lag must not turn a
     // real deleting row into a terminal no-op.
-    const rows = await findDeletingAppContainerRows(dbWrite, organizationId);
+    const rows = await findDeletingAppContainerRows(this.deps.writeDatabase, organizationId);
     return rows.map(mapContainerRowToAppContainerRow);
+  }
+
+  async claimNodeSlot(
+    containerId: string,
+    organizationId: string,
+    nodeId: string,
+  ): Promise<boolean> {
+    return claimAppContainerNodeSlot(
+      this.deps.writeDatabase,
+      containerId,
+      organizationId,
+      nodeId,
+      () =>
+        this.deps.errorFactory(`Docker node ${nodeId} has no available app-container slot`, {
+          code: "APP_CONTAINER_NODE_CAPACITY_UNAVAILABLE",
+          context: { containerId, organizationId, nodeId },
+          severity: "ephemeral",
+        }),
+    );
+  }
+
+  async rollbackNodeSlotClaim(
+    containerId: string,
+    organizationId: string,
+    nodeId: string,
+  ): Promise<boolean> {
+    return rollbackAppContainerNodeSlotClaim(
+      this.deps.writeDatabase,
+      containerId,
+      organizationId,
+      nodeId,
+    );
   }
 
   async markRunning(
     containerId: string,
     info: { hostContainerId: string; hostPort: number; network: string; nodeHost?: string },
   ): Promise<void> {
-    const [row] = await dbRead
+    const [row] = await this.deps.readDatabase
       .select({ organization_id: containers.organization_id, metadata: containers.metadata })
       .from(containers)
       .where(eq(containers.id, containerId))
       .limit(1);
     if (!row) {
-      logger.warn("[AppContainerStore] markRunning: container not found", { containerId });
-      return;
+      throw this.deps.errorFactory(
+        `App container ${containerId} disappeared before it became running`,
+        {
+          code: "APP_CONTAINER_ROW_MISSING",
+          context: { containerId, transition: "running" },
+          severity: "fatal",
+        },
+      );
     }
 
     // Merge host placement into metadata (no dedicated columns on the 2AM
@@ -106,28 +175,31 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
 
     // Two writes: status (id-scoped) + metadata/url/last_deployed_at (org-scoped
     // update, which is the only metadata-writing surface the repo exposes).
-    await containersRepository.updateStatus(containerId, "running");
-    await containersRepository.update(containerId, row.organization_id, {
+    await this.deps.repository.updateStatus(containerId, "running");
+    await this.deps.repository.update(containerId, row.organization_id, {
       metadata: nextMetadata,
       last_deployed_at: new Date(),
       ...(endpoint ? { public_hostname: endpoint.hostname, load_balancer_url: endpoint.url } : {}),
     });
   }
 
-  async markDeleted(containerId: string): Promise<void> {
+  async markDeleted(containerId: string, organizationId: string, nodeId?: string): Promise<void> {
     // Terminal "deleted" — the daemon has actually removed the container, so the
     // row must reach a state that does NOT count toward the per-org container
     // quota. `checkQuota`/`createWithQuotaCheck` exclude only `deleting`/`deleted`;
     // a `stopped` row would keep leaking quota across redeploys (the daemon never
     // reuses this row — each deploy creates a fresh one). App containers carry no
     // `volume_path`, so the active_project_volume_unique index never applies here.
-    await containersRepository.updateStatus(containerId, "deleted");
+    if (nodeId) {
+      await this.deps.repository.tryReleaseNodeSlot(containerId, organizationId, nodeId);
+    }
+    await this.deps.writeDatabase
+      .update(containers)
+      .set({ status: "deleted", error_message: null, updated_at: new Date() })
+      .where(and(eq(containers.id, containerId), eq(containers.organization_id, organizationId)));
   }
 
   async markError(containerId: string, error: string): Promise<void> {
-    await containersRepository.updateStatus(containerId, "failed", error);
+    await this.deps.repository.updateStatus(containerId, "failed", error);
   }
 }
-
-/** Singleton — wired into the daemon's container-executor deps. */
-export const appContainerStore: AppContainerStore = new ContainerRepoAppContainerStore();

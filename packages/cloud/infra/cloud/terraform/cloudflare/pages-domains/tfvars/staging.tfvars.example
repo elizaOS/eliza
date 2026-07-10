@@ -1,0 +1,12 @@
+environment           = "staging"
+cloudflare_account_id = "<cloudflare-account-id>"
+cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
+staging_agent_wildcard_origins = [
+  "<first-current-origin-ipv4>",
+  "<second-current-origin-ipv4>",
+]
+staging_agent_certificate_pack_id = "<full-existing-pack-id-prefix-02490878>"
+staging_agent_certificate_hosts = [
+  "elizacloud.ai",
+  "*.staging.elizacloud.ai",
+]

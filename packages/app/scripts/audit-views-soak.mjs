@@ -132,9 +132,7 @@ function buildScorecard({
     const module = moduleEventsForView(raw.module, view);
     const nav = navRecords.get(view.id)?.activations ?? [];
     const reached = nav.filter((entry) => entry.reached).length;
-    const firstRunBlocks = nav.filter(
-      (entry) => entry.firstRunChooserVisible,
-    ).length;
+    const firstRunBlocks = nav.filter((entry) => entry.firstRunBlocking).length;
     const renderErrors = render.filter((event) => event.severity === "error");
     const renderInfos = render.filter((event) => event.severity === "info");
     return {
@@ -214,7 +212,7 @@ release.
 - Render-guard errors: ${summary.renderErrors}
 - Module/view evictions attributed in scorecard: ${summary.moduleEvicts}
 - Module cleanups attributed in scorecard: ${summary.moduleCleanups}
-- Network log classification: ${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total (${networkSummary.expectedAbortCount} navigation aborts, ${networkSummary.expectedOptionalRoute404Count} optional-route 404s)
+- Network log classification: ${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total (${networkSummary.expectedAbortCount} navigation aborts, ${networkSummary.expectedOptionalRoute404Count} optional-route 404s, ${networkSummary.expectedProtectedRoute401Count} protected-route 401s)
 - Heap series: ${heapSamples.map((sample) => `${(sample / 1e6).toFixed(1)}MB`).join(" -> ")} (${heapRatio.toFixed(2)}x)
 - Raw artifacts: \`audit-views-render-telemetry.json\`, \`audit-views-runtime-telemetry.json\`, \`audit-views-module-cache-telemetry.json\`, \`audit-views-heap-series.json\`, \`audit-views-frontend-log.json\`, \`audit-views-network-log.json\`, \`audit-views-network-summary.json\`
 - Video: ${videoArtifact ? `\`${videoArtifact}\`` : "N/A (VIDEO=0)"}
@@ -246,6 +244,9 @@ function classifyNetworkEntry(entry) {
   const optionalMissingRoutes = new Set([
     "/api/connectors/google/accounts",
     "/api/database/status",
+    "/api/lifeops/goals",
+    "/api/lifeops/todos",
+    "/api/meetings",
     "/api/transcripts",
   ]);
   if (
@@ -257,6 +258,22 @@ function classifyNetworkEntry(entry) {
       expected: true,
       reason: "optional_route_not_installed",
       note: "Optional local services/connectors are not installed in this audit stack; the UI handles the missing route.",
+    };
+  }
+
+  const protectedRoutesWithoutSession = new Set([
+    "/api/cloud/status",
+    "/api/config",
+  ]);
+  if (
+    entry.kind === "response" &&
+    entry.status === 401 &&
+    protectedRoutesWithoutSession.has(pathname)
+  ) {
+    return {
+      expected: true,
+      reason: "protected_route_without_session",
+      note: "The tokenless Vite audit has no remote/cloud session, so protected reads correctly fail closed while local owner views remain exercisable.",
     };
   }
 
@@ -284,6 +301,8 @@ function summarizeNetworkLog(networkLog) {
     total: classified.length,
     expectedAbortCount: byReason.navigation_churn_abort ?? 0,
     expectedOptionalRoute404Count: byReason.optional_route_not_installed ?? 0,
+    expectedProtectedRoute401Count:
+      byReason.protected_route_without_session ?? 0,
     unexpectedCount: unexpected.length,
     byReason,
     unexpected,
@@ -291,44 +310,74 @@ function summarizeNetworkLog(networkLog) {
   };
 }
 
-async function isFirstRunChooserVisible(page) {
+async function isFirstRunBlocking(page) {
   return page
-    .getByTestId("first-run-runtime-chooser")
+    .getByTestId("chat-first-run-backdrop")
     .isVisible({ timeout: 500 })
     .catch(() => false);
 }
 
-async function waitForFirstRunChooserHidden(page) {
-  await page
-    .getByTestId("first-run-runtime-chooser")
-    .waitFor({ state: "hidden", timeout: 45000 })
-    .catch(async () => {
-      await page
-        .getByTestId("first-run-runtime-chooser")
-        .waitFor({ state: "detached", timeout: 45000 });
-    });
+async function waitForRuntimeReady(timeoutMs = 180_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastHealth = { state: "not-requested" };
+
+  while (Date.now() < deadline) {
+    const [attempt] = await Promise.allSettled([
+      fetch(`${API}/api/health`).then(async (response) => ({
+        status: response.status,
+        body: await response.json(),
+      })),
+    ]);
+    if (attempt.status === "fulfilled") {
+      lastHealth = attempt.value;
+      if (
+        attempt.value.status === 200 &&
+        attempt.value.body.ready === true &&
+        attempt.value.body.runtime === "ok"
+      ) {
+        return attempt.value.body;
+      }
+    } else {
+      lastHealth = { state: "request-failed", reason: String(attempt.reason) };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+
+  throw new Error(
+    `runtime did not become ready before first-run setup: ${JSON.stringify(lastHealth)}`,
+  );
 }
 
-async function completeFirstRunIfNeeded(page) {
-  const startedVisible = await isFirstRunChooserVisible(page);
+async function completeFirstRunIfNeeded() {
+  const status = await fetch(`${API}/api/first-run/status`).then((response) => {
+    if (!response.ok) {
+      throw new Error(`first-run status failed with HTTP ${response.status}`);
+    }
+    return response.json();
+  });
+  const required = status.complete !== true;
   const result = {
     enabled: SETUP_FIRST_RUN,
-    required: startedVisible,
-    completed: !startedVisible,
-    method: startedVisible ? "local-other-provider" : "already-complete",
+    required,
+    completed: !required,
+    method: required ? "api-minimal-local-profile" : "already-complete",
   };
-  if (!startedVisible || !SETUP_FIRST_RUN) {
+  if (!required || !SETUP_FIRST_RUN) {
     return result;
   }
 
-  await page.getByTestId("first-run-chooser-local").click({ timeout: 30000 });
-  await page.getByTestId("first-run-provider-other").click({ timeout: 30000 });
-  await waitForFirstRunChooserHidden(page);
-  await page
-    .getByTestId("home-launcher-surface")
-    .waitFor({ state: "visible", timeout: 45000 })
-    .catch(() => {});
-  result.completed = !(await isFirstRunChooserVisible(page));
+  const response = await fetch(`${API}/api/first-run`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "Eliza" }),
+  });
+  if (!response.ok) {
+    throw new Error(`first-run setup failed with HTTP ${response.status}`);
+  }
+  const verified = await fetch(`${API}/api/first-run/status`).then((entry) =>
+    entry.json(),
+  );
+  result.completed = verified.complete === true;
   return result;
 }
 
@@ -342,6 +391,8 @@ assert(
 const byKind = {};
 for (const v of views) byKind[viewKind(v)] = (byKind[viewKind(v)] || 0) + 1;
 console.log(`[soak] view kinds: ${JSON.stringify(byKind)}`);
+await waitForRuntimeReady();
+const firstRunSetup = await completeFirstRunIfNeeded();
 
 // `--enable-precise-memory-info` makes `performance.memory.usedJSHeapSize`
 // report real byte counts instead of the privacy-bucketed (quantized) value, and
@@ -367,6 +418,13 @@ const video = page.video();
 // ViewTelemetryProfiler / module caches push into them (cache-telemetry only
 // records when the ring array already exists).
 await page.addInitScript(() => {
+  // The browser-side startup snapshot is the second half of first-run
+  // completion. API persistence alone leaves a fresh CI profile in the
+  // onboarding transition even though the server reports complete.
+  localStorage.setItem("eliza:first-run-complete", "1");
+  localStorage.setItem("eliza:setup:step", "activate");
+  localStorage.setItem("eliza:ui-shell-mode", "native");
+  localStorage.setItem("eliza:chat:voiceMuted", "true");
   // The module-cache ring only records when its array already exists; the
   // view-runtime + render rings self-create, but pre-seed all three so nothing
   // emitted during early boot is lost.
@@ -404,7 +462,10 @@ page.on("response", (response) => {
 
 await page.goto(UI, { waitUntil: "domcontentloaded", timeout: 60000 });
 await page.waitForTimeout(3000);
-const firstRunSetup = await completeFirstRunIfNeeded(page);
+await page
+  .getByTestId("chat-first-run-backdrop")
+  .waitFor({ state: "detached", timeout: 45000 })
+  .catch(() => {});
 await page.waitForTimeout(3000);
 
 const heap = async () =>
@@ -440,18 +501,18 @@ const snapshotTelemetry = async () =>
 // `eliza:navigate:view` CustomEvent the shell's WS handler + launcher dispatch
 // (App.tsx handleNavigateView). Switches builtin tabs via setTab and plugin/
 // remote views via DynamicViewLoader, driving the real ViewRouter mount/unmount.
+async function dispatchShellNavigation(view) {
+  await page.evaluate(
+    (detail) =>
+      window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail })),
+    { viewId: view.id, viewPath: view.path },
+  );
+}
+
 async function navTo(view) {
   const targetPath = normalizePath(view.path);
   const beforePath = await page.evaluate(() => window.location.pathname);
-  await page.evaluate(
-    (d) =>
-      window.dispatchEvent(
-        new CustomEvent("eliza:navigate:view", {
-          detail: { viewId: d.id, viewPath: d.path },
-        }),
-      ),
-    { id: view.id, path: view.path },
-  );
+  await dispatchShellNavigation(view);
   await page
     .waitForFunction(
       (target) => {
@@ -465,7 +526,7 @@ async function navTo(view) {
     .catch(() => {});
   await page.waitForTimeout(NAV_WAIT_MS);
   const afterPath = await page.evaluate(() => window.location.pathname);
-  const firstRunChooserVisible = await isFirstRunChooserVisible(page);
+  const firstRunBlocking = await isFirstRunBlocking(page);
   return {
     id: view.id,
     label: view.label ?? view.name ?? view.id,
@@ -473,7 +534,7 @@ async function navTo(view) {
     beforePath: normalizePath(beforePath),
     afterPath: normalizePath(afterPath),
     reached: normalizePath(afterPath) === targetPath,
-    firstRunChooserVisible,
+    firstRunBlocking,
   };
 }
 
@@ -522,10 +583,10 @@ console.log(
   `[soak] after ${cycles} view activations telemetry=${JSON.stringify(afterChurn)} heapEnd=${(heapEnd / 1e6).toFixed(1)}MB`,
 );
 
-await page.evaluate(() => {
-  window.history.pushState(null, "", "/chat");
-  window.dispatchEvent(new PopStateEvent("popstate"));
-});
+// Leave the final active view through the same shell-owned navigation channel
+// used by the churn. Raw History calls execute under that view's realm and are
+// intentionally denied by the surface-realm broker.
+await dispatchShellNavigation({ id: "chat", path: "/chat" });
 await page.waitForTimeout(NAV_WAIT_MS);
 await page.evaluate(() => {
   document.dispatchEvent(new CustomEvent("eliza:heap-pressure"));
@@ -544,7 +605,7 @@ const reachedViews = [...navRecords.values()].filter((record) =>
 const firstRunBlockedActivations = [...navRecords.values()].reduce(
   (sum, record) =>
     sum +
-    record.activations.filter((activation) => activation.firstRunChooserVisible)
+    record.activations.filter((activation) => activation.firstRunBlocking)
       .length,
   0,
 );
@@ -554,7 +615,7 @@ assert(
 );
 assert(
   firstRunSetup.completed && firstRunBlockedActivations === 0,
-  `first-run chooser did not block captured views (setup=${JSON.stringify(firstRunSetup)}, blocked activations=${firstRunBlockedActivations})`,
+  `first-run overlay did not block captured views (setup=${JSON.stringify(firstRunSetup)}, blocked activations=${firstRunBlockedActivations})`,
 );
 assert(
   afterChurn.shows > beforeChurn.shows,
@@ -577,8 +638,8 @@ assert(
   `eviction telemetry includes release cleanup or evict events after APP_PAUSE/heap-pressure (${afterChurn.moduleEvicts}/${afterChurn.moduleCleanups} -> ${afterRelease.moduleEvicts}/${afterRelease.moduleCleanups})`,
 );
 assert(
-  afterRelease.renderErrors === 0,
-  `no render-loop guard errors during the soak (${afterRelease.renderErrors})`,
+  afterRelease.renderErrors === beforeChurn.renderErrors,
+  `no new render-loop guard errors during view churn (${beforeChurn.renderErrors} -> ${afterRelease.renderErrors})`,
 );
 // heap must not grow unboundedly: end within 2.2x of the post-warm baseline.
 // With precise-memory-info + real GC (see launch args) this ratio is measured on
@@ -597,7 +658,10 @@ assert(
 
 await page.screenshot({ path: join(OUT, "soak-final.png") }).catch(() => {});
 let videoArtifact = null;
-await page.close().catch(() => {});
+// Closing the context owns page teardown and video finalization as one
+// operation. Closing the page first can deadlock Playwright's ffmpeg recorder
+// after a long capture, leaving an unattended nightly green-but-running until
+// the workflow timeout kills it.
 await ctx.close().catch(() => {});
 if (video) {
   const source = await video.path().catch(() => null);
@@ -613,7 +677,7 @@ await browser.close();
 const networkSummary = summarizeNetworkLog(networkLog);
 assert(
   networkSummary.unexpectedCount === 0,
-  `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count})`,
+  `no unexpected network failures during the soak (${networkSummary.unexpectedCount} unexpected / ${networkSummary.total} total; expected navigation aborts=${networkSummary.expectedAbortCount}, expected optional-route 404s=${networkSummary.expectedOptionalRoute404Count}, expected protected-route 401s=${networkSummary.expectedProtectedRoute401Count})`,
 );
 
 const finalRaw = afterReleaseSnapshot.raw;

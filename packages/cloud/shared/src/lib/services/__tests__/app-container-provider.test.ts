@@ -49,6 +49,7 @@ describe("AppContainerProvider.provision", () => {
     const { calls, ssh } = recordingSsh();
     const provider = new AppContainerProvider({
       ssh,
+      nodeId: "node-1",
       allocateHostPort: async () => 49001,
       egressProxyUrl: "http://egress-gw:3128",
     });
@@ -78,7 +79,11 @@ describe("AppContainerProvider.provision", () => {
 
   test("removes any stale container by name BEFORE docker create (redeploy self-heal)", async () => {
     const { calls, ssh } = recordingSsh();
-    const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 49001 });
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
 
     await provider.provision({
       appId: APP_ID,
@@ -105,7 +110,11 @@ describe("AppContainerProvider.provision", () => {
         return "";
       },
     };
-    const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 49001 });
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
     const result = await provider.provision({
       appId: APP_ID,
       containerName: "app-nubilio",
@@ -129,6 +138,7 @@ describe("AppContainerProvider.provision", () => {
     };
     const provider = new AppContainerProvider({
       ssh,
+      nodeId: "node-1",
       allocateHostPort: async () => ports[i++] ?? 39999,
     });
     const result = await provider.provision({
@@ -140,9 +150,35 @@ describe("AppContainerProvider.provision", () => {
     expect(result.hostPort).toBe(31000);
   });
 
+  test("a start failure removes the created container before propagating", async () => {
+    const calls: string[] = [];
+    const ssh: AppContainerSsh = {
+      async exec(command) {
+        calls.push(command);
+        if (command.startsWith("docker create")) return "cid";
+        if (command.startsWith("docker start")) throw new Error("start failed");
+        return "";
+      },
+    };
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
+
+    await expect(
+      provider.provision({ appId: APP_ID, containerName: "app-nubilio", input: INPUT }),
+    ).rejects.toThrow("start failed");
+    expect(calls.filter((command) => command === "docker rm -f 'app-nubilio'")).toHaveLength(2);
+  });
+
   test("provision with DATABASE_URL + POSTGRES_URL stands up the ambassador + rewrites BOTH", async () => {
     const { calls, ssh } = recordingSsh();
-    const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 49002 });
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49002,
+    });
 
     await provider.provision({
       appId: APP_ID,
@@ -176,7 +212,11 @@ describe("AppContainerProvider.provision", () => {
 
   test("lifecycle verbs issue the expected docker commands", async () => {
     const { calls, ssh } = recordingSsh();
-    const provider = new AppContainerProvider({ ssh, allocateHostPort: async () => 1 });
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 1,
+    });
     await provider.delete("app-x");
     await provider.restart("app-x");
     await provider.logs("app-x", 50);

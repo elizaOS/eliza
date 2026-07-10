@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import {
   getBunFailCounts,
+  hasBunFailureMarker,
+  hasBunPassRecord,
   hasBunRunSummary,
   shouldNormalizeBunStatus99,
 } from "./test-cloud-run-helpers.mjs";
@@ -20,6 +22,16 @@ const githubLogOutput = `
 `;
 const ansiOutput =
   "\u001b[32m 0 fail\u001b[39m\n\u001b[32mRan 1 test across 1 file. [1ms]\u001b[39m\n";
+const dirtyGreenOutput = `
+(pass) stableSerialize > serializes object keys in deterministic order [1.00ms]
+(pass) stableSerialize > rejects circular arrays and objects with a deterministic error [1.00ms]
+`;
+const importFailureOutput = `
+# Unhandled error between tests
+-------------------------------
+error: Cannot find package 'ioredis' from '/repo/src/redis.ts'
+-------------------------------
+`;
 
 assert.deepEqual(getBunFailCounts(greenOutput), [0]);
 assert.equal(hasBunRunSummary(greenOutput), true);
@@ -27,6 +39,8 @@ assert.deepEqual(getBunFailCounts(githubLogOutput), [0]);
 assert.equal(hasBunRunSummary(githubLogOutput), true);
 assert.deepEqual(getBunFailCounts(ansiOutput), [0]);
 assert.equal(hasBunRunSummary(ansiOutput), true);
+assert.equal(hasBunPassRecord(dirtyGreenOutput), true);
+assert.equal(hasBunFailureMarker(importFailureOutput), true);
 assert.equal(
   shouldNormalizeBunStatus99({
     status: 99,
@@ -34,6 +48,24 @@ assert.equal(
     output: greenOutput,
   }),
   true,
+);
+
+assert.equal(
+  shouldNormalizeBunStatus99({
+    status: 1,
+    signal: null,
+    output: dirtyGreenOutput,
+  }),
+  true,
+);
+
+assert.equal(
+  shouldNormalizeBunStatus99({
+    status: 1,
+    signal: null,
+    output: importFailureOutput,
+  }),
+  false,
 );
 
 assert.equal(
@@ -47,7 +79,7 @@ assert.equal(
 
 assert.equal(
   shouldNormalizeBunStatus99({
-    status: 1,
+    status: 2,
     signal: null,
     output: greenOutput,
   }),

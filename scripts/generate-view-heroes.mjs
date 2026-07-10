@@ -154,13 +154,6 @@ const views = [
     icon: VIEW_HERO_ICONS.vectorBrowser,
   },
   {
-    out: "plugins/plugin-social-alpha/assets/hero.svg",
-    id: "social-alpha",
-    label: "Social Alpha",
-    hue: 130,
-    icon: VIEW_HERO_ICONS.socialAlpha,
-  },
-  {
     out: "plugins/plugin-todos/assets/hero.svg",
     id: "todos",
     label: "Todos",

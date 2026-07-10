@@ -76,5 +76,5 @@ node scripts/training-harvest/harvest-runner.mjs \
 ```
 
 Prereq in a fresh worktree: generate the i18n keyword data once —
-`node packages/shared/scripts/generate-keywords.mjs --target ts` (gitignored
+`node packages/shared/scripts/generate-keywords.mjs` (gitignored
 build artifact; the CLI imports `packages/core/src/i18n/generated/`).
