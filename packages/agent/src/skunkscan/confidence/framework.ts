@@ -5,6 +5,12 @@ export type ConfidenceInput = {
   reasons: string[];
 };
 
+export type ConfidenceAnalysis = {
+  score: number;
+  level: ConfidenceLevel;
+  reasons: string[];
+};
+
 export function clampConfidenceScore(score: number): number {
   return Math.max(0, Math.min(100, score));
 }
@@ -45,5 +51,21 @@ export function buildConfidenceInput(
   return {
     score: clampConfidenceScore(score),
     reasons,
+  };
+}
+
+export function buildConfidenceAnalysis(
+  items: {
+    condition: boolean;
+    score: number;
+    reason: string;
+  }[],
+): ConfidenceAnalysis {
+  const input = buildConfidenceInput(items);
+
+  return {
+    score: input.score,
+    level: confidenceLevelFromScore(input.score),
+    reasons: input.reasons,
   };
 }
