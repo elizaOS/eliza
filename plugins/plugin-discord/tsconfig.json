@@ -46,6 +46,7 @@
 		"**/*.test.tsx",
 		"**/*.e2e.test.ts",
 		"test/live/**",
+		"vitest.config.ts",
 		"vitest.harness.config.ts"
 	]
 }
