@@ -161,4 +161,39 @@ describe("ChatVoiceStatusBar", () => {
     render(<ChatVoiceStatusBar status="speaking" />);
     expect(screen.queryByTestId("chat-voice-audio-unlock")).toBeNull();
   });
+
+  it("shows a Live pill when a realtime session is active", () => {
+    render(<ChatVoiceStatusBar status="listening" realtimeActive />);
+    const live = screen.getByTestId("chat-voice-realtime-live");
+    expect(live.textContent).toContain("Live");
+    // Paused pill absent while running.
+    expect(screen.queryByTestId("chat-voice-realtime-paused")).toBeNull();
+  });
+
+  it("shows a Paused pill (not the Live pill) when the realtime session is paused", () => {
+    render(
+      <ChatVoiceStatusBar status="listening" realtimeActive realtimePaused />,
+    );
+    expect(screen.getByTestId("chat-voice-realtime-paused").textContent).toContain(
+      "Paused",
+    );
+    expect(screen.queryByTestId("chat-voice-realtime-live")).toBeNull();
+  });
+
+  it("omits realtime pills entirely on the batch path (realtimeActive=false)", () => {
+    render(<ChatVoiceStatusBar status="listening" />);
+    expect(screen.queryByTestId("chat-voice-realtime-live")).toBeNull();
+    expect(screen.queryByTestId("chat-voice-realtime-paused")).toBeNull();
+  });
+
+  it("surfaces an actionable realtime error message as a danger pill", () => {
+    render(
+      <ChatVoiceStatusBar
+        status="idle"
+        realtimeErrorMessage="Voice connection dropped. Tap to try again."
+      />,
+    );
+    const err = screen.getByTestId("chat-voice-realtime-error");
+    expect(err.textContent).toContain("Voice connection dropped");
+  });
 });
