@@ -62,7 +62,7 @@ import {
   getResponseHandlerModel,
   getSmallModel,
 } from "../utils/config";
-import { emitModelUsageEvent } from "../utils/events";
+import { emitModelUsageEvent, extractCacheTokens } from "../utils/events";
 
 const RESPONSES_ROUTED_PREFIXES = ["openai/", "anthropic/"] as const;
 const NO_SAMPLING_MODEL_PATTERNS = ["o1", "o3", "o4", "gpt-5", "gpt-5-mini"] as const;
@@ -835,6 +835,10 @@ function buildNativeTextResult(result: {
     cachedInputTokens?: number;
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
+    // Real location of cache-write counts on `ai@^6` results — see
+    // `extractCacheTokens` in utils/events.ts for why the fields above alone
+    // under-report.
+    inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number };
   };
 }): NativeGenerateTextResult {
   const inputTokens = result.usage?.inputTokens ?? result.usage?.promptTokens ?? 0;
@@ -848,8 +852,7 @@ function buildNativeTextResult(result: {
     };
   }
 
-  const cacheRead = result.usage.cacheReadInputTokens ?? result.usage.cachedInputTokens;
-  const cacheCreation = result.usage.cacheCreationInputTokens;
+  const { cacheRead, cacheCreation } = extractCacheTokens(result.usage);
 
   const usage: NormalizedUsage = {
     promptTokens: inputTokens,
