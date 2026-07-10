@@ -90,6 +90,22 @@ describe("navigation tabFromPath", () => {
   });
 });
 
+describe("ambient tab is routable but flag-gated in the nav tiles", () => {
+  it("keeps /ambient routable via TAB_PATHS so deep links + parity guards resolve", () => {
+    expect(TAB_PATHS.ambient).toBe("/ambient");
+    expect(tabFromPath("/ambient")).toBe("ambient");
+  });
+
+  it("hides the ambient tile from ALL_TAB_GROUPS while the opt-in flag is off (default)", () => {
+    // VITE_ENABLE_AMBIENT is unset in the test env → default OFF, so the
+    // always-listening tile must not appear in the launcher groups.
+    const ambientGroup = ALL_TAB_GROUPS.find((group) =>
+      group.tabs.includes("ambient"),
+    );
+    expect(ambientGroup).toBeUndefined();
+  });
+});
+
 describe("navigation prefix sub-tab resolution is registry-derived", () => {
   // Built-in `/apps/<sub>` and `/character/<sub>` routes must resolve to the
   // tab declared for that exact path in TAB_PATHS, so the routing table never

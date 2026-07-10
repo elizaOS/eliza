@@ -18,6 +18,9 @@ import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { Input } from "../ui/input";
 import { AdvancedToggle } from "./AdvancedToggle";
 import { useAdvancedSettingsEnabled } from "./AdvancedToggle.hooks";
+import { AMBIENT_ENABLED } from "../../ambient/ambient-flag";
+import { navigateBrowserPath } from "../../app-navigate-view";
+import { AmbientSettingsCard } from "./AmbientSettingsCard";
 import { PendantSettingsCard } from "./PendantSettingsCard";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { VoiceProfileSection } from "./VoiceProfileSection";
@@ -200,6 +203,12 @@ export function VoiceSection({
         </SettingsGroup>
 
         <PendantSettingsCard />
+
+        {AMBIENT_ENABLED ? (
+          <AmbientSettingsCard
+            onOpen={() => navigateBrowserPath("/ambient")}
+          />
+        ) : null}
 
         <SettingsGroup
           title={t("voicesection.chatGroupTitle", {

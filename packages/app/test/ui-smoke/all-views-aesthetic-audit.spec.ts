@@ -124,6 +124,7 @@ const BUILTIN_TAB_PATHS: Record<string, string> = {
   browser: "/browser",
   stream: "/stream",
   "pendant-transcript": "/pendant/transcript",
+  ambient: "/ambient",
   apps: "/apps",
   views: "/views",
   character: "/character",

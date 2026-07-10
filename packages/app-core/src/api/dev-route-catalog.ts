@@ -392,6 +392,18 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "ambient",
+    path: "/ambient",
+    label: "Ambient",
+    group: "Ambient",
+    visibility: "all",
+    // Opt-in surface: the nav tile only shows when VITE_ENABLE_AMBIENT is set,
+    // but the route is always addressable (mirrors navigation TAB_PATHS).
+    featureFlag: "VITE_ENABLE_AMBIENT",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "automations",
     path: "/automations",
     label: "Automations",

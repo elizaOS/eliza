@@ -112,6 +112,7 @@ import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import { cn } from "./lib/utils";
 import {
+  AMBIENT_NAV_ENABLED,
   APPS_ENABLED,
   getAppSlugFromPath,
   getWindowNavigationPath,
@@ -292,6 +293,10 @@ const StreamView = lazyNamedView(
 const PendantTranscriptView = lazyNamedView(
   () => import("./components/pages/PendantTranscriptView"),
   "PendantTranscriptView",
+);
+const AmbientView = lazyNamedView(
+  () => import("./components/pages/AmbientView"),
+  "AmbientView",
 );
 // Route-level page views — lazy-split out of the main chunk. Each renders
 // inside the LazyViewBoundary Suspense below, and none is imported statically
@@ -1382,6 +1387,12 @@ function buildStaticTabRenderers(): Record<
     browser: () => <BrowserWorkspaceView />,
     stream: () => <StreamView />,
     "pendant-transcript": () => <PendantTranscriptView />,
+    // Ambient is opt-in: even though /ambient stays routable for parity/tests,
+    // the always-listening surface must NOT mount when the flag is off, or
+    // direct navigation would bypass the default-off gate. Render the
+    // unavailable fallback instead when disabled.
+    ambient: () =>
+      AMBIENT_NAV_ENABLED ? <AmbientView /> : <ViewUnavailableFallback />,
     tasks: wrap(<TasksPageView />),
     automations: () => <AutomationsFeed />,
     plugins: withHeader("plugins", <PluginsPageView />),

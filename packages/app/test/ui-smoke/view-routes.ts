@@ -24,6 +24,7 @@ export const VIEW_ROUTES: readonly ViewRoute[] = [
   { id: "browser", path: "/browser" },
   { id: "stream", path: "/stream" },
   { id: "pendant-transcript", path: "/pendant/transcript" },
+  { id: "ambient", path: "/ambient" },
   { id: "apps", path: "/apps" },
   { id: "views", path: "/views" },
   { id: "character", path: "/character" },

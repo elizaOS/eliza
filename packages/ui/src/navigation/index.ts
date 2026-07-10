@@ -13,6 +13,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
+  Ear,
   LayoutGrid,
   Monitor,
   Phone,
@@ -44,6 +45,18 @@ export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
 /** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
 export const STREAM_ENABLED = true;
 
+/**
+ * Ambient (always-listening) capture is a privacy-loaded surface that ships OFF
+ * by default; the nav tile only appears when the operator opts in via
+ * `VITE_ENABLE_AMBIENT`. The route stays addressable regardless (it is a real
+ * TAB_PATHS entry) so deep links resolve, but the tile is flag-gated. Mirrors
+ * the `AMBIENT_ENABLED` flag in packages/ui/src/ambient/ambient-flag.ts.
+ */
+export const AMBIENT_NAV_ENABLED = viteEnvFlagEnabled(
+  "VITE_ENABLE_AMBIENT",
+  false,
+);
+
 /** Built-in tab identifiers. */
 export type BuiltinTab =
   | "chat"
@@ -56,6 +69,7 @@ export type BuiltinTab =
   | "browser"
   | "stream"
   | "pendant-transcript"
+  | "ambient"
   | "apps"
   | "views"
   | "character"
@@ -278,7 +292,7 @@ export function getWindowNavigationPath(
     : location.pathname;
 }
 
-export const ALL_TAB_GROUPS: TabGroup[] = [
+const RAW_TAB_GROUPS: TabGroup[] = [
   {
     // AOSP ElizaOS-fork only — the native dialer/SMS/contact tiles are gated to
     // the fork in the launcher (see launcher-curation LAUNCHER_AOSP_ONLY_IDS).
@@ -335,6 +349,15 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     icon: ScrollText,
     description: "Realtime transcript from the omi pendant",
   },
+  // Ambient tile is flag-gated (default OFF). When disabled it is filtered out
+  // below so the always-listening surface never appears unbidden; the /ambient
+  // route stays addressable via TAB_PATHS for direct navigation + tests.
+  {
+    label: "Ambient",
+    tabs: ["ambient"],
+    icon: Ear,
+    description: "Always-listening capture (opt-in)",
+  },
   {
     // One consolidated surface — workflows, triggers, and scheduled items share
     // the Automations feed. `triggers`/`tasks` stay routable aliases (TAB_PATHS).
@@ -350,6 +373,16 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "Configuration and preferences",
   },
 ];
+
+/**
+ * Navigation tile groups. The Ambient tile is dropped unless the opt-in flag is
+ * set, so the always-listening surface never appears in the launcher by
+ * default. The /ambient route stays in TAB_PATHS regardless for direct
+ * navigation + the route parity guards.
+ */
+export const ALL_TAB_GROUPS: TabGroup[] = RAW_TAB_GROUPS.filter((group) =>
+  group.tabs.includes("ambient") ? AMBIENT_NAV_ENABLED : true,
+);
 
 // Canonical settings-section metadata (pure data) re-exported here so
 // non-renderer consumers (e.g. app-core's dev-route-catalog parity test) can
@@ -369,6 +402,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   browser: "/browser",
   stream: "/stream",
   "pendant-transcript": "/pendant/transcript",
+  ambient: "/ambient",
   apps: "/apps",
   views: "/views",
   character: "/character",
@@ -671,6 +705,8 @@ export function titleForTab(tab: Tab): string {
       return "Stream";
     case "pendant-transcript":
       return "Pendant Transcript";
+    case "ambient":
+      return "Ambient";
     default:
       // Dynamic plugin tabs — capitalize the tab ID as a fallback title.
       return tab.charAt(0).toUpperCase() + tab.slice(1).replace(/-/g, " ");
