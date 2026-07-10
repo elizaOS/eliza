@@ -140,6 +140,16 @@ const MAX_WAV_PCM_BYTES = 64 * 1024 * 1024;
 const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
 
 /**
+ * PCM byte cap for a Cartesia synthesis. The synthesis buffers frames + a
+ * merged copy + the WAV in Worker memory, so the cap must reflect the real
+ * ceiling, not a generic 64 MiB: MAX_TEXT_LENGTH (5000 chars) synthesizes to
+ * roughly 3-5 minutes of 24 kHz 16-bit mono ≈ 9-14 MiB. 16 MiB covers that
+ * with headroom; anything larger indicates a runaway stream and falls back to
+ * ElevenLabs (the synthesis throws rather than truncating).
+ */
+const MAX_CARTESIA_PCM_BYTES = 16 * 1024 * 1024;
+
+/**
  * POST /api/v1/voice/tts
  * Converts text to speech using the voice synthesis service.
  * Supports custom user voices and tracks usage statistics.
@@ -514,7 +524,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             env.CARTESIA_DEFAULT_VOICE_ID?.trim() || DEFAULT_CARTESIA_VOICE_ID,
           text,
           sampleRate: WAV_PCM_SAMPLE_RATE,
-          maxPcmBytes: MAX_WAV_PCM_BYTES,
+          maxPcmBytes: MAX_CARTESIA_PCM_BYTES,
         });
         wav = cartesia.wav;
         synthesisEngine = "cartesia";

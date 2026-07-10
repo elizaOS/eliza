@@ -5,8 +5,8 @@
  * provider error / silent socket surfaces as a throw so the route can fall back.
  */
 
-import type { CartesiaWebSocketFactory } from "@/lib/services/cartesia-sonic-tts";
 import { describe, expect, it } from "vitest";
+import type { CartesiaWebSocketFactory } from "@/lib/services/cartesia-sonic-tts";
 import { synthesizeCartesiaWav } from "../cartesia-synthesis";
 
 /** In-memory Cartesia socket: on the generation request, replay frames+done. */
@@ -111,5 +111,73 @@ describe("synthesizeCartesiaWav", () => {
         webSocketFactory: factory,
       }),
     ).rejects.toThrow(/no audio/);
+  });
+
+  it("throws instead of returning truncated audio when the PCM cap is exceeded", async () => {
+    const factory = scriptedFactory((emit) => {
+      emit({ type: "chunk", data: b64([1, 0, 2, 0]) });
+      // Second frame pushes past the 6-byte cap — the synthesis must cancel
+      // and throw, never serve a silently shortened WAV.
+      emit({ type: "chunk", data: b64([3, 0, 4, 0]) });
+      emit({ type: "done", done: true });
+    });
+
+    await expect(
+      synthesizeCartesiaWav({
+        apiKey: "k",
+        voiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+        text: "hello",
+        sampleRate: 16000,
+        maxPcmBytes: 6,
+        webSocketFactory: factory,
+      }),
+    ).rejects.toThrow(/exceeded/);
+  });
+
+  it("times out (and throws) when the stream never completes", async () => {
+    // Script emits one frame and then goes silent: no done, no close — the
+    // half-open-socket case the deadline exists for.
+    const factory: CartesiaWebSocketFactory = () => {
+      const open: Array<() => void> = [];
+      const message: Array<(e: { readonly data: unknown }) => void> = [];
+      const close: Array<(e: { readonly code?: number }) => void> = [];
+      const socket = {
+        readyState: 1,
+        send() {
+          queueMicrotask(() => {
+            for (const l of message)
+              l({
+                data: JSON.stringify({ type: "chunk", data: b64([1, 0]) }),
+              });
+          });
+        },
+        close() {
+          for (const l of close) l({ code: 1000 });
+        },
+        addEventListener(type: string, l: unknown) {
+          if (type === "open") open.push(l as () => void);
+          else if (type === "message")
+            message.push(l as (e: { readonly data: unknown }) => void);
+          else if (type === "close")
+            close.push(l as (e: { readonly code?: number }) => void);
+        },
+      };
+      queueMicrotask(() => {
+        for (const l of open) l();
+      });
+      return socket as never;
+    };
+
+    await expect(
+      synthesizeCartesiaWav({
+        apiKey: "k",
+        voiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+        text: "hello",
+        sampleRate: 16000,
+        maxPcmBytes: 1_000_000,
+        webSocketFactory: factory,
+        timeoutMs: 80,
+      }),
+    ).rejects.toThrow(/timed out/);
   });
 });

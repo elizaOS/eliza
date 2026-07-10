@@ -125,12 +125,20 @@ export interface CartesiaWavResult {
   readonly totalMs: number;
 }
 
+/** Wall-clock ceiling for one synthesis. Measured completions run ~0.6-0.9s;
+ * this exists so a half-open socket (no `done`, no `close`) cannot pin the
+ * request open — on expiry the stream is cancelled and the caller falls back
+ * to ElevenLabs. */
+const DEFAULT_SYNTHESIS_TIMEOUT_MS = 15_000;
+
 /**
  * Synthesize `text` with Cartesia Sonic and return a finished 16-bit PCM WAV.
  * Buffers all audio frames (a short assistant reply is a few dozen KB) up to
- * `maxPcmBytes`, then wraps them in a WAV header. Throws on provider error or
- * when the socket closes before any audio — the caller falls back to
- * ElevenLabs so a Cartesia outage never drops voice.
+ * `maxPcmBytes`, then wraps them in a WAV header. Throws — so the caller falls
+ * back to ElevenLabs and never serves broken speech — on provider error, a
+ * socket that closes before any audio, audio exceeding `maxPcmBytes`
+ * (truncated speech must not be returned as success), or the synthesis
+ * deadline expiring.
  */
 export async function synthesizeCartesiaWav(args: {
   apiKey: string;
@@ -139,9 +147,8 @@ export async function synthesizeCartesiaWav(args: {
   sampleRate: number;
   maxPcmBytes: number;
   webSocketFactory?: CartesiaWebSocketFactory;
-  now?: () => number;
+  timeoutMs?: number;
 }): Promise<CartesiaWavResult> {
-  const now = args.now ?? (() => Date.now());
   const adapter = new CartesiaSonicTtsAdapter({
     apiKey: args.apiKey,
     voiceId: args.voiceId,
@@ -154,20 +161,25 @@ export async function synthesizeCartesiaWav(args: {
   const frames: Uint8Array[] = [];
   let pcmBytes = 0;
   let firstAudioMs = -1;
-  let capped = false;
+  let overflowed = false;
   let providerError: Error | null = null;
-  const started = now();
+  const started = Date.now();
 
   const stream = adapter.createStream(
     { contextId: "cloud-tts" },
     {
       onFirstAudio: () => {
-        if (firstAudioMs < 0) firstAudioMs = now() - started;
+        if (firstAudioMs < 0) firstAudioMs = Date.now() - started;
       },
       onAudioFrame: (event) => {
-        if (capped) return;
+        if (overflowed) return;
         if (pcmBytes + event.bytes.byteLength > args.maxPcmBytes) {
-          capped = true;
+          // Fail loud, not truncated: drop the buffered frames immediately
+          // (free the memory) and cancel the stream — a partial WAV played to
+          // the user is worse than the ElevenLabs fallback.
+          overflowed = true;
+          frames.length = 0;
+          stream.cancel("pcm byte cap exceeded");
           return;
         }
         frames.push(event.bytes);
@@ -182,9 +194,31 @@ export async function synthesizeCartesiaWav(args: {
   );
 
   stream.sendPhrase({ text: args.text, continueContext: false, flush: true });
-  await stream.closed;
+
+  const timeoutMs = args.timeoutMs ?? DEFAULT_SYNTHESIS_TIMEOUT_MS;
+  let timedOut = false;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  await Promise.race([
+    stream.closed,
+    new Promise<void>((resolve) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        stream.cancel("synthesis deadline exceeded");
+        resolve();
+      }, timeoutMs);
+    }),
+  ]);
+  if (timeoutId !== null) clearTimeout(timeoutId);
 
   if (providerError) throw providerError;
+  if (timedOut) {
+    throw new Error(`Cartesia synthesis timed out after ${timeoutMs}ms`);
+  }
+  if (overflowed) {
+    throw new Error(
+      `Cartesia audio exceeded the ${args.maxPcmBytes}-byte PCM cap`,
+    );
+  }
   if (pcmBytes === 0) {
     throw new Error("Cartesia returned no audio");
   }
@@ -199,6 +233,6 @@ export async function synthesizeCartesiaWav(args: {
     wav: pcm16ToWav(pcm, args.sampleRate),
     pcmBytes,
     firstAudioMs,
-    totalMs: now() - started,
+    totalMs: Date.now() - started,
   };
 }
