@@ -828,32 +828,24 @@ PY`;
 }
 
 /**
- * Cap for the boot-diagnostics tail persisted into `agent_sandboxes.error_message`
- * on a health-check timeout. The full 12 KB tail still goes to the logger; the
- * DB/UI copy is bounded so one wedged provision cannot bloat the row.
- */
-const HEALTH_TIMEOUT_ERROR_DIAGNOSTICS_CHARS = 2_000;
-
-/**
- * Classify a health-check timeout from the `docker inspect` line embedded in the
- * collected diagnostics ("state=<s> health=<h> exit=<n> error=<e>") into a
- * one-line reason for `error_message`. Returns undefined when that line is
- * absent (e.g. the inspect itself failed) so the caller keeps the generic
- * message rather than inventing a state.
+ * Classify a health-check timeout from the allowlisted fields in the dedicated
+ * `docker inspect` section. Container-controlled logs and Docker's free-text
+ * error field remain restricted to backend logs because they may contain
+ * credentials or user data.
  */
 export function classifyHealthTimeoutDetail(diagnostics: string): string | undefined {
-  const match = diagnostics.match(/state=(\S*)\s+health=(\S*)\s+exit=(\S*)\s+error=(.*)$/m);
+  const match = diagnostics.match(
+    /^--- inspect ---\r?\nstate=(created|running|paused|restarting|removing|exited|dead) health=(starting|healthy|unhealthy)? exit=(\d+) error=.*$/m,
+  );
   if (!match) return undefined;
-  const [, state, health, exit, rawError] = match;
-  const error = rawError?.trim();
-  const errorPart = error ? ` error=${error}` : "";
-  if (state && state !== "running") {
-    return `container not running (state=${state} exit=${exit})${errorPart}`;
+  const [, state, health, exit] = match;
+  if (state !== "running") {
+    return `container not running (state=${state} exit=${exit})`;
   }
   if (health && health !== "healthy") {
-    return `container running but health=${health}${errorPart}`;
+    return `container running but health=${health}`;
   }
-  return `container running (state=${state || "unknown"} health=${health || "none"})${errorPart}`;
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -2148,7 +2140,6 @@ export class DockerSandboxProvider implements SandboxProvider {
       current.sshUser,
     );
     let detail: string | undefined;
-    let diagnosticsTail: string | undefined;
     try {
       const diagnostics = await ssh.exec(
         [
@@ -2167,9 +2158,9 @@ export class DockerSandboxProvider implements SandboxProvider {
         diagnostics: diagnostics.slice(-12_000),
       });
       detail = classifyHealthTimeoutDetail(diagnostics);
-      diagnosticsTail =
-        diagnostics.slice(-HEALTH_TIMEOUT_ERROR_DIAGNOSTICS_CHARS).trim() || undefined;
     } catch (diagnosticsError) {
+      // error-policy:J4 supplemental diagnostics may degrade to the explicit
+      // generic not-ready failure; they never turn the failed probe into success.
       logger.warn("[docker-sandbox] Failed to collect health timeout diagnostics", {
         containerName: current.containerName,
         error:
@@ -2177,10 +2168,8 @@ export class DockerSandboxProvider implements SandboxProvider {
       });
     }
     // We reached the container at least once but it never answered healthy — a
-    // genuine not-ready verdict (terminal), not a transport false-negative. Carry
-    // the classified reason + boot-log tail so the caller persists WHY into
-    // error_message instead of an opaque "Sandbox health check timed out" (#13406).
-    return { ready: false, verdict: "not_ready", detail, diagnostics: diagnosticsTail };
+    // genuine not-ready verdict (terminal), not a transport false-negative.
+    return { ready: false, verdict: "not_ready", detail };
   }
 
   // ------------------------------------------------------------------

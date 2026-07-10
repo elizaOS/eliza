@@ -20,22 +20,10 @@ export interface SandboxHealthOutcome {
   ready: boolean;
   verdict: SandboxHealthVerdict;
   /**
-   * One-line classification of a `not_ready` outcome parsed from the container's
-   * docker inspect at timeout — e.g. "container not running (state=exited
-   * exit=1)" vs "container running but health=unhealthy". Undefined when ready,
-   * transport-unresolved, or when the provider cannot classify. Surfaced into
-   * `agent_sandboxes.error_message` so a timed-out provision records WHY instead
-   * of an opaque "Sandbox health check timed out" (#13406 dedicated-error triage).
+   * One-line classification built only from allowlisted Docker state, health,
+   * and numeric exit fields. Free-text diagnostics never cross this boundary.
    */
   detail?: string;
-  /**
-   * Bounded tail of the container boot diagnostics (docker inspect + published
-   * ports + `docker logs`) captured at the timeout. Undefined when ready,
-   * transport-unresolved, or uncollectable. Persisted (truncated) into
-   * `error_message` so the boot-failure reason is visible without SSHing to the
-   * node — the full untruncated tail is still emitted to the logger.
-   */
-  diagnostics?: string;
 }
 
 export interface SandboxProvider {

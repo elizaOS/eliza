@@ -24,7 +24,7 @@ type PollInternals = {
   pollSshDockerHealth: (
     meta: ContainerMetaShape,
     deadline: number,
-  ) => Promise<{ ready: boolean; verdict: string; detail?: string; diagnostics?: string }>;
+  ) => Promise<{ ready: boolean; verdict: string; detail?: string }>;
   hydrateContainerFromDb: (sandboxId: string) => Promise<ContainerMetaShape | null>;
 };
 
@@ -167,7 +167,7 @@ describe("pollSshDockerHealth transport-vs-not-ready classification (#15310 #6)"
     expect(outcome.verdict).toBe("ready");
   });
 
-  test("not_ready timeout carries the classified reason + boot-log tail (#13406)", async () => {
+  test("not_ready timeout carries only the allowlisted classification (#13406)", async () => {
     const provider = new DockerSandboxProvider();
     const internals = provider as unknown as PollInternals;
     spyOn(internals, "hydrateContainerFromDb").mockResolvedValue(META);
@@ -184,7 +184,7 @@ describe("pollSshDockerHealth transport-vs-not-ready classification (#15310 #6)"
           "--- ports ---",
           "",
           "--- logs ---",
-          "[boot] FATAL: SANDBOX_ROUTE_AGENT_ID missing, cannot start",
+          "[boot] OPENAI_API_KEY=sk-secret Bearer private-token https://signed.example/path",
         ].join("\n");
       }
       if (command.includes("docker inspect")) return "starting"; // probe: reached, unhealthy
@@ -195,30 +195,52 @@ describe("pollSshDockerHealth transport-vs-not-ready classification (#15310 #6)"
 
     expect(outcome.ready).toBe(false);
     expect(outcome.verdict).toBe("not_ready");
-    // The opaque "health check timed out" now carries WHY the container failed.
-    expect(outcome.detail).toBe("container not running (state=exited exit=1) error=OOMKilled");
-    expect(outcome.diagnostics).toContain("FATAL: SANDBOX_ROUTE_AGENT_ID missing");
+    expect(outcome.detail).toBe("container not running (state=exited exit=1)");
+    expect(JSON.stringify(outcome)).not.toContain("sk-secret");
+    expect(JSON.stringify(outcome)).not.toContain("private-token");
+    expect(JSON.stringify(outcome)).not.toContain("signed.example");
+    expect(JSON.stringify(outcome)).not.toContain("OOMKilled");
   });
 });
 
 describe("classifyHealthTimeoutDetail", () => {
-  test("exited container → not-running reason with exit code + docker error", () => {
+  test("exited container → not-running reason with allowlisted fields only", () => {
     expect(
       classifyHealthTimeoutDetail(
         "--- inspect ---\nstate=exited health= exit=137 error=OOMKilled\n--- logs ---\nkilled",
       ),
-    ).toBe("container not running (state=exited exit=137) error=OOMKilled");
+    ).toBe("container not running (state=exited exit=137)");
   });
 
   test("running but unhealthy → surfaces the health status", () => {
-    expect(classifyHealthTimeoutDetail("state=running health=unhealthy exit=0 error=")).toBe(
-      "container running but health=unhealthy",
-    );
+    expect(
+      classifyHealthTimeoutDetail(
+        "--- inspect ---\nstate=running health=unhealthy exit=0 error=",
+      ),
+    ).toBe("container running but health=unhealthy");
   });
 
   test("no inspect line → undefined so the caller keeps the generic message", () => {
     expect(
       classifyHealthTimeoutDetail("--- logs ---\nonly logs, the inspect step failed"),
+    ).toBeUndefined();
+  });
+
+  test("container-controlled lookalikes and invalid inspect fields are not persisted", () => {
+    expect(
+      classifyHealthTimeoutDetail(
+        "--- inspect ---\ninspect failed\n--- logs ---\nstate=exited health= exit=1 error=sk-secret",
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyHealthTimeoutDetail(
+        "--- inspect ---\nstate=compromised health=unhealthy exit=1 error=sk-secret",
+      ),
+    ).toBeUndefined();
+    expect(
+      classifyHealthTimeoutDetail(
+        "--- inspect ---\nstate=exited health= exit=not-a-number error=sk-secret",
+      ),
     ).toBeUndefined();
   });
 });

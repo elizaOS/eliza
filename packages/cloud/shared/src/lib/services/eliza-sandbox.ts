@@ -5,6 +5,7 @@
 
 import crypto from "node:crypto";
 import { isIP } from "node:net";
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { type Database, dbWrite } from "../../db/helpers";
 import { agentBillingRepository } from "../../db/repositories/agent-billing";
@@ -1700,10 +1701,12 @@ export class ElizaSandboxService {
                 "leaving the container in place for retry/reconciliation",
             );
           }
-          throw new Error(
-            `Sandbox health check timed out${health.detail ? `: ${health.detail}` : ""}${
-              health.diagnostics ? `\n--- container diagnostics ---\n${health.diagnostics}` : ""
-            }`,
+          throw new ElizaError(
+            `Sandbox health check timed out${health.detail ? `: ${health.detail}` : ""}`,
+            {
+              code: "SANDBOX_HEALTH_CHECK_TIMEOUT",
+              context: health.detail ? { detail: health.detail } : {},
+            },
           );
         }
 
