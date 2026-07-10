@@ -48,7 +48,13 @@ writeFileSync(
   fakeAudioWav,
   Buffer.from(KNOWN_PHRASE_WAV_DATA_URL.split(",")[1] ?? "", "base64"),
 );
-const VOICE_MIC_SPEC = /(voice-realaudio|transcript-realaudio)\.spec\.ts/;
+// Specs needing REAL fake-device audio (getUserMedia capture / denial): they run
+// ONLY in chromium-voice-mic (fake-audio launch flags) and desktop-webkit for
+// the lifecycle engine lane. framepump + streaming-contract are mic-INDEPENDENT
+// (SSE/route/pump contract) and intentionally stay in the default `chromium`
+// project, so they are NOT added here.
+const VOICE_MIC_SPEC =
+  /(voice-realaudio|transcript-realaudio|voice-pwa-lifecycle|voice-pwa-bargein|voice-pwa-failure-modes|voice-pwa-trace)\.spec\.ts/;
 // WebKit (Safari engine) pointer/focus/text-input lane. iOS/iPadOS ship Safari's
 // WebKit, but every default lane above is Chromium-only, so pointer, focus, and
 // text-input regressions specific to WebKit go uncaught. This lane re-runs the
@@ -86,7 +92,7 @@ const AUDIT_APP_DROPDOWN_SPEC = /applications-dropdown-contrast\.spec\.ts/;
 // accepts them), so the shipped Capacitor iOS WebView / desktop WKWebView
 // engine must run in CI, not only Chromium wearing a Safari viewport.
 const WEBKIT_SMOKE_SPECS =
-  /(browser-workspace|character-editor|wallet-inventory|workflow-editor|ui-smoke|input-modality)\.spec\.ts/;
+  /(browser-workspace|character-editor|wallet-inventory|workflow-editor|ui-smoke|input-modality|voice-pwa-lifecycle)\.spec\.ts/;
 const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
