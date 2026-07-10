@@ -23,7 +23,11 @@ const EVERY_STATUS: Record<ContainerStatus, true> = {
 
 describe("CONTAINER_STATUSES / isContainerStatus", () => {
   test("the vocabulary const covers the ContainerStatus union exactly", () => {
-    expect([...CONTAINER_STATUSES].sort()).toEqual(Object.keys(EVERY_STATUS).sort());
+    // expect() is anchored on the wider string[] side so the literal-union
+    // array widens into it — cloud-api's project-reference typecheck compiles
+    // this file and rejects the reverse direction (string[] into a
+    // ContainerStatus[] expectation).
+    expect(Object.keys(EVERY_STATUS).sort()).toEqual([...CONTAINER_STATUSES].sort());
   });
 
   test("accepts every member of the vocabulary", () => {
