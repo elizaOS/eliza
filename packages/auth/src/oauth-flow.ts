@@ -34,11 +34,7 @@ import {
 
 /** Server-tracked status of an in-flight OAuth flow. */
 export type FlowStatus =
-  | "pending"
-  | "success"
-  | "error"
-  | "cancelled"
-  | "timeout";
+  "pending" | "success" | "error" | "cancelled" | "timeout";
 
 /**
  * Credential-free projection of an `AccountCredentialRecord` — the only
@@ -226,7 +222,12 @@ export function startCodexOAuthFlow(
 interface VendorFlow {
   authUrl: string;
   completion: Promise<{
-    creds: { access: string; refresh: string; expires: number };
+    creds: {
+      access: string;
+      refresh: string;
+      expires: number;
+      idToken?: string;
+    };
     codexFlow?: CodexFlow;
   }>;
   submitCode: (code: string) => void;
@@ -301,20 +302,30 @@ async function startGenericFlow(args: {
       const { creds } = await vendor.completion;
       clearTimeout(timer);
       let organizationId: string | undefined;
+      let email: string | undefined;
+      let providerAccountId: string | undefined;
+      if (providerId === "anthropic-subscription") {
+        const profile = await fetchAnthropicOAuthProfile(creds.access);
+        organizationId = profile.organizationId;
+        email = profile.email;
+        providerAccountId = profile.accountId;
+      }
       // Codex bakes the account_id into the JWT — pull it back out for
       // the usage probe header.
       if (providerId === "openai-codex") {
         const codexAccountId = extractCodexAccountId(creds.access);
         if (codexAccountId) organizationId = codexAccountId;
+        email = extractJwtEmail(creds.idToken);
       }
       const record = persistAccount({
         providerId,
-        accountId,
-        label: opts.label,
+        accountId: providerAccountId ?? accountId,
+        label: email ?? opts.label,
         access: creds.access,
         refresh: creds.refresh,
         expires: creds.expires,
         ...(organizationId ? { organizationId } : {}),
+        ...(email ? { email } : {}),
       });
       if (opts.onAccountSaved) {
         await opts.onAccountSaved(record);
@@ -479,5 +490,64 @@ function extractCodexAccountId(accessToken: string): string | null {
       : null;
   } catch {
     return null;
+  }
+}
+
+function extractJwtEmail(token: string | undefined): string | undefined {
+  if (!token) return undefined;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return undefined;
+    const decoded = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf-8"),
+    ) as Record<string, unknown>;
+    return typeof decoded.email === "string" && decoded.email.length > 0
+      ? decoded.email
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function fetchAnthropicOAuthProfile(accessToken: string): Promise<{
+  email?: string;
+  accountId?: string;
+  organizationId?: string;
+}> {
+  try {
+    const response = await fetch(
+      "https://api.anthropic.com/api/oauth/profile",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "anthropic-beta": "oauth-2025-04-20",
+          "Content-Type": "application/json",
+        },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    if (!response.ok) return {};
+    const profile = (await response.json()) as {
+      account?: { uuid?: unknown; email?: unknown; email_address?: unknown };
+      organization?: { uuid?: unknown };
+    };
+    const rawEmail = profile.account?.email ?? profile.account?.email_address;
+    const rawAccountId = profile.account?.uuid;
+    const rawOrganizationId = profile.organization?.uuid;
+    return {
+      ...(typeof rawEmail === "string" && rawEmail.length > 0
+        ? { email: rawEmail }
+        : {}),
+      ...(typeof rawAccountId === "string" && rawAccountId.length > 0
+        ? { accountId: rawAccountId }
+        : {}),
+      ...(typeof rawOrganizationId === "string" && rawOrganizationId.length > 0
+        ? { organizationId: rawOrganizationId }
+        : {}),
+    };
+  } catch {
+    // Identity enrichment is best-effort; credential persistence must still
+    // succeed when the profile endpoint is temporarily unavailable.
+    return {};
   }
 }
