@@ -14,13 +14,12 @@
  * live model or DB — and prove the pre-edit fragments survive a failed edit.
  */
 import { describe, expect, test } from "vitest";
-import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
 import { isElizaError } from "../../errors";
+import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
 import type { Memory, UUID } from "../../types";
 import { MemoryType, ModelType } from "../../types";
 import { DocumentService } from "./service.ts";
 
-const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
 
 const DOCUMENT_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd" as UUID;
@@ -103,7 +102,8 @@ describe("DocumentService.updateDocument atomicity (#16111)", () => {
 		const store = makeStore();
 		const reported: Array<{ scope: string }> = [];
 
-		const runtime = createMockRuntime({
+		let runtime = createMockRuntime();
+		runtime = createMockRuntime({
 			agentId: MOCK_AGENT_ID,
 			getSetting: () => undefined,
 			getMemoryById: async (id: UUID) =>
@@ -114,11 +114,12 @@ describe("DocumentService.updateDocument atomicity (#16111)", () => {
 				}
 				return [];
 			},
-			updateMemory: async (memory: {
-				id?: string;
-				content?: { text?: string };
-				metadata?: Record<string, unknown>;
-			}) => {
+			updateMemories: async (memories) => {
+				const memory = memories[0] as {
+					id?: string;
+					content?: { text?: string };
+					metadata?: Record<string, unknown>;
+				};
 				if (memory.id === DOCUMENT_ID) {
 					store.document.content = {
 						text: memory.content?.text ?? store.document.content.text,
@@ -127,17 +128,19 @@ describe("DocumentService.updateDocument atomicity (#16111)", () => {
 						store.document.metadata = memory.metadata as Memory["metadata"];
 					}
 				}
-				return true;
 			},
-			deleteMemory: async (id: UUID) => {
-				store.fragments.delete(id as string);
+			deleteMemories: async (ids) => {
+				for (const id of ids) store.fragments.delete(id as string);
 			},
-			createMemory: async (memory: Memory, table: string): Promise<UUID> => {
-				if (table === DOCUMENT_FRAGMENTS_TABLE) {
-					store.fragments.set(memory.id as string, memory);
+			createMemories: async (items): Promise<UUID[]> => {
+				for (const { memory, tableName } of items) {
+					if (tableName === DOCUMENT_FRAGMENTS_TABLE) {
+						store.fragments.set(memory.id as string, memory);
+					}
 				}
-				return memory.id as UUID;
+				return items.map(({ memory }) => memory.id as UUID);
 			},
+			transaction: async (callback) => callback(runtime),
 			// No batch model → serial per-fragment embed path.
 			getModel: () => undefined,
 			// Embedding is DOWN — every re-embed of the new content fails.
@@ -190,15 +193,16 @@ describe("DocumentService.updateDocument atomicity (#16111)", () => {
 		);
 
 		// The failure is observable to the agent/owner escalation path.
-		expect(reported.some((r) => r.scope === "DocumentService.updateDocument")).toBe(
-			true,
-		);
+		expect(
+			reported.some((r) => r.scope === "DocumentService.updateDocument"),
+		).toBe(true);
 	});
 
 	test("a healthy edit still re-fragments and re-embeds the new content", async () => {
 		const store = makeStore();
 
-		const runtime = createMockRuntime({
+		let runtime = createMockRuntime();
+		runtime = createMockRuntime({
 			agentId: MOCK_AGENT_ID,
 			getSetting: () => undefined,
 			getMemoryById: async (id: UUID) =>
@@ -209,11 +213,12 @@ describe("DocumentService.updateDocument atomicity (#16111)", () => {
 				}
 				return [];
 			},
-			updateMemory: async (memory: {
-				id?: string;
-				content?: { text?: string };
-				metadata?: Record<string, unknown>;
-			}) => {
+			updateMemories: async (memories) => {
+				const memory = memories[0] as {
+					id?: string;
+					content?: { text?: string };
+					metadata?: Record<string, unknown>;
+				};
 				if (memory.id === DOCUMENT_ID) {
 					store.document.content = {
 						text: memory.content?.text ?? store.document.content.text,
@@ -222,17 +227,19 @@ describe("DocumentService.updateDocument atomicity (#16111)", () => {
 						store.document.metadata = memory.metadata as Memory["metadata"];
 					}
 				}
-				return true;
 			},
-			deleteMemory: async (id: UUID) => {
-				store.fragments.delete(id as string);
+			deleteMemories: async (ids) => {
+				for (const id of ids) store.fragments.delete(id as string);
 			},
-			createMemory: async (memory: Memory, table: string): Promise<UUID> => {
-				if (table === DOCUMENT_FRAGMENTS_TABLE) {
-					store.fragments.set(memory.id as string, memory);
+			createMemories: async (items): Promise<UUID[]> => {
+				for (const { memory, tableName } of items) {
+					if (tableName === DOCUMENT_FRAGMENTS_TABLE) {
+						store.fragments.set(memory.id as string, memory);
+					}
 				}
-				return memory.id as UUID;
+				return items.map(({ memory }) => memory.id as UUID);
 			},
+			transaction: async (callback) => callback(runtime),
 			getModel: () => undefined,
 			addEmbeddingToMemory: async (memory: Memory) => {
 				memory.embedding = vecOf(memory.content.text ?? "");
@@ -263,5 +270,65 @@ describe("DocumentService.updateDocument atomicity (#16111)", () => {
 		}
 		// Parent row reflects the new content.
 		expect(store.document.content.text).toBe(NEW_CONTENT);
+	});
+
+	test("a fragment persistence failure rolls back the parent and old fragments", async () => {
+		const store = makeStore();
+		let runtime = createMockRuntime();
+		runtime = createMockRuntime({
+			agentId: MOCK_AGENT_ID,
+			getSetting: () => undefined,
+			getMemoryById: async (id: UUID) =>
+				id === DOCUMENT_ID ? store.document : null,
+			getMemories: async (params: { tableName: string }) =>
+				params.tableName === DOCUMENT_FRAGMENTS_TABLE
+					? [...store.fragments.values()]
+					: [],
+			updateMemories: async (memories) => {
+				const memory = memories[0];
+				if (memory.id === DOCUMENT_ID && memory.content) {
+					store.document.content = memory.content;
+				}
+			},
+			deleteMemories: async (ids) => {
+				for (const id of ids) store.fragments.delete(id as string);
+			},
+			createMemories: async (items): Promise<UUID[]> => {
+				const first = items[0];
+				if (first) store.fragments.set(first.memory.id as string, first.memory);
+				throw new Error("fragment insert failed");
+			},
+			transaction: async (callback) => {
+				const contentBefore = structuredClone(store.document.content);
+				const fragmentsBefore = new Map(store.fragments);
+				try {
+					return await callback(runtime);
+				} catch (error) {
+					store.document.content = contentBefore;
+					store.fragments = fragmentsBefore;
+					throw error;
+				}
+			},
+			getModel: () => undefined,
+			addEmbeddingToMemory: async (memory: Memory) => {
+				memory.embedding = vecOf(memory.content.text ?? "");
+				return memory;
+			},
+			reportError: () => {},
+		});
+
+		await expect(
+			new DocumentService(runtime).updateDocument({
+				documentId: DOCUMENT_ID,
+				content: NEW_CONTENT,
+			}),
+		).rejects.toMatchObject({ code: "DOCUMENT_UPDATE_FAILED" });
+
+		expect(store.document.content.text).toBe(
+			"ORIGINAL document content that already has fragments.",
+		);
+		expect(
+			[...store.fragments.values()].map((fragment) => fragment.content.text),
+		).toEqual(["ORIGINAL fragment 0", "ORIGINAL fragment 1"]);
 	});
 });

@@ -1627,44 +1627,65 @@ export class DocumentService extends Service {
 			);
 		}
 
-		// New fragments are embedded and validated. Now commit the edit: overwrite
-		// the parent row, drop the old fragments, and persist the new ones.
-		await this.runtime.updateMemory({
-			id: options.documentId,
-			agentId: this.runtime.agentId,
-			roomId: existingDocument.roomId,
-			worldId: existingDocument.worldId,
-			entityId: existingDocument.entityId,
-			content: { text: options.content },
-			metadata: updatedMetadata,
-			createdAt: existingDocument.createdAt,
-		});
+		try {
+			// The parent and fragment rows form one searchable document revision.
+			// Keeping all persistence on the adapter transaction prevents a failed
+			// fragment insert from exposing the new parent with a partial fragment set.
+			await this.runtime.transaction(async (tx) => {
+				await tx.updateMemories([
+					{
+						id: options.documentId,
+						agentId: this.runtime.agentId,
+						roomId: existingDocument.roomId,
+						worldId: existingDocument.worldId,
+						entityId: existingDocument.entityId,
+						content: { text: options.content },
+						metadata: updatedMetadata,
+						createdAt: existingDocument.createdAt,
+					},
+				]);
 
-		const existingFragments = await this.runtime.getMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
-			agentId: this.runtime.agentId,
-			roomId: existingDocument.roomId,
-			count: 10_000,
-		});
-		const relatedFragments = existingFragments.filter((fragment) => {
-			const metadata = fragment.metadata as Record<string, unknown> | undefined;
-			return (
-				this.isDocumentFragmentMemory(fragment) &&
-				metadata?.documentId === options.documentId
+				const existingFragments = await tx.getMemories({
+					tableName: DOCUMENT_FRAGMENTS_TABLE,
+					agentId: this.runtime.agentId,
+					roomId: existingDocument.roomId,
+					count: 10_000,
+				});
+				const relatedFragmentIds = existingFragments.flatMap((fragment) => {
+					const metadata = fragment.metadata as
+						| Record<string, unknown>
+						| undefined;
+					return this.isDocumentFragmentMemory(fragment) &&
+						metadata?.documentId === options.documentId &&
+						typeof fragment.id === "string"
+						? [fragment.id as UUID]
+						: [];
+				});
+
+				if (relatedFragmentIds.length > 0) {
+					await tx.deleteMemories(relatedFragmentIds);
+				}
+				await tx.createMemories(
+					fragments.map((fragment) => ({
+						memory: fragment,
+						tableName: DOCUMENT_FRAGMENTS_TABLE,
+					})),
+				);
+			});
+		} catch (error) {
+			this.runtime.reportError("DocumentService.updateDocument", error, {
+				documentId: options.documentId,
+				stage: "persist",
+			});
+			throw new ElizaError(
+				`Failed to persist document update ${options.documentId}; existing revision preserved`,
+				{
+					code: "DOCUMENT_UPDATE_FAILED",
+					cause: error,
+					context: { documentId: options.documentId },
+					severity: "fatal",
+				},
 			);
-		});
-
-		for (const fragment of relatedFragments) {
-			if (typeof fragment.id === "string") {
-				await this.runtime.deleteMemory(fragment.id as UUID);
-			}
-		}
-
-		// Persist the already-embedded fragments. continueOnError:false so a
-		// persist failure still surfaces; the embeddings themselves are already
-		// present so this write does not re-hit the embedding backend.
-		for (const fragment of fragments) {
-			await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
 		}
 
 		return {
