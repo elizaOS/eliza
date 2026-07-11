@@ -29,6 +29,8 @@ const {
   buildReasoningEffortProviderOptions,
   isEmptyButBilled,
   toOpenAiFinishReason,
+  resolvePromptCacheKey,
+  mergePromptCacheProviderOptions,
 } = __nativeToolingTestHooks;
 const { getRecoverableProviderErrorStatus } = __streamingCreditTestHooks;
 const { qualifiesForPassthroughStreaming, mapPassthroughUpstreamStatus } =
@@ -511,5 +513,46 @@ describe("mapPassthroughUpstreamStatus", () => {
     expect(mapPassthroughUpstreamStatus(401)).toBe(503);
     expect(mapPassthroughUpstreamStatus(403)).toBe(503);
     expect(mapPassthroughUpstreamStatus(500)).toBe(503);
+  });
+});
+
+describe("Cerebras prompt cache key", () => {
+  test("accepts canonical and compatibility forms with canonical precedence", () => {
+    expect(
+      resolvePromptCacheKey({ prompt_cache_key: "v5:abc" } as never),
+    ).toEqual({ key: "v5:abc" });
+    expect(
+      resolvePromptCacheKey({ promptCacheKey: "legacy" } as never),
+    ).toEqual({ key: "legacy" });
+    expect(
+      resolvePromptCacheKey({
+        prompt_cache_key: "canonical",
+        promptCacheKey: "legacy",
+      } as never),
+    ).toEqual({ key: "canonical" });
+  });
+  test("rejects empty, oversized, and non-string values", () => {
+    for (const value of ["", "x".repeat(1025), 42, null])
+      expect(
+        resolvePromptCacheKey({ prompt_cache_key: value } as never),
+      ).toHaveProperty("error");
+  });
+  test("merges provider options without overwriting existing providers", () => {
+    const merged = mergePromptCacheProviderOptions(
+      {
+        providerOptions: {
+          anthropic: { thinking: { type: "enabled", budgetTokens: 1024 } },
+        },
+      } as never,
+      "v5:abc",
+    );
+    expect(merged.providerOptions?.anthropic).toBeDefined();
+    expect(merged.providerOptions?.cerebras).toMatchObject({
+      prompt_cache_key: "v5:abc",
+      promptCacheKey: "v5:abc",
+    });
+    expect(merged.providerOptions?.eliza).toMatchObject({
+      promptCacheKey: "v5:abc",
+    });
   });
 });

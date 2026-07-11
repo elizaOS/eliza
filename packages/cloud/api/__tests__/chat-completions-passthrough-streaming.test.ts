@@ -434,7 +434,10 @@ describe("passthrough streaming — qualifying request pipes bytes verbatim and 
     const settle = createCreditReservationSettler(ledger.reservation);
     fetchImpl = async () => sseResponse(UPSTREAM_SSE);
 
-    const res = await callStreaming(settle, { effectiveMaxTokens: 4096 });
+    const res = await callStreaming(settle, {
+      effectiveMaxTokens: 4096,
+      request: { ...QUALIFYING_REQUEST, prompt_cache_key: "v5:stable-prefix" },
+    });
     const body = await res.text();
 
     // Byte-for-byte pass-through: vendor fields, reasoning delta, upstream id,
@@ -461,6 +464,8 @@ describe("passthrough streaming — qualifying request pipes bytes verbatim and 
     expect(sentBody.stream).toBe(true);
     expect(sentBody.stream_options).toEqual({ include_usage: true });
     expect(sentBody.max_tokens).toBe(4096);
+    expect(sentBody.prompt_cache_key).toBe("v5:stable-prefix");
+    expect(sentBody).not.toHaveProperty("promptCacheKey");
     expect(sentBody.messages).toEqual([{ role: "user", content: "hello" }]);
 
     // Billing: the terminal usage frame's tokens, through the real settler.
