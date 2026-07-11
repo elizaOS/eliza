@@ -124,7 +124,33 @@ app.get("/", (c) => {
   const client = pair[0] as unknown;
   const server = pair[1] as unknown as {
     accept(): void;
+    binaryType?: string;
   } & ServerWebSocketLike;
+
+  // Deliver binary (audio) frames as ArrayBuffer, not the Cloudflare-default
+  // Blob. The ws-handler's isBinary() gate tests `instanceof ArrayBuffer ||
+  // ArrayBuffer.isView(...)`; a Blob passes NEITHER, so a default-`blob` server
+  // socket coerces every uplink audio frame to the string "[object Blob]",
+  // which the control parser then rejects as `control_invalid_json`. That
+  // silently breaks ALL audio uplink while control frames (hello, audio_meta,
+  // bye) still work, so the session reaches `ready` but no speech ever lands.
+  // Set binaryType BEFORE accept() so even the first pipelined frame is typed
+  // correctly. Verified against staging: without this, a single binary frame
+  // after `ready` returns control_invalid_json; with it, audio flows.
+  try {
+    server.binaryType = "arraybuffer";
+  } catch (error) {
+    // If a runtime exposes binaryType as read-only, binary frames would arrive
+    // as Blob and every audio frame would parse as invalid control text while
+    // the session still reaches `ready` (a silent no-audio session, worse than
+    // an honest failure). The handler has no sync Blob path, so fail the
+    // upgrade closed rather than serving a broken realtime session. The Workers
+    // runtime accepts this write, so this is a defensive guard, not a hot path.
+    logger.error("[voice-session-ws] cannot set server binaryType; refusing upgrade", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json({ error: "voice realtime transport unavailable" }, 503);
+  }
 
   server.accept();
 
