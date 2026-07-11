@@ -10,15 +10,24 @@
  * these red.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import {
+  afterAll,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { Hono } from "hono";
 import { apiKeysService } from "@/lib/services/api-keys";
 import type { Bindings } from "@/types/cloud-worker-env";
 
 const sweepStrandedAgentKeys = mock(async (_olderThan: Date) => 2);
-const sweepSpy = spyOn(apiKeysService, "sweepStrandedAgentKeys").mockImplementation(
-  sweepStrandedAgentKeys,
-);
+const sweepSpy = spyOn(
+  apiKeysService,
+  "sweepStrandedAgentKeys",
+).mockImplementation(sweepStrandedAgentKeys);
 
 afterAll(() => sweepSpy.mockRestore());
 
