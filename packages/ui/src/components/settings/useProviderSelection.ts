@@ -21,6 +21,7 @@ import {
   type SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
+import { shellHistory, shellLocalStorage } from "../../surface-realm-channel";
 
 export type ProviderPanelId = "__cloud__" | "__local__" | string;
 
@@ -41,10 +42,10 @@ function readRememberedProviderPanel(): ProviderPanelId | null {
 function rememberProviderPanel(panelId: ProviderPanelId): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(PROVIDER_PANEL_STORAGE_KEY, panelId);
+    shellLocalStorage.setItem(PROVIDER_PANEL_STORAGE_KEY, panelId);
     const url = new URL(window.location.href);
     url.searchParams.set("provider", panelId);
-    window.history.replaceState(null, "", url);
+    shellHistory.replaceState(null, "", url);
   } catch {
     // error-policy:J4 Panel selection remains usable for this session when persistence is unavailable.
     return;
