@@ -434,6 +434,15 @@ INFERENCE_PASSTHROUGH_STREAMING = "true"
 # the upstream JSON untouched; usage parses from the same buffer and bills
 # through the identical settle chain. Default off; rollback = flip off.
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+
+# Realtime voice staging soak. Production remains explicitly off until staging E2E is green.
+VOICE_REALTIME_WS_ENABLED = "true"
+VOICE_AMBIENT_ENABLED = "true"
+VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
+VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai/api/v1/chat/completions"
+VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
+VOICE_AMBIENT_PENDANT_BASE_URL = "https://api-staging.elizacloud.ai"
+
 FORCE_REDIS_EVENTS = "false"
 R2_PUBLIC_HOST = "blob-staging.elizacloud.ai"
 SQL_HEAVY_PAYLOAD_STORAGE = "r2"
