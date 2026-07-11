@@ -11,12 +11,27 @@ import {
   ELIZA_1_HOSTED_MTP_TIER_IDS,
   ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_ON_DEVICE_TIER_IDS,
+  ELIZA_1_PUBLISHED_SLUGS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
   eliza1TierPublishStatus,
   isOnDeviceTier,
   MODEL_CATALOG,
+  tierPublishedSlug,
 } from "./catalog.js";
+
+// Published-bundle slug for a stable tier id. The `elizaos/eliza-1` tree was
+// re-slugged during the 2026-06→07 Gemma-4 cutover from size slugs
+// (`2b`/`4b`/`9b`/`27b`/`27b-256k`) to architecture slugs
+// (`e2b`/`e4b`/`12b`/`31b`/`31b-256k`); every published path must derive from
+// these (issue #15976).
+const EXPECTED_PUBLISHED_SLUGS: Record<string, string> = {
+  "eliza-1-2b": "e2b",
+  "eliza-1-4b": "e4b",
+  "eliza-1-9b": "12b",
+  "eliza-1-27b": "31b",
+  "eliza-1-27b-256k": "31b-256k",
+};
 
 const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-2b": "eliza-1-2B",
@@ -59,7 +74,26 @@ describe("Eliza-1 runtime quant metadata", () => {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.displayName).toBe(EXPECTED_DISPLAY_NAMES[id]);
       expect(entry?.params).toBe(EXPECTED_CHAT_PARAMS[id]);
-      expect(entry?.ggufFile).toContain(id);
+      // ggufFile is a PUBLISHED path, so it carries the architecture slug
+      // (e.g. `eliza-1-e2b-…`), not the stable size-slug id.
+      expect(entry?.ggufFile).toContain(tierPublishedSlug(id));
+    }
+  });
+
+  it("maps every stable tier id to its published (architecture) bundle slug", () => {
+    // The published `elizaos/eliza-1` tree hosts bundles under architecture
+    // slugs after the 2026-06→07 Gemma-4 cutover. This is the single source of
+    // truth the runtime downloader and the Local Inference Bench preflight both
+    // derive from; drift here is what caused the 404 in #15976. The preflight's
+    // own copy is pinned against this map in
+    // packages/scripts/__tests__/preflight-eliza1-manifest.test.ts.
+    expect(ELIZA_1_PUBLISHED_SLUGS).toEqual(EXPECTED_PUBLISHED_SLUGS);
+    for (const id of ELIZA_1_TIER_IDS) {
+      expect(tierPublishedSlug(id)).toBe(EXPECTED_PUBLISHED_SLUGS[id]);
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      // The bundle prefix and every published artifact path use the arch slug.
+      expect(entry?.hfPathPrefix).toBe(`bundles/${EXPECTED_PUBLISHED_SLUGS[id]}`);
+      expect(entry?.bundleManifestFile).toBe("eliza-1.manifest.json");
     }
   });
 
@@ -90,12 +124,13 @@ describe("Eliza-1 runtime quant metadata", () => {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.contextLength).toBeGreaterThanOrEqual(131072);
       expect(entry?.ggufFile).not.toMatch(/-(32k|64k)\.gguf$/);
+      const slug = tierPublishedSlug(id);
       if (id === "eliza-1-27b-256k") {
         expect(entry?.contextLength).toBe(262144);
-        expect(entry?.ggufFile).toBe("text/eliza-1-27b-256k.gguf");
+        expect(entry?.ggufFile).toBe(`text/eliza-1-${slug}-256k.gguf`);
       } else {
         expect(entry?.contextLength).toBe(131072);
-        expect(entry?.ggufFile).toBe(`text/${id}-128k.gguf`);
+        expect(entry?.ggufFile).toBe(`text/eliza-1-${slug}-128k.gguf`);
       }
     }
   });
@@ -139,7 +174,7 @@ describe("Eliza-1 runtime quant metadata", () => {
     const hosted: ReadonlySet<string> = new Set(ELIZA_1_HOSTED_MTP_TIER_IDS);
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      const slug = id.slice("eliza-1-".length);
+      const slug = tierPublishedSlug(id);
       if (hosted.has(id)) {
         expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
         expect(entry?.runtime?.mtp?.drafterFile).toBe(
@@ -160,14 +195,14 @@ describe("Eliza-1 runtime quant metadata", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.vad?.file).toBe(
-        `bundles/${id.slice("eliza-1-".length)}/vad/silero-vad-v5.gguf`,
+        `bundles/${tierPublishedSlug(id)}/vad/silero-vad-v5.gguf`,
       );
     }
   });
 
   it("points every voice-enabled tier at its tier-matched ASR mmproj GGUF", () => {
     for (const id of ELIZA_1_TIER_IDS) {
-      const slug = id.slice("eliza-1-".length);
+      const slug = tierPublishedSlug(id);
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.asr?.file).toBe(
         `bundles/${slug}/asr/mmproj-audio-${slug}-bf16.gguf`,
@@ -177,7 +212,7 @@ describe("Eliza-1 runtime quant metadata", () => {
 
   it("points every vision-enabled tier at its tier-matched mmproj GGUF", () => {
     for (const id of ELIZA_1_VISION_TIER_IDS) {
-      const slug = id.slice("eliza-1-".length);
+      const slug = tierPublishedSlug(id);
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.vision?.file).toBe(
         `bundles/${slug}/vision/mmproj-${slug}.gguf`,

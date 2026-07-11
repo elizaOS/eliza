@@ -51,9 +51,11 @@ describe("fused eliza-1 no-regression (C4)", () => {
 	it("the catalog tier under test really is a fused-eliza1 tier", () => {
 		expect(FUSED_TIER).toBeTruthy();
 		expect(FUSED_TIER.runtimeClass).toBe("fused-eliza1");
-		// 4b hosts the gemma4-assistant separate drafter (2026-07-02).
+		// 4b hosts the gemma4-assistant separate drafter (2026-07-02) at the
+		// PUBLISHED architecture-slug path `mtp/drafter-e4b.gguf` after the
+		// 2026-06→07 Gemma-4 re-slug (issue #15976).
 		expect(FUSED_TIER.runtime?.mtp?.specType).toBe("draft-mtp");
-		expect(FUSED_TIER.runtime?.mtp?.drafterFile).toBe("mtp/drafter-4b.gguf");
+		expect(FUSED_TIER.runtime?.mtp?.drafterFile).toBe("mtp/drafter-e4b.gguf");
 	});
 
 	it("decideBackend routes a fused Eliza-1 tier to the fused llama-cpp runtime", () => {

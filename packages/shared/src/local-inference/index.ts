@@ -19,6 +19,7 @@ export {
   ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_ON_DEVICE_TIER_IDS,
   ELIZA_1_PLACEHOLDER_IDS,
+  ELIZA_1_PUBLISHED_SLUGS,
   ELIZA_1_RELEASE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_TIER_PUBLISH_STATUS,
@@ -31,6 +32,7 @@ export {
   isDefaultEligibleId,
   isOnDeviceTier,
   MODEL_CATALOG,
+  tierPublishedSlug,
 } from "./catalog.js";
 export {
   ELIZA_1_CONTEXT_TARGET,

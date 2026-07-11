@@ -34,6 +34,7 @@ import {
 	EMOTION_CLASSIFIER_IEMOCAP_F1_THRESHOLD,
 	EMOTION_CLASSIFIER_MEAN_LATENCY_MS_LIMIT,
 	EMOTION_CLASSIFIER_MELD_F1_THRESHOLD,
+	publishedTierSlug,
 	REQUIRED_KERNELS_BY_TIER,
 	SUPPORTED_BACKENDS_BY_TIER,
 	TURN_DETECTOR_F1_THRESHOLD,
@@ -337,18 +338,36 @@ function collectContractErrors(
 				);
 			}
 		} else {
-			const expectedDrafterPath = `mtp/drafter-${m.tier}.gguf`;
+			// The drafter is the ONE per-tier component whose filename is
+			// pattern-validated against the tier here (text/vision/asr are only
+			// floor-checked, not slug-checked). The PUBLISHED `elizaos/eliza-1`
+			// tree ships the drafter under the architecture slug
+			// (`mtp/drafter-e2b.gguf`) after the 2026-06→07 Gemma-4 re-slug
+			// (issue #15976), while pre-cutover / staging / test bundles still use
+			// the size slug (`mtp/drafter-2b.gguf`). Accept EITHER canonical
+			// spelling so the real published manifest validates while back-compat
+			// holds; anything else (e.g. the legacy `dflash/` path) is rejected.
+			const sizeDrafterPath = `mtp/drafter-${m.tier}.gguf`;
+			const publishedDrafterPath = `mtp/drafter-${publishedTierSlug(
+				m.tier,
+			)}.gguf`;
+			const acceptedDrafterPaths =
+				sizeDrafterPath === publishedDrafterPath
+					? [sizeDrafterPath]
+					: [sizeDrafterPath, publishedDrafterPath];
 			if (m.files.mtp.length === 0) {
 				if (strictRelease) {
 					errors.push(
-						`files.mtp: MTP drafter not bundled — separate-drafter tier ${m.tier} must ship ${expectedDrafterPath}`,
+						`files.mtp: MTP drafter not bundled — separate-drafter tier ${m.tier} must ship ${publishedDrafterPath}`,
 					);
 				}
 			} else {
 				for (const [i, entry] of m.files.mtp.entries()) {
-					if (entry.path !== expectedDrafterPath) {
+					if (!acceptedDrafterPaths.includes(entry.path)) {
 						errors.push(
-							`files.mtp[${i}].path: separate-drafter tier ${m.tier} must bundle the drafter at ${expectedDrafterPath}, got ${entry.path}`,
+							`files.mtp[${i}].path: separate-drafter tier ${m.tier} must bundle the drafter at ${acceptedDrafterPaths.join(
+								" or ",
+							)}, got ${entry.path}`,
 						);
 					}
 				}

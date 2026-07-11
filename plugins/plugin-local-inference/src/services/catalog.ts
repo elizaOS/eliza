@@ -34,4 +34,5 @@ export {
 	resolveHfDownloadBase,
 	resolveHubAuthHeaders,
 	resolveHuggingFaceToken,
+	tierPublishedSlug,
 } from "@elizaos/shared";

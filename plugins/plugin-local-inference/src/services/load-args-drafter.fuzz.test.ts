@@ -63,6 +63,18 @@ afterAll(() => {
 	}
 });
 
+// The published `elizaos/eliza-1` tree uses ARCHITECTURE slugs (`e2b`…) after
+// the 2026-06→07 Gemma-4 cutover (issue #15976), so the staged on-disk
+// filenames must match the catalog-derived published paths
+// (`text/eliza-1-e2b-128k.gguf`, `mtp/drafter-e2b.gguf`), not the size slug.
+const PUBLISHED_SLUG: Record<string, string> = {
+	"2b": "e2b",
+	"4b": "e4b",
+	"9b": "12b",
+	"27b": "31b",
+	"27b-256k": "31b-256k",
+};
+
 function makeTempBundle(args: { tier: string; hasDrafter: boolean }): {
 	bundleRoot: string;
 	textPath: string;
@@ -70,10 +82,11 @@ function makeTempBundle(args: { tier: string; hasDrafter: boolean }): {
 } {
 	const root = mkdtempSync(pathJoin(tmpdir(), "eliza-loadargs-fuzz-"));
 	tmpRoots.push(root);
+	const slug = PUBLISHED_SLUG[args.tier] ?? args.tier;
 	mkdirSync(pathJoin(root, "text"), { recursive: true });
-	const textPath = pathJoin(root, "text", `eliza-1-${args.tier}-128k.gguf`);
+	const textPath = pathJoin(root, "text", `eliza-1-${slug}-128k.gguf`);
 	writeFileSync(textPath, "fake-text-gguf");
-	const drafterPath = pathJoin(root, "mtp", `drafter-${args.tier}.gguf`);
+	const drafterPath = pathJoin(root, "mtp", `drafter-${slug}.gguf`);
 	if (args.hasDrafter) {
 		mkdirSync(pathJoin(root, "mtp"), { recursive: true });
 		writeFileSync(drafterPath, "fake-mtp-drafter-gguf");
@@ -115,10 +128,12 @@ function manifestWithMtp(mtpPaths: string[]): Eliza1Manifest {
 			drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
 		},
 		files: {
-			text: [{ path: "text/eliza-1-2b-128k.gguf", ctx: 131072, sha256: SHA_A }],
+			text: [
+				{ path: "text/eliza-1-e2b-128k.gguf", ctx: 131072, sha256: SHA_A },
+			],
 			voice: [{ path: "tts/kokoro/kokoro-82m-v1_0.gguf", sha256: SHA_A }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA_A }],
-			vision: [{ path: "vision/mmproj-2b.gguf", sha256: SHA_A }],
+			vision: [{ path: "vision/mmproj-e2b.gguf", sha256: SHA_A }],
 			mtp: mtpPaths.map((p) => ({ path: p, sha256: SHA_A })),
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA_A }],
 			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA_A }],
@@ -152,7 +167,7 @@ describe("resolveLocalInferenceLoadArgs — separate-drafter MTP resolution", ()
 	const catalog2b = findCatalogModel("eliza-1-2b");
 	it("catalog precondition: eliza-1-2b declares separate-drafter MTP", () => {
 		expect(catalog2b?.runtime?.mtp?.specType).toBe("draft-mtp");
-		expect(catalog2b?.runtime?.mtp?.drafterFile).toMatch(/drafter-2b\.gguf$/);
+		expect(catalog2b?.runtime?.mtp?.drafterFile).toMatch(/drafter-e2b\.gguf$/);
 	});
 
 	it("fails closed when a managed hosted-MTP bundle is missing its drafter GGUF", async () => {

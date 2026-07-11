@@ -57,6 +57,27 @@ export type Eliza1MtpMode = (typeof ELIZA_1_MTP_MODES)[number];
 export const ELIZA_1_TIERS = ["2b", "4b", "9b", "27b", "27b-256k"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
+// Published (architecture) bundle slug for each stable size-slug tier. The
+// `elizaos/eliza-1` tree was re-slugged during the 2026-06→07 Gemma-4 cutover:
+// bundles now host their per-tier artifacts under architecture slugs
+// (`e2b`/`e4b`/`12b`/`31b`/`31b-256k`) while the manifest keeps its stable
+// size-slug `tier` field. Any per-tier PUBLISHED FILENAME (e.g. the bundled
+// drafter `mtp/drafter-<publishedSlug>.gguf`) must be derived through this map,
+// or the runtime validator rejects the real published manifest (issue #15976).
+// Mirrors packages/shared/src/local-inference/catalog.ts::ELIZA_1_PUBLISHED_SLUGS.
+export const ELIZA_1_PUBLISHED_TIER_SLUGS: Readonly<Record<Eliza1Tier, string>> =
+	{
+		"2b": "e2b",
+		"4b": "e4b",
+		"9b": "12b",
+		"27b": "31b",
+		"27b-256k": "31b-256k",
+	};
+
+export function publishedTierSlug(tier: Eliza1Tier): string {
+	return ELIZA_1_PUBLISHED_TIER_SLUGS[tier];
+}
+
 // Manifest-level kernel capability names. Per AGENTS.md §3:
 // `turboquant_q3`, `turboquant_q4`, `qjl`, `polarquant`, and `mtp` are
 // the named optimizations the bundle declares. `turbo3_tcq` is required for
@@ -744,12 +765,29 @@ export const Eliza1ManifestSchema = z
 		mtp: z.enum(ELIZA_1_MTP_MODES).optional(),
 	})
 	// The id MUST encode the tier so catalogs can derive tier from id without
-	// re-reading the manifest. Example: `id: "eliza-1-9b"`.
+	// re-reading the manifest. Two spellings are accepted:
+	//   - the stable size-slug id (`eliza-1-9b`) used by pre-cutover / staging /
+	//     test manifests, and
+	//   - the PUBLISHED architecture-slug id (`eliza-1-e2b`, `eliza-1-12b`, …)
+	//     that the live `elizaos/eliza-1` tree now stamps after the 2026-06→07
+	//     Gemma-4 re-slug (issue #15976). The `tier` field always stays the
+	//     stable size slug, so the arch-slug id is derived through
+	//     `ELIZA_1_PUBLISHED_TIER_SLUGS` — the single source of truth for the
+	//     size→published mapping (mirrored in the shared catalog).
 	.refine(
-		(m) =>
-			m.id === `eliza-1-${m.tier}` || m.id.startsWith(`eliza-1-${m.tier}-`),
+		(m) => {
+			const sizeId = `eliza-1-${m.tier}`;
+			const publishedId = `eliza-1-${ELIZA_1_PUBLISHED_TIER_SLUGS[m.tier]}`;
+			return (
+				m.id === sizeId ||
+				m.id.startsWith(`${sizeId}-`) ||
+				m.id === publishedId ||
+				m.id.startsWith(`${publishedId}-`)
+			);
+		},
 		{
-			message: "id must start with `eliza-1-<tier>`",
+			message:
+				"id must start with `eliza-1-<tier>` or the published `eliza-1-<publishedSlug>`",
 			path: ["id"],
 		},
 	)

@@ -41,6 +41,7 @@ import {
 	type Eliza1Files,
 	type Eliza1Manifest,
 	parseManifestOrThrow,
+	publishedTierSlug,
 	SUPPORTED_BACKENDS_BY_TIER,
 } from "./manifest";
 import {
@@ -412,9 +413,16 @@ export function parseBundleManifestOrThrow(
 	catalogEntry: CatalogModel,
 ): Eliza1Manifest {
 	const manifest = parseManifestOrThrow(input);
-	if (manifest.id !== catalogEntry.id) {
+	// The catalog keys tiers by their stable size-slug id (`eliza-1-2b`), but the
+	// PUBLISHED `elizaos/eliza-1` tree stamps each bundle manifest with its
+	// architecture-slug id (`eliza-1-e2b`, `eliza-1-12b`, …) after the 2026-06→07
+	// Gemma-4 re-slug (issue #15976). Accept either spelling for the same tier:
+	// the manifest `tier` field stays the size slug, so the published id is
+	// `eliza-1-<publishedSlug(tier)>`. Anything else is a genuine mismatch.
+	const publishedId = `eliza-1-${publishedTierSlug(manifest.tier)}`;
+	if (manifest.id !== catalogEntry.id && manifest.id !== publishedId) {
 		throw new Error(
-			`Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id}`,
+			`Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id} (or published ${publishedId})`,
 		);
 	}
 	if (

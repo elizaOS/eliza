@@ -9,6 +9,7 @@ import {
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
 	MODEL_CATALOG,
+	tierPublishedSlug,
 } from "./catalog";
 import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
@@ -49,11 +50,14 @@ describe("local inference catalog", () => {
 
 	it("uses the single elizaOS HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
-			const tier = model.id.slice("eliza-1-".length);
+			// The published `elizaos/eliza-1` tree hosts bundles under the
+			// architecture slug (`bundles/e2b`, `bundles/12b`, …) after the
+			// 2026-06→07 Gemma-4 re-slug (issue #15976), not the stable size slug.
+			const publishedSlug = tierPublishedSlug(model.id);
 			expect(model.hfRepo).toBe("elizaos/eliza-1");
-			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
+			expect(model.hfPathPrefix).toBe(`bundles/${publishedSlug}`);
 			expect(buildHuggingFaceResolveUrl(model)).toContain(
-				`/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
+				`/elizaos/eliza-1/resolve/main/bundles/${publishedSlug}/`,
 			);
 		}
 	});
@@ -131,16 +135,18 @@ describe("local inference catalog", () => {
 			ELIZA_1_HOSTED_MTP_TIER_IDS,
 		);
 		expect(ELIZA_1_MTP_TIER_IDS).toEqual(ELIZA_1_TIER_IDS);
-		// 2b/4b host the gemma4-assistant drafters at
-		// bundles/<tier>/mtp/drafter-<tier>.gguf (converted from
+		// 2b/4b host the gemma4-assistant drafters at the PUBLISHED path
+		// bundles/<publishedSlug>/mtp/drafter-<publishedSlug>.gguf
+		// (e.g. bundles/e2b/mtp/drafter-e2b.gguf) after the 2026-06→07 Gemma-4
+		// re-slug (issue #15976); converted from
 		// google/gemma-4-E2B-it-assistant / google/gemma-4-E4B-it-assistant,
-		// 2026-07-02).
+		// 2026-07-02.
 		expect(ELIZA_1_HOSTED_MTP_TIER_IDS).toEqual(["eliza-1-2b", "eliza-1-4b"]);
 		for (const id of ELIZA_1_MTP_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
 			if (hostedMtpTiers.has(id)) {
-				const slug = id.slice("eliza-1-".length);
+				const slug = tierPublishedSlug(id);
 				expect(model?.runtime?.mtp?.specType, `${id} mtp`).toBe("draft-mtp");
 				expect(model?.runtime?.mtp?.drafterFile, `${id} drafter`).toBe(
 					`mtp/drafter-${slug}.gguf`,

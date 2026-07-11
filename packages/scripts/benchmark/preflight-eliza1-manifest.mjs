@@ -22,16 +22,25 @@
 //
 // Exit codes: 0 = manifest(s) valid; 2 = malformed/unreachable manifest.
 
-const HF_REPO = "elizaos/eliza-1";
+export const HF_REPO = "elizaos/eliza-1";
 const HF_BASE = (process.env.ELIZA_HF_BASE_URL || "https://huggingface.co").replace(/\/+$/, "");
 
-// tier id -> published bundle prefix (mirrors catalog `bundleRemotePrefix`)
-const TIER_SLUG = {
-  "eliza-1-2b": "2b",
-  "eliza-1-4b": "4b",
-  "eliza-1-9b": "9b",
-  "eliza-1-27b": "27b",
-  "eliza-1-27b-256k": "27b-256k",
+// tier id -> published bundle slug (mirrors catalog `ELIZA_1_PUBLISHED_SLUGS`).
+//
+// The published `elizaos/eliza-1` tree was re-slugged during the 2026-06→07
+// Gemma-4 cutover: bundles are now hosted under ARCHITECTURE slugs
+// (`e2b`/`e4b`/`12b`/`31b`/`31b-256k`), not the removed size slugs
+// (`2b`/`4b`/`9b`/`27b`/`27b-256k`). This must match
+// packages/shared/src/local-inference/catalog.ts::ELIZA_1_PUBLISHED_SLUGS or the
+// preflight validates a 404 path while the runtime downloads a different one
+// (issue #15976). The parity is pinned by
+// packages/scripts/__tests__/preflight-eliza1-manifest.test.ts.
+export const TIER_SLUG = {
+  "eliza-1-2b": "e2b",
+  "eliza-1-4b": "e4b",
+  "eliza-1-9b": "12b",
+  "eliza-1-27b": "31b",
+  "eliza-1-27b-256k": "31b-256k",
 };
 
 // Buckets the runtime schema requires to be a NON-EMPTY array.
@@ -39,7 +48,7 @@ const REQUIRED_ARRAY = ["text", "voice", "cache"];
 // Buckets the runtime schema requires to be an array (may be empty).
 const ARRAY_KINDS = ["asr", "vision", "mtp"];
 
-function manifestUrl(tierId) {
+export function manifestUrl(tierId) {
   const slug = TIER_SLUG[tierId];
   if (!slug) throw new Error(`unknown tier id: ${tierId}`);
   return `${HF_BASE}/${HF_REPO}/resolve/main/bundles/${slug}/eliza-1.manifest.json?download=true`;
@@ -119,7 +128,14 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`[preflight-manifest] FATAL: ${err?.stack || err}\n`);
-  process.exit(2);
-});
+// Only run the CLI when invoked directly (so tests can import TIER_SLUG /
+// manifestUrl without triggering a network fetch + process.exit).
+if (
+  process.argv[1] &&
+  import.meta.url === new URL(`file://${process.argv[1]}`).href
+) {
+  main().catch((err) => {
+    process.stderr.write(`[preflight-manifest] FATAL: ${err?.stack || err}\n`);
+    process.exit(2);
+  });
+}
