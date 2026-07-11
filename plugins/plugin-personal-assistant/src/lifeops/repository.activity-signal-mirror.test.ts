@@ -122,4 +122,27 @@ describe("LifeOpsRepository activity telemetry mirror", () => {
         .map((entry) => entry.context.consecutiveFailures),
     ).toEqual([1, 100]);
   });
+
+  it("resets the consecutive-failure cadence after a successful mirror write", async () => {
+    await repository.createActivitySignal(signal(crypto.randomUUID() as UUID));
+
+    const db = adapter.getDatabase();
+    await db.execute(
+      sql.raw(`CREATE TABLE app_lifeops.life_telemetry_events (
+      id TEXT PRIMARY KEY, agent_id TEXT NOT NULL, family TEXT NOT NULL,
+      occurred_at TEXT NOT NULL, ingested_at TEXT NOT NULL,
+      dedupe_key TEXT NOT NULL, source_reliability REAL NOT NULL,
+      payload_json TEXT NOT NULL, UNIQUE (agent_id, dedupe_key)
+    )`),
+    );
+    await repository.createActivitySignal(signal(crypto.randomUUID() as UUID));
+    await db.execute(sql.raw("DROP TABLE app_lifeops.life_telemetry_events"));
+    await repository.createActivitySignal(signal(crypto.randomUUID() as UUID));
+
+    expect(
+      runtime
+        .getRecentReportedErrors()
+        .map((entry) => entry.context.consecutiveFailures),
+    ).toEqual([1, 1]);
+  });
 });
