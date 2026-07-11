@@ -72,6 +72,33 @@ afterEach(() => {
 });
 
 describe("oauth-flow FlowState broadcast", () => {
+  it("accepts a pasted localhost callback for remote Codex clients", async () => {
+    useTempElizaHome();
+    let submitted = "";
+    vi.mocked(startCodexLogin).mockResolvedValue({
+      authUrl: "https://auth.openai.com/authorize?state=fake-state",
+      state: "fake-state",
+      submitCode: (code) => {
+        submitted = code;
+      },
+      credentials: new Promise<OAuthCredentials>(() => undefined),
+      close: () => undefined,
+    });
+
+    const handle = await startCodexOAuthFlow({
+      label: "Remote",
+      accountId: "acct-remote",
+    });
+    const callback =
+      "http://localhost:1455/auth/callback?code=test-code&state=fake-state";
+
+    expect(handle.needsCodeSubmission).toBe(true);
+    handle.submitCode(callback);
+    expect(submitted).toBe(callback);
+    handle.cancel();
+    await expect(handle.completion).rejects.toThrow("Cancelled");
+  });
+
   it("emits a success state without the OAuth tokens", async () => {
     useTempElizaHome();
     const vendor = stubCodexLogin();

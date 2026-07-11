@@ -51,7 +51,7 @@ export interface FlowState {
   status: FlowStatus;
   /** Set on `pending` (so the UI can re-open the browser) and on `success`. */
   authUrl?: string;
-  /** Anthropic only — the user must paste `code#state`; Codex uses the loopback callback. */
+  /** Whether the client must offer a callback URL/code input. */
   needsCodeSubmission: boolean;
   account?: FlowAccountSummary;
   error?: string;
@@ -62,11 +62,11 @@ export interface FlowState {
 export interface OAuthFlowHandle {
   sessionId: string;
   authUrl: string;
-  /** Codex flows resolve via the loopback listener; Anthropic requires `submitCode`. */
+  /** Whether the client must offer a callback URL/code input. */
   needsCodeSubmission: boolean;
   /** Resolves with the saved AccountCredentialRecord; rejects on cancel/timeout/error. */
   completion: Promise<{ account: AccountCredentialRecord }>;
-  /** Anthropic only — submit `code#state` from the redirect page. Ignored for Codex. */
+  /** Submit the provider's callback URL or authorization code. */
   submitCode: (code: string) => void;
   cancel: (reason?: string) => void;
 }
@@ -188,9 +188,10 @@ export function startAnthropicOAuthFlow(
 // Codex (OpenAI ChatGPT subscription).
 
 /**
- * Start a programmatic Codex OAuth flow. Codex has a loopback listener
- * on :1455, so the user just signs in in the browser and the listener
- * picks up the redirect — `submitCode()` is accepted but unused. The accountId
+ * Start a programmatic Codex OAuth flow. Native/local clients can use the
+ * loopback listener on :1455. Remote web clients must paste the localhost
+ * callback URL because that URL resolves in the browser's device, not on the
+ * remote Eliza host. The accountId
  * baked into the JWT is preserved on `LinkedAccountConfig.organizationId`
  * (used by the Codex usage probe via the `ChatGPT-Account-Id` header).
  */
@@ -200,7 +201,7 @@ export function startCodexOAuthFlow(
   return startGenericFlow({
     providerId: "openai-codex",
     opts,
-    needsCodeSubmission: false,
+    needsCodeSubmission: true,
     begin: async () => {
       const flow: CodexFlow = await startCodexLogin();
       const completion = (async () => {
