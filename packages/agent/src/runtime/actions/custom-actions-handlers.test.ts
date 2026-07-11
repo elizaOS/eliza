@@ -5,8 +5,9 @@
  * are stubbed at the existing test seams, so no real network, DNS, or terminal
  * runs.
  */
-import type { CustomActionDef } from "@elizaos/shared";
+
 import type { Action, IAgentRuntime } from "@elizaos/core";
+import type { CustomActionDef } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __setPinnedFetchImplForTests,
