@@ -7,7 +7,7 @@
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createMockRuntime, MOCK_AGENT_ID } from "../../testing/mock-runtime";
-import type { Memory, UUID } from "../../types";
+import type { IAgentRuntime, Memory, UUID } from "../../types";
 import { MemoryType, ModelType } from "../../types";
 import { DocumentService } from "./service.ts";
 
@@ -30,7 +30,8 @@ describe("DocumentService character document ingestion boot races", () => {
 		let embeddingRegistered = false;
 		const created: Array<{ memory: Memory; table: string }> = [];
 
-		const runtime = createMockRuntime({
+		let runtime: IAgentRuntime;
+		runtime = createMockRuntime({
 			getSetting: () => undefined,
 			getModel: (type: string) =>
 				type === ModelType.TEXT_EMBEDDING && embeddingRegistered
@@ -42,6 +43,16 @@ describe("DocumentService character document ingestion boot races", () => {
 				created.push({ memory, table });
 				return memory.id as UUID;
 			},
+			createMemories: async (items): Promise<UUID[]> => {
+				created.push(
+					...items.map(({ memory, tableName }) => ({
+						memory,
+						table: tableName,
+					})),
+				);
+				return items.map(({ memory }) => memory.id as UUID);
+			},
+			transaction: async (callback) => callback(runtime),
 			updateMemory: async () => true,
 			deleteMemory: async () => {},
 			addEmbeddingToMemory: async (memory: Memory) => {
@@ -82,7 +93,8 @@ describe("DocumentService character document ingestion boot races", () => {
 		const deleted: UUID[] = [];
 		let existingDocumentId: UUID | null = null;
 
-		const runtime = createMockRuntime({
+		let runtime: IAgentRuntime;
+		runtime = createMockRuntime({
 			getSetting: () => undefined,
 			getModel: (type: string) =>
 				type === ModelType.TEXT_EMBEDDING
@@ -111,6 +123,16 @@ describe("DocumentService character document ingestion boot races", () => {
 				created.push({ memory, table });
 				return memory.id as UUID;
 			},
+			createMemories: async (items): Promise<UUID[]> => {
+				created.push(
+					...items.map(({ memory, tableName }) => ({
+						memory,
+						table: tableName,
+					})),
+				);
+				return items.map(({ memory }) => memory.id as UUID);
+			},
+			transaction: async (callback) => callback(runtime),
 			updateMemory: async () => true,
 			useModel: async (type: string, params: { text?: string }) => {
 				if (type !== ModelType.TEXT_EMBEDDING) {

@@ -96,17 +96,17 @@ const useCustomLLM = shouldUseCustomLLM();
  * Outcome of {@link processFragmentsSynchronously}.
  *
  * `chunkCount` lets the caller distinguish a legitimately empty document
- * (`chunkCount === 0`, nothing to embed) from an embed-time failure
- * (`chunkCount > 0 && savedCount === 0`, every chunk failed to embed/persist).
- * The latter must not leave the already-written parent DOCUMENT row orphaned.
+ * from an embed-time failure where chunks exist but none can be prepared.
  */
 export interface FragmentProcessingResult {
-	/** Fragments successfully embedded and persisted. */
-	savedCount: number;
-	/** Fragments that failed to embed or persist. */
+	/** Fragments successfully embedded and ready for persistence. */
+	preparedCount: number;
+	/** Fragments that failed to embed. */
 	failedCount: number;
 	/** Total chunks the document text split into (0 = no embeddable text). */
 	chunkCount: number;
+	/** Fully embedded fragments ready for an atomic persistence boundary. */
+	fragments: Memory[];
 }
 
 export async function processFragmentsSynchronously({
@@ -134,14 +134,14 @@ export async function processFragmentsSynchronously({
 }): Promise<FragmentProcessingResult> {
 	if (!fullDocumentText || fullDocumentText.trim() === "") {
 		logger.warn(`No text content available for document ${documentId}`);
-		return { savedCount: 0, failedCount: 0, chunkCount: 0 };
+		return { preparedCount: 0, failedCount: 0, chunkCount: 0, fragments: [] };
 	}
 
 	const chunks = await splitDocumentIntoChunks(fullDocumentText);
 
 	if (chunks.length === 0) {
 		logger.warn(`No chunks generated for document ${documentId}`);
-		return { savedCount: 0, failedCount: 0, chunkCount: 0 };
+		return { preparedCount: 0, failedCount: 0, chunkCount: 0, fragments: [] };
 	}
 
 	logger.info(`Split into ${chunks.length} chunks`);
@@ -154,7 +154,7 @@ export async function processFragmentsSynchronously({
 		providerLimits.rateLimitEnabled,
 	);
 
-	const { savedCount, failedCount } = await processAndSaveFragments({
+	const { preparedCount, failedCount, fragments } = await prepareFragments({
 		runtime,
 		documentId,
 		chunks,
@@ -175,7 +175,7 @@ export async function processFragmentsSynchronously({
 		logger.warn(`${failedCount}/${chunks.length} chunks failed processing`);
 	}
 
-	return { savedCount, failedCount, chunkCount: chunks.length };
+	return { preparedCount, failedCount, chunkCount: chunks.length, fragments };
 }
 
 export async function extractTextFromDocument(
@@ -281,7 +281,7 @@ async function splitDocumentIntoChunks(
 	return splitChunks(documentText, tokenChunkSize, tokenChunkOverlap);
 }
 
-async function processAndSaveFragments({
+async function prepareFragments({
 	runtime,
 	documentId,
 	chunks,
@@ -312,13 +312,15 @@ async function processAndSaveFragments({
 	documentMetadata?: Record<string, unknown>;
 	batchDelayMs?: number;
 }): Promise<{
-	savedCount: number;
+	preparedCount: number;
 	failedCount: number;
 	failedChunks: number[];
+	fragments: Memory[];
 }> {
-	let savedCount = 0;
+	let preparedCount = 0;
 	let failedCount = 0;
 	const failedChunks: number[] = [];
+	const fragments: Memory[] = [];
 
 	for (let i = 0; i < chunks.length; i += concurrencyLimit) {
 		const batchChunks = chunks.slice(i, i + concurrencyLimit);
@@ -363,42 +365,30 @@ async function processAndSaveFragments({
 				continue;
 			}
 
-			try {
-				const fragmentSource =
-					typeof documentMetadata?.source === "string"
-						? documentMetadata.source
-						: "upload";
-				const fragmentMetadata: DocumentFragmentMemoryMetadata = {
-					...(documentMetadata ?? {}),
-					type: MemoryType.FRAGMENT,
-					documentId,
-					position: originalChunkIndex,
-					timestamp: Date.now(),
-					source: fragmentSource,
-					documentTitle,
-				};
-				const fragmentMemory: Memory = {
-					id: uuidv4() as UUID,
-					agentId,
-					roomId: roomId || agentId,
-					worldId: worldId || agentId,
-					entityId: entityId || agentId,
-					embedding,
-					content: { text: contextualizedChunkText },
-					metadata: fragmentMetadata,
-				};
-
-				await runtime.createMemory(fragmentMemory, "document_fragments");
-				savedCount++;
-			} catch (saveError) {
-				const errorMessage =
-					saveError instanceof Error ? saveError.message : String(saveError);
-				logger.error(
-					`Error saving chunk ${originalChunkIndex} to database: ${errorMessage}`,
-				);
-				failedCount++;
-				failedChunks.push(originalChunkIndex);
-			}
+			const fragmentSource =
+				typeof documentMetadata?.source === "string"
+					? documentMetadata.source
+					: "upload";
+			const fragmentMetadata: DocumentFragmentMemoryMetadata = {
+				...(documentMetadata ?? {}),
+				type: MemoryType.FRAGMENT,
+				documentId,
+				position: originalChunkIndex,
+				timestamp: Date.now(),
+				source: fragmentSource,
+				documentTitle,
+			};
+			fragments.push({
+				id: uuidv4() as UUID,
+				agentId,
+				roomId: roomId || agentId,
+				worldId: worldId || agentId,
+				entityId: entityId || agentId,
+				embedding,
+				content: { text: contextualizedChunkText },
+				metadata: fragmentMetadata,
+			});
+			preparedCount++;
 		}
 
 		if (i + concurrencyLimit < chunks.length && batchDelayMs > 0) {
@@ -406,7 +396,7 @@ async function processAndSaveFragments({
 		}
 	}
 
-	return { savedCount, failedCount, failedChunks };
+	return { preparedCount, failedCount, failedChunks, fragments };
 }
 
 const EMBEDDING_BATCH_SIZE = 100;
