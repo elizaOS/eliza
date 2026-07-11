@@ -197,8 +197,12 @@ jobs:
             plugins/plugin-blocker
             plugins/plugin-browser
             plugins/plugin-native-calendar
+            plugins/plugin-scheduling
             plugins/plugin-calendar
             plugins/plugin-finances
+            plugins/plugin-goals
+            plugins/plugin-inbox
+            plugins/plugin-reminders
             plugins/plugin-local-inference
             plugins/plugin-app-control
             plugins/plugin-agent-skills
