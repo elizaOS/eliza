@@ -1,0 +1,252 @@
+name: Chat Latency Live
+
+# Manual, privacy-safe comparison of Cerebras direct and the Eliza Cloud model
+# gateway from the same GitHub-hosted runner. Production is never automatic:
+# selecting it binds the job to the protected production environment.
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - ".github/workflows/chat-latency-live.yml"
+      - "packages/scripts/cloud/chat-latency.mjs"
+      - "packages/scripts/cloud/chat-latency.test.mjs"
+      - "packages/scripts/__tests__/chat-latency-workflow.test.ts"
+      - "package.json"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Eliza Cloud gateway environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+      repeats:
+        description: Repetitions for each model/reasoning case
+        required: true
+        default: "30"
+        type: choice
+        options:
+          - "3"
+          - "10"
+          - "30"
+      expected_gateway_sha:
+        description: Exact 40-character commit expected from /api/health
+        required: true
+        type: string
+
+concurrency:
+  group: chat-latency-live-${{ github.event_name }}-${{ inputs.environment || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Probe contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Validate probe syntax and privacy contract
+        run: |
+          node --check packages/scripts/cloud/chat-latency.mjs
+          node --test packages/scripts/cloud/chat-latency.test.mjs
+
+  live:
+    name: paired direct + gateway (${{ inputs.environment }})
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: ${{ inputs.environment }}
+    env:
+      ELIZA_CLOUD_CHAT_LATENCY_BASE_URL: ${{ inputs.environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+      ELIZA_GATEWAY_DEPLOY_SHA: ${{ inputs.expected_gateway_sha }}
+      REPORT_PATH: reports/chat-latency-paired-${{ inputs.environment }}.jsonl
+    steps:
+      - name: Checkout exact requested ref
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Verify the exact deployed gateway SHA
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const base = process.env.ELIZA_CLOUD_CHAT_LATENCY_BASE_URL ?? "";
+          if (!/^[a-f0-9]{40}$/.test(expected)) {
+            throw new Error("expected_gateway_sha must be a 40-character lowercase commit");
+          }
+          const response = await fetch(base + "/api/health", {
+            headers: { "user-agent": "eliza-chat-latency/1.0" },
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (!response.ok) {
+            throw new Error("Gateway health returned HTTP " + response.status);
+          }
+          const body = await response.json();
+          if (body?.commit !== expected) {
+            throw new Error(
+              "Gateway serves " + (body?.commit ?? "<missing>") + ", expected " + expected,
+            );
+          }
+          console.log(
+            "Verified gateway deployment " +
+              expected +
+              " (" +
+              (body.environment ?? "unknown") +
+              ")",
+          );
+          NODE
+
+      - name: Probe Gemma and GLM reasoning modes on one runner
+        id: probe
+        shell: bash
+        env:
+          CEREBRAS_CHAT_LATENCY_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ELIZA_CLOUD_CHAT_LATENCY_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_GATEWAY_DEPLOY_SHA: ${{ inputs.expected_gateway_sha }}
+          BENCHMARK_SEED: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p reports
+          set +e
+
+          # One process holds runner, clock, prompts, and case set constant.
+          # It randomizes case order, alternates target-first order exactly for
+          # each case and labels cold/warm/post-idle phases.
+          # It idles before every target labeled post-idle.
+          # Warm pairs are paced at 40 gateway requests/minute, below the
+          # lowest Cloud organization tier, so this remains a latency test.
+          node packages/scripts/cloud/chat-latency.mjs \
+            --target paired \
+            --direct-base-url https://api.cerebras.ai \
+            --gateway-base-url "$ELIZA_CLOUD_CHAT_LATENCY_BASE_URL" \
+            --direct-api-key-env CEREBRAS_CHAT_LATENCY_API_KEY \
+            --gateway-api-key-env ELIZA_CLOUD_CHAT_LATENCY_API_KEY \
+            --repeat "${{ inputs.repeats }}" \
+            --timeout-ms 30000 \
+            --idle-ms 30000 \
+            --pair-interval-ms 1500 \
+            --max-proof-miss-rate 0.05 \
+            --seed "$BENCHMARK_SEED" \
+            --case gemma-4-31b@omit@512 \
+            --case gemma-4-31b@none@512 \
+            --case zai-glm-4.7@omit@4096 \
+            --case zai-glm-4.7@none@4096 \
+            --case zai-glm-4.7@none@512 \
+            | tee "$REPORT_PATH"
+          probe_status="${PIPESTATUS[0]}"
+          set -e
+          echo "status=$probe_status" >> "$GITHUB_OUTPUT"
+
+      - name: Reverify the exact deployed gateway SHA
+        if: always()
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const base = process.env.ELIZA_CLOUD_CHAT_LATENCY_BASE_URL ?? "";
+          const response = await fetch(base + "/api/health", {
+            headers: { "user-agent": "eliza-chat-latency/1.0" },
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (!response.ok) {
+            throw new Error("Gateway health returned HTTP " + response.status);
+          }
+          const body = await response.json();
+          if (body?.commit !== expected) {
+            throw new Error(
+              "Gateway changed during the benchmark: served " +
+                (body?.commit ?? "<missing>") +
+                ", expected " +
+                expected,
+            );
+          }
+          console.log("Gateway deployment remained exact through benchmark completion");
+          NODE
+
+      - name: Add privacy-safe timing table to summary
+        if: always() && hashFiles(env.REPORT_PATH) != ''
+        run: |
+          node --input-type=module - "$REPORT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { summarizeLatencyRecords } from "./packages/scripts/cloud/chat-latency.mjs";
+          const path = process.argv[2];
+          const records = readFileSync(path, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+          const summaries = summarizeLatencyRecords(records);
+          console.log("### Paired chat latency: direct + gateway / ${{ inputs.environment }}");
+          console.log("");
+          console.log(
+            "Gateway deployment: " +
+              (process.env.ELIZA_GATEWAY_DEPLOY_SHA ?? "unknown"),
+          );
+          console.log("");
+          console.log("| target | model | reasoning | cap | ok/total | TTFT p50/p90/p95 ms | total p50/p90/p95 ms | preforward p50/p90/p95 ms |");
+          console.log("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |");
+          const fmt = (metric) =>
+            [metric.p50, metric.p90, metric.p95]
+              .map((value) => value ?? "—")
+              .join(" / ");
+          for (const row of summaries) {
+            const values = [
+              row.target,
+              row.model,
+              row.reasoningEffort,
+              row.maxTokens,
+              row.successes + "/" + row.samples,
+              fmt(row.firstTokenMs),
+              fmt(row.totalMs),
+              fmt(row.preforwardMs),
+            ];
+            console.log("| " + values.join(" | ") + " |");
+          }
+          const phaseCounts = Object.groupBy(
+            records,
+            (row) => row.phase ?? "unlabelled",
+          );
+          console.log("");
+          console.log(
+            "Phases: " +
+              Object.entries(phaseCounts)
+                .map(([phase, rows]) => phase + "=" + rows.length)
+                .join(", "),
+          );
+          NODE
+
+      - name: Upload exact-SHA latency evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chat-latency-paired-${{ inputs.environment }}-${{ inputs.expected_gateway_sha }}
+          path: ${{ env.REPORT_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce probe result
+        if: always()
+        run: |
+          status="${{ steps.probe.outputs.status }}"
+          if [ -z "$status" ]; then
+            echo "::error::Probe did not produce a status."
+            exit 1
+          fi
+          exit "$status"

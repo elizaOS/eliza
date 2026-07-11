@@ -293,14 +293,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               visibleProviderPanelId={visibleProviderPanelId}
               resolvedSelectedId={resolvedSelectedId}
               cloudCallsDisabled={selection.cloudCallsDisabled}
-              subscriptionStatus={bootstrap.subscriptionStatus}
-              anthropicConnected={bootstrap.anthropicConnected}
-              setAnthropicConnected={bootstrap.setAnthropicConnected}
-              anthropicCliDetected={bootstrap.anthropicCliDetected}
-              openaiConnected={bootstrap.openaiConnected}
-              setOpenaiConnected={bootstrap.setOpenaiConnected}
               onSelectSubscription={selection.handleSelectSubscription}
-              loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
             />
           ) : null}
         </SettingsGroup>

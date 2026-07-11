@@ -36,6 +36,7 @@ fi
 is_excluded_test() {
   case "$1" in
     *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) return 0 ;;
+    packages/test/cloud-e2e/tests/*.spec.*) return 0 ;;
     */test/e2e/*|test/e2e/*|*/e2e/*.test.*|e2e/*.test.*) return 0 ;;
   esac
   return 1
@@ -45,7 +46,7 @@ changed_source() {
   {
     git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" -- \
       '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' \
-      | grep -vE '(^|/)(__tests__|__e2e__|test|tests|generated)/|[.](generated|test|spec|stories)[.](ts|tsx|js|jsx|mjs|cjs|mts|cts)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
+      | grep -vE '(^|/)(__tests__|__e2e__|test|tests|generated)/|([.-]e2e|[.]generated|[.]test|[.]spec|[.]stories)[.](ts|tsx|js|jsx|mjs|cjs|mts|cts)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
   } \
     | while IFS= read -r file; do
         [ -f "$file" ] || continue

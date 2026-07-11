@@ -118,15 +118,18 @@ export function navigatePreOpenedWindow(
   options?: { preserveOpener?: boolean },
 ): void {
   if (popup && !popup.closed) {
-    popup.location.href = url;
     if (!options?.preserveOpener) {
-      // Security: sever the opener reference now that navigation is done.
+      // Security: sever the opener while the pre-opened about:blank document
+      // is still same-origin. Doing this after assigning the cross-origin URL
+      // races navigation and can leave the OAuth page able to reset/navigate
+      // the app window in some browsers.
       try {
         popup.opener = null;
       } catch {
-        /* cross-origin — fine */
+        /* Browser denied opener mutation — navigation still proceeds. */
       }
     }
+    popup.location.href = url;
     return;
   }
   // Fallback — desktop RPC or retry window.open

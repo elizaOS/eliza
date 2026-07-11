@@ -311,5 +311,3 @@ export async function writeWorkspaceIdentity(
     );
   }
 }
-
-

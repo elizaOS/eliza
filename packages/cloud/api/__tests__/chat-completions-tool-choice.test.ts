@@ -21,6 +21,8 @@ const {
   mapToolChoice,
   convertTools,
   computeEffectiveMaxTokens,
+  validateCerebrasReasoningEffort,
+  buildReasoningEffortProviderOptions,
   toOpenAiFinishReason,
 } = __nativeToolingTestHooks;
 
@@ -145,6 +147,37 @@ describe("computeEffectiveMaxTokens", () => {
     );
   });
 
+  test("reasoning disabled: preserves the caller's exact max_tokens", () => {
+    expect(
+      computeEffectiveMaxTokens(260, null, "zai-glm-4.7", undefined, "none"),
+    ).toBe(260);
+    expect(
+      computeEffectiveMaxTokens(
+        512,
+        null,
+        "cerebras:gemma-4-31b",
+        undefined,
+        "none",
+      ),
+    ).toBe(512);
+  });
+
+  test("Gemma's omitted reasoning_effort uses its no-reasoning default", () => {
+    expect(computeEffectiveMaxTokens(512, null, "gemma-4-31b")).toBe(512);
+  });
+
+  test("active Cerebras reasoning retains the response-token floor", () => {
+    expect(
+      computeEffectiveMaxTokens(512, null, "gemma-4-31b", undefined, "low"),
+    ).toBe(MIN_RESPONSE_TOKENS);
+    expect(computeEffectiveMaxTokens(512, null, "zai-glm-4.7")).toBe(
+      MIN_RESPONSE_TOKENS,
+    );
+    expect(
+      computeEffectiveMaxTokens(512, null, "gpt-oss-120b", undefined, "low"),
+    ).toBe(MIN_RESPONSE_TOKENS);
+  });
+
   test("Anthropic CoT budget: reserves response capacity beyond the thinking budget", () => {
     // cotBudget=8000 -> must be at least 8000 + MIN_RESPONSE_TOKENS regardless of
     // a smaller requested max_tokens.
@@ -184,6 +217,61 @@ describe("computeEffectiveMaxTokens", () => {
         "temperature",
       ]),
     ).toBe(50);
+  });
+});
+
+describe("Cerebras reasoning_effort validation", () => {
+  test.each([
+    ["gemma-4-31b", "none"],
+    ["gemma-4-31b", "low"],
+    ["gemma-4-31b", "medium"],
+    ["gemma-4-31b", "high"],
+    ["gpt-oss-120b", "low"],
+    ["gpt-oss-120b", "medium"],
+    ["gpt-oss-120b", "high"],
+    ["zai-glm-4.7", "none"],
+  ] as const)("accepts %s reasoning_effort=%s", (model, effort) => {
+    expect(validateCerebrasReasoningEffort(model, effort)).toEqual({
+      ok: true,
+      value: effort,
+    });
+  });
+
+  test("canonicalizes decorated Cerebras ids before validation", () => {
+    expect(
+      validateCerebrasReasoningEffort("openai/gpt-oss-120b:nitro", "high"),
+    ).toEqual({ ok: true, value: "high" });
+  });
+
+  test.each([undefined, null])("treats %s as provider default", (effort) => {
+    expect(validateCerebrasReasoningEffort("zai-glm-4.7", effort)).toEqual({
+      ok: true,
+      value: undefined,
+    });
+  });
+
+  test.each([
+    ["zai-glm-4.7", "low"],
+    ["gpt-oss-120b", "none"],
+    ["gemma-4-31b", "minimal"],
+    ["gemma-4-31b", 1],
+  ])("rejects %s reasoning_effort=%s", (model, effort) => {
+    expect(validateCerebrasReasoningEffort(model, effort)).toMatchObject({
+      ok: false,
+    });
+  });
+
+  test("rejects reasoning_effort for a non-Cerebras model", () => {
+    expect(
+      validateCerebrasReasoningEffort("openai/gpt-4o-mini", "low"),
+    ).toMatchObject({ ok: false });
+  });
+
+  test("builds the AI SDK provider option that maps to wire reasoning_effort", () => {
+    expect(buildReasoningEffortProviderOptions("none")).toEqual({
+      providerOptions: { openai: { reasoningEffort: "none" } },
+    });
+    expect(buildReasoningEffortProviderOptions(undefined)).toEqual({});
   });
 });
 
