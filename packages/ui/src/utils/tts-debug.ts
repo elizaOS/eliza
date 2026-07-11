@@ -64,13 +64,27 @@ export function ttsDebugTextPreview(
   return `${singleLine.slice(0, maxChars)}…`;
 }
 
+function serializeTtsDebugDetail(detail: Record<string, unknown>): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(detail, (_key, value: unknown) => {
+    if (typeof value === "bigint") return value.toString();
+    if (value && typeof value === "object") {
+      if (seen.has(value)) return "[Circular]";
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
 export function ttsDebug(
   phase: string,
   detail?: Record<string, unknown>,
 ): void {
   if (!ttsDebugEnabled()) return;
   if (detail && Object.keys(detail).length > 0) {
-    console.info(`[eliza][tts] ${phase}`, detail);
+    // Android WebView logcat renders a second console argument as
+    // "[object Object]", so keep the diagnostic detail in one string.
+    console.info(`[eliza][tts] ${phase} ${serializeTtsDebugDetail(detail)}`);
   } else {
     console.info(`[eliza][tts] ${phase}`);
   }
