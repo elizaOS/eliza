@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import type { VoiceConfig } from "../api/client";
+import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
@@ -33,6 +34,7 @@ import {
   type TalkModeStateEvent,
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
+import { getBootConfig } from "../config/boot-config";
 import { APP_PAUSE_EVENT } from "../events";
 import { resolveApiUrl } from "../utils";
 import { getElizaApiToken } from "../utils/eliza-globals";
@@ -43,6 +45,7 @@ import {
 } from "../utils/tts-debug";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
 import { hasConfiguredApiKey } from "../voice";
+import { resolveDirectCloudTtsRequest } from "../voice/direct-cloud-tts";
 import {
   isLocalAsrCaptureSupported,
   isSilentWav,
@@ -1910,15 +1913,26 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           // the URL. Dedicated-tier agents keep `/api/tts/cloud` unchanged
           // (sharedTtsOrigin is null for them).
           const sharedTtsOrigin = currentSharedRuntimeVoiceOrigin();
-          const ttsTarget = sharedTtsOrigin
-            ? sharedRuntimeTtsUrl(sharedTtsOrigin)
-            : resolveApiUrl("/api/tts/cloud");
-          res = await fetchWithCsrf(ttsTarget, {
-            method: "POST",
+          // A cloud session can authenticate to the voice worker directly.
+          // Prefer that path so mobile renderers do not relay the audio through
+          // the busy on-device agent and remarshal it over IPC. The worker base
+          // comes from boot config, preserving staging/custom deployments.
+          const directCloudTts = resolveDirectCloudTtsRequest({
+            cloudApiBase: getBootConfig().cloudApiBase,
+            cloudAuthToken: getCloudAuthToken(),
+          });
+          const ttsTarget =
+            directCloudTts?.url ??
+            (sharedTtsOrigin
+              ? sharedRuntimeTtsUrl(sharedTtsOrigin)
+              : resolveApiUrl("/api/tts/cloud"));
+          const ttsAuthToken = directCloudTts?.authToken ?? apiToken;
+          const buildTtsRequest = (token: string | null | undefined) => ({
+            method: "POST" as const,
             headers: {
               "Content-Type": "application/json",
               Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-              ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
               ...(isTtsDebugEnabled() && dbg
                 ? {
                     "x-elizaos-tts-message-id": encodeURIComponent(
@@ -1936,6 +1950,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             body: JSON.stringify({ text }),
             signal: controller.signal,
           });
+          const proxyTarget = sharedTtsOrigin
+            ? sharedRuntimeTtsUrl(sharedTtsOrigin)
+            : resolveApiUrl("/api/tts/cloud");
+          let usedProxyFallback = false;
+          try {
+            res = await fetchWithCsrf(ttsTarget, buildTtsRequest(ttsAuthToken));
+          } catch (error) {
+            if (!directCloudTts || controller.signal.aborted) throw error;
+            usedProxyFallback = true;
+            res = await fetchWithCsrf(proxyTarget, buildTtsRequest(apiToken));
+          }
+
+          // A stale session or temporarily unavailable worker must not disable
+          // voice when the established agent proxy is still healthy.
+          if (!res.ok && directCloudTts && !usedProxyFallback) {
+            res = await fetchWithCsrf(proxyTarget, buildTtsRequest(apiToken));
+          }
         } finally {
           clearTimeout(timeoutId);
           if (activeFetchAbortRef.current === controller) {
