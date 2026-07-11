@@ -157,6 +157,7 @@ export * from "./components/apps/extensions/types";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
 export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
+export { ChatWidgetHarness } from "./components/chat/ChatWidgetHarness";
 // Vision-critical chat widgets (#8933) — presentational only, exported with
 // their public prop/value types for stories + host wiring.
 export {

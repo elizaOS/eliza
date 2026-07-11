@@ -218,6 +218,7 @@ declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 // for Capacitor mobile builds so the entire cloud router shell + Steward/wallet
 // + public-page chunks tree-shake out of the native bundle.
 declare const __ELIZA_WEB_SHELL__: boolean | undefined;
+declare const __ELIZA_CHAT_UI_HARNESS__: boolean | undefined;
 
 declare global {
   interface Window {
@@ -2977,6 +2978,19 @@ const CloudRouterShell = lazy(async () => {
 });
 
 /**
+ * Simulator-only production chat gallery. Keeping this behind the literal
+ * build flag makes the harness (and its fixture providers) unreachable from
+ * ordinary web and native bundles.
+ */
+const ChatWidgetHarness = lazy(async () => {
+  if (__ELIZA_CHAT_UI_HARNESS__ !== true) {
+    throw new Error("ChatWidgetHarness is disabled in this build");
+  }
+  const mod = await import("@elizaos/ui");
+  return { default: mod.ChatWidgetHarness };
+});
+
+/**
  * The shell owns the parametric cloud / public / auth / payment routes and
  * renders the tab/view app as the catch-all. It applies only to the main
  * window on the web platform — native (Capacitor) and the desktop Electrobun
@@ -3021,7 +3035,9 @@ function mountReactApp(): void {
   );
 
   const mainTree =
-    shouldMountWebShell() && !isSpecialWindowShell ? (
+    __ELIZA_CHAT_UI_HARNESS__ === true ? (
+      <ChatWidgetHarness />
+    ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
         appElement={
           <AppProvider branding={APP_BRANDING}>{appSubtree}</AppProvider>
