@@ -40,27 +40,35 @@ export interface AnthropicOAuthFlowHandle {
   cancel: (reason?: string) => void;
 }
 
-export async function exchangeAnthropicAuthorizationCode(
-  authCode: string,
-): Promise<AnthropicOAuthCredentials> {
-  let code: string | undefined;
-  let verifier: string | undefined;
-  if (URL.canParse(authCode.trim())) {
-    const callback = new URL(authCode.trim());
+function parseAnthropicAuthorizationInput(authCode: string): {
+  code: string;
+  verifier: string;
+} {
+  const input = authCode.trim();
+  if (URL.canParse(input)) {
+    const callback = new URL(input);
     if (
       callback.hostname === "localhost" ||
       callback.hostname === "127.0.0.1"
     ) {
-      code = callback.searchParams.get("code") ?? undefined;
-      verifier = callback.searchParams.get("state") ?? undefined;
+      const code = callback.searchParams.get("code");
+      const verifier = callback.searchParams.get("state");
+      if (code && verifier) return { code, verifier };
     }
   }
-  if (!code || !verifier) [code, verifier] = authCode.trim().split("#", 2);
+  const [code, verifier] = input.split("#", 2);
   if (!code || !verifier) {
     throw new Error(
       "Anthropic authorization input must be code#state or a localhost callback URL",
     );
   }
+  return { code, verifier };
+}
+
+export async function exchangeAnthropicAuthorizationCode(
+  authCode: string,
+): Promise<AnthropicOAuthCredentials> {
+  const { code, verifier } = parseAnthropicAuthorizationInput(authCode);
   const tokenResponse = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -118,8 +126,8 @@ export async function startAnthropicOAuthFlowRaw(): Promise<AnthropicOAuthFlowHa
 
   const completion = (async (): Promise<AnthropicOAuthCredentials> => {
     const authCode = await codePromise;
-    const state = authCode.split("#")[1];
-    if (state !== verifier) {
+    const parsed = parseAnthropicAuthorizationInput(authCode);
+    if (parsed.verifier !== verifier) {
       throw new Error(
         "Anthropic OAuth state mismatch: returned state does not match the request verifier",
       );
