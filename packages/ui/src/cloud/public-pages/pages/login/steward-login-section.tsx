@@ -38,6 +38,11 @@ import { DiscordIcon } from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
+import {
+  canNavigateSameTabForBlockedPopup,
+  preOpenCloudLoginWindow,
+} from "../../../../state/cloud-login-launch";
+import { navigatePreOpenedWindow } from "../../../../utils/openExternalUrl";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -583,6 +588,11 @@ export default function StewardLoginSection() {
   }
 
   async function handleOAuth(provider: StewardOAuthProvider) {
+    // Open synchronously while the click still has user-gesture context. The
+    // PKCE challenge is asynchronous, so opening after it resolves is blocked
+    // by browsers. Touch-primary browsers intentionally return null here and
+    // continue in the current tab.
+    const authWindow = preOpenCloudLoginWindow();
     setLoading(provider);
     setError(null);
     const host = window.location.hostname.toLowerCase();
@@ -593,6 +603,7 @@ export default function StewardLoginSection() {
     try {
       const pkce = await createStewardPkcePair();
       if (!storeStewardPkceVerifier(pkce.verifier)) {
+        authWindow?.close();
         setError(
           "Could not start sign-in — browser storage is unavailable. Enable cookies / site data and try again.",
         );
@@ -601,16 +612,26 @@ export default function StewardLoginSection() {
       }
       codeChallenge = pkce.challenge;
     } catch (e: unknown) {
+      authWindow?.close();
       setError(getErrorMessage(e, "Could not start sign-in"));
       setLoading(null);
       return;
     }
     storePendingOAuthReturnTo(searchParams);
-    window.location.href = buildStewardOAuthAuthorizeUrl(
-      provider,
-      oauthOrigin,
-      { stewardApiUrl, stewardTenantId: STEWARD_TENANT_ID, codeChallenge },
-    );
+    const authorizeUrl = buildStewardOAuthAuthorizeUrl(provider, oauthOrigin, {
+      stewardApiUrl,
+      stewardTenantId: STEWARD_TENANT_ID,
+      codeChallenge,
+    });
+    if (authWindow && !authWindow.closed) {
+      navigatePreOpenedWindow(authWindow, authorizeUrl);
+    } else if (canNavigateSameTabForBlockedPopup()) {
+      // Plain web can safely preserve the sign-in round trip in this tab.
+      window.location.href = authorizeUrl;
+    } else {
+      // Native and desktop shells must retain their platform browser bridges.
+      navigatePreOpenedWindow(null, authorizeUrl);
+    }
   }
 
   // First wallet click: mount the lazy wallet stack and remember which chain

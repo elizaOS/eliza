@@ -264,6 +264,10 @@ export interface Bindings {
   // #11058: reclaim TTL (ms) for the reclaim-stale-domains cron — external
   // managed-domain rows still unverified after this age are released. 48h default.
   MANAGED_DOMAIN_UNVERIFIED_TTL_MS?: string;
+  // #16071: grace window (ms) for the gc-stranded-sandbox-keys cron — stranded
+  // agent-sandbox keys older than this are revoked. 6h default; must exceed any
+  // real mint-to-commit latency so an in-flight single-flight mint is untouched.
+  STRANDED_SANDBOX_KEY_GRACE_MS?: string;
 
   // Allow overflow — handlers can read any env var via c.env.
   [key: string]: unknown;
