@@ -1,6 +1,6 @@
 /**
- * Package-level vitest config: aliases `@elizaos/core` and `@elizaos/logger`
- * to source so tests resolve without a pre-built dist, and excludes live/opt-in
+ * Package-level vitest config: aliases local workspace dependencies to source
+ * so tests resolve without pre-built dist artifacts, and excludes live/opt-in
  * suites (funded-wallet transfer tests, guarded post-merge-only suites) from
  * the default run.
  */
@@ -20,6 +20,16 @@ export default defineConfig({
       "@elizaos/logger": path.resolve(
         rootDir,
         "../../packages/logger/src/index.ts",
+      ),
+      // Keep the specific subpath before the package alias because Vite
+      // evaluates object aliases in insertion order.
+      "@elizaos/shared/automation-node-contributors": path.resolve(
+        rootDir,
+        "../../packages/shared/src/automation-node-contributors.ts",
+      ),
+      "@elizaos/shared": path.resolve(
+        rootDir,
+        "../../packages/shared/src/index.ts",
       ),
     },
   },
