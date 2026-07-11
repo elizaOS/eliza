@@ -1,125 +1,126 @@
 #!/usr/bin/env node
-// Loud preflight for the Local Inference Bench nightly lane.
-//
-// The nightly job boots `bun run dev`, then `profile-inference.mjs --ensure-models`
-// asks the running agent to download the bench models. The agent fetches the
-// PUBLISHED HuggingFace bundle manifest and validates it against the Eliza-1
-// manifest schema before touching any weight byte. When a published manifest is
-// malformed (e.g. `files.vision` emitted as an object instead of an array, as
-// happened during the 2026-06→07 Gemma-4 cutover), the download fails with a
-// mid-run stack trace ~5 minutes into the run — AFTER a full `bun install` +
-// agent boot. That is a confusing, expensive red for what is really a
-// bad-published-artifact problem the CI runner cannot fix.
-//
-// This preflight fetches the published manifest(s) for the bench tiers and
-// asserts the shape the runtime schema requires (packages/shared manifest
-// schema: every `files.<kind>` bucket is an ARRAY). It runs in seconds, before
-// the install/boot, and fails LOUDLY with an operator-actionable message so the
-// lane stops burning minutes on an unfixable artifact defect.
-//
-// Usage:
-//   node packages/scripts/benchmark/preflight-eliza1-manifest.mjs eliza-1-2b [eliza-1-4b ...]
-//
-// Exit codes: 0 = manifest(s) valid; 2 = malformed/unreachable manifest.
+/**
+ * Validates the manifest shape for explicitly published Eliza-1 tiers before
+ * the nightly benchmark spends time installing dependencies and booting an
+ * agent. The tier map mirrors the runtime catalog and excludes pending tiers.
+ */
 
-const HF_REPO = "elizaos/eliza-1";
-const HF_BASE = (process.env.ELIZA_HF_BASE_URL || "https://huggingface.co").replace(/\/+$/, "");
+import { pathToFileURL } from "node:url";
 
-// tier id -> published bundle prefix (mirrors catalog `bundleRemotePrefix`)
-const TIER_SLUG = {
-  "eliza-1-2b": "2b",
-  "eliza-1-4b": "4b",
-  "eliza-1-9b": "9b",
-  "eliza-1-27b": "27b",
-  "eliza-1-27b-256k": "27b-256k",
-};
+export const HF_REPO = "elizaos/eliza-1";
+export const TIER_SLUG = Object.freeze({
+  "eliza-1-2b": "e2b",
+  "eliza-1-4b": "e4b",
+});
 
-// Buckets the runtime schema requires to be a NON-EMPTY array.
 const REQUIRED_ARRAY = ["text", "voice", "cache"];
-// Buckets the runtime schema requires to be an array (may be empty).
 const ARRAY_KINDS = ["asr", "vision", "mtp"];
 
-function manifestUrl(tierId) {
+export function manifestUrl(
+  tierId,
+  // biome-ignore lint/suspicious/noUndeclaredEnvVars: This standalone preflight is intentionally configurable outside Turbo tasks.
+  baseUrl = process.env.ELIZA_HF_BASE_URL || "https://huggingface.co",
+) {
   const slug = TIER_SLUG[tierId];
-  if (!slug) throw new Error(`unknown tier id: ${tierId}`);
-  return `${HF_BASE}/${HF_REPO}/resolve/main/bundles/${slug}/eliza-1.manifest.json?download=true`;
-}
-
-async function fetchManifest(url) {
-  const res = await fetch(url, { redirect: "follow" });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${res.statusText} fetching ${url}`);
+  if (!slug) {
+    throw new Error(
+      `tier ${tierId} is not published; available tiers: ${Object.keys(TIER_SLUG).join(", ")}`,
+    );
   }
-  return res.json();
+  const base = baseUrl.replace(/\/+$/, "");
+  return `${base}/${HF_REPO}/resolve/main/bundles/${slug}/eliza-1.manifest.json?download=true`;
 }
 
-function validateShape(tierId, manifest) {
+export function validateShape(manifest) {
   const problems = [];
   const files = manifest?.files;
   if (files == null || typeof files !== "object" || Array.isArray(files)) {
-    problems.push("`files` is missing or not an object");
-    return problems;
+    return ["`files` is missing or not an object"];
   }
   for (const kind of [...REQUIRED_ARRAY, ...ARRAY_KINDS]) {
-    const v = files[kind];
-    if (!Array.isArray(v)) {
+    const value = files[kind];
+    if (!Array.isArray(value)) {
       problems.push(
-        `files.${kind}: expected array, received ${v === undefined ? "undefined" : Array.isArray(v) ? "array" : typeof v}`,
+        `files.${kind}: expected array, received ${value === undefined ? "undefined" : typeof value}`,
       );
-      continue;
-    }
-    if (REQUIRED_ARRAY.includes(kind) && v.length === 0) {
-      problems.push(`files.${kind}: required non-empty array, received empty array`);
+    } else if (REQUIRED_ARRAY.includes(kind) && value.length === 0) {
+      problems.push(
+        `files.${kind}: required non-empty array, received empty array`,
+      );
     }
   }
   return problems;
 }
 
-async function main() {
-  const tiers = process.argv.slice(2);
+export async function runPreflight(
+  tiers,
+  {
+    fetchImpl = fetch,
+    stdout = process.stdout,
+    stderr = process.stderr,
+    baseUrl,
+  } = {},
+) {
   if (tiers.length === 0) {
-    process.stderr.write("[preflight-manifest] no tier ids supplied\n");
-    process.exit(2);
+    stderr.write("[preflight-manifest] no tier ids supplied\n");
+    return 2;
   }
+
   let failed = false;
   for (const tierId of tiers) {
-    const url = manifestUrl(tierId);
     try {
-      const manifest = await fetchManifest(url);
-      const problems = validateShape(tierId, manifest);
-      if (problems.length > 0) {
-        failed = true;
-        process.stderr.write(
-          `\n[preflight-manifest] ✗ ${tierId} published manifest is MALFORMED:\n`,
-        );
-        for (const p of problems) process.stderr.write(`    - ${p}\n`);
-        process.stderr.write(`    manifest: ${url}\n`);
-      } else {
-        process.stdout.write(
-          `[preflight-manifest] ✓ ${tierId} published manifest shape OK\n`,
+      const url = manifestUrl(tierId, baseUrl);
+      const response = await fetchImpl(url, { redirect: "follow" });
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status} ${response.statusText} fetching ${url}`,
         );
       }
-    } catch (err) {
+      const manifest = await response.json();
+      const problems = validateShape(manifest);
+      if (problems.length === 0) {
+        stdout.write(
+          `[preflight-manifest] ✓ ${tierId} published manifest shape OK\n`,
+        );
+        continue;
+      }
       failed = true;
-      process.stderr.write(`\n[preflight-manifest] ✗ ${tierId}: ${err.message}\n`);
+      stderr.write(
+        `\n[preflight-manifest] ✗ ${tierId} published manifest is MALFORMED:\n`,
+      );
+      for (const problem of problems) stderr.write(`    - ${problem}\n`);
+      stderr.write(`    manifest: ${url}\n`);
+    } catch (error) {
+      failed = true;
+      stderr.write(
+        `\n[preflight-manifest] ✗ ${tierId}: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
     }
   }
+
   if (failed) {
-    process.stderr.write(
-      "\n[preflight-manifest] The nightly bench downloads the PUBLISHED HuggingFace\n" +
-        "  bundle manifest and validates it against the Eliza-1 manifest schema before\n" +
-        "  fetching weights. The manifest above does not match the schema, so booting\n" +
-        "  the agent and running the harness would fail ~5 minutes in with an opaque\n" +
-        "  'expected array, received object' stack trace.\n\n" +
-        "  This is a PUBLISHED-ARTIFACT defect, not a code or runner problem. Fix it by\n" +
-        "  regenerating the bundle manifest with packages/training/scripts/manifest/ and\n" +
-        `  re-publishing to https://huggingface.co/${HF_REPO} (needs HF write access).\n`,
+    stderr.write(
+      "\n[preflight-manifest] The nightly bench consumes the published Hugging Face\n" +
+        "  manifest before downloading weights. Repair the published tier mapping or\n" +
+        "  artifact contract before retrying; pending tiers must remain unavailable.\n",
     );
-    process.exit(2);
+    return 2;
   }
+  return 0;
 }
 
-main().catch((err) => {
-  process.stderr.write(`[preflight-manifest] FATAL: ${err?.stack || err}\n`);
-  process.exit(2);
-});
+async function main() {
+  process.exitCode = await runPreflight(process.argv.slice(2));
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((error) => {
+    process.stderr.write(
+      `[preflight-manifest] FATAL: ${error instanceof Error ? error.stack : String(error)}\n`,
+    );
+    process.exitCode = 2;
+  });
+}

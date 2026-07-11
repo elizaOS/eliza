@@ -54,8 +54,21 @@ function passingBackends() {
 	};
 }
 
+// Published (architecture) slug for a size-slug tier. The `elizaos/eliza-1`
+// tree hosts bundles under architecture slugs (`e2b`…) after the 2026-06→07
+// Gemma-4 cutover (issue #15976), so the manifest FILE paths carry the arch
+// slug even though the manifest `id`/`tier` keep the stable size slug.
+const PUBLISHED_SLUG_BY_TIER: Record<string, string> = {
+	"2b": "e2b",
+	"4b": "e4b",
+	"9b": "12b",
+	"27b": "31b",
+	"27b-256k": "31b-256k",
+};
+
 /** A contract-valid 2b manifest (mirrors manifest.test.ts baseManifest). */
 function validManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
+	const pub = PUBLISHED_SLUG_BY_TIER[tier] ?? tier;
 	return {
 		id: `eliza-1-${tier}`,
 		tier,
@@ -71,12 +84,12 @@ function validManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
 		},
 		files: {
 			text: [
-				{ path: `text/eliza-1-${tier}-128k.gguf`, ctx: 131072, sha256: SHA_A },
+				{ path: `text/eliza-1-${pub}-128k.gguf`, ctx: 131072, sha256: SHA_A },
 			],
 			voice: [{ path: "tts/kokoro/kokoro-82m-v1_0.gguf", sha256: SHA_A }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA_A }],
-			vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA_A }],
-			mtp: [{ path: `mtp/drafter-${tier}.gguf`, sha256: SHA_A }],
+			vision: [{ path: `vision/mmproj-${pub}.gguf`, sha256: SHA_A }],
+			mtp: [{ path: `mtp/drafter-${pub}.gguf`, sha256: SHA_A }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA_A }],
 			vad: [{ path: "vad/silero-vad-v5.gguf", sha256: SHA_A }],
 		},
@@ -316,9 +329,14 @@ describe("collectBundleFiles — conflicting-sha rejection + dedup", () => {
 
 	it("throws on a cross-kind conflict (text vs cache, same path, different sha)", () => {
 		const m = validManifest("2b");
+		// Reuse the SAME published text path the 2b manifest emits
+		// (`text/eliza-1-e2b-128k.gguf` after the arch-slug cutover) so the
+		// cross-kind duplicate is genuine; hardcoding the old size-slug path
+		// would silently stop colliding with the text entry.
+		const textPath = m.files.text[0].path;
 		m.files.cache = [
 			{ path: "cache/voice-preset-default.bin", sha256: SHA_A },
-			{ path: "text/eliza-1-2b-128k.gguf", sha256: SHA_B },
+			{ path: textPath, sha256: SHA_B },
 		] as Eliza1Manifest["files"]["cache"];
 		expect(() => collectBundleFiles(m)).toThrow(/Conflicting sha256 entries/);
 	});

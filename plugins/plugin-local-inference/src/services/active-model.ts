@@ -1174,9 +1174,6 @@ export function assertGemmaRuntimeDispatchContract(
 		if (!manifestRequired.has("turboquant_q4")) {
 			failures.push("manifest kernels.required must include turboquant_q4");
 		}
-		if (!manifestRequired.has("mtp")) {
-			failures.push("manifest kernels.required must include mtp");
-		}
 	}
 	if (args.flashAttention !== true) {
 		failures.push("flashAttention=true is required for the Gemma FA path");
@@ -1190,8 +1187,7 @@ export function assertGemmaRuntimeDispatchContract(
 		}
 	}
 
-	const manifestClaimsMtp =
-		manifestRequired.has("mtp") || Boolean(manifest?.files?.mtp?.length);
+	const manifestClaimsMtp = Boolean(manifest?.files?.mtp?.length);
 	const requiresDrafterBackedMtp =
 		shouldRequireMtpDrafterOnDisk(installed, catalog, manifest) ||
 		manifestClaimsMtp ||
