@@ -2,8 +2,15 @@
   "package": "@seekdaseek/plugin-agentfeed",
   "repository": "github:seekdaseek/plugin-agentfeed",
   "kind": "plugin",
-  "description": "Live crypto market data for trading agents — liquidations, long/short positioning, open interest, funding rates, SOL/BTC prices via Pyth, and SPL token rug-risk checks. Paid per-call in USDC via x402 on Solana ($0.001-$0.01/call), no API keys or subscriptions. Built-in per-call spend cap.",
+  "description": "Live crypto market data for trading agents \u2014 liquidations, long/short positioning, open interest, funding rates, SOL/BTC prices via Pyth, and SPL token rug-risk checks. Paid per-call in USDC via x402 on Solana ($0.001-$0.01/call), no API keys or subscriptions. Built-in per-call spend cap.",
   "homepage": "https://github.com/seekdaseek/plugin-agentfeed",
-  "version": "0.1.0",
-  "tags": ["market-data", "trading", "solana", "x402", "liquidations", "crypto"]
+  "version": "0.1.2",
+  "tags": [
+    "market-data",
+    "trading",
+    "solana",
+    "x402",
+    "liquidations",
+    "crypto"
+  ]
 }
