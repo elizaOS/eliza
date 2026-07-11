@@ -15,7 +15,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { __nativeToolingTestHooks } from "../v1/chat/completions/route";
+import {
+  __nativeToolingTestHooks,
+  __passthroughStreamingTestHooks,
+  __streamingCreditTestHooks,
+} from "../v1/chat/completions/route";
 
 const {
   mapToolChoice,
@@ -26,6 +30,9 @@ const {
   isEmptyButBilled,
   toOpenAiFinishReason,
 } = __nativeToolingTestHooks;
+const { getRecoverableProviderErrorStatus } = __streamingCreditTestHooks;
+const { qualifiesForPassthroughStreaming, mapPassthroughUpstreamStatus } =
+  __passthroughStreamingTestHooks;
 
 // Mirror of MIN_RESPONSE_TOKENS in route.ts. Kept as a literal here so the test
 // fails loudly if the production floor changes without intent.
@@ -323,5 +330,164 @@ describe("toOpenAiFinishReason", () => {
   test("passes through already-normalized values idempotently", () => {
     expect(toOpenAiFinishReason("tool_calls")).toBe("tool_calls");
     expect(toOpenAiFinishReason("content_filter")).toBe("content_filter");
+  });
+});
+
+describe("getRecoverableProviderErrorStatus", () => {
+  function gatewayError(name: string, statusCode?: number) {
+    return Object.assign(new Error(`${name} from gateway`), {
+      name,
+      ...(statusCode === undefined ? {} : { statusCode }),
+    });
+  }
+
+  test("preserves gateway caller-fault statuses from stable error names", () => {
+    expect(
+      getRecoverableProviderErrorStatus(
+        gatewayError("GatewayInvalidRequestError"),
+      ),
+    ).toBe(400);
+    expect(
+      getRecoverableProviderErrorStatus(
+        gatewayError("GatewayModelNotFoundError"),
+      ),
+    ).toBe(404);
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayRateLimitError")),
+    ).toBe(429);
+  });
+
+  test("preserves explicit gateway caller-fault status fields", () => {
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 400)),
+    ).toBe(400);
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 404)),
+    ).toBe(404);
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 429)),
+    ).toBe(429);
+  });
+
+  test("maps quota language to rate limit and leaves infrastructure errors to the boundary", () => {
+    expect(
+      getRecoverableProviderErrorStatus(new Error("provider quota exceeded")),
+    ).toBe(429);
+    expect(
+      getRecoverableProviderErrorStatus(
+        gatewayError("GatewayResponseError", 500),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("passthrough streaming qualification", () => {
+  function passthroughRequest(overrides: Record<string, unknown> = {}) {
+    return {
+      model: "openai/gpt-4o-mini",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user" as const, content: "hello" }],
+      ...overrides,
+    };
+  }
+
+  test("accepts the plain streamed chat shape that can be piped byte-for-byte", () => {
+    expect(qualifiesForPassthroughStreaming(passthroughRequest())).toBe(true);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        response_format: { type: "text" },
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects shapes that require route-side SSE synthesis or provider options", () => {
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        stream: false,
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        stream_options: { include_usage: false },
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        tools: [{ type: "function", function: { name: "search" } }],
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        tool_choice: "required",
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        response_format: { type: "json_object" },
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        webSearchEnabled: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("rejects message shapes whose semantics must be converted by the route", () => {
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        messages: [{ role: "tool", content: "result", tool_call_id: "call-1" }],
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        messages: [
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "call-1",
+                type: "function",
+                function: { name: "lookup", arguments: "{}" },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "multimodal part" }],
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("mapPassthroughUpstreamStatus", () => {
+  test("passes caller-fault statuses through and hides provider auth/infra state", () => {
+    expect(mapPassthroughUpstreamStatus(400)).toBe(400);
+    expect(mapPassthroughUpstreamStatus(402)).toBe(402);
+    expect(mapPassthroughUpstreamStatus(404)).toBe(404);
+    expect(mapPassthroughUpstreamStatus(429)).toBe(429);
+    expect(mapPassthroughUpstreamStatus(401)).toBe(503);
+    expect(mapPassthroughUpstreamStatus(403)).toBe(503);
+    expect(mapPassthroughUpstreamStatus(500)).toBe(503);
   });
 });
