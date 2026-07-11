@@ -122,7 +122,7 @@ mock.module("../lib/session", () => ({
 let harness: typeof import("../lib/harness-real-server");
 
 beforeAll(async () => {
-  harness = await import(`../lib/harness-real-server?test=${Date.now()}`);
+  harness = await import("../lib/harness-real-server");
 });
 
 afterAll(() => {
