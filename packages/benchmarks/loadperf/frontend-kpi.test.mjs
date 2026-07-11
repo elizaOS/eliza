@@ -66,6 +66,16 @@ describe("frontend KPI static server", () => {
     expect(Number(binary.headers.get("content-length"))).toBe(4);
   });
 
+  it("serves the app shell for client-side routes", async () => {
+    const { url } = await fixtureServer();
+    const response = await fetch(new URL("settings/agents", url), {
+      headers: { "accept-encoding": "identity" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("<main>Eliza</main>");
+  });
+
   it("distinguishes missing, malformed, and unexpected filesystem failures", async () => {
     const missing = Object.assign(new Error("gone"), { code: "ENOENT" });
     const missingServer = await fixtureServer({

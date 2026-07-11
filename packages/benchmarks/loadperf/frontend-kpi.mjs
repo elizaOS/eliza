@@ -230,6 +230,8 @@ async function main() {
   try {
     playwright = await import("playwright");
   } catch (err) {
+    // error-policy:J1 CLI boundary translation — the optional browser is a
+    // documented prerequisite, so its absence produces a skipped artifact.
     const payload = {
       skipped: true,
       error: `playwright unavailable: ${err?.message ?? String(err)}`,
@@ -250,6 +252,8 @@ async function main() {
       served = await serveDist();
       target = served.url;
     } catch (err) {
+      // error-policy:J1 CLI boundary translation — an unavailable build
+      // produces a skipped artifact rather than a fabricated KPI result.
       const payload = { skipped: true, error: err?.message ?? String(err) };
       const { file } = recordResult("frontend", payload, NOW);
       if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
@@ -317,6 +321,8 @@ async function main() {
     }
     process.exit(result.pass ? 0 : 1);
   } catch (err) {
+    // error-policy:J1 CLI boundary translation — browser and navigation
+    // failures become a recorded skipped result for the benchmark caller.
     const payload = {
       skipped: true,
       url: target,
@@ -330,8 +336,21 @@ async function main() {
       );
     process.exit(2);
   } finally {
-    if (browser) await browser.close().catch(() => {});
-    if (served) await served.close().catch(() => {});
+    for (const [label, close] of [
+      ["browser", browser ? () => browser.close() : null],
+      ["static server", served ? () => served.close() : null],
+    ]) {
+      if (!close) continue;
+      try {
+        await close();
+      } catch (error) {
+        // error-policy:J6 best-effort teardown — the primary benchmark result
+        // is already recorded, while teardown failures remain visible.
+        console.error(
+          `[frontend-kpi] ${label} teardown failed: ${error?.message ?? String(error)}`,
+        );
+      }
+    }
   }
 }
 
