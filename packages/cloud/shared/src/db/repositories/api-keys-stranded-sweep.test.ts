@@ -1,7 +1,7 @@
 /**
  * Real-DB (PGlite) coverage for the stranded agent-sandbox key GC query (#16071).
  *
- * `deleteStrandedAgentSandboxKeys(olderThan)` must delete ONLY active
+ * `deleteOlderThan(olderThan)` must delete only active
  * `agent-sandbox:<uuid>` keys whose uuid has NO `agent_sandboxes` row and whose
  * `created_at` predates the grace window. The three acceptance cases from the
  * issue are proven against real SQL (no mocks): a stranded key is returned, an
@@ -16,7 +16,7 @@ process.env.DATABASE_URL ||= "pglite://memory";
 process.env.NODE_ENV ||= "test";
 
 let dbWrite: typeof import("../helpers").dbWrite;
-let apiKeysRepository: typeof import("./api-keys").apiKeysRepository;
+let strandedAgentKeyRepository: typeof import("./stranded-agent-keys").strandedAgentKeyRepository;
 let closeDatabaseConnectionsForTests: typeof import("../client").closeDatabaseConnectionsForTests;
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000a1";
@@ -55,7 +55,7 @@ async function insertKey(params: {
 beforeAll(async () => {
   ({ dbWrite } = await import("../helpers"));
   ({ closeDatabaseConnectionsForTests } = await import("../client"));
-  ({ apiKeysRepository } = await import("./api-keys"));
+  ({ strandedAgentKeyRepository } = await import("./stranded-agent-keys"));
 
   // Minimal shapes: the query only touches api_keys columns + agent_sandboxes.id.
   await dbWrite.execute(sql`
@@ -99,7 +99,7 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
+describe("strandedAgentKeyRepository.deleteOlderThan (#16071)", () => {
   test("returns a stranded key: no sandbox row + past the grace window", async () => {
     const strandedId = await insertKey({
       name: `agent-sandbox:${SANDBOX_STRANDED}`,
@@ -107,7 +107,7 @@ describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000); // 6h grace
-    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
+    const found = await strandedAgentKeyRepository.deleteOlderThan(olderThan);
 
     expect(found.map((k) => k.id)).toEqual([strandedId]);
   });
@@ -121,7 +121,7 @@ describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
+    const found = await strandedAgentKeyRepository.deleteOlderThan(olderThan);
 
     expect(found).toHaveLength(0);
   });
@@ -134,7 +134,7 @@ describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
+    const found = await strandedAgentKeyRepository.deleteOlderThan(olderThan);
 
     expect(found).toHaveLength(0);
     const remaining = (await dbWrite.execute(sql`
@@ -154,7 +154,7 @@ describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
+    const found = await strandedAgentKeyRepository.deleteOlderThan(olderThan);
 
     expect(found).toHaveLength(0);
   });
@@ -175,7 +175,7 @@ describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
     await insertKey({ name: "eliza cloud key", createdAtSql: "now() - interval '1 day'" });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
+    const found = await strandedAgentKeyRepository.deleteOlderThan(olderThan);
 
     expect(found.map((k) => k.id)).toEqual([strandedId]);
   });

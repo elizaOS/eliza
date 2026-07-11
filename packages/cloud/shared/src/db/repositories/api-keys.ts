@@ -1,18 +1,7 @@
 // Persists api keys records for cloud services through the shared DB boundary.
-import { and, eq, like, lt, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
-import { agentSandboxes } from "../schemas/agent-sandboxes";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
-
-/**
- * Name prefix of the auto-generated per-agent sandbox keys
- * (`agent-sandbox:<uuid>`). Kept here (not imported from the service) so the
- * repository stays a leaf with no service dependency; the service owns the
- * canonical `agentApiKeyName` builder and this LIKE pattern must stay in sync
- * with it. `%` is the SQL wildcard for the trailing uuid.
- */
-const AGENT_SANDBOX_KEY_NAME_PREFIX = "agent-sandbox:";
-const AGENT_SANDBOX_KEY_NAME_LIKE = `${AGENT_SANDBOX_KEY_NAME_PREFIX}%`;
 
 export type { ApiKey, NewApiKey };
 
@@ -204,56 +193,6 @@ export class ApiKeysRepository {
           eq(apiKeys.is_active, true),
         ),
       );
-  }
-
-  /**
-   * Atomically deletes active `agent-sandbox:<uuid>` keys whose sandbox does
-   * not exist and whose creation predates `olderThan` (#16071).
-   *
-   * The stranded case: a process crash BETWEEN the tier-upgrade single-flight
-   * mint (`createForAgent`, which runs on its own connection outside the
-   * locked commit) and the transaction that commits the target sandbox row
-   * leaves an active key bound to a sandbox id that never came into existence.
-   * Every ORDINARY failure path (race loser, quota refusal, enqueue rollback)
-   * already revokes the candidate key; only the crash-in-the-window leaves this
-   * orphan, which nothing else GCs.
-   *
-   * Correctness guards:
-   *   - `olderThan` (grace window) NEVER touches a key minted moments ago for an
-   *     in-flight mint still holding the tier-upgrade lock.
-   *   - the `NOT EXISTS` sub-select uses the uuid parsed out of the KEY NAME
-   *     (`substring(name from 15)`, i.e. after the `agent-sandbox:` prefix) so a
-   *     key correctly bound to a LIVE sandbox is never returned.
-   *   - only `is_active` keys are considered; already-revoked rows are ignored.
-   *
-   * Selection and deletion deliberately share one SQL statement. A separate
-   * select followed by deletion can revoke a key after a concurrent sandbox
-   * commit makes it live. PostgreSQL evaluates the correlated `NOT EXISTS` at
-   * the delete boundary and returns only rows actually removed, which also
-   * gives callers the hashes needed for cache invalidation.
-   */
-  async deleteStrandedAgentSandboxKeys(olderThan: Date): Promise<ApiKey[]> {
-    return await dbWrite
-      .delete(apiKeys)
-      .where(
-        and(
-          eq(apiKeys.is_active, true),
-          like(apiKeys.name, AGENT_SANDBOX_KEY_NAME_LIKE),
-          lt(apiKeys.created_at, olderThan),
-          // The `from` offset is inlined as a SQL literal (not a bound param):
-          // PGlite silently returns NULL for `substring(text from $n)` when the
-          // position is parameterized, which would break the id match. This
-          // offset is a compile-time constant from a fixed string length, so
-          // there is no injection surface.
-          sql`NOT EXISTS (
-            SELECT 1 FROM ${agentSandboxes}
-            WHERE ${agentSandboxes.id}::text = substring(${apiKeys.name} from ${sql.raw(
-              String(AGENT_SANDBOX_KEY_NAME_PREFIX.length + 1),
-            )})
-          )`,
-        ),
-      )
-      .returning();
   }
 }
 

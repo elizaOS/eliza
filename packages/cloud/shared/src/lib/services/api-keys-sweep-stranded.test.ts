@@ -1,5 +1,5 @@
 /**
- * `apiKeysService.sweepStrandedAgentKeys` behavior (#16071).
+ * `sweepStrandedAgentKeys` behavior (#16071).
  *
  * The sweep revokes every stranded `agent-sandbox:<uuid>` key the repository
  * atomically deletes and best-effort invalidates each revoked key's auth
@@ -12,8 +12,9 @@
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { ApiKey } from "../../db/repositories";
-import { apiKeysRepository } from "../../db/repositories";
+import { strandedAgentKeyRepository } from "../../db/repositories/stranded-agent-keys";
 import { apiKeysService } from "./api-keys";
+import { sweepStrandedAgentKeys } from "./stranded-agent-key-sweeper";
 
 function strandedKey(id: string): ApiKey {
   return {
@@ -26,7 +27,7 @@ function strandedKey(id: string): ApiKey {
   } as unknown as ApiKey;
 }
 
-describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
+describe("sweepStrandedAgentKeys (#16071)", () => {
   const spies: Array<{ mockRestore: () => void }> = [];
 
   afterEach(() => {
@@ -39,12 +40,10 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
   }
 
   test("no stranded keys -> revokes nothing, no deletes, no invalidations", async () => {
-    const del = track(
-      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue([]),
-    );
+    const del = track(spyOn(strandedAgentKeyRepository, "deleteOlderThan").mockResolvedValue([]));
     const invalidate = track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
 
-    const revoked = await apiKeysService.sweepStrandedAgentKeys(new Date());
+    const revoked = await sweepStrandedAgentKeys(new Date());
 
     expect(revoked).toBe(0);
     expect(del).toHaveBeenCalledOnce();
@@ -53,12 +52,10 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
 
   test("invalidates each atomically deleted key and returns the count", async () => {
     const keys = [strandedKey("k1"), strandedKey("k2"), strandedKey("k3")];
-    const del = track(
-      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue(keys),
-    );
+    const del = track(spyOn(strandedAgentKeyRepository, "deleteOlderThan").mockResolvedValue(keys));
     const invalidate = track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
 
-    const revoked = await apiKeysService.sweepStrandedAgentKeys(new Date());
+    const revoked = await sweepStrandedAgentKeys(new Date());
 
     expect(revoked).toBe(3);
     // Deleted by row id (not by name).
@@ -67,13 +64,11 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
   });
 
   test("passes the grace cutoff straight through to the repository query", async () => {
-    const find = track(
-      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue([]),
-    );
+    const find = track(spyOn(strandedAgentKeyRepository, "deleteOlderThan").mockResolvedValue([]));
     track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
 
     const cutoff = new Date("2026-01-01T00:00:00.000Z");
-    await apiKeysService.sweepStrandedAgentKeys(cutoff);
+    await sweepStrandedAgentKeys(cutoff);
 
     expect(find).toHaveBeenCalledTimes(1);
     expect(find).toHaveBeenCalledWith(cutoff);
@@ -81,9 +76,7 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
 
   test("a cache-invalidation failure does NOT abort the sweep; every row is still revoked", async () => {
     const keys = [strandedKey("k1"), strandedKey("k2"), strandedKey("k3")];
-    const del = track(
-      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue(keys),
-    );
+    const del = track(spyOn(strandedAgentKeyRepository, "deleteOlderThan").mockResolvedValue(keys));
     // The MIDDLE key's invalidation throws (Redis brownout); the sweep must
     // continue and still count it as revoked (its DB row is already gone).
     const invalidate = track(
@@ -92,7 +85,7 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
       }),
     );
 
-    const revoked = await apiKeysService.sweepStrandedAgentKeys(new Date());
+    const revoked = await sweepStrandedAgentKeys(new Date());
 
     expect(revoked).toBe(3);
     expect(del).toHaveBeenCalledOnce();

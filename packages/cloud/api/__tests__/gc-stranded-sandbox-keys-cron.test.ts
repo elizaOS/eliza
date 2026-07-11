@@ -1,7 +1,7 @@
 /**
  * Cron wiring test for #16071: the Worker `scheduled()` handler must fan out
  * to /api/cron/gc-stranded-sandbox-keys on the 6-hourly schedule, whose handler
- * calls `apiKeysService.sweepStrandedAgentKeys(olderThan)` with a cutoff of
+ * calls the stranded-key sweeper with a cutoff of
  * `now - graceMs` (6h default, STRANDED_SANDBOX_KEY_GRACE_MS override).
  *
  * The scheduled handler is driven for real (makeCronHandler + the real
@@ -20,14 +20,13 @@ import {
   test,
 } from "bun:test";
 import { Hono } from "hono";
-import { apiKeysService } from "@/lib/services/api-keys";
+import { strandedAgentKeySweeper } from "@/lib/services/stranded-agent-key-sweeper";
 import type { Bindings } from "@/types/cloud-worker-env";
 
 const sweepStrandedAgentKeys = mock(async (_olderThan: Date) => 2);
-const sweepSpy = spyOn(
-  apiKeysService,
-  "sweepStrandedAgentKeys",
-).mockImplementation(sweepStrandedAgentKeys);
+const sweepSpy = spyOn(strandedAgentKeySweeper, "sweep").mockImplementation(
+  sweepStrandedAgentKeys,
+);
 
 afterAll(() => sweepSpy.mockRestore());
 

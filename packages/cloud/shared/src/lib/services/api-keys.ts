@@ -454,62 +454,6 @@ export class ApiKeysService {
       }
     }
   }
-
-  /**
-   * Garbage-collect STRANDED `agent-sandbox:<uuid>` keys (#16071).
-   *
-   * The tier-upgrade single-flight boundary (#15943, #16042) mints the agent
-   * key (`createForAgent`) on its own connection BEFORE the locked transaction
-   * that commits the target sandbox row — the single-session PGlite backend
-   * forbids a nested in-tx query through a second handle, so the mint cannot
-   * join that transaction. Every ordinary failure path revokes the candidate
-   * key; the one unreachable path is a process crash between the mint and the
-   * commit, which strands an ACTIVE key bound to a sandbox id that never came
-   * into existence. The plaintext died with the crashed process (only the hash
-   * + ciphertext persist), so this is hygiene debt — a dormant credential
-   * nobody holds — not a live exposure, but nothing else ever reaps it.
-   *
-   * This sweep revokes every active `agent-sandbox:%` key whose bound sandbox
-   * id has no `agent_sandboxes` row and whose `created_at` predates a generous
-   * grace window, then best-effort invalidates each revoked key's auth caches
-   * (same policy as `revokeForAgent`: the row is already DB-revoked, so a cache
-   * brownout must not abort the sweep — the stale entry is TTL-bounded and the
-   * failure is surfaced, never swallowed). The grace window guarantees a key
-   * minted moments ago for an in-flight mint still holding the tier-upgrade
-   * lock is never touched.
-   *
-   * @param olderThan revoke only keys created before this instant (grace window).
-   * @returns the number of stranded keys revoked.
-   */
-  async sweepStrandedAgentKeys(olderThan: Date): Promise<number> {
-    const stranded = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
-    if (stranded.length === 0) {
-      return 0;
-    }
-
-    let revoked = 0;
-    for (const key of stranded) {
-      revoked++;
-      try {
-        await this.invalidateCache(key.key_hash);
-      } catch (error) {
-        logger.error(
-          "[ApiKeys] sweepStrandedAgentKeys: cache invalidation not confirmed for a " +
-            "DB-revoked stranded key; stale entry bounded by TTL, sweep continues",
-          {
-            apiKeyId: key.id,
-            error: error instanceof Error ? error.message : String(error),
-          },
-        );
-      }
-    }
-
-    logger.warn("[ApiKeys] Swept stranded agent-sandbox keys", {
-      revoked,
-      olderThan: olderThan.toISOString(),
-    });
-    return revoked;
-  }
 }
 
 // Export singleton instance

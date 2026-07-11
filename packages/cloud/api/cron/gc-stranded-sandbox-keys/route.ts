@@ -13,13 +13,13 @@
  * The grace window (default 6h, overridable with STRANDED_SANDBOX_KEY_GRACE_MS)
  * must comfortably exceed any real mint-to-commit latency so a key minted for
  * an in-flight single-flight mint still holding the tier-upgrade lock is never
- * touched. Protected by CRON_SECRET. See apiKeysService.sweepStrandedAgentKeys.
+ * touched. Protected by CRON_SECRET.
  */
 
 import { type Context, Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { apiKeysService } from "@/lib/services/api-keys";
+import { strandedAgentKeySweeper } from "@/lib/services/stranded-agent-key-sweeper";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -43,7 +43,7 @@ async function handle(c: Context<AppEnv>) {
       c.env.STRANDED_SANDBOX_KEY_GRACE_MS,
     );
     const olderThan = new Date(startedAt - graceMs);
-    const revoked = await apiKeysService.sweepStrandedAgentKeys(olderThan);
+    const revoked = await strandedAgentKeySweeper.sweep(olderThan);
     logger.info(
       `[ApiKeys] gc-stranded-sandbox-keys revoked ${revoked} stranded keys (graceMs=${graceMs})`,
       {
