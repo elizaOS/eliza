@@ -509,7 +509,7 @@ function extractJwtEmail(token: string | undefined): string | undefined {
   }
 }
 
-async function fetchAnthropicOAuthProfile(accessToken: string): Promise<{
+export async function fetchAnthropicOAuthProfile(accessToken: string): Promise<{
   email?: string;
   accountId?: string;
   organizationId?: string;

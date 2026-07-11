@@ -8,7 +8,9 @@
  * Anthropic setup token is stored for task-agent CLI use only, never applied to
  * `process.env` (TOS restriction).
  */
+import crypto from "node:crypto";
 import type { AnthropicFlow } from "@elizaos/auth/anthropic";
+import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
 import type { CodexFlow } from "@elizaos/auth/openai-codex";
 import {
   isSubscriptionProvider,
@@ -35,6 +37,7 @@ export type SubscriptionAuthApi = Pick<
   AuthModule,
   | "getSubscriptionStatus"
   | "exchangeAnthropicAuthorizationCode"
+  | "fetchAnthropicOAuthProfile"
   | "startAnthropicLogin"
   | "startCodexLogin"
   | "saveCredentials"
@@ -150,12 +153,54 @@ export async function handleSubscriptionRoutes(
         saveCredentials,
         applySubscriptionCredentials,
         exchangeAnthropicAuthorizationCode,
+        fetchAnthropicOAuthProfile,
       } = await loadSubscriptionAuth();
       const flow = state._anthropicFlow;
       const credentials = flow
         ? (flow.submitCode(body.code), await flow.credentials)
         : await exchangeAnthropicAuthorizationCode(body.code);
-      saveCredentials("anthropic-subscription", credentials);
+      const profile = await fetchAnthropicOAuthProfile(credentials.access);
+      const accountId = profile.accountId ?? crypto.randomUUID();
+      saveCredentials("anthropic-subscription", credentials, accountId);
+      const stored = loadAccount("anthropic-subscription", accountId);
+      if (stored && profile.email) {
+        saveAccount({
+          ...stored,
+          label: profile.email,
+          email: profile.email,
+          ...(profile.organizationId
+            ? { organizationId: profile.organizationId }
+            : {}),
+        });
+      }
+      const pool = getAgentHostBridge().getDefaultAccountPool() as {
+        list(providerId?: string): LinkedAccountConfig[];
+        upsert(account: LinkedAccountConfig): Promise<void>;
+      };
+      const existing = pool.list("anthropic-subscription");
+      const prior = existing.find((account) => account.id === accountId);
+      const priority =
+        prior?.priority ??
+        (existing.length === 0
+          ? 0
+          : Math.max(...existing.map((account) => account.priority)) + 1);
+      await pool.upsert({
+        id: accountId,
+        providerId: "anthropic-subscription",
+        label:
+          profile.email ??
+          prior?.label ??
+          `Claude account ${existing.length + 1}`,
+        source: "oauth",
+        enabled: prior?.enabled ?? true,
+        priority,
+        createdAt: prior?.createdAt ?? Date.now(),
+        health: "ok",
+        ...(profile.email ? { email: profile.email } : {}),
+        ...(profile.organizationId
+          ? { organizationId: profile.organizationId }
+          : {}),
+      });
       await applySubscriptionCredentials(state.config);
       delete state._anthropicFlow;
       json(res, { success: true, expiresAt: credentials.expires });
