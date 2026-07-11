@@ -28,7 +28,11 @@ import os from "node:os";
 import path from "node:path";
 import { loadAccount } from "@elizaos/auth/account-storage";
 import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
-import { getAccessToken, saveCredentials } from "@elizaos/auth/credentials";
+import {
+  type AccessTokenOutcome,
+  getAccessToken,
+  saveCredentials,
+} from "@elizaos/auth/credentials";
 import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
 import { accountRefreshMutex } from "@elizaos/auth/refresh-mutex";
 import type { DirectAccountProvider } from "@elizaos/auth/types";
@@ -44,6 +48,10 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
+import {
+  claudeMinRemainingMs,
+  resolveClaudeExpectedRunMs,
+} from "./claude-token-refresh.js";
 import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
@@ -113,6 +121,14 @@ export function isAuthFailure(err: unknown): boolean {
   if (err === undefined) return true;
   const msg = err instanceof Error ? err.message : String(err);
   return AUTH_FAILURE_PATTERN.test(msg);
+}
+
+function accessTokenFailureIsAuth(
+  outcome: AccessTokenOutcome | undefined,
+  err?: unknown,
+): boolean {
+  if (outcome && !outcome.ok) return outcome.kind === "auth";
+  return isAuthFailure(err);
 }
 
 function codexHomeDir(accountId: string): string {
@@ -382,10 +398,52 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
         if (providerId === "openai-codex") {
           await adoptRotatedCodexTokens(account.id).catch(() => false);
         }
+        // Claude coding spawns get a BARE `CLAUDE_CODE_OAUTH_TOKEN` the
+        // third-party claude-agent-acp adapter reads ONCE and cannot refresh, so a
+        // long run outlives a short-TTL token (recon gap #3). Proactively widen
+        // the refresh window for anthropic-subscription so the injected token
+        // survives the expected run duration. Codex self-refreshes into its
+        // CODEX_HOME, so it keeps the default buffer.
+        const resolveOpts =
+          providerId === "anthropic-subscription"
+            ? {
+                minRemainingMs: claudeMinRemainingMs(
+                  resolveClaudeExpectedRunMs(
+                    (key) => process.env[key],
+                  ),
+                ),
+              }
+            : undefined;
         let accessToken: string | null = null;
+        let resolveOutcome: AccessTokenOutcome | undefined;
         let resolveError: unknown;
         try {
-          accessToken = await getAccessToken(providerId, account.id);
+          resolveOutcome = await getAccessToken(providerId, account.id, {
+            ...resolveOpts,
+            outcome: true,
+          });
+          accessToken = resolveOutcome.ok ? resolveOutcome.accessToken : null;
+          // A widened Claude resolve is only a freshness preference. The
+          // default-buffer retry preserves a still-valid token when refresh is
+          // transiently unavailable or the vendor minted a shorter-lived token.
+          if (
+            accessToken === null &&
+            resolveOpts &&
+            resolveOutcome &&
+            !resolveOutcome.ok &&
+            resolveOutcome.kind !== "auth"
+          ) {
+            const stillValid = await getAccessToken(providerId, account.id, {
+              outcome: true,
+            });
+            resolveOutcome = stillValid;
+            if (stillValid.ok) {
+              logger.info(
+                `[coding-account-bridge] proactive refresh for ${providerId}/${account.id} did not yield a fresh token; using the still-valid shorter-TTL token (a long run may hit the typed expiry signal)`,
+              );
+              accessToken = stillValid.accessToken;
+            }
+          }
         } catch (err) {
           resolveError = err;
           logger.warn(
@@ -395,7 +453,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
         if (!accessToken) {
           // Only flag for re-auth on a genuine auth failure; a transient
           // network/5xx blip must not pull a healthy account out of rotation.
-          if (isAuthFailure(resolveError)) {
+          if (accessTokenFailureIsAuth(resolveOutcome, resolveError)) {
             await pool.markNeedsReauth(
               account.id,
               "No valid credential / token refresh failed",
@@ -442,21 +500,17 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       accountId,
       detail,
     ) {
-      // A session-level 401 usually means the token INJECTED at spawn aged out
-      // mid-run (Claude gets a bare access token it cannot refresh), not that
-      // the account's credential is dead. Verify before evicting: adopt any
-      // CLI-rotated Codex tokens, resolve a token through the normal refresh
-      // path, then prove it server-side with the usage probe (a cached-but-
-      // revoked access token must not keep a dead account in rotation; probe
-      // success also restores health + usage). Only an auth-shaped verify
-      // failure marks needs-reauth — a transient blip leaves the account for
-      // the keep-alive sweep to re-check.
+      // Session-level auth failures can come from an injected token aging out.
+      // Verify the stored credential before evicting the account from rotation.
       if (providerId === "openai-codex") {
         await adoptRotatedCodexTokens(accountId).catch(() => false);
       }
       try {
-        const token = await getAccessToken(providerId, accountId);
-        if (token) {
+        const tokenOutcome = await getAccessToken(providerId, accountId, {
+          outcome: true,
+        });
+        if (tokenOutcome.ok) {
+          const token = tokenOutcome.accessToken;
           if (isSubscriptionProvider(providerId)) {
             const record = pool.get(accountId, providerId);
             await pool.refreshUsage(accountId, token, {
@@ -490,7 +544,12 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           );
           return;
         }
-        // Token resolve returned null: no credential / refresh failed → mark.
+        if (tokenOutcome.kind !== "auth") {
+          logger.info(
+            `[coding-account-bridge] ${providerId}/${accountId} auth-failure verify did not produce a reauth failure (${tokenOutcome.kind}) — leaving rotation state to the keep-alive sweep`,
+          );
+          return;
+        }
       } catch (err) {
         if (!isAuthFailure(err)) {
           logger.info(

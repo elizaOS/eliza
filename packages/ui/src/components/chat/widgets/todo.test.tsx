@@ -160,6 +160,10 @@ describe("TodoSidebarWidget", () => {
     );
 
     expect(await screen.findByText("Cached todo")).toBeTruthy();
+    const row = screen.getByTestId("workbench-todo-row");
+    expect(row.className).toBe("py-1.5");
+    expect(row.className).not.toContain("border");
+    expect(row.className).not.toContain("bg-");
     await Promise.resolve();
     expect(listWorkbenchTodosMock).not.toHaveBeenCalled();
   });

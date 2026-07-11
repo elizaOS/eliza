@@ -15,6 +15,7 @@ import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	findAsyncCodingDelegationActionName,
 	findCodingCliOnPath,
 	hasVendoredOpencodeShim,
 	preflightCodingDispatch,
@@ -163,6 +164,23 @@ describe("findCodingCliOnPath", () => {
 	it("returns undefined when no coding CLI is installed", async () => {
 		process.env.PATH = tempDir("empty-path-");
 		expect(await findCodingCliOnPath()).toBeUndefined();
+	});
+});
+
+describe("findAsyncCodingDelegationActionName", () => {
+	it("prefers the non-blocking spawn operation over legacy synchronous create", () => {
+		expect(
+			findAsyncCodingDelegationActionName([
+				{ name: "START_CODING_TASK" },
+				{ name: "TASKS_SPAWN_AGENT" },
+			]),
+		).toBe("TASKS_SPAWN_AGENT");
+	});
+
+	it("retains compatibility with runtimes that only expose the legacy action", () => {
+		expect(
+			findAsyncCodingDelegationActionName([{ name: "START_CODING_TASK" }]),
+		).toBe("START_CODING_TASK");
 	});
 });
 

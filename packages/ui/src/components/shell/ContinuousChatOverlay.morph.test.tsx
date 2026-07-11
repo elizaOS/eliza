@@ -2,7 +2,7 @@
 //
 // Regression suite for the chat-widget polish pass: the pill hard-shrink scale
 // lerp, the follow-the-finger contract after an over-pull past the top of the
-// screen, the recording-aware handle glow (pill pulses, open-sheet grabber
+// screen, the recording-aware handle breath (pill breathes, open-sheet grabber
 // stays quiet), the handle fade through the maximize over-pull, and the pinned
 // chat-column width through the maximize morph. Renders the real overlay in
 // jsdom with the API client mocked; gesture velocity is controlled by mocking
@@ -221,7 +221,7 @@ describe("handle glow while recording (pill-only pulse)", () => {
     expect(grabberBar()?.className ?? "").not.toContain("animate-pulse");
   });
 
-  it("still pulses the grabber for a streaming reply when the mic is cold", () => {
+  it("breathes the grabber for a streaming reply when the mic is cold", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -229,10 +229,13 @@ describe("handle glow while recording (pill-only pulse)", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    expect(grabberBar()?.className ?? "").toContain("animate-pulse");
+    expect(grabberBar()?.className ?? "").toContain(
+      "eliza-chat-handle-breathe",
+    );
+    expect(grabberBar()?.className ?? "").not.toContain("animate-pulse");
   });
 
-  it("pulses the PILL while recording once minimized (the only voice cue left)", () => {
+  it("breathes the PILL in white while recording once minimized", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -243,8 +246,10 @@ describe("handle glow while recording (pill-only pulse)", () => {
     // Collapse the input down to the pill.
     flick(grabber(), 200, 260);
     expect(sheet().getAttribute("data-detent")).toBe("pill");
-    expect(pillBar()?.className ?? "").toContain("animate-pulse");
-    expect(pillBar()?.className ?? "").toContain("bg-accent");
+    expect(pillBar()?.className ?? "").toContain("eliza-chat-handle-breathe");
+    expect(pillBar()?.className ?? "").not.toContain("animate-pulse");
+    expect(pillBar()?.className ?? "").not.toContain("bg-accent");
+    expect(pillBar()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
   });
 });
 

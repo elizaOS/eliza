@@ -21,8 +21,23 @@
  *  - not throwing (with the HTTP status) on a non-ok response.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { pollAnthropicUsage, pollCodexUsage } from "./account-usage";
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  pollAnthropicUsage,
+  pollCodexUsage,
+  readTodayCounters,
+  recordCall,
+} from "./account-usage";
 
 /** Build a minimal Response-like object the probes consume (ok + json()). */
 function jsonResponse(body: unknown, init?: { ok?: boolean; status?: number }) {
@@ -111,12 +126,19 @@ describe("pollAnthropicUsage", () => {
     expect(snap.weeklyPct).toBe(80);
   });
 
-  it("clamps utilization above 1.0 down to 100 (>100 edge case)", async () => {
+  it("preserves utilization already expressed as a 0..100 percentage", async () => {
     stubFetch(jsonResponse({ five_hour_utilization: 5 }));
 
     const snap = await pollAnthropicUsage("over-token");
 
-    // 5 * 100 = 500 -> clamped to 100.
+    expect(snap.sessionPct).toBe(5);
+  });
+
+  it("clamps percentage utilization above 100", async () => {
+    stubFetch(jsonResponse({ five_hour_utilization: 150 }));
+
+    const snap = await pollAnthropicUsage("over-token");
+
     expect(snap.sessionPct).toBe(100);
   });
 
@@ -268,5 +290,93 @@ describe("pollCodexUsage", () => {
     stubFetch(jsonResponse({}, { ok: false, status: 401 }));
 
     await expect(pollCodexUsage("t", "a")).rejects.toThrow(/401/);
+  });
+});
+
+/**
+ * The local JSONL counters (`recordCall` / `readTodayCounters`) are the other
+ * public surface of this module and shipped without coverage. They resolve
+ * their storage root through `resolveStateDir`, which honors `ELIZA_STATE_DIR`,
+ * so each test points that at an isolated temp dir and asserts the append +
+ * aggregate round-trip, the empty-file default, and that unparseable JSONL
+ * lines are skipped rather than throwing.
+ */
+describe("local JSONL usage counters", () => {
+  let stateDir: string;
+  const prevStateDir = process.env.ELIZA_STATE_DIR;
+
+  beforeEach(() => {
+    stateDir = mkdtempSync(path.join(tmpdir(), "eliza-usage-"));
+    process.env.ELIZA_STATE_DIR = stateDir;
+  });
+
+  afterEach(() => {
+    if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+    else process.env.ELIZA_STATE_DIR = prevStateDir;
+    rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  it("returns zeroed counters when no file has been written yet", () => {
+    expect(readTodayCounters("anthropic", "acct-1")).toEqual({
+      calls: 0,
+      tokens: 0,
+      errors: 0,
+    });
+  });
+
+  it("appends one JSONL line per call and aggregates calls/tokens/errors", () => {
+    recordCall("anthropic", "acct-1", { ok: true, tokens: 100 });
+    recordCall("anthropic", "acct-1", { ok: true, tokens: 50 });
+    recordCall("anthropic", "acct-1", { ok: false, errorCode: "429" });
+
+    expect(readTodayCounters("anthropic", "acct-1")).toEqual({
+      calls: 3,
+      tokens: 150,
+      errors: 1,
+    });
+  });
+
+  it("keeps counters isolated per (provider, account) pair", () => {
+    recordCall("anthropic", "acct-1", { ok: true, tokens: 10 });
+    recordCall("codex", "acct-2", { ok: true, tokens: 999 });
+
+    expect(readTodayCounters("anthropic", "acct-1").tokens).toBe(10);
+    expect(readTodayCounters("codex", "acct-2").tokens).toBe(999);
+  });
+
+  it("skips unparseable JSONL lines instead of throwing", () => {
+    recordCall("anthropic", "acct-1", { ok: true, tokens: 20 });
+    // Corrupt the day file with a non-JSON line between valid entries.
+    const dir = path.join(stateDir, "usage", "anthropic", "acct-1");
+    const [file] = readdirSync(dir);
+    const full = path.join(dir, file);
+    appendFileSync(full, "not-json\n");
+    recordCall("anthropic", "acct-1", { ok: false });
+
+    const counters = readTodayCounters("anthropic", "acct-1");
+    expect(counters.calls).toBe(2);
+    expect(counters.tokens).toBe(20);
+    expect(counters.errors).toBe(1);
+  });
+
+  it("ignores non-finite token values when aggregating", () => {
+    recordCall("anthropic", "acct-1", {
+      ok: true,
+      tokens: Number.NaN,
+    });
+    recordCall("anthropic", "acct-1", { ok: true, tokens: 5 });
+
+    expect(readTodayCounters("anthropic", "acct-1").tokens).toBe(5);
+  });
+
+  it("creates the day directory on demand and writes a real file", () => {
+    expect(existsSync(path.join(stateDir, "usage"))).toBe(false);
+    recordCall("anthropic", "acct-1", { ok: true });
+    const dir = path.join(stateDir, "usage", "anthropic", "acct-1");
+    expect(existsSync(dir)).toBe(true);
+    const [file] = readdirSync(dir);
+    const line = readFileSync(path.join(dir, file), "utf-8").trim();
+    expect(JSON.parse(line)).toMatchObject({ ok: true });
+    expect(JSON.parse(line).ts).toEqual(expect.any(Number));
   });
 });

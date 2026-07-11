@@ -38,26 +38,12 @@ async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
   );
 }
 
-async function expectViewManagerPage(page: Page) {
+async function expectLauncherPage(page: Page) {
   const main = page.locator("main").first();
-  const smokeManager = main.getByText(/^View Manager \d+ views$/);
-  const realManager = main.getByRole("heading", { level: 1, name: "Views" });
-  await expect(smokeManager.or(realManager).first()).toBeVisible();
-
-  if ((await smokeManager.count()) > 0) {
-    await expect(
-      main.getByRole("button", { name: "Refresh views" }),
-    ).toBeVisible();
-  } else {
-    // #8597 moved the views search out of <main> and into the floating chat
-    // composer ("Search views…"). The catalog renders as a flat launcher grid
-    // of icon tiles (no per-source section headers), so assert a view tile is
-    // present rather than a "Plugins" heading.
-    await expect(page.getByPlaceholder(/Search views/)).toBeVisible();
-    await expect(
-      main.locator('[data-testid^="view-card-"]').first(),
-    ).toBeVisible();
-  }
+  await expect(main.getByTestId("launcher")).toBeVisible();
+  await expect(
+    main.locator('[data-testid^="launcher-tile-"]').first(),
+  ).toBeVisible();
   await expect(main.getByText("dynamic view smoke surface")).toHaveCount(0);
 }
 
@@ -74,7 +60,7 @@ test.describe("registered plugin view lifecycle coverage", () => {
       await expectLoadedView(page, view, "initial open");
 
       await openAppPath(page, "/views");
-      await expectViewManagerPage(page);
+      await expectLauncherPage(page);
       await expectNoRenderTelemetryErrors(
         page,
         `${view.id} ${view.viewType} after unmount`,

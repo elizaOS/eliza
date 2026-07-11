@@ -77,6 +77,25 @@ describe("processPendingJobs — lane scoping", () => {
     }
   });
 
+  test("the default sweep stale-recovers EVERY job type — no lifecycle job can silently lose its stale backstop", async () => {
+    const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(0);
+    try {
+      await provisioningJobService.processPendingJobs(1);
+
+      // The claim-side completeness is pinned above; this pins the RECOVER
+      // side. A provision job stuck in_progress (e.g. a tier-upgrade target's
+      // first boot after a worker died, #15943) relies on this sweep — a type
+      // dropped from recovery would strand its jobs in_progress forever.
+      const recoveredTypes = recoverSpy.mock.calls.map((c) => c[0].type);
+      expect(new Set(recoveredTypes)).toEqual(new Set(Object.values(JOB_TYPES)));
+      expect(recoveredTypes).toContain(JOB_TYPES.AGENT_PROVISION);
+    } finally {
+      claimSpy.mockRestore();
+      recoverSpy.mockRestore();
+    }
+  });
+
   test("startup interrupted-job recovery is scoped to the daemon lane", async () => {
     const recoverSpy = spyOn(
       jobsRepository,

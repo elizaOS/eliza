@@ -63,4 +63,29 @@ describe("recoverStaleJobs threshold by job type", () => {
       spy.mockRestore();
     }
   });
+
+  test("the public daemon sweep applies the same per-type thresholds (no private-seam drift)", async () => {
+    // The test above drives the internal recoverStaleJobs directly; this pins
+    // the PUBLIC path — processPendingJobs, the entry the daemon actually
+    // calls — so a refactor rewiring the sweep can't silently bypass the
+    // per-type threshold table. The agent_provision threshold in particular
+    // protects a tier-upgrade target's first cold boot from being reset and
+    // double-provisioned mid-flight (#15943).
+    const seen = new Map<string, number>();
+    const claimSpy = spyOn(jobsRepository, "claimPendingJobs").mockResolvedValue([]);
+    const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockImplementation(
+      async (filters: { type: string; staleThresholdMs: number }) => {
+        seen.set(filters.type, filters.staleThresholdMs);
+        return 0;
+      },
+    );
+    try {
+      await provisioningJobService.processPendingJobs(1);
+      expect(seen.get(JOB_TYPES.AGENT_PROVISION)).toBeGreaterThan(COLD_BOOT_WORST_CASE_MS);
+      expect(seen.get(JOB_TYPES.AGENT_DELETE)).toBe(5 * 60 * 1000);
+    } finally {
+      claimSpy.mockRestore();
+      recoverSpy.mockRestore();
+    }
+  });
 });

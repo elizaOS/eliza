@@ -27,7 +27,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
-import { runLauncherLoop } from "../../../ui/src/testing/launcher-loop";
+import {
+  DEFAULT_WEIGHTS,
+  runLauncherLoop,
+} from "../../../ui/src/testing/launcher-loop";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -116,6 +119,8 @@ test.describe("launcher gesture loop (real app, shared engine)", () => {
       seed: SEED,
       actions: ACTIONS,
       tileIds: [],
+      // Coarse-pointer layouts intentionally hide the desktop edge arrows.
+      weights: { ...DEFAULT_WEIGHTS, railEdgeButton: 0 },
     });
     expect(result.actions).toBe(ACTIONS);
     expect(result.seed).toBe(SEED);

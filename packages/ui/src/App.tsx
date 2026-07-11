@@ -1975,6 +1975,7 @@ function HomeScreenMount({
   initialPage?: "home" | "launcher";
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
+  const firstRunOpen = useAppSelector((s) => s.firstRunComplete === false);
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
@@ -2005,8 +2006,17 @@ function HomeScreenMount({
     [Home, onOpenTile],
   );
   const launcher = useMemo(() => <LauncherSurface />, []);
+  // Keep the dashboard warm during first-run, but hide its clock, widgets, and
+  // launcher so the onboarding overlay reveals only the shared wallpaper.
   return (
-    <div className="relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden">
+    <div
+      aria-hidden={firstRunOpen ? "true" : undefined}
+      data-onboarding-hidden={firstRunOpen ? "true" : undefined}
+      className={cn(
+        "relative min-h-0 min-w-0 flex-1 self-stretch overflow-hidden",
+        firstRunOpen && "invisible",
+      )}
+    >
       <HomeLauncherSurface
         home={home}
         launcher={launcher}
@@ -2156,15 +2166,12 @@ export function App() {
     uiLanguage,
   ]);
 
-  // Skip the auth probe during first-run-required: there is no agent/session
-  // yet, so /api/auth/me would spuriously trip server_unavailable/unauthenticated
-  // on top of the in-chat onboarding (see useAuthStatus's own skip-during-first-run
-  // note). The in-chat conductor owns the first-run flow.
+  // Keep probing auth during first-run-required. A remote, already-initialized
+  // backend can return 401 for the protected first-run status route before this
+  // browser has an owner session. In that case the password wall must win over
+  // the in-chat Cloud onboarding surface.
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip:
-      !isShellPaintableNow ||
-      startupCoordinator.phase === "first-run-required" ||
-      isPopout,
+    skip: !isShellPaintableNow || isPopout,
   });
   // #15132: after a dedicated cloud agent's container upgrade the persisted
   // agent credential is stale (every agent-subdomain call 401s) while the cloud
@@ -2691,7 +2698,8 @@ export function App() {
   if (
     isShellPaintableNow &&
     !isPopout &&
-    !firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)
+    (!firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete) ||
+      authState.phase === "unauthenticated")
   ) {
     if (
       authProbeShouldHoldShell(
@@ -2758,7 +2766,21 @@ export function App() {
       }
       return (
         <BugReportProvider value={bugReport}>
-          <LoginView onLoginSuccess={refetchAuth} reason={authState.reason} />
+          <LoginView
+            onLoginSuccess={() => {
+              // A successful owner-password login proves this is an existing,
+              // initialized backend. Clear the stale unauthenticated browser's
+              // optimistic first-run state before remounting the shell.
+              setState("authRequired", false);
+              setState("firstRunComplete", true);
+              // Login can surface from either pairing-required or
+              // first-run-required. RETRY is the shared transition back into
+              // authenticated session restoration.
+              startupCoordinator.dispatch({ type: "RETRY" });
+              refetchAuth();
+            }}
+            reason={authState.reason}
+          />
           <BugReportModal />
         </BugReportProvider>
       );

@@ -144,7 +144,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case "SET_MESSAGES":
       return { ...state, conversationMessages: action.value };
     // Merge an older page in front for infinite upward scroll (#13532). Never
-    // trims: the newest tail must survive so bottom-follow / jumpToLatest still
+    // trims: the newest tail must survive so bottom-follow still
     // reach the true latest, and — critically — so the scroll-anchor restore in
     // useLoadOlderOnScroll (scrollTop += scrollHeight delta) sees ONLY the
     // upward growth. Dropping the bottom in the same commit would shrink that

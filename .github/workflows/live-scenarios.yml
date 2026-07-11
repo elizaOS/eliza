@@ -169,6 +169,10 @@ jobs:
           bun run --cwd packages/skills build
           echo "::endgroup::"
 
+          echo "::group::Build packages/cloud/sdk"
+          bun run --cwd packages/cloud/sdk build
+          echo "::endgroup::"
+
           echo "::group::Build plugins/plugin-commands"
           # plugin-telegram's command-registration.ts imports @elizaos/plugin-commands
           # via its dist exports (ConnectorCommand, getConnectorCommands,
@@ -195,11 +199,32 @@ jobs:
           package_dirs=(
             plugins/plugin-sql
             plugins/plugin-blocker
+            plugins/plugin-browser
+            plugins/plugin-native-calendar
+            plugins/plugin-native-activity-tracker
+            plugins/plugin-native-mobile-signals
+            plugins/plugin-native-reminders
+            plugins/plugin-scheduling
+            plugins/plugin-calendar
+            plugins/plugin-finances
+            plugins/plugin-goals
+            plugins/plugin-inbox
+            plugins/plugin-reminders
+            plugins/plugin-calendly
+            plugins/plugin-discord
+            plugins/plugin-elizacloud
+            plugins/plugin-google
+            plugins/plugin-phone
+            plugins/plugin-remote-desktop
+            plugins/plugin-x
             plugins/plugin-local-inference
             plugins/plugin-app-control
             plugins/plugin-agent-skills
             plugins/plugin-health
+            plugins/plugin-wallet
             plugins/plugin-pdf
+            plugins/plugin-form
+            plugins/plugin-personal-assistant
             plugins/plugin-telegram
             plugins/plugin-whatsapp
             plugins/plugin-signal

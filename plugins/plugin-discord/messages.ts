@@ -52,7 +52,6 @@ import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,
 } from "./message-coalesce";
-import { stripReasoningTags } from "./reasoning-tags";
 import {
 	applyDiscordStalenessGuard,
 	type DiscordStalenessConfig,
@@ -1346,9 +1345,9 @@ export class MessageManager {
 						content.inReplyTo = createUniqueUuid(this.runtime, message.id);
 					}
 
-					if (typeof content.text === "string" && content.text.length > 0) {
-						content.text = stripReasoningTags(content.text);
-					}
+					// Reasoning-tag / native tool-syntax sanitization happens once at
+					// the shared outbound boundary in @elizaos/core (#15888) — the
+					// text arriving here is already sanitized.
 
 					// Project embedded interaction blocks (choices, task cards, …) onto
 					// native Discord components, and strip their markers from the prose.

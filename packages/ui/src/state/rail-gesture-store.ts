@@ -6,8 +6,8 @@
  * The window is exactly the pager's rail-promotion window: armed at
  * pointerdown (useHorizontalPager.armRailPromotion), released when the settle
  * transition ends / the gesture commits to the vertical axis / the surface
- * unmounts (dropRailPromotion). Under prefers-reduced-motion the pager never
- * promotes, so this never activates — matching that skip.
+ * unmounts (dropRailPromotion). Reduced motion keeps a restrained spatial
+ * settle, so it uses the same bounded promotion window.
  *
  * Module-level store shared via globalThis (survives HMR + reachable from the
  * pager's imperative gesture handlers outside any React subtree) +

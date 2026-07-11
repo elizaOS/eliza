@@ -559,7 +559,7 @@ async function startTranscriptionViaSlash(page: Page): Promise<void> {
   });
   await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
     "aria-label",
-    "stop transcription",
+    "stop transcription and mic",
     { timeout: 15_000 },
   );
 }
@@ -596,7 +596,7 @@ async function startTranscriptionViaAgentAction(page: Page): Promise<void> {
   // visible badge, so the mic control state is the durable proof.
   await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
     "aria-label",
-    "stop transcription",
+    "stop transcription and mic",
     { timeout: 15_000 },
   );
 }
@@ -907,9 +907,13 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   // (transcript is an additive layer; the mic is the parent).
   await startTranscriptionViaSlash(page);
   // The mic button is still the active mic control while transcribing.
-  await expect(mic).toHaveAttribute("aria-label", "stop transcription", {
-    timeout: 15_000,
-  });
+  await expect(mic).toHaveAttribute(
+    "aria-label",
+    "stop transcription and mic",
+    {
+      timeout: 15_000,
+    },
+  );
 
   // (REAL AUDIO) The transcription re-listen loop opens the REAL local-ASR
   // recorder against the fake device, WAV-encodes the injected audio, and POSTs
@@ -991,7 +995,7 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   });
 });
 
-test("VIEWER + TRANSCRIPTS + KNOWLEDGE: every transcript surface action works", async ({
+test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works", async ({
   page,
 }) => {
   const probes = freshProbes();
@@ -1052,28 +1056,14 @@ test("VIEWER + TRANSCRIPTS + KNOWLEDGE: every transcript surface action works", 
         ).__transcriptProbe,
     );
 
-  // ── 5-TRANSCRIPTS VIEW: list + word-synced player audio element ─────────────
+  // /apps/transcripts is the live-meeting surface; stored recordings live in
+  // Knowledge and retain inline playback in the viewer below.
   await openAppPath(page, "/apps/transcripts");
-  await expect(page.getByTestId("transcripts-view")).toBeVisible({
+  await expect(page.getByTestId("live-meeting-page")).toBeVisible({
     timeout: 60_000,
   });
-  const row = page.getByTestId(`transcript-row-${TRANSCRIPT_ID}`);
-  await expect(row).toBeVisible({ timeout: 15_000 });
-  await row.click();
-  await expect(page.getByTestId("transcript-play")).toBeVisible({
-    timeout: 15_000,
-  });
-  const playerAudioSrc = await page
-    .locator("audio")
-    .first()
-    .getAttribute("src");
-  expect(
-    playerAudioSrc,
-    "the Transcripts player must have an audio src",
-  ).toMatch(/transcript-realaudio\.wav/);
-  await expect(page.getByTestId("transcript-scrub")).toBeVisible();
 
-  // ── 6-KNOWLEDGE: the mirrored document links back to the transcript. The
+  // KNOWLEDGE: the mirrored document links back to the transcript. The
   // knowledge surface (DocumentsView) lives under the Character tab at
   // /character/documents (the /apps/documents path collides with a decomposed
   // PA view), rendered inside the CharacterEditor as <DocumentsView inModal />.
@@ -1178,7 +1168,7 @@ test("VIEWER + TRANSCRIPTS + KNOWLEDGE: every transcript surface action works", 
   expect(probes.deleteCount, "two-tap delete must DELETE the record").toBe(1);
 });
 
-test("VIEWER: open-in-transcripts navigates to the Transcripts view", async ({
+test("VIEWER: open-in-knowledge navigates to the Knowledge view", async ({
   page,
 }) => {
   const probes = freshProbes();
@@ -1187,17 +1177,16 @@ test("VIEWER: open-in-transcripts navigates to the Transcripts view", async ({
   await captureTranscriptToAttachment(page, probes);
   await openTranscriptViewer(page);
 
-  // Open in Transcripts -> closes the viewer + navigates to /apps/transcripts.
-  await page.getByTestId("transcript-open-in-transcripts").click();
+  await page.getByTestId("transcript-open-in-knowledge").click();
   await expect(page.getByTestId("transcript-viewer")).toHaveCount(0, {
     timeout: 10_000,
   });
-  await expect(page.getByTestId("transcripts-view")).toBeVisible({
+  await expect(page.getByTestId("documents-view")).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByTestId(`transcript-row-${TRANSCRIPT_ID}`)).toBeVisible(
-    { timeout: 15_000 },
-  );
+  await expect(
+    page.getByRole("button", { name: /Voice transcript\.md/i }).first(),
+  ).toBeVisible({ timeout: 15_000 });
 });
 
 // Scope note: this asserts CLIENT voice-control bridge parity — both paths drive

@@ -72,13 +72,14 @@ export function ChatBubble({
             ? // Chromeless wallpaper text keeps the shared float shadow but no
               // box edge or padding.
               "text-white"
-            : cn(
-                // Chat-native: no per-message box — text floats on the
-                // overlay's one shared panel glass; row alignment carries the
-                // user/assistant distinction (#13560 de-slop).
-                "py-1",
-                WALLPAPER_GLASS.messageBubble,
-              ),
+            : tone === "user"
+              ? cn(
+                  // Keep authored turns visually scannable while assistant
+                  // replies remain shadcn-style plain text on the wallpaper.
+                  "rounded-2xl rounded-br-md border border-white/15 px-3.5 py-2",
+                  WALLPAPER_GLASS.messageBubble,
+                )
+              : cn("py-1", WALLPAPER_GLASS.messageBubble),
           WALLPAPER_FLOAT_SHADOW,
           className,
         )}

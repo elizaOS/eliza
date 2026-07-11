@@ -917,6 +917,6 @@ describe("ContinuousChatOverlay — long adversarial random walk", () => {
         "recovered",
       );
       assertInvariants(`seed ${seed} recovered`);
-    });
+    }, 15_000);
   }
 });

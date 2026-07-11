@@ -37,6 +37,7 @@ import { client } from "../../api";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
+import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import {
@@ -50,6 +51,12 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
+import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
+import {
+  clearSubscriptionOAuth,
+  readSubscriptionOAuth,
+  writeSubscriptionOAuth,
+} from "./subscription-oauth-state";
 
 interface AddAccountDialogProps {
   open: boolean;
@@ -105,6 +112,14 @@ function initialStepForProvider(
   if (mode === "oauth") return "choose";
   if (mode === "external-cli" || mode === "unavailable") return "unavailable";
   return "apikey";
+}
+
+function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
+  return providerId === "anthropic-subscription"
+    ? "Claude account"
+    : providerId === "openai-codex"
+      ? "Codex account"
+      : "Subscription account";
 }
 
 function providerDisplayName(
@@ -177,23 +192,17 @@ export function AddAccountDialog({
   const [step, setStep] = useState<DialogStep>(
     initialStepForProvider(providerId),
   );
-  const [label, setLabel] = useState("");
+  const [label, setLabel] = useState(() => defaultOAuthLabel(providerId));
   const [apiKey, setApiKey] = useState("");
   const [oauthCode, setOauthCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [deviceCode, setDeviceCode] = useState<string | null>(null);
+  const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
-  // Mirrors the `open` prop in a ref so async paths (`startOAuth` mid-
-  // await) can detect that the dialog was closed before
-  // `client.startAccountOAuth` resolved and immediately cancel the
-  // freshly-created server-side flow.
-  const openRef = useRef(open);
-  useEffect(() => {
-    openRef.current = open;
-  }, [open]);
-
+  const restoredSessionRef = useRef<string | null>(null);
   const closeEventSource = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -217,22 +226,31 @@ export function AddAccountDialog({
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
+    restoredSessionRef.current = null;
     setStep(initialStepForProvider(providerId));
-    setLabel("");
+    setLabel(defaultOAuthLabel(providerId));
     setApiKey("");
     setOauthCode("");
     setErrorMessage(null);
     setSessionId(null);
+    setDeviceCode(null);
+    setDeviceCodeCopied(false);
   }, [closeEventSource, providerId]);
 
-  // Dialog open/close side-effects: when closed, cancel any in-flight
-  // OAuth flow so the server can release the loopback listener.
-  useEffect(() => {
-    if (!open) {
-      void cancelInflightFlow();
-      reset();
+  const copyDeviceCode = useCallback(async (code: string) => {
+    try {
+      await copyTextToClipboard(code);
+      setDeviceCodeCopied(true);
+    } catch {
+      setDeviceCodeCopied(false);
     }
-  }, [open, cancelInflightFlow, reset]);
+  }, []);
+
+  useEffect(() => {
+    if (!deviceCode) return;
+    setDeviceCodeCopied(false);
+    void copyDeviceCode(deviceCode);
+  }, [copyDeviceCode, deviceCode]);
 
   useEffect(() => {
     return () => {
@@ -247,6 +265,7 @@ export function AddAccountDialog({
       const source = openEventSource(url);
       eventSourceRef.current = source;
       if (!source) {
+        clearSubscriptionOAuth(providerId);
         setErrorMessage(
           t("accounts.add.oauth.sseUnreachable", {
             defaultValue:
@@ -283,6 +302,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
+            clearSubscriptionOAuth(providerId);
             onCreated(data.account);
             onClose();
           } else if (
@@ -293,6 +313,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
+            clearSubscriptionOAuth(providerId);
             setErrorMessage(
               data.error ??
                 t(`accounts.add.oauth.${data.status}`, {
@@ -339,68 +360,76 @@ export function AddAccountDialog({
     [closeEventSource, onClose, onCreated, providerId, t],
   );
 
-  const startOAuth = useCallback(async () => {
-    if (subscriptionAddMode !== "oauth") {
-      setStep("unavailable");
-      return;
-    }
-    setErrorMessage(null);
-    setStep("oauth-starting");
+  useEffect(() => {
+    if (!open) return;
+    const pending = readSubscriptionOAuth(providerId);
+    if (!pending || restoredSessionRef.current === pending.sessionId) return;
+    restoredSessionRef.current = pending.sessionId;
+    sessionIdRef.current = pending.sessionId;
+    setSessionId(pending.sessionId);
+    setDeviceCode(pending.deviceCode ?? null);
+    setStep(
+      pending.phase === "need-code" ? "oauth-need-code" : "oauth-waiting",
+    );
+    subscribeToFlow(pending.sessionId);
+  }, [open, providerId, subscribeToFlow]);
 
-    // Open the popup BEFORE the await so the browser sees a synchronous
-    // user-gesture-triggered window.open. Once we have the URL, navigate
-    // it. preOpenWindow returns null on desktop (Electrobun handles
-    // routing via the IPC call inside openExternalUrl).
-    const win = preOpenWindow();
-    try {
-      const flow = await client.startAccountOAuth(providerId, {
-        label: label.trim(),
-      });
-      // The dialog might have been closed between user clicking "Sign
-      // in" and the server returning the flow handle. If so, the
-      // server-side OAuth listener is orphaned — cancel it explicitly
-      // so the loopback port releases immediately instead of timing
-      // out in 5 minutes.
-      if (!openRef.current) {
-        try {
-          await client.cancelAccountOAuth(providerId, {
-            sessionId: flow.sessionId,
-          });
-        } catch {
-          // Best-effort.
+  const startOAuth = useCallback(
+    async (mode: "localhost" | "device") => {
+      if (subscriptionAddMode !== "oauth") {
+        setStep("unavailable");
+        return;
+      }
+      setErrorMessage(null);
+      setStep("oauth-starting");
+
+      // Open the popup BEFORE the await so the browser sees a synchronous
+      // user-gesture-triggered window.open. Once we have the URL, navigate
+      // it. preOpenWindow returns null on desktop (Electrobun handles
+      // routing via the IPC call inside openExternalUrl).
+      const win = preOpenWindow();
+      try {
+        const flow = await client.startAccountOAuth(providerId, {
+          label: label.trim(),
+          mode,
+        });
+        sessionIdRef.current = flow.sessionId;
+        restoredSessionRef.current = flow.sessionId;
+        setSessionId(flow.sessionId);
+        setDeviceCode(flow.userCode ?? null);
+        writeSubscriptionOAuth({
+          providerId,
+          sessionId: flow.sessionId,
+          mode,
+          phase: flow.needsCodeSubmission ? "need-code" : "waiting",
+          ...(flow.userCode ? { deviceCode: flow.userCode } : {}),
+          startedAt: Date.now(),
+        });
+        if (flow.needsCodeSubmission) {
+          setStep("oauth-need-code");
+        } else {
+          setStep("oauth-waiting");
         }
+        subscribeToFlow(flow.sessionId);
+        navigatePreOpenedWindow(win, flow.authUrl);
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error && err.message
+            ? err.message
+            : t("accounts.add.oauth.startFailed", {
+                defaultValue: "Failed to start login flow.",
+              }),
+        );
+        setStep("error");
         try {
           win?.close();
         } catch {
           // Cross-origin — ignore.
         }
-        return;
       }
-      navigatePreOpenedWindow(win, flow.authUrl);
-      sessionIdRef.current = flow.sessionId;
-      setSessionId(flow.sessionId);
-      if (flow.needsCodeSubmission) {
-        setStep("oauth-need-code");
-      } else {
-        setStep("oauth-waiting");
-      }
-      subscribeToFlow(flow.sessionId);
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error && err.message
-          ? err.message
-          : t("accounts.add.oauth.startFailed", {
-              defaultValue: "Failed to start login flow.",
-            }),
-      );
-      setStep("error");
-      try {
-        win?.close();
-      } catch {
-        // Cross-origin — ignore.
-      }
-    }
-  }, [label, providerId, subscribeToFlow, subscriptionAddMode, t]);
+    },
+    [label, providerId, subscribeToFlow, subscriptionAddMode, t],
+  );
 
   const submitOAuthCode = useCallback(
     async (event: FormEvent) => {
@@ -459,9 +488,11 @@ export function AddAccountDialog({
   );
 
   const handleClose = useCallback(() => {
+    clearSubscriptionOAuth(providerId);
     void cancelInflightFlow();
+    reset();
     onClose();
-  }, [cancelInflightFlow, onClose]);
+  }, [cancelInflightFlow, onClose, providerId, reset]);
 
   const dialogDescription =
     subscriptionAddMode === "oauth"
@@ -541,7 +572,12 @@ export function AddAccountDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) handleClose();
+        // Opening an external OAuth page can produce a transient dismiss from
+        // the dialog primitive as focus leaves this window. During a flow that
+        // is not a user cancellation: keep the controlled dialog and its code
+        // entry state alive. The visible Cancel button remains the one explicit
+        // operation that clears persisted state and cancels the server flow.
+        if (!next && step === "choose") handleClose();
       }}
     >
       <DialogContent className="max-w-md">
@@ -557,18 +593,25 @@ export function AddAccountDialog({
 
         {step === "choose" ? (
           <div className="grid gap-3 py-2">
-            {labelInput}
+            <p className="text-xs text-muted">
+              The connected account's email address will be used as its name.
+            </p>
             <Button
               type="button"
               variant="default"
-              disabled={!label.trim()}
-              onClick={() => void startOAuth()}
+              onClick={() =>
+                void startOAuth(
+                  subscriptionOAuthModeForHostname(window.location.hostname),
+                )
+              }
               className="h-10"
             >
-              {t("accounts.add.signIn", {
-                defaultValue: `Sign in with ${providerDisplayName(providerId, t)}`,
-                provider: providerDisplayName(providerId, t),
-              })}
+              {subscriptionOAuthModeForHostname(window.location.hostname) ===
+              "localhost"
+                ? "Log in with localhost callback"
+                : providerId === "openai-codex"
+                  ? "Log in with device code"
+                  : "Log in and paste authorization code"}
             </Button>
             {/* API-key path is intentionally hidden for subscription providers. */}
           </div>
@@ -585,6 +628,23 @@ export function AddAccountDialog({
 
         {step === "oauth-waiting" ? (
           <div className="grid gap-3 py-3 text-sm text-muted">
+            {deviceCode ? (
+              <div className="rounded border border-border bg-card p-3 text-center">
+                <p className="mb-1 text-xs">Enter this one-time code:</p>
+                <code className="select-all text-lg font-semibold tracking-widest text-txt">
+                  {deviceCode}
+                </code>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mx-auto mt-2 h-7 text-xs"
+                  onClick={() => void copyDeviceCode(deviceCode)}
+                >
+                  {deviceCodeCopied ? "Copied to clipboard" : "Copy code"}
+                </Button>
+              </div>
+            ) : null}
             <div className="flex items-center gap-3">
               <Spinner className="h-4 w-4" />
               <span>

@@ -7,9 +7,12 @@
 
 import type { OAuthCredentials } from "./types.ts";
 import {
+  exchangeAnthropicAuthorizationCode,
   loginAnthropic as loginAnthropicFlow,
   refreshAnthropicToken as refreshAnthropicTokenFlow,
 } from "./vendor/pi-oauth/anthropic-login.ts";
+
+export { exchangeAnthropicAuthorizationCode };
 
 export interface AnthropicFlow {
   authUrl: string;

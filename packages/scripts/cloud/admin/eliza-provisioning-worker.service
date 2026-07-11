@@ -14,6 +14,7 @@ EnvironmentFile=/opt/eliza/cloud/.env.local
 # Use the installed workspace binary directly; `npx tsx` adds npm/esbuild
 # startup overhead and has hit Node worker heap limits on the deploy host.
 Environment=NODE_OPTIONS=--max-old-space-size=1024
+ExecStartPre=/opt/eliza/packages/scripts/cloud/admin/ensure-generated-keywords.sh
 ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/scripts/cloud/admin/daemons/provisioning-worker.ts
 
 Restart=always

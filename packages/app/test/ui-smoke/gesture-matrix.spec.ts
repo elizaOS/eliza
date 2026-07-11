@@ -323,12 +323,15 @@ async function rowTitleOrder(center: Locator): Promise<string[]> {
  * Fan the rested shade open so every seeded row renders flat. The inbox is
  * priority-triaged: at rest only interrupt-tier rows (high/urgent) show,
  * Z-stacked by view group, so a mixed-priority seed collapses to a single
- * visible row. Driving the sr-only expand toggle runs the same pull-to-expand
- * transition an AT/keyboard user takes, fanning all rows out (one un-stacked
- * `notification-row` per seeded item).
+ * visible row. The notification-count button is the keyboard-accessible form
+ * of the same pull-to-expand transition, fanning all rows out.
  */
 async function expandNotificationShade(page: Page): Promise<void> {
-  await page.getByTestId("notifications-expand-toggle").dispatchEvent("click");
+  await page.getByTestId("notifications-count-button").click();
+  await expect(page.getByTestId("home-notification-list")).toHaveAttribute(
+    "data-shade-mode",
+    "expanded",
+  );
 }
 
 test("dashboard notification center: row tap marks read in place, hover-X dismiss removes, context menu dismisses, no clear-all", async ({

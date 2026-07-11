@@ -394,7 +394,7 @@ function userMessage(page: Page, text: string): Locator {
     .last()
     .or(
       page
-        .getByRole("log", { name: /conversation history/i })
+        .getByRole("region", { name: /conversation history/i })
         .getByText(text)
         .last(),
     )

@@ -561,6 +561,12 @@ export interface QueuedChatSend {
    * affordance.
    */
   autoRetried?: boolean;
+  /** Stable local row identities reused when a transport retry replays a turn. */
+  optimisticTurn?: {
+    userMsgId: string;
+    assistantMsgId: string;
+    timestamp: number;
+  };
   resolve: () => void;
   reject: (error: unknown) => void;
 }
@@ -1307,6 +1313,74 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
       }
 
+      const optimisticTurn =
+        turn.optimisticTurn ??
+        ({
+          userMsgId: `temp-${clientMessageId}`,
+          assistantMsgId: `temp-resp-${clientMessageId}`,
+          timestamp: Date.now(),
+        } satisfies NonNullable<QueuedChatSend["optimisticTurn"]>);
+      const { userMsgId, assistantMsgId, timestamp: now } = optimisticTurn;
+
+      // Paint the accepted turn before conversation creation / room discovery.
+      // Those calls can take seconds on a cold cloud agent; clearing the composer
+      // first and waiting to add this row made the user's message look lost.
+      const optimisticAttachments = imagesToSend?.length
+        ? imagesToSend.map((img, i) => ({
+            id: `${userMsgId}-img-${i}`,
+            url: `data:${img.mimeType};base64,${img.data}`,
+            contentType: optimisticAttachmentKind(img.mimeType),
+            ...(img.name ? { title: img.name } : {}),
+            mimeType: img.mimeType,
+            source: MESSAGE_SOURCE_CLIENT_CHAT,
+            ...(img.transcriptId ? { transcriptId: img.transcriptId } : {}),
+            ...(img.thumbnail
+              ? {
+                  thumbnailUrl: `data:${img.thumbnail.mimeType};base64,${img.thumbnail.data}`,
+                }
+              : {}),
+          }))
+        : undefined;
+      const optimisticUserMessage: ConversationMessage = {
+        id: userMsgId,
+        role: "user",
+        text,
+        timestamp: now,
+        ...(optimisticAttachments
+          ? { attachments: optimisticAttachments }
+          : {}),
+      };
+      const optimisticAssistantMessage: ConversationMessage = {
+        id: assistantMsgId,
+        role: "assistant",
+        text: "",
+        timestamp: now,
+      };
+      setCompanionMessageCutoffTs(now);
+      setConversationMessages((prev: ConversationMessage[]) => {
+        const userIndex = prev.findIndex((message) => message.id === userMsgId);
+        const assistantIndex = prev.findIndex(
+          (message) => message.id === assistantMsgId,
+        );
+        if (userIndex >= 0) {
+          if (assistantIndex >= 0) return prev;
+          return [
+            ...prev.slice(0, userIndex + 1),
+            optimisticAssistantMessage,
+            ...prev.slice(userIndex + 1),
+          ];
+        }
+        if (assistantIndex >= 0) {
+          return [
+            ...prev.slice(0, assistantIndex),
+            optimisticUserMessage,
+            ...prev.slice(assistantIndex),
+          ];
+        }
+        return [...prev, optimisticUserMessage, optimisticAssistantMessage];
+      });
+      setChatFirstTokenReceived(false);
+
       let convId: string =
         turn.conversationId ?? activeConversationIdRef.current ?? "";
       if (!convId) {
@@ -1331,10 +1405,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         } catch {
           // error-policy:J4 surfaced user-facing failure state.
           // First-message conversation creation failed (cold open on weak
-          // signal). The composer was already cleared upstream and the
-          // optimistic bubble hasn't rendered yet, so a bare return drops the
-          // user's text with no trace. Restore it to the composer + surface the
-          // failure so the first impression isn't a vanished message.
+          // signal). Remove the local accepted-turn rows and restore the draft:
+          // no conversation exists to own or retry this turn yet.
+          setConversationMessages((prev) =>
+            prev.filter(
+              (message) =>
+                message.id !== userMsgId && message.id !== assistantMsgId,
+            ),
+          );
           setChatInput(rawText);
           setActionNotice(
             "Couldn't start the conversation — check your connection and try again. Your message was restored.",
@@ -1367,50 +1445,6 @@ export function useChatSend(deps: UseChatSendDeps) {
           ),
         );
       }
-
-      const now = Date.now();
-      const userMsgId = `temp-${now}`;
-      const assistantMsgId = `temp-resp-${now}`;
-
-      // Echo uploaded images on the optimistic user bubble immediately, from the
-      // base64 the client already holds. The post-turn history reload replaces
-      // this with the server's persisted served-URL attachment.
-      const optimisticAttachments = imagesToSend?.length
-        ? imagesToSend.map((img, i) => ({
-            id: `${userMsgId}-img-${i}`,
-            url: `data:${img.mimeType};base64,${img.data}`,
-            // Derive the kind from the MIME type — not every pending attachment
-            // is an image (e.g. a `text/markdown` transcript), and hardcoding
-            // "image" mis-tagged the optimistic bubble until the post-turn
-            // reload corrected it.
-            contentType: optimisticAttachmentKind(img.mimeType),
-            ...(img.name ? { title: img.name } : {}),
-            mimeType: img.mimeType,
-            source: MESSAGE_SOURCE_CLIENT_CHAT,
-            ...(img.transcriptId ? { transcriptId: img.transcriptId } : {}),
-            ...(img.thumbnail
-              ? {
-                  thumbnailUrl: `data:${img.thumbnail.mimeType};base64,${img.thumbnail.data}`,
-                }
-              : {}),
-          }))
-        : undefined;
-
-      setCompanionMessageCutoffTs(now);
-      setConversationMessages((prev: ConversationMessage[]) => [
-        ...prev,
-        {
-          id: userMsgId,
-          role: "user",
-          text,
-          timestamp: now,
-          ...(optimisticAttachments
-            ? { attachments: optimisticAttachments }
-            : {}),
-        },
-        { id: assistantMsgId, role: "assistant", text: "", timestamp: now },
-      ]);
-      setChatFirstTokenReceived(false);
 
       controller = new AbortController();
       chatAbortRef.current = controller;
@@ -1540,6 +1574,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             messageId: assistantMsgId,
             mode: "interrupt",
           });
+        }
+
+        // The stream result is the user-visible end of this turn. History
+        // reconciliation can continue below, but it must not leave a completed
+        // reply looking active. Keep the busy state when another turn is queued.
+        setServerTurnStatus(null);
+        setChatFirstTokenReceived(false);
+        if (chatSendQueueRef.current.length === 0) {
+          setChatSending(false);
         }
 
         // Action callbacks can persist additional assistant turns that are not
@@ -1802,9 +1845,6 @@ export function useChatSend(deps: UseChatSendDeps) {
             controller?.signal,
           );
           if (reconnected && !controller?.signal.aborted) {
-            // Drop the stale placeholder from the failed attempt; the requeued
-            // turn paints its own fresh optimistic bubble on drain.
-            dropEmptyAssistantPlaceholder(assistantMsgId);
             // Re-enqueue at the FRONT so the retry runs before any turns the
             // user queued behind it, preserving send order. Same key + text +
             // images + metadata; autoRetried stops a second auto-retry.
@@ -1816,6 +1856,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               metadata: turn.metadata,
               clientMessageId,
               autoRetried: true,
+              optimisticTurn,
               resolve: () => {},
               reject: () => {},
             });
@@ -1947,6 +1988,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       conversationsRef,
       setActiveConversationId,
       setChatFirstTokenReceived,
+      setChatSending,
       setServerTurnStatus,
       setChatLastUsage,
       setCompanionMessageCutoffTs,

@@ -82,7 +82,7 @@ function chatSendButton(page: Page): Locator {
 }
 
 function conversationLog(page: Page): Locator {
-  return page.getByRole("log", { name: /conversation history/i });
+  return page.getByRole("region", { name: /conversation history/i });
 }
 
 function userMessage(page: Page, text: string): Locator {
@@ -355,8 +355,8 @@ async function deterministicAssistantFixtures(
   const texts = await page
     .locator(
       [
+        '[data-testid="thread-line"][data-role="assistant"]',
         '[data-testid="chat-message"][data-role="assistant"]',
-        '[role="log"][aria-label="conversation history"] [data-role="assistant"]',
       ].join(", "),
     )
     .evaluateAll((elements) =>
@@ -507,13 +507,29 @@ for (const viewport of VIEWPORTS) {
     await page.route("**/api/cloud/compat/agents", async (route) => {
       const request = route.request();
       if (request.method() === "GET") {
-        // The agent picker lists the user's existing cloud agents.
+        // Multiple existing agents keep the picker visible so this flow can
+        // explicitly exercise its "Create new" branch.
         await fulfillJson(route, 200, {
           success: true,
           data: [
             {
-              agent_id: "agent-1",
-              agent_name: "My Agent",
+              agent_id: "existing-agent-1",
+              agent_name: "Existing Agent One",
+              status: "stopped",
+              bridge_url: null,
+              web_ui_url: null,
+              containerUrl: "",
+              webUiUrl: null,
+              database_status: "ready",
+              error_message: null,
+              agent_config: {},
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+              last_heartbeat_at: null,
+            },
+            {
+              agent_id: "existing-agent-2",
+              agent_name: "Existing Agent Two",
               status: "stopped",
               bridge_url: null,
               web_ui_url: null,
@@ -1016,7 +1032,6 @@ test("new cloud agent provisions through direct cloud sandbox and reaches chat",
       accessToken: CLOUD_AUTH_TOKEN,
     });
 
-  await openAppPath(page, "/chat");
   const composer = chatComposer(page);
   await expect(composer).toBeVisible();
   await composer.fill("my name is Shaw and I want Discord");

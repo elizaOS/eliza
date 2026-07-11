@@ -689,7 +689,11 @@ function expectGithubTokenRoute(
   body: unknown,
 ): string | undefined {
   if (status !== 200) return `expected status 200, saw ${status}`;
-  return expectEqual(body, { connected: false }, "GitHub token route body");
+  return expectEqual(
+    body,
+    { connected: false, deviceFlowAvailable: false },
+    "GitHub token route body",
+  );
 }
 
 async function finalGithubCheck(): Promise<string | undefined> {

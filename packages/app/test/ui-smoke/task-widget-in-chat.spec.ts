@@ -15,6 +15,7 @@
 // `MessageContent.task-widget`) — this file is the only one that exercises the
 // full chat → widget → orchestrator hop end-to-end.
 
+import { writeFile } from "node:fs/promises";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
@@ -28,6 +29,7 @@ const CONVERSATION_ID = "task-widget-conversation";
 const ROOM_ID = "task-widget-room";
 const TASK_ID = "0123abcd-1234-5678-9abc-deadbeefcafe";
 const TASK_TITLE = "Build planner app";
+const FETCHED_TASK_TITLE = "Build planner app — hydrated";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -60,7 +62,7 @@ function usage(overrides: JsonRecord = {}) {
 function taskDetail(overrides: JsonRecord = {}) {
   return {
     id: TASK_ID,
-    title: TASK_TITLE,
+    title: FETCHED_TASK_TITLE,
     kind: "coding",
     status: "active",
     priority: "high",
@@ -162,8 +164,12 @@ function statusFor(detail: JsonRecord) {
 async function installTaskChatRoutes(
   page: Page,
   assistantText: string,
-): Promise<{ taskFetches: number; streamRequests: string[] }> {
-  const detail = taskDetail();
+): Promise<{
+  taskFetches: number;
+  streamRequests: string[];
+  completeTask: () => void;
+}> {
+  let detail = taskDetail();
   let taskFetches = 0;
   let sequence = 0;
   const streamRequests: string[] = [];
@@ -336,13 +342,40 @@ async function installTaskChatRoutes(
       return taskFetches;
     },
     streamRequests,
-  } as { taskFetches: number; streamRequests: string[] };
+    completeTask() {
+      detail = taskDetail({
+        status: "validating",
+        activeSessionCount: 0,
+        metadata: {
+          prUrl: "https://github.com/elizaOS/eliza/pull/16090",
+          prNumber: 16090,
+          prRepo: "elizaOS/eliza",
+        },
+      });
+    },
+  } as {
+    taskFetches: number;
+    streamRequests: string[];
+    completeTask: () => void;
+  };
 }
 
+test.use({ video: "on" });
+
 test.describe("chat task widget", () => {
-  test("renders an inline TaskWidget for [TASK:id]title[/TASK] and opens the orchestrator workbench when clicked", async ({
+  test("renders an inline TaskWidget with its durable PR and opens the orchestrator workbench", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    const consoleEntries: string[] = [];
+    const networkEntries: string[] = [];
+    const pageErrors: string[] = [];
+    page.on("console", (message) =>
+      consoleEntries.push(`[${message.type()}] ${message.text()}`),
+    );
+    page.on("pageerror", (error) => pageErrors.push(String(error)));
+    page.on("request", (request) =>
+      networkEntries.push(`${request.method()} ${request.url()}`),
+    );
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
     const assistantText = `Created the task you asked for.\n\n[TASK:${TASK_ID}]${TASK_TITLE}[/TASK]\n\nThe builders are running.`;
@@ -375,9 +408,49 @@ test.describe("chat task widget", () => {
     // status attribute reflects the live detail (status="active").
     const widget = page.getByTestId("task-widget").first();
     await expect(widget).toBeVisible({ timeout: 15_000 });
-    await expect(widget).toContainText(TASK_TITLE);
+    await expect(widget).toContainText(FETCHED_TASK_TITLE);
     await expect(widget).toHaveAttribute("data-task-id", TASK_ID);
     await expect(widget).toHaveAttribute("data-task-status", "active");
+    await expect(widget.getByTestId("task-widget-pr-chip")).toHaveCount(0);
+    await page.screenshot({
+      path: testInfo.outputPath("task-widget-pr-before.jpg"),
+      fullPage: true,
+      type: "jpeg",
+      quality: 88,
+    });
+
+    handles.completeTask();
+    const completionPrompt = "Show the completed task.";
+    await page.getByTestId("chat-composer-textarea").fill(completionPrompt);
+    await page.getByTestId("chat-composer-action").click();
+    await expect.poll(() => handles.streamRequests).toContain(completionPrompt);
+    const completedWidget = page.getByTestId("task-widget").last();
+    await expect(completedWidget).toHaveAttribute(
+      "data-task-status",
+      "validating",
+    );
+    const prChip = completedWidget.getByTestId("task-widget-pr-chip");
+    await expect(prChip).toBeVisible();
+    await expect(prChip).toHaveAttribute(
+      "href",
+      "https://github.com/elizaOS/eliza/pull/16090",
+    );
+    await expect(prChip).toHaveAttribute("title", "elizaOS/eliza #16090");
+    await page.screenshot({
+      path: testInfo.outputPath("task-widget-pr-desktop.jpg"),
+      fullPage: true,
+      type: "jpeg",
+      quality: 88,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(prChip).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("task-widget-pr-mobile.jpg"),
+      fullPage: true,
+      type: "jpeg",
+      quality: 88,
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
 
     // The widget calls into the runtime client at least once; we assert that
     // happened by checking the mocked detail endpoint fired.
@@ -416,9 +489,12 @@ test.describe("chat task widget", () => {
       await page.waitForTimeout(400);
     }
 
-    // The entire `task-widget` element is the clickable button — there is
-    // no decorative trailing icon (the slop pass removed it).
-    await widget.click();
+    // Expansion and workbench navigation remain separate from the adjacent PR
+    // anchor so every control is independently keyboard- and pointer-accessible.
+    await completedWidget.getByRole("button").click();
+    await completedWidget
+      .getByRole("button", { name: "Open in workbench →" })
+      .click();
 
     await expect
       .poll(() =>
@@ -437,6 +513,23 @@ test.describe("chat task widget", () => {
       .toContain(`taskId=${TASK_ID}`);
     await expect(page.getByTestId("orchestrator-workbench")).toBeVisible({
       timeout: 30_000,
+    });
+    expect(pageErrors).toEqual([]);
+    await writeFile(
+      testInfo.outputPath("frontend-console.log"),
+      consoleEntries.join("\n"),
+    );
+    await writeFile(
+      testInfo.outputPath("frontend-network.log"),
+      networkEntries.join("\n"),
+    );
+    await testInfo.attach("frontend-console", {
+      body: Buffer.from(consoleEntries.join("\n")),
+      contentType: "text/plain",
+    });
+    await testInfo.attach("frontend-network", {
+      body: Buffer.from(networkEntries.join("\n")),
+      contentType: "text/plain",
     });
   });
 });

@@ -4,6 +4,7 @@
 @import "@fontsource/poppins/700.css";
 @import "@fontsource/poppins/800.css";
 @import "tailwindcss";
+@import "./shadcn-utilities.css";
 @import "./base.css";
 @import "./tailwind-theme.css";
 @import "./electrobun-mac-window-drag.css";

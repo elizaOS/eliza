@@ -237,8 +237,7 @@ type BrowserWorkspaceTabKind = NonNullable<
 >;
 
 let agentSkillsApiPromise:
-  | Promise<typeof import("@elizaos/plugin-agent-skills")>
-  | undefined;
+  Promise<typeof import("@elizaos/plugin-agent-skills")> | undefined;
 function getAgentSkillsApi(): Promise<
   typeof import("@elizaos/plugin-agent-skills")
 > {
@@ -249,8 +248,7 @@ function getAgentSkillsApi(): Promise<
 }
 
 let appManagerApiPromise:
-  | Promise<typeof import("@elizaos/plugin-app-manager")>
-  | undefined;
+  Promise<typeof import("@elizaos/plugin-app-manager")> | undefined;
 function getAppManagerApi(): Promise<
   typeof import("@elizaos/plugin-app-manager")
 > {
@@ -261,8 +259,7 @@ function getAppManagerApi(): Promise<
 }
 
 let walletApiPromise:
-  | Promise<typeof import("@elizaos/plugin-wallet")>
-  | undefined;
+  Promise<typeof import("@elizaos/plugin-wallet")> | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
   walletApiPromise ??= importOptionalPlugin<
     typeof import("@elizaos/plugin-wallet")
@@ -1753,7 +1750,26 @@ async function handleRequest(
     method === "GET" &&
     pathname === "/api/first-run/status" &&
     isCloudProvisioned;
+  // app-core authenticates these session-tier dashboard reads before
+  // forwarding into the agent server. Do not require a second token here:
+  // browser sessions are stored by app-core and are intentionally opaque to
+  // the lower agent HTTP boundary.
+  const isAppCoreSessionCloudRead =
+    method === "GET" &&
+    (pathname === "/api/cloud/status" || pathname === "/api/cloud/credits");
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
+  let hostSessionAuthorized = false;
+  let hostSessionAuthorizationAttempted = false;
+  const isHostSessionAuthorized = async (): Promise<boolean> => {
+    if (hostSessionAuthorizationAttempted) return hostSessionAuthorized;
+    hostSessionAuthorizationAttempted = true;
+    const authorize = getAgentHostBridge().isHttpRequestAuthorized;
+    hostSessionAuthorized =
+      typeof authorize === "function"
+        ? await authorize(req, state.runtime)
+        : false;
+    return hostSessionAuthorized;
+  };
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -1903,11 +1919,13 @@ async function handleRequest(
     !isAuthEndpoint &&
     !isHealthEndpoint &&
     !isCloudFirstRunStatusEndpoint &&
+    !isAppCoreSessionCloudRead &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,
       pathname,
     }) &&
+    !(await isHostSessionAuthorized()) &&
     !isAuthorized(req) &&
     !isBoundaryRoleAuthorized(req, method, pathname)
   ) {
@@ -2091,13 +2109,9 @@ async function handleRequest(
       }
       return Boolean(
         localInferenceServerApi.handleLocalInferenceTtsRoute &&
-          (await localInferenceServerApi.handleLocalInferenceTtsRoute(
-            req,
-            res,
-            {
-              current: state.runtime,
-            },
-          )),
+        (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
+          current: state.runtime,
+        })),
       );
     })())
   ) {
@@ -2570,9 +2584,8 @@ async function handleRequest(
       return;
     }
     try {
-      const { unloadPluginFromDirectory } = await import(
-        "../runtime/load-plugin-from-directory.ts"
-      );
+      const { unloadPluginFromDirectory } =
+        await import("../runtime/load-plugin-from-directory.ts");
       const result = await unloadPluginFromDirectory({
         runtime: state.runtime as Parameters<
           typeof unloadPluginFromDirectory
@@ -3469,7 +3482,7 @@ async function handleRequest(
       pathname,
       url,
       runtime: state.runtime,
-      isAuthorized: () => isAuthorized(req),
+      isAuthorized: () => hostSessionAuthorized || isAuthorized(req),
       hostContext: {
         config: state.config as Record<string, unknown>,
         saveConfig: (nextConfig) => {
@@ -3554,14 +3567,18 @@ async function handleRequest(
       // routes, so the dispatch-level re-check must accept it too — otherwise
       // resolver-authorized requests pass the outer gate and 401 in dispatch.
       isAuthorized: () =>
-        isAuthorized(req) || isBoundaryRoleAuthorized(req, method, pathname),
+        hostSessionAuthorized ||
+        isAuthorized(req) ||
+        isBoundaryRoleAuthorized(req, method, pathname),
       isTrustedLocal: () => isTrustedLocalRequest(req),
       // Per-viewer principal for DTO selection (#14781). Trunk-authorized
       // callers stay on the single-owner boundary (no context → routes serve
       // unfiltered, unchanged); only resolver-recognized viewer tokens
       // (WaifuChat, artifact share-viewer) carry a principal into dispatch.
       accessContext: () =>
-        isAuthorized(req) ? undefined : resolveHttpAccessContext(req),
+        hostSessionAuthorized || isAuthorized(req)
+          ? undefined
+          : resolveHttpAccessContext(req),
     })
   ) {
     return;
@@ -4357,9 +4374,8 @@ export async function startApiServer(opts?: {
 
         // Build destination registry — all configured destinations
         const _connectors = state.config.connectors ?? {};
-        const streaming = (state.config as Record<string, unknown>).streaming as
-          | Record<string, unknown>
-          | undefined;
+        const streaming = (state.config as Record<string, unknown>)
+          .streaming as Record<string, unknown> | undefined;
         const destinations = new Map<string, StreamRouteDestination>();
 
         try {
@@ -5236,8 +5252,7 @@ export async function startApiServer(opts?: {
           ? Object.fromEntries(Object.entries(dbAgent))
           : null;
       const saved = agentRecord?.character as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       if (!saved || typeof saved !== "object") return;
 
       const c = rt.character;

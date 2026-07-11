@@ -121,6 +121,15 @@ async function isWorkTree(workdir: string): Promise<boolean> {
   return inside?.trim() === "true";
 }
 
+/** Returns the checked-out branch for resume metadata, or undefined outside a named branch. */
+export async function getWorkspaceBranch(
+  workdir: string,
+): Promise<string | undefined> {
+  if (!(await isWorkTree(workdir))) return undefined;
+  const branch = (await git(workdir, ["branch", "--show-current"]))?.trim();
+  return branch || undefined;
+}
+
 /**
  * The repo HEAD at spawn time, so the change set at completion is scoped to
  * exactly what this sub-agent did (committed or not). Undefined when the
@@ -420,6 +429,59 @@ function captureToolPathOnlyChangeSet(
     truncated: overLength || changedFiles.length >= MAX_CHANGED_FILES,
     capturedAt: Date.now(),
   };
+}
+
+/**
+ * Diff + changed-file list for a workspace BRANCH against its PR base, sized for
+ * the diff-review gate (not the small user-facing "show me the diff" preview).
+ *
+ * The gate needs the FULL diff text to scan every added line for secrets, so the
+ * character budget here is far larger than {@link captureChangeSet}'s 6k preview
+ * cap. We diff `base...HEAD` (three-dot = changes on the branch since it forked
+ * from base) so pre-existing base-branch content is never re-scanned, and fall
+ * back to a two-dot `base HEAD` diff when the merge-base can't be resolved (e.g.
+ * unrelated histories). Best-effort: any git failure yields `undefined` and the
+ * caller treats the gate as unavailable rather than blocking a legitimate PR.
+ */
+export interface PrGateChangeSet {
+  changedFiles: string[];
+  diff: string;
+  /** True when the diff text was truncated at the gate budget. */
+  truncated: boolean;
+  /** True when the changed-file list was truncated at the gate budget. */
+  filesTruncated: boolean;
+}
+
+const GATE_MAX_DIFF_CHARS = 2_000_000;
+const GATE_MAX_CHANGED_FILES = 5_000;
+
+export async function capturePrGateChangeSet(
+  workdir: string,
+  baseBranch: string,
+): Promise<PrGateChangeSet | undefined> {
+  if (!(await isWorkTree(workdir))) return undefined;
+  const base = (baseBranch ?? "").trim();
+  if (!base) return undefined;
+
+  // Prefer the branch-since-fork diff (base...HEAD). If the symmetric range
+  // can't resolve (no common ancestor), fall back to the direct base..HEAD diff.
+  const nameStatus =
+    (await git(workdir, ["diff", "--name-status", `${base}...HEAD`])) ??
+    (await git(workdir, ["diff", "--name-status", base, "HEAD"]));
+  if (nameStatus === undefined) return undefined;
+
+  const allChangedFiles = parseNameStatus(nameStatus);
+  const filesTruncated = allChangedFiles.length > GATE_MAX_CHANGED_FILES;
+  const changedFiles = allChangedFiles.slice(0, GATE_MAX_CHANGED_FILES);
+
+  const diffRaw =
+    (await git(workdir, ["diff", `${base}...HEAD`])) ??
+    (await git(workdir, ["diff", base, "HEAD"])) ??
+    "";
+  const truncated = diffRaw.length > GATE_MAX_DIFF_CHARS;
+  const diff = truncated ? diffRaw.slice(0, GATE_MAX_DIFF_CHARS) : diffRaw;
+
+  return { changedFiles, diff, truncated, filesTruncated };
 }
 
 export function verifyChangedFilesOnDisk(

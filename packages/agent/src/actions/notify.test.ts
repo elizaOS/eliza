@@ -144,10 +144,11 @@ describe("notifyAction", () => {
 
   it("drops answer-flavored similes that read as 'tell the user'", () => {
     // NOTIFY_USER / ALERT_USER made a planner treat NOTIFY as the reply path.
-    expect(notifyAction.similes ?? []).not.toContain("NOTIFY_USER");
-    expect(notifyAction.similes ?? []).not.toContain("ALERT_USER");
-    // Genuinely notification-flavored similes are kept.
-    expect(notifyAction.similes ?? []).toContain("SEND_NOTIFICATION");
+    expect(notifyAction.similes).toEqual([
+      "SEND_NOTIFICATION",
+      "PUSH_NOTIFICATION",
+      "SEND_ALERT",
+    ]);
   });
 });
 

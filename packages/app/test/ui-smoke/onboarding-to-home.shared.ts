@@ -756,9 +756,9 @@ export async function expectChatFirstOnboarding(page: Page): Promise<Locator> {
 
   // Onboarding surface (#15339): first-run is sign-in-first, so the composer is
   // LOCKED (disabled) with a "Sign in to start chatting" cue until the user
-  // signs in — typing into a not-yet-ready chat is prevented. The backdrop is
-  // OPAQUE so the launcher/home is hidden, and the pinned-open sheet is still
-  // non-dismissable — Escape must NOT collapse it.
+  // signs in — typing into a not-yet-ready chat is prevented. The active
+  // onboarding scrim preserves the wallpaper while the launcher/home surface
+  // is hidden, and the pinned-open sheet remains non-dismissable.
   const composer = page.getByTestId("chat-composer-textarea");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveAttribute(
@@ -1017,14 +1017,14 @@ export async function expectCloudOnlySignInOnboarding(
 ): Promise<void> {
   const chatOverlay = page.getByTestId("continuous-chat-overlay");
   await expect(chatOverlay).toBeVisible({ timeout: 30_000 });
-  // Cloud-only greeting (#13377): the conductor seeds CLOUD_SIGN_IN_GREETING
-  // ("Hi, I'm Eliza! Seems like you're new here — let's get started.")
-  // with the single "Sign in to Eliza Cloud" CTA
-  // (`runtime:cloud`); the same-text fallback (ContinuousChatOverlay's
-  // FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE) covers the pre-seed race. There is no
-  // "First, where should your agent run?" chooser question in this mode.
+  // Cloud-only greeting (#13377): the conductor seeds the greeting and sign-in
+  // prompt as two normal chat turns, followed by the single cloud CTA. The
+  // overlay's matching fallback turns cover the pre-seed race.
+  await expect(page.getByText("Hi, I'm Eliza.", { exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
   await expect(
-    page.getByText("Hi, I'm Eliza!", { exact: false }).first(),
+    page.getByText("Let's get you signed in.", { exact: true }),
   ).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId(RUNTIME_CHOICE("cloud"))).toBeVisible({
     timeout: 15_000,
@@ -1036,8 +1036,7 @@ export async function expectCloudOnlySignInOnboarding(
     page.getByText("where should your agent run?", { exact: false }),
   ).toHaveCount(0);
   // Same onboarding surface contract as chooser mode (#15339): sign-in-first
-  // locked composer ("Sign in to start chatting"), opaque backdrop,
-  // non-dismissable pinned sheet.
+  // locked composer, active wallpaper scrim, non-dismissable pinned sheet.
   const composer = page.getByTestId("chat-composer-textarea");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveAttribute(
@@ -1389,11 +1388,15 @@ export async function swipeLeftToLauncher(
       );
     }
   } else {
+    // A deliberate mouse drag uses the pager's distance contract rather than
+    // synthetic event timing: cross the 50% threshold so a slow CI pointer is
+    // equivalent to a user dragging past halfway before release.
+    const endX = box.x + box.width * 0.18;
     await page.mouse.move(startX, midY);
     await page.mouse.down();
-    // Several steps so pointermove fires with a clearly-horizontal, > -72px dx.
+    // Several steps keep the tracked rail continuous through the drag.
     for (let i = 1; i <= 6; i++) {
-      await page.mouse.move(startX - i * 40, midY);
+      await page.mouse.move(startX + ((endX - startX) * i) / 6, midY);
     }
     await page.mouse.up();
   }

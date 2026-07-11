@@ -12,10 +12,11 @@
  * the boundary the real transaction sits behind. Everything else is real.
  */
 
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 
+import * as realHelpersNs from "../../db/helpers";
 import type { AgentSandbox, NewAgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 
@@ -80,21 +81,40 @@ const transaction = mock(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx
 
 const dbWriteMock = { transaction };
 
-mock.module("../../db/helpers", () => ({
-  db: dbWriteMock,
-  dbRead: { select: () => ({}), query: {} },
-  dbWrite: dbWriteMock,
-  getDbConnectionInfo: () => ({}),
-  getReadDb: () => dbWriteMock,
-  getWriteDb: () => dbWriteMock,
-  getDbRoutingInfo: () => ({}),
-  logDbRouting: () => {},
-  useReadDb: (fn: (d: unknown) => unknown) => fn(dbWriteMock),
-  useWriteDb: (fn: (d: unknown) => unknown) => fn(dbWriteMock),
-  readQuery: async (_label: string, fn: (d: unknown) => unknown) => fn(dbWriteMock),
-  writeQuery: async (_label: string, fn: (d: unknown) => unknown) => fn(dbWriteMock),
-  writeTransaction: (fn: (t: typeof tx) => Promise<unknown>) => transaction(fn),
-}));
+// VALUE snapshot taken at module evaluation, while no mock is installed:
+// `db/helpers` re-exports `dbWrite` from `db/client`, so bun's module mocks
+// patch the SHARED live binding — an afterAll restore built from the live
+// namespace would re-capture the mock instead of healing it (#15943).
+const realHelpersSnapshot = { ...realHelpersNs };
+
+// Installed in beforeAll — never at module scope: `bun test` evaluates every
+// test file's module scope up front, so a module-scope mock would clobber the
+// shared helpers/client bindings under every OTHER suite in a multi-file run
+// (the changed-files coverage lane co-runs suites in one process).
+beforeAll(() => {
+  mock.module("../../db/helpers", () => ({
+    db: dbWriteMock,
+    dbRead: { select: () => ({}), query: {} },
+    dbWrite: dbWriteMock,
+    getDbConnectionInfo: () => ({}),
+    getReadDb: () => dbWriteMock,
+    getWriteDb: () => dbWriteMock,
+    getDbRoutingInfo: () => ({}),
+    logDbRouting: () => {},
+    useReadDb: (fn: (d: unknown) => unknown) => fn(dbWriteMock),
+    useWriteDb: (fn: (d: unknown) => unknown) => fn(dbWriteMock),
+    readQuery: async (_label: string, fn: (d: unknown) => unknown) => fn(dbWriteMock),
+    writeQuery: async (_label: string, fn: (d: unknown) => unknown) => fn(dbWriteMock),
+    writeTransaction: (fn: (t: typeof tx) => Promise<unknown>) => transaction(fn),
+  }));
+});
+
+// Hand the pristine module back to whatever test file runs after this one in
+// the same process — a leaked module mock patches itself into later suites'
+// imports.
+afterAll(() => {
+  mock.module("../../db/helpers", () => realHelpersSnapshot);
+});
 
 const ORG_A = "11111111-1111-4111-8111-111111111111";
 const ORG_B = "22222222-2222-4222-8222-222222222222";
@@ -451,5 +471,95 @@ describe("ElizaSandboxService.createCodingContainerAgent — same per-org quota 
     // Coding containers ALWAYS run in the transaction (per-image idempotency),
     // so both locks are taken even uncapped — but no count gates the insert.
     expect(lockKeys).toEqual(["agent-create", "coding-container:ghcr.io/elizaos/tool:v9"]);
+  });
+});
+
+describe("buildAgentSandboxInsertValues — the canonical insert builder (#15943)", () => {
+  test("createAgent's own insert is byte-identical to the canonical builder output (no drift between paths)", async () => {
+    const { ElizaSandboxService, buildAgentSandboxInsertValues } = await import(
+      "./eliza-sandbox.ts?actual"
+    );
+    const svc = new ElizaSandboxService();
+
+    const params = {
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "parity-check",
+      agentConfig: { character: { name: "Parity" }, temperature: 0.3 },
+      environmentVars: { MY_FLAG: "on" },
+      characterId: "55555555-5555-4555-8555-555555555555",
+      dockerImage: "ghcr.io/elizaos/agent:latest",
+      reuseExistingNonTerminal: true,
+    };
+    existingRows = [];
+    const res = await svc.createAgent(params);
+    expect(res.idempotent).toBe(false);
+    // The tier-upgrade target mint assembles its insert through the SAME
+    // exported builder — this parity pins that the service's own create path
+    // does too, so defaults/sanitization cannot silently diverge (#15943).
+    expect(insertedRows[0]).toEqual(buildAgentSandboxInsertValues(params));
+  });
+
+  test("tier→status derivation and defaults: dedicated-always is born pending; shared is born running", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+
+    const dedicated = buildAgentSandboxInsertValues({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "dedicated-target",
+      executionTier: "dedicated-always",
+    });
+    expect(dedicated.status).toBe("pending");
+    expect(dedicated.execution_tier).toBe("dedicated-always");
+    expect(dedicated.database_status).toBe("none");
+    expect(dedicated.environment_vars).toEqual({});
+
+    const shared = buildAgentSandboxInsertValues({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "shared-agent",
+    });
+    expect(shared.status).toBe("running");
+    expect(shared.execution_tier).toBe("shared");
+  });
+
+  test("reserved `__agent` config keys are stripped and characterId marks reuse-existing ownership", async () => {
+    const { buildAgentSandboxInsertValues } = await import("./eliza-sandbox.ts?actual");
+
+    const values = buildAgentSandboxInsertValues({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "sanitized",
+      // A caller can never plant reattach/ownership markers — the builder
+      // strips the whole reserved namespace; servers re-apply their own.
+      agentConfig: { __agentUpgradedFrom: "forged", __agentManagedGithub: {}, keep: 1 },
+      characterId: "55555555-5555-4555-8555-555555555555",
+    });
+    expect(values.agent_config).toEqual({
+      keep: 1,
+      __agentCharacterOwnership: "reuse-existing",
+    });
+    expect(values.character_id).toBe("55555555-5555-4555-8555-555555555555");
+  });
+});
+
+describe("assertOrgAgentQuota — boundary at the cap (#15943)", () => {
+  test("the LAST free slot under the cap still inserts (count = cap-1)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService();
+
+    // Complements the at-cap refusal above: off-by-one in the >= comparison
+    // would either leak one extra agent past the cap or waste the last slot.
+    countRows = [{ count: 4 }];
+    const res = await svc.createAgent({
+      organizationId: ORG_A,
+      userId: USER,
+      agentName: "last-slot",
+      dockerImage: "ghcr.io/elizaos/agent:latest",
+      reuseExistingNonTerminal: false,
+      maxNonTerminalAgents: 5,
+    });
+    expect(res.idempotent).toBe(false);
+    expect(insertedRows.length).toBe(1);
   });
 });

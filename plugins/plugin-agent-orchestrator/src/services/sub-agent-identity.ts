@@ -14,6 +14,11 @@ import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
+import { readConfigEnvKey } from "./config-env.js";
+import {
+  renderCoAuthorTrailer,
+  resolveGitIdentityConfig,
+} from "./git-identity-env.js";
 
 /** The instruction files each coding backend reads from its working directory. */
 const IDENTITY_FILENAMES = ["AGENTS.md", "CLAUDE.md"] as const;
@@ -120,6 +125,7 @@ bridge.
 - Workspace-only writes. Sealed env (only an allowlist of vars is forwarded).
 - Don't push to git remotes or open PRs — Eliza handles git push / PR creation.
 - Don't print secrets — output is captured. Reference secrets by env-var name.
+{{GIT_TRAILER_SECTION}}
 
 ## Your final message — lead with the deliverable, not your process
 
@@ -206,6 +212,11 @@ export interface SubAgentIdentityOptions {
    * is actually wired for the session (the `SubAgentRouter` is bound); see
    * `isParentAgentBrokerWired`. */
   brokerWired?: boolean;
+  /** A pre-rendered `Co-authored-by: Name <email>` trailer line to instruct the
+   * agent to append to its commit messages. Undefined (the default) strips the
+   * git-trailer section entirely. Resolved from config by `writeWorkspaceIdentity`
+   * so the manual and the spawn env agree on the configured co-author. */
+  coAuthorTrailer?: string;
 }
 
 /**
@@ -217,10 +228,36 @@ export interface SubAgentIdentityOptions {
 export function buildSubAgentIdentityMd(
   opts: SubAgentIdentityOptions = {},
 ): string {
+  const trailer = opts.coAuthorTrailer?.trim();
   return SUB_AGENT_IDENTITY_MD.replace(
     "{{BROKER_SECTION}}",
     opts.brokerWired ? SUB_AGENT_BROKER_SECTION_MD : "",
+  ).replace(
+    "{{GIT_TRAILER_SECTION}}",
+    trailer ? renderGitTrailerSection(trailer) : "",
   );
+}
+
+/**
+ * Render the commit-trailer instruction block. The agent writes its own commit
+ * messages, so a configured `Co-authored-by:` line can only reach the commit via
+ * the agent appending it — the manual tells it to. Kept terse and mechanical so
+ * a coding backend follows it verbatim.
+ */
+function renderGitTrailerSection(trailer: string): string {
+  return `
+## Commit message trailer (REQUIRED when you commit)
+
+When you create a git commit, append this exact line to the LAST paragraph of
+the commit message body (git's \`Co-authored-by:\` trailer convention — a blank
+line before it, one trailer per line):
+
+\`\`\`
+${trailer}
+\`\`\`
+
+This records shared provenance for the commit. Your author/committer identity is
+already pinned via the environment — do not run \`git config user.name/email\`.`;
 }
 
 /**
@@ -234,12 +271,29 @@ export async function writeWorkspaceIdentity(
   workdir: string,
   opts: SubAgentIdentityOptions = {},
 ): Promise<void> {
+  // Resolve the configured co-author trailer once, from the same config surface
+  // the spawn env reads, so the manual instruction and the pinned GIT_* env
+  // always describe the same identity. Undefined when unconfigured.
+  const coAuthorTrailer =
+    opts.coAuthorTrailer ??
+    renderCoAuthorTrailer(resolveGitIdentityConfig(readConfigEnvKey));
   try {
     const alreadyHasIdentity = IDENTITY_FILENAMES.some((name) =>
       existsSync(join(workdir, name)),
     );
-    if (alreadyHasIdentity) return;
-    const manual = buildSubAgentIdentityMd(opts);
+    if (alreadyHasIdentity) {
+      // A real repo already carries its own AGENTS.md/CLAUDE.md (the common
+      // coding-task case) which are TRACKED files — we must NEVER mutate them:
+      // dirtying them would leak an Eliza stanza into the agent's own
+      // `git add -A` commit/PR (the previous guard deliberately avoided touching
+      // existing manuals). The co-author *trailer* instruction is therefore only
+      // scaffolded into BARE workspaces (our own file). For repos with their own
+      // manuals the load-bearing identity fix (pinned GIT_AUTHOR_*/GIT_COMMITTER_*
+      // env from buildEnv) still applies; a non-repo-dirtying trailer mechanism
+      // for these (e.g. an out-of-tree commit.template) is a follow-up.
+      return;
+    }
+    const manual = buildSubAgentIdentityMd({ ...opts, coAuthorTrailer });
     await Promise.all(
       IDENTITY_FILENAMES.map((name) =>
         writeFile(join(workdir, name), manual, "utf8"),

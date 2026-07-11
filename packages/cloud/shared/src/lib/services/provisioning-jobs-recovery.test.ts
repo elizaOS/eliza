@@ -92,6 +92,41 @@ describe("processDisconnectedRecovery", () => {
     }
   });
 
+  test("an enqueue failure on a re-provision is counted failed and does not halt the sweep", async () => {
+    const listSpy = spyOn(agentSandboxesRepository, "listRecoverable").mockImplementation(
+      async () => [
+        recoverable("a1", "o1", "http://10.0.0.1:2138"),
+        recoverable("a2", "o1", "http://10.0.0.2:2138"),
+      ],
+    );
+    const recoverSpy = spyOn(elizaSandboxService, "recoverDisconnected").mockImplementation(
+      async () => "unreachable",
+    );
+    // The enqueue boundary itself can refuse (e.g. the typed agent-not-found
+    // when the row was deleted between the probe and the enqueue, #15943).
+    // One refusal must not abort recovery of the remaining fleet.
+    const enqueueSpy = spyOn(
+      provisioningJobService,
+      "enqueueAgentProvisionOnce",
+    ).mockImplementation(async (params: { agentId: string }) => {
+      if (params.agentId === "a1") throw new Error("Agent not found");
+      return { created: true, job: { id: "job-a2" } } as never;
+    });
+    try {
+      // concurrency 1 → deterministic order (a1 then a2)
+      const res = await provisioningJobService.processDisconnectedRecovery(1);
+      expect(res.total).toBe(2);
+      expect(res.failed).toBe(1);
+      expect(res.reprovisioned).toBe(1);
+      const enqueuedIds = enqueueSpy.mock.calls.map((c) => c[0].agentId);
+      expect(enqueuedIds).toEqual(["a1", "a2"]);
+    } finally {
+      listSpy.mockRestore();
+      recoverSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
+
   test("a throw on one agent is counted failed; the rest still process", async () => {
     const listSpy = spyOn(agentSandboxesRepository, "listRecoverable").mockImplementation(
       async () => [

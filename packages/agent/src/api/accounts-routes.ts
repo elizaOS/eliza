@@ -25,7 +25,11 @@
  * powers.
  */
 
+import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
+import { access } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -68,6 +72,51 @@ import type { ElizaConfig } from "../config/types.eliza.ts";
 import { getAgentHostBridge } from "../runtime/host-bridge.ts";
 
 const z = (zod as typeof zod & { z?: typeof zod }).z ?? zod;
+const execFileAsync = promisify(execFile);
+
+async function commandAvailable(command: string): Promise<boolean> {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      await access(path.join(dir, command));
+      return true;
+    } catch {
+      // Continue through PATH.
+    }
+  }
+  return false;
+}
+
+async function ensureSubscriptionCli(
+  providerId: "anthropic-subscription" | "openai-codex",
+): Promise<void> {
+  const command = providerId === "openai-codex" ? "codex" : "claude";
+  if (await commandAvailable(command)) return;
+  const packageName =
+    providerId === "openai-codex"
+      ? "@openai/codex"
+      : "@anthropic-ai/claude-code";
+  logger.info(`[accounts] Installing missing ${command} CLI for device login`);
+  await execFileAsync("npm", ["install", "-g", packageName], {
+    timeout: 2 * 60 * 1000,
+  });
+  if (!(await commandAvailable(command))) {
+    throw new Error(`${command} CLI installation completed but is not on PATH`);
+  }
+}
+
+function requestUsesLocalRoot(req: RouteRequestContext["req"]): boolean {
+  const raw =
+    (typeof req.headers.origin === "string" && req.headers.origin) ||
+    (typeof req.headers.referer === "string" && req.headers.referer) ||
+    `http://${req.headers.host ?? ""}`;
+  try {
+    const host = new URL(raw).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return false;
+  }
+}
 
 // ─── Account pool (single source of truth) ──────────────────────────
 //
@@ -150,6 +199,7 @@ const apiKeyAccountSchema = z.object({
 
 const oauthStartSchema = z.object({
   label: z.string().trim().min(1).max(120),
+  mode: z.enum(["auto", "localhost", "device"]).optional(),
 });
 
 const oauthSubmitCodeSchema = z.object({
@@ -683,7 +733,10 @@ async function handleOAuthRoutes(
   const action = rest[0];
 
   if (action === "start" && method === "POST") {
-    const body = await readJsonBody<{ label?: string }>(req, res);
+    const body = await readJsonBody<{ label?: string; mode?: string }>(
+      req,
+      res,
+    );
     if (!body) return true;
     const parsed = oauthStartSchema.safeParse(body);
     if (!parsed.success) {
@@ -725,10 +778,21 @@ async function handleOAuthRoutes(
         : startCodexOAuthFlow;
     let handle: Awaited<ReturnType<typeof startFlow>>;
     try {
+      if (parsed.data.mode === "device" || parsed.data.mode === "localhost") {
+        await ensureSubscriptionCli(subscription);
+      }
       handle = await startFlow({
         label: parsed.data.label,
         accountId,
         onAccountSaved,
+        ...(subscription === "openai-codex"
+          ? {
+              headless:
+                parsed.data.mode === "device" ||
+                (parsed.data.mode !== "localhost" &&
+                  !requestUsesLocalRoot(req)),
+            }
+          : {}),
       });
     } catch (err) {
       logger.error(
@@ -741,6 +805,7 @@ async function handleOAuthRoutes(
       sessionId: handle.sessionId,
       authUrl: handle.authUrl,
       needsCodeSubmission: handle.needsCodeSubmission,
+      ...(handle.userCode ? { userCode: handle.userCode } : {}),
     });
     return true;
   }

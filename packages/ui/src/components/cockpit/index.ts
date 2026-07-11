@@ -12,6 +12,7 @@ export type {
   CockpitModeConfig,
   CockpitModeOption,
   CockpitModeOptionId,
+  CockpitSpawnTarget,
   ElizaCloudTier,
   ProviderSource,
 } from "./cockpit-modes";
@@ -22,6 +23,7 @@ export {
   cockpitModeProviderSource,
   cockpitModeToProviderPolicy,
   ELIZA_CLOUD_TIER_MODEL,
+  normalizeCockpitSpawnTarget,
   optionIdForConfig,
   tierForConfig,
   visibleCockpitModeOptions,

@@ -13,6 +13,7 @@
  * - agent_restore: Restore from backup
  */
 
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, ne, type SQL, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite } from "../../db/helpers";
@@ -917,6 +918,24 @@ export class ProvisioningJobService {
       await assertSafeOutboundUrl(opts.webhookUrl);
     }
 
+    return await dbWrite.transaction(async (tx) => this.enqueueLifecycleJobInTx(tx, opts));
+  }
+
+  /**
+   * Transaction-scoped body of {@link enqueueLifecycleJob} for callers that
+   * must couple the enqueue to other writes in ONE transaction (the
+   * tier-upgrade single-flight boundary creates the sandbox row and its
+   * provision job atomically, #15943). Runs entirely on the caller's `tx`:
+   * a sandbox row inserted earlier in the same transaction is visible to the
+   * existence check, and a rollback discards the job together with it. The
+   * caller must pass any `webhookUrl` through {@link assertSafeOutboundUrl}
+   * BEFORE opening the transaction — URL validation resolves DNS and must not
+   * run while the transaction (and its advisory locks) are held open.
+   */
+  private async enqueueLifecycleJobInTx<TData extends object>(
+    tx: DbTransaction,
+    opts: LifecycleJobOptions<TData>,
+  ): Promise<{ job: Job; created: boolean }> {
     const newJob: NewJob = {
       type: opts.jobType,
       status: "pending",
@@ -929,75 +948,82 @@ export class ProvisioningJobService {
       estimated_completion_at: new Date(Date.now() + opts.estimatedDurationMs),
     };
 
-    return await dbWrite.transaction(async (tx) => {
-      await tx.execute(elizaProvisionAdvisoryLockSql(opts.organizationId, opts.agentId));
+    await tx.execute(elizaProvisionAdvisoryLockSql(opts.organizationId, opts.agentId));
 
-      const [sandbox] = await tx
-        .select({
-          id: agentSandboxes.id,
-          status: agentSandboxes.status,
-          updated_at: agentSandboxes.updated_at,
-        })
-        .from(agentSandboxes)
-        .where(
-          and(
-            eq(agentSandboxes.id, opts.agentId),
-            eq(agentSandboxes.organization_id, opts.organizationId),
-          ),
-        )
-        .limit(1);
+    const [sandbox] = await tx
+      .select({
+        id: agentSandboxes.id,
+        status: agentSandboxes.status,
+        updated_at: agentSandboxes.updated_at,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.id, opts.agentId),
+          eq(agentSandboxes.organization_id, opts.organizationId),
+        ),
+      )
+      .limit(1);
 
-      if (!sandbox) {
-        throw new Error("Agent not found");
-      }
+    if (!sandbox) {
+      // The exact message is load-bearing: several route boundaries map
+      // `message === "Agent not found"` to a 404.
+      throw new ElizaError("Agent not found", {
+        code: "PROVISION_ENQUEUE_AGENT_NOT_FOUND",
+        context: {
+          agentId: opts.agentId,
+          organizationId: opts.organizationId,
+          jobType: opts.jobType,
+        },
+      });
+    }
 
-      opts.validateSandbox?.(sandbox);
+    opts.validateSandbox?.(sandbox);
 
-      const [existing] = await tx
-        .select()
-        .from(jobs)
-        .where(
-          and(
-            eq(jobs.type, opts.jobType),
-            eq(jobs.organization_id, opts.organizationId),
-            eq(jobs.agent_id, opts.agentId),
-            ...(opts.idempotencyPredicates ?? []),
-            sql`${jobs.status} IN ('pending', 'in_progress')`,
-          ),
-        )
-        .orderBy(desc(jobs.created_at))
-        .limit(1);
+    const [existing] = await tx
+      .select()
+      .from(jobs)
+      .where(
+        and(
+          eq(jobs.type, opts.jobType),
+          eq(jobs.organization_id, opts.organizationId),
+          eq(jobs.agent_id, opts.agentId),
+          ...(opts.idempotencyPredicates ?? []),
+          sql`${jobs.status} IN ('pending', 'in_progress')`,
+        ),
+      )
+      .orderBy(desc(jobs.created_at))
+      .limit(1);
 
-      const logFields = {
-        agentId: opts.agentId,
-        orgId: opts.organizationId,
-        ...(opts.logExtras ?? {}),
-      };
+    const logFields = {
+      agentId: opts.agentId,
+      orgId: opts.organizationId,
+      ...(opts.logExtras ?? {}),
+    };
 
-      if (existing) {
-        const hydrated = await hydrateJob(existing);
-        opts.validateReuse?.(hydrated);
-        logger.info(`[provisioning-jobs] Reusing active ${opts.logName} job`, {
-          jobId: existing.id,
-          ...logFields,
-        });
-        return { job: hydrated, created: false };
-      }
-
-      await opts.beforeInsert?.(tx, sandbox);
-
-      const [job] = await tx
-        .insert(jobs)
-        .values(await prepareJobInsertData(newJob))
-        .returning();
-
-      logger.info(`[provisioning-jobs] Enqueued ${opts.logName} job`, {
-        jobId: job.id,
+    if (existing) {
+      const hydrated = await hydrateJob(existing);
+      opts.validateReuse?.(hydrated);
+      logger.info(`[provisioning-jobs] Reusing active ${opts.logName} job`, {
+        jobId: existing.id,
         ...logFields,
       });
+      return { job: hydrated, created: false };
+    }
 
-      return { job: await hydrateJob(job), created: true };
+    await opts.beforeInsert?.(tx, sandbox);
+
+    const [job] = await tx
+      .insert(jobs)
+      .values(await prepareJobInsertData(newJob))
+      .returning();
+
+    logger.info(`[provisioning-jobs] Enqueued ${opts.logName} job`, {
+      jobId: job.id,
+      ...logFields,
     });
+
+    return { job: await hydrateJob(job), created: true };
   }
 
   /**
@@ -1023,8 +1049,48 @@ export class ProvisioningJobService {
     webhookUrl?: string;
     expectedUpdatedAt?: Date | string | null;
   }): Promise<EnqueueAgentProvisionResult> {
+    return this.enqueueLifecycleJob<AgentProvisionJobData>(
+      this.agentProvisionLifecycleOptions(params),
+    );
+  }
+
+  /**
+   * Transaction-scoped variant of {@link enqueueAgentProvisionOnce} for
+   * callers that must make the provision job durable ATOMICALLY with other
+   * writes in the same transaction — the tier-upgrade single-flight boundary
+   * inserts the target sandbox row and this job as one commit, so an enqueue
+   * failure can never strand a committed target without a job, and a target
+   * referenced by a committed job can never be compensation-deleted (#15943).
+   * No webhook support: URL validation resolves DNS and must not run inside an
+   * open transaction. The caller must already hold a lock that serializes this
+   * agent's creation; the per-(org,agent) provision advisory lock is still
+   * acquired here (lock order: caller's org-scoped lock → provision lock).
+   */
+  async enqueueAgentProvisionOnceInTx(
+    tx: DbTransaction,
+    params: {
+      agentId: string;
+      organizationId: string;
+      userId: string;
+      agentName: string;
+    },
+  ): Promise<EnqueueAgentProvisionResult> {
+    return this.enqueueLifecycleJobInTx<AgentProvisionJobData>(
+      tx,
+      this.agentProvisionLifecycleOptions(params),
+    );
+  }
+
+  private agentProvisionLifecycleOptions(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    agentName: string;
+    webhookUrl?: string;
+    expectedUpdatedAt?: Date | string | null;
+  }): LifecycleJobOptions<AgentProvisionJobData> {
     const expected = params.expectedUpdatedAt;
-    return this.enqueueLifecycleJob<AgentProvisionJobData>({
+    return {
       jobType: JOB_TYPES.AGENT_PROVISION,
       jobData: {
         agentId: params.agentId,
@@ -1056,7 +1122,7 @@ export class ProvisioningJobService {
             }
           }
         : undefined,
-    });
+    };
   }
 
   /**

@@ -108,6 +108,16 @@ try {
   write(dir, "packages/demo/src/runtime.cjs", "exports.cjs = 1;\n");
   write(
     dir,
+    "packages/demo/src/_router.generated.ts",
+    "export const generatedRoute = 1;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/generated/schema.ts",
+    "export const generatedSchema = 1;\n",
+  );
+  write(
+    dir,
     "packages/demo/src/runtime.mts",
     "export const mts: number = 1;\n",
   );
@@ -115,6 +125,11 @@ try {
     dir,
     "packages/demo/src/runtime.cts",
     "export const cts: number = 1;\n",
+  );
+  write(
+    dir,
+    "packages/app/scripts/walkthrough-e2e.mjs",
+    "export async function runWalkthrough() {}\n",
   );
   write(
     dir,
@@ -145,6 +160,21 @@ try {
     dir,
     "packages/demo/test/e2e/flow.test.ts",
     "import { test } from 'bun:test';\ntest('e2e', () => {});\n",
+  );
+  write(
+    dir,
+    "packages/test/cloud-e2e/tests/live-deploy.spec.ts",
+    "import { test } from '../src/helpers/test-fixtures';\ntest('live', () => {});\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/__e2e__/fixture.tsx",
+    "export const Fixture = () => null;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/feature.stories.tsx",
+    "export default { title: 'Feature' };\n",
   );
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "feature work");
@@ -194,6 +224,29 @@ try {
     },
   );
 
+  assertCase("cloud Playwright specs stay in their dedicated lane", () => {
+    const liveSpec = "packages/test/cloud-e2e/tests/live-deploy.spec.ts";
+    assert.ok(
+      !out.bun_tests.includes(liveSpec),
+      `cloud Playwright spec leaked into bun lane: ${out.bun_tests.join(",")}`,
+    );
+    assert.ok(
+      !out.vitest_tests.includes(liveSpec),
+      `cloud Playwright spec leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+    );
+  });
+
+  assertCase(
+    "e2e fixtures and stories are not product coverage targets",
+    () => {
+      assert.ok(!out.files.includes("packages/demo/src/__e2e__/fixture.tsx"));
+      assert.ok(!out.files.includes("packages/demo/src/feature.stories.tsx"));
+      assert.ok(
+        !out.files.includes("packages/app/scripts/walkthrough-e2e.mjs"),
+      );
+    },
+  );
+
   assertCase("unit tests bucket by imported runner", () => {
     assert.ok(
       out.bun_tests.includes("packages/demo/src/native.test.ts"),
@@ -214,6 +267,11 @@ try {
       !out.files.includes("plugins/plugin-demo/vitest.config.ts"),
       `vitest config leaked into changed source: ${out.files.join(",")}`,
     );
+  });
+
+  assertCase("generated modules are not LCOV-enforced source", () => {
+    assert.ok(!out.files.includes("packages/demo/src/_router.generated.ts"));
+    assert.ok(!out.files.includes("packages/demo/src/generated/schema.ts"));
   });
 
   assertCase(

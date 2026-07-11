@@ -59,6 +59,11 @@ export function registerChatSourceMetaEntries(
   }
 }
 
+export function hasChatSourceMeta(source: string): boolean {
+  const normalized = normalizeChatSourceKey(source);
+  return normalized ? chatSourceMetaRegistry.has(normalized) : false;
+}
+
 export function registerChatReactionEmojiRenderer(
   renderer: ((emoji: string) => React.ReactNode | null) | null,
 ): void {

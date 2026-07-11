@@ -172,7 +172,14 @@ function validateTokens(parsed: unknown, sourceLabel: string): CodexAuthTokens {
       { source: sourceLabel },
     );
   }
-  return tokens as unknown as CodexAuthTokens;
+  return {
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    ...(tokens.id_token !== undefined ? { id_token: tokens.id_token } : {}),
+    ...(tokens.account_id !== undefined
+      ? { account_id: tokens.account_id }
+      : {}),
+  };
 }
 
 /**

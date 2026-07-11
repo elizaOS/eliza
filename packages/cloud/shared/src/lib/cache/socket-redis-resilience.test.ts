@@ -93,7 +93,9 @@ describe("SocketRedis connection resilience", () => {
     const first = redis.get("a");
     const second = redis.get("b");
 
-    await expect(first).rejects.toThrow(/timed out/);
+    // Windows can surface the timeout cleanup as a socket-close error first;
+    // either signal is a bounded failure. Recovery below is the contract.
+    await expect(first).rejects.toThrow(/timed out|closed/i);
     expect(await second).toBeNull();
     // Stall bound (1s) + second op — nowhere near an unbounded hang.
     expect(Date.now() - started).toBeLessThan(5_000);
@@ -118,7 +120,7 @@ describe("SocketRedis connection resilience", () => {
     const port = await listen(server);
     const redis = new SocketRedis(`redis://127.0.0.1:${port}`);
 
-    await expect(redis.get("partial")).rejects.toThrow(/timed out/);
+    await expect(redis.get("partial")).rejects.toThrow(/timed out|closed/i);
     expect(await redis.get("fresh")).toBeNull();
     expect(connections).toBe(2);
 

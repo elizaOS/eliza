@@ -1,22 +1,21 @@
 /**
- * Unit coverage for the default boot config invariants (e.g. shared-cloud-tier
- * handoff default). Pure data, no runtime.
+ * Unit coverage for the default boot config invariants. Pure data, no runtime.
  */
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_BOOT_CONFIG } from "./boot-config-store";
 
 describe("DEFAULT_BOOT_CONFIG", () => {
-  it("defaults preferSharedCloudTier on so handoff is the default create path", () => {
-    expect(DEFAULT_BOOT_CONFIG.preferSharedCloudTier).toBe(true);
+  it("defaults preferSharedCloudTier off so cloud first-run binds dedicated directly", () => {
+    expect(DEFAULT_BOOT_CONFIG.preferSharedCloudTier).toBe(false);
   });
 
-  it("keeps preferSharedCloudTier overridable as a kill-switch", () => {
-    const killSwitched = {
+  it("keeps preferSharedCloudTier overridable for explicit shared-tier experiments", () => {
+    const sharedTierEnabled = {
       ...DEFAULT_BOOT_CONFIG,
-      preferSharedCloudTier: false,
+      preferSharedCloudTier: true,
     };
 
-    expect(killSwitched.preferSharedCloudTier).toBe(false);
+    expect(sharedTierEnabled.preferSharedCloudTier).toBe(true);
   });
 });

@@ -34,6 +34,15 @@ import { useTranslation } from "../../state/TranslationContext.hooks";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { isSafeAttachmentUrl } from "../../utils/attachment-url";
 import { RedactedBadge } from "../RedactedBadge";
+import {
+  Attachment,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentMedia,
+  AttachmentTitle,
+  AttachmentTrigger,
+} from "../ui/attachment";
 import { Button } from "../ui/button";
 import { CodeBlock } from "../ui/code-block";
 import { TranscriptViewerOverlay } from "./TranscriptViewerOverlay";
@@ -440,43 +449,39 @@ function FileTile({
 }): React.JSX.Element {
   const label = attachmentLabel(att);
   const Icon = kind === "link" ? LinkIcon : FileText;
+  const actionLabel = `${kind === "link" ? "Open" : "Download"} ${label}`;
   return (
-    <Button
-      asChild
-      variant="ghost"
-      className={cn(
-        "h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5",
-        "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-      )}
+    <Attachment
+      size="sm"
+      className="min-h-touch w-full max-w-[min(20rem,100%)] border-border bg-card text-txt hover:border-border-strong hover:bg-bg-hover"
     >
-      <a
-        href={src}
-        target="_blank"
-        rel="noreferrer"
-        download={kind === "link" ? undefined : downloadName(att, kind)}
-      >
+      <AttachmentTrigger asChild aria-label={actionLabel}>
+        <a
+          href={src}
+          target="_blank"
+          rel="noreferrer"
+          download={kind === "link" ? undefined : downloadName(att, kind)}
+        >
+          <span className="sr-only">{actionLabel}</span>
+        </a>
+      </AttachmentTrigger>
+      <AttachmentMedia className="bg-transparent text-muted">
         <Icon className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs-tight font-medium">
-            {label}
-          </span>
-          {att.description?.trim() ? (
-            <span className="block truncate text-2xs text-muted">
-              {att.description.trim()}
-            </span>
-          ) : (
-            <span className="block text-2xs uppercase tracking-wide text-muted">
-              {kind === "link" ? "link" : kind}
-            </span>
-          )}
-        </span>
+      </AttachmentMedia>
+      <AttachmentContent>
+        <AttachmentTitle>{label}</AttachmentTitle>
+        <AttachmentDescription>
+          {att.description?.trim() || (kind === "link" ? "Link" : kind)}
+        </AttachmentDescription>
+      </AttachmentContent>
+      <AttachmentActions className="pointer-events-none text-muted">
         {kind === "link" ? (
           <LinkIcon className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
         ) : (
           <Download className="h-4 w-4 shrink-0 text-muted" strokeWidth={1.5} />
         )}
-      </a>
-    </Button>
+      </AttachmentActions>
+    </Attachment>
   );
 }
 
@@ -881,23 +886,20 @@ function UnsafeAttachmentTile({
 }): React.JSX.Element {
   const label = attachmentLabel(att);
   return (
-    <div
+    <Attachment
+      state="error"
+      size="sm"
       data-testid="unsafe-attachment"
-      className={cn(
-        "flex max-w-[min(20rem,100%)] items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5",
-        "text-txt",
-      )}
+      className="w-full max-w-[min(20rem,100%)] border-border bg-card text-txt"
     >
-      <FileText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs-tight font-medium">
-          {label}
-        </span>
-        <span className="block text-2xs uppercase tracking-wide text-muted">
-          unsupported attachment
-        </span>
-      </span>
-    </div>
+      <AttachmentMedia className="bg-transparent text-muted">
+        <FileText className="h-5 w-5" strokeWidth={1.5} />
+      </AttachmentMedia>
+      <AttachmentContent>
+        <AttachmentTitle>{label}</AttachmentTitle>
+        <AttachmentDescription>Unsupported attachment</AttachmentDescription>
+      </AttachmentContent>
+    </Attachment>
   );
 }
 
@@ -911,29 +913,26 @@ function TranscriptTile({
 }): React.JSX.Element {
   const label = attachmentLabel(att);
   return (
-    <Button
-      variant="ghost"
-      onClick={onOpen}
+    <Attachment
+      size="sm"
       data-testid="transcript-attachment"
-      className={cn(
-        "group h-auto min-h-touch max-w-[min(20rem,100%)] justify-start gap-2.5 whitespace-normal rounded-lg border border-border bg-card px-3 py-2.5 text-left",
-        "text-txt transition-colors hover:bg-bg-hover hover:border-border-strong active:scale-[0.99] motion-reduce:active:scale-100",
-      )}
+      className="group min-h-touch w-full max-w-[min(20rem,100%)] border-border bg-card text-txt hover:border-border-strong hover:bg-bg-hover"
     >
-      <ScrollText className="h-5 w-5 shrink-0 text-muted" strokeWidth={1.5} />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs-tight font-medium">
-          {label}
-        </span>
-        <span className="block text-2xs uppercase tracking-wide text-muted">
-          Transcript · tap to open
-        </span>
-      </span>
-      <Maximize2
-        className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-txt"
-        strokeWidth={1.5}
+      <AttachmentTrigger
+        onClick={onOpen}
+        aria-label={`Open transcript ${label}`}
       />
-    </Button>
+      <AttachmentMedia className="bg-transparent text-muted">
+        <ScrollText className="h-5 w-5" strokeWidth={1.5} />
+      </AttachmentMedia>
+      <AttachmentContent>
+        <AttachmentTitle>{label}</AttachmentTitle>
+        <AttachmentDescription>Transcript · tap to open</AttachmentDescription>
+      </AttachmentContent>
+      <AttachmentActions className="pointer-events-none text-muted transition-colors group-hover:text-txt">
+        <Maximize2 className="h-4 w-4" strokeWidth={1.5} />
+      </AttachmentActions>
+    </Attachment>
   );
 }
 

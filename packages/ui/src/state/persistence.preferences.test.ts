@@ -107,14 +107,14 @@ describe("shell preference persistence", () => {
   });
 
   it("normalizes invalid and legacy theme and navigation values", () => {
-    expect(normalizeUiThemeMode("sepia")).toBe("system");
+    expect(normalizeUiThemeMode("sepia")).toBe("dark");
     expect(normalizeUiTheme("sepia")).toBe("dark");
     expect(normalizeUiShellMode("classic")).toBe("native");
 
     localStorage.setItem("eliza:ui-theme", "light");
     localStorage.setItem("eliza:last-native-tab", "advanced");
-    expect(loadUiThemeMode()).toBe("light");
-    expect(loadUiTheme()).toBe("light");
+    expect(loadUiThemeMode()).toBe("dark");
+    expect(loadUiTheme()).toBe("dark");
     expect(loadLastNativeTab()).toBe("fine-tuning");
 
     saveUiThemeMode("dark");
