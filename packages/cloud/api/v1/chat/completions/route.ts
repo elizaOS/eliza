@@ -268,7 +268,8 @@ function buildReasoningEffortProviderOptions(
 }
 
 /**
- * Computes effective max_tokens, reserving response capacity for reasoning models.
+ * Computes the provider-facing max_tokens without overriding an explicit caller
+ * ceiling. Reasoning models get a safer default only when max_tokens is omitted.
  *
  * Reasoning models (Anthropic extended-thinking, OpenAI o-series, DeepSeek R,
  * MiniMax M, and similar families) spend output tokens on hidden chain-of-thought
@@ -282,6 +283,10 @@ function buildReasoningEffortProviderOptions(
  *   - When reasoning is disabled (including Gemma's default), preserve the
  *     caller's cap exactly.
  *
+ * A low explicit ceiling can still be exhausted by hidden reasoning. The response
+ * paths report an empty-but-billed completion as `finish_reason: "length"` rather
+ * than silently authorizing more generation and spend than the caller requested.
+ *
  * `model` is the requested model id (provider-prefixed is fine).
  */
 function computeEffectiveMaxTokens(
@@ -291,13 +296,16 @@ function computeEffectiveMaxTokens(
   supportedParameters?: readonly string[],
   reasoningEffort?: ReasoningEffort,
 ): number | undefined {
+  // max_tokens is a caller-controlled output and spend ceiling. Never raise an
+  // explicit value, including when Anthropic extended thinking is configured.
+  // Providers may reject an incompatible thinking budget with a truthful 400.
+  if (requestMaxTokens !== undefined) {
+    return requestMaxTokens;
+  }
+
   if (cotBudget !== null) {
-    // When CoT is active, ensure max_tokens covers both thinking budget AND response capacity
-    // Without this, thinking consumes all tokens leaving nothing for the actual response
-    return Math.max(
-      requestMaxTokens ?? MIN_RESPONSE_TOKENS,
-      cotBudget + MIN_RESPONSE_TOKENS,
-    );
+    // With no caller ceiling, leave room for both configured thinking and output.
+    return cotBudget + MIN_RESPONSE_TOKENS;
   }
   const cerebrasModel = canonicalizeCerebrasModelId(model);
   if (
@@ -310,16 +318,10 @@ function computeEffectiveMaxTokens(
     return requestMaxTokens;
   }
   if (modelUsesReasoningTokens(model, supportedParameters)) {
-    // Non-Anthropic reasoning model. Guarantee at least MIN_RESPONSE_TOKENS so the
-    // model does not truncate mid-reasoning and return empty (but billed) output.
-    // If the caller asked for more, honor it; if they asked for less (or nothing),
-    // raise it to the floor.
-    return Math.max(
-      requestMaxTokens ?? MIN_RESPONSE_TOKENS,
-      MIN_RESPONSE_TOKENS,
-    );
+    // With no caller ceiling, avoid the common empty-but-billed reasoning result.
+    return MIN_RESPONSE_TOKENS;
   }
-  return requestMaxTokens;
+  return undefined;
 }
 
 // ============================================================================
@@ -787,6 +789,18 @@ function normalizeUsageTokens(usage: unknown): {
     outputTokens,
     totalTokens: firstNumber(record.totalTokens) ?? inputTokens + outputTokens,
   };
+}
+
+function isEmptyButBilled(
+  visibleText: string,
+  hasToolCalls: boolean,
+  usage: unknown,
+): boolean {
+  return (
+    !visibleText &&
+    !hasToolCalls &&
+    normalizeUsageTokens(usage).outputTokens > 0
+  );
 }
 
 function hasReportedUsageTokens(usage: unknown): boolean {
@@ -2791,6 +2805,15 @@ async function handleStreamingRequest(
           }
         }
 
+        // A low explicit max_tokens can be consumed entirely by hidden
+        // reasoning. Match the non-streaming contract: an empty-but-billed
+        // completion is a length truncation, never a successful stop.
+        if (
+          isEmptyButBilled(deliveredText, nextToolCallIndex > 0, finishUsage)
+        ) {
+          finishReason = "length";
+        }
+
         // Send final chunk with finish_reason
         const finalChunk = {
           id: responseId,
@@ -3096,8 +3119,11 @@ async function handleNonStreamingRequest(
     // max_tokens) instead of a misleading "stop" with null content.
     const hasToolCalls = Boolean(result.toolCalls?.length);
     const visibleText = result.text || "";
-    const emptyButBilled =
-      !visibleText && !hasToolCalls && (result.usage?.outputTokens ?? 0) > 0;
+    const emptyButBilled = isEmptyButBilled(
+      visibleText,
+      hasToolCalls,
+      result.usage,
+    );
     const finishReason: "tool_calls" | "length" | "content_filter" | "stop" =
       hasToolCalls || result.finishReason === "tool-calls"
         ? "tool_calls"
@@ -3215,6 +3241,7 @@ export const __nativeToolingTestHooks = {
   computeEffectiveMaxTokens,
   validateCerebrasReasoningEffort,
   buildReasoningEffortProviderOptions,
+  isEmptyButBilled,
   toOpenAiFinishReason,
 } as const;
 
