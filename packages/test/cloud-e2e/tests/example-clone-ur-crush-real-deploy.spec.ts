@@ -137,9 +137,10 @@ test.describe("real-staging Clone Ur Crush deploy serves its subdomain (#9300)",
         allowed_origins: [CUC.appUrl],
         skipGitHubRepo: true,
       });
-      expect([200, 201], "Clone Ur Crush registers on staging").toContain(
-        created.status,
-      );
+      expect(
+        [200, 201],
+        `Clone Ur Crush registers on staging: ${JSON.stringify(created.json)}`,
+      ).toContain(created.status);
       appId = created.json.app?.id;
       expect(appId, "apps.create returns an app id").toBeTruthy();
       if (!appId) throw new Error("apps.create did not return an app id");

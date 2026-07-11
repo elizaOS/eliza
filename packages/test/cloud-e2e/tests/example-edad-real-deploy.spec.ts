@@ -160,7 +160,10 @@ test.describe("real-staging EDAD deploy serves its subdomain (#9300)", () => {
         allowed_origins: [EDAD.appUrl],
         skipGitHubRepo: true,
       });
-      expect([200, 201], "EDAD registers on staging").toContain(created.status);
+      expect(
+        [200, 201],
+        `EDAD registers on staging: ${JSON.stringify(created.json)}`,
+      ).toContain(created.status);
       appId = created.json.app?.id;
       expect(appId, "apps.create returns an app id").toBeTruthy();
       if (!appId) throw new Error("apps.create did not return an app id");
