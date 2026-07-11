@@ -129,6 +129,7 @@ function persistAccount(args: {
   access: string;
   refresh: string;
   expires: number;
+  idToken?: string;
   organizationId?: string;
   email?: string;
 }): AccountCredentialRecord {
@@ -142,6 +143,7 @@ function persistAccount(args: {
       access: args.access,
       refresh: args.refresh,
       expires: args.expires,
+      ...(args.idToken ? { idToken: args.idToken } : {}),
     },
     createdAt: now,
     updatedAt: now,
@@ -364,6 +366,7 @@ async function startGenericFlow(args: {
         access: creds.access,
         refresh: creds.refresh,
         expires: creds.expires,
+        ...(creds.idToken ? { idToken: creds.idToken } : {}),
         ...(organizationId ? { organizationId } : {}),
         ...(email ? { email } : {}),
       });

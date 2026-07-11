@@ -32,6 +32,7 @@ vi.mock("./openai-codex.ts", () => ({
 
 const ACCESS_TOKEN = "codex-access-token-SECRET";
 const REFRESH_TOKEN = "codex-refresh-token-SECRET";
+const ID_TOKEN = "codex-id-token-SECRET";
 
 const tempHomes: string[] = [];
 
@@ -123,6 +124,7 @@ describe("oauth-flow FlowState broadcast", () => {
       access: ACCESS_TOKEN,
       refresh: REFRESH_TOKEN,
       expires: Date.now() + 60_000,
+      idToken: ID_TOKEN,
     });
     await handle.completion;
 
@@ -185,17 +187,20 @@ describe("oauth-flow FlowState broadcast", () => {
       access: ACCESS_TOKEN,
       refresh: REFRESH_TOKEN,
       expires: Date.now() + 60_000,
+      idToken: ID_TOKEN,
     });
 
     // In-process consumers (CLI, credential pool) still get the tokens.
     const { account } = await handle.completion;
     expect(account.credentials.access).toBe(ACCESS_TOKEN);
     expect(account.credentials.refresh).toBe(REFRESH_TOKEN);
+    expect(account.credentials.idToken).toBe(ID_TOKEN);
 
     // And the persisted record is intact.
     const saved = loadAccount("openai-codex", "acct-3");
     expect(saved?.credentials.access).toBe(ACCESS_TOKEN);
     expect(saved?.credentials.refresh).toBe(REFRESH_TOKEN);
+    expect(saved?.credentials.idToken).toBe(ID_TOKEN);
   });
 
   it("emits an account-free error state when the exchange fails", async () => {
