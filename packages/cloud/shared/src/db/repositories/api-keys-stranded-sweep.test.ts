@@ -17,6 +17,7 @@ process.env.NODE_ENV ||= "test";
 
 let dbWrite: typeof import("../helpers").dbWrite;
 let apiKeysRepository: typeof import("./api-keys").apiKeysRepository;
+let closeDatabaseConnectionsForTests: typeof import("../client").closeDatabaseConnectionsForTests;
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000a1";
 const USER_ID = "00000000-0000-4000-8000-0000000000b1";
@@ -53,6 +54,7 @@ async function insertKey(params: {
 
 beforeAll(async () => {
   ({ dbWrite } = await import("../helpers"));
+  ({ closeDatabaseConnectionsForTests } = await import("../client"));
   ({ apiKeysRepository } = await import("./api-keys"));
 
   // Minimal shapes: the query only touches api_keys columns + agent_sandboxes.id.
@@ -94,6 +96,7 @@ beforeEach(async () => {
 afterAll(async () => {
   await dbWrite.execute(sql`DROP TABLE IF EXISTS api_keys`);
   await dbWrite.execute(sql`DROP TABLE IF EXISTS agent_sandboxes`);
+  await closeDatabaseConnectionsForTests();
 });
 
 describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
