@@ -8,7 +8,20 @@
  * registry are mocked; the real listConnections/scoping logic runs unmocked.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import * as realDbClient from "../../../db/client";
+import * as realConnectionAdapters from "./connection-adapters";
+
+// bun's `mock.restore()` (called in afterEach below) restores spies but does NOT
+// undo `mock.module` overrides — those patch the process-global module registry
+// and persist. Under the batched cloud-unit runner (`--isolate` occasionally
+// fails to contain these on a memory-pressured runner) these db/client +
+// connection-adapters doubles otherwise bleed into later suites (e.g.
+// pii-scrub-jobs, which needs a real PGlite db/client), turning them red.
+// Snapshot the real exports now and reinstall them in afterAll so this file's
+// stubs are strictly local.
+const realDbClientExports = { ...realDbClient };
+const realConnectionAdaptersExports = { ...realConnectionAdapters };
 
 let dbWhere: () => Promise<unknown[]>;
 let getAdapterResult: {
@@ -59,6 +72,11 @@ describe("OAuthService.listConnections — error policy (#13415)", () => {
 
   afterEach(() => {
     mock.restore();
+  });
+
+  afterAll(() => {
+    mock.module("../../../db/client", () => realDbClientExports);
+    mock.module("./connection-adapters", () => realConnectionAdaptersExports);
   });
 
   it("propagates a platform-credential DB read failure (fail closed, not swallowed to [])", async () => {

@@ -18,8 +18,19 @@
  * branch — not the retry backoff — is exercised. `fetch` is stubbed per-test
  * and restored in afterEach.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { MediaAttachment, PostContent, SocialCredentials } from "../../../types/social-media";
+import * as realRateLimit from "../rate-limit";
+
+// bun's `mock.restore()` (afterEach below) restores spies but does NOT undo
+// `mock.module` overrides — those patch the process-global module registry and
+// persist. Under the batched cloud-unit runner (`--isolate` occasionally fails
+// to contain these on a memory-pressured runner) this slack-specific
+// `../rate-limit` double (whose withRetry throws "Slack API error") otherwise
+// bleeds into the other providers' suites (telegram/rate-limit/token-refresh),
+// which share the same rate-limit module. Snapshot the real exports now and
+// reinstall them in afterAll so this file's stub is strictly local.
+const realRateLimitExports = { ...realRateLimit };
 
 mock.module("../rate-limit", () => ({
   withRetry: async (fn: () => Promise<Response>, parser: (r: Response) => Promise<unknown>) => {
@@ -63,6 +74,10 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   mock.restore();
+});
+
+afterAll(() => {
+  mock.module("../rate-limit", () => realRateLimitExports);
 });
 
 async function rejects(p: Promise<unknown>): Promise<Error> {

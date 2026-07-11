@@ -1,7 +1,17 @@
 // Exercises phone gateway devices behavior with deterministic cloud-shared lib fixtures.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import * as realDbClient from "../../db/client";
 import * as realDbSchemas from "../../db/schemas";
+
+// bun's `mock.module` patches the process-global module registry. Under the
+// batched cloud-unit runner (`--isolate` occasionally fails to contain these on
+// a memory-pressured runner), these db/client + db/schemas doubles otherwise
+// bleed into later suites that import the real modules (e.g. the provisioning /
+// stripe-payout suites), turning them red. Snapshot the real exports now and
+// reinstall them in afterAll so this file's stubs are strictly local.
+const realDbClientExports = { ...realDbClient };
+const realDbSchemasExports = { ...realDbSchemas };
 
 const values = mock();
 const onConflictDoUpdate = mock();
@@ -69,6 +79,11 @@ mock.module("../../db/schemas", () => ({
 }));
 
 const { registerPhoneGatewayDevice } = await import("./phone-gateway-devices");
+
+afterAll(() => {
+  mock.module("../../db/client", () => realDbClientExports);
+  mock.module("../../db/schemas", () => realDbSchemasExports);
+});
 
 describe("registerPhoneGatewayDevice", () => {
   beforeEach(() => {
