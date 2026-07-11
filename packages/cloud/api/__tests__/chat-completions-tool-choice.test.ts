@@ -230,7 +230,7 @@ describe("Cerebras reasoning_effort validation", () => {
     ["gpt-oss-120b", "medium"],
     ["gpt-oss-120b", "high"],
     ["zai-glm-4.7", "none"],
-  ])("accepts %s reasoning_effort=%s", (model, effort) => {
+  ] as const)("accepts %s reasoning_effort=%s", (model, effort) => {
     expect(validateCerebrasReasoningEffort(model, effort)).toEqual({
       ok: true,
       value: effort,
