@@ -139,10 +139,17 @@ jobs:
 
       - name: Build live scenario runtime packages
         id: build
-        # The live runner executes TypeScript sources directly, but its workspace
-        # dependencies export dist/* entry points. Building the Turbo dependency
-        # closure keeps those transitive exports available after the deliberately
-        # script-free install without duplicating the package graph here.
+        # The live runner executes TypeScript sources directly, but several
+        # workspace packages intentionally export dist/* entry points. Because
+        # dependency installation ignores postinstall scripts, build only the
+        # packages that the live scenario runtime imports through those exports.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           echo "::group::Build packages/core"
           bun run --cwd packages/core build

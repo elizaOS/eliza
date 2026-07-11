@@ -1,4 +1,18 @@
-/** Verifies an unconfigured health connector produces an explicit disconnected status without requiring a persisted grant. */
+/**
+ * Verifies HealthDomain connector-status projection across the three grant
+ * states: no grant (config_missing), grant without a readable token
+ * (needs_reauth), and grant with a real encrypted token on disk (connected /
+ * sync_failed). Token reads go through the real AES-GCM store under a
+ * per-test ELIZA_OAUTH_DIR.
+ */
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { LifeOpsConnectorGrant } from "@elizaos/plugin-health";
+import {
+  encryptTokenPayload,
+  resolveTokenEncryptionKey,
+} from "@elizaos/plugin-health/util/token-encryption";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import { HealthDomain } from "./health-service.js";
@@ -6,14 +20,95 @@ import { HealthDomain } from "./health-service.js";
 const HEALTH_ENV_KEYS = [
   "ELIZA_STRAVA_CLIENT_ID",
   "ELIZA_STRAVA_CLIENT_SECRET",
+  "ELIZA_OAUTH_DIR",
 ] as const;
 
+const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+const REQUEST_URL = new URL("http://127.0.0.1:2138");
+
+function makeGrant(
+  overrides: Partial<LifeOpsConnectorGrant> = {},
+): LifeOpsConnectorGrant {
+  const now = new Date().toISOString();
+  return {
+    id: "grant-1",
+    agentId: AGENT_ID,
+    provider: "strava",
+    connectorAccountId: null,
+    side: "owner",
+    identity: { username: "runner" },
+    grantedScopes: ["activity:read_all"],
+    capabilities: ["health.activity.read"],
+    tokenRef: path.join(AGENT_ID, "owner", "local", "strava.json"),
+    mode: "local",
+    executionTarget: "local",
+    sourceOfTruth: "local_storage",
+    preferredByAgent: false,
+    cloudConnectionId: null,
+    metadata: { authState: "connected" },
+    lastRefreshAt: now,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+function makeDomain(repository: Record<string, unknown>): HealthDomain {
+  return new HealthDomain({
+    repository,
+    agentId: () => AGENT_ID,
+  } as unknown as LifeOpsContext);
+}
+
+function writeEncryptedToken(oauthDir: string, tokenRef: string): void {
+  const storageRoot = path.join(oauthDir, "lifeops", "health");
+  const filePath = path.join(storageRoot, tokenRef);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const key = resolveTokenEncryptionKey(storageRoot);
+  const token = {
+    provider: "strava",
+    agentId: AGENT_ID,
+    side: "owner",
+    mode: "local",
+    clientId: "client-id",
+    clientSecret: "client-secret",
+    redirectUri:
+      "http://127.0.0.1:2138/api/lifeops/connectors/health/strava/callback",
+    accessToken: "access-token",
+    refreshToken: "refresh-token",
+    tokenType: "Bearer",
+    grantedScopes: ["activity:read_all"],
+    expiresAt: Date.now() + 3_600_000,
+    identity: { username: "runner" },
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(
+    filePath,
+    JSON.stringify(encryptTokenPayload(JSON.stringify(token), key), null, 2),
+    { mode: 0o600 },
+  );
+}
+
 describe("HealthDomain connector status", () => {
+  let tempDirs: string[] = [];
+
   afterEach(() => {
     for (const key of HEALTH_ENV_KEYS) {
       delete process.env[key];
     }
+    for (const dir of tempDirs) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs = [];
   });
+
+  function makeOAuthDir(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "health-oauth-"));
+    tempDirs.push(dir);
+    process.env.ELIZA_OAUTH_DIR = dir;
+    return dir;
+  }
 
   it("reports config_missing when no connector grant or OAuth config exists", async () => {
     for (const key of HEALTH_ENV_KEYS) {
@@ -24,14 +119,11 @@ describe("HealthDomain connector status", () => {
       getConnectorGrant: vi.fn(async () => null),
       getHealthSyncState: vi.fn(),
     };
-    const domain = new HealthDomain({
-      repository,
-      agentId: () => "00000000-0000-0000-0000-0000000000aa",
-    } as unknown as LifeOpsContext);
+    const domain = makeDomain(repository);
 
     const status = await domain.getHealthDataConnectorStatus(
       "strava",
-      new URL("http://127.0.0.1:2138"),
+      REQUEST_URL,
     );
 
     expect(status).toMatchObject({
@@ -48,5 +140,143 @@ describe("HealthDomain connector status", () => {
       grant: null,
     });
     expect(repository.getHealthSyncState).not.toHaveBeenCalled();
+  });
+
+  it("reports needs_reauth when a grant's tokenRef has no readable stored token", async () => {
+    makeOAuthDir();
+    process.env.ELIZA_STRAVA_CLIENT_ID = "client-id";
+    process.env.ELIZA_STRAVA_CLIENT_SECRET = "client-secret";
+    const grant = makeGrant();
+    const repository = {
+      listConnectorGrants: vi.fn(async () => [grant]),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(async () => null),
+    };
+    const domain = makeDomain(repository);
+
+    const status = await domain.getHealthDataConnectorStatus(
+      "strava",
+      REQUEST_URL,
+    );
+
+    expect(status).toMatchObject({
+      provider: "strava",
+      configured: true,
+      connected: false,
+      reason: "needs_reauth",
+      mode: "local",
+      identity: { username: "runner" },
+      grantedCapabilities: ["health.activity.read"],
+      grantedScopes: ["activity:read_all"],
+      grant,
+    });
+    // The preferred grant was found in the list; the point lookup is skipped.
+    expect(repository.getConnectorGrant).not.toHaveBeenCalled();
+  });
+
+  it("reports connected when the grant's encrypted token is present on disk", async () => {
+    const oauthDir = makeOAuthDir();
+    process.env.ELIZA_STRAVA_CLIENT_ID = "client-id";
+    process.env.ELIZA_STRAVA_CLIENT_SECRET = "client-secret";
+    const grant = makeGrant();
+    if (!grant.tokenRef) throw new Error("test grant must carry a tokenRef");
+    writeEncryptedToken(oauthDir, grant.tokenRef);
+    const lastSyncedAt = "2026-07-10T08:00:00.000Z";
+    const repository = {
+      listConnectorGrants: vi.fn(async () => [grant]),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(async () => ({
+        id: "sync-1",
+        agentId: AGENT_ID,
+        provider: "strava",
+        grantId: grant.id,
+        lastSyncedAt,
+        lastSyncError: null,
+        updatedAt: lastSyncedAt,
+      })),
+    };
+    const domain = makeDomain(repository);
+
+    const status = await domain.getHealthDataConnectorStatus(
+      "strava",
+      REQUEST_URL,
+    );
+
+    expect(status).toMatchObject({
+      provider: "strava",
+      configured: true,
+      connected: true,
+      reason: "connected",
+      identity: { username: "runner" },
+      grantedScopes: ["activity:read_all"],
+      hasRefreshToken: true,
+      lastSyncAt: lastSyncedAt,
+      grant,
+    });
+    expect(status.expiresAt).toEqual(expect.any(String));
+    expect(status.degradations).toBeUndefined();
+    expect(repository.getHealthSyncState).toHaveBeenCalledWith(
+      AGENT_ID,
+      "strava",
+      grant.id,
+    );
+  });
+
+  it("reports sync_failed with a delivery degradation when the last sync errored", async () => {
+    const oauthDir = makeOAuthDir();
+    process.env.ELIZA_STRAVA_CLIENT_ID = "client-id";
+    process.env.ELIZA_STRAVA_CLIENT_SECRET = "client-secret";
+    const grant = makeGrant();
+    if (!grant.tokenRef) throw new Error("test grant must carry a tokenRef");
+    writeEncryptedToken(oauthDir, grant.tokenRef);
+    const repository = {
+      listConnectorGrants: vi.fn(async () => [grant]),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(async () => ({
+        id: "sync-1",
+        agentId: AGENT_ID,
+        provider: "strava",
+        grantId: grant.id,
+        lastSyncedAt: "2026-07-10T08:00:00.000Z",
+        lastSyncError: "strava API returned 500",
+        updatedAt: "2026-07-10T08:00:00.000Z",
+      })),
+    };
+    const domain = makeDomain(repository);
+
+    const status = await domain.getHealthDataConnectorStatus(
+      "strava",
+      REQUEST_URL,
+    );
+
+    expect(status.connected).toBe(true);
+    expect(status.reason).toBe("sync_failed");
+    expect(status.degradations).toEqual([
+      {
+        axis: "delivery-degraded",
+        code: "last_sync_failed",
+        message: "strava API returned 500",
+        retryable: true,
+      },
+    ]);
+  });
+
+  it("projects a status for every provider via getHealthDataConnectorStatuses", async () => {
+    makeOAuthDir();
+    const repository = {
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(),
+    };
+    const domain = makeDomain(repository);
+
+    const statuses = await domain.getHealthDataConnectorStatuses(REQUEST_URL);
+
+    expect(statuses.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(statuses.map((s) => s.provider)).size).toBe(statuses.length);
+    for (const status of statuses) {
+      expect(status.connected).toBe(false);
+      expect(status.side).toBe("owner");
+    }
   });
 });
