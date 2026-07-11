@@ -69,7 +69,12 @@ export function resolveExpectedRendererStamp({ policy, env = {} }) {
       : env.ELIZA_RUNTIME_MODE;
   const runtimeMode =
     viteIosRuntimeMode ?? viteAndroidRuntimeMode ?? executionMode ?? null;
-  return { variant, capacitorTarget, runtimeMode };
+  // The chat-UI harness replaces the entire renderer tree at compile time
+  // (packages/app/src/main.tsx gates on __ELIZA_CHAT_UI_HARNESS__), so a
+  // harness dist and an ordinary dist are never interchangeable — the flag is
+  // part of the lane identity or dist reuse silently ships the wrong app.
+  const chatUiHarness = env.ELIZA_CHAT_UI_HARNESS === "1";
+  return { variant, capacitorTarget, runtimeMode, chatUiHarness };
 }
 
 function describeStampValue(value) {
@@ -107,6 +112,15 @@ export function rendererLaneStampMismatches(manifest, expected) {
         `dist ${label} is ${describeStampValue(actual)} but this lane bakes ${describeStampValue(wanted)}`,
       );
     }
+  }
+  // Boolean stamp: manifests written before the field existed read as false,
+  // which is correct — they were not harness builds.
+  const manifestHarness = manifest.chatUiHarness === true;
+  const expectedHarness = expected.chatUiHarness === true;
+  if (manifestHarness !== expectedHarness) {
+    mismatches.push(
+      `dist chat-UI harness is ${manifestHarness} but this lane bakes ${expectedHarness}`,
+    );
   }
   return mismatches;
 }

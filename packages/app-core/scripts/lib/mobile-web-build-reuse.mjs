@@ -26,6 +26,7 @@ export function mobileWebDistReuseStatus({
   expectedVariant,
   expectedTarget,
   expectedRuntimeMode,
+  expectedChatUiHarness,
   readManifest = readRendererBuildManifest,
   buildNeeded = viteRendererBuildNeeded,
 } = {}) {
@@ -79,6 +80,16 @@ export function mobileWebDistReuseStatus({
           manifestRuntimeMode == null
             ? `dist manifest is missing runtime mode; this build targets ${wantedLabel}`
             : `dist built for runtime mode '${manifestRuntimeMode}' but this build targets ${wantedLabel}`,
+        );
+      }
+    }
+    if (expectedChatUiHarness !== undefined) {
+      // Boolean stamp; pre-field manifests read false (they predate the harness).
+      const manifestHarness = manifest.chatUiHarness === true;
+      const wantedHarness = expectedChatUiHarness === true;
+      if (manifestHarness !== wantedHarness) {
+        problems.push(
+          `dist chat-UI harness is ${manifestHarness} but this build targets ${wantedHarness}`,
         );
       }
     }

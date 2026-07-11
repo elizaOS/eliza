@@ -1082,6 +1082,7 @@ async function buildWeb(platform) {
       // bundle left behind by an ios cloud build) must never be reused into
       // this lane — it falls through to a fresh rebuild instead (#11030).
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedChatUiHarness: laneExpected.chatUiHarness,
     });
     if (autoStatus.reusable) {
       console.log(
@@ -1098,6 +1099,7 @@ async function buildWeb(platform) {
       expectedVariant: laneExpected.variant,
       expectedTarget: laneExpected.capacitorTarget,
       expectedRuntimeMode: laneExpected.runtimeMode,
+      expectedChatUiHarness: laneExpected.chatUiHarness,
     });
     if (!fs.existsSync(status.indexPath)) {
       throw new Error(

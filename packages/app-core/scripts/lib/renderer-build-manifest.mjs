@@ -88,6 +88,7 @@ export function buildRendererManifest(distDir, meta = {}) {
     variant: meta.variant ?? null,
     capacitorTarget: meta.capacitorTarget ?? null,
     runtimeMode: meta.runtimeMode ?? null,
+    chatUiHarness: meta.chatUiHarness === true,
   };
 }
 

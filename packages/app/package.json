@@ -137,7 +137,8 @@
     "dev:shared": "node scripts/dev-shared.mjs",
     "dev:rebuild": "node scripts/dev-rebuild.mjs",
     "dev:status": "node scripts/dev-status.mjs",
-    "test:dev-server-registry": "node --test scripts/dev-server-registry.test.mjs"
+    "test:dev-server-registry": "node --test scripts/dev-server-registry.test.mjs",
+    "ios:chat-harness:preview": "bash scripts/ios-chat-harness-preview.sh"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "8.2.0",

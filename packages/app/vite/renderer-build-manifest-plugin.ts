@@ -57,6 +57,7 @@ export function rendererBuildManifestPlugin(): Plugin {
             process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE ??
             process.env.ELIZA_RUNTIME_MODE ??
             null,
+          chatUiHarness: process.env.ELIZA_CHAT_UI_HARNESS === "1",
         });
         this.info?.(
           `[renderer-build-manifest] wrote ${RENDERER_BUILD_MANIFEST_FILENAME} buildId=${manifest.buildId.slice(0, 12)} (${manifest.assetCount} assets)`,

@@ -64,7 +64,45 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "direct",
       capacitorTarget: "ios",
       runtimeMode: "local",
+      chatUiHarness: false,
     });
+  });
+
+  it("ELIZA_CHAT_UI_HARNESS=1 stamps the lane as a harness build", () => {
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES["ios-local"],
+        env: { ELIZA_CHAT_UI_HARNESS: "1" },
+      }).chatUiHarness,
+    ).toBe(true);
+  });
+
+  it("a harness lane refuses a non-harness dist stamp (and vice versa)", () => {
+    const expected = resolveExpectedRendererStamp({
+      policy: POLICIES["ios-local"],
+      env: { ELIZA_CHAT_UI_HARNESS: "1" },
+    });
+    // Pre-field manifests carry no chatUiHarness at all → read as false.
+    expect(
+      rendererLaneStampMismatches(
+        { variant: "direct", capacitorTarget: "ios", runtimeMode: "local" },
+        expected,
+      ),
+    ).toEqual(["dist chat-UI harness is false but this lane bakes true"]);
+    expect(
+      rendererLaneStampMismatches(
+        {
+          variant: "direct",
+          capacitorTarget: "ios",
+          runtimeMode: "local",
+          chatUiHarness: true,
+        },
+        resolveExpectedRendererStamp({
+          policy: POLICIES["ios-local"],
+          env: {},
+        }),
+      ),
+    ).toEqual(["dist chat-UI harness is true but this lane bakes false"]);
   });
 
   it("ios (store) lane bakes variant=store runtimeMode=cloud-hybrid", () => {
@@ -74,6 +112,7 @@ describe("resolveExpectedRendererStamp", () => {
       variant: "store",
       capacitorTarget: "ios",
       runtimeMode: "cloud-hybrid",
+      chatUiHarness: false,
     });
   });
 
