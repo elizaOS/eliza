@@ -223,6 +223,8 @@ jobs:
             plugins/plugin-health
             plugins/plugin-wallet
             plugins/plugin-pdf
+            plugins/plugin-form
+            plugins/plugin-personal-assistant
             plugins/plugin-telegram
             plugins/plugin-whatsapp
             plugins/plugin-signal
