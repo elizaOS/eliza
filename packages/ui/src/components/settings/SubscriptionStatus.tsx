@@ -80,7 +80,8 @@ function readOAuthActive(storageKey: string): boolean {
   if (typeof window === "undefined") return false;
   try {
     return (
-      new URLSearchParams(window.location.search).get("setup") === "oauth" ||
+      (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY &&
+        new URLSearchParams(window.location.search).get("setup") === "oauth") ||
       window.localStorage.getItem(storageKey) === "1"
     );
   } catch {
@@ -93,10 +94,15 @@ function rememberOAuthActive(storageKey: string, active: boolean): void {
   try {
     if (active) window.localStorage.setItem(storageKey, "1");
     else window.localStorage.removeItem(storageKey);
-    const url = new URL(window.location.href);
-    if (active) url.searchParams.set("setup", "oauth");
-    else url.searchParams.delete("setup");
-    window.history.replaceState(null, "", url);
+    // `setup=oauth` is the established Anthropic deep link. OpenAI tracks its
+    // pending handoff only in its provider-specific storage key so restoring
+    // one provider cannot open both callback forms after a renderer remount.
+    if (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY) {
+      const url = new URL(window.location.href);
+      if (active) url.searchParams.set("setup", "oauth");
+      else url.searchParams.delete("setup");
+      window.history.replaceState(null, "", url);
+    }
   } catch {
     // error-policy:J4 OAuth remains usable for this session when persistence is unavailable.
     return;
