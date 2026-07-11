@@ -138,6 +138,52 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@seekdaseek/plugin-agentfeed": {
+      "git": {
+        "repo": "seekdaseek/plugin-agentfeed",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@seekdaseek/plugin-agentfeed",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Live crypto market data for trading agents — liquidations, long/short positioning, open interest, funding rates, SOL/BTC prices via Pyth, and SPL token rug-risk checks. Paid per-call in USDC via x402 on Solana ($0.001-$0.01/call), no API keys or subscriptions. Built-in per-call spend cap.",
+      "homepage": "https://github.com/seekdaseek/plugin-agentfeed",
+      "topics": [
+        "market-data",
+        "trading",
+        "solana",
+        "x402",
+        "liquidations",
+        "crypto"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@stvor/plugin-agent-commerce": {
       "git": {
         "repo": "stvor-hq/plugin-agent-commerce",
