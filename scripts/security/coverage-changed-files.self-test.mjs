@@ -158,6 +158,11 @@ try {
   );
   write(
     dir,
+    "packages/test/cloud-e2e/tests/live-deploy.spec.ts",
+    "import { test } from '../src/helpers/test-fixtures';\ntest('live', () => {});\n",
+  );
+  write(
+    dir,
     "packages/demo/src/__e2e__/fixture.tsx",
     "export const Fixture = () => null;\n",
   );
@@ -213,6 +218,18 @@ try {
       );
     },
   );
+
+  assertCase("cloud Playwright specs stay in their dedicated lane", () => {
+    const liveSpec = "packages/test/cloud-e2e/tests/live-deploy.spec.ts";
+    assert.ok(
+      !out.bun_tests.includes(liveSpec),
+      `cloud Playwright spec leaked into bun lane: ${out.bun_tests.join(",")}`,
+    );
+    assert.ok(
+      !out.vitest_tests.includes(liveSpec),
+      `cloud Playwright spec leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+    );
+  });
 
   assertCase(
     "e2e fixtures and stories are not product coverage targets",
