@@ -23,14 +23,12 @@
 // Exit codes: 0 = manifest(s) valid; 2 = malformed/unreachable manifest.
 
 const HF_REPO = "elizaos/eliza-1";
-const HF_BASE = (
-  process.env.ELIZA_HF_BASE_URL || "https://huggingface.co"
-).replace(/\/+$/, "");
+const HF_BASE = (process.env.ELIZA_HF_BASE_URL || "https://huggingface.co").replace(/\/+$/, "");
 
 // tier id -> published bundle prefix (mirrors catalog `bundleRemotePrefix`)
 const TIER_SLUG = {
-  "eliza-1-2b": "e2b",
-  "eliza-1-4b": "e4b",
+  "eliza-1-2b": "2b",
+  "eliza-1-4b": "4b",
   "eliza-1-9b": "9b",
   "eliza-1-27b": "27b",
   "eliza-1-27b-256k": "27b-256k",
@@ -71,9 +69,7 @@ function validateShape(tierId, manifest) {
       continue;
     }
     if (REQUIRED_ARRAY.includes(kind) && v.length === 0) {
-      problems.push(
-        `files.${kind}: required non-empty array, received empty array`,
-      );
+      problems.push(`files.${kind}: required non-empty array, received empty array`);
     }
   }
   return problems;
@@ -105,9 +101,7 @@ async function main() {
       }
     } catch (err) {
       failed = true;
-      process.stderr.write(
-        `\n[preflight-manifest] ✗ ${tierId}: ${err.message}\n`,
-      );
+      process.stderr.write(`\n[preflight-manifest] ✗ ${tierId}: ${err.message}\n`);
     }
   }
   if (failed) {

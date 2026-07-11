@@ -63,23 +63,6 @@ describe("Eliza-1 runtime quant metadata", () => {
     }
   });
 
-  it("routes stable entry-tier ids to their published Gemma E bundle slugs", () => {
-    expect(
-      MODEL_CATALOG.find((model) => model.id === "eliza-1-2b")?.hfPathPrefix,
-    ).toBe("bundles/e2b");
-    expect(
-      MODEL_CATALOG.find((model) => model.id === "eliza-1-4b")?.hfPathPrefix,
-    ).toBe("bundles/e4b");
-    expect(
-      MODEL_CATALOG.find((model) => model.id === "eliza-1-2b")?.sourceModel
-        ?.components.text?.file,
-    ).toBe("bundles/e2b/text/eliza-1-e2b-128k.gguf");
-    expect(
-      MODEL_CATALOG.find((model) => model.id === "eliza-1-4b")?.sourceModel
-        ?.components.text?.file,
-    ).toBe("bundles/e4b/text/eliza-1-e4b-128k.gguf");
-  });
-
   it("does not allow env overrides to publish pending qwen tiers", () => {
     const previous = process.env.ELIZA_PUBLISH_STATUS_OVERRIDES;
     process.env.ELIZA_PUBLISH_STATUS_OVERRIDES = JSON.stringify({
@@ -157,7 +140,6 @@ describe("Eliza-1 runtime quant metadata", () => {
     for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       const slug = id.slice("eliza-1-".length);
-      const publishedSlug = slug === "2b" || slug === "4b" ? `e${slug}` : slug;
       if (hosted.has(id)) {
         expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
         expect(entry?.runtime?.mtp?.drafterFile).toBe(
@@ -165,7 +147,7 @@ describe("Eliza-1 runtime quant metadata", () => {
         );
         expect(entry?.runtime?.mtp?.draftMax).toBe(1);
         expect(entry?.sourceModel?.components.mtp?.file).toBe(
-          `bundles/${publishedSlug}/mtp/drafter-${publishedSlug}.gguf`,
+          `bundles/${slug}/mtp/drafter-${slug}.gguf`,
         );
       } else {
         expect(entry?.runtime?.mtp).toBeUndefined();
@@ -177,10 +159,8 @@ describe("Eliza-1 runtime quant metadata", () => {
   it("points every voice-enabled tier at the bundled Silero VAD GGUF", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      const slug = id.slice("eliza-1-".length);
-      const publishedSlug = slug === "2b" || slug === "4b" ? `e${slug}` : slug;
       expect(entry?.sourceModel?.components.vad?.file).toBe(
-        `bundles/${publishedSlug}/vad/silero-vad-v5.gguf`,
+        `bundles/${id.slice("eliza-1-".length)}/vad/silero-vad-v5.gguf`,
       );
     }
   });
@@ -188,10 +168,9 @@ describe("Eliza-1 runtime quant metadata", () => {
   it("points every voice-enabled tier at its tier-matched ASR mmproj GGUF", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const slug = id.slice("eliza-1-".length);
-      const publishedSlug = slug === "2b" || slug === "4b" ? `e${slug}` : slug;
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.asr?.file).toBe(
-        `bundles/${publishedSlug}/asr/mmproj-audio-${publishedSlug}-bf16.gguf`,
+        `bundles/${slug}/asr/mmproj-audio-${slug}-bf16.gguf`,
       );
     }
   });
@@ -199,10 +178,9 @@ describe("Eliza-1 runtime quant metadata", () => {
   it("points every vision-enabled tier at its tier-matched mmproj GGUF", () => {
     for (const id of ELIZA_1_VISION_TIER_IDS) {
       const slug = id.slice("eliza-1-".length);
-      const publishedSlug = slug === "2b" || slug === "4b" ? `e${slug}` : slug;
       const entry = MODEL_CATALOG.find((model) => model.id === id);
       expect(entry?.sourceModel?.components.vision?.file).toBe(
-        `bundles/${publishedSlug}/vision/mmproj-${publishedSlug}.gguf`,
+        `bundles/${slug}/vision/mmproj-${slug}.gguf`,
       );
     }
   });
