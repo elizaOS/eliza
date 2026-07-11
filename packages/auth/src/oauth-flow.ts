@@ -435,6 +435,47 @@ export function submitFlowCode(sessionId: string, code: string): boolean {
 }
 
 /**
+ * Submit a callback to the pending flow for a provider when a legacy client
+ * does not know the newer account-flow session id. A callback `state` is
+ * matched against the authorization URL, so parallel flows cannot consume one
+ * another's PKCE code. A state-less raw code is accepted only when exactly one
+ * provider flow is pending.
+ */
+export function submitProviderFlowCode(
+  providerId: SubscriptionProvider,
+  code: string,
+): OAuthFlowHandle | null {
+  let callbackState: string | null = null;
+  try {
+    callbackState = new URL(code).searchParams.get("state");
+  } catch {
+    // Raw authorization codes have no state to match.
+  }
+
+  const candidates = [...flows.values()].filter(
+    (entry) =>
+      entry.state.providerId === providerId &&
+      entry.state.status === "pending" &&
+      entry.state.needsCodeSubmission,
+  );
+  const matching = callbackState
+    ? candidates.filter((entry) => {
+        try {
+          return (
+            new URL(entry.state.authUrl ?? "").searchParams.get("state") ===
+            callbackState
+          );
+        } catch {
+          return false;
+        }
+      })
+    : candidates;
+  if (matching.length !== 1) return null;
+  matching[0]?.handle.submitCode(code);
+  return matching[0]?.handle ?? null;
+}
+
+/**
  * Remove every flow from the registry. Tests use this to reset
  * between cases without resetting the whole module.
  */

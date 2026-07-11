@@ -19,6 +19,7 @@ import {
   _resetFlowRegistry,
   type FlowState,
   startCodexOAuthFlow,
+  submitProviderFlowCode,
   subscribeFlow,
 } from "./oauth-flow";
 import type { CodexFlow } from "./openai-codex";
@@ -93,7 +94,13 @@ describe("oauth-flow FlowState broadcast", () => {
       "http://localhost:1455/auth/callback?code=test-code&state=fake-state";
 
     expect(handle.needsCodeSubmission).toBe(true);
-    handle.submitCode(callback);
+    expect(
+      submitProviderFlowCode(
+        "openai-codex",
+        "http://localhost:1455/auth/callback?code=wrong&state=other-state",
+      ),
+    ).toBeNull();
+    expect(submitProviderFlowCode("openai-codex", callback)).toBe(handle);
     expect(submitted).toBe(callback);
     handle.cancel();
     await expect(handle.completion).rejects.toThrow("Cancelled");

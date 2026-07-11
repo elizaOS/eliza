@@ -9,8 +9,8 @@
  * `process.env` (TOS restriction).
  */
 import crypto from "node:crypto";
-import type { AnthropicFlow } from "@elizaos/auth/anthropic";
 import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
+import type { AnthropicFlow } from "@elizaos/auth/anthropic";
 import type { CodexFlow } from "@elizaos/auth/openai-codex";
 import {
   isSubscriptionProvider,
@@ -40,6 +40,7 @@ export type SubscriptionAuthApi = Pick<
   | "fetchAnthropicOAuthProfile"
   | "startAnthropicLogin"
   | "startCodexLogin"
+  | "submitProviderFlowCode"
   | "saveCredentials"
   | "applySubscriptionCredentials"
   | "deleteCredentials"
@@ -315,12 +316,35 @@ export async function handleSubscriptionRoutes(
     }
     const body = parsedOaeb.data;
     try {
-      const { saveCredentials, applySubscriptionCredentials } =
-        await loadSubscriptionAuth();
+      const {
+        saveCredentials,
+        applySubscriptionCredentials,
+        submitProviderFlowCode,
+      } = await loadSubscriptionAuth();
       const flow = state._codexFlow ?? activeCodexFlow;
 
       if (!flow) {
-        error(res, "No active flow — call /start first", 400);
+        if (!body.code) {
+          error(res, "No active flow — call /start first", 400);
+          return true;
+        }
+        const accountFlow = submitProviderFlowCode("openai-codex", body.code);
+        if (!accountFlow) {
+          error(res, "No matching active flow — start login again", 400);
+          return true;
+        }
+        try {
+          const { account } = await accountFlow.completion;
+          json(res, {
+            success: true,
+            expiresAt: account.credentials.expires,
+          });
+        } catch (err) {
+          logger.error(
+            `[api] OpenAI account-flow exchange failed: ${String(err)}`,
+          );
+          error(res, "OpenAI exchange failed", 500);
+        }
         return true;
       }
 
