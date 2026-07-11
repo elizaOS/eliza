@@ -163,6 +163,10 @@ export async function synthesizeCartesiaWav(args: {
   let firstAudioMs = -1;
   let overflowed = false;
   let providerError: Error | null = null;
+  let signalProviderError: (() => void) | undefined;
+  const providerErrorSignal = new Promise<void>((resolve) => {
+    signalProviderError = resolve;
+  });
   const started = Date.now();
 
   const stream = adapter.createStream(
@@ -189,6 +193,7 @@ export async function synthesizeCartesiaWav(args: {
         providerError = new Error(
           `Cartesia provider error: ${event.title}: ${event.message}`,
         );
+        signalProviderError?.();
       },
     },
   );
@@ -198,8 +203,15 @@ export async function synthesizeCartesiaWav(args: {
   const timeoutMs = args.timeoutMs ?? DEFAULT_SYNTHESIS_TIMEOUT_MS;
   let timedOut = false;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  // A connection failure rejects `opened` but may never emit `close`; keep the
+  // success side pending so only the rejection can settle the synthesis race.
+  const streamOpenFailure = stream.opened.then(
+    () => new Promise<void>(() => undefined),
+  );
   await Promise.race([
     stream.closed,
+    streamOpenFailure,
+    providerErrorSignal,
     new Promise<void>((resolve) => {
       timeoutId = setTimeout(() => {
         timedOut = true;

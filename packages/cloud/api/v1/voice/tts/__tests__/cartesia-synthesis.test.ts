@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CartesiaWebSocketFactory } from "@/lib/services/cartesia-sonic-tts";
+import type { CartesiaWebSocketFactory } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import { synthesizeCartesiaWav } from "../cartesia-synthesis";
 
 /** In-memory Cartesia socket: on the generation request, replay frames+done. */
@@ -94,6 +94,47 @@ describe("synthesizeCartesiaWav", () => {
         webSocketFactory: factory,
       }),
     ).rejects.toThrow(/Cartesia provider error/);
+  });
+
+  it("fails immediately when connection errors without a close event", async () => {
+    const factory: CartesiaWebSocketFactory = () => {
+      const error: Array<
+        (event: { readonly message?: string; readonly error?: unknown }) => void
+      > = [];
+      const socket = {
+        readyState: 0,
+        send() {},
+        close() {},
+        addEventListener(type: string, listener: unknown) {
+          if (type === "error") {
+            error.push(
+              listener as (event: {
+                readonly message?: string;
+                readonly error?: unknown;
+              }) => void,
+            );
+          }
+        },
+      };
+      queueMicrotask(() => {
+        for (const listener of error) {
+          listener({ message: "upgrade rejected" });
+        }
+      });
+      return socket as never;
+    };
+
+    await expect(
+      synthesizeCartesiaWav({
+        apiKey: "bad-key",
+        voiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+        text: "hello",
+        sampleRate: 16000,
+        maxPcmBytes: 1_000_000,
+        webSocketFactory: factory,
+        timeoutMs: 20,
+      }),
+    ).rejects.toThrow(/upgrade rejected/);
   });
 
   it("throws when the socket closes with no audio", async () => {
