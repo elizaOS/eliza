@@ -176,12 +176,21 @@ function safeErrorToken(value) {
     : null;
 }
 
+function dedicatedErrorCode(error) {
+  const message = error?.message;
+  return typeof message === "string" &&
+    /^(?:CreateConversationHttp\d{3}|ConversationIdMissing)$/.test(message)
+    ? message
+    : null;
+}
+
 export async function safeHttpError(response) {
   let parsed = null;
   try {
     parsed = JSON.parse(await response.text());
   } catch {
-    // Deliberately omit arbitrary upstream response text from evidence.
+    // error-policy:J3 untrusted provider bodies remain an explicit HTTP
+    // failure, but arbitrary text never enters the evidence artifact.
   }
   const source =
     parsed?.error && typeof parsed.error === "object" ? parsed.error : parsed;
@@ -664,18 +673,34 @@ export async function probeDedicated({
       agentId,
       traceId,
       networkError: safeErrorToken(error?.name) || "DedicatedProbeError",
-      errorCode: safeErrorToken(error?.message),
+      errorCode: dedicatedErrorCode(error),
     };
   } finally {
     if (conversationId && !keepConversation) {
-      await fetchImpl(
-        `${baseUrl}/api/conversations/${encodeURIComponent(conversationId)}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(15_000),
-        },
-      ).catch(() => undefined);
+      let cleanupFailure = null;
+      try {
+        const cleanupResponse = await fetchImpl(
+          `${baseUrl}/api/conversations/${encodeURIComponent(conversationId)}`,
+          {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${apiKey}` },
+            signal: AbortSignal.timeout(15_000),
+          },
+        );
+        if (!cleanupResponse.ok) {
+          cleanupFailure = `DeleteConversationHttp${cleanupResponse.status}`;
+        }
+      } catch (error) {
+        // error-policy:J6 teardown is best-effort, but retained benchmark state
+        // must be visible without printing arbitrary network error messages.
+        cleanupFailure =
+          safeErrorToken(error?.name) || "ConversationCleanupError";
+      }
+      if (cleanupFailure) {
+        process.stderr.write(
+          `[chat-latency] conversation cleanup failed: ${cleanupFailure}\n`,
+        );
+      }
     }
   }
 }

@@ -428,6 +428,23 @@ test("probeDedicated requires a done terminal and sanitizes telemetry", async ()
   assert.doesNotMatch(JSON.stringify(errorResult), /private/);
 });
 
+test("probeDedicated never records an arbitrary transport error message", async () => {
+  const result = await probeDedicated({
+    agentId: "agent-privacy",
+    baseUrl: "https://agent.example",
+    apiKey: "private-api-key",
+    timeoutMs: 1_000,
+    sequence: 1,
+    keepConversation: false,
+    fetchImpl: async () => {
+      throw new Error("private-api-key");
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.errorCode, null);
+  assert.doesNotMatch(JSON.stringify(result), /private-api-key/);
+});
+
 test("runPairedProbes reuses prompts, counterbalances order, and labels phases", async () => {
   const seenPrompts = new Map();
   const records = await runPairedProbes({
