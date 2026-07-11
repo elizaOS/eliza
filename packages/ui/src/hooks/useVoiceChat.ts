@@ -1764,14 +1764,25 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       // grace period before the tap is attached later.
       const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
       let playbackTap: PlaybackFrameTap | null = null;
       let playbackStarted = false;
       let playbackFinished = false;
       let playStartMs = 0;
       playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
         if (playbackFinished) {
-          void lateTap.stop({ reset: true }).catch(() => {});
+          void lateTap.stop({ reset: true }).catch((error) => {
+            // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
+            ttsDebug("playback-reference:late-tap-stop-failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
           return;
         }
         playbackTap = lateTap;
@@ -2005,14 +2016,25 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       // grace period before the tap is attached later.
       const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
       let playbackTap: PlaybackFrameTap | null = null;
       let playbackStarted = false;
       let playbackFinished = false;
       let playStartMs = 0;
       playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
         if (playbackFinished) {
-          void lateTap.stop({ reset: true }).catch(() => {});
+          void lateTap.stop({ reset: true }).catch((error) => {
+            // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
+            ttsDebug("playback-reference:late-tap-stop-failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
           return;
         }
         playbackTap = lateTap;
@@ -2192,14 +2214,25 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       // grace period before the tap is attached later.
       const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
       let playbackTap: PlaybackFrameTap | null = null;
       let playbackStarted = false;
       let playbackFinished = false;
       let playStartMs = 0;
       playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
         if (playbackFinished) {
-          void lateTap.stop({ reset: true }).catch(() => {});
+          void lateTap.stop({ reset: true }).catch((error) => {
+            // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
+            ttsDebug("playback-reference:late-tap-stop-failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          });
           return;
         }
         playbackTap = lateTap;
