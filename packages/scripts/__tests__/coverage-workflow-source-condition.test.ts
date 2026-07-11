@@ -18,6 +18,9 @@ test("changed Bun coverage tests use eliza-source workspace exports", () => {
   expect(workflow).toContain(
     "packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts",
   );
+  expect(workflow).toContain(
+    "packages/tools/voice-evidence-harness/src/cli-run.test.ts",
+  );
   expect(workflow).toMatch(
     /bun test --conditions=eliza-source "\$\{process_isolated_tests\[\$index\]\}" --coverage/,
   );

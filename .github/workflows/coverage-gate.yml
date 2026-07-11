@@ -115,7 +115,7 @@ jobs:
           process_isolated_tests=()
           for test_file in "${changed_tests[@]}"; do
             case "$test_file" in
-              packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts)
+              packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts|packages/tools/voice-evidence-harness/src/cli-run.test.ts)
                 process_isolated_tests+=("$test_file")
                 ;;
               *) shared_tests+=("$test_file") ;;
