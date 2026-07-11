@@ -70,6 +70,16 @@ function makeNeverReadyClient(): FakeClient {
 	return client;
 }
 
+function makeInvalidTokenClient(): FakeClient {
+	const client = makeNeverReadyClient();
+	client.login.mockRejectedValue(
+		Object.assign(new Error("An invalid token was provided."), {
+			code: "TokenInvalid",
+		}),
+	);
+	return client;
+}
+
 function makeRuntime() {
 	return {
 		agentId: "agent-1",
@@ -420,6 +430,42 @@ describe("DiscordService initial-login retry (#15855)", () => {
 			}),
 			expect.stringContaining("terminal"),
 		);
+	});
+
+	it("classifies a pre-gateway invalid-token rejection without waiting for a shard close", async () => {
+		const runtime = makeRuntime();
+		const client = makeInvalidTokenClient();
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+			defaultAccountId: "default",
+			_loginFailed: false,
+			timeouts: [] as ReturnType<typeof setTimeout>[],
+			createDiscordJsClient: () => client,
+			setupEventListenersForAccount: vi.fn(),
+			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
+			syncLegacyDefaultAliases: vi.fn(),
+		}) as unknown as DiscordService & {
+			attemptDiscordLogin: (
+				state: DiscordAccountClientState,
+				token: string,
+				attempt: number,
+				resolve: () => void,
+				reject: (error: unknown) => void,
+			) => void;
+			timeouts: ReturnType<typeof setTimeout>[];
+		};
+
+		const state = makeState("default");
+		const ready = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "invalid-token", 0, resolve, reject);
+		});
+
+		await expect(ready).rejects.toThrow(/terminal/i);
+		await vi.advanceTimersByTimeAsync(120_000);
+
+		expect(client.login).toHaveBeenCalledTimes(1);
+		expect(service.timeouts).toHaveLength(0);
+		expect(state.loginRetryTimer).toBeUndefined();
 	});
 
 	it("still retries transient gateway close during initial login", async () => {

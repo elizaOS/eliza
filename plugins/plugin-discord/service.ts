@@ -1637,7 +1637,7 @@ export class DiscordService extends Service implements IDiscordService {
 			this.timeouts.push(timer);
 		};
 
-		client.once(Events.ClientReady, async (readyClient: DiscordJsClient) => {
+		client.once(Events.ClientReady, async (readyClient) => {
 			if (settled) {
 				return;
 			}
@@ -1692,6 +1692,14 @@ export class DiscordService extends Service implements IDiscordService {
 			scheduleRetry(error);
 		});
 		client.login(token).catch((error: unknown) => {
+			const closeCode = this.getGatewayCloseCode(error);
+			if (
+				this.isTerminalInitialLoginCloseCode(closeCode) ||
+				this.isTerminalInitialLoginError(error)
+			) {
+				settleTerminal(error, closeCode);
+				return;
+			}
 			scheduleRetry(error);
 		});
 	}
@@ -1722,6 +1730,13 @@ export class DiscordService extends Service implements IDiscordService {
 			closeCode !== undefined &&
 			DISCORD_TERMINAL_INITIAL_LOGIN_CLOSE_CODES.has(closeCode)
 		);
+	}
+
+	private isTerminalInitialLoginError(error: unknown): boolean {
+		if (typeof error !== "object" || error === null || !("code" in error)) {
+			return false;
+		}
+		return (error as { code?: unknown }).code === "TokenInvalid";
 	}
 
 	private createLoginStoppedError(state: DiscordAccountClientState): Error {
