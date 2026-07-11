@@ -6,7 +6,7 @@
  * `vendor/pi-oauth/anthropic-login.ts` and the loopback-listener flow
  * in `openai-codex.ts`) with:
  *
- *   - a 5-minute timeout per flow,
+ *   - a 15-minute timeout per flow,
  *   - automatic `saveAccount(...)` after token exchange,
  *   - an in-memory registry keyed by `sessionId` so the HTTP API can
  *     stream progress over SSE and the CLI can `await` completion,
@@ -34,7 +34,11 @@ import {
 
 /** Server-tracked status of an in-flight OAuth flow. */
 export type FlowStatus =
-  "pending" | "success" | "error" | "cancelled" | "timeout";
+  | "pending"
+  | "success"
+  | "error"
+  | "cancelled"
+  | "timeout";
 
 /**
  * Credential-free projection of an `AccountCredentialRecord` — the only
@@ -71,7 +75,12 @@ export interface OAuthFlowHandle {
   cancel: (reason?: string) => void;
 }
 
-const FLOW_TIMEOUT_MS = 5 * 60 * 1000;
+// Browser subscription login can include MFA, account selection, and consent.
+// Five minutes routinely expired before a remote user could copy the loopback
+// callback URL back into Eliza, destroying the PKCE verifier. Keep the verifier
+// in memory long enough for a normal interactive login while retaining a hard
+// upper bound and terminal-state cleanup.
+const FLOW_TIMEOUT_MS = 15 * 60 * 1000;
 const FLOW_GC_MS = 10 * 60 * 1000;
 
 interface InternalFlowEntry {
@@ -265,6 +274,11 @@ async function startGenericFlow(args: {
       rejectCompletion = reject;
     },
   );
+  // HTTP/SSE callers observe terminal state through the registry and may never
+  // await this in-process promise. Attach a rejection observer so timeout or
+  // cancellation does not become a process-level unhandled rejection; callers
+  // that do await `completion` still receive the original rejection.
+  void completion.catch(() => undefined);
 
   const entry: InternalFlowEntry = {
     state: initialState,
