@@ -37,6 +37,7 @@ import {
   loadAccount,
   saveAccount,
 } from "@elizaos/auth/account-storage";
+import { fetchCodexUsage } from "@elizaos/auth/codex-usage";
 import { getAccessToken } from "@elizaos/auth/credentials";
 import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
 import {
@@ -59,7 +60,7 @@ import {
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,
@@ -384,50 +385,42 @@ async function probeCodexUsage(
   latencyMs: number;
 }> {
   const start = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    };
-    if (codexAccountId) headers["ChatGPT-Account-Id"] = codexAccountId;
-    // @duplicate-component-audit-allow: usage probe reads auth/rate-limit headers; response text is ignored.
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      signal: controller.signal,
-      headers,
-      body: JSON.stringify({
-        model: "gpt-5-mini",
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }],
-      }),
-    });
-    const latencyMs = Date.now() - start;
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      return {
-        ok: false,
-        status: response.status,
-        error: `OpenAI ${response.status}: ${text.slice(0, 200)}`,
-        latencyMs,
-      };
-    }
+    // One canonical probe: `@elizaos/auth/codex-usage` hits the ChatGPT/Codex
+    // backend the subscription token actually authenticates against (NOT
+    // api.openai.com completions, which bills the API platform org and fails
+    // healthy subscription accounts with billing errors), runtime-validates
+    // the payload, and throws typed ElizaErrors on any failure.
+    const usage = await fetchCodexUsage(accessToken, codexAccountId);
     return {
       ok: true,
-      status: response.status,
-      usage: { refreshedAt: Date.now() },
-      latencyMs,
+      status: 200,
+      usage: {
+        refreshedAt: Date.now(),
+        ...(usage.sessionPct !== undefined
+          ? { sessionPct: usage.sessionPct }
+          : {}),
+        ...(usage.weeklyPct !== undefined
+          ? { weeklyPct: usage.weeklyPct }
+          : {}),
+        ...(usage.resetsAt !== undefined ? { resetsAt: usage.resetsAt } : {}),
+      },
+      latencyMs: Date.now() - start,
     };
   } catch (err) {
+    // error-policy:J1 boundary translation — the probe route reports a
+    // structured pass/fail to the dashboard; the typed client error (with the
+    // HTTP status in its context) becomes that failure verbatim.
+    const status =
+      err instanceof ElizaError && typeof err.context?.status === "number"
+        ? err.context.status
+        : 0;
     return {
       ok: false,
-      status: 0,
+      status,
       error: err instanceof Error ? err.message : String(err),
       latencyMs: Date.now() - start,
     };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
