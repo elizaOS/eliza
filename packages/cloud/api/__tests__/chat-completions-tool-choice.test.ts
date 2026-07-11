@@ -292,6 +292,15 @@ describe("isEmptyButBilled", () => {
     expect(isEmptyButBilled("", true, { outputTokens: 32 })).toBe(false);
     expect(isEmptyButBilled("", false, { outputTokens: 0 })).toBe(false);
   });
+
+  test("preserves a provider-declared content-filter result", () => {
+    expect(
+      isEmptyButBilled("", false, { outputTokens: 32 }, "content-filter"),
+    ).toBe(false);
+    expect(
+      isEmptyButBilled("", false, { completionTokens: 32 }, "content_filter"),
+    ).toBe(false);
+  });
 });
 
 describe("toOpenAiFinishReason", () => {

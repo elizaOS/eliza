@@ -795,10 +795,13 @@ function isEmptyButBilled(
   visibleText: string,
   hasToolCalls: boolean,
   usage: unknown,
+  providerFinishReason?: string,
 ): boolean {
   return (
     !visibleText &&
     !hasToolCalls &&
+    providerFinishReason !== "content-filter" &&
+    providerFinishReason !== "content_filter" &&
     normalizeUsageTokens(usage).outputTokens > 0
   );
 }
@@ -2809,7 +2812,12 @@ async function handleStreamingRequest(
         // reasoning. Match the non-streaming contract: an empty-but-billed
         // completion is a length truncation, never a successful stop.
         if (
-          isEmptyButBilled(deliveredText, nextToolCallIndex > 0, finishUsage)
+          isEmptyButBilled(
+            deliveredText,
+            nextToolCallIndex > 0,
+            finishUsage,
+            finishReason,
+          )
         ) {
           finishReason = "length";
         }
@@ -3123,6 +3131,7 @@ async function handleNonStreamingRequest(
       visibleText,
       hasToolCalls,
       result.usage,
+      result.finishReason,
     );
     const finishReason: "tool_calls" | "length" | "content_filter" | "stop" =
       hasToolCalls || result.finishReason === "tool-calls"
