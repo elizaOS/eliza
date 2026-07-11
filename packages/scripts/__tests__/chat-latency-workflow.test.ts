@@ -85,6 +85,8 @@ describe("chat latency live workflow", () => {
     expect(workflow).toContain("Upload exact-SHA latency evidence");
     expect(workflow).toContain("retention-days: 14");
     expect(workflow).toContain("Verify the exact deployed gateway SHA");
+    expect(workflow).toContain("Reverify the exact deployed gateway SHA");
+    expect(workflow).toContain("Gateway changed during the benchmark");
     expect(workflow).toContain("expected_gateway_sha");
   });
 
@@ -111,6 +113,7 @@ describe("chat latency live workflow", () => {
     const steps = [
       "Verify the exact deployed gateway SHA",
       "Probe Gemma and GLM reasoning modes on one runner",
+      "Reverify the exact deployed gateway SHA",
       "Add privacy-safe timing table to summary",
       "Enforce probe result",
     ];

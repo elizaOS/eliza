@@ -154,6 +154,33 @@ jobs:
           set -e
           echo "status=$probe_status" >> "$GITHUB_OUTPUT"
 
+      - name: Reverify the exact deployed gateway SHA
+        if: always()
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const base = process.env.ELIZA_CLOUD_CHAT_LATENCY_BASE_URL ?? "";
+          const response = await fetch(base + "/api/health", {
+            headers: { "user-agent": "eliza-chat-latency/1.0" },
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (!response.ok) {
+            throw new Error("Gateway health returned HTTP " + response.status);
+          }
+          const body = await response.json();
+          if (body?.commit !== expected) {
+            throw new Error(
+              "Gateway changed during the benchmark: served " +
+                (body?.commit ?? "<missing>") +
+                ", expected " +
+                expected,
+            );
+          }
+          console.log("Gateway deployment remained exact through benchmark completion");
+          NODE
+
       - name: Add privacy-safe timing table to summary
         if: always() && hashFiles(env.REPORT_PATH) != ''
         run: |
