@@ -24,6 +24,7 @@ import {
   type AccountCredentialRecord,
   saveAccount,
 } from "./account-storage.ts";
+import { startCodexDeviceLogin } from "./codex-device.ts";
 import type { CodexFlow } from "./openai-codex.ts";
 import { startCodexLogin } from "./openai-codex.ts";
 import type { SubscriptionProvider } from "./types.ts";
@@ -66,6 +67,8 @@ export interface FlowState {
 export interface OAuthFlowHandle {
   sessionId: string;
   authUrl: string;
+  /** One-time code entered on the provider's device authorization page. */
+  userCode?: string;
   /** Whether the client must offer a callback URL/code input. */
   needsCodeSubmission: boolean;
   /** Resolves with the saved AccountCredentialRecord; rejects on cancel/timeout/error. */
@@ -152,6 +155,8 @@ function persistAccount(args: {
 interface StartOptions {
   label: string;
   accountId?: string;
+  /** Remote/headless clients use Codex device auth instead of loopback PKCE. */
+  headless?: boolean;
   /**
    * Called after the account is saved on disk. Used by the HTTP
    * route layer to also write a `LinkedAccountConfig` row into
@@ -207,6 +212,23 @@ export function startAnthropicOAuthFlow(
 export function startCodexOAuthFlow(
   opts: StartOptions,
 ): Promise<OAuthFlowHandle> {
+  if (opts.headless) {
+    return startGenericFlow({
+      providerId: "openai-codex",
+      opts,
+      needsCodeSubmission: false,
+      begin: async () => {
+        const flow = await startCodexDeviceLogin();
+        return {
+          authUrl: flow.authUrl,
+          userCode: flow.userCode,
+          completion: flow.credentials.then((creds) => ({ creds })),
+          submitCode: () => undefined,
+          cancel: () => flow.close(),
+        };
+      },
+    });
+  }
   return startGenericFlow({
     providerId: "openai-codex",
     opts,
@@ -231,6 +253,7 @@ export function startCodexOAuthFlow(
 
 interface VendorFlow {
   authUrl: string;
+  userCode?: string;
   completion: Promise<{
     creds: {
       access: string;
@@ -364,6 +387,7 @@ async function startGenericFlow(args: {
   const handle: OAuthFlowHandle = {
     sessionId,
     authUrl: vendor.authUrl,
+    ...(vendor.userCode ? { userCode: vendor.userCode } : {}),
     needsCodeSubmission,
     completion,
     submitCode: (code: string) => {
