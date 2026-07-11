@@ -108,6 +108,9 @@ export async function streamElizaConversation(
       signal: request.signal,
     });
   } catch (error) {
+    // error-policy:J2 context-adding rethrow — abort is a designed non-error
+    // outcome; anything else becomes a typed upstream_error for the session's
+    // turn boundary to translate.
     if (isAbortError(error) || request.signal.aborted) {
       return { completed: false, aborted: true };
     }
@@ -137,6 +140,8 @@ export async function streamElizaConversation(
       try {
         chunk = await reader.read();
       } catch (error) {
+        // error-policy:J2 abort discrimination — an aborted read is the
+        // designed barge-in outcome; real stream errors rethrow to the caller.
         if (isAbortError(error) || request.signal.aborted) {
           return { completed: false, aborted: true };
         }
@@ -167,7 +172,8 @@ export async function streamElizaConversation(
       await reader.cancel();
     } catch (ignoredError) {
       void ignoredError;
-      // best-effort; the response is already ending.
+      // error-policy:J6 best-effort teardown — cancel on an already-ending
+      // response body must not mask the loop's real outcome.
     }
   }
 
@@ -181,8 +187,9 @@ function extractDeltaContent(payload: string): string | null {
     parsed = JSON.parse(payload);
   } catch (ignoredError) {
     void ignoredError;
-    // A non-JSON data line (keepalive comment, etc.) is not a protocol error;
-    // skip it rather than tearing down a live turn.
+    // error-policy:J3 untrusted-input sanitizing — a non-JSON data line
+    // (keepalive comment, etc.) is not a protocol error; the explicit null
+    // means "no delta", never a fabricated delta.
     return null;
   }
   if (typeof parsed !== "object" || parsed === null) return null;

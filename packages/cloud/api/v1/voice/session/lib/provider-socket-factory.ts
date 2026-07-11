@@ -46,6 +46,8 @@ function stripChannelsParam(rawUrl: string): string {
     url.searchParams.delete("channels");
     return url.toString();
   } catch {
+    // error-policy:J3 unparseable adapter URL passes through unchanged — the
+    // downstream connect fails loudly on a bad URL; nothing is fabricated.
     return rawUrl;
   }
 }
@@ -112,6 +114,9 @@ function openWorkerSocket(
       ws.accept?.();
       proxy.bind(ws);
     } catch (error) {
+      // error-policy:J1 boundary translation — the async Workers upgrade is the
+      // transport boundary; failures surface via the socket's error/close
+      // listeners, which the adapters observe.
       proxy.failOpen(error);
     }
   })();

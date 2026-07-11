@@ -16,10 +16,12 @@ import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 // aggregation.test.ts / voice-usage-meter.test.ts fail to resolve the real
 // exports. We stub over a full passthrough and restore the real modules in
 // afterAll so no sibling is contaminated.
+import * as realCloudWorkerErrors from "@/lib/api/cloud-worker-errors";
 import * as realJwt from "@/lib/voice-session/jwt";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const realCloudWorkerErrorsExports = { ...realCloudWorkerErrors };
 const realJwtExports = { ...realJwt };
 const realSessionRegistryExports = { ...realSessionRegistry };
 const realVoiceUsageMeterExports = { ...realVoiceUsageMeter };
@@ -65,22 +67,23 @@ mock.module(`${sharedRoot}/lib/auth/workers-hono-auth.ts`, () => ({
   requireUserOrApiKeyWithOrg: async () => authState.requiredUser,
 }));
 
-mock.module("@/lib/api/cloud-worker-errors", () => ({
+// Passthrough stub: keep ApiError and the rest of the real export surface so
+// sibling changed-tests in the same non-isolated coverage-lane process (e.g.
+// provisioning-jobs-delete-enqueue.test.ts) still resolve them.
+const cloudWorkerErrorsStub = () => ({
+  ...realCloudWorkerErrorsExports,
   jsonError: (
     c: { json: (body: unknown, status: number) => Response },
     status: number,
     message: string,
     code: string,
   ) => c.json({ error: message, code }, status),
-}));
-mock.module(`${sharedRoot}/lib/api/cloud-worker-errors.ts`, () => ({
-  jsonError: (
-    c: { json: (body: unknown, status: number) => Response },
-    status: number,
-    message: string,
-    code: string,
-  ) => c.json({ error: message, code }, status),
-}));
+});
+mock.module("@/lib/api/cloud-worker-errors", cloudWorkerErrorsStub);
+mock.module(
+  `${sharedRoot}/lib/api/cloud-worker-errors.ts`,
+  cloudWorkerErrorsStub,
+);
 
 mock.module("@/lib/utils/logger", () => ({
   logger: {
@@ -174,6 +177,14 @@ const wsRoute = (await import("./ws/route")).default;
 // Restore the real shared modules so sibling changed-tests in the same (non-
 // isolated) coverage-lane process see the full export surface, not our stubs.
 afterAll(() => {
+  mock.module(
+    "@/lib/api/cloud-worker-errors",
+    () => realCloudWorkerErrorsExports,
+  );
+  mock.module(
+    `${sharedRoot}/lib/api/cloud-worker-errors.ts`,
+    () => realCloudWorkerErrorsExports,
+  );
   mock.module("@/lib/voice-session/jwt", () => realJwtExports);
   mock.module(`${sharedRoot}/lib/voice-session/jwt.ts`, () => realJwtExports);
   mock.module(

@@ -216,8 +216,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           try {
             if (await this.isRevoked(this.jti)) this.teardown("revoked");
           } catch {
-            // A failing revocation check must not keep a possibly-revoked
-            // session alive: fail-closed and sever.
+            // error-policy:J4 fail-closed degrade — a failing revocation check
+            // must not keep a possibly-revoked session alive: sever (SEC-6).
             this.teardown("revoked");
           }
         })();
@@ -297,7 +297,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       try {
         this.stt.sendAudioChunk(frame);
       } catch {
-        // A closed/closing Flux socket after a race with sever: stop forwarding.
+        // error-policy:J6 best-effort teardown race — a closed/closing Flux
+        // socket after a concurrent sever; stop forwarding.
         return;
       }
     }
@@ -338,10 +339,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           try {
             this.stt?.sendAudioChunk(frame);
           } catch {
+            // error-policy:J6 best-effort teardown race — Flux socket closed by
+            // a concurrent sever while releasing the buffer; stop forwarding.
             break;
           }
         }
       } catch {
+        // error-policy:J4 fail-closed degrade — a metering-store failure must
+        // not admit unpaid audio: surface metering_unavailable and sever.
         if (this.closed) return;
         this.meteredExhausted = true;
         this.send({
@@ -404,6 +409,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "end-of-turn": {
+        // A missing transcript commits as "" on purpose: commitTurn's empty-
+        // final path still reports+resets the turn's metered usage and clears
+        // the turn id, which skipping the commit would leak into the next turn.
         this.commitTurn(event.transcript ?? "");
         break;
       }
@@ -579,6 +587,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // If tts exists but nothing above matched (all phrases already terminal),
       // the context was already closed with continue:false; nothing to do.
     } catch (error) {
+      // error-policy:J1 boundary translation — the LLM/TTS turn is the async
+      // boundary; provider failures become a structured client `error` frame.
       if (this.currentVoiceTurnId !== traceId) return;
       this.send({
         t: "error",
@@ -692,8 +702,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
     } catch {
       this.meterWindowsInFlight = Math.max(0, this.meterWindowsInFlight - 1);
-      // Fail-closed on the metering path: if we cannot record the cost, we do
-      // not keep streaming uncapped audio to Deepgram.
+      // error-policy:J4 fail-closed degrade — if we cannot record the cost, we
+      // do not keep streaming uncapped paid audio to Deepgram; sever.
       this.meteredExhausted = true;
       this.send({ t: "error", code: "metering_unavailable", retryable: false });
       this.teardown("error");
@@ -715,7 +725,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       void this.config
         .onTeardownRevoke(this.jti, this.config.tokenExpSeconds)
         .catch(() => {
-          // best-effort; the token still dies at its <=120s TTL.
+          // error-policy:J6 best-effort teardown — revoke-on-end is defense in
+          // depth; the token still dies at its <=120s TTL.
         });
     }
 
@@ -726,7 +737,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       try {
         this.ttsStream.cancel(`session:${reason}`);
       } catch {
-        // best-effort.
+        // error-policy:J6 best-effort teardown — cancel on an already-dead
+        // Cartesia stream must not abort the rest of teardown.
       }
       this.ttsStream = null;
     }
@@ -738,7 +750,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       try {
         this.stt.cancel(reason);
       } catch {
-        // best-effort.
+        // error-policy:J6 best-effort teardown — cancel on an already-closed
+        // Flux socket must not abort the rest of teardown.
       }
       this.stt = null;
     }

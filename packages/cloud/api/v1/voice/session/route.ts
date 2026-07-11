@@ -68,6 +68,8 @@ app.post("/", async (c) => {
   try {
     body = MintBody.parse(await c.req.json());
   } catch {
+    // error-policy:J3 untrusted-input sanitizing — malformed JSON/schema in the
+    // mint body becomes an explicit 400, never a defaulted request.
     return c.json({ error: "invalid mint request body" }, 400);
   }
 
@@ -142,6 +144,8 @@ app.post("/", async (c) => {
       iceServers: null,
     });
   } catch (error) {
+    // error-policy:J1 boundary translation — the route is the HTTP boundary;
+    // mint/persist failures become structured 4xx/5xx JSON, logged for ops.
     if (error instanceof VoiceSessionTokenError) {
       const status = error.code === "not_configured" ? 503 : 400;
       return c.json({ error: error.message, code: error.code }, status);
