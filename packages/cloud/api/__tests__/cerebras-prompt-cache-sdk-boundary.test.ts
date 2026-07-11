@@ -13,10 +13,10 @@ function createCapturingProvider(response: Response, bodies: unknown[]) {
   const provider = createOpenAI({
     apiKey: "test-cerebras-key",
     baseURL: "https://api.cerebras.ai/v1",
-    fetch: async (_input, init) => {
+    fetch: (async (_input, init) => {
       bodies.push(JSON.parse(String(init?.body)));
       return response;
-    },
+    }) as typeof fetch,
   });
   return provider.chat("gpt-oss-120b");
 }
