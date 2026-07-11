@@ -47,4 +47,19 @@ describe("ttsDebug", () => {
 
     expect(info).toHaveBeenCalledWith("[eliza][tts] play:end");
   });
+
+  it("does not let a throwing diagnostic getter interrupt playback", () => {
+    const detail: Record<string, unknown> = {};
+    Object.defineProperty(detail, "broken", {
+      enumerable: true,
+      get: () => {
+        throw new Error("diagnostic getter failed");
+      },
+    });
+
+    expect(() => ttsDebug("play:error", detail)).not.toThrow();
+    expect(info).toHaveBeenCalledWith(
+      "[eliza][tts] play:error [Unserializable diagnostic detail]",
+    );
+  });
 });

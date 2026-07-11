@@ -66,14 +66,19 @@ export function ttsDebugTextPreview(
 
 function serializeTtsDebugDetail(detail: Record<string, unknown>): string {
   const seen = new WeakSet<object>();
-  return JSON.stringify(detail, (_key, value: unknown) => {
-    if (typeof value === "bigint") return value.toString();
-    if (value && typeof value === "object") {
-      if (seen.has(value)) return "[Circular]";
-      seen.add(value);
-    }
-    return value;
-  });
+  try {
+    return JSON.stringify(detail, (_key, value: unknown) => {
+      if (typeof value === "bigint") return value.toString();
+      if (value && typeof value === "object") {
+        if (seen.has(value)) return "[Circular]";
+        seen.add(value);
+      }
+      return value;
+    });
+  } catch {
+    // error-policy:J4 Debug serialization must not interrupt audio playback.
+    return "[Unserializable diagnostic detail]";
+  }
 }
 
 export function ttsDebug(
