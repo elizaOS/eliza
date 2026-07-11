@@ -8,7 +8,12 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../services/config-env.js", () => ({
+  readConfigEnvKey: (key: string): string | undefined => process.env[key],
+}));
+
 import {
   buildSubAgentIdentityMd,
   writeWorkspaceIdentity,
@@ -27,7 +32,9 @@ describe("buildSubAgentIdentityMd git-trailer section", () => {
       coAuthorTrailer: "Co-authored-by: Shadow <shadow@shad0w.xyz>",
     });
     expect(md).not.toContain("{{GIT_TRAILER_SECTION}}");
-    expect(md).toContain("## Commit message trailer (REQUIRED when you commit)");
+    expect(md).toContain(
+      "## Commit message trailer (REQUIRED when you commit)",
+    );
     expect(md).toContain("Co-authored-by: Shadow <shadow@shad0w.xyz>");
     // It must tell the agent NOT to set its own identity (that's env-pinned).
     expect(md).toContain("do not run `git config user.name/email`");
