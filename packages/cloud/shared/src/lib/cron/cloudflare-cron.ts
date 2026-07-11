@@ -82,6 +82,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/agent-backups",
     // #9939: reap shared bridge rows leaked by a failed/timed-out handoff.
     "/api/v1/cron/reap-orphan-shared-bridges",
+    // #16071: revoke stranded agent-sandbox keys left by a crash between the
+    // tier-upgrade single-flight mint and the target-sandbox commit.
+    "/api/cron/gc-stranded-sandbox-keys",
   ],
 };
 
