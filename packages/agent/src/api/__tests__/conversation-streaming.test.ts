@@ -54,6 +54,7 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
       debug: vi.fn(),
     },
     emitEvent: vi.fn(async () => undefined),
+    getMemories: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
     drainChatPreHandlers: vi.fn(async () => null),
@@ -395,13 +396,13 @@ describe("generateChatResponse token streaming", () => {
       expect.anything(),
       expect.objectContaining({
         stream: true,
-        maxTokens: 20,
+        maxTokens: 128,
         prompt: expect.stringContaining("<think>\n\n</think>\n"),
         stopSequences: ["<end_of_turn>", "<start_of_turn>"],
         providerOptions: expect.objectContaining({
           androidLocal: expect.objectContaining({
             minFirstSentenceChars: 12,
-            stopOnFirstSentence: true,
+            stopOnFirstSentence: false,
           }),
           eliza: expect.objectContaining({
             thinking: "off",
@@ -419,6 +420,74 @@ describe("generateChatResponse token streaming", () => {
         provider: "mobile-local-direct-reply",
         streamedChunks: 2,
       }),
+    );
+  });
+
+  it("includes only six bounded recent messages and preserves multi-sentence replies", async () => {
+    const roomId = stringToUuid("room");
+    const memories = Array.from({ length: 8 }, (_, index) => {
+      const memory = createMessageMemory({
+        id: stringToUuid(`history-${index}`),
+        roomId,
+        entityId:
+          index % 2 === 0
+            ? stringToUuid("user")
+            : stringToUuid("streaming-agent"),
+        content: { text: `${index}:${"x".repeat(750)}` },
+      });
+      memory.createdAt = index + 1;
+      return memory;
+    });
+    const useModel = createUseModelMock(
+      async () =>
+        "First useful sentence. Second useful sentence. Third useful sentence.",
+    );
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      getMemories: vi.fn(async () => memories),
+      useModel,
+    });
+
+    const message = createChatMessage("what happened next?");
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+      },
+    );
+
+    const params = useModel.mock.calls[0]?.[1] as {
+      prompt: string;
+      providerOptions: { androidLocal: { stopOnFirstSentence: boolean } };
+    };
+    expect(runtime.getMemories).toHaveBeenCalledWith({
+      roomId,
+      tableName: "messages",
+      limit: 7,
+      includeEmbedding: false,
+    });
+    expect(params.prompt).not.toContain("0:");
+    expect(params.prompt).not.toContain("1:");
+    for (let index = 2; index < 8; index += 1) {
+      expect(params.prompt).toContain(`${index}:${"x".repeat(698)}`);
+      expect(params.prompt).not.toContain(`${index}:${"x".repeat(699)}`);
+    }
+    expect(params.prompt).toContain("Recent conversation (oldest to newest):");
+    expect(params.prompt).toContain(
+      "Answer in 1-3 concise, natural spoken sentences.",
+    );
+    expect(params.providerOptions.androidLocal.stopOnFirstSentence).toBe(false);
+    expect(result.text).toBe(
+      "First useful sentence. Second useful sentence. Third useful sentence.",
     );
   });
 

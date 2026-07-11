@@ -441,19 +441,58 @@ function normalizeAndroidLocalDirectUserText(text: string): string {
     .trim();
 }
 
-function buildAndroidLocalDirectChatPrompt(args: {
+const ANDROID_LOCAL_HISTORY_LIMIT = 6;
+const ANDROID_LOCAL_HISTORY_TEXT_LIMIT = 700;
+
+async function buildAndroidLocalDirectChatPrompt(args: {
   runtime: AgentRuntime;
+  message: ReturnType<typeof createMessageMemory>;
   userText: string;
-}): string {
+}): Promise<string | null> {
+  let history: string[] = [];
+  try {
+    const recent = await args.runtime.getMemories({
+      roomId: args.message.roomId,
+      tableName: "messages",
+      // Allow for the current message already being persisted before generation.
+      limit: ANDROID_LOCAL_HISTORY_LIMIT + 1,
+      includeEmbedding: false,
+    });
+    history = recent
+      .filter((memory) => memory.id !== args.message.id)
+      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      .slice(-ANDROID_LOCAL_HISTORY_LIMIT)
+      .flatMap((memory) => {
+        const text = extractCompatTextContent(memory.content).trim();
+        if (!text) return [];
+        const role =
+          memory.entityId === args.runtime.agentId ? "Assistant" : "User";
+        return [
+          `${role}: ${escapeAndroidLocalChatTemplateTokens(text.slice(0, ANDROID_LOCAL_HISTORY_TEXT_LIMIT))}`,
+        ];
+      });
+  } catch (err) {
+    // Preserve correctness for contextual turns by falling back to the normal
+    // message runtime rather than generating a healthy-looking contextless reply.
+    args.runtime.logger.warn(
+      { src: "eliza-api", err },
+      "[eliza-api] Android local direct chat history unavailable; using normal runtime",
+    );
+    return null;
+  }
+
   const systemText = [
     "Eliza-1 on device.",
-    "One natural sentence under 10 words. Stop after it.",
+    "Answer in 1-3 concise, natural spoken sentences.",
     "If asked local/on-device: yes, local Eliza-1.",
     "No markdown, labels, tools, logs, or hidden reasoning.",
   ].join("\n");
   return [
     "<start_of_turn>user",
     systemText,
+    ...(history.length > 0
+      ? ["", "Recent conversation (oldest to newest):", ...history]
+      : []),
     "",
     escapeAndroidLocalChatTemplateTokens(args.userText),
     "<end_of_turn>",
@@ -498,13 +537,6 @@ function extractAndroidLocalModelText(raw: unknown): string {
   return "";
 }
 
-function truncateAndroidLocalReplyToFirstSentence(text: string): string {
-  const compact = text.replace(/\s+/g, " ").trim();
-  if (!compact) return "";
-  const firstSentence = compact.match(/^(.{12,280}?[.!?])(?:\s|$)/u)?.[1];
-  return (firstSentence ?? compact).trim();
-}
-
 function stripAndroidLocalReasoning(text: string): string {
   let next = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
   const danglingClose = next.lastIndexOf("</think>");
@@ -528,7 +560,7 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .replace(/^\s*(assistant|model|eliza)\s*:\s*/i, "")
     .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
-  text = truncateAndroidLocalReplyToFirstSentence(text);
+  text = text.replace(/\s+/g, " ").trim();
   if (text.length <= 700) {
     return text;
   }
@@ -619,14 +651,16 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     extractCompatTextContent(args.message.content),
   );
   if (!userText) return null;
-  const prompt = buildAndroidLocalDirectChatPrompt({
+  const prompt = await buildAndroidLocalDirectChatPrompt({
     runtime: args.runtime,
+    message: args.message,
     userText,
   });
+  if (!prompt) return null;
   const maxTokens = readPositiveIntegerSetting(
     args.runtime,
     "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
-    20,
+    128,
   );
   const startedAt = Date.now();
   args.runtime.logger.info(
@@ -674,7 +708,7 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
         thinking: "off",
       },
       androidLocal: {
-        stopOnFirstSentence: true,
+        stopOnFirstSentence: false,
         minFirstSentenceChars: 12,
       },
     },
