@@ -50,6 +50,11 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
+import {
+  clearSubscriptionOAuth,
+  readSubscriptionOAuth,
+  writeSubscriptionOAuth,
+} from "./subscription-oauth-state";
 
 interface AddAccountDialogProps {
   open: boolean;
@@ -186,6 +191,7 @@ export function AddAccountDialog({
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const restoredSessionRef = useRef<string | null>(null);
   // Mirrors the `open` prop in a ref so async paths (`startOAuth` mid-
   // await) can detect that the dialog was closed before
   // `client.startAccountOAuth` resolved and immediately cancel the
@@ -218,6 +224,7 @@ export function AddAccountDialog({
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
+    restoredSessionRef.current = null;
     setStep(initialStepForProvider(providerId));
     setLabel("");
     setApiKey("");
@@ -226,15 +233,6 @@ export function AddAccountDialog({
     setSessionId(null);
     setDeviceCode(null);
   }, [closeEventSource, providerId]);
-
-  // Dialog open/close side-effects: when closed, cancel any in-flight
-  // OAuth flow so the server can release the loopback listener.
-  useEffect(() => {
-    if (!open) {
-      void cancelInflightFlow();
-      reset();
-    }
-  }, [open, cancelInflightFlow, reset]);
 
   useEffect(() => {
     return () => {
@@ -249,6 +247,7 @@ export function AddAccountDialog({
       const source = openEventSource(url);
       eventSourceRef.current = source;
       if (!source) {
+        clearSubscriptionOAuth(providerId);
         setErrorMessage(
           t("accounts.add.oauth.sseUnreachable", {
             defaultValue:
@@ -285,6 +284,8 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
+            clearSubscriptionOAuth(providerId);
+            clearSubscriptionOAuth(providerId);
             onCreated(data.account);
             onClose();
           } else if (
@@ -295,6 +296,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
+            clearSubscriptionOAuth(providerId);
             setErrorMessage(
               data.error ??
                 t(`accounts.add.oauth.${data.status}`, {
@@ -341,6 +343,20 @@ export function AddAccountDialog({
     [closeEventSource, onClose, onCreated, providerId, t],
   );
 
+  useEffect(() => {
+    if (!open) return;
+    const pending = readSubscriptionOAuth(providerId);
+    if (!pending || restoredSessionRef.current === pending.sessionId) return;
+    restoredSessionRef.current = pending.sessionId;
+    sessionIdRef.current = pending.sessionId;
+    setSessionId(pending.sessionId);
+    setDeviceCode(pending.deviceCode ?? null);
+    setStep(
+      pending.phase === "need-code" ? "oauth-need-code" : "oauth-waiting",
+    );
+    subscribeToFlow(pending.sessionId);
+  }, [open, providerId, subscribeToFlow]);
+
   const startOAuth = useCallback(
     async (mode: "localhost" | "device") => {
       if (subscriptionAddMode !== "oauth") {
@@ -380,16 +396,25 @@ export function AddAccountDialog({
           }
           return;
         }
-        navigatePreOpenedWindow(win, flow.authUrl);
         sessionIdRef.current = flow.sessionId;
+        restoredSessionRef.current = flow.sessionId;
         setSessionId(flow.sessionId);
         setDeviceCode(flow.userCode ?? null);
+        writeSubscriptionOAuth({
+          providerId,
+          sessionId: flow.sessionId,
+          mode,
+          phase: flow.needsCodeSubmission ? "need-code" : "waiting",
+          ...(flow.userCode ? { deviceCode: flow.userCode } : {}),
+          startedAt: Date.now(),
+        });
         if (flow.needsCodeSubmission) {
           setStep("oauth-need-code");
         } else {
           setStep("oauth-waiting");
         }
         subscribeToFlow(flow.sessionId);
+        navigatePreOpenedWindow(win, flow.authUrl);
       } catch (err) {
         setErrorMessage(
           err instanceof Error && err.message
@@ -466,9 +491,11 @@ export function AddAccountDialog({
   );
 
   const handleClose = useCallback(() => {
+    clearSubscriptionOAuth(providerId);
     void cancelInflightFlow();
+    reset();
     onClose();
-  }, [cancelInflightFlow, onClose]);
+  }, [cancelInflightFlow, onClose, providerId, reset]);
 
   const dialogDescription =
     subscriptionAddMode === "oauth"
