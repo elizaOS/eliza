@@ -54,6 +54,7 @@ function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
       debug: vi.fn(),
     },
     emitEvent: vi.fn(async () => undefined),
+    reportError: vi.fn(),
     getMemories: vi.fn(async () => []),
     getService: vi.fn(() => null),
     getServicesByType: vi.fn(() => []),
@@ -489,6 +490,57 @@ describe("generateChatResponse token streaming", () => {
     expect(result.text).toBe(
       "First useful sentence. Second useful sentence. Third useful sentence.",
     );
+  });
+
+  it("reports history failures before falling back to the normal runtime", async () => {
+    const historyError = new Error("message store unavailable");
+    const useModel = createUseModelMock(async () => "contextless reply");
+    const handleMessage = vi.fn(async () => ({
+      didRespond: true,
+      responseContent: { text: "Reply from the normal runtime." },
+      responseMessages: [],
+    }));
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      getMemories: vi.fn(async () => {
+        throw historyError;
+      }),
+      useModel,
+      messageService: {
+        handleMessage,
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "history-fallback",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+    const message = createChatMessage("what happened next?");
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "AndroidLocalDirectChat.history",
+      historyError,
+      { roomId: message.roomId, messageId: message.id },
+    );
+    expect(useModel).not.toHaveBeenCalled();
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(result.text).toBe("Reply from the normal runtime.");
   });
 
   it("uses the local direct path for iOS full Bun local backend", async () => {

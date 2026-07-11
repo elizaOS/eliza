@@ -472,8 +472,13 @@ async function buildAndroidLocalDirectChatPrompt(args: {
         ];
       });
   } catch (err) {
-    // Preserve correctness for contextual turns by falling back to the normal
-    // message runtime rather than generating a healthy-looking contextless reply.
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — the full message
+    // runtime remains a correct fallback, but the failed memory path must still
+    // reach RECENT_ERRORS and owner escalation instead of disappearing in logcat.
+    args.runtime.reportError("AndroidLocalDirectChat.history", err, {
+      roomId: args.message.roomId,
+      messageId: args.message.id,
+    });
     args.runtime.logger.warn(
       { src: "eliza-api", err },
       "[eliza-api] Android local direct chat history unavailable; using normal runtime",
