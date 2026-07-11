@@ -4,6 +4,11 @@
  * approval, idempotency, venue, credential, transport, and execution failures.
  */
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", async () => {
+  return await import("../__tests__/core-vitest-mock.js");
+});
+
 import { StewardTradingService } from "../services/steward-trading-service.js";
 import {
   type ActionFailureCode,

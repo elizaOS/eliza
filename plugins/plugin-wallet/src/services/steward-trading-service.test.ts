@@ -5,6 +5,11 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("@elizaos/core", async () => {
+  return await import("../__tests__/core-vitest-mock.js");
+});
+
 import { stewardFixtures } from "./__fixtures__/steward-trade-responses.js";
 import {
   STEWARD_TRADING_SERVICE_TYPE,
@@ -99,6 +104,35 @@ describe("StewardTradingService", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "http://[::1]:8787/v1/trade/token-status?agentId=agent-fixture",
     );
+  });
+
+  it("sends tenant API key alongside the agent bearer when both are configured", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, stewardFixtures.tokenStatusObserved),
+    );
+    const service = new StewardTradingService(
+      runtime({
+        STEWARD_API_URL: "https://steward.local",
+        STEWARD_AGENT_ID: "agent-fixture",
+        STEWARD_AGENT_TOKEN: "token-fixture",
+        STEWARD_API_KEY: "tenant-key-fixture",
+        STEWARD_TENANT_ID: "tenant-fixture",
+      }),
+      {
+        fetch: fetchMock as unknown as typeof fetch,
+        sleep: async () => undefined,
+      },
+    );
+
+    await service.tokenStatus();
+
+    const headers = fetchMock.mock.calls[0]?.[1]?.headers as Record<
+      string,
+      string
+    >;
+    expect(headers.Authorization).toBe("Bearer token-fixture");
+    expect(headers["X-Steward-Key"]).toBe("tenant-key-fixture");
+    expect(headers["X-Steward-Tenant"]).toBe("tenant-fixture");
   });
 
   it("opens sessions through the versioned route with Steward request names", async () => {

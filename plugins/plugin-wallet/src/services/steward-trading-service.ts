@@ -787,7 +787,8 @@ export class StewardTradingService extends Service {
     };
     if (config.agentToken) {
       headers.Authorization = `Bearer ${config.agentToken}`;
-    } else if (config.apiKey) {
+    }
+    if (config.apiKey) {
       headers["X-Steward-Key"] = config.apiKey;
     }
     if (config.tenantId) headers["X-Steward-Tenant"] = config.tenantId;

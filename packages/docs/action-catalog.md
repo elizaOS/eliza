@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 186
+- **Registered runtime actions:** 187
 
 ## Actions
 
@@ -489,6 +489,7 @@ section drifts from source.
 - `TAU_BENCH_TOOL` — `plugins/plugin-benchmarks/src/actions/tau-bench.ts`
 - `TERMINAL_SHELL` — `packages/agent/src/actions/terminal.ts`
 - `TODO` — `plugins/plugin-todos/src/actions/todo.ts`
+- `TRADE` — `plugins/plugin-wallet/src/actions/trade-action.ts`
 - `TRIGGER` — `packages/agent/src/actions/trigger.ts`
 - `TRUST` — `packages/core/src/features/trust/actions/trust.ts`
 - `TUNNEL_CREDENTIAL_TO_CHILD_SESSION` — `packages/core/src/features/sub-agent-credentials/actions/tunnel-credential-to-child-session.ts`

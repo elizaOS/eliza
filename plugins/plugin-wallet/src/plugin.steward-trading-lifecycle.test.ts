@@ -6,8 +6,36 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@elizaos/core", async () => {
+  return await import("./__tests__/core-vitest-mock.js");
+});
+
 // Backend selection is unrelated to plugin composition and requires the built
 // @elizaos/shared entrypoint, which the changed-file CI lane does not provide.
+vi.mock("./chains/evm/bridge-router.js", () => ({
+  validateWalletBridgeParams: vi.fn(() => null),
+}));
+vi.mock("./chains/evm/index.js", () => ({
+  default: {
+    name: "evm",
+    services: [],
+    providers: [],
+    actions: [],
+    routes: [],
+  },
+}));
+vi.mock("./chains/registry.js", () => ({
+  registerDefaultWalletChainHandlers: vi.fn(),
+}));
+vi.mock("./chains/solana/index.js", () => ({
+  default: {
+    name: "solana",
+    services: [],
+    providers: [],
+    actions: [],
+    routes: [],
+  },
+}));
 vi.mock("./wallet/select-backend.js", () => ({
   resolveWalletBackend: vi.fn(),
 }));

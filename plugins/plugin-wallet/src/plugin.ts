@@ -12,6 +12,7 @@ import {
   parseBooleanFromText,
   type ServiceClass,
 } from "@elizaos/core";
+import { tradeRouterAction } from "./actions/trade-action.js";
 import { agentPortfolioProvider } from "./analytics/birdeye/providers/agent-portfolio-provider.js";
 import { marketProvider } from "./analytics/birdeye/providers/market.js";
 import { trendingProvider } from "./analytics/birdeye/providers/trending.js";
@@ -25,19 +26,20 @@ import { DexScreenerService } from "./analytics/dexscreener/service.js";
 import { TokenInfoService } from "./analytics/token-info/service.js";
 import evmPlugin from "./chains/evm/index.js";
 import solanaPlugin from "./chains/solana/index.js";
+import { stewardTradingProvider } from "./providers/steward-trading-provider.js";
 import { walletProvider } from "./providers/wallet-provider.js";
+import { StewardTradingService } from "./services/steward-trading-service.js";
 import {
   WALLET_BACKEND_SERVICE_TYPE,
   WalletBackendService,
 } from "./services/wallet-backend-service.js";
-import { StewardTradingService } from "./services/steward-trading-service.js";
 
 const coreWalletPlugin: Plugin = {
   name: "wallet-backend",
   description: "Wallet backend service + wallet provider (Steward / local).",
   services: [WalletBackendService, StewardTradingService],
-  providers: [walletProvider],
-  actions: [],
+  providers: [walletProvider, stewardTradingProvider],
+  actions: [tradeRouterAction],
 };
 
 function concatServices(
