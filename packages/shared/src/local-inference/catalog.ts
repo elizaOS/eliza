@@ -309,6 +309,14 @@ function tierSlug(id: Eliza1TierId): string {
   return id.slice("eliza-1-".length);
 }
 
+function publishedTierSlug(id: Eliza1TierId): string {
+  return id === "eliza-1-2b"
+    ? "e2b"
+    : id === "eliza-1-4b"
+      ? "e4b"
+      : tierSlug(id);
+}
+
 function tierDisplaySlug(id: Eliza1TierId): string {
   switch (id) {
     case "eliza-1-2b":
@@ -331,7 +339,7 @@ function tierDisplayName(id: Eliza1TierId): string {
 }
 
 function bundleRemotePrefix(id: Eliza1TierId): string {
-  return `bundles/${tierSlug(id)}`;
+  return `bundles/${publishedTierSlug(id)}`;
 }
 
 function bundlePath(_id: Eliza1TierId, rel: string): string {
@@ -358,13 +366,19 @@ function primaryVoiceFileForTier(_id: Eliza1TierId): string {
 }
 
 function asrFileForTier(id: Eliza1TierId): string {
-  return `asr/mmproj-audio-${tierSlug(id)}-bf16.gguf`;
+  return `asr/mmproj-audio-${publishedTierSlug(id)}-bf16.gguf`;
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const spec = TIER_SPECS[id];
   const components: SourceComponentMap = {
-    text: bundleComponent(id, spec.textFile),
+    text: bundleComponent(
+      id,
+      spec.textFile.replace(
+        `eliza-1-${tierSlug(id)}`,
+        `eliza-1-${publishedTierSlug(id)}`,
+      ),
+    ),
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
     asr: bundleComponent(id, asrFileForTier(id)),
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
@@ -395,7 +409,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   if (spec.hasVision) {
     components.vision = bundleComponent(
       id,
-      `vision/mmproj-${tierSlug(id)}.gguf`,
+      `vision/mmproj-${publishedTierSlug(id)}.gguf`,
     );
   }
   // Separate-drafter MTP is the Gemma release shape. Advertise the component
@@ -403,7 +417,10 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   // `bundles/<tier>/mtp/drafter-<tier>.gguf` (ELIZA_1_HOSTED_MTP_TIER_IDS);
   // the `dflash/` files still present on other tiers are legacy artifacts.
   if (hostedMtpDrafterAvailableForTier(id)) {
-    components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
+    components.mtp = bundleComponent(
+      id,
+      `mtp/drafter-${publishedTierSlug(id)}.gguf`,
+    );
   }
 
   return { finetuned: false, components };
