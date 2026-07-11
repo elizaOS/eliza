@@ -722,15 +722,28 @@ export async function runPairedProbes({
   const random = seededRandom(seed);
   const records = [];
   const targets = { direct, gateway };
+  const nextFirstTarget = new Map();
 
-  const runPhase = async (phase, count) => {
+  const runPhase = async (phase, count, { idleBeforeEachTarget = false } = {}) => {
     for (let sequence = 1; sequence <= count; sequence += 1) {
       for (const probeCase of shuffled(cases, random)) {
         const proof = `latency-proof-${randomUUID()}`;
         const pairId = randomUUID();
-        const order =
-          random() < 0.5 ? [`direct`, `gateway`] : [`gateway`, `direct`];
+        const caseKey = JSON.stringify([
+          probeCase.model,
+          probeCase.reasoningEffort,
+          probeCase.maxTokens,
+        ]);
+        const first =
+          nextFirstTarget.get(caseKey) ??
+          (random() < 0.5 ? `direct` : `gateway`);
+        const second = first === `direct` ? `gateway` : `direct`;
+        const order = [first, second];
+        nextFirstTarget.set(caseKey, second);
         for (const target of order) {
+          if (idleBeforeEachTarget && idleMs > 0) {
+            await sleepImpl(idleMs);
+          }
           const config = targets[target];
           const record = await probeOpenAi({
             target,
@@ -746,6 +759,7 @@ export async function runPairedProbes({
               pairId,
               targetOrder: order.join(">"),
               benchmarkSeed: seed,
+              idleBeforeTargetMs: idleBeforeEachTarget ? idleMs : 0,
             },
             fetchImpl,
           });
@@ -758,8 +772,7 @@ export async function runPairedProbes({
 
   await runPhase("cold", 1);
   await runPhase("warm", repeats);
-  if (idleMs > 0) await sleepImpl(idleMs);
-  await runPhase("post-idle", 1);
+  await runPhase("post-idle", 1, { idleBeforeEachTarget: true });
   return records;
 }
 

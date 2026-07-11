@@ -447,6 +447,7 @@ test("probeDedicated never records an arbitrary transport error message", async 
 
 test("runPairedProbes reuses prompts, counterbalances order, and labels phases", async () => {
   const seenPrompts = new Map();
+  const sleeps = [];
   const records = await runPairedProbes({
     cases: [parseProbeCase("gemma-4-31b@omit@512")],
     repeats: 2,
@@ -455,7 +456,7 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
     timeoutMs: 5_000,
     idleMs: 1,
     seed: "fixed-seed",
-    sleepImpl: async () => undefined,
+    sleepImpl: async (durationMs) => sleeps.push(durationMs),
     fetchImpl: async (url, init) => {
       const body = JSON.parse(init.body);
       const prompt = body.messages[0].content;
@@ -483,6 +484,26 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
     assert.equal(pair.length, 2);
     assert.equal(pair[0].targetOrder, pair[1].targetOrder);
   }
+  assert.deepEqual(
+    Object.fromEntries(
+      Map.groupBy(records, (record) => record.targetOrder)
+        .entries()
+        .map(([order, orderRecords]) => [order, orderRecords.length / 2]),
+    ),
+    { "direct>gateway": 2, "gateway>direct": 2 },
+  );
+  assert.deepEqual(sleeps, [1, 1]);
+  assert.deepEqual(
+    records
+      .filter((record) => record.phase === "post-idle")
+      .map((record) => record.idleBeforeTargetMs),
+    [1, 1],
+  );
+  assert.ok(
+    records
+      .filter((record) => record.phase !== "post-idle")
+      .every((record) => record.idleBeforeTargetMs === 0),
+  );
 });
 
 test("summarizeLatencyRecords reports warm p50, p90, and p95", () => {

@@ -39,7 +39,7 @@ describe("chat latency live workflow", () => {
     expect(workflow).toContain("--target paired");
     expect(workflow).toContain("--direct-base-url");
     expect(workflow).toContain("--gateway-base-url");
-    expect(workflow).toContain("counterbalances target order inside each");
+    expect(workflow).toContain("alternates target-first order exactly");
     expect(workflow).toContain("runs-on: ubuntu-24.04");
     expect(workflow).toContain("https://api.cerebras.ai");
     expect(workflow).toContain("https://api-staging.elizacloud.ai");
@@ -99,6 +99,7 @@ describe("chat latency live workflow", () => {
   test("collects statistical warm evidence plus cold and post-idle labels", () => {
     expect(workflow).toContain('default: "30"');
     expect(workflow).toContain("--idle-ms 30000");
+    expect(workflow).toContain("idles before every target labeled post-idle");
     expect(workflow).toContain("p50/p90/p95");
     expect(workflow).toContain("cold/warm/post-idle");
   });

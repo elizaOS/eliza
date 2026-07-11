@@ -127,8 +127,9 @@ jobs:
           set +e
 
           # One process holds runner, clock, prompts, and case set constant.
-          # It randomizes case order, counterbalances target order inside each
-          # proof-identical pair, and labels cold/warm/post-idle phases.
+          # It randomizes case order, alternates target-first order exactly for
+          # each case and labels cold/warm/post-idle phases.
+          # It idles before every target labeled post-idle.
           node packages/scripts/cloud/chat-latency.mjs \
             --target paired \
             --direct-base-url https://api.cerebras.ai \
