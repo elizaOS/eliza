@@ -1346,8 +1346,17 @@ const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
 function appDevWsBasePlugin(): Plugin {
-  const wsBase = `ws://127.0.0.1:${apiPort}`;
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
+
+  // Derive the WS base from the ACTUAL page origin at runtime rather than
+  // hardcoding `ws://127.0.0.1:<apiPort>`. Vite's dev server proxies `/ws`
+  // (ws:true) to the API port, so a same-origin socket resolves correctly
+  // both for local `bun run dev` and — critically — over an SSH tunnel that
+  // only forwards the UI port (an absolute loopback base is unreachable from
+  // the laptop and floods the console with lost-connection retries). REST
+  // already rides the same-origin `/api` proxy; this makes WS match.
+  const wsBaseExpr =
+    "((location.protocol==='https:'?'wss://':'ws://')+location.host)";
 
   return {
     name: "eliza-dev-ws-base",
@@ -1359,9 +1368,9 @@ function appDevWsBasePlugin(): Plugin {
           attrs: { type: "text/javascript" },
           injectTo: "head-prepend",
           children: [
-            `window.__ELIZA_WS_BASE__ = ${JSON.stringify(wsBase)};`,
-            `window.__ELIZAOS_WS_BASE__ = ${JSON.stringify(wsBase)};`,
-            `window[${JSON.stringify(brandedWsBaseKey)}] = ${JSON.stringify(wsBase)};`,
+            `window.__ELIZA_WS_BASE__ = ${wsBaseExpr};`,
+            `window.__ELIZAOS_WS_BASE__ = ${wsBaseExpr};`,
+            `window[${JSON.stringify(brandedWsBaseKey)}] = ${wsBaseExpr};`,
           ].join("\n"),
         },
       ];

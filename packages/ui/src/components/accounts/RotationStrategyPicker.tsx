@@ -4,16 +4,13 @@
  * caller is responsible for routing that through `client.patchProviderStrategy`.
  */
 
+import * as SelectPrimitive from "@radix-ui/react-select";
 import type { LinkedAccountProviderId } from "@elizaos/shared";
+import { Check } from "lucide-react";
 import type { AccountStrategy } from "../../api/client-agent";
+import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
+import { Select, SelectContent, SelectTrigger, SelectValue } from "../ui/select";
 
 interface RotationStrategyPickerProps {
   providerId: LinkedAccountProviderId;
@@ -84,7 +81,7 @@ export function RotationStrategyPicker({
       >
         <SelectTrigger
           id={`rotation-strategy-${providerId}`}
-          className="h-8 w-[160px] rounded-sm border border-border bg-card text-xs"
+          className="h-8 w-[160px] gap-1 truncate whitespace-nowrap rounded-sm border border-border bg-card text-xs [&>span]:truncate"
         >
           <SelectValue
             placeholder={t("accounts.strategy.choose", {
@@ -94,18 +91,38 @@ export function RotationStrategyPicker({
         </SelectTrigger>
         <SelectContent>
           {STRATEGY_OPTIONS.map((option) => (
-            <SelectItem key={option.id} value={option.id}>
-              <div className="flex flex-col gap-0.5 py-0.5">
-                <span className="text-sm font-medium text-txt">
-                  {t(option.labelKey, { defaultValue: option.labelFallback })}
-                </span>
+            // Only the label lives inside ItemText — that is what Radix mirrors
+            // into the (fixed-width) trigger. The description is a sibling, so
+            // it shows in the dropdown list but never overflows the trigger.
+            <SelectPrimitive.Item
+              key={option.id}
+              value={option.id}
+              className={cn(
+                "flex w-full cursor-default select-none items-start gap-1.5 rounded-sm py-1.5 pl-2 pr-2 outline-none",
+                "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                "data-[highlighted]:bg-bg-accent",
+              )}
+            >
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <SelectPrimitive.ItemText>
+                  <span className="text-sm font-medium text-txt">
+                    {t(option.labelKey, {
+                      defaultValue: option.labelFallback,
+                    })}
+                  </span>
+                </SelectPrimitive.ItemText>
                 <span className="text-xs text-muted">
                   {t(option.descriptionKey, {
                     defaultValue: option.descriptionFallback,
                   })}
                 </span>
               </div>
-            </SelectItem>
+              <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                <SelectPrimitive.ItemIndicator>
+                  <Check className="h-3 w-3" />
+                </SelectPrimitive.ItemIndicator>
+              </span>
+            </SelectPrimitive.Item>
           ))}
         </SelectContent>
       </Select>
