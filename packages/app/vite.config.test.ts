@@ -3,8 +3,8 @@
  * Vite's proxy remains usable through local and tunneled development URLs.
  */
 
+import { describe, expect, test } from "bun:test";
 import { runInNewContext } from "node:vm";
-import { describe, expect, test } from "vitest";
 import { appDevWsBasePlugin } from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
@@ -14,7 +14,10 @@ describe("appDevWsBasePlugin", () => {
       throw new Error("dev WS plugin has no HTML transform");
     }
 
-    const tags = transform("", {} as never) as Array<{
+    const tags = transform("", {
+      path: "/",
+      filename: "index.html",
+    }) as Array<{
       children?: string;
     }>;
     const script = tags[0]?.children;

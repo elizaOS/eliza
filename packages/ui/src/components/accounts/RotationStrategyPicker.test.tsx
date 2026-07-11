@@ -1,8 +1,8 @@
-// @vitest-environment jsdom
 /**
  * Verifies strategy descriptions remain list-only so Radix cannot mirror a
  * two-line option into the compact trigger.
  */
+// @vitest-environment jsdom
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -28,7 +28,7 @@ describe("RotationStrategyPicker", () => {
   it("mirrors only the label into the trigger while retaining list descriptions", () => {
     render(
       <RotationStrategyPicker
-        providerId="openai"
+        providerId="openai-api"
         value="least-used"
         onChange={() => undefined}
       />,
