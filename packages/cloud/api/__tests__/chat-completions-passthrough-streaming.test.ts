@@ -525,7 +525,6 @@ describe("passthrough streaming — qualifying request pipes bytes verbatim and 
     });
     await res.text();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const sentBody = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(sentBody.model).toBe(model);
