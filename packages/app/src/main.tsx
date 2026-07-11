@@ -2947,6 +2947,12 @@ function shouldLoadModelTesterShellRoute(): boolean {
   return path === "/model-tester";
 }
 
+function shouldMountChatWidgetHarnessRoute(): boolean {
+  if (__ELIZA_WEB_SHELL__ !== true) return false;
+  const path = getWindowNavigationPath().replace(/[?#].*$/, "");
+  return path === "/chat-ui-harness" || path === "/chat-ui-harness/";
+}
+
 /**
  * Top-level cloud/public/auth router shell. Web build only — lazy so the chunk
  * (and its react-router / Steward / cloud-provider transitive deps) never lands
@@ -2978,12 +2984,16 @@ const CloudRouterShell = lazy(async () => {
 });
 
 /**
- * Simulator-only production chat gallery. Keeping this behind the literal
- * build flag makes the harness (and its fixture providers) unreachable from
- * ordinary web and native bundles.
+ * Production chat gallery for simulator builds and the reviewable web route.
+ * The web route is gated by __ELIZA_WEB_SHELL__, so the runtime import remains
+ * statically unreachable in ordinary native builds unless the explicit
+ * simulator flag is enabled.
  */
 const ChatWidgetHarness = lazy(async () => {
-  if (__ELIZA_CHAT_UI_HARNESS__ !== true) {
+  if (
+    __ELIZA_CHAT_UI_HARNESS__ !== true &&
+    !shouldMountChatWidgetHarnessRoute()
+  ) {
     throw new Error("ChatWidgetHarness is disabled in this build");
   }
   const mod = await import("@elizaos/ui");
@@ -3035,7 +3045,9 @@ function mountReactApp(): void {
   );
 
   const mainTree =
-    __ELIZA_CHAT_UI_HARNESS__ === true ? (
+    (__ELIZA_CHAT_UI_HARNESS__ === true ||
+      shouldMountChatWidgetHarnessRoute()) &&
+    !isSpecialWindowShell ? (
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
