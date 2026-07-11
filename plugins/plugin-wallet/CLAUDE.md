@@ -19,6 +19,7 @@ Adds a unified wallet action+provider surface to an Eliza agent, replacing the p
 | `WALLET` | `pump_fun_buy` | Buy a pump.fun token on Solana via PumpPortal trade-local, local signing, browser coin-page open, and Solana RPC submission. |
 | `WALLET` | `token_info` | Read-only token/market data (DexScreener, Birdeye, CoinGecko). |
 | `WALLET` | `search_address` | Birdeye wallet/portfolio lookup by address. |
+| `TRADE` | `inspect_account`, `inspect_session`, `submit_order` | Governed Steward trading account/session inspection and confirmed order intent for Hyperliquid and Polymarket. |
 
 Similes handled: `SWAP`, `SWAP_SOLANA`, `TRANSFER`, `TRANSFER_TOKEN`, `WALLET_SWAP`, `WALLET_TRANSFER`, `CROSS_CHAIN_TRANSFER`, `PREPARE_TRANSFER`, `WALLET_ACTION`, `WALLET_GOV`, `PUMP_FUN_BUY`, `PUMPFUN_BUY`, `TOKEN_INFO`, `BIRDEYE_LOOKUP`, `BIRDEYE_SEARCH`, `WALLET_SEARCH_ADDRESS`.
 
@@ -29,6 +30,7 @@ All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) re
 | Name | File | Description |
 |------|------|-------------|
 | `wallet` | `src/providers/wallet-provider.ts` | Injects EVM + Solana addresses into planner context (finance/crypto/wallet contexts, OWNER+ role gate). |
+| `stewardTrading` | `src/providers/steward-trading-provider.ts` | Injects Steward trading capability and governed Hyperliquid/Polymarket session status without secrets. |
 | `evmWalletProvider` | `src/chains/evm/providers/wallet.ts` | EVM-specific wallet context (viem `Account`). |
 | `tokenBalanceProvider` | `src/chains/evm/providers/get-balance.ts` | EVM token balances. |
 | `agentPortfolioProvider` | `src/analytics/birdeye/providers/agent-portfolio-provider.ts` | Birdeye portfolio for configured `BIRDEYE_WALLET_ADDR`. Registered when that setting is present. |
@@ -41,6 +43,7 @@ All on-chain subactions (`transfer`, `swap`, `bridge`, `gov`, `pump_fun_buy`) re
 | Name | Service type key | File | Description |
 |------|-----------------|------|-------------|
 | `WalletBackendService` | `"wallet-backend"` | `src/services/wallet-backend-service.ts` | Core signing router — resolves `WalletBackend`, registers chain handlers, dispatches `routeWalletAction`. |
+| `StewardTradingService` | `"steward-trading"` | `src/services/steward-trading-service.ts` | Governed Steward trading HTTP client for Hyperliquid/Polymarket sessions, accounts, and idempotent order submission. |
 | `EVMService` | EVM service type | `src/chains/evm/service.ts` | EVM RPC + wallet management. |
 | `SolanaService` | `SOLANA_SERVICE_NAME` | `src/chains/solana/service.ts` | Solana RPC, swap routing (Jupiter), portfolio. |
 | `SolanaWalletService` | compat alias | `src/chains/solana/service.ts` | Compatibility alias for consumers expecting the old service name. |
