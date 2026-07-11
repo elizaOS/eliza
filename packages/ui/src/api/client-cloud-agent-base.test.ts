@@ -158,6 +158,14 @@ describe("cloud-agent-base helpers", () => {
 
   it("isElizaCloudControlPlaneAgentlessBase is host-checked (only cloud hosts)", () => {
     expect(
+      isElizaCloudControlPlaneAgentlessBase("https://app.elizacloud.ai"),
+    ).toBe(true);
+    expect(
+      isElizaCloudControlPlaneAgentlessBase(
+        "https://app-staging.elizacloud.ai",
+      ),
+    ).toBe(true);
+    expect(
       isElizaCloudControlPlaneAgentlessBase("https://api.elizacloud.ai"),
     ).toBe(true);
     expect(
@@ -173,6 +181,11 @@ describe("cloud-agent-base helpers", () => {
     // A raw dedicated bridge (non-cloud host) is NOT agentless.
     expect(
       isElizaCloudControlPlaneAgentlessBase("http://195.201.57.227:19411"),
+    ).toBe(false);
+    expect(
+      isElizaCloudControlPlaneAgentlessBase(
+        "https://ff479713-41c8-4d82-92b8-5f0881062189.elizacloud.ai",
+      ),
     ).toBe(false);
   });
 });
