@@ -92,7 +92,11 @@ describe("http handler", () => {
     });
     const handler = buildTestHandler(
       makeDef({
-        handler: { type: "http", url: "https://10.0.0.8/internal", method: "GET" },
+        handler: {
+          type: "http",
+          url: "https://10.0.0.8/internal",
+          method: "GET",
+        },
         parameters: [],
       }),
     );
