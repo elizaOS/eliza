@@ -9,7 +9,10 @@ import type { FailureCode } from "../actions/failure-codes.js";
 export type Venue = "hyperliquid" | "polymarket";
 
 export type TradeOutcomeClass =
-  "not_attempted" | "rejected" | "unknown" | "policy_denied";
+  | "not_attempted"
+  | "rejected"
+  | "unknown"
+  | "policy_denied";
 
 export type PolicyDenyReason =
   | "market-not-allowed"
@@ -100,7 +103,8 @@ export type PolymarketSubmitOrderRequest = {
 };
 
 export type SubmitOrderRequest =
-  HyperliquidSubmitOrderRequest | PolymarketSubmitOrderRequest;
+  | HyperliquidSubmitOrderRequest
+  | PolymarketSubmitOrderRequest;
 
 export interface CancelOrderRequest {
   readonly venue: Venue;
