@@ -11,6 +11,30 @@ type RuntimeCache = {
   deleteCache?(key: string): Promise<unknown>;
 };
 
+export class ElizaError extends Error {
+  readonly code: string;
+  readonly context?: Record<string, unknown>;
+  readonly severity?: "ephemeral" | "fatal";
+
+  constructor(
+    message: string,
+    options: {
+      code: string;
+      cause?: unknown;
+      context?: Record<string, unknown>;
+      severity?: "ephemeral" | "fatal";
+    },
+  ) {
+    super(
+      message,
+      options.cause === undefined ? undefined : { cause: options.cause },
+    );
+    this.code = options.code;
+    this.context = options.context;
+    this.severity = options.severity;
+  }
+}
+
 export class Service {
   static serviceType = "service";
 
