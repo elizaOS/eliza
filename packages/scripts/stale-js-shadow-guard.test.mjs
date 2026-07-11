@@ -49,3 +49,10 @@ test("clean mode removes every detected shadow and preserves unrelated JavaScrip
   assert.equal(readFileSync(unrelated, "utf8"), "valid\n");
   assert.deepEqual(findStaleJsShadows(root), []);
 });
+
+test("allows source archives that do not contain Git metadata", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "eliza-source-archive-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  assert.equal(run({ root }), 0);
+});

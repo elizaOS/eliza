@@ -28,6 +28,13 @@ export function findStaleJsShadows(root = scriptRoot) {
 }
 
 export function run({ root = scriptRoot, clean = false } = {}) {
+  if (!existsSync(resolve(root, ".git"))) {
+    process.stdout.write(
+      "Skipping ignored JavaScript shadow check because Git metadata is unavailable.\n",
+    );
+    return 0;
+  }
+
   const shadows = findStaleJsShadows(root);
   if (shadows.length === 0) {
     process.stdout.write("No ignored JavaScript source shadows found.\n");
