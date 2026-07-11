@@ -473,9 +473,8 @@ export function SubscriptionStatus({
       }
       setSetupTokenSuccess(true);
       setSetupTokenValue("");
-      await handleSelectSubscription("anthropic-subscription");
+      await handleSelectSubscription("anthropic-subscription", false);
       await loadSubscriptionStatus();
-      await client.restartAgent();
       setTimeout(() => setSetupTokenSuccess(false), 2000);
     } catch (err) {
       setAnthropicError(
@@ -530,8 +529,7 @@ export function SubscriptionStatus({
         setAnthropicConnected(true);
         setAnthropicOAuthStarted(false);
         setAnthropicCode("");
-        await handleSelectSubscription("anthropic-subscription");
-        await client.restartAgent();
+        await handleSelectSubscription("anthropic-subscription", false);
         await loadSubscriptionStatus();
         return;
       }
@@ -592,8 +590,7 @@ export function SubscriptionStatus({
         setOpenaiConnected(true);
         setOpenaiOAuthStarted(false);
         setOpenaiCallbackUrl("");
-        await handleSelectSubscription("openai-subscription");
-        await client.restartAgent();
+        await handleSelectSubscription("openai-subscription", false);
         await loadSubscriptionStatus();
         return;
       }
