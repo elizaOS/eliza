@@ -13,7 +13,13 @@ const workflowPath = fileURLToPath(
 test("changed Bun coverage tests use eliza-source workspace exports", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   expect(workflow).toMatch(
-    /bun test --conditions=eliza-source "\$\{changed_tests\[@\]\}" --coverage/,
+    /bun test --conditions=eliza-source "\$\{shared_tests\[@\]\}" --coverage/,
+  );
+  expect(workflow).toContain(
+    "packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts",
+  );
+  expect(workflow).toMatch(
+    /bun test --conditions=eliza-source "\$\{process_isolated_tests\[\$index\]\}" --coverage/,
   );
 });
 
