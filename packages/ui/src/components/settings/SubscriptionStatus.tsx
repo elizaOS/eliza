@@ -289,7 +289,9 @@ function SubscriptionProviderPanel({
       {preOauthSlot}
 
       {bodyOverride ??
-        (connected ? (
+        // Keep an in-progress add-account OAuth form visible even when a
+        // background refresh reports that another account is connected.
+        (!oauthStarted && connected ? (
           <p className="text-xs text-muted">{connectedSummary}</p>
         ) : !oauthStarted ? (
           <div className="space-y-1.5">
