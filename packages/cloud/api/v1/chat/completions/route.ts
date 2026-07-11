@@ -452,6 +452,10 @@ function mergePromptCacheProviderOptions(
     "providerOptions" in base && base.providerOptions
       ? { ...base.providerOptions }
       : {};
+  providerOptions.openai = {
+    ...(providerOptions.openai ?? {}),
+    promptCacheKey: key,
+  };
   providerOptions.cerebras = {
     ...(providerOptions.cerebras ?? {}),
     prompt_cache_key: key,
@@ -462,6 +466,10 @@ function mergePromptCacheProviderOptions(
     promptCacheKey: key,
   };
   return { ...base, providerOptions };
+}
+
+function redactPromptCacheKey(value: string, key: string | undefined): string {
+  return key ? value.replaceAll(key, "[REDACTED_PROMPT_CACHE_KEY]") : value;
 }
 
 // ============================================================================
@@ -1088,6 +1096,7 @@ async function recordPooledInferenceSuccess(
 async function recordPooledInferenceFailure(
   pooledCredential: PooledInferenceCredential | null,
   error: unknown,
+  promptCacheKey?: string,
 ): Promise<void> {
   if (!pooledCredential) return;
   const status =
@@ -1098,7 +1107,10 @@ async function recordPooledInferenceFailure(
     credentialId: pooledCredential.credentialId,
     providerId: pooledCredential.providerId,
     status,
-    detail: error instanceof Error ? error.message : String(error),
+    detail: redactPromptCacheKey(
+      error instanceof Error ? error.message : String(error),
+      promptCacheKey,
+    ),
   });
 }
 
@@ -1153,6 +1165,7 @@ export async function handleChatCompletionsPOST(
   // Hoisted so the catch below can echo the requested model in the sanitized
   // provider-configuration error; set right after the body parses.
   let model = "";
+  let promptCacheKeyForRedaction: string | undefined;
 
   try {
     // 1. Authenticate (+ moderation). #9899: API-key dedicated-agent requests
@@ -1290,6 +1303,7 @@ export async function handleChatCompletionsPOST(
         ),
       );
     }
+    promptCacheKeyForRedaction = promptCacheKeyResult.key;
     const normalizedModel = normalizeModelName(model);
     const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
     const cotOptions =
@@ -1867,12 +1881,18 @@ export async function handleChatCompletionsPOST(
     return preforwardResponse;
   } catch (error) {
     await settleReservation?.(0);
-    const rawMessage = error instanceof Error ? error.message : String(error);
+    const rawMessage = redactPromptCacheKey(
+      error instanceof Error ? error.message : String(error),
+      promptCacheKeyForRedaction,
+    );
     logger.error("[Chat Completions] Error", {
       error: rawMessage,
       cause:
         error instanceof Error && error.cause
-          ? String((error.cause as Error).message ?? error.cause)
+          ? redactPromptCacheKey(
+              String((error.cause as Error).message ?? error.cause),
+              promptCacheKeyForRedaction,
+            )
           : undefined,
     });
     // Provider-configuration failures (missing/invalid provider keys) carry
@@ -2324,10 +2344,12 @@ async function tryPassthroughStreamingRequest(params: {
         getObjectValue(parseJsonObject(bodyText), "error"),
         "message",
       );
-      message =
+      message = redactPromptCacheKey(
         typeof upstreamMessage === "string" && upstreamMessage.trim()
           ? upstreamMessage
-          : `upstream provider returned ${upstreamResponse.status}`;
+          : `upstream provider returned ${upstreamResponse.status}`,
+        "error" in promptCacheKey ? undefined : promptCacheKey.key,
+      );
     } else {
       // error-policy:J6 best-effort teardown — release the upstream connection;
       // the (auth/infra) body is intentionally unused.
@@ -2535,11 +2557,13 @@ async function handleStreamingRequest(
   }
 
   const promptCacheKeyResult = resolvePromptCacheKey(request);
+  const promptCacheKey =
+    "error" in promptCacheKeyResult ? undefined : promptCacheKeyResult.key;
   const modelProviderOptions = mergePromptCacheProviderOptions(
     cotOptions,
     getProviderFromModel(model).startsWith("cerebras") &&
       !("error" in promptCacheKeyResult)
-      ? promptCacheKeyResult.key
+      ? promptCacheKey
       : undefined,
   );
   const provider = getProviderFromModel(model);
@@ -2732,12 +2756,19 @@ async function handleStreamingRequest(
     // later onFinish/onAbort cannot double-refund.
     onError: async ({ error }: { error: unknown }) => {
       await refundStreamingReservationOnce();
-      await recordPooledInferenceFailure(pooledCredential, error);
+      await recordPooledInferenceFailure(
+        pooledCredential,
+        error,
+        promptCacheKey,
+      );
       logger.error(
         "[Chat Completions] Stream provider error — reservation refunded",
         {
           model,
-          error: error instanceof Error ? error.message : String(error),
+          error: redactPromptCacheKey(
+            error instanceof Error ? error.message : String(error),
+            promptCacheKey,
+          ),
         },
       );
     },
@@ -2971,7 +3002,11 @@ async function handleStreamingRequest(
           await settleStreamingAbortOnce([]);
         } else {
           await refundStreamingReservationOnce();
-          await recordPooledInferenceFailure(pooledCredential, error);
+          await recordPooledInferenceFailure(
+            pooledCredential,
+            error,
+            promptCacheKey,
+          );
         }
         // Same sanitization as the non-streaming path: a provider-
         // configuration failure surfacing mid-stream (e.g. the gateway's
@@ -2984,7 +3019,10 @@ async function handleStreamingRequest(
             "[Chat Completions] Provider configuration error during stream",
             {
               model,
-              error: error instanceof Error ? error.message : String(error),
+              error: redactPromptCacheKey(
+                error instanceof Error ? error.message : String(error),
+                promptCacheKey,
+              ),
             },
           );
         }
@@ -2997,9 +3035,10 @@ async function handleStreamingRequest(
             error: {
               message: isConfigError
                 ? modelNotAvailableMessage(model)
-                : error instanceof Error
-                  ? error.message
-                  : String(error),
+                : redactPromptCacheKey(
+                    error instanceof Error ? error.message : String(error),
+                    promptCacheKey,
+                  ),
               // Same status→type mapping as the non-streaming path — a
               // hardcoded "rate_limit_error" here mislabeled every mid-stream
               // provider failure (schema 400s, upstream 5xx) as rate limiting,
@@ -3080,10 +3119,12 @@ async function handleNonStreamingRequest(
     pooledCredential && !useMonetizedAppBilling ? null : affiliateCode;
 
   const promptCacheKeyResult = resolvePromptCacheKey(request);
+  const promptCacheKey =
+    "error" in promptCacheKeyResult ? undefined : promptCacheKeyResult.key;
   const modelProviderOptions = mergePromptCacheProviderOptions(
     cotOptions,
     provider.startsWith("cerebras") && !("error" in promptCacheKeyResult)
-      ? promptCacheKeyResult.key
+      ? promptCacheKey
       : undefined,
   );
 
@@ -3288,7 +3329,7 @@ async function handleNonStreamingRequest(
     );
   } catch (error) {
     await settleReservation?.(0);
-    await recordPooledInferenceFailure(pooledCredential, error);
+    await recordPooledInferenceFailure(pooledCredential, error, promptCacheKey);
     throw error;
   }
 }
@@ -3356,6 +3397,7 @@ export const __nativeToolingTestHooks = {
   toOpenAiFinishReason,
   resolvePromptCacheKey,
   mergePromptCacheProviderOptions,
+  redactPromptCacheKey,
 } as const;
 
 /** Test seam for the non-streaming AI SDK forwarding contract. */

@@ -547,6 +547,9 @@ describe("Cerebras prompt cache key", () => {
       "v5:abc",
     );
     expect(merged.providerOptions?.anthropic).toBeDefined();
+    expect(merged.providerOptions?.openai).toMatchObject({
+      promptCacheKey: "v5:abc",
+    });
     expect(merged.providerOptions?.cerebras).toMatchObject({
       prompt_cache_key: "v5:abc",
       promptCacheKey: "v5:abc",
@@ -554,5 +557,17 @@ describe("Cerebras prompt cache key", () => {
     expect(merged.providerOptions?.eliza).toMatchObject({
       promptCacheKey: "v5:abc",
     });
+  });
+  test("redacts an echoed cache key without changing unrelated errors", () => {
+    const { redactPromptCacheKey } = __nativeToolingTestHooks;
+    expect(
+      redactPromptCacheKey(
+        "provider rejected opaque-cache-key in request",
+        "opaque-cache-key",
+      ),
+    ).toBe("provider rejected [REDACTED_PROMPT_CACHE_KEY] in request");
+    expect(redactPromptCacheKey("queue is saturated", "opaque-cache-key")).toBe(
+      "queue is saturated",
+    );
   });
 });

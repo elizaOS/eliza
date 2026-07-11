@@ -784,6 +784,29 @@ describe("passthrough streaming — upstream errors fail closed and refund the h
     expect(streamText).not.toHaveBeenCalled();
   });
 
+  test("redacts an echoed prompt cache key from an upstream error", async () => {
+    const promptCacheKey = "opaque-cache-key-secret";
+    fetchImpl = async () =>
+      Response.json(
+        {
+          error: {
+            message: `prompt cache key ${promptCacheKey} is invalid`,
+            type: "invalid_request_error",
+          },
+        },
+        { status: 400 },
+      );
+
+    const res = await callStreaming(async () => null, {
+      request: { ...QUALIFYING_REQUEST, prompt_cache_key: promptCacheKey },
+    });
+    const body = await res.text();
+
+    expect(res.status).toBe(400);
+    expect(body).toContain("[REDACTED_PROMPT_CACHE_KEY]");
+    expect(body).not.toContain(promptCacheKey);
+  });
+
   test("upstream 500 surfaces as 503 service_unavailable; hold refunded", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);
