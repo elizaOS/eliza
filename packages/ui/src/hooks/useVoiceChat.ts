@@ -28,6 +28,7 @@ import {
   invokeDesktopBridgeRequest,
 } from "../bridge/electrobun-rpc";
 import {
+  getNativePlugin,
   getTalkModePlugin,
   type TalkModeErrorEvent,
   type TalkModeStateEvent,
@@ -43,6 +44,11 @@ import {
 } from "../utils/tts-debug";
 import { voiceCaptureDebug } from "../utils/voice-capture-debug";
 import { hasConfiguredApiKey } from "../voice";
+import {
+  type CapacitorHttpRequest,
+  isCapacitorHttpAudioUrl,
+  requestCapacitorAudio,
+} from "../voice/capacitor-http-audio";
 import {
   isLocalAsrCaptureSupported,
   isSilentWav,
@@ -1892,71 +1898,93 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       }
 
       if (!audioBytes) {
-        const controller = new AbortController();
-        activeFetchAbortRef.current = controller;
-        const timeoutId = setTimeout(() => {
-          controller.abort(
-            new DOMException("Eliza Cloud TTS timed out", "TimeoutError"),
+        const apiToken = getElizaApiToken()?.trim() ?? "";
+        const dbg = task.debugUtteranceContext;
+        // Shared-tier fallback (#15395): a shared-runtime agent has no
+        // `/api/tts/cloud` container route, so target the cloud API worker.
+        const sharedTtsOrigin = currentSharedRuntimeVoiceOrigin();
+        const ttsTarget = sharedTtsOrigin
+          ? sharedRuntimeTtsUrl(sharedTtsOrigin)
+          : resolveApiUrl("/api/tts/cloud");
+        const requestHeaders = {
+          ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+          ...(isTtsDebugEnabled() && dbg
+            ? {
+                "x-elizaos-tts-message-id": encodeURIComponent(dbg.messageId),
+                "x-elizaos-tts-clip-segment": encodeURIComponent(task.segment),
+                "x-elizaos-tts-full-preview": encodeURIComponent(
+                  dbg.fullAssistTextPreview,
+                ),
+              }
+            : {}),
+        };
+        const nativeRequest =
+          Capacitor.isNativePlatform() && isCapacitorHttpAudioUrl(ttsTarget)
+            ? getNativePlugin<{ request?: CapacitorHttpRequest }>(
+                "CapacitorHttp",
+              ).request
+            : undefined;
+
+        if (nativeRequest) {
+          // Capacitor's fetch patch text-decodes binary bodies. The native
+          // arraybuffer response arrives as base64 and preserves every WAV byte.
+          const nativeResponse = await requestCapacitorAudio(
+            nativeRequest,
+            ttsTarget,
+            { text },
+            requestHeaders,
+            CLOUD_TTS_TIMEOUT_MS,
           );
-        }, CLOUD_TTS_TIMEOUT_MS);
-        let res: Response;
-        try {
-          const apiToken = getElizaApiToken()?.trim() ?? "";
-          const dbg = task.debugUtteranceContext;
-          // Shared-tier fallback (#15395): a shared-runtime agent has no
-          // `/api/tts/cloud` container route (404s), so target the cloud API
-          // worker's provider-agnostic v1 TTS route instead. Same `{ text }`
-          // JSON body, same audio-bytes response — no adaptation needed beyond
-          // the URL. Dedicated-tier agents keep `/api/tts/cloud` unchanged
-          // (sharedTtsOrigin is null for them).
-          const sharedTtsOrigin = currentSharedRuntimeVoiceOrigin();
-          const ttsTarget = sharedTtsOrigin
-            ? sharedRuntimeTtsUrl(sharedTtsOrigin)
-            : resolveApiUrl("/api/tts/cloud");
-          res = await fetchWithCsrf(ttsTarget, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-              ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
-              ...(isTtsDebugEnabled() && dbg
-                ? {
-                    "x-elizaos-tts-message-id": encodeURIComponent(
-                      dbg.messageId,
-                    ),
-                    "x-elizaos-tts-clip-segment": encodeURIComponent(
-                      task.segment,
-                    ),
-                    "x-elizaos-tts-full-preview": encodeURIComponent(
-                      dbg.fullAssistTextPreview,
-                    ),
-                  }
-                : {}),
-            },
-            body: JSON.stringify({ text }),
-            signal: controller.signal,
-          });
-        } finally {
-          clearTimeout(timeoutId);
-          if (activeFetchAbortRef.current === controller) {
-            activeFetchAbortRef.current = null;
+          if (
+            nativeResponse.status < 200 ||
+            nativeResponse.status >= 300 ||
+            nativeResponse.bytes.length === 0
+          ) {
+            throw new Error(`Eliza Cloud TTS ${nativeResponse.status}`);
           }
+          audioBytes = nativeResponse.bytes;
+        } else {
+          const controller = new AbortController();
+          activeFetchAbortRef.current = controller;
+          const timeoutId = setTimeout(() => {
+            controller.abort(
+              new DOMException("Eliza Cloud TTS timed out", "TimeoutError"),
+            );
+          }, CLOUD_TTS_TIMEOUT_MS);
+          let res: Response;
+          try {
+            res = await fetchWithCsrf(ttsTarget, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
+                ...requestHeaders,
+              },
+              body: JSON.stringify({ text }),
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timeoutId);
+            if (activeFetchAbortRef.current === controller) {
+              activeFetchAbortRef.current = null;
+            }
+          }
+
+          if (!res.ok) {
+            const body = await res.text().catch(() => "");
+            ttsDebug("useVoiceChat:eliza-cloud-http-error", {
+              status: res.status,
+              ttsTarget: describeTtsCloudFetchTargetForDebug(),
+              hadBearer: Boolean(apiToken),
+              bodyPreview: body.slice(0, 120),
+            });
+            throw new Error(
+              `Eliza Cloud TTS ${res.status}: ${body.slice(0, 200)}`,
+            );
+          }
+          audioBytes = new Uint8Array(await res.arrayBuffer());
         }
 
-        if (!res.ok) {
-          const body = await res.text().catch(() => "");
-          ttsDebug("useVoiceChat:eliza-cloud-http-error", {
-            status: res.status,
-            ttsTarget: describeTtsCloudFetchTargetForDebug(),
-            hadBearer: Boolean(getElizaApiToken()?.trim()),
-            bodyPreview: body.slice(0, 120),
-          });
-          throw new Error(
-            `Eliza Cloud TTS ${res.status}: ${body.slice(0, 200)}`,
-          );
-        }
-
-        audioBytes = new Uint8Array(await res.arrayBuffer());
         if (cacheKey) {
           rememberCachedSegment(cacheKey, audioBytes.slice());
         }
