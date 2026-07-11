@@ -2,7 +2,7 @@
  * Fixture for the notification-shade browser regression run: seeds the store
  * with a spread that exercises every shade surface — a multi-row interrupt
  * group (renders as the rested Z-stack), a solo interrupt row, and
- * sub-interrupt rows (hidden at rest behind the pull hint, including the
+ * sub-interrupt rows (hidden at rest until a pull, including the
  * onboarding "Take the tour" row the capture asserts appears after the pull
  * gesture expands the shade).
  */
@@ -16,24 +16,27 @@ import {
 import { NotificationsHomeCenter } from "../NotificationsHomeCenter";
 
 const SEED_SET: Array<Partial<AgentNotification>> = [
-  // One view-group with three interrupt rows → the rested Z-stack (urgent on
+  // One producer with three interrupt rows → the rested Z-stack (urgent on
   // top, two glass peeks beneath).
   {
     title: "Build failed on main",
     body: "verify lane: typecheck exited 1 — tap to open the run.",
     category: "task",
     priority: "urgent",
+    source: "github",
   },
   {
     title: "PR #42 approved",
     body: "Ready to merge once CI settles.",
     category: "task",
     priority: "high",
+    source: "github",
   },
   {
     title: "Deploy queued",
     category: "task",
     priority: "high",
+    source: "github",
   },
   // A solo interrupt row in its own group → renders flat next to the stack.
   {
@@ -42,7 +45,7 @@ const SEED_SET: Array<Partial<AgentNotification>> = [
     category: "system",
     priority: "high",
   },
-  // Sub-interrupt rows: hidden at rest behind the "N more" pull hint.
+  // Sub-interrupt rows: hidden at rest until the shade is pulled open.
   {
     title: "Take the tour",
     body: "New here? A one-minute tour runs right in the chat — it walks you through messaging, voice, and navigating by asking.",

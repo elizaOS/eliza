@@ -98,6 +98,16 @@ describe("applyUiAccent — document root override", () => {
 });
 
 describe("useDisplayPreferences — accent persistence", () => {
+  it("keeps the app dark when legacy callers request another theme", () => {
+    const { result } = renderHook(() => useDisplayPreferences());
+    act(() => {
+      result.current.setUiThemeMode("light");
+      result.current.setUiTheme("light");
+    });
+    expect(result.current.state.uiThemeMode).toBe("dark");
+    expect(result.current.state.uiTheme).toBe("dark");
+  });
+
   it("defaults to the brand accent with no override applied", () => {
     const { result } = renderHook(() => useDisplayPreferences());
     expect(result.current.state.uiAccentId).toBe(DEFAULT_ACCENT_ID);

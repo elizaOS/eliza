@@ -1,5 +1,15 @@
 // Exercises eliza sandbox behavior with deterministic cloud-shared lib fixtures.
-import { afterAll, afterEach, describe, expect, jest, mock, spyOn, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  jest,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import { KeyNotFoundError, KmsError, orgKey } from "@elizaos/security/kms";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
@@ -71,10 +81,14 @@ async function realKeyRotatedAwayError(): Promise<Error> {
 // never touch this swapped `dbWrite`. The override is restored in `afterAll` so
 // it cannot leak into other files in the shared single-process run.
 type UpgradeTx = { execute: (query: unknown) => Promise<{ rows: Array<{ id: string }> }> };
+// VALUE snapshot taken at module evaluation, while no mock is installed:
+// `db/helpers` re-exports `dbWrite` from `db/client`, so bun's module mocks
+// patch the SHARED live binding — building the restore (or this override's
+// spread) from the live namespace after a mock landed would capture the mock.
 const realHelpers = { ...realHelpersNs };
 let upgradeTransactionImpl: (<T>(fn: (tx: UpgradeTx) => Promise<T>) => Promise<T>) | null = null;
 const upgradeDbWrite = {
-  ...(realHelpersNs.dbWrite as unknown as Record<string, unknown>),
+  ...(realHelpers.dbWrite as unknown as Record<string, unknown>),
   transaction: <T>(fn: (tx: UpgradeTx) => Promise<T>): Promise<T> => {
     if (!upgradeTransactionImpl) {
       throw new Error(
@@ -84,10 +98,16 @@ const upgradeDbWrite = {
     return upgradeTransactionImpl(fn);
   },
 };
-mock.module("../../db/helpers", () => ({
-  ...realHelpers,
-  dbWrite: upgradeDbWrite,
-}));
+// Installed in beforeAll — never at module scope: `bun test` evaluates every
+// test file's module scope up front, so a module-scope mock would clobber the
+// shared helpers/client bindings under every OTHER suite in a multi-file run
+// (the changed-files coverage lane co-runs suites in one process, #15943).
+beforeAll(() => {
+  mock.module("../../db/helpers", () => ({
+    ...realHelpers,
+    dbWrite: upgradeDbWrite,
+  }));
+});
 afterAll(() => {
   mock.module("../../db/helpers", () => realHelpers);
 });
@@ -1229,7 +1249,9 @@ describe("ElizaSandboxService recoverDisconnected", () => {
       findSpy.mockRestore();
       casSpy.mockRestore();
     }
-  });
+    // The unreachable path burns real probe-retry backoff (~5-6s of sleeps);
+    // under the multi-suite coverage lane that overruns the default 5s budget.
+  }, 20_000);
 
   test("reports gone (and never probes) when the row is no longer disconnected", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
@@ -4581,3 +4603,121 @@ function sqlBoundParams(query: unknown): unknown[] {
   if (!query || typeof query !== "object" || !("queryChunks" in query)) return [];
   return new PgDialect().sqlToQuery(query as SQL).params;
 }
+
+describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () => {
+  test("updateAgentProfile merges a partial config edit into the existing config and applies the name", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const existing = {
+      ...customSandbox(),
+      agent_config: { system: "old system", temperature: 0.7 },
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      existing,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...existing, ...updates }) as AgentSandbox,
+    );
+    try {
+      const result = await new ElizaSandboxService().updateAgentProfile(
+        existing.id,
+        existing.organization_id,
+        { agentName: "Renamed", agentConfig: { system: "new system" } },
+      );
+      // A partial config edit must never drop sibling keys (the merge is the
+      // whole reason this method exists — a raw update would clobber them).
+      expect(updateSpy).toHaveBeenCalledWith(existing.id, {
+        agent_name: "Renamed",
+        agent_config: { system: "new system", temperature: 0.7 },
+      });
+      expect(result?.agent_name).toBe("Renamed");
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+
+  test("updateAgentProfile returns undefined for an unknown/foreign agent and writes nothing", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      undefined,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(undefined);
+    try {
+      const result = await new ElizaSandboxService().updateAgentProfile(
+        "dddddddd-9999-4999-8999-999999999999",
+        "22222222-2222-4222-8222-222222222222",
+        { agentName: "Nope" },
+      );
+      expect(result).toBeUndefined();
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+
+  test("updateAgentProfile with no edits returns the row untouched without writing", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const existing = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      existing,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(existing);
+    try {
+      const result = await new ElizaSandboxService().updateAgentProfile(
+        existing.id,
+        existing.organization_id,
+        {},
+      );
+      expect(result).toBe(existing);
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+
+  test("updateAgentEnvironment writes through the at-rest encryption boundary (org-scoped read, repo update)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const existing = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(existing);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async (_id, updates) => ({ ...existing, ...updates }) as AgentSandbox,
+    );
+    try {
+      const result = await new ElizaSandboxService().updateAgentEnvironment(
+        existing.id,
+        existing.organization_id,
+        { MY_FLAG: "on" },
+      );
+      // Without SECRETS_MASTER_KEY the encryptor passes values through
+      // (legacy plaintext behavior) — the write must still round through it
+      // so configured environments encrypt BYO secrets at rest (#11332).
+      expect(updateSpy).toHaveBeenCalledWith(existing.id, {
+        environment_vars: { MY_FLAG: "on" },
+      });
+      expect((result?.environment_vars as Record<string, string>).MY_FLAG).toBe("on");
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+
+  test("updateAgentEnvironment returns undefined for an unknown agent and writes nothing", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(undefined);
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockResolvedValue(undefined);
+    try {
+      const result = await new ElizaSandboxService().updateAgentEnvironment(
+        "dddddddd-9999-4999-8999-999999999999",
+        "22222222-2222-4222-8222-222222222222",
+        { MY_FLAG: "on" },
+      );
+      expect(result).toBeUndefined();
+      expect(updateSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+    }
+  });
+});

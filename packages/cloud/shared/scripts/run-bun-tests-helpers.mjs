@@ -258,10 +258,23 @@ export function resolveAttemptTimeoutMs(env) {
  * is treated as one glob and silently matches nothing (verified on bun 1.4.0).
  */
 export function buildMainPassArgs(quarantinedSuites, passthroughArgs) {
+  const forwarded = [];
+  for (let index = 0; index < passthroughArgs.length; index += 1) {
+    const arg = passthroughArgs[index];
+    if (arg === "--path-ignore-patterns") {
+      const pattern = passthroughArgs[index + 1];
+      if (pattern !== undefined) {
+        forwarded.push(`--path-ignore-patterns=${pattern}`);
+        index += 1;
+      }
+      continue;
+    }
+    forwarded.push(arg);
+  }
   return [
     "--isolate",
     ...quarantinedSuites.map((suite) => `--path-ignore-patterns=${suite}`),
-    ...passthroughArgs,
+    ...forwarded,
   ];
 }
 

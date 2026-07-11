@@ -1,9 +1,8 @@
-// @vitest-environment jsdom
-//
-// E2E-ish: drives the CockpitRoute container through the REAL spawn path
-// (poll roster -> render deck -> form submit -> client.createOrchestratorTask),
-// mocking only at the client boundary (the live orchestrator). Proves the
-// cockpit's spawn wiring end to end without a running agent.
+/**
+ * Drives the route through the spawn path with only the live orchestrator
+ * client boundary replaced, including its deck, drill-in, and error states.
+ * @vitest-environment jsdom
+ */
 import {
   cleanup,
   fireEvent,
@@ -18,6 +17,11 @@ const mocks = vi.hoisted(() => ({
   getOrchestratorRooms: vi.fn(),
   createOrchestratorTask: vi.fn(),
   addOrchestratorAgent: vi.fn(),
+  listProjects: vi.fn(),
+  cockpitViewProps: null as {
+    className?: string;
+    repoSuggestionsUnavailable?: boolean;
+  } | null,
 }));
 
 type ButtonMockProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "size"> & {
@@ -33,6 +37,7 @@ vi.mock("@elizaos/ui", () => ({
     getOrchestratorRooms: mocks.getOrchestratorRooms,
     createOrchestratorTask: mocks.createOrchestratorTask,
     addOrchestratorAgent: mocks.addOrchestratorAgent,
+    listProjects: mocks.listProjects,
   },
   Button: (props: ButtonMockProps) => {
     const {
@@ -58,37 +63,44 @@ vi.mock("@elizaos/ui", () => ({
     onSelectRoom?: (id: string) => void;
     busy?: boolean;
     error?: string | null;
-  }) => (
-    <div>
-      <span data-testid="rooms-count">{props.rooms?.rooms?.length ?? -1}</span>
-      {props.error ? <span data-testid="err">{props.error}</span> : null}
-      <button
-        type="button"
-        data-testid="spawn"
-        disabled={props.busy}
-        onClick={() =>
-          props.onCreateSession({
-            title: "fix the auth bug",
-            goal: "fix the auth bug",
-            providerPolicy: {
-              preferredFramework: "elizaos",
-              providerSource: "eliza-cloud",
-              model: "gemma-4-31b",
-            },
-          })
-        }
-      >
-        spawn
-      </button>
-      <button
-        type="button"
-        data-testid="drill-in"
-        onClick={() => props.onSelectRoom?.("task-1")}
-      >
-        open
-      </button>
-    </div>
-  ),
+    repoSuggestionsUnavailable?: boolean;
+    className?: string;
+  }) => {
+    mocks.cockpitViewProps = props;
+    return (
+      <div>
+        <span data-testid="rooms-count">
+          {props.rooms?.rooms?.length ?? -1}
+        </span>
+        {props.error ? <span data-testid="err">{props.error}</span> : null}
+        <button
+          type="button"
+          data-testid="spawn"
+          disabled={props.busy}
+          onClick={() =>
+            props.onCreateSession({
+              title: "fix the auth bug",
+              goal: "fix the auth bug",
+              providerPolicy: {
+                preferredFramework: "elizaos",
+                providerSource: "eliza-cloud",
+                model: "gemma-4-31b",
+              },
+            })
+          }
+        >
+          spawn
+        </button>
+        <button
+          type="button"
+          data-testid="drill-in"
+          onClick={() => props.onSelectRoom?.("task-1")}
+        >
+          open
+        </button>
+      </div>
+    );
+  },
 }));
 
 // Stub the (separately-tested) heavy session pane — the container test only
@@ -112,10 +124,19 @@ afterEach(() => {
 });
 
 describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)", () => {
+  it("surfaces an unavailable repo registry while preserving manual repo entry", async () => {
+    mocks.listProjects.mockRejectedValueOnce(new Error("registry offline"));
+    render(<CockpitRoute />);
+    await waitFor(() =>
+      expect(mocks.cockpitViewProps?.repoSuggestionsUnavailable).toBe(true),
+    );
+  });
+
   beforeEach(() => {
     mocks.getOrchestratorRooms.mockResolvedValue({ rooms: [{ taskId: "t1" }] });
     mocks.createOrchestratorTask.mockResolvedValue({ id: "task-1" });
     mocks.addOrchestratorAgent.mockResolvedValue({ id: "task-1" });
+    mocks.listProjects.mockResolvedValue({ projects: [] });
   });
 
   it("polls the room roster and renders the deck", async () => {
@@ -124,6 +145,12 @@ describe("CockpitRoute — live spawn wiring (agent mocked at client boundary)",
     await waitFor(() =>
       expect(screen.getByTestId("rooms-count").textContent).toBe("1"),
     );
+  });
+
+  it("reserves scroll clearance for the floating terminal controls", async () => {
+    render(<CockpitRoute />);
+    await waitFor(() => expect(mocks.cockpitViewProps).not.toBeNull());
+    expect(mocks.cockpitViewProps?.className).toContain("pb-20");
   });
 
   it("spawning creates the task AND spawns the agent with the picked mode", async () => {

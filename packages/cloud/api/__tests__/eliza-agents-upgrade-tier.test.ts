@@ -39,6 +39,9 @@ const SLEEPING_TARGET = "cccccccc-9999-4999-8999-999999999999";
 const SHARED_CONCURRENT = "cccccccc-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SHARED_B = "cccccccc-2222-4222-8222-222222222222";
 const MISSING = "dddddddd-9999-4999-8999-999999999999";
+const ORG_FULL = "33333333-3333-4333-8333-333333333333";
+const USER_FULL = "bbbbbbbb-2222-4222-8222-222222222222";
+const SHARED_FULL = "cccccccc-ffff-4fff-8fff-ffffffffffff";
 
 // Caller identity is switchable so the cross-org denial path is exercised for
 // real (org A's user probing org B's agent).
@@ -51,10 +54,11 @@ const currentUser = {
   role: "owner",
 };
 
-mock.module("@/lib/auth", () => ({
-  ...realAuth,
-  requireAuthOrApiKeyWithOrg: mock(async () => ({ user: currentUser })),
-}));
+// VALUE snapshot at module evaluation + mock installed in beforeAll — never at
+// module scope: `bun test` evaluates every test file's module scope up front,
+// so a module-scope mock would patch the shared auth module under every OTHER
+// suite in a multi-file run (the coverage lane co-runs changed suites, #15943).
+const realAuthSnapshot = { ...realAuth };
 
 const ENV = { NODE_ENV: "test" } as unknown as AppEnv["Bindings"];
 
@@ -73,6 +77,11 @@ async function setOrgBalance(orgId: string, balance: string): Promise<void> {
 
 beforeAll(async () => {
   try {
+    mock.module("@/lib/auth", () => ({
+      ...realAuthSnapshot,
+      requireAuthOrApiKeyWithOrg: mock(async () => ({ user: currentUser })),
+    }));
+
     const { closeDatabaseConnectionsForTests, dbWrite } = await import(
       "@/db/client"
     );
@@ -80,29 +89,17 @@ beforeAll(async () => {
 
     const { organizations } = await import("@/db/schemas/organizations");
     const { users } = await import("@/db/schemas/users");
+    // Plain DDL instead of drizzle-kit pushSchema: the coverage lane co-runs
+    // every changed suite in ONE bun process, and drizzle-kit answers internal
+    // errors there with a silent process.exit(1) that kills the whole run.
+    const { TIER_UPGRADE_TEST_TABLES } = await import(
+      "@/lib/services/__tests__/tier-upgrade-pglite-schema"
+    );
+    for (const ddl of TIER_UPGRADE_TEST_TABLES) {
+      await dbWrite.execute(ddl);
+    }
     const { userCharacters } = await import("@/db/schemas/user-characters");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
-    const { apiKeys } = await import("@/db/schemas/api-keys");
-    // jobs → generations → usage_records is a pure FK chain; the extra tables
-    // exist only so the pushed schema's constraints resolve.
-    const { usageRecords } = await import("@/db/schemas/usage-records");
-    const { generations } = await import("@/db/schemas/generations");
-    const { jobs } = await import("@/db/schemas/jobs");
-    const { pushSchema } = await import("@/db/push-schema-for-tests");
-    const { apply } = await pushSchema(
-      {
-        organizations,
-        users,
-        userCharacters,
-        agentSandboxes,
-        apiKeys,
-        usageRecords,
-        generations,
-        jobs,
-      } as never,
-      dbWrite as never,
-    );
-    await apply();
 
     await dbWrite.insert(organizations).values([
       // Above the create minimum ($0.10) but BELOW the 3-day hosting runway
@@ -206,6 +203,10 @@ beforeAll(async () => {
 afterAll(async () => {
   if (closeDb) await closeDb();
   mock.restore();
+  // Hand the pristine module back to whatever test file runs after this one in
+  // the same process — a leaked module mock patches itself into later suites'
+  // imports.
+  mock.module("@/lib/auth", () => realAuthSnapshot);
 });
 
 function upgrade(agentId: string) {
@@ -451,10 +452,11 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
     expect(body.data.jobId).toBe(jobRows[0]?.id ?? "");
   });
 
-  test("concurrent upgrades atomically converge on one target and one job", async () => {
+  test("concurrent upgrades atomically converge on one target, one job, one credential set", async () => {
     expect(pgliteReady).toBe(true);
     const { dbWrite } = await import("@/db/client");
     const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { apiKeys } = await import("@/db/schemas/api-keys");
     const { jobs } = await import("@/db/schemas/jobs");
     await dbWrite.insert(agentSandboxes).values({
       id: SHARED_CONCURRENT,
@@ -490,6 +492,100 @@ describe("POST /api/v1/eliza/agents/:agentId/upgrade-tier", () => {
       .where(eq(jobs.agent_id, targets[0]!.id));
     expect(targetJobs).toHaveLength(1);
     expect(targetJobs[0]?.id).toBe([...jobIds][0]);
+
+    // Exactly one credential set: the winner's key is bound to the committed
+    // target, and every race loser revoked its own candidate (#15943 — the
+    // pre-#16042 route re-minted credentials per loser after a 10s poll).
+    const targetKeys = await dbWrite
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.name, `agent-sandbox:${targets[0]!.id}`));
+    expect(targetKeys).toHaveLength(1);
+    expect(targetKeys[0]?.is_active).toBe(true);
+  });
+
+  test("an org at its non-terminal cap gets the typed 429 quota body before any credential is minted", async () => {
+    expect(pgliteReady).toBe(true);
+    const { dbWrite } = await import("@/db/client");
+    const { agentSandboxes } = await import("@/db/schemas/agent-sandboxes");
+    const { apiKeys } = await import("@/db/schemas/api-keys");
+    const { organizations } = await import("@/db/schemas/organizations");
+    const { users } = await import("@/db/schemas/users");
+
+    // Balance 0.80: above the 0.72 hosting-runway gate, below the 1.0 tier
+    // boundary → cap = 5. Five live sandboxes (the shared source included)
+    // fill the cap, so the upgrade must refuse via the org-serialized quota
+    // check in the single-flight service — mapped by the route to 429.
+    await dbWrite.insert(organizations).values({
+      id: ORG_FULL,
+      name: "Org Full",
+      slug: "org-full",
+      credit_balance: "0.80",
+    });
+    await dbWrite.insert(users).values({
+      id: USER_FULL,
+      email: "owner-full@test.test",
+      organization_id: ORG_FULL,
+      role: "owner",
+      steward_user_id: `steward-${USER_FULL}`,
+    });
+    await dbWrite.insert(agentSandboxes).values([
+      {
+        id: SHARED_FULL,
+        organization_id: ORG_FULL,
+        user_id: USER_FULL,
+        agent_name: "Full Org Shared",
+        execution_tier: "shared",
+        status: "running",
+        database_status: "none",
+      },
+      ...Array.from({ length: 4 }, (_unused, index) => ({
+        id: `dddddddd-000${index + 1}-4111-8111-111111111111`,
+        organization_id: ORG_FULL,
+        user_id: USER_FULL,
+        agent_name: `Filler ${index + 1}`,
+        execution_tier: "dedicated-always" as const,
+        status: "running" as const,
+        database_status: "none" as const,
+      })),
+    ]);
+
+    currentUser.id = USER_FULL;
+    currentUser.organization_id = ORG_FULL;
+    currentUser.organization = {
+      id: ORG_FULL,
+      name: "Org Full",
+      is_active: true,
+    };
+    try {
+      const res = await upgrade(SHARED_FULL);
+      expect(res.status).toBe(429);
+      const body = (await res.json()) as {
+        success: boolean;
+        code: string;
+        currentAgents: number;
+        maxAgents: number;
+      };
+      expect(body.success).toBe(false);
+      expect(body.code).toBe("agent_quota_exceeded");
+      expect(body.currentAgents).toBe(5);
+      expect(body.maxAgents).toBe(5);
+
+      // Refused in phase 1, BEFORE credential preparation: no target row and
+      // no candidate api key were ever minted for this org.
+      const orgRows = (await dbWrite.select().from(agentSandboxes)).filter(
+        (row) => row.organization_id === ORG_FULL,
+      );
+      expect(orgRows).toHaveLength(5);
+      const orgKeys = (await dbWrite.select().from(apiKeys)).filter(
+        (key) => key.organization_id === ORG_FULL,
+      );
+      expect(orgKeys).toHaveLength(0);
+    } finally {
+      currentUser.id = USER_A;
+      currentUser.organization_id = ORG_A;
+      currentUser.organization = { id: ORG_A, name: "Org A", is_active: true };
+    }
   });
 
   test("a RUNNING in-flight target reattaches without a job (client goes straight to handoff)", async () => {

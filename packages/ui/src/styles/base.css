@@ -746,6 +746,35 @@ body.pwa-standalone * {
   }
 }
 
+/* The chat drag handle doubles as a quiet work-state indicator. Keep the
+   animation local to the physical bar and compositor-only; shadcn's shimmer
+   utility is for text and relies on background clipping that does not belong
+   on this control. */
+@keyframes eliza-chat-handle-breathe {
+  0%,
+  100% {
+    opacity: 0.68;
+    transform: scaleX(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+.eliza-chat-handle-breathe {
+  animation: eliza-chat-handle-breathe 1.6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eliza-chat-handle-breathe {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Off-screen render skipping (content-visibility)
    Defined here in base.css so it ships to every consumer (app styles.css,
    cloud-ui/index.css, cloud-frontend globals.css, homepage index.css) that

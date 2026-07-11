@@ -37,10 +37,25 @@ function writeLcovRecords(dir, sourcePaths) {
   return file;
 }
 
+// Write a single-record lcov under an explicit filename so a test can hand the
+// awk MULTIPLE lcov inputs (one per lane), exactly as the CI does with the
+// per-nearest-config lcov.info files.
+function writeLcovAs(dir, name, sourcePath, found, hit) {
+  const file = join(dir, name);
+  writeFileSync(
+    file,
+    [`SF:${sourcePath}`, `LF:${found}`, `LH:${hit}`, "end_of_record", ""].join(
+      "\n",
+    ),
+  );
+  return file;
+}
+
 function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
   const changedArgument = changed
     .replaceAll("\\", "\\\\")
     .replaceAll("\n", "\\n");
+  const lcovArgs = Array.isArray(lcov) ? lcov : [lcov];
   return spawnSync(
     "awk",
     [
@@ -50,7 +65,7 @@ function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
       `threshold=${threshold}`,
       "-f",
       awkScript,
-      lcov,
+      ...lcovArgs,
     ],
     {
       cwd: root,
@@ -136,6 +151,42 @@ try {
     assert.match(result.stdout, /MISSING: packages\/demo\/src\/runtime[.]ts/);
     assert.match(result.stdout, /changed source missing from LCOV/);
   });
+  assertGate(
+    "aggregates a file across lanes: an incidental low record does not fail a file whose real lane clears the floor (#16043)",
+    () => {
+      const src = "packages/core/src/features/documents/service.ts";
+      // Its own focused lane covers it well (8/10 = 80%); another package's lane
+      // merely imports it (1/50 = 2%). Pre-fix, the 2% record alone failed the gate.
+      const ownLane = writeLcovAs(dir, "core.lcov", src, 10, 8);
+      const importLane = writeLcovAs(dir, "meetings.lcov", src, 50, 1);
+      const result = runGate({ changed: src, lcov: [ownLane, importLane] });
+      assert.equal(result.status, 0, result.stderr || result.stdout);
+      assert.match(result.stdout, /coverage gate OK/);
+      // Counted once, at the best lane's percentage — not the 2% record.
+      assert.match(result.stdout, /changed files: 1,/);
+      assert.match(
+        result.stdout,
+        /80\.00% packages\/core\/src\/features\/documents\/service\.ts/,
+      );
+    },
+  );
+
+  assertGate(
+    "still fails a file that is genuinely below the floor in every lane (#16043)",
+    () => {
+      const src = "packages/core/src/features/documents/service.ts";
+      // Both lanes under 50% (19.90% and 2%). The aggregated best is still below,
+      // so the gate must fail — aggregation must not blanket-pass shared files.
+      const laneA = writeLcovAs(dir, "a.lcov", src, 1000, 199);
+      const laneB = writeLcovAs(dir, "b.lcov", src, 50, 1);
+      const result = runGate({ changed: src, lcov: [laneA, laneB] });
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(
+        result.stdout,
+        /BELOW: packages\/core\/src\/features\/documents\/service\.ts/,
+      );
+    },
+  );
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

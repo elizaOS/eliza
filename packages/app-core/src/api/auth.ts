@@ -46,8 +46,7 @@ export {
 
 export interface CompatStateLike {
   current:
-    | (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null })
-    | null;
+    (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null }) | null;
 }
 
 /**
@@ -382,7 +381,7 @@ function ensureMinRole(
   return roleRank(resolveBoundaryRole(req, env)) >= roleRank(minRole);
 }
 
-type RouteRoleResolution =
+export type RouteRoleResolution =
   | { ok: true; role: RoleGateRole }
   | { ok: false; status: 401 | 403 | 429; reason: string };
 
@@ -426,7 +425,7 @@ async function resolveSessionRole(
   return roleForIdentityKind(identity?.kind);
 }
 
-async function resolveAuthorizedRouteRole(
+export async function resolveAuthorizedRouteRole(
   req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
   options: AuthorizedRouteRoleOptions,
 ): Promise<RouteRoleResolution> {

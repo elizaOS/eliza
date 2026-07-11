@@ -83,7 +83,10 @@ function stage1Response(fields: {
 
 // Reproduces the live promotion-that-clobbers: force the turn into planning
 // and overwrite the substantive stage-0 answer with a bare progress ack.
-function clobberEvaluator(name: string, reply: string): ResponseHandlerEvaluator {
+function clobberEvaluator(
+	name: string,
+	reply: string,
+): ResponseHandlerEvaluator {
 	return {
 		name,
 		priority: 100,

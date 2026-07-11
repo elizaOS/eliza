@@ -157,6 +157,7 @@ export * from "./components/apps/extensions/types";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
 export { resolveCharacterGreetingAnimation } from "./components/character/character-greeting";
+export { ChatWidgetHarness } from "./components/chat/ChatWidgetHarness";
 // Vision-critical chat widgets (#8933) — presentational only, exported with
 // their public prop/value types for stories + host wiring.
 export {
@@ -203,6 +204,7 @@ export {
   type CockpitModeConfig,
   CockpitModePicker,
   CockpitNewSessionForm,
+  type CockpitSpawnTarget,
   CockpitTierToggle,
   type CockpitTierToggleProps,
   CockpitView,
@@ -210,6 +212,7 @@ export {
   cockpitModeToProviderPolicy,
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
+  normalizeCockpitSpawnTarget,
 } from "./components/cockpit/index";
 // Surfaced directly on the root barrel (also reachable via the composites/hooks
 // chains) so dist-mapped consumers resolve them by name.

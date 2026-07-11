@@ -241,3 +241,47 @@ describe("slash command dispatcher role gates (#14710)", () => {
 		expect(lastReply(interaction).content).toContain("OWNER");
 	});
 });
+
+describe("builtin command surface (privileged plumbing hidden from pickers)", () => {
+	it("does not register the removed placebo /model command", () => {
+		// /model claimed "switching is noted" while changing nothing — the real
+		// model surface is the app's Models & Providers screen.
+		expect(getRegisteredCommands().has("model")).toBe(false);
+	});
+
+	it("marks privileged builtins with requiredPermissions and leaves user commands open", () => {
+		const commands = getRegisteredCommands();
+		for (const name of ["settings", "setup", "app", "transcribe"]) {
+			expect(
+				commands.get(name)?.requiredPermissions,
+				`${name} must carry requiredPermissions`,
+			).toBeTruthy();
+		}
+		for (const name of ["help", "status", "search", "clear"]) {
+			expect(
+				commands.get(name)?.requiredPermissions,
+				`${name} must stay visible to everyone`,
+			).toBeUndefined();
+		}
+	});
+
+	it("transforms requiredPermissions into default_member_permissions on the wire", async () => {
+		const { transformCommandToDiscordApi } = await import(
+			"../discord-commands"
+		);
+		const setup = getRegisteredCommands().get("setup");
+		const help = getRegisteredCommands().get("help");
+		if (!setup || !help) throw new Error("builtins missing");
+		const wireSetup = transformCommandToDiscordApi(
+			setup as never,
+		) as unknown as {
+			default_member_permissions?: string;
+		};
+		const wireHelp = transformCommandToDiscordApi(help as never) as unknown as {
+			default_member_permissions?: string;
+		};
+		// Administrator bit, stringified for the REST payload.
+		expect(wireSetup.default_member_permissions).toBe("8");
+		expect(wireHelp.default_member_permissions).toBeUndefined();
+	});
+});

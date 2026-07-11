@@ -25,12 +25,15 @@
  *    reconstruct identity from DTOs (onboarding-created shared agents keep
  *    name/bio only in agent_config).
  *  - 2xx `alreadyInProgress:true` reattach when this shared agent already has a
- *    live migration target (the `__agentUpgradedFrom` marker): a per-source
- *    database lock makes retries and concurrent tabs resume the SAME upgrade.
+ *    live migration target (the `__agentUpgradedFrom` marker): the single-flight
+ *    service (per-source database lock spanning target creation through the
+ *    provision enqueue, #15943) makes retries and concurrent tabs resume the
+ *    SAME upgrade, with target and job committed atomically — so a reattach
+ *    never prepares credentials or environment state; it only reads (or
+ *    re-arms, for stopped/sleeping/dead-job targets) durable state.
  */
 
 import { Hono } from "hono";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { errorToResponse } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
@@ -38,11 +41,9 @@ import { getMaxNonTerminalAgentsForOrg } from "@/lib/constants/agent-sandbox-quo
 import { checkAgentTierUpgradeCreditGate } from "@/lib/services/agent-billing-gate";
 import { insufficientCredits402 } from "@/lib/services/agent-billing-gate-402";
 import {
-  createTierUpgradeTarget,
-  findActiveTierUpgradeProvisionJob,
+  createTierUpgradeTargetWithProvision,
+  findLiveTierUpgradeTarget,
 } from "@/lib/services/agent-tier-upgrade-target";
-import { readUpgradedFromAgentId } from "@/lib/services/eliza-agent-config";
-import { prepareManagedElizaEnvironment } from "@/lib/services/eliza-managed-launch";
 import {
   AgentQuotaExceededError,
   elizaSandboxService,
@@ -59,18 +60,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 
-/** Statuses under which an existing migration target still owns the upgrade. */
-const LIVE_TARGET_STATUSES = new Set([
-  "pending",
-  "provisioning",
-  "running",
-  "stopped",
-  "sleeping",
-]);
-
 type AgentRow = NonNullable<
   Awaited<ReturnType<typeof elizaSandboxService.getAgentForWrite>>
 >;
+
+type AuthedUser = Awaited<
+  ReturnType<typeof requireAuthOrApiKeyWithOrg>
+>["user"];
 
 function json(body: unknown, status = 200): Response {
   return applyCorsHeaders(Response.json(body, { status }), CORS_METHODS);
@@ -82,21 +78,6 @@ function pollingBody(jobId: string) {
     intervalMs: 5000,
     expectedDurationMs: 90000,
   };
-}
-
-async function waitForConcurrentProvisionJob(
-  agentId: string,
-  organizationId: string,
-) {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    const job = await findActiveTierUpgradeProvisionJob(
-      agentId,
-      organizationId,
-    );
-    if (job) return job;
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  return undefined;
 }
 
 function asConfigRecord(value: unknown): Record<string, unknown> {
@@ -115,69 +96,99 @@ function asEnvRecord(value: unknown): Record<string, string> {
 }
 
 /**
- * The org's live migration target for this shared agent, if one exists.
- * The atomic find-or-create service repeats this lookup under its per-source
- * database lock before inserting, closing the concurrent double-mint window.
+ * Respond for a live migration target that already owns this upgrade — both
+ * the pre-checked reattach and the race loser whose single-flight call
+ * returned another request's committed target. Running and
+ * already-provisioning targets reattach without a second credit gate: nothing
+ * new starts billing. Resuming a stopped/sleeping target does start compute
+ * again, so that path must prove the same dedicated runway as a fresh upgrade
+ * before it may enqueue work. The enqueue is safe from any state because a
+ * committed target's environment was fully prepared at creation — re-arming a
+ * dead job never re-mints credentials.
  */
-async function findLiveUpgradeTarget(
-  organizationId: string,
+async function respondToLiveTarget(
+  target: AgentRow,
   sharedAgentId: string,
-): Promise<AgentRow | null> {
-  const agents =
-    await agentSandboxesRepository.listByOrganization(organizationId);
-  return (
-    agents.find(
-      (agent) =>
-        agent.id !== sharedAgentId &&
-        // The marker alone is not proof of a migration target: agent_config is
-        // PATCHable, so a marker planted on a non-dedicated row must never be
-        // reattached to — only a dedicated-always row can own the upgrade.
-        agent.execution_tier === "dedicated-always" &&
-        LIVE_TARGET_STATUSES.has(agent.status) &&
-        readUpgradedFromAgentId(asConfigRecord(agent.agent_config)) ===
-          sharedAgentId,
-    ) ?? null
-  );
-}
-
-/**
- * Run the post-create span and delete the just-minted target if any step
- * throws, so an error between the insert and the provision-job enqueue never
- * leaves a `pending` row no worker will ever claim (same rationale as the
- * create route's orphan cleanup; the cleanup-stuck-provisioning cron is the
- * safety net for rows that slip through).
- */
-async function withUpgradeOrphanCleanup<T>(
-  dedicatedAgentId: string,
-  organizationId: string,
-  fn: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    try {
-      await agentSandboxesRepository.delete(dedicatedAgentId, organizationId);
-      logger.info(
-        "[agent-upgrade-tier] Cleaned up migration target after create→enqueue failure",
-        { agentId: dedicatedAgentId, orgId: organizationId },
-      );
-    } catch (cleanupErr) {
-      // error-policy:J6 best-effort teardown of the just-created row; the
-      // original failure below is what the caller must see.
-      logger.error(
-        "[agent-upgrade-tier] Failed to clean up migration target after create→enqueue failure",
-        {
-          agentId: dedicatedAgentId,
-          orgId: organizationId,
-          error:
-            cleanupErr instanceof Error
-              ? cleanupErr.message
-              : String(cleanupErr),
-        },
+  user: AuthedUser,
+  env: AppEnv["Bindings"],
+): Promise<Response> {
+  logger.info("[agent-upgrade-tier] Reattaching to in-flight upgrade", {
+    sharedAgentId,
+    dedicatedAgentId: target.id,
+    orgId: user.organization_id,
+    status: target.status,
+  });
+  if (target.status === "running") {
+    return json({
+      success: true,
+      created: false,
+      alreadyInProgress: true,
+      data: {
+        id: target.id,
+        agentId: target.id,
+        dedicatedAgentId: target.id,
+        sharedAgentId,
+        agentName: target.agent_name,
+        status: target.status,
+        executionTier: target.execution_tier,
+      },
+    });
+  }
+  if (target.status === "stopped" || target.status === "sleeping") {
+    const resumeCreditCheck = await checkAgentTierUpgradeCreditGate(
+      user.organization_id,
+    );
+    if (!resumeCreditCheck.allowed) {
+      return json(
+        insufficientCredits402(
+          resumeCreditCheck,
+          "[agent-upgrade-tier] Resume blocked: insufficient hosting runway",
+          {
+            sharedAgentId,
+            dedicatedAgentId: target.id,
+            orgId: user.organization_id,
+          },
+          { requiredBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE },
+        ),
+        402,
       );
     }
-    throw err;
   }
+  // pending/provisioning (or stopped/sleeping after an interrupted boot):
+  // hand back the active provision job — enqueue reuses an in-flight job
+  // and only mints a new one when the previous attempt died.
+  const reattach = await provisioningJobService.enqueueAgentProvisionOnce({
+    agentId: target.id,
+    organizationId: user.organization_id,
+    userId: user.id,
+    agentName: target.agent_name ?? target.id,
+  });
+  if (reattach.created) {
+    void provisioningJobService.triggerImmediate(env).catch(() => {
+      // error-policy:J5 fire-and-forget nudge; the job is persisted and the
+      // provisioning cron is the safety net (failure logged in the service).
+    });
+  }
+  return json(
+    {
+      success: true,
+      created: false,
+      alreadyInProgress: true,
+      data: {
+        id: target.id,
+        agentId: target.id,
+        dedicatedAgentId: target.id,
+        sharedAgentId,
+        agentName: target.agent_name,
+        status: reattach.job.status,
+        jobId: reattach.job.id,
+        estimatedCompletionAt: reattach.job.estimated_completion_at,
+        executionTier: target.execution_tier,
+      },
+      polling: pollingBody(reattach.job.id),
+    },
+    202,
+  );
 }
 
 async function __hono_POST(
@@ -223,95 +234,12 @@ async function __hono_POST(
     }
 
     // ── Reattach: an upgrade for this shared agent is already under way. ──
-    // Running and already-provisioning targets reattach without a second gate:
-    // nothing new starts billing. Resuming a stopped/sleeping target does start
-    // compute again, so that path must prove the same dedicated runway as a
-    // fresh upgrade before it may enqueue work.
-    const existingTarget = await findLiveUpgradeTarget(
+    const existingTarget = await findLiveTierUpgradeTarget(
       user.organization_id,
       agentId,
     );
     if (existingTarget) {
-      logger.info("[agent-upgrade-tier] Reattaching to in-flight upgrade", {
-        sharedAgentId: agentId,
-        dedicatedAgentId: existingTarget.id,
-        orgId: user.organization_id,
-        status: existingTarget.status,
-      });
-      if (existingTarget.status === "running") {
-        return json({
-          success: true,
-          created: false,
-          alreadyInProgress: true,
-          data: {
-            id: existingTarget.id,
-            agentId: existingTarget.id,
-            dedicatedAgentId: existingTarget.id,
-            sharedAgentId: agentId,
-            agentName: existingTarget.agent_name,
-            status: existingTarget.status,
-            executionTier: existingTarget.execution_tier,
-          },
-        });
-      }
-      if (
-        existingTarget.status === "stopped" ||
-        existingTarget.status === "sleeping"
-      ) {
-        const resumeCreditCheck = await checkAgentTierUpgradeCreditGate(
-          user.organization_id,
-        );
-        if (!resumeCreditCheck.allowed) {
-          return json(
-            insufficientCredits402(
-              resumeCreditCheck,
-              "[agent-upgrade-tier] Resume blocked: insufficient hosting runway",
-              {
-                sharedAgentId: agentId,
-                dedicatedAgentId: existingTarget.id,
-                orgId: user.organization_id,
-              },
-              { requiredBalance: AGENT_PRICING.UPGRADE_MINIMUM_BALANCE },
-            ),
-            402,
-          );
-        }
-      }
-      // pending/provisioning (or stopped/sleeping after an interrupted boot):
-      // hand back the active provision job — enqueue reuses an in-flight job
-      // and only mints a new one when the previous attempt died.
-      const reattach = await provisioningJobService.enqueueAgentProvisionOnce({
-        agentId: existingTarget.id,
-        organizationId: user.organization_id,
-        userId: user.id,
-        agentName: existingTarget.agent_name ?? existingTarget.id,
-      });
-      if (reattach.created) {
-        void provisioningJobService.triggerImmediate(env).catch(() => {
-          // error-policy:J5 fire-and-forget nudge; the job is persisted and the
-          // provisioning cron is the safety net (failure logged in the service).
-        });
-      }
-      return json(
-        {
-          success: true,
-          created: false,
-          alreadyInProgress: true,
-          data: {
-            id: existingTarget.id,
-            agentId: existingTarget.id,
-            dedicatedAgentId: existingTarget.id,
-            sharedAgentId: agentId,
-            agentName: existingTarget.agent_name,
-            status: reattach.job.status,
-            jobId: reattach.job.id,
-            estimatedCompletionAt: reattach.job.estimated_completion_at,
-            executionTier: existingTarget.execution_tier,
-          },
-          polling: pollingBody(reattach.job.id),
-        },
-        202,
-      );
+      return await respondToLiveTarget(existingTarget, agentId, user, env);
     }
 
     // ── Credit gate: N days of dedicated hosting runway, not the bare create
@@ -332,19 +260,44 @@ async function __hono_POST(
       );
     }
 
+    // ── Worker health, BEFORE anything durable is minted. The single-flight
+    // service commits the target together with its provision job, so a dead
+    // worker checked here means nothing gets created at all — no fresh row to
+    // roll back, no compensation window. (A worker dying between this check
+    // and the commit leaves a valid job the recovering worker picks up.)
+    const workerHealth = await checkProvisioningWorkerHealth();
+    if (!workerHealth.ok) {
+      logger.warn(
+        "[agent-upgrade-tier] Upgrade blocked: provisioning worker unavailable",
+        {
+          sharedAgentId: agentId,
+          orgId: user.organization_id,
+          code: workerHealth.code,
+        },
+      );
+      return json(
+        provisioningWorkerFailureBody(workerHealth),
+        workerHealth.status,
+      );
+    }
+
     // ── Mint the dedicated migration target, copying identity server-side. ──
     // Reserved platform env keys are stripped from the copy so the new agent
     // gets ITS OWN minted tokens/identity (ELIZA_API_TOKEN, ELIZA_CLOUD_AGENT_ID,
     // PUBLIC_BASE_URL, …) while the user's BYO env — including `enc:v1:`
     // ciphertext, which the storage encryptor passes through untouched and the
-    // same-org materialization path decrypts — survives verbatim.
+    // same-org materialization path decrypts — survives verbatim. Environment
+    // preparation, target insert, and provision enqueue all happen inside the
+    // service's single-flight boundary.
     const sourceConfig = asConfigRecord(shared.agent_config);
     const sourceEnv = stripReservedEnvKeys(
       asEnvRecord(shared.environment_vars),
     );
-    let created: Awaited<ReturnType<typeof createTierUpgradeTarget>>;
+    let result: Awaited<
+      ReturnType<typeof createTierUpgradeTargetWithProvision>
+    >;
     try {
-      created = await createTierUpgradeTarget({
+      result = await createTierUpgradeTargetWithProvision({
         sourceAgentId: agentId,
         organizationId: user.organization_id,
         userId: user.id,
@@ -377,192 +330,48 @@ async function __hono_POST(
       }
       throw error;
     }
-    const dedicated = created.agent;
 
-    if (created.idempotent) {
-      if (dedicated.status === "running") {
-        return json({
-          success: true,
-          created: false,
-          alreadyInProgress: true,
-          data: {
-            id: dedicated.id,
-            agentId: dedicated.id,
-            dedicatedAgentId: dedicated.id,
-            sharedAgentId: agentId,
-            agentName: dedicated.agent_name,
-            status: dedicated.status,
-            executionTier: dedicated.execution_tier,
-          },
-        });
-      }
-      const concurrentJob = await waitForConcurrentProvisionJob(
-        dedicated.id,
-        user.organization_id,
-      );
-      if (concurrentJob) {
-        return json(
-          {
-            success: true,
-            created: false,
-            alreadyInProgress: true,
-            data: {
-              id: dedicated.id,
-              agentId: dedicated.id,
-              dedicatedAgentId: dedicated.id,
-              sharedAgentId: agentId,
-              agentName: dedicated.agent_name,
-              status: concurrentJob.status,
-              jobId: concurrentJob.id,
-              estimatedCompletionAt: concurrentJob.estimated_completion_at,
-              executionTier: dedicated.execution_tier,
-            },
-            polling: pollingBody(concurrentJob.id),
-          },
-          202,
-        );
-      }
-      const workerHealth = await checkProvisioningWorkerHealth();
-      if (!workerHealth.ok) {
-        return json(
-          provisioningWorkerFailureBody(workerHealth),
-          workerHealth.status,
-        );
-      }
-      const managedEnvironment = await prepareManagedElizaEnvironment({
-        existingEnv: sourceEnv,
-        organizationId: user.organization_id,
-        userId: user.id,
-        agentSandboxId: dedicated.id,
-      });
-      if (managedEnvironment.changed) {
-        await elizaSandboxService.updateAgentEnvironment(
-          dedicated.id,
-          user.organization_id,
-          managedEnvironment.environmentVars,
-        );
-      }
-      const reattach = await provisioningJobService.enqueueAgentProvisionOnce({
-        agentId: dedicated.id,
-        organizationId: user.organization_id,
-        userId: user.id,
-        agentName: dedicated.agent_name ?? dedicated.id,
-      });
-      if (reattach.created) {
-        void provisioningJobService.triggerImmediate(env).catch(() => {
-          // error-policy:J5 fire-and-forget nudge; the job is persisted and the
-          // provisioning cron is the safety net (failure logged in the service).
-        });
-      }
-      return json(
-        {
-          success: true,
-          created: false,
-          alreadyInProgress: true,
-          data: {
-            id: dedicated.id,
-            agentId: dedicated.id,
-            dedicatedAgentId: dedicated.id,
-            sharedAgentId: agentId,
-            agentName: dedicated.agent_name,
-            status: reattach.job.status,
-            jobId: reattach.job.id,
-            estimatedCompletionAt: reattach.job.estimated_completion_at,
-            executionTier: dedicated.execution_tier,
-          },
-          polling: pollingBody(reattach.job.id),
-        },
-        202,
-      );
+    // Race loser: another request committed the target (and its job) while
+    // this one was in flight — reattach to that durable state.
+    if (!result.created) {
+      return await respondToLiveTarget(result.agent, agentId, user, env);
     }
+    const dedicated = result.agent;
+    const job = result.job;
 
-    return await withUpgradeOrphanCleanup(
-      dedicated.id,
-      user.organization_id,
-      async () => {
-        const managedEnvironment = await prepareManagedElizaEnvironment({
-          existingEnv: sourceEnv,
-          organizationId: user.organization_id,
-          userId: user.id,
-          agentSandboxId: dedicated.id,
-        });
-        if (managedEnvironment.changed) {
-          await elizaSandboxService.updateAgentEnvironment(
-            dedicated.id,
-            user.organization_id,
-            managedEnvironment.environmentVars,
-          );
-        }
+    void provisioningJobService.triggerImmediate(env).catch(() => {
+      // error-policy:J5 fire-and-forget nudge; the job is persisted and the
+      // provisioning cron is the safety net (failure logged in the service).
+    });
 
-        // Only the cold provisioning job needs a live worker; check at the
-        // enqueue boundary. A dead worker rolls the fresh row back explicitly
-        // (returning is success to the cleanup wrapper) so the org is not left
-        // holding an unclaimable `pending` target. The warm-pool fast path is
-        // intentionally skipped: upgrades are not latency-critical and always
-        // take the async job path.
-        const workerHealth = await checkProvisioningWorkerHealth();
-        if (!workerHealth.ok) {
-          await agentSandboxesRepository.delete(
-            dedicated.id,
-            user.organization_id,
-          );
-          logger.warn(
-            "[agent-upgrade-tier] Upgrade blocked: provisioning worker unavailable",
-            {
-              sharedAgentId: agentId,
-              dedicatedAgentId: dedicated.id,
-              orgId: user.organization_id,
-              code: workerHealth.code,
-            },
-          );
-          return json(
-            provisioningWorkerFailureBody(workerHealth),
-            workerHealth.status,
-          );
-        }
+    logger.info("[agent-upgrade-tier] Upgrade started", {
+      sharedAgentId: agentId,
+      dedicatedAgentId: dedicated.id,
+      orgId: user.organization_id,
+      jobId: job.id,
+      balance: creditCheck.balance,
+    });
 
-        const { job } = await provisioningJobService.enqueueAgentProvisionOnce({
+    return json(
+      {
+        success: true,
+        created: true,
+        message:
+          "Dedicated agent created. Provisioning job started — poll the job endpoint, then run the conversation handoff.",
+        data: {
+          id: dedicated.id,
           agentId: dedicated.id,
-          organizationId: user.organization_id,
-          userId: user.id,
-          agentName: dedicated.agent_name ?? dedicated.id,
-        });
-
-        void provisioningJobService.triggerImmediate(env).catch(() => {
-          // error-policy:J5 fire-and-forget nudge; the job is persisted and the
-          // provisioning cron is the safety net (failure logged in the service).
-        });
-
-        logger.info("[agent-upgrade-tier] Upgrade started", {
-          sharedAgentId: agentId,
           dedicatedAgentId: dedicated.id,
-          orgId: user.organization_id,
+          sharedAgentId: agentId,
+          agentName: dedicated.agent_name,
+          status: job.status,
           jobId: job.id,
-          balance: creditCheck.balance,
-        });
-
-        return json(
-          {
-            success: true,
-            created: true,
-            message:
-              "Dedicated agent created. Provisioning job started — poll the job endpoint, then run the conversation handoff.",
-            data: {
-              id: dedicated.id,
-              agentId: dedicated.id,
-              dedicatedAgentId: dedicated.id,
-              sharedAgentId: agentId,
-              agentName: dedicated.agent_name,
-              status: job.status,
-              jobId: job.id,
-              estimatedCompletionAt: job.estimated_completion_at,
-              executionTier: dedicated.execution_tier,
-            },
-            polling: pollingBody(job.id),
-          },
-          202,
-        );
+          estimatedCompletionAt: job.estimated_completion_at,
+          executionTier: dedicated.execution_tier,
+        },
+        polling: pollingBody(job.id),
       },
+      202,
     );
   } catch (error) {
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);

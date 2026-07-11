@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type {
   CreateIssueOptions,
   CredentialService as CredentialServiceInstance,
@@ -70,10 +70,17 @@ export type { AuthPromptCallback } from "./workspace-github.js";
 
 import { readConfigEnvKey } from "./config-env.js";
 import {
+  type DiffGateConfig,
+  type DiffGateResult,
+  reviewDiff,
+  summarizeDiffGate,
+} from "./diff-review-gate.js";
+import {
   assertSafeGitRef,
   assertSafeGitRemote,
   normalizeRepositoryInput,
 } from "./repo-input.js";
+import { capturePrGateChangeSet } from "./workspace-diff.js";
 import {
   commit as gitCommit,
   createPR as gitCreatePR,
@@ -268,6 +275,30 @@ export function getCodingWorkspaceService(
 ): CodingWorkspaceService | null {
   const service = runtime.getService("CODING_WORKSPACE_SERVICE");
   return service instanceof CodingWorkspaceService ? service : null;
+}
+
+/**
+ * Thrown by {@link CodingWorkspaceService.createPR} when the diff-review gate
+ * finds a HARD violation (secret, forbidden file, or empty diff). Carries the
+ * structured gate result so route/action boundaries can surface exactly why the
+ * PR was refused. Its message is a human-readable multi-line summary.
+ */
+export class DiffGateBlockedError extends Error {
+  readonly gate: DiffGateResult;
+
+  constructor(gate: DiffGateResult) {
+    super(`Diff-review gate blocked PR creation:\n${summarizeDiffGate(gate)}`);
+    this.name = "DiffGateBlockedError";
+    this.gate = gate;
+  }
+}
+
+/** Append a warnings-only gate annotation section to a PR body. */
+function appendGateAnnotation(body: string, gate: DiffGateResult): string {
+  const summary = summarizeDiffGate(gate);
+  if (!summary) return body;
+  const section = `\n\n---\n### \u26a0\ufe0f Diff-review gate\n\n\`\`\`\n${summary}\n\`\`\`\n`;
+  return `${body}${section}`;
 }
 
 export class CodingWorkspaceService {
@@ -696,15 +727,184 @@ export class CodingWorkspaceService {
     if (!workspace) {
       throw new Error(`Workspace ${workspaceId} not found`);
     }
+
+    // Diff-review gate: structured, deterministic sanity pass over the branch's
+    // changeset BEFORE it becomes a PR. Hard violations (secrets, forbidden
+    // files, empty diff, truncated inputs) throw DiffGateBlockedError; warnings
+    // are annotated onto the PR body but never block. Capture/config failures
+    // fail closed because an unavailable security scan cannot prove safety.
+    //
+    // Scan against the SAME base gitCreatePR will target: an explicit
+    // options.base overrides the workspace's provision-time base (mirrors the
+    // `targetBranch: options.base ?? workspace.baseBranch` in gitCreatePR), so
+    // the gate never scans a different range than the PR actually diffs.
+    const gateBase = options.base?.trim() || workspace.baseBranch;
+    let gateResult: DiffGateResult | undefined;
+    try {
+      gateResult = await this.runDiffReviewGate(
+        workspaceId,
+        workspace,
+        gateBase,
+      );
+    } catch (error) {
+      // error-policy:J1 The create-PR boundary emits a structured failure and
+      // preserves the typed scanner error for its action/route caller.
+      // A failed security-boundary scan is both operator-visible and reported
+      // through the runtime error channel. The original typed error is rethrown
+      // so callers can distinguish capture/config failures.
+      this.runtime.reportError(
+        "CodingWorkspaceService.createPR.diffGate",
+        error,
+        {
+          workspaceId,
+          baseBranch: gateBase,
+        },
+      );
+      this.emitEvent({
+        type: "workspace:finalizing",
+        workspaceId,
+        executionId: workspace.id,
+        timestamp: new Date(),
+        data: {
+          diffGate: {
+            outcome: "capture_failed",
+            passed: false,
+            findings: [],
+            summary: error instanceof Error ? error.message : String(error),
+          },
+        },
+      });
+      throw error;
+    }
+    let effectiveOptions = options;
+    if (gateResult) {
+      if (!gateResult.passed) {
+        // Surface the reason on the events stream, then refuse to open the PR.
+        this.emitDiffGateEvent(workspaceId, workspace, gateResult, "blocked");
+        throw new DiffGateBlockedError(gateResult);
+      }
+      if (gateResult.warnings.length > 0) {
+        this.emitDiffGateEvent(workspaceId, workspace, gateResult, "annotated");
+        effectiveOptions = {
+          ...options,
+          body: appendGateAnnotation(options.body, gateResult),
+        };
+      } else {
+        this.emitDiffGateEvent(workspaceId, workspace, gateResult, "passed");
+      }
+    }
+
     const result = await gitCreatePR(
       this.workspaceService,
       workspace,
       workspaceId,
-      options,
+      effectiveOptions,
       (msg) => this.log(msg),
     );
     this.markWorkspaceTerminal(workspaceId);
     return result;
+  }
+
+  /**
+   * Run the diff-review gate for a workspace's branch vs its base. Returns the
+   * structured result. An explicit operator disable is the only bypass;
+   * capture/config failures throw and prevent PR creation.
+   */
+  private async runDiffReviewGate(
+    workspaceId: string,
+    workspace: WorkspaceResult,
+    baseBranch: string,
+  ): Promise<DiffGateResult | undefined> {
+    if (this.readConfigEnvKey("ELIZA_CODING_DIFF_GATE_DISABLED") === "true") {
+      this.log(`Diff gate explicitly disabled for ${workspaceId}`);
+      return undefined;
+    }
+    let changeSet: Awaited<ReturnType<typeof capturePrGateChangeSet>>;
+    try {
+      changeSet = await capturePrGateChangeSet(workspace.path, baseBranch);
+    } catch (cause) {
+      // error-policy:J2 context-adding rethrow — PR creation cannot proceed
+      // when its security scan input is unavailable.
+      throw new ElizaError("Unable to capture coding PR diff for review", {
+        code: "CODING_DIFF_GATE_CAPTURE_FAILED",
+        context: { workspaceId, baseBranch },
+        cause,
+      });
+    }
+    if (!changeSet) {
+      throw new ElizaError("Unable to capture coding PR diff for review", {
+        code: "CODING_DIFF_GATE_CAPTURE_FAILED",
+        context: { workspaceId, baseBranch },
+      });
+    }
+    return reviewDiff(
+      {
+        diff: changeSet.diff,
+        changedFiles: changeSet.changedFiles,
+        // Fail CLOSED on a truncated diff: a partial secret scan cannot prove the
+        // unseen tail is clean, so the gate blocks rather than passing.
+        diffTruncated: changeSet.truncated,
+        changedFilesTruncated: changeSet.filesTruncated,
+      },
+      this.resolveDiffGateConfig(),
+    );
+  }
+
+  private resolveDiffGateConfig(): DiffGateConfig {
+    const config: DiffGateConfig = {};
+    const threshold = this.readConfigEnvKey(
+      "ELIZA_CODING_DIFF_GATE_OVERSIZE_LINES",
+    );
+    if (threshold) {
+      const parsed = Number.parseInt(threshold, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        config.oversizeLineThreshold = parsed;
+      }
+    }
+    if (
+      this.readConfigEnvKey("ELIZA_CODING_DIFF_GATE_NO_OVERSIZE") === "true"
+    ) {
+      config.disableOversizeWarn = true;
+    }
+    const extra = this.readConfigEnvKey(
+      "ELIZA_CODING_DIFF_GATE_EXTRA_FORBIDDEN",
+    );
+    if (extra) {
+      config.extraForbiddenPatterns = extra
+        .split(",")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+    }
+    return config;
+  }
+
+  /** Surface a diff-gate outcome onto the workspace events stream. */
+  private emitDiffGateEvent(
+    workspaceId: string,
+    workspace: WorkspaceResult,
+    result: DiffGateResult,
+    outcome: "blocked" | "annotated" | "passed",
+  ): void {
+    this.log(
+      `Diff gate ${outcome} for ${workspaceId}${
+        result.findings.length > 0 ? `:\n${summarizeDiffGate(result)}` : ""
+      }`,
+    );
+    this.emitEvent({
+      type: "workspace:finalizing",
+      workspaceId,
+      executionId: workspace.id,
+      timestamp: new Date(),
+      data: {
+        diffGate: {
+          outcome,
+          passed: result.passed,
+          scannedLines: result.scannedLines,
+          findings: result.findings,
+          summary: summarizeDiffGate(result),
+        },
+      },
+    });
   }
 
   // === Delegated GitHub / Issue Management ===

@@ -12,11 +12,31 @@
  *  - flags off → no wallet UI at all (the pre-port behavior).
  */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const providerFlags = vi.hoisted(() => ({ siwe: false, siws: false }));
+const oauthLaunch = vi.hoisted(() => ({
+  popup: null as Window | null,
+  sameTabAllowed: true,
+  navigate: vi.fn(),
+}));
+
+vi.mock("../../../../state/cloud-login-launch", () => ({
+  preOpenCloudLoginWindow: () => oauthLaunch.popup,
+  canNavigateSameTabForBlockedPopup: () => oauthLaunch.sameTabAllowed,
+}));
+
+vi.mock("../../../../utils/openExternalUrl", () => ({
+  navigatePreOpenedWindow: oauthLaunch.navigate,
+}));
 
 vi.mock("../../lib/steward-session", () => ({
   hasStewardOAuthCallbackInUrl: () => false,
@@ -73,6 +93,10 @@ vi.mock("../../lib/steward-oauth-url", async () => {
     ...actual,
     consumeStewardPkceVerifier: () => undefined,
     buildStewardOAuthRedirectUri: () => "https://app.example.test/login",
+    createStewardPkcePair: () =>
+      Promise.resolve({ verifier: "verifier", challenge: "challenge" }),
+    storeStewardPkceVerifier: () => true,
+    buildStewardOAuthAuthorizeUrl: () => "https://auth.example.test/authorize",
   };
 });
 
@@ -101,6 +125,8 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
   beforeEach(() => {
     providerFlags.siwe = false;
     providerFlags.siws = false;
+    oauthLaunch.popup = null;
+    oauthLaunch.sameTabAllowed = true;
   });
 
   afterEach(() => {
@@ -142,5 +168,34 @@ describe("StewardLoginSection — wallet sign-in gating (SIWE/SIWS port)", () =>
     expect(screen.queryByText("or sign in with a wallet")).toBeNull();
     expect(screen.queryByRole("button", { name: /EVM wallet/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Solana wallet/i })).toBeNull();
+  });
+
+  it("navigates a live OAuth popup through the shared opener-safe helper", async () => {
+    const popup = { closed: false } as Window;
+    oauthLaunch.popup = popup;
+    await renderSection();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Google/i }));
+
+    await waitFor(() =>
+      expect(oauthLaunch.navigate).toHaveBeenCalledWith(
+        popup,
+        "https://auth.example.test/authorize",
+      ),
+    );
+  });
+
+  it("uses the platform browser bridge when native or desktop cannot pre-open a popup", async () => {
+    oauthLaunch.sameTabAllowed = false;
+    await renderSection();
+
+    fireEvent.click(await screen.findByRole("button", { name: /Google/i }));
+
+    await waitFor(() =>
+      expect(oauthLaunch.navigate).toHaveBeenCalledWith(
+        null,
+        "https://auth.example.test/authorize",
+      ),
+    );
   });
 });

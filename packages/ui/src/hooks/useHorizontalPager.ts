@@ -26,18 +26,20 @@ const MIN_DISTANCE_THRESHOLD = 64;
 // so a quick swipe never has to travel the full 50%.
 const DISTANCE_THRESHOLD_RATIO = 0.5;
 const MIN_FLICK_DISTANCE = 48;
-const SETTLE_MS = 360;
-const SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
+const SETTLE_MS = 460;
+const SETTLE_EASING = "cubic-bezier(0.25, 0.1, 0.25, 1)";
+const REDUCED_MOTION_SETTLE_MS = 420;
+const REDUCED_MOTION_SETTLE_EASING = "cubic-bezier(0.25, 0.1, 0.25, 1)";
 // Velocity-aware momentum settle (#10717): after a drag release, the settle
 // duration is derived from the release velocity instead of a constant rate — a
 // fast flick settles quickly, a slow drag eases in — so the rail's snap-home
 // speed reflects how the finger left it.
-const MIN_SETTLE_MS = 130;
-const MAX_SETTLE_MS = 440;
+const MIN_SETTLE_MS = 320;
+const MAX_SETTLE_MS = 600;
 // Slowest settle speed (px/ms): a near-zero release velocity eases the
 // remaining distance in at this floor (→ up to MAX_SETTLE_MS), while a faster
 // flick divides through to a shorter duration (down to MIN_SETTLE_MS).
-const MIN_SETTLE_SPEED = 1.5;
+const MIN_SETTLE_SPEED = 0.6;
 
 /** Rolling pointer sample used to derive RELEASE velocity (not the whole-gesture
  *  average) so a slow drag finished with a fast flick still commits. */
@@ -289,7 +291,10 @@ export function useHorizontalPager<
     const rail = railRef.current;
     if (!railPromotedRef.current) return;
     railPromotedRef.current = false;
-    if (rail) rail.style.willChange = "";
+    if (rail) {
+      rail.style.willChange = "";
+      delete rail.dataset.railGestureActive;
+    }
     // The gesture/settle window closed — release any consumer (live-widget
     // flushes) parked on the rail-gesture signal.
     endRailGesture();
@@ -297,15 +302,9 @@ export function useHorizontalPager<
   const armRailPromotion = React.useCallback(() => {
     const rail = railRef.current;
     if (!rail || railPromotedRef.current) return;
-    // Reduced motion has no animated settle to composite — a pan that jumps
-    // page-to-page never runs the transition, so the promotion would only ever
-    // be dropped by the next drag. Skip it entirely (matches #14501). The
-    // rail-gesture signal is skipped with it: with no promoted layer there is
-    // no re-rasterize cost to shield, and pausing widget updates would be pure
-    // staleness.
-    if (prefersReducedMotion()) return;
     railPromotedRef.current = true;
     rail.style.willChange = "transform";
+    rail.dataset.railGestureActive = "";
     // Broadcast the gesture window so live-widget flushes inside the promoted
     // layer can buffer until the settle ends (they'd repaint the moving
     // surface mid-swipe otherwise).
@@ -322,13 +321,30 @@ export function useHorizontalPager<
       const rail = railRef.current;
       if (!rail) return;
       // One seam for every animated write (momentum settle, snap-back,
-      // abandonDrag, edge buttons, mount effect): under prefers-reduced-motion
-      // the inline transition is dropped so the rail jumps instead of easing —
-      // the CSS `motion-reduce:transition-none` class can't win against an inline
-      // `transition` style, so the gate has to live here.
-      const ms = prefersReducedMotion() ? null : transitionMs;
-      rail.style.transition =
-        ms == null ? "none" : `transform ${ms}ms ${SETTLE_EASING}`;
+      // abandonDrag, edge buttons, mount effect). Reduced motion still needs a
+      // short spatial settle: an instant page jump after the rail tracked the
+      // finger is more disorienting than a restrained, non-bouncy transition.
+      const reducedMotion = prefersReducedMotion();
+      const ms =
+        transitionMs == null
+          ? null
+          : reducedMotion
+            ? REDUCED_MOTION_SETTLE_MS
+            : transitionMs;
+      const transition =
+        ms == null
+          ? "none"
+          : `transform ${ms}ms ${
+              reducedMotion ? REDUCED_MOTION_SETTLE_EASING : SETTLE_EASING
+            }`;
+      // The global reduced-motion reset uses `transition-duration: 0.01ms
+      // !important`. This spatial continuation is intentionally retained, so
+      // its one scoped inline declaration must outrank that universal reset.
+      rail.style.setProperty(
+        "transition",
+        transition,
+        reducedMotion ? "important" : "",
+      );
       rail.style.transform = `translate3d(${roundedPx(offset)},0,0)`;
       lastWrittenOffsetRef.current = offset;
     },
@@ -461,7 +477,10 @@ export function useHorizontalPager<
     return () => {
       if (!railPromotedRef.current) return;
       railPromotedRef.current = false;
-      if (rail) rail.style.willChange = "";
+      if (rail) {
+        rail.style.willChange = "";
+        delete rail.dataset.railGestureActive;
+      }
       // Mirror dropRailPromotion: an unmount mid-gesture must also release
       // consumers parked on the rail-gesture signal.
       endRailGesture();
@@ -649,8 +668,7 @@ export function useHorizontalPager<
       // frames of a swipe composite instead of paying the promotion raster
       // right when the finger starts moving. A gesture that commits VERTICAL
       // drops the promotion immediately (see onPointerMove); a plain tap drops
-      // it in finish()'s zero-delta path. Reduced motion still skips inside
-      // armRailPromotion.
+      // it in finish()'s zero-delta path.
       armRailPromotion();
     },
     [armRailPromotion, cancelScheduledOffset, measureWidth, writeOffset],

@@ -127,9 +127,8 @@ export const OnboardingDefaults: Story = {
 };
 
 /**
- * A view-group with several interrupt rows renders as the rested Z-stack:
- * the highest-priority card on top, glass peeks beneath (no header, no group
- * count), and the "N more" button under everything.
+ * One producer with several interrupt rows renders as the rested Z-stack: the
+ * highest-priority card on top, glass peeks beneath, and a passive inbox total.
  */
 export const StackedGroup: Story = {
   render: () => (

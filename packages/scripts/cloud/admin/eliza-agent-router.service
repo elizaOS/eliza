@@ -12,6 +12,7 @@ WorkingDirectory=/opt/eliza
 EnvironmentFile=/opt/eliza/cloud/.env.local
 # Use the installed workspace binary directly to avoid `npx` startup overhead.
 Environment=NODE_OPTIONS=--max-old-space-size=512
+ExecStartPre=/opt/eliza/packages/scripts/cloud/admin/ensure-generated-keywords.sh
 ExecStart=/opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/scripts/cloud/admin/daemons/agent-router.ts
 
 Restart=always

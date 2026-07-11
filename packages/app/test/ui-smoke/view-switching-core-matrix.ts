@@ -106,7 +106,7 @@ export const CORE_VIEW_SWITCH_TARGETS: readonly CoreViewSwitchTarget[] = [
     label: "Transcripts",
     path: "/apps/transcripts",
     kind: "core-view",
-    readySelector: '[data-testid="transcripts-view"]',
+    readySelector: '[data-testid="live-meeting-page"]',
   },
   {
     id: "wallet",

@@ -14,14 +14,23 @@ interface AIUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
-  // Cache fields: only present on the streamed-usage object the AI SDK
-  // resolves after a stream finishes (`streamResult.usage`) for providers
-  // that report cache reuse (e.g. Anthropic cache_control). The non-streaming
-  // path already carried these through `buildNativeTextResult` in
-  // models/text.ts — this interface/emitter was the streaming path's gap.
+  // Legacy/direct-set cache fields: some non-AI-SDK callers (or older SDK
+  // versions) set these directly. Real `ai@^6` results never populate
+  // `cacheCreationInputTokens` — see `inputTokenDetails` below.
   cacheReadInputTokens?: number;
   cachedInputTokens?: number;
   cacheCreationInputTokens?: number;
+  // The AI SDK's actual home for cache token counts (`ai@^6`
+  // `LanguageModelUsage.inputTokenDetails`, `node_modules/ai/dist/index.js`
+  // `convertUsage`). `cacheReadTokens` duplicates the deprecated top-level
+  // `cachedInputTokens`; `cacheWriteTokens` has no top-level alias at all —
+  // reading only `cacheCreationInputTokens` (which the SDK never sets)
+  // silently dropped every cache-write count reported by Anthropic-family
+  // models routed through OpenRouter.
+  inputTokenDetails?: {
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
 }
 
 export type NormalizedModelUsage = {
@@ -31,6 +40,21 @@ export type NormalizedModelUsage = {
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
 };
+
+/**
+ * Reads cache read/write token counts off an AI SDK usage object, preferring
+ * the SDK's real `inputTokenDetails` location and falling back to the
+ * legacy/direct fields for callers that set them explicitly.
+ */
+export function extractCacheTokens(usage: AIUsage): {
+  cacheRead?: number;
+  cacheCreation?: number;
+} {
+  const cacheRead =
+    usage.cacheReadInputTokens ?? usage.cachedInputTokens ?? usage.inputTokenDetails?.cacheReadTokens;
+  const cacheCreation = usage.cacheCreationInputTokens ?? usage.inputTokenDetails?.cacheWriteTokens;
+  return { cacheRead, cacheCreation };
+}
 
 export function emitModelUsageEvent(
   runtime: IAgentRuntime,
@@ -44,8 +68,7 @@ export function emitModelUsageEvent(
   const outputTokens = usage.outputTokens ?? usage.completionTokens ?? 0;
   const totalTokens = usage.totalTokens ?? inputTokens + outputTokens;
   const model = modelName?.trim() || modelLabel?.trim() || String(modelType);
-  const cacheRead = usage.cacheReadInputTokens ?? usage.cachedInputTokens;
-  const cacheCreation = usage.cacheCreationInputTokens;
+  const { cacheRead, cacheCreation } = extractCacheTokens(usage);
 
   runtime.emitEvent(EventType.MODEL_USED, {
     runtime,

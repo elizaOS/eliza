@@ -160,6 +160,11 @@
     },
     "./brand": {
       "types": "./dist/brand/index.d.ts",
+      "eliza-source": {
+        "types": "./src/brand/index.ts",
+        "import": "./src/brand/index.ts",
+        "default": "./src/brand/index.ts"
+      },
       "import": "./dist/brand/index.js",
       "default": "./dist/brand/index.js"
     },

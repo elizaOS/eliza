@@ -3,7 +3,7 @@
 // `useChatState` prepend coverage for the chat transcript's upward infinite
 // scroll. The regression case is a long thread plus an older page: prepending
 // must NEVER drop the newest tail (#13532) — dropping it stranded the true
-// latest out of state (breaking jumpToLatest) and made the scroll-anchor
+// latest out of state (breaking bottom-follow) and made the scroll-anchor
 // restore yank the viewport downward once the thread crossed the old cap.
 
 import { act, renderHook } from "@testing-library/react";
@@ -100,10 +100,32 @@ describe("useChatState prependConversationMessages", () => {
     expect(kept[0].id).toBe("old-0");
     expect(kept[24].id).toBe("old-24");
     expect(kept[25].id).toBe("new-0");
-    // The true latest — what jumpToLatest / bottom-follow must still reach —
+    // The true latest — what bottom-follow must still reach —
     // survives the prepend instead of being sliced off the tail.
     expect(kept[kept.length - 1].id).toBe(`new-${newestCount - 1}`);
     expect(result.current.conversationMessagesRef.current).toEqual(kept);
+  });
+
+  it("only grows the transcript while preserving active and unread metadata", () => {
+    const { result } = renderHook(() => useChatState());
+    act(() => {
+      result.current.addUnread("active");
+      result.current.addUnread("other");
+      result.current.setActiveConversationId("active");
+      result.current.setConversationMessages([msg("new", 20)]);
+    });
+
+    act(() => {
+      result.current.prependConversationMessages([msg("old", 10)]);
+    });
+
+    expect(result.current.state.activeConversationId).toBe("active");
+    expect(result.current.state.unreadConversations.has("active")).toBe(false);
+    expect(result.current.state.unreadConversations.has("other")).toBe(true);
+    expect(ids(result.current.state.conversationMessages)).toEqual([
+      "old",
+      "new",
+    ]);
   });
 });
 

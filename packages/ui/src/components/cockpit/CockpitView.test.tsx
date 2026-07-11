@@ -36,6 +36,19 @@ const ROSTER: OrchestratorRoomRosterOverview = {
 };
 
 describe("CockpitView", () => {
+  it("threads repo suggestions and registry availability into the form", () => {
+    render(
+      <CockpitView
+        rooms={{ rooms: [] }}
+        onCreateSession={vi.fn()}
+        knownRepos={["elizaOS/eliza"]}
+        repoSuggestionsUnavailable
+      />,
+    );
+    expect(screen.getByTestId("cockpit-repo-suggestions")).toBeTruthy();
+    expect(screen.getByText(/repo suggestions are unavailable/i)).toBeTruthy();
+  });
+
   it("renders the deck and the new-session form", () => {
     render(<CockpitView rooms={ROSTER} onCreateSession={vi.fn()} />);
     expect(screen.getByTestId("cockpit-view")).toBeTruthy();

@@ -198,6 +198,48 @@ describe("Discord outbound component delivery (#14527)", () => {
 		});
 	});
 
+	it("passes callback text through untouched — sanitization lives at the shared core boundary (#15888)", async () => {
+		// The Discord-local pre-send sanitizer is gone: text reaching the
+		// connector callback is already sanitized upstream in @elizaos/core, and
+		// Discord must NOT run a second pass. The old local pass corrupted `$$`
+		// inside fences (string-replacement restore) and truncated replies at an
+		// inline `<tool_call>` mention — this payload would not survive it.
+		const passThrough: Content = {
+			text: "Run:\n```bash\nkill -9 $$\n```\nThe `<tool_call>` tag is machine syntax.",
+			channelType: "DM",
+		};
+		const dmSends: CapturedSend[] = [];
+		const dmUser = {
+			id: "555000111222333444",
+			send: async (options: CapturedSend) => {
+				dmSends.push(options);
+				return makeSentMessage("990000000000000002", options);
+			},
+		};
+		const client = {
+			user: { id: "888000000000000000" },
+			users: { fetch: async () => dmUser },
+		};
+		const channel = {
+			id: "777000000000000000",
+			type: DiscordChannelType.DM,
+			isThread: () => false,
+			send: async () => {
+				throw new Error(
+					"DM replies must go through user.send, not channel.send",
+				);
+			},
+		};
+
+		const { runtime, errors } = makeRuntime(passThrough);
+		const manager = new MessageManager(makeDiscordService(client), runtime);
+		await manager.handleMessage(makeInbound(channel, dmUser.id));
+
+		expect(errors).toEqual([]);
+		expect(dmSends).toHaveLength(1);
+		expect(dmSends[0].content).toBe(passThrough.text);
+	});
+
 	it("carries rendered components through draft-stream finalize", async () => {
 		const channelSends: CapturedSend[] = [];
 		const channel = {

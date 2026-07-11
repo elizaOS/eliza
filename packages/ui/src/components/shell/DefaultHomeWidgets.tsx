@@ -131,8 +131,11 @@ function WeatherTile(): React.JSX.Element {
               digits into the degree unit; tabular-nums already keeps the
               width stable across minute ticks. */}
           <div className="flex items-center gap-2 whitespace-nowrap">
-            <Icon className="h-7 w-7 shrink-0 text-accent" aria-hidden />
-            <div className="flex items-start text-4xl font-semibold leading-none tabular-nums">
+            <Icon
+              className={cn("h-8 w-8 shrink-0", WALLPAPER_TEXT.primary)}
+              aria-hidden
+            />
+            <div className="flex items-start text-5xl font-semibold leading-none tabular-nums">
               <span>{weather.temp}</span>
               <span
                 className={cn(
@@ -200,7 +203,13 @@ const HomeClock = memo(function HomeClock(): React.JSX.Element {
           </span>
         ) : null}
       </div>
-      <div className={cn("mt-3 text-base font-medium", WALLPAPER_TEXT.primary)}>
+      <div
+        className={cn(
+          "mt-3 truncate text-base font-medium",
+          WALLPAPER_TEXT.primary,
+        )}
+        title={dateLabel}
+      >
         {dateLabel}
       </div>
     </div>

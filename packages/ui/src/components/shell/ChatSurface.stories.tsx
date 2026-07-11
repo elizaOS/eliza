@@ -9,7 +9,7 @@ import type { ShellMessage } from "./shell-state";
 // ChatSurface is the homescreen glass mini-chat. These stories exercise its
 // canonical message row (shared ChatBubble), the shared TypingIndicator for the
 // in-flight assistant placeholder, and the empty greeting state. The
-// jump-to-latest control only appears once a real scroller has scrolled up, so
+// scrollback behavior only engages once a real scroller has scrolled up, so
 // it is not visible in a short static story — its behaviour is unit-tested.
 
 const NOW = 1780000000000;

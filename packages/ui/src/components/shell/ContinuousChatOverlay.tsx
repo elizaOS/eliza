@@ -6,7 +6,6 @@ import { logger } from "@elizaos/logger";
 import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
-  ArrowDown,
   AudioLines,
   Camera,
   Captions,
@@ -55,7 +54,10 @@ import {
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
 } from "../../events";
-import { FIRST_RUN_GREETING } from "../../first-run/first-run-greeting";
+import {
+  FIRST_RUN_GREETING,
+  FIRST_RUN_SIGN_IN_PROMPT,
+} from "../../first-run/first-run-greeting";
 import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
@@ -67,7 +69,6 @@ import {
 } from "../../hooks/useLayoutShiftMonitor";
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
-import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
@@ -128,6 +129,14 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { Input } from "../ui/input";
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScroller,
+} from "../ui/message-scroller";
 import { Textarea } from "../ui/textarea";
 import {
   isShortLandscapeViewport,
@@ -230,8 +239,8 @@ const CHAT_PANEL_THEME = {
 // token-based color there resolves to the ambient app theme — which is dark on a
 // light surface, making the handle render BLACK (the "handle is black sometimes"
 // bug: the open-sheet grabber was black while the in-panel pill bar was white).
-// This warm near-white matches the panel's `--muted-strong` in every context.
-const HANDLE_BAR_COLOR = "rgba(255, 247, 240, 0.86)";
+// Fixed white matches the panel's `--muted-strong` in every context.
+const HANDLE_BAR_COLOR = "rgba(255, 255, 255, 0.96)";
 
 // Shared easing for the overlay's cheap motion path. Open/close must stay
 // opacity/translate only: animating blur/filter or scaling a scrollable
@@ -281,6 +290,11 @@ export type ChatMode = "pill" | "input" | "half" | "full";
 type MotionControls = { stop: () => void };
 
 const SHEET_HALF_VH = 0.46; // fraction of viewport height at the HALF detent
+// A landscape phone still needs room for the attach, mic, voice, and text
+// controls. The old 208px cap squeezed the editable field to ~46px and made a
+// rotation look like the composer had broken. Keep the corner treatment, but
+// preserve the same useful width as a portrait-phone composer.
+const SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX = 360;
 // Ceiling (px) for the composer-footprint clearance the chat reserves in the
 // home/launcher layout. The panel can momentarily measure its OPEN/animating
 // height on the drag-down→collapse edge; publishing that as the reserved space
@@ -480,6 +494,7 @@ function SoftButton({
   onPointerLeave,
   disabled,
   active,
+  pressed,
   pulse,
   testId,
 }: {
@@ -494,6 +509,8 @@ function SoftButton({
   onPointerLeave?: React.PointerEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   active?: boolean;
+  /** Accessible toggle state when it is intentionally broader than the accent state. */
+  pressed?: boolean;
   /** Breathe the accent glyph while a live capture is hot. */
   pulse?: boolean;
   testId?: string;
@@ -504,7 +521,7 @@ function SoftButton({
       size="icon-lg"
       data-testid={testId}
       aria-label={label}
-      aria-pressed={active}
+      aria-pressed={pressed ?? active}
       // aria-disabled (not the native attr) so the button stays focusable and its
       // label/reason is announceable; the click is guarded instead.
       aria-disabled={disabled}
@@ -563,14 +580,14 @@ const EMPTY_CONVERSATION_NAV: ConversationNav = {
  * pull DOWN to close it. It is also keyboard-operable (Enter/Space toggles,
  * ArrowUp opens, ArrowDown/Escape closes) so the drag-only affordance stays
  * WCAG 2.1.1 operable. `touch-none` keeps the browser from scroll/refreshing
- * mid-drag. A faint warm sheen rides the handle while the agent is live.
+ * mid-drag. A subtle white breath marks live agent work.
  */
 function SheetGrabber({
   open,
   onOpen,
   onClose,
   binding,
-  glow,
+  breathing,
   opacity,
   pilled,
   inert,
@@ -579,7 +596,7 @@ function SheetGrabber({
   onOpen: () => void;
   onClose: () => void;
   binding: PullGestureBinding;
-  glow: boolean;
+  breathing: boolean;
   // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
   // handle, fading to 1 only AFTER the pill has fully faded out — so the grabber
   // bar and the (identical) pill bar are NEVER both visible (the "two pills" bug).
@@ -647,13 +664,13 @@ function SheetGrabber({
           // together. The bar paints at full opacity — a prior regression pinned
           // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Pulse while the mic is hot / a reply is speaking: the warm bar
-          // breathes instead of sitting static, the "audio is on" cue.
-          glow && "animate-pulse bg-accent motion-reduce:animate-none",
+          // A dedicated opacity/scale breath marks live agent work without
+          // repurposing shadcn's text-only shimmer utility.
+          breathing && "eliza-chat-handle-breathe",
         )}
         // Explicit fixed color (see HANDLE_BAR_COLOR) so the grabber — rendered
         // outside the panel theme — never inherits a dark ambient token.
-        style={glow ? undefined : { backgroundColor: HANDLE_BAR_COLOR }}
+        style={{ backgroundColor: HANDLE_BAR_COLOR }}
       />
     </motion.button>
   );
@@ -667,12 +684,12 @@ function SheetGrabber({
 function PillHandle({
   binding,
   onOpen,
-  glow,
+  breathing,
   pilled,
 }: {
   binding: PullGestureBinding;
   onOpen: () => void;
-  glow: boolean;
+  breathing: boolean;
   // Interactive ONLY while pilled. The handle's hit zone (`px-16 pt-10`) is tall
   // and wide and sits directly over the composer textarea; if it kept
   // `pointer-events-auto` while NOT pilled it would intercept the tap meant for
@@ -723,16 +740,27 @@ function PillHandle({
           // The bar paints at full opacity — a prior regression pinned it to
           // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
           "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-          // Same pulse as the SheetGrabber bar: while audio is on and the chat
-          // is collapsed to the pill, the pill itself pulses.
-          glow && "animate-pulse bg-accent motion-reduce:animate-none",
+          // Same compositor-only work-state breath as the SheetGrabber bar.
+          breathing && "eliza-chat-handle-breathe",
         )}
         // Same explicit color as the grabber bar so the two are pixel-identical
         // through the crossfade (HANDLE_BAR_COLOR).
-        style={glow ? undefined : { backgroundColor: HANDLE_BAR_COLOR }}
+        style={{ backgroundColor: HANDLE_BAR_COLOR }}
       />
     </Button>
   );
+}
+
+/** Forces the canonical shadcn scroller to the end after an explicit send. */
+function MessageScrollerSendFollow({ request }: { request: number }) {
+  const { scrollToEnd } = useMessageScroller();
+
+  React.useLayoutEffect(() => {
+    if (request === 0) return;
+    scrollToEnd({ behavior: "auto" });
+  }, [request, scrollToEnd]);
+
+  return null;
 }
 
 /**
@@ -921,21 +949,28 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
   return data;
 }
 
-const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE: ShellMessage = {
-  id: "first-run:cloud-signin-fallback",
-  role: "assistant",
-  source: "first_run",
-  createdAt: 0,
-  // Byte-identical to the conductor's seeded greeting so the latest-turn
-  // dedupe collapses fallback + real greeting into one message.
-  content: [
-    FIRST_RUN_GREETING,
-    "",
-    "[CHOICE:first-run id=runtime]",
-    "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
-    "[/CHOICE]",
-  ].join("\n"),
-};
+const FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES: ShellMessage[] = [
+  {
+    id: "first-run:greeting-fallback",
+    role: "assistant",
+    source: "first_run",
+    createdAt: 0,
+    content: FIRST_RUN_GREETING,
+  },
+  {
+    id: "first-run:cloud-signin-fallback",
+    role: "assistant",
+    source: "first_run",
+    createdAt: 1,
+    content: [
+      FIRST_RUN_SIGN_IN_PROMPT,
+      "",
+      "[CHOICE:first-run id=runtime]",
+      "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+      "[/CHOICE]",
+    ].join("\n"),
+  },
+];
 const FIRST_RUN_SIGN_IN_FALLBACK_DELAY_MS = 600;
 
 function isFirstRunShellMessage(m: ShellMessage): boolean {
@@ -952,13 +987,19 @@ function selectFirstRunDisplayMessages(
 ): ShellMessage[] {
   const firstRunMessages = messages.filter(isFirstRunShellMessage);
   if (firstRunMessages.length === 0) {
-    return showFallback ? [FIRST_RUN_SIGN_IN_FALLBACK_MESSAGE] : [];
+    return showFallback ? FIRST_RUN_SIGN_IN_FALLBACK_MESSAGES : [];
   }
 
   const latest = firstRunMessages.at(-1);
   if (!latest) return [];
 
   const previous = firstRunMessages.at(-2);
+  if (
+    previous?.id === "first-run:greeting" &&
+    latest.id === "first-run:cloud-oauth"
+  ) {
+    return [previous, latest];
+  }
   if (
     previous?.id === "first-run:appearance" &&
     latest.id === "first-run:tutorial"
@@ -1016,12 +1057,11 @@ export function ContinuousChatOverlay({
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay opens as the normal full-screen chat and pins
    * there: every collapse path (Escape, outside tap, drag/close) is a no-op,
-   * the drag handle is hidden, and the backdrop is OPAQUE (`bg-bg`) so the
-   * launcher/home behind is hidden. The composer is sign-in-first and locked;
-   * the seeded transcript choice/OAuth widget is the only input until setup
-   * completes. On the falling edge — onboarding just completed — the sheet
-   * settles to half and the opaque backdrop fades to the normal scrim,
-   * revealing the home screen.
+   * the interactive drag handle is hidden, and a neutral scrim preserves the
+   * shared wallpaper while the retained home/launcher surface stays invisible.
+   * The composer is sign-in-first and locked; the seeded transcript choice is
+   * the only input until setup completes. On the falling edge — onboarding just
+   * completed — the sheet settles to half, the scrim fades, and home is shown.
    */
   firstRunOpen?: boolean;
 }): React.JSX.Element {
@@ -1714,21 +1754,11 @@ export function ContinuousChatOverlay({
   // The thread body is mounted while the sheet is open OR during an upward
   // drag's inert preview; the auto-scroll engine runs exactly then.
   const threadPresented = sheetOpen || dragPreviewVisible;
-  // Keep the transcript pinned to the latest line via the one shared
-  // thread-scroll engine (useThreadAutoScroll): first reveal pins instantly
-  // (pre-paint — the thread never flashes at the top), a NEW line re-pins with
-  // a smooth glide while the reader rests at the bottom, streaming growth
-  // follows in a single rAF, and a reader who scrolled up is never yanked.
-  const {
-    scrollRef: threadRef,
-    atBottom: threadAtBottom,
-    jumpToLatest,
-  } = useThreadAutoScroll<HTMLDivElement>({
-    growthKey: `${visibleMessages.length}:${lastId ?? ""}:${lastContent.length}`,
-    lineKey: lastId ?? "",
-    enabled: threadPresented,
-    reduceMotion: reduce,
-  });
+  // The official shadcn MessageScroller owns bottom-follow, turn anchoring, and
+  // streamed-content growth. The ref remains local because search, keyboard
+  // focus, topic jumps, and infinite-history prefetch address the same viewport.
+  const threadRef = React.useRef<HTMLDivElement>(null);
+  const [scrollToEndRequest, setScrollToEndRequest] = React.useState(0);
   // Focus the thread for keyboard scrolling when an opener requested it —
   // consumed on the reveal edge, separate from the scroll engine above.
   React.useLayoutEffect(() => {
@@ -1736,7 +1766,7 @@ export function ContinuousChatOverlay({
       threadRef.current?.focus();
       focusThreadRef.current = false;
     }
-  }, [sheetOpen, threadRef]);
+  }, [sheetOpen]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: these values are the event keys for transient layout-motion intent.
   React.useEffect(() => {
     markLayoutShiftIntent();
@@ -1773,11 +1803,11 @@ export function ContinuousChatOverlay({
   );
 
   // ── Infinite upward scroll (#13532/#14329), wired into the overlay per #14279
-  // The overlay is the primary mobile/PWA chat surface. Share the SAME scroller
-  // (`threadRef`, owned by useThreadAutoScroll for bottom-follow) plus a top
-  // sentinel so a scroll toward the oldest line seamlessly reveals/prepends an
-  // older page — viewport anchored (no jump) by useLoadOlderOnScroll. Paging +
-  // windowing state lives in the shared useConversationRenderWindow above.
+  // The overlay is the primary mobile/PWA chat surface. The shadcn
+  // MessageScroller owns bottom-follow and streamed growth on `threadRef`; the
+  // top sentinel lets useLoadOlderOnScroll own the opposite direction and
+  // preserve the viewport when an older page is prepended. Paging + windowing
+  // state lives in the shared useConversationRenderWindow above.
   const topSentinelRef = React.useRef<HTMLDivElement>(null);
   useLoadOlderOnScroll<HTMLDivElement>({
     scrollRef: threadRef,
@@ -1916,7 +1946,6 @@ export function ContinuousChatOverlay({
     [],
   );
   // Tapping a chip expands its group and scrolls its header into view.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: threadRef is the stable ref object returned by useThreadAutoScroll (a useRef); reading .current in the rAF is not a dependency.
   const scrollToTopic = React.useCallback((topic: string) => {
     setCollapsedTopics((prev) => {
       if (!prev.has(topic)) return prev;
@@ -1972,31 +2001,27 @@ export function ContinuousChatOverlay({
             }
           : undefined;
       return (
-        <ChatMessage
-          key={m.id}
-          // Always the app's canonical glass chrome — onboarding included. The
-          // first-run greeting used to force "panel" (a bordered card), a
-          // different, duplicate-looking bubble from the real in-app chat; glass
-          // is the chromeless bubble with the same rise/fade entrance, matching
-          // the app and the documented first-run intent (agent prose floats as
-          // plain wallpaper text with its CTA beneath).
-          appearance="glass"
-          agentName={agentName}
-          message={shellToChatMessageData(m)}
-          reduceMotion={reduce}
-          onCopy={handleCopyMessage}
-          onLongPressCopy={handleLongPressCopy}
-          onSpeak={handleSpeakMessage}
-          onEdit={handleEditResend}
-          onDelete={handleDeleteMessage}
-          onReply={handleReplyMessage}
-          onRetry={handleRetry}
-          playing={speaking && playingMessageId === m.id}
-          renderContent={renderRowBody}
-          renderContext={renderContext}
-          onAcceptSuggestion={handleAcceptSuggestion}
-          onDismissSuggestion={handleDismissSuggestion}
-        />
+        <MessageScrollerItem key={m.id} messageId={m.id} className="w-full">
+          <ChatMessage
+            appearance="glass"
+            enterOnMount={m.id.startsWith("temp-")}
+            agentName={agentName}
+            message={shellToChatMessageData(m)}
+            reduceMotion={reduce}
+            onCopy={handleCopyMessage}
+            onLongPressCopy={handleLongPressCopy}
+            onSpeak={handleSpeakMessage}
+            onEdit={handleEditResend}
+            onDelete={handleDeleteMessage}
+            onReply={handleReplyMessage}
+            onRetry={handleRetry}
+            playing={speaking && playingMessageId === m.id}
+            renderContent={renderRowBody}
+            renderContext={renderContext}
+            onAcceptSuggestion={handleAcceptSuggestion}
+            onDismissSuggestion={handleDismissSuggestion}
+          />
+        </MessageScrollerItem>
       );
     },
     [
@@ -2126,6 +2151,10 @@ export function ContinuousChatOverlay({
       } else {
         send(trimmed);
       }
+      // Sending is an explicit return to the live edge, even if the reader had
+      // scrolled into history. Once there, MessageScroller's auto-follow keeps
+      // streamed growth and the arriving reply pinned to the composer.
+      setScrollToEndRequest((request) => request + 1);
       // Open the thread to show the conversation + the streaming reply, the same
       // HALF detent focusing/typing uses — NOT a full-screen takeover on every
       // send (that shoved the messages up too high). Keep a taller detent if the
@@ -2372,18 +2401,36 @@ export function ContinuousChatOverlay({
     // soft-keyboard animation; settling on those events fights typing, detent
     // drags, and keyboard open/close. For vv resize/scroll, update measurements
     // only and let the current sheet state remain authoritative.
+    let settleFrame: number | null = null;
     const syncAndSettleWindow = () => {
       sync();
-      settleDragRef.current?.();
+      if (settleFrame !== null) window.cancelAnimationFrame(settleFrame);
+      // orientationchange may arrive before innerWidth/innerHeight and the
+      // visual viewport have reached their final values. Measure now, measure
+      // once more on the next frame, then settle against the committed layout.
+      settleFrame = window.requestAnimationFrame(() => {
+        sync();
+        settleFrame = window.requestAnimationFrame(() => {
+          settleFrame = null;
+          settleDragRef.current?.();
+        });
+      });
     };
-    syncAndSettleWindow();
+    // Initial mount needs measurements only. Scheduling the deferred settle
+    // here races the first user gesture: the second frame can land after a
+    // pointerdown and cancel a valid drag preview. Real resize/orientation
+    // events below retain the two-frame settle path.
+    sync();
     const vv = window.visualViewport;
     window.addEventListener("resize", syncAndSettleWindow);
+    window.addEventListener("orientationchange", syncAndSettleWindow);
     vv?.addEventListener("resize", sync);
     vv?.addEventListener("scroll", sync, { passive: true });
     return () => {
       cancelViewportSync();
+      if (settleFrame !== null) window.cancelAnimationFrame(settleFrame);
       window.removeEventListener("resize", syncAndSettleWindow);
+      window.removeEventListener("orientationchange", syncAndSettleWindow);
       vv?.removeEventListener("resize", sync);
       vv?.removeEventListener("scroll", sync);
     };
@@ -2731,7 +2778,9 @@ export function ContinuousChatOverlay({
   // maximize COMMITTED — on desktop the background jumped 768px → viewport on
   // release instead of growing under the finger. The content columns inside
   // stay pinned at the reading width, so only the glass grows.
-  const wrapperBaseMaxW = compactLanding ? 208 : 768;
+  const wrapperBaseMaxW = compactLanding
+    ? SHORT_LANDSCAPE_CHAT_MAX_WIDTH_PX
+    : 768;
   const wrapperMaxW = useTransform(
     fullBleedT,
     (t) =>
@@ -3193,7 +3242,7 @@ export function ContinuousChatOverlay({
   // own the screen and the chat is undismissable; every collapse path below is
   // also gated on `firstRunOpen`). On the FALLING edge — onboarding just
   // completed — settle to the HALF detent: the sheet springs full → half in
-  // step with the opaque backdrop fade, so the home screen is revealed behind
+  // step with the onboarding scrim fade, so the home screen is revealed behind
   // the top half while the conversation stays in hand. Edge-detected via a ref
   // so an ordinary session (onboarding never active) never triggers it.
   const wasFirstRunOpenRef = React.useRef(firstRunOpen);
@@ -3209,13 +3258,12 @@ export function ContinuousChatOverlay({
     if (was) goToDetent("half");
   }, [firstRunOpen, goToDetent]);
 
-  // First-run opaque backdrop (#12178). While onboarding pins the sheet FULL,
-  // the backdrop is an OPAQUE `bg-bg` layer that hides the launcher/home behind
-  // the chat — the normal translucent gradient scrim would let them show
-  // through. On the falling edge (onboarding just completed) it fades opaque →
-  // transparent over ~400ms in step with the one-shot auto-collapse above,
-  // revealing home/launcher underneath (kept mounted, warm); reduced-motion
-  // cuts straight to hidden. `off` unmounts the layer for ordinary sessions.
+  // First-run backdrop. While onboarding pins the sheet FULL, a neutral scrim
+  // preserves the shell's configured wallpaper while keeping the sign-in copy
+  // readable. On the falling edge (onboarding just completed) it fades away
+  // over ~400ms in step with the one-shot auto-collapse above; reduced-motion
+  // cuts straight to hidden. The historical `opaque` phase name describes the
+  // layer's opacity and remains part of the smoke-test transition contract.
   const [firstRunBackdrop, setFirstRunBackdrop] = React.useState<
     "opaque" | "revealing" | "off"
   >(firstRunOpen ? "opaque" : "off");
@@ -3243,7 +3291,6 @@ export function ContinuousChatOverlay({
   // moment the chat is dismissed (pull-down, Escape, or click-out) — the chat is
   // no longer "focused". Blurring (rather than the old refocus dance) also means
   // there's no focus→expand bounce to guard against, so the model stays simple.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: threadRef is the stable ref object returned by useThreadAutoScroll (a useRef); reading .current is not a dependency.
   const collapse = React.useCallback(() => {
     // Undismissable during onboarding: Escape (document, thread, composer),
     // outside taps, the grabber close, and the sheet-open grabber tap all
@@ -3783,13 +3830,13 @@ export function ContinuousChatOverlay({
     // The inline home notification center (#15080) is a live INTERACTIVE
     // surface even though it sits BELOW the chat glass (inline on the home
     // column, not the old Z_NOTIFICATION_OVERLAY shade). Its rows own tap (open
-    // / deep-link), swipe-dismiss, and a long-press menu; without this
+    // / deep-link) and swipe-dismiss; without this
     // exemption the capture-phase pointerup below preventDefault +
     // stopImmediatePropagation'd the row's tap and set suppressNextOutsideClick,
     // so the click-swallower ate the row's onClick, tapping a notification did
-    // NOTHING ("interacting is cooked", device r8). Exempt the ROWS
-    // (`[data-notif-row]` — the option strip lives inside the row) so their own
-    // handlers win. Scope the exemption to the rows, NOT the whole center
+    // NOTHING ("interacting is cooked", device r8). Exempt the ROWS via
+    // `[data-notif-row]` so their own handlers win. Scope the exemption to the
+    // rows, NOT the whole center
     // section: the section is `flex-1` and chromeless, so it fills most of the
     // home band with invisible field — exempting the section (as it once did)
     // killed outside-tap collapse everywhere around the rows. A real tap on the
@@ -4772,12 +4819,10 @@ export function ContinuousChatOverlay({
         }}
       />
 
-      {/* First-run opaque backdrop (#12178): while onboarding is open this
-          OPAQUE `bg-bg` layer sits ABOVE the gradient scrim and BELOW the glass
-          panel, so no launcher/home pixel shows through — including behind the
-          translucent panel glass. On completion it fades to transparent (~400ms)
-          in step with the one-shot collapse, revealing the launcher warm
-          underneath; reduced-motion cuts. Pointer-transparent like the scrim. */}
+      {/* First-run wallpaper scrim: it sits above the shell wallpaper and below
+          the chat, preserving the configured background without compromising
+          text contrast. On completion it fades out with the one-shot collapse.
+          Pointer-transparent like the ordinary sheet backdrop. */}
       {firstRunBackdrop !== "off" ? (
         <motion.div
           aria-hidden="true"
@@ -4785,7 +4830,7 @@ export function ContinuousChatOverlay({
           data-first-run-opaque={
             firstRunBackdrop === "opaque" ? "true" : "false"
           }
-          className="fixed inset-0 bg-bg"
+          className="fixed inset-0 bg-black/15"
           initial={false}
           animate={{ opacity: firstRunBackdrop === "opaque" ? 1 : 0 }}
           transition={{
@@ -4879,7 +4924,7 @@ export function ContinuousChatOverlay({
             // next to the user's attention; a second pulsing bar above them
             // read as noise. Only the collapsed PILL (where no composer glyph
             // is visible) pulses for a live capture — see PillHandle below.
-            glow={(listening || responding) && !recording}
+            breathing={(listening || responding) && !recording}
             opacity={grabberOpacity}
             pilled={pilled}
             inert={!sheetOpen && (hasImages || Boolean(imageError))}
@@ -4946,6 +4991,7 @@ export function ContinuousChatOverlay({
               corner radius. Crossfades in by openProgress (compositor opacity). */}
           <motion.div
             aria-hidden="true"
+            data-testid="chat-sheet-surface"
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
               // SOLID warm-dark panel. The chat floats over the live ember field,
@@ -4977,9 +5023,11 @@ export function ContinuousChatOverlay({
               // CHAT_PANEL_THEME on the fieldset, not the orange app theme behind.
               // Full-bleed stays fully opaque (it covers the whole screen — there
               // is nothing to see through, and the blur would be wasted battery).
-              backgroundColor: fullBleed
-                ? "var(--bg)"
-                : "color-mix(in srgb, var(--card) 62%, transparent)",
+              backgroundColor: firstRunOpen
+                ? "transparent"
+                : fullBleed
+                  ? "var(--bg)"
+                  : "color-mix(in srgb, var(--card) 62%, transparent)",
               backdropFilter: fullBleed
                 ? undefined
                 : "blur(30px) saturate(1.4)",
@@ -4996,7 +5044,9 @@ export function ContinuousChatOverlay({
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
               // warm `--surface` gradient that read as brown.
-              backgroundImage: `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+              backgroundImage: firstRunOpen
+                ? "none"
+                : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
@@ -5259,7 +5309,7 @@ export function ContinuousChatOverlay({
                     // old `overflow-y-auto`) let the input scroll away under the
                     // keyboard on iOS; keep it `overflow-hidden` and let the
                     // inner results list be the only scroll region.
-                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-scrim px-4 pb-3 pt-2 backdrop-blur-xl"
+                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-black/20 px-4 pb-3 pt-2 backdrop-blur-md"
                   >
                     <MessageSearchPanel
                       search={runMessageSearch}
@@ -5269,181 +5319,170 @@ export function ContinuousChatOverlay({
                     />
                   </div>
                 ) : null}
-                <motion.div
-                  id="continuous-thread"
-                  data-testid="chat-thread-scroll"
-                  ref={threadRef}
-                  role="log"
-                  aria-label="conversation history"
-                  aria-live="polite"
-                  aria-hidden={!sheetOpen ? true : undefined}
-                  tabIndex={sheetOpen ? 0 : -1}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      collapse();
-                    }
-                  }}
-                  // `flex-1 min-h-0` (not `h-full`): as the single child of the
-                  // flex-column thread above, the scroller fills the parent's
-                  // BOUNDED height via the flex algorithm — a resolution that is
-                  // definite on every engine, unlike `height:100%` against a
-                  // flex-basis-sized parent (auto on iOS Safari → content-sized →
-                  // unscrollable, #chat-scroll-web). `min-h-0` lets it shrink
-                  // below its content so `overflow-y-auto` actually engages.
-                  // `[-webkit-overflow-scrolling:touch]`: iOS Safari needs this
-                  // legacy hint to give an `overflow-y-auto` region its own
-                  // momentum-scroll compositor layer; without it a nested
-                  // overflow region on iOS can fail to take the touch-scroll at
-                  // all (the transcript reads as "stuck" — #chat-scroll-web).
-                  // Harmless/ignored on every non-WebKit engine.
-                  // `overflow-x-hidden`: `overflow-y-auto` alone computes the
-                  // cross axis to `auto` too, so a child a hair too wide (a
-                  // long code line, the full-bleed chips rail) surfaces a
-                  // horizontal scrollbar strip across the sheet on iOS — the
-                  // "weird side scroll thingy." This transcript only ever scrolls
-                  // vertically; pin the horizontal axis closed.
-                  className="scrollbar-hide relative flex min-h-0 w-full flex-1 touch-pan-y flex-col overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
-                  style={{ opacity: threadContentOpacity }}
+                <MessageScrollerProvider
+                  key={activeConversationId ?? "unbound"}
+                  autoScroll={!firstRunOpen}
+                  defaultScrollPosition={firstRunOpen ? "start" : "end"}
                 >
-                  {/* Empty-thread loading: a fresh/cleared chat awaiting its
+                  <MessageScrollerSendFollow request={scrollToEndRequest} />
+                  <MessageScroller>
+                    <motion.div
+                      className="flex size-full min-h-0 flex-col"
+                      style={{ opacity: threadContentOpacity }}
+                    >
+                      <MessageScrollerViewport
+                        id="continuous-thread"
+                        data-testid="chat-thread-scroll"
+                        ref={threadRef}
+                        preserveScrollOnPrepend={false}
+                        aria-label="conversation history"
+                        aria-hidden={!sheetOpen ? true : undefined}
+                        tabIndex={sheetOpen ? 0 : -1}
+                        onKeyDown={(e) => {
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            collapse();
+                          }
+                        }}
+                        // `flex-1 min-h-0` keeps the scroll viewport bounded by
+                        // the motion-sized sheet on iOS. Momentum scrolling and
+                        // the closed horizontal axis remain explicit because the
+                        // outer draggable surface only negotiates vertical input.
+                        className="scrollbar-hide relative min-h-0 w-full flex-1 touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-5 outline-none [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+                      >
+                        {/* Empty-thread loading: a fresh/cleared chat awaiting its
                       greeting, or a swipe past the prefetch window. Centered
                       spinner so the open sheet reads as "loading," never as a
                       broken empty box. Cache-hit swipes paint instantly, so this
                       only shows on a genuine network wait. */}
-                  {visibleMessages.length === 0 && conversationLoading ? (
-                    <div
-                      data-testid="chat-thread-loading"
-                      className="pointer-events-none absolute inset-0 grid place-items-center"
-                    >
-                      <Loader2 className="h-6 w-6 animate-spin text-accent" />
-                    </div>
-                  ) : null}
-                  {/* Topic chips bar (#8928): the channel's current topics,
+                        {visibleMessages.length === 0 && conversationLoading ? (
+                          <div
+                            data-testid="chat-thread-loading"
+                            className="pointer-events-none absolute inset-0 grid place-items-center"
+                          >
+                            <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                          </div>
+                        ) : null}
+                        {/* Topic chips bar (#8928): the channel's current topics,
                       sticky above the scrolling transcript. Tap a chip to jump
                       to (and expand) its group. Hidden when nothing is tagged. */}
-                  {hasTopics ? (
-                    <TopicChipsBar
-                      topics={channelTopics}
-                      onSelectTopic={scrollToTopic}
-                      className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
-                    />
-                  ) : null}
-                  {/* `mt-auto` keeps the latest line at the bottom (nearest the
-                  input) until the thread overflows, then it scrolls. During
-                  onboarding only the current first-run turn is displayed, so
-                  keep short setup cards centered while letting tall cards grow
-                  past the viewport so the scrollport owns the overflow. */}
-                  <div
-                    ref={threadContentRef}
-                    className={cn(
-                      "flex flex-col pb-3 pt-1",
-                      !firstRunOpen && "mt-auto",
-                      firstRunOpen &&
-                        "min-h-full shrink-0 justify-center pb-[18vh] pt-0",
-                    )}
-                  >
-                    {/* Top sentinel for infinite upward scroll (#13532, #14279):
+                        {hasTopics ? (
+                          <TopicChipsBar
+                            topics={channelTopics}
+                            onSelectTopic={scrollToTopic}
+                            className="sticky top-0 z-[2] -mx-5 mb-1 bg-gradient-to-b from-scrim to-transparent px-5"
+                          />
+                        ) : null}
+                        {/* Normal chat keeps the latest line near the composer. First-run
+                  starts at the top of the transcript so the opening prompt reads
+                  like the first turn in a conversation. */}
+                        <MessageScrollerContent
+                          ref={threadContentRef}
+                          aria-busy={responding}
+                          className={cn(
+                            "flex flex-col gap-0",
+                            firstRunOpen
+                              ? "shrink-0 pt-8"
+                              : "mt-auto pb-3 pt-8",
+                          )}
+                        >
+                          {/* Top sentinel for infinite upward scroll (#13532, #14279):
                         a zero-height marker just above the oldest turn. When it
                         nears the top of the scroller, useLoadOlderOnScroll
                         prefetches + prepends an older page a viewport early and
                         preserves the reader's anchor so the thread never jumps.
                         Only meaningful in the flat (non-topic) transcript. */}
-                    {!firstRunOpen &&
-                    !hasTopics &&
-                    renderWindow.canLoadOlder &&
-                    visibleMessages.length > 0 ? (
-                      <div
-                        ref={topSentinelRef}
-                        data-testid="chat-transcript-top-sentinel"
-                        aria-hidden="true"
-                        className="pointer-events-none flex h-5 shrink-0 items-center justify-center"
-                      >
-                        <Loader2
-                          className={cn(
-                            "h-4 w-4 text-muted-strong opacity-60",
-                            reduce ? "" : "animate-spin",
-                          )}
-                          aria-hidden="true"
-                        />
-                      </div>
-                    ) : null}
-                    {hasTopics
-                      ? // Topic-grouped transcript: each cluster collapses via a
-                        // gesture on its header (no visible buttons).
-                        (() => {
-                          let lineIndex = 0;
-                          return topicSegments.map((segment) => {
-                            const lines = segment.messages.map((m) =>
-                              renderThreadLine(m, lineIndex++),
-                            );
-                            return (
-                              // The React key is the segment's first message id
-                              // (stable + unique) because a topic can recur in a
-                              // non-adjacent run (A → B → A). Collapse state stays
-                              // keyed by topic (`segment.key`) so a chip tap
-                              // expands every run of that topic.
-                              <TopicGroup
-                                key={segment.messages[0]?.id ?? segment.key}
-                                topic={segment.topic}
-                                count={segment.messages.length}
-                                collapsed={collapsedTopics.has(segment.key)}
-                                onCollapsedChange={(collapsed) =>
-                                  setTopicCollapsed(segment.key, collapsed)
-                                }
-                              >
-                                <AnimatePresence initial={false}>
-                                  {lines}
-                                </AnimatePresence>
-                              </TopicGroup>
-                            );
-                          });
-                        })()
-                      : // Flat transcript (no topic tags) — unchanged behavior.
-                        // Only the LAST, content-less assistant turn (the
-                        // in-flight one) reads turnStatus — every settled bubble
-                        // gets undefined so its memo identity is unchanged.
-                        null}
-                    {hasTopics ? null : (
-                      <AnimatePresence initial={false}>
-                        {visibleMessages.map((m, i) => renderThreadLine(m, i))}
-                      </AnimatePresence>
-                    )}
-                    <AnimatePresence>
-                      {/* Rich status row (#8813): what the agent is doing —
+                          {!firstRunOpen &&
+                          !hasTopics &&
+                          renderWindow.canLoadOlder &&
+                          visibleMessages.length > 0 ? (
+                            <div
+                              ref={topSentinelRef}
+                              data-testid="chat-transcript-top-sentinel"
+                              aria-hidden="true"
+                              className="pointer-events-none h-px w-full shrink-0"
+                            />
+                          ) : null}
+                          {hasTopics
+                            ? // Topic-grouped transcript: each cluster collapses via a
+                              // gesture on its header (no visible buttons).
+                              (() => {
+                                let lineIndex = 0;
+                                return topicSegments.map((segment) => {
+                                  const lines = segment.messages.map((m) =>
+                                    renderThreadLine(m, lineIndex++),
+                                  );
+                                  return (
+                                    // The React key is the segment's first message id
+                                    // (stable + unique) because a topic can recur in a
+                                    // non-adjacent run (A → B → A). Collapse state stays
+                                    // keyed by topic (`segment.key`) so a chip tap
+                                    // expands every run of that topic.
+                                    <MessageScrollerItem
+                                      key={
+                                        segment.messages[0]?.id ?? segment.key
+                                      }
+                                      messageId={`topic:${segment.messages[0]?.id ?? segment.key}`}
+                                      className="w-full"
+                                    >
+                                      <TopicGroup
+                                        topic={segment.topic}
+                                        count={segment.messages.length}
+                                        collapsed={collapsedTopics.has(
+                                          segment.key,
+                                        )}
+                                        onCollapsedChange={(collapsed) =>
+                                          setTopicCollapsed(
+                                            segment.key,
+                                            collapsed,
+                                          )
+                                        }
+                                      >
+                                        {lines}
+                                      </TopicGroup>
+                                    </MessageScrollerItem>
+                                  );
+                                });
+                              })()
+                            : // Flat transcript (no topic tags) — unchanged behavior.
+                              // Only the LAST, content-less assistant turn (the
+                              // in-flight one) reads turnStatus — every settled bubble
+                              // gets undefined so its memo identity is unchanged.
+                              null}
+                          {hasTopics
+                            ? null
+                            : visibleMessages.map((m, i) =>
+                                renderThreadLine(m, i),
+                              )}
+                          <AnimatePresence>
+                            {/* Rich status row (#8813): what the agent is doing —
                           thinking / running an action / waking / speaking — for
                           the brief window where we're responding but the assistant
                           placeholder turn isn't in the thread yet. Once the
                           in-flight assistant bubble exists it carries the same
                           status row inline (anchored where the reply fills in),
                           so don't double up. */}
-                      {responding &&
-                      !(
-                        visibleMessages.at(-1)?.role === "assistant" &&
-                        !visibleMessages.at(-1)?.content.trim()
-                      ) ? (
-                        <TurnStatusIndicator
-                          status={turnStatus}
-                          reduce={reduce}
-                        />
-                      ) : null}
-                    </AnimatePresence>
-                  </div>
-                </motion.div>
-                {sheetOpen && hasThread && !threadAtBottom ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={jumpToLatest}
-                    aria-label="jump to latest message"
-                    data-testid="chat-jump-to-latest"
-                    className="absolute bottom-3 left-1/2 z-[3] flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border-strong bg-surface/95 px-3 text-xs font-medium text-txt shadow-lg transition-colors hover:bg-bg-hover"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-                    <span>Jump to latest</span>
-                  </Button>
-                ) : null}
+                            {responding &&
+                            !(
+                              visibleMessages.at(-1)?.role === "assistant" &&
+                              !visibleMessages.at(-1)?.content.trim()
+                            ) ? (
+                              <MessageScrollerItem
+                                key="turn-status"
+                                className="w-full"
+                              >
+                                <TurnStatusIndicator
+                                  status={turnStatus}
+                                  reduce={reduce}
+                                />
+                              </MessageScrollerItem>
+                            ) : null}
+                          </AnimatePresence>
+                        </MessageScrollerContent>
+                      </MessageScrollerViewport>
+                    </motion.div>
+                  </MessageScroller>
+                </MessageScrollerProvider>
               </motion.div>
             ) : null}
             {/* Cloud-agent provisioning status — rendered IN the chat, just
@@ -5552,6 +5591,7 @@ export function ContinuousChatOverlay({
             wrapper crossfades + scales in from the pill (openProgress), so this
             row needs no separate entrance — it just sits at the panel base. */}
             <motion.div
+              data-testid="chat-composer-row"
               className={cn(
                 // items-center vertically centers a single-line composer with
                 // the round +/mic buttons (the common case); a multi-line draft
@@ -5594,6 +5634,13 @@ export function ContinuousChatOverlay({
                   : { marginBottom: composerCapsuleMarginBottom }),
               }}
             >
+              {firstRunOpen ? (
+                <span
+                  aria-hidden="true"
+                  data-testid="chat-first-run-grabber"
+                  className="pointer-events-none absolute left-1/2 top-1.5 h-1.5 w-12 -translate-x-1/2 select-none rounded-full bg-white/45"
+                />
+              ) : null}
               {/* Inline slash-command autocomplete, floating just above the
                     input row. */}
               {slashProp && !slashDismissed ? (
@@ -5868,7 +5915,15 @@ export function ContinuousChatOverlay({
                       // Voice input is free text too — locked with the rest of
                       // the composer while onboarding is choice-driven.
                       disabled={firstRunOpen}
-                      active={recording || handsFree || transcriptionMode}
+                      // The adjacent mic owns transcription. Keep this waveform
+                      // neutral when that separate control starts recording;
+                      // orange active state belongs only to conversation mode
+                      // initiated by this waveform (or its push-to-talk hold).
+                      active={handsFree || pttHolding}
+                      // Recording can also be owned by the adjacent transcription
+                      // control. Report the live voice state without coloring this
+                      // separate waveform control as active.
+                      pressed={recording || handsFree || transcriptionMode}
                       pulse={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
                       onPointerDown={micHoldHandlers.onPointerDown}
@@ -5897,7 +5952,7 @@ export function ContinuousChatOverlay({
               // The pill IS the whole chat while collapsed, so it alone pulses
               // for a live mic capture (`recording`) — the open-sheet grabber
               // deliberately does not (the composer glyphs carry that cue).
-              glow={listening || responding || recording}
+              breathing={listening || responding || recording}
               pilled={pilled}
             />
           </motion.div>

@@ -313,6 +313,7 @@ export {
 	LEGACY_CODING_DELEGATION_ACTION_NAMES,
 	normalizeActionIdentifier,
 } from "./services/message/direct-action-heuristics";
+export { sanitizeOutboundText } from "./services/message/outbound-sanitize";
 export * from "./services/notification";
 export * from "./services/optimized-prompt";
 export {

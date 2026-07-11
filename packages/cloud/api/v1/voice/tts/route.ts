@@ -267,7 +267,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           // error-policy:J4 cache lookup failure degrades to fresh synthesis;
           // the upstream Railway request below is the source of truth.
           logger.warn?.(
-            `[Voice TTS API] Kokoro first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
+            "[Voice TTS API] Kokoro first-line cache lookup failed",
+            {
+              errorType: err instanceof Error ? err.name : "unknown",
+            },
           );
         }
       }
@@ -323,7 +326,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             // error-policy:J7 populate is a background write; a failure must not
             // affect the response the user already receives below.
             logger.warn?.(
-              `[Voice TTS API] Kokoro first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
+              "[Voice TTS API] Kokoro first-line cache populate failed",
+              {
+                errorType: err instanceof Error ? err.name : "unknown",
+              },
             );
           });
 
@@ -363,8 +369,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         userVoicesRepository.incrementUsageCount(voice.id).catch((err) =>
           logger.error("[Voice TTS API] Failed to increment voice usage", {
             voiceId: voice.id,
-            voiceName: voice.name,
-            error: err instanceof Error ? err.message : String(err),
+            errorType: err instanceof Error ? err.name : "unknown",
           }),
         );
 
@@ -438,9 +443,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       } catch (err) {
         // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
         // ElevenLabs request below remains the source of truth.
-        logger.warn?.(
-          `[Voice TTS API] first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
+          errorType: err instanceof Error ? err.name : "unknown",
+        });
       }
     }
 
@@ -557,7 +562,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         });
       } catch (error) {
         logger.error("[Voice TTS API] Failed to create usage record", {
-          error: error instanceof Error ? error.message : String(error),
+          errorType: error instanceof Error ? error.name : "unknown",
           userVoiceId,
         });
       }
@@ -624,9 +629,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             `[Voice TTS API] first-line cache POPULATE ok (${cacheScope}, ${total}B, words=${snipResult.wordCount})`,
           );
         } catch (err) {
-          logger.warn?.(
-            `[Voice TTS API] first-line cache populate failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          logger.warn?.("[Voice TTS API] first-line cache populate failed", {
+            errorType: err instanceof Error ? err.name : "unknown",
+          });
         }
       })();
     }
@@ -654,7 +659,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       },
     });
   } catch (error) {
-    logger.error("[Voice TTS API] Error:", error);
+    // Redaction boundary: provider SDK errors can embed the synthesis text or
+    // provider response bodies in their message — log only the error type.
+    logger.error("[Voice TTS API] Request failed", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
 
     if (reservation) {
       await reservation.reconcile(0);

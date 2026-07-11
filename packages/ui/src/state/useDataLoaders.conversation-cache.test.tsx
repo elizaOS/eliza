@@ -234,6 +234,26 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     );
   });
 
+  it("preserves optimistic turns on the first load of a newly created active conversation", async () => {
+    mocks.client.getConversationMessages.mockResolvedValue({ messages: [] });
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-new";
+    conversationMessagesRef.current = [
+      { ...userMsg("temp-user"), text: "hello", timestamp: 10 },
+      { ...assistantMsg("temp-resp-user"), text: "", timestamp: 11 },
+    ];
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-new");
+    });
+
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual(["temp-user", "temp-resp-user"]);
+  });
+
   it("drops optimistic temp turns once the server reload carries the same user and assistant turn", async () => {
     mocks.client.getConversationMessages
       .mockResolvedValueOnce({ messages: [userMsg("persisted-1")] })

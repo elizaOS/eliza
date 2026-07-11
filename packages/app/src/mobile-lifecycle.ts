@@ -254,6 +254,8 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     window.addEventListener("online", activeOnlineHandler);
     window.addEventListener("offline", activeOfflineHandler);
 
+    if (!ctx.isNative) return;
+
     try {
       const { Network } = await import("@capacitor/network");
       await Network.addListener("networkStatusChange", (status) => {

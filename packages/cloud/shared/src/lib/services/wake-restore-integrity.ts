@@ -210,6 +210,12 @@ export interface WakeRestoreGateDeps {
 
 const WAKE_INTEGRITY_ALERT_DEDUP_KEY = "agent-wake-restore-integrity";
 
+// Freshness accepts `0 <= age <= freshnessMs`, with ZERO clock-skew tolerance
+// on the future side: a stamp even 1ms ahead of `now` is evidence of clock
+// corruption or a tampered row, and the safe response is a real re-decrypt
+// (cost: one KMS verification), never trusting the stamp. Both edges are
+// deliberate: age 0 (stamped this instant) and age == freshnessMs are fresh;
+// age < 0 and age > freshnessMs re-verify.
 function isFreshVerifiedStamp(
   row: { verification_status: string | null; verified_at: Date | null },
   now: Date,

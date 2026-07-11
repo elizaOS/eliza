@@ -221,6 +221,55 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
     }
   });
 
+  test("a freshly-minted tier-upgrade migration target (pending + marker) gets the bootstrap window too (#15943)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    // Exactly the row the single-flight mint commits: dedicated-always, born
+    // `pending` with its provision job, carrying the server-side reattach
+    // marker and its own minted platform env. Users keep chatting against the
+    // target during the handoff poll — the marker must not disqualify it from
+    // the shared-runtime bootstrap window while the container provisions.
+    const sandbox = dedicatedSandbox({
+      status: "pending",
+      agent_config: {
+        system: "You are boot-nancy.",
+        __agentUpgradedFrom: "cccccccc-1111-4111-8111-111111111111",
+      },
+      environment_vars: {
+        ELIZA_API_TOKEN: "agent_upgrade_token",
+        ELIZA_CLOUD_AGENT_ID: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+      },
+    });
+    const findRunningSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockResolvedValue(
+      undefined,
+    );
+    const findByIdSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(
+      sandbox,
+    );
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
+
+    try {
+      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "upgrade-boot-turn",
+          method: "message.send",
+          params: { text: "hello" },
+        }),
+      );
+      expect(response.error).toBeUndefined();
+      expect((response.result as { text?: string }).text).toBe("bootstrap reply");
+      expect(runSharedAgentTurn).toHaveBeenCalledTimes(1);
+    } finally {
+      findRunningSpy.mockRestore();
+      findByIdSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyUpsertSpy.mockRestore();
+    }
+  });
+
   test("does NOT hijack an established dedicated agent that is merely stopped", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = dedicatedSandbox({

@@ -7,12 +7,10 @@
  * standalone Background settings section is consolidated into this one.
  */
 
-import type { LucideIcon } from "lucide-react";
-import { Check, Monitor, Moon, Sun } from "lucide-react";
+import { Check } from "lucide-react";
 import { useAgentElement } from "../../agent-surface";
-import { cn } from "../../lib/utils";
 import { ACCENT_PRESETS, useAppSelector, useContentPack } from "../../state";
-import type { AccentPreset, UiThemeMode } from "../../state/ui-preferences";
+import type { AccentPreset } from "../../state/ui-preferences";
 import { LANGUAGES } from "../shared/LanguageDropdown.helpers";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
@@ -62,54 +60,6 @@ function LanguageTileButton({
   );
 }
 
-const THEME_OPTIONS: { mode: UiThemeMode; label: string; icon: LucideIcon }[] =
-  [
-    { mode: "light", label: "Light", icon: Sun },
-    { mode: "dark", label: "Dark", icon: Moon },
-    { mode: "system", label: "System", icon: Monitor },
-  ];
-
-function ThemeTileButton({
-  mode,
-  label,
-  icon: Icon,
-  isActive,
-  onSelect,
-}: {
-  mode: UiThemeMode;
-  label: string;
-  icon: LucideIcon;
-  isActive: boolean;
-  onSelect: () => void;
-}) {
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
-    id: `appearance-theme-${mode}`,
-    role: "tab",
-    label,
-    group: "appearance-theme",
-    status: isActive ? "active" : "inactive",
-    onActivate: onSelect,
-  });
-  return (
-    <Button
-      ref={ref}
-      variant="ghost"
-      onClick={onSelect}
-      aria-current={isActive ? "true" : undefined}
-      className={cn(
-        "min-h-10 flex-1 gap-2 whitespace-normal rounded-md px-3 text-sm font-medium transition-colors",
-        isActive
-          ? "bg-accent/12 text-accent  "
-          : "text-muted hover:bg-surface hover:text-txt",
-      )}
-      {...agentProps}
-    >
-      <Icon className="h-4 w-4 shrink-0" aria-hidden />
-      {label}
-    </Button>
-  );
-}
-
 function AccentTileButton({
   preset,
   isActive,
@@ -155,8 +105,6 @@ function AccentTileButton({
 export function AppearanceSettingsSection() {
   const setUiLanguage = useAppSelector((s) => s.setUiLanguage);
   const uiLanguage = useAppSelector((s) => s.uiLanguage);
-  const uiThemeMode = useAppSelector((s) => s.uiThemeMode);
-  const setUiThemeMode = useAppSelector((s) => s.setUiThemeMode);
   const uiAccentId = useAppSelector((s) => s.uiAccentId);
   const setUiAccent = useAppSelector((s) => s.setUiAccent);
   const homeTimeWidgetHidden = useAppSelector((s) => s.homeTimeWidgetHidden);
@@ -168,26 +116,6 @@ export function AppearanceSettingsSection() {
 
   return (
     <SettingsStack>
-      <SettingsGroup
-        bare
-        title={t("settings.theme", { defaultValue: "Theme" })}
-      >
-        <div className="flex gap-2">
-          {THEME_OPTIONS.map((option) => (
-            <ThemeTileButton
-              key={option.mode}
-              mode={option.mode}
-              label={t(`settings.theme.${option.mode}`, {
-                defaultValue: option.label,
-              })}
-              icon={option.icon}
-              isActive={uiThemeMode === option.mode}
-              onSelect={() => setUiThemeMode(option.mode)}
-            />
-          ))}
-        </div>
-      </SettingsGroup>
-
       <SettingsGroup
         bare
         title={t("settings.accent", { defaultValue: "Accent color" })}

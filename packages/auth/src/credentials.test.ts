@@ -272,6 +272,17 @@ describe("applySubscriptionCredentials", () => {
     });
   });
 
+  it("returns a typed auth outcome when the requested account is absent", async () => {
+    useTempElizaHome();
+
+    await expect(
+      getAccessToken("openai-codex", "missing", { outcome: true }),
+    ).resolves.toMatchObject({
+      ok: false,
+      kind: "auth",
+    });
+  });
+
   it("does not share refresh mutexes across different accounts", async () => {
     useTempElizaHome();
     const refreshMock = vi.mocked(refreshCodexToken);

@@ -75,7 +75,6 @@ plugins/plugin-discord/
   debouncer.ts                Generic debounce utility used by message-coalesce
   typing.ts                   Typing-indicator controller (start/stop) for a channel
   status-reactions.ts         Status reaction scope helper (acknowledge inbound messages with an emoji)
-  reasoning-tags.ts           Strips reasoning/thinking tags from model output before sending
   draft-chunking.ts           Streaming draft chunking logic
   draft-stream.ts             Draft streaming over Discord message edits
   staleness.ts                Stale-message guard (tag/skip/ignore behavior for out-of-sequence messages)

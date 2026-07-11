@@ -15,7 +15,6 @@ import {
 import {
   applyUiAccent,
   applyUiTheme,
-  getSystemTheme,
   loadBackgroundConfig,
   loadBackgroundHistory,
   loadBackgroundRedo,
@@ -44,9 +43,7 @@ import {
 export function useDisplayPreferences() {
   const [uiThemeMode, setUiThemeModeState] =
     useState<UiThemeMode>(loadUiThemeMode);
-  const [uiTheme, setUiThemeState] = useState<UiTheme>(() =>
-    resolveUiTheme(loadUiThemeMode()),
-  );
+  const uiTheme: UiTheme = resolveUiTheme(uiThemeMode);
   const [backgroundConfig, setBackgroundConfigState] =
     useState<BackgroundConfig>(loadBackgroundConfig);
   // Bounded undo stack: the previous configs, most-recent last. Refs mirror the
@@ -82,13 +79,7 @@ export function useDisplayPreferences() {
     setUiThemeModeState(normalizeUiThemeMode(mode));
   }, []);
 
-  // Picking an explicit light/dark from the UI sets the mode to that choice.
-  const setUiTheme = useCallback(
-    (theme: UiTheme) => {
-      setUiThemeMode(theme);
-    },
-    [setUiThemeMode],
-  );
+  const setUiTheme = setUiThemeMode;
 
   const setHomeTimeWidgetHidden = useCallback((hidden: boolean) => {
     setHomeTimeWidgetHiddenState(hidden);
@@ -130,21 +121,6 @@ export function useDisplayPreferences() {
   const redoBackgroundConfig = useCallback(() => {
     applyHistoryState(applyBackgroundRedo(snapshot()));
   }, [applyHistoryState, snapshot]);
-
-  // Resolve mode -> concrete theme. When following the system, track OS
-  // color-scheme changes live.
-  useEffect(() => {
-    if (uiThemeMode !== "system") {
-      setUiThemeState(uiThemeMode);
-      return;
-    }
-    setUiThemeState(getSystemTheme());
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const media = window.matchMedia("(prefers-color-scheme: light)");
-    const onChange = () => setUiThemeState(getSystemTheme());
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, [uiThemeMode]);
 
   // Persist effects
   useEffect(() => {

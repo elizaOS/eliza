@@ -27,6 +27,9 @@ describe("turnStatusLabel", () => {
       turnStatusLabel({ kind: "running_action", actionName: "SEND_MESSAGE" }),
     ).toBe("Running Send message");
     expect(
+      turnStatusLabel({ kind: "running_action", actionName: "REPLY" }),
+    ).toBe("Replying");
+    expect(
       turnStatusLabel({ kind: "running_tool", toolName: "WEB_SEARCH" }),
     ).toBe("Using Web search");
     expect(turnStatusLabel({ kind: "running_tool" })).toBe("Using a tool");
@@ -92,10 +95,12 @@ describe("TurnStatus working indicator", () => {
     expect(screen.queryByTestId("turn-status-elapsed")).toBeNull();
   });
 
-  it("renders bare dots (no label/spinner) in the in-bubble variant", () => {
+  it("renders a compact shimmering label without a second spinner", () => {
     render(<TurnStatus status={{ kind: "thinking" }} showLabel={false} />);
-    expect(screen.getByTestId("typing-dots")).not.toBeNull();
-    expect(screen.queryByTestId("turn-status-label")).toBeNull();
+    const label = screen.getByTestId("turn-status-label");
+    expect(label.textContent).toBe("Thinking");
+    expect(label.className).toContain("shimmer");
+    expect(screen.queryByTestId("typing-dots")).toBeNull();
     expect(screen.queryByTestId("turn-status-spinner")).toBeNull();
   });
 });

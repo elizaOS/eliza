@@ -1014,7 +1014,6 @@ async function generateTextWithModel(
     resolveStreamingEnabled();
 
   logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
-  logger.log(prompt);
 
   if (hasNativeTransportOptions(paramsWithNative)) {
     if (wantsStream) {

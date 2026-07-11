@@ -28,6 +28,13 @@
       "outputs": ["dist/**"],
       "inputs": [
         "src/**",
+        "**/*.ts",
+        "**/*.tsx",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/*.spec.ts",
+        "!**/*.spec.tsx",
+        "!**/__tests__/**",
         "index.ts",
         "index.node.ts",
         "index.browser.ts",

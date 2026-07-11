@@ -27,6 +27,7 @@ import {
   type AccessContext,
   type AgentRuntime,
   assertPublicRouteIntent,
+  ElizaError,
   type IAgentRuntime,
   type LegacyRouteHandler,
   logger,
@@ -235,6 +236,16 @@ interface CapturedResponse {
   ended: boolean;
 }
 
+/**
+ * Cap on the partial-body excerpt carried in a
+ * `ROUTE_HANDLER_PARTIAL_WRITE_FAILURE` error context. The full captured body
+ * may be arbitrarily large (a failed streaming route); the context exists for
+ * diagnosis, not replay, so only a bounded prefix travels with the error.
+ * The prefix may still contain response payload — J1 boundaries handling this
+ * error must not log the full context verbatim for sensitive routes.
+ */
+const PARTIAL_BODY_CONTEXT_LIMIT = 512;
+
 function asCapturedServerResponse(res: unknown): ServerResponse {
   return res as ServerResponse;
 }
@@ -421,15 +432,28 @@ function buildLegacyShim(args: {
   };
 }
 
+/**
+ * Extract the media-type essence (RFC 9110 §8.3): everything before the first
+ * `;` parameter separator, trimmed and lowercased. Media types compare
+ * case-insensitively and parameters (`charset=…`, `boundary=…`) never change
+ * the underlying type, so classification must ignore both. Header values are
+ * normalized to lowercase at capture, but the essence is lowercased here again
+ * so the comparison stays correct even for a caller that bypasses capture.
+ */
+function mediaTypeEssence(contentType: string): string {
+  const separatorIndex = contentType.indexOf(";");
+  return (
+    separatorIndex === -1 ? contentType : contentType.slice(0, separatorIndex)
+  )
+    .trim()
+    .toLowerCase();
+}
+
 function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   const buffer = Buffer.concat(captured.chunks);
   // Missing headers are meaningful here because undeclared bodies retain the
   // bridge's historical UTF-8 behavior.
   const contentTypeHeader = captured.headers["content-type"];
-  const contentType =
-    typeof contentTypeHeader === "string"
-      ? contentTypeHeader.toLowerCase()
-      : undefined;
   const contentEncodingHeader = captured.headers["content-encoding"];
   const contentEncoding =
     typeof contentEncodingHeader === "string"
@@ -442,24 +466,32 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
       body: undefined,
     };
   }
-  // Content encodings describe bytes that the client must decode even when the
-  // underlying media type is textual; interpreting either encoded or binary
-  // bytes as UTF-8 would make the downstream IPC base64 envelope lossy.
-  const hasTransferEncoding =
+  const mediaType =
+    typeof contentTypeHeader === "string"
+      ? mediaTypeEssence(contentTypeHeader)
+      : undefined;
+  const isJson =
+    mediaType !== undefined &&
+    (mediaType === "application/json" || mediaType.endsWith("+json"));
+  // Content-Encoding describes the bytes on the wire: even a textual media
+  // type stays compressed until the receiving stack decodes it, so any
+  // non-identity encoding forces byte passthrough — decoding as UTF-8 would
+  // make the downstream IPC base64 envelope lossy.
+  const isEncoded =
     contentEncoding !== undefined &&
     contentEncoding !== "" &&
     contentEncoding !== "identity";
   const isTextual =
-    !hasTransferEncoding &&
-    (contentType === undefined ||
-      contentType === "" ||
-      contentType.startsWith("text/") ||
-      contentType.includes("json") ||
-      contentType.includes("xml") ||
-      contentType.includes("javascript") ||
-      contentType.includes("x-www-form-urlencoded") ||
-      contentType.includes("charset"));
-  if (!isTextual) {
+    mediaType === undefined ||
+    mediaType === "" ||
+    mediaType.startsWith("text/") ||
+    isJson ||
+    mediaType === "application/xml" ||
+    mediaType.endsWith("+xml") ||
+    mediaType === "application/javascript" ||
+    mediaType === "application/x-javascript" ||
+    mediaType === "application/x-www-form-urlencoded";
+  if (isEncoded || !isTextual) {
     return {
       status: captured.statusCode || 200,
       headers: captured.headers,
@@ -468,11 +500,22 @@ function capturedToResult(captured: CapturedResponse): RouteHandlerResult {
   }
   const text = buffer.toString("utf8");
   let body: unknown = text;
-  if (contentType?.includes("json")) {
+  if (isJson) {
     try {
       body = JSON.parse(text);
-    } catch {
-      // error-policy:J3 malformed JSON stays explicit raw text at this transport boundary
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow: a declared-JSON body that does
+      // not parse is a route failure; returning the raw text would let a broken
+      // handler masquerade as success at every transport boundary.
+      throw new ElizaError("legacy route declared JSON but body is malformed", {
+        code: "ROUTE_RESPONSE_INVALID_JSON",
+        cause: error,
+        context: {
+          contentType: contentTypeHeader,
+          status: captured.statusCode,
+          bodyBytes: buffer.length,
+        },
+      });
     }
   }
   return {
@@ -572,7 +615,11 @@ export async function dispatchRoute(
           runtime as IAgentRuntime,
         );
       } catch (err) {
-        if (!captured.ended) {
+        // error-policy:J1 route-dispatch failure translation: a handler that
+        // throws before producing any observable output becomes the structured
+        // 500 every transport serves; a handler that already wrote or ended is
+        // rethrown as a typed failure below — never returned as success.
+        if (!captured.ended && captured.chunks.length === 0) {
           return {
             status: 500,
             headers: { "content-type": "application/json; charset=utf-8" },
@@ -582,7 +629,32 @@ export async function dispatchRoute(
             },
           };
         }
-        // Handler partially wrote; surface what we have.
+        // The handler failed after writing: any chunks are already delivered
+        // to a streaming consumer via onChunk (that delivery is not retracted),
+        // but the buffered result would fabricate a healthy response for a
+        // route that broke mid-write. Rethrow typed so every boundary surfaces
+        // the failure — HTTP 500 (hono-adapter), `{ok:false}` IPC frame
+        // (stdio-bridge kernel), terminal stream error frame (streaming sink).
+        const partialBody = Buffer.concat(captured.chunks);
+        throw new ElizaError(
+          "legacy route handler threw after writing its response",
+          {
+            code: "ROUTE_HANDLER_PARTIAL_WRITE_FAILURE",
+            cause: err,
+            context: {
+              method,
+              path: args.path,
+              status: captured.statusCode,
+              ended: captured.ended,
+              partialBodyBytes: partialBody.length,
+              // Bounded so the log/error-event payload stays small even when a
+              // handler streamed megabytes before failing.
+              partialBodyBase64Prefix: partialBody
+                .subarray(0, PARTIAL_BODY_CONTEXT_LIMIT)
+                .toString("base64"),
+            },
+          },
+        );
       }
       return capturedToResult(captured);
     } finally {

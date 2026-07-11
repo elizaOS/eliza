@@ -1,2 +1,3 @@
+packages/scripts/ci-path-gate.self-test.mjs
 scripts/security/coverage-changed-files.self-test.mjs
 scripts/security/coverage-gate.self-test.mjs

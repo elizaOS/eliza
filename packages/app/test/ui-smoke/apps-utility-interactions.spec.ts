@@ -410,7 +410,7 @@ test("wallet inventory controls update visible deterministic state", async ({
     walletSidebar.getByRole("button", { name: "DeFi" }),
     "Wallet DeFi tab",
   );
-  await expect(walletSidebar.getByText("No positions")).toBeVisible();
+  await expect(walletSidebar.getByText("No DeFi positions.")).toBeVisible();
 
   await clickRequired(
     walletSidebar.getByRole("button", { name: "NFTs" }),
