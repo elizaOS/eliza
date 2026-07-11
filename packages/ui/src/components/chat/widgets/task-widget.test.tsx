@@ -202,6 +202,99 @@ describe("TaskWidget", () => {
     });
     expect(container.textContent?.includes("super-secret-value")).toBe(false);
   });
+
+  it("renders a clickable PR chip when task metadata carries a PR link", async () => {
+    getCodingAgentTaskThreadMock.mockResolvedValueOnce(
+      detail({
+        status: "done",
+        metadata: {
+          prUrl: "https://github.com/elizaOS/eliza/pull/16090",
+          prNumber: 16090,
+          prRepo: "elizaOS/eliza",
+        },
+      }),
+    );
+    render(<TaskWidget threadId={THREAD_ID} fallbackTitle="Optimistic" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("task-widget-pr-chip")).toBeTruthy();
+    });
+    const chip = screen.getByTestId("task-widget-pr-chip");
+    expect(chip.getAttribute("href")).toBe(
+      "https://github.com/elizaOS/eliza/pull/16090",
+    );
+    expect(chip.getAttribute("target")).toBe("_blank");
+    expect(chip.getAttribute("rel")).toContain("noreferrer");
+    expect(chip.textContent).toContain("#16090");
+    expect(chip.getAttribute("title")).toBe("elizaOS/eliza #16090");
+  });
+
+  it("derives the PR number from the URL when prNumber is absent", async () => {
+    getCodingAgentTaskThreadMock.mockResolvedValueOnce(
+      detail({
+        metadata: { prUrl: "https://github.com/o/r/pull/77" },
+      }),
+    );
+    render(<TaskWidget threadId={THREAD_ID} fallbackTitle="Optimistic" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("task-widget-pr-chip").textContent).toContain(
+        "#77",
+      );
+    });
+  });
+
+  it("derives the displayed PR identity from the validated URL", async () => {
+    getCodingAgentTaskThreadMock.mockResolvedValueOnce(
+      detail({
+        metadata: {
+          prUrl: "https://github.com/canonical/repo/pull/77",
+          prNumber: 999,
+          prRepo: "spoofed/repo",
+        },
+      }),
+    );
+    render(<TaskWidget threadId={THREAD_ID} fallbackTitle="Optimistic" />);
+    const chip = await screen.findByTestId("task-widget-pr-chip");
+    expect(chip.textContent).toContain("#77");
+    expect(chip.getAttribute("title")).toBe("canonical/repo #77");
+  });
+
+  it("renders no PR chip when metadata has no PR link", async () => {
+    getCodingAgentTaskThreadMock.mockResolvedValueOnce(detail());
+    render(<TaskWidget threadId={THREAD_ID} fallbackTitle="Optimistic" />);
+    await waitFor(() => {
+      expect(getCodingAgentTaskThreadMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByTestId("task-widget-pr-chip")).toBeNull();
+  });
+
+  it("rejects a non-GitHub-PR prUrl (chip never renders an arbitrary link)", async () => {
+    getCodingAgentTaskThreadMock.mockResolvedValueOnce(
+      detail({
+        metadata: { prUrl: "https://evil.example.com/phish", prNumber: 1 },
+      }),
+    );
+    render(<TaskWidget threadId={THREAD_ID} fallbackTitle="Optimistic" />);
+    await waitFor(() => {
+      expect(getCodingAgentTaskThreadMock).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByTestId("task-widget-pr-chip")).toBeNull();
+  });
+
+  it("PR chip click does not toggle the expand/collapse header", async () => {
+    getCodingAgentTaskThreadMock.mockResolvedValueOnce(
+      detail({
+        metadata: { prUrl: "https://github.com/o/r/pull/5", prNumber: 5 },
+      }),
+    );
+    render(<TaskWidget threadId={THREAD_ID} fallbackTitle="Optimistic" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("task-widget-pr-chip")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("task-widget-pr-chip"));
+    expect(
+      screen.getByTestId("task-widget").getAttribute("data-expanded"),
+    ).toBe("false");
+  });
 });
 
 // #9304 - task inline-widget registration gate.

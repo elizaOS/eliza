@@ -22,6 +22,7 @@ export function findStaleJsShadows(root = scriptRoot) {
       "--",
       ":(glob)**/src/**/*.js",
       ":(exclude,glob)**/node_modules/**",
+      ":(exclude)packages/shared/src/i18n/generated/validation-keyword-data.js",
     ],
     { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );

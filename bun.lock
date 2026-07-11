@@ -5117,6 +5117,7 @@
         "react-dom": "^19.0.0",
       },
       "devDependencies": {
+        "playwright": "^1.61.0",
         "tsup": "^8.5.1",
         "vite": "^8.0.0",
       },

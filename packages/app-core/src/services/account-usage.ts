@@ -15,6 +15,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fetchCodexUsage } from "@elizaos/auth/codex-usage";
 import { resolveStateDir } from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 
@@ -37,14 +38,14 @@ export interface UsageEntry {
 }
 
 const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
-const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 type FetchLike = typeof fetch;
 
 function utilizationToPct(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  // Provider returns either 0..1 (legacy) or 0..100 — both are normalized
-  // to percent. Anthropic ships 0..1, so we always multiply.
-  return Math.max(0, Math.min(100, value * 100));
+  // Anthropic has returned both fractional (0..1) and percentage (0..100)
+  // shapes. Scale only fractional values; otherwise 5% becomes 500%/clamped.
+  const percent = value >= 0 && value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, percent));
 }
 
 function normalizeResetTimestamp(value: unknown): number | undefined {
@@ -123,60 +124,24 @@ export async function pollAnthropicUsage(
   };
 }
 
-interface CodexUsagePayload {
-  plan_type?: string;
-  rate_limit?: {
-    primary_window?: {
-      used_percent?: number;
-      reset_at?: number | string;
-      limit_window_seconds?: number;
-    };
-  };
-}
-
 /**
- * Probe Codex / ChatGPT's usage endpoint.
- *
- * Endpoint: `GET https://chatgpt.com/backend-api/wham/usage`
- * Headers : `Authorization: Bearer <accessToken>`,
- *           `ChatGPT-Account-Id: <openAIAccountId>`,
- *           `User-Agent: codex-cli`
- *
- * `used_percent` is already on the 0..100 scale. `reset_at` is epoch
- * seconds. Codex has no weekly equivalent, so `weeklyPct` stays undefined.
+ * Probe Codex / ChatGPT's usage endpoint via the canonical client
+ * (`@elizaos/auth/codex-usage` — shared with the agent's inline Test probe).
+ * The primary window is the 5h session; the secondary window is the 7-day
+ * limit and maps to `weeklyPct` (same shape Anthropic exposes). Throws the
+ * client's typed `ElizaError` on any transport/HTTP/parse/shape failure.
  */
 export async function pollCodexUsage(
   accessToken: string,
   accountId: string,
   fetchImpl: FetchLike = fetch,
 ): Promise<UsageSnapshot> {
-  const res = await fetchImpl(CODEX_USAGE_URL, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "ChatGPT-Account-Id": accountId,
-      "User-Agent": "codex-cli",
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`Codex usage probe failed: HTTP ${res.status}`);
-  }
-  const payload = (await res.json()) as CodexUsagePayload;
-  const primary = payload.rate_limit?.primary_window;
-
-  let sessionPct: number | undefined;
-  if (
-    typeof primary?.used_percent === "number" &&
-    Number.isFinite(primary.used_percent)
-  ) {
-    sessionPct = Math.max(0, Math.min(100, primary.used_percent));
-  }
-  const resetsAt = normalizeResetTimestamp(primary?.reset_at);
-
+  const usage = await fetchCodexUsage(accessToken, accountId, fetchImpl);
   return {
     refreshedAt: Date.now(),
-    ...(sessionPct !== undefined ? { sessionPct } : {}),
-    ...(resetsAt !== undefined ? { resetsAt } : {}),
+    ...(usage.sessionPct !== undefined ? { sessionPct: usage.sessionPct } : {}),
+    ...(usage.weeklyPct !== undefined ? { weeklyPct: usage.weeklyPct } : {}),
+    ...(usage.resetsAt !== undefined ? { resetsAt: usage.resetsAt } : {}),
   };
 }
 

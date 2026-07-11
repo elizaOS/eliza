@@ -189,14 +189,18 @@ mock.module("@/lib/utils/credit-reservation", () => ({
 }));
 
 // Stub the model call so the handler returns right after the billing decision.
+// Keep spies so reasoning-effort tests can also assert the exact configuration
+// that survives the full route pipeline.
+const generateText = mock((_config: Record<string, unknown>) => {
+  throw new Error("model-call-stub");
+});
+const streamText = mock((_config: Record<string, unknown>) => {
+  throw new Error("model-call-stub");
+});
 mock.module("ai", () => ({
   ...aiActual,
-  generateText: () => {
-    throw new Error("model-call-stub");
-  },
-  streamText: () => {
-    throw new Error("model-call-stub");
-  },
+  generateText,
+  streamText,
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
@@ -234,7 +238,10 @@ afterAll(() => {
   mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
 });
 
-function makeRequest(affiliateCode?: string): Request {
+function makeRequest(
+  affiliateCode?: string,
+  overrides: Record<string, unknown> = {},
+): Request {
   return new Request("https://api.test/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -246,6 +253,7 @@ function makeRequest(affiliateCode?: string): Request {
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: "hello" }],
       stream: false,
+      ...overrides,
     }),
   });
 }
@@ -290,6 +298,8 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     createLedgerDebitSettler.mockClear();
     ledgerInnerSettler.mockClear();
     createCreditReservationSettler.mockClear();
+    generateText.mockClear();
+    streamText.mockClear();
   });
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
@@ -317,6 +327,52 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     expect(pending.requestId).toMatch(UUID_RE);
     expect(pending.requestId).not.toBe(CLIENT_REQUEST_ID);
     expect(settler.requestId).toBe(pending.requestId);
+  });
+
+  test("invalid Cerebras reasoning_effort is rejected before billing or provider dispatch", async () => {
+    const res = await handleChatCompletionsPOST(
+      makeRequest(undefined, {
+        model: "openai/gpt-oss-120b:nitro",
+        reasoning_effort: "none",
+        max_tokens: 512,
+      }),
+      { skipOrgRateLimit: true },
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: {
+        message:
+          "reasoning_effort for model 'gpt-oss-120b' must be one of: low, medium, high",
+        type: "invalid_request_error",
+        code: "invalid_reasoning_effort",
+      },
+    });
+    expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("valid GLM reasoning_effort=none preserves max_tokens through the full route", async () => {
+    const res = await handleChatCompletionsPOST(
+      makeRequest(undefined, {
+        model: "zai-glm-4.7",
+        reasoning_effort: "none",
+        max_tokens: 512,
+      }),
+      { skipOrgRateLimit: true },
+    );
+
+    // The model stub throws after dispatch; reaching it proves the request
+    // passed route validation and billing without silently changing the cap.
+    expect(res.status).toBe(500);
+    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+      maxOutputTokens: 512,
+      providerOptions: { openai: { reasoningEffort: "none" } },
+    });
   });
 
   test("balance below SAFE_BALANCE_THRESHOLD falls back to the synchronous reserve", async () => {

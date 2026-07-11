@@ -181,7 +181,7 @@ async function stitchViewport({ ffmpeg, runDir, viewport, outDir, font }) {
     if (font) {
       filters.push(
         `drawbox=x=0:y=ih-44:w=iw:h=44:color=black@0.62:t=fill`,
-        `drawtext=fontfile=${font}:text='${escDrawtext(stepLabel)}':x=18:y=ih-32:fontsize=20:fontcolor=white`,
+        `drawtext=fontfile=${font}:text='${escDrawtext(stepLabel)}':x=18:y=h-th-12:fontsize=20:fontcolor=white`,
       );
     }
     const args = [

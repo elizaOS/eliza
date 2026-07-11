@@ -203,6 +203,70 @@ function buildChatPromptForBilling(request: ChatRequest): string {
     .join("\n");
 }
 
+type ReasoningEffort = "none" | "low" | "medium" | "high";
+
+const CEREBRAS_REASONING_EFFORTS = {
+  "gemma-4-31b": ["none", "low", "medium", "high"],
+  "gpt-oss-120b": ["low", "medium", "high"],
+  "zai-glm-4.7": ["none"],
+} as const satisfies Record<string, readonly ReasoningEffort[]>;
+
+type ReasoningEffortValidation =
+  | { ok: true; value: ReasoningEffort | undefined }
+  | { ok: false; message: string };
+
+/**
+ * Validate the OpenAI-compatible reasoning knob against Cerebras's per-model
+ * contract before reserving credits or contacting the provider.
+ *
+ * Cerebras intentionally exposes different values for each served model:
+ * Gemma can toggle reasoning, GPT-OSS always reasons at a selected effort, and
+ * GLM accepts only `none` as an explicit override (omission enables reasoning).
+ * Treat `null` like omission, matching the nullable upstream API field.
+ * Source: https://inference-docs.cerebras.ai/capabilities/reasoning
+ */
+function validateCerebrasReasoningEffort(
+  model: string,
+  value: unknown,
+): ReasoningEffortValidation {
+  if (value == null) return { ok: true, value: undefined };
+
+  const modelId = canonicalizeCerebrasModelId(model);
+  const allowed =
+    CEREBRAS_REASONING_EFFORTS[
+      modelId as keyof typeof CEREBRAS_REASONING_EFFORTS
+    ];
+  if (!allowed) {
+    return {
+      ok: false,
+      message: `reasoning_effort is not supported for model '${model}'`,
+    };
+  }
+  if (
+    typeof value !== "string" ||
+    !(allowed as readonly string[]).includes(value)
+  ) {
+    return {
+      ok: false,
+      message: `reasoning_effort for model '${modelId}' must be one of: ${allowed.join(", ")}`,
+    };
+  }
+  return { ok: true, value: value as ReasoningEffort };
+}
+
+/** AI SDK's OpenAI provider maps this option to wire `reasoning_effort`. */
+function buildReasoningEffortProviderOptions(
+  reasoningEffort: ReasoningEffort | undefined,
+): Record<string, unknown> {
+  return reasoningEffort
+    ? {
+        providerOptions: {
+          openai: { reasoningEffort },
+        },
+      }
+    : {};
+}
+
 /**
  * Computes effective max_tokens, reserving response capacity for reasoning models.
  *
@@ -213,8 +277,10 @@ function buildChatPromptForBilling(request: ChatRequest): string {
  * the consumed tokens. To prevent that:
  *   - Anthropic CoT: max_tokens must be >= thinking budget + response capacity
  *     (the API also hard-rejects max_tokens < thinking budget).
- *   - Any other reasoning model: floor max_tokens at MIN_RESPONSE_TOKENS so there
- *     is always room for an answer after the reasoning.
+ *   - Any other model with reasoning active: floor max_tokens at
+ *     MIN_RESPONSE_TOKENS so there is always room for an answer after reasoning.
+ *   - When reasoning is disabled (including Gemma's default), preserve the
+ *     caller's cap exactly.
  *
  * `model` is the requested model id (provider-prefixed is fine).
  */
@@ -223,6 +289,7 @@ function computeEffectiveMaxTokens(
   cotBudget: number | null,
   model: string,
   supportedParameters?: readonly string[],
+  reasoningEffort?: ReasoningEffort,
 ): number | undefined {
   if (cotBudget !== null) {
     // When CoT is active, ensure max_tokens covers both thinking budget AND response capacity
@@ -231,6 +298,16 @@ function computeEffectiveMaxTokens(
       requestMaxTokens ?? MIN_RESPONSE_TOKENS,
       cotBudget + MIN_RESPONSE_TOKENS,
     );
+  }
+  const cerebrasModel = canonicalizeCerebrasModelId(model);
+  if (
+    reasoningEffort === "none" ||
+    (reasoningEffort === undefined && cerebrasModel === "gemma-4-31b")
+  ) {
+    // No hidden reasoning tokens consume the caller's output budget. Preserve
+    // the advertised max_tokens contract exactly instead of silently raising a
+    // short formatting call (often 260-512 tokens) to 4096.
+    return requestMaxTokens;
   }
   if (modelUsesReasoningTokens(model, supportedParameters)) {
     // Non-Anthropic reasoning model. Guarantee at least MIN_RESPONSE_TOKENS so the
@@ -277,6 +354,8 @@ interface ChatRequest {
   top_p?: number;
   frequency_penalty?: number;
   presence_penalty?: number;
+  /** Cerebras model-specific control for hidden reasoning generation. */
+  reasoning_effort?: ReasoningEffort | null;
   stream?: boolean;
   /**
    * OpenAI `stream_options`: when `include_usage` is true the stream carries
@@ -1090,6 +1169,28 @@ export async function handleChatCompletionsPOST(
     // by dedicated agents) to the bare Cerebras id so pricing, routing, and
     // billing all agree and route to cerebras-direct instead of OpenRouter.
     model = canonicalizeCerebrasModelId(request.model);
+    const reasoningEffortValidation = validateCerebrasReasoningEffort(
+      model,
+      request.reasoning_effort,
+    );
+    if (!reasoningEffortValidation.ok) {
+      return addCorsHeaders(
+        Response.json(
+          {
+            error: {
+              message: reasoningEffortValidation.message,
+              type: "invalid_request_error",
+              code: "invalid_reasoning_effort",
+            },
+          },
+          { status: 400 },
+        ),
+      );
+    }
+    const reasoningEffort = reasoningEffortValidation.value;
+    // Normalize nullable omission once so every downstream path (passthrough,
+    // SDK streaming, and SDK generation) observes the same validated value.
+    request.reasoning_effort = reasoningEffort;
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
     const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
@@ -1174,6 +1275,7 @@ export async function handleChatCompletionsPOST(
       cotBudget,
       model,
       modelSupportedParameters,
+      reasoningEffort,
     );
     const webSearchEnabled = request.webSearchEnabled === true;
     const webSearchActive = isAnthropicWebSearchEnabled(
@@ -2068,6 +2170,9 @@ async function tryPassthroughStreamingRequest(params: {
   if (safeParams.stopSequences?.length) {
     upstreamBody.stop = safeParams.stopSequences;
   }
+  if (request.reasoning_effort !== undefined) {
+    upstreamBody.reasoning_effort = request.reasoning_effort;
+  }
   if (params.effectiveMaxTokens != null) {
     upstreamBody.max_tokens = params.effectiveMaxTokens;
   }
@@ -2390,6 +2495,9 @@ async function handleStreamingRequest(
         : [request.stop]
       : undefined,
   });
+  const reasoningProviderOptions = buildReasoningEffortProviderOptions(
+    request.reasoning_effort ?? undefined,
+  );
 
   const result = streamText({
     model: getLanguageModel(model, pooledCredential ?? undefined),
@@ -2404,6 +2512,7 @@ async function handleStreamingRequest(
     ...(experimentalOutput ? { output: experimentalOutput } : {}),
     ...(effectiveMaxTokens != null && { maxOutputTokens: effectiveMaxTokens }),
     ...cotOptions,
+    ...reasoningProviderOptions,
     // Parity with the non-streaming path (#8759): the settlement chain below
     // (billUsage → settleReservation → analytics → audit) is 5+ serial DB
     // round-trips, and the AI SDK awaits onFinish before it ends fullStream —
@@ -2858,6 +2967,9 @@ async function handleNonStreamingRequest(
         : [request.stop]
       : undefined,
   });
+  const reasoningProviderOptions = buildReasoningEffortProviderOptions(
+    request.reasoning_effort ?? undefined,
+  );
 
   try {
     const result = await generateText({
@@ -2875,6 +2987,7 @@ async function handleNonStreamingRequest(
         maxOutputTokens: effectiveMaxTokens,
       }),
       ...cotOptions,
+      ...reasoningProviderOptions,
     } as Parameters<typeof generateText>[0]);
 
     // Token counts for the OpenAI-compat response come straight from the
@@ -3100,7 +3213,14 @@ export const __nativeToolingTestHooks = {
   mapToolChoice,
   convertTools,
   computeEffectiveMaxTokens,
+  validateCerebrasReasoningEffort,
+  buildReasoningEffortProviderOptions,
   toOpenAiFinishReason,
+} as const;
+
+/** Test seam for the non-streaming AI SDK forwarding contract. */
+export const __reasoningEffortTestHooks = {
+  handleNonStreamingRequest,
 } as const;
 
 /**
