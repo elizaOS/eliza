@@ -203,7 +203,13 @@ interface TierSpec {
   minRamGb: number;
   bucket: CatalogModel["bucket"];
   contextLength: number;
-  textFile: string;
+  /**
+   * Context-window suffix of the primary published text GGUF (`128k`, `256k`).
+   * The full published filename is derived as
+   * `text/eliza-1-<publishedSlug>-<textContextSuffix>.gguf` so the size-vs-arch
+   * slug mapping stays in exactly one place (`ELIZA_1_BUNDLE_SLUGS`).
+   */
+  textContextSuffix: string;
   q4MinRamGb: number;
   gpuProfile?: CatalogModel["gpuProfile"];
   hasEmbedding?: boolean;
@@ -227,7 +233,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 4,
     bucket: "small",
     contextLength: 131072,
-    textFile: "text/eliza-1-2b-128k.gguf",
+    textContextSuffix: "128k",
     // WS2: vision enabled — the 2B tier is the standard "small-phone"
     // default for first-run users, so camera-to-reaction and screen
     // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
@@ -251,7 +257,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 6,
     bucket: "mid",
     contextLength: 131072,
-    textFile: "text/eliza-1-4b-128k.gguf",
+    textContextSuffix: "128k",
     hasEmbedding: true,
     hasVision: true,
     // WS3: 4B uses the same monolithic SD 1.5 default as the rest of the
@@ -266,7 +272,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 12,
     bucket: "large",
     contextLength: 131072,
-    textFile: "text/eliza-1-9b-128k.gguf",
+    textContextSuffix: "128k",
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
@@ -282,7 +288,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 32,
     bucket: "large",
     contextLength: 131072,
-    textFile: "text/eliza-1-27b-128k.gguf",
+    textContextSuffix: "128k",
     gpuProfile: "rtx-4090",
     hasEmbedding: true,
     hasVision: true,
@@ -297,7 +303,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     q4MinRamGb: 48,
     bucket: "large",
     contextLength: 262144,
-    textFile: "text/eliza-1-27b-256k.gguf",
+    textContextSuffix: "256k",
     gpuProfile: "h200",
     hasEmbedding: true,
     hasVision: true,
@@ -305,8 +311,48 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   },
 };
 
-function tierSlug(id: Eliza1TierId): string {
-  return id.slice("eliza-1-".length);
+/**
+ * Hugging Face directory slug for each stable product tier.
+ *
+ * The repository uses architecture slugs after the Gemma-4 cutover. Directory
+ * existence is not publication: only `ELIZA_1_PUBLISHED_TIER_IDS` have a
+ * validated manifest and may cross the downloader boundary.
+ */
+export const ELIZA_1_BUNDLE_SLUGS: Readonly<Record<Eliza1TierId, string>> = {
+  "eliza-1-2b": "e2b",
+  "eliza-1-4b": "e4b",
+  "eliza-1-9b": "12b",
+  "eliza-1-27b": "31b",
+  "eliza-1-27b-256k": "31b-256k",
+};
+
+export const ELIZA_1_PUBLISHED_TIER_IDS = [
+  "eliza-1-2b",
+  "eliza-1-4b",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+/** Manifest-bearing tiers that the runtime may download. */
+export const ELIZA_1_PUBLISHED_SLUGS: Readonly<
+  Partial<Record<Eliza1TierId, string>>
+> = {
+  "eliza-1-2b": ELIZA_1_BUNDLE_SLUGS["eliza-1-2b"],
+  "eliza-1-4b": ELIZA_1_BUNDLE_SLUGS["eliza-1-4b"],
+};
+
+export function tierBundleSlug(id: Eliza1TierId): string {
+  return ELIZA_1_BUNDLE_SLUGS[id];
+}
+
+export function tierPublishedSlug(id: Eliza1TierId): string | undefined {
+  return ELIZA_1_PUBLISHED_SLUGS[id];
+}
+
+export function isEliza1TierPublished(id: string): boolean {
+  return Object.hasOwn(ELIZA_1_PUBLISHED_SLUGS, id);
+}
+
+export function isEliza1TierId(id: string): id is Eliza1TierId {
+  return Object.hasOwn(ELIZA_1_BUNDLE_SLUGS, id);
 }
 
 function tierDisplaySlug(id: Eliza1TierId): string {
@@ -331,7 +377,7 @@ function tierDisplayName(id: Eliza1TierId): string {
 }
 
 function bundleRemotePrefix(id: Eliza1TierId): string {
-  return `bundles/${tierSlug(id)}`;
+  return `bundles/${tierBundleSlug(id)}`;
 }
 
 function bundlePath(_id: Eliza1TierId, rel: string): string {
@@ -358,13 +404,18 @@ function primaryVoiceFileForTier(_id: Eliza1TierId): string {
 }
 
 function asrFileForTier(id: Eliza1TierId): string {
-  return `asr/mmproj-audio-${tierSlug(id)}-bf16.gguf`;
+  return `asr/mmproj-audio-${tierBundleSlug(id)}-bf16.gguf`;
+}
+
+function textFileForTier(id: Eliza1TierId): string {
+  const spec = TIER_SPECS[id];
+  return `text/eliza-1-${tierBundleSlug(id)}-${spec.textContextSuffix}.gguf`;
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const spec = TIER_SPECS[id];
   const components: SourceComponentMap = {
-    text: bundleComponent(id, spec.textFile),
+    text: bundleComponent(id, textFileForTier(id)),
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
     asr: bundleComponent(id, asrFileForTier(id)),
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
@@ -382,7 +433,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   if (isOnDeviceTier(id)) {
     components.litert = bundleComponent(
       id,
-      `text/eliza-1-${tierSlug(id)}.litertlm`,
+      `text/eliza-1-${tierBundleSlug(id)}.litertlm`,
     );
   }
 
@@ -395,7 +446,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   if (spec.hasVision) {
     components.vision = bundleComponent(
       id,
-      `vision/mmproj-${tierSlug(id)}.gguf`,
+      `vision/mmproj-${tierBundleSlug(id)}.gguf`,
     );
   }
   // Separate-drafter MTP is the Gemma release shape. Advertise the component
@@ -403,7 +454,10 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   // `bundles/<tier>/mtp/drafter-<tier>.gguf` (ELIZA_1_HOSTED_MTP_TIER_IDS);
   // the `dflash/` files still present on other tiers are legacy artifacts.
   if (hostedMtpDrafterAvailableForTier(id)) {
-    components.mtp = bundleComponent(id, `mtp/drafter-${tierSlug(id)}.gguf`);
+    components.mtp = bundleComponent(
+      id,
+      `mtp/drafter-${tierBundleSlug(id)}.gguf`,
+    );
   }
 
   return { finetuned: false, components };
@@ -458,7 +512,7 @@ function runtimeForTier(
     // needs on-hardware measurement before it can beat 1.
     runtime.mtp = {
       specType: "draft-mtp",
-      drafterFile: `mtp/drafter-${tierSlug(id)}.gguf`,
+      drafterFile: `mtp/drafter-${tierBundleSlug(id)}.gguf`,
       draftMin: 1,
       draftMax: 1,
       gpuLayers: "auto",
@@ -581,7 +635,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     displayName: tierDisplayName(id),
     hfRepo: ELIZA_1_HF_REPO,
     hfPathPrefix: bundleRemotePrefix(id),
-    ggufFile: bundlePath(id, spec.textFile),
+    ggufFile: bundlePath(id, textFileForTier(id)),
     bundleManifestFile: bundlePath(id, "eliza-1.manifest.json"),
     params: spec.params,
     parameterLabel: spec.parameterLabel,
@@ -598,7 +652,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     runtime: runtimeForTier(id, spec.contextLength),
     gpuProfile: spec.gpuProfile,
     quantization: textQuantizationMatrix({
-      primaryGgufFile: bundlePath(id, spec.textFile),
+      primaryGgufFile: bundlePath(id, textFileForTier(id)),
       q4SizeGb: spec.sizeGb,
       q4MinRamGb: spec.q4MinRamGb,
       onDevice: isOnDeviceTier(id),
