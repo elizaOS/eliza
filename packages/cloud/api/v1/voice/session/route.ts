@@ -87,23 +87,25 @@ app.post("/", async (c) => {
   // A supplied conversationId that exists must belong to the caller (org AND
   // user). A not-yet-existent conversationId is allowed (a session may open a
   // new one).
-  const conversation = await conversationsRepository.findById(body.conversationId);
+  const conversation = await conversationsRepository.findById(
+    body.conversationId,
+  );
   if (
     conversation &&
     (conversation.organization_id !== auth.organization_id ||
       conversation.user_id !== auth.id)
   ) {
-    return c.json({ error: "conversation not found", code: "conversation_not_found" }, 404);
+    return c.json(
+      { error: "conversation not found", code: "conversation_not_found" },
+      404,
+    );
   }
 
   // SEC-21: consent is a server-enforced mint precondition. A missing store, a
   // missing/expired/replayed nonce all refuse the mint — we never fabricate it.
   const consented = await consumeConsentNonce(auth.id, body.consentNonce);
   if (!consented) {
-    return c.json(
-      { error: "consent required", code: "consent_required" },
-      403,
-    );
+    return c.json({ error: "consent required", code: "consent_required" }, 403);
   }
 
   const sessionId = crypto.randomUUID();

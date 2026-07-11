@@ -23,19 +23,19 @@
 
 import { jwtVerify, SignJWT } from "jose";
 import {
-  buildRedisClient,
-  type CompatibleRedis,
-  hasRedisConfig,
-  isCloudflareWorkerRuntime,
-  type RedisFactoryEnv,
-} from "../cache/redis-factory";
-import {
   getAlgorithm,
   getKeyId,
   getPrivateKey,
   getPublicKey,
   isJWKSConfigured,
 } from "../auth/jwks";
+import {
+  buildRedisClient,
+  type CompatibleRedis,
+  hasRedisConfig,
+  isCloudflareWorkerRuntime,
+  type RedisFactoryEnv,
+} from "../cache/redis-factory";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 
@@ -301,9 +301,7 @@ function getRedis(): CompatibleRedis | null {
  * Test-only: inject a fake revocation store so the revoke->verify contract can
  * be exercised without a live Redis. Pass null to clear.
  */
-export function __setVoiceSessionRevocationStoreForTests(
-  store: CompatibleRedis | null,
-): void {
+export function __setVoiceSessionRevocationStoreForTests(store: CompatibleRedis | null): void {
   testRedisOverride = store;
 }
 
@@ -323,10 +321,7 @@ export function isVoiceSessionRevocationConfigured(): boolean {
  * Add a `jti` to the short-TTL revocation store. TTL defaults to the token
  * ceiling so the entry self-cleans once the token would have expired anyway.
  */
-export async function revokeVoiceSessionToken(
-  jti: string,
-  expSeconds?: number,
-): Promise<void> {
+export async function revokeVoiceSessionToken(jti: string, expSeconds?: number): Promise<void> {
   if (typeof jti !== "string" || jti.trim() === "") {
     throw new VoiceSessionTokenError("cannot revoke an empty jti", "invalid_input");
   }
@@ -385,11 +380,7 @@ const SESSION_DIR_KEY_PREFIX = "voice-session:dir:";
 // The directory key is scoped to BOTH org and user so a revoke can only resolve
 // a session the SAME user owns — a same-org peer who learns a sessionId cannot
 // resolve (and therefore cannot revoke) another user's session.
-function sessionDirKey(
-  organizationId: string,
-  userId: string,
-  sessionId: string,
-): string {
+function sessionDirKey(organizationId: string, userId: string, sessionId: string): string {
   return `${ENV_PREFIX}:${SESSION_DIR_KEY_PREFIX}${organizationId}:${userId}:${sessionId}`;
 }
 
@@ -408,11 +399,9 @@ export async function recordVoiceSessionJti(input: {
     Math.max(Math.ceil(input.expSeconds - nowSeconds), 1),
     MAX_REVOCATION_TTL_SECONDS,
   );
-  await redis.set(
-    sessionDirKey(input.organizationId, input.userId, input.sessionId),
-    input.jti,
-    { ex: ttl },
-  );
+  await redis.set(sessionDirKey(input.organizationId, input.userId, input.sessionId), input.jti, {
+    ex: ttl,
+  });
 }
 
 /**
@@ -451,17 +440,11 @@ function claimKey(jti: string): string {
  * registry supersede is the only guard (single-worker dev), so we return true;
  * production requires Redis for cross-worker single-use enforcement.
  */
-export async function claimVoiceSessionToken(
-  jti: string,
-  expSeconds: number,
-): Promise<boolean> {
+export async function claimVoiceSessionToken(jti: string, expSeconds: number): Promise<boolean> {
   const redis = getRedis();
   if (!redis) return true;
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const ttl = Math.min(
-    Math.max(Math.ceil(expSeconds - nowSeconds), 1),
-    MAX_REVOCATION_TTL_SECONDS,
-  );
+  const ttl = Math.min(Math.max(Math.ceil(expSeconds - nowSeconds), 1), MAX_REVOCATION_TTL_SECONDS);
   // `nx: true` => set only if absent; the first connection claims it.
   const result = await redis.set(claimKey(jti), "1", { ex: ttl, nx: true });
   return result !== null && result !== undefined;

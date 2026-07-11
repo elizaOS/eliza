@@ -60,10 +60,7 @@ export class PhraseAggregator {
         if (phrase) phrases.push(phrase);
         continue;
       }
-      if (
-        CLAUSE_BREAKS.has(ch) &&
-        this.buffer.trim().length >= Math.max(this.minEmitChars, 40)
-      ) {
+      if (CLAUSE_BREAKS.has(ch) && this.buffer.trim().length >= Math.max(this.minEmitChars, 40)) {
         const phrase = this.take();
         if (phrase) phrases.push(phrase);
         continue;

@@ -4,17 +4,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
-
-import {
-  MAX_AUDIO_FRAME_BYTES,
-  parseClientControlFrame,
-  validateAudioFrame,
-} from "../protocol";
 import { PhraseAggregator } from "../phrase-aggregator";
-import {
-  createVoiceSessionRegistry,
-  type LiveVoiceSession,
-} from "../session-registry";
+import { MAX_AUDIO_FRAME_BYTES, parseClientControlFrame, validateAudioFrame } from "../protocol";
+import { createVoiceSessionRegistry, type LiveVoiceSession } from "../session-registry";
 
 describe("protocol framing", () => {
   test("accepts a well-formed hello", () => {

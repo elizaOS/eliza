@@ -54,20 +54,17 @@
 import type { IncomingMessage } from "node:http";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { WebSocket as NodeWs, WebSocketServer, type WebSocket as NodeWebSocket } from "ws";
-
 import {
-  mintVoiceSessionToken,
-  recordVoiceSessionJti,
-  claimVoiceSessionToken,
-  isVoiceSessionTokenRevoked,
-  revokeVoiceSessionToken,
-} from "@/lib/voice-session/jwt";
-import { issueConsentNonce, consumeConsentNonce } from "@/lib/voice-session/consent-nonce";
+  type WebSocket as NodeWebSocket,
+  WebSocket as NodeWs,
+  WebSocketServer,
+} from "ws";
+import { buildRedisClient } from "@/lib/cache/redis-factory";
 import {
-  getVoiceSessionRegistry,
-  __resetVoiceSessionRegistryForTests,
-} from "@/lib/voice-session/session-registry";
+  createDurableVoiceUsageStore,
+  InMemoryVoiceUsageStore,
+  type VoiceUsageStore,
+} from "@/lib/services/voice-usage-meter";
 import {
   resolveElizaModel,
   resolveMaxSessions,
@@ -75,16 +72,25 @@ import {
   type VoiceRealtimeEnv,
 } from "@/lib/voice-session/config";
 import {
+  consumeConsentNonce,
+  issueConsentNonce,
+} from "@/lib/voice-session/consent-nonce";
+import {
+  claimVoiceSessionToken,
+  isVoiceSessionTokenRevoked,
+  mintVoiceSessionToken,
+  recordVoiceSessionJti,
+  revokeVoiceSessionToken,
+} from "@/lib/voice-session/jwt";
+import {
+  __resetVoiceSessionRegistryForTests,
+  getVoiceSessionRegistry,
+} from "@/lib/voice-session/session-registry";
+import { installVoiceSessionTestSigningKey } from "@/lib/voice-session/test-signing";
+import {
   attachVoiceWsHandler,
   type ServerWebSocketLike,
 } from "@/lib/voice-session/ws-handler";
-import {
-  InMemoryVoiceUsageStore,
-  createDurableVoiceUsageStore,
-  type VoiceUsageStore,
-} from "@/lib/services/voice-usage-meter";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
-import { installVoiceSessionTestSigningKey } from "@/lib/voice-session/test-signing";
 import { VoiceSession } from "./session";
 
 /**
@@ -98,15 +104,15 @@ export async function installHarnessSigningKey(): Promise<void> {
 }
 
 import type {
+  CartesiaWebSocketFactory,
+  CartesiaWebSocketFactoryOptions,
+  CartesiaWebSocketLike,
+} from "@/lib/services/cartesia-sonic-tts";
+import type {
+  DeepgramFluxTransportRequest,
   DeepgramFluxWebSocket,
   DeepgramFluxWebSocketFactory,
-  DeepgramFluxTransportRequest,
 } from "../../stt/providers/deepgram-flux";
-import type {
-  CartesiaWebSocketFactory,
-  CartesiaWebSocketLike,
-  CartesiaWebSocketFactoryOptions,
-} from "@/lib/services/cartesia-sonic-tts";
 
 // -------------------------------------------------------------------------
 // SHIM 2: node `ws`-package outbound provider factories (header-preserving,
@@ -118,7 +124,10 @@ import type {
 type WsLike = DeepgramFluxWebSocket & CartesiaWebSocketLike;
 
 function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
-  const listenerMap = new WeakMap<(e: unknown) => void, (...a: unknown[]) => void>();
+  const listenerMap = new WeakMap<
+    (e: unknown) => void,
+    (...a: unknown[]) => void
+  >();
   const toDom = (type: string, ...args: unknown[]): unknown => {
     switch (type) {
       case "open":
@@ -130,14 +139,16 @@ function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
         let data: unknown = raw;
         if (typeof raw !== "string") {
           if (Buffer.isBuffer(raw)) data = raw.toString("utf8");
-          else if (raw instanceof ArrayBuffer) data = Buffer.from(raw).toString("utf8");
+          else if (raw instanceof ArrayBuffer)
+            data = Buffer.from(raw).toString("utf8");
           else if (ArrayBuffer.isView(raw))
             data = Buffer.from(
               (raw as ArrayBufferView).buffer,
               (raw as ArrayBufferView).byteOffset,
               (raw as ArrayBufferView).byteLength,
             ).toString("utf8");
-          else if (Array.isArray(raw)) data = Buffer.concat(raw as Buffer[]).toString("utf8");
+          else if (Array.isArray(raw))
+            data = Buffer.concat(raw as Buffer[]).toString("utf8");
         }
         return { type: "message", data };
       }
@@ -151,7 +162,9 @@ function wrapNodeWsAsDom(socket: NodeWebSocket): WsLike {
         return {
           type: "close",
           code,
-          reason: Buffer.isBuffer(reason) ? reason.toString("utf8") : String(reason ?? ""),
+          reason: Buffer.isBuffer(reason)
+            ? reason.toString("utf8")
+            : String(reason ?? ""),
           wasClean: code === 1000,
         };
       }
@@ -200,7 +213,11 @@ function stripChannelsParam(rawUrl: string): string {
 }
 
 export interface RealServerHooks {
-  log: (level: "info" | "warn" | "error", msg: string, data?: Record<string, unknown>) => void;
+  log: (
+    level: "info" | "warn" | "error",
+    msg: string,
+    data?: Record<string, unknown>,
+  ) => void;
 }
 
 function makeNodeDeepgramFactory(
@@ -213,8 +230,14 @@ function makeNodeDeepgramFactory(
     // Deepgram upgrade fails at auth (a surfaced provider error, not a mock).
     let headers = request.headers;
     if (faultInjection === "deepgram-auth-fail") {
-      headers = { ...headers, Authorization: "Token deliberately-invalid-key-for-error-path" };
-      hooks.log("warn", "fault-injection: corrupting Deepgram auth for error-path scenario");
+      headers = {
+        ...headers,
+        Authorization: "Token deliberately-invalid-key-for-error-path",
+      };
+      hooks.log(
+        "warn",
+        "fault-injection: corrupting Deepgram auth for error-path scenario",
+      );
     }
     hooks.log("info", "deepgram outbound WS (channels stripped)", {
       host: safeHost(url),
@@ -224,10 +247,17 @@ function makeNodeDeepgramFactory(
   };
 }
 
-function makeNodeCartesiaFactory(hooks: RealServerHooks): CartesiaWebSocketFactory {
-  return (url: string, options: CartesiaWebSocketFactoryOptions): CartesiaWebSocketLike => {
+function makeNodeCartesiaFactory(
+  hooks: RealServerHooks,
+): CartesiaWebSocketFactory {
+  return (
+    url: string,
+    options: CartesiaWebSocketFactoryOptions,
+  ): CartesiaWebSocketLike => {
     hooks.log("info", "cartesia outbound WS", { host: safeHost(url) });
-    const socket = new NodeWs(url, { headers: options.headers }) as unknown as NodeWebSocket;
+    const socket = new NodeWs(url, {
+      headers: options.headers,
+    }) as unknown as NodeWebSocket;
     return wrapNodeWsAsDom(socket) as CartesiaWebSocketLike;
   };
 }
@@ -261,7 +291,10 @@ function adaptInboundSocket(ws: NodeWebSocket): ServerWebSocketLike {
         /* already closing */
       }
     },
-    addEventListener(type: "message" | "close" | "error", listener: (event?: { data: unknown }) => void) {
+    addEventListener(
+      type: "message" | "close" | "error",
+      listener: (event?: { data: unknown }) => void,
+    ) {
       if (type === "message") {
         ws.on("message", (data: unknown, isBinary: boolean) => {
           // The REAL handler distinguishes binary (audio) from text (control)
@@ -270,10 +303,15 @@ function adaptInboundSocket(ws: NodeWebSocket): ServerWebSocketLike {
           // deliver an ArrayBuffer for binary frames and a string for text.
           if (isBinary) {
             const buf = data as Buffer;
-            const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+            const ab = buf.buffer.slice(
+              buf.byteOffset,
+              buf.byteOffset + buf.byteLength,
+            );
             (listener as (e: { data: unknown }) => void)({ data: ab });
           } else {
-            const text = Buffer.isBuffer(data) ? data.toString("utf8") : String(data);
+            const text = Buffer.isBuffer(data)
+              ? data.toString("utf8")
+              : String(data);
             (listener as (e: { data: unknown }) => void)({ data: text });
           }
         });
@@ -323,7 +361,9 @@ export interface RunningRealServer {
   stop(): Promise<void>;
 }
 
-export async function startRealVoiceServer(config: RealServerConfig): Promise<RunningRealServer> {
+export async function startRealVoiceServer(
+  config: RealServerConfig,
+): Promise<RunningRealServer> {
   const { hooks } = config;
   const env = process.env as unknown as VoiceRealtimeEnv;
 
@@ -339,9 +379,12 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
   const durableStore = createDurableVoiceUsageStore(
     env as unknown as Parameters<typeof createDurableVoiceUsageStore>[0],
   );
-  const rawRedis = buildRedisClient(env as unknown as Parameters<typeof buildRedisClient>[0]);
+  const rawRedis = buildRedisClient(
+    env as unknown as Parameters<typeof buildRedisClient>[0],
+  );
   const evalCapable =
-    typeof (rawRedis as unknown as { eval?: unknown } | null)?.eval === "function";
+    typeof (rawRedis as unknown as { eval?: unknown } | null)?.eval ===
+    "function";
   const usageStore: VoiceUsageStore =
     durableStore && evalCapable ? durableStore : new InMemoryVoiceUsageStore();
   hooks.log("info", "usage store selected", {
@@ -395,7 +438,10 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
           conversationId: claims.conversationId,
           tokenExpSeconds,
           deepgramApiKey: config.deepgramApiKey,
-          deepgramWebSocketFactory: makeNodeDeepgramFactory(hooks, config.faultInjection),
+          deepgramWebSocketFactory: makeNodeDeepgramFactory(
+            hooks,
+            config.faultInjection,
+          ),
           cartesiaApiKey: config.cartesiaApiKey,
           cartesiaVoiceId: config.cartesiaVoiceId,
           cartesiaWebSocketFactory: makeNodeCartesiaFactory(hooks),
@@ -411,7 +457,9 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
     });
   }
 
-  await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+  await new Promise<void>((resolve) =>
+    httpServer.listen(0, "127.0.0.1", resolve),
+  );
   const port = (httpServer.address() as AddressInfo).port;
   const wsUrl = `ws://127.0.0.1:${port}/api/v1/voice/session/ws?sessionId=`;
   hooks.log("info", "real voice server listening", { port });
@@ -422,7 +470,8 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
     const issued = await issueConsentNonce(config.userId);
     if (!issued) throw new Error("consent store not configured (issue failed)");
     const consented = await consumeConsentNonce(config.userId, issued.nonce);
-    if (!consented) throw new Error("consent nonce consume failed (SEC-21 precondition)");
+    if (!consented)
+      throw new Error("consent nonce consume failed (SEC-21 precondition)");
 
     const sessionId = crypto.randomUUID();
     const minted = await mintVoiceSessionToken({
@@ -454,8 +503,14 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
         /* already gone */
       }
     }
-    await withTimeout(new Promise<void>((resolve) => wss.close(() => resolve())), 2000);
-    await withTimeout(new Promise<void>((resolve) => httpServer.close(() => resolve())), 2000);
+    await withTimeout(
+      new Promise<void>((resolve) => wss.close(() => resolve())),
+      2000,
+    );
+    await withTimeout(
+      new Promise<void>((resolve) => httpServer.close(() => resolve())),
+      2000,
+    );
     try {
       httpServer.closeAllConnections?.();
     } catch {
@@ -467,9 +522,11 @@ export async function startRealVoiceServer(config: RealServerConfig): Promise<Ru
   return { wsUrl, mint, stop };
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | void> {
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
   return Promise.race([
     p,
-    new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    new Promise<undefined>((resolve) =>
+      setTimeout(() => resolve(undefined), ms),
+    ),
   ]);
 }

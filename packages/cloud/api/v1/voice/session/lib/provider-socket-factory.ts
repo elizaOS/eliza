@@ -23,13 +23,13 @@
  */
 
 import type {
-  DeepgramFluxWebSocket,
-  DeepgramFluxWebSocketFactory,
-} from "../../stt/providers/deepgram-flux";
-import type {
   CartesiaWebSocketFactory,
   CartesiaWebSocketLike,
 } from "@/lib/services/cartesia-sonic-tts";
+import type {
+  DeepgramFluxWebSocket,
+  DeepgramFluxWebSocketFactory,
+} from "../../stt/providers/deepgram-flux";
 
 interface WorkerUpgradeSocket {
   accept?(): void;
@@ -66,14 +66,20 @@ export function isWorkerOutboundWsAvailable(): boolean {
 export function createWorkerDeepgramFluxFactory(): DeepgramFluxWebSocketFactory {
   return (request) => {
     const url = stripChannelsParam(request.url);
-    return openWorkerSocket(url, request.headers) as unknown as DeepgramFluxWebSocket;
+    return openWorkerSocket(
+      url,
+      request.headers,
+    ) as unknown as DeepgramFluxWebSocket;
   };
 }
 
 /** Cartesia factory using the Workers header-preserving outbound upgrade. */
 export function createWorkerCartesiaFactory(): CartesiaWebSocketFactory {
   return (url, options) => {
-    return openWorkerSocket(url, options.headers) as unknown as CartesiaWebSocketLike;
+    return openWorkerSocket(
+      url,
+      options.headers,
+    ) as unknown as CartesiaWebSocketLike;
   };
 }
 
@@ -95,9 +101,12 @@ function openWorkerSocket(
         method: "GET",
         headers: { ...headers, Upgrade: "websocket" },
       });
-      const ws = (response as unknown as { webSocket?: WorkerUpgradeSocket }).webSocket;
+      const ws = (response as unknown as { webSocket?: WorkerUpgradeSocket })
+        .webSocket;
       if (!ws) {
-        proxy.failOpen(new Error(`outbound WS upgrade failed: HTTP ${response.status}`));
+        proxy.failOpen(
+          new Error(`outbound WS upgrade failed: HTTP ${response.status}`),
+        );
         return;
       }
       ws.accept?.();
@@ -123,7 +132,8 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
   readyState = 1;
   binaryType = "arraybuffer";
   private real: WorkerUpgradeSocket | null = null;
-  private readonly pendingSends: (string | ArrayBuffer | ArrayBufferView)[] = [];
+  private readonly pendingSends: (string | ArrayBuffer | ArrayBufferView)[] =
+    [];
   private readonly listeners: Array<[string, (event: unknown) => void]> = [];
   private closedEarly: { code?: number; reason?: string } | null = null;
 
@@ -161,7 +171,9 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
       this.real.removeEventListener(type, listener);
       return;
     }
-    const idx = this.listeners.findIndex(([t, l]) => t === type && l === listener);
+    const idx = this.listeners.findIndex(
+      ([t, l]) => t === type && l === listener,
+    );
     if (idx !== -1) this.listeners.splice(idx, 1);
   }
 
@@ -195,7 +207,8 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
   failOpen(error: unknown): void {
     for (const [type, listener] of this.listeners) {
       if (type === "error") listener({ error });
-      if (type === "close") listener({ code: 1006, reason: "upgrade failed", wasClean: false });
+      if (type === "close")
+        listener({ code: 1006, reason: "upgrade failed", wasClean: false });
     }
   }
 }

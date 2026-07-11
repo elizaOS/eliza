@@ -7,7 +7,9 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
-const fakeLogger = { logger: { error: mock(), info: mock(), warn: mock(), debug: mock() } };
+const fakeLogger = {
+  logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
+};
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
   isSensitiveKeyName: () => false,
@@ -39,7 +41,7 @@ const consentNonces = new Set<string>();
 mock.module("@/lib/voice-session/consent-nonce", () => ({
   isConsentStoreConfigured: () => true,
   issueConsentNonce: async () => {
-    const nonce = "nonce-" + Math.random().toString(36).slice(2);
+    const nonce = `nonce-${Math.random().toString(36).slice(2)}`;
     consentNonces.add(nonce);
     return { nonce, expiresAt: new Date(Date.now() + 300_000).toISOString() };
   },
@@ -79,7 +81,11 @@ describe("voice-session mint route", () => {
     const app = appWithFlag(undefined);
     const res = await app.request("/api/v1/voice/session", {
       method: "POST",
-      body: JSON.stringify({ agentId: "a", conversationId: "c", consentNonce: "x" }),
+      body: JSON.stringify({
+        agentId: "a",
+        conversationId: "c",
+        consentNonce: "x",
+      }),
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(404);
@@ -105,7 +111,11 @@ describe("voice-session mint route", () => {
     const app = appWithFlag("true");
     const res = await app.request("/api/v1/voice/session", {
       method: "POST",
-      body: JSON.stringify({ agentId: "11111111-1111-4111-8111-111111111111", conversationId: "22222222-2222-4222-8222-222222222222", consentNonce: "bogus" }),
+      body: JSON.stringify({
+        agentId: "11111111-1111-4111-8111-111111111111",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce: "bogus",
+      }),
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(403);
@@ -116,15 +126,23 @@ describe("voice-session mint route", () => {
   test("issues a nonce then mints a pcm16-only session", async () => {
     const app = appWithFlag("true");
     // 1. Get a consent nonce.
-    const consentRes = await app.request("/api/v1/voice/session/consent", { method: "POST" });
+    const consentRes = await app.request("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
     expect(consentRes.status).toBe(200);
-    const { consentNonce } = (await consentRes.json()) as { consentNonce: string };
+    const { consentNonce } = (await consentRes.json()) as {
+      consentNonce: string;
+    };
     expect(consentNonce).toBeTruthy();
 
     // 2. Mint with it.
     const res = await app.request("/api/v1/voice/session", {
       method: "POST",
-      body: JSON.stringify({ agentId: "11111111-1111-4111-8111-111111111111", conversationId: "22222222-2222-4222-8222-222222222222", consentNonce }),
+      body: JSON.stringify({
+        agentId: "11111111-1111-4111-8111-111111111111",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce,
+      }),
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(200);
@@ -144,7 +162,11 @@ describe("voice-session mint route", () => {
     // 3. The nonce is single-use: minting again with it is refused.
     const replay = await app.request("/api/v1/voice/session", {
       method: "POST",
-      body: JSON.stringify({ agentId: "11111111-1111-4111-8111-111111111111", conversationId: "22222222-2222-4222-8222-222222222222", consentNonce }),
+      body: JSON.stringify({
+        agentId: "11111111-1111-4111-8111-111111111111",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce,
+      }),
       headers: { "Content-Type": "application/json" },
     });
     expect(replay.status).toBe(403);
@@ -152,11 +174,19 @@ describe("voice-session mint route", () => {
 
   test("mint response never contains a provider key", async () => {
     const app = appWithFlag("true");
-    const consentRes = await app.request("/api/v1/voice/session/consent", { method: "POST" });
-    const { consentNonce } = (await consentRes.json()) as { consentNonce: string };
+    const consentRes = await app.request("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+    const { consentNonce } = (await consentRes.json()) as {
+      consentNonce: string;
+    };
     const res = await app.request("/api/v1/voice/session", {
       method: "POST",
-      body: JSON.stringify({ agentId: "11111111-1111-4111-8111-111111111111", conversationId: "22222222-2222-4222-8222-222222222222", consentNonce }),
+      body: JSON.stringify({
+        agentId: "11111111-1111-4111-8111-111111111111",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce,
+      }),
       headers: { "Content-Type": "application/json" },
     });
     const raw = await res.text();

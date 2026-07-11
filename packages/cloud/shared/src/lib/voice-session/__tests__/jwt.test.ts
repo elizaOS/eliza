@@ -15,8 +15,8 @@ import {
   isVoiceSessionJwtConfigured,
   mintVoiceSessionToken,
   revokeVoiceSessionToken,
-  verifyVoiceSessionToken,
   VoiceSessionTokenError,
+  verifyVoiceSessionToken,
 } from "../jwt";
 
 /** Minimal in-memory Redis-shaped store for the revocation contract. */

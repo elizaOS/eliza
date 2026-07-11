@@ -1,6 +1,11 @@
 // Handles the realtime voice-session WebSocket upgrade (Phase 1, flag-gated).
 import { Hono } from "hono";
-
+import { buildRedisClient } from "@/lib/cache/redis-factory";
+import {
+  createDurableVoiceUsageStore,
+  InMemoryVoiceUsageStore,
+  type VoiceUsageStore,
+} from "@/lib/services/voice-usage-meter";
 import { logger } from "@/lib/utils/logger";
 import {
   isVoiceRealtimeWsEnabled,
@@ -10,28 +15,22 @@ import {
   type VoiceRealtimeEnv,
 } from "@/lib/voice-session/config";
 import {
-  createWorkerCartesiaFactory,
-  createWorkerDeepgramFluxFactory,
-  isWorkerOutboundWsAvailable,
-} from "../lib/provider-socket-factory";
-import { VoiceSession } from "../lib/session";
-import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
-import {
   claimVoiceSessionToken,
   isVoiceSessionTokenRevoked,
   revokeVoiceSessionToken,
 } from "@/lib/voice-session/jwt";
-import {
-  createDurableVoiceUsageStore,
-  InMemoryVoiceUsageStore,
-  type VoiceUsageStore,
-} from "@/lib/services/voice-usage-meter";
-import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
 import {
   attachVoiceWsHandler,
   type ServerWebSocketLike,
 } from "@/lib/voice-session/ws-handler";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import {
+  createWorkerCartesiaFactory,
+  createWorkerDeepgramFluxFactory,
+  isWorkerOutboundWsAvailable,
+} from "../lib/provider-socket-factory";
+import { VoiceSession } from "../lib/session";
 
 /**
  * GET /api/v1/voice/session/ws?sessionId=... (contract §7.1/§7.2).
@@ -57,7 +56,8 @@ const app = new Hono<AppEnv>();
  */
 let workerFallbackUsageStore: InMemoryVoiceUsageStore | null = null;
 function getWorkerFallbackUsageStore(): InMemoryVoiceUsageStore {
-  if (!workerFallbackUsageStore) workerFallbackUsageStore = new InMemoryVoiceUsageStore();
+  if (!workerFallbackUsageStore)
+    workerFallbackUsageStore = new InMemoryVoiceUsageStore();
   return workerFallbackUsageStore;
 }
 
@@ -82,7 +82,10 @@ app.get("/", (c) => {
   // not open unbounded provider sockets on one worker. Reject at the upgrade
   // when the registry is already at the cap (a session registers on start()).
   if (getVoiceSessionRegistry().size() >= resolveMaxSessions(env)) {
-    return c.json({ error: "voice realtime capacity reached", code: "at_capacity" }, 503);
+    return c.json(
+      { error: "voice realtime capacity reached", code: "at_capacity" },
+      503,
+    );
   }
 
   const deepgramApiKey = env.DEEPGRAM_API_KEY;
@@ -100,7 +103,9 @@ app.get("/", (c) => {
     !elizaEndpoint ||
     !elizaAuthorization
   ) {
-    logger.error("[voice-session-ws] provider/config missing; refusing upgrade");
+    logger.error(
+      "[voice-session-ws] provider/config missing; refusing upgrade",
+    );
     return c.json({ error: "voice realtime session misconfigured" }, 503);
   }
   if (!isWorkerOutboundWsAvailable()) {
@@ -109,8 +114,9 @@ app.get("/", (c) => {
     return c.json({ error: "voice realtime transport unavailable" }, 503);
   }
 
-  const WebSocketPairCtor = (globalThis as { WebSocketPair?: new () => [unknown, unknown] })
-    .WebSocketPair;
+  const WebSocketPairCtor = (
+    globalThis as { WebSocketPair?: new () => [unknown, unknown] }
+  ).WebSocketPair;
   if (!WebSocketPairCtor) {
     return c.json({ error: "voice realtime transport unavailable" }, 503);
   }
@@ -141,7 +147,9 @@ app.get("/", (c) => {
   const rawRedis = buildRedisClient(
     env as unknown as Parameters<typeof buildRedisClient>[0],
   );
-  const evalCapable = typeof (rawRedis as unknown as { eval?: unknown } | null)?.eval === "function";
+  const evalCapable =
+    typeof (rawRedis as unknown as { eval?: unknown } | null)?.eval ===
+    "function";
   const usageStore: VoiceUsageStore =
     durableStore && evalCapable ? durableStore : getWorkerFallbackUsageStore();
 
@@ -172,7 +180,8 @@ app.get("/", (c) => {
         usageStore,
         usageLimits,
         isRevoked: (jti) => isVoiceSessionTokenRevoked(jti),
-        onTeardownRevoke: (jti, expSeconds) => revokeVoiceSessionToken(jti, expSeconds),
+        onTeardownRevoke: (jti, expSeconds) =>
+          revokeVoiceSessionToken(jti, expSeconds),
         downlink,
       }),
   });

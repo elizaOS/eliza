@@ -4,7 +4,17 @@
  * double so the tests assert single-use consent behavior without a service.
  */
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+
+// Capture the REAL cloud-bindings surface so the stub keeps every export and can
+// be restored. The coverage lane runs all changed files in ONE bun process with
+// no `--isolate`, and `mock.module` is process-global with no per-file teardown
+// — a stub that (a) drops exports or (b) blinds getCloudAwareEnv() to process.env
+// would poison sibling tests (e.g. jwt.test.ts sets JWT_SIGNING_* on process.env
+// and needs getCloudAwareEnv() to read it back).
+import * as realCloudBindings from "../runtime/cloud-bindings";
+
+const realCloudBindingsExports = { ...realCloudBindings };
 
 const redisState = new Map<string, string>();
 const redisCalls: Array<{ op: string; key: string; value?: string; ex?: number }> = [];
@@ -29,8 +39,15 @@ mock.module("../cache/redis-factory", () => ({
 }));
 
 mock.module("../runtime/cloud-bindings", () => ({
-  getCloudAwareEnv: () => ({ REDIS_URL: "redis://unit" }),
+  ...realCloudBindingsExports,
+  // Spread process.env so JWT_SIGNING_* (and anything a sibling test sets) still
+  // resolves; only pin the REDIS_URL this suite needs.
+  getCloudAwareEnv: () => ({ ...process.env, REDIS_URL: "redis://unit" }),
 }));
+
+afterAll(() => {
+  mock.module("../runtime/cloud-bindings", () => realCloudBindingsExports);
+});
 
 const config = await import("./config");
 const consent = await import("./consent-nonce");

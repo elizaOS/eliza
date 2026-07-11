@@ -109,9 +109,7 @@ const VALID_DOWNLINK_CODECS: readonly VoiceDownlinkCodec[] = ["pcm16"];
  * Parse a text control frame. Enforces the size ceiling and rejects malformed
  * JSON as an explicit protocol error (never a coerced default).
  */
-export function parseClientControlFrame(
-  raw: unknown,
-): ProtocolParseResult<ClientControlFrame> {
+export function parseClientControlFrame(raw: unknown): ProtocolParseResult<ClientControlFrame> {
   if (typeof raw !== "string") {
     return fail("control_not_text", "control frame must be JSON text");
   }
@@ -152,7 +150,10 @@ function parseHello(v: Record<string, unknown>): ProtocolParseResult<ClientHello
     return fail("hello_bad_protocol", "unsupported protocol version");
   }
   const uplinkCodec = v.uplinkCodec;
-  if (typeof uplinkCodec !== "string" || !VALID_UPLINK_CODECS.includes(uplinkCodec as VoiceUplinkCodec)) {
+  if (
+    typeof uplinkCodec !== "string" ||
+    !VALID_UPLINK_CODECS.includes(uplinkCodec as VoiceUplinkCodec)
+  ) {
     return fail("hello_bad_uplink_codec", "unsupported uplink codec");
   }
   const downlinkCodec = v.downlinkCodec;

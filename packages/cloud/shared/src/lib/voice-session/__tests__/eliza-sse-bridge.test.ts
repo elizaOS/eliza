@@ -147,8 +147,6 @@ describe("eliza sse bridge", () => {
           transcript: "hi",
           agentId: "agent-1",
           conversationId: "conv-1",
-        agentId: "agent-1",
-        conversationId: "conv-1",
           traceId: "t",
           signal: new AbortController().signal,
           fetchImpl,

@@ -27,12 +27,6 @@
  */
 
 import {
-  createDeepgramFluxRealtimeSession,
-  type DeepgramFluxRealtimeEvent,
-  type DeepgramFluxRealtimeSession,
-  type DeepgramFluxWebSocketFactory,
-} from "../../stt/providers/deepgram-flux";
-import {
   CartesiaSonicTtsAdapter,
   type CartesiaSonicTtsStream,
   type CartesiaWebSocketFactory,
@@ -55,6 +49,12 @@ import type {
   VoiceSessionDownlink,
   VoiceSessionLike,
 } from "@/lib/voice-session/ws-handler";
+import {
+  createDeepgramFluxRealtimeSession,
+  type DeepgramFluxRealtimeEvent,
+  type DeepgramFluxRealtimeSession,
+  type DeepgramFluxWebSocketFactory,
+} from "../../stt/providers/deepgram-flux";
 import { UplinkReframer } from "./uplink-reframer";
 
 const PCM16_BYTES_PER_SECOND = 16_000 * 2; // 16kHz mono linear16.
@@ -229,7 +229,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // revoke could no longer resolve/observe the jti, so the socket must not
     // outlive it. Self-sever at exp.
     const nowSeconds = Math.floor(this.now() / 1000);
-    const msUntilExp = Math.max(0, (this.config.tokenExpSeconds - nowSeconds) * 1000);
+    const msUntilExp = Math.max(
+      0,
+      (this.config.tokenExpSeconds - nowSeconds) * 1000,
+    );
     this.expiryTimer = setTimeout(() => {
       if (!this.closed) this.teardown("expired");
     }, msUntilExp);
@@ -265,7 +268,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // check is in flight; over the bound, sever fail-closed.
       if (this.preAdmissionFrames.length > MAX_PREADMISSION_FRAMES) {
         this.meteredExhausted = true;
-        this.send({ t: "error", code: "metering_unavailable", retryable: false });
+        this.send({
+          t: "error",
+          code: "metering_unavailable",
+          retryable: false,
+        });
         this.teardown("error");
       }
       return;
@@ -277,7 +284,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // stream unbounded paid audio while checks lag.
     if (this.meterWindowsInFlight > MAX_OUTSTANDING_METER_WINDOWS) {
       this.meteredExhausted = true;
-      this.send({ t: "error", code: "metering_backpressure", retryable: false });
+      this.send({
+        t: "error",
+        code: "metering_backpressure",
+        retryable: false,
+      });
       this.teardown("error");
       return;
     }
@@ -298,7 +309,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
    * `checkAndRecord` returns allowed.
    */
   private ensureAdmission(): void {
-    if (this.admissionInFlight || this.meteringAdmitted || this.meteredExhausted) return;
+    if (
+      this.admissionInFlight ||
+      this.meteringAdmitted ||
+      this.meteredExhausted
+    )
+      return;
     this.admissionInFlight = true;
     void (async () => {
       try {
@@ -328,7 +344,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       } catch {
         if (this.closed) return;
         this.meteredExhausted = true;
-        this.send({ t: "error", code: "metering_unavailable", retryable: false });
+        this.send({
+          t: "error",
+          code: "metering_unavailable",
+          retryable: false,
+        });
         this.teardown("error");
       } finally {
         this.admissionInFlight = false;
@@ -434,7 +454,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     void this.runResponseTurn(transcript, traceId);
   }
 
-  private async runResponseTurn(transcript: string, traceId: string): Promise<void> {
+  private async runResponseTurn(
+    transcript: string,
+    traceId: string,
+  ): Promise<void> {
     const abort = new AbortController();
     this.llmAbort = abort;
     const phrase = new PhraseAggregator();
@@ -467,7 +490,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           },
           onProviderError: (err) => {
             if (this.currentVoiceTurnId !== traceId) return;
-            this.send({ t: "error", code: err.code ?? "tts_error", retryable: true });
+            this.send({
+              t: "error",
+              code: err.code ?? "tts_error",
+              retryable: true,
+            });
             // Close out the failed turn so the client gets usage + returns to
             // listening, instead of the session being stuck on a dead turn
             // until a later barge-in or teardown.
@@ -530,7 +557,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // A trailing phrase remains. Flush any held phrase (continue:true), then
         // send the tail as the terminal phrase with continue:false.
         if (pendingPhrase !== null) {
-          ensureTts().sendPhrase({ text: pendingPhrase, continueContext: true });
+          ensureTts().sendPhrase({
+            text: pendingPhrase,
+            continueContext: true,
+          });
           pendingPhrase = null;
         }
         this.turnTtsChars += tail.length;
@@ -633,7 +663,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // window nor stream uncapped before admission.
     if (!this.meteringAdmitted) return;
     this.unmeteredUplinkBytes += byteLength;
-    const seconds = Math.floor(this.unmeteredUplinkBytes / PCM16_BYTES_PER_SECOND);
+    const seconds = Math.floor(
+      this.unmeteredUplinkBytes / PCM16_BYTES_PER_SECOND,
+    );
     if (seconds < METER_FLUSH_SECONDS) return;
     this.unmeteredUplinkBytes -= seconds * PCM16_BYTES_PER_SECOND;
     this.turnSttMs += seconds * 1000;
@@ -680,9 +712,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // public and re-verifies hello; without this, a stolen token stays usable
     // until natural expiry). Best-effort and non-blocking.
     if (this.config.onTeardownRevoke) {
-      void this.config.onTeardownRevoke(this.jti, this.config.tokenExpSeconds).catch(() => {
-        // best-effort; the token still dies at its <=120s TTL.
-      });
+      void this.config
+        .onTeardownRevoke(this.jti, this.config.tokenExpSeconds)
+        .catch(() => {
+          // best-effort; the token still dies at its <=120s TTL.
+        });
     }
 
     // Invalidate any live turn so racing callbacks are dropped.

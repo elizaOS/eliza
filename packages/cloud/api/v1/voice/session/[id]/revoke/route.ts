@@ -50,7 +50,10 @@ app.post("/", async (c) => {
   // Ownership: a live session must belong to the SAME org AND user as the
   // caller. A same-org peer who learns a sessionId is refused without leaking
   // existence.
-  if (live && (live.organizationId !== auth.organization_id || live.userId !== auth.id)) {
+  if (
+    live &&
+    (live.organizationId !== auth.organization_id || live.userId !== auth.id)
+  ) {
     return c.json({ error: "not found" }, 404);
   }
 
@@ -59,10 +62,14 @@ app.post("/", async (c) => {
   // directory (SEC-6 cross-worker). The key is scoped to org AND user, so a
   // cross-tenant OR same-org-different-user caller cannot resolve it.
   const jti =
-    live?.jti ?? (await lookupVoiceSessionJti(auth.organization_id, auth.id, sessionId));
+    live?.jti ??
+    (await lookupVoiceSessionJti(auth.organization_id, auth.id, sessionId));
   if (!jti) {
     // Unknown session for this org: nothing to revoke. Report honestly.
-    return c.json({ revoked: false, severed: false, reason: "unknown_session" }, 404);
+    return c.json(
+      { revoked: false, severed: false, reason: "unknown_session" },
+      404,
+    );
   }
 
   // Durable revocation by jti — blocks reconnect and, for a live socket on

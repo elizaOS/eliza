@@ -5,14 +5,15 @@
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 
-const fakeLogger = { logger: { error: mock(), info: mock(), warn: mock(), debug: mock() } };
+const fakeLogger = {
+  logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
+};
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
   isSensitiveKeyName: () => false,
   redactLogArgs: (a: unknown) => a,
 }));
 
-import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import type {
   VoiceUsageDecision,
@@ -20,12 +21,13 @@ import type {
   VoiceUsageLimits,
   VoiceUsageStore,
 } from "../../../../../shared/src/lib/services/voice-usage-meter";
+import type { ServerControlFrame } from "../../../../../shared/src/lib/voice-session/protocol";
 import {
   __resetVoiceSessionRegistryForTests,
   getVoiceSessionRegistry,
 } from "../../../../../shared/src/lib/voice-session/session-registry";
-import type { ServerControlFrame } from "../../../../../shared/src/lib/voice-session/protocol";
 import type { VoiceSessionDownlink } from "../../../../../shared/src/lib/voice-session/ws-handler";
+import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
 import { VoiceSession } from "../lib/session";
 
 beforeAll(() => {
@@ -100,7 +102,9 @@ function collectDownlink(): {
   ref: { closed: { code: number; reason: string } | null };
 } {
   const control: ServerControlFrame[] = [];
-  const ref: { closed: { code: number; reason: string } | null } = { closed: null };
+  const ref: { closed: { code: number; reason: string } | null } = {
+    closed: null,
+  };
   return {
     control,
     closed: ref.closed,
@@ -138,7 +142,10 @@ function buildSession(opts: {
     elizaAuthorization: "Bearer x",
     elizaModel: "gemma-4-31b",
     usageStore: opts.usageStore,
-    usageLimits: opts.usageLimits ?? { organizationDailyMinutes: 600, userDailyMinutes: 120 },
+    usageLimits: opts.usageLimits ?? {
+      organizationDailyMinutes: 600,
+      userDailyMinutes: 120,
+    },
     downlink: opts.downlink,
   });
 }
@@ -150,18 +157,30 @@ describe("revoke-to-silence (SEC-6)", () => {
     const dl = collectDownlink();
     const usageStore: VoiceUsageStore = {
       async checkAndRecord() {
-        return { allowed: true, organizationUsedMinutes: 0, userUsedMinutes: 0, day: "d" };
+        return {
+          allowed: true,
+          organizationUsedMinutes: 0,
+          userUsedMinutes: 0,
+          day: "d",
+        };
       },
       async release() {},
     };
-    const session = buildSession({ usageStore, downlink: dl.downlink, flux: () => new FakeFluxSocket() });
+    const session = buildSession({
+      usageStore,
+      downlink: dl.downlink,
+      flux: () => new FakeFluxSocket(),
+    });
     session.start();
     await flush();
     const flux = FakeFluxSocket.instances.at(-1)!;
     expect(flux.closed).toBe(false);
 
     const t0 = Date.now();
-    const severed = getVoiceSessionRegistry().severBySessionId("sess-r", "revoked");
+    const severed = getVoiceSessionRegistry().severBySessionId(
+      "sess-r",
+      "revoked",
+    );
     const elapsed = Date.now() - t0;
 
     expect(severed).toBe(true);
@@ -174,7 +193,12 @@ describe("revoke-to-silence (SEC-6)", () => {
     const dl = collectDownlink();
     const usageStore: VoiceUsageStore = {
       async checkAndRecord() {
-        return { allowed: true, organizationUsedMinutes: 0, userUsedMinutes: 0, day: "d" };
+        return {
+          allowed: true,
+          organizationUsedMinutes: 0,
+          userUsedMinutes: 0,
+          day: "d",
+        };
       },
       async release() {},
     };
@@ -214,11 +238,20 @@ describe("revoke-to-silence (SEC-6)", () => {
     const dl = collectDownlink();
     const usageStore: VoiceUsageStore = {
       async checkAndRecord() {
-        return { allowed: true, organizationUsedMinutes: 0, userUsedMinutes: 0, day: "d" };
+        return {
+          allowed: true,
+          organizationUsedMinutes: 0,
+          userUsedMinutes: 0,
+          day: "d",
+        };
       },
       async release() {},
     };
-    const session = buildSession({ usageStore, downlink: dl.downlink, flux: () => new FakeFluxSocket() });
+    const session = buildSession({
+      usageStore,
+      downlink: dl.downlink,
+      flux: () => new FakeFluxSocket(),
+    });
     session.start();
     await flush();
     const flux = FakeFluxSocket.instances.at(-1)!;
@@ -261,7 +294,9 @@ describe("metering enforcement (SEC-15)", () => {
     session.pushUplinkAudio(new Uint8Array(2560));
     await flush();
 
-    const codes = dl.control.filter((f) => f.t === "error").map((f) => (f as { code: string }).code);
+    const codes = dl.control
+      .filter((f) => f.t === "error")
+      .map((f) => (f as { code: string }).code);
     expect(codes).toContain("quota_exhausted");
     expect(flux.closed).toBe(true);
     // Fail-closed: the denied audio was NEVER forwarded to the provider.
@@ -273,12 +308,21 @@ describe("metering enforcement (SEC-15)", () => {
     const store: VoiceUsageStore = {
       async checkAndRecord(_id, minutes) {
         recorded.push(minutes);
-        return { allowed: true, organizationUsedMinutes: 0, userUsedMinutes: 0, day: "d" };
+        return {
+          allowed: true,
+          organizationUsedMinutes: 0,
+          userUsedMinutes: 0,
+          day: "d",
+        };
       },
       async release() {},
     };
     const dl = collectDownlink();
-    const session = buildSession({ usageStore: store, downlink: dl.downlink, flux: () => new FakeFluxSocket() });
+    const session = buildSession({
+      usageStore: store,
+      downlink: dl.downlink,
+      flux: () => new FakeFluxSocket(),
+    });
     session.start();
     await flush();
     // A small admission chunk records the server-derived nominal window; the

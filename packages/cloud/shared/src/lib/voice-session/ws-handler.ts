@@ -20,14 +20,14 @@
  * `WebSocket` to this shape.
  */
 
+import { type VoiceSessionTokenClaims, verifyVoiceSessionToken } from "./jwt";
+import type { ServerControlFrame } from "./protocol";
 import {
   parseClientControlFrame,
   serializeServerFrame,
-  validateAudioFrame,
   VOICE_SESSION_PROTOCOL_VERSION,
+  validateAudioFrame,
 } from "./protocol";
-import type { ServerControlFrame } from "./protocol";
-import { verifyVoiceSessionToken, type VoiceSessionTokenClaims } from "./jwt";
 
 /**
  * The downlink surface the handler wires the socket into. Mirrors the session's

@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { validateDeepgramFluxAudioChunk } from "../../stt/providers/deepgram-flux";
-import { UplinkReframer, UPLINK_FRAME_BYTES } from "../lib/uplink-reframer";
+import { UPLINK_FRAME_BYTES, UplinkReframer } from "../lib/uplink-reframer";
 
 describe("uplink reframer", () => {
   test("frame size matches the Flux chunk requirement", () => {

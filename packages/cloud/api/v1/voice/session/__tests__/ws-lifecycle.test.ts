@@ -13,7 +13,9 @@ import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 
 // Break the logger -> @elizaos/core transitive import chain (repo-standard
 // test isolation for cloud-api unit tests). Logic under test is untouched.
-const fakeLogger = { logger: { error: mock(), info: mock(), warn: mock(), debug: mock() } };
+const fakeLogger = {
+  logger: { error: mock(), info: mock(), warn: mock(), debug: mock() },
+};
 mock.module("@/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => fakeLogger);
 mock.module("@elizaos/core", () => ({
@@ -21,14 +23,14 @@ mock.module("@elizaos/core", () => ({
   redactLogArgs: (args: unknown) => args,
 }));
 
-import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
-import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import { InMemoryVoiceUsageStore } from "../../../../../shared/src/lib/services/voice-usage-meter";
 import { mintVoiceSessionToken } from "../../../../../shared/src/lib/voice-session/jwt";
-import { __resetVoiceSessionRegistryForTests } from "../../../../../shared/src/lib/voice-session/session-registry";
 import type { ServerControlFrame } from "../../../../../shared/src/lib/voice-session/protocol";
+import { __resetVoiceSessionRegistryForTests } from "../../../../../shared/src/lib/voice-session/session-registry";
+import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 import { attachVoiceWsHandler } from "../../../../../shared/src/lib/voice-session/ws-handler";
+import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
 import { VoiceSession } from "../lib/session";
 
 // --- signing setup --------------------------------------------------------
@@ -110,8 +112,12 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
     if (typeof msg.transcript === "string" && msg.transcript.length > 0) {
       queueMicrotask(() => {
         if (this.closed) return;
-        const pcm = Buffer.from(new Uint8Array([1, 2, 3, 4])).toString("base64");
-        this.fire("message", { data: JSON.stringify({ type: "chunk", data: pcm }) });
+        const pcm = Buffer.from(new Uint8Array([1, 2, 3, 4])).toString(
+          "base64",
+        );
+        this.fire("message", {
+          data: JSON.stringify({ type: "chunk", data: pcm }),
+        });
       });
     }
   }
@@ -126,7 +132,9 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
     this.listeners.get(type)!.add(listener as (e: unknown) => void);
   }
   emitDone() {
-    this.fire("message", { data: JSON.stringify({ type: "done", done: true }) });
+    this.fire("message", {
+      data: JSON.stringify({ type: "done", done: true }),
+    });
   }
   private fire(type: string, payload: unknown) {
     for (const l of this.listeners.get(type) ?? []) l(payload);
@@ -187,7 +195,9 @@ function makeSseFetch(
         for (const d of deltas) {
           if (signal?.aborted) break;
           const frame = { choices: [{ delta: { content: d } }] };
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(frame)}\n\n`),
+          );
           await new Promise((r) => setTimeout(r, 1));
         }
         if (opts?.hang) {
@@ -207,7 +217,10 @@ function makeSseFetch(
         controller.close();
       },
     });
-    return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
   }) as unknown as typeof fetch;
 }
 
@@ -282,7 +295,10 @@ function pcmChunk(bytes: number): Uint8Array {
 describe("voice-session WS lifecycle", () => {
   test("hello -> ready -> full turn produces stt_final, llm_first_text, speaking, usage", async () => {
     const client = new FakeClientSocket();
-    await connectSession({ client, fetchImpl: makeSseFetch(["Hello.", " there."]) });
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Hello.", " there."]),
+    });
 
     // ready emitted after verified hello.
     expect(client.controlTypes()).toContain("ready");
@@ -319,19 +335,30 @@ describe("voice-session WS lifecycle", () => {
     // speakable phrase closes the context with continue:false, and NEVER sends
     // an empty transcript.
     const client = new FakeClientSocket();
-    await connectSession({ client, fetchImpl: makeSseFetch(["Hello there.", " The weather is sunny."]) });
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Hello there.", " The weather is sunny."]),
+    });
     const flux = FakeFluxSocket.instances.at(-1)!;
     flux.emitTurn("StartOfTurn");
     flux.emitTurn("EndOfTurn", "whats the weather");
     await flush();
     await flush();
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
-    const requests = cartesia.sent.map((s) => JSON.parse(s) as { transcript?: string; continue?: boolean });
+    const requests = cartesia.sent.map(
+      (s) => JSON.parse(s) as { transcript?: string; continue?: boolean },
+    );
     // No generation request carries an empty transcript.
-    expect(requests.every((r) => typeof r.transcript !== "string" || r.transcript.length > 0)).toBe(true);
+    expect(
+      requests.every(
+        (r) => typeof r.transcript !== "string" || r.transcript.length > 0,
+      ),
+    ).toBe(true);
     // Exactly the terminal speakable phrase closes the context (continue:false);
     // all earlier phrases keep it open (continue:true).
-    const withText = requests.filter((r) => typeof r.transcript === "string" && r.transcript.length > 0);
+    const withText = requests.filter(
+      (r) => typeof r.transcript === "string" && r.transcript.length > 0,
+    );
     expect(withText.length).toBeGreaterThan(0);
     expect(withText.at(-1)!.continue).toBe(false);
     for (const r of withText.slice(0, -1)) expect(r.continue).toBe(true);
@@ -344,10 +371,14 @@ describe("voice-session WS lifecycle", () => {
     // `end_audio` post-hello must NOT surface an error and must NOT close.
     const client = new FakeClientSocket();
     await connectSession({ client, fetchImpl: makeSseFetch(["ok."]) });
-    const beforeErrors = client.controlFrames.filter((f) => f.t === "error").length;
+    const beforeErrors = client.controlFrames.filter(
+      (f) => f.t === "error",
+    ).length;
     client.clientSend(JSON.stringify({ t: "end_audio" }));
     await flush();
-    const afterErrors = client.controlFrames.filter((f) => f.t === "error").length;
+    const afterErrors = client.controlFrames.filter(
+      (f) => f.t === "error",
+    ).length;
     expect(afterErrors).toBe(beforeErrors);
     expect(client.closedWith).toBeNull();
   });
@@ -364,10 +395,14 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
     expect(client.controlTypes()).not.toContain("speaking_start");
     // A stray barge_in now does NOT emit interrupted (no active turn).
-    const beforeInterrupt = client.controlFrames.filter((f) => f.t === "interrupted").length;
+    const beforeInterrupt = client.controlFrames.filter(
+      (f) => f.t === "interrupted",
+    ).length;
     client.clientSend(JSON.stringify({ t: "barge_in" }));
     await flush();
-    const afterInterrupt = client.controlFrames.filter((f) => f.t === "interrupted").length;
+    const afterInterrupt = client.controlFrames.filter(
+      (f) => f.t === "interrupted",
+    ).length;
     expect(afterInterrupt).toBe(beforeInterrupt);
   });
 
@@ -392,7 +427,10 @@ describe("voice-session WS lifecycle", () => {
 
   test("barge-in cancels TTS with ZERO post-cancel binary frames", async () => {
     const client = new FakeClientSocket();
-    await connectSession({ client, fetchImpl: makeSseFetch(["Speaking now."]) });
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Speaking now."]),
+    });
     const flux = FakeFluxSocket.instances.at(-1)!;
 
     flux.emitTurn("StartOfTurn");
@@ -412,13 +450,15 @@ describe("voice-session WS lifecycle", () => {
     // emitted BEFORE the interrupted frame.
     const types = client.controlTypes();
     expect(types.indexOf("usage")).toBeGreaterThanOrEqual(0);
-    expect(types.indexOf("usage")).toBeLessThan(types.lastIndexOf("interrupted"));
+    expect(types.indexOf("usage")).toBeLessThan(
+      types.lastIndexOf("interrupted"),
+    );
 
     // Any late chunk from a cancelled Cartesia context must NOT reach the client.
     const framesAfterInterrupt = client.audioFrames.length;
-    cartesia["fire"] = (FakeCartesiaSocket.prototype as never); // no-op safety
-    // Simulate a stale provider chunk arriving post-cancel: adapter drops it,
-    // and even if it didn't, the session's turn-id guard drops it.
+    // A stale provider chunk arriving post-cancel is dropped two ways: the
+    // adapter drops it, and even if it didn't the session's turn-id guard does.
+    // Flushing here proves no late frame leaks through after the barge-in.
     await flush();
     expect(client.audioFrames.length).toBe(framesAfterInterrupt);
   });
@@ -428,7 +468,10 @@ describe("voice-session WS lifecycle", () => {
     const client = new FakeClientSocket();
     await connectSession({
       client,
-      fetchImpl: makeSseFetch(["partial"], { hang: true, onAbort: () => (aborted = true) }),
+      fetchImpl: makeSseFetch(["partial"], {
+        hang: true,
+        onAbort: () => (aborted = true),
+      }),
     });
     const flux = FakeFluxSocket.instances.at(-1)!;
     flux.emitTurn("StartOfTurn");
@@ -456,7 +499,9 @@ describe("voice-session WS lifecycle", () => {
     client.clientSend(pcmChunk(2560));
     await flush();
     expect(client.closedWith).not.toBeNull();
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe("hello_required");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "hello_required",
+    );
   });
 
   test("audio pipelined right after hello (before verify) is buffered, not dropped", async () => {
@@ -509,7 +554,9 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     // Session came up (ready) and the buffered frame was admitted + forwarded.
     expect(client.controlTypes()).toContain("ready");
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).not.toBe("hello_required");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).not.toBe(
+      "hello_required",
+    );
     expect(flux!.sentChunks.length).toBeGreaterThan(0);
   });
 
@@ -524,7 +571,9 @@ describe("voice-session WS lifecycle", () => {
     client.clientSend(JSON.stringify({ t: "barge_in" }));
     await flush();
     expect(client.closedWith).not.toBeNull();
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe("hello_required");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "hello_required",
+    );
   });
 
   test("malformed control JSON before hello is fatal", async () => {
@@ -538,7 +587,9 @@ describe("voice-session WS lifecycle", () => {
     client.clientSend("{ not json");
     await flush();
     expect(client.closedWith).not.toBeNull();
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe("control_invalid_json");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "control_invalid_json",
+    );
   });
 
   test("oversized audio frame is rejected without tearing down the session", async () => {
@@ -547,7 +598,9 @@ describe("voice-session WS lifecycle", () => {
     // 128KiB > 64KiB ceiling.
     client.clientSend(pcmChunk(128 * 1024));
     await flush();
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe("audio_too_large");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "audio_too_large",
+    );
     // Session still alive (not closed).
     expect(client.closedWith).toBeNull();
   });
@@ -556,7 +609,7 @@ describe("voice-session WS lifecycle", () => {
     const minted = await mintVoiceSessionToken(CLAIMS);
     const usageStore = new InMemoryVoiceUsageStore();
     const claimed = new Set<string>();
-    const buildDeps = (client: FakeClientSocket) => ({
+    const buildDeps = (_client: FakeClientSocket) => ({
       requestedSessionId: CLAIMS.sessionId,
       // Atomic single-use claim backed by a shared in-memory set (models Redis NX).
       claimToken: async (jti: string) => {
@@ -564,7 +617,12 @@ describe("voice-session WS lifecycle", () => {
         claimed.add(jti);
         return true;
       },
-      buildSession: ({ claims, jti, tokenExpSeconds, downlink }: {
+      buildSession: ({
+        claims,
+        jti,
+        tokenExpSeconds,
+        downlink,
+      }: {
         claims: typeof CLAIMS;
         jti: string;
         tokenExpSeconds: number;
@@ -613,7 +671,9 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     // Second connection with the SAME token is rejected before ready.
     expect(clientB.controlTypes()).not.toContain("ready");
-    expect(clientB.controlFrames.find((f) => f.t === "error")?.code).toBe("token_already_claimed");
+    expect(clientB.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "token_already_claimed",
+    );
     expect(clientB.closedWith).not.toBeNull();
   });
 
@@ -638,7 +698,9 @@ describe("voice-session WS lifecycle", () => {
       }),
     );
     await flush();
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe("session_start_failed");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "session_start_failed",
+    );
     expect(client.closedWith).not.toBeNull();
   });
 
@@ -666,12 +728,17 @@ describe("voice-session WS lifecycle", () => {
     );
     await flush();
     expect(client.closedWith).not.toBeNull();
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe("at_capacity");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "at_capacity",
+    );
   });
 
   test("bad token in hello is rejected (claim mismatch / invalid)", async () => {
     const client = new FakeClientSocket();
-    const other = await mintVoiceSessionToken({ ...CLAIMS, sessionId: "some-other-session" });
+    const other = await mintVoiceSessionToken({
+      ...CLAIMS,
+      sessionId: "some-other-session",
+    });
     const usageStore = new InMemoryVoiceUsageStore();
     attachVoiceWsHandler(client, {
       requestedSessionId: CLAIMS.sessionId, // mismatch vs the token's sessionId.
@@ -709,6 +776,8 @@ describe("voice-session WS lifecycle", () => {
     );
     await flush();
     expect(client.closedWith).not.toBeNull();
-    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe("claim_mismatch");
+    expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
+      "claim_mismatch",
+    );
   });
 });

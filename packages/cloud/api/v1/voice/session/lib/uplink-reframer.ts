@@ -35,7 +35,12 @@ export class UplinkReframer {
       // Copy into a standalone ArrayBuffer so downstream retains no view into
       // our rolling buffer.
       const frame = combined.slice(offset, offset + UPLINK_FRAME_BYTES);
-      frames.push(frame.buffer.slice(frame.byteOffset, frame.byteOffset + frame.byteLength));
+      frames.push(
+        frame.buffer.slice(
+          frame.byteOffset,
+          frame.byteOffset + frame.byteLength,
+        ),
+      );
       offset += UPLINK_FRAME_BYTES;
     }
     this.buffer = combined.slice(offset);
