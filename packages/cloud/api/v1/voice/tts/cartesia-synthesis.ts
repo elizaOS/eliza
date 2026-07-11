@@ -17,8 +17,8 @@ import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
   type CartesiaWebSocketLike,
-} from "@/lib/services/cartesia-sonic-tts";
-import { pcm16ToWav } from "@/lib/services/pcm16-wav";
+} from "../../../../shared/src/lib/services/cartesia-sonic-tts";
+import { pcm16ToWav } from "../../../../shared/src/lib/services/pcm16-wav";
 
 /**
  * Build a {@link CartesiaWebSocketFactory} backed by the Cloudflare Workers
@@ -208,19 +208,22 @@ export async function synthesizeCartesiaWav(args: {
   const streamOpenFailure = stream.opened.then(
     () => new Promise<void>(() => undefined),
   );
-  await Promise.race([
-    stream.closed,
-    streamOpenFailure,
-    providerErrorSignal,
-    new Promise<void>((resolve) => {
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        stream.cancel("synthesis deadline exceeded");
-        resolve();
-      }, timeoutMs);
-    }),
-  ]);
-  if (timeoutId !== null) clearTimeout(timeoutId);
+  try {
+    await Promise.race([
+      stream.closed,
+      streamOpenFailure,
+      providerErrorSignal,
+      new Promise<void>((resolve) => {
+        timeoutId = setTimeout(() => {
+          timedOut = true;
+          stream.cancel("synthesis deadline exceeded");
+          resolve();
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  }
 
   if (providerError) throw providerError;
   if (timedOut) {
