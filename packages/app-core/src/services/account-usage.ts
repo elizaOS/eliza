@@ -42,9 +42,10 @@ type FetchLike = typeof fetch;
 
 function utilizationToPct(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  // Provider returns either 0..1 (legacy) or 0..100 — both are normalized
-  // to percent. Anthropic ships 0..1, so we always multiply.
-  return Math.max(0, Math.min(100, value * 100));
+  // Anthropic has returned both fractional (0..1) and percentage (0..100)
+  // shapes. Scale only fractional values; otherwise 5% becomes 500%/clamped.
+  const percent = value >= 0 && value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, percent));
 }
 
 function normalizeResetTimestamp(value: unknown): number | undefined {

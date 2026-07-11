@@ -111,12 +111,19 @@ describe("pollAnthropicUsage", () => {
     expect(snap.weeklyPct).toBe(80);
   });
 
-  it("clamps utilization above 1.0 down to 100 (>100 edge case)", async () => {
+  it("preserves utilization already expressed as a 0..100 percentage", async () => {
     stubFetch(jsonResponse({ five_hour_utilization: 5 }));
 
     const snap = await pollAnthropicUsage("over-token");
 
-    // 5 * 100 = 500 -> clamped to 100.
+    expect(snap.sessionPct).toBe(5);
+  });
+
+  it("clamps percentage utilization above 100", async () => {
+    stubFetch(jsonResponse({ five_hour_utilization: 150 }));
+
+    const snap = await pollAnthropicUsage("over-token");
+
     expect(snap.sessionPct).toBe(100);
   });
 

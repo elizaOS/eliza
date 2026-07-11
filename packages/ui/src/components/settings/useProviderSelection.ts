@@ -24,6 +24,32 @@ import { useAppSelectorShallow } from "../../state";
 
 export type ProviderPanelId = "__cloud__" | "__local__" | string;
 
+const PROVIDER_PANEL_STORAGE_KEY = "eliza.settings.ai-model.panel";
+
+function readRememberedProviderPanel(): ProviderPanelId | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return (
+      new URLSearchParams(window.location.search).get("provider") ??
+      window.localStorage.getItem(PROVIDER_PANEL_STORAGE_KEY)
+    );
+  } catch {
+    return null;
+  }
+}
+
+function rememberProviderPanel(panelId: ProviderPanelId): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROVIDER_PANEL_STORAGE_KEY, panelId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("provider", panelId);
+    window.history.replaceState(null, "", url);
+  } catch {
+    // Storage can be unavailable in privacy-restricted webviews.
+  }
+}
+
 interface AiProviderLike {
   id: string;
 }
@@ -88,7 +114,10 @@ export function useProviderSelection(
   );
   const hasManualPanelSelection = useRef(false);
   const [selectedProviderPanelId, setSelectedProviderPanelId] =
-    useState<ProviderPanelId | null>(null);
+    useState<ProviderPanelId | null>(() => readRememberedProviderPanel());
+  if (selectedProviderPanelId !== null) {
+    hasManualPanelSelection.current = true;
+  }
 
   const readCloudCallsDisabled = useCallback(
     (cfg: Record<string, unknown>): boolean => {
@@ -294,6 +323,7 @@ export function useProviderSelection(
       if (cloudRuntimeLocked && panelId === "__local__") return;
       hasManualPanelSelection.current = true;
       setSelectedProviderPanelId(panelId);
+      rememberProviderPanel(panelId);
     },
     [cloudRuntimeLocked],
   );

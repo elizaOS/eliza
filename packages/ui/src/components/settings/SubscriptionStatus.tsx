@@ -22,7 +22,7 @@ import {
   type SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelector } from "../../state";
-import { openExternalUrl } from "../../utils";
+import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
 import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
@@ -67,6 +67,34 @@ export interface SubscriptionStatusProps {
     activate?: boolean,
   ) => Promise<void>;
   loadSubscriptionStatus: () => Promise<void>;
+}
+
+const ANTHROPIC_OAUTH_STORAGE_KEY = "eliza.settings.anthropic.oauth-active";
+
+function readAnthropicOAuthActive(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      new URLSearchParams(window.location.search).get("setup") === "oauth" ||
+      window.localStorage.getItem(ANTHROPIC_OAUTH_STORAGE_KEY) === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function rememberAnthropicOAuthActive(active: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (active) window.localStorage.setItem(ANTHROPIC_OAUTH_STORAGE_KEY, "1");
+    else window.localStorage.removeItem(ANTHROPIC_OAUTH_STORAGE_KEY);
+    const url = new URL(window.location.href);
+    if (active) url.searchParams.set("setup", "oauth");
+    else url.searchParams.delete("setup");
+    window.history.replaceState(null, "", url);
+  } catch {
+    // Storage can be unavailable in privacy-restricted webviews.
+  }
 }
 
 type SubscriptionStatusRow =
@@ -341,12 +369,14 @@ export function SubscriptionStatus({
 
   /* ── Anthropic ─────────────────────────────────────────────────── */
   const [subscriptionTab, setSubscriptionTab] = useState<"token" | "oauth">(
-    "token",
+    () => (readAnthropicOAuthActive() ? "oauth" : "token"),
   );
   const [setupTokenValue, setSetupTokenValue] = useState("");
   const [setupTokenSaving, setSetupTokenSaving] = useState(false);
   const [setupTokenSuccess, setSetupTokenSuccess] = useState(false);
-  const [anthropicOAuthStarted, setAnthropicOAuthStarted] = useState(false);
+  const [anthropicOAuthStarted, setAnthropicOAuthStarted] = useState(() =>
+    readAnthropicOAuthActive(),
+  );
   const [anthropicCode, setAnthropicCode] = useState("");
   const [anthropicError, setAnthropicError] = useState("");
   const [anthropicExchangeBusy, setAnthropicExchangeBusy] = useState(false);
@@ -465,15 +495,19 @@ export function SubscriptionStatus({
 
   const handleAnthropicStart = useCallback(async () => {
     setAnthropicError("");
+    const popup = preOpenWindow();
     try {
       const { authUrl } = await client.startAnthropicLogin();
       if (authUrl) {
-        await openExternalUrl(authUrl);
+        navigatePreOpenedWindow(popup, authUrl);
+        rememberAnthropicOAuthActive(true);
         setAnthropicOAuthStarted(true);
         return;
       }
+      popup?.close();
       setAnthropicError(t("settings.subscription.failedToGetAuthUrl"));
     } catch (err) {
+      popup?.close();
       setAnthropicError(
         t("settings.subscription.failedToStartLogin", {
           message: formatSubscriptionRequestError(err),
@@ -490,12 +524,13 @@ export function SubscriptionStatus({
     try {
       const result = await client.exchangeAnthropicCode(code);
       if (result.success) {
+        rememberAnthropicOAuthActive(false);
         setAnthropicConnected(true);
         setAnthropicOAuthStarted(false);
         setAnthropicCode("");
         await handleSelectSubscription("anthropic-subscription");
-        await loadSubscriptionStatus();
         await client.restartAgent();
+        await loadSubscriptionStatus();
         return;
       }
       setAnthropicError(
@@ -556,8 +591,8 @@ export function SubscriptionStatus({
         setOpenaiOAuthStarted(false);
         setOpenaiCallbackUrl("");
         await handleSelectSubscription("openai-subscription");
-        await loadSubscriptionStatus();
         await client.restartAgent();
+        await loadSubscriptionStatus();
         return;
       }
       const msg = data.error ?? t("settings.subscription.exchangeFailed");
@@ -656,7 +691,12 @@ export function SubscriptionStatus({
           agentId={`sub-anthropic-tab-${id}`}
           label={label}
           active={subscriptionTab === id}
-          onSelect={() => setSubscriptionTab(id)}
+          onSelect={() => {
+            setSubscriptionTab(id);
+            if (id === "oauth") return;
+            rememberAnthropicOAuthActive(false);
+            setAnthropicOAuthStarted(false);
+          }}
         />
       ))}
     </div>
@@ -748,6 +788,7 @@ export function SubscriptionStatus({
           onStartOauth={() => void handleAnthropicStart()}
           onExchange={() => void handleAnthropicExchange()}
           onResetFlow={() => {
+            rememberAnthropicOAuthActive(false);
             setAnthropicOAuthStarted(false);
             setAnthropicCode("");
             setAnthropicError("");

@@ -34,6 +34,7 @@ type AuthModule = typeof import("@elizaos/auth");
 export type SubscriptionAuthApi = Pick<
   AuthModule,
   | "getSubscriptionStatus"
+  | "exchangeAnthropicAuthorizationCode"
   | "startAnthropicLogin"
   | "startCodexLogin"
   | "saveCredentials"
@@ -54,6 +55,12 @@ export interface SubscriptionRouteContext extends RouteRequestContext {
   saveConfig: (config: ElizaConfig) => void;
   loadSubscriptionAuth: () => Promise<SubscriptionAuthApi>;
 }
+
+// Runtime reloads replace the request state while an OAuth browser is open.
+// Codex's PKCE verifier cannot be reconstructed from its localhost callback,
+// so retain the live flow in this process-level module across runtime swaps.
+let activeCodexFlow: CodexFlow | undefined;
+let activeCodexFlowTimer: ReturnType<typeof setTimeout> | undefined;
 
 export async function handleSubscriptionRoutes(
   ctx: SubscriptionRouteContext,
@@ -139,15 +146,15 @@ export async function handleSubscriptionRoutes(
     }
     const body = parsedAxe.data;
     try {
-      const { saveCredentials, applySubscriptionCredentials } =
-        await loadSubscriptionAuth();
+      const {
+        saveCredentials,
+        applySubscriptionCredentials,
+        exchangeAnthropicAuthorizationCode,
+      } = await loadSubscriptionAuth();
       const flow = state._anthropicFlow;
-      if (!flow) {
-        error(res, "No active flow — call /start first", 400);
-        return true;
-      }
-      flow.submitCode(body.code);
-      const credentials = await flow.credentials;
+      const credentials = flow
+        ? (flow.submitCode(body.code), await flow.credentials)
+        : await exchangeAnthropicAuthorizationCode(body.code);
       saveCredentials("anthropic-subscription", credentials);
       await applySubscriptionCredentials(state.config);
       delete state._anthropicFlow;
@@ -202,9 +209,10 @@ export async function handleSubscriptionRoutes(
   if (method === "POST" && pathname === "/api/subscription/openai/start") {
     try {
       const { startCodexLogin } = await loadSubscriptionAuth();
-      if (state._codexFlow) {
+      const previousFlow = state._codexFlow ?? activeCodexFlow;
+      if (previousFlow) {
         try {
-          state._codexFlow.close();
+          previousFlow.close();
         } catch (err) {
           logger.debug(
             `[api] OAuth flow cleanup failed: ${err instanceof Error ? err.message : err}`,
@@ -212,9 +220,11 @@ export async function handleSubscriptionRoutes(
         }
       }
       clearTimeout(state._codexFlowTimer);
+      clearTimeout(activeCodexFlowTimer);
 
       const flow = await startCodexLogin();
       state._codexFlow = flow;
+      activeCodexFlow = flow;
       state._codexFlowTimer = setTimeout(
         () => {
           try {
@@ -226,9 +236,12 @@ export async function handleSubscriptionRoutes(
           }
           delete state._codexFlow;
           delete state._codexFlowTimer;
+          if (activeCodexFlow === flow) activeCodexFlow = undefined;
+          activeCodexFlowTimer = undefined;
         },
         10 * 60 * 1000,
       );
+      activeCodexFlowTimer = state._codexFlowTimer;
       json(res, {
         authUrl: flow.authUrl,
         state: flow.state,
@@ -259,7 +272,7 @@ export async function handleSubscriptionRoutes(
     try {
       const { saveCredentials, applySubscriptionCredentials } =
         await loadSubscriptionAuth();
-      const flow = state._codexFlow;
+      const flow = state._codexFlow ?? activeCodexFlow;
 
       if (!flow) {
         error(res, "No active flow — call /start first", 400);
@@ -287,6 +300,9 @@ export async function handleSubscriptionRoutes(
         delete state._codexFlow;
         clearTimeout(state._codexFlowTimer);
         delete state._codexFlowTimer;
+        activeCodexFlow = undefined;
+        clearTimeout(activeCodexFlowTimer);
+        activeCodexFlowTimer = undefined;
         logger.error(`[api] OpenAI exchange failed: ${String(err)}`);
         error(res, "OpenAI exchange failed", 500);
         return true;
@@ -297,6 +313,9 @@ export async function handleSubscriptionRoutes(
       delete state._codexFlow;
       clearTimeout(state._codexFlowTimer);
       delete state._codexFlowTimer;
+      activeCodexFlow = undefined;
+      clearTimeout(activeCodexFlowTimer);
+      activeCodexFlowTimer = undefined;
       json(res, {
         success: true,
         expiresAt: credentials.expires,
