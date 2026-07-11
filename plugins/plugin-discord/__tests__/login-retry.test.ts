@@ -163,6 +163,48 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		expect(state.loginRetryTimer).toBeUndefined();
 	});
 
+	it("runs the ready handler exactly once across retried logins", async () => {
+		// onReadyForAccount drives slash-command registration; a ready handler
+		// firing once per ATTEMPT (rather than once per successful session) would
+		// register every command repeatedly — the guild-scope duplicate shape.
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+		const onReadyForAccount = vi.fn().mockResolvedValue(undefined);
+
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+			defaultAccountId: "default",
+			_loginFailed: false,
+			timeouts: [] as ReturnType<typeof setTimeout>[],
+			createDiscordJsClient: () => {
+				const client = makeFakeClient(clients.length >= 2);
+				clients.push(client);
+				return client;
+			},
+			setupEventListenersForAccount: vi.fn(),
+			onReadyForAccount,
+			syncLegacyDefaultAliases: vi.fn(),
+		}) as unknown as DiscordService & {
+			attemptDiscordLogin: (
+				state: DiscordAccountClientState,
+				token: string,
+				attempt: number,
+				resolve: () => void,
+				reject: (error: unknown) => void,
+			) => void;
+		};
+
+		const state = makeState("default");
+		const ready = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject);
+		});
+		await vi.advanceTimersByTimeAsync(5_000);
+		await ready;
+
+		expect(clients.length).toBe(3);
+		expect(onReadyForAccount).toHaveBeenCalledTimes(1);
+	});
+
 	it("computes capped exponential backoff per attempt", () => {
 		const service = Object.assign(Object.create(DiscordService.prototype), {
 			runtime: makeRuntime(),

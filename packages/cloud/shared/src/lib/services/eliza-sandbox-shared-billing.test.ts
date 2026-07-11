@@ -272,6 +272,43 @@ describe("ElizaSandboxService shared runtime billing", () => {
   // raw JSON-RPC), while bridgeStream — whose callers are HTTP boundaries —
   // throws the typed 402 ApiError so routes translate it to a non-retryable
   // insufficient_credits response instead of a disguised transient failure.
+  test("a failed shared-runtime turn releases the reservation and bills nothing", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    runSharedAgentTurn.mockImplementationOnce(async () => {
+      throw new Error("upstream model transport failed");
+    });
+
+    try {
+      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "failed-turn",
+          method: "message.send",
+          params: { text: "hello" },
+        }),
+      );
+
+      // The caller sees a bridge error, never a fabricated reply.
+      expect(response.result).toBeUndefined();
+      expect(response.error).toBeTruthy();
+      // Billing correctness on the failure path: the credits reserved for the
+      // turn are RELEASED (reconciled to zero usage), and nothing is billed or
+      // recorded as usage — a failed turn must not charge the org.
+      expect(reserveCredits).toHaveBeenCalledTimes(1);
+      expect(reconcileReservation).toHaveBeenCalledWith(0);
+      expect(billUsage).not.toHaveBeenCalled();
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+    }
+  });
+
   test("credit-reserve rejection: bridge returns -32002, bridgeStream throws the typed 402", async () => {
     const { ElizaSandboxService, BRIDGE_INSUFFICIENT_CREDITS_CODE } = await import(
       "./eliza-sandbox.ts?actual"

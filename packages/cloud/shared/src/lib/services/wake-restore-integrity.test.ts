@@ -325,6 +325,75 @@ describe("runWakeRestoreIntegrityGate", () => {
     expect(alerts.map((entry) => entry.dedupKey)).toEqual(["agent-wake-restore-integrity"]);
   });
 
+  // The freshness contract has zero clock-skew tolerance: `0 <= age <=
+  // freshnessMs` is fresh, anything outside re-verifies. Each edge case below
+  // corrupts the ciphertext AFTER stamping, so the outcome proves which path
+  // ran: `fresh-stamp` means the stamp was trusted (payload never touched);
+  // `decrypt-failed` means the gate re-decrypted for real.
+  test("freshness edge: a stamp at exactly `now` (age 0) is fresh — the stamp is trusted", async () => {
+    const { sandboxId } = await seedSandbox();
+    const backupId = await seedFullBackup(sandboxId, sampleState("edge-age-zero"), NOW);
+    await stampRow(backupId, "verified", NOW);
+    await corruptBackupCiphertext(backupId);
+
+    const result = await runWakeRestoreIntegrityGate(
+      { sandboxRecordId: sandboxId },
+      { config: GATE_CONFIG, now: () => NOW },
+    );
+    expect(result).toEqual({ ok: true, backupId, verification: "fresh-stamp" });
+  });
+
+  test("freshness edge: a stamp aged exactly freshnessMs is still fresh (inclusive window)", async () => {
+    const { sandboxId } = await seedSandbox();
+    const backupId = await seedFullBackup(sandboxId, sampleState("edge-window"), NOW);
+    await stampRow(backupId, "verified", new Date(NOW.getTime() - GATE_CONFIG.verifiedFreshnessMs));
+    await corruptBackupCiphertext(backupId);
+
+    const result = await runWakeRestoreIntegrityGate(
+      { sandboxRecordId: sandboxId },
+      { config: GATE_CONFIG, now: () => NOW },
+    );
+    expect(result).toEqual({ ok: true, backupId, verification: "fresh-stamp" });
+  });
+
+  test("freshness edge: a stamp aged freshnessMs + 1ms re-verifies and catches corruption", async () => {
+    const { sandboxId } = await seedSandbox();
+    const backupId = await seedFullBackup(sandboxId, sampleState("edge-window-past"), NOW);
+    await stampRow(
+      backupId,
+      "verified",
+      new Date(NOW.getTime() - GATE_CONFIG.verifiedFreshnessMs - 1),
+    );
+    await corruptBackupCiphertext(backupId);
+
+    const { alert } = makeAlertSpy();
+    const result = await runWakeRestoreIntegrityGate(
+      { sandboxRecordId: sandboxId },
+      { config: GATE_CONFIG, now: () => NOW, alert },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.failure.kind).toBe("decrypt-failed");
+    expect((await readBackupRow(backupId)).verification_status).toBe("failed");
+  });
+
+  test("freshness edge: a stamp 1ms in the FUTURE re-verifies — zero skew tolerance", async () => {
+    const { sandboxId } = await seedSandbox();
+    const backupId = await seedFullBackup(sandboxId, sampleState("edge-future-1ms"), NOW);
+    await stampRow(backupId, "verified", new Date(NOW.getTime() + 1));
+    await corruptBackupCiphertext(backupId);
+
+    const { alert } = makeAlertSpy();
+    const result = await runWakeRestoreIntegrityGate(
+      { sandboxRecordId: sandboxId },
+      { config: GATE_CONFIG, now: () => NOW, alert },
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("expected failure");
+    expect(result.failure.kind).toBe("decrypt-failed");
+    expect((await readBackupRow(backupId)).verification_status).toBe("failed");
+  });
+
   test("freshness window is tunable: a 1h window re-verifies a 2h-old stamp", async () => {
     const { sandboxId } = await seedSandbox();
     const backupId = await seedFullBackup(sandboxId, sampleState("tight-window"), NOW);
@@ -561,13 +630,14 @@ describe("executeWake with the restore-integrity gate", () => {
 
   test("gate pass on a fresh stamp cannot boot empty: a failed restore fails the wake, sandbox stays sleeping, chain is NOT pruned", async () => {
     const { sandboxId, orgId } = await seedSandbox();
+    const wakeNow = new Date();
     const olderId = await seedFullBackup(
       sandboxId,
       sampleState("wake-restore-fail-older"),
-      new Date(NOW.getTime() - 6 * 3_600_000),
+      new Date(wakeNow.getTime() - 6 * 3_600_000),
     );
-    const latestId = await seedFullBackup(sandboxId, sampleState("wake-restore-fail"), NOW);
-    await stampRow(latestId, "verified", new Date(NOW.getTime() - 3_600_000));
+    const latestId = await seedFullBackup(sandboxId, sampleState("wake-restore-fail"), wakeNow);
+    await stampRow(latestId, "verified", new Date(wakeNow.getTime() - 3_600_000));
     // Rot AFTER the stamp: the gate passes on the stamp alone (never touches
     // bytes), so provision's restore is the FIRST real read of this envelope —
     // exactly the path where an ungated default wake degraded to a fresh boot

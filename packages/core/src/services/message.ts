@@ -299,6 +299,7 @@ import {
 	getV5ModelText,
 } from "./message/generate-text-result";
 import { resolveEffectiveMuteState } from "./message/mute-state";
+import { sanitizeOutboundText } from "./message/outbound-sanitize";
 import {
 	GROUP_TRIAGE_MESSAGE_HANDLER_TEMPLATE,
 	isStage1GroupTriageTierEnabled,
@@ -1611,7 +1612,12 @@ export function transcriptionModeActive(
 	return false;
 }
 
-function normalizeVisibleTextForDuplicateCheck(text: string): string {
+/**
+ * Canonical form for delivered-text dedup: callers that thread
+ * `deliveredVisibleTexts` into `runV5MessageRuntimeStage1` must add entries in
+ * this form for the action-echo suppression to match them.
+ */
+export function normalizeVisibleTextForDuplicateCheck(text: string): string {
 	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
@@ -6791,6 +6797,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				});
 		}
 
+		// Response-handler evaluators may promote a simple turn to planning and
+		// clobber a COMPLETE stage-0 answer with an "On it." ack (observed live:
+		// stage-0 held the full contributors answer; the promotion flailed through
+		// NOTIFY and the turn ended answerless). Preserve the pre-patch reply so
+		// the planner loop's answer rescue and the answerless-final fallback can
+		// still deliver it.
+		const prePatchStageOneReply =
+			typeof messageHandler.plan.reply === "string" &&
+			messageHandler.plan.reply.trim().length > 0
+				? messageHandler.plan.reply
+				: undefined;
 		const responseHandlerEvaluation = fieldRunResult?.preempt
 			? {
 					activeEvaluators: [],
@@ -7227,10 +7244,24 @@ export async function runV5MessageRuntimeStage1(args: {
 				// replyText (when answer-shaped) is surfaced instead of the
 				// generic transient-failure apology. Duplicate delivery is safe —
 				// early-reply turns dedup via plannedTextRepeatsEarlyReply.
-				stageOneReplyText:
-					typeof messageHandler.plan.reply === "string"
-						? messageHandler.plan.reply
-						: undefined,
+				stageOneReplyText: (() => {
+					const postPatch =
+						typeof messageHandler.plan.reply === "string"
+							? messageHandler.plan.reply
+							: undefined;
+					// A promotion patch that replaced a substantive stage-0 answer
+					// with a bare progress ack must not also disarm the loop's
+					// answer rescue — feed the preserved pre-patch answer instead.
+					if (
+						prePatchStageOneReply &&
+						postPatch &&
+						postPatch !== prePatchStageOneReply &&
+						PROGRESS_ONLY_ANSWER_REJECT.test(postPatch.trim())
+					) {
+						return prePatchStageOneReply;
+					}
+					return postPatch;
+				})(),
 				// Per-turn miss-budget cap for answered turns escalated only by a
 				// view-surface token overlap (see viewOverlapRequiredToolMissBudget);
 				// the loop honors it only when stageOneReplyText is answer-shaped.
@@ -7293,9 +7324,39 @@ export async function runV5MessageRuntimeStage1(args: {
 				plannerError: error,
 			});
 			if (!fallbackResult) {
-				throw error;
+				// A planner failure must not replace an answer the turn already
+				// produced: when the promotion preserved a substantive stage-0 reply,
+				// finish with it instead of surfacing a canned failure. The normal
+				// early-reply/action-echo dedup below still applies to this text.
+				if (
+					prePatchStageOneReply &&
+					!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim())
+				) {
+					args.runtime.logger?.warn?.(
+						{
+							src: "service:message",
+							agentId: args.runtime.agentId,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"planner failed after a substantive stage-0 answer; delivering the preserved answer",
+					);
+					plannerResult = {
+						status: "finished",
+						trajectory: {
+							context: plannerContextAfterEarlyReply,
+							steps: [],
+							archivedSteps: [],
+							plannedQueue: [],
+							evaluatorOutputs: [],
+						},
+						finalMessage: prePatchStageOneReply,
+					};
+				} else {
+					throw error;
+				}
+			} else {
+				plannerResult = fallbackResult;
 			}
-			plannerResult = fallbackResult;
 		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
@@ -7338,11 +7399,25 @@ export async function runV5MessageRuntimeStage1(args: {
 			typeof messageHandler.plan.reply === "string"
 				? messageHandler.plan.reply.trim()
 				: "";
+		// Answerless-final fallback: when the planner loop finished with NO final
+		// text and the only thing the user saw was a progress ack ("On it."), a
+		// preserved substantive stage-0 answer is strictly better than silence —
+		// deliver it. The earlyReply/action dedup guards below still apply.
+		const preservedAnswerFallback =
+			!plannedText &&
+			earlyReplySent &&
+			!suppressesPlannerReply &&
+			prePatchStageOneReply &&
+			!PROGRESS_ONLY_ANSWER_REJECT.test(prePatchStageOneReply.trim()) &&
+			normalizeVisibleTextForDuplicateCheck(prePatchStageOneReply) !==
+				normalizeVisibleTextForDuplicateCheck(earlyReplyText)
+				? prePatchStageOneReply
+				: "";
 		const ackFallback =
 			!plannedText && !earlyReplySent && !suppressesPlannerReply
 				? stageOneAck ||
 					(ranNonSilentAction ? "on it, working on that now." : "")
-				: "";
+				: preservedAnswerFallback;
 		const effectiveReplyText = plannedText || ackFallback;
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
@@ -8465,6 +8540,22 @@ export function wrapSingleTurnVisibleCallback(
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
 	const deliver = async (response: Content, actionName?: string) => {
+		// Shared post-model, pre-channel sanitization (#15888): every visible
+		// delivery — action callbacks, early replies, simple replies, terminal
+		// content — funnels through this wrap, so stripping leaked machine
+		// syntax here covers every connector without per-connector copies.
+		if (typeof response?.text === "string" && response.text.length > 0) {
+			const sanitized = sanitizeOutboundText(response.text);
+			if (sanitized !== response.text) {
+				// Record the raw form too: planner-echo suppression compares the
+				// planner's unsanitized finalMessage against this set, and must
+				// still recognize a delivery whose wire text was sanitized.
+				if (response.text.trim()) {
+					recordDeliveredVisibleText?.(response.text);
+				}
+				response = { ...response, text: sanitized };
+			}
+		}
 		if (typeof response?.text === "string" && response.text.trim()) {
 			recordDeliveredVisibleText?.(response.text);
 		}

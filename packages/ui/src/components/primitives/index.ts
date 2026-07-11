@@ -1,6 +1,7 @@
 /** Curated re-export barrel of the base UI primitives from `components/ui/*`. */
 export * from "../ui/alert";
 export * from "../ui/alert-dialog";
+export * from "../ui/attachment";
 export * from "../ui/badge";
 export * from "../ui/button";
 export * from "../ui/card";
@@ -12,6 +13,16 @@ export * from "../ui/grid";
 export * from "../ui/input";
 export * from "../ui/input-group";
 export * from "../ui/label";
+export * from "../ui/marker";
+export {
+  Message,
+  MessageAvatar,
+  MessageContent as MessageRowContent,
+  MessageFooter,
+  MessageGroup,
+  MessageHeader,
+} from "../ui/message";
+export * from "../ui/message-scroller";
 export * from "../ui/popover";
 export * from "../ui/progress";
 export * from "../ui/select";

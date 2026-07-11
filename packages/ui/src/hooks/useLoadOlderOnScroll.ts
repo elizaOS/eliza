@@ -1,8 +1,8 @@
 /**
  * Infinite upward scroll for a chat transcript (#13532, epic #13539).
  *
- * Companion to {@link useThreadAutoScroll} (which owns bottom-follow +
- * jump-to-latest). This hook owns the OTHER direction: as the reader scrolls
+ * Companion to {@link useThreadAutoScroll} (which owns bottom-follow). This
+ * hook owns the OTHER direction: as the reader scrolls
  * toward older messages it asynchronously fetches + prepends a page, and it
  * does so WITHOUT a visible jump — the message that was at the top before the
  * prepend stays visually put.

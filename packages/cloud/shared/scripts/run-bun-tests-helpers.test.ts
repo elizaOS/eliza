@@ -259,6 +259,20 @@ describe("pass argument shapes", () => {
     ]);
   });
 
+  test("main pass normalizes separated ignore patterns before a shell can expand them", () => {
+    expect(
+      buildMainPassArgs(suites, [
+        "--path-ignore-patterns",
+        "**/tenant-db-placement-claimer.test.ts",
+      ]),
+    ).toEqual([
+      "--isolate",
+      "--path-ignore-patterns=src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts",
+      "--path-ignore-patterns=src/other/pglite-suite.test.ts",
+      "--path-ignore-patterns=**/tenant-db-placement-claimer.test.ts",
+    ]);
+  });
+
   test("quarantine pass runs exactly the quarantined suites", () => {
     expect(buildQuarantinePassArgs(suites, [])).toEqual(["--isolate", ...suites]);
   });

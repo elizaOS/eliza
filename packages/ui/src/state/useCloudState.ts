@@ -699,11 +699,6 @@ export function useCloudState({
             if (connected) {
               setElizaCloudConnected(true);
               setElizaCloudLoginError(null);
-              setActionNotice(
-                "Logged in to Eliza Cloud successfully.",
-                "success",
-                6000,
-              );
             } else {
               setElizaCloudLoginError(
                 "Could not verify your Eliza Cloud session. Please sign in again.",
@@ -760,11 +755,6 @@ export function useCloudState({
           if (connected) {
             setElizaCloudConnected(true);
             setElizaCloudLoginError(null);
-            setActionNotice(
-              "Logged in to Eliza Cloud successfully.",
-              "success",
-              6000,
-            );
           } else {
             setElizaCloudLoginError(
               "Could not verify your Eliza Cloud session. Please sign in again.",
@@ -1020,12 +1010,6 @@ export function useCloudState({
                 setElizaCloudUserId(poll.userId);
               }
 
-              setActionNotice(
-                "Logged in to Eliza Cloud successfully.",
-                "success",
-                6000,
-              );
-
               // The backend owns the cloud-wallet bind + runtime reload now.
               // Startup/ws recovery will rehydrate wallet + cloud state once the
               // restart completes, so avoid kicking off a second client restart.
@@ -1137,11 +1121,6 @@ export function useCloudState({
             closeActiveCloudLoginPopup();
             closeReturnedAuthTabIfOpenerStillExists();
             void closeExternalBrowser();
-            setActionNotice(
-              "Logged in to Eliza Cloud successfully.",
-              "success",
-              6000,
-            );
             return;
           }
 
@@ -1179,7 +1158,7 @@ export function useCloudState({
     return () => {
       cancelled = true;
     };
-  }, [setActionNotice]);
+  }, []);
 
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {

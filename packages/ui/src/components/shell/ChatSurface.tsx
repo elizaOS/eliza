@@ -7,10 +7,9 @@
  * useShellController); the composer itself is the shared composer core: the
  * ChatComposerContext draft slot (context-or-local), the IME-safe
  * Enter-to-send keydown, and the usePushToTalk mic hold machine (issue 12188
- * Phase 3). Tail-following and the jump-to-latest control come from the one
- * shared `useThreadAutoScroll` engine, not a local scroll handler.
+ * Phase 3). Tail-following comes from the shared `useThreadAutoScroll` engine,
+ * not a local scroll handler.
  */
-import { ArrowDown } from "lucide-react";
 import * as React from "react";
 
 import { useComposerKeydown } from "../../chat/composer-core";
@@ -77,13 +76,12 @@ export function ChatSurface({
   const messageCount = messages.length;
   const trimmed = draft.trim();
   const canSendNow = canSend && trimmed.length > 0;
-  // Follow the tail while at the bottom, leave a reader who scrolled up alone,
-  // and expose a jump-to-latest control — the one shared thread-scroll engine.
+  // Follow the tail while at the bottom and leave a reader who scrolled up
+  // alone via the one shared thread-scroll engine.
   const lastMessage = messages.at(-1);
-  const { scrollRef, atBottom, jumpToLatest } =
-    useThreadAutoScroll<HTMLDivElement>({
-      growthKey: `${messageCount}:${lastMessage?.id ?? ""}:${lastMessage?.content.length ?? 0}`,
-    });
+  const { scrollRef } = useThreadAutoScroll<HTMLDivElement>({
+    growthKey: `${messageCount}:${lastMessage?.id ?? ""}:${lastMessage?.content.length ?? 0}`,
+  });
 
   const handleSend = React.useCallback(() => {
     if (!canSendNow) return;
@@ -176,22 +174,6 @@ export function ChatSurface({
             </ul>
           )}
         </div>
-        {/* Jump-to-latest: shown only when the reader has scrolled up from the
-            newest line, so new content is never silently missed. */}
-        {!atBottom && messageCount > 0 ? (
-          <button
-            type="button"
-            onClick={jumpToLatest}
-            aria-label={t("chatsurface.jumpToLatest", {
-              defaultValue: "Jump to latest",
-            })}
-            className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-txt transition-colors hover:bg-bg-hover"
-            data-testid="chat-surface-jump-to-latest"
-          >
-            <ArrowDown className="h-3.5 w-3.5" aria-hidden="true" />
-            {t("chatsurface.jumpToLatest", { defaultValue: "Jump to latest" })}
-          </button>
-        ) : null}
       </div>
       {/* Composer row: same token, icon, and touch-target idiom as the
           continuous overlay composer. */}

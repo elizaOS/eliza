@@ -279,6 +279,41 @@ describe("useChatSend stop handling", () => {
     );
   });
 
+  it("paints the accepted turn before cold conversation creation finishes", async () => {
+    const creation = deferred<{ conversation: Conversation }>();
+    mocks.client.createConversation.mockReturnValue(creation.promise);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Hi there",
+      completed: true,
+    });
+    const deps = makeDeps();
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("hello");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.map(({ role, text }) => ({
+        role,
+        text,
+      })),
+    ).toEqual([
+      { role: "user", text: "hello" },
+      { role: "assistant", text: "" },
+    ]);
+
+    await act(async () => {
+      creation.resolve({
+        conversation: conversation("conv-new", "room-new"),
+      });
+      await sendPromise;
+    });
+  });
+
   it("does NOT surface an error notice when the send is aborted by the user", async () => {
     // A user-initiated stop rejects the stream with AbortError. The send catch
     // has a dedicated abort branch (drop the empty assistant placeholder, return)
@@ -756,6 +791,56 @@ describe("useChatSend streaming-frame coalescing (text + status + tool)", () => 
     );
     // Status is cleared to null when the turn settles.
     expect(setStatusSpy).toHaveBeenLastCalledWith(null);
+  });
+
+  it("settles the visible reply before a slow post-turn history reload", async () => {
+    const historyReload = deferred<LoadConversationMessagesResult>();
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+        _channelType: string,
+        _signal: AbortSignal,
+        _images: unknown,
+        _metadata: unknown,
+        onStatus: (s: ChatTurnStatus) => void,
+      ) => {
+        onStatus({ kind: "running_action", actionName: "REPLY" });
+        onToken("Done", "Done");
+        return { text: "Done", completed: true };
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.loadConversationMessages = vi.fn(() => historyReload.promise);
+    const setSendingSpy = deps.setChatSending as ReturnType<typeof vi.fn>;
+    const setStatusSpy = deps.setServerTurnStatus as ReturnType<typeof vi.fn>;
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    act(() => {
+      sendPromise = result.current.sendChatText("hi", {
+        conversationId: "conv-1",
+      });
+    });
+
+    await vi.waitFor(() => {
+      expect(deps.loadConversationMessages).toHaveBeenCalledWith("conv-1");
+    });
+
+    // The response text is already visible, so history reconciliation must not
+    // keep the turn spinner/status alive while its request is still pending.
+    expect(setStatusSpy).toHaveBeenLastCalledWith(null);
+    expect(setSendingSpy).toHaveBeenLastCalledWith(false);
+
+    await act(async () => {
+      historyReload.resolve({ ok: true });
+      await sendPromise;
+    });
   });
 });
 
@@ -2205,6 +2290,18 @@ describe("useChatSend E2 auto-retry on reconnect", () => {
     expect(seenIds).toHaveLength(2);
     expect(seenIds[0]).toBeTruthy();
     expect(seenIds[1]).toBe(seenIds[0]);
+    expect(
+      deps.conversationMessagesRef.current.map(({ role, text }) => ({
+        role,
+        text,
+      })),
+    ).toEqual([
+      { role: "user", text: "hi" },
+      { role: "assistant", text: "hi there" },
+    ]);
+    expect(
+      new Set(deps.conversationMessagesRef.current.map(({ id }) => id)).size,
+    ).toBe(2);
     // The retry succeeded — no error notice ever surfaced.
     expect(deps.setActionNotice).not.toHaveBeenCalled();
   });

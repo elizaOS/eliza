@@ -192,11 +192,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       "https://api.elizacloud.ai",
       "sess-return",
     );
-    expect(params.setActionNotice).toHaveBeenCalledWith(
-      "Logged in to Eliza Cloud successfully.",
-      "success",
-      6000,
-    );
+    expect(params.setActionNotice).not.toHaveBeenCalled();
   });
 
   it("preserves the cloud auth popup opener and closes it on the matching completion message", async () => {

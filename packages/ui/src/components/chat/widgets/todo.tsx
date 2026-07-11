@@ -110,74 +110,55 @@ function homeBadgeClassName(tone: "default" | "home", accent?: string): string {
     : "border-white/15 bg-white/12 text-3xs text-white/80";
 }
 
-function TodoRow({
-  todo,
-  tone = "default",
-}: {
-  todo: WorkbenchTodo;
-  tone?: "default" | "home";
-}) {
+function TodoRow({ todo }: { todo: WorkbenchTodo }) {
   const showDescription =
     todo.description.trim().length > 0 && todo.description !== todo.name;
   const showType = todo.type.trim().length > 0 && todo.type !== "task";
-  const isHome = tone === "home";
 
   return (
-    <div
-      // Home tone keeps its glass plate (wallpaper surface); the chat tone is
-      // a flat row — the status dot + text carry the structure, no box.
-      className={
-        isHome
-          ? "rounded-sm border border-white/15 bg-white/10 p-3 text-white"
-          : "py-1.5"
-      }
-    >
+    <div data-testid="workbench-todo-row" className="py-1.5">
       <div className="flex items-start gap-2">
         <span
           className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${
-            isHome
-              ? "bg-white/70"
-              : todo.isUrgent
-                ? "bg-danger"
-                : todo.priority != null
-                  ? "bg-accent"
-                  : "bg-muted"
+            todo.isUrgent
+              ? "bg-danger"
+              : todo.priority != null
+                ? "bg-accent"
+                : "bg-muted"
           }`}
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <span
-              className={`min-w-0 truncate text-xs font-semibold ${
-                isHome ? "text-white" : "text-txt"
-              }`}
-            >
+            <span className="min-w-0 truncate text-xs font-semibold text-txt">
               {todo.name}
             </span>
             {todo.isUrgent ? (
               <Badge
                 variant="secondary"
-                className={homeBadgeClassName(tone, "text-danger")}
+                className={homeBadgeClassName("default", "text-danger")}
               >
                 Urgent
               </Badge>
             ) : null}
             {todo.priority != null ? (
-              <Badge variant="secondary" className={homeBadgeClassName(tone)}>
+              <Badge
+                variant="secondary"
+                className={homeBadgeClassName("default")}
+              >
                 P{todo.priority}
               </Badge>
             ) : null}
             {showType ? (
-              <Badge variant="secondary" className={homeBadgeClassName(tone)}>
+              <Badge
+                variant="secondary"
+                className={homeBadgeClassName("default")}
+              >
                 {todo.type}
               </Badge>
             ) : null}
           </div>
           {showDescription ? (
-            <p
-              className={`mt-1 line-clamp-2 text-xs-tight leading-5 ${
-                isHome ? "text-white/70" : "text-muted"
-              }`}
-            >
+            <p className="mt-1 line-clamp-2 text-xs-tight leading-5 text-muted">
               {todo.description}
             </p>
           ) : null}

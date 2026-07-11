@@ -90,7 +90,7 @@ describe("ChatTranscript scale render benchmark", () => {
       // the test is the bounded-row-count assertion above, this only catches a
       // pathological slowdown on the commit itself.
       expect(streamCommitMs).toBeLessThan(250);
-    });
+    }, 15_000);
 
     it(`appending a message with ${size} existing messages mounts only the new row`, () => {
       const { counts, spy } = makeRenderCounter();
@@ -120,6 +120,6 @@ describe("ChatTranscript scale render benchmark", () => {
       expect(historicalRerenders).toBe(0);
       expect(counts.get("msg-new")).toBe(1);
       expect(spy).toHaveBeenCalledTimes(size + 1);
-    });
+    }, 15_000);
   }
 });

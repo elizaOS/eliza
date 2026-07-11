@@ -93,7 +93,9 @@ test.describe("settings sections load at mobile width", () => {
       const sectionVisible = await sectionRoot.isVisible().catch(() => false);
 
       const boundaryHit = await page
-        .getByText(/Something went wrong|Failed to load view/i)
+        .locator(
+          '[data-testid="settings-section-error"], [data-testid="cloud-route-error-fallback"]',
+        )
         .first()
         .isVisible()
         .catch(() => false);
@@ -216,7 +218,9 @@ test.describe("cloud settings sections load at mobile width", () => {
       await page.waitForTimeout(800);
 
       const boundaryHit = await page
-        .getByText(/Something went wrong|Failed to load view/i)
+        .locator(
+          '[data-testid="settings-section-error"], [data-testid="cloud-route-error-fallback"]',
+        )
         .first()
         .isVisible()
         .catch(() => false);

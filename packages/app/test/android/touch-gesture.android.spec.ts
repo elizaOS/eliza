@@ -836,17 +836,16 @@ test.describe
         0,
         -260,
       );
-      const attach = page.getByTestId("chat-composer-attach");
-      await expect(attach).toBeVisible({ timeout: 15_000 });
+      const chatActions = page.getByTestId("chat-composer-plus");
+      await expect(chatActions).toBeVisible({ timeout: 15_000 });
 
-      // Tap the attach affordance with real touch (proves the control responds);
-      // the native file picker is a separate Activity that adb can't script, so
-      // the file itself is injected onto the app's own hidden <input type=file>,
-      // driving the REAL addImageFiles intake path.
+      // Open chat actions with real touch and prove the upload affordance is
+      // present. The native file picker is a separate Activity that adb can't
+      // script, so the file itself is injected onto the app's hidden input.
       await installTouchRecorder(page);
       const point = await selectorDevicePoint(
         page,
-        '[data-testid="chat-composer-attach"]',
+        '[data-testid="chat-composer-plus"]',
       );
       adbDevice(adb, serial, [
         "shell",
@@ -857,6 +856,11 @@ test.describe
       ]);
       await page.waitForTimeout(300);
       const attachTouch = await assertRealTouch(page, "attach-tap");
+      await expect(
+        page.getByRole("menuitem", { name: "Upload file" }),
+      ).toBeVisible({
+        timeout: 10_000,
+      });
 
       const pngPath = path.join(os.tmpdir(), "eliza-gesture-attach.png");
       // 1x1 PNG (base64) — a real decodable image the intake path accepts.

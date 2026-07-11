@@ -67,6 +67,11 @@ describe("public:true route allowlist (#9948)", () => {
     ).toBe(true);
   });
 
+  it("does not treat test fixtures as unauthenticated production routes", () => {
+    const keys = scanPublicRoutes().map(publicRouteKey);
+    expect(keys.some((key) => key.includes("/__tests__/"))).toBe(false);
+  });
+
   it("fails closed to a full scan when git change detection is unavailable", async () => {
     const fixtureDir = FIXTURE_DIR;
     const fixturePath = join(fixtureDir, "new-public-route.ts");

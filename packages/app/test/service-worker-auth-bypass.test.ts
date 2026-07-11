@@ -1,7 +1,7 @@
 /**
  * Service-worker auth navigation guard. The test evaluates the real `sw.js`
- * file inside a minimal worker-like VM so the fetch handler can be exercised
- * without a browser install.
+ * file inside a minimal worker-like VM and verifies auth navigations use the
+ * uncached preload/network passthrough instead of the app-shell cache path.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -72,18 +72,18 @@ function navigation(pathname: string): FetchEventLike {
   return { request, respondWith: vi.fn() };
 }
 
-describe("service worker auth navigation bypass", () => {
+describe("service worker auth navigation passthrough", () => {
   it.each([
     "/login",
     "/login?code=one-time",
     "/chat?token=handoff",
-  ])("does not intercept %s", (pathname) => {
+  ])("takes over %s only for uncached network passthrough", (pathname) => {
     const worker = loadServiceWorker();
     const event = navigation(pathname);
 
     worker.dispatchFetch(event);
 
-    expect(event.respondWith).not.toHaveBeenCalled();
+    expect(event.respondWith).toHaveBeenCalledTimes(1);
   });
 
   it("still intercepts ordinary app-shell navigations", () => {

@@ -123,6 +123,7 @@ import {
 	describeModelCallError,
 	isModelProviderFallbackError,
 } from "./services/message/fallback-reply";
+import { sanitizeOutboundText } from "./services/message/outbound-sanitize";
 import { ensureAgentVoice } from "./services/message/voice-gate";
 import type { TaskService } from "./services/task";
 import type { ToolPolicyService } from "./services/tool-policy";
@@ -1713,7 +1714,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * Run pipeline hooks for a phase (skip metadata, ordering, and outgoing redact).
+	 * Run pipeline hooks for a phase (skip metadata, ordering, and outgoing sanitize + redact).
 	 * @param pipelineHookTelemetry When false, skips debug logs / `PIPELINE_HOOK_METRIC` per hook
 	 * (still logs warn/error for slow hooks). Defaults to false for `model_stream_chunk` only.
 	 */
@@ -1850,8 +1851,12 @@ export class AgentRuntime implements IAgentRuntime {
 						hookTelemetry,
 					);
 				}
+				// Mandatory outbound hygiene, hooks or none: strip leaked model
+				// machine syntax (#15888), then redact secrets. Runs before the
+				// content is persisted, so stored outbound memories carry the same
+				// text the connector delivers.
 				c.content.text = this.redactSecrets(
-					coerceOutgoingMessageText(c.content.text),
+					sanitizeOutboundText(coerceOutgoingMessageText(c.content.text)),
 				);
 				return;
 			}
@@ -10535,7 +10540,14 @@ ${section_end}`;
 		// (`content.agentVoiced`); the gate fails open, so a rephrase outage
 		// delivers the original text rather than blocking the send.
 		const voicedContent = await ensureAgentVoice(this, content, { source });
-		const result = await handler(this, target, voicedContent);
+		// Proactive sends bypass the message-turn callback wrap, so the shared
+		// machine-syntax sanitizer (#15888) applies here — after the voice gate,
+		// whose rephrase is itself model text.
+		const outboundContent =
+			typeof voicedContent.text === "string"
+				? { ...voicedContent, text: sanitizeOutboundText(voicedContent.text) }
+				: voicedContent;
+		const result = await handler(this, target, outboundContent);
 		return result as Memory | undefined;
 	}
 

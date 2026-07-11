@@ -200,8 +200,11 @@ function mergeLocalPendingConversationMessages(
   currentMessages: ConversationMessage[],
   loadedConversationId: string | null,
   convId: string,
+  preserveUnownedPending = false,
 ): ConversationMessage[] {
-  if (loadedConversationId !== convId) return serverMessages;
+  if (loadedConversationId !== convId && !preserveUnownedPending) {
+    return serverMessages;
+  }
   const serverIds = new Set(serverMessages.map((message) => message.id));
   const resolvedTempIds = resolvedLocalTempMessageIds(
     serverMessages,
@@ -496,13 +499,24 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           conversationMessagesRef.current,
           loadedConversationIdRef.current,
           convId,
+          loadedConversationIdRef.current === null &&
+            activeConversationIdRef.current === convId,
         );
         greetingFiredRef.current =
           hasConversationBootstrapMessage(mergedCached);
         conversationMessagesRef.current = mergedCached;
         loadedConversationIdRef.current = convId;
         setConversationMessages(mergedCached);
-      } else if (loadedConversationIdRef.current !== convId) {
+      } else if (
+        loadedConversationIdRef.current !== convId &&
+        !(
+          loadedConversationIdRef.current === null &&
+          activeConversationIdRef.current === convId &&
+          conversationMessagesRef.current.some(
+            isLocalPendingConversationMessage,
+          )
+        )
+      ) {
         // No cache means the visible transcript still belongs to the previous
         // active conversation until the fetch resolves. Clear it immediately so
         // the home overlay cannot render old-room context under the newly
@@ -526,6 +540,8 @@ export function useDataLoaders(deps: DataLoadersDeps) {
           conversationMessagesRef.current,
           loadedConversationIdRef.current,
           convId,
+          loadedConversationIdRef.current === null &&
+            activeConversationIdRef.current === convId,
         );
         cacheConversationMessages(convId, serverMessages);
         greetingFiredRef.current =

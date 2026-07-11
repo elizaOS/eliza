@@ -23,3 +23,18 @@ test("changed Vitest coverage tests use package-aware source configuration", () 
     /node packages\/scripts\/run-changed-vitest-coverage[.]mjs "\$\{changed_tests\[@\]\}"/,
   );
 });
+
+test("Node is available before changed-source classification", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const setupNode = workflow.indexOf(
+    "- name: Setup Node.js for source classification",
+  );
+  const determineChanged = workflow.indexOf("- name: Determine changed files");
+
+  expect(setupNode).toBeGreaterThan(-1);
+  expect(workflow).toContain(
+    "uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
+  );
+  expect(workflow).toContain("node-version: ${{ env.NODE_VERSION }}");
+  expect(setupNode).toBeLessThan(determineChanged);
+});

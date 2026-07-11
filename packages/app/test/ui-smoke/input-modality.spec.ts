@@ -347,21 +347,21 @@ test("mouse: hover surfaces the composer control affordance and reverts on unhov
     timeout: 60_000,
   });
 
-  // The attach control carries the shared SoftButton hover contract
+  // The chat-actions control carries the shared SoftButton hover contract
   // (text-white/75 → hover:text-white). Assert the REST → HOVER → REST style
   // transition — the semantic affordance a mouse user actually gets.
-  const attach = page.getByTestId("chat-composer-attach");
-  await expect(attach).toBeVisible({ timeout: 15_000 });
+  const chatActions = page.getByTestId("chat-composer-plus");
+  await expect(chatActions).toBeVisible({ timeout: 15_000 });
 
   // Park the pointer well away from the control for an honest rest reading.
   await page.mouse.move(4, 4);
-  const restColor = await attach.evaluate(
+  const restColor = await chatActions.evaluate(
     (node) => getComputedStyle(node).color,
   );
 
-  await attach.hover();
+  await chatActions.hover();
   await expect
-    .poll(() => attach.evaluate((node) => getComputedStyle(node).color), {
+    .poll(() => chatActions.evaluate((node) => getComputedStyle(node).color), {
       message: "hover must change the composer control color affordance",
       timeout: 10_000,
     })
@@ -369,7 +369,7 @@ test("mouse: hover surfaces the composer control affordance and reverts on unhov
 
   await page.mouse.move(4, 4);
   await expect
-    .poll(() => attach.evaluate((node) => getComputedStyle(node).color), {
+    .poll(() => chatActions.evaluate((node) => getComputedStyle(node).color), {
       message: "moving the mouse away must restore the rest style",
       timeout: 10_000,
     })

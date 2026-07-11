@@ -4,8 +4,14 @@
 // notification center, and the AOSP-only tile grid, with the notification
 // store driven directly (no network).
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
 vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
@@ -43,12 +49,20 @@ import type { AgentNotification } from "@elizaos/core";
 import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
+  __setHydratedForTests,
 } from "../../state/notifications/notification-store";
 import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-store";
 import { HomeScreen } from "./HomeScreen";
+import { PULL_COMMIT_PX } from "./NotificationsHomeCenter";
+
+beforeEach(() => {
+  vi.useFakeTimers();
+});
 
 afterEach(() => {
   cleanup();
+  vi.clearAllTimers();
+  vi.useRealTimers();
   __resetNotificationStoreForTests();
   __resetHomeDismissalsForTests();
   navigateDeepLink.mockClear();
@@ -120,9 +134,9 @@ describe("HomeScreen", () => {
     expect(screen.queryByText("Pinned")).toBeNull();
   });
 
-  // Notifications render INLINE on the home column (no pull-down shade, no hint
-  // pill): the inbox self-hides while empty and appears in place when it fills.
-  it("hides the notification inbox while empty (and has no shade/hint shells)", () => {
+  // Notifications render INLINE on the home column (no portal shade or hint
+  // pill). Before hydration there is no surface, avoiding a false empty flash.
+  it("hides the notification inbox while initial hydration is pending", () => {
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.queryByTestId("home-notification-center")).toBeNull();
     expect(screen.queryByTestId("home-notifications-hint")).toBeNull();
@@ -152,28 +166,163 @@ describe("HomeScreen", () => {
     expect(wrapper?.className).toContain("mt-4");
     // The inbox itself fills its wrapper and scrolls internally.
     expect(card.className).toContain("flex-1");
-    // Rows are grouped by view PHYSICALLY only — no header eyebrows render.
+    // The containing flex column has a definite height. `min-h-full` lets a
+    // large inbox grow to its content height and continue behind the composer.
+    const column = screen.getByTestId("home-content-column");
+    expect(column.className).toContain("h-full");
+    expect(column.className).not.toContain("min-h-full");
+    // Closed keeps interrupt-tier rows above the total; opening reveals every
+    // priority with no header eyebrows.
+    expect(screen.getByTestId("notifications-count")).toBeTruthy();
     expect(screen.getByTestId("notification-row")).toBeTruthy();
+    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
+      deltaY: -(PULL_COMMIT_PX + 10),
+    });
+    expect(screen.getByTestId("notification-row")).toBeTruthy();
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
   });
 
-  it("does NOT grow the notification region when the inbox is empty (calm centred home)", () => {
+  it("keeps widget taps inert and expands a populated shade from a widget-area pull", () => {
+    __ingestNotificationForTests(
+      makeNotification({ title: "Priority alert", priority: "urgent" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({
+        id: "22222222-2222-4222-8222-222222222222" as AgentNotification["id"],
+        title: "Quiet summary",
+        priority: "normal",
+      }),
+    );
     render(<HomeScreen onOpenTile={vi.fn()} />);
-    // Empty inbox self-hides; the widget breathing region keeps the flex-1 fill.
-    expect(screen.queryByTestId("home-notification-center")).toBeNull();
+    const timeWidget = screen.getByTestId("home-time-widget");
+    const center = screen.getByTestId("home-notification-center");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(timeWidget, {
+      touches: [{ clientX: 100, clientY: 80 }],
+    });
+    fireEvent.touchEnd(timeWidget, { touches: [] });
+    fireEvent.click(timeWidget);
+    expect(screen.getByTestId("home-notification-center")).toBe(center);
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+
+    fireEvent.touchStart(timeWidget, {
+      touches: [{ clientX: 100, clientY: 80 }],
+    });
+    fireEvent.touchMove(timeWidget, {
+      touches: [{ clientX: 102, clientY: 230 }],
+    });
+    fireEvent.touchEnd(timeWidget, { touches: [] });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
+  });
+
+  it("keeps the hydrated empty gesture band quiet without growing the notification region", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    // The pull target is mounted but has no visible empty label until dragged.
+    const center = screen.getByTestId("home-notification-center");
+    expect(center.className).toContain("min-h-14");
+    expect(center.className).not.toContain("eliza-notif-center-in");
+    const empty = screen.getByTestId("notifications-empty");
+    expect(empty.style.opacity).toBe("0");
+    expect(empty.getAttribute("aria-hidden")).toBe("true");
+    expect(center.parentElement?.className).not.toContain("flex-1");
+    // The widget breathing region keeps the flex-1 fill.
     const hostWrapper = screen.getByTestId("home-widget-host").parentElement;
     expect(hostWrapper?.className).toContain("flex-1");
     expect(hostWrapper?.className).toContain("justify-center");
   });
 
-  it("tapping an inline row expands options; Open follows its safe deep link", () => {
+  it("reveals the empty state from a pull on the quiet home background", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(home, {
+      touches: [{ clientX: 200, clientY: 300 }],
+    });
+    fireEvent.touchMove(home, {
+      // An 80px pull clears the empty-state threshold while remaining below
+      // the populated shade's commit threshold after resistance.
+      touches: [{ clientX: 202, clientY: 380 }],
+    });
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
+    fireEvent.touchEnd(home, { touches: [] });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+
+    fireEvent.touchStart(home, {
+      touches: [{ clientX: 200, clientY: 440 }],
+    });
+    fireEvent.touchMove(home, {
+      touches: [{ clientX: 202, clientY: 300 }],
+    });
+    fireEvent.touchEnd(home, { touches: [] });
+    act(() => vi.advanceTimersByTime(300));
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+  });
+
+  it("reveals and closes the empty state from a trackpad swipe on the home background", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.wheel(home, { deltaY: -(PULL_COMMIT_PX / 2 + 2) });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
+
+    // Opposite-direction rebound during the settle cannot hide the empty
+    // status and make it flash back on trailing momentum.
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+
+    act(() => vi.advanceTimersByTime(500));
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
+    act(() => vi.advanceTimersByTime(300));
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+  });
+
+  it("does not steal an empty-inbox gesture that begins on a home control", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
+    const tile = screen.getByTestId("home-tile-camera");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(tile, {
+      touches: [{ clientX: 200, clientY: 300 }],
+    });
+    fireEvent.touchMove(tile, {
+      touches: [{ clientX: 202, clientY: 440 }],
+    });
+    fireEvent.touchEnd(tile, { touches: [] });
+    fireEvent.wheel(tile, { deltaY: -(PULL_COMMIT_PX + 10) });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+  });
+
+  it("tapping an inline row follows its safe deep link directly", () => {
     __ingestNotificationForTests(
       makeNotification({ deepLink: "/settings", title: "Open settings" }),
     );
     render(<HomeScreen onOpenTile={vi.fn()} />);
     expect(screen.getByTestId("home-notification-center")).toBeTruthy();
+    fireEvent.wheel(screen.getByTestId("home-notification-list"), {
+      deltaY: -(PULL_COMMIT_PX + 10),
+    });
     fireEvent.click(screen.getByTestId("notification-row"));
-    fireEvent.click(screen.getByTestId("notification-option-open"));
     expect(navigateDeepLink).toHaveBeenCalledWith("/settings");
   });
 });

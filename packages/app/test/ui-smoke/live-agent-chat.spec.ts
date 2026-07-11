@@ -204,7 +204,7 @@ function chatSendButton(page: Page) {
 }
 
 function conversationLog(page: Page) {
-  return page.getByRole("log", { name: /conversation history/i });
+  return page.getByRole("region", { name: /conversation history/i });
 }
 
 function userMessage(page: Page, text: string) {

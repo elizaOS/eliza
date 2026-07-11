@@ -2,7 +2,7 @@
  * Browser regression run + screenshots for the notification shade, desktop +
  * mobile: rested Z-stacks, the pull-gesture expand/collapse (real mouse drag
  * and wheel — the paths jsdom cannot exercise against real layout),
- * single-open chromeless option strips, and swipe-to-dismiss. No app server:
+ * per-stack fan/fold controls, and swipe-to-dismiss. No app server:
  * bundles the fixture with esbuild (core/node builtins stubbed dead-in-browser)
  * and drives it in headless chromium.
  *
@@ -227,12 +227,12 @@ for (const [name, width, height] of [
         .count()) === 0,
   );
   check(
-    'the "N more" button counts the hidden rows',
+    "the count control reflects the complete inbox",
     (
       await page
-        .locator('[data-testid="notifications-expand-toggle"]')
+        .locator('[data-testid="notifications-count-button"]')
         .textContent()
-    )?.includes("5 more"),
+    )?.includes("7 Notifications"),
   );
   check(
     "hidden tier not visible at rest",
@@ -271,6 +271,13 @@ for (const [name, width, height] of [
   );
   check("pull-down expands the shade", (await shadeMode(page)) === "expanded");
   check(
+    "expanded shade exposes clear and collapse controls",
+    (await page.locator('[data-testid="notifications-clear-all"]').count()) ===
+      1 &&
+      (await page.locator('[data-testid="notifications-collapse"]').count()) ===
+        1,
+  );
+  check(
     "stacks persist through the shade expand",
     (await page.locator('[data-testid="notification-stack-peek"]').count()) >
       0,
@@ -305,43 +312,42 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-expanded.png`);
 
-  // 3. SINGLE-OPEN CHROMELESS ACTIONS: tapping a row opens its option strip;
-  //    tapping another collapses the first; option buttons are bare text.
-  await page.locator(ROW).nth(0).click();
+  // 3. STACK FOLD/RESTORE: fanned groups expose controls above their rows.
+  //    Folding restores one top card plus its peeks; tapping that stack fans
+  //    the same group back out.
   check(
-    "tap opens one option strip",
-    (await page.locator('[data-testid="notification-row-options"]').count()) ===
-      1,
+    "fanned stack exposes Show Less and clear controls",
+    (await page.locator('[data-testid="notification-stack-controls"]').count()) >
+      0 &&
+      (await page.locator('[data-testid="notification-stack-collapse"]').count()) >
+        0 &&
+      (await page.locator('[data-testid="notification-stack-clear"]').count()) >
+        0,
   );
-  await page.locator(ROW).nth(1).click();
-  check(
-    "pressing another row collapses the first (still one strip)",
-    (await page.locator('[data-testid="notification-row-options"]').count()) ===
-      1 &&
-      (await page.locator(ROW).nth(0).getAttribute("aria-expanded")) ===
-        "false" &&
-      (await page.locator(ROW).nth(1).getAttribute("aria-expanded")) === "true",
-  );
-  const optionStyle = await page
-    .locator('[data-testid="notification-row-options"] button')
+  await page
+    .locator('[data-testid="notification-stack-collapse"]')
     .first()
-    .evaluate((el) => {
-      const s = getComputedStyle(el);
-      // Tailwind preflight leaves border-style:solid at width 0 on every
-      // element — width is the visible truth.
-      return { bg: s.backgroundColor, borderWidth: s.borderTopWidth };
-    });
+    .click();
   check(
-    "options are bare action text (no fill, no border)",
-    optionStyle.bg === "rgba(0, 0, 0, 0)" &&
-      parseFloat(optionStyle.borderWidth) === 0,
-    `${optionStyle.bg} / ${optionStyle.borderWidth}`,
+    "Show Less folds the producer back into a stack",
+    (await page.locator(ROW).count()) === 5 &&
+      (await page.locator('[data-testid="notification-stack-peek"]').count()) ===
+        2,
+  );
+  await page.locator(ROW).first().click();
+  await page.waitForFunction(
+    (selector) => document.querySelectorAll(selector).length === 7,
+    ROW,
+  );
+  check(
+    "tapping the folded stack restores its fanned rows",
+    (await page.locator(ROW).count()) === 7,
   );
   await page.screenshot({
-    path: join(outDir, `notifications-${name}-actions.png`),
+    path: join(outDir, `notifications-${name}-stack-controls.png`),
     fullPage: true,
   });
-  console.log(`  📸 notifications-${name}-actions.png`);
+  console.log(`  📸 notifications-${name}-stack-controls.png`);
 
   // 4. SWIPE TO DISMISS: drag a row horizontally off the shade; it leaves the
   //    list (optimistic remove; the mocked-away HTTP write is dead in-browser).

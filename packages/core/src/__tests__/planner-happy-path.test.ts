@@ -107,6 +107,7 @@ function makeRuntime(opts: {
 	actions: Action[];
 	responses: CannedResponse[];
 	contextRegistry?: ContextRegistry;
+	responseHandlerEvaluators?: import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator[];
 }): IAgentRuntime {
 	const queue = [...opts.responses];
 	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
@@ -129,6 +130,9 @@ function makeRuntime(opts: {
 		responseHandlerFieldEvaluators: [
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 		],
+		...(opts.responseHandlerEvaluators
+			? { responseHandlerEvaluators: opts.responseHandlerEvaluators }
+			: {}),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
 		useModel: vi.fn(
@@ -700,6 +704,94 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		]);
 	});
 
+	it("sanitizes drifted callback text at the wire while planner-echo suppression still matches the raw form (#15888)", async () => {
+		// The voice rewrite is itself model text and can drift into native tool
+		// syntax. The visible-callback wrap must deliver the SANITIZED text, but
+		// record the raw form too: the planner's finalMessage echoes the raw
+		// string, and suppression compares against this set — recording only the
+		// sanitized form would deliver a duplicate bubble on every drift turn.
+		const rawPayload = '{"status":"ok","taskId":"abc123"}';
+		const driftedRewrite = "Task created: abc123.<tool_call>notify_owner";
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const action = makeMockAction({
+			name: "CREATE_TASK",
+			parameters: [],
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: rawPayload }, "CREATE_TASK");
+				return {
+					success: true,
+					text: rawPayload,
+					data: { actionName: "CREATE_TASK" },
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [action],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["CREATE_TASK"],
+						thought: "Creating the task needs a tool.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Creating the task.",
+						toolCalls: [{ id: "call-1", name: "CREATE_TASK", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({ response: driftedRewrite }),
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The action callback already told the user.",
+						messageToUser: driftedRewrite,
+					}),
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("create that task"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("create that task"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+		});
+
+		// The connector saw ONLY the sanitized wire text.
+		expect(delivered).toEqual(["Task created: abc123."]);
+		// Both forms were recorded: raw for suppression, sanitized as sent.
+		expect(deliveredVisibleTexts).toContain(driftedRewrite.toLowerCase());
+		expect(deliveredVisibleTexts).toContain("task created: abc123.");
+		// The planner's raw-drift echo was suppressed against the raw record.
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+		expect(callback).toHaveBeenCalledTimes(1);
+	});
+
 	it("records terminal task failure separately from evaluator failures", async () => {
 		const brokenAction = makeMockAction({
 			name: "BROKEN_ACTION",
@@ -1227,5 +1319,71 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(trajectory.metrics.toolCallsExecuted).toBe(2);
 		// Single planner iteration covered both tools via the queue
 		expect(trajectory.metrics.plannerIterations).toBe(1);
+	});
+
+	it("records a response-handler evaluator promotion in the stage-1 trajectory", async () => {
+		// A promotion that overwrites the stage-1 reply must be visible in the
+		// recorded trajectory (evaluator name + changed fields), so a reviewer can
+		// see WHY a fully-answered turn went to planning.
+		const runtime = makeRuntime({
+			actions: [],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						replyText: "The answer is 42.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "reply-1",
+								name: "REPLY",
+								arguments: { text: "Planner's own final answer." },
+							},
+						],
+					},
+				},
+			],
+			responseHandlerEvaluators: [
+				{
+					name: "test-promotion",
+					priority: 100,
+					shouldRun: () => true,
+					evaluate: () => ({ reply: "On it.", requiresTool: true }),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("what is the answer?"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Planner's own final answer.",
+			);
+		}
+
+		// The promotion is visible evidence in the planner's own prompt: the
+		// message-handler event carries the applied patch trace (which evaluator
+		// changed what) alongside the patched plan.
+		const calls = getCalls(runtime);
+		expect(calls[1]?.modelType).toBe(ModelType.ACTION_PLANNER);
+		const plannerParams = calls[1]?.params as {
+			messages?: Array<{ content?: string | null }>;
+		};
+		const plannerUserContent = plannerParams.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		expect(plannerUserContent).toContain("test-promotion");
+		expect(plannerUserContent).toContain('"reply":"On it."');
 	});
 });

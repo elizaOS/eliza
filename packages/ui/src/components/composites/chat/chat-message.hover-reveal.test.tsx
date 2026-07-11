@@ -92,7 +92,7 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
     expect(deleteControl()).toBeNull();
   });
 
-  it("renders a first-run greeting chromeless — no action rail at all", () => {
+  it("renders a frosted first-run greeting with no action rail", () => {
     // The onboarding greeting is seeded wallpaper prose with a CTA beneath it;
     // reply / copy / delete / play are meaningless on it and the hover rail read
     // as a bug during first-run. Even with every action handler wired, a
@@ -100,14 +100,38 @@ describe("ChatMessage desktop hover-chrome delete control (#13533)", () => {
     render(
       <ChatMessage
         message={makeMessage({ source: "first_run" })}
+        appearance="glass"
         onCopy={vi.fn()}
         onDelete={vi.fn()}
         onReply={vi.fn()}
         onSpeak={vi.fn()}
       />,
     );
+    const bubble = Array.from(
+      document.querySelectorAll<HTMLElement>("div"),
+    ).find((element) => element.classList.contains("backdrop-blur-md"));
+    expect(bubble).toBeTruthy();
+    expect(bubble?.classList.contains("border")).toBe(true);
+    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
+    expect(bubble?.classList.contains("rounded-bl-md")).toBe(true);
+    expect(bubble?.classList.contains("bg-black/35")).toBe(true);
     expect(screen.queryByTestId("chat-message-action-rail")).toBeNull();
     expect(deleteControl()).toBeNull();
     expect(screen.queryByRole("button", { name: "Reply" })).toBeNull();
+  });
+
+  it("keeps user turns inside the compact right-side glass bubble", () => {
+    render(
+      <ChatMessage
+        message={makeMessage({ role: "user", text: "My message" })}
+        appearance="glass"
+      />,
+    );
+    const bubble = screen.getByText("My message").parentElement;
+    expect(bubble?.classList.contains("rounded-2xl")).toBe(true);
+    expect(bubble?.classList.contains("rounded-br-md")).toBe(true);
+    expect(bubble?.classList.contains("border-white/15")).toBe(true);
+    expect(bubble?.classList.contains("px-3.5")).toBe(true);
+    expect(bubble?.classList.contains("py-2")).toBe(true);
   });
 });
