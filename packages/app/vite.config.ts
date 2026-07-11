@@ -1345,7 +1345,7 @@ const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
-function appDevWsBasePlugin(): Plugin {
+export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
 
   // Derive the WS base from the ACTUAL page origin at runtime rather than

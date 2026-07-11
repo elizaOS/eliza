@@ -4,13 +4,18 @@
  * caller is responsible for routing that through `client.patchProviderStrategy`.
  */
 
-import * as SelectPrimitive from "@radix-ui/react-select";
 import type { LinkedAccountProviderId } from "@elizaos/shared";
+import * as SelectPrimitive from "@radix-ui/react-select";
 import { Check } from "lucide-react";
 import type { AccountStrategy } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
-import { Select, SelectContent, SelectTrigger, SelectValue } from "../ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 interface RotationStrategyPickerProps {
   providerId: LinkedAccountProviderId;
