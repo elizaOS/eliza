@@ -31,10 +31,12 @@ const sharedRoot = new URL("../../../../shared/src", import.meta.url).href;
 import * as realRedisFactory from "@/lib/cache/redis-factory";
 import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
+import * as realWsHandler from "@/lib/voice-session/ws-handler";
 
 const realSessionRegistryExports = { ...realSessionRegistry };
 const realVoiceUsageMeterExports = { ...realVoiceUsageMeter };
 const realRedisFactoryExports = { ...realRedisFactory };
+const realWsHandlerExports = { ...realWsHandler };
 
 const attachCalls: Array<Record<string, unknown>> = [];
 let registrySize = 0;
@@ -61,22 +63,31 @@ mock.module(`${sharedRoot}/lib/utils/logger.ts`, () => ({
   },
 }));
 
+// The ws-handler mock is a PASSTHROUGH: it captures the deps the route wired
+// (and exercises the pure closures for coverage) then delegates to the REAL
+// attachVoiceWsHandler. The coverage lane runs all files in ONE non-isolated
+// process and this bun canary applies mock.module at COLLECTION time — a
+// non-passthrough stub would clobber ws-lifecycle.test.ts's real
+// attachVoiceWsHandler and break it. `claimToken` (real jwt+redis) is left alone.
 const wsHandlerStub = () => ({
-  attachVoiceWsHandler: (server: unknown, deps: Record<string, unknown>) => {
+  ...realWsHandlerExports,
+  attachVoiceWsHandler: (
+    server: Parameters<typeof realWsHandler.attachVoiceWsHandler>[0],
+    deps: Parameters<typeof realWsHandler.attachVoiceWsHandler>[1] &
+      Record<string, unknown>,
+  ) => {
     attachCalls.push({ server, deps });
-    // Exercise the deps the route wired so their closures are covered.
-    // Exercise the pure deps closures the route wired. NOTE: we do NOT invoke
-    // `claimToken` — it is the REAL claimVoiceSessionToken (jwt+redis) and would
-    // require live infra; the route only needs to hand it to the ws-handler.
-    (deps.admitSession as () => boolean)();
+    (deps.admitSession as unknown as (() => boolean) | undefined)?.();
     (
-      deps.buildSession as (a: {
-        claims: Record<string, string>;
-        jti: string;
-        tokenExpSeconds: number;
-        downlink: unknown;
-      }) => unknown
-    )({
+      deps.buildSession as unknown as
+        | ((a: {
+            claims: Record<string, string>;
+            jti: string;
+            tokenExpSeconds: number;
+            downlink: unknown;
+          }) => unknown)
+        | undefined
+    )?.({
       claims: {
         sessionId: "s",
         organizationId: "org",
@@ -88,6 +99,7 @@ const wsHandlerStub = () => ({
       tokenExpSeconds: 30,
       downlink: {},
     });
+    return realWsHandlerExports.attachVoiceWsHandler(server, deps);
   },
 });
 mock.module("@/lib/voice-session/ws-handler", wsHandlerStub);
@@ -192,6 +204,11 @@ afterAll(() => {
   mock.module(
     `${sharedRoot}/lib/cache/redis-factory.ts`,
     () => realRedisFactoryExports,
+  );
+  mock.module("@/lib/voice-session/ws-handler", () => realWsHandlerExports);
+  mock.module(
+    `${sharedRoot}/lib/voice-session/ws-handler.ts`,
+    () => realWsHandlerExports,
   );
 });
 
