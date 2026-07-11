@@ -124,4 +124,71 @@ describe("buildNativeTextResult (via handleTextLarge) — cache-write tokens on 
 
     expect(result.usage?.cacheCreationInputTokens).toBe(8865);
   });
+
+  it("preserves cache-write usage after a streaming response is consumed", async () => {
+    const textStream = (async function* () {
+      yield "cached ";
+      yield "reply";
+    })();
+    const streamText = vi.fn(() => ({
+      textStream,
+      text: Promise.resolve("cached reply"),
+      toolCalls: Promise.resolve([]),
+      usage: Promise.resolve(realSdkUsage),
+      finishReason: Promise.resolve("stop"),
+    }));
+    vi.doMock("ai", () => ({ generateText: vi.fn(), streamText }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({ chat: (modelName: string) => ({ modelName }) }),
+    }));
+
+    const { handleTextLarge } = await import("../models/text");
+    const { runtime, emitEvent } = createRuntime();
+    const result = await handleTextLarge(runtime, {
+      prompt: "hello",
+      messages: [{ role: "user", content: "hello" }],
+      tools: {},
+      stream: true,
+    } as never);
+    if (typeof result === "string") throw new Error("expected streaming result");
+
+    const chunks: string[] = [];
+    for await (const chunk of result.textStream) chunks.push(chunk);
+
+    expect(chunks).toEqual(["cached ", "reply"]);
+    expect(await result.text).toBe("cached reply");
+    expect(await result.usage).toEqual(
+      expect.objectContaining({ cacheCreationInputTokens: 8865 }),
+    );
+    expect(emitEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes every text model handler through the same accounting path", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: realSdkUsage,
+    }));
+    vi.doMock("ai", () => ({ generateText, streamText: vi.fn() }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({ chat: (modelName: string) => ({ modelName }) }),
+    }));
+
+    const textModels = await import("../models/text");
+    const { runtime, emitEvent } = createRuntime();
+    const handlers = [
+      textModels.handleTextSmall,
+      textModels.handleTextNano,
+      textModels.handleTextMedium,
+      textModels.handleTextMega,
+      textModels.handleResponseHandler,
+      textModels.handleActionPlanner,
+    ];
+
+    for (const handler of handlers) {
+      expect(await handler(runtime, { prompt: "hello" } as never)).toBe("ok");
+    }
+    expect(generateText).toHaveBeenCalledTimes(handlers.length);
+    expect(emitEvent).toHaveBeenCalledTimes(handlers.length);
+  });
 });
