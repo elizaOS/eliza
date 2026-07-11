@@ -88,6 +88,9 @@ const admitInferenceChargeViaLedger = mock(async () => ({
 }));
 const createLedgerDebitSettler = mock(() => ledgerInnerSettler);
 const createCreditReservationSettler = mock(() => async () => null);
+const generateText = mock((_options: Record<string, unknown>) => {
+  throw new Error("model-call-stub");
+});
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
 // the org-credits branch (not app-credits) is taken and moderation is skipped.
@@ -300,6 +303,23 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     createCreditReservationSettler.mockClear();
     generateText.mockClear();
     streamText.mockClear();
+  });
+
+  test("forwards the prompt cache key through the full Cerebras route", async () => {
+    await handleChatCompletionsPOST(
+      makeRequest(undefined, {
+        model: "gpt-oss-120b",
+        prompt_cache_key: "v5:optimistic-route",
+      }),
+      { skipOrgRateLimit: true },
+    );
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+      providerOptions: {
+        openai: { promptCacheKey: "v5:optimistic-route" },
+      },
+    });
   });
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
