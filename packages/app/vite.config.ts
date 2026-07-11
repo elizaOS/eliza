@@ -2016,6 +2016,9 @@ export default defineConfig({
     __ELIZA_WEB_SHELL__: JSON.stringify(
       !IS_CAPACITOR_MOBILE_BUILD && process.env.ELIZA_DISABLE_WEB_SHELL !== "1",
     ),
+    __ELIZA_CHAT_UI_HARNESS__: JSON.stringify(
+      process.env.ELIZA_CHAT_UI_HARNESS === "1",
+    ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
     [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(
