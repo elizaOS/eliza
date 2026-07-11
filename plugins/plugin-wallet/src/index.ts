@@ -12,6 +12,7 @@ void walletRouteRegistration;
 registerWalletAutomationNodeContributor();
 
 export * from "./actions/index.js";
+export { tradeRouterAction } from "./actions/trade-action.js";
 export { BirdeyeService } from "./analytics/birdeye/service.js";
 export { DexScreenerService } from "./analytics/dexscreener/index.js";
 // Analytics surface (formerly @elizaos/plugin-{lpinfo,dexscreener,defi-news,birdeye}).
@@ -76,15 +77,24 @@ export * from "./lp/types.js";
 export { default, walletPlugin } from "./plugin.js";
 export * from "./policy/policy.js";
 export * from "./providers/canonical-provider.js";
+export { stewardTradingProvider } from "./providers/steward-trading-provider.js";
 export { walletProvider } from "./providers/wallet-provider.js";
 export * from "./register-routes.js";
 export * from "./routes/plugin.js";
 /** ERC-6551 / x402 / CCTP / swaps are available from the package barrel. */
 export * from "./sdk/index.js";
+export * from "./security/trade-confirmation.js";
+export type { StewardTradingServiceOptions } from "./services/steward-trading-service.js";
+export {
+  createTradeIdempotencyKey,
+  STEWARD_TRADING_SERVICE_TYPE,
+  StewardTradingService,
+} from "./services/steward-trading-service.js";
 export {
   WALLET_BACKEND_SERVICE_TYPE,
   WalletBackendService,
 } from "./services/wallet-backend-service.js";
+export * from "./types/trade.js";
 export * from "./types/wallet-router.js";
 export * from "./wallet/index.js";
 export * from "./wallet-action.js";
