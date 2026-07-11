@@ -20,7 +20,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -32,7 +32,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
 import {
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   type IAgentRuntime,
@@ -54,6 +54,7 @@ import {
   accountMetaFromSessionMetadata,
   type CodingAccountMeta,
   diagnoseCodingAccountFallback,
+  isTokenExpiryText,
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "./coding-account-selection.js";
@@ -62,6 +63,10 @@ import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
 } from "./credential-proxy-env.js";
+import {
+  buildGitIdentityEnvPatch,
+  resolveGitIdentityConfig,
+} from "./git-identity-env.js";
 import {
   applyModelGatewayEnv,
   MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
@@ -207,6 +212,60 @@ function findGitBinaryForAcp(): string {
     if (existsSync(candidate)) return candidate;
   }
   return "git";
+}
+
+function findExecutableOnPath(name: string): string | undefined {
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    if (!dir) continue;
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function findWorkspaceElizaCodePackage(startDir: string): string | undefined {
+  let dir = resolve(startDir);
+  while (true) {
+    const candidate = join(dir, "packages", "examples", "code");
+    if (existsSync(join(candidate, "src", "acp.ts"))) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/**
+ * Provision the workspace-native ACP executable on first use. Development and
+ * self-hosted checkouts deliberately do not require a global npm install: the
+ * package is built into its normal dist directory and launched with the same
+ * Bun executable that performed the build.
+ */
+export function ensureWorkspaceElizaCodeAcp(
+  startDir: string = process.cwd(),
+): string | undefined {
+  const packageDir = findWorkspaceElizaCodePackage(startDir);
+  const bun = findExecutableOnPath("bun");
+  if (!packageDir || !bun) return undefined;
+  const source = join(packageDir, "src", "acp.ts");
+  const output = join(packageDir, "dist", "acp.js");
+  const needsBuild =
+    !existsSync(output) || statSync(source).mtimeMs > statSync(output).mtimeMs;
+  if (needsBuild) {
+    const result = spawnSync(bun, ["run", "--cwd", packageDir, "build"], {
+      cwd: packageDir,
+      env: process.env,
+      encoding: "utf8",
+      timeout: 120_000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    if (result.status !== 0 || !existsSync(output)) {
+      const detail = String(
+        result.stderr || result.stdout || "build failed",
+      ).trim();
+      throw new Error(`Failed to auto-install eliza-code-acp: ${detail}`);
+    }
+  }
+  return `${bun} ${output}`;
 }
 
 async function runGitForAcp(
@@ -1939,7 +1998,9 @@ export class AcpService extends Service {
     this.emitSessionEvent(sessionId, "error", {
       message,
       stopReason,
-      failureKind: isAuthText(result.stderr) ? "auth" : undefined,
+      // stderr carries the provider auth envelope; refine "auth" → also
+      // "token_expired" (claude only) when the injected token merely aged out.
+      ...this.authFailureFields(result.stderr, session.agentType),
     });
     return promptResult;
   }
@@ -2551,7 +2612,7 @@ export class AcpService extends Service {
       await this.store.updateStatus(id, "errored", message);
       this.emitSessionEvent(id, "error", {
         message,
-        failureKind: isAuthText(message) ? "auth" : undefined,
+        ...this.authFailureFields(message, session.agentType),
       });
       throw new Error(message);
     }
@@ -2738,7 +2799,12 @@ export class AcpService extends Service {
     // ACP mode, so the bare-name fallback below would spawn the wrong binary —
     // resolve to the eliza-code bin unless an explicit command is configured.
     if (normalizedAgentType === "elizaos")
-      return this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ?? "eliza-code-acp";
+      return (
+        this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
+        findExecutableOnPath("eliza-code-acp") ??
+        ensureWorkspaceElizaCodeAcp() ??
+        "npx -y --package @elizaos/example-code@2.0.0-beta.1 eliza-code-acp"
+      );
     return String(normalizedAgentType);
   }
 
@@ -2891,11 +2957,14 @@ export class AcpService extends Service {
           opts.sessionId &&
           !record.cancelled &&
           code !== 0 &&
-          isAuthText(record.stderr)
+          // Emit for a 401/unauthorized auth failure OR an explicit token-expiry
+          // exit (isAuthText alone misses a bare "token expired"), so a run that
+          // dies of injected-token expiry still surfaces the typed reason.
+          (isAuthText(record.stderr) || isTokenExpiryText(record.stderr))
         ) {
           this.emitSessionEvent(opts.sessionId, "error", {
             message: this.classifyExitError(code, record.stderr),
-            failureKind: "auth",
+            ...this.authFailureFields(record.stderr, opts.agentType),
           });
         }
         if (
@@ -3710,6 +3779,25 @@ export class AcpService extends Service {
         });
       }
     }
+    // Per-spawn git identity: pin an explicit author/committer for every agent
+    // commit so the child never inherits the operator's personal `~/.gitconfig`
+    // user.name/email (a provenance leak, and on a fresh box git refuses to
+    // commit at all without one). Materialized as GIT_AUTHOR_*/GIT_COMMITTER_*
+    // env — disjoint from the credential-proxy's GIT_CONFIG_* keys below, so the
+    // two never collide. A stable local-only default is always emitted when no
+    // operator override exists, so fresh hosts work without identity leakage.
+    const gitIdentity = buildGitIdentityEnvPatch(
+      resolveGitIdentityConfig(readConfigEnvKey),
+    );
+    if (Object.keys(gitIdentity).length > 0) {
+      Object.assign(env, gitIdentity);
+      this.log("debug", "pinned per-spawn git identity for sub-agent", {
+        agentType,
+        sessionId: childSessionId,
+        authorName: gitIdentity.GIT_AUTHOR_NAME,
+        committerName: gitIdentity.GIT_COMMITTER_NAME,
+      });
+    }
     // Gateway mode runs LAST so no earlier merge step (host forwarding,
     // customCredentials, spawn extras, account selection) can reintroduce a
     // raw provider key into the child env. Never log the token.
@@ -3831,6 +3919,42 @@ export class AcpService extends Service {
         error: errorMessage(err),
       });
     }
+  }
+
+  /**
+   * Build the auth-related fields of an `error` session-event payload from a
+   * failure text. Emits `failureKind: "auth"` (the value the account-health
+   * marking + user-action Discord post key on) for any auth-shaped failure, and
+   * ADDS a companion `authReason: "token_expired"` when the text explicitly
+   * indicates an injected token that aged out mid-run — a Claude coding spawn
+   * gets a bare `CLAUDE_CODE_OAUTH_TOKEN` the third-party adapter cannot refresh,
+   * so a long run outlives its token even though the account is healthy. The
+   * companion field lets the UI say "your run outlived its token, nothing is
+   * wrong with your account" without changing the `"auth"` routing. Returns an
+   * empty object when the text is not auth-shaped (no failureKind stamped).
+   */
+  private authFailureFields(
+    text: string,
+    agentType?: AgentType,
+  ): { failureKind: "auth"; authReason?: "token_expired" } | Record<string, never> {
+    // Explicit token-expiry phrasing ("token expired", "session expired", …) is
+    // auth-shaped too, but `isAuthText` only matches 401/unauthorized/
+    // authenticate/login/api key/invalid_grant — NOT a bare "expired" — so a run
+    // that dies with only expiry text would otherwise emit no failureKind at
+    // all, defeating the typed signal. Recognize either.
+    const expired = isTokenExpiryText(text);
+    if (!isAuthText(text) && !expired) return {};
+    // The `token_expired` reason drives a downstream recovery that keeps the
+    // account HEALTHY and just re-injects a fresh token — valid ONLY for the
+    // claude bare-token injection path (CLAUDE_CODE_OAUTH_TOKEN the third-party
+    // adapter reads once and cannot refresh). Codex self-refreshes into its
+    // CODEX_HOME, so a Codex "refresh token expired" is a GENUINELY dead
+    // credential that must still mark needs-reauth — do NOT stamp the reason
+    // for non-claude backends, or a dead account would be respawned forever.
+    const isClaudeBareToken = agentType === "claude";
+    return expired && isClaudeBareToken
+      ? { failureKind: "auth", authReason: "token_expired" }
+      : { failureKind: "auth" };
   }
 
   private classifyExitError(code: number | null, stderr: string): string {

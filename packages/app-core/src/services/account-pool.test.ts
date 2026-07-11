@@ -7,8 +7,9 @@
  * injected readAccounts/writeAccount and a stubbed fetch, so no real credential
  * store or provider API is touched.
  */
+import { logger } from "@elizaos/core";
 import type { LinkedAccountConfig } from "@elizaos/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AccountPool } from "./account-pool";
 
 function account(
@@ -106,6 +107,118 @@ describe("AccountPool provider-scoped account resolution", () => {
     expect(writes).toHaveLength(1);
     expect(writes[0]?.providerId).toBe("openai-codex");
     expect(writes[0]?.usage?.sessionPct).toBe(12);
+  });
+
+  it("backfills the Anthropic email from the profile probe during a usage refresh", async () => {
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "anthropic-subscription:no-email": account("anthropic-subscription", {
+        id: "no-email",
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        writes.push(next);
+      },
+    });
+
+    // One fetch stub answers both the usage and profile endpoints by URL.
+    await pool.refreshUsage("no-email", "token", {
+      providerId: "anthropic-subscription",
+      fetch: (async (url: string | URL | Request) =>
+        String(url).includes("/profile")
+          ? new Response(
+              JSON.stringify({ account: { email: "backfilled@example.com" } }),
+              { status: 200 },
+            )
+          : new Response(JSON.stringify({ five_hour: { utilization: 0 } }), {
+              status: 200,
+            })) as unknown as typeof fetch,
+    });
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.email).toBe("backfilled@example.com");
+    expect(writes[0]?.usage?.sessionPct).toBe(0);
+  });
+
+  it("preserves the fetched usage and reports (not fabricates) a failed profile backfill", async () => {
+    // The profile boundary throws typed errors (401/5xx/malformed/transport).
+    // refreshUsage must NOT let that discard the successfully fetched usage,
+    // must NOT write an email, and must surface the failure observably.
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      for (const profileResponse of [
+        () => new Response("{}", { status: 500 }),
+        () => new Response("{}", { status: 401 }),
+        () => new Response("not-json", { status: 200 }),
+        () => {
+          throw new TypeError("network down");
+        },
+      ]) {
+        warnSpy.mockClear();
+        const writes: LinkedAccountConfig[] = [];
+        const accounts = {
+          "anthropic-subscription:no-email": account("anthropic-subscription", {
+            id: "no-email",
+          }),
+        };
+        const pool = new AccountPool({
+          readAccounts: () => accounts,
+          writeAccount: async (next) => {
+            writes.push(next);
+          },
+        });
+
+        await pool.refreshUsage("no-email", "token", {
+          providerId: "anthropic-subscription",
+          fetch: (async (url: string | URL | Request) =>
+            String(url).includes("/profile")
+              ? profileResponse()
+              : new Response(
+                  JSON.stringify({ five_hour: { utilization: 0.5 } }),
+                  { status: 200 },
+                )) as unknown as typeof fetch,
+        });
+
+        // Usage survived the identity failure…
+        expect(writes).toHaveLength(1);
+        expect(writes[0]?.usage?.sessionPct).toBe(50);
+        // …no fabricated identity…
+        expect(writes[0]?.email).toBeUndefined();
+        // …and the failure was reported, not swallowed.
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(String(warnSpy.mock.calls[0]?.[0])).toContain("no-email");
+      }
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("does NOT re-probe the profile when the account already has an email", async () => {
+    const profileUrls: string[] = [];
+    const accounts = {
+      "anthropic-subscription:has-email": account("anthropic-subscription", {
+        id: "has-email",
+        email: "existing@example.com",
+      }),
+    };
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+    await pool.refreshUsage("has-email", "token", {
+      providerId: "anthropic-subscription",
+      fetch: (async (url: string | URL | Request) => {
+        if (String(url).includes("/profile")) profileUrls.push(String(url));
+        return new Response(JSON.stringify({ five_hour: { utilization: 0 } }), {
+          status: 200,
+        });
+      }) as unknown as typeof fetch,
+    });
+
+    expect(profileUrls).toHaveLength(0);
   });
 
   it("selects among multiple accounts for the same provider by priority", async () => {

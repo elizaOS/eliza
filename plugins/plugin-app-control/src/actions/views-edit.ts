@@ -19,12 +19,9 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import {
-	findCodingDelegationActionName,
-	logger,
-	spawnWithTrajectoryLink,
-} from "@elizaos/core";
+import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
+import { findAsyncCodingDelegationActionName } from "./scaffold-env.js";
 import type { ViewSummary } from "./views-client.js";
 import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
@@ -140,8 +137,12 @@ interface TaskAgentStatus {
 }
 
 function readTaskAgents(result: ActionResult | undefined): TaskAgentStatus[] {
-	const agents = result?.data?.agents;
-	if (!Array.isArray(agents)) return [];
+	const data = result?.data;
+	const agents = Array.isArray(data?.agents)
+		? data.agents
+		: data && typeof data === "object" && "sessionId" in data
+			? [data]
+			: [];
 	return agents.flatMap((agent): TaskAgentStatus[] => {
 		if (!agent || typeof agent !== "object" || Array.isArray(agent)) return [];
 		const r = agent as Record<string, unknown>;
@@ -170,7 +171,9 @@ async function dispatchEditAgent({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const createTaskName = findCodingDelegationActionName(runtime.actions ?? []);
+	const createTaskName = findAsyncCodingDelegationActionName(
+		runtime.actions ?? [],
+	);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {
 		const text =

@@ -34,7 +34,7 @@ export const ExplicitImage: Story = {
     plugin: makePlugin({
       id: "custom-with-image",
       name: "Custom Plugin",
-      icon: "https://placehold.co/64x64/png?text=CP",
+      icon: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23f97316'/%3E%3Ctext x='32' y='39' text-anchor='middle' font-family='sans-serif' font-size='22' font-weight='700' fill='white'%3ECP%3C/text%3E%3C/svg%3E",
     } as Partial<PluginInfo>),
     size: "md",
   },

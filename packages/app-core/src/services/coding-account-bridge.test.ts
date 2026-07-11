@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { saveAccount } from "@elizaos/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
   configureDefaultAccountPoolSelection,
@@ -51,6 +51,22 @@ function writeAccount(
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...record,
+  });
+}
+
+function writeExpiringAccount(
+  providerId: AccountCredentialProvider,
+  id: string,
+  credentials: { access: string; refresh: string; expires: number },
+): void {
+  saveAccount({
+    id,
+    providerId,
+    label: id,
+    source: "oauth",
+    credentials,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
   });
 }
 
@@ -109,7 +125,10 @@ afterEach(() => {
   }
   configureDefaultAccountPoolSelection();
   rmSync(home, { recursive: true, force: true });
+  globalThis.fetch = originalFetch;
 });
+
+const originalFetch = globalThis.fetch;
 
 describe("coding-account-bridge", () => {
   it("selects the least-used Claude subscription and returns CLAUDE_CODE_OAUTH_TOKEN", async () => {
@@ -386,6 +405,77 @@ describe("coding-account-bridge", () => {
       exclude: ["pin-a"],
     });
     expect(failover?.accountId).toBe("pin-b");
+  });
+
+  it("uses the default-buffer fallback when a refreshed Claude token is still below the requested fresh TTL", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "short-fresh-access",
+        refresh_token: "short-fresh-refresh",
+        expires_in: 35 * 60,
+      }),
+    }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    writeExpiringAccount("anthropic-subscription", "short-fresh", {
+      access: "older-access",
+      refresh: "older-refresh",
+      expires: Date.now() + 10 * 60_000,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    const selection = await bridge?.select("claude");
+
+    expect(selection?.accountId).toBe("short-fresh");
+    expect(selection?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe(
+      "short-fresh-access",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      getDefaultAccountPool().get("short-fresh", "anthropic-subscription")
+        ?.health,
+    ).not.toBe("needs-reauth");
+  });
+
+  it("marks needs-reauth when Claude refresh fails with invalid_grant", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      text: async () => '{"error":"invalid_grant"}',
+      json: async () => ({ error: "invalid_grant" }),
+    })) as unknown as typeof fetch;
+    writeExpiringAccount("anthropic-subscription", "revoked", {
+      access: "still-valid-but-too-short",
+      refresh: "revoked-refresh",
+      expires: Date.now() + 10 * 60_000,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    await expect(bridge?.select("claude")).resolves.toBeNull();
+    expect(
+      getDefaultAccountPool().get("revoked", "anthropic-subscription")?.health,
+    ).toBe("needs-reauth");
+  });
+
+  it("does not mark needs-reauth when Claude refresh fails with a transient 5xx", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      text: async () => "503 Service Unavailable",
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    writeExpiringAccount("anthropic-subscription", "outage", {
+      access: "expired-access",
+      refresh: "valid-refresh",
+      expires: Date.now() - 60_000,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    await expect(bridge?.select("claude")).resolves.toBeNull();
+    expect(
+      getDefaultAccountPool().get("outage", "anthropic-subscription")?.health,
+    ).not.toBe("needs-reauth");
   });
 });
 

@@ -34,6 +34,29 @@ test("finds only ignored JavaScript files that shadow TypeScript under src", (t)
   ]);
 });
 
+test("ignores JavaScript shadows inside dependency directories", (t) => {
+  const root = fixture();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  mkdirSync(join(root, "node_modules/example/src"), { recursive: true });
+  writeFileSync(join(root, "node_modules/example/src/index.ts"), "export {};\n");
+  writeFileSync(join(root, "node_modules/example/src/index.js"), "dependency output\n");
+
+  assert.deepEqual(findStaleJsShadows(root), []);
+});
+
+test("preserves generated keyword data required by source-mode startup", (t) => {
+  const root = fixture();
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const generatedDir = join(root, "packages/shared/src/i18n/generated");
+  mkdirSync(generatedDir, { recursive: true });
+  writeFileSync(join(generatedDir, "validation-keyword-data.ts"), "export {};\n");
+  writeFileSync(join(generatedDir, "validation-keyword-data.js"), "export {};\n");
+
+  assert.deepEqual(findStaleJsShadows(root), []);
+});
+
 test("clean mode removes every detected shadow and preserves unrelated JavaScript", (t) => {
   const root = fixture();
   t.after(() => rmSync(root, { recursive: true, force: true }));

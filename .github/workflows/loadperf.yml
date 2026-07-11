@@ -71,7 +71,9 @@ jobs:
 
       - name: Build app runtime and web bundle
         run: |
-          bun run --cwd packages/shared build:i18n
+          bun run --cwd packages/shared build
+          bun run --cwd packages/core build
+          bun run --cwd plugins/plugin-wallet build
           bun run --cwd packages/app-core build
           bun run --cwd packages/app prebuild
           bun run --cwd packages/app build:web

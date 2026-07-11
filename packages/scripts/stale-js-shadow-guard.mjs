@@ -13,8 +13,18 @@ const scriptRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 export function findStaleJsShadows(root = scriptRoot) {
   const output = execFileSync(
     "git",
-    ["ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--", ":(glob)**/src/**/*.js"],
-    { cwd: root, encoding: "utf8" },
+    [
+      "ls-files",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "-z",
+      "--",
+      ":(glob)**/src/**/*.js",
+      ":(exclude,glob)**/node_modules/**",
+      ":(exclude)packages/shared/src/i18n/generated/validation-keyword-data.js",
+    ],
+    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
   );
 
   return output

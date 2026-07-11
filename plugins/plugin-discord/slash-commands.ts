@@ -14,7 +14,7 @@ import type {
 	AutocompleteInteraction,
 	ChatInputCommandInteraction,
 } from "discord.js";
-import { ApplicationCommandOptionType } from "discord.js";
+import { ApplicationCommandOptionType, PermissionFlagsBits } from "discord.js";
 import { getPreset, listPresets } from "./actions/setup-credentials";
 import type { DiscordSlashCommand } from "./types";
 import type { VoiceManager } from "./voice";
@@ -30,6 +30,10 @@ export interface SlashCommand {
 	ownerOnly?: boolean;
 	/** Minimum elizaOS role required to execute this command. */
 	requiredRole?: SlashCommandRole;
+	/** Discord permission bitfield for `default_member_permissions` —
+	 * hides the command from pickers of members lacking it. Execute-time
+	 * `requiredRole` (the eliza role model) remains the actual gate. */
+	requiredPermissions?: bigint | string | null;
 	execute: (
 		interaction: ChatInputCommandInteraction,
 		runtime: IAgentRuntime,
@@ -76,56 +80,6 @@ const OPTION_TYPE_MAP: Record<string, number> = {
 
 const commands = new Map<string, SlashCommand>();
 const cooldowns = new Map<string, Map<string, number>>();
-
-const FALLBACK_KNOWN_MODELS = [
-	"gpt-4o",
-	"gpt-5-mini",
-	"gpt-5.5",
-	"gpt-3.5-turbo",
-	"claude-sonnet-4-6",
-	"claude-opus-4-7",
-	"claude-3.5-haiku",
-	"openai/gpt-oss-120b",
-	"eliza-1-4b",
-	"gemini-2.5-pro",
-	"gemini-2.5-flash",
-	"mistral-large",
-	"mistral-medium",
-] as const;
-
-function parseStringList(value: unknown): string[] {
-	if (Array.isArray(value)) {
-		return value
-			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-			.filter(Boolean);
-	}
-	if (typeof value !== "string") {
-		return [];
-	}
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return [];
-	}
-	try {
-		const parsed = JSON.parse(trimmed) as unknown;
-		if (Array.isArray(parsed)) {
-			return parseStringList(parsed);
-		}
-	} catch {
-		// Fall back to comma-separated parsing.
-	}
-	return trimmed
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter(Boolean);
-}
-
-function getKnownModels(runtime: IAgentRuntime): string[] {
-	const configured =
-		parseStringList(runtime.getSetting("DISCORD_KNOWN_MODELS")) ??
-		parseStringList(runtime.getSetting("KNOWN_MODELS"));
-	return configured.length > 0 ? configured : [...FALLBACK_KNOWN_MODELS];
-}
 
 const helpCommand: SlashCommand = {
 	name: "help",
@@ -259,6 +213,12 @@ const settingsCommand: SlashCommand = {
 	name: "settings",
 	description: "View the current Discord bot settings",
 	requiredRole: "ADMIN",
+	// Hide from the pickers of members who lack the Discord permission —
+	// execute-time `hasRoleAccess` (the eliza role model) stays the actual
+	// gate; this only sets default_member_permissions so privileged plumbing
+	// doesn't clutter every member's command list. Server admins can re-grant
+	// visibility per-role under Server Settings → Integrations as usual.
+	requiredPermissions: PermissionFlagsBits.ManageGuild,
 	options: [
 		{
 			name: "action",
@@ -301,6 +261,8 @@ const setupCommand: SlashCommand = {
 	name: "setup",
 	description: "Set up API credentials for third-party services",
 	requiredRole: "OWNER",
+	// Owner-level credential plumbing — visible only to Administrator members.
+	requiredPermissions: PermissionFlagsBits.Administrator,
 	options: [
 		{
 			name: "service",
@@ -390,49 +352,6 @@ const setupCommand: SlashCommand = {
 	},
 };
 
-const modelCommand: SlashCommand = {
-	name: "model",
-	description: "View or change the active AI model",
-	requiredRole: "ADMIN",
-	options: [
-		{
-			name: "name",
-			description: "Model name to switch to (leave empty to view current)",
-			type: "string",
-			autocomplete: true,
-		},
-	],
-	ephemeral: true,
-	async execute(interaction, runtime) {
-		const modelName = interaction.options.getString("name");
-		if (!modelName) {
-			await interaction.reply({
-				content: `**Current model:** \`${runtime.getSetting("MODEL") ?? runtime.getSetting("DEFAULT_MODEL") ?? "(not configured)"}\``,
-				ephemeral: true,
-			});
-			return;
-		}
-
-		await interaction.reply({
-			content: `Model switching to \`${modelName}\` is noted. The runtime model is still controlled by configuration, so update the setting and restart to switch permanently.`,
-			ephemeral: true,
-		});
-	},
-	async autocomplete(interaction) {
-		const runtime = (interaction.client as { runtime?: IAgentRuntime }).runtime;
-		const models = runtime
-			? getKnownModels(runtime)
-			: [...FALLBACK_KNOWN_MODELS];
-		const focused = interaction.options.getFocused().toLowerCase();
-		const filtered = models
-			.filter((model) => model.toLowerCase().includes(focused))
-			.slice(0, 25);
-		await interaction.respond(
-			filtered.map((model) => ({ name: model, value: model })),
-		);
-	},
-};
-
 /** Label on the embedded-app launch link. */
 const APP_LAUNCH_LABEL = "Open Eliza App";
 
@@ -485,6 +404,7 @@ const appCommand: SlashCommand = {
 	description: "Launch the embedded Eliza app (admins only)",
 	ephemeral: true,
 	requiredRole: "ADMIN",
+	requiredPermissions: PermissionFlagsBits.ManageGuild,
 	async execute(interaction, runtime) {
 		const memory: Memory = {
 			id: createUniqueUuid(runtime, `${interaction.id}-app`) as UUID,
@@ -551,8 +471,9 @@ const transcribeCommand: SlashCommand = {
 	description:
 		"Start or stop live meeting transcription for the current voice channel",
 	// Recording a voice channel is a consent-sensitive mutation — gate it to
-	// ADMIN, matching the other mutating commands (settings/model/app).
+	// ADMIN, matching the other mutating commands (settings/app).
 	requiredRole: "ADMIN",
+	requiredPermissions: PermissionFlagsBits.ManageGuild,
 	options: [
 		{
 			name: "mode",
@@ -667,7 +588,6 @@ function registerBuiltins(): void {
 		searchCommand,
 		clearCommand,
 		settingsCommand,
-		modelCommand,
 		setupCommand,
 		appCommand,
 		transcribeCommand,

@@ -68,7 +68,10 @@ jobs:
           no-vision-deps: "true"
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: |
+          bunx playwright install --with-deps chromium
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
 
       - name: Generate shared i18n assets
         run: bun run --cwd packages/shared build:i18n

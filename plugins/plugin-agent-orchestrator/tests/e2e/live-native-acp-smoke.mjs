@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -17,14 +18,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const RUN_FLAG = "RUN_LIVE_NATIVE_ACP";
+const DIFF_GATE_EVIDENCE =
+  process.env.LIVE_NATIVE_ACP_DIFF_GATE_EVIDENCE === "1";
 const DEFAULT_AGENT = "codex";
 const DEFAULT_CODEX_MODEL =
   process.env.LIVE_NATIVE_ACP_CODEX_MODEL ?? "gpt-5.5";
 const DEFAULT_CODEX_REASONING_EFFORT =
   process.env.LIVE_NATIVE_ACP_CODEX_REASONING_EFFORT ?? "low";
 const DEFAULT_CODEX_COMMAND = `npx -y @zed-industries/codex-acp@0.14.0 -c 'model="${DEFAULT_CODEX_MODEL}"' -c 'model_reasoning_effort="${DEFAULT_CODEX_REASONING_EFFORT}"'`;
-const PROMPT =
-  "What is 7 plus 8? Reply with exactly the number, no punctuation.";
+const GIT_IDENTITY_EVIDENCE =
+  process.env.LIVE_NATIVE_ACP_GIT_IDENTITY_EVIDENCE === "1";
+const GIT_IDENTITY_PROMPT =
+  "Create identity-proof.txt containing exactly `real ACP commit identity proof` followed by a newline. Commit it with the message `test: prove coding agent identity`. Do not read or change git configuration. Reply with the commit hash.";
+const PROMPT = DIFF_GATE_EVIDENCE
+  ? "Create package-lock.json containing exactly {\"lockfileVersion\":3} followed by a newline, commit it with message 'add generated lockfile', and report the commit hash. Do not change any other file."
+  : "What is 7 plus 8? Reply with exactly the number, no punctuation.";
 const CLEANUP_TIMEOUT_MS = Number(
   process.env.LIVE_NATIVE_ACP_CLEANUP_TIMEOUT_MS ?? 5_000,
 );
@@ -40,6 +48,9 @@ async function main() {
   if (process.env[RUN_FLAG] !== "1") {
     throw new SkippedSmoke(`set ${RUN_FLAG}=1 to run`);
   }
+  if (GIT_IDENTITY_EVIDENCE && DIFF_GATE_EVIDENCE) {
+    throw new Error("select only one native ACP evidence mode per run");
+  }
 
   const agent = normalizeAgent(
     process.env.LIVE_NATIVE_ACP_AGENT ??
@@ -49,8 +60,11 @@ async function main() {
   );
   ensureAgentCommand(agent);
 
-  const { AcpService } = await import("../../dist/node/index.node.js");
+  const { AcpService, CodingWorkspaceService } = await import(
+    "../../dist/node/index.node.js"
+  );
   const workdir = mkdtempSync(join(tmpdir(), `eliza-native-acp-${agent}-`));
+  if (DIFF_GATE_EVIDENCE) initializeEvidenceRepository(workdir);
   const codexHome =
     agent === "codex" ? createSmokeCodexHome(workdir) : undefined;
   const agentPidsBefore = snapshotAgentPids(agent);
@@ -73,6 +87,15 @@ async function main() {
     console.log(
       `native ACP service smoke: command=${redactCommand(commandFor(agent))}`,
     );
+    if (GIT_IDENTITY_EVIDENCE) {
+      execFileSync("git", ["init", "--initial-branch=main"], {
+        cwd: workdir,
+        stdio: "pipe",
+      });
+      console.log(
+        "native ACP service smoke: initialized identity evidence repo",
+      );
+    }
 
     await withTimeout(service.start(), smokeTimeoutMs);
     console.log("native ACP service smoke: service started");
@@ -92,9 +115,13 @@ async function main() {
     );
 
     const promptResult = await withTimeout(
-      service.sendPrompt(sessionId, PROMPT, {
-        timeoutMs: smokeTimeoutMs,
-      }),
+      service.sendPrompt(
+        sessionId,
+        GIT_IDENTITY_EVIDENCE ? GIT_IDENTITY_PROMPT : PROMPT,
+        {
+          timeoutMs: smokeTimeoutMs,
+        },
+      ),
       smokeTimeoutMs,
     );
     console.log("native ACP service smoke: prompt completed");
@@ -103,13 +130,37 @@ async function main() {
       (event) => event.name === "task_complete",
     );
     const completed = promptResult.stopReason === "end_turn";
-    const finalTextValid = /(^|[^0-9])15([^0-9]|$)/.test(finalText);
+    const identityEvidence = GIT_IDENTITY_EVIDENCE
+      ? readGitIdentityEvidence(workdir)
+      : null;
+    const finalTextValid = GIT_IDENTITY_EVIDENCE
+      ? identityEvidence.valid
+      : DIFF_GATE_EVIDENCE
+        ? existsSync(join(workdir, "package-lock.json"))
+        : /(^|[^0-9])15([^0-9]|$)/.test(finalText);
 
     console.log("\n=== native ACP service smoke verdict ===");
     console.log(`task_complete events: ${taskCompletes.length}`);
     console.log(`stopReason: ${JSON.stringify(promptResult.stopReason)}`);
-    console.log(`final text: ${JSON.stringify(finalText)}`);
-    console.log(`final text contains 15: ${finalTextValid}`);
+    console.log(
+      GIT_IDENTITY_EVIDENCE
+        ? "final text: <suppressed; identity mode verifies Git directly>"
+        : `final text: ${JSON.stringify(finalText)}`,
+    );
+    console.log(
+      GIT_IDENTITY_EVIDENCE
+        ? `git identity evidence valid: ${finalTextValid}`
+        : DIFF_GATE_EVIDENCE
+          ? `forbidden lockfile exists: ${finalTextValid}`
+          : `final text contains 15: ${finalTextValid}`,
+    );
+    if (identityEvidence) {
+      console.log("\n=== git identity domain artifact ===");
+      console.log(identityEvidence.show);
+      console.log(
+        `identity-proof.txt: ${JSON.stringify(identityEvidence.file)}`,
+      );
+    }
 
     if (!completed || !finalTextValid || taskCompletes.length === 0) {
       const eventSummary = summarizeEvents(events);
@@ -120,6 +171,14 @@ async function main() {
           finalText,
         )}, events=${eventSummary}`,
       );
+    }
+
+    if (DIFF_GATE_EVIDENCE) {
+      await verifyDiffGateEvidence({
+        CodingWorkspaceService,
+        runtime,
+        workdir,
+      });
     }
 
     console.log("\nNATIVE ACP SMOKE PASSED");
@@ -153,6 +212,118 @@ async function main() {
   }
 }
 
+function readGitIdentityEvidence(workdir) {
+  const expectedAuthorName =
+    process.env.ELIZA_CODING_GIT_AUTHOR_NAME ?? "elizaOS Coding Agent";
+  const expectedAuthorEmail =
+    process.env.ELIZA_CODING_GIT_AUTHOR_EMAIL ??
+    "coding-agent.no-reply@elizaos.local";
+  const expectedCommitterName =
+    process.env.ELIZA_CODING_GIT_COMMITTER_NAME ?? expectedAuthorName;
+  const expectedCommitterEmail =
+    process.env.ELIZA_CODING_GIT_COMMITTER_EMAIL ?? expectedAuthorEmail;
+  const fields = execFileSync(
+    "git",
+    ["show", "-s", "--format=%H%n%an%n%ae%n%cn%n%ce%n%B", "HEAD"],
+    { cwd: workdir, encoding: "utf8" },
+  ).trimEnd();
+  const [hash, authorName, authorEmail, committerName, committerEmail] =
+    fields.split("\n");
+  const file = readFileSync(join(workdir, "identity-proof.txt"), "utf8");
+  return {
+    valid:
+      /^[0-9a-f]{40}$/u.test(hash ?? "") &&
+      authorName === expectedAuthorName &&
+      authorEmail === expectedAuthorEmail &&
+      committerName === expectedCommitterName &&
+      committerEmail === expectedCommitterEmail &&
+      file === "real ACP commit identity proof\n",
+    show: execFileSync("git", ["show", "-s", "--format=fuller", "HEAD"], {
+      cwd: workdir,
+      encoding: "utf8",
+    }).trimEnd(),
+    file,
+  };
+}
+
+function initializeEvidenceRepository(workdir) {
+  execFileSync("git", ["init", "--initial-branch=main"], { cwd: workdir });
+  execFileSync("git", ["config", "user.name", "elizaOS Evidence Host"], {
+    cwd: workdir,
+  });
+  execFileSync("git", ["config", "user.email", "evidence-host@elizaos.local"], {
+    cwd: workdir,
+  });
+  writeFileSync(join(workdir, "README.md"), "# Diff gate evidence\n", "utf8");
+  execFileSync("git", ["add", "README.md"], { cwd: workdir });
+  execFileSync("git", ["commit", "-m", "initial evidence baseline"], {
+    cwd: workdir,
+  });
+}
+
+async function verifyDiffGateEvidence({
+  CodingWorkspaceService,
+  runtime,
+  workdir,
+}) {
+  const workspaceId = "live-diff-gate-evidence";
+  const service = new CodingWorkspaceService({
+    ...runtime,
+    reportError: (scope, error) =>
+      console.error(`[runtime.reportError] ${scope}: ${error.message}`),
+  });
+  let finalizerCalls = 0;
+  service.workspaceService = {
+    finalize: async () => {
+      finalizerCalls += 1;
+      throw new Error("finalizer must not be called for a prohibited diff");
+    },
+  };
+  service.workspaces.set(workspaceId, {
+    id: workspaceId,
+    path: workdir,
+    branch: "main",
+    baseBranch: "main~1",
+    isWorktree: false,
+    repo: "https://github.com/elizaOS/evidence-only.git",
+    status: "ready",
+  });
+
+  const events = [];
+  service.onEvent((event) => events.push(event));
+  let blocked;
+  try {
+    await service.createPR(workspaceId, {
+      title: "Evidence-only prohibited diff",
+      body: "This call must be rejected before finalization.",
+    });
+  } catch (error) {
+    if (error?.name !== "DiffGateBlockedError") throw error;
+    blocked = error;
+  }
+  if (!blocked) throw new Error("diff-review gate accepted a prohibited diff");
+  const gateEvent = events.find(
+    (event) => event.data?.diffGate?.outcome === "blocked",
+  );
+  if (!gateEvent) throw new Error("blocked diff-review event was not emitted");
+  if (finalizerCalls !== 0) {
+    throw new Error(`PR finalizer was called ${finalizerCalls} time(s)`);
+  }
+
+  console.log("\n=== live diff-review gate evidence ===");
+  console.log(`agent commit: ${git(workdir, ["rev-parse", "HEAD"])}`);
+  console.log(
+    `changed files: ${git(workdir, ["diff", "--name-only", "main~1...HEAD"])}`,
+  );
+  console.log(`gate summary: ${blocked.message.replaceAll("\n", " | ")}`);
+  console.log(`gate event: ${JSON.stringify(gateEvent.data.diffGate)}`);
+  console.log(`PR finalizer calls: ${finalizerCalls}`);
+}
+
+function git(workdir, args) {
+  return execFileSync("git", args, { cwd: workdir, encoding: "utf8" }).trim();
+}
+
 function makeRuntime(agent) {
   return {
     agentId: "native-acp-service-smoke",
@@ -162,6 +333,7 @@ function makeRuntime(agent) {
       warn: (...args) => console.warn("[warn]", ...args),
       error: (...args) => console.error("[error]", ...args),
     },
+    getService: () => undefined,
     getSetting: (key) => {
       if (key === "ELIZA_ACP_TRANSPORT") return "native";
       if (key === "ELIZA_ACP_DEFAULT_AGENT") return agent;

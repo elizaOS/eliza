@@ -53,6 +53,8 @@ const OPTIONAL_LIVE_ENDPOINTS = [
   /\/api\/connectors\/google\/accounts(?:\?|$)/,
   /\/api\/i18n\/locale(?:\?|$)/,
   /\/api\/lifeops\/activity-signals(?:\?|$)/,
+  /\/api\/lifeops\/goals(?:\?|$)/,
+  /\/api\/lifeops\/todos(?:\?|$)/,
   /\/api\/orchestrator\/status(?:\?|$)/,
   /\/api\/orchestrator\/tasks(?:\?|$)/,
   /\/api\/tts\/cloud(?:\?|$)/,

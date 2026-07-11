@@ -260,13 +260,13 @@ const poolAccounts = async () =>
 const consoleLog = [];
 const networkLog = [];
 let shot = 0;
-async function snap(page, name) {
+async function snap(page, name, fullPage = true) {
   shot += 1;
   const file = `${String(shot).padStart(2, "0")}-${name}.png`;
   await page.screenshot({
     path: join(evidenceDir, file),
-    animations: "disabled",
-    fullPage: true,
+    animations: "allow",
+    fullPage,
   });
   console.log(`  screenshot ${file}`);
   return file;
@@ -274,7 +274,12 @@ async function snap(page, name) {
 
 const browser = await chromium.launch();
 const pageErrors = [];
-const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+const desktopContext = await browser.newContext({
+  viewport: { width: 1280, height: 900 },
+  recordVideo: { dir: evidenceDir, size: { width: 1280, height: 900 } },
+});
+const page = await desktopContext.newPage();
+const desktopVideo = page.video();
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 page.on("console", (m) => consoleLog.push(`[${m.type()}] ${m.text()}`));
 page.on("request", (r) => {
@@ -384,7 +389,9 @@ try {
 
   // 07 — rotation strategy change persists to config.
   await page.locator("#rotation-strategy-anthropic-api").click();
+  await snap(page, "strategy-menu-open", false);
   await page.getByRole("option", { name: /Round-robin/ }).click();
+  await page.getByRole("listbox").waitFor({ state: "detached" });
   await page.waitForFunction(() => {
     const el = document.querySelector("#rotation-strategy-anthropic-api");
     return el?.textContent?.includes("Round-robin");
@@ -441,6 +448,9 @@ try {
   await mobile.goto(base);
   await mobile.locator("text=Rate-limited").waitFor({ state: "visible" });
   await snap(mobile, "mobile-health-states");
+  await mobile.locator("#rotation-strategy-anthropic-api").click();
+  await snap(mobile, "mobile-strategy-menu-open", false);
+  await mobile.keyboard.press("Escape");
   await mobile.close();
 
   // 09 — disable toggle (PATCH enabled=false). Poll the REAL pool state until
@@ -497,6 +507,13 @@ try {
     `zero page errors across the whole flow${pageErrors.length ? `: ${pageErrors.join(" | ")}` : ""}`,
   );
 } finally {
+  await page.close();
+  await desktopContext.close();
+  if (desktopVideo) {
+    await desktopVideo.saveAs(
+      join(evidenceDir, "accounts-ui-walkthrough.webm"),
+    );
+  }
   await browser.close();
   child.kill("SIGTERM");
   await writeFile(
