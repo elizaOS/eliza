@@ -6,13 +6,9 @@
  * button; ProviderSwitcher owns the selection state and passes it in as props.
  */
 
-import type {
-  LinkedAccountProviderId,
-  ModelOption,
-  SubscriptionProviderStatus,
-} from "@elizaos/shared";
+import type { LinkedAccountProviderId, ModelOption } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
-import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   SubscriptionProviderSelectionId,
@@ -23,7 +19,6 @@ import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";
-import { SubscriptionStatus } from "./SubscriptionStatus";
 import { SettingsActionButton } from "./settings-agent-rows";
 import type { PluginInfo } from "./useProviderEntries";
 
@@ -178,17 +173,10 @@ export interface SubscriptionPanelProps {
   visibleProviderPanelId: string;
   resolvedSelectedId: string | null;
   cloudCallsDisabled: boolean;
-  subscriptionStatus: SubscriptionProviderStatus[];
-  anthropicConnected: boolean;
-  setAnthropicConnected: Dispatch<SetStateAction<boolean>>;
-  anthropicCliDetected: boolean;
-  openaiConnected: boolean;
-  setOpenaiConnected: Dispatch<SetStateAction<boolean>>;
   onSelectSubscription: (
     providerId: SubscriptionProviderSelectionId,
     activate?: boolean,
   ) => Promise<void>;
-  loadSubscriptionStatus: () => Promise<void>;
 }
 
 export function SubscriptionPanel({
@@ -196,14 +184,7 @@ export function SubscriptionPanel({
   visibleProviderPanelId,
   resolvedSelectedId,
   cloudCallsDisabled,
-  subscriptionStatus,
-  anthropicConnected,
-  setAnthropicConnected,
-  anthropicCliDetected,
-  openaiConnected,
-  setOpenaiConnected,
   onSelectSubscription,
-  loadSubscriptionStatus,
 }: SubscriptionPanelProps) {
   const t = useAppSelector((s) => s.t);
   const showUseButton =
@@ -236,17 +217,10 @@ export function SubscriptionPanel({
             })}
           </div>
         ) : null}
-        <SubscriptionStatus
-          resolvedSelectedId={visibleProviderPanelId}
-          subscriptionStatus={subscriptionStatus}
-          anthropicConnected={anthropicConnected}
-          setAnthropicConnected={setAnthropicConnected}
-          anthropicCliDetected={anthropicCliDetected}
-          openaiConnected={openaiConnected}
-          setOpenaiConnected={setOpenaiConnected}
-          handleSelectSubscription={onSelectSubscription}
-          loadSubscriptionStatus={loadSubscriptionStatus}
-        />
+        <p className="mb-2 text-xs text-muted">
+          Add and manage subscription accounts below. Login state is preserved
+          while an external browser or device authorization is active.
+        </p>
         <AccountList providerId={selection.storedProvider} />
       </div>
     </div>

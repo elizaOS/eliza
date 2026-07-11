@@ -8,6 +8,8 @@
  * Anthropic setup token is stored for task-agent CLI use only, never applied to
  * `process.env` (TOS restriction).
  */
+import crypto from "node:crypto";
+import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
 import type { AnthropicFlow } from "@elizaos/auth/anthropic";
 import type { CodexFlow } from "@elizaos/auth/openai-codex";
 import {
@@ -34,8 +36,11 @@ type AuthModule = typeof import("@elizaos/auth");
 export type SubscriptionAuthApi = Pick<
   AuthModule,
   | "getSubscriptionStatus"
+  | "exchangeAnthropicAuthorizationCode"
+  | "fetchAnthropicOAuthProfile"
   | "startAnthropicLogin"
   | "startCodexLogin"
+  | "submitProviderFlowCode"
   | "saveCredentials"
   | "applySubscriptionCredentials"
   | "deleteCredentials"
@@ -54,6 +59,12 @@ export interface SubscriptionRouteContext extends RouteRequestContext {
   saveConfig: (config: ElizaConfig) => void;
   loadSubscriptionAuth: () => Promise<SubscriptionAuthApi>;
 }
+
+// Runtime reloads replace the request state while an OAuth browser is open.
+// Codex's PKCE verifier cannot be reconstructed from its localhost callback,
+// so retain the live flow in this process-level module across runtime swaps.
+let activeCodexFlow: CodexFlow | undefined;
+let activeCodexFlowTimer: ReturnType<typeof setTimeout> | undefined;
 
 export async function handleSubscriptionRoutes(
   ctx: SubscriptionRouteContext,
@@ -139,16 +150,58 @@ export async function handleSubscriptionRoutes(
     }
     const body = parsedAxe.data;
     try {
-      const { saveCredentials, applySubscriptionCredentials } =
-        await loadSubscriptionAuth();
+      const {
+        saveCredentials,
+        applySubscriptionCredentials,
+        exchangeAnthropicAuthorizationCode,
+        fetchAnthropicOAuthProfile,
+      } = await loadSubscriptionAuth();
       const flow = state._anthropicFlow;
-      if (!flow) {
-        error(res, "No active flow — call /start first", 400);
-        return true;
+      const credentials = flow
+        ? (flow.submitCode(body.code), await flow.credentials)
+        : await exchangeAnthropicAuthorizationCode(body.code);
+      const profile = await fetchAnthropicOAuthProfile(credentials.access);
+      const accountId = profile.accountId ?? crypto.randomUUID();
+      saveCredentials("anthropic-subscription", credentials, accountId);
+      const stored = loadAccount("anthropic-subscription", accountId);
+      if (stored && profile.email) {
+        saveAccount({
+          ...stored,
+          label: profile.email,
+          email: profile.email,
+          ...(profile.organizationId
+            ? { organizationId: profile.organizationId }
+            : {}),
+        });
       }
-      flow.submitCode(body.code);
-      const credentials = await flow.credentials;
-      saveCredentials("anthropic-subscription", credentials);
+      const pool = getAgentHostBridge().getDefaultAccountPool() as {
+        list(providerId?: string): LinkedAccountConfig[];
+        upsert(account: LinkedAccountConfig): Promise<void>;
+      };
+      const existing = pool.list("anthropic-subscription");
+      const prior = existing.find((account) => account.id === accountId);
+      const priority =
+        prior?.priority ??
+        (existing.length === 0
+          ? 0
+          : Math.max(...existing.map((account) => account.priority)) + 1);
+      await pool.upsert({
+        id: accountId,
+        providerId: "anthropic-subscription",
+        label:
+          profile.email ??
+          prior?.label ??
+          `Claude account ${existing.length + 1}`,
+        source: "oauth",
+        enabled: prior?.enabled ?? true,
+        priority,
+        createdAt: prior?.createdAt ?? Date.now(),
+        health: "ok",
+        ...(profile.email ? { email: profile.email } : {}),
+        ...(profile.organizationId
+          ? { organizationId: profile.organizationId }
+          : {}),
+      });
       await applySubscriptionCredentials(state.config);
       delete state._anthropicFlow;
       json(res, { success: true, expiresAt: credentials.expires });
@@ -202,9 +255,10 @@ export async function handleSubscriptionRoutes(
   if (method === "POST" && pathname === "/api/subscription/openai/start") {
     try {
       const { startCodexLogin } = await loadSubscriptionAuth();
-      if (state._codexFlow) {
+      const previousFlow = state._codexFlow ?? activeCodexFlow;
+      if (previousFlow) {
         try {
-          state._codexFlow.close();
+          previousFlow.close();
         } catch (err) {
           logger.debug(
             `[api] OAuth flow cleanup failed: ${err instanceof Error ? err.message : err}`,
@@ -212,9 +266,11 @@ export async function handleSubscriptionRoutes(
         }
       }
       clearTimeout(state._codexFlowTimer);
+      clearTimeout(activeCodexFlowTimer);
 
       const flow = await startCodexLogin();
       state._codexFlow = flow;
+      activeCodexFlow = flow;
       state._codexFlowTimer = setTimeout(
         () => {
           try {
@@ -226,9 +282,12 @@ export async function handleSubscriptionRoutes(
           }
           delete state._codexFlow;
           delete state._codexFlowTimer;
+          if (activeCodexFlow === flow) activeCodexFlow = undefined;
+          activeCodexFlowTimer = undefined;
         },
         10 * 60 * 1000,
       );
+      activeCodexFlowTimer = state._codexFlowTimer;
       json(res, {
         authUrl: flow.authUrl,
         state: flow.state,
@@ -257,12 +316,35 @@ export async function handleSubscriptionRoutes(
     }
     const body = parsedOaeb.data;
     try {
-      const { saveCredentials, applySubscriptionCredentials } =
-        await loadSubscriptionAuth();
-      const flow = state._codexFlow;
+      const {
+        saveCredentials,
+        applySubscriptionCredentials,
+        submitProviderFlowCode,
+      } = await loadSubscriptionAuth();
+      const flow = state._codexFlow ?? activeCodexFlow;
 
       if (!flow) {
-        error(res, "No active flow — call /start first", 400);
+        if (!body.code) {
+          error(res, "No active flow — call /start first", 400);
+          return true;
+        }
+        const accountFlow = submitProviderFlowCode("openai-codex", body.code);
+        if (!accountFlow) {
+          error(res, "No matching active flow — start login again", 400);
+          return true;
+        }
+        try {
+          const { account } = await accountFlow.completion;
+          json(res, {
+            success: true,
+            expiresAt: account.credentials.expires,
+          });
+        } catch (err) {
+          logger.error(
+            `[api] OpenAI account-flow exchange failed: ${String(err)}`,
+          );
+          error(res, "OpenAI exchange failed", 500);
+        }
         return true;
       }
 
@@ -287,6 +369,9 @@ export async function handleSubscriptionRoutes(
         delete state._codexFlow;
         clearTimeout(state._codexFlowTimer);
         delete state._codexFlowTimer;
+        activeCodexFlow = undefined;
+        clearTimeout(activeCodexFlowTimer);
+        activeCodexFlowTimer = undefined;
         logger.error(`[api] OpenAI exchange failed: ${String(err)}`);
         error(res, "OpenAI exchange failed", 500);
         return true;
@@ -297,6 +382,9 @@ export async function handleSubscriptionRoutes(
       delete state._codexFlow;
       clearTimeout(state._codexFlowTimer);
       delete state._codexFlowTimer;
+      activeCodexFlow = undefined;
+      clearTimeout(activeCodexFlowTimer);
+      activeCodexFlowTimer = undefined;
       json(res, {
         success: true,
         expiresAt: credentials.expires,

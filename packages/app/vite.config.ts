@@ -1345,9 +1345,15 @@ const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
-function appDevWsBasePlugin(): Plugin {
-  const wsBase = `ws://127.0.0.1:${apiPort}`;
+export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
+
+  // The browser must dial the origin it actually loaded, because tunneled
+  // development exposes the Vite port without exposing the API loopback port.
+  // Vite proxies the resulting same-origin `/ws` upgrade to the API alongside
+  // its `/api` proxy, while packaged builds supply their own runtime base.
+  const wsBaseExpr =
+    "((location.protocol==='https:'?'wss://':'ws://')+location.host)";
 
   return {
     name: "eliza-dev-ws-base",
@@ -1359,9 +1365,9 @@ function appDevWsBasePlugin(): Plugin {
           attrs: { type: "text/javascript" },
           injectTo: "head-prepend",
           children: [
-            `window.__ELIZA_WS_BASE__ = ${JSON.stringify(wsBase)};`,
-            `window.__ELIZAOS_WS_BASE__ = ${JSON.stringify(wsBase)};`,
-            `window[${JSON.stringify(brandedWsBaseKey)}] = ${JSON.stringify(wsBase)};`,
+            `window.__ELIZA_WS_BASE__ = ${wsBaseExpr};`,
+            `window.__ELIZAOS_WS_BASE__ = ${wsBaseExpr};`,
+            `window[${JSON.stringify(brandedWsBaseKey)}] = ${wsBaseExpr};`,
           ].join("\n"),
         },
       ];
@@ -2015,6 +2021,9 @@ export default defineConfig({
     // exercises the agent app, not the cloud surface.
     __ELIZA_WEB_SHELL__: JSON.stringify(
       !IS_CAPACITOR_MOBILE_BUILD && process.env.ELIZA_DISABLE_WEB_SHELL !== "1",
+    ),
+    __ELIZA_CHAT_UI_HARNESS__: JSON.stringify(
+      process.env.ELIZA_CHAT_UI_HARNESS === "1",
     ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.

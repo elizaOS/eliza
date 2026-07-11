@@ -14,6 +14,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { execFileSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
@@ -67,6 +71,7 @@ class FakeAcp {
   readonly spawnArgs: Record<string, unknown>[] = [];
   readonly sent: { sessionId: string; message: string }[] = [];
   readonly stopped: string[] = [];
+  readonly liveSessions = new Map<string, Record<string, unknown>>();
   failSend = false;
   failStop = false;
   failSpawn = false;
@@ -88,12 +93,57 @@ class FakeAcp {
     if (this.failSpawn) return Promise.reject(new Error("spawn failed"));
     this.spawnArgs.push(opts);
     this.counter += 1;
-    return Promise.resolve({
+    const result = {
       sessionId: `session-${this.counter}`,
       agentType: (opts.agentType as string | undefined) ?? "codex",
       workdir: (opts.workdir as string | undefined) ?? "/repo",
       status: "ready",
+    };
+    this.liveSessions.set(result.sessionId, {
+      id: result.sessionId,
+      name: result.sessionId,
+      agentType: result.agentType,
+      workdir: result.workdir,
+      status: result.status,
+      approvalPreset: opts.approvalPreset,
+      createdAt: new Date(),
+      lastActivityAt: new Date(),
+      metadata:
+        typeof opts.metadata === "object" && opts.metadata !== null
+          ? { ...(opts.metadata as Record<string, unknown>) }
+          : {},
     });
+    return Promise.resolve(result);
+  }
+
+  getSession(sessionId: string): Promise<Record<string, unknown> | null> {
+    return Promise.resolve(this.liveSessions.get(sessionId) ?? null);
+  }
+
+  getChangedPaths(_sessionId: string): string[] {
+    return [];
+  }
+
+  getCapacity(): Promise<{
+    maxSessions: number;
+    systemHeadroom: number;
+    activeWorkers: number;
+    activeSystem: number;
+    freeWorkerSlots: number;
+    freeSystemSlots: number;
+  }> {
+    return Promise.resolve({
+      maxSessions: 4,
+      systemHeadroom: 1,
+      activeWorkers: 1,
+      activeSystem: 0,
+      freeWorkerSlots: 2,
+      freeSystemSlots: 1,
+    });
+  }
+
+  listSessions(): Promise<Record<string, unknown>[]> {
+    return Promise.resolve([...this.liveSessions.values()]);
   }
 
   sendToSession(sessionId: string, message: string): Promise<void> {
@@ -116,6 +166,7 @@ function runtime(
   return {
     getService: () => acp ?? null,
     getSetting: (key: string) => settings[key],
+    reportError: vi.fn(),
     logger: {
       debug: vi.fn(),
       info: vi.fn(),
@@ -548,6 +599,66 @@ describe("OrchestratorTaskService — lifecycle", () => {
         senderKind: "user",
       }),
     ).toBe(false);
+  });
+
+  it("attaches existing sessions idempotently without promoting terminal arrivals", async () => {
+    const { service } = makeServiceWithStore();
+    const task = await service.createTask(createInput());
+
+    const attached = await service.attachSession(task.id, {
+      sessionId: "external-session",
+      agentType: "claude",
+      workdir: "/repo",
+      status: "completed",
+      label: "Imported Worker",
+      originalTask: "Imported task",
+      goalPrompt: "Goal wrapper",
+      repo: "eliza",
+      providerSource: "user-claude",
+      model: "claude-opus",
+      metadata: {
+        account: {
+          providerId: "anthropic-subscription",
+          accountId: "acct-1",
+          label: "Work",
+        },
+      },
+    });
+    expect(attached).toBe(true);
+    await expect(
+      service.attachSession(task.id, {
+        sessionId: "external-session",
+        agentType: "claude",
+        workdir: "/repo",
+        status: "completed",
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      service.attachSession("missing", {
+        sessionId: "missing-session",
+        agentType: "claude",
+        workdir: "/repo",
+        status: "ready",
+      }),
+    ).resolves.toBe(false);
+
+    const detail = must(await service.getTask(task.id), "detail");
+    expect(detail.status).toBe("open");
+    expect(detail.latestWorkdir).toBe("/repo");
+    expect(detail.latestRepo).toBe("eliza");
+    expect(detail.sessions).toHaveLength(1);
+    expect(detail.sessions[0]).toMatchObject({
+      sessionId: "external-session",
+      status: "completed",
+      label: "Imported Worker",
+      originalTask: "Imported task",
+      providerSource: "user-claude",
+      model: "claude-opus",
+      accountProviderId: "anthropic-subscription",
+      accountId: "acct-1",
+      accountLabel: "Work",
+    });
+    expect(detail.sessions[0]?.stoppedAt).toBeTruthy();
   });
 
   it("reports room message delivery failures instead of claiming success", async () => {
@@ -1096,6 +1207,95 @@ describe("OrchestratorTaskService — event bridge session status", () => {
     expect(session.stoppedAt).toBeTruthy();
   });
 
+  it("rejects malformed live change-set metadata and mirrors a real workspace diff", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ots-changeset-"));
+    try {
+      execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: repo,
+      });
+      execFileSync("git", ["config", "user.name", "Test User"], {
+        cwd: repo,
+      });
+      fs.mkdirSync(path.join(repo, "src"), { recursive: true });
+      fs.writeFileSync(path.join(repo, "src/foo.ts"), "export const n = 1;\n");
+      execFileSync("git", ["add", "src/foo.ts"], { cwd: repo });
+      execFileSync("git", ["commit", "-m", "baseline"], {
+        cwd: repo,
+        stdio: "ignore",
+      });
+      const baseline = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: repo,
+        encoding: "utf8",
+      }).trim();
+      fs.writeFileSync(path.join(repo, "src/foo.ts"), "export const n = 2;\n");
+
+      const acp = new FakeAcp();
+      const { service, store } = makeServiceWithStore(acp);
+      await service.start();
+      const task = await service.createTask(createInput());
+      await store.updateTask(task.id, { boundWorkdir: repo });
+      const spawned = must(
+        await service.spawnAgentForTask(task.id),
+        "spawned",
+      );
+      const sessionId = must(spawned.sessions[0], "session").sessionId;
+      const live = must(
+        acp.liveSessions.get(sessionId),
+        "live ACP session",
+      );
+      live.metadata = {
+        lastChangeSet: {
+          changedFiles: "src/foo.ts",
+          capturedAt: "not-a-number",
+        },
+        codingBaselineSha: baseline,
+      };
+      vi.spyOn(acp, "getChangedPaths").mockReturnValue(["src/foo.ts"]);
+
+      await drive(acp, sessionId, "task_complete", {
+        response: "Updated foo.",
+      });
+      await settleStatus(service, task.id, "validating");
+
+      const detail = must(await service.getTask(task.id), "detail");
+      const metadata = must(detail.sessions[0], "session").metadata;
+      const changeSet = metadata.lastChangeSet as
+        | { changedFiles?: string[]; capturedAt?: number; diff?: string }
+        | undefined;
+      expect(changeSet?.changedFiles).toEqual(["src/foo.ts"]);
+      expect(typeof changeSet?.capturedAt).toBe("number");
+      expect(changeSet?.diff).toContain("export const n = 2");
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("stamps the sub-agent's PR link onto task metadata on task_complete (PR chip plumbing)", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    await drive(acp, sessionId, "task_complete", {
+      response:
+        "Done. Opened https://github.com/elizaOS/eliza/pull/16090 for review.",
+    });
+    const detail = must(await service.getTask(taskId), "detail");
+    expect(detail.metadata.prUrl).toBe(
+      "https://github.com/elizaOS/eliza/pull/16090",
+    );
+    expect(detail.metadata.prNumber).toBe(16090);
+    expect(detail.metadata.prRepo).toBe("elizaOS/eliza");
+  });
+
+  it("leaves task metadata untouched when the completion carries no PR link", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    await drive(acp, sessionId, "task_complete", {
+      response: "Committed abc1234 and pushed. No PR needed.",
+    });
+    const detail = must(await service.getTask(taskId), "detail");
+    expect(detail.metadata.prUrl).toBeUndefined();
+    expect(detail.metadata.prNumber).toBeUndefined();
+    expect(detail.metadata.prRepo).toBeUndefined();
+  });
+
   it("marks the session errored or stopped on those events", async () => {
     const a = await withSpawnedSession();
     await drive(a.acp, a.sessionId, "error", { message: "boom" });
@@ -1108,6 +1308,28 @@ describe("OrchestratorTaskService — event bridge session status", () => {
     expect(
       must((await b.service.getTask(b.taskId))?.sessions[0], "s").status,
     ).toBe("stopped");
+  });
+
+  it("keeps a healthy account active when only Claude's injected token expired", async () => {
+    const { service, acp, sessionId } = await withSpawnedSession();
+    const markUnhealthy = vi.spyOn(
+      service as unknown as {
+        markSessionAccountUnhealthy(
+          sessionId: string,
+          kind: string,
+          message: string,
+        ): Promise<void>;
+      },
+      "markSessionAccountUnhealthy",
+    );
+
+    await drive(acp, sessionId, "error", {
+      message: "oauth token has expired",
+      failureKind: "auth",
+      authReason: "token_expired",
+    });
+
+    expect(markUnhealthy).not.toHaveBeenCalled();
   });
 
   it("records a sub-agent message as stdout in the task room", async () => {
@@ -1133,6 +1355,68 @@ describe("OrchestratorTaskService — event bridge session status", () => {
       "event",
     );
     expect(event.summary).toBe("Sub-agent ready");
+  });
+
+  it("records account failover resumes as preserved-work events", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    await drive(acp, sessionId, "account_failover_resumed", {
+      resumeReason: "rate-limited",
+    });
+    const event = must(
+      (await service.getTask(taskId))?.events.find(
+        (entry) => entry.eventType === "account_failover_resumed",
+      ),
+      "failover event",
+    );
+    expect(event.summary).toBe("Resumed after a rate limit (work preserved)");
+  });
+
+  it("records canonical failover-resume and account-switch events", async () => {
+    const { service, acp, taskId, sessionId } = await withSpawnedSession();
+    await drive(acp, sessionId, "account_switched", {
+      providerId: "anthropic-subscription",
+      accountId: "acct-2",
+      label: "Backup",
+    });
+    await drive(acp, sessionId, "account_failover_resumed", {
+      resumable: true,
+      resumeReason: "needs-reauth",
+      authReason: "token_expired",
+      resumeFromSessionId: "previous-session",
+      workdir: "/repo",
+    });
+    await drive(acp, sessionId, "account_failover_resumed", {
+      resumeReason: "capacity",
+      workdir: "/repo",
+    });
+
+    const detail = must(await service.getTask(taskId), "detail");
+    expect(detail.sessions[0]).toMatchObject({
+      accountProviderId: "anthropic-subscription",
+      accountId: "acct-2",
+      accountLabel: "Backup",
+    });
+    expect(detail.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          eventType: "account_switched",
+          summary: "Switched coding account to Backup",
+        }),
+        expect.objectContaining({
+          eventType: "account_failover_resumed",
+          summary: "Resumed after a credential expiry (work preserved)",
+          data: expect.objectContaining({
+            resumable: true,
+            authReason: "token_expired",
+            resumeFromSessionId: "previous-session",
+          }),
+        }),
+        expect.objectContaining({
+          eventType: "account_failover_resumed",
+          summary: "Resumed after a capacity/overload condition (work preserved)",
+        }),
+      ]),
+    );
   });
 
   it("ignores events for sessions it does not own", async () => {
@@ -1441,6 +1725,148 @@ describe("OrchestratorTaskService — aggregation and bulk controls", () => {
     expect(status.activeSessionCount).toBe(2);
   });
 
+  it("reports account assignments, room rosters, readiness, and capacity", async () => {
+    const acp = new FakeAcp();
+    const { service, store } = makeServiceWithStore(acp, {
+      ELIZA_CODING_ACCOUNT_STRATEGY: "round-robin",
+      ELIZA_ACP_QUEUE_AGING_MS: "600000",
+    });
+    await service.start();
+    const task = await service.createTask(
+      createInput({
+        title: "Accounted task",
+        roomId: "11111111-2222-3333-4444-555555555555",
+        taskRoomId: "22222222-3333-4444-5555-666666666666",
+        ownerUserId: "33333333-4444-5555-6666-777777777777",
+      }),
+    );
+    await service.attachSession(task.id, {
+      sessionId: "accounted-session",
+      agentType: "claude",
+      workdir: "/repo",
+      status: "ready",
+      label: "Ada",
+      metadata: {
+        account: {
+          providerId: "anthropic-subscription",
+          accountId: "acct-1",
+          label: "Primary",
+        },
+      },
+    });
+    await drive(acp, "accounted-session", "usage_update", {
+      provider: "anthropic",
+      model: "claude-opus",
+      inputTokens: 5,
+      outputTokens: 7,
+      reasoningTokens: 3,
+      cacheTokens: 2,
+      costUsd: 0.01,
+      state: "measured",
+    });
+
+    const accountOverview = await service.getAccountOverview();
+    expect(accountOverview.strategy).toBe("round-robin");
+    expect(accountOverview.assignments).toEqual([
+      expect.objectContaining({
+        taskTitle: "Accounted task",
+        sessionId: "accounted-session",
+        label: "Ada",
+        framework: "claude",
+        active: true,
+        accountProviderId: "anthropic-subscription",
+        accountId: "acct-1",
+        accountLabel: "Primary",
+        totalTokens: 15,
+        cacheTokens: 2,
+      }),
+    ]);
+
+    const roster = await service.getRoomRoster();
+    expect(roster.rooms).toEqual([
+      expect.objectContaining({
+        taskId: task.id,
+        taskRoomId: "22222222-3333-4444-5555-666666666666",
+        activeAgentCount: 1,
+        multiParty: false,
+        participants: expect.arrayContaining([
+          expect.objectContaining({ kind: "orchestrator" }),
+          expect.objectContaining({
+            kind: "user",
+            id: "33333333-4444-5555-6666-777777777777",
+          }),
+          expect.objectContaining({
+            kind: "sub_agent",
+            id: "accounted-session",
+            totalTokens: 15,
+            accountLabel: "Primary",
+          }),
+        ]),
+      }),
+    ]);
+    expect(service.getAccountReadiness().ready).toBe(false);
+
+    const capacity = await service.getCapacityOverview();
+    expect(capacity).toMatchObject({
+      maxSessions: 4,
+      systemHeadroom: 1,
+      freeWorkerSlots: 2,
+      queueDepth: 0,
+      queue: [],
+    });
+
+    const enqueuedAt = new Date(Date.now() - 1_000).toISOString();
+    await store.updateTask(task.id, {
+      metadata: {
+        admission: {
+          state: "queued",
+          enqueuedAt,
+          priorityAtEnqueue: "high",
+          spawnOpts: { agentType: "claude" },
+        },
+      },
+    });
+    (
+      service as unknown as { admissionQueue: string[] }
+    ).admissionQueue.push(task.id, "missing-task");
+
+    await expect(service.getAdmissionSnapshot()).resolves.toEqual({
+      queueDepth: 1,
+      queuedTaskIds: [task.id],
+    });
+    await expect(service.getCapacityOverview()).resolves.toMatchObject({
+      queueDepth: 1,
+      queue: [
+        {
+          taskId: task.id,
+          position: 1,
+          priority: "high",
+          enqueuedAt,
+        },
+      ],
+    });
+
+    await (
+      service as unknown as {
+        writeAdmission: (taskId: string, value: null) => Promise<void>;
+      }
+    ).writeAdmission(task.id, null);
+    expect((await store.getTask(task.id))?.task.metadata?.admission).toBeUndefined();
+
+    const noAcpService = makeService(undefined, {
+      ELIZA_ACP_QUEUE_AGING_MS: "600000",
+    });
+    await expect(noAcpService.getCapacityOverview()).resolves.toMatchObject({
+      maxSessions: 0,
+      systemHeadroom: 0,
+      activeWorkers: 0,
+      activeSystem: 0,
+      freeWorkerSlots: 0,
+      freeSystemSlots: 0,
+      queueDepth: 0,
+    });
+  });
+
   it("pauses every live task and resumes every paused one", async () => {
     const acp = new FakeAcp();
     const service = makeService(acp);
@@ -1470,6 +1896,7 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
     const warn = vi.fn();
     const rt = {
       getService: () => acp ?? null,
+      reportError: vi.fn(),
       logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() },
     } as never as IAgentRuntime;
     return { runtime: rt, warn };

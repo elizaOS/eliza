@@ -27,12 +27,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import {
-	findCodingDelegationActionName,
-	logger,
-	ModelType,
-	spawnWithTrajectoryLink,
-} from "@elizaos/core";
+import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import {
 	type AppControlClient,
 	createAppControlClient,
@@ -40,6 +35,7 @@ import {
 import { readStringOption } from "../params.js";
 import type { InstalledAppInfo } from "../types.js";
 import {
+	findAsyncCodingDelegationActionName,
 	preflightCodingDispatch,
 	resolveScaffoldTemplateDir,
 	templateMissingGuidance,
@@ -329,8 +325,12 @@ function readStringField(
 }
 
 function readTaskAgents(result: ActionResult | undefined): TaskAgentStatus[] {
-	const agents = result?.data?.agents;
-	if (!Array.isArray(agents)) return [];
+	const data = result?.data;
+	const agents = Array.isArray(data?.agents)
+		? data.agents
+		: data && typeof data === "object" && "sessionId" in data
+			? [data]
+			: [];
 
 	return agents.flatMap((agent): TaskAgentStatus[] => {
 		if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
@@ -405,7 +405,9 @@ async function dispatchCodingAgent({
 	originRoomId,
 	callback,
 }: DispatchInput): Promise<DispatchResult> {
-	const createTaskName = findCodingDelegationActionName(runtime.actions ?? []);
+	const createTaskName = findAsyncCodingDelegationActionName(
+		runtime.actions ?? [],
+	);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {
 		return {

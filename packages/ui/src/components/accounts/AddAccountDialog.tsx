@@ -37,6 +37,7 @@ import { client } from "../../api";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
+import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import {
@@ -50,6 +51,12 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
+import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
+import {
+  clearSubscriptionOAuth,
+  readSubscriptionOAuth,
+  writeSubscriptionOAuth,
+} from "./subscription-oauth-state";
 
 interface AddAccountDialogProps {
   open: boolean;
@@ -105,6 +112,14 @@ function initialStepForProvider(
   if (mode === "oauth") return "choose";
   if (mode === "external-cli" || mode === "unavailable") return "unavailable";
   return "apikey";
+}
+
+function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
+  return providerId === "anthropic-subscription"
+    ? "Claude account"
+    : providerId === "openai-codex"
+      ? "Codex account"
+      : "Subscription account";
 }
 
 function providerDisplayName(
@@ -177,23 +192,22 @@ export function AddAccountDialog({
   const [step, setStep] = useState<DialogStep>(
     initialStepForProvider(providerId),
   );
-  const [label, setLabel] = useState("");
+  const [label, setLabel] = useState(() => defaultOAuthLabel(providerId));
   const [apiKey, setApiKey] = useState("");
   const [oauthCode, setOauthCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [deviceCode, setDeviceCode] = useState<string | null>(null);
+  const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
+  // The sign-in URL shown for the user to open MANUALLY (Codex device
+  // verification URL, or Anthropic's claude.ai authorize URL). Only the Codex
+  // localhost-callback flow auto-opens a window; every other flow shows this
+  // link so the user opens it wherever they want (a second device / browser).
+  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
-  // Mirrors the `open` prop in a ref so async paths (`startOAuth` mid-
-  // await) can detect that the dialog was closed before
-  // `client.startAccountOAuth` resolved and immediately cancel the
-  // freshly-created server-side flow.
-  const openRef = useRef(open);
-  useEffect(() => {
-    openRef.current = open;
-  }, [open]);
-
+  const restoredSessionRef = useRef<string | null>(null);
   const closeEventSource = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -217,22 +231,32 @@ export function AddAccountDialog({
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
+    restoredSessionRef.current = null;
     setStep(initialStepForProvider(providerId));
-    setLabel("");
+    setLabel(defaultOAuthLabel(providerId));
     setApiKey("");
     setOauthCode("");
     setErrorMessage(null);
     setSessionId(null);
+    setDeviceCode(null);
+    setDeviceCodeCopied(false);
+    setOauthUrl(null);
   }, [closeEventSource, providerId]);
 
-  // Dialog open/close side-effects: when closed, cancel any in-flight
-  // OAuth flow so the server can release the loopback listener.
-  useEffect(() => {
-    if (!open) {
-      void cancelInflightFlow();
-      reset();
+  const copyDeviceCode = useCallback(async (code: string) => {
+    try {
+      await copyTextToClipboard(code);
+      setDeviceCodeCopied(true);
+    } catch {
+      setDeviceCodeCopied(false);
     }
-  }, [open, cancelInflightFlow, reset]);
+  }, []);
+
+  useEffect(() => {
+    if (!deviceCode) return;
+    setDeviceCodeCopied(false);
+    void copyDeviceCode(deviceCode);
+  }, [copyDeviceCode, deviceCode]);
 
   useEffect(() => {
     return () => {
@@ -247,6 +271,7 @@ export function AddAccountDialog({
       const source = openEventSource(url);
       eventSourceRef.current = source;
       if (!source) {
+        clearSubscriptionOAuth(providerId);
         setErrorMessage(
           t("accounts.add.oauth.sseUnreachable", {
             defaultValue:
@@ -283,6 +308,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
+            clearSubscriptionOAuth(providerId);
             onCreated(data.account);
             onClose();
           } else if (
@@ -293,6 +319,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
+            clearSubscriptionOAuth(providerId);
             setErrorMessage(
               data.error ??
                 t(`accounts.add.oauth.${data.status}`, {
@@ -339,68 +366,83 @@ export function AddAccountDialog({
     [closeEventSource, onClose, onCreated, providerId, t],
   );
 
-  const startOAuth = useCallback(async () => {
-    if (subscriptionAddMode !== "oauth") {
-      setStep("unavailable");
-      return;
-    }
-    setErrorMessage(null);
-    setStep("oauth-starting");
+  useEffect(() => {
+    if (!open) return;
+    const pending = readSubscriptionOAuth(providerId);
+    if (!pending || restoredSessionRef.current === pending.sessionId) return;
+    restoredSessionRef.current = pending.sessionId;
+    sessionIdRef.current = pending.sessionId;
+    setSessionId(pending.sessionId);
+    setDeviceCode(pending.deviceCode ?? null);
+    setStep(
+      pending.phase === "need-code" ? "oauth-need-code" : "oauth-waiting",
+    );
+    subscribeToFlow(pending.sessionId);
+  }, [open, providerId, subscribeToFlow]);
 
-    // Open the popup BEFORE the await so the browser sees a synchronous
-    // user-gesture-triggered window.open. Once we have the URL, navigate
-    // it. preOpenWindow returns null on desktop (Electrobun handles
-    // routing via the IPC call inside openExternalUrl).
-    const win = preOpenWindow();
-    try {
-      const flow = await client.startAccountOAuth(providerId, {
-        label: label.trim(),
-      });
-      // The dialog might have been closed between user clicking "Sign
-      // in" and the server returning the flow handle. If so, the
-      // server-side OAuth listener is orphaned — cancel it explicitly
-      // so the loopback port releases immediately instead of timing
-      // out in 5 minutes.
-      if (!openRef.current) {
-        try {
-          await client.cancelAccountOAuth(providerId, {
-            sessionId: flow.sessionId,
-          });
-        } catch {
-          // Best-effort.
+  const startOAuth = useCallback(
+    async (mode: "localhost" | "device") => {
+      if (subscriptionAddMode !== "oauth") {
+        setStep("unavailable");
+        return;
+      }
+      setErrorMessage(null);
+      setStep("oauth-starting");
+
+      // Auto-open a real browser window ONLY for the Codex localhost-callback
+      // flow, where the :1455 listener catches the redirect and completes login
+      // hands-free. Every other flow — Codex device code, and Anthropic's
+      // console-callback paste — shows a copyable link instead of hijacking a
+      // tab, so the user signs in wherever they want and enters/pastes the code.
+      // (preOpenWindow must run synchronously in the click gesture.)
+      const opensWindow = mode === "localhost" && providerId === "openai-codex";
+      const win = opensWindow ? preOpenWindow() : null;
+      try {
+        const flow = await client.startAccountOAuth(providerId, {
+          label: label.trim(),
+          mode,
+        });
+        sessionIdRef.current = flow.sessionId;
+        restoredSessionRef.current = flow.sessionId;
+        setSessionId(flow.sessionId);
+        setDeviceCode(flow.userCode ?? null);
+        // Show the sign-in link for every non-auto-open flow.
+        setOauthUrl(opensWindow ? null : (flow.authUrl ?? null));
+        writeSubscriptionOAuth({
+          providerId,
+          sessionId: flow.sessionId,
+          mode,
+          phase: flow.needsCodeSubmission ? "need-code" : "waiting",
+          ...(flow.userCode ? { deviceCode: flow.userCode } : {}),
+          startedAt: Date.now(),
+        });
+        if (flow.needsCodeSubmission) {
+          setStep("oauth-need-code");
+        } else {
+          setStep("oauth-waiting");
         }
+        subscribeToFlow(flow.sessionId);
+        if (opensWindow) {
+          navigatePreOpenedWindow(win, flow.authUrl);
+        }
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error && err.message
+            ? err.message
+            : t("accounts.add.oauth.startFailed", {
+                defaultValue: "Failed to start login flow.",
+              }),
+        );
+        setStep("error");
         try {
           win?.close();
         } catch {
           // Cross-origin — ignore.
         }
-        return;
       }
-      navigatePreOpenedWindow(win, flow.authUrl);
-      sessionIdRef.current = flow.sessionId;
-      setSessionId(flow.sessionId);
-      if (flow.needsCodeSubmission) {
-        setStep("oauth-need-code");
-      } else {
-        setStep("oauth-waiting");
-      }
-      subscribeToFlow(flow.sessionId);
-    } catch (err) {
-      setErrorMessage(
-        err instanceof Error && err.message
-          ? err.message
-          : t("accounts.add.oauth.startFailed", {
-              defaultValue: "Failed to start login flow.",
-            }),
-      );
-      setStep("error");
-      try {
-        win?.close();
-      } catch {
-        // Cross-origin — ignore.
-      }
-    }
-  }, [label, providerId, subscribeToFlow, subscriptionAddMode, t]);
+    },
+    [label, providerId, subscribeToFlow, subscriptionAddMode, t],
+  );
 
   const submitOAuthCode = useCallback(
     async (event: FormEvent) => {
@@ -459,9 +501,11 @@ export function AddAccountDialog({
   );
 
   const handleClose = useCallback(() => {
+    clearSubscriptionOAuth(providerId);
     void cancelInflightFlow();
+    reset();
     onClose();
-  }, [cancelInflightFlow, onClose]);
+  }, [cancelInflightFlow, onClose, providerId, reset]);
 
   const dialogDescription =
     subscriptionAddMode === "oauth"
@@ -541,7 +585,12 @@ export function AddAccountDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) handleClose();
+        // Opening an external OAuth page can produce a transient dismiss from
+        // the dialog primitive as focus leaves this window. During a flow that
+        // is not a user cancellation: keep the controlled dialog and its code
+        // entry state alive. The visible Cancel button remains the one explicit
+        // operation that clears persisted state and cancels the server flow.
+        if (!next && step === "choose") handleClose();
       }}
     >
       <DialogContent className="max-w-md">
@@ -557,19 +606,47 @@ export function AddAccountDialog({
 
         {step === "choose" ? (
           <div className="grid gap-3 py-2">
-            {labelInput}
+            <p className="text-xs text-muted">
+              The connected account's email address will be used as its name.
+            </p>
             <Button
               type="button"
               variant="default"
-              disabled={!label.trim()}
-              onClick={() => void startOAuth()}
+              onClick={() =>
+                void startOAuth(
+                  subscriptionOAuthModeForHostname(window.location.hostname),
+                )
+              }
               className="h-10"
             >
-              {t("accounts.add.signIn", {
-                defaultValue: `Sign in with ${providerDisplayName(providerId, t)}`,
-                provider: providerDisplayName(providerId, t),
-              })}
+              {providerId === "openai-codex"
+                ? subscriptionOAuthModeForHostname(window.location.hostname) ===
+                  "localhost"
+                  ? "Log in with localhost callback"
+                  : "Log in with device code"
+                : "Log in and paste a code"}
             </Button>
+            {/*
+              Manual device-code override. The primary button auto-picks by
+              hostname, but that heuristic can't tell a real localhost from a
+              TUNNELED localhost (SSH -L / port-forward): the browser is remote
+              yet the URL is `localhost`, so the loopback :1455 callback lands on
+              the wrong machine. This override lets Codex users force the device
+              flow (visit auth.openai.com/codex/device + enter a code) without
+              needing to reach the app on a non-localhost address.
+            */}
+            {providerId === "openai-codex" &&
+            subscriptionOAuthModeForHostname(window.location.hostname) ===
+              "localhost" ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void startOAuth("device")}
+                className="h-8 text-xs text-muted hover:text-txt"
+              >
+                Use a device code instead (for SSH tunnels / another browser)
+              </Button>
+            ) : null}
             {/* API-key path is intentionally hidden for subscription providers. */}
           </div>
         ) : null}
@@ -585,15 +662,61 @@ export function AddAccountDialog({
 
         {step === "oauth-waiting" ? (
           <div className="grid gap-3 py-3 text-sm text-muted">
-            <div className="flex items-center gap-3">
-              <Spinner className="h-4 w-4" />
-              <span>
-                {t("accounts.add.oauth.waiting", {
-                  defaultValue:
-                    "Waiting for browser… Complete the sign-in there.",
-                })}
-              </span>
-            </div>
+            {deviceCode ? (
+              // Device flow: show the verification URL + code as instructions.
+              // We deliberately do NOT auto-open a browser — the user opens the
+              // link wherever they want (a second device, another browser).
+              <div className="grid gap-3">
+                <div className="grid gap-1">
+                  <p className="text-xs text-txt">
+                    1. Open this link in your browser and sign in
+                  </p>
+                  <a
+                    href={oauthUrl ?? "https://auth.openai.com/codex/device"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="select-all break-all text-xs font-medium text-txt underline underline-offset-2 hover:text-muted"
+                  >
+                    {oauthUrl ?? "https://auth.openai.com/codex/device"}
+                  </a>
+                </div>
+                <div className="grid gap-1">
+                  <p className="text-xs text-txt">
+                    2. Enter this one-time code after you sign in (expires in
+                    ~15 minutes)
+                  </p>
+                  <div className="rounded border border-border bg-card p-3 text-center">
+                    <code className="select-all text-lg font-semibold tracking-widest text-txt">
+                      {deviceCode}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mx-auto mt-2 h-7 text-xs"
+                      onClick={() => void copyDeviceCode(deviceCode)}
+                    >
+                      {deviceCodeCopied ? "Copied to clipboard" : "Copy code"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Spinner className="h-3.5 w-3.5" />
+                  <span>Waiting for you to approve in your browser…</span>
+                </div>
+              </div>
+            ) : (
+              // Localhost callback flow: a real browser window was opened.
+              <div className="flex items-center gap-3">
+                <Spinner className="h-4 w-4" />
+                <span>
+                  {t("accounts.add.oauth.waiting", {
+                    defaultValue:
+                      "Waiting for browser… Complete the sign-in there.",
+                  })}
+                </span>
+              </div>
+            )}
             {sessionId ? (
               <p className="text-xs text-muted">
                 {t("accounts.add.oauth.sessionHint", {
@@ -607,12 +730,34 @@ export function AddAccountDialog({
 
         {step === "oauth-need-code" ? (
           <form onSubmit={submitOAuthCode} className="grid gap-3 py-2">
-            <p className="text-xs text-muted">
-              {t("accounts.add.oauth.codeHint", {
-                defaultValue:
-                  "Auto-redirect didn't reach us. Paste the code (or full redirect URL) from the browser.",
-              })}
-            </p>
+            {/* Show the sign-in link to open manually (not auto-opened) so the
+                user can sign in from any browser / a second device, then paste
+                the code back here. */}
+            {oauthUrl ? (
+              <div className="grid gap-1">
+                <p className="text-xs text-txt">
+                  1. Open this link and sign in
+                </p>
+                <a
+                  href={oauthUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="select-all break-all text-xs font-medium text-txt underline underline-offset-2 hover:text-muted"
+                >
+                  {oauthUrl}
+                </a>
+                <p className="mt-1 text-xs text-txt">
+                  2. Paste the code (or full redirect URL) it gives you
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted">
+                {t("accounts.add.oauth.codeHint", {
+                  defaultValue:
+                    "Paste the code (or full redirect URL) from the browser.",
+                })}
+              </p>
+            )}
             <Input
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}

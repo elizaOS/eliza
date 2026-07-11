@@ -10,6 +10,7 @@ import {
   cockpitModeModel,
   cockpitModeProviderSource,
   cockpitModeToProviderPolicy,
+  normalizeCockpitSpawnTarget,
 } from "./cockpit-modes";
 
 describe("cockpit-modes lowering", () => {
@@ -127,6 +128,33 @@ describe("cockpit-modes lowering", () => {
       }).title;
       expect(t.length).toBeLessThanOrEqual(80);
       expect(t.endsWith("…")).toBe(true);
+    });
+  });
+
+  describe("normalizeCockpitSpawnTarget", () => {
+    it("returns undefined when both fields are blank or whitespace", () => {
+      expect(normalizeCockpitSpawnTarget({})).toBeUndefined();
+      expect(
+        normalizeCockpitSpawnTarget({ repo: "   ", workdir: "  " }),
+      ).toBeUndefined();
+    });
+
+    it("trims and keeps only the fields with content", () => {
+      expect(normalizeCockpitSpawnTarget({ repo: "  owner/repo  " })).toEqual({
+        repo: "owner/repo",
+      });
+      expect(
+        normalizeCockpitSpawnTarget({
+          repo: "owner/repo",
+          workdir: " packages/ui ",
+        }),
+      ).toEqual({ repo: "owner/repo", workdir: "packages/ui" });
+    });
+
+    it("still returns a workdir-only target (caller enforces the repo requirement)", () => {
+      expect(normalizeCockpitSpawnTarget({ workdir: "packages/ui" })).toEqual({
+        workdir: "packages/ui",
+      });
     });
   });
 });

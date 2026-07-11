@@ -9,6 +9,10 @@ import * as path from "node:path";
 import type { Content, HandlerCallback, Memory } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  RESUME_CONTEXT_METADATA_KEY,
+  readResumeContext,
+} from "../../src/services/resume-context.js";
+import {
   setHostResolver,
   setPinnedTransport,
 } from "../../src/services/ssrf-guard.js";
@@ -28,6 +32,7 @@ const USER = "ffffffff-1111-2222-3333-444444444444";
 const PARENT_MSG = "99999999-8888-7777-6666-555555555555";
 const CONNECTOR_MSG = "123456789012345678";
 const SESSION_ID = "01234567-89ab-cdef-0123-456789abcdef";
+const BRIDGE_SYMBOL = Symbol.for("eliza.account-pool.coding-agent.v1");
 
 interface CapturedHandler {
   fn?: (sessionId: string, event: string, data: unknown) => void;
@@ -75,8 +80,10 @@ function makeAcpService(session: SessionInfo): {
     listSessions: ReturnType<typeof vi.fn>;
     updateSessionMetadata: ReturnType<typeof vi.fn>;
     getChangedPaths: ReturnType<typeof vi.fn>;
+    getSessionOutput: ReturnType<typeof vi.fn>;
     stopSession: ReturnType<typeof vi.fn>;
     sendToSession: ReturnType<typeof vi.fn>;
+    emitSessionEvent: ReturnType<typeof vi.fn>;
   };
   emit: (sessionId: string, event: string, data: unknown) => void;
 } {
@@ -99,7 +106,9 @@ function makeAcpService(session: SessionInfo): {
       },
     ),
     getChangedPaths: vi.fn((_id: string) => [] as string[]),
+    getSessionOutput: vi.fn(async (_id: string, _limit?: number) => ""),
     sendToSession: vi.fn(async (_id: string, _input: string) => ({})),
+    emitSessionEvent: vi.fn(),
   };
   return {
     service,
@@ -107,6 +116,35 @@ function makeAcpService(session: SessionInfo): {
       captured.fn?.(sessionId, event, data);
     },
   };
+}
+
+function installHealthyAccountBridge(agentType: string): {
+  markRateLimited: ReturnType<typeof vi.fn>;
+  markNeedsReauth: ReturnType<typeof vi.fn>;
+} {
+  const markRateLimited = vi.fn(async () => undefined);
+  const markNeedsReauth = vi.fn(async () => undefined);
+  (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+    describe: () => ({
+      [agentType.toLowerCase()]: [
+        {
+          providerId: "anthropic-subscription",
+          total: 2,
+          enabled: 2,
+          healthy: 1,
+        },
+      ],
+    }),
+    select: async () => null,
+    markRateLimited,
+    markNeedsReauth,
+    recordUsage: async () => undefined,
+  };
+  return { markRateLimited, markNeedsReauth };
+}
+
+function clearAccountBridge(): void {
+  delete (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL];
 }
 
 function makeRuntime(opts: {
@@ -230,6 +268,7 @@ describe("SubAgentRouter", () => {
 
   afterEach(() => {
     setHostResolver();
+    clearAccountBridge();
   });
 
   it("posts a synthetic memory back to the origin room on task_complete", async () => {
@@ -319,6 +358,8 @@ describe("SubAgentRouter", () => {
         },
       ],
     });
+    expect(metadata?.resumeReason).toBeUndefined();
+    expect(metadata?.resumable).toBeUndefined();
 
     await router.stop();
   });
@@ -2584,6 +2625,89 @@ describe("SubAgentRouter — deterministic session_state_lost recovery", () => {
     expect(metadata?.subAgentEvent).toBe("state_lost_exhausted");
     expect(metadata?.subAgentStatus).toBe("failed");
     expect(posted?.content?.text).toContain("could not be recovered");
+  });
+});
+
+describe("SubAgentRouter — account failover resume", () => {
+  it("spawns a canonical resumed successor from authoritative predecessor progress", async () => {
+    const marks = installHealthyAccountBridge("claude");
+    const session = makeSession({
+      agentType: "claude",
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+        initialTask: "Fix the failing test in foo.ts",
+        account: {
+          providerId: "anthropic-subscription",
+          accountId: "acct-1",
+          label: "Work",
+          source: "oauth",
+          strategy: "least-used",
+        },
+      },
+    });
+    const acp = makeAcpService(session);
+    acp.service.getSessionOutput.mockResolvedValueOnce(
+      "Edited src/foo.ts\nRan bun test --filter foo",
+    );
+    const { runtime, handleMessage, spawnSession } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "error", {
+      message: "HTTP 429: rate limit exceeded",
+      summary: "stale payload progress",
+    });
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    expect(marks.markRateLimited).toHaveBeenCalledTimes(1);
+    expect(acp.service.getSessionOutput).toHaveBeenCalledWith(SESSION_ID, 120);
+    expect(spawnSession).toHaveBeenCalledTimes(1);
+    const spawnArg = spawnSession.mock.calls[0]?.[0] as {
+      initialTask?: string;
+      workdir?: string;
+      metadata?: Record<string, unknown>;
+    };
+    expect(spawnArg.workdir).toBe("/tmp/wf");
+    expect(spawnArg.initialTask).toContain("RESUMING AFTER FAILOVER");
+    expect(spawnArg.initialTask).toContain("Do NOT start over");
+    expect(spawnArg.initialTask).toContain("Edited src/foo.ts");
+    expect(spawnArg.initialTask).toContain("Ran bun test --filter foo");
+    expect(spawnArg.initialTask).not.toContain("stale payload progress");
+    expect(spawnArg.metadata?.initialTask).toBe(
+      "Fix the failing test in foo.ts",
+    );
+    expect(spawnArg.metadata?.retryOfSessionId).toBe(SESSION_ID);
+
+    const marker = readResumeContext(
+      spawnArg.metadata?.[RESUME_CONTEXT_METADATA_KEY],
+    );
+    expect(marker).toMatchObject({
+      kind: "rate-limit-failover",
+      reason: "rate-limited",
+      fromSessionId: SESSION_ID,
+      workdir: "/tmp/wf",
+      lastProgress: "Edited src/foo.ts\nRan bun test --filter foo",
+    });
+    expect(acp.service.emitSessionEvent).toHaveBeenCalledWith(
+      SESSION_ID,
+      "account_failover_resumed",
+      expect.objectContaining({
+        successorSessionId: "retry-session-id",
+        resumable: true,
+        resumeReason: "rate-limited",
+        resumeFromSessionId: SESSION_ID,
+        workdir: "/tmp/wf",
+      }),
+    );
+    expect(acp.service.stopSession).toHaveBeenCalledWith(SESSION_ID);
+    expect(handleMessage).not.toHaveBeenCalled();
   });
 });
 

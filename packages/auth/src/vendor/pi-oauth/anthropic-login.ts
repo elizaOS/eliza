@@ -40,6 +40,64 @@ export interface AnthropicOAuthFlowHandle {
   cancel: (reason?: string) => void;
 }
 
+function parseAnthropicAuthorizationInput(authCode: string): {
+  code: string;
+  verifier: string;
+} {
+  const input = authCode.trim();
+  if (URL.canParse(input)) {
+    const callback = new URL(input);
+    if (
+      callback.hostname === "localhost" ||
+      callback.hostname === "127.0.0.1"
+    ) {
+      const code = callback.searchParams.get("code");
+      const verifier = callback.searchParams.get("state");
+      if (code && verifier) return { code, verifier };
+    }
+  }
+  const [code, verifier] = input.split("#", 2);
+  if (!code || !verifier) {
+    throw new Error(
+      "Anthropic authorization input must be code#state or a localhost callback URL",
+    );
+  }
+  return { code, verifier };
+}
+
+export async function exchangeAnthropicAuthorizationCode(
+  authCode: string,
+): Promise<AnthropicOAuthCredentials> {
+  const { code, verifier } = parseAnthropicAuthorizationInput(authCode);
+  const tokenResponse = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      grant_type: "authorization_code",
+      client_id: CLIENT_ID,
+      code,
+      state: verifier,
+      redirect_uri: REDIRECT_URI,
+      code_verifier: verifier,
+    }),
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!tokenResponse.ok) {
+    const errText = await tokenResponse.text();
+    throw new Error(`Token exchange failed: ${errText}`);
+  }
+  const tokenData = (await tokenResponse.json()) as {
+    refresh_token: string;
+    access_token: string;
+    expires_in: number;
+  };
+  return {
+    refresh: tokenData.refresh_token,
+    access: tokenData.access_token,
+    expires: Date.now() + tokenData.expires_in * 1000 - 5 * 60 * 1000,
+  };
+}
+
 /**
  * Start an Anthropic OAuth flow. Returns immediately with the auth
  * URL and a `submitCode` hook. The token exchange happens inside
@@ -68,42 +126,13 @@ export async function startAnthropicOAuthFlowRaw(): Promise<AnthropicOAuthFlowHa
 
   const completion = (async (): Promise<AnthropicOAuthCredentials> => {
     const authCode = await codePromise;
-    const splits = authCode.split("#");
-    const code = splits[0];
-    const state = splits[1];
-    if (state !== verifier) {
+    const parsed = parseAnthropicAuthorizationInput(authCode);
+    if (parsed.verifier !== verifier) {
       throw new Error(
         "Anthropic OAuth state mismatch: returned state does not match the request verifier",
       );
     }
-    const tokenResponse = await fetch(TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        grant_type: "authorization_code",
-        client_id: CLIENT_ID,
-        code,
-        state,
-        redirect_uri: REDIRECT_URI,
-        code_verifier: verifier,
-      }),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!tokenResponse.ok) {
-      const errText = await tokenResponse.text();
-      throw new Error(`Token exchange failed: ${errText}`);
-    }
-    const tokenData = (await tokenResponse.json()) as {
-      refresh_token: string;
-      access_token: string;
-      expires_in: number;
-    };
-    const expiresAt = Date.now() + tokenData.expires_in * 1000 - 5 * 60 * 1000;
-    return {
-      refresh: tokenData.refresh_token,
-      access: tokenData.access_token,
-      expires: expiresAt,
-    };
+    return exchangeAnthropicAuthorizationCode(authCode);
   })();
 
   return {

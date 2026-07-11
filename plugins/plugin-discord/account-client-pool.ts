@@ -24,6 +24,13 @@ export interface DiscordAccountClientState {
 	dynamicChannelIds: Set<string>;
 	clientReadyPromise: Promise<void> | null;
 	loginFailed: boolean;
+	// Reject hook for the pending initial-login readiness wait. `stop()` uses it
+	// to settle callers that are blocked while discord.js is still connecting or
+	// while the retry loop is between attempts.
+	loginReadyReject?: (error: unknown) => void;
+	// Set during shutdown so late discord.js rejects/close events from a
+	// destroyed client cannot re-arm the initial-login retry loop.
+	loginStopRequested?: boolean;
 	// Pending initial-login retry, tracked so `stop()` can cancel an in-flight
 	// backoff and the ClientReady handler can clear a superseded retry.
 	loginRetryTimer?: ReturnType<typeof setTimeout>;

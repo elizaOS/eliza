@@ -23,6 +23,7 @@ import type {
   IncomingMessage as HttpIncomingMessage,
   ServerResponse as HttpServerResponse,
 } from "node:http";
+import type { AgentRuntime } from "@elizaos/core";
 import type { resolveServiceRoutingInConfig } from "@elizaos/shared";
 import type { Vault } from "@elizaos/vault";
 
@@ -56,6 +57,15 @@ export interface AgentHostBridge {
   startAccountPoolKeepAlive(): void;
   getBuildVariant(): "store" | "direct";
   isStoreBuild(): boolean;
+  /**
+   * Let an embedding host recognize its own HTTP authentication mechanism
+   * (for example app-core's browser session cookie). The standalone agent
+   * has no host session model, so the default remains deny-by-default.
+   */
+  isHttpRequestAuthorized?(
+    req: HttpIncomingMessage,
+    runtime: AgentRuntime | null,
+  ): Promise<boolean> | boolean;
   /**
    * Cloud-SSO popup handoff (`GET /pair?token=…`). Owned by the host; a
    * local-only agent never legitimately serves it, so absence is a no-op that

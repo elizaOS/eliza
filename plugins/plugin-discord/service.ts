@@ -210,6 +210,14 @@ const DISCORD_LOGIN_RETRY_MAX_MS = 60_000;
 // While an account is stuck in the failed state, warn at most this often so the
 // retry storm surfaces as an observable heartbeat without flooding the log.
 const DISCORD_LOGIN_HEARTBEAT_MIN_INTERVAL_MS = 30_000;
+const DISCORD_TERMINAL_INITIAL_LOGIN_CLOSE_CODES = new Set([
+	4004, // Authentication failed: the configured token cannot open a session.
+	4010, // Invalid shard: retrying the same shard parameters cannot succeed.
+	4011, // Sharding required: configuration must change before login can work.
+	4012, // Invalid API version: discord.js/package config must change.
+	4013, // Invalid intents: bot gateway intents are misconfigured.
+	4014, // Disallowed intents: privileged intents must be enabled in Discord.
+]);
 
 // Forward Content.metadata onto the persisted Memory (e.g. `transient: true`
 // for orchestrator status posts). Plain-object guard so arrays/instances don't leak through.
@@ -1461,6 +1469,7 @@ export class DiscordService extends Service implements IDiscordService {
 			dynamicChannelIds: new Set(),
 			clientReadyPromise: null,
 			loginFailed: false,
+			loginStopRequested: false,
 		};
 
 		this.accountPool.set(state);
@@ -1473,10 +1482,23 @@ export class DiscordService extends Service implements IDiscordService {
 		// first successful ClientReady (any attempt) and only rejects on a
 		// terminal post-ready onReady failure — never on a login rejection.
 		state.clientReadyPromise = new Promise<void>((resolve, reject) => {
+			state.loginReadyReject = reject;
 			this.attemptDiscordLogin(state, account.token, 0, resolve, reject);
 		});
 
 		state.clientReadyPromise.catch((error) => {
+			if (state.loginStopRequested) {
+				this.runtime.logger.debug(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						accountId: state.accountId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Discord client ready promise rejected during service stop",
+				);
+				return;
+			}
 			this.runtime.logger.debug(
 				{
 					src: "plugin:discord",
@@ -1511,6 +1533,11 @@ export class DiscordService extends Service implements IDiscordService {
 		resolve: () => void,
 		reject: (error: unknown) => void,
 	): void {
+		state.loginReadyReject = reject;
+		if (state.loginStopRequested) {
+			reject(this.createLoginStoppedError(state));
+			return;
+		}
 		if (!state.client) {
 			state.client = this.createDiscordJsClient();
 		}
@@ -1524,7 +1551,15 @@ export class DiscordService extends Service implements IDiscordService {
 		// one attempt — settle exactly once so we never both resolve and retry.
 		let settled = false;
 
-		const scheduleRetry = (error: unknown): void => {
+		const settleStopped = (): void => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			reject(this.createLoginStoppedError(state));
+		};
+
+		const settleTerminal = (error: unknown, closeCode?: number): void => {
 			if (settled) {
 				return;
 			}
@@ -1534,7 +1569,54 @@ export class DiscordService extends Service implements IDiscordService {
 				this._loginFailed = true;
 				this.syncLegacyDefaultAliases(state);
 			}
-			state.client?.destroy().catch((destroyError) => {
+			state.loginReadyReject = undefined;
+			state.client?.destroy().catch((destroyError: unknown) => {
+				// error-policy:J6 best-effort teardown of the client we are replacing
+				this.runtime.logger.debug(
+					`Discord client teardown after terminal login failure for account ${state.accountId}: ${
+						destroyError instanceof Error
+							? destroyError.message
+							: String(destroyError)
+					}`,
+				);
+			});
+			state.client = null;
+			const terminalError = this.createTerminalLoginError(
+				state,
+				error,
+				closeCode,
+			);
+			this.runtime.logger.error(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					accountId: state.accountId,
+					closeCode,
+					error:
+						terminalError instanceof Error
+							? terminalError.message
+							: String(terminalError),
+				},
+				"Discord initial login stopped on terminal gateway close",
+			);
+			reject(terminalError);
+		};
+
+		const scheduleRetry = (error: unknown): void => {
+			if (settled) {
+				return;
+			}
+			if (state.loginStopRequested) {
+				settleStopped();
+				return;
+			}
+			settled = true;
+			state.loginFailed = true;
+			if (state.accountId === this.defaultAccountId) {
+				this._loginFailed = true;
+				this.syncLegacyDefaultAliases(state);
+			}
+			state.client?.destroy().catch((destroyError: unknown) => {
 				// error-policy:J6 best-effort teardown of the client we are replacing
 				this.runtime.logger.debug(
 					`Discord client teardown after failed login for account ${state.accountId}: ${
@@ -1559,6 +1641,10 @@ export class DiscordService extends Service implements IDiscordService {
 			if (settled) {
 				return;
 			}
+			if (state.loginStopRequested) {
+				settleStopped();
+				return;
+			}
 			settled = true;
 			if (state.loginRetryTimer) {
 				clearTimeout(state.loginRetryTimer);
@@ -1571,6 +1657,7 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 			try {
 				await this.onReadyForAccount(state.accountId, readyClient);
+				state.loginReadyReject = undefined;
 				resolve();
 			} catch (error) {
 				// A post-ready onReady failure (backfill/voice scan) is terminal, not
@@ -1580,10 +1667,23 @@ export class DiscordService extends Service implements IDiscordService {
 						error instanceof Error ? error.message : String(error)
 					}`,
 				);
+				state.loginReadyReject = undefined;
 				reject(error);
 			}
 		});
-		client.once(Events.Error, (error) => {
+		client.once(Events.ShardDisconnect, (closeEvent: unknown) => {
+			if (state.loginStopRequested) {
+				settleStopped();
+				return;
+			}
+			const closeCode = this.getGatewayCloseCode(closeEvent);
+			if (this.isTerminalInitialLoginCloseCode(closeCode)) {
+				settleTerminal(closeEvent, closeCode);
+				return;
+			}
+			scheduleRetry(closeEvent);
+		});
+		client.once(Events.Error, (error: unknown) => {
 			this.runtime.logger.error(
 				`Discord client error for account ${state.accountId}: ${
 					error instanceof Error ? error.message : String(error)
@@ -1591,7 +1691,15 @@ export class DiscordService extends Service implements IDiscordService {
 			);
 			scheduleRetry(error);
 		});
-		client.login(token).catch((error) => {
+		client.login(token).catch((error: unknown) => {
+			const closeCode = this.getGatewayCloseCode(error);
+			if (
+				this.isTerminalInitialLoginCloseCode(closeCode) ||
+				this.isTerminalInitialLoginError(error)
+			) {
+				settleTerminal(error, closeCode);
+				return;
+			}
 			scheduleRetry(error);
 		});
 	}
@@ -1601,6 +1709,62 @@ export class DiscordService extends Service implements IDiscordService {
 	private computeLoginBackoffMs(attempt: number): number {
 		const scaled = DISCORD_LOGIN_RETRY_BASE_MS * 2 ** attempt;
 		return Math.min(scaled, DISCORD_LOGIN_RETRY_MAX_MS);
+	}
+
+	private getGatewayCloseCode(closeEvent: unknown): number | undefined {
+		if (
+			typeof closeEvent === "object" &&
+			closeEvent !== null &&
+			"code" in closeEvent
+		) {
+			const code = (closeEvent as { code?: unknown }).code;
+			return typeof code === "number" ? code : undefined;
+		}
+		return undefined;
+	}
+
+	private isTerminalInitialLoginCloseCode(
+		closeCode: number | undefined,
+	): boolean {
+		return (
+			closeCode !== undefined &&
+			DISCORD_TERMINAL_INITIAL_LOGIN_CLOSE_CODES.has(closeCode)
+		);
+	}
+
+	private isTerminalInitialLoginError(error: unknown): boolean {
+		if (typeof error !== "object" || error === null || !("code" in error)) {
+			return false;
+		}
+		return (error as { code?: unknown }).code === "TokenInvalid";
+	}
+
+	private createLoginStoppedError(state: DiscordAccountClientState): Error {
+		return new Error(
+			`Discord initial login stopped before ClientReady for account ${state.accountId}`,
+		);
+	}
+
+	private createTerminalLoginError(
+		state: DiscordAccountClientState,
+		error: unknown,
+		closeCode?: number,
+	): Error {
+		const reason =
+			typeof error === "object" && error !== null && "reason" in error
+				? (error as { reason?: unknown }).reason
+				: undefined;
+		const detail =
+			typeof reason === "string" && reason.length > 0
+				? reason
+				: error instanceof Error
+					? error.message
+					: String(error);
+		return new Error(
+			`Discord initial login terminal failure for account ${state.accountId}${
+				closeCode === undefined ? "" : ` (gateway close ${closeCode})`
+			}: ${detail}`,
+		);
 	}
 
 	/**
@@ -3768,6 +3932,16 @@ export class DiscordService extends Service implements IDiscordService {
 		this.timeouts = [];
 
 		const states = this.accountPool.list();
+		for (const state of states) {
+			state.loginStopRequested = true;
+			if (state.loginRetryTimer) {
+				clearTimeout(state.loginRetryTimer);
+				state.loginRetryTimer = undefined;
+			}
+			const rejectLoginReady = state.loginReadyReject;
+			state.loginReadyReject = undefined;
+			rejectLoginReady?.(this.createLoginStoppedError(state));
+		}
 		for (const state of states) {
 			state.channelDebouncer?.destroy();
 			state.channelDebouncer = undefined;
