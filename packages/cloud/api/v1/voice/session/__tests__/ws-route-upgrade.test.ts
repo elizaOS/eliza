@@ -21,16 +21,20 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const sharedRoot = new URL("../../../../shared/src", import.meta.url).href;
 
-import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 // Capture the real modules a sibling changed-test also imports for real, so the
 // non-isolated coverage lane is not poisoned (see the routes-and-auth test for
-// the full rationale). We restore them in afterAll.
-import * as realJwt from "@/lib/voice-session/jwt";
+// the full rationale). We restore them in afterAll. NOTE: we deliberately do
+// NOT stub `@/lib/voice-session/jwt` — ws/route.ts only passes the jwt fns as
+// CALLBACKS into the (mocked) attachVoiceWsHandler and never invokes them on
+// this path, so stubbing jwt would only risk leaking into jwt.test.ts's
+// round-trip in the shared coverage-lane process.
+import * as realRedisFactory from "@/lib/cache/redis-factory";
+import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
 
-const realJwtExports = { ...realJwt };
 const realSessionRegistryExports = { ...realSessionRegistry };
 const realVoiceUsageMeterExports = { ...realVoiceUsageMeter };
+const realRedisFactoryExports = { ...realRedisFactory };
 
 const attachCalls: Array<Record<string, unknown>> = [];
 let registrySize = 0;
@@ -61,8 +65,10 @@ const wsHandlerStub = () => ({
   attachVoiceWsHandler: (server: unknown, deps: Record<string, unknown>) => {
     attachCalls.push({ server, deps });
     // Exercise the deps the route wired so their closures are covered.
+    // Exercise the pure deps closures the route wired. NOTE: we do NOT invoke
+    // `claimToken` — it is the REAL claimVoiceSessionToken (jwt+redis) and would
+    // require live infra; the route only needs to hand it to the ws-handler.
     (deps.admitSession as () => boolean)();
-    (deps.claimToken as (jti: string, exp: number) => unknown)("jti", 30);
     (
       deps.buildSession as (a: {
         claims: Record<string, string>;
@@ -97,15 +103,6 @@ mock.module(
   registryStub,
 );
 
-const jwtStub = () => ({
-  ...realJwtExports,
-  claimVoiceSessionToken: async () => ({ ok: true }),
-  isVoiceSessionTokenRevoked: async () => false,
-  revokeVoiceSessionToken: async () => undefined,
-});
-mock.module("@/lib/voice-session/jwt", jwtStub);
-mock.module(`${sharedRoot}/lib/voice-session/jwt.ts`, jwtStub);
-
 const usageMeterStub = () => ({
   ...realVoiceUsageMeterExports,
   InMemoryVoiceUsageStore: class {},
@@ -115,9 +112,11 @@ mock.module("@/lib/services/voice-usage-meter", usageMeterStub);
 mock.module(`${sharedRoot}/lib/services/voice-usage-meter.ts`, usageMeterStub);
 
 mock.module("@/lib/cache/redis-factory", () => ({
+  ...realRedisFactoryExports,
   buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
 }));
 mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, () => ({
+  ...realRedisFactoryExports,
   buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
 }));
 
@@ -173,8 +172,6 @@ afterEach(() => {
 });
 
 afterAll(() => {
-  mock.module("@/lib/voice-session/jwt", () => realJwtExports);
-  mock.module(`${sharedRoot}/lib/voice-session/jwt.ts`, () => realJwtExports);
   mock.module(
     "@/lib/voice-session/session-registry",
     () => realSessionRegistryExports,
@@ -190,6 +187,11 @@ afterAll(() => {
   mock.module(
     `${sharedRoot}/lib/services/voice-usage-meter.ts`,
     () => realVoiceUsageMeterExports,
+  );
+  mock.module("@/lib/cache/redis-factory", () => realRedisFactoryExports);
+  mock.module(
+    `${sharedRoot}/lib/cache/redis-factory.ts`,
+    () => realRedisFactoryExports,
   );
 });
 
