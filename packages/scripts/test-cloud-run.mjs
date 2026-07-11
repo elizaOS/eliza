@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-
-// Cross-platform replacement for the previous `test:cloud` shell pipeline,
-// which used `printf '...\n'` (broken under bun's embedded shell on Windows
-// — outputs literal `n` instead of newlines) and required POSIX-shell
-// `$OLDPWD` semantics.
+/**
+ * Runs cloud unit suites in bounded Bun process batches across platforms.
+ * Fresh processes cap PGlite/WASM memory and isolate process-global module
+ * mocks; argument budgets keep the same runner compatible with Windows.
+ */
 
 import { spawnSync } from "node:child_process";
 import {
@@ -104,6 +104,19 @@ const cloudServicesRoot = path.join(repoRoot, "packages", "cloud", "services");
 // no lane. Exclude `test/` (the e2e harness: its own `test:e2e` lane + a live
 // server) and build output.
 const cloudApiRoot = path.join(repoRoot, "packages", "cloud", "api");
+// Bun's module mocks are process-global even with `--isolate`. This harness
+// replaces broad voice-session dependencies, so sharing its process would
+// corrupt otherwise unrelated cloud tests in the same batch.
+const PROCESS_ISOLATED_TESTS = new Set([
+  path.join(
+    cloudApiRoot,
+    "v1",
+    "voice",
+    "session",
+    "__tests__",
+    "harness-real-server.test.ts",
+  ),
+]);
 // `test/` is the api e2e harness (own `test:e2e` lane + a live server); the
 // rest is build output / vendored deps that carry no unit lane.
 const EXCLUDED_API_DIRS = new Set(["test", "node_modules", "dist", ".turbo"]);
@@ -219,7 +232,16 @@ function chunkByBudget(files) {
   if (current.length > 0) batches.push(current);
   return batches;
 }
-const batches = chunkByBudget(allTestFiles);
+const sharedProcessTests = allTestFiles.filter(
+  (file) => !PROCESS_ISOLATED_TESTS.has(file),
+);
+const isolatedProcessTests = allTestFiles.filter((file) =>
+  PROCESS_ISOLATED_TESTS.has(file),
+);
+const batches = [
+  ...chunkByBudget(sharedProcessTests),
+  ...isolatedProcessTests.map((file) => [file]),
+];
 
 function formatBatchFiles(batch) {
   return batch.map((file) => `  - ${path.relative(repoRoot, file)}`).join("\n");
