@@ -199,6 +199,7 @@ jobs:
             plugins/plugin-app-control
             plugins/plugin-agent-skills
             plugins/plugin-health
+            plugins/plugin-wallet
             plugins/plugin-pdf
             plugins/plugin-telegram
             plugins/plugin-whatsapp
