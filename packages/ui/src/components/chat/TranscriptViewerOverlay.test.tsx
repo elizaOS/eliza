@@ -426,7 +426,7 @@ describe("TranscriptViewerOverlay", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
-  it("opens the Transcripts view to listen, and closes", async () => {
+  it("opens the Knowledge view, and closes", async () => {
     const onClose = vi.fn();
     render(
       <TranscriptViewerOverlay
@@ -434,9 +434,9 @@ describe("TranscriptViewerOverlay", () => {
         onClose={onClose}
       />,
     );
-    await waitFor(() => screen.getByTestId("transcript-open-in-transcripts"));
-    fireEvent.click(screen.getByTestId("transcript-open-in-transcripts"));
-    expect(navigateBrowserPath).toHaveBeenCalledWith("/apps/transcripts");
+    await waitFor(() => screen.getByTestId("transcript-open-in-knowledge"));
+    fireEvent.click(screen.getByTestId("transcript-open-in-knowledge"));
+    expect(navigateBrowserPath).toHaveBeenCalledWith("/character/documents");
     expect(onClose).toHaveBeenCalled();
   });
 

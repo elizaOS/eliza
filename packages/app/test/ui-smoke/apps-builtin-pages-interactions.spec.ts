@@ -156,12 +156,14 @@ test("stream view renders the offline status surface", async ({ page }) => {
 // NOTE: /apps/fine-tuning (the "training" view) is interaction-covered by
 // apps-model-training-interactions.spec.ts — not duplicated here.
 
-test("rolodex renders the views catalog with view cards", async ({ page }) => {
+test("rolodex resolves to the launcher with registered view tiles", async ({
+  page,
+}) => {
   await openAppPath(page, "/rolodex");
-  await expect(page.getByTestId("views-catalog-section").first()).toBeVisible({
+  await expect(page.getByTestId("launcher")).toBeVisible({
     timeout: 60_000,
   });
-  await expect
-    .poll(() => page.locator('[data-testid^="view-card-"]').count())
-    .toBeGreaterThan(0);
+  await expect(
+    page.locator('[data-testid^="launcher-tile-"]').first(),
+  ).toBeVisible();
 });

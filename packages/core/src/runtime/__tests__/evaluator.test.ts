@@ -749,7 +749,7 @@ describe("envelope-then-prose repair (leading fenced verdict + answer)", () => {
 	it("takes the fenced envelope as the verdict and the prose as messageToUser", () => {
 		const raw = [
 			"```json",
-			'{',
+			"{",
 			'  "success": true,',
 			'  "decision": "FINISH",',
 			'  "thought": "Retrieved the commit info."',

@@ -7,7 +7,6 @@ import {
   assertReadyChecks,
   hideContinuousChatOverlay,
   installDefaultAppRoutes,
-  openAppPath,
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
@@ -150,9 +149,22 @@ const PLUGIN_HEADERS: NativePluginHeader[] = [
     "openDialer",
     "listRecentCalls",
     "saveCallTranscript",
+    "checkPermissions",
+    "requestPermissions",
   ]),
-  header("ElizaMessages", ["sendSms", "listMessages"]),
-  header("ElizaContacts", ["listContacts", "createContact", "importVCard"]),
+  header("ElizaMessages", [
+    "sendSms",
+    "listMessages",
+    "checkPermissions",
+    "requestPermissions",
+  ]),
+  header("ElizaContacts", [
+    "listContacts",
+    "createContact",
+    "importVCard",
+    "checkPermissions",
+    "requestPermissions",
+  ]),
   header("ElizaSystem", [
     "getStatus",
     "requestRole",
@@ -283,6 +295,7 @@ async function installDeterministicNativeBridge(
   await page.addInitScript(
     ({ headers, nativePlatform: isNativePlatform, qr }) => {
       const win = window as FixtureWindow;
+      const browserFetch = win.fetch.bind(win);
       const fixedNow = Date.parse("2026-01-01T12:00:00.000Z");
       const preferences = new Map<string, string>();
       const preferenceStoragePrefix = "__elizaNativePreference:";
@@ -623,11 +636,11 @@ async function installDeterministicNativeBridge(
         };
       }
 
-      function pluginResult(
+      async function pluginResult(
         pluginName: string,
         methodName: string,
         options: Record<string, unknown> | undefined,
-      ): unknown {
+      ): Promise<unknown> {
         if (pluginName === "App") {
           if (methodName === "getLaunchUrl") return { url: "" };
           if (methodName === "getState") return { isActive: true };
@@ -684,11 +697,24 @@ async function installDeterministicNativeBridge(
             return { available: true, token: "ui-smoke-local-agent-token" };
           }
           if (methodName === "request") {
+            const response = await browserFetch(
+              new URL(String(options?.path ?? "/"), win.location.origin),
+              {
+                method: String(options?.method ?? "GET"),
+                headers: (options?.headers as Record<string, string>) ?? {},
+                body:
+                  typeof options?.body === "string" ? options.body : undefined,
+              },
+            );
+            const responseHeaders: Record<string, string> = {};
+            response.headers.forEach((value, key) => {
+              responseHeaders[key] = value;
+            });
             return {
-              status: 200,
-              statusText: "OK",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ ok: true }),
+              status: response.status,
+              statusText: response.statusText,
+              headers: responseHeaders,
+              body: await response.text(),
             };
           }
           if (methodName === "chat") {
@@ -707,6 +733,12 @@ async function installDeterministicNativeBridge(
           };
         }
         if (pluginName === "ElizaPhone") {
+          if (
+            methodName === "checkPermissions" ||
+            methodName === "requestPermissions"
+          ) {
+            return { phone: "granted" };
+          }
           if (methodName === "getStatus") {
             return {
               hasTelecom: true,
@@ -741,6 +773,12 @@ async function installDeterministicNativeBridge(
           }
         }
         if (pluginName === "ElizaMessages") {
+          if (
+            methodName === "checkPermissions" ||
+            methodName === "requestPermissions"
+          ) {
+            return { sms: "granted" };
+          }
           if (methodName === "listMessages") return clone(messages());
           if (methodName === "sendSms") {
             fixture.messages.sent.push({
@@ -754,6 +792,12 @@ async function installDeterministicNativeBridge(
           }
         }
         if (pluginName === "ElizaContacts") {
+          if (
+            methodName === "checkPermissions" ||
+            methodName === "requestPermissions"
+          ) {
+            return { contacts: "granted" };
+          }
           if (methodName === "listContacts") {
             const limit =
               typeof options?.limit === "number"
@@ -881,6 +925,14 @@ async function installDeterministicNativeBridge(
           return callbackId;
         },
       };
+      const nativePromisePlugin = (pluginName: string, methodNames: string[]) =>
+        Object.fromEntries(
+          methodNames.map((methodName) => [
+            methodName,
+            (options?: Record<string, unknown>) =>
+              cap.nativePromise(pluginName, methodName, options),
+          ]),
+        );
       cap.Plugins = {
         ...(win.Capacitor?.Plugins ?? {}),
         App: {
@@ -920,6 +972,40 @@ async function installDeterministicNativeBridge(
           setStyle: (options?: Record<string, unknown>) =>
             cap.nativePromise("StatusBar", "setStyle", options),
         },
+        ElizaPhone: nativePromisePlugin("ElizaPhone", [
+          "getStatus",
+          "placeCall",
+          "openDialer",
+          "listRecentCalls",
+          "saveCallTranscript",
+          "checkPermissions",
+          "requestPermissions",
+        ]),
+        ElizaMessages: nativePromisePlugin("ElizaMessages", [
+          "sendSms",
+          "listMessages",
+          "checkPermissions",
+          "requestPermissions",
+        ]),
+        ElizaContacts: nativePromisePlugin("ElizaContacts", [
+          "listContacts",
+          "createContact",
+          "importVCard",
+          "checkPermissions",
+          "requestPermissions",
+        ]),
+        ElizaSystem: nativePromisePlugin("ElizaSystem", [
+          "getStatus",
+          "requestRole",
+          "openSettings",
+          "openNetworkSettings",
+          "getDeviceSettings",
+          "setScreenBrightness",
+          "setVolume",
+          "openWriteSettings",
+          "openDisplaySettings",
+          "openSoundSettings",
+        ]),
       };
       win.Capacitor = cap;
 
@@ -1003,6 +1089,28 @@ test.beforeEach(async ({ page }) => {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
   });
+  await page.route("https://api.elizacloud.ai/api/v1/user", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "access-control-allow-origin": "*" },
+      body: JSON.stringify({
+        success: false,
+        error: "Signed out in native UI smoke",
+      }),
+    });
+  });
+  await page.route(
+    "https://api.elizacloud.ai/api/v1/credits/balance",
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify({ balance: 0 }),
+      });
+    },
+  );
 });
 
 test.describe("Android communications app interactions", () => {
@@ -1019,64 +1127,57 @@ test.describe("Android communications app interactions", () => {
     await hideContinuousChatOverlay(page);
     await installDefaultAppRoutes(page);
 
-    await openAppWindow(page, "phone", "/apps/phone", [
-      { selector: '[data-testid="phone-shell"]' },
+    await openAppWindow(page, "phone", "/phone", [
+      { selector: '[data-agent-id="phone-refresh"]' },
     ]);
-    for (const digit of ["4", "1", "5", "5", "5", "5", "0", "1", "9", "9"]) {
-      await page.getByTestId(`phone-dial-key-${digit}`).click();
+    for (const digit of ["4", "1", "5", "5", "5", "5", "0", "1", "9"]) {
+      await page.locator(`[data-agent-id="dialpad-${digit}"]`).click();
     }
-    await page.getByTestId("phone-dial-backspace").click();
-    await expect(page.locator("output").first()).toContainText("415555019");
-    await page.getByTestId("phone-dial-call").click();
+    const dialerNumber = page.locator('[data-agent-id="dialer-number"]');
+    await expect(dialerNumber).toHaveValue("415555019");
+    await page.locator('[data-agent-id="dialer-call"]').click();
     await expect
       .poll(
         async () => (await readFixture(page))?.phone.placedCalls.at(-1)?.number,
       )
       .toBe("415555019");
 
-    await page.getByRole("tab", { name: "Recent" }).click();
+    await page.locator('[data-agent-id="phone-tab-contacts"]').click();
     await expect(page.getByText("Ada Relay")).toBeVisible();
     await expect(page.getByText("Grace Hopper")).toBeVisible();
-    await page.getByRole("button", { name: /Ada Relay/ }).click();
+    await page
+      .locator('[data-agent-id="phone-contact-dial-contact-ada"]')
+      .click();
+    await expect(dialerNumber).toHaveValue("+1 (415) 555-0101");
+    await page.locator('[data-agent-id="dialer-call"]').click();
     await expect
       .poll(
         async () => (await readFixture(page))?.phone.placedCalls.at(-1)?.number,
       )
-      .toBe("+14155550101");
+      .toBe("+1 (415) 555-0101");
     await expectNoIssues(
       page,
       issues.splice(0),
       "phone deterministic controls",
     );
 
-    await openAppWindow(page, "messages", "/apps/messages", [
-      { selector: '[data-testid="messages-shell"]' },
+    await openAppWindow(page, "messages", "/messages", [
+      { selector: '[data-agent-id="messages-refresh"]' },
     ]);
-    await page.getByTestId("messages-request-sms-role").click();
-    await expect
-      .poll(async () => (await readFixture(page))?.messages.roleRequests)
-      .toBe(1);
-    await page.getByTestId("messages-thread-thread-alpha").click();
-    const threadPanel = page.getByTestId("messages-composer-panel");
+    await expect(page.getByText("Can you review the build?")).toBeVisible();
     await expect(
-      threadPanel.getByText("Can you review the build?"),
-    ).toBeVisible();
-    await expect(
-      threadPanel.getByText("Yes, checking the deterministic smoke path now."),
+      page.getByText("Yes, checking the deterministic smoke path now."),
     ).toBeVisible();
     await page
-      .getByRole("button", {
-        name: /^(Back to threads|messages\.backToThreads)$/,
-      })
-      .click();
-    await page.getByTestId("messages-new").click();
-    await page.getByTestId("messages-compose-address").fill("+14155550103");
+      .locator('[data-agent-id="messages-address"]')
+      .fill("+14155550103");
     await page
-      .getByTestId("messages-compose-body")
+      .locator('[data-agent-id="messages-body"]')
       .fill("Deterministic SMS send from Playwright");
-    await expect(page.getByTestId("messages-send")).toBeEnabled();
-    await page.getByTestId("messages-send").click();
-    await expect(page.getByRole("status")).toContainText("Message sent.");
+    const sendSms = page.locator('[data-agent-id="messages-send"]');
+    await expect(sendSms).toBeEnabled();
+    await sendSms.click();
+    await expect(page.getByText(/SMS sent and saved as message/)).toBeVisible();
     await expect
       .poll(async () => (await readFixture(page))?.messages.sent.at(-1))
       .toEqual({
@@ -1089,26 +1190,21 @@ test.describe("Android communications app interactions", () => {
       "messages deterministic controls",
     );
 
-    await openAppWindow(page, "contacts", "/apps/contacts", [
-      { selector: '[data-testid="contacts-shell"]' },
+    await openAppWindow(page, "contacts", "/contacts", [
+      { selector: '[data-agent-id="contacts-refresh"]' },
     ]);
     await expect(page.getByText("Ada Relay")).toBeVisible();
-    // Per-view search moved to the chat — the overlay shows a hint, not a box.
-    await expect(page.getByTestId("contacts-search")).toHaveCount(0);
-    await expect(page.getByTestId("contacts-search-hint")).toBeVisible();
-    await page.getByRole("button", { name: /Ada Relay/ }).click();
-    await expect(
-      page.getByRole("heading", { level: 2, name: "Ada Relay" }),
-    ).toBeVisible();
     await expect(page.getByText("ada@example.test")).toBeVisible();
     await page
-      .getByRole("button", { name: /^(Back to list|nav\.backToList)$/ })
-      .click();
-    await page.getByTestId("contacts-new").click();
-    await page.getByLabel("Name").fill("Lin Test");
-    await page.getByLabel("Phone").fill("+1 415 555 0199");
-    await page.getByLabel("Email").fill("lin@example.test");
-    await page.getByRole("button", { name: "Save" }).click();
+      .locator('[data-agent-id="contacts-create-display-name"]')
+      .fill("Lin Test");
+    await page
+      .locator('[data-agent-id="contacts-create-phone-number"]')
+      .fill("+1 415 555 0199");
+    await page
+      .locator('[data-agent-id="contacts-create-email"]')
+      .fill("lin@example.test");
+    await page.locator('[data-agent-id="contacts-create-submit"]').click();
     await expect(page.getByText("Lin Test")).toBeVisible();
     await expect
       .poll(async () => (await readFixture(page))?.contacts.created.at(-1))
@@ -1204,55 +1300,19 @@ test.describe("Android communications app interactions", () => {
   });
 });
 
-test.describe("Facewear and smartglasses GUI interactions", () => {
+test.describe("Smartglasses GUI interactions", () => {
   test.beforeEach(async ({ page }) => {
     await installDeterministicNativeBridge(page, { nativePlatform: false });
   });
 
-  test("facewear and smartglasses device flows perform deterministic connect and bridge actions", async ({
+  test("smartglasses device flow performs deterministic connect and bridge actions", async ({
     page,
   }) => {
     const issues = installIssueGuards(page);
-    let facewearStatusRequests = 0;
     await hideContinuousChatOverlay(page);
 
     await installDefaultAppRoutes(page);
-    await page.route("**/api/facewear/status", async (route) => {
-      facewearStatusRequests += 1;
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          connected: true,
-          devices: [
-            {
-              id: "g1-ui-smoke",
-              kind: "smartglasses",
-              deviceType: "even-realities",
-            },
-          ],
-        }),
-      });
-    });
-
-    // Facewear + smartglasses GUI config now lives in Settings → Wearables as
-    // two tabs (was the standalone /apps/facewear and /apps/smartglasses views).
     await openSettingsSection(page, "Wearables");
-    await expect(page.getByText("Facewear")).toBeVisible({ timeout: 90_000 });
-    await expect(page.getByText("1 device connected")).toBeVisible({
-      timeout: 90_000,
-    });
-    await expect(page.getByText("even-realities")).toBeVisible();
-    await page.getByRole("button", { name: "Refresh" }).click();
-    await expect.poll(() => facewearStatusRequests).toBeGreaterThan(1);
-    // "Manage" now switches to the sibling Smartglasses tab (no route change).
-    await page.getByRole("button", { name: "Manage" }).click();
-    await expect(
-      page.getByRole("heading", { name: "Smartglasses" }),
-    ).toBeVisible({ timeout: 90_000 });
-    await expectNoIssues(page, issues.splice(0), "facewear device controls");
-
-    await page.getByRole("tab", { name: "Smartglasses" }).click();
     await expect(
       page.getByRole("heading", { name: "Smartglasses" }),
     ).toBeVisible({ timeout: 90_000 });

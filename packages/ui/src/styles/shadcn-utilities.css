@@ -263,20 +263,16 @@
 @utility shimmer {
   --_spread: var(--shimmer-spread, calc(3ch + 40px));
   --_base: currentColor;
-  --_highlight: var(
-    --shimmer-color,
-    oklch(from currentColor l c h / calc(alpha * 0.2))
-  );
+  /* Relative OKLCH inside an animated text gradient aborts WebKit 26 when the
+     status is mounted dynamically. A fixed white sheen preserves the visual
+     treatment and keeps the paint path portable across shipped WebViews. */
+  --_highlight: var(--shimmer-color, rgba(255, 255, 255, 0.95));
   background-image: var(
     --shimmer-image,
     linear-gradient(
       calc(90deg + var(--shimmer-angle)),
       var(--_base) calc(50% - var(--_spread)),
-      color-mix(in oklch, var(--_highlight), var(--_base) 50%)
-        calc(50% - var(--_spread) * 0.5),
       var(--_highlight) 50%,
-      color-mix(in oklch, var(--_highlight), var(--_base) 50%)
-        calc(50% + var(--_spread) * 0.5),
       var(--_base) calc(50% + var(--_spread))
     )
   );
@@ -287,13 +283,6 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: var(--shimmer-text-fill, transparent);
   animation: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
-
-  @variant dark {
-    --_highlight: var(
-      --shimmer-color,
-      oklch(from currentColor max(0.8, calc(l + 0.4)) c h / calc(alpha + 0.4))
-    );
-  }
 
   &:where([dir="rtl"], [dir="rtl"] *) {
     animation-direction: reverse;

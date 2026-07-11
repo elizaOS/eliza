@@ -272,9 +272,9 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
   await installDefaultAppRoutes(page);
   await installAgentStoreRoutes(page, store, apiBase);
 
-  // --- Open Settings → Agents and confirm both provisioned agents are listed.
+  // Cloud agents are embedded in the Cloud Overview settings section.
   await openAppPath(page, "/settings");
-  await openSettingsSection(page, "Agents");
+  await openSettingsSection(page, "Overview");
 
   await expect(agentRow(page, "Keeper")).toBeVisible({ timeout: 30_000 });
   await expect(agentRow(page, "Disposable")).toBeVisible();
@@ -320,7 +320,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
 
   // --- After the reload the new agent is active; the original is now deletable.
   await openAppPath(page, "/settings");
-  await openSettingsSection(page, "Agents");
+  await openSettingsSection(page, "Overview");
   await expect(agentRow(page, "Fresh Agent")).toBeVisible({ timeout: 30_000 });
   await expect(agentRow(page, "Keeper")).toBeVisible();
   await expect(

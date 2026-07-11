@@ -402,9 +402,9 @@ async function waitForSurfacePageSettled(p, pageName) {
         ? surfaceRect.left - surfaceRect.width
         : surfaceRect.left;
     const railSettled = Math.abs(railRect.left - expectedLeft) < 1;
-    const transitionsDone = rail
+    const transitionsDone = !rail
       .getAnimations()
-      .every((animation) => animation.playState === "finished");
+      .some((animation) => animation.playState === "running");
     return railSettled && transitionsDone;
   }, pageName);
 }

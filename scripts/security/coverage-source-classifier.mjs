@@ -2,8 +2,25 @@
 /** Emits changed modules that retain runtime code after Node strips TypeScript-only syntax. */
 
 import { readFileSync } from "node:fs";
-import { stripTypeScriptTypes } from "node:module";
+import * as nodeModule from "node:module";
 import { fileURLToPath } from "node:url";
+
+const bunTypeScriptTranspiler = globalThis.Bun
+  ? new globalThis.Bun.Transpiler({ loader: "ts" })
+  : undefined;
+
+function eraseTypeScriptSyntax(source) {
+  if (typeof nodeModule.stripTypeScriptTypes === "function") {
+    return nodeModule.stripTypeScriptTypes(source, {
+      mode: "transform",
+      sourceMap: false,
+    });
+  }
+  if (bunTypeScriptTranspiler) {
+    return bunTypeScriptTranspiler.transformSync(source);
+  }
+  throw new Error("TypeScript syntax erasure is unavailable in this runtime");
+}
 
 /** V8 emits no line records for a module made entirely of re-export facades. */
 function isPureReExportFacade(source) {
@@ -14,10 +31,7 @@ function isPureReExportFacade(source) {
 
 /** Returns true only when type erasure leaves coverable runtime statements. */
 export function sourceRetainsRuntimeCode(source) {
-  const runtimeSource = stripTypeScriptTypes(source, {
-    mode: "transform",
-    sourceMap: false,
-  }).trim();
+  const runtimeSource = eraseTypeScriptSyntax(source).trim();
   return runtimeSource.length > 0 && !isPureReExportFacade(runtimeSource);
 }
 

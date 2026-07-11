@@ -30,6 +30,9 @@ const SKIP_DIR = new Set([
   "coverage",
   ".next",
   "out",
+  "__tests__",
+  "__fixtures__",
+  "__mocks__",
 ]);
 const SKIP_FILE = /\.(test|spec|d)\.tsx?$/;
 // This module + its test legitimately contain the literal "public: true" search

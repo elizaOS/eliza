@@ -182,9 +182,10 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
   const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
   await expect(composer).toBeVisible({ timeout: 15_000 });
 
-  // 1) Set a file on the hidden input behind the attach control.
-  const attach = page.getByTestId("chat-composer-attach");
-  await expect(attach).toBeVisible({ timeout: 15_000 });
+  // 1) Set a file on the hidden input owned by the chat-actions menu.
+  await expect(page.getByTestId("chat-composer-plus")).toBeVisible({
+    timeout: 15_000,
+  });
   // The composer upload input accepts every chat attachment kind (images,
   // audio, video, PDFs, text), not just images — match its leading image/* tag.
   const fileInput = page.locator('input[type="file"][accept^="image/*"]');
