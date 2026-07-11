@@ -1,5 +1,17 @@
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { connect } from "node:net";
+import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
+import * as realJwt from "@/lib/voice-session/jwt";
+import * as realSessionRegistry from "@/lib/voice-session/session-registry";
+import * as realSession from "../lib/session";
+
+// Bun module mocks are process-global in the non-isolated changed-coverage
+// lane. Snapshot these modules before stubbing them so later voice tests do
+// not inherit token/session doubles from this harness-only test.
+const realVoiceUsageMeterExports = { ...realVoiceUsageMeter };
+const realJwtExports = { ...realJwt };
+const realSessionRegistryExports = { ...realSessionRegistry };
+const realSessionExports = { ...realSession };
 
 const calls: string[] = [];
 
@@ -126,7 +138,16 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-  mock.restore();
+  mock.module(
+    "@/lib/services/voice-usage-meter",
+    () => realVoiceUsageMeterExports,
+  );
+  mock.module("@/lib/voice-session/jwt", () => realJwtExports);
+  mock.module(
+    "@/lib/voice-session/session-registry",
+    () => realSessionRegistryExports,
+  );
+  mock.module("../lib/session", () => realSessionExports);
 });
 
 describe("harness real server", () => {

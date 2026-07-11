@@ -6,7 +6,7 @@
  * mock of jose, no stub of the verifier under test.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { exportPKCS8, exportSPKI, generateKeyPair } from "jose";
 
 import {
@@ -67,7 +67,14 @@ beforeAll(async () => {
   __resetVoiceSessionRevocationClientForTests();
 });
 
+beforeEach(() => {
+  __resetVoiceSessionRevocationClientForTests();
+  __setVoiceSessionRevocationStoreForTests(makeFakeRedis() as never);
+});
+
 afterAll(() => {
+  __setVoiceSessionRevocationStoreForTests(null);
+  __resetVoiceSessionRevocationClientForTests();
   process.env.JWT_SIGNING_PRIVATE_KEY = savedEnv.JWT_SIGNING_PRIVATE_KEY;
   process.env.JWT_SIGNING_PUBLIC_KEY = savedEnv.JWT_SIGNING_PUBLIC_KEY;
   process.env.JWT_SIGNING_KEY_ID = savedEnv.JWT_SIGNING_KEY_ID;

@@ -21,9 +21,11 @@ import * as realCartesiaSonic from "@harness-adapters/cartesia-sonic-tts.ts";
 // /home/shad0w/…/wt-voice-slice path resolved nowhere on CI, which is why the
 // real-server seam was never stubbed and the “real target bridge” test failed).
 import * as realDeepgramFlux from "@harness-adapters/deepgram-flux.ts";
+import * as realHarnessRealServer from "../../../cloud/api/v1/voice/session/lib/harness-real-server.ts";
 
 const realDeepgramFluxExports = { ...realDeepgramFlux };
 const realCartesiaSonicExports = { ...realCartesiaSonic };
+const realHarnessRealServerExports = { ...realHarnessRealServer };
 const harnessRealServerUrl = new URL(
   "../../../cloud/api/v1/voice/session/lib/harness-real-server.ts",
   import.meta.url,
@@ -139,6 +141,7 @@ afterAll(() => {
     "@harness-adapters/cartesia-sonic-tts.ts",
     () => realCartesiaSonicExports,
   );
+  mock.module(harnessRealServerUrl, () => realHarnessRealServerExports);
 });
 
 const wav = await import("./wav");
