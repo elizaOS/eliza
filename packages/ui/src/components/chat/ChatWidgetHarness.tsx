@@ -1,159 +1,110 @@
 /**
- * Backend-free, device-runnable chat UX gallery.
+ * Backend-free, device-runnable chat UX harness.
  *
- * This mounts the production glass message row + MessageContent/widget parser
- * inside a local transcript. It is intended for Capacitor simulator design
- * review: every interaction stays in memory and no API server is required.
+ * Mounts the REAL ContinuousChatOverlay — the production expandable/collapsible
+ * chat sheet — over a fake view backdrop, driven by a mock ShellController and
+ * a scripted back-and-forth conversation. The script opens with the in-chat
+ * onboarding widgets (choice, profile form, permission card, secret request)
+ * pinned at the first-run detent, then collapses out of onboarding and walks
+ * the remaining production widgets (follow-ups, workflow, checklist, coding
+ * task, background picker, code, generated UI, failure/retry) one assistant
+ * turn per user interaction. Every widget tap and composer send advances the
+ * script; nothing touches the network, so it runs inside the Capacitor
+ * simulator with no API server (gated by __ELIZA_CHAT_UI_HARNESS__ in
+ * packages/app).
  */
-import { RotateCcw, Send, Sparkles } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
-import type { ConversationMessage } from "../../api/client-types-chat";
+import * as React from "react";
+
+import { GlassStyles } from "../../glass";
 import { MockAppProvider } from "../../storybook/mock-providers";
-import { ChatMessage } from "../composites/chat/chat-message";
-import { Button } from "../ui/button";
-import { Textarea } from "../ui/textarea";
-import { MessageContent } from "./MessageContent";
+import { ContinuousChatOverlay } from "../shell/ContinuousChatOverlay";
+import type { ShellController, CaptureIntent } from "../shell/useShellController";
+import type { ShellMessage } from "../shell/shell-state";
 import { registerTaskWidget } from "./widgets/task-widget";
 
 registerTaskWidget();
 
-const FORM = JSON.stringify({
-  id: "gallery-contact",
-  title: "Plan the launch",
-  description: "All controls are live and submit back into this local chat.",
-  submitLabel: "Save plan",
+let nextId = 1000;
+const uid = () => `harness-${nextId++}`;
+
+const PROFILE_FORM = JSON.stringify({
+  id: "onboarding-profile",
+  title: "Set up your assistant",
+  description: "Everything stays on this device — nothing is sent anywhere.",
+  submitLabel: "Save profile",
   fields: [
-    { name: "name", label: "Project name", type: "text", required: true },
-    { name: "seats", label: "Team size", type: "number" },
+    { name: "name", label: "What should I call you?", type: "text", required: true },
     {
-      name: "priority",
-      label: "Priority",
+      name: "focus",
+      label: "Primary focus",
       type: "select",
       options: [
-        { label: "Normal", value: "normal" },
-        { label: "High", value: "high" },
+        { label: "Work", value: "work" },
+        { label: "Personal", value: "personal" },
+        { label: "Both", value: "both" },
       ],
     },
-    { name: "notify", label: "Notify me when ready", type: "checkbox" },
+    { name: "daily", label: "Send a daily recap", type: "checkbox" },
   ],
 });
 
-const INITIAL_MESSAGES: ConversationMessage[] = [
-  {
-    id: "gallery-user-hello",
-    role: "user",
-    text: "Show me every chat widget so I can tune the mobile UX.",
-    timestamp: 1,
-  },
-  {
-    id: "gallery-assistant-intro",
-    role: "assistant",
-    text: "This is the backend-free chat gallery. Everything below uses the production message renderer and remains interactive.",
-    timestamp: 2,
-  },
-  {
-    id: "gallery-choice",
-    role: "assistant",
-    text: "Choice\n[CHOICE:gallery id=gallery-choice allowCustom=true]\npolish=Polish the glass\ndensity=Tune density\nmotion=Review motion\n[/CHOICE]",
-    timestamp: 3,
-  },
-  {
-    id: "gallery-followups",
-    role: "assistant",
-    text: "Follow-up actions\n[FOLLOWUPS]\nreply:Looks good=Reply\nnavigate:/settings=Navigate\nprompt:Please refine =Prefill composer\n[/FOLLOWUPS]",
-    timestamp: 4,
-  },
-  {
-    id: "gallery-form",
-    role: "assistant",
-    text: `Structured form\n[FORM]\n${FORM}\n[/FORM]`,
-    timestamp: 5,
-  },
-  {
-    id: "gallery-workflow",
-    role: "assistant",
-    text: 'Workflow\n[WORKFLOW]\n{"id":"gallery-workflow","title":"Ship mobile polish","steps":[{"label":"Capture iOS","status":"done"},{"label":"Tune glass","status":"running"},{"label":"Verify Android","status":"pending"}]}\n[/WORKFLOW]',
-    timestamp: 6,
-  },
-  {
-    id: "gallery-checklist",
-    role: "assistant",
-    text: 'Checklist\n[CHECKLIST]\n{"title":"UX review","items":[{"content":"Tap every control","status":"completed"},{"content":"Check safe areas","status":"in_progress"},{"content":"Review keyboard","status":"pending"}]}\n[/CHECKLIST]',
-    timestamp: 7,
-  },
-  {
-    id: "gallery-task",
-    role: "assistant",
-    text: "Coding task\n[TASK:00000000-0000-4000-8000-000000000001]Refine native chat glass[/TASK]",
-    timestamp: 8,
-  },
-  {
-    id: "gallery-background",
-    role: "assistant",
-    text: "Background picker\n[BACKGROUND]",
-    timestamp: 9,
-  },
-  {
-    id: "gallery-code",
-    role: "assistant",
-    text: 'Code block\n```tsx\n<ChatWidgetHarness mode="native" />\n```',
-    timestamp: 10,
-  },
-  {
-    id: "gallery-genui",
-    role: "assistant",
-    text: `Generated UI\n\`\`\`json\n${JSON.stringify({
-      root: "gallery-heading",
-      state: {},
-      elements: {
-        "gallery-heading": {
-          type: "Heading",
-          props: { text: "Interactive generated UI", level: "h3" },
-          children: [],
-        },
-      },
-    })}\n\`\`\``,
-    timestamp: 10.1,
-  },
-  {
-    id: "gallery-permission",
-    role: "assistant",
-    text: `Permission request\n\`\`\`json\n${JSON.stringify({
-      action: "permission_request",
-      permission: "reminders",
-      reason:
-        "Exercise the native permission card without requesting a real permission.",
-      feature: "gallery.reminders",
-      fallback_offered: true,
-    })}\n\`\`\``,
-    timestamp: 10.2,
-  },
-  {
-    id: "gallery-download",
-    role: "assistant",
-    text: "Downloading the local model for offline chat.",
-    timestamp: 11,
-    localInference: {
-      status: "downloading",
-      modelId: "mobile-gallery-model",
-      progress: { percent: 42, receivedBytes: 42, totalBytes: 100 },
+const PERMISSION_CARD = JSON.stringify({
+  action: "permission_request",
+  permission: "reminders",
+  reason: "I can nudge you about plans you make in chat.",
+  feature: "onboarding.reminders",
+  fallback_offered: true,
+});
+
+const GENERATED_UI = JSON.stringify({
+  root: "harness-heading",
+  state: {},
+  elements: {
+    "harness-heading": {
+      type: "Heading",
+      props: { text: "Interactive generated UI", level: "h3" },
+      children: [],
     },
   },
+});
+
+/** One scripted assistant turn. `endsOnboarding` collapses the first-run pin. */
+interface Scene {
+  content: string;
+  source?: string;
+  failureKind?: ShellMessage["failureKind"];
+  secretRequest?: ShellMessage["secretRequest"];
+  endsOnboarding?: boolean;
+}
+
+/** Onboarding first: greeting choice → profile form → permission → secret. */
+const OPENING: ShellMessage[] = [
   {
-    id: "gallery-error",
+    id: "harness-onboarding-greeting",
     role: "assistant",
-    text: "The provider is temporarily busy. The retry affordance should remain obvious.",
-    timestamp: 12,
-    failureKind: "rate_limited",
+    source: "first_run",
+    createdAt: 1,
+    content:
+      "Hey — I'm your assistant. Let's set things up right here in chat. How do you want to start?\n[CHOICE:onboarding-start id=onboarding-start allowCustom=true]\nsetup=Set me up\ntour=Quick tour\nexplore=Just explore\n[/CHOICE]",
+  },
+];
+
+const SCRIPT: Scene[] = [
+  {
+    source: "first_run",
+    content: `Great. Tell me a little about yourself so I can tailor things.\n[FORM]\n${PROFILE_FORM}\n[/FORM]`,
   },
   {
-    id: "gallery-secret",
-    role: "assistant",
-    text: "",
-    timestamp: 13,
+    source: "first_run",
+    content: `Saved. One quick permission so I can remind you about things later:\n\`\`\`json\n${PERMISSION_CARD}\n\`\`\``,
+  },
+  {
+    source: "first_run",
+    content:
+      "Last onboarding step — connect a model provider key. This secure field never leaves the device in this harness.",
     secretRequest: {
-      key: "GALLERY_API_KEY",
-      reason: "Exercise secure input presentation without saving anything.",
+      key: "HARNESS_API_KEY",
+      reason: "Connect a provider to start chatting for real.",
       status: "pending",
       delivery: {
         mode: "inline_owner_app",
@@ -163,185 +114,232 @@ const INITIAL_MESSAGES: ConversationMessage[] = [
         type: "sensitive_request_form",
         kind: "secret",
         mode: "inline_owner_app",
-        submitLabel: "Test secure submit",
+        submitLabel: "Save key",
         fields: [
-          {
-            name: "GALLERY_API_KEY",
-            label: "API key",
-            input: "secret",
-            required: true,
-          },
+          { name: "HARNESS_API_KEY", label: "API key", input: "secret", required: true },
         ],
       },
     },
   },
+  {
+    endsOnboarding: true,
+    content:
+      "You're all set — onboarding done, sheet unpinned. Pull the grabber down to collapse this chat, pull up (or type) to expand it again. Want to see what I can do mid-conversation?\n[FOLLOWUPS]\nreply:Show me widgets=Show me\nprompt:Refine the plan for =Prefill composer\nnavigate:/settings=Open settings\n[/FOLLOWUPS]",
+  },
+  {
+    content:
+      'Here\'s a live plan. Steps update as work happens:\n[WORKFLOW]\n{"id":"harness-workflow","title":"Ship mobile polish","steps":[{"label":"Capture iOS","status":"done"},{"label":"Tune glass","status":"running"},{"label":"Verify Android","status":"pending"}]}\n[/WORKFLOW]',
+  },
+  {
+    content:
+      'And a checklist you can track in-line:\n[CHECKLIST]\n{"title":"UX review","items":[{"content":"Tap every control","status":"completed"},{"content":"Check safe areas","status":"in_progress"},{"content":"Review keyboard","status":"pending"}]}\n[/CHECKLIST]',
+  },
+  {
+    content:
+      "I can also run coding tasks and restyle the app:\n[TASK:00000000-0000-4000-8000-000000000001]Refine native chat glass[/TASK]\n[BACKGROUND]",
+  },
+  {
+    content: `Code and generated UI render inline too:\n\`\`\`tsx\n<ChatWidgetHarness mode="native" />\n\`\`\`\n\`\`\`json\n${GENERATED_UI}\n\`\`\``,
+  },
+  {
+    failureKind: "rate_limited",
+    content:
+      "The provider is temporarily busy — this is the failure state, and the retry affordance should stay obvious.",
+  },
+  {
+    content:
+      "That's the full gallery. Keep chatting — every send loops back through these local replies, and every widget above stays interactive.",
+  },
 ];
 
-function nextMessage(
-  role: ConversationMessage["role"],
-  text: string,
-  sequence: number,
-): ConversationMessage {
-  return {
-    id: `gallery-local-${sequence}`,
-    role,
-    text,
-    timestamp: 100 + sequence,
-  };
-}
+export function ChatWidgetHarness(): React.JSX.Element {
+  const [messages, setMessages] = React.useState<ShellMessage[]>(OPENING);
+  const [phase, setPhase] = React.useState<ShellController["phase"]>("summoned");
+  const [recording, setRecording] = React.useState(false);
+  const [handsFree, setHandsFree] = React.useState(false);
+  const [transcript, setTranscript] = React.useState("");
+  const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(false);
+  const [firstRunOpen, setFirstRunOpen] = React.useState(true);
+  const sceneIndexRef = React.useRef(0);
+  const chatInputSinkRef = React.useRef<((text: string) => void) | null>(null);
+  const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
+  const captureIntentRef = React.useRef<CaptureIntent>("converse");
 
-export function ChatWidgetHarness() {
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
-  const [draft, setDraft] = useState("");
-  const [events, setEvents] = useState<string[]>([]);
-
-  const append = useCallback(
-    (role: ConversationMessage["role"], text: string) => {
+  const appendUserAndAdvance = React.useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    // While onboarding is pinned the overlay renders ONLY first_run-tagged
+    // turns and locks the composer (advancement comes from widget taps), so
+    // the echoed user turn must carry the tag to stay visible until the
+    // pin releases.
+    const nextScene = SCRIPT[Math.min(sceneIndexRef.current, SCRIPT.length - 1)];
+    setMessages((current) => [
+      ...current,
+      {
+        id: uid(),
+        role: "user",
+        content: trimmed,
+        createdAt: nextId,
+        ...(nextScene.source ? { source: nextScene.source } : {}),
+      },
+    ]);
+    setPhase("responding");
+    window.setTimeout(() => {
+      const scene = SCRIPT[Math.min(sceneIndexRef.current, SCRIPT.length - 1)];
+      sceneIndexRef.current += 1;
       setMessages((current) => [
         ...current,
-        nextMessage(role, text, current.length),
+        {
+          id: uid(),
+          role: "assistant",
+          content: scene.content,
+          createdAt: nextId,
+          ...(scene.source ? { source: scene.source } : {}),
+          ...(scene.failureKind ? { failureKind: scene.failureKind } : {}),
+          ...(scene.secretRequest ? { secretRequest: scene.secretRequest } : {}),
+        },
       ]);
-    },
-    [],
+      if (scene.endsOnboarding) setFirstRunOpen(false);
+      setPhase("summoned");
+    }, 600);
+  }, []);
+
+  const send = React.useCallback<ShellController["send"]>(
+    (text) => appendUserAndAdvance(text),
+    [appendUserAndAdvance],
   );
 
-  const sendActionMessage = useCallback(
-    async (text: string) => {
-      setEvents((current) => [`widget → ${text}`, ...current].slice(0, 4));
-      append("user", text);
-      append("assistant", "Captured locally — no backend request was made.");
-    },
-    [append],
-  );
-
-  const appValue = useMemo(
+  // Widget taps (choice picks, form submits, follow-ups, permission buttons)
+  // route through the app store's sendActionMessage — feed them into the same
+  // scripted conversation the composer uses.
+  const appValue = React.useMemo(
     () => ({
-      sendActionMessage,
-      setChatInput: setDraft,
-      copyToClipboard: async (text: string) => {
-        setEvents((current) =>
-          [`copied → ${text.slice(0, 32)}`, ...current].slice(0, 4),
-        );
-      },
+      sendActionMessage: async (text: string) => appendUserAndAdvance(text),
+      setChatInput: (text: string) => chatInputSinkRef.current?.(text),
+      copyToClipboard: async () => {},
     }),
-    [sendActionMessage],
+    [appendUserAndAdvance],
   );
 
-  const submitDraft = () => {
-    const text = draft.trim();
-    if (!text) return;
-    append("user", text);
-    append(
-      "assistant",
-      "Mock response added. Try the message action rail, widgets, scrolling, and keyboard again.",
-    );
-    setDraft("");
+  const controller: ShellController = {
+    phase,
+    responding: phase === "responding",
+    turnStatus: phase === "responding" ? { kind: "thinking" as const } : null,
+    messages,
+    noProviderConfigured: false,
+    canSend: true,
+    waveformMode: recording
+      ? "listening"
+      : phase === "responding"
+        ? "responding"
+        : "idle",
+    analyser: null,
+    open: () => {},
+    close: () => {},
+    isOpen: true,
+    recording,
+    handsFree,
+    transcript,
+    speaking: false,
+    agentVoiceMuted,
+    needsAudioUnlock: false,
+    transcriptionMode: false,
+    toggleTranscriptionMode: () => {},
+    stopTranscriptionAndMic: () => {
+      setRecording(false);
+      setTranscript("");
+      setPhase("summoned");
+    },
+    modelStatus: {
+      kind: "ready",
+      blocksSend: false,
+      percent: null,
+      etaMs: null,
+      modelName: null,
+      errors: [],
+    },
+    send,
+    captureVision: () => {},
+    visionCapturing: false,
+    toggleRecording: () => {
+      setRecording((r) => {
+        setTranscript(r ? "" : "listening…");
+        setPhase(r ? "summoned" : "listening");
+        return !r;
+      });
+    },
+    toggleHandsFree: () => {
+      setHandsFree((h) => {
+        captureIntentRef.current = "converse";
+        setRecording(!h);
+        setPhase(h ? "summoned" : "listening");
+        return !h;
+      });
+    },
+    micPermission: "unknown",
+    recheckMicPermission: async () => "unknown",
+    setDictationSink: (sink) => {
+      dictationSinkRef.current = sink;
+      // The overlay's dictation sink writes into its composer draft — reuse it
+      // for widget "prefill composer" actions via the app store's setChatInput.
+      chatInputSinkRef.current = sink;
+    },
+    setTranscriptSessionSink: () => {},
+    setComposerHasDraft: () => {},
+    startRecording: (intent: CaptureIntent = "converse") => {
+      captureIntentRef.current = intent;
+      setRecording(true);
+      setTranscript("listening…");
+      setPhase("listening");
+    },
+    stopRecording: () => {
+      setRecording(false);
+      setTranscript("");
+      setPhase("summoned");
+    },
+    speak: () => {},
+    stopSpeaking: () => {},
+    toggleAgentVoiceMute: () => setAgentVoiceMuted((m) => !m),
+    unlockAudio: () => {},
+    openSettings: () => {},
+    currentTab: undefined,
+    navigateHome: () => {},
+    clearConversation: () => {
+      sceneIndexRef.current = 0;
+      setMessages(OPENING);
+      setFirstRunOpen(true);
+      setPhase("summoned");
+    },
+    stop: () => setPhase("summoned"),
+    conversationNav: {
+      hasPrev: false,
+      hasNext: false,
+      goPrev: () => {},
+      goNext: () => {},
+      activeId: "harness-thread",
+      index: 0,
+    },
   };
 
   return (
     <MockAppProvider value={appValue}>
-      <main
+      <div
         data-testid="chat-widget-harness"
-        className="relative flex h-[100dvh] min-h-0 w-full flex-col overflow-hidden bg-bg text-txt"
         style={{
-          paddingTop:
-            "max(var(--safe-area-top, 0px), env(safe-area-inset-top, 0px))",
+          position: "fixed",
+          inset: 0,
+          // The real /chat ambient home backdrop — the glass sheet must be
+          // reviewed over the composite it ships on.
+          background: "#ef5a1f",
+          overflow: "hidden",
         }}
       >
-        <header className="z-10 flex shrink-0 items-center gap-3 border-b border-border/60 bg-bg/70 px-4 py-3 backdrop-blur-2xl">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-sm">
-            <Sparkles className="h-4 w-4 text-accent" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-semibold">Chat UX Gallery</h1>
-            <p className="truncate text-xs text-muted">
-              Production widgets · local state · no backend
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Reset gallery"
-            onClick={() => {
-              setMessages(INITIAL_MESSAGES);
-              setEvents([]);
-              setDraft("");
-            }}
-          >
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-        </header>
-
-        <section
-          data-testid="chat-widget-harness-thread"
-          className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-3 py-5 sm:px-6"
-        >
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-            {messages.map((message) => (
-              <ChatMessage
-                key={message.id}
-                appearance="glass"
-                message={message}
-                userMessagesOnRight
-                onCopy={(text) => void appValue.copyToClipboard(text)}
-                onLongPressCopy={(text) => void appValue.copyToClipboard(text)}
-                onRetry={() =>
-                  void sendActionMessage("Retry the previous request")
-                }
-                renderContent={(row) => (
-                  <MessageContent message={row as ConversationMessage} />
-                )}
-              />
-            ))}
-            {events.length > 0 ? (
-              <aside className="rounded-2xl border border-border/60 bg-surface/60 p-3 text-xs text-muted backdrop-blur-xl">
-                <div className="mb-1 font-medium text-txt">Interaction log</div>
-                {events.map((event) => (
-                  <div key={event} className="truncate">
-                    {event}
-                  </div>
-                ))}
-              </aside>
-            ) : null}
-          </div>
-        </section>
-
-        <footer
-          className="shrink-0 border-t border-border/60 bg-bg/65 px-3 pt-3 backdrop-blur-2xl"
-          style={{
-            paddingBottom:
-              "calc(max(var(--safe-area-bottom, 0px), env(safe-area-inset-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.75rem)",
-          }}
-        >
-          <div className="mx-auto flex max-w-2xl items-end gap-2 rounded-[1.5rem] border border-white/15 bg-surface/75 p-2 shadow-lg backdrop-blur-2xl">
-            <Textarea
-              value={draft}
-              aria-label="Gallery message"
-              placeholder="Type a local message…"
-              rows={1}
-              className="min-h-11 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  submitDraft();
-                }
-              }}
-            />
-            <Button
-              type="button"
-              size="icon"
-              className="h-11 w-11 shrink-0 rounded-full"
-              aria-label="Send local message"
-              disabled={!draft.trim()}
-              onClick={submitDraft}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-        </footer>
-      </main>
+        <GlassStyles />
+        <ContinuousChatOverlay
+          controller={controller}
+          firstRunOpen={firstRunOpen}
+        />
+      </div>
     </MockAppProvider>
   );
 }
