@@ -195,7 +195,7 @@ const COLLECT = `(() => {
   };
 })()`;
 
-function checkBudgets(metrics) {
+export function checkBudgets(metrics) {
   const b = loadBudgets().frontend;
   const checks = [
     { name: "fcpMs", value: metrics.fcpMs, budget: b.fcpMs, unit: "ms" },

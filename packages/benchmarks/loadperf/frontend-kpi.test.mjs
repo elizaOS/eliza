@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { serveDist } from "./frontend-kpi.mjs";
+import { checkBudgets, serveDist } from "./frontend-kpi.mjs";
 
 const cleanups = [];
 const SCRIPT = "export const eliza = 'agent';\n".repeat(100);
@@ -98,5 +98,34 @@ describe("frontend KPI static server", () => {
     const deniedResponse = await fetch(deniedServer.url);
     expect(deniedResponse.status).toBe(500);
     expect(await deniedResponse.text()).toBe("static asset read failed");
+  });
+});
+
+describe("frontend KPI budgets", () => {
+  it("requires every metric and applies each configured ceiling", () => {
+    const passing = checkBudgets({
+      fcpMs: 0,
+      lcpMs: 0,
+      jsTransferredBytes: 0,
+      requestCount: 0,
+      longTasksMs: 0,
+    });
+    expect(passing.map(({ name }) => name)).toEqual([
+      "fcpMs",
+      "lcpMs",
+      "jsTransferredBytes",
+      "requestCount",
+      "longTasksMs",
+    ]);
+    expect(passing.every(({ pass }) => pass)).toBe(true);
+
+    const missing = checkBudgets({
+      fcpMs: null,
+      lcpMs: null,
+      jsTransferredBytes: null,
+      requestCount: null,
+      longTasksMs: null,
+    });
+    expect(missing.every(({ pass }) => !pass)).toBe(true);
   });
 });

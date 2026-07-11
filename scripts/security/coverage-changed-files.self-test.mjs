@@ -128,6 +128,11 @@ try {
   );
   write(
     dir,
+    "packages/app/scripts/walkthrough-e2e.mjs",
+    "export async function runWalkthrough() {}\n",
+  );
+  write(
+    dir,
     "scripts/security/tool.self-test.mjs",
     "throw new Error('self-test only');\n",
   );
@@ -236,6 +241,9 @@ try {
     () => {
       assert.ok(!out.files.includes("packages/demo/src/__e2e__/fixture.tsx"));
       assert.ok(!out.files.includes("packages/demo/src/feature.stories.tsx"));
+      assert.ok(
+        !out.files.includes("packages/app/scripts/walkthrough-e2e.mjs"),
+      );
     },
   );
 
