@@ -18,8 +18,8 @@ import {
   setAgentHostBridge,
 } from "@elizaos/agent/runtime/host-bridge";
 import { getBuildVariant, isStoreBuild } from "@elizaos/core";
-import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import { resolveAuthorizedRouteRole } from "../api/auth";
+import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import {
   captureWalletEnvBootBaseline,
   hydrateWalletKeysFromNodePlatformSecureStore,
@@ -56,8 +56,6 @@ export function installAgentHostBridge(): void {
         skipCsrf: true,
         state: {
           current: runtime,
-          pendingAgentName: null,
-          pendingRestartReasons: [],
         },
       });
       return resolved.ok;

@@ -278,6 +278,8 @@ async function startGenericFlow(args: {
   // await this in-process promise. Attach a rejection observer so timeout or
   // cancellation does not become a process-level unhandled rejection; callers
   // that do await `completion` still receive the original rejection.
+  // error-policy:J5 terminal state is observed through the flow registry/SSE;
+  // callers awaiting `completion` still receive the original rejection.
   void completion.catch(() => undefined);
 
   const entry: InternalFlowEntry = {
@@ -445,12 +447,7 @@ export function submitProviderFlowCode(
   providerId: SubscriptionProvider,
   code: string,
 ): OAuthFlowHandle | null {
-  let callbackState: string | null = null;
-  try {
-    callbackState = new URL(code).searchParams.get("state");
-  } catch {
-    // Raw authorization codes have no state to match.
-  }
+  const callbackState = URL.parse(code)?.searchParams.get("state") ?? null;
 
   const candidates = [...flows.values()].filter(
     (entry) =>
@@ -459,16 +456,11 @@ export function submitProviderFlowCode(
       entry.state.needsCodeSubmission,
   );
   const matching = callbackState
-    ? candidates.filter((entry) => {
-        try {
-          return (
-            new URL(entry.state.authUrl ?? "").searchParams.get("state") ===
-            callbackState
-          );
-        } catch {
-          return false;
-        }
-      })
+    ? candidates.filter(
+        (entry) =>
+          URL.parse(entry.state.authUrl ?? "")?.searchParams.get("state") ===
+          callbackState,
+      )
     : candidates;
   if (matching.length !== 1) return null;
   matching[0]?.handle.submitCode(code);
