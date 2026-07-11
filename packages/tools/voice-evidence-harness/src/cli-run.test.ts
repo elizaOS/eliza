@@ -176,7 +176,7 @@ afterAll(() => {
 // Import cli (which auto-runs main()) with a per-call process.exit capture so
 // cross-test async bleed cannot pollute the assertion. Returns the exit codes
 // this specific run requested, after the async main() settles.
-async function importCli(bust: string): Promise<Array<number | undefined>> {
+async function importCli(): Promise<Array<number | undefined>> {
   const localExits: Array<number | undefined> = [];
   const prevExit = process.exit;
   process.exit = ((code?: number) => {
@@ -185,7 +185,11 @@ async function importCli(bust: string): Promise<Array<number | undefined>> {
   }) as typeof process.exit;
   try {
     try {
-      await import(`./cli.ts?${bust}=${Date.now()}-${Math.random()}`);
+      // IMPORTANT: import cli.ts with NO query string. A `?bust=...` specifier
+      // runs the code but bun attributes its coverage to the query-string URL,
+      // NOT `cli.ts`, so the changed-file gate would see cli.ts as ~10%.
+      // main() runs once on this first (and only) import.
+      await import("./cli.ts");
     } catch (err) {
       if (!(err instanceof ExitSignal) && !String(err).includes("exit:")) {
         throw err;
@@ -193,27 +197,26 @@ async function importCli(bust: string): Promise<Array<number | undefined>> {
     }
     // main() is async (scenario loop + `.catch(exit(1))`); drain the queue so
     // any exit it requests is recorded before we restore process.exit.
-    for (let i = 0; i < 40; i++) await new Promise((r) => setTimeout(r, 5));
+    for (let i = 0; i < 60; i++) await new Promise((r) => setTimeout(r, 5));
   } finally {
     process.exit = prevExit;
   }
   return localExits;
 }
 
-test("baseline scenario runs the full evidence pipeline and exits 0 on pass", async () => {
+test("baseline reference scenario runs the full evidence pipeline end-to-end", async () => {
+  // main() only runs once per test process (module is cached after the first
+  // import), and we import cli.ts WITHOUT a query bust so coverage lands on
+  // cli.ts. A baseline reference run drives the fullest single-scenario path:
+  // fixture load, mint, client run with all required stages, output-wav write,
+  // domain/timing/interrupt artifacts, MP4, README, INDEX, and the pass exit.
   process.argv = [
     "bun",
     "src/cli.ts",
     "--scenario=baseline",
     "--target=reference",
   ];
-  const exits = await importCli("baseline");
-  // A passing run either exits 0 explicitly or falls through (no non-zero exit).
+  const exits = await importCli();
+  // The fully-faked baseline run meets its DoD -> no non-zero exit.
   expect(exits.every((c) => c === 0 || c === undefined)).toBe(true);
-});
-
-test("real-target baseline run wires the real-target seam", async () => {
-  process.argv = ["bun", "src/cli.ts", "--scenario=baseline", "--target=real"];
-  const exits = await importCli("real-target");
-  expect(exits.every((c) => c === 0 || c === undefined || c === 1)).toBe(true);
 });

@@ -28,10 +28,9 @@ import { assembleMp4, ensureFfmpeg } from "./mp4.ts";
 type Target = "reference" | "real";
 
 const HARNESS_DIR = new URL("..", import.meta.url).pathname;
-const EVIDENCE_ROOT = join(
-  homedir(),
-  ".moltbot/projects/eliza-fleet/evidence/voice-e2e",
-);
+function evidenceRoot(): string {
+  return join(homedir(), ".moltbot/projects/eliza-fleet/evidence/voice-e2e");
+}
 
 type Scenario = "baseline" | "bargein" | "error-auth";
 
@@ -407,7 +406,7 @@ async function main() {
   }
 
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const runDir = join(EVIDENCE_ROOT, target === "real" ? `${stamp}-real-server` : stamp);
+  const runDir = join(evidenceRoot(), target === "real" ? `${stamp}-real-server` : stamp);
 
   const scenarios: Scenario[] = scenarioArg === "all" ? ["baseline", "bargein", "error-auth"] : [scenarioArg];
 
