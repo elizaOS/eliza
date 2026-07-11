@@ -201,6 +201,29 @@ describe("/ask command", () => {
 		expect(h.directReply).toContain("isn't ready");
 	});
 
+	it("uses GROUP channel type in-guild, matching getChannelType's GuildText->GROUP mapping", async () => {
+		const { seenMessage, runtime } = await runAsk("what's up", {
+			inGuild: true,
+		});
+		expect(seenMessage?.content?.channelType).toBe("GROUP");
+		expect(runtime.ensureConnection).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "GROUP", worldName: "Guild One" }),
+		);
+	});
+
+	it("tells the user nothing came back when the agent produces no reply text", async () => {
+		const ask = getRegisteredCommands().get("ask");
+		const h = makeInteraction("say nothing");
+		const runtime = makeRuntime(async (_rt, _m, cb) => {
+			await cb({ text: "   ", source: "agent" } as Content);
+			return {};
+		});
+		await ask?.execute(h.interaction as never, runtime as never);
+		expect(h.editedReply).toBe(
+			"I processed that but didn't have anything to say back.",
+		);
+	});
+
 	it("splits a long answer across editReply + followUps", async () => {
 		const ask = getRegisteredCommands().get("ask");
 		const h = makeInteraction("give me a long answer");

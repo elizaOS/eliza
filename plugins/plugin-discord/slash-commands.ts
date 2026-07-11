@@ -730,6 +730,9 @@ const askCommand: SlashCommand = {
 		const channelId = interaction.channelId ?? interaction.user.id;
 		const entityId = createUniqueUuid(runtime, interaction.user.id);
 		const roomId = createUniqueUuid(runtime, channelId);
+		// core's ChannelType has no guild-text variant; DiscordService.getChannelType
+		// (service.ts) maps every guild text/news/thread/forum channel to GROUP, so
+		// this matches that convention rather than inventing a guild-only value.
 		const channelType = interaction.inGuild()
 			? ChannelType.GROUP
 			: ChannelType.DM;
@@ -744,6 +747,9 @@ const askCommand: SlashCommand = {
 			type: channelType,
 			worldId: createUniqueUuid(runtime, interaction.guildId ?? channelId),
 			worldName: interaction.guild?.name,
+			// Preserve the raw Discord user id in source metadata for role and
+			// allowlist checks (see the "Discord ID Handling" note in service.ts and
+			// the matching cast in messages.ts's ensureConnection call).
 			userId: interaction.user.id as UUID,
 		});
 
