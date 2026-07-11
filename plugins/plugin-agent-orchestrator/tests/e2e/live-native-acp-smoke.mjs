@@ -29,7 +29,7 @@ const PROMPT =
 const GIT_IDENTITY_EVIDENCE =
   process.env.LIVE_NATIVE_ACP_GIT_IDENTITY_EVIDENCE === "1";
 const GIT_IDENTITY_PROMPT =
-  "Create identity-proof.txt containing exactly `real ACP commit identity proof` followed by a newline. Commit it with the message `test: prove coding agent identity`. Do not change git configuration. Reply with the commit hash.";
+  "Create identity-proof.txt containing exactly `real ACP commit identity proof` followed by a newline. Commit it with the message `test: prove coding agent identity`. Do not read or change git configuration. Reply with the commit hash.";
 const CLEANUP_TIMEOUT_MS = Number(
   process.env.LIVE_NATIVE_ACP_CLEANUP_TIMEOUT_MS ?? 5_000,
 );
@@ -131,7 +131,11 @@ async function main() {
     console.log("\n=== native ACP service smoke verdict ===");
     console.log(`task_complete events: ${taskCompletes.length}`);
     console.log(`stopReason: ${JSON.stringify(promptResult.stopReason)}`);
-    console.log(`final text: ${JSON.stringify(finalText)}`);
+    console.log(
+      GIT_IDENTITY_EVIDENCE
+        ? "final text: <suppressed; identity mode verifies Git directly>"
+        : `final text: ${JSON.stringify(finalText)}`,
+    );
     console.log(
       GIT_IDENTITY_EVIDENCE
         ? `git identity evidence valid: ${finalTextValid}`
