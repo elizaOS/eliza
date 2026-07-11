@@ -39,15 +39,19 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 // stranded by the process-wide registry replacement; restore in afterAll.
 const aiActual = require("ai") as Record<string, unknown>;
 
+import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { estimateTokens } from "@/lib/pricing";
 import * as languageModelActual from "@/lib/providers/language-model";
 import * as aiBillingActual from "@/lib/services/ai-billing";
+import * as contentModerationActual from "@/lib/services/content-moderation";
+import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
 
 // The REAL settler — explicitly NOT mocked. This is the component under test.
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
+const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 
 // --- mock the AI SDK boundary we drive ---------------------------------------
 let streamTextImpl: ((config: Record<string, unknown>) => unknown) | null =
@@ -71,6 +75,47 @@ mock.module("ai", () => ({
 mock.module("@/lib/providers/language-model", () => ({
   ...languageModelActual,
   getLanguageModel: () => ({}) as never,
+}));
+
+type InferenceAuthResolution = Awaited<
+  ReturnType<typeof inferenceAuthContextActual.resolveInferenceAuthContext>
+>;
+const resolveInferenceAuthContext = mock(
+  async (): Promise<InferenceAuthResolution> => ({
+    kind: "authorized",
+    ctx: {
+      v: 1,
+      cachedAt: 0,
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+      keyHash: "messages-billing-test-key",
+    },
+    source: "cache",
+  }),
+);
+mock.module("@/lib/services/inference-auth-context", () => ({
+  ...inferenceAuthContextActual,
+  resolveInferenceAuthContext,
+}));
+
+const shouldBlockUser = mock(async () => false);
+const moderateInBackground = mock(() => undefined);
+mock.module("@/lib/services/content-moderation", () => ({
+  ...contentModerationActual,
+  contentModerationService: {
+    ...contentModerationActual.contentModerationService,
+    shouldBlockUser,
+    moderateInBackground,
+  },
+}));
+
+mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  ...rateLimitActual,
+  RateLimitPresets: { ...rateLimitActual.RateLimitPresets, RELAXED: {} },
+  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
+    await next();
+  },
 }));
 
 const INPUT_TOKEN_COST = 0.001;
@@ -113,22 +158,42 @@ const billUsage = mock(async (_context: unknown, usage: unknown) => {
   };
 });
 const recordUsageAnalytics = mock(async () => ({ id: "usage-1" }));
+let routeReservation:
+  | ReturnType<typeof makeLedgerReservation>["reservation"]
+  | null = null;
+const reserveCredits = mock(async () => {
+  if (!routeReservation) throw new Error("routeReservation not set");
+  return routeReservation;
+});
 mock.module("@/lib/services/ai-billing", () => ({
   ...aiBillingActual,
   billUsage,
   recordUsageAnalytics,
+  reserveCredits,
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
-const { __messagesStreamingCreditTestHooks } = await import(
-  "../v1/messages/route"
-);
+const messagesRouteModule = await import("../v1/messages/route");
+const { __messagesStreamingCreditTestHooks } = messagesRouteModule;
+const messagesRoute = messagesRouteModule.default;
 const { handleStream, handleNonStream } = __messagesStreamingCreditTestHooks;
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
+  mock.module(
+    "@/lib/middleware/rate-limit-hono-cloudflare",
+    () => rateLimitActual,
+  );
   mock.module("@/lib/providers/language-model", () => languageModelActual);
   mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module(
+    "@/lib/services/content-moderation",
+    () => contentModerationActual,
+  );
+  mock.module(
+    "@/lib/services/inference-auth-context",
+    () => inferenceAuthContextActual,
+  );
 });
 
 /**
@@ -257,6 +322,24 @@ beforeEach(() => {
   generateTextImpl = null;
   billUsageGate = null;
   billUsageError = null;
+  routeReservation = null;
+  reserveCredits.mockClear();
+  resolveInferenceAuthContext.mockReset();
+  resolveInferenceAuthContext.mockResolvedValue({
+    kind: "authorized",
+    ctx: {
+      v: 1,
+      cachedAt: 0,
+      userId: USER,
+      orgId: ORG,
+      apiKeyId: API_KEY_ID,
+      keyHash: "messages-billing-test-key",
+    },
+    source: "cache",
+  });
+  shouldBlockUser.mockReset();
+  shouldBlockUser.mockResolvedValue(false);
+  moderateInBackground.mockClear();
 });
 
 const USAGE = { inputTokens: 2, outputTokens: 3, totalTokens: 5 };
@@ -308,6 +391,97 @@ function sdkFaithfulGeneration() {
     rawFinishReason: "stop",
   });
 }
+
+function postMessages(bodyOverrides: Record<string, unknown> = {}) {
+  return messagesRoute.request("/", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": "eliza_test_key",
+      "x-eliza-trace-id": "trace_messages_route_12345678",
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 256,
+      messages: [{ role: "user", content: "hello" }],
+      ...bodyOverrides,
+    }),
+  });
+}
+
+describe("messages route preforward telemetry", () => {
+  test("non-stream success preserves trace and the frozen provider boundary", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    sdkFaithfulGeneration();
+
+    const response = await postMessages();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace_messages_route_12345678",
+    );
+    expect(response.headers.get("X-Eliza-Preforward-Ms")).toMatch(
+      /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(ledger.actualCosts[0]).toBeCloseTo(EXPECTED_COST, 10);
+  });
+
+  test("stream success preserves telemetry without delaying or re-encoding SSE", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    sdkFaithfulStream();
+
+    const response = await postMessages({ stream: true });
+    const body = await response.text();
+    expect(response.status).toBe(200);
+    expect(body).toContain(TEXT);
+    expect(body).toContain('"type":"message_stop"');
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace_messages_route_12345678",
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
+    expect(ledger.reconcileCalls).toBe(1);
+  });
+
+  test("synchronous provider errors retain timing and release the reservation", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    generateTextImpl = () => {
+      throw new Error("provider setup failed");
+    };
+
+    const response = await postMessages();
+    expect(response.status).toBe(500);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace_messages_route_12345678",
+    );
+    expect(response.headers.get("X-Eliza-Preforward-Ms")).toContain("total=");
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
+    expect(ledger.actualCosts).toEqual([0]);
+  });
+
+  test("suspended and malformed requests stop before reserve/provider dispatch", async () => {
+    resolveInferenceAuthContext.mockResolvedValueOnce({
+      kind: "suspended",
+      userId: USER,
+    });
+    expect((await postMessages()).status).toBe(403);
+
+    const malformed = await postMessages({ max_tokens: null });
+    expect(malformed.status).toBe(400);
+    expect(reserveCredits).not.toHaveBeenCalled();
+    expect(generateText).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+});
 
 describe("streaming messages — billing settles OFF the response path (waitUntil parity, #15414)", () => {
   test("captures the preforward boundary immediately around streamText", async () => {
