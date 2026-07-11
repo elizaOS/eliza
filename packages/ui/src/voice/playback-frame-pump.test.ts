@@ -4,9 +4,11 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
+  attachPlaybackTapWithGrace,
   downmixAudioBufferToMono,
   type PlaybackAudioFrameEvent,
   PlaybackFramePump,
+  type PlaybackFrameTap,
 } from "./playback-frame-pump";
 
 interface SentBody {
@@ -24,6 +26,63 @@ function makeFetcher(sent: SentBody[], ok = true) {
 function pcm(samples: number, value = 0.25): Float32Array {
   return new Float32Array(samples).fill(value);
 }
+
+describe("attachPlaybackTapWithGrace", () => {
+  it("releases playback after the grace period and late-attaches a slow tap", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveTap!: (tap: PlaybackFrameTap) => void;
+      const tap = {
+        lateAttachSafe: true,
+        start: vi.fn(),
+        stop: vi.fn(),
+      } as unknown as PlaybackFrameTap;
+      const tapPromise = new Promise<PlaybackFrameTap>((resolve) => {
+        resolveTap = resolve;
+      });
+      const onLateTap = vi.fn();
+
+      const pending = attachPlaybackTapWithGrace(tapPromise, onLateTap, 150);
+      await vi.advanceTimersByTimeAsync(149);
+      let settled = false;
+      void pending.then(() => {
+        settled = true;
+      });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+
+      await vi.advanceTimersByTimeAsync(1);
+      await expect(pending).resolves.toBeNull();
+
+      resolveTap(tap);
+      await Promise.resolve();
+      expect(onLateTap).toHaveBeenCalledWith(tap);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not late-attach a scheduled fallback from the start of the clip", async () => {
+    vi.useFakeTimers();
+    try {
+      let resolveTap!: (tap: PlaybackFrameTap) => void;
+      const tapPromise = new Promise<PlaybackFrameTap>((resolve) => {
+        resolveTap = resolve;
+      });
+      const onLateTap = vi.fn();
+
+      const pending = attachPlaybackTapWithGrace(tapPromise, onLateTap, 150);
+      await vi.advanceTimersByTimeAsync(150);
+      await expect(pending).resolves.toBeNull();
+      resolveTap({ start: vi.fn(), stop: vi.fn() });
+      await Promise.resolve();
+
+      expect(onLateTap).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("PlaybackFramePump", () => {
   it("encodes 16 kHz mono PCM into 20 ms playback frames and reset-only stop", async () => {

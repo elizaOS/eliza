@@ -73,6 +73,8 @@ export interface PlaybackFramePumpOptions {
 }
 
 export interface PlaybackFrameTap {
+  /** Worklet taps may join playback in progress; scheduled fallbacks may not. */
+  readonly lateAttachSafe?: boolean;
   start(startTimestampMs?: number): void;
   stop(options?: { reset?: boolean; drain?: boolean }): Promise<void>;
 }
@@ -114,6 +116,42 @@ async function ensurePlaybackWorklet(ctx: AudioContext): Promise<void> {
   })();
   workletModules.set(ctx, pending);
   return pending;
+}
+
+/** Best-effort preload so the first reply does not pay worklet setup inline. */
+export function warmPlaybackWorklet(ctx: AudioContext): void {
+  if (!hasAudioWorklet(ctx)) return;
+  void ensurePlaybackWorklet(ctx).catch(() => {
+    // error-policy:J6 The visualizer is optional and tapSource can degrade.
+  });
+}
+
+/**
+ * Wait briefly for the optional visualizer tap without allowing a slow worklet
+ * module load to gate audible playback.
+ */
+export async function attachPlaybackTapWithGrace(
+  tapPromise: Promise<PlaybackFrameTap | null>,
+  onLateTap: (tap: PlaybackFrameTap) => void,
+  graceMs = 150,
+): Promise<PlaybackFrameTap | null> {
+  const timeout = Symbol("playback-tap-timeout");
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    tapPromise,
+    new Promise<typeof timeout>((resolve) => {
+      timeoutId = setTimeout(() => resolve(timeout), graceMs);
+    }),
+  ]);
+  if (timeoutId !== undefined) clearTimeout(timeoutId);
+  if (result !== timeout) return result;
+
+  void tapPromise.then((tap) => {
+    // A scheduled-buffer fallback starts at offset zero and would send stale
+    // reference frames if joined mid-clip. Only live worklet taps are safe.
+    if (tap?.lateAttachSafe) onLateTap(tap);
+  });
+  return null;
 }
 
 function clampPcm(value: number): number {
@@ -459,7 +497,7 @@ export class PlaybackFramePump {
         session.appendPcm(pcm, sampleRate);
       }
     };
-    return session;
+    return Object.assign(session, { lateAttachSafe: true as const });
   }
 
   private createScheduledBufferSession(buffer: AudioBuffer): PlaybackFrameTap {

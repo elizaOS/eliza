@@ -56,8 +56,10 @@ import {
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
 import {
+  attachPlaybackTapWithGrace,
   PlaybackFramePump,
   type PlaybackFrameTap,
+  warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
 import {
   currentSharedRuntimeVoiceOrigin,
@@ -505,6 +507,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     try {
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
     } catch (error) {
@@ -1537,6 +1540,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
       if (ctx.state === "suspended") {
@@ -1755,20 +1759,35 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
         .catch(() => null);
+      let playbackTap: PlaybackFrameTap | null = null;
+      let playbackStarted = false;
+      let playbackFinished = false;
+      let playStartMs = 0;
+      playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
+        if (playbackFinished) {
+          void lateTap.stop({ reset: true }).catch(() => {});
+          return;
+        }
+        playbackTap = lateTap;
+        playbackFrameTapRef.current = lateTap;
+        if (playbackStarted) lateTap.start(performance.now());
+      });
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          playbackFinished = true;
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
@@ -1830,6 +1849,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
         );
 
+        playbackStarted = true;
         source.start(0);
         emitPlaybackStart({
           text,
@@ -1858,6 +1878,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
       if (ctx.state === "suspended") {
@@ -1979,20 +2000,35 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
         .catch(() => null);
+      let playbackTap: PlaybackFrameTap | null = null;
+      let playbackStarted = false;
+      let playbackFinished = false;
+      let playStartMs = 0;
+      playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
+        if (playbackFinished) {
+          void lateTap.stop({ reset: true }).catch(() => {});
+          return;
+        }
+        playbackTap = lateTap;
+        playbackFrameTapRef.current = lateTap;
+        if (playbackStarted) lateTap.start(performance.now());
+      });
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          playbackFinished = true;
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
@@ -2032,6 +2068,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
         );
 
+        playbackStarted = true;
         source.start(0);
         emitPlaybackStart({
           text,
@@ -2060,6 +2097,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
       if (ctx.state === "suspended") {
@@ -2149,20 +2187,35 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
         .catch(() => null);
+      let playbackTap: PlaybackFrameTap | null = null;
+      let playbackStarted = false;
+      let playbackFinished = false;
+      let playStartMs = 0;
+      playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
+        if (playbackFinished) {
+          void lateTap.stop({ reset: true }).catch(() => {});
+          return;
+        }
+        playbackTap = lateTap;
+        playbackFrameTapRef.current = lateTap;
+        if (playbackStarted) lateTap.start(performance.now());
+      });
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          playbackFinished = true;
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
@@ -2202,6 +2255,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
         );
 
+        playbackStarted = true;
         source.start(0);
         emitPlaybackStart({
           text,
