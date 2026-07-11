@@ -6,12 +6,17 @@
  * text. This is the missing functional coverage for the streaming path
  * exercised by `POST /api/conversations/:id/messages/stream`.
  */
+
+import type http from "node:http";
 import {
   type AgentRuntime,
   ChannelType,
+  type Content,
   createMessageMemory,
+  type Memory,
   stringToUuid,
 } from "@elizaos/core";
+import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   __getChatDedupeTtlMsForTests,
@@ -30,8 +35,8 @@ import {
   isDuplicateChatMessage,
   isLocalInferenceError,
   markSyntheticChatFailureContent,
-  normalizeChatResponseText,
   normalizeAccountConnectRequest,
+  normalizeChatResponseText,
   normalizeClientMessageId,
   persistAssistantConversationMemory,
   readChatRequestPayload,
@@ -155,15 +160,11 @@ describe("chat route helper coverage", () => {
     const now = 1_000_000;
     const ttl = __getChatDedupeTtlMsForTests();
 
-    expect(normalizeClientMessageId("  mobile-turn-1  ")).toBe(
-      "mobile-turn-1",
-    );
+    expect(normalizeClientMessageId("  mobile-turn-1  ")).toBe("mobile-turn-1");
     expect(normalizeClientMessageId("")).toBeNull();
     expect(normalizeClientMessageId("x".repeat(129))).toBeNull();
 
-    expect(isDuplicateChatMessage("room-a", "mobile-turn-1", now)).toBe(
-      false,
-    );
+    expect(isDuplicateChatMessage("room-a", "mobile-turn-1", now)).toBe(false);
     expect(getChatMessageIdFirstSeenAt("room-a", "mobile-turn-1")).toBe(now);
     expect(isDuplicateChatMessage("room-a", "mobile-turn-1", now + 1)).toBe(
       true,
@@ -186,7 +187,7 @@ describe("chat route helper coverage", () => {
         toolCall: {
           id: "call-1",
           name: "SEARCH",
-          arguments: "{\"query\":\"local model\"}",
+          arguments: '{"query":"local model"}',
         },
       }),
     ).toEqual({
@@ -230,8 +231,9 @@ describe("chat route helper coverage", () => {
     expect(
       chatEventsFromStructuredStreamPayload({ type: "evaluation" }),
     ).toEqual({ status: { kind: "evaluating" } });
-    expect(chatEventsFromStructuredStreamPayload({ type: "context_event" }))
-      .toBeNull();
+    expect(
+      chatEventsFromStructuredStreamPayload({ type: "context_event" }),
+    ).toBeNull();
   });
 
   it("writes SSE frames for legacy and delta-v2 chat token protocols", () => {
@@ -247,9 +249,7 @@ describe("chat route helper coverage", () => {
     writeSseData(legacy.res as never, "line one\nline two", "token.update");
     writeSseJson(legacy.res as never, { ok: true }, "json");
 
-    expect(legacy.writes).toContain(
-      'data: {"type":"hello","text":"hi"}\n\n',
-    );
+    expect(legacy.writes).toContain('data: {"type":"hello","text":"hi"}\n\n');
     expect(legacy.writes.join("")).toContain("event: token.update\n");
     expect(legacy.writes.join("")).toContain("data: line two\n");
 
@@ -305,27 +305,42 @@ describe("chat route helper coverage", () => {
     };
     const res = createWritableResponse().res;
     const error = vi.fn();
-    const readJsonBody = vi.fn(async () => ({
-      text: "  describe this image ",
-      channelType: "voice_dm",
-      images: [
-        {
-          data: "aGVsbG8=",
-          mimeType: "IMAGE/JPEG",
-          name: "image.jpg",
-        },
-      ],
-      source: "mobile",
-      metadata: { localInference: true },
-      clientMessageId: " turn-7 ",
-      streamProtocol: DELTA_STREAM_PROTOCOL,
-    }));
-
-    const parsed = await readChatRequestPayload(
-      req as never,
-      res as never,
-      { readJsonBody, error },
+    // The helper contract is generic (<T extends object>), which a plain
+    // vi.fn() value cannot satisfy structurally. Keep the mock non-generic
+    // (raw untrusted JSON records) and expose it through a generic wrapper
+    // whose single cast pins the caller-chosen T at the boundary.
+    const readJsonBodyMock = vi.fn(
+      async (
+        _req: http.IncomingMessage,
+        _res: http.ServerResponse,
+        _options?: ReadJsonBodyOptions,
+      ): Promise<Record<string, unknown> | null> => ({
+        text: "  describe this image ",
+        channelType: "voice_dm",
+        images: [
+          {
+            data: "aGVsbG8=",
+            mimeType: "IMAGE/JPEG",
+            name: "image.jpg",
+          },
+        ],
+        source: "mobile",
+        metadata: { localInference: true },
+        clientMessageId: " turn-7 ",
+        streamProtocol: DELTA_STREAM_PROTOCOL,
+      }),
     );
+    const readJsonBody = <T extends object>(
+      bodyReq: http.IncomingMessage,
+      bodyRes: http.ServerResponse,
+      options?: ReadJsonBodyOptions,
+    ): Promise<T | null> =>
+      readJsonBodyMock(bodyReq, bodyRes, options) as Promise<T | null>;
+
+    const parsed = await readChatRequestPayload(req as never, res as never, {
+      readJsonBody,
+      error,
+    });
 
     expect(parsed).toEqual({
       prompt: "describe this image",
@@ -343,11 +358,11 @@ describe("chat route helper coverage", () => {
       clientMessageId: "turn-7",
       streamProtocol: DELTA_STREAM_PROTOCOL,
     });
-    expect(readJsonBody).toHaveBeenCalledWith(req, res, {
+    expect(readJsonBodyMock).toHaveBeenCalledWith(req, res, {
       maxBytes: 20 * 1024 * 1024,
     });
 
-    readJsonBody.mockResolvedValueOnce({ text: "hi", channelType: "bad" });
+    readJsonBodyMock.mockResolvedValueOnce({ text: "hi", channelType: "bad" });
     await expect(
       readChatRequestPayload(req as never, res as never, {
         readJsonBody,
@@ -356,7 +371,7 @@ describe("chat route helper coverage", () => {
     ).resolves.toBeNull();
     expect(error).toHaveBeenCalledWith(res, "channelType is invalid", 400);
 
-    readJsonBody.mockResolvedValueOnce({ text: "   " });
+    readJsonBodyMock.mockResolvedValueOnce({ text: "   " });
     await expect(
       readChatRequestPayload(req as never, res as never, {
         readJsonBody,
@@ -367,9 +382,9 @@ describe("chat route helper coverage", () => {
   });
 
   it("classifies local inference commands and account-connect payloads", () => {
-    expect(
-      detectLocalInferenceCommandIntent("switch to cloud routing"),
-    ).toBe("use_cloud");
+    expect(detectLocalInferenceCommandIntent("switch to cloud routing")).toBe(
+      "use_cloud",
+    );
     expect(
       detectLocalInferenceCommandIntent("what local model is loaded?", {
         localInferenceContext: true,
@@ -381,15 +396,15 @@ describe("chat route helper coverage", () => {
     expect(
       detectLocalInferenceCommandIntent("download the eliza-1 gguf model"),
     ).toBe("download");
-    expect(
-      detectLocalInferenceCommandIntent("cancel the gguf download"),
-    ).toBe("cancel");
-    expect(
-      detectLocalInferenceCommandIntent("resume the gguf download"),
-    ).toBe("resume");
-    expect(
-      detectLocalInferenceCommandIntent("retry gguf download"),
-    ).toBe("retry");
+    expect(detectLocalInferenceCommandIntent("cancel the gguf download")).toBe(
+      "cancel",
+    );
+    expect(detectLocalInferenceCommandIntent("resume the gguf download")).toBe(
+      "resume",
+    );
+    expect(detectLocalInferenceCommandIntent("retry gguf download")).toBe(
+      "retry",
+    );
     expect(
       detectLocalInferenceCommandIntent("switch to a smaller gguf model"),
     ).toBe("switch_smaller");
@@ -414,8 +429,9 @@ describe("chat route helper coverage", () => {
       providers: ["openai-api"],
       reason: "Need calendar access.",
     });
-    expect(normalizeAccountConnectRequest({ providers: ["not-real"] }))
-      .toBeUndefined();
+    expect(
+      normalizeAccountConnectRequest({ providers: ["not-real"] }),
+    ).toBeUndefined();
   });
 
   it("marks synthetic chat failures and resolves visible fallback text", () => {
@@ -428,34 +444,37 @@ describe("chat route helper coverage", () => {
       },
     ];
     expect(
-      markSyntheticChatFailureContent({
+      markSyntheticChatFailureContent<Content>({
         text: "Connect an LLM provider to start chatting. Open Settings → Providers, or choose Eliza Cloud during first-run setup.",
       }).metadata,
     ).toMatchObject({
       elizaSyntheticFailure: true,
       chatFailureKind: "no_provider",
     });
-    expect(resolveNoResponseFallback(creditsLog as never)).toContain(
-      "credits",
-    );
+    expect(resolveNoResponseFallback(creditsLog as never)).toContain("credits");
     expect(
       normalizeChatResponseText(
         "I don't have a reply for that — try rephrasing?",
         creditsLog as never,
       ),
     ).toContain("credits");
-    expect(getChatFailureReply(new Error("No provider registered for TEXT"), []))
-      .toContain("Connect an LLM provider");
-    expect(classifyChatFailure(new Error("local inference unavailable"), []))
-      .toBe("local_inference");
+    expect(
+      getChatFailureReply(new Error("No provider registered for TEXT"), []),
+    ).toContain("Connect an LLM provider");
+    expect(
+      classifyChatFailure(new Error("local inference unavailable"), []),
+    ).toBe("local_inference");
   });
 
   it("persists assistant memory with source, channel, synthetic metadata, and dedupe", async () => {
     const roomId = stringToUuid("persist-room");
-    const created: Array<ReturnType<typeof createMessageMemory>> = [];
+    const created: Memory[] = [];
     const runtime = createRuntime({
-      createMemory: vi.fn(async (memory) => {
-        created.push(memory as ReturnType<typeof createMessageMemory>);
+      // Mirrors AgentRuntime.createMemory, which resolves to the stored
+      // memory's id.
+      createMemory: vi.fn(async (memory: Memory) => {
+        created.push(memory);
+        return memory.id ?? stringToUuid(`created-${created.length}`);
       }),
       getMemories: vi.fn(async () => [
         createMessageMemory({
