@@ -3,8 +3,10 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __resetLastCloudHandoffPhaseDetailForTests,
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
+  dispatchCloudHandoffPhase,
 } from "../events";
 import { useCloudHandoffPhase } from "./useCloudHandoffPhase";
 
@@ -17,7 +19,10 @@ function emit(detail: CloudHandoffPhaseDetail) {
 }
 
 describe("useCloudHandoffPhase", () => {
-  beforeEach(() => vi.useFakeTimers());
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetLastCloudHandoffPhaseDetailForTests();
+  });
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
@@ -31,6 +36,16 @@ describe("useCloudHandoffPhase", () => {
     expect(result.current?.phase).toBe("migrating");
 
     // migrating has no auto-dismiss — it persists until the swap resolves.
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(result.current?.phase).toBe("migrating");
+  });
+
+  it("replays a migrating phase dispatched before the late subscriber mounts", () => {
+    dispatchCloudHandoffPhase({ agentId: "a1", phase: "migrating" });
+
+    const { result } = renderHook(() => useCloudHandoffPhase());
+
+    expect(result.current).toEqual({ agentId: "a1", phase: "migrating" });
     act(() => vi.advanceTimersByTime(60_000));
     expect(result.current?.phase).toBe("migrating");
   });
