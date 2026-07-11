@@ -11,7 +11,8 @@
  *
  * Instrumented seams (installed in beforeAll, snapshot-restored in afterAll):
  * `prepareManagedElizaSharedEnvironment` (wrapped, delegates to the real
- * implementation) to delay/fail the credential-mint phase, and a dbWrite
+ * implementation) to delay/fail the credential-mint phase, environment
+ * encryption to reject after a real candidate key exists, and a dbWrite
  * transaction wrapper that lets one test drop the COMMIT acknowledgment after
  * the commit itself landed. One spy on the enqueue step proves target+job
  * atomicity under rollback.
@@ -26,6 +27,7 @@ process.env.MOCK_REDIS = "1";
 
 import { eq, like } from "drizzle-orm";
 import * as dbHelpersActual from "../../db/helpers";
+import * as agentEnvCryptoActual from "./agent-env-crypto";
 import * as managedConfigActual from "./managed-eliza-config";
 
 // ---- instrumented prep seam: delay / fail / count, delegating to the real fn ----
@@ -60,6 +62,28 @@ function installPrepSeam(): void {
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
       return realPrepareManagedElizaSharedEnvironment(params);
+    },
+  }));
+}
+
+// ---- post-mint encryption seam: delegate normally, but allow one rejection
+// after preparation has created the real candidate API key. This pins the
+// phase-2 ownership rule independently of transaction/commit ambiguity.
+const agentEnvCryptoSnapshot = { ...agentEnvCryptoActual };
+const realEncryptAgentEnvVarsForStorage = agentEnvCryptoSnapshot.encryptAgentEnvVarsForStorage;
+let encryptionFailNext = false;
+
+function installEncryptionSeam(): void {
+  mock.module("./agent-env-crypto", () => ({
+    ...agentEnvCryptoSnapshot,
+    encryptAgentEnvVarsForStorage: async (
+      ...args: Parameters<typeof realEncryptAgentEnvVarsForStorage>
+    ) => {
+      if (encryptionFailNext) {
+        encryptionFailNext = false;
+        throw new Error("simulated post-mint environment encryption failure");
+      }
+      return realEncryptAgentEnvVarsForStorage(...args);
     },
   }));
 }
@@ -113,6 +137,7 @@ const SRC_CONCURRENT = "cccccccc-2222-4222-8222-222222222222";
 const SRC_DELAYED = "cccccccc-3333-4333-8333-333333333333";
 const SRC_ENQUEUE_FAIL = "cccccccc-4444-4444-8444-444444444444";
 const SRC_PREP_FAIL = "cccccccc-5555-4555-8555-555555555555";
+const SRC_ENCRYPT_FAIL = "cccccccc-5eee-45ee-85ee-555555555555";
 const SRC_ADOPTED = "cccccccc-6666-4666-8666-666666666666";
 const SRC_QUOTA = "cccccccc-7777-4777-8777-777777777777";
 const SRC_FORGED = "cccccccc-8888-4888-8888-888888888888";
@@ -137,6 +162,7 @@ let svc: typeof import("./agent-tier-upgrade-target");
 beforeAll(async () => {
   try {
     installPrepSeam();
+    installEncryptionSeam();
     const client = await import("../../db/client");
     // Capture the pristine handles BEFORE the commit-ack seam lands: the
     // harness must keep observing the DB directly even while a test rejects
@@ -217,6 +243,7 @@ beforeAll(async () => {
 afterEach(() => {
   prepDelayMs = 0;
   prepFailNext = false;
+  encryptionFailNext = false;
   commitAckLossCountdown = 0;
   verifySelectFailNext = false;
 });
@@ -455,6 +482,28 @@ describe("createTierUpgradeTargetWithProvision — durable single-flight boundar
       const retry = await svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_PREP_FAIL));
       expect(retry.created).toBe(true);
       expect(await jobsForAgent(retry.agent.id)).toHaveLength(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an environment-encryption failure after credential mint revokes the candidate; the retry converges",
+    async () => {
+      expect(pgliteReady).toBe(true);
+
+      encryptionFailNext = true;
+      await expect(
+        svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_ENCRYPT_FAIL)),
+      ).rejects.toThrow("simulated post-mint environment encryption failure");
+
+      expect(await targetsForSource(SRC_ENCRYPT_FAIL)).toHaveLength(0);
+      await expectNoOrphanAgentKeys();
+
+      const retry = await svc.createTierUpgradeTargetWithProvision(upgradeParams(SRC_ENCRYPT_FAIL));
+      expect(retry.created).toBe(true);
+      expect(await targetsForSource(SRC_ENCRYPT_FAIL)).toHaveLength(1);
+      expect(await jobsForAgent(retry.agent.id)).toHaveLength(1);
+      await expectNoOrphanAgentKeys();
     },
     PGLITE_TIMEOUT,
   );
@@ -727,5 +776,6 @@ afterAll(async () => {
   // in the same process — a leaked module mock patches itself into later
   // suites' imports.
   mock.module("./managed-eliza-config", () => managedConfigSnapshot);
+  mock.module("./agent-env-crypto", () => agentEnvCryptoSnapshot);
   mock.module("../../db/helpers", () => dbHelpersSnapshot);
 });

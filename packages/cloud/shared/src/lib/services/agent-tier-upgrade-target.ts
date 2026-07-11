@@ -294,16 +294,26 @@ export async function createTierUpgradeTargetWithProvision(
   // pre-generated id. Mints the agent API key and the platform tokens the
   // container boots with; nothing here references or mutates existing rows.
   const targetId = crypto.randomUUID();
-  const prepared = await prepareManagedElizaSharedEnvironment({
-    existingEnv: params.environmentVars ?? {},
-    organizationId: params.organizationId,
-    userId: params.userId,
-    agentSandboxId: targetId,
-  });
-  const storedEnvironmentVars = await encryptAgentEnvVarsForStorage(
-    params.organizationId,
-    prepared.environmentVars,
-  );
+  let storedEnvironmentVars: Record<string, string>;
+  try {
+    const prepared = await prepareManagedElizaSharedEnvironment({
+      existingEnv: params.environmentVars ?? {},
+      organizationId: params.organizationId,
+      userId: params.userId,
+      agentSandboxId: targetId,
+    });
+    storedEnvironmentVars = await encryptAgentEnvVarsForStorage(
+      params.organizationId,
+      prepared.environmentVars,
+    );
+  } catch (error) {
+    // No target transaction has started, so this candidate id cannot have
+    // durable ownership. Preparation may already have minted its API key
+    // before a later token/encryption step rejected; revoke it here instead of
+    // misclassifying an ordinary phase-2 failure as crash-only hygiene debt.
+    await revokeAbandonedTargetCredentials(targetId);
+    throw error;
+  }
 
   let result: TierUpgradeTargetResult;
   try {
