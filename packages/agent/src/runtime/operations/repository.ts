@@ -95,9 +95,7 @@ async function readOperationFile(
   return parsed;
 }
 
-export class FilesystemRuntimeOperationRepository
-  implements RuntimeOperationRepository
-{
+export class FilesystemRuntimeOperationRepository implements RuntimeOperationRepository {
   private readonly dir: string;
   private readonly byId: Map<string, RuntimeOperation> = new Map();
   private readonly byIdempotencyKey: Map<string, string> = new Map();
@@ -364,6 +362,22 @@ export class FilesystemRuntimeOperationRepository
       return null;
     }
     if (op.status !== "pending" && op.status !== "running") {
+      this.activeId = null;
+      return null;
+    }
+    // A process exit can leave the filesystem-backed single-flight slot in a
+    // permanently active state. Runtime operations normally finish in
+    // seconds; recover abandoned records after two minutes so a dead process
+    // cannot block every future provider switch.
+    if (Date.now() - op.startedAt > 2 * 60 * 1000) {
+      await this.update(op.id, {
+        status: "failed",
+        finishedAt: Date.now(),
+        error: {
+          code: "strategy-failed",
+          message: "Operation abandoned by a previous process",
+        },
+      });
       this.activeId = null;
       return null;
     }
