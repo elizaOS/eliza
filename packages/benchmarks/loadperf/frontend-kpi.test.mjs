@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { checkBudgets, serveDist } from "./frontend-kpi.mjs";
+import { checkBudgets, runFrontendKpi, serveDist } from "./frontend-kpi.mjs";
 
 const cleanups = [];
 const SCRIPT = "export const eliza = 'agent';\n".repeat(100);
@@ -127,5 +127,66 @@ describe("frontend KPI budgets", () => {
       longTasksMs: null,
     });
     expect(missing.every(({ pass }) => !pass)).toBe(true);
+  });
+
+  it("runs the browser measurement path and records a passing result", async () => {
+    const recorded = [];
+    let browserClosed = false;
+    const metrics = {
+      fcpMs: 0,
+      lcpMs: 0,
+      cls: 0,
+      longTasksMs: 0,
+      ttfbMs: 0,
+      domContentLoadedMs: 0,
+      loadMs: 0,
+      jsTransferredBytes: 0,
+      requestCount: 0,
+    };
+    const page = {
+      goto: async () => undefined,
+      waitForTimeout: async () => undefined,
+      evaluate: async () => metrics,
+    };
+    const context = {
+      addInitScript: async () => undefined,
+      newPage: async () => page,
+    };
+    const playwright = {
+      chromium: {
+        launch: async () => ({
+          newContext: async () => context,
+          close: async () => {
+            browserClosed = true;
+          },
+        }),
+      },
+    };
+
+    const exitCode = await runFrontendKpi({
+      playwright,
+      targetUrl: "https://example.test",
+      settleMs: 0,
+      jsonOnly: true,
+      record: (name, result) => {
+        recorded.push({ name, result });
+        return { file: "/tmp/frontend.json" };
+      },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(browserClosed).toBe(true);
+    expect(recorded).toEqual([
+      {
+        name: "frontend",
+        result: expect.objectContaining({
+          pass: true,
+          summary: expect.objectContaining({
+            url: "https://example.test",
+            served: "remote",
+          }),
+        }),
+      },
+    ]);
   });
 });

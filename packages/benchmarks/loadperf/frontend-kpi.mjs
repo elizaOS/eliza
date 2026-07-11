@@ -225,10 +225,17 @@ export function checkBudgets(metrics) {
   }));
 }
 
-async function main() {
-  let playwright;
+export async function runFrontendKpi({
+  playwright: suppliedPlaywright,
+  targetUrl = TARGET_URL,
+  settleMs = SETTLE_MS,
+  jsonOnly = JSON_ONLY,
+  serve = serveDist,
+  record = recordResult,
+} = {}) {
+  let playwright = suppliedPlaywright;
   try {
-    playwright = await import("playwright");
+    playwright ??= await import("playwright");
   } catch (err) {
     // error-policy:J1 CLI boundary translation — the optional browser is a
     // documented prerequisite, so its absence produces a skipped artifact.
@@ -236,32 +243,32 @@ async function main() {
       skipped: true,
       error: `playwright unavailable: ${err?.message ?? String(err)}`,
     };
-    const { file } = recordResult("frontend", payload, NOW);
-    if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
+    const { file } = record("frontend", payload, NOW);
+    if (jsonOnly) console.log(JSON.stringify({ ...payload, file }, null, 2));
     else
       console.error(
         `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
       );
-    process.exit(2);
+    return 2;
   }
 
   let served = null;
-  let target = TARGET_URL;
+  let target = targetUrl;
   if (!target) {
     try {
-      served = await serveDist();
+      served = await serve();
       target = served.url;
     } catch (err) {
       // error-policy:J1 CLI boundary translation — an unavailable build
       // produces a skipped artifact rather than a fabricated KPI result.
       const payload = { skipped: true, error: err?.message ?? String(err) };
-      const { file } = recordResult("frontend", payload, NOW);
-      if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
+      const { file } = record("frontend", payload, NOW);
+      if (jsonOnly) console.log(JSON.stringify({ ...payload, file }, null, 2));
       else
         console.error(
           `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
         );
-      process.exit(2);
+      return 2;
     }
   }
 
@@ -272,7 +279,7 @@ async function main() {
     await context.addInitScript(OBSERVER_INIT);
     const page = await context.newPage();
     await page.goto(target, { waitUntil: "load", timeout: 60_000 });
-    await page.waitForTimeout(SETTLE_MS);
+    await page.waitForTimeout(settleMs);
     const metrics = await page.evaluate(COLLECT);
 
     const checks = checkBudgets(metrics);
@@ -285,9 +292,9 @@ async function main() {
       checks,
       pass: checks.every((c) => c.pass),
     };
-    const { file } = recordResult("frontend", result, NOW);
+    const { file } = record("frontend", result, NOW);
 
-    if (JSON_ONLY) {
+    if (jsonOnly) {
       console.log(JSON.stringify(result, null, 2));
     } else {
       console.log("\n=== Frontend KPI ===");
@@ -319,7 +326,7 @@ async function main() {
         `\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`,
       );
     }
-    process.exit(result.pass ? 0 : 1);
+    return result.pass ? 0 : 1;
   } catch (err) {
     // error-policy:J1 CLI boundary translation — browser and navigation
     // failures become a recorded skipped result for the benchmark caller.
@@ -328,13 +335,13 @@ async function main() {
       url: target,
       error: err?.message ?? String(err),
     };
-    const { file } = recordResult("frontend", payload, NOW);
-    if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
+    const { file } = record("frontend", payload, NOW);
+    if (jsonOnly) console.log(JSON.stringify({ ...payload, file }, null, 2));
     else
       console.error(
         `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
       );
-    process.exit(2);
+    return 2;
   } finally {
     for (const [label, close] of [
       ["browser", browser ? () => browser.close() : null],
@@ -355,5 +362,5 @@ async function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
+  process.exitCode = await runFrontendKpi();
 }
