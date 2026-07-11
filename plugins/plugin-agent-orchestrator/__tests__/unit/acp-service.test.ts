@@ -560,7 +560,9 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(1);
     // The "elizaos" agent type resolves to the eliza-code ACP server binary
     // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
-    expect(nativeClientMock.instances[0]?.opts.command).toBe("eliza-code-acp");
+    expect(nativeClientMock.instances[0]?.opts.command).toMatch(
+      /eliza-code-acp|packages\/examples\/code\/dist\/acp\.js/,
+    );
   });
 
   it("honors explicit elizaos ACP command overrides", async () => {

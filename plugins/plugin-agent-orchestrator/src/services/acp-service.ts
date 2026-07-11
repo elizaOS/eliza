@@ -20,7 +20,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -32,7 +32,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
 import {
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
   type IAgentRuntime,
@@ -207,6 +207,60 @@ function findGitBinaryForAcp(): string {
     if (existsSync(candidate)) return candidate;
   }
   return "git";
+}
+
+function findExecutableOnPath(name: string): string | undefined {
+  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+    if (!dir) continue;
+    const candidate = join(dir, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function findWorkspaceElizaCodePackage(startDir: string): string | undefined {
+  let dir = resolve(startDir);
+  while (true) {
+    const candidate = join(dir, "packages", "examples", "code");
+    if (existsSync(join(candidate, "src", "acp.ts"))) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
+/**
+ * Provision the workspace-native ACP executable on first use. Development and
+ * self-hosted checkouts deliberately do not require a global npm install: the
+ * package is built into its normal dist directory and launched with the same
+ * Bun executable that performed the build.
+ */
+export function ensureWorkspaceElizaCodeAcp(
+  startDir: string = process.cwd(),
+): string | undefined {
+  const packageDir = findWorkspaceElizaCodePackage(startDir);
+  const bun = findExecutableOnPath("bun");
+  if (!packageDir || !bun) return undefined;
+  const source = join(packageDir, "src", "acp.ts");
+  const output = join(packageDir, "dist", "acp.js");
+  const needsBuild =
+    !existsSync(output) || statSync(source).mtimeMs > statSync(output).mtimeMs;
+  if (needsBuild) {
+    const result = spawnSync(bun, ["run", "--cwd", packageDir, "build"], {
+      cwd: packageDir,
+      env: process.env,
+      encoding: "utf8",
+      timeout: 120_000,
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    if (result.status !== 0 || !existsSync(output)) {
+      const detail = String(
+        result.stderr || result.stdout || "build failed",
+      ).trim();
+      throw new Error(`Failed to auto-install eliza-code-acp: ${detail}`);
+    }
+  }
+  return `${bun} ${output}`;
 }
 
 async function runGitForAcp(
@@ -2738,7 +2792,12 @@ export class AcpService extends Service {
     // ACP mode, so the bare-name fallback below would spawn the wrong binary —
     // resolve to the eliza-code bin unless an explicit command is configured.
     if (normalizedAgentType === "elizaos")
-      return this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ?? "eliza-code-acp";
+      return (
+        this.setting("ELIZA_ELIZAOS_ACP_COMMAND") ??
+        findExecutableOnPath("eliza-code-acp") ??
+        ensureWorkspaceElizaCodeAcp() ??
+        "npx -y --package @elizaos/example-code@2.0.0-beta.1 eliza-code-acp"
+      );
     return String(normalizedAgentType);
   }
 
