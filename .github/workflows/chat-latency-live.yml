@@ -1,0 +1,162 @@
+name: Chat Latency Live
+
+# Manual, privacy-safe comparison of Cerebras direct and the Eliza Cloud model
+# gateway from the same GitHub-hosted runner. Production is never automatic:
+# selecting it binds the job to the protected production environment.
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - ".github/workflows/chat-latency-live.yml"
+      - "packages/scripts/cloud/chat-latency.mjs"
+      - "packages/scripts/cloud/chat-latency.test.mjs"
+      - "packages/scripts/__tests__/chat-latency-workflow.test.ts"
+      - "package.json"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Eliza Cloud gateway environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+      repeats:
+        description: Repetitions for each model/reasoning case
+        required: true
+        default: "3"
+        type: choice
+        options:
+          - "1"
+          - "3"
+          - "5"
+
+concurrency:
+  group: chat-latency-live-${{ github.event_name }}-${{ inputs.environment || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Probe contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Validate probe syntax and privacy contract
+        run: |
+          node --check packages/scripts/cloud/chat-latency.mjs
+          node --test packages/scripts/cloud/chat-latency.test.mjs
+
+  live:
+    name: ${{ matrix.target }} (${{ inputs.environment }})
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [direct, gateway]
+    env:
+      CHAT_LATENCY_API_KEY: ${{ matrix.target == 'direct' && secrets.CEREBRAS_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+      CHAT_LATENCY_BASE_URL: ${{ matrix.target == 'direct' && 'https://api.cerebras.ai' || (inputs.environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai') }}
+      REPORT_PATH: reports/chat-latency-${{ matrix.target }}-${{ inputs.environment }}.jsonl
+    steps:
+      - name: Checkout exact requested ref
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Require target credential
+        run: |
+          if [ -z "${CHAT_LATENCY_API_KEY:-}" ]; then
+            echo "::error::Required credential is not configured for target ${{ matrix.target }} in environment ${{ inputs.environment }}."
+            exit 1
+          fi
+
+      - name: Probe Gemma and GLM reasoning modes
+        id: probe
+        shell: bash
+        run: |
+          mkdir -p reports
+          set +e
+          node packages/scripts/cloud/chat-latency.mjs \
+            --target "${{ matrix.target }}" \
+            --base-url "$CHAT_LATENCY_BASE_URL" \
+            --api-key-env CHAT_LATENCY_API_KEY \
+            --repeat "${{ inputs.repeats }}" \
+            --timeout-ms 120000 \
+            --case gemma-4-31b@omit@512 \
+            --case gemma-4-31b@none@512 \
+            --case zai-glm-4.7@omit@4096 \
+            --case zai-glm-4.7@none@512 \
+            | tee "$REPORT_PATH"
+          probe_status="${PIPESTATUS[0]}"
+          set -e
+          echo "status=$probe_status" >> "$GITHUB_OUTPUT"
+
+      - name: Add privacy-safe timing table to summary
+        if: always() && hashFiles(env.REPORT_PATH) != ''
+        run: |
+          node - "$REPORT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const path = process.argv[2];
+          const records = readFileSync(path, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+          console.log("### Chat latency: ${{ matrix.target }} / ${{ inputs.environment }}");
+          console.log("");
+          console.log("| model | reasoning | run | ok | headers ms | first event ms | first reasoning ms | first token ms | total ms | preforward ms |");
+          console.log("| --- | --- | ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+          for (const row of records) {
+            const preforward = row.serverTiming?.gateway_preforward ?? "—";
+            const values = [
+              row.model ?? "configured agent",
+              row.reasoningEffort ?? "configured",
+              row.sequence,
+              row.ok ? "yes" : "no",
+              row.responseHeadersMs ?? "—",
+              row.firstEventMs ?? "—",
+              row.firstReasoningMs ?? "—",
+              row.firstTokenMs ?? "—",
+              row.totalMs ?? "—",
+              preforward,
+            ];
+            console.log("| " + values.join(" | ") + " |");
+          }
+          NODE
+
+      - name: Upload exact-SHA latency evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chat-latency-${{ matrix.target }}-${{ inputs.environment }}-${{ github.sha }}
+          path: ${{ env.REPORT_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce probe result
+        if: always()
+        run: |
+          status="${{ steps.probe.outputs.status }}"
+          if [ -z "$status" ]; then
+            echo "::error::Probe did not produce a status."
+            exit 1
+          fi
+          exit "$status"

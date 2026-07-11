@@ -194,6 +194,8 @@
     "test:cloud:full": "bun run test:cloud && bun run test:cloud:e2e",
     "test:cloud:e2e": "bun run --cwd packages/cloud/api test:e2e",
     "test:cloud:integration": "node packages/scripts/cloud/admin/run-integration-tests.mjs",
+    "cloud:chat-latency": "node packages/scripts/cloud/chat-latency.mjs",
+    "test:chat-latency": "node --test packages/scripts/cloud/chat-latency.test.mjs",
     "cloud:e2e": "bun run --cwd packages/test/cloud-e2e test",
     "cloud:e2e:headed": "bun run --cwd packages/test/cloud-e2e test:headed",
     "cloud:e2e:ui": "bun run --cwd packages/test/cloud-e2e test:ui",
