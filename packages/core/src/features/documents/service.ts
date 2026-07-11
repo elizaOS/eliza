@@ -19,6 +19,7 @@
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
 import { createUniqueUuid } from "../../entities";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
 import {
@@ -1579,6 +1580,55 @@ export class DocumentService extends Service {
 			editedAt: Date.now(),
 		};
 
+		// #16111: this edit is atomic with respect to the document's fragments.
+		// The old flow overwrote the parent row and deleted every existing fragment
+		// BEFORE re-embedding, so an embed-time failure (model down, dimension/shape
+		// mismatch) destroyed the working fragments and left a zero-fragment doc
+		// showing the new content. Instead, split + embed the new fragments IN
+		// MEMORY first; only once every new fragment is known-good do we mutate the
+		// store (overwrite parent, delete old fragments, persist new). Any failure
+		// during the embed stage happens before a single destructive write, so the
+		// pre-edit state is preserved.
+		const fragments = await this.splitAndCreateFragments(
+			{
+				id: options.documentId,
+				content: { text: options.content },
+				metadata: updatedMetadata,
+			},
+			1500,
+			200,
+			{
+				roomId: existingDocument.roomId,
+				worldId: existingDocument.worldId ?? this.runtime.agentId,
+				entityId: existingDocument.entityId,
+			},
+		);
+
+		try {
+			// Embed the new fragments in place with NO persistence. Throws if any
+			// fragment cannot be embedded — before we touch the persisted state.
+			await this.embedFragmentsInPlace(fragments);
+		} catch (error) {
+			// Nothing was mutated yet: the parent row still holds the original
+			// content and the old fragments are intact. Surface a typed, classified
+			// failure (observable via the owner-escalation path) and rethrow.
+			this.runtime.reportError("DocumentService.updateDocument", error, {
+				documentId: options.documentId,
+				stage: "embed",
+			});
+			throw new ElizaError(
+				`Failed to re-embed fragments while updating document ${options.documentId}; existing fragments preserved`,
+				{
+					code: "DOCUMENT_UPDATE_FAILED",
+					cause: error,
+					context: { documentId: options.documentId },
+					severity: "fatal",
+				},
+			);
+		}
+
+		// New fragments are embedded and validated. Now commit the edit: overwrite
+		// the parent row, drop the old fragments, and persist the new ones.
 		await this.runtime.updateMemory({
 			id: options.documentId,
 			agentId: this.runtime.agentId,
@@ -1610,29 +1660,83 @@ export class DocumentService extends Service {
 			}
 		}
 
-		const fragments = await this.splitAndCreateFragments(
-			{
-				id: options.documentId,
-				content: { text: options.content },
-				metadata: updatedMetadata,
-			},
-			1500,
-			200,
-			{
-				roomId: existingDocument.roomId,
-				worldId: existingDocument.worldId ?? this.runtime.agentId,
-				entityId: existingDocument.entityId,
-			},
-		);
-
-		await this.processDocumentFragmentsBatched(fragments, {
-			continueOnError: false,
-		});
+		// Persist the already-embedded fragments. continueOnError:false so a
+		// persist failure still surfaces; the embeddings themselves are already
+		// present so this write does not re-hit the embedding backend.
+		for (const fragment of fragments) {
+			await this.runtime.createMemory(fragment, DOCUMENT_FRAGMENTS_TABLE);
+		}
 
 		return {
 			documentId: options.documentId,
 			fragmentCount: fragments.length,
 		};
+	}
+
+	/**
+	 * Embed a batch of fragments IN MEMORY (populating `fragment.embedding`)
+	 * without persisting anything. Used by {@link updateDocument} to validate
+	 * that the new content can be embedded BEFORE any destructive store mutation,
+	 * keeping the edit atomic with respect to the document's fragments (#16111).
+	 *
+	 * Mirrors {@link processDocumentFragmentsBatched}'s embed semantics: one
+	 * `TEXT_EMBEDDING_BATCH` round-trip when a batch model is registered (with the
+	 * same count/shape/empty-vector validation), else serial per-fragment embed.
+	 * Any failure throws so the caller can abort before mutating the store; the
+	 * batch path falls back to serial exactly as the persist path does.
+	 */
+	private async embedFragmentsInPlace(fragments: Memory[]): Promise<void> {
+		if (fragments.length === 0) {
+			return;
+		}
+
+		if (this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)) {
+			try {
+				const texts = fragments.map((fragment) => {
+					const text = fragment.content.text;
+					if (typeof text !== "string") {
+						throw new Error(
+							"[DocumentService] document fragment missing text; cannot batch-embed",
+						);
+					}
+					return text;
+				});
+				const vectors = await this.runtime.useModel(
+					ModelType.TEXT_EMBEDDING_BATCH,
+					{ texts },
+				);
+				if (!Array.isArray(vectors) || vectors.length !== fragments.length) {
+					throw new Error(
+						`TEXT_EMBEDDING_BATCH returned ${
+							Array.isArray(vectors) ? vectors.length : "a non-array"
+						} vectors for ${fragments.length} fragments`,
+					);
+				}
+				if (
+					vectors.some(
+						(vector) => !Array.isArray(vector) || vector.length === 0,
+					)
+				) {
+					throw new Error(
+						"TEXT_EMBEDDING_BATCH returned an empty vector for at least one fragment",
+					);
+				}
+				for (let i = 0; i < fragments.length; i++) {
+					fragments[i].embedding = vectors[i];
+				}
+				return;
+			} catch (error) {
+				logger.warn(
+					{ error },
+					"[DocumentService] Batch fragment embedding failed during update; falling back to serial per-fragment embedding",
+				);
+				// Fall through to the serial path (which rethrows on failure).
+			}
+		}
+
+		for (const fragment of fragments) {
+			await this.runtime.addEmbeddingToMemory(fragment);
+		}
 	}
 
 	async _internalAddDocument(
