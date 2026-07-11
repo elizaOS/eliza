@@ -196,7 +196,9 @@ jobs:
             plugins/plugin-sql
             plugins/plugin-blocker
             plugins/plugin-browser
+            plugins/plugin-native-calendar
             plugins/plugin-calendar
+            plugins/plugin-finances
             plugins/plugin-local-inference
             plugins/plugin-app-control
             plugins/plugin-agent-skills
