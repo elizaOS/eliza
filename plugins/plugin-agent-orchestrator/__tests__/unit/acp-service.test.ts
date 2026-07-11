@@ -154,6 +154,31 @@ type MockProc = EventEmitter & {
 
 const spawnMock = spawn as unknown as ReturnType<typeof vi.fn>;
 
+const GIT_IDENTITY_ENV_KEYS = [
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+  "ELIZA_CODING_GIT_AUTHOR_NAME",
+  "ELIZA_CODING_GIT_AUTHOR_EMAIL",
+  "ELIZA_CODING_GIT_COMMITTER_NAME",
+  "ELIZA_CODING_GIT_COMMITTER_EMAIL",
+  "ELIZA_CONFIG_PATH",
+] as const;
+
+function snapshotEnv(
+  keys: readonly string[],
+): Record<string, string | undefined> {
+  return Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+}
+
+function restoreEnv(snapshot: Record<string, string | undefined>) {
+  for (const [key, value] of Object.entries(snapshot)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+}
+
 function runtime(
   settings: Record<string, string | undefined> = {},
   services: Record<string, unknown> = {},
@@ -373,6 +398,49 @@ describe("AcpService", () => {
     expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
   });
 
+  it("pins configured coding git identity over inherited GIT env on CLI spawns", async () => {
+    const previousEnv = snapshotEnv(GIT_IDENTITY_ENV_KEYS);
+    process.env.GIT_AUTHOR_NAME = "Hostile Author";
+    process.env.GIT_AUTHOR_EMAIL = "hostile-author@example.invalid";
+    process.env.GIT_COMMITTER_NAME = "Hostile Committer";
+    process.env.GIT_COMMITTER_EMAIL = "hostile-committer@example.invalid";
+    process.env.ELIZA_CODING_GIT_AUTHOR_NAME = "Configured Author";
+    process.env.ELIZA_CODING_GIT_AUTHOR_EMAIL = "author@example.test";
+    process.env.ELIZA_CODING_GIT_COMMITTER_NAME = "Configured Committer";
+    process.env.ELIZA_CODING_GIT_COMMITTER_EMAIL = "committer@example.test";
+    process.env.ELIZA_CONFIG_PATH = join(
+      tmpdir(),
+      "acp-git-identity-config-does-not-exist.json",
+    );
+    try {
+      const reg = nextProc();
+      const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "cli" }));
+      await service.start();
+
+      const spawned = service.spawnSession({
+        name: "configured-git-identity-cli",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      await waitForSpawn(reg);
+      closeOk(reg);
+      await spawned;
+      await service.stop();
+
+      const env = spawnMock.mock.calls[0]?.[2]?.env as
+        | Record<string, string>
+        | undefined;
+      expect(env).toMatchObject({
+        GIT_AUTHOR_NAME: "Configured Author",
+        GIT_AUTHOR_EMAIL: "author@example.test",
+        GIT_COMMITTER_NAME: "Configured Committer",
+        GIT_COMMITTER_EMAIL: "committer@example.test",
+      });
+    } finally {
+      restoreEnv(previousEnv);
+    }
+  });
+
   it("writes SKILLS.md into every spawn workspace (shared spawn path)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "acp-skills-"));
     try {
@@ -544,6 +612,48 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances[0]?.opts.env?.PARALLAX_SESSION_ID).toBe(
       spawned.sessionId,
     );
+  });
+
+  it("pins the default coding git identity over inherited GIT env on native spawns", async () => {
+    const previousEnv = snapshotEnv(GIT_IDENTITY_ENV_KEYS);
+    process.env.GIT_AUTHOR_NAME = "Hostile Author";
+    process.env.GIT_AUTHOR_EMAIL = "hostile-author@example.invalid";
+    process.env.GIT_COMMITTER_NAME = "Hostile Committer";
+    process.env.GIT_COMMITTER_EMAIL = "hostile-committer@example.invalid";
+    delete process.env.ELIZA_CODING_GIT_AUTHOR_NAME;
+    delete process.env.ELIZA_CODING_GIT_AUTHOR_EMAIL;
+    delete process.env.ELIZA_CODING_GIT_COMMITTER_NAME;
+    delete process.env.ELIZA_CODING_GIT_COMMITTER_EMAIL;
+    process.env.ELIZA_CONFIG_PATH = join(
+      tmpdir(),
+      "acp-git-identity-config-does-not-exist.json",
+    );
+    try {
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+        }),
+      );
+      await service.start();
+
+      await service.spawnSession({
+        name: "default-git-identity-native",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+      await service.stop();
+
+      expect(nativeClientMock.instances).toHaveLength(1);
+      expect(nativeClientMock.instances[0]?.opts.env).toMatchObject({
+        GIT_AUTHOR_NAME: "elizaOS Coding Agent",
+        GIT_AUTHOR_EMAIL: "coding-agent.no-reply@elizaos.local",
+        GIT_COMMITTER_NAME: "elizaOS Coding Agent",
+        GIT_COMMITTER_EMAIL: "coding-agent.no-reply@elizaos.local",
+      });
+    } finally {
+      restoreEnv(previousEnv);
+    }
   });
 
   it("defaults untyped native sessions to the elizaos agent via eliza-code-acp", async () => {

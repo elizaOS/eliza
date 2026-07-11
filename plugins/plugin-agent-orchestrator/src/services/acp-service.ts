@@ -63,6 +63,10 @@ import {
   resolveOrchestratorCredentialProxyConfig,
 } from "./credential-proxy-env.js";
 import {
+  buildGitIdentityEnvPatch,
+  resolveGitIdentityConfig,
+} from "./git-identity-env.js";
+import {
   applyModelGatewayEnv,
   MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
   resolveModelGatewayConfig,
@@ -3709,6 +3713,25 @@ export class AcpService extends Service {
           vendored: Boolean(opencode.vendoredShimDir),
         });
       }
+    }
+    // Per-spawn git identity: pin an explicit author/committer for every agent
+    // commit so the child never inherits the operator's personal `~/.gitconfig`
+    // user.name/email (a provenance leak, and on a fresh box git refuses to
+    // commit at all without one). Materialized as GIT_AUTHOR_*/GIT_COMMITTER_*
+    // env — disjoint from the credential-proxy's GIT_CONFIG_* keys below, so the
+    // two never collide. A stable local-only default is always emitted when no
+    // operator override exists, so fresh hosts work without identity leakage.
+    const gitIdentity = buildGitIdentityEnvPatch(
+      resolveGitIdentityConfig(readConfigEnvKey),
+    );
+    if (Object.keys(gitIdentity).length > 0) {
+      Object.assign(env, gitIdentity);
+      this.log("debug", "pinned per-spawn git identity for sub-agent", {
+        agentType,
+        sessionId: childSessionId,
+        authorName: gitIdentity.GIT_AUTHOR_NAME,
+        committerName: gitIdentity.GIT_COMMITTER_NAME,
+      });
     }
     // Gateway mode runs LAST so no earlier merge step (host forwarding,
     // customCredentials, spawn extras, account selection) can reintroduce a
