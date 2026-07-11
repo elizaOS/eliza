@@ -486,6 +486,10 @@ jobs:
           ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
+          VOICE_AMBIENT_PENDANT_AUTHORIZATION: ${{ secrets.VOICE_AMBIENT_PENDANT_AUTHORIZATION }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
           # shared default tenant (#11461). publish_secret no-ops with a notice
@@ -537,6 +541,10 @@ jobs:
             ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 \
             VAST_API_KEY \
             VAST_BASE_URL \
+            DEEPGRAM_API_KEY \
+            CARTESIA_API_KEY \
+            VOICE_REALTIME_ELIZA_AUTHORIZATION \
+            VOICE_AMBIENT_PENDANT_AUTHORIZATION \
             STEWARD_PLATFORM_KEYS
           do
             publish_secret "$name"
@@ -844,6 +852,8 @@ jobs:
           # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
           # the only thing the bundle can see at runtime.
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && '0' || '1' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
@@ -1225,6 +1235,8 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && '0' || '1' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
