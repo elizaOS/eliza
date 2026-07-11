@@ -19,6 +19,7 @@
  */
 
 import { createServer } from "node:http";
+import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import {
   APP_DIST,
   existsSync,
@@ -37,6 +38,9 @@ const TARGET_URL = urlArg
   ? urlArg.slice("--url=".length)
   : (process.env.LOADPERF_FE_URL ?? null);
 const SETTLE_MS = Number(process.env.LOADPERF_FE_SETTLE_MS ?? 8000);
+const BROTLI_OPTIONS = {
+  params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+};
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -63,6 +67,12 @@ function contentTypeFor(path) {
   return MIME[ext] ?? "application/octet-stream";
 }
 
+function shouldCompress(contentType) {
+  return /^(text\/|application\/(javascript|json|wasm)|image\/svg\+xml)/.test(
+    contentType,
+  );
+}
+
 /** Serve APP_DIST as an SPA (history fallback to index.html). Returns { url, close }. */
 function serveDist() {
   const indexPath = join(APP_DIST, "index.html");
@@ -84,11 +94,23 @@ function serveDist() {
       existsSync(candidate) && !candidate.endsWith("/") ? candidate : indexPath;
     try {
       const buf = readFileSync(file);
+      const contentType = contentTypeFor(file);
+      const acceptsBrotli = /(?:^|,)\s*br(?:\s*;|\s*,|\s*$)/i.test(
+        req.headers["accept-encoding"] ?? "",
+      );
+      // The transfer budget models the deployed CDN path, where text assets
+      // are encoded; serving raw dist bytes would measure bundle weight twice.
+      const body =
+        acceptsBrotli && shouldCompress(contentType)
+          ? brotliCompressSync(buf, BROTLI_OPTIONS)
+          : buf;
       res.writeHead(200, {
-        "content-type": contentTypeFor(file),
-        "content-length": buf.length,
+        "content-type": contentType,
+        "content-length": body.length,
+        ...(body !== buf ? { "content-encoding": "br" } : {}),
+        vary: "accept-encoding",
       });
-      res.end(buf);
+      res.end(body);
     } catch {
       res.writeHead(404, { "content-type": "text/plain" });
       res.end("not found");
