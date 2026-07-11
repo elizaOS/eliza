@@ -1,6 +1,6 @@
 name: Deploy Eliza Provisioning Worker
 
-# SSHes to the Hetzner provisioning host, fetches the latest develop commit,
+# SSHes to the Hetzner provisioning host and deploys one immutable commit,
 # installs the systemd unit shipped at packages/scripts/cloud/admin/eliza-provisioning-worker.service,
 # and restarts the eliza-provisioning-worker daemon.
 #
@@ -16,12 +16,14 @@ on:
       - 'packages/scripts/cloud/admin/daemons/agent-router.ts'
       - 'packages/scripts/cloud/admin/eliza-provisioning-worker.service'
       - 'packages/scripts/cloud/admin/eliza-agent-router.service'
+      - 'packages/scripts/cloud/admin/ensure-generated-keywords.sh'
       - 'packages/cloud/shared/src/lib/services/provisioning-jobs.ts'
       - 'packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts'
       - 'packages/cloud/shared/src/lib/services/eliza-sandbox.ts'
       - 'packages/cloud/shared/src/db/repositories/agent-sandboxes.ts'
       - 'packages/cloud/shared/**'
       - 'packages/cloud/sdk/**'
+      - 'packages/shared/**'
       - 'packages/core/**'
       - 'plugins/plugin-sql/**'
   workflow_dispatch:
@@ -34,6 +36,10 @@ on:
         options:
           - staging
           - production
+      deployment_sha:
+        description: 'Optional exact repository commit for protected staging acceptance'
+        required: false
+        type: string
 
 # Per-env concurrency: a develop push (staging) and a main push (production)
 # can deploy in parallel without one cancelling the other.
@@ -52,6 +58,7 @@ jobs:
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
+      deployment_sha: ${{ steps.snapshot.outputs.deployment_sha }}
     steps:
       - id: env
         run: |
@@ -66,9 +73,44 @@ jobs:
           echo "environment=$env" >> "$GITHUB_OUTPUT"
           echo "branch=$branch"   >> "$GITHUB_OUTPUT"
           echo "Resolved: environment=$env branch=$branch"
+      - id: snapshot
+        env:
+          BRANCH: ${{ steps.env.outputs.branch }}
+          PUSH_SHA: ${{ github.sha }}
+          REQUESTED_SHA: ${{ github.event.inputs.deployment_sha }}
+          TARGET_ENVIRONMENT: ${{ steps.env.outputs.environment }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            deployment_sha="$PUSH_SHA"
+          elif [ -n "$REQUESTED_SHA" ]; then
+            [ "$TARGET_ENVIRONMENT" = "staging" ] || {
+              echo "::error::An exact deployment_sha is permitted only for protected staging deployments"
+              exit 1
+            }
+            [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::deployment_sha must be a lowercase 40-hex commit"
+              exit 1
+            }
+            verify_dir=$(mktemp -d)
+            trap 'rm -rf "$verify_dir"' EXIT
+            git -C "$verify_dir" init --quiet
+            git -C "$verify_dir" fetch --quiet --no-tags --depth=1 \
+              "https://github.com/${GITHUB_REPOSITORY}.git" "$REQUESTED_SHA"
+            deployment_sha=$(git -C "$verify_dir" rev-parse FETCH_HEAD)
+            [ "$deployment_sha" = "$REQUESTED_SHA" ] || {
+              echo "::error::Fetched commit does not match requested deployment_sha"
+              exit 1
+            }
+          else
+            deployment_sha=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')
+          fi
+          [[ "$deployment_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Could not resolve immutable deployment SHA for $BRANCH"; exit 1; }
+          echo "deployment_sha=$deployment_sha" >> "$GITHUB_OUTPUT"
+          echo "Resolved immutable deployment snapshot: $deployment_sha"
 
   deploy:
-    name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }})
+    name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     environment: ${{ needs.determine-env.outputs.environment }}
@@ -78,6 +120,7 @@ jobs:
       DEPLOY_HOST: ${{ secrets.ELIZA_PROVISIONING_HOST }}
       DEPLOY_SSH_KEY: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
+      DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
       # Headscale wiring for the provisioning worker (the CONSUMER of the
       # control plane). These are reconciled into /opt/eliza/cloud/.env.local
       # on every deploy so the box can never silently drift to a stale,
@@ -198,10 +241,10 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE
           script: |
             set -euo pipefail
-            echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH) ==="
+            echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
 
             cd /opt/eliza
             export GIT_CONFIG_COUNT=1
@@ -220,7 +263,7 @@ jobs:
             # remote shell doesn't expand them before git sees the pattern,
             # and fail loud if clean errors out — silently swallowing it is
             # what let stale build artifacts survive and block checkout below.
-            git reset --hard HEAD 2>/dev/null || true
+            git reset --hard HEAD
             git clean -fdx \
               -e .env \
               -e .env.local \
@@ -234,7 +277,7 @@ jobs:
             # paths, `git checkout -B` aborts with "untracked working tree
             # files would be overwritten". Sweep them before checkout.
             find packages -type f \( -name '*.d.ts' -o -name '*.d.ts.map' \) \
-              ! -path '*/node_modules/*' -delete 2>/dev/null || true
+              ! -path '*/node_modules/*' -delete
 
             # bun.lock became tracked at 4ae092dcda; the host's previous deploy
             # may have left an untracked copy from `bun install` that pre-dates
@@ -254,10 +297,10 @@ jobs:
             # commit whose submodule SHA was never pushed to the fork kills the
             # whole deploy with `upload-pack: not our ref`. Skip submodule
             # traversal entirely on this path.
-            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules \
-              origin "+$DEPLOY_BRANCH:refs/remotes/origin/$DEPLOY_BRANCH"
+            git -c fetch.recurseSubmodules=no fetch --no-recurse-submodules origin "$DEPLOY_SHA"
             git -c submodule.recurse=false checkout --no-recurse-submodules \
-              -B "$DEPLOY_BRANCH" "origin/$DEPLOY_BRANCH"
+              -B "$DEPLOY_BRANCH" "$DEPLOY_SHA"
+            test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
 
             # The `rm -f bun.lock` above deletes a TRACKED file; when bun.lock
             # is identical between the previous HEAD and the new tip, checkout
@@ -267,7 +310,12 @@ jobs:
             # pin took the worker down at boot (`does not provide an export
             # named 'secureJsonParse'`). Always restore the tracked lockfile so
             # installs are lockfile-pinned and deterministic.
-            git checkout "origin/$DEPLOY_BRANCH" -- bun.lock
+            git checkout "$DEPLOY_SHA" -- bun.lock
+
+            # git clean removes these intentionally ignored modules. Generate
+            # and assert them before install/build, while the healthy daemons
+            # are still running, so generator failure cannot cause downtime.
+            bash packages/scripts/cloud/admin/ensure-generated-keywords.sh
 
             # Install the canary (Rust) Bun on first install.
             if ! command -v bun >/dev/null 2>&1; then
