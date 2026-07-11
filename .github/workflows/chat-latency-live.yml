@@ -59,20 +59,17 @@ jobs:
           node --test packages/scripts/cloud/chat-latency.test.mjs
 
   live:
-    name: ${{ matrix.target }} (${{ inputs.environment }})
+    name: paired direct + gateway (${{ inputs.environment }})
     if: github.event_name == 'workflow_dispatch'
     needs: contract
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [direct, gateway]
     env:
-      CHAT_LATENCY_API_KEY: ${{ matrix.target == 'direct' && secrets.CEREBRAS_API_KEY || secrets.ELIZACLOUD_API_KEY }}
-      CHAT_LATENCY_BASE_URL: ${{ matrix.target == 'direct' && 'https://api.cerebras.ai' || (inputs.environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai') }}
-      REPORT_PATH: reports/chat-latency-${{ matrix.target }}-${{ inputs.environment }}.jsonl
+      CEREBRAS_CHAT_LATENCY_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+      ELIZA_CLOUD_CHAT_LATENCY_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+      ELIZA_CLOUD_CHAT_LATENCY_BASE_URL: ${{ inputs.environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+      REPORT_PATH: reports/chat-latency-paired-${{ inputs.environment }}.jsonl
     steps:
       - name: Checkout exact requested ref
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -82,23 +79,30 @@ jobs:
         with:
           node-version: "24.15.0"
 
-      - name: Require target credential
+      - name: Require both target credentials
         run: |
-          if [ -z "${CHAT_LATENCY_API_KEY:-}" ]; then
-            echo "::error::Required credential is not configured for target ${{ matrix.target }} in environment ${{ inputs.environment }}."
+          missing=()
+          [ -z "${CEREBRAS_CHAT_LATENCY_API_KEY:-}" ] && missing+=("CEREBRAS_API_KEY")
+          [ -z "${ELIZA_CLOUD_CHAT_LATENCY_API_KEY:-}" ] && missing+=("ELIZACLOUD_API_KEY")
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error::Required latency credential(s) are not configured in environment ${{ inputs.environment }}: ${missing[*]}"
             exit 1
           fi
 
-      - name: Probe Gemma and GLM reasoning modes
+      - name: Probe Gemma and GLM reasoning modes on one runner
         id: probe
         shell: bash
         run: |
           mkdir -p reports
           set +e
+
+          # Both commands execute in this same job so host, runner region, Node
+          # version, and observation clock are held constant. Direct runs first
+          # and gateway follows immediately with the identical case matrix.
           node packages/scripts/cloud/chat-latency.mjs \
-            --target "${{ matrix.target }}" \
-            --base-url "$CHAT_LATENCY_BASE_URL" \
-            --api-key-env CHAT_LATENCY_API_KEY \
+            --target direct \
+            --base-url https://api.cerebras.ai \
+            --api-key-env CEREBRAS_CHAT_LATENCY_API_KEY \
             --repeat "${{ inputs.repeats }}" \
             --timeout-ms 120000 \
             --case gemma-4-31b@omit@512 \
@@ -106,8 +110,26 @@ jobs:
             --case zai-glm-4.7@omit@4096 \
             --case zai-glm-4.7@none@512 \
             | tee "$REPORT_PATH"
-          probe_status="${PIPESTATUS[0]}"
+          direct_status="${PIPESTATUS[0]}"
+
+          node packages/scripts/cloud/chat-latency.mjs \
+            --target gateway \
+            --base-url "$ELIZA_CLOUD_CHAT_LATENCY_BASE_URL" \
+            --api-key-env ELIZA_CLOUD_CHAT_LATENCY_API_KEY \
+            --repeat "${{ inputs.repeats }}" \
+            --timeout-ms 120000 \
+            --case gemma-4-31b@omit@512 \
+            --case gemma-4-31b@none@512 \
+            --case zai-glm-4.7@omit@4096 \
+            --case zai-glm-4.7@none@512 \
+            | tee -a "$REPORT_PATH"
+          gateway_status="${PIPESTATUS[0]}"
+
           set -e
+          probe_status=0
+          if [ "$direct_status" -ne 0 ] || [ "$gateway_status" -ne 0 ]; then
+            probe_status=2
+          fi
           echo "status=$probe_status" >> "$GITHUB_OUTPUT"
 
       - name: Add privacy-safe timing table to summary
@@ -120,13 +142,14 @@ jobs:
             .split(/\r?\n/)
             .filter(Boolean)
             .map((line) => JSON.parse(line));
-          console.log("### Chat latency: ${{ matrix.target }} / ${{ inputs.environment }}");
+          console.log("### Paired chat latency: direct + gateway / ${{ inputs.environment }}");
           console.log("");
-          console.log("| model | reasoning | run | ok | headers ms | first event ms | first reasoning ms | first token ms | total ms | preforward ms |");
-          console.log("| --- | --- | ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: |");
+          console.log("| target | model | reasoning | run | ok | headers ms | first event ms | first reasoning ms | first token ms | total ms | preforward ms |");
+          console.log("| --- | --- | --- | ---: | :---: | ---: | ---: | ---: | ---: | ---: | ---: |");
           for (const row of records) {
             const preforward = row.serverTiming?.gateway_preforward ?? "—";
             const values = [
+              row.target,
               row.model ?? "configured agent",
               row.reasoningEffort ?? "configured",
               row.sequence,
@@ -146,7 +169,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: chat-latency-${{ matrix.target }}-${{ inputs.environment }}-${{ github.sha }}
+          name: chat-latency-paired-${{ inputs.environment }}-${{ github.sha }}
           path: ${{ env.REPORT_PATH }}
           if-no-files-found: error
           retention-days: 14

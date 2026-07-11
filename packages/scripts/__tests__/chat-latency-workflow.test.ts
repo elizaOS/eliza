@@ -17,7 +17,12 @@ describe("chat latency live workflow", () => {
   });
 
   test("compares direct and gateway from one fixed runner contract", () => {
-    expect(workflow).toContain("target: [direct, gateway]");
+    expect(workflow).not.toContain("matrix:");
+    expect(workflow).toContain("--target direct");
+    expect(workflow).toContain("--target gateway");
+    expect(workflow).toContain(
+      "Both commands execute in this same job so host, runner region, Node",
+    );
     expect(workflow).toContain("runs-on: ubuntu-24.04");
     expect(workflow).toContain("https://api.cerebras.ai");
     expect(workflow).toContain("https://api-staging.elizacloud.ai");
@@ -38,7 +43,10 @@ describe("chat latency live workflow", () => {
   test("uses secrets only through an environment variable and retains evidence", () => {
     expect(workflow).toContain("secrets.CEREBRAS_API_KEY");
     expect(workflow).toContain("secrets.ELIZACLOUD_API_KEY");
-    expect(workflow).toContain("--api-key-env CHAT_LATENCY_API_KEY");
+    expect(workflow).toContain("--api-key-env CEREBRAS_CHAT_LATENCY_API_KEY");
+    expect(workflow).toContain(
+      "--api-key-env ELIZA_CLOUD_CHAT_LATENCY_API_KEY",
+    );
     expect(workflow).not.toContain("--api-key ${{");
     expect(workflow).toContain("Upload exact-SHA latency evidence");
     expect(workflow).toContain("retention-days: 14");
