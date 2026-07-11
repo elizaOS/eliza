@@ -384,8 +384,9 @@ function matches(pattern, path) {
 // the GitHub "Files changed" tab shows. Callers check out with fetch-depth: 0
 // so the merge-base is resolvable; if it is not (bad fetch depth, unrelated
 // histories), fail loud rather than silently diffing the entire tree.
-function gitChangedFiles(base, head) {
+export function gitChangedFiles(base, head, cwd) {
   const mergeBaseResult = spawnSync("git", ["merge-base", base, head], {
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -397,6 +398,7 @@ function gitChangedFiles(base, head) {
     );
   }
   const result = spawnSync("git", ["diff", "--name-only", mergeBase, head], {
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -614,4 +616,6 @@ function main() {
   }
 }
 
-main();
+if (import.meta.main) {
+  main();
+}
