@@ -121,7 +121,7 @@ describe("wallet action failure codes", () => {
     };
     const policyDenied = await service.submitOrder(baseOrder);
     const idempotencyConflict = await service.submitOrder(baseOrder);
-    const stewardUnavailable = await service.submitOrder(baseOrder);
+    const submissionUnknown = await service.submitOrder(baseOrder);
 
     expect(policyDenied).toMatchObject({
       ok: false,
@@ -142,16 +142,14 @@ describe("wallet action failure codes", () => {
         idempotencyConflict.ok ? "" : idempotencyConflict.error,
       ),
     ).toBe(true);
-    expect(stewardUnavailable).toMatchObject({
+    expect(submissionUnknown).toMatchObject({
       ok: false,
-      outcome: "not_attempted",
-      error: "STEWARD_UNAVAILABLE",
-      retryable: true,
+      outcome: "unknown",
+      error: "TIMEOUT",
+      retryable: false,
     });
     expect(
-      isActionFailureCode(
-        stewardUnavailable.ok ? "" : stewardUnavailable.error,
-      ),
+      isActionFailureCode(submissionUnknown.ok ? "" : submissionUnknown.error),
     ).toBe(true);
   });
 });
