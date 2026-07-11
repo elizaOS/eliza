@@ -207,9 +207,8 @@ export class ApiKeysRepository {
   }
 
   /**
-   * Finds ACTIVE `agent-sandbox:<uuid>` keys that are STRANDED — i.e. no
-   * `agent_sandboxes` row exists for the uuid encoded in the key name — and
-   * that are older than `olderThan` (#16071).
+   * Atomically deletes active `agent-sandbox:<uuid>` keys whose sandbox does
+   * not exist and whose creation predates `olderThan` (#16071).
    *
    * The stranded case: a process crash BETWEEN the tier-upgrade single-flight
    * mint (`createForAgent`, which runs on its own connection outside the
@@ -227,14 +226,15 @@ export class ApiKeysRepository {
    *     key correctly bound to a LIVE sandbox is never returned.
    *   - only `is_active` keys are considered; already-revoked rows are ignored.
    *
-   * Read on the primary: the sweep immediately revokes what it returns, so it
-   * must not act on a stale read replica that still shows a since-deleted
-   * sandbox as absent (or a since-created one as present).
+   * Selection and deletion deliberately share one SQL statement. A separate
+   * select followed by deletion can revoke a key after a concurrent sandbox
+   * commit makes it live. PostgreSQL evaluates the correlated `NOT EXISTS` at
+   * the delete boundary and returns only rows actually removed, which also
+   * gives callers the hashes needed for cache invalidation.
    */
-  async findStrandedAgentSandboxKeys(olderThan: Date): Promise<ApiKey[]> {
+  async deleteStrandedAgentSandboxKeys(olderThan: Date): Promise<ApiKey[]> {
     return await dbWrite
-      .select()
-      .from(apiKeys)
+      .delete(apiKeys)
       .where(
         and(
           eq(apiKeys.is_active, true),
@@ -252,7 +252,8 @@ export class ApiKeysRepository {
             )})
           )`,
         ),
-      );
+      )
+      .returning();
   }
 }
 

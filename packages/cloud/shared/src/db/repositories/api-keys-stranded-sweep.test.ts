@@ -1,7 +1,7 @@
 /**
  * Real-DB (PGlite) coverage for the stranded agent-sandbox key GC query (#16071).
  *
- * `findStrandedAgentSandboxKeys(olderThan)` must return ONLY active
+ * `deleteStrandedAgentSandboxKeys(olderThan)` must delete ONLY active
  * `agent-sandbox:<uuid>` keys whose uuid has NO `agent_sandboxes` row and whose
  * `created_at` predates the grace window. The three acceptance cases from the
  * issue are proven against real SQL (no mocks): a stranded key is returned, an
@@ -17,7 +17,6 @@ process.env.NODE_ENV ||= "test";
 
 let dbWrite: typeof import("../helpers").dbWrite;
 let apiKeysRepository: typeof import("./api-keys").apiKeysRepository;
-let pgliteReady = true;
 
 const ORG_ID = "00000000-0000-4000-8000-0000000000a1";
 const USER_ID = "00000000-0000-4000-8000-0000000000b1";
@@ -53,17 +52,16 @@ async function insertKey(params: {
 }
 
 beforeAll(async () => {
-  try {
-    ({ dbWrite } = await import("../helpers"));
-    ({ apiKeysRepository } = await import("./api-keys"));
+  ({ dbWrite } = await import("../helpers"));
+  ({ apiKeysRepository } = await import("./api-keys"));
 
-    // Minimal shapes: the query only touches api_keys columns + agent_sandboxes.id.
-    await dbWrite.execute(sql`
+  // Minimal shapes: the query only touches api_keys columns + agent_sandboxes.id.
+  await dbWrite.execute(sql`
       CREATE TABLE IF NOT EXISTS agent_sandboxes (
         id uuid PRIMARY KEY
       )
     `);
-    await dbWrite.execute(sql`
+  await dbWrite.execute(sql`
       CREATE TABLE IF NOT EXISTS api_keys (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         name text NOT NULL,
@@ -84,14 +82,9 @@ beforeAll(async () => {
         deleted_at timestamp
       )
     `);
-  } catch {
-    pgliteReady = false;
-  }
 });
 
 beforeEach(async () => {
-  expect(pgliteReady).toBe(true);
-  if (!pgliteReady) return;
   await dbWrite.execute(sql`DELETE FROM api_keys`);
   await dbWrite.execute(sql`DELETE FROM agent_sandboxes`);
   // The LIVE sandbox row exists for the "never touch a bound key" case.
@@ -99,29 +92,24 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  if (!pgliteReady) return;
   await dbWrite.execute(sql`DROP TABLE IF EXISTS api_keys`);
   await dbWrite.execute(sql`DROP TABLE IF EXISTS agent_sandboxes`);
 });
 
-describe("findStrandedAgentSandboxKeys (#16071)", () => {
+describe("deleteStrandedAgentSandboxKeys (#16071)", () => {
   test("returns a stranded key: no sandbox row + past the grace window", async () => {
-    if (!pgliteReady) return;
-
     const strandedId = await insertKey({
       name: `agent-sandbox:${SANDBOX_STRANDED}`,
       createdAtSql: "now() - interval '1 day'",
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000); // 6h grace
-    const found = await apiKeysRepository.findStrandedAgentSandboxKeys(olderThan);
+    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
 
     expect(found.map((k) => k.id)).toEqual([strandedId]);
   });
 
   test("NEVER touches a key minted moments ago for an in-flight mint (grace window)", async () => {
-    if (!pgliteReady) return;
-
     // Same stranded shape (no sandbox row) but created just now — still inside
     // the tier-upgrade lock window, so the grace cutoff must exclude it.
     await insertKey({
@@ -130,14 +118,12 @@ describe("findStrandedAgentSandboxKeys (#16071)", () => {
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.findStrandedAgentSandboxKeys(olderThan);
+    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
 
     expect(found).toHaveLength(0);
   });
 
   test("NEVER touches a key correctly bound to a live sandbox", async () => {
-    if (!pgliteReady) return;
-
     // Old enough to clear the grace window, but its sandbox row EXISTS.
     await insertKey({
       name: `agent-sandbox:${SANDBOX_LIVE}`,
@@ -145,14 +131,16 @@ describe("findStrandedAgentSandboxKeys (#16071)", () => {
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.findStrandedAgentSandboxKeys(olderThan);
+    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
 
     expect(found).toHaveLength(0);
+    const remaining = (await dbWrite.execute(sql`
+      SELECT id FROM api_keys WHERE name = ${`agent-sandbox:${SANDBOX_LIVE}`}
+    `)) as { rows: Array<{ id: string }> };
+    expect(remaining.rows).toHaveLength(1);
   });
 
   test("ignores non-sandbox keys and already-revoked stranded keys", async () => {
-    if (!pgliteReady) return;
-
     // A user key that merely resembles nothing of the pattern.
     await insertKey({ name: "my personal key", createdAtSql: "now() - interval '1 day'" });
     // An INACTIVE stranded key — already revoked, must not be re-selected.
@@ -163,14 +151,12 @@ describe("findStrandedAgentSandboxKeys (#16071)", () => {
     });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.findStrandedAgentSandboxKeys(olderThan);
+    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
 
     expect(found).toHaveLength(0);
   });
 
   test("mixed fixture returns exactly the one stranded, past-grace, active key", async () => {
-    if (!pgliteReady) return;
-
     const strandedId = await insertKey({
       name: `agent-sandbox:${SANDBOX_STRANDED}`,
       createdAtSql: "now() - interval '1 day'",
@@ -186,7 +172,7 @@ describe("findStrandedAgentSandboxKeys (#16071)", () => {
     await insertKey({ name: "eliza cloud key", createdAtSql: "now() - interval '1 day'" });
 
     const olderThan = new Date(Date.now() - 6 * 60 * 60 * 1000);
-    const found = await apiKeysRepository.findStrandedAgentSandboxKeys(olderThan);
+    const found = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
 
     expect(found.map((k) => k.id)).toEqual([strandedId]);
   });

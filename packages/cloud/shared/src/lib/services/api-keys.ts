@@ -482,16 +482,13 @@ export class ApiKeysService {
    * @returns the number of stranded keys revoked.
    */
   async sweepStrandedAgentKeys(olderThan: Date): Promise<number> {
-    const stranded = await apiKeysRepository.findStrandedAgentSandboxKeys(olderThan);
+    const stranded = await apiKeysRepository.deleteStrandedAgentSandboxKeys(olderThan);
     if (stranded.length === 0) {
       return 0;
     }
 
     let revoked = 0;
     for (const key of stranded) {
-      // Delete by the row's own id so we never widen to a name that a
-      // concurrent re-provision may have just re-bound to a live sandbox.
-      await apiKeysRepository.delete(key.id);
       revoked++;
       try {
         await this.invalidateCache(key.key_hash);

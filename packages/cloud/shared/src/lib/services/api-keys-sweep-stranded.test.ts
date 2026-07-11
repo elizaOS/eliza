@@ -2,9 +2,8 @@
  * `apiKeysService.sweepStrandedAgentKeys` behavior (#16071).
  *
  * The sweep revokes every stranded `agent-sandbox:<uuid>` key the repository
- * reports, deleting each by its own row id (never widening to a name a
- * concurrent re-provision may have just re-bound) and best-effort invalidating
- * each revoked key's auth caches. Cache invalidation is best-effort by design
+ * atomically deletes and best-effort invalidates each revoked key's auth
+ * caches. Cache invalidation is best-effort by design
  * (the row is already DB-revoked): a brownout on one key must NOT abort the
  * sweep, but the failure is surfaced observably (logged), never swallowed.
  * These tests spy the repository + invalidateCache boundary so no DB or Redis
@@ -40,36 +39,37 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
   }
 
   test("no stranded keys -> revokes nothing, no deletes, no invalidations", async () => {
-    track(spyOn(apiKeysRepository, "findStrandedAgentSandboxKeys").mockResolvedValue([]));
-    const del = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
+    const del = track(
+      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue([]),
+    );
     const invalidate = track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
 
     const revoked = await apiKeysService.sweepStrandedAgentKeys(new Date());
 
     expect(revoked).toBe(0);
-    expect(del).not.toHaveBeenCalled();
+    expect(del).toHaveBeenCalledOnce();
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  test("deletes each stranded key BY ID and invalidates its cache; returns the count", async () => {
+  test("invalidates each atomically deleted key and returns the count", async () => {
     const keys = [strandedKey("k1"), strandedKey("k2"), strandedKey("k3")];
-    track(spyOn(apiKeysRepository, "findStrandedAgentSandboxKeys").mockResolvedValue(keys));
-    const del = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
+    const del = track(
+      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue(keys),
+    );
     const invalidate = track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
 
     const revoked = await apiKeysService.sweepStrandedAgentKeys(new Date());
 
     expect(revoked).toBe(3);
     // Deleted by row id (not by name).
-    expect(del.mock.calls.map((c) => c[0])).toEqual(["k1", "k2", "k3"]);
+    expect(del).toHaveBeenCalledOnce();
     expect(invalidate.mock.calls.map((c) => c[0])).toEqual(["k1-hash", "k2-hash", "k3-hash"]);
   });
 
   test("passes the grace cutoff straight through to the repository query", async () => {
     const find = track(
-      spyOn(apiKeysRepository, "findStrandedAgentSandboxKeys").mockResolvedValue([]),
+      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue([]),
     );
-    track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
     track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
 
     const cutoff = new Date("2026-01-01T00:00:00.000Z");
@@ -81,8 +81,9 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
 
   test("a cache-invalidation failure does NOT abort the sweep; every row is still revoked", async () => {
     const keys = [strandedKey("k1"), strandedKey("k2"), strandedKey("k3")];
-    track(spyOn(apiKeysRepository, "findStrandedAgentSandboxKeys").mockResolvedValue(keys));
-    const del = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
+    const del = track(
+      spyOn(apiKeysRepository, "deleteStrandedAgentSandboxKeys").mockResolvedValue(keys),
+    );
     // The MIDDLE key's invalidation throws (Redis brownout); the sweep must
     // continue and still count it as revoked (its DB row is already gone).
     const invalidate = track(
@@ -94,7 +95,7 @@ describe("apiKeysService.sweepStrandedAgentKeys (#16071)", () => {
     const revoked = await apiKeysService.sweepStrandedAgentKeys(new Date());
 
     expect(revoked).toBe(3);
-    expect(del.mock.calls.map((c) => c[0])).toEqual(["k1", "k2", "k3"]);
+    expect(del).toHaveBeenCalledOnce();
     expect(invalidate.mock.calls.length).toBe(3);
   });
 });
