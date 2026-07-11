@@ -16,6 +16,7 @@ import { parseArgs } from "node:util";
 const TARGETS = new Set(["direct", "gateway", "paired", "dedicated"]);
 const REASONING_EFFORTS = new Set(["omit", "none", "low", "medium", "high"]);
 const SAFE_RESPONSE_HEADERS = [
+  "cf-placement",
   "cf-ray",
   "server-timing",
   "x-eliza-trace-id",

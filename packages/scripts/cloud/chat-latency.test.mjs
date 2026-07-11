@@ -95,12 +95,14 @@ test("selectedResponseHeaders excludes authorization and arbitrary headers", () 
   const selected = selectedResponseHeaders(
     new Headers({
       authorization: "Bearer secret",
+      "cf-placement": "remote-ATL",
       "cf-ray": "ray-id",
       "server-timing": "gateway_auth;dur=2",
       "x-untrusted": "private",
     }),
   );
   assert.deepEqual(selected, {
+    "cf-placement": "remote-ATL",
     "cf-ray": "ray-id",
     "server-timing": "gateway_auth;dur=2",
   });
