@@ -167,15 +167,37 @@ describe("computeEffectiveMaxTokens", () => {
     expect(computeEffectiveMaxTokens(512, null, "gemma-4-31b")).toBe(512);
   });
 
-  test("active Cerebras reasoning retains the response-token floor", () => {
+  test("active Cerebras reasoning preserves an explicit caller ceiling", () => {
     expect(
       computeEffectiveMaxTokens(512, null, "gemma-4-31b", undefined, "low"),
+    ).toBe(512);
+    expect(computeEffectiveMaxTokens(512, null, "zai-glm-4.7")).toBe(512);
+    expect(
+      computeEffectiveMaxTokens(512, null, "gpt-oss-120b", undefined, "low"),
+    ).toBe(512);
+  });
+
+  test("active Cerebras reasoning floors omitted max_tokens to the response-token floor", () => {
+    expect(
+      computeEffectiveMaxTokens(
+        undefined,
+        null,
+        "gemma-4-31b",
+        undefined,
+        "low",
+      ),
     ).toBe(MIN_RESPONSE_TOKENS);
-    expect(computeEffectiveMaxTokens(512, null, "zai-glm-4.7")).toBe(
+    expect(computeEffectiveMaxTokens(undefined, null, "zai-glm-4.7")).toBe(
       MIN_RESPONSE_TOKENS,
     );
     expect(
-      computeEffectiveMaxTokens(512, null, "gpt-oss-120b", undefined, "low"),
+      computeEffectiveMaxTokens(
+        undefined,
+        null,
+        "gpt-oss-120b",
+        undefined,
+        "low",
+      ),
     ).toBe(MIN_RESPONSE_TOKENS);
   });
 

@@ -224,14 +224,12 @@ mock.module("@/lib/pricing", () => ({
     Object.fromEntries(
       Object.entries(params).filter(([, value]) => value !== undefined),
     ),
-  modelUsesReasoningTokens: (
-    model: string,
-    supportedParameters?: readonly string[],
-  ) =>
-    model.includes("o3") ||
-    model.includes("reasoning") ||
-    supportedParameters?.some((param) => param.includes("reasoning")) === true,
-  normalizeModelName: (model: string) => model,
+  // modelUsesReasoningTokens and normalizeModelName come from ...pricingActual
+  // above: MODEL ("z-ai/glm-5.1") is only reasoning-flagged via
+  // catalogSupportedParameters (mocked below), which the real implementation
+  // already honors, so the real function is a safe drop-in that avoids
+  // diverging from production behavior across test files sharing this
+  // process-global mock registry.
 }));
 
 mock.module("@/lib/providers/anthropic-thinking", () => ({
@@ -249,7 +247,10 @@ mock.module("@/lib/providers/anthropic-web-search", () => ({
 
 mock.module("@/lib/providers/language-model", () => ({
   ...languageModelActual,
-  canonicalizeCerebrasModelId: (model: string) => model,
+  // canonicalizeCerebrasModelId comes from ...languageModelActual above: MODEL
+  // is not a Cerebras-native id, so the real implementation is a no-op here
+  // and stays correct if a sibling test file in this batch process needs the
+  // real Cerebras-canonicalization behavior.
   getAiProviderConfigurationError: () => "AI services are not configured",
   getLanguageModel: (model: string) => ({ model }),
   hasLanguageModelProviderConfigured: () => providerConfigured,
