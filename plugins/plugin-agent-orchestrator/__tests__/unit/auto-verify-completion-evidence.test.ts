@@ -100,8 +100,12 @@ function runtime(
   } as never;
 }
 
-const flush = (): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, 0));
+async function waitForPrompt(prompts: string[]): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (prompts.length === 0 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 function changeSet(): WorkspaceChangeSet {
   return {
@@ -175,8 +179,7 @@ describe("auto-verify completion evidence pipeline", () => {
     acp.emit(sessionId, "task_complete", {
       response: "Added caching and verified it works.",
     });
-    await flush();
-    await flush();
+    await waitForPrompt(prompts);
 
     expect(prompts).toHaveLength(1);
     const [prompt] = prompts;
@@ -220,8 +223,7 @@ describe("auto-verify completion evidence pipeline", () => {
     acp.emit(sessionId, "task_complete", {
       response: "the thing is done now",
     });
-    await flush();
-    await flush();
+    await waitForPrompt(prompts);
 
     expect(prompts).toHaveLength(1);
     const [prompt] = prompts;
