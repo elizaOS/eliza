@@ -46,7 +46,7 @@ on:
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - "packages/cloud/api/**"
       - "packages/cloud/shared/**"
@@ -77,29 +77,13 @@ on:
         type: boolean
 
 concurrency:
-  # Serialize branch deploys (push + workflow_dispatch) per ref so the shared-host
-  # self-hosted robot fleet runs exactly ONE deploy at a time. The per-commit-group
-  # design this replaces assumed "the self-hosted runner serializes them", but it
-  # does NOT: the robot slots share disk, so concurrent runs saturate I/O and every
-  # run times out (checkout materialization / bun-install link phase >900s). One run
-  # alone always succeeds.
-  #
-  # A shared per-ref group with cancel-in-progress:false is the fix. The earlier
-  # shared-group attempt failed only because it cancelled IN-PROGRESS runs on every
-  # push (zero completions). Here cancel-in-progress is false for branch deploys, so
-  # GitHub PROTECTS the running deploy and just queues the next one, superseding only
-  # the stale *pending* run — the in-flight deploy always finishes and the latest
-  # commit always lands next. This also removes the need for the manual out-of-band
-  # deploy-serialization escort. PRs keep a per-PR dedupe group + cancel-in-progress
-  # to avoid preview-deploy churn. Refs #11108.
-  #
-  # The "-v2" suffix retires a wedged predecessor group: REJECTING a waiting
-  # migrate-db reviewer gate completes the holder run without releasing its
-  # concurrency group, and GitHub never re-evaluates the queue afterward — every
-  # later run in the group sits in "pending" forever (rerun+cancel of the holder
-  # does not unwedge it; renaming the group is the only recovery). If a stale
-  # waiting deploy must be cleared, CANCEL the run; never reject its gate. (#15892)
-  group: cloud-cf-deploy-v2-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('branch-{0}', github.ref) }}
+  # Canonical deploys serialize as a complete release per environment. Grouping
+  # by ref allowed a feature-branch dispatch and a develop push to interleave
+  # their API, console, and app jobs against the same staging resources. PR
+  # previews remain isolated per PR and cancel superseded preview runs.
+  # The v3 suffix retires the prior per-ref groups without inheriting a wedged
+  # pending run; cancel stale deploys instead of rejecting environment gates.
+  group: cloud-cf-deploy-v3-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
@@ -107,6 +91,32 @@ permissions:
   contents: read
 
 jobs:
+  validate-deploy-source:
+    name: Validate Canonical Deploy Source
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Reject feature refs targeting canonical environments
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          if [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            exit 0
+          fi
+
+          if [ "$TARGET_ENVIRONMENT" = "production" ]; then
+            expected_ref="refs/heads/main"
+          else
+            expected_ref="refs/heads/develop"
+          fi
+
+          if [ "$SOURCE_REF" != "$expected_ref" ]; then
+            echo "::error::Canonical $TARGET_ENVIRONMENT deploys must run from $expected_ref, not $SOURCE_REF. Use the pull-request Pages preview for feature refs."
+            exit 1
+          fi
+
   # ---------------------------------------------------------------------------
   # Database migrations — the schema gate for every deploy job below (#11208).
   #
@@ -125,6 +135,7 @@ jobs:
   # ---------------------------------------------------------------------------
   migrate-db:
     name: Run Database Migrations
+    needs: validate-deploy-source
     if: github.event_name != 'pull_request'
     # GitHub-hosted by DEFAULT so migrations don't inherit the shared
     # self-hosted deploy fleet's heavy-checkout failure modes (mirrors
@@ -245,10 +256,10 @@ jobs:
           # freezing prod (elizaOS/eliza#10839). Reclaim leaked trees, but ONLY
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
-          # CONCURRENCY-SAFE: push deploys use per-SHA concurrency groups (NOT
-          # serialized), so sibling runs materialize at the same time; the age
-          # filter never deletes another run's actively-writing checkout (its mtime
-          # stays fresh), and we also exclude this run's own dirs by name.
+          # CONCURRENCY-SAFE: API, console, and app jobs within one release still
+          # materialize concurrently, and PR previews use independent groups. The
+          # age filter never deletes an actively-written checkout (its mtime stays
+          # fresh), and we also exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -656,10 +667,10 @@ jobs:
           # freezing prod (elizaOS/eliza#10839). Reclaim leaked trees, but ONLY
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
-          # CONCURRENCY-SAFE: push deploys use per-SHA concurrency groups (NOT
-          # serialized), so sibling runs materialize at the same time; the age
-          # filter never deletes another run's actively-writing checkout (its mtime
-          # stays fresh), and we also exclude this run's own dirs by name.
+          # CONCURRENCY-SAFE: API, console, and app jobs within one release still
+          # materialize concurrently, and PR previews use independent groups. The
+          # age filter never deletes an actively-written checkout (its mtime stays
+          # fresh), and we also exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
@@ -1048,10 +1059,10 @@ jobs:
           # freezing prod (elizaOS/eliza#10839). Reclaim leaked trees, but ONLY
           # ones idle >90 min: a real deploy job runs <~50 min and self-cleans, so
           # a dir untouched for 90 min is a definitively-dead leak.
-          # CONCURRENCY-SAFE: push deploys use per-SHA concurrency groups (NOT
-          # serialized), so sibling runs materialize at the same time; the age
-          # filter never deletes another run's actively-writing checkout (its mtime
-          # stays fresh), and we also exclude this run's own dirs by name.
+          # CONCURRENCY-SAFE: API, console, and app jobs within one release still
+          # materialize concurrently, and PR previews use independent groups. The
+          # age filter never deletes an actively-written checkout (its mtime stays
+          # fresh), and we also exclude this run's own dirs by name.
           # UNFAILABLE BY CONSTRUCTION: sibling runs execute this same step at the
           # same moment, so one sibling's rm -rf can race another's find into
           # ENOENT (exit 1) — under the job's default `bash -e` (plus the pipefail
