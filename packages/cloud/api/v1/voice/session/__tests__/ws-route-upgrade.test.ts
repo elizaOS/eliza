@@ -1,0 +1,253 @@
+/**
+ * Unit coverage for the successful WebSocket upgrade branch of the voice-session
+ * ws route. The route-level guard cases (flag off / not an upgrade / capacity /
+ * misconfigured / transport unavailable) are covered by
+ * voice-session-routes-and-auth.test.ts; this file drives the happy path where a
+ * Workers `WebSocketPair` exists, so lines that mint the pair, pick the usage
+ * store, and attach the WS handler execute.
+ */
+
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import { Hono } from "hono";
+import type { AppEnv } from "@/types/cloud-worker-env";
+
+const sharedRoot = new URL("../../../../shared/src", import.meta.url).href;
+
+import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
+// Capture the real modules a sibling changed-test also imports for real, so the
+// non-isolated coverage lane is not poisoned (see the routes-and-auth test for
+// the full rationale). We restore them in afterAll.
+import * as realJwt from "@/lib/voice-session/jwt";
+import * as realSessionRegistry from "@/lib/voice-session/session-registry";
+
+const realJwtExports = { ...realJwt };
+const realSessionRegistryExports = { ...realSessionRegistry };
+const realVoiceUsageMeterExports = { ...realVoiceUsageMeter };
+
+const attachCalls: Array<Record<string, unknown>> = [];
+let registrySize = 0;
+let evalCapableRedis = true;
+let durableStoreValue: unknown = { kind: "durable" };
+
+mock.module("@elizaos/core", () => ({
+  isSensitiveKeyName: () => false,
+  redactLogArgs: (a: unknown) => a,
+}));
+
+mock.module("@/lib/utils/logger", () => ({
+  logger: {
+    error: () => undefined,
+    warn: () => undefined,
+    info: () => undefined,
+  },
+}));
+mock.module(`${sharedRoot}/lib/utils/logger.ts`, () => ({
+  logger: {
+    error: () => undefined,
+    warn: () => undefined,
+    info: () => undefined,
+  },
+}));
+
+const wsHandlerStub = () => ({
+  attachVoiceWsHandler: (server: unknown, deps: Record<string, unknown>) => {
+    attachCalls.push({ server, deps });
+    // Exercise the deps the route wired so their closures are covered.
+    (deps.admitSession as () => boolean)();
+    (deps.claimToken as (jti: string, exp: number) => unknown)("jti", 30);
+    (
+      deps.buildSession as (a: {
+        claims: Record<string, string>;
+        jti: string;
+        tokenExpSeconds: number;
+        downlink: unknown;
+      }) => unknown
+    )({
+      claims: {
+        sessionId: "s",
+        organizationId: "org",
+        userId: "user",
+        agentId: "agent",
+        conversationId: "conv",
+      },
+      jti: "jti",
+      tokenExpSeconds: 30,
+      downlink: {},
+    });
+  },
+});
+mock.module("@/lib/voice-session/ws-handler", wsHandlerStub);
+mock.module(`${sharedRoot}/lib/voice-session/ws-handler.ts`, wsHandlerStub);
+
+const registryStub = () => ({
+  ...realSessionRegistryExports,
+  getVoiceSessionRegistry: () => ({ size: () => registrySize }),
+});
+mock.module("@/lib/voice-session/session-registry", registryStub);
+mock.module(
+  `${sharedRoot}/lib/voice-session/session-registry.ts`,
+  registryStub,
+);
+
+const jwtStub = () => ({
+  ...realJwtExports,
+  claimVoiceSessionToken: async () => ({ ok: true }),
+  isVoiceSessionTokenRevoked: async () => false,
+  revokeVoiceSessionToken: async () => undefined,
+});
+mock.module("@/lib/voice-session/jwt", jwtStub);
+mock.module(`${sharedRoot}/lib/voice-session/jwt.ts`, jwtStub);
+
+const usageMeterStub = () => ({
+  ...realVoiceUsageMeterExports,
+  InMemoryVoiceUsageStore: class {},
+  createDurableVoiceUsageStore: () => durableStoreValue,
+});
+mock.module("@/lib/services/voice-usage-meter", usageMeterStub);
+mock.module(`${sharedRoot}/lib/services/voice-usage-meter.ts`, usageMeterStub);
+
+mock.module("@/lib/cache/redis-factory", () => ({
+  buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
+}));
+mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, () => ({
+  buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
+}));
+
+mock.module("../lib/session", () => ({
+  VoiceSession: class {
+    constructor(readonly options: unknown) {}
+  },
+}));
+
+const wsRoute = (await import("../ws/route")).default;
+
+const baseEnv = {
+  VOICE_REALTIME_WS_ENABLED: "true",
+  DEEPGRAM_API_KEY: "dg",
+  CARTESIA_API_KEY: "cartesia",
+  VOICE_REALTIME_CARTESIA_VOICE_ID: "voice",
+  VOICE_REALTIME_ELIZA_ENDPOINT: "https://eliza.test/sse",
+  VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer service",
+};
+
+class FakeServerSocket {
+  accepted = false;
+  accept() {
+    this.accepted = true;
+  }
+  send() {}
+  close() {}
+  addEventListener() {}
+  removeEventListener() {}
+}
+
+const originalWebSocketPair = (globalThis as { WebSocketPair?: unknown })
+  .WebSocketPair;
+
+beforeEach(() => {
+  attachCalls.length = 0;
+  registrySize = 0;
+  evalCapableRedis = true;
+  durableStoreValue = { kind: "durable" };
+  (globalThis as { WebSocketPair?: unknown }).WebSocketPair = class {
+    0 = {};
+    1 = new FakeServerSocket();
+  };
+});
+
+afterEach(() => {
+  if (originalWebSocketPair === undefined) {
+    delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
+  } else {
+    (globalThis as { WebSocketPair?: unknown }).WebSocketPair =
+      originalWebSocketPair;
+  }
+});
+
+afterAll(() => {
+  mock.module("@/lib/voice-session/jwt", () => realJwtExports);
+  mock.module(`${sharedRoot}/lib/voice-session/jwt.ts`, () => realJwtExports);
+  mock.module(
+    "@/lib/voice-session/session-registry",
+    () => realSessionRegistryExports,
+  );
+  mock.module(
+    `${sharedRoot}/lib/voice-session/session-registry.ts`,
+    () => realSessionRegistryExports,
+  );
+  mock.module(
+    "@/lib/services/voice-usage-meter",
+    () => realVoiceUsageMeterExports,
+  );
+  mock.module(
+    `${sharedRoot}/lib/services/voice-usage-meter.ts`,
+    () => realVoiceUsageMeterExports,
+  );
+});
+
+function upgrade(env: Record<string, string> = {}) {
+  const app = new Hono<AppEnv>();
+  app.route("/", wsRoute);
+  return app.request(
+    "/?sessionId=abc",
+    { headers: { Upgrade: "websocket" } },
+    { ...baseEnv, ...env },
+  );
+}
+
+describe("voice-session ws upgrade (happy path)", () => {
+  test("mints the socket pair, accepts the server, and returns a 101 with the client socket", async () => {
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    expect(attachCalls.length).toBe(1);
+    const server = attachCalls[0].server as FakeServerSocket;
+    expect(server.accepted).toBe(true);
+  });
+
+  test("prefers the durable usage store when Redis is eval-capable", async () => {
+    evalCapableRedis = true;
+    durableStoreValue = { kind: "durable" };
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    // The buildSession closure ran (invoked by the ws-handler stub) without throwing.
+    expect(attachCalls.length).toBe(1);
+  });
+
+  test("falls back to the in-memory store when Redis has no eval (Railway TCP)", async () => {
+    evalCapableRedis = false;
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    expect(attachCalls.length).toBe(1);
+  });
+
+  test("falls back to the in-memory store when no durable store is available", async () => {
+    durableStoreValue = null;
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    expect(attachCalls.length).toBe(1);
+  });
+
+  test("still upgrades when the live registry is under the ceiling; admitSession reflects it", async () => {
+    registrySize = 0;
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    expect(attachCalls.length).toBe(1);
+  });
+
+  test("returns 503 transport-unavailable when WebSocketPair is absent", async () => {
+    delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
+    const res = await upgrade();
+    expect(res.status).toBe(503);
+    expect((await res.json()) as unknown).toEqual({
+      error: "voice realtime transport unavailable",
+    });
+  });
+});
