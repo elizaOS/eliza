@@ -212,12 +212,12 @@ function makeLedgerReservation(startBalance: number, hold: number) {
   };
 }
 
-const QUALIFYING_REQUEST = {
+const QUALIFYING_REQUEST: Record<string, unknown> = {
   model: MODEL,
   messages: [{ role: "user", content: "hello" }],
   stream: true,
   stream_options: { include_usage: true },
-} as never;
+};
 
 function callStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
