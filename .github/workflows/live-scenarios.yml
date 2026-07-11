@@ -201,6 +201,9 @@ jobs:
             plugins/plugin-blocker
             plugins/plugin-browser
             plugins/plugin-native-calendar
+            plugins/plugin-native-activity-tracker
+            plugins/plugin-native-mobile-signals
+            plugins/plugin-native-reminders
             plugins/plugin-scheduling
             plugins/plugin-calendar
             plugins/plugin-finances
