@@ -26,6 +26,7 @@ import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovisi
 import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
+import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import jwksRoute from "../.well-known/jwks.json/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
@@ -425,7 +426,14 @@ export function createApp(): Hono<AppEnv> {
       return failureResponse(c, err);
     }
 
-    logger.error("[CloudApi] Unhandled error", { error: err });
+    // Log a plain-object summary, not the raw Error: the log-sink redactor
+    // rebuilds Error instances with non-enumerable message/stack, so a JSON
+    // tail otherwise shows only `{name}` — which made the staging KMS
+    // misconfig (#16145) a multi-hour reverse-engineering job instead of a
+    // one-line read. String values/keys still pass the same redaction sink.
+    logger.error("[CloudApi] Unhandled error", {
+      error: describeUnhandledError(err),
+    });
     return failureResponse(c, err);
   });
 
