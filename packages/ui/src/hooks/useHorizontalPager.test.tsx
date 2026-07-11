@@ -135,8 +135,8 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
 
     const slowChange = vi.fn();
     const { getByTestId: get2 } = render(<Harness onPageChange={slowChange} />);
-    // Same dx = -700 (past the 50% threshold), but released slowly over 700ms.
-    swipeNext(get2("rail"), 800, 100, 700);
+    // Same dx = -700 (past the 50% threshold), but released slowly over 1400ms.
+    swipeNext(get2("rail"), 800, 100, 1400);
     expect(slowChange).toHaveBeenCalledWith(1);
     const slowMs = settleMsFromRail(get2("rail"));
 
@@ -145,8 +145,8 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
     // Momentum: the flick lands faster than the slow drag.
     expect(fastMs as number).toBeLessThan(slowMs as number);
     // Both stay inside the comfortable settle band.
-    expect(fastMs as number).toBeGreaterThanOrEqual(130);
-    expect(slowMs as number).toBeLessThanOrEqual(440);
+    expect(fastMs as number).toBeGreaterThanOrEqual(320);
+    expect(slowMs as number).toBeLessThanOrEqual(600);
   });
 
   it("a sub-threshold nudge snaps back without advancing", () => {
@@ -157,10 +157,10 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("drops the settle transition under prefers-reduced-motion (rail jumps, no ease)", () => {
-    // matchMedia is stubbed to report reduced-motion; the hook must write
-    // transition:none for every animated offset so the CSS class can't be
-    // overridden by an inline transition.
+  it("uses a restrained settle under prefers-reduced-motion instead of jumping", () => {
+    // The live drag still tracks the finger without a transition. On release,
+    // reduced motion uses a short non-bouncy settle so the page does not jump
+    // discontinuously from the finger position to its resting position.
     const original = window.matchMedia;
     window.matchMedia = ((query: string) => ({
       matches: query.includes("prefers-reduced-motion"),
@@ -179,8 +179,11 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
       // Commit a swipe (crosses the 50% distance floor on the 1024px viewport).
       swipeNext(rail, 800, 100, 40);
       expect(onChange).toHaveBeenCalledWith(1);
-      expect(rail.style.transition).toBe("none");
-      expect(settleMsFromRail(rail)).toBeNull();
+      expect(settleMsFromRail(rail)).toBe(420);
+      expect(rail.style.transition).toContain(
+        "cubic-bezier(0.25, 0.1, 0.25, 1)",
+      );
+      expect(rail.style.getPropertyPriority("transition")).toBe("important");
     } finally {
       window.matchMedia = original;
     }
@@ -525,6 +528,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
       // build the layer before the first tracked frame — and the rail-gesture
       // signal opens with it.
       expect(rail.style.willChange).toBe("transform");
+      expect(rail.hasAttribute("data-rail-gesture-active")).toBe(true);
       expect(isRailGestureActive()).toBe(true);
       fireEvent.pointerMove(rail, { ...touch, clientX: 770 });
     });
@@ -541,6 +545,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
     // rail-gesture signal releases on the same edge.
     endTransform(rail);
     expect(rail.style.willChange).toBe("");
+    expect(rail.hasAttribute("data-rail-gesture-active")).toBe(false);
     expect(isRailGestureActive()).toBe(false);
   });
 
@@ -557,6 +562,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
       // release immediately, not linger through the scroll.
       fireEvent.pointerMove(rail, { ...touch, clientX: 505, clientY: 400 });
       expect(rail.style.willChange).toBe("");
+      expect(rail.hasAttribute("data-rail-gesture-active")).toBe(false);
       expect(isRailGestureActive()).toBe(false);
       fireEvent.pointerMove(rail, { ...touch, clientX: 505, clientY: 500 });
       clock = 1120;
@@ -598,7 +604,7 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
     expect(rail.style.willChange).toBe("");
   });
 
-  it("skips the promotion under prefers-reduced-motion (no layer to composite)", () => {
+  it("holds the promotion through the reduced-motion settle", () => {
     const original = window.matchMedia;
     window.matchMedia = ((query: string) => ({
       matches: query.includes("prefers-reduced-motion"),
@@ -621,8 +627,10 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
         clock = 1120;
         fireEvent.pointerUp(rail, { ...touch, clientX: 400 });
       });
-      // Reduced motion jumps the rail with no settle transition — there is no
-      // animated layer to composite, so the hint is never set.
+      expect(rail.style.willChange).toBe("transform");
+      expect(settleMsFromRail(rail)).toBe(420);
+      expect(rail.style.getPropertyPriority("transition")).toBe("important");
+      endTransform(rail);
       expect(rail.style.willChange).toBe("");
     } finally {
       window.matchMedia = original;

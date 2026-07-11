@@ -539,6 +539,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       cloudApiBase: base,
       authToken: AUTH_TOKEN,
       name: "Eliza",
+      preferSharedTier: true,
     });
 
     // No URLs in the list DTO → the shared-runtime REST adapter base (#8387).

@@ -279,6 +279,7 @@ export * from "./shell/SystemWarningBanner";
 export * from "./ui/accordion";
 export * from "./ui/alert";
 export * from "./ui/alert-dialog";
+export * from "./ui/attachment";
 export * from "./ui/avatar";
 export * from "./ui/badge";
 export * from "./ui/button";
@@ -303,6 +304,16 @@ export * from "./ui/hover-card";
 export * from "./ui/input";
 export * from "./ui/input-group";
 export * from "./ui/label";
+export * from "./ui/marker";
+export {
+  Message,
+  MessageAvatar,
+  MessageContent as MessageRowContent,
+  MessageFooter,
+  MessageGroup,
+  MessageHeader,
+} from "./ui/message";
+export * from "./ui/message-scroller";
 export * from "./ui/pagination";
 export * from "./ui/popover";
 export * from "./ui/progress";

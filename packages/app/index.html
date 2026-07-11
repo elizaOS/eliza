@@ -213,7 +213,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="__APP_THEME_COLOR__" />
-  <meta name="color-scheme" content="dark light" />
+  <meta name="color-scheme" content="dark" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' electrobun://* https://*__APP_CSP_LOCAL_HTTP__;
                script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*__APP_CSP_LOCAL_HTTP__;
                style-src 'self' 'unsafe-inline' https://*__APP_CSP_LOCAL_HTTP__;
@@ -247,29 +247,14 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/brand/favicons/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
   <script>
-    // Synchronously apply the correct dark/light class to <html> before the
-    // first paint so CSS custom properties (--bg, etc.) resolve immediately.
-    // Mirrors the priority logic in packages/ui/src/state/persistence.ts:
-    //   1. eliza:ui-theme-mode  ("dark" | "light" | "system")
-    //   2. legacy eliza:ui-theme / elizaos:ui-theme
-    //   3. system prefers-color-scheme
+    // The app has one curated dark appearance. Apply it before first paint so
+    // persisted legacy values and OS color-scheme changes cannot flash white.
     (() => {
       try {
-        let mode = localStorage.getItem('eliza:ui-theme-mode');
-        if (!mode) {
-          const legacy =
-            localStorage.getItem('eliza:ui-theme') ||
-            localStorage.getItem('elizaos:ui-theme');
-          mode = (legacy === 'light' || legacy === 'dark') ? legacy : 'system';
-        }
-        const dark =
-          mode === 'dark' ||
-          (mode !== 'light' &&
-            window.matchMedia('(prefers-color-scheme: dark)').matches);
         const root = document.documentElement;
-        root.classList.toggle('dark', dark);
-        root.style.colorScheme = dark ? 'dark' : 'light';
-        root.setAttribute('data-theme', dark ? 'dark' : 'light');
+        root.classList.add('dark');
+        root.style.colorScheme = 'dark';
+        root.setAttribute('data-theme', 'dark');
       } catch {}
     })();
   </script>
@@ -330,43 +315,55 @@
       color: #ffffff;
     }
 
-    .eliza-preboot-shell__dots {
-      display: inline-flex;
-      gap: 0.375rem;
+    .eliza-preboot-shell__content {
+      display: flex;
+      width: 100%;
+      max-width: 24rem;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 1.25rem;
+      padding: 0 1.5rem;
+      text-align: center;
     }
 
-    .eliza-preboot-shell__dots span {
-      width: 0.375rem;
-      height: 0.375rem;
-      border-radius: 9999px;
-      background: currentColor;
-      opacity: 0.35;
-      animation: eliza-preboot-pulse 0.9s ease-in-out infinite alternate;
+    .eliza-preboot-shell__brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
     }
 
-    .eliza-preboot-shell__dots span:nth-child(2) {
-      animation-delay: 0.12s;
+    .eliza-preboot-shell__mark {
+      width: 3rem;
+      height: 3rem;
+      object-fit: contain;
     }
 
-    .eliza-preboot-shell__dots span:nth-child(3) {
-      animation-delay: 0.24s;
+    .eliza-preboot-shell__name {
+      font-size: 2.25rem;
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: 0;
     }
 
-    @keyframes eliza-preboot-pulse {
-      from {
-        opacity: 0.28;
-        transform: translateY(0);
-      }
-      to {
-        opacity: 0.8;
-        transform: translateY(-2px);
+    .eliza-preboot-shell__status {
+      margin: 0;
+      min-height: 1.25rem;
+      font-size: 0.875rem;
+      line-height: 1.25rem;
+      opacity: 0.8;
+      animation: eliza-preboot-status-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    @keyframes eliza-preboot-status-pulse {
+      50% {
+        opacity: 0.5;
       }
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .eliza-preboot-shell__dots span {
+      .eliza-preboot-shell__status {
         animation: none;
       }
     }
@@ -376,10 +373,12 @@
 <body>
   <div id="root">
     <div class="eliza-preboot-shell" role="status" aria-live="polite" aria-label="Loading Eliza">
-      <div class="eliza-preboot-shell__dots" aria-hidden="true">
-        <span></span>
-        <span></span>
-        <span></span>
+      <div class="eliza-preboot-shell__content">
+        <div class="eliza-preboot-shell__brand" aria-hidden="true">
+          <img class="eliza-preboot-shell__mark" src="./brand/logos/logo_white_nobg.svg" alt="" />
+          <span class="eliza-preboot-shell__name">elizaOS</span>
+        </div>
+        <p class="eliza-preboot-shell__status">Booting up&hellip;</p>
       </div>
     </div>
   </div>

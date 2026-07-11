@@ -1,6 +1,6 @@
 // Real interaction coverage for the Settings sections + character editor.
 // all-pages-clicksafe only render-smokes settings; this drives the actual
-// controls (voice auto-learn toggle, appearance theme, capability switch, app-
+// controls (voice wake-word toggle, appearance theme, capability switch, app-
 // permission refresh, backup modal, character bio save) and asserts they
 // DO something. Keyless against the stub.
 
@@ -30,18 +30,18 @@ function countRequests(
   return () => n;
 }
 
-test("voice settings: the auto-learn toggle flips state", async ({ page }) => {
+test("voice settings: the wake-word toggle flips state", async ({ page }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Voice$/);
   await expect(page.getByTestId("voice-section")).toBeVisible({
     timeout: 30_000,
   });
 
-  const autoLearn = page.getByTestId("voice-section-auto-learn-toggle");
-  await expect(autoLearn).toBeVisible({ timeout: 15_000 });
-  const before = await autoLearn.isChecked();
-  await autoLearn.click();
-  await expect.poll(() => autoLearn.isChecked()).toBe(!before);
+  const wakeWord = page.getByTestId("voice-section-wake-toggle");
+  await expect(wakeWord).toBeVisible({ timeout: 15_000 });
+  const before = await wakeWord.isChecked();
+  await wakeWord.click();
+  await expect.poll(() => wakeWord.isChecked()).toBe(!before);
 });
 
 test("appearance settings: selecting a language tile marks it active", async ({
@@ -71,21 +71,21 @@ test("appearance settings: selecting a language tile marks it active", async ({
   await expect(english).not.toHaveAttribute("aria-current", "true");
 });
 
-test("background settings: color controls update the shared wallpaper", async ({
+test("background settings: wallpaper controls update the shared wallpaper", async ({
   page,
 }) => {
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Background$/);
   await expect(page.locator("#background")).toBeVisible({ timeout: 30_000 });
 
-  await page.getByLabel("Set background to Green").click();
+  await page.getByLabel("Set background to Reef").click();
   await expect
     .poll(() =>
       page.evaluate(
         () => window.localStorage.getItem("eliza:ui-background") ?? "",
       ),
     )
-    .toContain("#059669");
+    .toContain("/wallpapers/reef.webp");
 });
 
 test("app-permissions settings: Refresh re-queries the app permissions", async ({
@@ -155,9 +155,9 @@ test("capabilities settings: the Wallet switch fires the real config write", asy
     .not.toBe(before);
 });
 
-test("backup & reset settings: Back Up opens its modal", async ({ page }) => {
+test("backup settings: Back Up opens its modal", async ({ page }) => {
   await openAppPath(page, "/settings");
-  await openSettingsSection(page, /Backup & Reset|Advanced/);
+  await openSettingsSection(page, /^Backups$/);
   await expect(page.locator("#advanced")).toBeVisible({ timeout: 30_000 });
 
   await page.locator('[data-agent-id="advanced-export-open"]').first().click();

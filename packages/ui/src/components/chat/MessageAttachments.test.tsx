@@ -82,6 +82,13 @@ describe("MessageAttachments", () => {
     // File card links to the document with a download affordance
     const docLink = screen.getByRole("link", { name: /archive\.zip/i });
     expect(docLink.getAttribute("href")).toBe("https://x/archive.zip");
+    expect(docLink.getAttribute("data-slot")).toBe("attachment-trigger");
+    const docAttachment = docLink.closest('[data-slot="attachment"]');
+    expect(docAttachment?.getAttribute("data-size")).toBe("sm");
+    expect(
+      docAttachment?.querySelector('[data-slot="attachment-title"]')
+        ?.textContent,
+    ).toBe("archive.zip");
   });
 
   it("infers kind from extension when contentType is absent", () => {

@@ -5,8 +5,9 @@
  * are stubbed at the existing test seams, so no real network, DNS, or terminal
  * runs.
  */
-import type { CustomActionDef } from "@elizaos/shared";
+
 import type { Action, IAgentRuntime } from "@elizaos/core";
+import type { CustomActionDef } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __setPinnedFetchImplForTests,
@@ -92,7 +93,11 @@ describe("http handler", () => {
     });
     const handler = buildTestHandler(
       makeDef({
-        handler: { type: "http", url: "https://10.0.0.8/internal", method: "GET" },
+        handler: {
+          type: "http",
+          url: "https://10.0.0.8/internal",
+          method: "GET",
+        },
         parameters: [],
       }),
     );

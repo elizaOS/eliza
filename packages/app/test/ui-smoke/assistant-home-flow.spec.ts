@@ -463,7 +463,7 @@ async function openHomeLauncher(page: Page): Promise<void> {
 }
 
 function conversationLog(page: Page) {
-  return page.getByRole("log", { name: /conversation history/i });
+  return page.getByRole("region", { name: /conversation history/i });
 }
 
 function conversationText(page: Page, text: string | RegExp) {

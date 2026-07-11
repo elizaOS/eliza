@@ -131,7 +131,11 @@ export function MessageSearchPanel({
       // In the keyboard-anchored layout the input is the flex item pinned at
       // the panel bottom (right above the soft keyboard); it must never shrink
       // away when the results list above it is long.
-      className={keyboardAnchored ? "shrink-0" : undefined}
+      className={
+        keyboardAnchored
+          ? "shrink-0 border-white/15 bg-white/[0.08] text-white shadow-sm placeholder:text-white/45"
+          : undefined
+      }
     />
   );
 
@@ -181,7 +185,11 @@ export function MessageSearchPanel({
               data-testid="message-search-result"
               onClick={() => handleJump(result)}
               variant="ghost"
-              className="flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
+              className={
+                keyboardAnchored
+                  ? "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-lg border border-transparent bg-white/[0.04] px-3 py-2 text-left font-normal hover:border-white/10 hover:bg-white/[0.08]"
+                  : "flex h-auto w-full flex-col items-start gap-0.5 whitespace-normal rounded-md px-2 py-1.5 text-left font-normal hover:bg-muted/60"
+              }
             >
               <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
                 {result.role === "assistant" ? "Agent" : "You"} ·{" "}
@@ -213,7 +221,7 @@ export function MessageSearchPanel({
       >
         <div
           data-testid="message-search-scroll"
-          className="flex min-h-0 flex-1 flex-col justify-end gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+          className="scroll-fade flex min-h-0 flex-1 flex-col justify-end gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
         >
           {resultsListEl}
         </div>

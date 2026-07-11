@@ -1,7 +1,8 @@
 // Exercises cloud admin daemons agent router.test automation behavior with deterministic script fixtures.
 
 import { describe, expect, it } from "bun:test";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import { PassThrough } from "node:stream";
 import {
   buildUnresolvedAgentResponse,
   extractAgentIdFromHost,
@@ -9,7 +10,87 @@ import {
   isBridgeHostFallbackEnabled,
   resolveSandboxRouting,
   selectAgentProxyTarget,
+  sendResponse,
 } from "./agent-router";
+
+function makeResponseStub() {
+  const output = new PassThrough() as PassThrough & {
+    flushHeaders: () => void;
+    headersSent: boolean;
+    setHeader: (name: string, value: string) => void;
+    statusCode: number;
+  };
+  let headersFlushed = false;
+  const headers = new Map<string, string>();
+  output.flushHeaders = () => {
+    headersFlushed = true;
+  };
+  Object.defineProperty(output, "headersSent", {
+    get: () => headersFlushed,
+  });
+  output.setHeader = (name, value) => {
+    headers.set(name, value);
+  };
+  output.statusCode = 0;
+  return { output, headers, headersFlushed: () => headersFlushed };
+}
+
+describe("sendResponse", () => {
+  it("relays streaming response chunks before the upstream body closes", async () => {
+    const encoder = new TextEncoder();
+    let releaseSecondChunk: (() => void) | undefined;
+    const upstream = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode("first\n\n"));
+          releaseSecondChunk = () => {
+            controller.enqueue(encoder.encode("second\n\n"));
+            controller.close();
+          };
+        },
+      }),
+      { headers: { "content-type": "text/event-stream" } },
+    );
+    const { output, headers, headersFlushed } = makeResponseStub();
+
+    const firstChunk = new Promise<string>((resolve) => {
+      output.once("data", (chunk: Buffer) => resolve(chunk.toString()));
+    });
+    const relay = sendResponse(output as unknown as ServerResponse, upstream);
+
+    expect(await firstChunk).toBe("first\n\n");
+    expect(headersFlushed()).toBe(true);
+    expect(headers.get("content-type")).toBe("text/event-stream");
+    expect(output.statusCode).toBe(200);
+
+    releaseSecondChunk?.();
+    await relay;
+  });
+
+  it("ends a bodyless response without forcing streaming headers", async () => {
+    const { output, headersFlushed } = makeResponseStub();
+
+    await sendResponse(
+      output as unknown as ServerResponse,
+      new Response(null, { status: 204 }),
+    );
+
+    expect(output.statusCode).toBe(204);
+    expect(headersFlushed()).toBe(false);
+    expect(output.writableEnded).toBe(true);
+  });
+});
+
+describe("handleRequest routing lookup", () => {
+  it("rejects malformed agent ids before consulting routing state", async () => {
+    const response = await handleRequest(
+      new URL("http://localhost/agents/not-an-agent!/routing"),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "invalid agent id" });
+  });
+});
 
 describe("resolveSandboxRouting", () => {
   it("routes over the tailnet to the container port encoded in bridge_url", () => {

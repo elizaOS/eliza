@@ -147,9 +147,7 @@ describe("success path", () => {
     expect(first.retiredTo).not.toBe(second.retiredTo);
     expect(retiredFilesIn(codexHome)).toHaveLength(2);
     expect(readFileSync(first.retiredTo, "utf-8")).toContain("refresh-first");
-    expect(readFileSync(second.retiredTo, "utf-8")).toContain(
-      "refresh-second",
-    );
+    expect(readFileSync(second.retiredTo, "utf-8")).toContain("refresh-second");
     // The pool holds the latest adoption.
     expect(loadAccount("openai-codex", "pool-a")?.credentials.refresh).toBe(
       "refresh-second",
@@ -358,86 +356,73 @@ describe("fault injection", () => {
 });
 
 describe("two-process concurrency", () => {
-  it("holds pool==retired under a real second process doing atomic replaces, and detects the live refresher", async () => {
+  it("detects a second process that recreates the source after retirement", async () => {
     const codexHome = path.join(home, "codex");
-    writeCodexAuth(codexHome, "refresh-base");
-    const authPath = path.join(codexHome, "auth.json");
+    const authPath = writeCodexAuth(codexHome, "refresh-base");
+    const initial = JSON.parse(readFileSync(authPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+    // Reading and parsing this retired file gives the second process a stable
+    // window to observe the atomic rename. The padding is ignored by the token
+    // validator and avoids relying on probabilistic scheduler timing.
+    writeFileSync(
+      authPath,
+      JSON.stringify({ ...initial, padding: "x".repeat(4 * 1024 * 1024) }),
+    );
 
-    // A genuine second OS process performing Codex's refresh write pattern:
-    // write a temp file, atomically rename it over auth.json, in a tight loop.
+    // A genuine second OS process waits for retirement, then performs Codex's
+    // refresh write pattern: write a temp file and atomically rename it over
+    // auth.json. Readiness is explicit so the test never guesses at startup.
     const writerScript = `
-      const { writeFileSync, renameSync } = require("node:fs");
+      const { existsSync, writeFileSync, renameSync } = require("node:fs");
       const authPath = process.argv[1];
-      const body = (i) => JSON.stringify({
+      const body = JSON.stringify({
         tokens: {
-          access_token: "concurrent-access-" + i,
-          refresh_token: "concurrent-refresh-" + i,
+          access_token: "concurrent-access",
+          refresh_token: "concurrent-refresh",
         },
       });
-      const deadline = Date.now() + 700;
-      let i = 0;
+      process.stdout.write("ready\\n");
+      const deadline = Date.now() + 5000;
       while (Date.now() < deadline) {
-        const tmp = authPath + ".tmp";
-        writeFileSync(tmp, body(i));
-        renameSync(tmp, authPath);
-        i++;
-      }
-    `;
-    const writer = spawn(process.execPath, ["-e", writerScript, authPath], {
-      stdio: ["ignore", "ignore", "inherit"],
-    });
-    const writerDone = new Promise<void>((resolve) => {
-      writer.on("exit", () => resolve());
-    });
-    // Let the writer enter its replace loop before racing it.
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    let sawConcurrentFailure = false;
-    for (let attempt = 0; attempt < 10; attempt++) {
-      try {
-        const result = adoptCodexCliLogin({
-          codexHome,
-          accountId: `race-${attempt}`,
-        });
-        // Invariant: whatever was adopted is byte-identical to the retired
-        // file — a torn read/rename interleaving is impossible.
-        const retired = JSON.parse(
-          readFileSync(result.retiredTo, "utf-8"),
-        ) as { tokens: { refresh_token: string } };
-        expect(
-          loadAccount("openai-codex", `race-${attempt}`)?.credentials.refresh,
-        ).toBe(retired.tokens.refresh_token);
-      } catch (err) {
-        const code = (err as ElizaError).code;
-        // While the writer lives, the two legitimate failures are
-        // concurrent_refresher (source reappeared after our rename) and
-        // no_source (attempt landed between its rename cycles). Anything
-        // else is a real bug.
-        expect([
-          "adopt_codex.concurrent_refresher",
-          "adopt_codex.no_source",
-        ]).toContain(code);
-        if (code === "adopt_codex.concurrent_refresher") {
-          sawConcurrentFailure = true;
-          // The retired copy is preserved for the operator to inspect.
-          expect(
-            existsSync(String((err as ElizaError).context?.retiredTo)),
-          ).toBe(true);
+        if (!existsSync(authPath)) {
+          const tmp = authPath + ".tmp";
+          writeFileSync(tmp, body);
+          renameSync(tmp, authPath);
+          process.stdout.write("recreated\\n");
+          process.exit(0);
         }
       }
+      process.exit(2);
+    `;
+    const writer = spawn(process.execPath, ["-e", writerScript, authPath], {
+      stdio: ["ignore", "pipe", "inherit"],
+    });
+    const writerReady = new Promise<void>((resolve, reject) => {
+      writer.once("error", reject);
+      writer.stdout?.once("data", (chunk) => {
+        expect(chunk.toString()).toContain("ready");
+        resolve();
+      });
+    });
+    const writerDone = new Promise<number | null>((resolve, reject) => {
+      writer.once("error", reject);
+      writer.once("exit", (code) => resolve(code));
+    });
+
+    try {
+      await writerReady;
+      const error = expectAdoptError(
+        () => adoptCodexCliLogin({ codexHome, accountId: "race" }),
+        "adopt_codex.concurrent_refresher",
+      );
+      expect(existsSync(String(error.context?.retiredTo))).toBe(true);
+      expect(loadAccount("openai-codex", "race")).toBeNull();
+      expect(await writerDone).toBe(0);
+    } finally {
+      if (writer.exitCode === null) writer.kill();
+      await writerDone;
     }
-    // A tight-loop atomic replacer lands a write between our rename and the
-    // reappearance check on effectively every attempt.
-    expect(sawConcurrentFailure).toBe(true);
-
-    await writerDone;
-
-    // Once the refresher is stopped, adoption succeeds cleanly.
-    writeCodexAuth(codexHome, "refresh-after-race");
-    const final = adoptCodexCliLogin({ codexHome, accountId: "post-race" });
-    expect(loadAccount("openai-codex", "post-race")?.credentials.refresh).toBe(
-      "refresh-after-race",
-    );
-    expect(existsSync(final.retiredTo)).toBe(true);
   }, 15_000);
 });

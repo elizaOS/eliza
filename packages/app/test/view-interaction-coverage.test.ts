@@ -124,11 +124,11 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
       proves:
-        "Exercises Android contacts search, detail navigation, create form, and fixture persistence.",
+        "Exercises the Android contacts create form and fixture persistence.",
       signals: [
         "contacts deterministic controls",
-        "contacts-new",
-        "contacts-search",
+        "contacts-create-display-name",
+        "contacts-create-submit",
       ],
     },
   ],
@@ -163,11 +163,11 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
       proves:
-        "Exercises SMS role request, thread navigation, compose fields, send action, and fixture persistence.",
+        "Exercises rendered SMS history, compose fields, send action, and fixture persistence.",
       signals: [
         "messages deterministic controls",
         "messages-send",
-        "messages-compose-body",
+        "messages-body",
       ],
     },
   ],
@@ -186,12 +186,8 @@ const GUI_INTERACTION_OWNERS: Readonly<
     {
       spec: "packages/app/test/ui-smoke/apps-comms-device-interactions.spec.ts",
       proves:
-        "Exercises dialer keypad, backspace, call action, recent calls, and native fixture persistence.",
-      signals: [
-        "phone deterministic controls",
-        "phone-dial-key",
-        "phone-dial-call",
-      ],
+        "Exercises the dialer keypad, contact dialing, call action, and native fixture persistence.",
+      signals: ["phone deterministic controls", "dialpad-", "dialer-call"],
     },
   ],
   polymarket: [

@@ -61,11 +61,7 @@ export const notifyAction: Action = {
   contexts: ["automation", "agent_internal"],
   routingHint:
     "push a proactive OS/notification-center alert (completed job, reminder, approval needed) -> NOTIFY; to answer the user's question in chat -> REPLY (never NOTIFY)",
-  similes: [
-    "SEND_NOTIFICATION",
-    "PUSH_NOTIFICATION",
-    "SEND_ALERT",
-  ],
+  similes: ["SEND_NOTIFICATION", "PUSH_NOTIFICATION", "SEND_ALERT"],
   description:
     "Send the user a notification (persisted to their notification center and surfaced as an OS/in-app alert). Use when the user should be proactively alerted to something — a completed job, a reminder, an approval needed — rather than just replying in chat. Provide a short `title` and optional `body`, `category` (reminder|task|workflow|agent|approval|message|health|system|general), and `priority` (low|normal|high|urgent).",
   descriptionCompressed:

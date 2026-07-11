@@ -3434,10 +3434,11 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
           ...(onProgress ? { onProgress } : {}),
         });
       }
+      const hasDedicatedBase = Boolean(
+        agent.bridge_url || agent.web_ui_url || agent.webUiUrl,
+      );
       const useSharedAdapter = Boolean(
-        preferSharedTier ||
-          preferStewardAgentAdapter ||
-          !(agent.bridge_url || agent.web_ui_url || agent.webUiUrl),
+        !hasDedicatedBase && (preferSharedTier || preferStewardAgentAdapter),
       );
       const apiBase = useSharedAdapter
         ? buildCloudSharedAgentApiBase(resolvedCloudApiBase, agent.agent_id)
@@ -3486,8 +3487,11 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // on failure the standard dedicated subdomain is still the desired default.
   const detail = await this.getCloudCompatAgent(agentId).catch(() => null);
   let detailAgent = detail?.success ? detail.data : null;
+  const detailHasDedicatedBase = Boolean(
+    detailAgent?.bridge_url || detailAgent?.web_ui_url || detailAgent?.webUiUrl,
+  );
   const useSharedAdapter = Boolean(
-    preferSharedTier || preferStewardAgentAdapter,
+    !detailHasDedicatedBase && (preferSharedTier || preferStewardAgentAdapter),
   );
   // A freshly-created dedicated agent's subdomain is populated immediately, but
   // its container takes ~30-120s to boot. When the caller wants a dedicated

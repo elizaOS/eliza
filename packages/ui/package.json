@@ -413,6 +413,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@radix-ui/react-use-controllable-state": "^1.2.2",
     "@rainbow-me/rainbowkit": "^2.2.11",
+    "@shadcn/react": "0.2.1",
     "@solana/spl-token": "^0.4.14",
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",

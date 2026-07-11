@@ -45,4 +45,26 @@ describe("ChatMessageActions copy", () => {
     );
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
+
+  it("renders glass-row actions as unframed icons", () => {
+    render(
+      <ChatMessageActions
+        appearance="glass-row"
+        canDelete
+        canEdit
+        canReply
+        onCopy={vi.fn()}
+        onDelete={vi.fn()}
+        onEdit={vi.fn()}
+        onReply={vi.fn()}
+      />,
+    );
+
+    for (const button of screen.getAllByRole("button")) {
+      expect(button.className).toContain("bg-transparent");
+      expect(button.className).toContain("rounded-none");
+      expect(button.className).not.toContain("bg-white/10");
+      expect(button.className).not.toContain("rounded-full");
+    }
+  });
 });

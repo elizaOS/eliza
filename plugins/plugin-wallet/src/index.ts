@@ -82,9 +82,16 @@ export * from "./routes/plugin.js";
 /** ERC-6551 / x402 / CCTP / swaps are available from the package barrel. */
 export * from "./sdk/index.js";
 export {
+  STEWARD_TRADING_SERVICE_TYPE,
+  createTradeIdempotencyKey,
+  StewardTradingService,
+} from "./services/steward-trading-service.js";
+export type { StewardTradingServiceOptions } from "./services/steward-trading-service.js";
+export {
   WALLET_BACKEND_SERVICE_TYPE,
   WalletBackendService,
 } from "./services/wallet-backend-service.js";
+export * from "./types/trade.js";
 export * from "./types/wallet-router.js";
 export * from "./wallet/index.js";
 export * from "./wallet-action.js";

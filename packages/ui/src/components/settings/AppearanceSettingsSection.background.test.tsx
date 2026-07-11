@@ -59,5 +59,8 @@ describe("AppearanceSettingsSection background controls", () => {
     render(<AppearanceSettingsSection />);
 
     expect(screen.getByTestId("background-settings-controls")).toBeTruthy();
+    expect(screen.queryByText("Theme", { exact: true })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Light" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "System" })).toBeNull();
   });
 });

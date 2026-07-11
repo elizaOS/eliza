@@ -556,9 +556,13 @@ test("REAL audio: transcription start during spoken local TTS barges in and sile
   // clip is still playing; the shell's recording-driven barge-in effect must
   // silence the in-flight Web Audio source immediately.
   await dispatchVoiceControl(page, "start");
-  await expect(mic).toHaveAttribute("aria-label", "stop transcription", {
-    timeout: 15_000,
-  });
+  await expect(mic).toHaveAttribute(
+    "aria-label",
+    "stop transcription and mic",
+    {
+      timeout: 15_000,
+    },
+  );
   await expect
     .poll(
       async () => {

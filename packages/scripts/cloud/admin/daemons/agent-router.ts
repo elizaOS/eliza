@@ -20,6 +20,8 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { loadLocalEnv } from "./shared/load-env";
 
@@ -448,7 +450,7 @@ export async function handleRequest(
   return Response.json(routing, { status: 200 });
 }
 
-async function sendResponse(
+export async function sendResponse(
   res: ServerResponse,
   response: Response,
 ): Promise<void> {
@@ -456,8 +458,16 @@ async function sendResponse(
   response.headers.forEach((v, k) => {
     res.setHeader(k, v);
   });
-  const body = new Uint8Array(await response.arrayBuffer());
-  res.end(body);
+  if (!response.body) {
+    res.end();
+    return;
+  }
+
+  if (response.headers.get("content-type")?.includes("text/event-stream")) {
+    res.flushHeaders();
+  }
+
+  await pipeline(Readable.from(response.body), res);
 }
 
 let server: import("node:http").Server | null = null;
@@ -485,10 +495,12 @@ async function main(): Promise<void> {
           .catch(() => {
             console.error(`[agent-router] handler error: ${error}`);
           });
-        if (!res.headersSent) {
-          res.statusCode = 500;
-          res.setHeader("content-type", "application/json");
+        if (res.headersSent) {
+          res.destroy(err instanceof Error ? err : new Error(error));
+          return;
         }
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json");
         res.end(JSON.stringify({ error: "internal error" }));
       });
   });

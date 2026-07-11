@@ -53,6 +53,7 @@ vi.mock("./notification-banner-store", () => ({
 
 import {
   __getStateForTests,
+  __ingestEphemeralNotificationForTests,
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
   clearNotifications,
@@ -60,6 +61,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   removeNotification,
+  removeNotifications,
   seedDevNotificationsIfEmpty,
 } from "./notification-store";
 
@@ -490,6 +492,29 @@ describe("notification-store", () => {
     expect(clearNotificationsApi).toHaveBeenCalledTimes(1);
   });
 
+  it("removes a producer batch with one optimistic state update", async () => {
+    __ingestNotificationForTests(makeNotification({ id: "b1" }));
+    __ingestNotificationForTests(makeNotification({ id: "b2" }));
+    __ingestNotificationForTests(makeNotification({ id: "keep" }));
+    await removeNotifications(["b1", "b2"]);
+    expect(__getStateForTests().notifications.map((n) => n.id)).toEqual([
+      "keep",
+    ]);
+    expect(removeNotificationApi).toHaveBeenCalledWith("b1");
+    expect(removeNotificationApi).toHaveBeenCalledWith("b2");
+  });
+
+  it("keeps browser-QA notification mutations local", async () => {
+    __ingestEphemeralNotificationForTests(
+      makeNotification({ id: "ephemeral" }),
+    );
+    await removeNotification("ephemeral");
+    await flushDelivery();
+    expect(__getStateForTests().notifications).toHaveLength(0);
+    expect(removeNotificationApi).not.toHaveBeenCalled();
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+  });
+
   it("reverts the optimistic read when the write rejects (no silent divergence)", async () => {
     markNotificationReadApi.mockRejectedValueOnce(new Error("500"));
     __ingestNotificationForTests(makeNotification({ id: "r1" }), 1);
@@ -511,6 +536,17 @@ describe("notification-store", () => {
       true,
     );
     expect(__getStateForTests().unreadCount).toBe(1);
+  });
+
+  it("restores an entire producer batch when one delete rejects", async () => {
+    removeNotificationApi
+      .mockResolvedValueOnce({ ok: true })
+      .mockRejectedValueOnce(new Error("network"));
+    __ingestNotificationForTests(makeNotification({ id: "batch-1" }), 1);
+    __ingestNotificationForTests(makeNotification({ id: "batch-2" }), 2);
+    await removeNotifications(["batch-1", "batch-2"]);
+    expect(__getStateForTests().notifications).toHaveLength(2);
+    expect(__getStateForTests().unreadCount).toBe(2);
   });
 
   it("restores the inbox when clear rejects", async () => {

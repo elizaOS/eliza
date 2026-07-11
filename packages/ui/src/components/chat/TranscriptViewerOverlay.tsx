@@ -16,7 +16,7 @@ import {
   Copy,
   Download,
   FileAudio,
-  Headphones,
+  Library,
   Loader2,
   LockKeyhole,
   Pencil,
@@ -57,7 +57,7 @@ function resolveUrl(url: string): string {
  * attachment ({@link MessageAttachments}). Loads the rich stored record when the
  * attachment carries a `transcriptId` (falling back to the attachment's inline
  * markdown text), lets the user edit the text, and offers a compact action set:
- * copy, permission-aware share request, edit/save, open in Transcripts, and
+ * copy, permission-aware share request, edit/save, open in Knowledge, and
  * delete-for-everyone for the stored record.
  *
  * Rendered as a full-screen portal above the chat overlay (mirrors the image
@@ -377,9 +377,8 @@ export function TranscriptViewerOverlay({
     URL.revokeObjectURL(url);
   }, [title, value]);
 
-  const handleOpenInTranscripts = React.useCallback(() => {
-    // The Transcripts view plays the audio (word-synced) — land there to listen.
-    navigateBrowserPath("/apps/transcripts");
+  const handleOpenInKnowledge = React.useCallback(() => {
+    navigateBrowserPath("/character/documents");
     onClose();
   }, [onClose]);
 
@@ -493,10 +492,9 @@ export function TranscriptViewerOverlay({
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {audioUrl ? (
-            // Listen to the real recorded audio inline (the Transcripts view
-            // adds word-synced playback — "Open in Transcripts" below). The
-            // recording's own save/share sit with the player, so the footer
-            // stays about the transcript text.
+            // Listen to the real recorded audio inline. The recording's own
+            // save/share sit with the player, so the footer stays about the
+            // transcript text.
             <div className="mb-3 space-y-1.5">
               <audio
                 src={audioUrl}
@@ -757,11 +755,11 @@ export function TranscriptViewerOverlay({
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleOpenInTranscripts}
-              data-testid="transcript-open-in-transcripts"
+              onClick={handleOpenInKnowledge}
+              data-testid="transcript-open-in-knowledge"
             >
-              <Headphones className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Open
-              in Transcripts
+              <Library className="mr-1.5 h-4 w-4" strokeWidth={1.5} /> Open in
+              Knowledge
             </Button>
           ) : null}
           {resolvedId ? (

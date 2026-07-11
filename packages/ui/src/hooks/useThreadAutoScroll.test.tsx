@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 //
 // Unit coverage for the shared thread auto-scroll engine (#12348): first-growth
-// pin, follow-while-at-bottom, don't-yank-a-reader-scrolled-up, at-bottom
-// tracking on manual scroll, and jump-to-latest. jsdom does not lay out, so the
+// pin, follow-while-at-bottom, and don't-yank-a-reader-scrolled-up behavior.
+// jsdom does not lay out, so the
 // scroller's geometry is stubbed via getter overrides and rAF is driven
 // synchronously — the assertions are on the exact scrollTop writes and the
-// derived `atBottom` value, which is the contract every surface relies on.
+// resulting reader position, which is the contract every surface relies on.
 
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useThreadAutoScroll } from "./useThreadAutoScroll";
 
 // A scroller with stubbed geometry. `scrollTop` is a real, writable field;
-// scrollHeight/clientHeight are fixed so `atBottom` math is deterministic.
+// scrollHeight/clientHeight are fixed so bottom-position math is deterministic.
 function makeScroller(
   scrollHeight: number,
   clientHeight: number,
@@ -75,43 +75,16 @@ function makeClampingScroller(
   return el;
 }
 
-interface SurfaceState {
-  atBottom: boolean;
-  jumpToLatest: () => void;
-}
-
-// A capture cell for the hook's latest returned state. Using a getter (rather
-// than a bare `let`) keeps TS control-flow from narrowing the value to `never`
-// after the render callback assigns it.
-function capture(): {
-  onState: (s: SurfaceState) => void;
-  get: () => SurfaceState;
-} {
-  let value: SurfaceState | null = null;
-  return {
-    onState: (s) => {
-      value = s;
-    },
-    get: () => {
-      if (!value) throw new Error("hook state not captured yet");
-      return value;
-    },
-  };
-}
-
-interface HarnessProps {
+function Harness({
+  growthKey,
+  scroller,
+}: {
   growthKey: string | number;
   scroller: HTMLDivElement;
-  reduceMotion?: boolean;
-  onState?: (s: SurfaceState) => void;
-}
-
-function Harness({ growthKey, scroller, reduceMotion, onState }: HarnessProps) {
-  const { scrollRef, atBottom, jumpToLatest } =
-    useThreadAutoScroll<HTMLDivElement>({ growthKey, reduceMotion });
+}) {
+  const { scrollRef } = useThreadAutoScroll<HTMLDivElement>({ growthKey });
   // Point the hook's ref at our geometry-stubbed node without mounting it.
   scrollRef.current = scroller;
-  onState?.({ atBottom, jumpToLatest });
   return null;
 }
 
@@ -188,12 +161,9 @@ describe("useThreadAutoScroll", () => {
     expect(scroller.scrollTop).toBe(1040);
   });
 
-  it("does NOT yank a reader who has scrolled up, and flips atBottom false", () => {
+  it("does NOT yank a reader who has scrolled up", () => {
     const scroller = makeScroller(1000, 400);
-    const cap = capture();
-    const { rerender } = render(
-      <Harness growthKey={1} scroller={scroller} onState={cap.onState} />,
-    );
+    const { rerender } = render(<Harness growthKey={1} scroller={scroller} />);
     flushRaf();
     // Reader scrolls far up (well outside the 80px at-bottom threshold).
     scroller.scrollTop = 100;
@@ -202,13 +172,10 @@ describe("useThreadAutoScroll", () => {
       configurable: true,
       get: () => 1600,
     });
-    rerender(
-      <Harness growthKey={2} scroller={scroller} onState={cap.onState} />,
-    );
+    rerender(<Harness growthKey={2} scroller={scroller} />);
     flushRaf();
-    // Their position is untouched; the jump control should be offered.
+    // Their position is untouched.
     expect(scroller.scrollTop).toBe(100);
-    expect(cap.get().atBottom).toBe(false);
   });
 
   it("keeps following after a single large (>80px) growth while at the bottom (#12348 regression)", () => {
@@ -217,79 +184,19 @@ describe("useThreadAutoScroll", () => {
     let height = 1000;
     const clientHeight = 400;
     const scroller = makeClampingScroller(() => height, clientHeight);
-    const cap = capture();
-    const { rerender } = render(
-      <Harness growthKey={1} scroller={scroller} onState={cap.onState} />,
-    );
+    const { rerender } = render(<Harness growthKey={1} scroller={scroller} />);
     flushRaf();
     // First pin lands at the clamped bottom (1000 - 400).
     expect(scroller.scrollTop).toBe(600);
-    expect(cap.get().atBottom).toBe(true);
     // A single commit appends a block far taller than the 80px threshold — a
     // multi-line paste or a batched stream burst — growing 1000 -> 1300 while
     // scrollTop stays at 600. A live re-measure reads 1300-600-400=300 > 80 and
     // wrongly stops following; the pre-growth measure (1000-600-400=0) follows.
     height = 1300;
-    rerender(
-      <Harness growthKey={2} scroller={scroller} onState={cap.onState} />,
-    );
+    rerender(<Harness growthKey={2} scroller={scroller} />);
     flushRaf();
     // Followed to the new clamped bottom (1300 - 400); reader stays pinned.
     expect(scroller.scrollTop).toBe(900);
-    expect(cap.get().atBottom).toBe(true);
-  });
-
-  it("jumpToLatest scrolls to the newest line and re-pins atBottom", () => {
-    const scroller = makeScroller(1600, 400);
-    const cap = capture();
-    render(<Harness growthKey={1} scroller={scroller} onState={cap.onState} />);
-    flushRaf();
-    scroller.scrollTop = 100;
-    act(() => {
-      cap.get().jumpToLatest();
-    });
-    expect(scroller.scrollTop).toBe(1600);
-  });
-
-  it("reduceMotion jumps instantly (no smooth scrollTo path)", () => {
-    const scroller = makeScroller(1600, 400);
-    const cap = capture();
-    const scrollToSpy = vi.fn();
-    scroller.scrollTo = scrollToSpy as unknown as HTMLElement["scrollTo"];
-    render(
-      <Harness
-        growthKey={1}
-        scroller={scroller}
-        reduceMotion
-        onState={cap.onState}
-      />,
-    );
-    flushRaf();
-    scroller.scrollTop = 100;
-    act(() => {
-      cap.get().jumpToLatest();
-    });
-    expect(scrollToSpy).not.toHaveBeenCalled();
-    expect(scroller.scrollTop).toBe(1600);
-  });
-
-  it("tracks atBottom from manual scroll events, independent of growth", () => {
-    const scroller = makeScroller(1000, 400);
-    const cap = capture();
-    render(<Harness growthKey={1} scroller={scroller} onState={cap.onState} />);
-    flushRaf();
-    // Scroll up, then dispatch the scroll event the hook listens for.
-    scroller.scrollTop = 50;
-    act(() => {
-      scroller.dispatchEvent(new Event("scroll"));
-    });
-    expect(cap.get().atBottom).toBe(false);
-    // Scroll back to the bottom.
-    scroller.scrollTop = 600; // 1000 - 600 - 400 = 0 < 80 → at bottom
-    act(() => {
-      scroller.dispatchEvent(new Event("scroll"));
-    });
-    expect(cap.get().atBottom).toBe(true);
   });
 
   // Geometry-only re-pin: the scroller changes size (or its content reflows)
@@ -303,21 +210,15 @@ describe("useThreadAutoScroll", () => {
     let height = 1000;
     const clientHeight = 300;
     const scroller = makeClampingScroller(() => height, clientHeight);
-    const cap = capture();
-    const { rerender } = render(
-      <Harness growthKey={1} scroller={scroller} onState={cap.onState} />,
-    );
+    const { rerender } = render(<Harness growthKey={1} scroller={scroller} />);
     flushRaf();
     expect(scroller.scrollTop).toBe(700); // 1000 - 300
 
     // SEND: the user message appends, growing the content 1000 -> 1150.
     height = 1150;
-    rerender(
-      <Harness growthKey={2} scroller={scroller} onState={cap.onState} />,
-    );
+    rerender(<Harness growthKey={2} scroller={scroller} />);
     flushRaf();
     expect(scroller.scrollTop).toBe(850); // pinned to 1150 - 300
-    expect(cap.get().atBottom).toBe(true);
 
     // The detent spring settles: the taller sheet + laid-out reply chrome grow
     // the CONTENT 1150 -> 1450 with the SAME growthKey (a layout-only reflow, no
@@ -327,27 +228,23 @@ describe("useThreadAutoScroll", () => {
     fireResize();
     flushRaf();
     expect(scroller.scrollTop).toBe(1150); // 1450 - 300, back at the true bottom
-    expect(cap.get().atBottom).toBe(true);
   });
 
   it("does NOT re-pin a reader who has scrolled up when the scroller reflows", () => {
     let height = 1000;
     const clientHeight = 300;
     const scroller = makeClampingScroller(() => height, clientHeight);
-    const cap = capture();
-    render(<Harness growthKey={1} scroller={scroller} onState={cap.onState} />);
+    render(<Harness growthKey={1} scroller={scroller} />);
     flushRaf();
-    // Reader scrolls up into history; the scroll listener flips atBottom false.
+    // Reader scrolls up into history; the scroll listener records that position.
     scroller.scrollTop = 100;
     act(() => {
       scroller.dispatchEvent(new Event("scroll"));
     });
-    expect(cap.get().atBottom).toBe(false);
     // A reflow grows the content while they read — they must not be yanked.
     height = 1600;
     fireResize();
     flushRaf();
     expect(scroller.scrollTop).toBe(100);
-    expect(cap.get().atBottom).toBe(false);
   });
 });

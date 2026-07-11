@@ -1,5 +1,5 @@
 /**
- * Single auto-scroll / at-bottom / jump-to-latest engine for chat threads
+ * Single auto-scroll and bottom-follow engine for chat threads
  * (#12348, #12188 Phase 3).
  *
  * The chat surfaces that own their own scroller — the homescreen `ChatSurface`
@@ -7,8 +7,7 @@
  * one hook: pin to the newest line while the reader rests at the bottom, do NOT
  * yank a reader who has scrolled up to read history, and coalesce the
  * bottom-follow write into a single rAF so a streamed token never forces a
- * synchronous reflow. The at-bottom state is a real value so a "jump to latest"
- * affordance can render when the reader has scrolled away.
+ * synchronous reflow.
  *
  * Two optional keys split the follow behaviours: `growthKey` (tail mutation —
  * streamed tokens; instant follow) and `lineKey` (a NEW line landed; smooth
@@ -17,8 +16,7 @@
  * the instant first pin so a re-opened thread never flashes at the top.
  *
  * It is scroll math only — no chrome, no message shape. The caller wires the
- * returned `scrollRef` to its scroller, reads `atBottom` to gate a jump control,
- * and calls `jumpToLatest()` from that control.
+ * returned ref to its scroller.
  */
 
 import {
@@ -51,53 +49,26 @@ function scrollToBottom(el: HTMLElement, smooth: boolean): void {
 }
 
 export interface ThreadAutoScrollHandle<T extends HTMLElement> {
-  /** Attach to the scrolling container. */
   scrollRef: React.RefObject<T | null>;
-  /**
-   * True while the reader is resting at (or within {@link AT_BOTTOM_THRESHOLD_PX}
-   * of) the bottom. Drives the visibility of a jump-to-latest control: show it
-   * only when this is false.
-   */
   atBottom: boolean;
-  /** Scroll to the newest line and re-pin follow. Bound to the jump control. */
   jumpToLatest: () => void;
 }
 
 export interface ThreadAutoScrollOptions {
-  /**
-   * A value that changes whenever the thread grows or its tail mutates
-   * (message count, or `${count}:${lastMessageId}:${lastContent.length}` to
-   * follow streamed tokens). The follow pass runs after each change.
-   */
   growthKey: string | number;
-  /**
-   * A value that changes only when a NEW line lands (e.g. the last message
-   * id). An at-bottom follow for a line change glides smoothly (unless
-   * `reduceMotion`); plain `growthKey` growth (streamed tokens) always follows
-   * instantly. Surfaces whose growthKey already carries the line identity may
-   * omit this and get instant follows for everything.
-   */
   lineKey?: string | number;
-  /**
-   * Gates the engine while the scroller is hidden or unmounted (the overlay's
-   * closed sheet). While false nothing follows and `atBottom` freezes; the
-   * false→true edge re-arms the instant first pin. Default true.
-   */
   enabled?: boolean;
-  /** Skip the smooth scroll and jump instantly (honour reduced-motion). */
   reduceMotion?: boolean;
 }
 
 /**
  * Auto-scroll a chat thread: follow the tail while the reader is at the bottom,
- * leave them alone when they have scrolled up, and expose `atBottom` +
- * `jumpToLatest` so the surface can offer a jump-to-latest control.
+ * and leave them alone when they have scrolled up.
  *
  * The first growth after mount (or after an `enabled` false→true edge) pins
  * instantly — no animation, no "started at the top" flash. Subsequent growth
  * while at-bottom follows (smooth for a `lineKey` change, instant otherwise).
- * Growth while the reader is scrolled up does nothing — `atBottom` flips false
- * so the caller can surface the jump control.
+ * Growth while the reader is scrolled up does nothing.
  */
 export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
   growthKey,
@@ -118,9 +89,6 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
   // recovers the true pre-growth position (#12348).
   const lastGrowthHeightRef = useRef(0);
 
-  // Whether the reader is resting at the bottom, mirrored into a ref so the
-  // geometry-follow observer below can read it without re-subscribing on every
-  // atBottom flip (the observer must stay attached across the whole open sheet).
   const atBottomRef = useRef(atBottom);
   atBottomRef.current = atBottom;
 
@@ -130,8 +98,8 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     setAtBottom(measureAtBottom(el));
   }, []);
 
-  // Track the reader's position so `atBottom` stays truthful as they scroll,
-  // independent of thread growth. Passive: this only reads layout. Re-runs on
+  // Track the reader's position independently of thread growth. Passive: this
+  // only reads layout. Re-runs on
   // the `enabled` edge because a gated scroller (the overlay thread) mounts in
   // the same commit that enables the engine — the listener must attach then.
   useEffect(() => {
@@ -141,7 +109,7 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     syncAtBottom();
     el.addEventListener("scroll", syncAtBottom, { passive: true });
     return () => el.removeEventListener("scroll", syncAtBottom);
-  }, [syncAtBottom, enabled]);
+  }, [enabled, syncAtBottom]);
 
   // Re-pin the bottom when the SCROLLER'S OWN GEOMETRY changes while the reader
   // rests at the bottom — a shrink or grow that carries no thread growth so the
@@ -151,7 +119,7 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
   // already landed. Without a re-pin the settled thread strands short of the
   // newest line — the reader sends and the list doesn't follow. A soft keyboard
   // opening/closing (which shrinks/grows the scroller) is the same class of
-  // geometry-only change. Gated on `atBottomRef` so a reader scrolled up into
+  // geometry-only change. Gated on the reader-position ref so a reader scrolled up into
   // history is never yanked by a resize, and we only ever follow, never fight a
   // manual scroll. rAF-coalesced so a multi-frame spring settle writes once per
   // frame at most.
@@ -166,12 +134,12 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
       const node = scrollRef.current;
       if (!node) return;
       // Only follow a resize for a reader who was resting at the bottom. Trust
-      // the tracked `atBottom` state (kept truthful by the scroll listener)
+      // the tracked reader position (kept truthful by the scroll listener)
       // rather than a live re-measure: the reflow that fires this observer may
       // have already grown the content past the at-bottom band with scrollTop
       // preserved, so a live measure would read "scrolled up" and wrongly stop
       // following — the same stale-measure trap the growth effect avoids. A
-      // reader who has scrolled up has `atBottom` false and is never yanked.
+      // reader who has scrolled up is never yanked.
       if (!atBottomRef.current) return;
       node.scrollTop = node.scrollHeight;
       lastGrowthHeightRef.current = node.scrollHeight;
@@ -232,8 +200,7 @@ export function useThreadAutoScroll<T extends HTMLElement = HTMLDivElement>({
     lastGrowthHeightRef.current = el.scrollHeight;
 
     if (!firstPin && !wasAtBottom) {
-      // Reader is scrolled up — do not yank them; just reflect that new content
-      // is below so the jump control shows.
+      // Reader is scrolled up — do not yank them.
       setAtBottom(false);
       return;
     }

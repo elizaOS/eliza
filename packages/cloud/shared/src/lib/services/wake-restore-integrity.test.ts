@@ -630,13 +630,14 @@ describe("executeWake with the restore-integrity gate", () => {
 
   test("gate pass on a fresh stamp cannot boot empty: a failed restore fails the wake, sandbox stays sleeping, chain is NOT pruned", async () => {
     const { sandboxId, orgId } = await seedSandbox();
+    const wakeNow = new Date();
     const olderId = await seedFullBackup(
       sandboxId,
       sampleState("wake-restore-fail-older"),
-      new Date(NOW.getTime() - 6 * 3_600_000),
+      new Date(wakeNow.getTime() - 6 * 3_600_000),
     );
-    const latestId = await seedFullBackup(sandboxId, sampleState("wake-restore-fail"), NOW);
-    await stampRow(latestId, "verified", new Date(NOW.getTime() - 3_600_000));
+    const latestId = await seedFullBackup(sandboxId, sampleState("wake-restore-fail"), wakeNow);
+    await stampRow(latestId, "verified", new Date(wakeNow.getTime() - 3_600_000));
     // Rot AFTER the stamp: the gate passes on the stamp alone (never touches
     // bytes), so provision's restore is the FIRST real read of this envelope —
     // exactly the path where an ungated default wake degraded to a fresh boot

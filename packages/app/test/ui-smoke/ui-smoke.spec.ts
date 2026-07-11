@@ -39,15 +39,12 @@ test("chat, apps, and settings routes render through the real shell", async ({
 
   await openAppPath(page, "/apps");
   await expect(page).toHaveURL(/\/apps$/);
-  // /apps (no slug) now routes to the launcher surface
-  // (App.tsx renderAppsSurface → HomeScreenMount initialPage="launcher"); the
-  // old standalone Views catalog (heading + chat-search hint + view-card tiles)
-  // no longer renders on this route. The page-render proof is the launcher
-  // page with at least one launchable view tile.
-  await expect(page.getByTestId("launcher")).toBeVisible({ timeout: 30_000 });
-  await expect(
-    page.locator('[data-testid^="launcher-tile-"]').first(),
-  ).toBeVisible();
+  // My Apps is the canonical bare /apps destination; the launcher grid lives
+  // at /views.
+  await expect(page.getByRole("heading", { name: "My Apps" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("Install, create, and run")).toBeVisible();
 
   await openAppPath(page, "/settings");
   await expect(page).toHaveURL(/\/settings$/);

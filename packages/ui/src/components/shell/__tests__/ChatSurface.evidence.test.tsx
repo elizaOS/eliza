@@ -4,7 +4,7 @@
 // ChatSurface in three states and writes its actual outerHTML to the issue
 // evidence dir so a reviewer can confirm — without reading code — that the
 // message row is the shared ChatBubble, the typing placeholder is the shared
-// TypingIndicator (role="status"), and the jump-to-latest control exists. The
+// TypingIndicator (role="status"), and scrollback stays free of floating controls. The
 // assertions are minimal presence checks; the artifact is the deliverable.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -62,7 +62,7 @@ describe("ChatSurface evidence", () => {
     dump("chatsurface-typing.html", surface.outerHTML);
   });
 
-  it("jump-to-latest: control appears when scrolled up", () => {
+  it("scrollback remains free of floating controls", () => {
     render(<ChatSurface messages={MESSAGES} onSend={() => {}} canSend />);
     const surface = screen.getByTestId("shell-chat-surface");
     const scroller = surface.querySelector(
@@ -85,7 +85,7 @@ describe("ChatSurface evidence", () => {
       },
     });
     fireEvent.scroll(scroller);
-    expect(screen.getByTestId("chat-surface-jump-to-latest")).toBeTruthy();
-    dump("chatsurface-jump-to-latest.html", surface.outerHTML);
+    expect(screen.queryByTestId("chat-surface-jump-to-latest")).toBeNull();
+    dump("chatsurface-scrollback.html", surface.outerHTML);
   });
 });

@@ -11,6 +11,7 @@ import "./compose-state-role-gate.test";
 import "./compose-state-trajectory-recording.test";
 import "./dynamic-prompt-json-mode.test";
 import "./message-runtime-stage1.test";
+import "./outbound-sanitize-runtime-seams.test";
 import "./runtime-component-precedence.test";
 import "./runtime-register-provider.test";
 import "./runtime-rerank-memories.test";

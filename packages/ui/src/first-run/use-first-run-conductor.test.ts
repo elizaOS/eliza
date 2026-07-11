@@ -12,7 +12,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { FIRST_RUN_GREETING } from "./first-run-greeting";
+import { FIRST_RUN_SIGN_IN_PROMPT } from "./first-run-greeting";
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -1278,7 +1278,7 @@ describe("surfaceCloudLoginRetryTurn", () => {
 
     expect(messages[0]?.id).toBe("first-run:cloud-oauth");
     expect(messages[0]?.secretRequest).toBeUndefined();
-    expect(messages[0]?.text).toContain(FIRST_RUN_GREETING);
+    expect(messages[0]?.text).toContain(FIRST_RUN_SIGN_IN_PROMPT);
     expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:local=");
     expect(messages[0]?.text).not.toContain("__first_run__:runtime:remote=");
@@ -1292,16 +1292,18 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     localStorage.removeItem("eliza:enable-runtime-chooser");
   });
 
-  it("seeds the single sign-in greeting — no local/remote options, no backup probe, no unprompted provisioning", async () => {
+  it("seeds separate greeting and sign-in turns — no local/remote options, no backup probe, no unprompted provisioning", async () => {
     localStorage.removeItem("steward_session_token");
     seedAppStore({ elizaCloudConnected: false });
     const { turn, unmount } = renderConductor();
 
     const greeting = await waitForTurn(turn, "first-run:greeting");
-    expect(greeting.text).toContain("Sign in to Eliza Cloud");
-    expect(greeting.text).toContain("__first_run__:runtime:cloud=");
-    expect(greeting.text).not.toContain("__first_run__:runtime:local=");
-    expect(greeting.text).not.toContain("__first_run__:runtime:remote=");
+    const signIn = await waitForTurn(turn, "first-run:cloud-oauth");
+    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect(signIn.text).toContain("Let's get you signed in.");
+    expect(signIn.text).toContain("__first_run__:runtime:cloud=");
+    expect(signIn.text).not.toContain("__first_run__:runtime:local=");
+    expect(signIn.text).not.toContain("__first_run__:runtime:remote=");
     expect(greeting.source).toBe("first_run");
     // Restoring a local agent backup is a chooser-mode concept.
     expect(mocks.client.listLocalAgentBackups).not.toHaveBeenCalled();
@@ -1579,7 +1581,10 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     // The failed recovery falls back to EXACTLY the unauthenticated flow: the
     // normal sign-in greeting, no fabricated session, nothing provisioned.
     const greeting = await waitForTurn(turn, "first-run:greeting");
-    expect(greeting.text).toContain("Sign in to Eliza Cloud");
+    expect(greeting.text).toBe("Hi, I'm Eliza.");
+    expect((await waitForTurn(turn, "first-run:cloud-oauth")).text).toContain(
+      "Sign in to Eliza Cloud",
+    );
     expect(spies.completeFirstRun).not.toHaveBeenCalled();
     expect(mocks.client.getCloudCompatAgents).not.toHaveBeenCalled();
 
@@ -1709,7 +1714,7 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
     const retry = await waitForTurn(turn, "first-run:cloud-oauth");
     expect(retry.secretRequest).toBeUndefined();
-    expect(retry.text).toContain(FIRST_RUN_GREETING);
+    expect(retry.text).toContain(FIRST_RUN_SIGN_IN_PROMPT);
     expect(retry.text).toContain("__first_run__:runtime:cloud=");
     expect(retry.text).not.toContain("__first_run__:runtime:local=");
     unmount();
