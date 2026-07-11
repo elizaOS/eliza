@@ -82,7 +82,7 @@ function chatSendButton(page: Page): Locator {
 }
 
 function conversationLog(page: Page): Locator {
-  return page.getByRole("log", { name: /conversation history/i });
+  return page.getByRole("region", { name: /conversation history/i });
 }
 
 function userMessage(page: Page, text: string): Locator {

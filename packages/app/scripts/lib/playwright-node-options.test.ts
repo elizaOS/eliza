@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { withElizaSourceNodeOptions } from "../scripts/lib/playwright-node-options.mjs";
+import { withElizaSourceNodeOptions } from "./playwright-node-options.mjs";
 
 describe("withElizaSourceNodeOptions", () => {
   it("adds the source condition", () => {

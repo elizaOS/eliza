@@ -2463,7 +2463,7 @@ describe("ContinuousChatOverlay", () => {
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the waveform available but neutral while the mic transcribes", () => {
+  it("keeps the waveform pressed but visually neutral while the mic transcribes", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -2473,8 +2473,9 @@ describe("ContinuousChatOverlay", () => {
       />,
     );
     const waveform = screen.getByTestId("chat-composer-mic");
-    expect(waveform.getAttribute("aria-pressed")).toBe("false");
+    expect(waveform.getAttribute("aria-pressed")).toBe("true");
     expect(waveform.className).toContain("animate-pulse");
+    expect(waveform.className).toContain("text-muted-strong");
     expect(waveform.className).not.toContain("text-accent");
   });
 

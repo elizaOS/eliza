@@ -3409,9 +3409,8 @@ try {
     await p.close();
   }
 
-  // ── STREAMING (bug 2): the in-flight (empty) assistant turn breathes the dots
-  // ANCHORED inside its own bubble, not as a detached "..." sibling — so the
-  // streamed text fills in right there.
+  // ── STREAMING: the in-flight assistant turn keeps the approved shimmering
+  // status marker inside its own bubble, where streamed text replaces it.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -3421,14 +3420,23 @@ try {
     // Open the thread so the in-flight assistant bubble is on screen.
     await gesture(p, 400, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
-    const dotsInBubble = await p
+    const statusInBubble = p
       .locator(
-        '[data-testid="thread-line"][data-role="assistant"] [data-testid="typing-dots"]',
-      )
-      .count();
+        '[data-testid="thread-line"][data-role="assistant"] [data-testid="turn-status-indicator"]',
+      );
     assert(
-      dotsInBubble >= 1,
-      `STREAMING: dots are anchored inside the in-flight assistant bubble (found ${dotsInBubble})`,
+      (await statusInBubble.count()) >= 1,
+      "STREAMING: status marker is anchored inside the in-flight assistant bubble",
+    );
+    assert(
+      await statusInBubble
+        .getByTestId("turn-status-label")
+        .evaluate((el) => el.className.includes("shimmer")),
+      "STREAMING: in-bubble status uses the approved shimmer treatment",
+    );
+    assert(
+      (await p.getByTestId("typing-dots").count()) === 0,
+      "STREAMING: legacy typing dots stay removed",
     );
     await snap(p, "state-streaming-dots-in-bubble");
     await p.close();
@@ -3544,14 +3552,9 @@ try {
     );
     await snap(p, "state-onboarding-full-screen");
 
-    // OPAQUE BACKDROP (#12178 impl / #12364 proof): a solid bg-bg plane covers
-    // the launcher/home so no launcher pixel shows through — the fixture's
-    // "Workspace" view content behind the chat must be fully hidden. Assert the
-    // backdrop is present, opaque, full-viewport, solid-colored, and that the
-    // real rendered pixel over the fixture heading reads as the dark onboarding
-    // layer rather than the orange home backdrop. The full-screen sheet may cover
-    // this coordinate above the backdrop, so this proves the user-visible
-    // invariant rather than one specific stacking-layer color.
+    // WALLPAPER SCRIM: onboarding preserves the configured wallpaper behind a
+    // full-viewport neutral dim layer. The element itself is fully applied while
+    // open, but its paint is translucent so the wallpaper remains visible.
     const backdrop = await p.evaluate(() => {
       const el = document.querySelector(
         '[data-testid="chat-first-run-backdrop"]',
@@ -3573,28 +3576,41 @@ try {
     );
     assert(
       backdrop.opaque === "true" && backdrop.opacity === "1",
-      `ONBOARDING: backdrop is fully opaque while onboarding is open (opaque ${backdrop?.opaque}, opacity ${backdrop?.opacity})`,
+      `ONBOARDING: wallpaper scrim is fully applied while onboarding is open (phase ${backdrop?.opaque}, opacity ${backdrop?.opacity})`,
     );
+    const scrim = parseColor(backdrop.bg);
     assert(
-      backdrop.bg !== "rgba(0, 0, 0, 0)" && backdrop.bg !== "transparent",
-      `ONBOARDING: backdrop paints a solid bg-bg color (got ${backdrop?.bg})`,
+      scrim !== null && scrim.a > 0 && scrim.a < 0.4,
+      `ONBOARDING: backdrop paints a subtle translucent scrim (got ${backdrop?.bg})`,
     );
     assert(
       backdrop.coversW && backdrop.coversH,
       "ONBOARDING: backdrop spans the whole viewport (inset-0)",
     );
-    const headingCenter = await p.evaluate(() => {
-      const h = document.querySelector('[data-testid="view-content"] h1');
-      const r = h.getBoundingClientRect();
-      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 4) };
-    });
-    const hidePx = await pixelAt(p, headingCenter.x, headingCenter.y);
-    // The onboarding surface over the heading may be the dark opaque backdrop
-    // OR the light full-screen panel (theme-dependent) — what it must NEVER be
-    // is the fixture's orange home backdrop showing through.
+    const wallpaper = parseColor(
+      await p
+        .getByTestId("fake-view")
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+    );
+    const scrimmedWallpaperPx = await pixelAt(p, 8, 8);
+    const expectedScrimmedWallpaper =
+      wallpaper && scrim
+        ? {
+            r: wallpaper.r * (1 - scrim.a) + scrim.r * scrim.a,
+            g: wallpaper.g * (1 - scrim.a) + scrim.g * scrim.a,
+            b: wallpaper.b * (1 - scrim.a) + scrim.b * scrim.a,
+          }
+        : null;
+    const scrimDelta = expectedScrimmedWallpaper
+      ? Math.max(
+          Math.abs(scrimmedWallpaperPx.r - expectedScrimmedWallpaper.r),
+          Math.abs(scrimmedWallpaperPx.g - expectedScrimmedWallpaper.g),
+          Math.abs(scrimmedWallpaperPx.b - expectedScrimmedWallpaper.b),
+        )
+      : Number.POSITIVE_INFINITY;
     assert(
-      !(hidePx.r > 200 && hidePx.g < 140 && hidePx.b < 90),
-      `ONBOARDING: launcher/home behind is hidden — pixel over the heading is an onboarding layer, not the orange home backdrop (got rgb(${hidePx.r}, ${hidePx.g}, ${hidePx.b}))`,
+      scrimDelta <= 8,
+      `ONBOARDING: configured wallpaper remains visible through the neutral scrim (max channel delta ${Math.round(scrimDelta)})`,
     );
     await snap(p, "state-onboarding-opaque-backdrop");
 
@@ -3613,10 +3629,17 @@ try {
       revealOpaque !== "true",
       `REVEAL: backdrop drops its opaque state after onboarding completes (got ${revealOpaque})`,
     );
-    const revealPx = await pixelAt(p, headingCenter.x, headingCenter.y);
+    const revealPx = await pixelAt(p, 8, 8);
+    const revealDelta = wallpaper
+      ? Math.max(
+          Math.abs(revealPx.r - wallpaper.r),
+          Math.abs(revealPx.g - wallpaper.g),
+          Math.abs(revealPx.b - wallpaper.b),
+        )
+      : Number.POSITIVE_INFINITY;
     assert(
-      !(revealPx.r < 40 && revealPx.g < 40 && revealPx.b < 50),
-      `REVEAL: the home surface is painted again once the backdrop reveals (pixel rgb(${revealPx.r}, ${revealPx.g}, ${revealPx.b}) is no longer the opaque bg)`,
+      revealDelta <= 8,
+      `REVEAL: the undimmed wallpaper is restored after onboarding (max channel delta ${Math.round(revealDelta)})`,
     );
     assert(
       (await detent(p)) === "half",

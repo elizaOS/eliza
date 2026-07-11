@@ -494,6 +494,7 @@ function SoftButton({
   onPointerLeave,
   disabled,
   active,
+  pressed,
   pulse,
   testId,
 }: {
@@ -508,6 +509,8 @@ function SoftButton({
   onPointerLeave?: React.PointerEventHandler<HTMLButtonElement>;
   disabled?: boolean;
   active?: boolean;
+  /** Accessible toggle state when it is intentionally broader than the accent state. */
+  pressed?: boolean;
   /** Breathe the accent glyph while a live capture is hot. */
   pulse?: boolean;
   testId?: string;
@@ -518,7 +521,7 @@ function SoftButton({
       size="icon-lg"
       data-testid={testId}
       aria-label={label}
-      aria-pressed={active}
+      aria-pressed={pressed ?? active}
       // aria-disabled (not the native attr) so the button stays focusable and its
       // label/reason is announceable; the click is guarded instead.
       aria-disabled={disabled}
@@ -5917,6 +5920,10 @@ export function ContinuousChatOverlay({
                       // orange active state belongs only to conversation mode
                       // initiated by this waveform (or its push-to-talk hold).
                       active={handsFree || pttHolding}
+                      // Recording can also be owned by the adjacent transcription
+                      // control. Report the live voice state without coloring this
+                      // separate waveform control as active.
+                      pressed={recording || handsFree || transcriptionMode}
                       pulse={recording || handsFree || transcriptionMode}
                       onClick={handleMicClick}
                       onPointerDown={micHoldHandlers.onPointerDown}
