@@ -4,10 +4,30 @@
  * and CLI failure behavior with deterministic local doubles.
  */
 
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as realCartesiaSonic from "@harness-adapters/cartesia-sonic-tts.ts";
+// The @harness-adapters/* aliases and the harness-real-server specifier resolve
+// to REAL cloud/api + cloud/shared modules that sibling changed-tests import
+// directly (uplink-reframer / ws-lifecycle need validateDeepgramFluxAudioChunk
+// and the DeepgramFluxWebSocket class from stt/providers/deepgram-flux.ts). The
+// coverage lane runs all changed files in ONE non-isolated bun process and
+// mock.module is process-global with no per-file teardown, so a stub that drops
+// exports here poisons those siblings. Capture the real surfaces and restore
+// them in afterAll. The absolute-URL forms below are computed from
+// import.meta.url so they resolve on any checkout (the previous hardcoded
+// /home/shad0w/…/wt-voice-slice path resolved nowhere on CI, which is why the
+// real-server seam was never stubbed and the “real target bridge” test failed).
+import * as realDeepgramFlux from "@harness-adapters/deepgram-flux.ts";
+
+const realDeepgramFluxExports = { ...realDeepgramFlux };
+const realCartesiaSonicExports = { ...realCartesiaSonic };
+const harnessRealServerUrl = new URL(
+  "../../../cloud/api/v1/voice/session/lib/harness-real-server.ts",
+  import.meta.url,
+).href;
 
 const fakeWsInstances: FakeProviderSocket[] = [];
 
@@ -18,7 +38,10 @@ class FakeProviderSocket {
   readonly handlers = new Map<string, Set<(...args: unknown[]) => void>>();
   readonly sent: unknown[] = [];
   readonly closed: Array<{ code?: number; reason?: string }> = [];
-  constructor(readonly url: string, readonly options?: { headers?: Record<string, string> }) {
+  constructor(
+    readonly url: string,
+    readonly options?: { headers?: Record<string, string> },
+  ) {
     fakeWsInstances.push(this);
   }
   on(type: string, handler: (...args: unknown[]) => void) {
@@ -48,13 +71,16 @@ mock.module("ws", () => ({
   WebSocketServer: class {},
 }));
 
-mock.module("@harness-adapters/deepgram-flux.ts", () => ({
+const deepgramFluxStub = () => ({
+  ...realDeepgramFluxExports,
   DEEPGRAM_FLUX_CHUNK_BYTES: 4,
   createDeepgramFluxRealtimeSession: (options: {
     hooks?: { onMetric?: (metric: { name: string }) => void };
     onEvent?: (event: unknown) => void;
   }) => {
-    queueMicrotask(() => options.hooks?.onMetric?.({ name: "deepgram_flux_connected" }));
+    queueMicrotask(() =>
+      options.hooks?.onMetric?.({ name: "deepgram_flux_connected" }),
+    );
     return {
       url: "wss://deepgram.test/listen",
       sendAudioChunk: () => undefined,
@@ -62,9 +88,11 @@ mock.module("@harness-adapters/deepgram-flux.ts", () => ({
       cancel: () => undefined,
     };
   },
-}));
+});
+mock.module("@harness-adapters/deepgram-flux.ts", deepgramFluxStub);
 
-mock.module("@harness-adapters/cartesia-sonic-tts.ts", () => ({
+const cartesiaSonicStub = () => ({
+  ...realCartesiaSonicExports,
   CartesiaSonicTtsAdapter: class {
     createStream() {
       return {
@@ -75,10 +103,11 @@ mock.module("@harness-adapters/cartesia-sonic-tts.ts", () => ({
       };
     }
   },
-}));
+});
+mock.module("@harness-adapters/cartesia-sonic-tts.ts", cartesiaSonicStub);
 
 const realServerCalls: unknown[] = [];
-mock.module("../../../../cloud/api/v1/voice/session/lib/harness-real-server.ts", () => ({
+const harnessRealServerStub = () => ({
   installHarnessSigningKey: async () => {
     realServerCalls.push({ type: "install-key" });
   },
@@ -86,27 +115,31 @@ mock.module("../../../../cloud/api/v1/voice/session/lib/harness-real-server.ts",
     realServerCalls.push({ type: "start", config });
     return {
       wsUrl: "ws://real.test/session?sessionId=",
-      mint: async () => ({ sessionId: "s", token: "t", expiresAt: "2026-07-10T00:00:00.000Z" }),
+      mint: async () => ({
+        sessionId: "s",
+        token: "t",
+        expiresAt: "2026-07-10T00:00:00.000Z",
+      }),
       stop: async () => undefined,
     };
   },
-}));
-mock.module(
-  "file:///home/shad0w/eliza-workers/wt-voice-slice/packages/cloud/api/v1/voice/session/lib/harness-real-server.ts",
-  () => ({
-    installHarnessSigningKey: async () => {
-      realServerCalls.push({ type: "install-key" });
-    },
-    startRealVoiceServer: async (config: unknown) => {
-      realServerCalls.push({ type: "start", config });
-      return {
-        wsUrl: "ws://real.test/session?sessionId=",
-        mint: async () => ({ sessionId: "s", token: "t", expiresAt: "2026-07-10T00:00:00.000Z" }),
-        stop: async () => undefined,
-      };
-    },
-  }),
-);
+});
+// Register on the specifier `real-target.ts` actually imports (a repo-relative
+// path bun canonicalizes to this absolute URL) so the stub really takes effect.
+mock.module(harnessRealServerUrl, harnessRealServerStub);
+
+// Restore the REAL shared modules so sibling changed-tests in the same (non-
+// isolated) coverage-lane process see the full export surface, not our stubs.
+afterAll(() => {
+  mock.module(
+    "@harness-adapters/deepgram-flux.ts",
+    () => realDeepgramFluxExports,
+  );
+  mock.module(
+    "@harness-adapters/cartesia-sonic-tts.ts",
+    () => realCartesiaSonicExports,
+  );
+});
 
 const wav = await import("./wav");
 const evidenceModule = await import("./evidence");
@@ -124,9 +157,19 @@ function tempDir(): string {
 describe("wav helpers", () => {
   test("writes parseable PCM WAV bytes and pads fixed-size chunks", () => {
     const pcm = new Uint8Array([1, 2, 3, 4, 5]);
-    const bytes = wav.writeWav({ pcm, sampleRate: 16000, channels: 1, bitsPerSample: 16 });
+    const bytes = wav.writeWav({
+      pcm,
+      sampleRate: 16000,
+      channels: 1,
+      bitsPerSample: 16,
+    });
     const parsed = wav.parseWav(bytes);
-    expect(parsed).toMatchObject({ sampleRate: 16000, channels: 1, bitsPerSample: 16, audioFormat: 1 });
+    expect(parsed).toMatchObject({
+      sampleRate: 16000,
+      channels: 1,
+      bitsPerSample: 16,
+      audioFormat: 1,
+    });
     expect([...parsed.pcm]).toEqual([...pcm]);
 
     const framed = wav.frameFixedChunks(pcm, 4);
@@ -138,8 +181,17 @@ describe("wav helpers", () => {
   });
 
   test("rejects malformed WAV input loudly", () => {
-    expect(() => wav.parseWav(new TextEncoder().encode("nope"))).toThrow("Not a RIFF/WAV file");
-    const missingData = wav.writeWav({ pcm: new Uint8Array([1, 2]), sampleRate: 8000, channels: 1, bitsPerSample: 16 }).subarray(0, 36);
+    expect(() => wav.parseWav(new TextEncoder().encode("nope"))).toThrow(
+      "Not a RIFF/WAV file",
+    );
+    const missingData = wav
+      .writeWav({
+        pcm: new Uint8Array([1, 2]),
+        sampleRate: 8000,
+        channels: 1,
+        bitsPerSample: 16,
+      })
+      .subarray(0, 36);
     expect(() => wav.parseWav(missingData)).toThrow("WAV missing data chunk");
   });
 });
@@ -156,7 +208,11 @@ describe("evidence sink", () => {
       ev.wsEvent("c2s", "json", { token: "secret-token-value", text: "hello" });
       ev.mark("mint");
       ev.mark("ready");
-      const sha = ev.writeArtifact("artifact.bin", new Uint8Array([1, 2, 3]), "binary");
+      const sha = ev.writeArtifact(
+        "artifact.bin",
+        new Uint8Array([1, 2, 3]),
+        "binary",
+      );
       ev.flushLogs();
 
       expect(sha).toHaveLength(64);
@@ -184,7 +240,13 @@ describe("mp4 helper", () => {
     expect(typeof ffmpeg.ok).toBe("boolean");
     const dir = tempDir();
     try {
-      const result = mp4.assembleMp4({ dir, inputWav: "missing.wav", outputWav: "out.wav", timelineLines: [], out: "x.mp4" });
+      const result = mp4.assembleMp4({
+        dir,
+        inputWav: "missing.wav",
+        outputWav: "out.wav",
+        timelineLines: [],
+        out: "x.mp4",
+      });
       if (ffmpeg.ok) {
         expect(result.ok).toBe(false);
         expect(result.error).toContain("missing input wav");
@@ -206,36 +268,56 @@ describe("LLM bridge", () => {
     const originalFetch = globalThis.fetch;
     const stream = new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"Hi"}}]}\n'));
-        controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":" there"}}]}\n'));
+        controller.enqueue(
+          new TextEncoder().encode(
+            'data: {"choices":[{"delta":{"content":"Hi"}}]}\n',
+          ),
+        );
+        controller.enqueue(
+          new TextEncoder().encode(
+            'data: {"choices":[{"delta":{"content":" there"}}]}\n',
+          ),
+        );
         controller.enqueue(new TextEncoder().encode("data: [DONE]\n"));
         controller.close();
       },
     });
-    globalThis.fetch = (async () => new Response(stream, { status: 200 })) as typeof fetch;
+    globalThis.fetch = (async () =>
+      new Response(stream, { status: 200 })) as typeof fetch;
     const deltas: string[] = [];
     const first: number[] = [];
     const done: string[] = [];
-    await llmBridge.streamLlmReply("weather", { apiKey: "key", baseUrl: "https://llm.test" }, new AbortController().signal, {
-      onFirstText: (ms) => first.push(ms),
-      onDelta: (text) => deltas.push(text),
-      onDone: (text) => done.push(text),
-      onError: (err) => {
-        throw err;
+    await llmBridge.streamLlmReply(
+      "weather",
+      { apiKey: "key", baseUrl: "https://llm.test" },
+      new AbortController().signal,
+      {
+        onFirstText: (ms) => first.push(ms),
+        onDelta: (text) => deltas.push(text),
+        onDone: (text) => done.push(text),
+        onError: (err) => {
+          throw err;
+        },
       },
-    });
+    );
     expect(first).toHaveLength(1);
     expect(deltas).toEqual(["Hi", " there"]);
     expect(done).toEqual(["Hi there"]);
 
     const errors: string[] = [];
-    globalThis.fetch = (async () => new Response("bad", { status: 503, statusText: "Nope" })) as typeof fetch;
-    await llmBridge.streamLlmReply("weather", { apiKey: "key", baseUrl: "https://llm.test" }, new AbortController().signal, {
-      onFirstText: () => undefined,
-      onDelta: () => undefined,
-      onDone: () => undefined,
-      onError: (err) => errors.push(err.message),
-    });
+    globalThis.fetch = (async () =>
+      new Response("bad", { status: 503, statusText: "Nope" })) as typeof fetch;
+    await llmBridge.streamLlmReply(
+      "weather",
+      { apiKey: "key", baseUrl: "https://llm.test" },
+      new AbortController().signal,
+      {
+        onFirstText: () => undefined,
+        onDelta: () => undefined,
+        onDone: () => undefined,
+        onError: (err) => errors.push(err.message),
+      },
+    );
     expect(errors).toEqual(["LLM HTTP 503 Nope"]);
     globalThis.fetch = originalFetch;
   });
@@ -247,7 +329,11 @@ describe("client and reference-server contract helpers", () => {
     expect(minted.sessionId).toBeString();
     expect(minted.token.split(".")).toHaveLength(2);
     expect(minted.expiresAt).toBeGreaterThan(Date.now());
-    expect(serverModule.serverPostInterruptFrameCount({ postInterruptFrameCount: 7 } as never)).toBe(7);
+    expect(
+      serverModule.serverPostInterruptFrameCount({
+        postInterruptFrameCount: 7,
+      } as never),
+    ).toBe(7);
   });
 
   test("client sends hello, pumps framed audio after ready, and counts post-interrupt frames", async () => {
@@ -270,10 +356,19 @@ describe("client and reference-server contract helpers", () => {
         this.dispatchEvent(new Event("close"));
       }
       serverJson(payload: Record<string, unknown>) {
-        this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(payload) }));
+        this.dispatchEvent(
+          new MessageEvent("message", { data: JSON.stringify(payload) }),
+        );
       }
       serverAudio(bytes: Uint8Array) {
-        this.dispatchEvent(new MessageEvent("message", { data: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) }));
+        this.dispatchEvent(
+          new MessageEvent("message", {
+            data: bytes.buffer.slice(
+              bytes.byteOffset,
+              bytes.byteOffset + bytes.byteLength,
+            ),
+          }),
+        );
       }
     }
 
@@ -292,7 +387,10 @@ describe("client and reference-server contract helpers", () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
       const ws = FakeWebSocket.instances[0]!;
-      expect(JSON.parse(String(ws.sent[0]))).toMatchObject({ t: "hello", token: "token" });
+      expect(JSON.parse(String(ws.sent[0]))).toMatchObject({
+        t: "hello",
+        token: "token",
+      });
       ws.serverJson({ t: "ready", sessionId: "s" });
       await new Promise((resolve) => setTimeout(resolve, 120));
       expect(ws.sent.some((sent) => sent instanceof Uint8Array)).toBe(true);
@@ -312,7 +410,8 @@ describe("client and reference-server contract helpers", () => {
       expect(result.postBargeInFrameCount).toBe(1);
       expect(result.downlinkPcm.byteLength).toBe(4);
     } finally {
-      (globalThis as unknown as { WebSocket: unknown }).WebSocket = originalWebSocket;
+      (globalThis as unknown as { WebSocket: unknown }).WebSocket =
+        originalWebSocket;
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -322,12 +421,18 @@ describe("provider websocket factories", () => {
   test("strip Deepgram channels, preserve headers, normalize events, and close sockets", () => {
     fakeWsInstances.length = 0;
     const log: unknown[] = [];
-    const deepgram = wsFactories.makeDeepgramFactory({ log: (msg, data) => log.push({ msg, data }) })({
+    const deepgram = wsFactories.makeDeepgramFactory({
+      log: (msg, data) => log.push({ msg, data }),
+    })({
       url: "wss://deepgram.test/v2/listen?encoding=linear16&channels=1",
       headers: { Authorization: "Token dg" },
     });
-    expect(fakeWsInstances[0]!.url).toBe("wss://deepgram.test/v2/listen?encoding=linear16");
-    expect(fakeWsInstances[0]!.options?.headers).toEqual({ Authorization: "Token dg" });
+    expect(fakeWsInstances[0]?.url).toBe(
+      "wss://deepgram.test/v2/listen?encoding=linear16",
+    );
+    expect(fakeWsInstances[0]?.options?.headers).toEqual({
+      Authorization: "Token dg",
+    });
     expect(log).toHaveLength(1);
 
     const messages: unknown[] = [];
@@ -336,22 +441,35 @@ describe("provider websocket factories", () => {
     deepgram.addEventListener("message", (event) => messages.push(event));
     deepgram.addEventListener("close", (event) => closes.push(event));
     deepgram.addEventListener("error", (event) => errors.push(event));
-    fakeWsInstances[0]!.emit("message", Buffer.from('{"ok":true}'));
-    fakeWsInstances[0]!.emit("error", new Error("boom"));
-    fakeWsInstances[0]!.emit("close", 1008, Buffer.from("auth"));
+    fakeWsInstances[0]?.emit("message", Buffer.from('{"ok":true}'));
+    fakeWsInstances[0]?.emit("error", new Error("boom"));
+    fakeWsInstances[0]?.emit("close", 1008, Buffer.from("auth"));
     expect(messages).toEqual([{ type: "message", data: '{"ok":true}' }]);
     expect(errors[0]).toMatchObject({ type: "error", message: "boom" });
-    expect(closes[0]).toMatchObject({ type: "close", code: 1008, reason: "auth", wasClean: false });
+    expect(closes[0]).toMatchObject({
+      type: "close",
+      code: 1008,
+      reason: "auth",
+      wasClean: false,
+    });
     deepgram.send("hello");
     deepgram.close(1000, "done");
-    expect(fakeWsInstances[0]!.sent).toEqual(["hello"]);
-    expect(fakeWsInstances[0]!.closed.at(-1)).toEqual({ code: 1000, reason: "done" });
-
-    const cartesia = wsFactories.makeCartesiaFactory()("wss://cartesia.test/tts", {
-      headers: { "X-API-Key": "cartesia" },
+    expect(fakeWsInstances[0]?.sent).toEqual(["hello"]);
+    expect(fakeWsInstances[0]?.closed.at(-1)).toEqual({
+      code: 1000,
+      reason: "done",
     });
-    expect(fakeWsInstances[1]!.url).toBe("wss://cartesia.test/tts");
-    expect(fakeWsInstances[1]!.options?.headers).toEqual({ "X-API-Key": "cartesia" });
+
+    const cartesia = wsFactories.makeCartesiaFactory()(
+      "wss://cartesia.test/tts",
+      {
+        headers: { "X-API-Key": "cartesia" },
+      },
+    );
+    expect(fakeWsInstances[1]?.url).toBe("wss://cartesia.test/tts");
+    expect(fakeWsInstances[1]?.options?.headers).toEqual({
+      "X-API-Key": "cartesia",
+    });
     cartesia.binaryType = "arraybuffer";
     expect(cartesia.binaryType).toBe("arraybuffer");
   });
@@ -401,7 +519,12 @@ describe("cli entrypoint", () => {
     const originalExit = process.exit;
     const originalError = console.error;
     const errors: string[] = [];
-    process.argv = ["bun", "src/cli.ts", "--target=bogus", "--scenario=baseline"];
+    process.argv = [
+      "bun",
+      "src/cli.ts",
+      "--target=bogus",
+      "--scenario=baseline",
+    ];
     console.error = (message?: unknown) => {
       errors.push(String(message));
     };
@@ -413,7 +536,7 @@ describe("cli entrypoint", () => {
     }) as typeof process.exit;
     try {
       await import(`./cli.ts?invalid-target=${Date.now()}`);
-      expect(errors.join("\n")).toContain('invalid --target=bogus');
+      expect(errors.join("\n")).toContain("invalid --target=bogus");
       expect(exitCalls).toEqual([2, 1]);
     } finally {
       process.argv = originalArgv;
