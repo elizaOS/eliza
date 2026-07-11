@@ -259,6 +259,62 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 		expect(timeoutRepliesAfter).toBe(1);
 	});
 
+	it("drops a late text-only callback after timeout — late drift never reaches the wire (#15888)", async () => {
+		// After the timeout reply is sent, an orphaned run may still push text
+		// through the response callback. Text-only late deliveries are dropped
+		// (only long-running MEDIA may deliver late), so even a reply that
+		// drifted into native tool syntax cannot leak onto the wire through the
+		// late path — defense in depth behind the shared core sanitizer.
+		const sends: Sent[] = [];
+		const channel = makeDmChannel(sends);
+		const client = { user: { id: "888000000000000000" } };
+
+		let capturedCallback: ((content: Content) => Promise<unknown>) | undefined;
+		const runtime = {
+			agentId: AGENT_ID,
+			character: { name: "Eliza" },
+			logger: { debug: noop, info: noop, warn: noop, error: noop },
+			getSetting: (key: string) =>
+				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS"
+					? "false"
+					: key === "DISCORD_GENERATION_TIMEOUT_MS"
+						? "30000"
+						: undefined,
+			getService: () => null,
+			ensureConnection: async () => {},
+			getMemoryById: async () => null,
+			createMemory: async (memory: Memory) => memory.id,
+			messageService: {
+				handleMessage: (
+					_r: unknown,
+					_m: Memory,
+					cb: (content: Content) => Promise<unknown>,
+				) => {
+					capturedCallback = cb;
+					// Hang past the timeout — simulates the orphaned run.
+					return new Promise<never>(() => {});
+				},
+			},
+		} as unknown as ICompatRuntime;
+
+		const manager = new MessageManager(makeDiscordService(client), runtime);
+		const handled = manager.handleMessage(makeInbound(channel));
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(30_000);
+		await handled;
+
+		const sendsAfterTimeout = sends.length;
+		expect(sendsAfterTimeout).toBeGreaterThan(0);
+		expect(capturedCallback).toBeDefined();
+
+		const lateResult = await capturedCallback?.({
+			text: "Here is that late answer.<tool_call>get_weather",
+		});
+
+		expect(lateResult).toEqual([]);
+		expect(sends).toHaveLength(sendsAfterTimeout);
+	});
+
 	/**
 	 * The abort must NOT break the `activeTaskAgentWork` suppression path.
 	 * Background task-agents (SWARM_COORDINATOR) run in a SEPARATE service,

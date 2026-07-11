@@ -199,9 +199,22 @@ export async function seedCompletedFirstRunStorage(page: Page): Promise<void> {
 
 export async function gotoChatComposer(page: Page): Promise<Locator> {
   let lastError: unknown;
+  const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
+
+  // Reuse the live chat route between warm-up and the asserted turn. Reloading
+  // here can create a second conversation while startup is still resolving the
+  // previous active conversation, causing the UI to switch threads mid-send.
+  if (new URL(page.url()).pathname === "/chat") {
+    try {
+      await expect(composer).toBeVisible({ timeout: 5_000 });
+      return composer;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     await page.goto("/chat");
-    const composer = page.locator(CHAT_COMPOSER_SELECTOR).first();
     try {
       await expect(composer).toBeVisible({ timeout: 90_000 });
       return composer;
@@ -220,7 +233,9 @@ export async function sendChat(page: Page, prompt: string): Promise<void> {
   const composer = await gotoChatComposer(page);
   await composer.fill(prompt);
   await composer.press("Enter");
-  const conversation = page.getByRole("log", { name: /conversation history/i });
+  const conversation = page.getByRole("region", {
+    name: /conversation history/i,
+  });
   await expect(conversation).toContainText(prompt, { timeout: 30_000 });
 }
 

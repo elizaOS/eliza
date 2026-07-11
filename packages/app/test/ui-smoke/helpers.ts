@@ -217,11 +217,13 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Models & Providers", "ai-model"],
   ["Runtime", "runtime"],
   ["Appearance", "appearance"],
+  ["Background", "background"],
   ["Voice", "voice"],
   ["Capabilities", "capabilities"],
   ["Apps", "apps"],
   ["Remote Plugins", "remote-plugins"],
   ["Connectors", "connectors"],
+  ["Wearables", "wearables"],
   ["App Permissions", "app-permissions"],
   ["Wallet & RPC", "wallet-rpc"],
   ["Permissions", "permissions"],
@@ -229,6 +231,7 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Secrets storage", "secrets"],
   ["Security", "security"],
   ["Updates", "updates"],
+  ["Backups", "advanced"],
   ["Backup & Reset", "advanced"],
 ]);
 
@@ -493,6 +496,7 @@ export async function openSettingsSection(
 
   const hubSectionButton = settingsShell
     .getByRole("button", { name: sectionName })
+    .filter({ visible: true })
     .first();
   if (await locatorVisible(hubSectionButton, 1_000)) {
     await hubSectionButton.click();
@@ -500,12 +504,14 @@ export async function openSettingsSection(
   }
 
   const sectionBackButton = settingsShell
-    .getByRole("button", { name: /^Settings$/ })
+    .getByRole("button", { name: /^Back to Settings$/ })
+    .filter({ visible: true })
     .first();
   if (await locatorVisible(sectionBackButton, 1_000)) {
     await sectionBackButton.click();
     const nextHubSectionButton = settingsShell
       .getByRole("button", { name: sectionName })
+      .filter({ visible: true })
       .first();
     if (await locatorVisible(nextHubSectionButton, READY_CHECK_TIMEOUT_MS)) {
       await nextHubSectionButton.click();
@@ -513,8 +519,12 @@ export async function openSettingsSection(
     }
   }
 
-  const settingsNav = page.getByRole("navigation", { name: "Settings" });
-  const sectionButton = settingsNav.getByRole("button", { name: sectionName });
+  const settingsNav = page.getByRole("navigation", {
+    name: /^Settings(?: sections)?$/,
+  });
+  const sectionButton = settingsNav
+    .getByRole("button", { name: sectionName })
+    .filter({ visible: true });
   if (await locatorVisible(sectionButton, 1_000)) {
     await sectionButton.click();
     return;
@@ -522,9 +532,17 @@ export async function openSettingsSection(
 
   const sectionId = settingsSectionIdFromLabel(sectionName);
   if (sectionId) {
-    const section = page.locator(`#${sectionId}`);
-    await section.scrollIntoViewIfNeeded({ timeout: READY_CHECK_TIMEOUT_MS });
-    await expect(section).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
+    await page.evaluate((id) => {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.hash = id;
+      window.history.replaceState(null, "", nextUrl);
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    }, sectionId);
+    await expect(
+      settingsShell.getByRole("heading", { level: 1, name: sectionName }),
+    ).toBeVisible({
+      timeout: READY_CHECK_TIMEOUT_MS,
+    });
     return;
   }
 
@@ -3480,7 +3498,23 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
   });
 
   await page.route("**/api/training/trajectories**", async (route) => {
-    if (route.request().method() !== "GET") {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+    if (
+      request.method() === "POST" &&
+      pathname === "/api/training/trajectories/publish"
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          trajectoriesPublished: 0,
+          cloudUpload: { huggingFaceRepo: "ui-smoke/training" },
+        }),
+      });
+      return;
+    }
+    if (request.method() !== "GET") {
       await route.fallback();
       return;
     }
@@ -3567,6 +3601,75 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(emptyTrainingCollections()),
+    });
+  });
+
+  await page.route("**/api/training/collect", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        preflight: { liveRequired: false, checks: [] },
+      }),
+    });
+  });
+
+  await page.route("**/api/training/analysis/index", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        outputDir: "/tmp/ui-smoke-training/analysis",
+        indexHtmlPath: "/tmp/ui-smoke-training/analysis/index.html",
+        manifestPath: "/tmp/ui-smoke-training/analysis/manifest.json",
+        manifest: {
+          schema: "eliza.training.analysis-index",
+          schemaVersion: 1,
+          generatedAt: new Date(0).toISOString(),
+          roots: [],
+          outputDir: "/tmp/ui-smoke-training/analysis",
+          indexHtmlPath: "/tmp/ui-smoke-training/analysis/index.html",
+          manifestPath: "/tmp/ui-smoke-training/analysis/manifest.json",
+          counts: {},
+          coverage: {},
+          artifacts: [],
+        },
+      }),
+    });
+  });
+
+  await page.route("**/api/training/analysis/readiness", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        outputDir: "/tmp/ui-smoke-training/readiness",
+        reportPath: "/tmp/ui-smoke-training/readiness/report.json",
+        report: {
+          schema: "eliza.training.readiness",
+          schemaVersion: 1,
+          generatedAt: new Date(0).toISOString(),
+          outputDir: "/tmp/ui-smoke-training/readiness",
+          reportPath: "/tmp/ui-smoke-training/readiness/report.json",
+          analysisManifestPath: "/tmp/ui-smoke-training/analysis/manifest.json",
+          analysisIndexHtmlPath: "/tmp/ui-smoke-training/analysis/index.html",
+          status: "ready",
+          counts: { ready: 0, checks: 0, missing: 0 },
+          checks: [],
+        },
+      }),
     });
   });
 

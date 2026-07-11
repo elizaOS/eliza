@@ -177,6 +177,7 @@ vi.mock("./hooks", () => ({
     saveCommandText: "",
   }),
   useMediaQuery: () => false,
+  useDocumentVisibility: () => true,
   useRenderGuard: vi.fn(),
   useIntervalWhenDocumentVisible: () => {},
 }));
@@ -271,6 +272,9 @@ vi.mock("./components/shell/BugReportModal", () => ({
 vi.mock("./components/shell/ChatSurface", () => ({
   ChatSurface: () => <div data-testid="chat-surface" />,
 }));
+vi.mock("./components/shell/ContinuousChatOverlay", () => ({
+  ContinuousChatOverlay: () => null,
+}));
 vi.mock("./components/shell/HomePill", () => ({
   HomePill: () => <button type="button">home pill</button>,
 }));
@@ -291,6 +295,18 @@ vi.mock("./components/chat/SaveCommandModal", () => ({
 vi.mock("./components/pages/ChatView", () => ({
   ChatView: () => <div data-testid="chat-view" />,
   __resetCompanionSpeechMemoryForTests: vi.fn(),
+}));
+vi.mock("./components/pages/BrowserWorkspaceView", () => ({
+  BrowserWorkspaceView: () => <div data-testid="browser-workspace-view" />,
+}));
+vi.mock("./components/pages/LogsView", () => ({
+  LogsView: () => <div data-testid="logs-view" />,
+}));
+vi.mock("./components/pages/SkillsView", () => ({
+  SkillsView: () => <div data-testid="skills-view" />,
+}));
+vi.mock("./components/settings/DesktopWorkspaceSection", () => ({
+  DesktopWorkspaceSection: () => <div data-testid="desktop-workspace-view" />,
 }));
 vi.mock("./components/character/CharacterEditor", () => ({
   CharacterEditor: ({ initialPage }: { initialPage?: string }) => (

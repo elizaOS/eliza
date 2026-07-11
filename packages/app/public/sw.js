@@ -39,7 +39,7 @@ const VIEWS_CACHE_NAME = "elizaos-views-v1";
 // v5: black launch baseline (theme-color + launch-bg -> #000000; the home
 // background is the black field with the orange ember glow, and boot no
 // longer paints orange). Bump drops any cached prior shell.
-const SHELL_CACHE_NAME = "elizaos-shell-v5";
+const SHELL_CACHE_NAME = "elizaos-shell-v6";
 // Immutable runtime cache for Vite's content-hashed build output (/assets/*).
 // The filename hash IS the cache key's freshness guarantee: any byte change
 // produces a new filename, so cache-first can never serve a stale asset. This
@@ -95,6 +95,22 @@ self.addEventListener("activate", (event) => {
       }
 
       await self.clients.claim();
+
+      // A newly activated worker means a new renderer was deployed. Existing
+      // tabs still execute their old JS indefinitely (notably across an OAuth
+      // app-pause/resume), so navigate same-origin windows once to load the
+      // current content-hashed renderer.
+      const windows = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      await Promise.all(
+        windows.map((client) =>
+          typeof client.navigate === "function"
+            ? client.navigate(client.url).catch(() => undefined)
+            : undefined,
+        ),
+      );
     })(),
   );
 });

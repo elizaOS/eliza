@@ -126,7 +126,7 @@ const SHELL_VIEW_TARGETS: readonly {
     label: "Transcripts",
     path: "/apps/transcripts",
     viewId: "transcripts",
-    readyTestId: "transcripts-view",
+    readyTestId: "live-meeting-page",
     requiredIds: [`transcript-${TRANSCRIPT_ID}`],
   },
   {

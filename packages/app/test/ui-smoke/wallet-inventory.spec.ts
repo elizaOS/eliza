@@ -140,7 +140,7 @@ test("wallet inventory exposes chain badges, rows, copy controls, and hide state
   await expect(sidebar.getByText("Smoke Solana Collectible")).toBeVisible();
 
   await sidebar.getByTestId("wallet-tab-defi").click();
-  await expect(sidebar.getByText("Where can I stake my tokens?")).toBeVisible();
+  await expect(sidebar.getByText("No DeFi positions.")).toBeVisible();
 
   await sidebar.getByTestId("wallet-tab-tokens").click();
   await expect(

@@ -163,8 +163,9 @@ export interface AppBootConfig {
   };
   /**
    * Prefer the instant shared cloud tier during first-run, then hand off to a
-   * dedicated agent in the background. Default on; set false as a kill-switch to
-   * return first-run cloud creation to the dedicated-direct path.
+   * dedicated agent in the background. Default off: first-run cloud creation
+   * should bind the user's dedicated agent directly unless a host explicitly
+   * opts into the shared-tier experiment.
    */
   preferSharedCloudTier?: boolean;
   /** Character catalog data — replaces cross-package import of catalog.json. */
@@ -185,7 +186,7 @@ export interface AppBootConfig {
 export const DEFAULT_BOOT_CONFIG: AppBootConfig = {
   branding: {},
   cloudApiBase: "https://elizacloud.ai",
-  preferSharedCloudTier: true,
+  preferSharedCloudTier: false,
 };
 
 // ---------------------------------------------------------------------------

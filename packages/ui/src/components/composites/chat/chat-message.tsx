@@ -39,6 +39,11 @@ import { findChoiceRegions } from "../../chat/message-choice-parser";
 import { findFollowupsRegions } from "../../chat/message-followups-parser";
 import { findFormRegions } from "../../chat/message-form-parser";
 import { Button } from "../../ui/button";
+import {
+  Message as MessageRow,
+  MessageContent as MessageRowContent,
+  MessageFooter as MessageRowFooter,
+} from "../../ui/message";
 import { Textarea } from "../../ui/textarea";
 import { ChatBubble, GLASS_EASE } from "./chat-bubble";
 import { ChatMessageActions } from "./chat-message-actions";
@@ -57,18 +62,18 @@ import type {
 
 export type ChatMessageAppearance = "panel" | "glass";
 
+const MotionMessageRow = motion.create(MessageRow);
+
 export interface ChatMessageProps {
   agentName?: string;
   /** Chrome: theme-token `panel` (default) or the overlay's floating `glass`. */
   appearance?: ChatMessageAppearance;
   children?: React.ReactNode;
   /**
-   * Play a one-shot fade+lift entrance when this row mounts (panel only — the
-   * glass chrome animates through motion/AnimatePresence). Set only for a
-   * freshly-arrived turn (see ChatTranscript) so reloaded history never
-   * animates. Deliberately NOT part of arePropsEqual: the row keeps its
-   * mount-time value, so streamed-token re-renders neither restart nor cancel
-   * the animation.
+   * Play a one-shot fade+lift entrance when this row mounts. Set only for a
+   * freshly-arrived turn so reloaded or reconciled history never animates.
+   * Deliberately NOT part of arePropsEqual: the row keeps its mount-time value,
+   * so streamed-token re-renders neither restart nor cancel the animation.
    */
   enterOnMount?: boolean;
   isGrouped?: boolean;
@@ -522,6 +527,7 @@ export const ChatMessage = memo(function ChatMessage({
   // Proactive interaction comments (#8792) are agent-initiated *suggestions*, not
   // replies; render them with a distinct, one-tap-dismissible affordance.
   const isSuggestion = !isUser && normalizedSource === "proactive-interaction";
+  const isFlatAssistant = !isUser && !isFirstRun && !isSuggestion;
   const canReply =
     typeof onReply === "function" &&
     !message.id.startsWith("temp-") &&
@@ -730,6 +736,15 @@ export const ChatMessage = memo(function ChatMessage({
 
   // ── Glass chrome (the continuous overlay's floating row) ──────────────────
   if (glass) {
+    const initial = enterOnMount
+      ? reduceMotion
+        ? { opacity: 0 }
+        : { opacity: 0, y: 14 }
+      : false;
+    const transition = {
+      duration: reduceMotion ? 0.15 : 0.52,
+      ease: GLASS_EASE,
+    };
     // A failure the user can't recover from without wiring a provider renders a
     // structured gate (via renderContent), NOT a normal bubble — no reveal
     // actions, no copy-hold. The gate owns its own chrome; the row only carries
@@ -741,13 +756,9 @@ export const ChatMessage = memo(function ChatMessage({
           data-testid="thread-line"
           data-role={message.role}
           data-failure="no_provider"
-          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+          initial={initial}
           animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-          transition={{
-            duration: reduceMotion ? 0.15 : 0.52,
-            ease: GLASS_EASE,
-          }}
+          transition={transition}
           className="mb-2.5 flex w-full justify-start"
         >
           {renderContent?.(message, renderContext) ?? children ?? message.text}
@@ -880,7 +891,13 @@ export const ChatMessage = memo(function ChatMessage({
               </div>
             </div>
           ) : null}
-          <div data-chat-selectable="true">
+          <div
+            data-chat-selectable="true"
+            className={cn(
+              isFirstRun &&
+                "flex w-full flex-col gap-4 whitespace-normal text-[17px] leading-relaxed text-white",
+            )}
+          >
             {renderContent?.(message, renderContext) ??
               children ??
               message.text}
@@ -906,12 +923,14 @@ export const ChatMessage = memo(function ChatMessage({
     const bubbleExtraClassName = cn(
       // Tapping a bubble with actions reveals its row (pointer affordance).
       bubbleInteractive && "cursor-pointer",
-      // First-run greeting: normal chat messages float on the sheet's shared
-      // glass panel, but onboarding has no panel behind them, so the hairline
-      // edge alone reads as a faint line on black. Give the greeting a subtle
-      // frosted fill + slightly stronger edge so it reads as a proper, sleek
-      // bubble on the opaque onboarding backdrop.
-      isFirstRun && "border-white/25 bg-white/[0.06]",
+      // Give first-run the same conversational bubble structure as chat, with
+      // enough room and contrast for its next-step action. Intrinsic width keeps
+      // short greetings from stretching across the full onboarding column;
+      // longer copy still wraps at the row's existing 22rem maximum.
+      isFirstRun &&
+        "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
+      // Ordinary assistant replies use shadcn's full-width ghost treatment.
+      isFlatAssistant && "w-full px-0 py-1",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -920,33 +939,34 @@ export const ChatMessage = memo(function ChatMessage({
     );
 
     return (
-      <motion.div
+      <MotionMessageRow
         ref={articleRef as React.RefObject<HTMLDivElement>}
+        align={isUser ? "end" : "start"}
         data-testid="thread-line"
         data-role={message.role}
         // New turns rise+fade in. Transform/opacity only; reduced motion
         // collapses it to a quick fade with no positional movement.
-        initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
+        initial={initial}
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-        exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
-        transition={{ duration: reduceMotion ? 0.15 : 0.52, ease: GLASS_EASE }}
-        className={cn(
-          "mb-1.5 flex w-full",
-          isUser ? "justify-end" : "justify-start",
-        )}
+        transition={transition}
+        className="mb-1.5"
       >
         {/* Bubble + its click-to-reveal action row stack vertically, aligned to
             the turn's side (#10713). */}
-        <div
+        <MessageRowContent
           className={cn(
-            "flex max-w-[80%] flex-col gap-1",
-            isUser ? "items-end" : "items-start",
+            "flex flex-col gap-1",
+            isFirstRun
+              ? "max-w-[22rem] items-start"
+              : isUser
+                ? "max-w-[80%] items-end"
+                : "w-full items-start",
           )}
         >
           {bubbleInteractive ? (
             <ChatBubble
               variant="glass"
-              bare={false}
+              bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               role="button"
@@ -965,7 +985,7 @@ export const ChatMessage = memo(function ChatMessage({
           ) : (
             <ChatBubble
               variant="glass"
-              bare={false}
+              bare={isFlatAssistant}
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               className={bubbleExtraClassName}
@@ -975,10 +995,10 @@ export const ChatMessage = memo(function ChatMessage({
             </ChatBubble>
           )}
           {actionsVisible && !isEditing && hasActions ? (
-            <div
+            <MessageRowFooter
               data-testid="thread-line-actions"
               className={cn(
-                "flex items-center gap-1.5",
+                "flex items-center gap-1.5 px-0 text-white/70",
                 isUser ? "pr-1" : "pl-1",
               )}
             >
@@ -997,7 +1017,7 @@ export const ChatMessage = memo(function ChatMessage({
                 onReply={handleReply}
                 playing={playing}
               />
-            </div>
+            </MessageRowFooter>
           ) : null}
           {/* Retry a recoverable failure by re-sending the preceding user turn.
               Always visible on the failed turn (not gated behind the reveal
@@ -1018,8 +1038,8 @@ export const ChatMessage = memo(function ChatMessage({
               Retry
             </Button>
           ) : null}
-        </div>
-      </motion.div>
+        </MessageRowContent>
+      </MotionMessageRow>
     );
   }
 

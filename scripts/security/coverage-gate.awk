@@ -57,43 +57,66 @@ function path_matches_lcov(current_path, changed_path,    current_len, changed_l
 /^end_of_record/ {
   if (lines_found > 0) {
     pct = (lines_hit / lines_found) * 100
-    # Check if this file is in changed list. LCOV paths may be absolute while
-    # the changed list is repo-relative, so accept only exact path-segment
-    # suffixes; raw substring matching lets foo.ts pass via foo.tsx.
+    # LCOV paths may be absolute while the changed list is repo-relative. Pick
+    # the longest exact path-segment suffix so overlaps are deterministic.
     matched = ""
+    matched_len = 0
     for (cf in changed_map) {
-      if (path_matches_lcov(current, cf)) { matched = cf; break }
+      if (path_matches_lcov(current, cf) && length(cf) > matched_len) {
+        matched = cf
+        matched_len = length(cf)
+      }
     }
     if (matched != "") {
-      changed_count++
-      changed_sum += pct
-      printf "  %6.2f%% %s\n", pct, matched
-      if (pct + 0 < threshold + 0) below[matched] = pct
+      # Aggregate per file across ALL lcov inputs BEFORE thresholding. The same
+      # source can appear in several lane reports — its own focused lane at real
+      # coverage plus another package's lane that merely imports it at ~2%. Keep
+      # the file's BEST-lane percentage so an incidental low record cannot fail a
+      # file whose real coverage clears the floor (#16043). Counting, the mean,
+      # and the below[] verdict are all computed from file_pct in END.
+      if (!(matched in file_pct) || pct + 0 > file_pct[matched] + 0) {
+        file_pct[matched] = pct
+      }
     }
   }
   current = ""; lines_found = 0; lines_hit = 0
 }
 
 END {
+  missing_count = 0
+  changed_count = 0
+  changed_sum = 0
+  for (f in changed_map) {
+    if (!(f in file_pct)) {
+      printf "  MISSING: %s\n", f
+      missing_count++
+    } else {
+      changed_count++
+      changed_sum += file_pct[f]
+      printf "  %6.2f%% %s\n", file_pct[f], f
+      if (file_pct[f] + 0 < threshold + 0) below[f] = file_pct[f]
+    }
+  }
+
   if (changed_count == 0) {
     print "no changed files matched the LCOV report"
-    if (changed != "" && ENVIRON["COVERAGE_GATE_ENFORCE"] == "1") {
-      print "coverage gate FAILED (changed source missing from LCOV)"
-      exit 1
-    }
-    exit 0
+  } else {
+    avg = changed_sum / changed_count
+    printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: %d%%\n", \
+      changed_count, avg, threshold
   }
-  avg = changed_sum / changed_count
-  printf "\nchanged files: %d, mean coverage: %.2f%%, threshold: %d%%\n", \
-    changed_count, avg, threshold
 
-  fail = 0
+  fail = missing_count > 0
   for (f in below) {
     printf "  BELOW: %s (%.2f%%)\n", f, below[f]
     fail = 1
   }
   if (fail && ENVIRON["COVERAGE_GATE_ENFORCE"] == "1") {
-    print "coverage gate FAILED (enforcement enabled)"
+    if (missing_count > 0) {
+      print "coverage gate FAILED (changed source missing from LCOV)"
+    } else {
+      print "coverage gate FAILED (enforcement enabled)"
+    }
     exit 1
   }
   if (fail) {

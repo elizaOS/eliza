@@ -1,16 +1,4 @@
-/**
- * Guards the coverage-gate lane against the #15849 regression: a PR that only
- * adds or changes test files (no changed source) must still execute those
- * changed tests. The bug was that every test-execution step was gated on
- * `steps.changed.outputs.files != ''`, so a test-only PR — where `files` is
- * empty — skipped setup, both run steps, and the gate, going vacuously green.
- *
- * This drives the real shipped workflow: it parses coverage-gate.yml, extracts
- * each step's GitHub-Actions `if:` expression, and evaluates those expressions
- * against changed-file scenarios with a small evaluator that mirrors the subset
- * of expression syntax the workflow uses (`steps.changed.outputs.<id>` compared
- * to '' with `==`/`!=`, joined by `&&`/`||`, with parentheses).
- */
+/** Evaluates the shipped coverage workflow conditions for every changed-test lane. */
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -19,7 +7,12 @@ const workflowPath = fileURLToPath(
   new URL("../../../.github/workflows/coverage-gate.yml", import.meta.url),
 );
 
-type Outputs = { files: string; bun_tests: string; vitest_tests: string };
+type Outputs = {
+  files: string;
+  bun_tests: string;
+  vitest_tests: string;
+  node_tests: string;
+};
 
 /**
  * Extract each named step's single-line `if:` expression. Steps without an
@@ -136,11 +129,17 @@ const runs = (step: string, outputs: Outputs) => {
 const SETUP = "Setup Bun workspace";
 const RUN_BUN = "Run changed Bun tests with coverage";
 const RUN_VITEST = "Run changed Vitest tests with coverage";
+const RUN_NODE = "Run changed registered Node self-tests";
 const GATE = "Apply coverage gate (enforced)";
 const REQUIRE_TESTS = "Require changed tests for changed source";
 
 test("self-check: the expression evaluator handles the workflow subset", () => {
-  const o = { files: "src.ts", bun_tests: "", vitest_tests: "v.test.ts" };
+  const o = {
+    files: "src.ts",
+    bun_tests: "",
+    vitest_tests: "v.test.ts",
+    node_tests: "",
+  };
   expect(evalCondition("true", o)).toBe(true);
   expect(evalCondition("steps.changed.outputs.files != ''", o)).toBe(true);
   expect(evalCondition("steps.changed.outputs.bun_tests != ''", o)).toBe(false);
@@ -157,6 +156,7 @@ test("test-only Bun PR executes the changed Bun tests and the gate (#15849)", ()
     files: "",
     bun_tests: "packages/core/src/x.test.ts",
     vitest_tests: "",
+    node_tests: "",
   };
   expect(runs(SETUP, testOnly)).toBe(true);
   expect(runs(RUN_BUN, testOnly)).toBe(true);
@@ -170,17 +170,37 @@ test("test-only Vitest PR executes the changed Vitest tests and the gate (#15849
     files: "",
     bun_tests: "",
     vitest_tests: "packages/core/src/y.test.ts",
+    node_tests: "",
   };
   expect(runs(SETUP, testOnly)).toBe(true);
   expect(runs(RUN_VITEST, testOnly)).toBe(true);
   expect(runs(GATE, testOnly)).toBe(true);
 });
 
+test("test-only registered Node PR executes without Bun setup", () => {
+  const testOnly: Outputs = {
+    files: "",
+    bun_tests: "",
+    vitest_tests: "",
+    node_tests: "scripts/security/coverage-gate.self-test.mjs",
+  };
+  expect(runs(SETUP, testOnly)).toBe(false);
+  expect(runs(RUN_NODE, testOnly)).toBe(true);
+  expect(runs(GATE, testOnly)).toBe(true);
+  expect(runs(REQUIRE_TESTS, testOnly)).toBe(false);
+});
+
 test("docs-only PR (no source, no tests) runs no execution steps", () => {
-  const docsOnly: Outputs = { files: "", bun_tests: "", vitest_tests: "" };
+  const docsOnly: Outputs = {
+    files: "",
+    bun_tests: "",
+    vitest_tests: "",
+    node_tests: "",
+  };
   expect(runs(SETUP, docsOnly)).toBe(false);
   expect(runs(RUN_BUN, docsOnly)).toBe(false);
   expect(runs(RUN_VITEST, docsOnly)).toBe(false);
+  expect(runs(RUN_NODE, docsOnly)).toBe(false);
   expect(runs(GATE, docsOnly)).toBe(false);
   expect(runs(REQUIRE_TESTS, docsOnly)).toBe(false);
 });
@@ -190,6 +210,7 @@ test("source-with-tests PR runs the matching lane and does not trip the require 
     files: "packages/core/src/a.ts",
     bun_tests: "packages/core/src/a.test.ts",
     vitest_tests: "",
+    node_tests: "",
   };
   expect(runs(SETUP, withTests)).toBe(true);
   expect(runs(RUN_BUN, withTests)).toBe(true);
@@ -202,6 +223,7 @@ test("source-only PR with no changed test still trips the require gate", () => {
     files: "packages/core/src/a.ts",
     bun_tests: "",
     vitest_tests: "",
+    node_tests: "",
   };
   expect(runs(REQUIRE_TESTS, sourceOnly)).toBe(true);
   expect(runs(RUN_BUN, sourceOnly)).toBe(false);

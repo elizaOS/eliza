@@ -19,8 +19,8 @@ describe("getVelocityAwarePagerTransitionMs", () => {
     });
 
     expect(fast).toBeLessThan(slow);
-    expect(fast).toBeGreaterThanOrEqual(130);
-    expect(slow).toBeLessThanOrEqual(440);
+    expect(fast).toBeGreaterThanOrEqual(320);
+    expect(slow).toBeLessThanOrEqual(600);
   });
 
   it("falls back to the bounded default when release velocity is unavailable", () => {

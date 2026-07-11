@@ -140,4 +140,25 @@ describe("resolvePerJobTimeoutMs — cold-boot job types outlast a full boot (#1
     // An unknown/non-lifecycle type also falls back to the flat ceiling.
     expect(resolvePerJobTimeoutMs("some_other_job")).toBe(PER_JOB_TIMEOUT_MS);
   });
+
+  test("EVERY non-cold-boot job type resolves to exactly the flat ceiling — the budget split is complete", () => {
+    // Set-completeness over the whole JOB_TYPES surface (the spot checks above
+    // can't catch it): a future type accidentally classified cold-boot would
+    // let a hung job monopolize a worker slot for ~11 min; a cold-boot type
+    // accidentally dropped would re-open the mid-boot abort this file exists
+    // to prevent — e.g. the agent_provision job a tier-upgrade target's first
+    // boot rides (#15943).
+    const coldBoot = new Set<string>([
+      JOB_TYPES.AGENT_PROVISION,
+      JOB_TYPES.AGENT_RESUME,
+      JOB_TYPES.AGENT_WAKE,
+      JOB_TYPES.AGENT_RESTART,
+      JOB_TYPES.AGENT_UPGRADE,
+      JOB_TYPES.AGENT_DOWNGRADE,
+    ]);
+    for (const type of Object.values(JOB_TYPES)) {
+      if (coldBoot.has(type)) continue;
+      expect(resolvePerJobTimeoutMs(type)).toBe(PER_JOB_TIMEOUT_MS);
+    }
+  });
 });

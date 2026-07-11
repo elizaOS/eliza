@@ -11,11 +11,12 @@
  * Brand rule: orange (the accent) tints TurnStatus ONLY for `speaking`; every
  * other phase is neutral. No blue anywhere.
  */
-import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { ChatTurnStatus } from "../../../api/client-types-chat";
 import { cn } from "../../../lib/utils";
+import { Marker, MarkerContent, MarkerIcon } from "../../ui/marker";
+import { Spinner } from "../../ui/spinner";
 import { ChatBubble } from "./chat-bubble";
 import type { ChatVariant } from "./chat-types";
 
@@ -111,6 +112,9 @@ export function turnStatusLabel(status: ChatTurnStatus): string {
     case "streaming":
       return "Replying";
     case "running_action":
+      if (status.actionName?.trim().toUpperCase() === "REPLY") {
+        return "Replying";
+      }
       return status.actionName
         ? `Running ${humanizeStatusName(status.actionName)}`
         : "Working";
@@ -233,66 +237,70 @@ export function TurnStatus({
   // Clock is driven by the raw (un-debounced) status so it starts at turn open,
   // not after the label's min-dwell debounce.
   const elapsed = useElapsedSeconds(status !== null);
+  const label = shown ? turnStatusLabel(shown) : "Thinking";
 
   if (!showLabel) {
-    // In-bubble variant: bare dots, anchored where the streamed reply fills in.
+    // In-bubble variant: a compact shadcn Marker sits exactly where streamed
+    // text will replace it. Shimmer communicates active generation without a
+    // second animated glyph or bubble.
     return (
-      <span
-        className="inline-flex items-center gap-2"
+      <Marker
+        className="w-fit text-white/80"
         data-testid="turn-status-indicator"
         data-status-kind={shown?.kind ?? "none"}
         role="status"
         aria-live="polite"
       >
-        <TypingDots
-          className="flex gap-1.5"
-          dotClassName={cn(
-            "h-1.5 w-1.5 animate-pulse rounded-full motion-reduce:animate-none",
-            speaking ? "bg-[rgba(255,190,140,0.9)]" : "bg-white/70",
+        <MarkerContent
+          className={cn(
+            "text-[13px] font-medium",
+            speaking
+              ? "text-[rgba(255,200,150,0.95)]"
+              : "shimmer motion-reduce:shimmer-none",
           )}
-          delaysMs={[0, 180, 360]}
-          testId="typing-dots"
-        />
-      </span>
+          data-testid="turn-status-label"
+        >
+          {label}
+        </MarkerContent>
+      </Marker>
     );
   }
 
-  const label = shown ? turnStatusLabel(shown) : null;
   return (
-    <span
-      className="inline-flex items-center gap-2"
+    <Marker
+      className="w-fit text-white/90"
       data-testid="turn-status-indicator"
       data-status-kind={shown?.kind ?? "none"}
       role="status"
       aria-live="polite"
     >
-      <Loader2
-        aria-hidden="true"
-        data-testid="turn-status-spinner"
-        className={cn(
-          "h-3.5 w-3.5 animate-spin motion-reduce:animate-none",
-          speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/70",
-        )}
-      />
-      {label ? (
+      <MarkerIcon>
+        <Spinner
+          size={14}
+          data-testid="turn-status-spinner"
+          className={cn(
+            "motion-reduce:animate-none",
+            speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/70",
+          )}
+        />
+      </MarkerIcon>
+      <MarkerContent className="inline-flex items-baseline text-[13px] font-medium tabular-nums">
         <span
           className={cn(
-            "text-[13px] font-medium tabular-nums",
-            speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/90",
+            speaking
+              ? "text-[rgba(255,200,150,0.95)]"
+              : "shimmer motion-reduce:shimmer-none",
           )}
           data-testid="turn-status-label"
         >
           {label}
-          {elapsed >= 0 ? (
-            <span
-              className="ml-1.5 opacity-60"
-              data-testid="turn-status-elapsed"
-            >
-              · {formatElapsed(elapsed)}
-            </span>
-          ) : null}
         </span>
-      ) : null}
-    </span>
+        {elapsed >= 0 ? (
+          <span className="ml-1.5 opacity-60" data-testid="turn-status-elapsed">
+            · {formatElapsed(elapsed)}
+          </span>
+        ) : null}
+      </MarkerContent>
+    </Marker>
   );
 }

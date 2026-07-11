@@ -7,6 +7,7 @@
  */
 import type { Command } from "commander";
 import { registerAuthCommand } from "./register.auth";
+import { registerAuthAdoptCodexSubcommand } from "./register.auth.adopt-codex";
 import { registerBenchmarkCommand } from "./register.benchmark";
 import { registerCapabilityRouterCommand } from "./register.capability-router";
 import { registerConfigCli } from "./register.config";
@@ -34,5 +35,6 @@ export function registerProgramCommands(
   registerDashboardCommand(program);
   registerUpdateCommand(program);
   registerAuthCommand(program);
+  registerAuthAdoptCodexSubcommand(program);
   registerSubCliCommands(program, argv);
 }

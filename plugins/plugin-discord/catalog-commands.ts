@@ -15,8 +15,11 @@
  * handlers (some with autocomplete and Discord-specific behavior). To PRESERVE
  * all existing behavior we register only the catalog commands whose sanitized
  * name does NOT already exist in the registry — built-ins always win. This adds
- * the new catalog commands (think, reasoning, views, orchestrator, knowledge,
- * plugins, …) without touching the tested built-in command surface.
+ * the new catalog agent commands (think, reasoning, models, usage, queue, …)
+ * without touching the tested built-in command surface. Navigation commands
+ * never reach this bridge: they are app-surface-only (`surfaces` in
+ * `navigation-commands.ts`) because navigating needs a viewport a chat
+ * connector doesn't have.
  *
  * Per-target dispatch:
  *   - `agent`    → deterministic commands
@@ -24,8 +27,9 @@
  *                  via `resolveCommand`; pipeline-owned agent commands route
  *                  the reconstructed command text through the runtime's message
  *                  pipeline and reply with the agent's answer.
- *   - `navigate` → reply (ephemeral) describing the destination, resolving the
- *                  `/settings <section>` argument when present.
+ *   - `navigate` → filtered off connector surfaces upstream; handled
+ *                  defensively with an ephemeral destination description,
+ *                  resolving the `/settings <section>` argument when present.
  *   - `client`   → local-client behaviors are filtered out of the discord
  *                  surface upstream; handled defensively with a short reply.
  *

@@ -5,6 +5,7 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
+  hideContinuousChatOverlay,
   installDefaultAppRoutes,
   seedAppStorage,
 } from "./helpers";
@@ -26,13 +27,13 @@ const ANDROID_ELIZA_UA =
 const ANDROID_SYSTEM_APP_CASES: readonly AndroidSystemRouteCase[] = [
   {
     name: "phone",
-    path: "/apps/phone",
-    readyChecks: [{ selector: '[data-testid="phone-shell"]' }],
+    path: "/phone",
+    readyChecks: [{ selector: '[data-agent-id="phone-refresh"]' }],
   },
   {
     name: "contacts",
-    path: "/apps/contacts",
-    readyChecks: [{ selector: '[data-testid="contacts-shell"]' }],
+    path: "/contacts",
+    readyChecks: [{ selector: '[data-agent-id="contacts-refresh"]' }],
   },
   {
     name: "wifi",
@@ -41,12 +42,12 @@ const ANDROID_SYSTEM_APP_CASES: readonly AndroidSystemRouteCase[] = [
   },
   {
     name: "messages",
-    path: "/apps/messages",
-    readyChecks: [{ selector: '[data-testid="messages-shell"]' }],
+    path: "/messages",
+    readyChecks: [{ selector: '[data-agent-id="messages-refresh"]' }],
   },
   {
     name: "device settings",
-    path: "/apps/device-settings",
+    path: "/apps/native-settings",
     readyChecks: [{ selector: '[data-testid="device-settings-shell"]' }],
   },
 ] as const;
@@ -149,6 +150,7 @@ async function openFreshAppWindow(
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
   });
+  await hideContinuousChatOverlay(page);
   await installDefaultAppRoutes(page);
   const issues = installIssueGuards(page);
   await openAppWindow(page, routeCase);
@@ -205,30 +207,16 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("phone"),
   );
-  await page.getByTestId("phone-dial-key-1").click();
-  await page.getByTestId("phone-dial-key-2").click();
-  await page.getByTestId("phone-dial-key-3").click();
-  await page.getByTestId("phone-dial-backspace").click();
+  await page.locator('[data-agent-id="dialpad-1"]').click();
+  await page.locator('[data-agent-id="dialpad-2"]').click();
+  const dialerNumber = page.locator('[data-agent-id="dialer-number"]');
+  await expect(dialerNumber).toHaveValue("12");
+  await page.locator('[data-agent-id="phone-tab-recents"]').click();
+  await expect(page.getByText("No calls returned by Android.")).toBeVisible();
+  await page.locator('[data-agent-id="phone-tab-contacts"]').click();
   await expect(
-    page.getByRole("status", {
-      name: /^(Number being dialed|phone\.dialer\.display)$/,
-    }),
-  ).toContainText("12");
-  await page
-    .getByRole("tab", { name: /^(Recent|phone\.tabs\.recent)$/ })
-    .click();
-  await expect(
-    page.getByText(/^(No recent calls\.|phone\.recent\.empty)$/),
+    page.getByText("No contacts returned by Android."),
   ).toBeVisible();
-  // Phone no longer embeds a Contacts tab — it links to the separate Contacts
-  // view via a header button (refactor 446382f90a). Assert the Contacts tab is
-  // gone and the Contacts nav affordance is present + enabled instead.
-  await expect(
-    page.getByRole("tab", { name: /^(Contacts|phone\.tabs\.contacts)$/ }),
-  ).toHaveCount(0);
-  const phoneContactsNav = page.getByTestId("phone-open-contacts");
-  await expect(phoneContactsNav).toBeVisible();
-  await expect(phoneContactsNav).toBeEnabled();
   await expectNoIssues(page, issues.splice(0), "phone interactions");
   await page.close();
 
@@ -236,16 +224,15 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("contacts"),
   ));
-  // Per-view contact search was removed; searching is now driven via the chat
-  // composer (ContactsAppView renders a hint instead of a search input).
-  await expect(page.getByTestId("contacts-search-hint")).toBeVisible();
-  await page.getByTestId("contacts-new").click();
-  await page.getByLabel(/^(Name|contacts\.form\.name)$/).fill("Ada Lovelace");
-  await page.getByPlaceholder("+1 555 123 4567").fill("+1 555 0100");
   await page
-    .getByRole("button", { name: /^(Cancel|actions\.cancel)$/ })
-    .click();
-  await expect(page.getByTestId("contacts-shell")).toBeVisible();
+    .locator('[data-agent-id="contacts-create-display-name"]')
+    .fill("Ada Lovelace");
+  await page
+    .locator('[data-agent-id="contacts-create-phone-number"]')
+    .fill("+1 555 0100");
+  await expect(
+    page.locator('[data-agent-id="contacts-create-submit"]'),
+  ).toBeEnabled();
   await expectNoIssues(page, issues.splice(0), "contacts interactions");
   await page.close();
 
@@ -255,7 +242,7 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   ));
   await page.getByTestId("wifi-scan").click();
   await expect(page.getByText("Wi-Fi is off")).toBeVisible();
-  await expect(page.getByText("No networks found")).toBeVisible();
+  await expect(page.getByText("None", { exact: true })).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "wifi interactions");
   await page.close();
 
@@ -263,14 +250,9 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
     context,
     getAndroidSystemRoute("messages"),
   ));
-  await page.getByTestId("messages-new").click();
-  // The Messages app is a multi-screen list/composer with no standalone refresh
-  // control; opening the composer and reaching a sendable draft is the
-  // interaction proof.
-  await expect(page.getByTestId("messages-composer-panel")).toBeVisible();
-  await page.getByTestId("messages-compose-address").fill("+1 555 0101");
-  await page.getByTestId("messages-compose-body").fill("QA SMS draft");
-  await expect(page.getByTestId("messages-send")).toBeEnabled();
+  await page.locator('[data-agent-id="messages-address"]').fill("+1 555 0101");
+  await page.locator('[data-agent-id="messages-body"]').fill("QA SMS draft");
+  await expect(page.locator('[data-agent-id="messages-send"]')).toBeEnabled();
   await expectNoIssues(page, issues.splice(0), "messages interactions");
   await page.close();
 

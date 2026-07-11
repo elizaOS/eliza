@@ -52,6 +52,7 @@ describe("dispatchRoute onChunk sink (#12352)", () => {
     expect(chunks).toEqual(["data: one\n\n", "data: two\n\n"]);
     // The buffered result still carries the full concatenated body.
     expect(result?.status).toBe(200);
+    expect(result?.headers?.["content-type"]).toBe("text/event-stream");
     expect(String(result?.body)).toBe("data: one\n\ndata: two\n\n");
   });
 

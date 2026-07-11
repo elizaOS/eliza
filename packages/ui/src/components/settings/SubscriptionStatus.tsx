@@ -22,7 +22,11 @@ import {
   type SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useAppSelector } from "../../state";
-import { openExternalUrl } from "../../utils";
+import {
+  navigatePreOpenedWindow,
+  openExternalUrl,
+  preOpenWindow,
+} from "../../utils";
 import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
@@ -67,6 +71,42 @@ export interface SubscriptionStatusProps {
     activate?: boolean,
   ) => Promise<void>;
   loadSubscriptionStatus: () => Promise<void>;
+}
+
+const ANTHROPIC_OAUTH_STORAGE_KEY = "eliza.settings.anthropic.oauth-active";
+const OPENAI_OAUTH_STORAGE_KEY = "eliza.settings.openai.oauth-active";
+
+function readOAuthActive(storageKey: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY &&
+        new URLSearchParams(window.location.search).get("setup") === "oauth") ||
+      window.localStorage.getItem(storageKey) === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function rememberOAuthActive(storageKey: string, active: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (active) window.localStorage.setItem(storageKey, "1");
+    else window.localStorage.removeItem(storageKey);
+    // `setup=oauth` is the established Anthropic deep link. OpenAI tracks its
+    // pending handoff only in its provider-specific storage key so restoring
+    // one provider cannot open both callback forms after a renderer remount.
+    if (storageKey === ANTHROPIC_OAUTH_STORAGE_KEY) {
+      const url = new URL(window.location.href);
+      if (active) url.searchParams.set("setup", "oauth");
+      else url.searchParams.delete("setup");
+      window.history.replaceState(null, "", url);
+    }
+  } catch {
+    // error-policy:J4 OAuth remains usable for this session when persistence is unavailable.
+    return;
+  }
 }
 
 type SubscriptionStatusRow =
@@ -261,7 +301,9 @@ function SubscriptionProviderPanel({
       {preOauthSlot}
 
       {bodyOverride ??
-        (connected ? (
+        // Keep an in-progress add-account OAuth form visible even when a
+        // background refresh reports that another account is connected.
+        (!oauthStarted && connected ? (
           <p className="text-xs text-muted">{connectedSummary}</p>
         ) : !oauthStarted ? (
           <div className="space-y-1.5">
@@ -341,12 +383,14 @@ export function SubscriptionStatus({
 
   /* ── Anthropic ─────────────────────────────────────────────────── */
   const [subscriptionTab, setSubscriptionTab] = useState<"token" | "oauth">(
-    "token",
+    () => (readOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY) ? "oauth" : "token"),
   );
   const [setupTokenValue, setSetupTokenValue] = useState("");
   const [setupTokenSaving, setSetupTokenSaving] = useState(false);
   const [setupTokenSuccess, setSetupTokenSuccess] = useState(false);
-  const [anthropicOAuthStarted, setAnthropicOAuthStarted] = useState(false);
+  const [anthropicOAuthStarted, setAnthropicOAuthStarted] = useState(() =>
+    readOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY),
+  );
   const [anthropicCode, setAnthropicCode] = useState("");
   const [anthropicError, setAnthropicError] = useState("");
   const [anthropicExchangeBusy, setAnthropicExchangeBusy] = useState(false);
@@ -365,10 +409,37 @@ export function SubscriptionStatus({
     });
 
   /* ── OpenAI ────────────────────────────────────────────────────── */
-  const [openaiOAuthStarted, setOpenaiOAuthStarted] = useState(false);
+  const [openaiOAuthStarted, setOpenaiOAuthStarted] = useState(() =>
+    readOAuthActive(OPENAI_OAUTH_STORAGE_KEY),
+  );
   const [openaiCallbackUrl, setOpenaiCallbackUrl] = useState("");
   const [openaiError, setOpenaiError] = useState("");
   const [openaiExchangeBusy, setOpenaiExchangeBusy] = useState(false);
+
+  // Native browser handoff pauses the renderer, and some shells remount the
+  // settings surface on resume. Restore the pending form both on mount and
+  // when the browser/app becomes active again so an account refresh cannot
+  // replace it with the default or already-connected summary.
+  useEffect(() => {
+    const restorePendingOAuth = () => {
+      if (readOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY)) {
+        setSubscriptionTab("oauth");
+        setAnthropicOAuthStarted(true);
+      }
+      if (readOAuthActive(OPENAI_OAUTH_STORAGE_KEY)) {
+        setOpenaiOAuthStarted(true);
+      }
+    };
+    restorePendingOAuth();
+    window.addEventListener("focus", restorePendingOAuth);
+    window.addEventListener("pageshow", restorePendingOAuth);
+    document.addEventListener("visibilitychange", restorePendingOAuth);
+    return () => {
+      window.removeEventListener("focus", restorePendingOAuth);
+      window.removeEventListener("pageshow", restorePendingOAuth);
+      document.removeEventListener("visibilitychange", restorePendingOAuth);
+    };
+  }, []);
 
   /* ── Shared disconnect lock ────────────────────────────────────── */
   const [subscriptionDisconnecting, setSubscriptionDisconnecting] = useState<
@@ -441,9 +512,8 @@ export function SubscriptionStatus({
       }
       setSetupTokenSuccess(true);
       setSetupTokenValue("");
-      await handleSelectSubscription("anthropic-subscription");
+      await handleSelectSubscription("anthropic-subscription", false);
       await loadSubscriptionStatus();
-      await client.restartAgent();
       setTimeout(() => setSetupTokenSuccess(false), 2000);
     } catch (err) {
       setAnthropicError(
@@ -465,15 +535,26 @@ export function SubscriptionStatus({
 
   const handleAnthropicStart = useCallback(async () => {
     setAnthropicError("");
+    // Persist before opening or awaiting anything: native browser handoff can
+    // pause/remount the renderer as soon as the external window is requested.
+    rememberOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY, true);
+    setSubscriptionTab("oauth");
+    setAnthropicOAuthStarted(true);
+    const popup = preOpenWindow();
     try {
       const { authUrl } = await client.startAnthropicLogin();
       if (authUrl) {
-        await openExternalUrl(authUrl);
-        setAnthropicOAuthStarted(true);
+        navigatePreOpenedWindow(popup, authUrl);
         return;
       }
+      popup?.close();
+      rememberOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY, false);
+      setAnthropicOAuthStarted(false);
       setAnthropicError(t("settings.subscription.failedToGetAuthUrl"));
     } catch (err) {
+      popup?.close();
+      rememberOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY, false);
+      setAnthropicOAuthStarted(false);
       setAnthropicError(
         t("settings.subscription.failedToStartLogin", {
           message: formatSubscriptionRequestError(err),
@@ -490,12 +571,12 @@ export function SubscriptionStatus({
     try {
       const result = await client.exchangeAnthropicCode(code);
       if (result.success) {
+        rememberOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY, false);
         setAnthropicConnected(true);
         setAnthropicOAuthStarted(false);
         setAnthropicCode("");
-        await handleSelectSubscription("anthropic-subscription");
+        await handleSelectSubscription("anthropic-subscription", false);
         await loadSubscriptionStatus();
-        await client.restartAgent();
         return;
       }
       setAnthropicError(
@@ -522,15 +603,20 @@ export function SubscriptionStatus({
   /* ── OpenAI handlers ───────────────────────────────────────────── */
   const handleOpenAIStart = useCallback(async () => {
     setOpenaiError("");
+    rememberOAuthActive(OPENAI_OAUTH_STORAGE_KEY, true);
+    setOpenaiOAuthStarted(true);
     try {
       const { authUrl } = await client.startOpenAILogin();
       if (authUrl) {
         await openExternalUrl(authUrl);
-        setOpenaiOAuthStarted(true);
         return;
       }
+      rememberOAuthActive(OPENAI_OAUTH_STORAGE_KEY, false);
+      setOpenaiOAuthStarted(false);
       setOpenaiError(t("settings.subscription.noAuthUrlReturned"));
     } catch (err) {
+      rememberOAuthActive(OPENAI_OAUTH_STORAGE_KEY, false);
+      setOpenaiOAuthStarted(false);
       setOpenaiError(
         t("settings.subscription.failedToStartLogin", {
           message: formatSubscriptionRequestError(err),
@@ -552,12 +638,12 @@ export function SubscriptionStatus({
     try {
       const data = await client.exchangeOpenAICode(normalized.code);
       if (data.success) {
+        rememberOAuthActive(OPENAI_OAUTH_STORAGE_KEY, false);
         setOpenaiConnected(true);
         setOpenaiOAuthStarted(false);
         setOpenaiCallbackUrl("");
-        await handleSelectSubscription("openai-subscription");
+        await handleSelectSubscription("openai-subscription", false);
         await loadSubscriptionStatus();
-        await client.restartAgent();
         return;
       }
       const msg = data.error ?? t("settings.subscription.exchangeFailed");
@@ -656,7 +742,12 @@ export function SubscriptionStatus({
           agentId={`sub-anthropic-tab-${id}`}
           label={label}
           active={subscriptionTab === id}
-          onSelect={() => setSubscriptionTab(id)}
+          onSelect={() => {
+            setSubscriptionTab(id);
+            if (id === "oauth") return;
+            rememberOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY, false);
+            setAnthropicOAuthStarted(false);
+          }}
         />
       ))}
     </div>
@@ -748,6 +839,7 @@ export function SubscriptionStatus({
           onStartOauth={() => void handleAnthropicStart()}
           onExchange={() => void handleAnthropicExchange()}
           onResetFlow={() => {
+            rememberOAuthActive(ANTHROPIC_OAUTH_STORAGE_KEY, false);
             setAnthropicOAuthStarted(false);
             setAnthropicCode("");
             setAnthropicError("");
@@ -800,6 +892,7 @@ export function SubscriptionStatus({
           onStartOauth={() => void handleOpenAIStart()}
           onExchange={() => void handleOpenAIExchange()}
           onResetFlow={() => {
+            rememberOAuthActive(OPENAI_OAUTH_STORAGE_KEY, false);
             setOpenaiOAuthStarted(false);
             setOpenaiCallbackUrl("");
             setOpenaiError("");

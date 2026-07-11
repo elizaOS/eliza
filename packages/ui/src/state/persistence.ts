@@ -67,54 +67,35 @@ export type { UiTheme, UiThemeMode } from "./ui-preferences";
 const UI_THEME_STORAGE_KEY = "eliza:ui-theme";
 const LEGACY_UI_THEME_STORAGE_KEY = "elizaos:ui-theme";
 const UI_THEME_MODE_STORAGE_KEY = "eliza:ui-theme-mode";
+const APP_UI_THEME: UiTheme = "dark";
+const APP_UI_THEME_MODE: UiThemeMode = APP_UI_THEME;
 
-function normalizeUiThemeMode(value: unknown): UiThemeMode {
-  return value === "light" || value === "dark" || value === "system"
-    ? value
-    : "system";
+function normalizeUiThemeMode(_value: unknown): UiThemeMode {
+  return APP_UI_THEME_MODE;
 }
 
 export { normalizeUiThemeMode };
 
 /**
- * The app ships a single curated light look — there is no dark theme. Kept as a
- * function (not a constant) so existing callers and the system-change listener
- * keep their shape.
+ * The app shell has one curated dark appearance. Keep this compatibility
+ * function for consumers of the preference API, but never inherit OS chrome.
  */
 export function getSystemTheme(): UiTheme {
-  if (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function"
-  ) {
-    return window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  }
-  return "light";
+  return APP_UI_THEME;
 }
 
 /**
- * Resolve a {@link UiThemeMode} to a concrete {@link UiTheme}: an explicit
- * `light`/`dark` choice wins; `system` follows the OS color-scheme.
+ * Resolve any legacy theme mode to the app's single supported appearance.
  */
-export function resolveUiTheme(mode: UiThemeMode): UiTheme {
-  return mode === "system" ? getSystemTheme() : mode;
+export function resolveUiTheme(_mode: UiThemeMode): UiTheme {
+  return APP_UI_THEME;
 }
 
 /**
- * Load the persisted theme mode. New users (no stored value) default to
- * `system`. A legacy concrete `eliza:ui-theme` value is treated as an
- * explicit user choice and migrated into a `light`/`dark` mode.
+ * Return the supported theme mode regardless of any legacy persisted value.
  */
 export function loadUiThemeMode(): UiThemeMode {
-  return tryLocalStorage(() => {
-    const mode = localStorage.getItem(UI_THEME_MODE_STORAGE_KEY);
-    if (mode != null) return normalizeUiThemeMode(mode);
-    const legacy =
-      localStorage.getItem(UI_THEME_STORAGE_KEY) ??
-      localStorage.getItem(LEGACY_UI_THEME_STORAGE_KEY);
-    return legacy === "light" || legacy === "dark" ? legacy : "system";
-  }, "system");
+  return APP_UI_THEME_MODE;
 }
 
 /* ── Home time/date widget visibility (#10706) ───────────────────────── */
@@ -149,8 +130,8 @@ export function saveUiThemeMode(mode: UiThemeMode): void {
 const THEME_SWITCHING_ATTRIBUTE = "data-theme-switching";
 let themeSwitchResetFrameId: number | null = null;
 
-function normalizeUiTheme(value: unknown): UiTheme {
-  return value === "light" ? "light" : "dark";
+function normalizeUiTheme(_value: unknown): UiTheme {
+  return APP_UI_THEME;
 }
 
 export { normalizeUiTheme };

@@ -347,6 +347,16 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [{ selector: "#root" }],
     timeoutMs: 60_000,
   },
+  {
+    // /pendant/transcript renders the realtime pendant transcription view
+    // (#15806). Without a paired pendant the view shows its designed
+    // disconnected state; like the device deep links above, the sweep proves
+    // the shell renders it without crashing.
+    name: "pendant transcript deep link",
+    path: "/pendant/transcript",
+    readyChecks: [{ selector: "#root" }],
+    timeoutMs: 60_000,
+  },
 ];
 
 function coreRouteProbe(name: string): RouteProbe {

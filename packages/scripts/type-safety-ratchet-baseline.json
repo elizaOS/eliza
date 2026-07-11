@@ -49,11 +49,11 @@
     "asAny": 0,
     "explicitAny": 124,
     "tsSuppress": 0,
-    "nonNullAssertion": 496,
-    "nullishEmptyString": 581,
-    "nullishEmptyArray": 581,
+    "nonNullAssertion": 488,
+    "nullishEmptyString": 579,
+    "nullishEmptyArray": 580,
     "nullishEmptyObject": 375,
-    "nullishZero": 374
+    "nullishZero": 369
   },
-  "filesScanned": 10432
+  "filesScanned": 10419
 }

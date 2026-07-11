@@ -186,6 +186,13 @@ describe("brand surfaces", () => {
     expect(html).not.toMatch(/var\(--bg,\s*#FF5800\)/);
   });
 
+  it("keeps the branded preboot status visible until React takes over", () => {
+    const html = read("index.html");
+    expect(html).toContain('class="eliza-preboot-shell__mark"');
+    expect(html).toContain('class="eliza-preboot-shell__status"');
+    expect(html).toContain("Booting up&hellip;");
+  });
+
   it("renderer root CSS keeps the pre-app surface on the launch black", () => {
     // Same persistence argument as index.html: html/body/#root in the
     // renderer CSS is the page background under the app, so its --launch-bg

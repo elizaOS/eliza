@@ -71,6 +71,10 @@ const ALLOWED_BLUR = new Set<string>([
   "packages/ui/src/components/shell/NotificationBanners.tsx",
   "packages/ui/src/components/shell/BuildBadge.tsx",
   "packages/ui/src/components/chat/widgets/home-widget-card.tsx",
+  // First-run has no shared chat panel behind assistant turns. Its greeting
+  // bubble alone uses a small frosted fill so it remains legible over the
+  // onboarding wallpaper; ordinary chat messages do not use this blur.
+  "packages/ui/src/components/composites/chat/chat-message.tsx",
   // The unified liquid-glass system (GlassSurface + its tokens/native bridge).
   // The blur is the CSS-tier material for stable chrome (sheets at rest, pills,
   // menus, headers) and is switched OFF entirely on the native tier

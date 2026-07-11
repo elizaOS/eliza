@@ -34,6 +34,7 @@ export interface CompatRouteAuthPolicy {
 const METHODS = {
   GET: ["GET"],
   POST: ["POST"],
+  PUT: ["PUT"],
 } as const;
 
 const publicExact = (
@@ -114,7 +115,10 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("tts.elevenlabs-passthrough", "POST", "/api/tts/elevenlabs"),
 
   sessionExact("runtime.mode", "GET", "/api/runtime/mode"),
+  sessionExact("cloud.status", "GET", "/api/cloud/status"),
+  sessionExact("cloud.credits", "GET", "/api/cloud/credits"),
   sessionExact("cloud.login", "POST", "/api/cloud/login"),
+  sessionExact("cloud.login.persist", "POST", "/api/cloud/login/persist"),
   sessionExact("cloud.disconnect", "POST", "/api/cloud/disconnect"),
   sessionPrefix("cloud.compat", "/api/cloud/compat/"),
   sessionPrefix("cloud.v1", "/api/cloud/v1/"),
@@ -145,6 +149,7 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
     /^\/api\/auth\/sessions\/[^/]+\/revoke$/,
   ),
   sessionExact("first-run.status", "GET", "/api/first-run/status"),
+  sessionExact("first-run.options", "GET", "/api/first-run/options"),
   sessionExact(
     "background.run-due-tasks",
     "POST",

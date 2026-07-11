@@ -154,9 +154,10 @@ export interface HomeScreenProps {
  * (calendar/goals/finances/health/relationships/inbox), each self-hiding when
  * empty and dynamically ranked so whatever needs attention floats to the top.
  * The notification inbox (NotificationsHomeCenter) sits inline on the SAME
- * layer directly beneath the time/weather header, self-hiding when empty and
- * fading in Apple-style when notifications arrive, so a quiet home is just the
- * ambient field + clock. The AOSP native-OS tiles render below on Android. The
+ * layer directly beneath the time/weather header, visually quiet when empty and
+ * fading in Apple-style when notifications arrive. Its empty gesture band only
+ * reveals a subtle status while pulled, so a quiet home remains the ambient
+ * field + clock. The AOSP native-OS tiles render below on Android. The
  * chat overlay floats over the bottom; this scrolls with clearance for it.
  */
 export function HomeScreen({
@@ -173,6 +174,7 @@ export function HomeScreen({
   const enterClass = useEnterOnceClass();
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
+  const homeScreenRef = useRef<HTMLDivElement>(null);
 
   // When the inbox has notifications it becomes the home's primary content and
   // grows to fill the column down to the chat; the ranked widget host then sits
@@ -184,6 +186,7 @@ export function HomeScreen({
   return (
     <>
       <div
+        ref={homeScreenRef}
         data-testid="home-screen"
         className={cn(
           // `touch-pan-y`: this scroller covers the whole home half, and a
@@ -214,8 +217,11 @@ export function HomeScreen({
         )}
       >
         <style>{HOME_ENTER_CSS}</style>
-        {/* The content column owns the FULL height of the scroller (min-h-full)
-          and lays its blocks out as a flex column so the vertical space is
+        {/* The content column owns the definite FULL height of the scroller
+          (`h-full`) so flex children such as the notification inbox receive a
+          bounded height and scroll internally instead of growing behind the
+          floating composer. It lays its blocks out as a flex column so the
+          vertical space is
           distributed on purpose, not left as a void above the composer. The
           editorial header (greeting/clock + weather) anchors the TOP; the
           notification inbox sits directly beneath it; the prioritized widget
@@ -223,7 +229,10 @@ export function HomeScreen({
           space and centres its content within it, so an empty widget set reads
           as calm airiness rather than a broken gap; the AOSP tiles settle at
           the BOTTOM. */}
-        <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
+        <div
+          data-testid="home-content-column"
+          className="mx-auto flex h-full w-full max-w-2xl flex-col"
+        >
           {/* The always-on base: a naked sized grid with the time + weather as
             2×2 neighbours - no card, white text on the ambient field. Anchored
             at the top of the column as the editorial header. */}
@@ -232,8 +241,9 @@ export function HomeScreen({
           </div>
 
           {/* Notifications live inline on the SAME layer as the widgets, in the
-            band between the time/weather header above and the chat below —
-            self-hiding when the inbox is empty. A small `mt-4` sets it apart
+            band between the time/weather header above and the chat below. A
+            hydrated empty inbox retains only a transparent pull target. A small
+            `mt-4` sets it apart
             from the editorial header. When present it grows (`flex-1 min-h-0`)
             to fill the column down to the chat, its list scrolling internally;
             it fades in (Apple-style) on first appearance. */}
@@ -245,18 +255,20 @@ export function HomeScreen({
             )}
             style={{ animationDelay: "90ms" }}
           >
-            <NotificationsHomeCenter />
+            <NotificationsHomeCenter emptyGestureTargetRef={homeScreenRef} />
           </div>
 
           {/* The prioritized data widgets (#9143). With notifications present
-            they sit at natural height directly beneath the (grown) inbox. With
+            they keep a modest height beneath the inbox, leaving a clear gesture
+            area above the chat instead of letting notifications consume every
+            remaining pixel. With
             an EMPTY inbox this reclaims the `flex-1` breathing region and centres
             its content, so a quiet home reads as calm airiness rather than a
             broken gap. A little padding sets the stack apart as its own section. */}
           <div
             className={cn(
               enterClass,
-              "flex flex-col py-6",
+              "flex min-h-32 flex-col py-6",
               !hasNotifications && "flex-1 justify-center",
             )}
             style={{ animationDelay: "110ms" }}

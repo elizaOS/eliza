@@ -3907,9 +3907,9 @@ export class LifeOpsRepository {
 
     // Mirror into the canonical telemetry store. Dedupes on
     // (agent_id, dedupe_key) so re-persists and migrator replays are safe.
-    // Failures here must not block signal persistence, but they are counted
-    // and logged (first + every 100th) so broken mirrors surface in
-    // observability.
+    // Failures here must not block signal persistence, but they are counted,
+    // logged (first + every 100th) and reported to the agent on the same bounded cadence so a sustained outage
+    // remains visible without flooding the runtime error ring and event stream.
     try {
       const telemetry = buildTelemetryEventFromSignal(
         signal,
@@ -3922,9 +3922,11 @@ export class LifeOpsRepository {
       }
       LifeOpsRepository.telemetryMirrorFailures.delete(signal.agentId);
     } catch (error) {
-      const nextCount =
-        (LifeOpsRepository.telemetryMirrorFailures.get(signal.agentId) ?? 0) +
-        1;
+      // error-policy:J7 diagnostics-must-not-kill-the-loop
+      const previousCount = LifeOpsRepository.telemetryMirrorFailures.get(
+        signal.agentId,
+      );
+      const nextCount = previousCount === undefined ? 1 : previousCount + 1;
       LifeOpsRepository.telemetryMirrorFailures.set(signal.agentId, nextCount);
       if (nextCount === 1 || nextCount % 100 === 0) {
         logger.warn(
@@ -3936,6 +3938,22 @@ export class LifeOpsRepository {
             error: error instanceof Error ? error.message : String(error),
           },
           "[lifeops] Telemetry mirror failed for activity signal.",
+        );
+        this.runtime.reportError(
+          "lifeops.repository",
+          new ElizaError(
+            "Activity-signal telemetry mirror failed; the signal row committed without a telemetry copy",
+            {
+              code: "LIFEOPS_ACTIVITY_TELEMETRY_MIRROR_FAILED",
+              context: {
+                agentId: signal.agentId,
+                source: signal.source,
+                platform: signal.platform,
+                consecutiveFailures: nextCount,
+              },
+              cause: error,
+            },
+          ),
         );
       }
     }

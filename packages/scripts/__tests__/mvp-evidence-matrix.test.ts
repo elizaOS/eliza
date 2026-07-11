@@ -162,6 +162,48 @@ describe("MVP evidence matrix", () => {
     expect(report.rows).toEqual([]);
   });
 
+  test("ignores pull-request and draft cards when assigning status", () => {
+    const report = matrix.buildEvidenceMatrix(
+      [issue(14490, "[scenarios] Pack G1", ["mvp", "needs-shaw"])],
+      {
+        items: [
+          {
+            content: {
+              type: "PullRequest",
+              number: 14490,
+              repository: "elizaOS/eliza",
+              url: "https://github.com/elizaOS/eliza/pull/14490",
+            },
+            status: "Done",
+          },
+          // Real DraftIssue cards carry only type, title, and body.
+          {
+            content: { type: "DraftIssue", title: "Loose planning note" },
+            status: "Todo",
+          },
+        ],
+      },
+    );
+
+    expect(report.rows).toEqual([]);
+  });
+
+  test("rejects project cards without a content type", () => {
+    expect(() =>
+      matrix.buildEvidenceMatrix(
+        [issue(14783, "[scenarios] Pack G1", ["mvp", "needs-shaw"])],
+        {
+          items: [
+            {
+              content: { number: 14783, repository: "elizaOS/eliza" },
+              status: "Done",
+            },
+          ],
+        },
+      ),
+    ).toThrow("carries no content.type");
+  });
+
   test("renders a GitHub-ready markdown checklist for issue evidence", () => {
     const report = matrix.buildEvidenceMatrix(
       [

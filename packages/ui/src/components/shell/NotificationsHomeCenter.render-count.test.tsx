@@ -57,12 +57,12 @@ import {
   __setNotificationRowRenderObserverForTests,
   __setNotificationsHomeCenterRenderObserverForTests,
   NotificationsHomeCenter,
+  PULL_COMMIT_PX,
   rowPropsEqual,
 } from "./NotificationsHomeCenter";
 
-// Distinct categories per fixture row: same-category interrupt rows collapse
-// into a rested Z-stack (one interactive card), and these render-count tests
-// need every row painted flat.
+// Categories vary for broad row coverage. Tests that need every row painted
+// flat give each fixture a distinct producer; the stack test shares one source.
 const CATEGORY_SPREAD: NotificationCategory[] = [
   "general",
   "system",
@@ -84,9 +84,9 @@ function makeNotification(
     id: `00000000-0000-4000-8000-${hex}` as AgentNotification["id"],
     title: `Notification ${seq}`,
     category: CATEGORY_SPREAD[seq % CATEGORY_SPREAD.length] ?? "general",
-    // High so fixtures render in the rested (interrupt-only) shade.
+    // High keeps broad fixtures in the same priority bucket.
     priority: "high",
-    source: "test",
+    source: `test-${seq}`,
     // Spread across the last hour so the rows render distinct "Nm ago" strings
     // that actually change as the clock advances (a real relative-time surface).
     createdAt: Date.now() - seq * 5 * MINUTE_MS,
@@ -110,7 +110,56 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function expandShade(): void {
+  fireEvent.wheel(screen.getByTestId("home-notification-list"), {
+    deltaY: -(PULL_COMMIT_PX + 10),
+  });
+}
+
 describe("NotificationsHomeCenter render count (#14559)", () => {
+  it("does not rebuild the notification tree for every pull frame", () => {
+    for (let i = 0; i < 100; i += 1) {
+      __ingestNotificationForTests(
+        makeNotification({ priority: i === 0 ? "urgent" : "normal" }),
+      );
+    }
+
+    let listRenders = 0;
+    let rowRenders = 0;
+    __setNotificationsHomeCenterRenderObserverForTests(() => {
+      listRenders += 1;
+    });
+    __setNotificationRowRenderObserverForTests(() => {
+      rowRenders += 1;
+    });
+    render(<NotificationsHomeCenter />);
+    expandShade();
+    listRenders = 0;
+    rowRenders = 0;
+
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 90,
+      clientX: 20,
+      clientY: 200,
+    });
+    for (let y = 190; y >= 110; y -= 4) {
+      fireEvent.pointerMove(list, {
+        pointerType: "mouse",
+        pointerId: 90,
+        clientX: 20,
+        clientY: y,
+      });
+    }
+
+    // One render marks the gesture active. Every subsequent pointer sample is
+    // frame-coalesced DOM presentation work; memoized rows remain untouched.
+    expect(listRenders).toBe(1);
+    expect(rowRenders).toBe(0);
+  });
+
   it("the minute tick re-renders only RelativeTime leaves, not the list container", () => {
     for (let i = 0; i < 8; i++) {
       __ingestNotificationForTests(makeNotification());
@@ -122,11 +171,12 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
 
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
 
-    expect(listRenders).toBe(1);
+    expect(listRenders).toBeGreaterThanOrEqual(2);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(8);
     const times = () =>
       screen
@@ -151,7 +201,9 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
 
   it("rows are memoized: minute tick re-renders zero NotificationRow bodies", () => {
     for (let i = 0; i < 30; i++) {
-      __ingestNotificationForTests(makeNotification({ title: `Row ${i}` }));
+      __ingestNotificationForTests(
+        makeNotification({ title: `Row ${i}`, source: "test" }),
+      );
     }
 
     let rowRenders = 0;
@@ -160,15 +212,12 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
 
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
-    // Fan the shade AND the group's stack out so all 30 rows paint flat
-    // (stacks persist through the shade change; a peek tap fans the group).
-    fireEvent.click(screen.getByTestId("notifications-expand-toggle"));
-    for (const peek of screen.getAllByTestId("notification-stack-peek")) {
-      fireEvent.click(peek);
-    }
+    // A peek tap fans the producer stack and enters the expanded shade.
+    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(30);
     expect(rowRenders).toBeGreaterThanOrEqual(30);
 
@@ -193,7 +242,7 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     // The memo's equality function is the surgical part of the fix: `createdAt`
     // is excluded (it feeds only the leaf), so the once-a-minute newer-timestamp
     // never re-renders the row; but any field that changes the row's OWN markup
-    // (title, body, deepLink, the single-open expanded flag) does.
+    // (title, body, deepLink) does.
     // Read state and priority no longer style the row (platform-shade model),
     // so they are not compared.
     const base = makeNotification({
@@ -205,15 +254,10 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
     const onOpen = () => {};
     const onDismiss = () => {};
-    const onPrefill = () => {};
-    const onToggleExpand = () => {};
     const props = {
       notification: base,
-      expanded: false,
-      onToggleExpand,
       onOpen,
       onDismiss,
-      onPrefill,
     };
 
     // createdAt-only delta → equal → memo SKIPS (no row re-render on the minute).
@@ -244,13 +288,15 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
         notification: { ...base, body: "B2" },
       }),
     ).toBe(false);
-    // The single-open strip flag re-renders exactly the two affected rows.
-    expect(rowPropsEqual(props, { ...props, expanded: true })).toBe(false);
+    expect(
+      rowPropsEqual(props, {
+        ...props,
+        notification: { ...base, deepLink: "/other" },
+      }),
+    ).toBe(false);
     // A new callback identity (parent lost its useCallback) also re-renders.
     expect(rowPropsEqual(props, { ...props, onOpen: () => {} })).toBe(false);
-    expect(rowPropsEqual(props, { ...props, onToggleExpand: () => {} })).toBe(
-      false,
-    );
+    expect(rowPropsEqual(props, { ...props, onDismiss: () => {} })).toBe(false);
   });
 
   it("rows still show live relative times (no 'just now' pin regression)", () => {
@@ -261,6 +307,7 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       makeNotification({ title: "Fresh", createdAt: Date.now() }),
     );
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
@@ -278,12 +325,18 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       priority: "urgent",
       title: "First",
       category: "general",
+      source: "stack-test",
     });
     __ingestNotificationForTests(
-      makeNotification({ title: "Second", category: "general" }),
+      makeNotification({
+        title: "Second",
+        category: "general",
+        source: "stack-test",
+      }),
     );
     __ingestNotificationForTests(urgent);
     render(<NotificationsHomeCenter />);
+    expandShade();
     act(() => {
       vi.advanceTimersByTime(0);
     });
@@ -291,13 +344,14 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
       screen
         .getAllByTestId("notification-row")
         .map((el) => el.textContent ?? "");
-    // Same view-group: the rested shade stacks them, highest priority on top.
+    // Same producer: the expanded shade stacks them, highest priority on top.
     expect(titles()).toHaveLength(1);
     expect(titles()[0]).toContain("First");
-    // Platform-shade acknowledgement: tap expands, acting clears; the next
-    // card in the stack surfaces without any reshuffle.
+    // First tap fans the producer stack; tapping its top individual row then
+    // clears directly without reordering the survivor.
     fireEvent.click(screen.getAllByTestId("notification-row")[0]);
-    fireEvent.click(screen.getByTestId("notification-option-dismiss"));
+    expect(titles()).toHaveLength(2);
+    fireEvent.click(screen.getAllByTestId("notification-row")[0]);
     expect(titles()).toHaveLength(1);
     expect(titles()[0]).toContain("Second");
   });

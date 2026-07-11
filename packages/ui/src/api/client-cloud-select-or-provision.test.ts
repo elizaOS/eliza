@@ -159,7 +159,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.requiresAgentPairing).toBe(false);
   });
 
-  it("can reuse a dedicated agent through the Steward-token REST adapter without pairing", async () => {
+  it("does not force a reused dedicated agent through the shared adapter when Steward adapter is preferred", async () => {
     const { client, getCloudCompatAgents } = fakeClient();
     getCloudCompatAgents.mockResolvedValue({
       success: true,
@@ -175,13 +175,38 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     const result = await client.selectOrProvisionCloudAgent({
       ...BASE_OPTS,
       preferStewardAgentAdapter: true,
+      preferSharedTier: true,
     });
 
     expect(result.created).toBe(false);
-    expect(result.apiBase).toBe(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-dedicated",
-    );
+    expect(result.apiBase).toBe("https://agent-dedicated.elizacloud.ai");
+    expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(result.requiresAgentPairing).toBe(false);
+  });
+
+  it("derives a dedicated subdomain for reused agents when shared tier is not requested", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "agent-no-urls",
+          bridge_url: null,
+          web_ui_url: null,
+          webUiUrl: null,
+          containerUrl: "",
+        }),
+      ],
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(result.created).toBe(false);
+    expect(result.agentId).toBe("agent-no-urls");
+    expect(result.apiBase).toBe("https://agent-no-urls.elizacloud.ai");
+    expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
+    expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
   it("does NOT provision when the list fetch throws (transient/network error)", async () => {
@@ -551,7 +576,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.requiresAgentPairing).toBe(false);
   });
 
-  it("keeps a warm newly-created agent on the Steward-token REST adapter when requested", async () => {
+  it("keeps a warm newly-created dedicated agent on its dedicated subdomain even when Steward adapter is requested", async () => {
     const { client, getCloudCompatAgents, createCloudCompatAgent } =
       fakeClient();
     getCloudCompatAgents.mockResolvedValue({ success: true, data: [] });
@@ -582,9 +607,8 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     });
 
     expect(result.created).toBe(true);
-    expect(result.apiBase).toBe(
-      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-warm",
-    );
+    expect(result.apiBase).toBe("https://agent-warm.elizacloud.ai");
+    expect(result.apiBase).not.toContain("/api/v1/eliza/agents/");
     expect(result.requiresAgentPairing).toBe(false);
   });
 });

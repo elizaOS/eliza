@@ -94,9 +94,9 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "transcripts app window",
+    name: "live meeting app window",
     path: "/apps/transcripts",
-    selector: '[data-testid="transcripts-view"]',
+    selector: '[data-testid="live-meeting-page"]',
     timeoutMs: 90_000,
   },
   {

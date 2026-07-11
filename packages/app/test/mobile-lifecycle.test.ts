@@ -491,6 +491,27 @@ describe("createMobileLifecycle — network listener", () => {
     document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
   });
 
+  it("uses only the browser network events outside the native shell", async () => {
+    const lifecycle = createMobileLifecycle(
+      makeContext({ isNative: false, isIOS: false, isAndroid: false }),
+    );
+    const received: boolean[] = [];
+    const onNetwork = (event: Event) => {
+      received.push(
+        (event as CustomEvent<{ connected: boolean }>).detail.connected,
+      );
+    };
+    document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+
+    await lifecycle.initializeNetworkListener();
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+
+    expect(received).toEqual([false, true]);
+    expect(networkMock.addListener).not.toHaveBeenCalled();
+    document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+  });
+
   it("does not double-dispatch when Capacitor networkStatusChange and window offline agree", async () => {
     const lifecycle = createMobileLifecycle(makeContext());
     const received: boolean[] = [];

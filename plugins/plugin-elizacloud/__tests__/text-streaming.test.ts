@@ -9,7 +9,7 @@
  * No live API — `requestRaw` is mocked to return constructed `Response`s.
  */
 import type { IAgentRuntime, ResponseSkeleton } from "@elizaos/core";
-import { ResponseSkeletonStreamExtractor } from "@elizaos/core";
+import { logger, ResponseSkeletonStreamExtractor } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Deferred = {
@@ -59,6 +59,7 @@ import {
   buildStreamAbortSignal,
   finalizeStreamedToolCalls,
   handleResponseHandler,
+  handleTextSmall,
   parseOpenAiSseStream,
   resolveStreamingEnabled,
   resolveTextTimeoutMs,
@@ -846,6 +847,41 @@ describe("cloud streaming gate decision (wantsStream)", () => {
       prompt: "hi",
     } as never);
     expect(lastJson().max_output_tokens).toBe(8192);
+  });
+
+  it("never logs rendered prompt content while preserving the provider request", async () => {
+    const promptMarker = "secret-prompt-marker-16083";
+    const loggerSpies = [
+      vi.spyOn(logger, "trace").mockImplementation(() => undefined),
+      vi.spyOn(logger, "debug").mockImplementation(() => undefined),
+      vi.spyOn(logger, "info").mockImplementation(() => undefined),
+      vi.spyOn(logger, "warn").mockImplementation(() => undefined),
+      vi.spyOn(logger, "error").mockImplementation(() => undefined),
+      vi.spyOn(logger, "fatal").mockImplementation(() => undefined),
+      vi.spyOn(logger, "success").mockImplementation(() => undefined),
+      vi.spyOn(logger, "progress").mockImplementation(() => undefined),
+      vi.spyOn(logger, "log").mockImplementation(() => undefined),
+    ];
+
+    try {
+      nextResponse = bufferedChatResponse("safe response");
+      await expect(
+        handleTextSmall(fakeRuntime(), {
+          prompt: "fallback prompt",
+          messages: [{ role: "user", content: promptMarker }],
+        } as never)
+      ).resolves.toMatchObject({ text: "safe response" });
+
+      expect(JSON.stringify(lastJson())).toContain(promptMarker);
+      expect(JSON.stringify(loggerSpies.flatMap((spy) => spy.mock.calls))).not.toContain(
+        promptMarker
+      );
+      expect(loggerSpies.at(-1)).toHaveBeenCalledWith(
+        expect.stringContaining("Using TEXT_SMALL model")
+      );
+    } finally {
+      for (const spy of loggerSpies) spy.mockRestore();
+    }
   });
 });
 

@@ -180,6 +180,7 @@ function stage1Response(fields: {
 function makeRuntime(
 	responses: unknown[],
 	settings?: Record<string, string>,
+	evaluators?: ResponseHandlerEvaluator[],
 ): IAgentRuntime {
 	const queue = [...responses];
 	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
@@ -216,7 +217,7 @@ function makeRuntime(
 		responseHandlerFieldEvaluators: [
 			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
 		],
-		responseHandlerEvaluators: [],
+		responseHandlerEvaluators: evaluators ?? [],
 	} as IAgentRuntime;
 }
 
@@ -4216,5 +4217,49 @@ describe("sub-agent completion relay vs the direct-candidate injection backstop"
 		expect(plannerUserContent).toContain(
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
 		);
+	});
+
+	it("routes a simple turn into planning when a response-handler evaluator promotes it", async () => {
+		// Stage 1 fully answers; a registered response-handler evaluator patches
+		// the plan (requiresTool + a replacement reply). The turn must reach the
+		// planner with the patch applied — the promotion mechanism the
+		// answer-clobber rescue exists to make safe.
+		const runtime = makeRuntime(
+			[
+				stage1Response({
+					contexts: ["general"],
+					replyText: "The answer is 42.",
+				}),
+				{ text: "", toolCalls: [] },
+				JSON.stringify({
+					success: true,
+					decision: "FINISH",
+					thought: "Nothing further.",
+					messageToUser: "",
+				}),
+			],
+			undefined,
+			[
+				{
+					name: "test-promotion",
+					priority: 100,
+					shouldRun: () => true,
+					evaluate: () => ({ reply: "On it.", requiresTool: true }),
+				},
+			],
+		);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		// The evaluator patch replaced the stage-1 reply and forced planning.
+		expect(result.messageHandler.plan.reply).toBe("On it.");
+		expect(result.messageHandler.plan.requiresTool).toBe(true);
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
 	});
 });

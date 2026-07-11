@@ -53,6 +53,8 @@ const OPTIONAL_LIVE_ENDPOINTS = [
   /\/api\/connectors\/google\/accounts(?:\?|$)/,
   /\/api\/i18n\/locale(?:\?|$)/,
   /\/api\/lifeops\/activity-signals(?:\?|$)/,
+  /\/api\/lifeops\/goals(?:\?|$)/,
+  /\/api\/lifeops\/todos(?:\?|$)/,
   /\/api\/orchestrator\/status(?:\?|$)/,
   /\/api\/orchestrator\/tasks(?:\?|$)/,
   /\/api\/tts\/cloud(?:\?|$)/,
@@ -204,7 +206,7 @@ function chatSendButton(page: Page) {
 }
 
 function conversationLog(page: Page) {
-  return page.getByRole("log", { name: /conversation history/i });
+  return page.getByRole("region", { name: /conversation history/i });
 }
 
 function userMessage(page: Page, text: string) {

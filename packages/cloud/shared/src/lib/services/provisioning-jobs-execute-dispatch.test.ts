@@ -503,6 +503,33 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_provision transport receives the job payload's own agentId/orgId — the contract the single-flight enqueue writes (#15943)", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_PROVISION));
+    const provisionSpy = spyOn(elizaSandboxService, "provision").mockResolvedValue({
+      success: true,
+      sandboxRecord: { id: AGENT, organization_id: ORG, user_id: USER, status: "running" },
+    } as never);
+    serviceSpies.push(provisionSpy);
+    try {
+      const res = await run(JOB_TYPES.AGENT_PROVISION);
+      expect(res.succeeded).toBe(1);
+      // The dispatcher must hand the executor the ids from job.data — the
+      // exact fields enqueueAgentProvisionOnce / enqueueAgentProvisionOnceInTx
+      // persist. Drift here would provision the wrong agent (or nothing) for
+      // every tier-upgrade target minted through the atomic boundary.
+      expect(provisionSpy).toHaveBeenCalledTimes(1);
+      expect(provisionSpy.mock.calls[0]?.[0]).toBe(AGENT);
+      expect(provisionSpy.mock.calls[0]?.[1]).toBe(ORG);
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("organization-id mismatch between payload and column fails before any transport call", async () => {
     const ctx = harness(
       makeJob(JOB_TYPES.AGENT_SUSPEND, { organizationId: "99999999-9999-4999-8999-999999999999" }),

@@ -1,12 +1,5 @@
 #!/usr/bin/env node
-/**
- * Regression checks for the changed-file enumerator the coverage gate consumes.
- * Each case builds a throwaway git repo whose history reproduces a real gate
- * hazard, runs the actual coverage-changed-files.sh against it, and asserts the
- * emitted GITHUB_OUTPUT sections. The two-dot regression (issue #15845) is
- * pinned by first proving a plain `BASE..HEAD` diff *would* drag a develop-side
- * file in, then asserting the script's three-dot diff does not.
- */
+/** Exercises changed-source/test classification against a real throwaway Git history. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -86,6 +79,7 @@ try {
 
   // Merge-base commit: the point the feature branch forks from.
   write(dir, "packages/demo/src/base.ts", "export const base = 1;\n");
+  write(dir, "packages/demo/src/deleted.ts", "export const removed = 1;\n");
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "base");
   const mergeBase = git(dir, "rev-parse", "HEAD");
@@ -98,7 +92,55 @@ try {
 
   // Feature branch forks from the merge-base and adds its own source + tests.
   git(dir, "checkout", "-q", "-b", "feature", mergeBase);
+  rmSync(join(dir, "packages/demo/src/deleted.ts"));
   write(dir, "packages/demo/src/feature.ts", "export const f = 1;\n");
+  write(
+    dir,
+    "packages/demo/src/types.ts",
+    "export interface RuntimeFree { id: string }\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/public.d.ts",
+    "export interface PublicType { id: string }\n",
+  );
+  write(dir, "packages/demo/src/runtime.mjs", "export const mjs = 1;\n");
+  write(dir, "packages/demo/src/runtime.cjs", "exports.cjs = 1;\n");
+  write(
+    dir,
+    "packages/demo/src/_router.generated.ts",
+    "export const generatedRoute = 1;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/generated/schema.ts",
+    "export const generatedSchema = 1;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/runtime.mts",
+    "export const mts: number = 1;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/runtime.cts",
+    "export const cts: number = 1;\n",
+  );
+  write(
+    dir,
+    "packages/app/scripts/walkthrough-e2e.mjs",
+    "export async function runWalkthrough() {}\n",
+  );
+  write(
+    dir,
+    "scripts/security/tool.self-test.mjs",
+    "throw new Error('self-test only');\n",
+  );
+  write(
+    dir,
+    "scripts/security/coverage-gate.self-test.mjs",
+    "process.stdout.write('registered self-test ran');\n",
+  );
   write(
     dir,
     "plugins/plugin-demo/vitest.config.ts",
@@ -118,6 +160,21 @@ try {
     dir,
     "packages/demo/test/e2e/flow.test.ts",
     "import { test } from 'bun:test';\ntest('e2e', () => {});\n",
+  );
+  write(
+    dir,
+    "packages/test/cloud-e2e/tests/live-deploy.spec.ts",
+    "import { test } from '../src/helpers/test-fixtures';\ntest('live', () => {});\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/__e2e__/fixture.tsx",
+    "export const Fixture = () => null;\n",
+  );
+  write(
+    dir,
+    "packages/demo/src/feature.stories.tsx",
+    "export default { title: 'Feature' };\n",
   );
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "feature work");
@@ -167,6 +224,29 @@ try {
     },
   );
 
+  assertCase("cloud Playwright specs stay in their dedicated lane", () => {
+    const liveSpec = "packages/test/cloud-e2e/tests/live-deploy.spec.ts";
+    assert.ok(
+      !out.bun_tests.includes(liveSpec),
+      `cloud Playwright spec leaked into bun lane: ${out.bun_tests.join(",")}`,
+    );
+    assert.ok(
+      !out.vitest_tests.includes(liveSpec),
+      `cloud Playwright spec leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+    );
+  });
+
+  assertCase(
+    "e2e fixtures and stories are not product coverage targets",
+    () => {
+      assert.ok(!out.files.includes("packages/demo/src/__e2e__/fixture.tsx"));
+      assert.ok(!out.files.includes("packages/demo/src/feature.stories.tsx"));
+      assert.ok(
+        !out.files.includes("packages/app/scripts/walkthrough-e2e.mjs"),
+      );
+    },
+  );
+
   assertCase("unit tests bucket by imported runner", () => {
     assert.ok(
       out.bun_tests.includes("packages/demo/src/native.test.ts"),
@@ -187,6 +267,42 @@ try {
       !out.files.includes("plugins/plugin-demo/vitest.config.ts"),
       `vitest config leaked into changed source: ${out.files.join(",")}`,
     );
+  });
+
+  assertCase("generated modules are not LCOV-enforced source", () => {
+    assert.ok(!out.files.includes("packages/demo/src/_router.generated.ts"));
+    assert.ok(!out.files.includes("packages/demo/src/generated/schema.ts"));
+  });
+
+  assertCase(
+    "only registered standalone self-tests leave source enforcement",
+    () => {
+      assert.ok(out.files.includes("scripts/security/tool.self-test.mjs"));
+      assert.ok(
+        !out.files.includes("scripts/security/coverage-gate.self-test.mjs"),
+      );
+      assert.ok(
+        out.node_tests.includes("scripts/security/coverage-gate.self-test.mjs"),
+      );
+    },
+  );
+
+  assertCase(
+    "deleted, declaration, and type-only sources are not LCOV-enforced",
+    () => {
+      assert.ok(!out.files.includes("packages/demo/src/deleted.ts"));
+      assert.ok(!out.files.includes("packages/demo/src/public.d.ts"));
+      assert.ok(!out.files.includes("packages/demo/src/types.ts"));
+    },
+  );
+
+  assertCase("all executable module extensions are LCOV-enforced", () => {
+    for (const extension of ["mjs", "cjs", "mts", "cts"]) {
+      assert.ok(
+        out.files.includes(`packages/demo/src/runtime.${extension}`),
+        `${extension} runtime module missing: ${out.files.join(",")}`,
+      );
+    }
   });
 } finally {
   rmSync(dir, { recursive: true, force: true });
