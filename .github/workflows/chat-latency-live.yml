@@ -130,6 +130,8 @@ jobs:
           # It randomizes case order, alternates target-first order exactly for
           # each case and labels cold/warm/post-idle phases.
           # It idles before every target labeled post-idle.
+          # Warm pairs are paced at 40 gateway requests/minute, below the
+          # lowest Cloud organization tier, so this remains a latency test.
           node packages/scripts/cloud/chat-latency.mjs \
             --target paired \
             --direct-base-url https://api.cerebras.ai \
@@ -139,6 +141,7 @@ jobs:
             --repeat "${{ inputs.repeats }}" \
             --timeout-ms 30000 \
             --idle-ms 30000 \
+            --pair-interval-ms 1500 \
             --max-proof-miss-rate 0.05 \
             --seed "$BENCHMARK_SEED" \
             --case gemma-4-31b@omit@512 \

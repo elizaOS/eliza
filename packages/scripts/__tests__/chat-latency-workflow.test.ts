@@ -99,6 +99,9 @@ describe("chat latency live workflow", () => {
   test("collects statistical warm evidence plus cold and post-idle labels", () => {
     expect(workflow).toContain('default: "30"');
     expect(workflow).toContain("--idle-ms 30000");
+    expect(workflow).toContain("--pair-interval-ms 1500");
+    expect(workflow).toContain("below the");
+    expect(workflow).toContain("lowest Cloud organization tier");
     expect(workflow).toContain("idles before every target labeled post-idle");
     expect(workflow).toContain("p50/p90/p95");
     expect(workflow).toContain("cold/warm/post-idle");

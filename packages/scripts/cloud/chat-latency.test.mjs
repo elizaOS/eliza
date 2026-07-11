@@ -455,6 +455,7 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
     gateway: { baseUrl: "https://gateway.example", apiKey: "gateway-secret" },
     timeoutMs: 5_000,
     idleMs: 1,
+    pairIntervalMs: 2,
     seed: "fixed-seed",
     sleepImpl: async (durationMs) => sleeps.push(durationMs),
     fetchImpl: async (url, init) => {
@@ -492,7 +493,7 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
     ),
     { "direct>gateway": 2, "gateway>direct": 2 },
   );
-  assert.deepEqual(sleeps, [1, 1]);
+  assert.deepEqual(sleeps, [2, 2, 1, 1]);
   assert.deepEqual(
     records
       .filter((record) => record.phase === "post-idle")
@@ -503,6 +504,16 @@ test("runPairedProbes reuses prompts, counterbalances order, and labels phases",
     records
       .filter((record) => record.phase !== "post-idle")
       .every((record) => record.idleBeforeTargetMs === 0),
+  );
+  assert.ok(
+    records
+      .filter((record) => record.phase === "warm")
+      .every((record) => record.pairIntervalMs === 2),
+  );
+  assert.ok(
+    records
+      .filter((record) => record.phase !== "warm")
+      .every((record) => record.pairIntervalMs === 0),
   );
 });
 

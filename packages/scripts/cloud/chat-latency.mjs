@@ -713,6 +713,7 @@ export async function runPairedProbes({
   promptOverride,
   timeoutMs,
   idleMs,
+  pairIntervalMs = 0,
   seed,
   fetchImpl = fetch,
   sleepImpl = (durationMs) =>
@@ -724,9 +725,16 @@ export async function runPairedProbes({
   const targets = { direct, gateway };
   const nextFirstTarget = new Map();
 
-  const runPhase = async (phase, count, { idleBeforeEachTarget = false } = {}) => {
+  const runPhase = async (
+    phase,
+    count,
+    { idleBeforeEachTarget = false, pacePairs = false } = {},
+  ) => {
     for (let sequence = 1; sequence <= count; sequence += 1) {
       for (const probeCase of shuffled(cases, random)) {
+        if (pacePairs && pairIntervalMs > 0) {
+          await sleepImpl(pairIntervalMs);
+        }
         const proof = `latency-proof-${randomUUID()}`;
         const pairId = randomUUID();
         const caseKey = JSON.stringify([
@@ -760,6 +768,7 @@ export async function runPairedProbes({
               targetOrder: order.join(">"),
               benchmarkSeed: seed,
               idleBeforeTargetMs: idleBeforeEachTarget ? idleMs : 0,
+              pairIntervalMs: pacePairs ? pairIntervalMs : 0,
             },
             fetchImpl,
           });
@@ -771,7 +780,7 @@ export async function runPairedProbes({
   };
 
   await runPhase("cold", 1);
-  await runPhase("warm", repeats);
+  await runPhase("warm", repeats, { pacePairs: true });
   await runPhase("post-idle", 1, { idleBeforeEachTarget: true });
   return records;
 }
@@ -864,7 +873,8 @@ function printHelp() {
       "",
       "Common:",
       "  --repeat 1..100 --timeout-ms 1000..180000 --api-key-env NAME",
-      "  --idle-ms 0..300000 --seed SAFE_ID --prompt text",
+      "  --idle-ms 0..300000 --pair-interval-ms 0..60000",
+      "  --seed SAFE_ID --prompt text",
       "  --max-proof-miss-rate 0..1 (paired benchmark only)",
       "  --keep-conversation",
       "",
@@ -894,6 +904,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       "direct-base-url": { type: "string" },
       "gateway-base-url": { type: "string" },
       "idle-ms": { type: "string", default: "30000" },
+      "pair-interval-ms": { type: "string", default: "0" },
       seed: { type: "string" },
       "max-proof-miss-rate": { type: "string", default: "0" },
       "keep-conversation": { type: "boolean", default: false },
@@ -923,6 +934,12 @@ export async function runCli(argv = process.argv.slice(2)) {
     16_384,
   );
   const idleMs = boundedInteger(values["idle-ms"], "idle-ms", 0, 300_000);
+  const pairIntervalMs = boundedInteger(
+    values["pair-interval-ms"],
+    "pair-interval-ms",
+    0,
+    60_000,
+  );
   const maxProofMissRate = boundedNumber(
     values["max-proof-miss-rate"],
     "max-proof-miss-rate",
@@ -988,6 +1005,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       promptOverride: values.prompt,
       timeoutMs,
       idleMs,
+      pairIntervalMs,
       seed: benchmarkSeed,
       onRecord: (record) => process.stdout.write(`${JSON.stringify(record)}\n`),
     });
