@@ -213,6 +213,42 @@ describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
     expect(result.status).toBe("switched-empty");
   });
 
+  it("treats a network-layer fetch failure as not-yet-routable, then lands once the probe stops throwing", async () => {
+    const { client } = fakeClient({ "dedicated-1": runningDedicated() });
+
+    let healthProbes = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/health")) {
+          healthProbes += 1;
+          if (healthProbes < 2) throw new TypeError("Failed to fetch");
+          return { status: 200, json: async () => ({}) };
+        }
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }),
+    );
+
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 2_000,
+      log: () => {},
+    });
+
+    expect(healthProbes).toBe(2);
+    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(result.status).toBe("switched-empty");
+  });
+
   it("times out honestly (still on the shared adapter) when the proxy never routes", async () => {
     const { client } = fakeClient({ "dedicated-1": runningDedicated() });
 
