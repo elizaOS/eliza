@@ -36,6 +36,10 @@ on:
         options:
           - staging
           - production
+      deployment_sha:
+        description: 'Optional exact repository commit for protected staging acceptance'
+        required: false
+        type: string
 
 # Per-env concurrency: a develop push (staging) and a main push (production)
 # can deploy in parallel without one cancelling the other.
@@ -73,10 +77,31 @@ jobs:
         env:
           BRANCH: ${{ steps.env.outputs.branch }}
           PUSH_SHA: ${{ github.sha }}
+          REQUESTED_SHA: ${{ github.event.inputs.deployment_sha }}
+          TARGET_ENVIRONMENT: ${{ steps.env.outputs.environment }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "push" ]; then
             deployment_sha="$PUSH_SHA"
+          elif [ -n "$REQUESTED_SHA" ]; then
+            [ "$TARGET_ENVIRONMENT" = "staging" ] || {
+              echo "::error::An exact deployment_sha is permitted only for protected staging deployments"
+              exit 1
+            }
+            [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::deployment_sha must be a lowercase 40-hex commit"
+              exit 1
+            }
+            verify_dir=$(mktemp -d)
+            trap 'rm -rf "$verify_dir"' EXIT
+            git -C "$verify_dir" init --quiet
+            git -C "$verify_dir" fetch --quiet --no-tags --depth=1 \
+              "https://github.com/${GITHUB_REPOSITORY}.git" "$REQUESTED_SHA"
+            deployment_sha=$(git -C "$verify_dir" rev-parse FETCH_HEAD)
+            [ "$deployment_sha" = "$REQUESTED_SHA" ] || {
+              echo "::error::Fetched commit does not match requested deployment_sha"
+              exit 1
+            }
           else
             deployment_sha=$(git ls-remote "https://github.com/${GITHUB_REPOSITORY}.git" "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')
           fi
@@ -85,7 +110,7 @@ jobs:
           echo "Resolved immutable deployment snapshot: $deployment_sha"
 
   deploy:
-    name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }})
+    name: Deploy worker to Hetzner host (${{ needs.determine-env.outputs.environment }} @ ${{ needs.determine-env.outputs.deployment_sha }})
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
     environment: ${{ needs.determine-env.outputs.environment }}

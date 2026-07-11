@@ -29,6 +29,22 @@ describe("provisioning worker deployment contract", () => {
     );
   });
 
+  it("permits an auditable exact commit only through protected staging dispatch", () => {
+    expect(workflow).toContain("deployment_sha:");
+    expect(workflow).toContain('elif [ -n "$REQUESTED_SHA" ]; then');
+    expect(workflow).toContain('[ "$TARGET_ENVIRONMENT" = "staging" ] || {');
+    expect(workflow).toContain('[[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || {');
+    expect(workflow).toContain(
+      '"https://github.com/$' + '{GITHUB_REPOSITORY}.git" "$REQUESTED_SHA"',
+    );
+    expect(workflow).toContain('[ "$deployment_sha" = "$REQUESTED_SHA" ] || {');
+    expect(workflow).toContain(
+      "($" +
+        "{{ needs.determine-env.outputs.environment }} @ $" +
+        "{{ needs.determine-env.outputs.deployment_sha }})",
+    );
+  });
+
   it("fails checkout cleanup loudly and covers all shared-package changes", () => {
     expect(workflow).toContain("git reset --hard HEAD\n");
     expect(workflow).not.toContain("git reset --hard HEAD 2>/dev/null || true");
