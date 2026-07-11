@@ -7,7 +7,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
-  return await import("./test-utils/core-vitest-mock.js");
+  return await import("./__tests__/core-vitest-mock.js");
 });
 
 // Backend selection is unrelated to plugin composition and requires the built

@@ -1,5 +1,5 @@
 /**
- * Minimal core runtime surface for wallet unit tests that exercise plugin
+ * Minimal core runtime surface used by wallet unit tests that exercise plugin
  * wiring without loading the full `@elizaos/core` source graph. Sparse CI lanes
  * do not install every transitive core dependency, so tests import this through
  * `vi.mock("@elizaos/core", ...)` before loading wallet modules.

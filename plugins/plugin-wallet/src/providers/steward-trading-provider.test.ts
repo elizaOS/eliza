@@ -7,7 +7,7 @@ import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
-  return await import("../test-utils/core-vitest-mock.js");
+  return await import("../__tests__/core-vitest-mock.js");
 });
 
 import { stewardFixtures } from "../services/__fixtures__/steward-trade-responses.js";

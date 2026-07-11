@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@elizaos/core", async () => {
-  return await import("./test-utils/core-vitest-mock.js");
+  return await import("./__tests__/core-vitest-mock.js");
 });
 
 // Keep package-barrel evaluation hermetic: these unrelated registration and
