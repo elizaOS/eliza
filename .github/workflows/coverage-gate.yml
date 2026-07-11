@@ -130,7 +130,7 @@ jobs:
           # listed here run in fresh processes and emit separate LCOV files;
           # the gate below already aggregates every coverage/**/lcov.info.
           for index in "${!process_isolated_tests[@]}"; do
-            bun test --conditions=eliza-source "${process_isolated_tests[$index]}" --coverage --coverage-reporter=lcov --coverage-dir="coverage/bun/isolated-$index"
+            ELIZA_PROCESS_ISOLATED_TEST=1 bun test --conditions=eliza-source "${process_isolated_tests[$index]}" --coverage --coverage-reporter=lcov --coverage-dir="coverage/bun/isolated-$index"
           done
         env:
           # Tests must produce LCOV under this coverage root; the enforced gate
