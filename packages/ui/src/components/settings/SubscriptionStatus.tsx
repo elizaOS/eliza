@@ -93,7 +93,8 @@ function rememberAnthropicOAuthActive(active: boolean): void {
     else url.searchParams.delete("setup");
     window.history.replaceState(null, "", url);
   } catch {
-    // Storage can be unavailable in privacy-restricted webviews.
+    // error-policy:J4 OAuth remains usable for this session when persistence is unavailable.
+    return;
   }
 }
 

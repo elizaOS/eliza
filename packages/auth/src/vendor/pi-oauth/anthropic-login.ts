@@ -45,7 +45,7 @@ export async function exchangeAnthropicAuthorizationCode(
 ): Promise<AnthropicOAuthCredentials> {
   let code: string | undefined;
   let verifier: string | undefined;
-  try {
+  if (URL.canParse(authCode.trim())) {
     const callback = new URL(authCode.trim());
     if (
       callback.hostname === "localhost" ||
@@ -54,8 +54,6 @@ export async function exchangeAnthropicAuthorizationCode(
       code = callback.searchParams.get("code") ?? undefined;
       verifier = callback.searchParams.get("state") ?? undefined;
     }
-  } catch {
-    // Raw Claude code#state input, handled below.
   }
   if (!code || !verifier) [code, verifier] = authCode.trim().split("#", 2);
   if (!code || !verifier) {
