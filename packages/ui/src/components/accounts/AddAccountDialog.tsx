@@ -37,6 +37,7 @@ import { client } from "../../api";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
+import { copyTextToClipboard } from "../../utils/clipboard";
 import { openEventSource } from "../../utils/event-source";
 import { Button } from "../ui/button";
 import {
@@ -197,6 +198,7 @@ export function AddAccountDialog({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
+  const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -232,7 +234,23 @@ export function AddAccountDialog({
     setErrorMessage(null);
     setSessionId(null);
     setDeviceCode(null);
+    setDeviceCodeCopied(false);
   }, [closeEventSource, providerId]);
+
+  const copyDeviceCode = useCallback(async (code: string) => {
+    try {
+      await copyTextToClipboard(code);
+      setDeviceCodeCopied(true);
+    } catch {
+      setDeviceCodeCopied(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!deviceCode) return;
+    setDeviceCodeCopied(false);
+    void copyDeviceCode(deviceCode);
+  }, [copyDeviceCode, deviceCode]);
 
   useEffect(() => {
     return () => {
@@ -616,6 +634,15 @@ export function AddAccountDialog({
                 <code className="select-all text-lg font-semibold tracking-widest text-txt">
                   {deviceCode}
                 </code>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mx-auto mt-2 h-7 text-xs"
+                  onClick={() => void copyDeviceCode(deviceCode)}
+                >
+                  {deviceCodeCopied ? "Copied to clipboard" : "Copy code"}
+                </Button>
               </div>
             ) : null}
             <div className="flex items-center gap-3">
