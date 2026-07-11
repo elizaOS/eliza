@@ -8,7 +8,25 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as authActual from "@/lib/auth/workers-hono-auth";
+import * as rateLimitActual from "@/lib/middleware/rate-limit-hono-cloudflare";
+import * as pricingActual from "@/lib/pricing";
+import * as anthropicThinkingActual from "@/lib/providers/anthropic-thinking";
+import * as languageModelActual from "@/lib/providers/language-model";
+import * as aiBillingActual from "@/lib/services/ai-billing";
+import * as apiKeysActual from "@/lib/services/api-keys";
+import * as appCreditsActual from "@/lib/services/app-credits";
+import * as appsActual from "@/lib/services/apps";
+import * as contentModerationActual from "@/lib/services/content-moderation";
+import * as creditsActual from "@/lib/services/credits";
+import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
+import * as creditReservationActual from "@/lib/utils/credit-reservation";
+import * as loggerActual from "@/lib/utils/logger";
+import * as requestTimeoutActual from "@/lib/utils/request-timeout";
 
+// Bun's changed-file coverage lane runs all selected suites in one process.
+// Spread and restore every registry replacement so this route harness cannot
+// leak partial module shapes into whichever test file the scheduler loads next.
 const aiActual = require("ai") as Record<string, unknown>;
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
@@ -16,6 +34,7 @@ const USER = "00000000-0000-4000-8000-0000000000bb";
 const API_KEY_ID = "00000000-0000-4000-8000-0000000000cc";
 
 mock.module("@/lib/pricing", () => ({
+  ...pricingActual,
   calculateCost: async () => ({
     inputCost: 0.001,
     outputCost: 0.001,
@@ -29,23 +48,28 @@ mock.module("@/lib/pricing", () => ({
 }));
 
 mock.module("@/lib/providers/anthropic-thinking", () => ({
+  ...anthropicThinkingActual,
   mergeAnthropicCotProviderOptions: () => ({}),
   resolveAnthropicThinkingBudgetTokens: () => null,
 }));
 
 const resolveInferenceAuthContext = mock();
 mock.module("@/lib/services/inference-auth-context", () => ({
+  ...inferenceAuthContextActual,
   resolveInferenceAuthContext,
 }));
 
 const requireUserOrApiKeyWithOrg = mock();
 mock.module("@/lib/auth/workers-hono-auth", () => ({
+  ...authActual,
   requireUserOrApiKeyWithOrg,
 }));
 
 const validateApiKey = mock();
 mock.module("@/lib/services/api-keys", () => ({
+  ...apiKeysActual,
   apiKeysService: {
+    ...apiKeysActual.apiKeysService,
     validateApiKey,
   },
 }));
@@ -53,13 +77,16 @@ mock.module("@/lib/services/api-keys", () => ({
 const shouldBlockUser = mock();
 const moderateInBackground = mock();
 mock.module("@/lib/services/content-moderation", () => ({
+  ...contentModerationActual,
   contentModerationService: {
+    ...contentModerationActual.contentModerationService,
     shouldBlockUser,
     moderateInBackground,
   },
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  ...rateLimitActual,
   RateLimitPresets: { RELAXED: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
     await next();
@@ -67,6 +94,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 
 mock.module("@/lib/providers/language-model", () => ({
+  ...languageModelActual,
   canonicalizeCerebrasModelId: (model: string) => model,
   getLanguageModel: () => ({}) as never,
   isProviderConfigurationError: () => false,
@@ -87,6 +115,7 @@ const billUsage = mock();
 const estimateInputTokens = mock();
 const recordUsageAnalytics = mock();
 mock.module("@/lib/services/ai-billing", () => ({
+  ...aiBillingActual,
   InsufficientCreditsError: TestInsufficientCreditsError,
   billUsage,
   estimateInputTokens,
@@ -123,7 +152,9 @@ mock.module("@/lib/services/ai-billing", () => ({
 }));
 
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   creditsService: {
+    ...creditsActual.creditsService,
     createAnonymousReservation: () => ({
       reservedAmount: 0,
       reconcile: async () => null,
@@ -133,7 +164,9 @@ mock.module("@/lib/services/credits", () => ({
 
 const reserveInferenceCredits = mock();
 mock.module("@/lib/services/app-credits", () => ({
+  ...appCreditsActual,
   appCreditsService: {
+    ...appCreditsActual.appCreditsService,
     calculateCostWithMarkup: async () => ({ totalCost: 0.002 }),
     checkBalance: async () => ({ sufficient: true }),
     reserveInferenceCredits,
@@ -143,7 +176,9 @@ mock.module("@/lib/services/app-credits", () => ({
 
 const getAuthorizedMonetizedAppForUser = mock();
 mock.module("@/lib/services/apps", () => ({
+  ...appsActual,
   appsService: {
+    ...appsActual.appsService,
     getAuthorizedMonetizedAppForUser,
     getById: async () => null,
   },
@@ -151,10 +186,12 @@ mock.module("@/lib/services/apps", () => ({
 
 const createCreditReservationSettler = mock();
 mock.module("@/lib/utils/credit-reservation", () => ({
+  ...creditReservationActual,
   createCreditReservationSettler,
 }));
 
 mock.module("@/lib/utils/logger", () => ({
+  ...loggerActual,
   logger: {
     error: mock(),
     info: mock(),
@@ -163,6 +200,7 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 mock.module("@/lib/utils/request-timeout", () => ({
+  ...requestTimeoutActual,
   getRouteTimeoutMs: () => 30_000,
 }));
 
@@ -179,6 +217,34 @@ mock.module("ai", () => ({
 const messagesRoute = (await import("../v1/messages/route")).default;
 
 afterAll(() => {
+  mock.module("ai", () => aiActual);
+  mock.module("@/lib/auth/workers-hono-auth", () => authActual);
+  mock.module(
+    "@/lib/middleware/rate-limit-hono-cloudflare",
+    () => rateLimitActual,
+  );
+  mock.module(
+    "@/lib/providers/anthropic-thinking",
+    () => anthropicThinkingActual,
+  );
+  mock.module("@/lib/providers/language-model", () => languageModelActual);
+  mock.module("@/lib/pricing", () => pricingActual);
+  mock.module("@/lib/services/ai-billing", () => aiBillingActual);
+  mock.module("@/lib/services/api-keys", () => apiKeysActual);
+  mock.module("@/lib/services/app-credits", () => appCreditsActual);
+  mock.module("@/lib/services/apps", () => appsActual);
+  mock.module(
+    "@/lib/services/content-moderation",
+    () => contentModerationActual,
+  );
+  mock.module("@/lib/services/credits", () => creditsActual);
+  mock.module(
+    "@/lib/services/inference-auth-context",
+    () => inferenceAuthContextActual,
+  );
+  mock.module("@/lib/utils/credit-reservation", () => creditReservationActual);
+  mock.module("@/lib/utils/logger", () => loggerActual);
+  mock.module("@/lib/utils/request-timeout", () => requestTimeoutActual);
   mock.restore();
 });
 
