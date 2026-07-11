@@ -230,6 +230,7 @@ function makeRuntime(agent) {
       warn: (...args) => console.warn("[warn]", ...args),
       error: (...args) => console.error("[error]", ...args),
     },
+    getService: () => undefined,
     getSetting: (key) => {
       if (key === "ELIZA_ACP_TRANSPORT") return "native";
       if (key === "ELIZA_ACP_DEFAULT_AGENT") return agent;
