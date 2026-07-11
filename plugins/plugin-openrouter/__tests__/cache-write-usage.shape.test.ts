@@ -16,11 +16,15 @@ function createRuntime(settings: Record<string, string> = {}) {
       character: { system: "system prompt" },
       emitEvent,
       getSetting: vi.fn((key: string) => {
-        return ({
-          OPENROUTER_API_KEY: "test-key",
-          OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8",
-          ...settings,
-        } as Record<string, string>)[key] ?? null;
+        return (
+          (
+            {
+              OPENROUTER_API_KEY: "test-key",
+              OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8",
+              ...settings,
+            } as Record<string, string>
+          )[key] ?? null
+        );
       }),
     } as IAgentRuntime,
     emitEvent,
@@ -91,7 +95,7 @@ describe("emitModelUsageEvent — cache-write tokens on the real ai@^6 usage sha
       "prompt",
       realSdkUsage,
       "anthropic/claude-opus-4-8",
-      "RESPONSE_HANDLER",
+      "RESPONSE_HANDLER"
     );
 
     expect(result.cacheCreationInputTokens).toBe(8865);
@@ -157,9 +161,7 @@ describe("buildNativeTextResult (via handleTextLarge) — cache-write tokens on 
 
     expect(chunks).toEqual(["cached ", "reply"]);
     expect(await result.text).toBe("cached reply");
-    expect(await result.usage).toEqual(
-      expect.objectContaining({ cacheCreationInputTokens: 8865 }),
-    );
+    expect(await result.usage).toEqual(expect.objectContaining({ cacheCreationInputTokens: 8865 }));
     expect(emitEvent).toHaveBeenCalledTimes(1);
   });
 
