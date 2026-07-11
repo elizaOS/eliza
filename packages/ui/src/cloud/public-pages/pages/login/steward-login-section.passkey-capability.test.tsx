@@ -128,6 +128,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(input.getAttribute("autocomplete")).toBe("email");
     expect(screen.queryByRole("button", { name: /Passkey/i })).toBeNull();
     expect(screen.getByRole("button", { name: /Magic Link/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Google/i })).toBeTruthy();
     expect(
       screen.getByText(
         "Passkey sign-in is not available here. Use Google, Discord, or Magic Link, or open this sign-in link on another device.",
