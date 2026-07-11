@@ -6,8 +6,8 @@
  * `created_at` predates the grace window. The three acceptance cases from the
  * issue are proven against real SQL (no mocks): a stranded key is returned, an
  * in-flight (young) mint is protected by the grace window, and a key correctly
- * bound to a live sandbox is never returned. Fails loudly via `pgliteReady` if
- * PGlite ever fails to init, so a broken backend cannot vacuously pass.
+ * bound to a live sandbox is never returned. PGlite setup is intentionally not
+ * swallowed, so a broken backend cannot vacuously pass.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
