@@ -10,6 +10,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# When this eliza checkout is nested inside an outer monorepo (milady),
+# run-mobile-build's repo-root walk escapes to the outer root and builds the
+# outer apps/app instead of THIS package. Pin the root to this checkout.
+export ELIZA_MOBILE_REPO_ROOT="$(cd ../.. && pwd)"
+
 BUNDLE_ID="${ELIZA_IOS_APP_ID:-ai.elizaos.app}"
 DERIVED="${ELIZA_IOS_DERIVED_DATA_PATH:-$HOME/Library/Developer/Xcode/DerivedData/eliza-chat-harness}"
 SKIP_BUILD=0
