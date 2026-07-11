@@ -7,7 +7,114 @@
  * a spend limit and must pass through to the provider unchanged.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+
+// Keep the real modules so afterAll can restore them — bun's `mock.module` is
+// process-global and leaks into sibling test files in the same batch process
+// otherwise. Every mock below spreads its actual so unrelated exports stay
+// real, and afterAll re-registers the actuals verbatim.
+const aiActual = require("ai") as Record<string, unknown>;
+
+import * as authActual from "@/lib/auth";
+import * as rateLimitActual from "@/lib/middleware/rate-limit";
+import * as rateLimitHonoActual from "@/lib/middleware/rate-limit-hono-cloudflare";
+import * as pricingActual from "@/lib/pricing";
+import * as anthropicThinkingActual from "@/lib/providers/anthropic-thinking";
+import * as anthropicWebSearchActual from "@/lib/providers/anthropic-web-search";
+import * as languageModelActual from "@/lib/providers/language-model";
+import * as aiBillingActual from "@/lib/services/ai-billing";
+import * as aiBillingRecordsActual from "@/lib/services/ai-billing-records";
+import * as appCreditsActual from "@/lib/services/app-credits";
+import * as appsActual from "@/lib/services/apps";
+import * as contentModerationActual from "@/lib/services/content-moderation";
+import * as creditsActual from "@/lib/services/credits";
+import * as inferenceAuthContextActual from "@/lib/services/inference-auth-context";
+import * as inferenceBillingDeferredActual from "@/lib/services/inference-billing-deferred";
+import * as inferenceBillingFastPathActual from "@/lib/services/inference-billing-fast-path";
+import * as inferenceBillingLedgerActual from "@/lib/services/inference-billing-ledger";
+import * as inferencePassthroughActual from "@/lib/services/inference-passthrough";
+import * as modelCatalogActual from "@/lib/services/model-catalog";
+import * as teamCredentialPoolActual from "@/lib/services/team-credential-pool";
+import * as creditReservationActual from "@/lib/utils/credit-reservation";
+import * as requestTimeoutActual from "@/lib/utils/request-timeout";
+import * as settleOffResponsePathActual from "@/lib/utils/settle-off-response-path";
+
+const MOCKED_MODULE_ACTUALS: ReadonlyArray<
+  [specifier: string, actual: Record<string, unknown>]
+> = [
+  ["ai", aiActual],
+  ["@/lib/auth", authActual as Record<string, unknown>],
+  ["@/lib/middleware/rate-limit", rateLimitActual as Record<string, unknown>],
+  [
+    "@/lib/middleware/rate-limit-hono-cloudflare",
+    rateLimitHonoActual as Record<string, unknown>,
+  ],
+  ["@/lib/pricing", pricingActual as Record<string, unknown>],
+  [
+    "@/lib/providers/anthropic-thinking",
+    anthropicThinkingActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/providers/anthropic-web-search",
+    anthropicWebSearchActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/providers/language-model",
+    languageModelActual as Record<string, unknown>,
+  ],
+  ["@/lib/services/ai-billing", aiBillingActual as Record<string, unknown>],
+  [
+    "@/lib/services/ai-billing-records",
+    aiBillingRecordsActual as Record<string, unknown>,
+  ],
+  ["@/lib/services/app-credits", appCreditsActual as Record<string, unknown>],
+  ["@/lib/services/apps", appsActual as Record<string, unknown>],
+  [
+    "@/lib/services/content-moderation",
+    contentModerationActual as Record<string, unknown>,
+  ],
+  ["@/lib/services/credits", creditsActual as Record<string, unknown>],
+  [
+    "@/lib/services/inference-auth-context",
+    inferenceAuthContextActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/services/inference-billing-deferred",
+    inferenceBillingDeferredActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/services/inference-billing-fast-path",
+    inferenceBillingFastPathActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/services/inference-billing-ledger",
+    inferenceBillingLedgerActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/services/inference-passthrough",
+    inferencePassthroughActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/services/model-catalog",
+    modelCatalogActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/services/team-credential-pool",
+    teamCredentialPoolActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/utils/credit-reservation",
+    creditReservationActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/utils/request-timeout",
+    requestTimeoutActual as Record<string, unknown>,
+  ],
+  [
+    "@/lib/utils/settle-off-response-path",
+    settleOffResponsePathActual as Record<string, unknown>,
+  ],
+];
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
 const USER = "00000000-0000-4000-8000-0000000000bb";
@@ -43,6 +150,7 @@ let shouldBlockUser = false;
 let reserveCreditsImpl: () => Promise<unknown>;
 
 mock.module("ai", () => ({
+  ...aiActual,
   APICallError: { isInstance: () => false },
   RetryError: { isInstance: () => false },
   jsonSchema: (schema: unknown) => ({ schema }),
@@ -80,6 +188,7 @@ mock.module("ai", () => ({
 }));
 
 mock.module("@/lib/auth", () => ({
+  ...authActual,
   requireAuthOrApiKeyWithOrg: mock(async () => ({
     user: { id: USER, organization_id: ORG },
     apiKey: { id: API_KEY_ID },
@@ -87,19 +196,23 @@ mock.module("@/lib/auth", () => ({
 }));
 
 mock.module("@/lib/services/inference-auth-context", () => ({
+  ...inferenceAuthContextActual,
   resolveInferenceAuthContext: mock(async () => authResolution),
 }));
 
 mock.module("@/lib/middleware/rate-limit", () => ({
+  ...rateLimitActual,
   enforceOrgRateLimit: mock(async () => null),
 }));
 
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
+  ...rateLimitHonoActual,
   RateLimitPresets: { RELAXED: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
 }));
 
 mock.module("@/lib/pricing", () => ({
+  ...pricingActual,
   calculateCost: mock(async () => ({
     totalCost: 0.001,
     inputCost: 0.0005,
@@ -122,17 +235,20 @@ mock.module("@/lib/pricing", () => ({
 }));
 
 mock.module("@/lib/providers/anthropic-thinking", () => ({
+  ...anthropicThinkingActual,
   mergeAnthropicCotProviderOptions: () => ({}),
   resolveAnthropicThinkingBudgetTokens: () => null,
 }));
 
 mock.module("@/lib/providers/anthropic-web-search", () => ({
+  ...anthropicWebSearchActual,
   ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER: 0,
   buildProviderNativeWebSearchTools: () => ({}),
   isAnthropicWebSearchEnabled: () => false,
 }));
 
 mock.module("@/lib/providers/language-model", () => ({
+  ...languageModelActual,
   canonicalizeCerebrasModelId: (model: string) => model,
   getAiProviderConfigurationError: () => "AI services are not configured",
   getLanguageModel: (model: string) => ({ model }),
@@ -144,12 +260,14 @@ mock.module("@/lib/providers/language-model", () => ({
 }));
 
 mock.module("@/lib/services/model-catalog", () => ({
+  ...modelCatalogActual,
   getCachedGatewayModelById: mock(async () => ({
     supported_parameters: catalogSupportedParameters,
   })),
 }));
 
 mock.module("@/lib/services/apps", () => ({
+  ...appsActual,
   appsService: {
     getAuthorizedMonetizedAppForUser: mock(async () => null),
     getById: mock(async () => null),
@@ -157,6 +275,7 @@ mock.module("@/lib/services/apps", () => ({
 }));
 
 mock.module("@/lib/services/content-moderation", () => ({
+  ...contentModerationActual,
   contentModerationService: {
     shouldBlockUser: mock(async () => shouldBlockUser),
     moderateInBackground: mock(() => {}),
@@ -173,6 +292,7 @@ class TestInsufficientCreditsError extends Error {
 }
 
 mock.module("@/lib/services/ai-billing", () => ({
+  ...aiBillingActual,
   estimateInputTokens: (messages: Array<{ content: string }>) =>
     messages.reduce((sum, message) => sum + message.content.length, 0),
   reserveCredits: mock(async () => reserveCreditsImpl()),
@@ -187,22 +307,26 @@ mock.module("@/lib/services/ai-billing", () => ({
 }));
 
 mock.module("@/lib/services/ai-billing-records", () => ({
+  ...aiBillingRecordsActual,
   aiBillingRecordsService: { record: mock(async () => {}) },
 }));
 
 mock.module("@/lib/services/app-credits", () => ({
+  ...appCreditsActual,
   appCreditsService: {
     reserveInferenceCredits: mock(async () => ({ id: "app-reservation-1" })),
   },
 }));
 
 mock.module("@/lib/services/credits", () => ({
+  ...creditsActual,
   creditsService: {
     createAnonymousReservation: () => ({ id: "anonymous-reservation" }),
   },
 }));
 
 mock.module("@/lib/services/inference-billing-fast-path", () => ({
+  ...inferenceBillingFastPathActual,
   createOptimisticDebitSettler: () => async () => null,
   getGateBalanceUsd: mock(async () => 0),
   isOptimisticBackstopAvailable: () => false,
@@ -213,23 +337,27 @@ mock.module("@/lib/services/inference-billing-fast-path", () => ({
 }));
 
 mock.module("@/lib/services/inference-billing-ledger", () => ({
+  ...inferenceBillingLedgerActual,
   admitInferenceChargeViaLedger: mock(async () => ({ admitted: false })),
   createLedgerDebitSettler: () => async () => null,
   resolveInferenceBillingLedger: () => "kv",
 }));
 
 mock.module("@/lib/services/inference-billing-deferred", () => ({
+  ...inferenceBillingDeferredActual,
   createDeferredAdmissionSettler: () => async () => null,
   isDeferredAdmissionEnabled: () => false,
   isOrgAdmissionRefused: () => false,
 }));
 
 mock.module("@/lib/services/inference-passthrough", () => ({
+  ...inferencePassthroughActual,
   isPassthroughStreamingEnabled: () => false,
   readPassthroughStreamTail: mock(async () => ({ usage: null })),
 }));
 
 mock.module("@/lib/services/team-credential-pool", () => ({
+  ...teamCredentialPoolActual,
   getTeamPoolRegistry: () => ({
     selectCredential: mock(async () => null),
     recordUse: mock(async () => {}),
@@ -238,6 +366,7 @@ mock.module("@/lib/services/team-credential-pool", () => ({
 }));
 
 mock.module("@/lib/utils/credit-reservation", () => ({
+  ...creditReservationActual,
   createCreditReservationSettler: () => async (actualCost: number) => ({
     reconciled: true,
     actualCost,
@@ -245,10 +374,12 @@ mock.module("@/lib/utils/credit-reservation", () => ({
 }));
 
 mock.module("@/lib/utils/request-timeout", () => ({
+  ...requestTimeoutActual,
   getRouteTimeoutMs: (seconds: number) => seconds * 1000,
 }));
 
 mock.module("@/lib/utils/settle-off-response-path", () => ({
+  ...settleOffResponsePathActual,
   settleOffResponsePath: async (
     _executionCtx: unknown,
     work: () => Promise<void>,
@@ -260,6 +391,12 @@ mock.module("@/lib/utils/settle-off-response-path", () => ({
 const { handleChatCompletionsPOST } = await import(
   "../v1/chat/completions/route"
 );
+
+afterAll(() => {
+  for (const [specifier, actual] of MOCKED_MODULE_ACTUALS) {
+    mock.module(specifier, () => actual);
+  }
+});
 
 beforeEach(() => {
   generateTextCalls.length = 0;
