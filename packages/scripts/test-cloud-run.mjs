@@ -12,6 +12,7 @@ import {
   readdirSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -225,11 +226,36 @@ function formatBatchFiles(batch) {
   return batch.map((file) => `  - ${path.relative(repoRoot, file)}`).join("\n");
 }
 
+// Write straight to the stdout/stderr file descriptors. `process.stdout.write`
+// buffers asynchronously when the sink is a back-pressured pipe (the GitHub
+// Actions log collector is exactly that): each per-batch `bun test` dump queues
+// in Node's internal stream buffer, the synchronous `spawnSync` loop never
+// yields to drain it, and the final `process.exit()` then discards every
+// un-flushed byte. That silently swallowed the batch-10 failure diagnostic AND
+// the earlier batches' summaries, surfacing as a bare `exited with code 1` with
+// no reported failing test. `fs.writeSync` blocks until the bytes hit the fd,
+// so nothing can be truncated by exit. Retry on EAGAIN for non-blocking fds.
+function writeSyncAll(fd, text) {
+  if (!text) return;
+  const buffer = Buffer.from(text, "utf8");
+  let offset = 0;
+  while (offset < buffer.length) {
+    try {
+      offset += writeSync(fd, buffer, offset, buffer.length - offset);
+    } catch (error) {
+      if (error && error.code === "EAGAIN") continue;
+      throw error;
+    }
+  }
+}
+const writeOut = (text) => writeSyncAll(1, text);
+const writeErr = (text) => writeSyncAll(2, text);
+
 let anyFailed = false;
 for (let i = 0; i < batches.length; i++) {
   const batch = batches[i];
-  console.log(
-    `[test:cloud] batch ${i + 1}/${batches.length} — ${batch.length} files`,
+  writeOut(
+    `[test:cloud] batch ${i + 1}/${batches.length} — ${batch.length} files\n`,
   );
   const result = spawnSync(
     "bun",
@@ -244,11 +270,18 @@ for (let i = 0; i < batches.length; i++) {
     },
   );
   const output = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.stdout) writeOut(result.stdout);
+  if (result.stderr) writeErr(result.stderr);
   if (result.error) {
-    console.error(result.error);
-    process.exit(1);
+    // spawnSync failure (e.g. ENOBUFS from maxBuffer, spawn ENOENT). Surface it
+    // and keep the exit deferred so the drained batch output is not truncated.
+    writeErr(
+      `[test:cloud] batch ${i + 1}/${batches.length} spawn error: ${
+        result.error.stack ?? String(result.error)
+      }\n`,
+    );
+    process.exitCode = 1;
+    break;
   }
   // Run every batch even after a failure so one broken suite doesn't mask the
   // rest; aggregate into a single non-zero exit for the gate.
@@ -256,19 +289,23 @@ for (let i = 0; i < batches.length; i++) {
   const signal = result.signal;
   if ((status ?? 1) !== 0 || signal) {
     if (shouldNormalizeBunStatus99({ status, signal, output })) {
-      console.warn(
+      writeErr(
         `[test:cloud] batch ${i + 1}/${batches.length} exited with Bun status ${status} ` +
-          "after reporting no failed tests; treating as pass (known Bun/PGlite exitCode pollution).",
+          "after reporting no failed tests; treating as pass (known Bun/PGlite exitCode pollution).\n",
       );
       continue;
     }
     anyFailed = true;
-    console.error(
+    writeErr(
       `[test:cloud] batch ${i + 1}/${batches.length} exited non-zero ` +
         `(status=${status ?? "null"}, signal=${signal ?? "none"})\n` +
-        `[test:cloud] files in failed batch:\n${formatBatchFiles(batch)}`,
+        `[test:cloud] files in failed batch:\n${formatBatchFiles(batch)}\n`,
     );
   }
 }
 
-process.exit(anyFailed ? 1 : 0);
+// Use process.exitCode + natural return instead of process.exit(): the latter
+// tears the process down before any still-queued async stdout/stderr flushes,
+// which is what erased the failure diagnostics above. All batch output already
+// went out synchronously via writeSync, so the exit code alone remains here.
+if (anyFailed) process.exitCode = 1;

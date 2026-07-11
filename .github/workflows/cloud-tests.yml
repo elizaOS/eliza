@@ -18,6 +18,9 @@ on:
       - "packages/cloud/infra/**"
       - "packages/scripts/cloud/**"
       - "packages/scripts/test-cloud-run.mjs"
+      - "packages/scripts/test-cloud-run-helpers.mjs"
+      - "packages/scripts/test-cloud-run-flush.self-test.mjs"
+      - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -33,6 +36,9 @@ on:
       - "packages/cloud/infra/**"
       - "packages/scripts/cloud/**"
       - "packages/scripts/test-cloud-run.mjs"
+      - "packages/scripts/test-cloud-run-helpers.mjs"
+      - "packages/scripts/test-cloud-run-flush.self-test.mjs"
+      - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -89,6 +95,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cloud-setup-test-env
+      # Guards the batch runner's output-flush contract: a failing batch must
+      # surface its diagnostic instead of being swallowed by a process.exit()
+      # that truncates buffered stdout (the #16062 silent exit-1 regression).
+      - name: Batch runner flush-integrity self-test
+        run: node packages/scripts/test-cloud-run-flush.self-test.mjs
+      - name: Batch runner helper self-test
+        run: node packages/scripts/test-cloud-run-helpers.self-test.mjs
       - name: Run cloud unit tests
         run: bun run test:cloud
 

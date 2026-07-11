@@ -188,6 +188,7 @@
     "build:android:system": "node packages/app-core/scripts/run-mobile-build.mjs android-system",
     "test:cloud": "node packages/scripts/test-cloud-run.mjs",
     "test:cloud:helpers:self-test": "node packages/scripts/test-cloud-run-helpers.self-test.mjs",
+    "test:cloud:flush:self-test": "node packages/scripts/test-cloud-run-flush.self-test.mjs",
     "test:cloud:full": "bun run test:cloud && bun run test:cloud:e2e",
     "test:cloud:e2e": "bun run --cwd packages/cloud/api test:e2e",
     "test:cloud:integration": "node packages/scripts/cloud/admin/run-integration-tests.mjs",

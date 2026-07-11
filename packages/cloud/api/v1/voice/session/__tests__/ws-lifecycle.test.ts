@@ -282,8 +282,19 @@ async function connectSession(opts: {
   return { sessionId: CLAIMS.sessionId };
 }
 
-function flush(): Promise<void> {
-  return new Promise((r) => setTimeout(r, 20));
+// The fake Flux/Cartesia sockets and the SSE mock advance the session pipeline
+// across chained `queueMicrotask` + short `setTimeout` hops (hello -> verify ->
+// stt -> LLM SSE -> speaking -> downlink). A single fixed sleep raced that chain
+// under a loaded event loop (the sequential 80-file unit batch on a busy CI
+// runner), so assertions ran before the expected control frames landed and the
+// suite flaked non-deterministically. Drain several full macrotask turns
+// instead: each awaited timer lets one more hop settle, and the microtask queue
+// flushes between them. This stays fast when nothing is pending but no longer
+// depends on a single window being wide enough.
+async function flush(): Promise<void> {
+  for (let turn = 0; turn < 8; turn += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
 }
 
 function pcmChunk(bytes: number): Uint8Array {
