@@ -187,6 +187,13 @@ async function resumeAudioContextForPlayback(
   }
 }
 
+/** Provisional assistant message ids minted client-side by useChatSend while
+ *  the reply streams (`temp-resp-*`); the message is re-announced under its
+ *  persisted server id once reconciliation lands. */
+function isProvisionalAssistantMessageId(messageId: string): boolean {
+  return messageId.startsWith("temp-resp-");
+}
+
 function shouldPreferNativeTalkMode(): boolean {
   if (typeof window === "undefined") return false;
   return Capacitor.isNativePlatform() || !!getElectrobunRendererRpc();
@@ -2827,11 +2834,31 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const current = assistantSpeechRef.current;
       if (!current || current.messageId !== messageId) {
         clearAssistantTtsDebounce();
+        // Temp→final promotion: a streaming reply is first announced under a
+        // provisional client id (`temp-resp-*` from useChatSend), then
+        // re-announced with the same text under its persisted server id.
+        // Resetting the spoken prefix on that id flip re-queued the WHOLE
+        // reply — an audible second copy of every voice answer. When the prior
+        // state belongs to a provisional id and the new message's text
+        // continues (or is a prefix of) what that reply already queued, carry
+        // the spoken prefix and final-queued flag across the id change instead
+        // of starting over. Gated on the provisional id so a genuinely new
+        // assistant message that merely shares a prefix with the previous
+        // (persisted) reply still resets and speaks from scratch.
+        const continuesSpokenText =
+          current !== null &&
+          isProvisionalAssistantMessageId(current.messageId) &&
+          !isProvisionalAssistantMessageId(messageId) &&
+          current.queuedSpeakablePrefix.length > 0 &&
+          (speakable.startsWith(current.queuedSpeakablePrefix) ||
+            current.queuedSpeakablePrefix.startsWith(speakable));
         assistantSpeechRef.current = {
           messageId,
-          queuedSpeakablePrefix: "",
+          queuedSpeakablePrefix: continuesSpokenText
+            ? current.queuedSpeakablePrefix
+            : "",
           latestSpeakable: "",
-          finalQueued: false,
+          finalQueued: continuesSpokenText ? current.finalQueued : false,
           replacePlaybackOnFirstClip: queueOptions?.replace !== false,
           telemetry: queueOptions?.telemetry,
         };
