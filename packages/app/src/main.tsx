@@ -2996,7 +2996,7 @@ const ChatWidgetHarness = lazy(async () => {
   ) {
     throw new Error("ChatWidgetHarness is disabled in this build");
   }
-  const mod = await import("@elizaos/ui");
+  const mod = await import("@elizaos/ui/components/chat/ChatWidgetHarness");
   return { default: mod.ChatWidgetHarness };
 });
 
