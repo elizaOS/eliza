@@ -259,7 +259,7 @@ describe("StewardTradingService", () => {
     });
   });
 
-  it("stops ordinary 5xx retries after three attempts with the same key", async () => {
+  it("reports exhausted 5xx retries as an unknown submission", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(503, { ok: false, error: "transient upstream failure" }),
     );
@@ -283,10 +283,55 @@ describe("StewardTradingService", () => {
     }
     expect(result).toMatchObject({
       ok: false,
-      outcome: "not_attempted",
-      error: "STEWARD_UNAVAILABLE",
-      retryable: true,
+      outcome: "unknown",
+      error: "TIMEOUT",
+      retryable: false,
     });
+  });
+
+  it("reports exhausted transport retries as unknown and preserves the idempotency key", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("socket closed after write");
+    });
+    const service = configuredService(fetchMock as unknown as typeof fetch);
+
+    const result = await service.submitOrder({
+      venue: "hyperliquid",
+      sessionId: "sess_hl_fixture",
+      coin: "BTC",
+      side: "buy",
+      size: 0.01,
+      idempotencyKey: "idem-fixture",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    for (const call of fetchMock.mock.calls) {
+      const headers = call[1]?.headers as Record<string, string>;
+      expect(headers["Idempotency-Key"]).toBe("idem-fixture");
+    }
+    expect(result).toMatchObject({
+      ok: false,
+      outcome: "unknown",
+      error: "TIMEOUT",
+      retryable: false,
+    });
+  });
+
+  it("does not translate missing configuration into a retryable outage", async () => {
+    const service = new StewardTradingService(runtime(), {
+      fetch: vi.fn() as unknown as typeof fetch,
+    });
+
+    await expect(
+      service.submitOrder({
+        venue: "hyperliquid",
+        sessionId: "sess_hl_fixture",
+        coin: "BTC",
+        side: "buy",
+        size: 0.01,
+        idempotencyKey: "idem-fixture",
+      }),
+    ).rejects.toThrow("Steward trading is not configured");
   });
 
   it("maps critical Steward failures into outcome classes and retry flags", async () => {
@@ -360,9 +405,9 @@ describe("StewardTradingService", () => {
         status: 503,
         body: { ok: false, error: "transient upstream failure" },
         expected: {
-          outcome: "not_attempted",
-          error: "STEWARD_UNAVAILABLE",
-          retryable: true,
+          outcome: "unknown",
+          error: "TIMEOUT",
+          retryable: false,
         },
       },
       {

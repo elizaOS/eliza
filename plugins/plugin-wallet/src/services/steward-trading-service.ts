@@ -8,15 +8,15 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import type {
   CancelOrderRequest,
   CancelResult,
   OpenOrder,
-  Position,
   OpenSessionRequest,
   OrderResult,
   PolicyDenyReason,
+  Position,
   SubmitOrderRequest,
   TradeEnvelope,
   TradeSession,
@@ -44,6 +44,24 @@ interface JsonResponse {
   readonly status: number;
   readonly headers: Headers;
   readonly body: unknown;
+}
+
+class StewardTransportError extends ElizaError {
+  readonly timedOut: boolean;
+
+  constructor(cause: unknown, timedOut: boolean) {
+    super(
+      timedOut
+        ? "Steward request timed out"
+        : "Steward transport failed before a response was received",
+      {
+        code: timedOut ? "STEWARD_TIMEOUT" : "STEWARD_TRANSPORT_FAILED",
+        cause,
+        severity: "ephemeral",
+      },
+    );
+    this.timedOut = timedOut;
+  }
 }
 
 type FetchLike = typeof fetch;
@@ -199,6 +217,14 @@ function retryAfterMs(headers: Headers): number | undefined {
 function bodySaysStatusUnknown(body: unknown): boolean {
   const detail = detailFromBody(body, "");
   return /status unknown|submission status unknown/i.test(detail);
+}
+
+function unknownSubmissionResponse(): JsonResponse {
+  return {
+    status: 502,
+    headers: new Headers(),
+    body: { ok: false, error: "Trade submission status unknown" },
+  };
 }
 
 function isStewardCredentialFailure(status: number, detail: string): boolean {
@@ -468,6 +494,13 @@ export class StewardTradingService extends Service {
     this.random = options.random ?? Math.random;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.maxRetries = options.maxRetries ?? MAX_RETRIES;
+    if (!Number.isInteger(this.maxRetries) || this.maxRetries < 1) {
+      throw new ElizaError("Steward maxRetries must be a positive integer", {
+        code: "STEWARD_INVALID_RETRY_CONFIG",
+        context: { maxRetries: this.maxRetries },
+        severity: "fatal",
+      });
+    }
     this.tradingConfig = this.resolveConfig();
   }
 
@@ -781,34 +814,28 @@ export class StewardTradingService extends Service {
         if (!(response.status === 429 || response.status >= 500))
           return response;
         last = response;
-        if (attempt === this.maxRetries) return response;
+        if (attempt === this.maxRetries) {
+          return response.status === 429
+            ? response
+            : unknownSubmissionResponse();
+        }
         await this.sleep(
           retryAfterMs(response.headers) ?? retryDelayMs(attempt, this.random),
         );
       } catch (error) {
-        // error-policy:J1 Transport failures become trade-envelope failures.
-        last = {
-          status: isTimeoutError(error) ? 502 : 503,
-          headers: new Headers(),
-          body: {
-            ok: false,
-            error: isTimeoutError(error)
-              ? "Trade submission status unknown"
-              : "Steward unavailable",
-          },
-        };
-        if (isTimeoutError(error)) return last;
-        if (attempt === this.maxRetries) return last;
+        // error-policy:J1 Known transport failures become an explicit unknown
+        // submission outcome; configuration and programming errors propagate.
+        if (!(error instanceof StewardTransportError)) throw error;
+        last = unknownSubmissionResponse();
+        if (error.timedOut || attempt === this.maxRetries) return last;
         await this.sleep(retryDelayMs(attempt, this.random));
       }
     }
-    return (
-      last ?? {
-        status: 503,
-        headers: new Headers(),
-        body: { ok: false, error: "Steward unavailable", idempotencyKey },
-      }
-    );
+    throw new ElizaError("Steward retry loop ended without a response", {
+      code: "STEWARD_RETRY_INVARIANT_BROKEN",
+      context: { idempotencyKey, hadResponse: last !== null },
+      severity: "fatal",
+    });
   }
 
   private async request(
@@ -821,35 +848,44 @@ export class StewardTradingService extends Service {
     throwTransportErrors: boolean,
   ): Promise<JsonResponse & { retryAfterMs?: number }> {
     const config = this.requireConfig();
+    const headers = this.headers(init.idempotencyKey);
+    const serializedBody =
+      init.body === undefined ? undefined : JSON.stringify(init.body);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await this.fetchImpl(joinUrl(config.apiUrl, route), {
         method: init.method,
-        headers: this.headers(init.idempotencyKey),
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        headers,
+        body: serializedBody,
         signal: controller.signal,
       });
       const text = await response.text();
-      let body: unknown;
+      let responseBody: unknown;
       try {
-        body = text ? JSON.parse(text) : null;
+        responseBody = text ? JSON.parse(text) : null;
       } catch {
         // error-policy:J1 Malformed upstream JSON becomes a structured failure.
-        body = { ok: false, error: "Steward returned an unparseable body" };
+        responseBody = {
+          ok: false,
+          error: "Steward returned an unparseable body",
+        };
         if (response.ok) {
-          return { status: 502, headers: response.headers, body };
+          return { status: 502, headers: response.headers, body: responseBody };
         }
       }
       return {
         status: response.status,
         headers: response.headers,
-        body,
+        body: responseBody,
         retryAfterMs: retryAfterMs(response.headers),
       };
     } catch (error) {
-      // error-policy:J1 Transport failures are mapped without leaking secrets.
-      if (throwTransportErrors) throw error;
+      // error-policy:J2 Preserve the transport cause while preventing request
+      // metadata and credentials from entering the error message.
+      if (throwTransportErrors) {
+        throw new StewardTransportError(error, isTimeoutError(error));
+      }
       return {
         status: isTimeoutError(error) ? 502 : 503,
         headers: new Headers(),
