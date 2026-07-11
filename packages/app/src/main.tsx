@@ -2986,7 +2986,7 @@ const ChatWidgetHarness = lazy(async () => {
   if (__ELIZA_CHAT_UI_HARNESS__ !== true) {
     throw new Error("ChatWidgetHarness is disabled in this build");
   }
-  const mod = await import("@elizaos/ui");
+  const mod = await import("@elizaos/ui/components/chat/ChatWidgetHarness");
   return { default: mod.ChatWidgetHarness };
 });
 
