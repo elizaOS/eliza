@@ -18,6 +18,7 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
+import { ElizaError } from "../../errors";
 import { createUniqueUuid } from "../../entities";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
@@ -43,6 +44,7 @@ import {
 	extractTextFromDocument,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
+import type { FragmentProcessingResult } from "./document-processor.ts";
 import { embedRecallQuery } from "./recall-embed.ts";
 import type {
 	AddDocumentOptions,
@@ -863,19 +865,62 @@ export class DocumentService extends Service {
 
 			await this.runtime.createMemory(memoryWithScope, DOCUMENTS_TABLE);
 
-			const fragmentCount = await processFragmentsSynchronously({
-				runtime: this.runtime,
-				documentId: clientDocumentId,
-				fullDocumentText: extractedText,
-				agentId,
-				contentType,
-				roomId: roomId || agentId,
-				entityId: targetEntityId,
-				worldId: worldId || agentId,
-				documentTitle: originalFilename,
-				documentMetadata:
-					(documentMemory.metadata as Record<string, unknown>) ?? undefined,
-			});
+			let fragmentResult: FragmentProcessingResult;
+			try {
+				fragmentResult = await processFragmentsSynchronously({
+					runtime: this.runtime,
+					documentId: clientDocumentId,
+					fullDocumentText: extractedText,
+					agentId,
+					contentType,
+					roomId: roomId || agentId,
+					entityId: targetEntityId,
+					worldId: worldId || agentId,
+					documentTitle: originalFilename,
+					documentMetadata:
+						(documentMemory.metadata as Record<string, unknown>) ?? undefined,
+				});
+			} catch (fragmentError) {
+				// Hard failure inside fragment processing (e.g. a chunk persist
+				// throwing). The parent DOCUMENT row is already written; compensate
+				// so ingestion stays all-or-nothing at the document level (#16021).
+				await this.compensateOrphanedDocument(
+					clientDocumentId,
+					originalFilename,
+					fragmentError,
+				);
+				throw fragmentError;
+			}
+
+			const fragmentCount = fragmentResult.savedCount;
+
+			// Embed-time failure: chunks existed but none embedded/persisted.
+			// processFragmentsSynchronously counts+logs per-chunk failures rather
+			// than throwing, so without this guard the already-written parent row
+			// would remain as an orphaned zero-fragment DOCUMENT: visible in
+			// document lists, unmatchable in fragment search (#16021).
+			if (fragmentResult.chunkCount > 0 && fragmentCount === 0) {
+				const orphanError = new ElizaError(
+					`Document "${originalFilename}" produced ${fragmentResult.chunkCount} chunks but embedded 0 fragments; rolling back the parent document row`,
+					{
+						code: "DOCUMENT_EMBED_FAILED",
+						severity: "fatal",
+						context: {
+							documentId: clientDocumentId,
+							originalFilename,
+							contentType,
+							chunkCount: fragmentResult.chunkCount,
+							failedCount: fragmentResult.failedCount,
+						},
+					},
+				);
+				await this.compensateOrphanedDocument(
+					clientDocumentId,
+					originalFilename,
+					orphanError,
+				);
+				throw orphanError;
+			}
 
 			logger.debug(
 				`"${originalFilename}" stored with ${fragmentCount} fragments`,
@@ -889,6 +934,47 @@ export class DocumentService extends Service {
 		} catch (error) {
 			logger.error({ error }, `Error processing document ${originalFilename}`);
 			throw error;
+		}
+	}
+
+	/**
+	 * Compensating delete for a parent DOCUMENT row whose fragment processing
+	 * failed, restoring all-or-nothing document ingestion (#16021). The failure
+	 * is surfaced via {@link IAgentRuntime.reportError} so the orphan-avoidance
+	 * is observable to the agent/owner escalation path; the compensating delete
+	 * itself is best-effort and never masks the original failure.
+	 */
+	private async compensateOrphanedDocument(
+		documentId: UUID,
+		originalFilename: string,
+		cause: unknown,
+	): Promise<void> {
+		this.runtime.reportError("DocumentService.addDocument", cause, {
+			documentId,
+			originalFilename,
+			stage: "fragment-processing",
+		});
+		try {
+			await this.runtime.deleteMemory(documentId);
+			logger.warn(
+				`Rolled back orphaned parent document ${documentId} ("${originalFilename}") after fragment processing failed`,
+			);
+		} catch (deleteError) {
+			// The parent row could not be removed; surface the compensation
+			// failure too so an orphan that survived cleanup is still observable.
+			logger.error(
+				{ error: deleteError, documentId, originalFilename },
+				`Failed to roll back orphaned parent document ${documentId} after fragment processing failure`,
+			);
+			this.runtime.reportError(
+				"DocumentService.addDocument",
+				deleteError,
+				{
+					documentId,
+					originalFilename,
+					stage: "orphan-compensation-delete",
+				},
+			);
 		}
 	}
 

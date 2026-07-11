@@ -92,6 +92,23 @@ function shouldUseCustomLLM(): boolean {
 
 const useCustomLLM = shouldUseCustomLLM();
 
+/**
+ * Outcome of {@link processFragmentsSynchronously}.
+ *
+ * `chunkCount` lets the caller distinguish a legitimately empty document
+ * (`chunkCount === 0`, nothing to embed) from an embed-time failure
+ * (`chunkCount > 0 && savedCount === 0`, every chunk failed to embed/persist).
+ * The latter must not leave the already-written parent DOCUMENT row orphaned.
+ */
+export interface FragmentProcessingResult {
+	/** Fragments successfully embedded and persisted. */
+	savedCount: number;
+	/** Fragments that failed to embed or persist. */
+	failedCount: number;
+	/** Total chunks the document text split into (0 = no embeddable text). */
+	chunkCount: number;
+}
+
 export async function processFragmentsSynchronously({
 	runtime,
 	documentId,
@@ -114,17 +131,17 @@ export async function processFragmentsSynchronously({
 	worldId?: UUID;
 	documentTitle?: string;
 	documentMetadata?: Record<string, unknown>;
-}): Promise<number> {
+}): Promise<FragmentProcessingResult> {
 	if (!fullDocumentText || fullDocumentText.trim() === "") {
 		logger.warn(`No text content available for document ${documentId}`);
-		return 0;
+		return { savedCount: 0, failedCount: 0, chunkCount: 0 };
 	}
 
 	const chunks = await splitDocumentIntoChunks(fullDocumentText);
 
 	if (chunks.length === 0) {
 		logger.warn(`No chunks generated for document ${documentId}`);
-		return 0;
+		return { savedCount: 0, failedCount: 0, chunkCount: 0 };
 	}
 
 	logger.info(`Split into ${chunks.length} chunks`);
@@ -158,7 +175,7 @@ export async function processFragmentsSynchronously({
 		logger.warn(`${failedCount}/${chunks.length} chunks failed processing`);
 	}
 
-	return savedCount;
+	return { savedCount, failedCount, chunkCount: chunks.length };
 }
 
 export async function extractTextFromDocument(
