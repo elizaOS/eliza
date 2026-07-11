@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -25,6 +26,10 @@ const DEFAULT_CODEX_REASONING_EFFORT =
 const DEFAULT_CODEX_COMMAND = `npx -y @zed-industries/codex-acp@0.14.0 -c 'model="${DEFAULT_CODEX_MODEL}"' -c 'model_reasoning_effort="${DEFAULT_CODEX_REASONING_EFFORT}"'`;
 const PROMPT =
   "What is 7 plus 8? Reply with exactly the number, no punctuation.";
+const GIT_IDENTITY_EVIDENCE =
+  process.env.LIVE_NATIVE_ACP_GIT_IDENTITY_EVIDENCE === "1";
+const GIT_IDENTITY_PROMPT =
+  "Create identity-proof.txt containing exactly `real ACP commit identity proof` followed by a newline. Commit it with the message `test: prove coding agent identity`. Do not read or change git configuration. Reply with the commit hash.";
 const CLEANUP_TIMEOUT_MS = Number(
   process.env.LIVE_NATIVE_ACP_CLEANUP_TIMEOUT_MS ?? 5_000,
 );
@@ -73,6 +78,15 @@ async function main() {
     console.log(
       `native ACP service smoke: command=${redactCommand(commandFor(agent))}`,
     );
+    if (GIT_IDENTITY_EVIDENCE) {
+      execFileSync("git", ["init", "--initial-branch=main"], {
+        cwd: workdir,
+        stdio: "pipe",
+      });
+      console.log(
+        "native ACP service smoke: initialized identity evidence repo",
+      );
+    }
 
     await withTimeout(service.start(), smokeTimeoutMs);
     console.log("native ACP service smoke: service started");
@@ -92,9 +106,13 @@ async function main() {
     );
 
     const promptResult = await withTimeout(
-      service.sendPrompt(sessionId, PROMPT, {
-        timeoutMs: smokeTimeoutMs,
-      }),
+      service.sendPrompt(
+        sessionId,
+        GIT_IDENTITY_EVIDENCE ? GIT_IDENTITY_PROMPT : PROMPT,
+        {
+          timeoutMs: smokeTimeoutMs,
+        },
+      ),
       smokeTimeoutMs,
     );
     console.log("native ACP service smoke: prompt completed");
@@ -103,13 +121,33 @@ async function main() {
       (event) => event.name === "task_complete",
     );
     const completed = promptResult.stopReason === "end_turn";
-    const finalTextValid = /(^|[^0-9])15([^0-9]|$)/.test(finalText);
+    const identityEvidence = GIT_IDENTITY_EVIDENCE
+      ? readGitIdentityEvidence(workdir)
+      : null;
+    const finalTextValid = GIT_IDENTITY_EVIDENCE
+      ? identityEvidence.valid
+      : /(^|[^0-9])15([^0-9]|$)/.test(finalText);
 
     console.log("\n=== native ACP service smoke verdict ===");
     console.log(`task_complete events: ${taskCompletes.length}`);
     console.log(`stopReason: ${JSON.stringify(promptResult.stopReason)}`);
-    console.log(`final text: ${JSON.stringify(finalText)}`);
-    console.log(`final text contains 15: ${finalTextValid}`);
+    console.log(
+      GIT_IDENTITY_EVIDENCE
+        ? "final text: <suppressed; identity mode verifies Git directly>"
+        : `final text: ${JSON.stringify(finalText)}`,
+    );
+    console.log(
+      GIT_IDENTITY_EVIDENCE
+        ? `git identity evidence valid: ${finalTextValid}`
+        : `final text contains 15: ${finalTextValid}`,
+    );
+    if (identityEvidence) {
+      console.log("\n=== git identity domain artifact ===");
+      console.log(identityEvidence.show);
+      console.log(
+        `identity-proof.txt: ${JSON.stringify(identityEvidence.file)}`,
+      );
+    }
 
     if (!completed || !finalTextValid || taskCompletes.length === 0) {
       const eventSummary = summarizeEvents(events);
@@ -153,6 +191,40 @@ async function main() {
   }
 }
 
+function readGitIdentityEvidence(workdir) {
+  const expectedAuthorName =
+    process.env.ELIZA_CODING_GIT_AUTHOR_NAME ?? "elizaOS Coding Agent";
+  const expectedAuthorEmail =
+    process.env.ELIZA_CODING_GIT_AUTHOR_EMAIL ??
+    "coding-agent.no-reply@elizaos.local";
+  const expectedCommitterName =
+    process.env.ELIZA_CODING_GIT_COMMITTER_NAME ?? expectedAuthorName;
+  const expectedCommitterEmail =
+    process.env.ELIZA_CODING_GIT_COMMITTER_EMAIL ?? expectedAuthorEmail;
+  const fields = execFileSync(
+    "git",
+    ["show", "-s", "--format=%H%n%an%n%ae%n%cn%n%ce%n%B", "HEAD"],
+    { cwd: workdir, encoding: "utf8" },
+  ).trimEnd();
+  const [hash, authorName, authorEmail, committerName, committerEmail] =
+    fields.split("\n");
+  const file = readFileSync(join(workdir, "identity-proof.txt"), "utf8");
+  return {
+    valid:
+      /^[0-9a-f]{40}$/u.test(hash ?? "") &&
+      authorName === expectedAuthorName &&
+      authorEmail === expectedAuthorEmail &&
+      committerName === expectedCommitterName &&
+      committerEmail === expectedCommitterEmail &&
+      file === "real ACP commit identity proof\n",
+    show: execFileSync("git", ["show", "-s", "--format=fuller", "HEAD"], {
+      cwd: workdir,
+      encoding: "utf8",
+    }).trimEnd(),
+    file,
+  };
+}
+
 function makeRuntime(agent) {
   return {
     agentId: "native-acp-service-smoke",
@@ -162,6 +234,7 @@ function makeRuntime(agent) {
       warn: (...args) => console.warn("[warn]", ...args),
       error: (...args) => console.error("[error]", ...args),
     },
+    getService: () => undefined,
     getSetting: (key) => {
       if (key === "ELIZA_ACP_TRANSPORT") return "native";
       if (key === "ELIZA_ACP_DEFAULT_AGENT") return agent;

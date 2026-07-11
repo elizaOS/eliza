@@ -57,7 +57,7 @@ crons = [
   "*/10 * * * *",   # cleanup-expired-crypto-payments
   "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
   "0 * * * *",      # agent-billing
-  "0 */6 * * *",    # cleanup-anonymous-sessions + agent-backups
+  "0 */6 * * *",    # cleanup-anonymous-sessions + agent-backups + reap-orphan-shared-bridges + gc-stranded-sandbox-keys
   "0 0 * * *",      # container-billing
   "0 1 * * *",      # compute-metrics
   "0 2 * * *",      # cleanup-webhook-events
