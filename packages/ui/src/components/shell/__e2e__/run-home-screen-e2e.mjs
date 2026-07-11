@@ -29,6 +29,7 @@ import {
 import {
   touchLongPress,
   touchSwipe,
+  touchTap,
 } from "../../../testing/real-touch-gestures.ts";
 import {
   SWIPE_HINT_DISPLAY_MS,
@@ -719,7 +720,7 @@ try {
       "expanded-only controls stay hidden at rest",
     );
 
-    await countButton.click();
+    await touchTap(mobile, '[data-testid="notifications-count-button"]');
     await center
       .locator(
         '[data-testid="home-notification-list"][data-shade-mode="expanded"]',
@@ -731,7 +732,7 @@ try {
       "opening the shade reveals clear and collapse controls",
     );
 
-    await center.getByTestId("notifications-collapse").click();
+    await touchTap(mobile, '[data-testid="notifications-collapse"]');
     await center
       .locator(
         '[data-testid="home-notification-list"][data-shade-mode="rested"]',
