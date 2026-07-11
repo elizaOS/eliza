@@ -58,6 +58,15 @@ describe("transformCommandToDiscordApi group-DM opt-in", () => {
 		) as { contexts?: number[] };
 		expect(out.contexts).toEqual([1]);
 	});
+
+	it("omits global-only context fields for guild-scoped registration", () => {
+		const out = transformCommandToDiscordApi(command("targeted"), {
+			userInstall: true,
+			guildScoped: true,
+		}) as { contexts?: number[]; integrationTypes?: number[] };
+		expect(out.contexts).toBeUndefined();
+		expect(out.integrationTypes).toBeUndefined();
+	});
 });
 
 describe("/ask command", () => {
@@ -112,9 +121,12 @@ describe("/ask command", () => {
 			message: Memory,
 			cb: (r: Content) => Promise<unknown>,
 		) => Promise<unknown>,
+		dmPolicy = "open",
 	): IAgentRuntime {
 		return {
 			agentId: "00000000-0000-0000-0000-0000000000aa",
+			character: { settings: { discord: { dmPolicy } } },
+			getSetting: vi.fn(() => undefined),
 			ensureConnection: vi.fn(async () => undefined),
 			messageService: { handleMessage: handle },
 			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -131,10 +143,7 @@ describe("/ask command", () => {
 			await cb({ text: "The answer is 42.", source: "agent" } as Content);
 			return {};
 		});
-		await ask.execute(
-			h.interaction as never,
-			runtime as never,
-		);
+		await ask.execute(h.interaction as never, runtime as never);
 		return { h, runtime, seenMessage };
 	}
 
@@ -155,6 +164,19 @@ describe("/ask command", () => {
 		expect(seenMessage?.content?.channelType).toBe("DM");
 	});
 
+	it("refuses a DM interaction when the connector DM policy is disabled", async () => {
+		const ask = getRegisteredCommands().get("ask");
+		const h = makeInteraction("bypass the policy");
+		const handle = vi.fn();
+		const runtime = makeRuntime(handle, "disabled");
+
+		await ask?.execute(h.interaction as never, runtime as never);
+
+		expect(handle).not.toHaveBeenCalled();
+		expect(runtime.ensureConnection).not.toHaveBeenCalled();
+		expect(h.directReply).toContain("not available");
+	});
+
 	it("rejects an empty message without touching the runtime", async () => {
 		const ask = getRegisteredCommands().get("ask");
 		const h = makeInteraction("   ");
@@ -170,6 +192,8 @@ describe("/ask command", () => {
 		const h = makeInteraction("hello");
 		const runtime = {
 			agentId: "00000000-0000-0000-0000-0000000000aa",
+			character: { settings: { discord: { dmPolicy: "open" } } },
+			getSetting: vi.fn(() => undefined),
 			messageService: null,
 			logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 		} as unknown as IAgentRuntime;

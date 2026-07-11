@@ -818,6 +818,7 @@ export class DiscordService extends Service implements IDiscordService {
 						targetedGuildCommands.flatMap((cmd) => {
 							const transformedCmd = transformCommandToDiscordApi(cmd, {
 								userInstall,
+								guildScoped: true,
 							});
 							return (cmd.guildIds ?? []).map(async (guildId) => {
 								const guild = guilds.get(guildId);

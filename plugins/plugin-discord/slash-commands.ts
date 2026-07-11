@@ -19,6 +19,8 @@ import type {
 } from "discord.js";
 import { ApplicationCommandOptionType } from "discord.js";
 import { getPreset, listPresets } from "./actions/setup-credentials";
+import { checkDiscordDmAccess } from "./dm-access";
+import { getDiscordSettings } from "./environment";
 import { chunkDiscordText } from "./messaging";
 import type { DiscordSlashCommand } from "./types";
 import { getMessageService } from "./utils";
@@ -677,6 +679,7 @@ const transcribeCommand: SlashCommand = {
 const askCommand: SlashCommand = {
 	name: "ask",
 	description: "Ask the agent a question and get a reply",
+	cooldown: 10,
 	options: [
 		{
 			name: "message",
@@ -693,6 +696,22 @@ const askCommand: SlashCommand = {
 				ephemeral: true,
 			});
 			return;
+		}
+		if (!interaction.inGuild()) {
+			const access = await checkDiscordDmAccess(
+				runtime,
+				getDiscordSettings(runtime),
+				interaction.user,
+			);
+			if (!access.allowed) {
+				await interaction.reply({
+					content:
+						access.replyMessage ??
+						"Direct messages are not available for this account.",
+					ephemeral: true,
+				});
+				return;
+			}
 		}
 
 		const messageService = getMessageService(runtime);

@@ -44,7 +44,7 @@ const INTEGRATION_USER_INSTALL = 1;
  */
 export function transformCommandToDiscordApi(
 	cmd: DiscordSlashCommand,
-	opts?: { userInstall?: boolean },
+	opts?: { userInstall?: boolean; guildScoped?: boolean },
 ): ApplicationCommandDataResolvable {
 	const discordCmd: ChatInputApplicationCommandData & {
 		contexts?: number[];
@@ -56,7 +56,10 @@ export function transformCommandToDiscordApi(
 		options: cmd.options,
 	};
 
-	if (cmd.contexts) {
+	if (opts?.guildScoped) {
+		// A guild command is already scoped by its registration endpoint. Discord
+		// accepts contexts/integration_types only for global command definitions.
+	} else if (cmd.contexts) {
 		discordCmd.contexts = cmd.contexts;
 	} else if (cmd.guildOnly) {
 		discordCmd.contexts = [CONTEXT_GUILD]; // guild only (no DMs)
