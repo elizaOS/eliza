@@ -18,8 +18,8 @@
  */
 import { existsSync, statSync } from "node:fs";
 import { filterByAccessContext } from "../../access-control/filter";
-import { ElizaError } from "../../errors";
 import { createUniqueUuid } from "../../entities";
+import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
 import { checkSenderRole } from "../../roles";
 import {
@@ -39,12 +39,12 @@ import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { bm25Scores, normalizeBm25Scores } from "./bm25.ts";
 import { validateModelConfig } from "./config";
 import { addDocumentFromFilePath, loadDocumentsFromPath } from "./docs-loader";
+import type { FragmentProcessingResult } from "./document-processor.ts";
 import {
 	createDocumentMemory,
 	extractTextFromDocument,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
-import type { FragmentProcessingResult } from "./document-processor.ts";
 import { embedRecallQuery } from "./recall-embed.ts";
 import type {
 	AddDocumentOptions,
@@ -960,21 +960,18 @@ export class DocumentService extends Service {
 				`Rolled back orphaned parent document ${documentId} ("${originalFilename}") after fragment processing failed`,
 			);
 		} catch (deleteError) {
+			// error-policy:J6 Compensating cleanup must preserve the original ingestion failure.
 			// The parent row could not be removed; surface the compensation
 			// failure too so an orphan that survived cleanup is still observable.
 			logger.error(
 				{ error: deleteError, documentId, originalFilename },
 				`Failed to roll back orphaned parent document ${documentId} after fragment processing failure`,
 			);
-			this.runtime.reportError(
-				"DocumentService.addDocument",
-				deleteError,
-				{
-					documentId,
-					originalFilename,
-					stage: "orphan-compensation-delete",
-				},
-			);
+			this.runtime.reportError("DocumentService.addDocument", deleteError, {
+				documentId,
+				originalFilename,
+				stage: "orphan-compensation-delete",
+			});
 		}
 	}
 
