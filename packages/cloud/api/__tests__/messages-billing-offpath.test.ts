@@ -186,6 +186,10 @@ function callStreaming(
     estimatedInputTokens?: number;
     signal?: AbortSignal;
     executionCtx?: ExecutionCtx;
+    providerDispatchTelemetry?: {
+      capture(): void;
+      emit(): void;
+    };
   } = {},
 ) {
   return handleStream(
@@ -207,13 +211,20 @@ function callStreaming(
     "gateway" as never,
     "req-test-offpath",
     options.executionCtx,
+    options.providerDispatchTelemetry,
   );
 }
 
 /** Invoke handleNonStream with the test's settler and a fixed request shape. */
 function callNonStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
-  options: { executionCtx?: ExecutionCtx } = {},
+  options: {
+    executionCtx?: ExecutionCtx;
+    providerDispatchTelemetry?: {
+      capture(): void;
+      emit(): void;
+    };
+  } = {},
 ) {
   return handleNonStream(
     MODEL,
@@ -233,6 +244,7 @@ function callNonStreaming(
     "gateway" as never,
     "req-test-offpath",
     options.executionCtx,
+    options.providerDispatchTelemetry,
   );
 }
 
@@ -298,6 +310,25 @@ function sdkFaithfulGeneration() {
 }
 
 describe("streaming messages — billing settles OFF the response path (waitUntil parity, #15414)", () => {
+  test("captures the preforward boundary immediately around streamText", async () => {
+    const events: string[] = [];
+    sdkFaithfulStream();
+    const originalStreamText = streamTextImpl!;
+    streamTextImpl = (config) => {
+      events.push("streamText");
+      return originalStreamText(config);
+    };
+    const response = await callStreaming(async () => null, {
+      providerDispatchTelemetry: {
+        capture: () => events.push("capture"),
+        emit: () => events.push("emit"),
+      },
+    });
+
+    await response.text();
+    expect(events).toEqual(["capture", "streamText", "emit"]);
+  });
+
   test("terminal frames + message_stop flush BEFORE the billing chain completes; the chain runs via waitUntil", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);

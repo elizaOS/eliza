@@ -237,6 +237,7 @@ function postMessages(
     headers: {
       "content-type": "application/json",
       "x-api-key": "eliza_test_key",
+      "x-eliza-trace-id": "trace_messages_iac_12345678",
       ...extraHeaders,
     },
     body: JSON.stringify({
@@ -266,6 +267,15 @@ describe("/v1/messages IAC fast path", () => {
       16,
     );
     expect(generateText).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace_messages_iac_12345678",
+    );
+    expect(response.headers.get("X-Eliza-Preforward-Ms")).toMatch(
+      /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
   });
 
   test("suspended resolver result returns Anthropic 403 before billing or provider work", async () => {
@@ -345,6 +355,12 @@ describe("/v1/messages IAC fast path", () => {
     expect(createCreditReservationSettler).toHaveBeenCalledWith(appReservation);
     expect(settleAppReservation).toHaveBeenCalledWith(0.002);
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace_messages_iac_12345678",
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
   });
 
   test("refunds the reservation when post-reserve payload conversion throws", async () => {

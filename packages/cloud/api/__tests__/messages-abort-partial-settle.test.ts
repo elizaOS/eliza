@@ -153,7 +153,14 @@ const REQUEST = {
 /** Invoke handleStream with the test's settler and a fixed request shape. */
 function callStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
-  options: { estimatedInputTokens?: number; signal?: AbortSignal } = {},
+  options: {
+    estimatedInputTokens?: number;
+    signal?: AbortSignal;
+    providerDispatchTelemetry?: {
+      capture(): void;
+      emit(): void;
+    };
+  } = {},
 ) {
   return handleStream(
     MODEL,
@@ -173,6 +180,8 @@ function callStreaming(
     settleReservation as never,
     "gateway" as never,
     "req-test-abort",
+    undefined,
+    options.providerDispatchTelemetry,
   );
 }
 
@@ -317,6 +326,30 @@ describe("streaming messages — client abort settles delivered usage (#11513)",
 });
 
 describe("streaming messages — provider failure still refunds in full", () => {
+  test("emits provider-boundary telemetry when streamText throws synchronously", async () => {
+    const events: string[] = [];
+    const failure = new Error("synchronous provider setup failure");
+    streamTextImpl = () => {
+      events.push("provider");
+      throw failure;
+    };
+
+    let caught: unknown;
+    try {
+      await callStreaming(async () => null, {
+        providerDispatchTelemetry: {
+          capture: () => events.push("capture"),
+          emit: () => events.push("emit"),
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBe(failure);
+    expect(events).toEqual(["capture", "provider", "emit"]);
+  });
+
   test("fullStream error without a client abort releases the reservation to 0 and bills nothing", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     const settle = createCreditReservationSettler(ledger.reservation);

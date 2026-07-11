@@ -127,6 +127,7 @@ const { handleStreamingRequest } = __streamingCreditTestHooks;
 const { handleNonStreamingRequest } = __reasoningEffortTestHooks;
 const { qualifiesForPassthroughStreaming, mapPassthroughUpstreamStatus } =
   __passthroughStreamingTestHooks;
+const { __responsesRouteTestHooks } = await import("../v1/responses/route");
 
 // --- global fetch mock (the direct upstream boundary) ------------------------
 const realFetch = globalThis.fetch;
@@ -257,6 +258,10 @@ function callStreaming(
     effectiveMaxTokens?: number;
     pooledCredential?: unknown;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    providerDispatchTelemetry?: {
+      capture(): void;
+      emit(): void;
+    };
   } = {},
 ) {
   return handleStreamingRequest(
@@ -282,6 +287,7 @@ function callStreaming(
     (options.pooledCredential ?? null) as never,
     false,
     options.executionCtx,
+    options.providerDispatchTelemetry,
   );
 }
 
@@ -462,6 +468,23 @@ describe("passthrough streaming — qualification predicate", () => {
 });
 
 describe("passthrough streaming — qualifying request pipes bytes verbatim and bills from the usage frame", () => {
+  test("captures the preforward boundary immediately around the upstream fetch", async () => {
+    const events: string[] = [];
+    fetchImpl = async () => {
+      events.push("fetch");
+      return sseResponse(UPSTREAM_SSE);
+    };
+
+    const res = await callStreaming(async () => null, {
+      providerDispatchTelemetry: {
+        capture: () => events.push("capture"),
+        emit: () => events.push("emit"),
+      },
+    });
+    expect(events).toEqual(["capture", "fetch", "emit"]);
+    await res.text();
+  });
+
   test("bytes are piped verbatim, usage is billed, settle chain runs once", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);
@@ -947,4 +970,121 @@ describe("passthrough streaming — settlement runs OFF the response path via wa
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
     expect(aiBillingRecord).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("Responses API compatibility telemetry", () => {
+  test("converts instructions, multipart input, roles, and token limits", async () => {
+    const messages = __responsesRouteTestHooks.toChatMessages({
+      model: MODEL,
+      instructions: "  keep it concise  ",
+      input: [
+        {
+          role: "assistant",
+          content: [
+            { type: "output_text", output_text: "prior answer" },
+            { type: "input_text", input_text: "follow-up" },
+          ],
+        },
+        { role: undefined, content: " current question " },
+      ],
+      max_output_tokens: 77,
+    });
+    expect(messages).toEqual([
+      { role: "system", content: "keep it concise" },
+      { role: "assistant", content: "prior answer\nfollow-up" },
+      { role: "user", content: "current question" },
+    ]);
+
+    const request = __responsesRouteTestHooks.buildChatRequest(
+      new Request("https://api.elizacloud.ai/api/v1/responses", {
+        method: "POST",
+        headers: { "X-Eliza-Trace-Id": "trace-responses-12345678" },
+      }),
+      {
+        model: MODEL,
+        max_output_tokens: 77,
+        temperature: 0.2,
+        top_p: 0.9,
+      },
+      messages,
+    );
+    expect((await request.json()) as unknown).toEqual({
+      model: MODEL,
+      messages,
+      temperature: 0.2,
+      max_tokens: 77,
+      top_p: 0.9,
+      stream: false,
+    });
+    expect(request.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace-responses-12345678",
+    );
+  });
+
+  test("maps chat payloads and produces OpenAI-shaped validation errors", async () => {
+    const mapped = __responsesRouteTestHooks.mapChatCompletionToResponse(
+      {
+        id: "resp_existing",
+        model: MODEL,
+        choices: [{ message: { content: "  hello  " } }],
+        usage: { prompt_tokens: 10, completion_tokens: 3 },
+      },
+      "fallback-model",
+    );
+    expect(mapped).toMatchObject({
+      id: "resp_existing",
+      model: MODEL,
+      status: "completed",
+      output_text: "hello",
+      usage: { input_tokens: 10, output_tokens: 3, total_tokens: 13 },
+    });
+
+    const error = __responsesRouteTestHooks.jsonError(
+      "Missing required field: input",
+      400,
+      "missing_required_parameter",
+    );
+    expect(error.status).toBe(400);
+    expect((await error.json()) as unknown).toEqual({
+      error: {
+        message: "Missing required field: input",
+        type: "invalid_request_error",
+        code: "missing_required_parameter",
+      },
+    });
+  });
+});
+
+describe("Cloud API bootstrap telemetry", () => {
+  test("adds trace, Worker timing, scoped TAO, and browser exposure on a real route", async () => {
+    const { createApp } = await import("../src/bootstrap-app");
+    const app = createApp();
+    const response = await app.fetch(
+      new Request("https://api.elizacloud.ai/api/i18n/locale", {
+        headers: {
+          Origin: "https://www.elizacloud.ai",
+          "X-Eliza-Trace-Id": "trace_bootstrap_12345678",
+        },
+      }),
+      { ENVIRONMENT: "test", REDIS_RATE_LIMITING: "false" } as never,
+      {
+        waitUntil: (_promise: Promise<unknown>) => undefined,
+        passThroughOnException: () => undefined,
+      } as never,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace_bootstrap_12345678",
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "cloud_worker;dur=",
+    );
+    expect(response.headers.get("Timing-Allow-Origin")).toBe(
+      "https://www.elizacloud.ai",
+    );
+    expect(
+      response.headers.get("Access-Control-Expose-Headers")?.toLowerCase(),
+    ).toContain("server-timing");
+  }, 60_000);
 });

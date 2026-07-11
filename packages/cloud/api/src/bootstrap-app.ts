@@ -20,6 +20,10 @@ import {
   rateLimitConfigVerdict,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
+import {
+  resolveElizaTraceId,
+  setHttpTelemetryHeaders,
+} from "@/lib/observability/http-telemetry";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { runWithRequestContext } from "@/lib/runtime/request-context";
 import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
@@ -195,6 +199,24 @@ export function createApp(): Hono<AppEnv> {
   });
 
   app.use("*", requestId());
+  app.use("*", async (c, next) => {
+    const traceId = resolveElizaTraceId(c.req.raw.headers);
+    const startedAt = performance.now();
+    c.set("traceId", traceId);
+    await next();
+    setHttpTelemetryHeaders(
+      c.res.headers,
+      traceId,
+      [
+        {
+          name: "cloud_worker",
+          durationMs: performance.now() - startedAt,
+          description: "Cloud_API_until_response_headers",
+        },
+      ],
+      c.res.headers.get("Access-Control-Allow-Origin") ?? undefined,
+    );
+  });
   app.use("*", corsMiddleware);
 
   // Security response headers for every API response. The SPA already ships
@@ -247,10 +269,13 @@ export function createApp(): Hono<AppEnv> {
   });
   app.use("*", async (c, next) => {
     const requestId = c.get("requestId") ?? crypto.randomUUID();
+    const traceId = c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers);
     c.set("requestId", requestId);
+    c.set("traceId", traceId);
     return observeCloudRequest(
       {
         id: requestId,
+        traceId,
         method: c.req.method,
         path: new URL(c.req.url).pathname,
       },

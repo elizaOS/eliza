@@ -247,6 +247,7 @@ function makeRequest(
     headers: {
       "content-type": "application/json",
       "x-request-id": CLIENT_REQUEST_ID,
+      "x-eliza-trace-id": "trace_optimistic_12345678",
       ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
     },
     body: JSON.stringify({
@@ -258,10 +259,10 @@ function makeRequest(
   });
 }
 
-async function drive(affiliateCode?: string): Promise<void> {
+async function drive(affiliateCode?: string): Promise<Response> {
   // The handler owns its try/catch and always returns a Response (the stubbed
   // model call makes it an error response); we only read the spies.
-  await handleChatCompletionsPOST(makeRequest(affiliateCode), {
+  return await handleChatCompletionsPOST(makeRequest(affiliateCode), {
     skipOrgRateLimit: true,
   });
 }
@@ -317,6 +318,22 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
         openai: { promptCacheKey: "v5:optimistic-route" },
       },
     });
+  });
+
+  test("provider errors preserve the exact frozen preforward boundary", async () => {
+    const response = await drive();
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "trace_optimistic_12345678",
+    );
+    const preforward = response.headers.get("X-Eliza-Preforward-Ms");
+    expect(preforward).toMatch(
+      /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
   });
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {

@@ -1,0 +1,178 @@
+/**
+ * HTTP trace-correlation and Server-Timing helpers shared by Cloud Worker routes.
+ *
+ * Cloudflare's native trace id is not propagated to external origins, so the
+ * application-level id below correlates callers with the Cloud gateway. Deeper
+ * provider and dedicated-agent propagation is tracked separately.
+ */
+
+export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
+export const ELIZA_PREFORWARD_HEADER = "X-Eliza-Preforward-Ms";
+export const ELIZA_TELEMETRY_HEADER = "X-Eliza-Telemetry";
+
+const SAFE_TRACE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
+const W3C_TRACEPARENT_V00 = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
+const ZERO_TRACE_ID = "0".repeat(32);
+const ZERO_PARENT_ID = "0".repeat(16);
+
+export interface ServerTimingMetric {
+  name: string;
+  durationMs: number;
+  description?: string;
+}
+
+export interface GatewayPreforwardTiming {
+  readonly totalMs: number;
+  readonly authMs: number;
+  readonly middleMs: number;
+  readonly reserveMs: number;
+  readonly setupMs: number;
+}
+
+/** Hooks placed immediately around the synchronous provider invocation. */
+export interface ProviderDispatchTelemetry {
+  capture(): void;
+  emit(): void;
+}
+
+/** Resolve a safe, stable id without reflecting arbitrary header bytes. */
+export function resolveElizaTraceId(headers: Headers): string {
+  const supplied = headers.get(ELIZA_TRACE_ID_HEADER)?.trim();
+  if (supplied && SAFE_TRACE_ID.test(supplied)) return supplied;
+
+  const traceparent = headers.get("traceparent")?.trim();
+  const match = traceparent?.match(W3C_TRACEPARENT_V00);
+  if (match && match[1] !== ZERO_TRACE_ID && match[2] !== ZERO_PARENT_ID) {
+    return match[1];
+  }
+  return crypto.randomUUID();
+}
+
+function sanitizeToken(value: string): string {
+  return value.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64) || "unknown";
+}
+
+function finiteDuration(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return 0;
+  return Math.round(value * 100) / 100;
+}
+
+/** Normalize once so structured logs and both response formats agree exactly. */
+export function snapshotGatewayPreforwardTiming(
+  timing: GatewayPreforwardTiming,
+): GatewayPreforwardTiming {
+  return Object.freeze({
+    totalMs: finiteDuration(timing.totalMs),
+    authMs: finiteDuration(timing.authMs),
+    middleMs: finiteDuration(timing.middleMs),
+    reserveMs: finiteDuration(timing.reserveMs),
+    setupMs: finiteDuration(timing.setupMs),
+  });
+}
+
+/**
+ * Snapshot immediately before invoking a provider and emit only after the
+ * operation has started. `finally` preserves telemetry for synchronous throws.
+ */
+export function invokeWithProviderDispatchTelemetry<T>(
+  telemetry: ProviderDispatchTelemetry | undefined,
+  operation: () => T,
+): T {
+  telemetry?.capture();
+  try {
+    return operation();
+  } finally {
+    telemetry?.emit();
+  }
+}
+
+/** Bind telemetry without moving argument/config construction past the boundary. */
+export function bindProviderDispatchTelemetry<TInput, TOutput>(
+  telemetry: ProviderDispatchTelemetry | undefined,
+  operation: (input: TInput) => TOutput,
+): (input: TInput) => TOutput {
+  return (input) => invokeWithProviderDispatchTelemetry(telemetry, () => operation(input));
+}
+
+/** Append metrics while preserving Server-Timing values set by inner hops. */
+export function appendServerTiming(headers: Headers, metrics: readonly ServerTimingMetric[]): void {
+  const encoded = metrics.map((metric) => {
+    const name = sanitizeToken(metric.name);
+    const duration = finiteDuration(metric.durationMs);
+    const description = metric.description ? `;desc="${sanitizeToken(metric.description)}"` : "";
+    return `${name};dur=${duration}${description}`;
+  });
+  if (encoded.length === 0) return;
+
+  const existing = headers.get("Server-Timing");
+  headers.set(
+    "Server-Timing",
+    existing ? `${existing}, ${encoded.join(", ")}` : encoded.join(", "),
+  );
+}
+
+/** Add browser-readable correlation headers to a mutable response. */
+export function setHttpTelemetryHeaders(
+  headers: Headers,
+  traceId: string,
+  metrics: readonly ServerTimingMetric[] = [],
+  timingAllowOrigin?: string,
+): void {
+  headers.set(ELIZA_TRACE_ID_HEADER, traceId);
+  if (timingAllowOrigin) {
+    headers.set("Timing-Allow-Origin", timingAllowOrigin);
+  }
+  appendServerTiming(headers, metrics);
+}
+
+/** Emit the same frozen gateway boundary in legacy and standard formats. */
+export function setGatewayPreforwardTelemetryHeaders(
+  headers: Headers,
+  traceId: string,
+  timing: GatewayPreforwardTiming,
+): void {
+  const snapshot = snapshotGatewayPreforwardTiming(timing);
+  headers.set(
+    ELIZA_PREFORWARD_HEADER,
+    `total=${snapshot.totalMs};auth=${snapshot.authMs};mid=${snapshot.middleMs};reserve=${snapshot.reserveMs};setup=${snapshot.setupMs}`,
+  );
+  setHttpTelemetryHeaders(headers, traceId, [
+    { name: "gateway_auth", durationMs: snapshot.authMs },
+    { name: "gateway_middle", durationMs: snapshot.middleMs },
+    { name: "gateway_reserve", durationMs: snapshot.reserveMs },
+    { name: "gateway_setup", durationMs: snapshot.setupMs },
+    { name: "gateway_preforward", durationMs: snapshot.totalMs },
+  ]);
+}
+
+/** Re-wrap a provider response without buffering its body or mutating immutable headers. */
+export function withGatewayPreforwardTelemetry(
+  response: Response,
+  traceId: string,
+  timing: GatewayPreforwardTiming,
+): Response {
+  const headers = new Headers(response.headers);
+  setGatewayPreforwardTelemetryHeaders(headers, traceId, timing);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
+ * Copy only non-sensitive telemetry headers while one compatibility route
+ * transforms a response body into another wire format.
+ */
+export function copyHttpTelemetryHeaders(from: Headers, to: Headers): void {
+  for (const name of [
+    ELIZA_TRACE_ID_HEADER,
+    ELIZA_PREFORWARD_HEADER,
+    "Server-Timing",
+    "Timing-Allow-Origin",
+    "X-Eliza-Inference-Path",
+  ]) {
+    const value = from.get(name);
+    if (value) to.set(name, value);
+  }
+}
