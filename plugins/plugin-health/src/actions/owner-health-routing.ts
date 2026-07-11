@@ -8,13 +8,13 @@ import type {
 } from "@elizaos/core";
 
 const OWNER_HEALTH_ACTION = "OWNER_HEALTH";
-const FIRST_PERSON = /\b(?:i|me|my|mine)\b/i;
+const OWNER_REFERENCE = /\b(?:i|my|mine)\b/i;
 const HEALTH_SIGNAL =
   /\b(?:sleep|slept|recovery|recover(?:ed|y)?|resting heart rate|heart rate|hrv|steps?|active minutes?|activity|workouts?|calories?|distance|fitness|wearable|biometric)\b/i;
 const READ_INTENT =
   /\b(?:check|show|review|summarize|tell me|status|trend|how (?:did|has|is|was)|what (?:did|is|was|were))\b/i;
-const READ_WINDOW =
-  /\b(?:overnight|last night|today|this morning|this week|recent|recently)\b/i;
+const GENERAL_GUIDANCE =
+  /\b(?:advice|tips?|improv(?:e|ing)|what should i|how (?:can|should|do) i|help me)\b/i;
 const CLINICAL_ADVICE =
   /\b(?:diagnos|treat|medicat|dosage|symptom|pain|injur|doctor|emergency)\b/i;
 
@@ -28,9 +28,10 @@ function hasOwnerHealthAction(
 
 export function isOwnerHealthReadRequest(text: string): boolean {
   return (
-    FIRST_PERSON.test(text) &&
+    OWNER_REFERENCE.test(text) &&
     HEALTH_SIGNAL.test(text) &&
-    (READ_INTENT.test(text) || READ_WINDOW.test(text)) &&
+    READ_INTENT.test(text) &&
+    !GENERAL_GUIDANCE.test(text) &&
     !CLINICAL_ADVICE.test(text)
   );
 }

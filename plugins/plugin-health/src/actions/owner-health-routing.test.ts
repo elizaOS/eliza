@@ -37,6 +37,9 @@ describe("owner health routing", () => {
         "Good morning — how did my body recover overnight?",
       ),
     ).toBe(true);
+    expect(isOwnerHealthReadRequest("Show me my workout status today.")).toBe(
+      true,
+    );
   });
 
   it("forces the health context and OWNER_HEALTH candidate", async () => {
@@ -60,6 +63,13 @@ describe("owner health routing", () => {
         "How should I treat my knee pain after yesterday's workout?",
       ),
     ).toBe(false);
+    expect(isOwnerHealthReadRequest("I did a workout today.")).toBe(false);
+    expect(isOwnerHealthReadRequest("Tell me how to improve my sleep.")).toBe(
+      false,
+    );
+    expect(isOwnerHealthReadRequest("Tell me about sleep recovery tips.")).toBe(
+      false,
+    );
     expect(
       await ownerHealthRoutingEvaluator.shouldRun(
         context("How did my body recover overnight?", "REPLY"),
