@@ -199,6 +199,11 @@ export function AddAccountDialog({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
   const [deviceCodeCopied, setDeviceCodeCopied] = useState(false);
+  // The sign-in URL shown for the user to open MANUALLY (Codex device
+  // verification URL, or Anthropic's claude.ai authorize URL). Only the Codex
+  // localhost-callback flow auto-opens a window; every other flow shows this
+  // link so the user opens it wherever they want (a second device / browser).
+  const [oauthUrl, setOauthUrl] = useState<string | null>(null);
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -235,6 +240,7 @@ export function AddAccountDialog({
     setSessionId(null);
     setDeviceCode(null);
     setDeviceCodeCopied(false);
+    setOauthUrl(null);
   }, [closeEventSource, providerId]);
 
   const copyDeviceCode = useCallback(async (code: string) => {
@@ -383,11 +389,14 @@ export function AddAccountDialog({
       setErrorMessage(null);
       setStep("oauth-starting");
 
-      // Open the popup BEFORE the await so the browser sees a synchronous
-      // user-gesture-triggered window.open. Once we have the URL, navigate
-      // it. preOpenWindow returns null on desktop (Electrobun handles
-      // routing via the IPC call inside openExternalUrl).
-      const win = preOpenWindow();
+      // Auto-open a real browser window ONLY for the Codex localhost-callback
+      // flow, where the :1455 listener catches the redirect and completes login
+      // hands-free. Every other flow — Codex device code, and Anthropic's
+      // console-callback paste — shows a copyable link instead of hijacking a
+      // tab, so the user signs in wherever they want and enters/pastes the code.
+      // (preOpenWindow must run synchronously in the click gesture.)
+      const opensWindow = mode === "localhost" && providerId === "openai-codex";
+      const win = opensWindow ? preOpenWindow() : null;
       try {
         const flow = await client.startAccountOAuth(providerId, {
           label: label.trim(),
@@ -397,6 +406,8 @@ export function AddAccountDialog({
         restoredSessionRef.current = flow.sessionId;
         setSessionId(flow.sessionId);
         setDeviceCode(flow.userCode ?? null);
+        // Show the sign-in link for every non-auto-open flow.
+        setOauthUrl(opensWindow ? null : (flow.authUrl ?? null));
         writeSubscriptionOAuth({
           providerId,
           sessionId: flow.sessionId,
@@ -411,7 +422,9 @@ export function AddAccountDialog({
           setStep("oauth-waiting");
         }
         subscribeToFlow(flow.sessionId);
-        navigatePreOpenedWindow(win, flow.authUrl);
+        if (opensWindow) {
+          navigatePreOpenedWindow(win, flow.authUrl);
+        }
       } catch (err) {
         setErrorMessage(
           err instanceof Error && err.message
@@ -606,13 +619,34 @@ export function AddAccountDialog({
               }
               className="h-10"
             >
-              {subscriptionOAuthModeForHostname(window.location.hostname) ===
-              "localhost"
-                ? "Log in with localhost callback"
-                : providerId === "openai-codex"
-                  ? "Log in with device code"
-                  : "Log in and paste authorization code"}
+              {providerId === "openai-codex"
+                ? subscriptionOAuthModeForHostname(window.location.hostname) ===
+                  "localhost"
+                  ? "Log in with localhost callback"
+                  : "Log in with device code"
+                : "Log in and paste a code"}
             </Button>
+            {/*
+              Manual device-code override. The primary button auto-picks by
+              hostname, but that heuristic can't tell a real localhost from a
+              TUNNELED localhost (SSH -L / port-forward): the browser is remote
+              yet the URL is `localhost`, so the loopback :1455 callback lands on
+              the wrong machine. This override lets Codex users force the device
+              flow (visit auth.openai.com/codex/device + enter a code) without
+              needing to reach the app on a non-localhost address.
+            */}
+            {providerId === "openai-codex" &&
+            subscriptionOAuthModeForHostname(window.location.hostname) ===
+              "localhost" ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => void startOAuth("device")}
+                className="h-8 text-xs text-muted hover:text-txt"
+              >
+                Use a device code instead (for SSH tunnels / another browser)
+              </Button>
+            ) : null}
             {/* API-key path is intentionally hidden for subscription providers. */}
           </div>
         ) : null}
@@ -629,31 +663,60 @@ export function AddAccountDialog({
         {step === "oauth-waiting" ? (
           <div className="grid gap-3 py-3 text-sm text-muted">
             {deviceCode ? (
-              <div className="rounded border border-border bg-card p-3 text-center">
-                <p className="mb-1 text-xs">Enter this one-time code:</p>
-                <code className="select-all text-lg font-semibold tracking-widest text-txt">
-                  {deviceCode}
-                </code>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mx-auto mt-2 h-7 text-xs"
-                  onClick={() => void copyDeviceCode(deviceCode)}
-                >
-                  {deviceCodeCopied ? "Copied to clipboard" : "Copy code"}
-                </Button>
+              // Device flow: show the verification URL + code as instructions.
+              // We deliberately do NOT auto-open a browser — the user opens the
+              // link wherever they want (a second device, another browser).
+              <div className="grid gap-3">
+                <div className="grid gap-1">
+                  <p className="text-xs text-txt">
+                    1. Open this link in your browser and sign in
+                  </p>
+                  <a
+                    href={oauthUrl ?? "https://auth.openai.com/codex/device"}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="select-all break-all text-xs font-medium text-txt underline underline-offset-2 hover:text-muted"
+                  >
+                    {oauthUrl ?? "https://auth.openai.com/codex/device"}
+                  </a>
+                </div>
+                <div className="grid gap-1">
+                  <p className="text-xs text-txt">
+                    2. Enter this one-time code after you sign in (expires in
+                    ~15 minutes)
+                  </p>
+                  <div className="rounded border border-border bg-card p-3 text-center">
+                    <code className="select-all text-lg font-semibold tracking-widest text-txt">
+                      {deviceCode}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="mx-auto mt-2 h-7 text-xs"
+                      onClick={() => void copyDeviceCode(deviceCode)}
+                    >
+                      {deviceCodeCopied ? "Copied to clipboard" : "Copy code"}
+                    </Button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted">
+                  <Spinner className="h-3.5 w-3.5" />
+                  <span>Waiting for you to approve in your browser…</span>
+                </div>
               </div>
-            ) : null}
-            <div className="flex items-center gap-3">
-              <Spinner className="h-4 w-4" />
-              <span>
-                {t("accounts.add.oauth.waiting", {
-                  defaultValue:
-                    "Waiting for browser… Complete the sign-in there.",
-                })}
-              </span>
-            </div>
+            ) : (
+              // Localhost callback flow: a real browser window was opened.
+              <div className="flex items-center gap-3">
+                <Spinner className="h-4 w-4" />
+                <span>
+                  {t("accounts.add.oauth.waiting", {
+                    defaultValue:
+                      "Waiting for browser… Complete the sign-in there.",
+                  })}
+                </span>
+              </div>
+            )}
             {sessionId ? (
               <p className="text-xs text-muted">
                 {t("accounts.add.oauth.sessionHint", {
@@ -667,12 +730,34 @@ export function AddAccountDialog({
 
         {step === "oauth-need-code" ? (
           <form onSubmit={submitOAuthCode} className="grid gap-3 py-2">
-            <p className="text-xs text-muted">
-              {t("accounts.add.oauth.codeHint", {
-                defaultValue:
-                  "Auto-redirect didn't reach us. Paste the code (or full redirect URL) from the browser.",
-              })}
-            </p>
+            {/* Show the sign-in link to open manually (not auto-opened) so the
+                user can sign in from any browser / a second device, then paste
+                the code back here. */}
+            {oauthUrl ? (
+              <div className="grid gap-1">
+                <p className="text-xs text-txt">
+                  1. Open this link and sign in
+                </p>
+                <a
+                  href={oauthUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="select-all break-all text-xs font-medium text-txt underline underline-offset-2 hover:text-muted"
+                >
+                  {oauthUrl}
+                </a>
+                <p className="mt-1 text-xs text-txt">
+                  2. Paste the code (or full redirect URL) it gives you
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted">
+                {t("accounts.add.oauth.codeHint", {
+                  defaultValue:
+                    "Paste the code (or full redirect URL) from the browser.",
+                })}
+              </p>
+            )}
             <Input
               value={oauthCode}
               onChange={(e) => setOauthCode(e.target.value)}
