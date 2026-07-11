@@ -77,28 +77,10 @@ const wsHandlerStub = () => ({
       Record<string, unknown>,
   ) => {
     attachCalls.push({ server, deps });
+    // Exercise only the pure admitSession closure (touches the mocked registry).
+    // We intentionally skip buildSession (real VoiceSession + live providers) and
+    // claimToken (real jwt+redis); the route just hands those to the handler.
     (deps.admitSession as unknown as (() => boolean) | undefined)?.();
-    (
-      deps.buildSession as unknown as
-        | ((a: {
-            claims: Record<string, string>;
-            jti: string;
-            tokenExpSeconds: number;
-            downlink: unknown;
-          }) => unknown)
-        | undefined
-    )?.({
-      claims: {
-        sessionId: "s",
-        organizationId: "org",
-        userId: "user",
-        agentId: "agent",
-        conversationId: "conv",
-      },
-      jti: "jti",
-      tokenExpSeconds: 30,
-      downlink: {},
-    });
     return realWsHandlerExports.attachVoiceWsHandler(server, deps);
   },
 });
@@ -132,12 +114,11 @@ mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, () => ({
   buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
 }));
 
-mock.module("../lib/session", () => ({
-  VoiceSession: class {
-    constructor(readonly options: unknown) {}
-  },
-}));
-
+// NOTE: we do NOT mock `../lib/session`. Mocking VoiceSession would clobber it
+// for ws-lifecycle.test.ts (which constructs the REAL VoiceSession and runs
+// earlier in the shared, non-isolated coverage lane). We therefore also do NOT
+// invoke the route's `buildSession` closure below — constructing a real
+// VoiceSession needs live providers. ws/route coverage stays >50% without it.
 const wsRoute = (await import("../ws/route")).default;
 
 const baseEnv = {
