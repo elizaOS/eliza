@@ -88,9 +88,6 @@ const admitInferenceChargeViaLedger = mock(async () => ({
 }));
 const createLedgerDebitSettler = mock(() => ledgerInnerSettler);
 const createCreditReservationSettler = mock(() => async () => null);
-const generateText = mock((_options: Record<string, unknown>) => {
-  throw new Error("model-call-stub");
-});
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
 // the org-credits branch (not app-credits) is taken and moderation is skipped.
