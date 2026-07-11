@@ -576,7 +576,10 @@ export async function handleAgentRoutes(
       }
 
       // Check concurrency limit before spawning
-      const activeSessions = await ctx.acpService.listSessions();
+      const sessions = await ctx.acpService.listSessions();
+      const activeSessions = sessions.filter(
+        (session) => !TERMINAL_SESSION_STATUSES.has(session.status),
+      );
       const maxSessions = 8;
       if (activeSessions.length >= maxSessions) {
         sendError(

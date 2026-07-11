@@ -11,7 +11,16 @@
 // biome-ignore assist/source/organizeImports: comment-only pass preserves import token order.
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import type { Content, HandlerCallback, Memory } from "@elizaos/core";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../src/services/config-env.js", () => ({
+  readConfigEnvKey: (key: string) => process.env[key],
+}));
+
 import { SubAgentRouter } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
 
@@ -27,9 +36,12 @@ const ACCOUNT = {
   strategy: "least-used",
 };
 
-function makeSession(id: string): SessionInfo {
+function makeSession(
+  id: string,
+  overrides: Partial<SessionInfo> = {},
+): SessionInfo {
   const now = new Date("2026-07-01T12:00:00.000Z");
-  return {
+  const session: SessionInfo = {
     id,
     name: "demo",
     agentType: "claude",
@@ -46,6 +58,11 @@ function makeSession(id: string): SessionInfo {
       initialTask: "fix the login bug",
       account: ACCOUNT,
     },
+  };
+  return {
+    ...session,
+    ...overrides,
+    metadata: { ...session.metadata, ...overrides.metadata },
   };
 }
 
@@ -69,6 +86,7 @@ function makeAcp(sessions: SessionInfo[]) {
       stopSession: vi.fn(async () => {}),
       updateSessionMetadata: vi.fn(async () => undefined),
       getChangedPaths: vi.fn(() => [] as string[]),
+      getSessionOutput: vi.fn(async () => "Implemented login validation."),
       sendToSession: vi.fn(async () => ({})),
       spawnSession,
     },
@@ -154,18 +172,77 @@ describe("mid-session account failover", () => {
       metadata: Record<string, unknown>;
     };
     expect(spawnArgs.agentType).toBe("claude");
-    expect(spawnArgs.initialTask).toBe("fix the login bug");
+    expect(spawnArgs.initialTask).toContain("[RESUMING AFTER FAILOVER]");
+    expect(spawnArgs.initialTask).toContain("fix the login bug");
     expect(spawnArgs.metadata.retryOfSessionId).toBe("s-1");
     expect(spawnArgs.metadata.roomId).toBe(ROOM);
     // The dead session's stale account descriptor is NOT carried forward —
     // spawnSession re-selects and re-stamps it.
     expect(spawnArgs.metadata.account).toBeUndefined();
+    expect(spawnArgs.metadata.resumeContext).toMatchObject({
+      kind: "rate-limit-failover",
+      reason: "rate-limited",
+      fromSessionId: "s-1",
+      lastProgress: "Implemented login validation.",
+    });
     // Dead session stopped; its error narration suppressed (the replacement's
     // own task_complete is the only user-facing message).
     expect(acp.service.stopSession).toHaveBeenCalledWith("s-1");
     expect(handleMessage).not.toHaveBeenCalled();
 
     await router.stop();
+  });
+
+  it("carries the predecessor branch and real on-disk changes into the resume envelope", async () => {
+    const workdir = mkdtempSync(join(tmpdir(), "account-failover-resume-"));
+    try {
+      execFileSync("git", ["init", "-b", "feature/login-fix"], {
+        cwd: workdir,
+      });
+      execFileSync("git", ["config", "user.email", "test@example.com"], {
+        cwd: workdir,
+      });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: workdir });
+      writeFileSync(join(workdir, "README.md"), "baseline\n");
+      execFileSync("git", ["add", "."], { cwd: workdir });
+      execFileSync("git", ["commit", "-m", "baseline"], { cwd: workdir });
+      const baseline = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: workdir,
+        encoding: "utf8",
+      }).trim();
+      writeFileSync(
+        join(workdir, "src-login.ts"),
+        "export const fixed = true;\n",
+      );
+
+      const acp = makeAcp([
+        makeSession("s-1", {
+          workdir,
+          metadata: { codingBaselineSha: baseline },
+        }),
+      ]);
+      acp.service.getChangedPaths.mockReturnValue(["src-login.ts"]);
+      const { runtime } = makeRuntime(acp.service);
+      const router = await SubAgentRouter.start(runtime);
+
+      acp.emit("s-1", "error", { message: "429 rate limit exceeded" });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+
+      const spawnArgs = acp.spawnSession.mock.calls[0]?.[0] as {
+        initialTask: string;
+        metadata: Record<string, unknown>;
+      };
+      expect(spawnArgs.metadata.resumeContext).toMatchObject({
+        branch: "feature/login-fix",
+        changedFiles: ["src-login.ts"],
+      });
+      expect(spawnArgs.initialTask).toContain("feature/login-fix");
+      expect(spawnArgs.initialTask).toContain("src-login.ts");
+
+      await router.stop();
+    } finally {
+      rmSync(workdir, { recursive: true, force: true });
+    }
   });
 
   it("respawns on a needs-reauth session error too (expired injected token mid-run)", async () => {
@@ -181,6 +258,83 @@ describe("mid-session account failover", () => {
     expect(bridge.markNeedsReauth).toHaveBeenCalledTimes(1);
     expect(acp.spawnSession).toHaveBeenCalledTimes(1);
     expect(handleMessage).not.toHaveBeenCalled();
+
+    await router.stop();
+  });
+
+  it("with authReason=token_expired: respawns with a fresh token but does NOT mark the account needs-reauth", async () => {
+    // The injected bare CLAUDE_CODE_OAUTH_TOKEN aged out mid-run while the
+    // account stays healthy. The router must recover (respawn re-injects a
+    // fresh token) WITHOUT sidelining the working account in the pool.
+    const acp = makeAcp([makeSession("s-1")]);
+    const { runtime, handleMessage } = makeRuntime(acp.service);
+    const router = await SubAgentRouter.start(runtime);
+
+    acp.emit("s-1", "error", {
+      message: "oauth token has expired",
+      failureKind: "auth",
+      authReason: "token_expired",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Account NOT marked — it is healthy, only the injected token expired.
+    expect(bridge.markNeedsReauth).not.toHaveBeenCalled();
+    expect(bridge.markRateLimited).not.toHaveBeenCalled();
+    // But the task still recovered via a respawn (fresh token re-injected).
+    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
+    // Dead session's error narration suppressed (respawn is authoritative).
+    expect(handleMessage).not.toHaveBeenCalled();
+
+    await router.stop();
+  });
+
+  it("respawns on a token_expired authReason even when the message classifier misses the phrase (jwt expired)", async () => {
+    // `classifyAccountFailure` does not recognize `jwt expired` / `session
+    // expired` / `expired_token`, but the emitter already typed it via
+    // authReason. The router must still fire the recovery respawn, without
+    // marking the (healthy) account.
+    const acp = makeAcp([makeSession("s-1")]);
+    const { runtime, handleMessage } = makeRuntime(acp.service);
+    const router = await SubAgentRouter.start(runtime);
+
+    acp.emit("s-1", "error", {
+      message: "jwt expired", // NOT matched by classifyAccountFailure
+      failureKind: "auth",
+      authReason: "token_expired",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Recovered via respawn despite the classifier miss.
+    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
+    // Account kept healthy (token merely aged out).
+    expect(bridge.markNeedsReauth).not.toHaveBeenCalled();
+    expect(handleMessage).not.toHaveBeenCalled();
+
+    await router.stop();
+  });
+
+  it("token-expiry whose respawn FAILS marks the account needs-reauth (no stuck retry)", async () => {
+    // If the parent cannot mint a replacement token (dead refresh / outage),
+    // respawnStateLost fails. We must then mark the account needs-reauth so the
+    // task terminates honestly instead of lingering in retrying with no worker.
+    const acp = makeAcp([makeSession("s-1")]);
+    acp.spawnSession.mockRejectedValueOnce(new Error("token refresh failed"));
+    const { runtime, handleMessage } = makeRuntime(acp.service);
+    const router = await SubAgentRouter.start(runtime);
+
+    acp.emit("s-1", "error", {
+      message: "oauth token has expired",
+      failureKind: "auth",
+      authReason: "token_expired",
+    });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Respawn was attempted...
+    expect(acp.spawnSession).toHaveBeenCalledTimes(1);
+    // ...and failed, so the account IS now marked needs-reauth (fallback).
+    expect(bridge.markNeedsReauth).toHaveBeenCalledTimes(1);
+    // The honest error reaches the planner/user (no silent stuck retry).
+    expect(handleMessage).toHaveBeenCalledTimes(1);
 
     await router.stop();
   });

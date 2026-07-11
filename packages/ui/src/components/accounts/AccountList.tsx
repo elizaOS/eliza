@@ -9,7 +9,7 @@
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { Plus } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";
 import { useAppSelector } from "../../state";
@@ -18,6 +18,7 @@ import { Spinner } from "../ui/spinner";
 import { AccountCard } from "./AccountCard";
 import { AddAccountDialog } from "./AddAccountDialog";
 import { RotationStrategyPicker } from "./RotationStrategyPicker";
+import { readSubscriptionOAuth } from "./subscription-oauth-state";
 
 interface AccountListProps {
   providerId: LinkedAccountProviderId;
@@ -26,7 +27,24 @@ interface AccountListProps {
 export function AccountList({ providerId }: AccountListProps) {
   const t = useAppSelector((s) => s.t);
   const accounts = useAccounts();
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [addDialogOpen, setAddDialogOpen] = useState(
+    () => readSubscriptionOAuth(providerId) !== null,
+  );
+
+  useEffect(() => {
+    const restorePendingDialog = () => {
+      if (readSubscriptionOAuth(providerId)) setAddDialogOpen(true);
+    };
+    restorePendingDialog();
+    window.addEventListener("focus", restorePendingDialog);
+    window.addEventListener("pageshow", restorePendingDialog);
+    document.addEventListener("visibilitychange", restorePendingDialog);
+    return () => {
+      window.removeEventListener("focus", restorePendingDialog);
+      window.removeEventListener("pageshow", restorePendingDialog);
+      document.removeEventListener("visibilitychange", restorePendingDialog);
+    };
+  }, [providerId]);
 
   const providerEntry = useMemo(
     () => accounts.data?.providers.find((p) => p.providerId === providerId),

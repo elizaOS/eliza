@@ -9,6 +9,7 @@
  * behavior untouched.
  */
 
+import { isTokenExpiryText } from "@elizaos/auth";
 import {
   type CodingAccountStrategy,
   type CodingAccountUsage,
@@ -283,6 +284,8 @@ export function classifyAccountFailure(
   if (NEEDS_REAUTH_RE.test(text)) return "needs-reauth";
   return null;
 }
+
+export { isTokenExpiryText };
 
 /**
  * Best-effort: tell the pool a spawned account hit a rate-limit / needs reauth

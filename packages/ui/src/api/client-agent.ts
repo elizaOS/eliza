@@ -348,6 +348,7 @@ export interface AccountOAuthStartResult {
   sessionId: string;
   authUrl: string;
   needsCodeSubmission: boolean;
+  userCode?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -599,7 +600,7 @@ declare module "./client-base" {
     ): Promise<AccountRefreshUsageResult>;
     startAccountOAuth(
       providerId: LinkedAccountProviderId,
-      body: { label: string },
+      body: { label: string; mode?: "auto" | "localhost" | "device" },
     ): Promise<AccountOAuthStartResult>;
     submitAccountOAuthCode(
       providerId: LinkedAccountProviderId,

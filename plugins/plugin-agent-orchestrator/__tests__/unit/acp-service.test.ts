@@ -183,7 +183,15 @@ function runtime(
   settings: Record<string, string | undefined> = {},
   services: Record<string, unknown> = {},
 ) {
-  const values = { ELIZA_ACP_TRANSPORT: "cli", ...settings };
+  // Unit tests mock child_process.spawnSync as a failed process. Pin the
+  // elizaos adapter command so unrelated AcpService tests never accidentally
+  // exercise first-use provisioning through that mock; the real provisioning
+  // path has its own focused eliza-code-acp-install.test.ts coverage.
+  const values = {
+    ELIZA_ACP_TRANSPORT: "cli",
+    ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+    ...settings,
+  };
   return {
     logger: {
       debug: vi.fn(),
@@ -670,7 +678,9 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(1);
     // The "elizaos" agent type resolves to the eliza-code ACP server binary
     // (the elizaos CLI has no ACP mode); the spawn command is eliza-code-acp.
-    expect(nativeClientMock.instances[0]?.opts.command).toBe("eliza-code-acp");
+    expect(nativeClientMock.instances[0]?.opts.command).toMatch(
+      /eliza-code-acp|packages\/examples\/code\/dist\/acp\.js/,
+    );
   });
 
   it("honors explicit elizaos ACP command overrides", async () => {
@@ -2077,6 +2087,27 @@ describe("AcpService", () => {
         expect.objectContaining({ failureKind: "auth" }),
       ]),
     );
+  });
+
+  it("types a Claude injected-token expiry without misclassifying Codex refresh expiry", async () => {
+    const service = new AcpService(runtime());
+    const classify = (
+      service as unknown as {
+        authFailureFields(
+          text: string,
+          agentType?: string,
+        ): Record<string, unknown>;
+      }
+    ).authFailureFields.bind(service);
+
+    expect(classify("oauth token has expired", "claude")).toEqual({
+      failureKind: "auth",
+      authReason: "token_expired",
+    });
+    expect(classify("refresh token has expired", "codex")).toEqual({
+      failureKind: "auth",
+    });
+    expect(classify("ordinary compiler failure", "claude")).toEqual({});
   });
 
   it("honors public env aliases for workspace, approval, and prompt timeout", async () => {

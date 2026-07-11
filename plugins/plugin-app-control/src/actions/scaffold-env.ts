@@ -84,6 +84,21 @@ export interface TemplateResolution {
 	tried: string[];
 }
 
+/**
+ * Pick the non-blocking orchestrator operation for scaffold dispatches.
+ * `START_CODING_TASK` is a legacy alias of TASKS/create and waits for the
+ * entire coding turn to finish; scaffold flows must return as soon as the ACP
+ * session is ready because their verification bridge reports completion.
+ */
+export function findAsyncCodingDelegationActionName(
+	actions: readonly { name: string }[],
+): string | undefined {
+	if (actions.some((action) => action.name === "TASKS_SPAWN_AGENT")) {
+		return "TASKS_SPAWN_AGENT";
+	}
+	return findCodingDelegationActionName(actions);
+}
+
 async function isDirectory(dir: string): Promise<boolean> {
 	const stat = await fs.stat(dir).catch(() => null);
 	return stat?.isDirectory() ?? false;
@@ -276,7 +291,7 @@ export async function preflightCodingDispatch(
 	const guidance: string[] = [];
 
 	const hasCreateTask = Boolean(
-		findCodingDelegationActionName(runtime.actions ?? []),
+		findAsyncCodingDelegationActionName(runtime.actions ?? []),
 	);
 	if (!hasCreateTask) {
 		guidance.push(

@@ -15,6 +15,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isTokenExpiryText } from "@elizaos/auth/token-expiry";
 import type {
   Content,
   Entity,
@@ -44,6 +45,13 @@ import {
   parentAgentMarkerIndex,
 } from "./parent-agent-dispatch.js";
 import {
+  applyResumePreamble,
+  buildResumeContext,
+  RESUME_CONTEXT_METADATA_KEY,
+  type ResumeContext,
+  resumeEventFields,
+} from "./resume-context.js";
+import {
   createRouterLoopState,
   type RouterLoopState,
   routerLoopTransition,
@@ -57,6 +65,7 @@ import { stripToolTranscript } from "./transcript-sanitizer.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 import {
   captureChangeSet,
+  getWorkspaceBranch,
   summarizeChangeSet,
   verifyChangedFilesOnDisk,
   type WorkspaceArtifactVerification,
@@ -986,28 +995,58 @@ export class SubAgentRouter extends Service {
     let accountFailoverExhausted: CodingAccountFailureKind | null = null;
     let accountFailoverCount = 0;
     if (event === "error") {
-      const failureKind = classifyAccountFailure(
-        pickPayloadString(data, "message"),
-      );
+      // A `token_expired` authReason means the BARE injected token aged out
+      // mid-run (Claude coding spawns cannot refresh it) while the account is
+      // healthy — NOT a dead credential. We STILL want the bounded respawn
+      // (which re-selects the same account and re-injects a freshly-resolved
+      // token — the correct recovery), but we must NOT report it to the pool as
+      // needs-reauth: that spends a verify cycle and risks sidelining a working
+      // account. So the respawn runs for both cases; only the pool mark is
+      // gated on this NOT being an injected-token expiry.
+      const isInjectedTokenExpiry =
+        pickPayloadString(data, "authReason") === "token_expired";
+      // `classifyAccountFailure` recognizes most expiry phrasing but NOT every
+      // phrase `isTokenExpiryText` accepts (e.g. `jwt expired`, `session
+      // expired`, `expired_token`). When the emitter already typed this as a
+      // token expiry, treat it as a needs-reauth-CLASS failover trigger even if
+      // the message classifier missed it, so the recovery respawn still fires
+      // for every supported expiry phrase. (The pool mark stays suppressed
+      // below via isInjectedTokenExpiry; only the respawn path is unlocked.)
+      const failureKind: CodingAccountFailureKind | null =
+        classifyAccountFailure(pickPayloadString(data, "message")) ??
+        (isInjectedTokenExpiry ? "needs-reauth" : null);
+      const failureMessage = pickPayloadString(data, "message");
       const accountMeta = accountMetaFromSessionMetadata(
         session.metadata as Record<string, unknown> | undefined,
       );
       if (failureKind && accountMeta) {
-        this.log("warn", "coding account failure reported to pool", {
-          sessionId,
-          providerId: accountMeta.providerId,
-          accountId: accountMeta.accountId,
-          failureKind,
-        });
-        // Awaited (not fire-and-forget): the failover respawn below re-selects
-        // through the pool, so the dud account's mark must land first or the
-        // replacement can be handed the very account that just failed.
-        await reportCodingAccountFailure(
-          accountMeta,
-          failureKind,
-          Date.now(),
-          `sub-agent session ${sessionId} (${session.agentType})`,
-        );
+        if (!isInjectedTokenExpiry) {
+          this.log("warn", "coding account failure reported to pool", {
+            sessionId,
+            providerId: accountMeta.providerId,
+            accountId: accountMeta.accountId,
+            failureKind,
+          });
+          // Awaited (not fire-and-forget): the failover respawn below re-selects
+          // through the pool, so the dud account's mark must land first or the
+          // replacement can be handed the very account that just failed.
+          await reportCodingAccountFailure(
+            accountMeta,
+            failureKind,
+            Date.now(),
+            `sub-agent session ${sessionId} (${session.agentType})`,
+          );
+        } else {
+          this.log(
+            "info",
+            "claude injected-token expiry — respawning with a fresh token, account kept healthy",
+            {
+              sessionId,
+              providerId: accountMeta.providerId,
+              accountId: accountMeta.accountId,
+            },
+          );
+        }
         // Bounded in-router account failover, mirroring the state_lost
         // recovery: the failed account was just marked rate-limited /
         // needs-reauth (or verified healthy again by the bridge's auto-heal),
@@ -1030,15 +1069,60 @@ export class SubAgentRouter extends Service {
             return;
           }
           if (decision.kind === "respawn") {
+            // Build the resume context so the successor continues from the
+            // predecessor's ON-DISK progress in the SAME worktree instead of
+            // starting cold. Pure + I/O-free on this hot path: the workdir,
+            // reason, and predecessor id are all in hand; branch/diffStat are
+            // left for the successor to discover via `git status` (the
+            // preamble instructs exactly that), so no git call is made here.
+            // `failureKind` is the pooled-account taxonomy
+            // (rate-limited | needs-reauth), a subset of ResumeReason.
+            const predecessorWorkspace = await this.resolvePredecessorWorkspace(
+              acp,
+              session,
+            );
+            const resumeContext = buildResumeContext({
+              reason: failureKind,
+              authReason: isTokenExpiryText(failureMessage)
+                ? "token_expired"
+                : undefined,
+              fromSessionId: sessionId,
+              workdir: session.workdir,
+              branch: predecessorWorkspace.branch,
+              diffStat: predecessorWorkspace.changeSet?.diffStat,
+              changedFiles: predecessorWorkspace.changeSet?.changedFiles,
+              lastProgress: await this.resolvePredecessorProgress(
+                acp,
+                sessionId,
+                data,
+              ),
+            });
             const respawned = await this.respawnStateLost(
               session,
               `account ${failureKind}`,
+              resumeContext,
             );
             if (respawned) {
               this.verifyRetryHandedOffSessions.add(sessionId);
               // error-policy:J6 best-effort teardown; the respawn is authoritative.
               await acp.stopSession(sessionId).catch(() => {});
               return;
+            }
+            // Respawn failed to mint a successor. For a token-expiry we had
+            // SKIPPED the pool mark (the account was presumed healthy, just its
+            // injected token aged out) — but a failed respawn means the parent
+            // could NOT mint a replacement token (dead/revoked refresh or a
+            // refresh outage), so the account is not usable after all. Mark it
+            // needs-reauth now so the pool stops offering it and the task does
+            // not linger in `retrying` with no live worker; the honest error
+            // then falls through to the delivery path below.
+            if (isInjectedTokenExpiry && accountMeta) {
+              await reportCodingAccountFailure(
+                accountMeta,
+                failureKind,
+                Date.now(),
+                `sub-agent session ${sessionId} (${session.agentType}) token-expiry respawn failed`,
+              );
             }
           } else if (decision.kind === "terminal_failure") {
             accountFailoverExhausted = failureKind;
@@ -1793,6 +1877,7 @@ export class SubAgentRouter extends Service {
   private async respawnStateLost(
     session: SessionInfo,
     reason = "session_state_lost",
+    resumeContext?: ResumeContext,
   ): Promise<boolean> {
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
     // The original task is stashed on metadata by TASKS op=spawn_agent —
@@ -1812,11 +1897,25 @@ export class SubAgentRouter extends Service {
     // respawn a stale copy would mis-attribute the replacement's failures to
     // an account that isn't serving it.
     const { account: _staleAccount, ...carriedMeta } = meta;
+    // On a rate-limit/capacity FAILOVER resume (not a bare state-lost crash),
+    // prepend a resume preamble so the successor continues from the
+    // predecessor's on-disk progress in the SAME worktree instead of starting
+    // cold, and stamp the resume marker so the event surface + downstream can
+    // tell "rate-limited, resumable" from a plain respawn. The `initialTask`
+    // metadata field stays the UNWRAPPED original (respawnLineageKey and the
+    // reference-text fallbacks key on it); only the spawned instruction is
+    // wrapped, and only the SUCCESSOR carries the marker.
+    const spawnInstruction = resumeContext
+      ? applyResumePreamble(originalTask, resumeContext)
+      : originalTask;
+    const resumeMeta = resumeContext
+      ? { [RESUME_CONTEXT_METADATA_KEY]: resumeContext }
+      : {};
     try {
       const result = await service.spawnSession({
         agentType: session.agentType,
         workdir: session.workdir,
-        initialTask: originalTask,
+        initialTask: spawnInstruction,
         approvalPreset: session.approvalPreset,
         // Carry the original metadata forward — origin routing keys
         // (originRoomId/taskRoomId/source/...) plus the unchanged `initialTask`
@@ -1829,12 +1928,45 @@ export class SubAgentRouter extends Service {
           ...sanitizeSuccessorMetadata(carriedMeta),
           keepAliveAfterComplete: false,
           retryOfSessionId: session.id,
+          ...resumeMeta,
         },
       });
       this.log("info", `re-dispatched sub-agent after ${reason}`, {
         sessionId: session.id,
         retrySessionId: result.sessionId,
       });
+      // Surface a resumable-failover on the task-event stream so the UI can
+      // show "rate-limited, resumable" instead of a bare respawn (item 4). A
+      // typed session event on the SUCCESSOR carries the resume fields; the
+      // OrchestratorTaskService session-event bridge records it to the task
+      // timeline. Only for the resume path (resumeContext present), never for
+      // an ordinary state-lost respawn.
+      // error-policy:J7 The respawn is authoritative, so telemetry failure
+      // must remain observable without undoing the recovered session.
+      if (resumeContext) {
+        try {
+          // Emit on the predecessor, which is already task-mapped. The
+          // successor id is carried in the payload so the bridge cannot drop
+          // this synchronous event before registering the new session.
+          service.emitSessionEvent?.(session.id, "account_failover_resumed", {
+            successorSessionId: result.sessionId,
+            ...resumeEventFields(resumeContext),
+            workdir: resumeContext.workdir,
+            branch: resumeContext.branch,
+            diffStat: resumeContext.diffStat,
+          });
+        } catch (err) {
+          this.log("warn", "account failover resume event emit failed", {
+            sessionId: result.sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          this.runtime.reportError(
+            "SubAgentRouter.emitAccountFailoverResumed",
+            err,
+            { sessionId: result.sessionId },
+          );
+        }
+      }
       // Same handoff stamp as verify-retry (#11711): the old session's teardown
       // `stopped` is plumbing, not a user-facing completion — the respawn posts.
       await this.markSessionHandedOff(session.id, result.sessionId);
@@ -1849,6 +1981,69 @@ export class SubAgentRouter extends Service {
         },
       );
       return false;
+    }
+  }
+
+  private async resolvePredecessorProgress(
+    service: AcpService,
+    sessionId: string,
+    data: unknown,
+  ): Promise<string | undefined> {
+    try {
+      const output = await service.getSessionOutput(sessionId, 120);
+      if (output?.trim()) return output.trim();
+    } catch (err) {
+      // error-policy:J7 Progress enrichment must not undo a recovered session;
+      // the failure is reported and the typed event payload remains available.
+      this.log("warn", "failed to read predecessor session output for resume", {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      this.runtime.reportError(
+        "SubAgentRouter.resolvePredecessorProgress",
+        err,
+        { sessionId },
+      );
+    }
+    return (
+      pickPayloadString(data, "lastProgress") ??
+      pickPayloadString(data, "summary")
+    );
+  }
+
+  private async resolvePredecessorWorkspace(
+    service: AcpService,
+    session: SessionInfo,
+  ): Promise<{
+    branch?: string;
+    changeSet?: WorkspaceChangeSet;
+  }> {
+    const meta = session.metadata as Record<string, unknown> | undefined;
+    try {
+      const [branch, changeSet] = await Promise.all([
+        getWorkspaceBranch(session.workdir),
+        captureChangeSet(
+          session.workdir,
+          pickPlainString(meta?.codingBaselineSha),
+          service.getChangedPaths(session.id),
+          Array.isArray(meta?.codingBaselineDirty)
+            ? (meta.codingBaselineDirty as unknown[]).map(String)
+            : [],
+        ),
+      ]);
+      return { branch, changeSet };
+    } catch (err) {
+      // error-policy:J7 Workspace enrichment must not undo a recovered session.
+      this.log("warn", "failed to capture predecessor workspace for resume", {
+        sessionId: session.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      this.runtime.reportError(
+        "SubAgentRouter.resolvePredecessorWorkspace",
+        err,
+        { sessionId: session.id },
+      );
+      return {};
     }
   }
 
