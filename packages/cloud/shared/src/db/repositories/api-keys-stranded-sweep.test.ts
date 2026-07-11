@@ -90,6 +90,7 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  expect(pgliteReady).toBe(true);
   if (!pgliteReady) return;
   await dbWrite.execute(sql`DELETE FROM api_keys`);
   await dbWrite.execute(sql`DELETE FROM agent_sandboxes`);
