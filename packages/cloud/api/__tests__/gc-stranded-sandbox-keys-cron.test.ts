@@ -10,18 +10,17 @@
  * these red.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Hono } from "hono";
+import { apiKeysService } from "@/lib/services/api-keys";
 import type { Bindings } from "@/types/cloud-worker-env";
 
-// Mock the whole service module so the route never pulls the real db/cache
-// chain. The spy mirrors the real signature: sweepStrandedAgentKeys(olderThan)
-// -> revoked count.
 const sweepStrandedAgentKeys = mock(async (_olderThan: Date) => 2);
-mock.module("@/lib/services/api-keys", () => ({
+const sweepSpy = spyOn(apiKeysService, "sweepStrandedAgentKeys").mockImplementation(
   sweepStrandedAgentKeys,
-  apiKeysService: { sweepStrandedAgentKeys },
-}));
+);
+
+afterAll(() => sweepSpy.mockRestore());
 
 const { CRON_FANOUT, makeCronHandler } = await import(
   "@/lib/cron/cloudflare-cron"

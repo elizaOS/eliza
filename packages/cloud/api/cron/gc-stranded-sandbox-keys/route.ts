@@ -54,6 +54,7 @@ async function handle(c: Context<AppEnv>) {
     );
     return c.json({ success: true, revoked, graceMs });
   } catch (error) {
+    // error-policy:J1 The cron route is the transport boundary for sweep failures.
     logger.error("[ApiKeys] gc-stranded-sandbox-keys cron failed", {
       durationMs: Date.now() - startedAt,
       error: error instanceof Error ? error.message : "Unknown error",
