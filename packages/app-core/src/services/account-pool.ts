@@ -37,6 +37,7 @@ import {
   isSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
+import { fetchAnthropicOAuthProfile } from "@elizaos/auth/oauth-flow";
 import {
   type AnthropicAccountPoolBridge,
   logger,
@@ -378,8 +379,29 @@ export class AccountPool {
     if (!account) return;
 
     let usage: LinkedAccountUsage;
+    // Anthropic's OAuth token is opaque (no OIDC claims), so accounts linked
+    // before the OAuth flow started persisting the profile email — or imported
+    // from a CLI login — have no identity to display. Backfill it here from the
+    // same profile endpoint the link flow uses.
+    let email: string | undefined;
     if (account.providerId === "anthropic-subscription") {
       usage = await pollAnthropicUsage(accessToken, opts?.fetch);
+      if (!account.email) {
+        try {
+          email = (await fetchAnthropicOAuthProfile(accessToken, opts?.fetch))
+            .email;
+        } catch (err) {
+          // error-policy:J7 diagnostics-must-not-kill-the-loop — the identity
+          // backfill is enrichment on top of the usage refresh. A profile
+          // failure is REPORTED here (typed ElizaError from the profile
+          // boundary, logged with the account id) and the email stays absent —
+          // never fabricated as a healthy empty identity — while the
+          // successfully fetched usage snapshot below is still persisted.
+          logger.warn(
+            `[AccountPool] Anthropic profile backfill failed for account ${accountId}: ${String(err)}`,
+          );
+        }
+      }
     } else if (account.providerId === "openai-codex") {
       const codexAccountId = opts?.codexAccountId ?? account.organizationId;
       if (!codexAccountId) {
@@ -397,6 +419,7 @@ export class AccountPool {
       ...account,
       health: "ok",
       usage,
+      ...(email ? { email } : {}),
     });
   }
 
@@ -612,6 +635,11 @@ interface PoolMetaFields {
    * dashboard and the least-used age tiebreak (the credential record's own
    * lastUsedAt is only bumped by touchAccount, not by usage recording). */
   lastUsedAt?: number;
+  /** Account email. New OAuth links persist it on the credential record, but
+   * Anthropic's token is opaque, so accounts linked earlier (or imported from a
+   * CLI login) get it backfilled by refreshUsage's profile probe and persisted
+   * HERE — the credential file is never rewritten for display metadata. */
+  email?: string;
 }
 
 type PoolMetaStore = Record<PoolProviderId, Record<string, PoolMetaFields>>;
@@ -679,8 +707,35 @@ function recordToLinked(
     ...(meta?.usage ? { usage: meta.usage } : {}),
     ...(record.organizationId ? { organizationId: record.organizationId } : {}),
     ...(record.userId ? { userId: record.userId } : {}),
-    ...(record.email ? { email: record.email } : {}),
+    ...(() => {
+      // Show WHO an account is: prefer the credential record's email (new OAuth
+      // links persist it), then the pool-meta backfill (refreshUsage profile
+      // probe for older Anthropic links), then derive it from the id_token's
+      // OIDC `email` claim (Codex CLI imports carry an id_token; providers
+      // without one simply have no email to show).
+      const email =
+        record.email ??
+        meta?.email ??
+        emailFromIdToken(record.credentials.idToken);
+      return email ? { email } : {};
+    })(),
   };
+}
+
+/** The OIDC `email` claim from a JWT id_token, or undefined. */
+function emailFromIdToken(idToken: string | undefined): string | undefined {
+  if (!idToken) return undefined;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(idToken.split(".")[1] ?? "", "base64url").toString("utf8"),
+    ) as { email?: unknown };
+    return typeof payload.email === "string" && payload.email.includes("@")
+      ? payload.email
+      : undefined;
+  } catch {
+    // error-policy:J3 untrusted id_token payload — undecodable ⇒ no email.
+    return undefined;
+  }
 }
 
 function loadAllAccounts(): Record<string, LinkedAccountConfig> {
@@ -720,6 +775,7 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     ...(account.lastUsedAt !== undefined
       ? { lastUsedAt: account.lastUsedAt }
       : {}),
+    ...(account.email ? { email: account.email } : {}),
   };
   writeMetaStore(store);
 }
