@@ -15,12 +15,17 @@
  * `GIT_CONFIG_*` block (that one sets `credential.helper`, this one sets
  * author/committer; disjoint keys, no collision) and needs no on-disk gitconfig.
  *
- * Fail-safe: when nothing is configured, {@link buildGitIdentityEnvPatch}
- * returns an empty patch and the spawn env is byte-identical to before — the
- * existing gitconfig-inheritance behavior is preserved exactly.
+ * When nothing is configured, a stable local-only coding-agent identity is
+ * emitted. This keeps fresh hosts commit-capable and prevents an operator's
+ * global gitconfig from becoming an accidental provenance source.
  *
  * @module services/git-identity-env
  */
+
+import { ElizaError } from "@elizaos/core";
+
+export const DEFAULT_GIT_IDENTITY_NAME = "elizaOS Coding Agent";
+export const DEFAULT_GIT_IDENTITY_EMAIL = "coding-agent.no-reply@elizaos.local";
 
 /**
  * Config keys (read from the eliza config `env` section OR process.env via
@@ -62,8 +67,14 @@ export interface GitIdentityConfig {
  * unit-testable (pass a synthetic lookup); production passes `readConfigEnvKey`. */
 export type GitIdentityConfigSource = (key: string) => string | undefined;
 
-function clean(value: string | undefined): string | undefined {
+function clean(value: string | undefined, key: string): string | undefined {
   if (typeof value !== "string") return undefined;
+  if (/[\0\r\n]/u.test(value)) {
+    throw new ElizaError("Coding git identity contains a control character", {
+      code: "INVALID_CODING_GIT_IDENTITY",
+      context: { key },
+    });
+  }
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
@@ -71,17 +82,32 @@ function clean(value: string | undefined): string | undefined {
 /**
  * Resolve the configured coding git identity from a value source. Pure: no
  * process.env / config read of its own — pass `readConfigEnvKey` (or a synthetic
- * lookup in tests). Returns `undefined` when NOTHING is configured, so callers
- * can preserve current behavior exactly (see {@link buildGitIdentityEnvPatch}).
+ * lookup in tests). Returns the deterministic local-only identity when no
+ * override is configured.
  */
 export function resolveGitIdentityConfig(
   read: GitIdentityConfigSource,
 ): GitIdentityConfig | undefined {
-  const authorName = clean(read(GIT_IDENTITY_AUTHOR_NAME_KEY));
-  const authorEmail = clean(read(GIT_IDENTITY_AUTHOR_EMAIL_KEY));
-  const committerName = clean(read(GIT_IDENTITY_COMMITTER_NAME_KEY));
-  const committerEmail = clean(read(GIT_IDENTITY_COMMITTER_EMAIL_KEY));
-  const coAuthor = clean(read(GIT_IDENTITY_CO_AUTHOR_KEY));
+  const authorName = clean(
+    read(GIT_IDENTITY_AUTHOR_NAME_KEY),
+    GIT_IDENTITY_AUTHOR_NAME_KEY,
+  );
+  const authorEmail = clean(
+    read(GIT_IDENTITY_AUTHOR_EMAIL_KEY),
+    GIT_IDENTITY_AUTHOR_EMAIL_KEY,
+  );
+  const committerName = clean(
+    read(GIT_IDENTITY_COMMITTER_NAME_KEY),
+    GIT_IDENTITY_COMMITTER_NAME_KEY,
+  );
+  const committerEmail = clean(
+    read(GIT_IDENTITY_COMMITTER_EMAIL_KEY),
+    GIT_IDENTITY_COMMITTER_EMAIL_KEY,
+  );
+  const coAuthor = clean(
+    read(GIT_IDENTITY_CO_AUTHOR_KEY),
+    GIT_IDENTITY_CO_AUTHOR_KEY,
+  );
   if (
     !authorName &&
     !authorEmail &&
@@ -89,8 +115,12 @@ export function resolveGitIdentityConfig(
     !committerEmail &&
     !coAuthor
   ) {
-    // Nothing configured — signal "no identity" so the spawn env is untouched.
-    return undefined;
+    return {
+      authorName: DEFAULT_GIT_IDENTITY_NAME,
+      authorEmail: DEFAULT_GIT_IDENTITY_EMAIL,
+      committerName: DEFAULT_GIT_IDENTITY_NAME,
+      committerEmail: DEFAULT_GIT_IDENTITY_EMAIL,
+    };
   }
   return {
     ...(authorName ? { authorName } : {}),
@@ -121,10 +151,8 @@ export function syntheticNoReplyEmail(name: string): string {
 
 /**
  * Materialize the resolved identity into a `GIT_AUTHOR_*` / `GIT_COMMITTER_*`
- * env patch. Returns an EMPTY object when `config` is undefined (nothing
- * configured) or carries no usable author/committer — so merging it into the
- * spawn env is a no-op and preserves the pre-existing gitconfig inheritance
- * exactly (the co-author-only case configures a trailer, not env identity).
+ * env patch. Undefined or co-author-only input uses the stable default rather
+ * than inheriting the spawning operator's gitconfig.
  *
  * Only sets a `*_EMAIL` alongside a `*_NAME`: git requires both to accept an
  * explicit identity, so a name with no email (and none derivable) is dropped
@@ -135,7 +163,10 @@ export function buildGitIdentityEnvPatch(
   config: GitIdentityConfig | undefined,
 ): Record<string, string> {
   const patch: Record<string, string> = {};
-  if (!config) return patch;
+  const effectiveConfig = config ?? {
+    authorName: DEFAULT_GIT_IDENTITY_NAME,
+    authorEmail: DEFAULT_GIT_IDENTITY_EMAIL,
+  };
 
   // Resolve author + committer symmetrically. Whichever ROLE an operator
   // configured, BOTH GIT_AUTHOR_* and GIT_COMMITTER_* must be emitted together:
@@ -145,26 +176,39 @@ export function buildGitIdentityEnvPatch(
   // exists to prevent. So a lone committer identity also seeds the author, and a
   // lone author identity also seeds the committer (the common author==committer
   // case).
-  const authorName = config.authorName ?? config.committerName;
+  const authorName =
+    effectiveConfig.authorName ??
+    effectiveConfig.committerName ??
+    DEFAULT_GIT_IDENTITY_NAME;
+  const hasExplicitIdentity = Boolean(
+    effectiveConfig.authorName ||
+      effectiveConfig.authorEmail ||
+      effectiveConfig.committerName ||
+      effectiveConfig.committerEmail,
+  );
   const authorEmail =
-    config.authorEmail ??
-    config.committerEmail ??
-    (authorName ? syntheticNoReplyEmail(authorName) : undefined);
+    effectiveConfig.authorEmail ??
+    effectiveConfig.committerEmail ??
+    (!hasExplicitIdentity
+      ? DEFAULT_GIT_IDENTITY_EMAIL
+      : authorName
+        ? syntheticNoReplyEmail(authorName)
+        : undefined);
   if (authorName && authorEmail) {
     patch.GIT_AUTHOR_NAME = authorName;
     patch.GIT_AUTHOR_EMAIL = authorEmail;
   }
 
-  const committerName = config.committerName ?? authorName;
+  const committerName = effectiveConfig.committerName ?? authorName;
   // A DISTINCT committer name (explicitly configured) with no email gets a
   // synthetic email of its OWN rather than borrowing the author's — a separate
   // committer identity should read as separate. Only when the committer is
   // implicitly the author (no committerName configured) does it inherit the
   // author's email verbatim.
   const committerEmail =
-    config.committerEmail ??
-    (config.committerName
-      ? syntheticNoReplyEmail(config.committerName)
+    effectiveConfig.committerEmail ??
+    (effectiveConfig.committerName
+      ? syntheticNoReplyEmail(effectiveConfig.committerName)
       : authorEmail);
   if (committerName && committerEmail) {
     patch.GIT_COMMITTER_NAME = committerName;
@@ -180,7 +224,7 @@ export function buildGitIdentityEnvPatch(
 export function parseCoAuthor(
   value: string | undefined,
 ): { name: string; email?: string } | undefined {
-  const raw = clean(value);
+  const raw = clean(value, GIT_IDENTITY_CO_AUTHOR_KEY);
   if (!raw) return undefined;
   const match = raw.match(/^(.*?)\s*<([^<>]+)>\s*$/);
   if (match) {

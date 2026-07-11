@@ -9,6 +9,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGitIdentityEnvPatch,
+  DEFAULT_GIT_IDENTITY_EMAIL,
+  DEFAULT_GIT_IDENTITY_NAME,
   GIT_IDENTITY_AUTHOR_EMAIL_KEY,
   GIT_IDENTITY_AUTHOR_NAME_KEY,
   GIT_IDENTITY_CO_AUTHOR_KEY,
@@ -26,8 +28,13 @@ function source(map: Record<string, string>) {
 }
 
 describe("resolveGitIdentityConfig", () => {
-  it("returns undefined when nothing is configured (fail-safe)", () => {
-    expect(resolveGitIdentityConfig(source({}))).toBeUndefined();
+  it("returns a deterministic local-only identity when nothing is configured", () => {
+    expect(resolveGitIdentityConfig(source({}))).toEqual({
+      authorName: DEFAULT_GIT_IDENTITY_NAME,
+      authorEmail: DEFAULT_GIT_IDENTITY_EMAIL,
+      committerName: DEFAULT_GIT_IDENTITY_NAME,
+      committerEmail: DEFAULT_GIT_IDENTITY_EMAIL,
+    });
   });
 
   it("treats whitespace-only values as unconfigured", () => {
@@ -38,7 +45,12 @@ describe("resolveGitIdentityConfig", () => {
           [GIT_IDENTITY_AUTHOR_EMAIL_KEY]: "\t",
         }),
       ),
-    ).toBeUndefined();
+    ).toEqual({
+      authorName: DEFAULT_GIT_IDENTITY_NAME,
+      authorEmail: DEFAULT_GIT_IDENTITY_EMAIL,
+      committerName: DEFAULT_GIT_IDENTITY_NAME,
+      committerEmail: DEFAULT_GIT_IDENTITY_EMAIL,
+    });
   });
 
   it("trims and returns each configured field", () => {
@@ -66,17 +78,39 @@ describe("resolveGitIdentityConfig", () => {
     );
     expect(cfg).toEqual({ coAuthor: "Pair <pair@x.dev>" });
   });
+
+  it.each([
+    "bad\nname",
+    "bad\remail",
+    "bad\0trailer",
+  ])("rejects control characters in configured identity values", (value) => {
+    expect(() =>
+      resolveGitIdentityConfig(
+        source({ [GIT_IDENTITY_AUTHOR_NAME_KEY]: value }),
+      ),
+    ).toThrow("Coding git identity contains a control character");
+  });
 });
 
 describe("buildGitIdentityEnvPatch", () => {
-  it("returns an empty patch for undefined config (spawn env untouched)", () => {
-    expect(buildGitIdentityEnvPatch(undefined)).toEqual({});
+  it("materializes the deterministic default for undefined config", () => {
+    expect(buildGitIdentityEnvPatch(undefined)).toEqual({
+      GIT_AUTHOR_NAME: DEFAULT_GIT_IDENTITY_NAME,
+      GIT_AUTHOR_EMAIL: DEFAULT_GIT_IDENTITY_EMAIL,
+      GIT_COMMITTER_NAME: DEFAULT_GIT_IDENTITY_NAME,
+      GIT_COMMITTER_EMAIL: DEFAULT_GIT_IDENTITY_EMAIL,
+    });
   });
 
-  it("returns an empty patch for a co-author-only config (trailer, not env)", () => {
-    expect(
-      buildGitIdentityEnvPatch({ coAuthor: "Pair <pair@x.dev>" }),
-    ).toEqual({});
+  it("uses the default commit identity for a co-author-only config", () => {
+    expect(buildGitIdentityEnvPatch({ coAuthor: "Pair <pair@x.dev>" })).toEqual(
+      {
+        GIT_AUTHOR_NAME: DEFAULT_GIT_IDENTITY_NAME,
+        GIT_AUTHOR_EMAIL: DEFAULT_GIT_IDENTITY_EMAIL,
+        GIT_COMMITTER_NAME: DEFAULT_GIT_IDENTITY_NAME,
+        GIT_COMMITTER_EMAIL: DEFAULT_GIT_IDENTITY_EMAIL,
+      },
+    );
   });
 
   it("materializes author + defaults committer to the author", () => {
@@ -118,10 +152,15 @@ describe("buildGitIdentityEnvPatch", () => {
     );
   });
 
-  it("drops an email-only config (no name => git can't use it)", () => {
+  it("pairs an email-only override with the deterministic default name", () => {
     expect(
       buildGitIdentityEnvPatch({ authorEmail: "agent@elizaos.ai" }),
-    ).toEqual({});
+    ).toEqual({
+      GIT_AUTHOR_NAME: DEFAULT_GIT_IDENTITY_NAME,
+      GIT_AUTHOR_EMAIL: "agent@elizaos.ai",
+      GIT_COMMITTER_NAME: DEFAULT_GIT_IDENTITY_NAME,
+      GIT_COMMITTER_EMAIL: "agent@elizaos.ai",
+    });
   });
 
   it("seeds the author from a committer-only config (no leak / no fresh-box fail)", () => {

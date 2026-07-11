@@ -59,13 +59,13 @@ import {
 } from "./coding-account-selection.js";
 import { readConfigEnvKey, readConfigMcpServers } from "./config-env.js";
 import {
-  buildGitIdentityEnvPatch,
-  resolveGitIdentityConfig,
-} from "./git-identity-env.js";
-import {
   applyCredentialProxyEnv,
   resolveOrchestratorCredentialProxyConfig,
 } from "./credential-proxy-env.js";
+import {
+  buildGitIdentityEnvPatch,
+  resolveGitIdentityConfig,
+} from "./git-identity-env.js";
 import {
   applyModelGatewayEnv,
   MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS,
@@ -3719,8 +3719,8 @@ export class AcpService extends Service {
     // user.name/email (a provenance leak, and on a fresh box git refuses to
     // commit at all without one). Materialized as GIT_AUTHOR_*/GIT_COMMITTER_*
     // env — disjoint from the credential-proxy's GIT_CONFIG_* keys below, so the
-    // two never collide. No-op (env untouched, current gitconfig inheritance
-    // preserved exactly) when nothing is configured.
+    // two never collide. A stable local-only default is always emitted when no
+    // operator override exists, so fresh hosts work without identity leakage.
     const gitIdentity = buildGitIdentityEnvPatch(
       resolveGitIdentityConfig(readConfigEnvKey),
     );
