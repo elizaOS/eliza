@@ -19,6 +19,7 @@
  */
 
 import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
 import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import {
   APP_DIST,
@@ -73,27 +74,31 @@ function shouldCompress(contentType) {
   );
 }
 
-/** Serve APP_DIST as an SPA (history fallback to index.html). Returns { url, close }. */
-function serveDist() {
-  const indexPath = join(APP_DIST, "index.html");
+/** Serve a production build as an SPA. Returns { url, close }. */
+export function serveDist(
+  distRoot = APP_DIST,
+  { readFile = readFileSync } = {},
+) {
+  const indexPath = join(distRoot, "index.html");
   if (!existsSync(indexPath)) {
     throw new Error(
       `no build at ${APP_DIST} — run \`bun run --cwd packages/app build\` first.`,
     );
   }
   const server = createServer((req, res) => {
-    const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
-    const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
-    // block path traversal
-    const safe = rel
-      .split("/")
-      .filter((seg) => seg && seg !== "..")
-      .join("/");
-    const candidate = join(APP_DIST, safe);
-    const file =
-      existsSync(candidate) && !candidate.endsWith("/") ? candidate : indexPath;
     try {
-      const buf = readFileSync(file);
+      const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
+      const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
+      const safe = rel
+        .split("/")
+        .filter((segment) => segment && segment !== "..")
+        .join("/");
+      const candidate = join(distRoot, safe);
+      const file =
+        existsSync(candidate) && !candidate.endsWith("/")
+          ? candidate
+          : indexPath;
+      const buf = readFile(file);
       const contentType = contentTypeFor(file);
       const acceptsBrotli = /(?:^|,)\s*br(?:\s*;|\s*,|\s*$)/i.test(
         req.headers["accept-encoding"] ?? "",
@@ -111,9 +116,29 @@ function serveDist() {
         vary: "accept-encoding",
       });
       res.end(body);
-    } catch {
-      res.writeHead(404, { "content-type": "text/plain" });
-      res.end("not found");
+    } catch (error) {
+      if (error instanceof URIError) {
+        // error-policy:J3 malformed URL escapes are invalid input, not missing assets.
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("invalid URL encoding");
+        return;
+      }
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        // error-policy:J1 an asset can disappear between existence check and read.
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not found");
+        return;
+      }
+      // error-policy:J1 the HTTP boundary reports unexpected filesystem failures.
+      process.stderr.write(
+        `[frontend-kpi] static asset read failed: ${error instanceof Error ? error.stack : String(error)}\n`,
+      );
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("static asset read failed");
     }
   });
   return new Promise((resolve) => {
@@ -310,4 +335,6 @@ async function main() {
   }
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main();
+}
