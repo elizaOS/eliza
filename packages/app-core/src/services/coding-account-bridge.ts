@@ -317,15 +317,26 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
   // compatible default.
   const targetConfig = path.join(dir, "config.toml");
   try {
-    let model = process.env.ELIZA_CODEX_MODEL?.trim();
-    // Validate the operator-supplied model: it is interpolated into TOML, so a
-    // stray quote/newline would break out of the string (corrupt config) — and
-    // a model name is a conservative token anyway. Reject anything else.
-    if (model && !/^[\w.:/-]+$/.test(model)) {
-      logger.warn(
-        `[coding-account-bridge] ignoring malformed ELIZA_CODEX_MODEL=${JSON.stringify(model)}`,
-      );
-      model = undefined;
+    // Resolution order: explicit env pin > app-configured model (what
+    // POST /api/models/config writes for the codex coding target) > the
+    // operator's machine config > the compatible default. Without the
+    // POWERFUL read here, the app-configured model was a dead-end key — the
+    // machine ~/.codex/config.toml silently won on every spawn.
+    let model: string | undefined;
+    for (const key of ["ELIZA_CODEX_MODEL", "ELIZA_CODEX_MODEL_POWERFUL"]) {
+      const candidate = process.env[key]?.trim();
+      if (!candidate) continue;
+      // Validate the operator-supplied model: it is interpolated into TOML, so
+      // a stray quote/newline would break out of the string (corrupt config) —
+      // and a model name is a conservative token anyway. Reject anything else.
+      if (!/^[\w.:/-]+$/.test(candidate)) {
+        logger.warn(
+          `[coding-account-bridge] ignoring malformed ${key}=${JSON.stringify(candidate)}`,
+        );
+        continue;
+      }
+      model = candidate;
+      break;
     }
     if (!model) {
       const machineConfig = path.join(os.homedir(), ".codex", "config.toml");
@@ -460,9 +471,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           providerId === "anthropic-subscription"
             ? {
                 minRemainingMs: claudeMinRemainingMs(
-                  resolveClaudeExpectedRunMs(
-                    (key) => process.env[key],
-                  ),
+                  resolveClaudeExpectedRunMs((key) => process.env[key]),
                 ),
               }
             : undefined;

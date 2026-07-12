@@ -452,3 +452,71 @@ describe("claude effort env (ELIZA_CLAUDE_EFFORT → CLAUDE_CODE_EFFORT_LEVEL)",
     expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
   });
 });
+
+// Same buildEnv surface again: the app-configured claude coding model
+// (ELIZA_CLAUDE_MODEL_POWERFUL, written by POST /api/models/config) must reach
+// the spawned Claude Code CLI as ANTHROPIC_MODEL when the spawn carries no
+// explicit model — before this fallback the key was write-only.
+describe("claude model env (ELIZA_CLAUDE_MODEL_POWERFUL → ANTHROPIC_MODEL)", () => {
+  let tempDir: string;
+  let prevConfigPath: string | undefined;
+  let prevAnthropicModel: string | undefined;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-model-"));
+    prevConfigPath = process.env.ELIZA_CONFIG_PATH;
+    prevAnthropicModel = process.env.ANTHROPIC_MODEL;
+    // A host-level ANTHROPIC_MODEL would forward via the allowlist and mask
+    // the config-driven assertion below.
+    delete process.env.ANTHROPIC_MODEL;
+  });
+
+  afterEach(() => {
+    if (prevConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+    else process.env.ELIZA_CONFIG_PATH = prevConfigPath;
+    if (prevAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL;
+    else process.env.ANTHROPIC_MODEL = prevAnthropicModel;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(env: Record<string, string>): void {
+    const file = path.join(tempDir, "eliza.json");
+    fs.writeFileSync(file, JSON.stringify({ env }));
+    process.env.ELIZA_CONFIG_PATH = file;
+  }
+
+  async function spawnAndGetEnv(
+    agentType: string,
+    model?: string,
+  ): Promise<NodeJS.ProcessEnv> {
+    const service = new AcpService(runtime());
+    await service.start();
+    await service.spawnSession({
+      name: `${agentType}-model`,
+      agentType: agentType as never,
+      workdir: "/tmp/acp-test",
+      ...(model ? { model } : {}),
+    });
+    const env = firstNativeClient().opts.env ?? {};
+    await service.stop();
+    return env;
+  }
+
+  it("sets ANTHROPIC_MODEL from a freshly-saved config value (no restart)", async () => {
+    writeConfig({ ELIZA_CLAUDE_MODEL_POWERFUL: "claude-opus-4-8" });
+    const env = await spawnAndGetEnv("claude");
+    expect(env.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
+  });
+
+  it("lets an explicit per-spawn model beat the configured one", async () => {
+    writeConfig({ ELIZA_CLAUDE_MODEL_POWERFUL: "claude-opus-4-8" });
+    const env = await spawnAndGetEnv("claude", "claude-sonnet-5");
+    expect(env.ANTHROPIC_MODEL).toBe("claude-sonnet-5");
+  });
+
+  it("does not set ANTHROPIC_MODEL for non-claude agent types", async () => {
+    writeConfig({ ELIZA_CLAUDE_MODEL_POWERFUL: "claude-opus-4-8" });
+    const env = await spawnAndGetEnv("codex");
+    expect(env.ANTHROPIC_MODEL).toBeUndefined();
+  });
+});

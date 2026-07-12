@@ -6,7 +6,13 @@
  * CEREBRAS_API_KEY), usage attribution, and rate-limit skipping. Runs against a
  * real temp ELIZA_HOME / ELIZA_STATE_DIR and real account storage — no mocked pool.
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { saveAccount } from "@elizaos/auth/account-storage";
@@ -252,6 +258,67 @@ describe("coding-account-bridge", () => {
     // Clean single model line, no injected table/keys.
     expect(cfg).toMatch(/^model = "[\w.:/-]+"\n$/);
     expect(cfg).not.toContain("[evil]");
+  });
+
+  it("prefers the app-configured ELIZA_CODEX_MODEL_POWERFUL over the machine config", async () => {
+    writeAccount("openai-codex", "cx-pow", "cx-pow-access", {
+      organizationId: "a",
+    });
+    const prevOsHome = process.env.HOME;
+    const prevPowerful = process.env.ELIZA_CODEX_MODEL_POWERFUL;
+    // Isolated HOME carrying a machine ~/.codex/config.toml — without the
+    // POWERFUL read this operator config silently won on every spawn.
+    process.env.HOME = home;
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(home, ".codex", "config.toml"),
+      'model = "gpt-5.5"\n',
+    );
+    delete process.env.ELIZA_CODEX_MODEL;
+    process.env.ELIZA_CODEX_MODEL_POWERFUL = "gpt-5.6-terra";
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toContain('model = "gpt-5.6-terra"');
+    } finally {
+      if (prevOsHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevOsHome;
+      if (prevPowerful === undefined) {
+        delete process.env.ELIZA_CODEX_MODEL_POWERFUL;
+      } else {
+        process.env.ELIZA_CODEX_MODEL_POWERFUL = prevPowerful;
+      }
+    }
+  });
+
+  it("lets an explicit ELIZA_CODEX_MODEL pin beat the app-configured model", async () => {
+    writeAccount("openai-codex", "cx-pin", "cx-pin-access", {
+      organizationId: "a",
+    });
+    const prevPowerful = process.env.ELIZA_CODEX_MODEL_POWERFUL;
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.5";
+    process.env.ELIZA_CODEX_MODEL_POWERFUL = "gpt-5.6-terra";
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toContain('model = "gpt-5.5"');
+    } finally {
+      if (prevPowerful === undefined) {
+        delete process.env.ELIZA_CODEX_MODEL_POWERFUL;
+      } else {
+        process.env.ELIZA_CODEX_MODEL_POWERFUL = prevPowerful;
+      }
+    }
   });
 
   it("falls back to gpt-5.6-terra when no model is configured anywhere", async () => {

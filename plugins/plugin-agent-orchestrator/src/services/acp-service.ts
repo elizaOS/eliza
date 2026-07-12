@@ -3719,6 +3719,15 @@ export class AcpService extends Service {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
+    } else if (agentType === "claude") {
+      // No per-spawn model: fall back to the app-configured claude coding
+      // model (what POST /api/models/config writes). Config-env read, so a
+      // UI/API save applies to the next spawn with no restart. Without this
+      // the key was write-only — no spawn path ever consumed it.
+      const configured = readConfigEnvKey(
+        "ELIZA_CLAUDE_MODEL_POWERFUL",
+      )?.trim();
+      if (configured) env.ANTHROPIC_MODEL = configured;
     }
     if (childSessionId?.trim()) {
       env.PARALLAX_SESSION_ID = childSessionId.trim();
@@ -3968,7 +3977,9 @@ export class AcpService extends Service {
   private authFailureFields(
     text: string,
     agentType?: AgentType,
-  ): { failureKind: "auth"; authReason?: "token_expired" } | Record<string, never> {
+  ):
+    | { failureKind: "auth"; authReason?: "token_expired" }
+    | Record<string, never> {
     // Explicit token-expiry phrasing ("token expired", "session expired", …) is
     // auth-shaped too, but `isAuthText` only matches 401/unauthorized/
     // authenticate/login/api key/invalid_grant — NOT a bare "expired" — so a run
