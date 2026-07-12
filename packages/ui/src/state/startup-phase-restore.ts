@@ -84,8 +84,8 @@ const STEWARD_RESTORE_REFRESH_AHEAD_SECS = 120;
  * and the api-client 401 self-heal remain the backstops).
  */
 const STEWARD_RESTORE_REFRESH_TIMEOUT_MS = 4_000;
-/** Bound the legacy runtime-tier repair lookup independently from startup. */
-const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS = 4_000;
+/** Bound the non-blocking legacy runtime-tier repair lookup. */
+const CLOUD_AGENT_TIER_PROBE_TIMEOUT_MS = 12_000;
 /** Steward refresh endpoint path (same-origin on web; `api.` host on native). */
 const STEWARD_REFRESH_PATH = "/api/auth/steward-refresh";
 /** Default direct Cloud site base used to derive the native refresh endpoint. */
@@ -104,17 +104,17 @@ function isDevUiPort(): boolean {
 }
 
 /**
- * Read the server-authoritative runtime tier for an older persisted dedicated
- * base. A previous client inferred the tier from URL shape and could persist a
- * temporary shared bridge id as `<id>.elizacloud.ai`; this lookup repairs that
- * record without trusting another URL heuristic. Any inconclusive result
- * leaves the saved base in place.
+ * Repair an older persisted dedicated-looking base when the owner record says
+ * it is actually a temporary shared bridge. This runs off the startup critical
+ * path: an inconclusive lookup leaves the already-bound target untouched.
  */
-async function fetchCloudAgentExecutionTier(
-  agentId: string,
+async function reconcileLegacyDedicatedCloudApiBase(
+  active: PersistedActiveServer,
   stewardToken: string | null,
-): Promise<string | null> {
-  if (!stewardToken) return null;
+): Promise<PersistedActiveServer | null> {
+  if (!stewardToken || !isDedicatedCloudAgentBase(active.apiBase)) return null;
+  const agentId = recoverCloudAgentId(active);
+  if (!agentId) return null;
   const cloudApiBase = resolveDirectCloudAuthApiBase(
     getBootConfig().cloudApiBase || RESTORE_DEFAULT_DIRECT_CLOUD_BASE_URL,
   );
@@ -135,7 +135,11 @@ async function fetchCloudAgentExecutionTier(
     const data = (payload as Record<string, unknown>).data;
     if (typeof data !== "object" || data === null) return null;
     const tier = (data as Record<string, unknown>).executionTier;
-    return typeof tier === "string" && tier.trim() ? tier.trim() : null;
+    if (tier !== "shared") return null;
+    return {
+      ...active,
+      apiBase: buildCloudSharedAgentApiBase(cloudApiBase, agentId),
+    };
   } catch {
     // error-policy:J4 this is a compatibility repair probe; the normal startup
     // poll remains authoritative when the control plane is temporarily down.
@@ -147,10 +151,9 @@ async function fetchCloudAgentExecutionTier(
  * Repair a restored managed-cloud target using the current environment and,
  * for legacy dedicated-looking records, the server-authoritative runtime tier.
  */
-async function backfillCloudApiBase(
+function backfillCloudApiBase(
   active: PersistedActiveServer,
-  stewardToken: string | null,
-): Promise<PersistedActiveServer> {
+): PersistedActiveServer {
   if (active.kind !== "cloud") return active;
   const agentId = recoverCloudAgentId(active);
   if (!agentId) return active;
@@ -175,13 +178,9 @@ async function backfillCloudApiBase(
   // Custom per-agent hosts are server-owned and must remain untouched.
   if (!managedBase) return active;
 
-  const executionTier = isDedicatedCloudAgentBase(active.apiBase)
-    ? await fetchCloudAgentExecutionTier(agentId, stewardToken)
-    : null;
-  const repairedApiBase =
-    executionTier === "shared" || isDirectCloudSharedAgentBase(active.apiBase)
-      ? sharedApiBase
-      : dedicatedApiBase;
+  const repairedApiBase = isDirectCloudSharedAgentBase(active.apiBase)
+    ? sharedApiBase
+    : dedicatedApiBase;
   if (active.apiBase === repairedApiBase) return active;
 
   const updated: PersistedActiveServer = {
@@ -466,24 +465,20 @@ export async function applyRestoredConnection(args: {
   }
 
   if (restoredActiveServer.kind === "cloud") {
-    // Base reconciliation and Steward refresh are independent and run
-    // concurrently. Reconciliation uses only a snapshot of the stored Steward
-    // token and never mutates the client; client mutations still land in the
-    // original order (base, then refreshed token).
+    // Environment reconciliation is synchronous so the client is routed
+    // immediately. The slower legacy tier check and Steward refresh then run
+    // concurrently; neither blocks the initial base mutation.
     // Never send an agent-local paired token to the Cloud control plane. The
     // Steward session store is the only valid credential for this owner lookup.
     const restoreProbeToken = readStoredStewardToken()?.trim() || null;
-    const backfillPromise = backfillCloudApiBase(
-      restoredActiveServer,
-      restoreProbeToken,
-    );
-    const stewardTokenPromise = resolveRestoredStewardToken();
-    // error-policy:J5 the rejection is observed at `await stewardTokenPromise`
-    // below; this no-op handler only covers the window where backfill throws
-    // first and that await is never reached.
-    stewardTokenPromise.catch(() => {});
-    const resolved = await backfillPromise;
+    const resolved = backfillCloudApiBase(restoredActiveServer);
     clientRef.setBaseUrl(resolved.apiBase ?? null);
+    const tierRepairPromise = isDedicatedCloudAgentBase(
+      restoredActiveServer.apiBase,
+    )
+      ? reconcileLegacyDedicatedCloudApiBase(resolved, restoreProbeToken)
+      : Promise.resolve(null);
+    const stewardTokenPromise = resolveRestoredStewardToken();
     // Cloud = Steward everywhere (DECISIONS.md D3): prefer the live Steward
     // session token over the token captured at provision time (which may have
     // rotated since). If that stored JWT expired while the app was closed,
@@ -498,6 +493,22 @@ export async function applyRestoredConnection(args: {
         ? resolved.accessToken || stewardToken || null
         : stewardToken || resolved.accessToken || null,
     );
+    void tierRepairPromise.then((repaired) => {
+      if (!repaired || repaired.apiBase === resolved.apiBase) return;
+      const current = loadPersistedActiveServer();
+      // A user can switch agents while the compatibility probe is in flight.
+      // Never overwrite a newer selection; null is allowed for direct unit
+      // callers that did not seed persistence.
+      if (
+        current &&
+        (current.id !== resolved.id || current.apiBase !== resolved.apiBase)
+      ) {
+        return;
+      }
+      savePersistedActiveServer(repaired);
+      clientRef.setBaseUrl(repaired.apiBase ?? null);
+      clientRef.setToken(stewardToken || repaired.accessToken || null);
+    });
     return;
   }
 

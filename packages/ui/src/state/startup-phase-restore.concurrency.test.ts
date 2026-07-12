@@ -257,9 +257,12 @@ describe("cloud restore routes the client without waiting on the Steward refresh
         }),
       }),
     );
-    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
-      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/shared-agent",
-    );
+    await vi.waitFor(() => {
+      expect(clientRef.setBaseUrl).toHaveBeenLastCalledWith(
+        "https://api-staging.elizacloud.ai/api/v1/eliza/agents/shared-agent",
+      );
+      expect(clientRef.setToken).toHaveBeenLastCalledWith(stewardToken);
+    });
     expect(clientRef.setToken).toHaveBeenCalledWith(stewardToken);
   });
 
