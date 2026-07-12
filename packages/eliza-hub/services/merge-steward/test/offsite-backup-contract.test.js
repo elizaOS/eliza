@@ -36,12 +36,9 @@ const AGE_TOOLS_AVAILABLE = ["age", "age-keygen"].every(
   (command) =>
     spawnSync(command, ["--version"], { stdio: "ignore" }).status === 0,
 );
+const describeWithAge = AGE_TOOLS_AVAILABLE ? describe : describe.skip;
 
-describe("encrypted off-site backup contract", {
-  skip: AGE_TOOLS_AVAILABLE
-    ? false
-    : "age and age-keygen are required for this integration contract",
-}, () => {
+describeWithAge("encrypted off-site backup contract", () => {
   it("encrypts, uploads, download-verifies, and recovers a backup without plaintext remote data", async () => {
     const fixture = await createFixture();
 
