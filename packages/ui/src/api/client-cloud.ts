@@ -3415,7 +3415,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
           // the error so the caller can retry rather than duplicate.
           return await this.getCloudCompatAgents().catch((cause) => ({
             success: false as const,
-            data: [] as CloudCompatAgent[],
+            data: [] as CloudCompatAgentWithExecutionTier[],
             error: cause instanceof Error ? cause.message : undefined,
           }));
         })();
