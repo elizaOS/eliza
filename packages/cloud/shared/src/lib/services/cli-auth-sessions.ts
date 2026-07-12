@@ -63,9 +63,10 @@ export class CliAuthSessionsService {
     organizationId: string,
   ): Promise<{
     session: CliAuthSession;
-    apiKey: string;
-    keyPrefix: string;
+    apiKey: string | null;
+    keyPrefix: string | null;
     expiresAt: Date | null;
+    alreadyAuthenticated: boolean;
   }> {
     // Check if session exists and is still valid
     const session = await this.getActiveSession(sessionId);
@@ -74,7 +75,50 @@ export class CliAuthSessionsService {
       throw new Error("Invalid or expired session");
     }
 
+    // Idempotent completion (fix: staging cli-login regression 2026-07-12).
+    //
+    // The browser cli-login page POSTs /complete inside a React effect that can
+    // fire more than once (StrictMode double-invoke, an effect re-run when
+    // `ready`/`authenticated` transition, a retry, or the user re-visiting the
+    // same ?session= URL within the 10-minute TTL). The first POST flips the
+    // session pending -> authenticated and mints the CLI API key; a second POST
+    // used to throw "Session already authenticated or expired", which the page
+    // rendered as a hard "Authentication Error" even though the user WAS signed
+    // in. Because the CLI/device receives the plaintext key via the separate
+    // single-use poll endpoint (getAndClearApiKey) and the browser only reads
+    // `keyPrefix`, completion is safe to treat as idempotent: if THIS user
+    // already authenticated this session, return success without minting a
+    // second key. Only reject when the session belongs to a different user or
+    // is expired.
+    if (session.status === "authenticated") {
+      if (session.user_id && session.user_id !== userId) {
+        // Session was completed by a different account — do not leak it.
+        throw new Error("Session already authenticated or expired");
+      }
+
+      let keyPrefix: string | null = null;
+      let expiresAt: Date | null = null;
+      if (session.api_key_id) {
+        const existingKey = await apiKeysRepository.findById(session.api_key_id);
+        if (existingKey) {
+          keyPrefix = existingKey.key_prefix;
+          expiresAt = existingKey.expires_at ?? null;
+        }
+      }
+
+      return {
+        session,
+        // Plaintext is never re-derivable (D-6); the CLI reads it via the
+        // single-use poll endpoint. The browser only consumes `keyPrefix`.
+        apiKey: null,
+        keyPrefix,
+        expiresAt,
+        alreadyAuthenticated: true,
+      };
+    }
+
     if (session.status !== "pending") {
+      // Expired or any other non-pending terminal state.
       throw new Error("Session already authenticated or expired");
     }
 
@@ -105,6 +149,7 @@ export class CliAuthSessionsService {
       apiKey: plainKey,
       keyPrefix: apiKey.key_prefix,
       expiresAt: apiKey.expires_at,
+      alreadyAuthenticated: false,
     };
   }
 
