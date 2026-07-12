@@ -234,6 +234,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
             agentName: "My Agent",
             status: "running",
             bridgeUrl: "https://agent-1.example.test",
+            executionTier: "dedicated-always",
           },
         ],
       },
@@ -259,6 +260,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
           agent_name: "My Agent",
           status: "running",
           bridge_url: "https://agent-1.example.test",
+          execution_tier: "dedicated-always",
         }),
       ],
     });

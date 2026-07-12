@@ -74,6 +74,7 @@ type MockAgent = {
   pollsSinceResume: number;
   /** After running: how many dedicated-proxy calls still answer 202. */
   proxy202sRemaining: number;
+  executionTier: "shared" | "dedicated-always";
   /**
    * Proxy-readiness window (#15901): how many dedicated-proxy calls answer a
    * flat router 404 even though the control-plane record already says
@@ -107,6 +108,7 @@ function agentDto(agent: MockAgent) {
         : agent.webUiUrl,
     bridgeUrl: agent.bridgeUrl,
     errorMessage: agent.errorMessage ?? null,
+    executionTier: agent.executionTier,
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
   };
@@ -425,6 +427,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "dedicated-always",
       ...overrides,
     };
     state.agents.set(agent.id, agent);
@@ -583,6 +586,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "shared",
     };
     state.agents.set(shared.id, shared);
 
@@ -647,6 +651,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "dedicated-always",
     };
     state.agents.set(other.id, other);
 
@@ -680,6 +685,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "shared",
     };
     state.agents.set(shared.id, shared);
     state.conversations.set("agent-shared:agent-shared", {
@@ -751,6 +757,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "shared",
     };
     state.agents.set(shared.id, shared);
     seedDedicated({

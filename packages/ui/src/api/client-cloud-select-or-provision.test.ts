@@ -44,6 +44,7 @@ function makeAgent(
     database_status: "ok",
     error_message: null,
     last_heartbeat_at: null,
+    execution_tier: "dedicated-always",
     ...overrides,
   };
 }
@@ -209,7 +210,7 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
-  it("converts a staging shared-style agent URL to staging dedicated ingress", async () => {
+  it("converts an adapter-shaped URL for a dedicated staging record to dedicated ingress", async () => {
     const { client, getCloudCompatAgents, createCloudCompatAgent } =
       fakeClient();
     getCloudCompatAgents.mockResolvedValue({
@@ -234,6 +235,88 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(result.created).toBe(false);
     expect(result.apiBase).toBe("https://agent-staging.staging.elizacloud.ai");
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("keeps an explicit shared staging record on the shared adapter", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "agent-shared",
+          bridge_url: null,
+          web_ui_url: null,
+          webUiUrl: null,
+          containerUrl: "",
+          execution_tier: "shared",
+        }),
+      ],
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      cloudApiBase: "https://api-staging.elizacloud.ai/api/v1",
+      preferSharedTier: true,
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.executionTier).toBe("shared");
+    expect(result.apiBase).toBe(
+      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-shared",
+    );
+    expect(createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
+  it("force-creates a dedicated target instead of reusing an explicit shared bridge", async () => {
+    const {
+      client,
+      getCloudCompatAgents,
+      createCloudCompatAgent,
+      getCloudCompatAgent,
+    } = fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "shared-bridge",
+          bridge_url: null,
+          web_ui_url: null,
+          webUiUrl: null,
+          containerUrl: "",
+          execution_tier: "shared",
+        }),
+      ],
+    });
+    createCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: {
+        agentId: "dedicated-target",
+        agentName: "Eliza",
+        jobId: "",
+        status: "running",
+        nodeId: null,
+        message: "",
+      },
+    });
+    getCloudCompatAgent.mockResolvedValue({
+      success: true,
+      data: makeAgent({
+        agent_id: "dedicated-target",
+        status: "running",
+        web_ui_url: "https://dedicated-target.elizacloud.ai",
+        webUiUrl: "https://dedicated-target.elizacloud.ai",
+      }),
+    });
+
+    const result = await client.selectOrProvisionCloudAgent(BASE_OPTS);
+
+    expect(createCloudCompatAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ forceCreate: true }),
+    );
+    expect(result.agentId).toBe("dedicated-target");
+    expect(result.apiBase).toBe("https://dedicated-target.elizacloud.ai");
+    expect(result.executionTier).toBe("dedicated-always");
   });
 
   it("does NOT provision when the list fetch throws (transient/network error)", async () => {

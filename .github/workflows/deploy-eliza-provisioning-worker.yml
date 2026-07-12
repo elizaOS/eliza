@@ -129,6 +129,10 @@ jobs:
       HEADSCALE_API_URL: ${{ vars.HEADSCALE_API_URL }}
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      # Base64 private key used by the daemon to reach dedicated-agent nodes.
+      # Keep this in the protected environment instead of relying on a
+      # hand-copied file that can drift or disappear when the CP host is rebuilt.
+      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
       # Sandbox-registry Redis (TCP redis:// proxy, sandbox-reachable — never a
       # *.railway.internal host) so provisioned sandboxes self-register and
       # Discord/Telegram inbound routing works (#8621 / #8756). Reconciled into
@@ -245,7 +249,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
@@ -417,6 +421,7 @@ jobs:
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
               "HEADSCALE_API_KEY=$HEADSCALE_API_KEY" \
+              "CONTAINERS_SSH_KEY=$CONTAINERS_SSH_KEY" \
               "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL" \
               "DATABASE_URL=$DATABASE_URL" \
               "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY" \
