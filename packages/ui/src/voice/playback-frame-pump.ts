@@ -10,6 +10,7 @@
 
 import { fetchWithCsrf } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
+import { ttsDebug } from "../utils/tts-debug";
 import {
   markTtsPlaybackEnded,
   markTtsPlaybackStarted,
@@ -127,6 +128,57 @@ export function warmPlaybackWorklet(ctx: AudioContext): void {
 }
 
 /**
+ * Resumes a suspended AudioContext with a timeout, so a `resume()` call that
+ * never settles (observed on some mobile WebViews) cannot block playback
+ * forever. Returns whether the context is running afterward.
+ */
+export async function resumeAudioContextForPlayback(
+  ctx: AudioContext,
+  timeoutMs = 1200,
+): Promise<boolean> {
+  if (ctx.state !== "suspended") return true;
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const resumed = await Promise.race([
+      ctx.resume().then(
+        () => true,
+        () => false,
+      ),
+      new Promise<boolean>((resolve) => {
+        timeoutId = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+    return resumed && ctx.state !== "suspended";
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Shared resume-or-fail-closed gate the three TTS provider paths in
+ * `useVoiceChat` each duplicated. Returns normally once `ctx` is running;
+ * throws `NotAllowedError` (and reports via `onBlocked`) if a browser
+ * autoplay gesture is still required, so the caller fails closed instead of
+ * silently playing nothing.
+ */
+export async function ensurePlaybackContextRunning(
+  ctx: AudioContext,
+  provider: string,
+  onBlocked: () => void,
+): Promise<void> {
+  if (ctx.state !== "suspended") return;
+  const resumed = await resumeAudioContextForPlayback(ctx);
+  if (resumed) return;
+  ttsDebug("play:audio-context-blocked", { provider, state: ctx.state });
+  onBlocked();
+  throw new DOMException(
+    "Audio playback is blocked until a user gesture unlocks the audio context",
+    "NotAllowedError",
+  );
+}
+
+/**
  * Wait briefly for the optional visualizer tap without allowing a slow worklet
  * module load to gate audible playback.
  */
@@ -152,6 +204,69 @@ export async function attachPlaybackTapWithGrace(
     if (tap?.lateAttachSafe) onLateTap(tap);
   });
   return null;
+}
+
+/**
+ * Owns one playback-reference tap's lifecycle across the grace-window attach,
+ * a possible late (post-grace) attach, and teardown. `useVoiceChat` drove this
+ * as three near-identical inline blocks (one per TTS provider path); this
+ * class is the single implementation those call sites now share, matching
+ * `activeTapRef` (the hook's `playbackFrameTapRef`) to whichever tap instance
+ * is currently live so a stale reference can never be started/stopped twice.
+ */
+export class PlaybackTapLifecycle {
+  private tap: PlaybackFrameTap | null = null;
+  private started = false;
+  private finished = false;
+
+  constructor(
+    private readonly activeTapRef: { current: PlaybackFrameTap | null },
+  ) {}
+
+  get current(): PlaybackFrameTap | null {
+    return this.tap;
+  }
+
+  /** Races the tap against the grace window; a late-arriving worklet tap self-attaches via the callback below. */
+  async attach(
+    tapPromise: Promise<PlaybackFrameTap | null>,
+  ): Promise<PlaybackFrameTap | null> {
+    this.tap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
+      if (this.finished) {
+        void lateTap.stop({ reset: true }).catch((error) => {
+          // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
+          ttsDebug("playback-reference:late-tap-stop-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        return;
+      }
+      this.tap = lateTap;
+      this.activeTapRef.current = lateTap;
+      if (this.started) lateTap.start(getNowMs());
+    });
+    return this.tap;
+  }
+
+  /** Call once, immediately before `source.start(0)`. */
+  start(startTimestampMs: number): void {
+    this.started = true;
+    if (this.tap) {
+      this.activeTapRef.current = this.tap;
+      this.tap.start(startTimestampMs);
+    }
+  }
+
+  /** Call from the playback `finish()` teardown; best-effort, never throws. */
+  finish(): void {
+    this.finished = true;
+    if (this.activeTapRef.current === this.tap) {
+      this.activeTapRef.current = null;
+    }
+    void this.tap?.stop({ reset: true }).catch(() => {
+      // error-policy:J6 best-effort teardown; playback has already ended.
+    });
+  }
 }
 
 function clampPcm(value: number): number {

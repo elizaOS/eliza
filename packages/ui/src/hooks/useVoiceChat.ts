@@ -56,9 +56,11 @@ import {
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
 import {
-  attachPlaybackTapWithGrace,
+  ensurePlaybackContextRunning,
   PlaybackFramePump,
   type PlaybackFrameTap,
+  PlaybackTapLifecycle,
+  resumeAudioContextForPlayback,
   warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
 import {
@@ -147,7 +149,6 @@ declare global {
 // ── Shared mutable state ─────────────────────────────────────────────
 
 let sharedAudioCtx: AudioContext | null = null;
-const AUDIO_CONTEXT_RESUME_TIMEOUT_MS = 1200;
 const CLOUD_TTS_TIMEOUT_MS = 60_000;
 const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60_000;
 /** How long the transient `micReconnected` pulse stays set after an auto-restart. */
@@ -165,29 +166,6 @@ const MIC_RECONNECT_PULSE_MS = 1500;
 const CAPTURE_PAUSE_GRACE_MS = 1500;
 
 // ── Internal helpers ─────────────────────────────────────────────────
-
-async function resumeAudioContextForPlayback(
-  ctx: AudioContext,
-  timeoutMs = AUDIO_CONTEXT_RESUME_TIMEOUT_MS,
-): Promise<boolean> {
-  if (ctx.state !== "suspended") return true;
-
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const resumed = await Promise.race([
-      ctx.resume().then(
-        () => true,
-        () => false,
-      ),
-      new Promise<boolean>((resolve) => {
-        timeoutId = setTimeout(() => resolve(false), timeoutMs);
-      }),
-    ]);
-    return resumed && ctx.state !== "suspended";
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
 
 function shouldPreferNativeTalkMode(): boolean {
   if (typeof window === "undefined") return false;
@@ -1543,20 +1521,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "elevenlabs",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(ctx, "elevenlabs", markAudioBlocked);
       markAudioPlaying();
 
       const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
@@ -1771,24 +1736,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           });
           return null;
         });
-      let playbackTap: PlaybackFrameTap | null = null;
-      let playbackStarted = false;
-      let playbackFinished = false;
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
       let playStartMs = 0;
-      playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
-        if (playbackFinished) {
-          void lateTap.stop({ reset: true }).catch((error) => {
-            // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
-            ttsDebug("playback-reference:late-tap-stop-failed", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-          return;
-        }
-        playbackTap = lateTap;
-        playbackFrameTapRef.current = lateTap;
-        if (playbackStarted) lateTap.start(performance.now());
-      });
 
       await new Promise<void>((resolve) => {
         let finished = false;
@@ -1798,19 +1748,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const finish = () => {
           if (finished) return;
           finished = true;
-          playbackFinished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -1851,16 +1795,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
         );
 
-        playbackStarted = true;
         source.start(0);
         emitPlaybackStart({
           text,
@@ -1892,20 +1832,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "eliza-cloud",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(ctx, "eliza-cloud", markAudioBlocked);
       markAudioPlaying();
 
       const cacheKey =
@@ -2023,24 +1950,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           });
           return null;
         });
-      let playbackTap: PlaybackFrameTap | null = null;
-      let playbackStarted = false;
-      let playbackFinished = false;
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
       let playStartMs = 0;
-      playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
-        if (playbackFinished) {
-          void lateTap.stop({ reset: true }).catch((error) => {
-            // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
-            ttsDebug("playback-reference:late-tap-stop-failed", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-          return;
-        }
-        playbackTap = lateTap;
-        playbackFrameTapRef.current = lateTap;
-        if (playbackStarted) lateTap.start(performance.now());
-      });
 
       await new Promise<void>((resolve) => {
         let finished = false;
@@ -2050,19 +1962,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const finish = () => {
           if (finished) return;
           finished = true;
-          playbackFinished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -2081,16 +1987,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         wrappedFinish = finish;
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
         );
 
-        playbackStarted = true;
         source.start(0);
         emitPlaybackStart({
           text,
@@ -2122,20 +2024,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "local-inference",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(
+        ctx,
+        "local-inference",
+        markAudioBlocked,
+      );
       markAudioPlaying();
 
       const cacheKey =
@@ -2221,24 +2114,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           });
           return null;
         });
-      let playbackTap: PlaybackFrameTap | null = null;
-      let playbackStarted = false;
-      let playbackFinished = false;
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
       let playStartMs = 0;
-      playbackTap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
-        if (playbackFinished) {
-          void lateTap.stop({ reset: true }).catch((error) => {
-            // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
-            ttsDebug("playback-reference:late-tap-stop-failed", {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
-          return;
-        }
-        playbackTap = lateTap;
-        playbackFrameTapRef.current = lateTap;
-        if (playbackStarted) lateTap.start(performance.now());
-      });
 
       await new Promise<void>((resolve) => {
         let finished = false;
@@ -2248,19 +2126,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const finish = () => {
           if (finished) return;
           finished = true;
-          playbackFinished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -2279,16 +2151,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         wrappedFinish = finish;
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
         );
 
-        playbackStarted = true;
         source.start(0);
         emitPlaybackStart({
           text,
