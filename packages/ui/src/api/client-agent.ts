@@ -86,6 +86,10 @@ import type {
   ListTrainingCollectionsResponse,
   LogsFilter,
   LogsResponse,
+  ModelCatalog,
+  ModelsConfigResponse,
+  ModelsConfigWriteRequest,
+  ModelsConfigWriteResult,
   OrchestratorAccountOverview,
   OrchestratorAccountReadiness,
   OrchestratorRoomRosterOverview,
@@ -786,7 +790,19 @@ declare module "./client-base" {
     fetchModels(
       provider: string,
       refresh?: boolean,
-    ): Promise<{ provider: string; models: ProviderModelRecord[] }>;
+    ): Promise<{
+      provider: string;
+      models: ProviderModelRecord[];
+      catalog: ModelCatalog;
+    }>;
+    getModelsCatalog(): Promise<{
+      providers: Record<string, ProviderModelRecord[]>;
+      catalog: ModelCatalog;
+    }>;
+    getModelsConfig(): Promise<ModelsConfigResponse>;
+    updateModelsConfig(
+      request: ModelsConfigWriteRequest,
+    ): Promise<ModelsConfigWriteResult>;
     getCorePlugins(): Promise<CorePluginsResponse>;
     toggleCorePlugin(
       npmName: string,
@@ -2873,6 +2889,85 @@ ElizaClient.prototype.fetchModels = async function (
   const params = new URLSearchParams({ provider });
   if (refresh) params.set("refresh", "true");
   return this.fetch(`/api/models?${params.toString()}`);
+};
+
+ElizaClient.prototype.getModelsCatalog = async function (this: ElizaClient) {
+  // Deliberately no refresh=true: the caller wants the validated
+  // provider→model→efforts catalog attached to every /api/models response,
+  // not a cache-busting refetch of every provider's model list.
+  return this.fetch("/api/models");
+};
+
+ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {
+  return this.fetch("/api/models/config");
+};
+
+ElizaClient.prototype.updateModelsConfig = async function (
+  this: ElizaClient,
+  request,
+) {
+  // allowNonOk: the route's 400 (MODEL_CONFIG_INVALID + context payload) and
+  // 409 (operation busy) are designed outcomes the settings panel renders
+  // inline; the default non-OK path would collapse them into a bare ApiError
+  // message and drop the context. Shapes are validated field-by-field because
+  // the body is an untrusted transport boundary.
+  const body = await this.fetch<Record<string, unknown> | undefined>(
+    "/api/models/config",
+    { method: "POST", body: JSON.stringify(request) },
+    { allowNonOk: true },
+  );
+  if (
+    body &&
+    typeof body.applied === "boolean" &&
+    typeof body.restart === "boolean" &&
+    Array.isArray(body.keys)
+  ) {
+    return {
+      kind: "applied",
+      restart: body.restart,
+      keys: body.keys.filter((key): key is string => typeof key === "string"),
+      ...(typeof body.operationId === "string"
+        ? { operationId: body.operationId }
+        : {}),
+      ...(body.deduped === true ? { deduped: true } : {}),
+      ...(Array.isArray(body.conflictingServiceEnvKeys)
+        ? {
+            conflictingServiceEnvKeys: body.conflictingServiceEnvKeys.filter(
+              (key): key is string => typeof key === "string",
+            ),
+          }
+        : {}),
+    };
+  }
+  const error = body && typeof body.error === "string" ? body.error : undefined;
+  if (body && error !== undefined && body.code === "MODEL_CONFIG_INVALID") {
+    const context =
+      body.context && typeof body.context === "object"
+        ? (body.context as Record<string, unknown>)
+        : {};
+    const supported = Array.isArray(context.supported)
+      ? context.supported.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : undefined;
+    return {
+      kind: "invalid",
+      error,
+      ...(supported !== undefined ? { supported } : {}),
+    };
+  }
+  if (
+    body &&
+    error !== undefined &&
+    typeof body.activeOperationId === "string"
+  ) {
+    return { kind: "busy", error, activeOperationId: body.activeOperationId };
+  }
+  throw new ApiError({
+    kind: "http",
+    path: "/api/models/config",
+    message: error ?? "Model config update failed",
+  });
 };
 
 ElizaClient.prototype.getCorePlugins = async function (this: ElizaClient) {

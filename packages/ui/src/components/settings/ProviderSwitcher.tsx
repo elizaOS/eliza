@@ -19,6 +19,7 @@ import {
 import { useAppSelectorShallow } from "../../state";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
+import { ModelConfigurationPanel } from "./ModelConfigurationPanel";
 import { ProviderCard } from "./ProviderCard";
 import {
   ApiKeyPanel,
@@ -298,6 +299,10 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           ) : null}
         </SettingsGroup>
       ) : null}
+
+      {/* Per-role model configuration (small/large chat brains + coding
+          sub-agent), driven by the validated /api/models catalog. */}
+      <ModelConfigurationPanel />
 
       {/* Voice folds into this section for MVP (the standalone Voice tab is
           developer-only): speech is pinned to the bundled Kokoro TTS, so a
