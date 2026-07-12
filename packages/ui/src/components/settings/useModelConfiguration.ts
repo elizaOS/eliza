@@ -367,6 +367,45 @@ function catalogIsEmpty(catalog: ModelCatalog): boolean {
   );
 }
 
+/**
+ * Boundary guards for the two GET responses. The typed client casts JSON
+ * blindly, and a runtime predating the model-config API (or a test stub)
+ * answers with a shapeless body — that must surface as the panel's designed
+ * error state with a readable message, not a TypeError from deep inside
+ * draft resolution.
+ */
+function parseCatalogResponse(response: unknown): ModelCatalog {
+  if (response && typeof response === "object") {
+    const catalog = (response as { catalog?: unknown }).catalog;
+    if (catalog && typeof catalog === "object") {
+      const providers = (catalog as { providers?: unknown }).providers;
+      if (
+        providers &&
+        typeof providers === "object" &&
+        !Array.isArray(providers) &&
+        Object.values(providers).every((entries) => Array.isArray(entries))
+      ) {
+        return catalog as ModelCatalog;
+      }
+    }
+  }
+  throw new Error(
+    "the runtime did not return a model catalog (/api/models) — it may predate the model configuration API",
+  );
+}
+
+function parseConfigResponse(response: unknown): ModelsConfigResponse {
+  if (response && typeof response === "object") {
+    const targets = (response as { targets?: unknown }).targets;
+    if (targets && typeof targets === "object" && !Array.isArray(targets)) {
+      return response as ModelsConfigResponse;
+    }
+  }
+  throw new Error(
+    "the runtime did not return a model configuration (/api/models/config) — it may predate the model configuration API",
+  );
+}
+
 function failureMessage(err: unknown): string {
   return err instanceof Error && err.message.trim()
     ? err.message
@@ -439,13 +478,16 @@ export function useModelConfiguration(): ModelConfigurationState {
   const loadAll = useCallback(async () => {
     setLoad({ phase: "loading" });
     try {
-      const [models, config] = await Promise.all([
+      const [modelsResponse, configResponse] = await Promise.all([
         client.getModelsCatalog(),
         client.getModelsConfig(),
       ]);
       if (disposedRef.current) return;
-      const data: ReadyData = { catalog: models.catalog, config };
-      catalogRef.current = models.catalog;
+      const data: ReadyData = {
+        catalog: parseCatalogResponse(modelsResponse),
+        config: parseConfigResponse(configResponse),
+      };
+      catalogRef.current = data.catalog;
       initializeDrafts(data);
       setLoad({ phase: "ready", data });
     } catch (err) {
@@ -469,7 +511,7 @@ export function useModelConfiguration(): ModelConfigurationState {
   const refreshConfig = useCallback(async () => {
     let config: ModelsConfigResponse;
     try {
-      config = await client.getModelsConfig();
+      config = parseConfigResponse(await client.getModelsConfig());
     } catch {
       // error-policy:J4 the write itself already succeeded; a failed
       // source-note refresh must not repaint a successful save as an error.

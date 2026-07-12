@@ -242,6 +242,20 @@ describe("catalog load states", () => {
     );
   });
 
+  it("renders a readable error for a runtime that predates the model-config API", async () => {
+    // An older runtime (or a shapeless stub) answers without the catalog /
+    // targets fields — the boundary guard must surface the designed error
+    // state, never a TypeError from draft resolution.
+    clientMock.getModelsCatalog.mockResolvedValue({});
+    clientMock.getModelsConfig.mockResolvedValue({});
+    render(<ModelConfigurationPanel />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "did not return a model catalog (/api/models)",
+    );
+  });
+
   it("renders the designed empty state for an empty catalog", async () => {
     clientMock.getModelsCatalog.mockResolvedValue({
       providers: {},
