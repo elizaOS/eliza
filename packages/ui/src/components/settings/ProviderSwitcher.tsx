@@ -131,6 +131,19 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [providerEntries],
   );
 
+  // Pin the model-configuration panel's chat provider to the active
+  // intelligence selection when it unambiguously maps to a catalog provider.
+  // Subscription selections don't route chat and other BYOK providers have no
+  // curated catalog slice — those keep the free per-target choice.
+  const activeChatCatalogProvider =
+    resolvedSelectedId === "__cloud__"
+      ? "elizacloud"
+      : resolvedSelectedId === "cerebras"
+        ? "cerebras"
+        : resolvedSelectedId === "anthropic"
+          ? "claude-chat"
+          : undefined;
+
   const selectedPanelProvider = useMemo(() => {
     if (
       visibleProviderPanelId === "__cloud__" ||
@@ -302,7 +315,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
       {/* Per-role model configuration (small/large chat brains + coding
           sub-agent), driven by the validated /api/models catalog. */}
-      <ModelConfigurationPanel />
+      <ModelConfigurationPanel activeChatProvider={activeChatCatalogProvider} />
 
       {/* Voice folds into this section for MVP (the standalone Voice tab is
           developer-only): speech is pinned to the bundled Kokoro TTS, so a

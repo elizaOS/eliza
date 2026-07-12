@@ -366,6 +366,69 @@ describe("prefill and option filtering", () => {
   });
 });
 
+describe("active-provider scoping", () => {
+  it("pins the chat provider to the active intelligence selection and scopes models to it", async () => {
+    render(<ModelConfigurationPanel activeChatProvider="elizacloud" />);
+    await waitFor(() =>
+      expect(agentElements.has("models-small-model")).toBe(true),
+    );
+
+    // No free provider dropdown — the provider follows the active selection.
+    expect(agentElements.has("models-small-provider")).toBe(false);
+    expect(
+      document.querySelector('[data-agent-id="models-small-provider"]'),
+    ).toBeNull();
+    expect(
+      screen.getAllByText(/follows your active provider/i).length,
+    ).toBeGreaterThan(0);
+
+    // Model options come from the pinned provider's slice only.
+    const options = agentElements.get("models-small-model")?.options ?? [];
+    for (const id of options) {
+      expect(
+        fixtureCatalog().providers.elizacloud?.some((m) => m.id === id),
+      ).toBe(true);
+    }
+  });
+
+  it("keeps the free provider choice when no active provider maps to the catalog", async () => {
+    render(<ModelConfigurationPanel />);
+    await waitFor(() =>
+      expect(agentElements.has("models-small-provider")).toBe(true),
+    );
+    expect(agentElements.has("models-small-provider")).toBe(true);
+  });
+
+  it("saves against the pinned provider", async () => {
+    clientMock.updateModelsConfig.mockResolvedValue({
+      kind: "applied",
+      restart: true,
+      keys: ["OPENAI_SMALL_MODEL"],
+      operationId: "op-1",
+    });
+    render(<ModelConfigurationPanel activeChatProvider="cerebras" />);
+    await waitFor(() =>
+      expect(agentElements.has("models-small-model")).toBe(true),
+    );
+    fill("models-small-model", "gemma-4-31b");
+    act(() => agentButton("models-small-save").click());
+    await waitFor(() =>
+      expect(agentElements.has("models-small-confirm-restart")).toBe(true),
+    );
+    act(() => agentButton("models-small-confirm-restart").click());
+    await waitFor(() =>
+      expect(clientMock.updateModelsConfig).toHaveBeenCalled(),
+    );
+    expect(clientMock.updateModelsConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: "small",
+        provider: "cerebras",
+        model: "gemma-4-31b",
+      }),
+    );
+  });
+});
+
 describe("chat save flow", () => {
   it("requires an explicit restart confirmation before posting, then polls status", async () => {
     clientMock.updateModelsConfig.mockResolvedValue({

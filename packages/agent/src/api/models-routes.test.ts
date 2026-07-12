@@ -64,6 +64,18 @@ describe("handleModelsRoutes catalog field", () => {
     });
   });
 
+  it("serves catalogOnly without touching any provider fetcher", async () => {
+    const { ctx, json } = makeCtx("/api/models?catalogOnly=1");
+    await expect(handleModelsRoutes(ctx as never)).resolves.toBe(true);
+    expect(json).toHaveBeenCalledWith(ctx.res, {
+      providers: {},
+      catalog: fakeCatalog,
+    });
+    // The whole point: no provider fan-out (it takes tens of seconds cold).
+    expect(ctx.getOrFetchAllProviders).not.toHaveBeenCalled();
+    expect(ctx.getOrFetchProvider).not.toHaveBeenCalled();
+  });
+
   it("declines non-matching routes", async () => {
     const { ctx } = makeCtx("/api/models");
     ctx.pathname = "/api/models/config";

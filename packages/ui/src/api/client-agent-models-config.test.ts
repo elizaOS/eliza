@@ -19,13 +19,15 @@ function clientWithBody(body: unknown): {
 }
 
 describe("ElizaClient.getModelsCatalog", () => {
-  it("reads /api/models without a cache-busting refresh", async () => {
+  it("reads the catalog-only fast path (no provider fan-out)", async () => {
     const { client, fetchMock } = clientWithBody({
       providers: {},
       catalog: { providers: {} },
     });
     const result = await client.getModelsCatalog();
-    expect(fetchMock).toHaveBeenCalledWith("/api/models");
+    // catalogOnly skips the server's all-providers model-list fan-out, which
+    // exceeds the client's 10s fetch budget on a cold cache.
+    expect(fetchMock).toHaveBeenCalledWith("/api/models?catalogOnly=1");
     expect(result.catalog).toEqual({ providers: {} });
   });
 });

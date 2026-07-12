@@ -173,18 +173,38 @@ function ChatModelGroup({
 
   return (
     <SettingsGroup title={title} description={description} bare>
-      <SettingsSelectRow
-        agentId={`models-${target}-provider`}
-        label={t("modelconfig.provider", { defaultValue: "Provider" })}
-        value={group.provider}
-        onValueChange={group.setProvider}
-        options={group.providerOptions}
-        placeholder={t("modelconfig.chooseProvider", {
-          defaultValue: "Choose a provider",
-        })}
-        disabled={busy}
-        triggerClassName="w-full"
-      />
+      {group.providerLocked ? (
+        // The provider follows the active intelligence selection above; a free
+        // dropdown here would let models be picked from a provider the runtime
+        // isn't routing chat through (dead keys, confusing pairings).
+        <div className="flex items-center justify-between gap-3 py-1.5 text-sm">
+          <span className="text-muted">
+            {t("modelconfig.provider", { defaultValue: "Provider" })}
+          </span>
+          <span>
+            {group.providerOptions.find((o) => o.value === group.provider)
+              ?.label ?? group.provider}{" "}
+            <span className="text-muted">
+              {t("modelconfig.providerFollowsActive", {
+                defaultValue: "(follows your active provider)",
+              })}
+            </span>
+          </span>
+        </div>
+      ) : (
+        <SettingsSelectRow
+          agentId={`models-${target}-provider`}
+          label={t("modelconfig.provider", { defaultValue: "Provider" })}
+          value={group.provider}
+          onValueChange={group.setProvider}
+          options={group.providerOptions}
+          placeholder={t("modelconfig.chooseProvider", {
+            defaultValue: "Choose a provider",
+          })}
+          disabled={busy}
+          triggerClassName="w-full"
+        />
+      )}
       <SettingsSelectRow
         agentId={`models-${target}-model`}
         label={t("modelconfig.model", { defaultValue: "Model" })}
@@ -538,8 +558,14 @@ export function ModelConfigurationPanelView({
   );
 }
 
-export function ModelConfigurationPanel() {
+export function ModelConfigurationPanel({
+  activeChatProvider,
+}: {
+  /** Catalog chat provider implied by the active intelligence selection;
+   * pins the small/large provider so models track what actually routes chat. */
+  activeChatProvider?: string;
+}) {
   const t = useAppSelector((s) => s.t);
-  const state = useModelConfiguration();
+  const state = useModelConfiguration({ activeChatProvider });
   return <ModelConfigurationPanelView state={state} t={t} />;
 }

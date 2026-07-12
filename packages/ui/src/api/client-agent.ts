@@ -2892,10 +2892,11 @@ ElizaClient.prototype.fetchModels = async function (
 };
 
 ElizaClient.prototype.getModelsCatalog = async function (this: ElizaClient) {
-  // Deliberately no refresh=true: the caller wants the validated
-  // provider→model→efforts catalog attached to every /api/models response,
-  // not a cache-busting refetch of every provider's model list.
-  return this.fetch("/api/models");
+  // catalogOnly skips the server's all-providers model-list fan-out, which
+  // takes tens of seconds on a cold cache — far past the client's 10s fetch
+  // budget. Catalog consumers (settings panel, slash completions) only need
+  // the validated catalog, which is local static tables + one file read.
+  return this.fetch("/api/models?catalogOnly=1");
 };
 
 ElizaClient.prototype.getModelsConfig = async function (this: ElizaClient) {

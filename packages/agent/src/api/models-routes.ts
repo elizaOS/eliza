@@ -57,6 +57,16 @@ export async function handleModelsRoutes(
   // at call time so a refreshed server catalog shows up without a restart.
   const catalog = (ctx.buildCatalog ?? buildModelCatalog)();
 
+  // Catalog consumers (the settings model panel, slash-command completions)
+  // only need the validated catalog — local static tables + one file read.
+  // The all-providers fan-out below hits every provider's live model-list API
+  // and takes tens of seconds on a cold cache, which blows the UI client's
+  // 10s fetch budget and renders as a failed options load.
+  if (url.searchParams.get("catalogOnly") === "1") {
+    json(res, { providers: {}, catalog });
+    return true;
+  }
+
   if (specificProvider) {
     if (force) {
       try {

@@ -105,6 +105,10 @@ export interface ModelConfigChatGroup {
   target: ChatTarget;
   providerOptions: Array<{ value: string; label: string }>;
   provider: string;
+  /** True when the provider is pinned to the active intelligence selection —
+   * the panel renders a static label instead of a free provider dropdown so
+   * chat models can never be picked from an inactive provider. */
+  providerLocked: boolean;
   modelOptions: ModelCatalogEntry[];
   model: string;
   effortOptions: string[];
@@ -412,7 +416,18 @@ function failureMessage(err: unknown): string {
     : "Request failed";
 }
 
-export function useModelConfiguration(): ModelConfigurationState {
+export interface UseModelConfigurationOptions {
+  /** Catalog chat provider implied by the ACTIVE intelligence selection
+   * ("elizacloud" | "cerebras" | "claude-chat"). When set, the small/large
+   * groups are pinned to it; when undefined (no unambiguous active provider)
+   * the free per-target provider choice remains. */
+  activeChatProvider?: string;
+}
+
+export function useModelConfiguration(
+  options: UseModelConfigurationOptions = {},
+): ModelConfigurationState {
+  const activeChatProvider = options.activeChatProvider;
   const [load, setLoad] = useState<LoadState>({ phase: "loading" });
   const [chatDrafts, setChatDrafts] = useState<Record<ChatTarget, ChatDraft>>({
     small: { provider: "", model: "", effort: "", configured: null },
@@ -650,11 +665,21 @@ export function useModelConfiguration(): ModelConfigurationState {
   const buildChatGroup = useCallback(
     (target: ChatTarget, data: ReadyData): ModelConfigChatGroup => {
       const draft = chatDrafts[target];
+      // An unambiguous active intelligence selection pins the provider: models
+      // from an inactive provider would persist keys the runtime never reads.
+      const providerLocked =
+        activeChatProvider !== undefined &&
+        CHAT_PROVIDERS.some((choice) => choice.id === activeChatProvider);
+      const effectiveProvider = providerLocked
+        ? (activeChatProvider as string)
+        : draft.provider;
       const providerOptions = CHAT_PROVIDERS.filter(
-        (choice) => entriesForRole(data.catalog, choice.id, target).length > 0,
+        (choice) =>
+          (!providerLocked || choice.id === activeChatProvider) &&
+          entriesForRole(data.catalog, choice.id, target).length > 0,
       ).map((choice) => ({ value: choice.id, label: choice.label }));
-      const modelOptions = draft.provider
-        ? entriesForRole(data.catalog, draft.provider, target)
+      const modelOptions = effectiveProvider
+        ? entriesForRole(data.catalog, effectiveProvider, target)
         : [];
       const selectedEntry =
         modelOptions.find((entry) => entry.id === draft.model) ?? null;
@@ -672,7 +697,9 @@ export function useModelConfiguration(): ModelConfigurationState {
         setChatDrafts((prev) => {
           const entry = entriesForRole(
             data.catalog,
-            prev[target].provider,
+            providerLocked
+              ? (activeChatProvider as string)
+              : prev[target].provider,
             target,
           ).find((item) => item.id === model);
           const keepEffort =
@@ -706,7 +733,7 @@ export function useModelConfiguration(): ModelConfigurationState {
         if (save.phase !== "confirm") return;
         void performSave(target, {
           target,
-          provider: draft.provider,
+          provider: effectiveProvider,
           model: draft.model,
           ...(draft.effort ? { effort: draft.effort } : {}),
         });
@@ -719,14 +746,15 @@ export function useModelConfiguration(): ModelConfigurationState {
       return {
         target,
         providerOptions,
-        provider: draft.provider,
+        provider: effectiveProvider,
+        providerLocked,
         modelOptions,
         model: draft.model,
         effortOptions,
         effort: draft.effort,
         selectedEntry,
         configured: draft.configured,
-        sharedEffortKnob: OPENAI_FAMILY_PROVIDERS.has(draft.provider),
+        sharedEffortKnob: OPENAI_FAMILY_PROVIDERS.has(effectiveProvider),
         save,
         setProvider,
         setModel,
@@ -736,7 +764,7 @@ export function useModelConfiguration(): ModelConfigurationState {
         cancelSave,
       };
     },
-    [chatDrafts, performSave, saveStates, setSaveState],
+    [activeChatProvider, chatDrafts, performSave, saveStates, setSaveState],
   );
 
   const buildCodingGroup = useCallback(
