@@ -279,4 +279,307 @@ describe("HealthDomain connector status", () => {
       expect(status.side).toBe("owner");
     }
   });
+
+  it("rejects an unknown provider with a 400", async () => {
+    makeOAuthDir();
+    const domain = makeDomain({
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(),
+    });
+    await expect(
+      domain.getHealthDataConnectorStatus(
+        "not-a-provider" as never,
+        REQUEST_URL,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("HealthDomain connector lifecycle and summaries", () => {
+  let tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const key of HEALTH_ENV_KEYS) {
+      delete process.env[key];
+    }
+    delete process.env.ELIZA_HEALTHKIT_CLI_PATH;
+    delete process.env.ELIZA_GOOGLE_FIT_ACCESS_TOKEN;
+    for (const dir of tempDirs) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    tempDirs = [];
+  });
+
+  function makeOAuthDir(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "health-oauth-"));
+    tempDirs.push(dir);
+    process.env.ELIZA_OAUTH_DIR = dir;
+    return dir;
+  }
+
+  function makeSample(
+    metric: string,
+    value: number,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const now = new Date().toISOString();
+    return {
+      id: `sample-${metric}-${value}`,
+      agentId: AGENT_ID,
+      provider: "strava",
+      grantId: "grant-1",
+      metric,
+      value,
+      unit: "unit",
+      startAt: now,
+      endAt: now,
+      localDate: "2026-07-10",
+      sourceExternalId: `ext-${metric}-${value}`,
+      metadata: {},
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    };
+  }
+
+  it("reports the bridge backend as unavailable when nothing is configured", async () => {
+    delete process.env.ELIZA_HEALTHKIT_CLI_PATH;
+    delete process.env.ELIZA_GOOGLE_FIT_ACCESS_TOKEN;
+    const domain = makeDomain({});
+
+    const status = await domain.getHealthConnectorStatus();
+
+    expect(status.available).toBe(false);
+    expect(status.backend).toBe("none");
+    expect(status.lastCheckedAt).toEqual(expect.any(String));
+  });
+
+  it("rejects cloud_managed OAuth start with a 501", async () => {
+    const domain = makeDomain({});
+    await expect(
+      domain.startHealthConnector(
+        { provider: "strava", mode: "cloud_managed" },
+        REQUEST_URL,
+      ),
+    ).rejects.toMatchObject({ status: 501 });
+  });
+
+  it("rejects non-array capabilities on OAuth start with a 400", async () => {
+    const domain = makeDomain({});
+    await expect(
+      domain.startHealthConnector(
+        { provider: "strava", capabilities: "everything" as never },
+        REQUEST_URL,
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("surfaces missing OAuth config as a client error on start", async () => {
+    makeOAuthDir();
+    const domain = makeDomain({});
+    await expect(
+      domain.startHealthConnector(
+        {
+          provider: "strava",
+          capabilities: ["health.activity.read", "health.activity.read"],
+        },
+        REQUEST_URL,
+      ),
+    ).rejects.toBeInstanceOf(Error);
+  });
+
+  it("rejects a malformed OAuth callback URL", async () => {
+    makeOAuthDir();
+    const domain = makeDomain({});
+    await expect(
+      domain.completeHealthConnectorCallback(
+        new URL("http://127.0.0.1:2138/callback?error=access_denied"),
+      ),
+    ).rejects.toBeInstanceOf(Error);
+  });
+
+  it("disconnects a grant, deleting the stored token and grant row", async () => {
+    makeOAuthDir();
+    process.env.ELIZA_STRAVA_CLIENT_ID = "client-id";
+    process.env.ELIZA_STRAVA_CLIENT_SECRET = "client-secret";
+    const grant = makeGrant();
+    const deleteConnectorGrant = vi.fn(async () => undefined);
+    let deleted = false;
+    const repository = {
+      listConnectorGrants: vi.fn(async () => (deleted ? [] : [grant])),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(async () => null),
+      deleteConnectorGrant: deleteConnectorGrant.mockImplementation(
+        async () => {
+          deleted = true;
+        },
+      ),
+    };
+    const domain = makeDomain(repository);
+
+    const status = await domain.disconnectHealthConnector(
+      { provider: "strava" },
+      REQUEST_URL,
+    );
+
+    expect(deleteConnectorGrant).toHaveBeenCalledWith(
+      AGENT_ID,
+      "strava",
+      grant.mode,
+      grant.side,
+      grant.id,
+    );
+    expect(status.connected).toBe(false);
+  });
+
+  it("summarizes stored samples across every metric bucket", async () => {
+    makeOAuthDir();
+    const samples = [
+      makeSample("steps", 4_000),
+      makeSample("steps", 2_000),
+      makeSample("active_minutes", 30),
+      makeSample("sleep_hours", 7.5),
+      makeSample("calories", 500),
+      makeSample("distance_meters", 3_000),
+      makeSample("heart_rate", 60),
+      makeSample("heart_rate", 80),
+      makeSample("resting_heart_rate", 52),
+      makeSample("heart_rate_variability", 45),
+      makeSample("sleep_score", 88),
+      makeSample("readiness_score", 91),
+      makeSample("weight_kg", 70),
+      makeSample("blood_pressure_systolic", 118),
+      makeSample("blood_pressure_diastolic", 76),
+      makeSample("blood_oxygen_percent", 98),
+      makeSample("respiratory_rate", 14),
+      makeSample("steps", 1_000, { localDate: "2026-07-09" }),
+    ];
+    const repository = {
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(),
+      listHealthMetricSamples: vi.fn(async () => samples),
+      listHealthWorkouts: vi.fn(async () => []),
+      listHealthSleepEpisodes: vi.fn(async () => []),
+    };
+    const domain = makeDomain(repository);
+
+    const response = await domain.getHealthSummary({
+      provider: "strava",
+      days: 7,
+      metrics: ["steps", "heart_rate", "steps"] as never,
+    });
+
+    expect(response.samples).toHaveLength(samples.length);
+    expect(response.summaries).toHaveLength(2);
+    const [latest, previous] = response.summaries;
+    expect(latest).toMatchObject({
+      date: "2026-07-10",
+      provider: "strava",
+      steps: 6_000,
+      activeMinutes: 30,
+      sleepHours: 7.5,
+      calories: 500,
+      distanceMeters: 3_000,
+      heartRateAvg: 70,
+      restingHeartRate: 52,
+      hrvMs: 45,
+      sleepScore: 88,
+      readinessScore: 91,
+      weightKg: 70,
+      bloodPressureSystolic: 118,
+      bloodPressureDiastolic: 76,
+      bloodOxygenPercent: 98,
+    });
+    expect(previous).toMatchObject({ date: "2026-07-09", steps: 1_000 });
+    expect(repository.listHealthMetricSamples).toHaveBeenCalledWith(
+      AGENT_ID,
+      expect.objectContaining({
+        provider: "strava",
+        metrics: ["steps", "heart_rate"],
+        limit: 2_000,
+      }),
+    );
+  });
+
+  it("rejects malformed summary windows", async () => {
+    const domain = makeDomain({
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(),
+    });
+    await expect(
+      domain.getHealthSummary({ startDate: "yesterday" }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(domain.getHealthSummary({ days: -3 })).rejects.toMatchObject({
+      status: 400,
+    });
+    await expect(
+      domain.getHealthSummary({
+        startDate: "2026-07-10",
+        endDate: "2026-07-01",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("skips disconnected providers on sync and returns the stored summary", async () => {
+    makeOAuthDir();
+    const repository = {
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(),
+      listHealthMetricSamples: vi.fn(async () => []),
+      listHealthWorkouts: vi.fn(async () => []),
+      listHealthSleepEpisodes: vi.fn(async () => []),
+    };
+    const domain = makeDomain(repository);
+
+    const response = await domain.syncHealthConnectors({ provider: "strava" });
+
+    expect(response.summaries).toEqual([]);
+    expect(response.providers).toHaveLength(1);
+    expect(response.providers[0].connected).toBe(false);
+  });
+
+  it("routes forceSync summaries through the sync path", async () => {
+    makeOAuthDir();
+    const repository = {
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(),
+      listHealthMetricSamples: vi.fn(async () => []),
+      listHealthWorkouts: vi.fn(async () => []),
+      listHealthSleepEpisodes: vi.fn(async () => []),
+    };
+    const domain = makeDomain(repository);
+
+    const response = await domain.getHealthSummary({
+      provider: "strava",
+      forceSync: true,
+    });
+
+    expect(response.providers).toHaveLength(1);
+    expect(response.syncedAt).toEqual(expect.any(String));
+  });
+
+  it("translates bridge unavailability into 503s for daily reads", async () => {
+    delete process.env.ELIZA_HEALTHKIT_CLI_PATH;
+    delete process.env.ELIZA_GOOGLE_FIT_ACCESS_TOKEN;
+    const domain = makeDomain({});
+
+    await expect(
+      domain.getHealthDailySummary("2026-07-10"),
+    ).rejects.toMatchObject({ status: 503 });
+    await expect(domain.getHealthTrend(7)).rejects.toMatchObject({
+      status: 503,
+    });
+    await expect(
+      domain.getHealthDataPoints({
+        metric: "steps",
+        startAt: "2026-07-09T00:00:00.000Z",
+        endAt: "2026-07-10T00:00:00.000Z",
+      }),
+    ).rejects.toMatchObject({ status: 503 });
+  });
 });
