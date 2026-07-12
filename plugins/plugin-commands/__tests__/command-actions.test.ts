@@ -324,6 +324,8 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 			.sort();
 
 		expect(signatures).toEqual([
+			"cmd:accounts:/accounts->ACCOUNTS_COMMAND",
+			"cmd:backend:/backend->BACKEND_COMMAND",
 			"cmd:commands:/cmds->COMMANDS_COMMAND",
 			"cmd:commands:/commands->COMMANDS_COMMAND",
 			"cmd:compact:/compact->COMPACT_COMMAND",

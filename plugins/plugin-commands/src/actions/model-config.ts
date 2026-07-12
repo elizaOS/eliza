@@ -24,11 +24,12 @@ const CHAT_PROVIDERS = ["cerebras", "elizacloud", "claude-chat"] as const;
 type ChatProvider = (typeof CHAT_PROVIDERS)[number];
 
 /** Coding backends accepted by POST /api/models/config for target "coding". */
-type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
+export type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
 
 // "elizaos" is the orchestrator's spelling of the in-house backend (and what
-// ELIZA_DEFAULT_AGENT_TYPE persists); the API literal is "eliza-code".
-const CODING_BACKEND_TOKENS: Record<string, CodingBackend> = {
+// ELIZA_DEFAULT_AGENT_TYPE persists); the API literal is "eliza-code". Shared
+// with `/backend` (backend.ts) so both commands accept the same tokens.
+export const CODING_BACKEND_TOKENS: Record<string, CodingBackend> = {
 	codex: "codex",
 	claude: "claude",
 	opencode: "opencode",
@@ -40,8 +41,11 @@ export interface ModelConfigWriteBody {
 	target: "small" | "large" | "coding";
 	provider?: ChatProvider;
 	backend?: CodingBackend;
-	model: string;
+	/** Omitted only for the defaultBackend-only coding switch (`/backend`). */
+	model?: string;
 	effort?: string;
+	/** Coding-backend switch, persisted as ELIZA_DEFAULT_AGENT_TYPE. */
+	defaultBackend?: CodingBackend;
 }
 
 export type ModelConfigCommand =
@@ -158,6 +162,9 @@ interface ModelConfigWriteResponse {
 function describeWrite(body: ModelConfigWriteBody): string {
 	const effort = body.effort ? ` at ${body.effort} effort` : "";
 	if (body.target === "coding") {
+		if (body.model === undefined) {
+			return `Default coding backend set to ${body.defaultBackend}`;
+		}
 		return `Coding model for ${body.backend} set to ${body.model}${effort}`;
 	}
 	const provider = body.provider ? ` (${body.provider})` : "";
