@@ -170,6 +170,7 @@ const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
   isAuthorized: false,
   isElevated: false,
   resolveChoices: () => [],
+  describeChoice: () => "",
   resolveSection: () => undefined,
   navigateTab: () => {},
   navigateSettings: () => {},

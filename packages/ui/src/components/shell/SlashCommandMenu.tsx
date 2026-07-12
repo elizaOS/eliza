@@ -79,7 +79,13 @@ export function useSlashMenu(
     const arg = matched.args[argIndex];
     if (!arg) return null;
     const dynamic = arg.dynamicChoices
-      ? controller.resolveChoices(arg.dynamicChoices)
+      ? controller.resolveChoices(arg.dynamicChoices, {
+          commandKey: matched.key,
+          argIndex,
+          // The in-progress token (when not ending on a space) sits AT
+          // argIndex, so slicing to it yields only the committed tokens.
+          precedingTokens: parsed.argTokens.slice(0, argIndex),
+        })
       : [];
     const all = Array.from(new Set([...(arg.choices ?? []), ...dynamic]));
     if (all.length === 0) return null;
@@ -113,18 +119,20 @@ export function useSlashMenu(
       }));
     }
     if (mode === "arg" && argInfo) {
-      // The header already names the argument; choice rows stay clean (no
-      // repeated description on every row).
+      // The header already names the argument; the secondary is a per-choice
+      // display label (e.g. a model's display name) — never the arg
+      // description repeated on every row.
+      const source = argInfo.arg.dynamicChoices;
       return argInfo.choices.map((choice) => ({
         id: `arg:${choice}`,
         primary: choice,
-        secondary: "",
+        secondary: source ? controller.describeChoice(source, choice) : "",
         isCommand: false,
         hasArgs: false,
       }));
     }
     return [];
-  }, [mode, commandResults, argInfo]);
+  }, [mode, commandResults, argInfo, controller]);
 
   const [activeIndex, setActiveIndexState] = React.useState(0);
   // Reset the highlight whenever the visible set changes.

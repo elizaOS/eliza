@@ -86,6 +86,7 @@ import type {
   ListTrainingCollectionsResponse,
   LogsFilter,
   LogsResponse,
+  ModelCatalogResponse,
   OrchestratorAccountOverview,
   OrchestratorAccountReadiness,
   OrchestratorRoomRosterOverview,
@@ -787,6 +788,7 @@ declare module "./client-base" {
       provider: string,
       refresh?: boolean,
     ): Promise<{ provider: string; models: ProviderModelRecord[] }>;
+    fetchModelCatalog(): Promise<ModelCatalogResponse>;
     getCorePlugins(): Promise<CorePluginsResponse>;
     toggleCorePlugin(
       npmName: string,
@@ -2873,6 +2875,12 @@ ElizaClient.prototype.fetchModels = async function (
   const params = new URLSearchParams({ provider });
   if (refresh) params.set("refresh", "true");
   return this.fetch(`/api/models?${params.toString()}`);
+};
+
+ElizaClient.prototype.fetchModelCatalog = async function (this: ElizaClient) {
+  // No ?refresh: the `catalog` field is rebuilt server-side on every request,
+  // so a cached provider read is enough for completion data.
+  return this.fetch("/api/models");
 };
 
 ElizaClient.prototype.getCorePlugins = async function (this: ElizaClient) {
