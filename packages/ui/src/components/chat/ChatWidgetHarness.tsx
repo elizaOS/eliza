@@ -378,6 +378,13 @@ export function ChatWidgetHarness(): React.JSX.Element {
   // pass to sendActionMessage and land in the same scripted advance — there
   // is exactly one action channel (see chat/native-transcript/spec.ts).
   const [nativeDemoActive, setNativeDemoActive] = React.useState(false);
+  // Full-height native demo hides the DOM overlay so the native list reads
+  // cleanly (production single-surface shape); the split-review flag keeps the
+  // DOM visible for side-by-side comparison.
+  const splitReview =
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem("eliza:native-transcript-split") === "1";
+  const hideDomForNative = nativeDemoActive && !splitReview;
   React.useEffect(() => {
     if (!nativeTranscriptDemoRequested()) return;
     let disposed = false;
@@ -590,7 +597,11 @@ export function ChatWidgetHarness(): React.JSX.Element {
           // reviewed over the composite it ships on. Transparent while the
           // NATIVE backdrop owns the field (occluding it would blind the
           // native glass panels sampling it).
-          background: nativeBackdrop ? "transparent" : "#ef5a1f",
+          background: hideDomForNative
+            ? "#000000"
+            : nativeBackdrop
+              ? "transparent"
+              : "#ef5a1f",
           overflow: "hidden",
         }}
       >
@@ -600,6 +611,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
         <div
           aria-hidden
           style={{
+            display: hideDomForNative ? "none" : "block",
             padding: "72px 28px",
             maxWidth: 720,
             color: "rgba(255,255,255,0.92)",
@@ -667,7 +679,9 @@ export function ChatWidgetHarness(): React.JSX.Element {
           </div>
         </div>
         <GlassStyles />
-        <ChatOverlay controller={controller} firstRunOpen={firstRunOpen} />
+        {hideDomForNative ? null : (
+          <ChatOverlay controller={controller} firstRunOpen={firstRunOpen} />
+        )}
       </div>
     </MockAppProvider>
   );

@@ -240,6 +240,7 @@ describe("ChatWidgetHarness native-transcript demo", () => {
   afterEach(() => {
     cleanup();
     localStorage.removeItem("eliza:native-transcript-demo");
+    localStorage.removeItem("eliza:native-transcript-split");
     nativeTranscript.reset();
   });
 
@@ -256,6 +257,8 @@ describe("ChatWidgetHarness native-transcript demo", () => {
 
   it("mirrors v1 frames whose message count tracks a scripted advance", async () => {
     localStorage.setItem("eliza:native-transcript-demo", "1");
+    // Split-review keeps the DOM overlay mounted for the side-by-side taps.
+    localStorage.setItem("eliza:native-transcript-split", "1");
     render(<ChatWidgetHarness />);
 
     await waitFor(() =>
@@ -273,7 +276,7 @@ describe("ChatWidgetHarness native-transcript demo", () => {
       x: 0,
       y: 0,
       width: window.innerWidth,
-      height: window.innerHeight,
+      height: Math.round(window.innerHeight * 0.45),
     });
 
     // A DOM widget tap (protocol action — no user echo) advances the script;
@@ -296,6 +299,7 @@ describe("ChatWidgetHarness native-transcript demo", () => {
 
   it("routes an injected transcriptAction through the same scripted advance as a DOM tap", async () => {
     localStorage.setItem("eliza:native-transcript-demo", "1");
+    localStorage.setItem("eliza:native-transcript-split", "1");
     render(<ChatWidgetHarness />);
     await waitFor(() => expect(nativeTranscript.actionHandler).toBeTruthy());
 
