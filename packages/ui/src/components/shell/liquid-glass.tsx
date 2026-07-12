@@ -35,9 +35,9 @@
  * cards share one token.
  */
 export const LIQUID_GLASS_EDGE_SHADOW = [
-  "inset 0 1px 0 0 rgb(255 255 255 / 50%)",
-  "inset 0 -1px 0 0 rgb(255 255 255 / 14%)",
-  "inset 0 -20px 40px -26px rgb(0 0 0 / 42%)",
+  "inset 0 1px 0 0 rgb(255 255 255 / 60%)",
+  "inset 0 -1px 0 0 rgb(255 255 255 / 18%)",
+  "inset 0 -20px 40px -26px rgb(0 0 0 / 34%)",
 ].join(", ");
 
 /**
@@ -46,7 +46,7 @@ export const LIQUID_GLASS_EDGE_SHADOW = [
  * glass catches light rather than just fading.
  */
 export const LIQUID_GLASS_SHEEN =
-  "radial-gradient(120% 60% at 30% -10%, rgba(255,255,255,0.16) 0%, transparent 55%)";
+  "radial-gradient(120% 60% at 30% -10%, rgba(255,255,255,0.22) 0%, transparent 55%)";
 
 /**
  * A directional specular rim that traces the whole rounded border via a
@@ -67,10 +67,10 @@ ${selector}::before {
   padding: 1px;
   background: linear-gradient(
     145deg,
-    rgba(255, 255, 255, 0.6) 0%,
-    rgba(255, 255, 255, 0.1) 26%,
-    rgba(255, 255, 255, 0.02) 58%,
-    rgba(255, 255, 255, 0.24) 100%
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.14) 26%,
+    rgba(255, 255, 255, 0.04) 58%,
+    rgba(255, 255, 255, 0.32) 100%
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,

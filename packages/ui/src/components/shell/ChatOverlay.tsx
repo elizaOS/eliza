@@ -5050,13 +5050,17 @@ export function ChatOverlay({
                 ? "transparent"
                 : fullBleed
                   ? FULL_BLEED_PANEL_BG
-                  : "color-mix(in srgb, var(--card) 44%, transparent)",
+                  : "color-mix(in srgb, var(--card) 30%, transparent)",
+              // Lensed material, not a tinted card: heavy blur destroys the
+              // detail (legibility), lifted saturation + brightness make the
+              // field GLOW through the panel the way Liquid Glass transmits
+              // its backdrop instead of darkening it.
               backdropFilter: fullBleed
                 ? undefined
-                : "blur(36px) saturate(1.6)",
+                : "blur(40px) saturate(1.8) brightness(1.12)",
               WebkitBackdropFilter: fullBleed
                 ? undefined
-                : "blur(36px) saturate(1.6)",
+                : "blur(40px) saturate(1.8) brightness(1.12)",
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
@@ -5074,7 +5078,7 @@ export function ChatOverlay({
               backgroundImage:
                 firstRunOpen || fullBleed
                   ? "none"
-                  : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+                  : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android

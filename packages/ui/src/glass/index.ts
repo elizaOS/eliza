@@ -7,9 +7,12 @@ export {
   type GlassSurfaceProps,
 } from "./GlassSurface";
 export {
+  clearNativeGlassBackdrop,
   glassBridge,
   isNativeGlassAvailable,
+  type NativeGlassBackdropOptions,
   type NativeGlassOptions,
+  setNativeGlassBackdrop,
   resetGlassBridgeForTests,
 } from "./native-bridge";
 export {

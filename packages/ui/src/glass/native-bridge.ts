@@ -39,6 +39,26 @@ export interface NativeGlassOptions {
   colorScheme?: "light" | "dark" | "system";
 }
 
+/**
+ * Native ambient backdrop request. With one WKWebView/WebView, native glass
+ * can only refract content that lives BEHIND the webview in the native view
+ * hierarchy — so the app's ambient background (the breathing ember field)
+ * must itself become a native layer for glass panels to have anything real
+ * to lens. `setBackdrop` installs that layer (below every glass region) and
+ * makes the webview transparent; `clearBackdrop` restores the opaque webview.
+ * DOM content still paints ABOVE both — surfaces that float over DOM keep
+ * their CSS backdrop-filter for the DOM band and gain the native material
+ * only where the page is transparent.
+ */
+export interface NativeGlassBackdropOptions {
+  /** "ember" = the branded breathing warm field; "color" = a flat fill. */
+  kind: "ember" | "color";
+  /** CSS hex colors, darkest first; ember interpolates between them. */
+  colors?: string[];
+  /** Slow luminance breathing on the field (CA/View animation). */
+  animated?: boolean;
+}
+
 /** Native-truth readback of one region, for diagnostics and device e2e. */
 export interface NativeGlassRegionState {
   exists: boolean;
@@ -58,6 +78,10 @@ interface GlassBridgePlugin {
   detachGlass(options: { id: string }): Promise<void>;
   /** UIGlassContainerEffect merge distance for sibling regions. */
   setGrouping(options: { spacing: number }): Promise<void>;
+  setBackdrop(
+    options: NativeGlassBackdropOptions,
+  ): Promise<{ active: boolean }>;
+  clearBackdrop(): Promise<void>;
   isAvailable(): Promise<{ available: boolean }>;
   /**
    * Reads the region's REAL native view state (existence, count, z-order,
@@ -128,6 +152,37 @@ export function isNativeGlassAvailable(): Promise<boolean> {
     }
   })();
   return availability;
+}
+
+/**
+ * Install the native ambient backdrop (no-op false off-native / pre-iOS 26 /
+ * pre-Android 12). Callers that get `true` back should stop painting the DOM
+ * ambient background — the native layer owns it from here.
+ */
+export async function setNativeGlassBackdrop(
+  options: NativeGlassBackdropOptions,
+): Promise<boolean> {
+  if (!(await isNativeGlassAvailable())) return false;
+  const bridge = glassBridge();
+  if (!bridge) return false;
+  try {
+    return (await bridge.setBackdrop(options)).active;
+  } catch {
+    // error-policy:J4 capability probe — an older native shell without the
+    // method is honestly "no native backdrop"; the DOM field stays.
+    return false;
+  }
+}
+
+export async function clearNativeGlassBackdrop(): Promise<void> {
+  const bridge = glassBridge();
+  if (!bridge) return;
+  try {
+    await bridge.clearBackdrop();
+  } catch {
+    // error-policy:J6 best-effort teardown — the webview simply stays
+    // transparent until the next setBackdrop.
+  }
 }
 
 /** Test seam: reset memoized plugin + availability between cases. */
