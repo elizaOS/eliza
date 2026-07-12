@@ -287,6 +287,9 @@ export interface CloudCompatAgent {
   database_status: string;
   error_message: string | null;
   last_heartbeat_at: string | null;
+  /** Authoritative Cloud execution tier ("shared" | "dedicated"); the
+   * dedicated-mode agent picker filters shared bridges on it. */
+  execution_tier?: string | null;
 }
 
 export interface CloudCompatAgentStatus {
