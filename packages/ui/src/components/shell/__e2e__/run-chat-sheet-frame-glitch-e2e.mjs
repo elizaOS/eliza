@@ -22,8 +22,10 @@
  *      [0.55,0.95]). Assert they are never BOTH visible at once — the exact
  *      "two bars stranded on screen" bug #9142 calls out.
  *
- * A `--canary` run injects a one-frame wrong state into BOTH detectors and
- * asserts each FIRES — proving the harness is not a no-op.
+ * A `--canary` run uses a fresh burst as detector input, injects a one-frame
+ * wrong state into BOTH detectors, and asserts each FIRES. The preceding
+ * non-canary workflow step owns the product gate; the canary owns detector
+ * sensitivity and does not duplicate the timing-sensitive product assertion.
  *
  * Evidence (frame burst, per-frame diff overlays, opacity trace, summary, logs)
  * → test-results/evidence/9142-frame-glitch/.
@@ -403,10 +405,16 @@ function detectFlashes(diffSeq) {
   return hits;
 }
 const flashes = detectFlashes(pairDiff);
-assert(
-  flashes.length === 0,
-  `no single-frame flashes (found ${flashes.length}${flashes.length ? `: ${JSON.stringify(flashes)}` : ""})`,
-);
+if (CANARY) {
+  console.log(
+    `  canary seed burst: ${flashes.length} product-frame candidate(s) (informational; product gate ran in the preceding step)`,
+  );
+} else {
+  assert(
+    flashes.length === 0,
+    `no single-frame flashes (found ${flashes.length}${flashes.length ? `: ${JSON.stringify(flashes)}` : ""})`,
+  );
+}
 
 // Detector 2 — "two pills": pill and grabber never both visible.
 const BOTH_VISIBLE = 0.2;
@@ -414,10 +422,16 @@ const overlaps = samples
   .map((s) => ({ ...s, both: Math.min(s.pill, s.grabber) }))
   .filter((s) => s.both > BOTH_VISIBLE);
 const worstOverlap = Math.max(0, ...samples.map((s) => Math.min(s.pill, s.grabber)));
-assert(
-  overlaps.length === 0,
-  `pill+grabber never stranded together (worst min-opacity ${worstOverlap.toFixed(3)} ≤ ${BOTH_VISIBLE})`,
-);
+if (CANARY) {
+  console.log(
+    `  canary seed trace: ${overlaps.length} product overlap(s) (informational; product gate ran in the preceding step)`,
+  );
+} else {
+  assert(
+    overlaps.length === 0,
+    `pill+grabber never stranded together (worst min-opacity ${worstOverlap.toFixed(3)} ≤ ${BOTH_VISIBLE})`,
+  );
+}
 
 // ── Canary — prove both detectors FIRE on an injected one-frame wrong state ───
 if (CANARY) {

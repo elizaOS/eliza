@@ -106,22 +106,27 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 		}
 	});
 
-	it("maps option choices for the /settings section option", () => {
-		const catalogSettings = getConnectorCommands("discord").find(
-			(c) => c.name === "settings",
-		);
-		expect(catalogSettings).toBeDefined();
-
-		const mapped = mapCatalogCommand(
-			catalogSettings as NonNullable<typeof catalogSettings>,
-		);
+	it("caps mapped option choices at Discord's 25 and keeps token shape", () => {
+		// Navigation commands (the old /settings source of a choices-bearing
+		// option) are app-surface-only now, so drive the mapper directly.
+		const mapped = mapCatalogCommand({
+			name: "pick",
+			description: "Pick a token",
+			target: { kind: "agent" },
+			options: [
+				{
+					name: "section",
+					description: "Token",
+					required: false,
+					choices: Array.from({ length: 30 }, (_, i) => `token-${i}`),
+				},
+			],
+		});
 		const section = mapped.options?.find((o) => o.name === "section");
 		expect(section).toBeDefined();
 		expect(section?.type).toBe("string");
 		// Discord caps option choices at 25; mapping must respect that.
-		expect(section?.choices?.length).toBeGreaterThan(0);
-		expect(section?.choices?.length).toBeLessThanOrEqual(25);
-		// Choice name + value should be the catalog token.
+		expect(section?.choices?.length).toBe(25);
 		for (const choice of section?.choices ?? []) {
 			expect(choice.name.length).toBeLessThanOrEqual(100);
 			expect(choice.value.length).toBeGreaterThan(0);
@@ -129,8 +134,8 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 	});
 
 	it("omits options for argless commands", () => {
-		const orchestrator = findCatalog("orchestrator");
-		expect(orchestrator.options).toBeUndefined();
+		const whoami = findCatalog("whoami");
+		expect(whoami.options).toBeUndefined();
 	});
 });
 
@@ -138,14 +143,17 @@ describe("buildCatalogSlashCommands dedupe", () => {
 	it("excludes names already present (built-ins win)", () => {
 		const withoutDedupe = buildCatalogSlashCommands();
 		const names = new Set(withoutDedupe.map((c) => c.name));
-		expect(names.has("settings")).toBe(true);
+		expect(names.has("whoami")).toBe(true);
+		// Navigation commands are app-surface-only and never reach Discord.
+		expect(names.has("orchestrator")).toBe(false);
+		expect(names.has("views")).toBe(false);
 
-		const deduped = buildCatalogSlashCommands(new Set(["settings", "help"]));
+		const deduped = buildCatalogSlashCommands(new Set(["whoami", "help"]));
 		const dedupedNames = deduped.map((c) => c.name);
-		expect(dedupedNames).not.toContain("settings");
+		expect(dedupedNames).not.toContain("whoami");
 		expect(dedupedNames).not.toContain("help");
 		// Non-overlapping commands still come through.
-		expect(dedupedNames).toContain("orchestrator");
+		expect(dedupedNames).toContain("think");
 	});
 
 	it("never emits duplicate names", () => {
@@ -155,8 +163,19 @@ describe("buildCatalogSlashCommands dedupe", () => {
 });
 
 describe("per-target execute branching", () => {
-	it("navigate: replies ephemerally describing the destination", async () => {
-		const orchestrator = findCatalog("orchestrator");
+	it("navigate: replies ephemerally describing the destination (defensive)", async () => {
+		// Navigation commands are filtered off connector surfaces upstream; the
+		// branch stays as defensive handling, mirroring the client-target case.
+		const orchestrator = mapCatalogCommand({
+			name: "orchestrator",
+			description: "Open the orchestrator",
+			target: {
+				kind: "navigate",
+				path: "/orchestrator",
+				viewId: "orchestrator",
+			},
+			options: [],
+		});
 		const interaction = makeInteraction();
 		await orchestrator.execute(interaction as never, makeRuntime());
 
@@ -167,12 +186,23 @@ describe("per-target execute branching", () => {
 		};
 		expect(arg.ephemeral).toBe(true);
 		expect(arg.content).toContain("orchestrator");
-		expect(arg.content).toContain("/orchestrator");
 		expect(interaction.deferReply).not.toHaveBeenCalled();
 	});
 
-	it("navigate: resolves the /settings section alias to its canonical id", async () => {
-		const settings = findCatalog("settings");
+	it("navigate: resolves the /settings section alias to its canonical id (defensive)", async () => {
+		const settings = mapCatalogCommand({
+			name: "settings",
+			description: "Open agent settings",
+			target: { kind: "navigate", path: "/settings", tab: "settings" },
+			options: [
+				{
+					name: "section",
+					description: "Settings section to open",
+					required: false,
+					choices: [],
+				},
+			],
+		});
 		const interaction = makeInteraction({ section: "providers" });
 		await settings.execute(interaction as never, makeRuntime());
 
@@ -410,7 +440,8 @@ describe("registerCatalogSlashCommands", () => {
 			} else {
 				expect(names).toContain("app");
 			}
-			expect(names).toContain("orchestrator");
+			// Navigation commands are app-surface-only and never reach Discord.
+			expect(names).not.toContain("orchestrator");
 			expect(names).toContain("think");
 
 			const registry = getRegisteredCommands();

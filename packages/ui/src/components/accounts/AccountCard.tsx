@@ -96,7 +96,10 @@ function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
       className="flex min-w-0 items-center gap-1.5"
       title={titleParts.join(" · ")}
     >
-      <span className="w-9 shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
+      {/* Auto width, never a fixed box: "SESSION" (uppercase, tracked) is wider
+          than the old w-9 (36px) box, so the flexed bar rendered on top of the
+          overflowing text. */}
+      <span className="shrink-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
       <div className="relative h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-bg-accent">
@@ -215,6 +218,18 @@ export function AccountCard({
               defaultValue: "Click to rename",
             })}
           />
+          {/* Show WHO the account is. New OAuth links use the email as the
+              label, so only render the email separately when the label is
+              something else (renamed, or linked/imported before emails were
+              persisted) — never duplicate it. */}
+          {account.email && account.email !== account.label ? (
+            <span
+              className="min-w-0 shrink truncate text-[11px] text-muted"
+              title={account.email}
+            >
+              {account.email}
+            </span>
+          ) : null}
           <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
             {isCodingPlan
               ? t("accounts.source.codingPlan", {
@@ -324,7 +339,10 @@ export function AccountCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {isAnthropic ? (
+        {/* Anthropic and Codex both expose a 5h session window AND a 7-day
+            window (Codex: rate_limit.primary_window / secondary_window), so
+            both render the same pair of bars. */}
+        {isAnthropic || isCodex ? (
           <>
             <UsageBar
               label={t("accounts.usage.session5h", { defaultValue: "5h" })}
@@ -337,12 +355,6 @@ export function AccountCard({
               resetsAt={usage?.resetsAt}
             />
           </>
-        ) : isCodex ? (
-          <UsageBar
-            label={t("accounts.usage.session", { defaultValue: "Session" })}
-            pct={usage?.sessionPct}
-            resetsAt={usage?.resetsAt}
-          />
         ) : usage ? (
           <UsageBar
             label={t("accounts.usage.session", { defaultValue: "Session" })}

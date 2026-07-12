@@ -61,6 +61,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:e2e:manual": "vitest run --config vitest.live.config.ts",
+    "test:e2e:cockpit-browser": "node test/browser-e2e/run-cockpit-browser-e2e.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -71,6 +72,7 @@
     "dist"
   ],
   "devDependencies": {
+    "playwright": "^1.61.0",
     "tsup": "^8.5.1",
     "vite": "^8.0.0"
   }

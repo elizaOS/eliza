@@ -6,7 +6,7 @@
  * `vendor/pi-oauth/anthropic-login.ts` and the loopback-listener flow
  * in `openai-codex.ts`) with:
  *
- *   - a 5-minute timeout per flow,
+ *   - a 15-minute timeout per flow,
  *   - automatic `saveAccount(...)` after token exchange,
  *   - an in-memory registry keyed by `sessionId` so the HTTP API can
  *     stream progress over SSE and the CLI can `await` completion,
@@ -19,11 +19,13 @@
  */
 
 import crypto from "node:crypto";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
+  listAccounts,
   saveAccount,
 } from "./account-storage.ts";
+import { startCodexDeviceLogin } from "./codex-device.ts";
 import type { CodexFlow } from "./openai-codex.ts";
 import { startCodexLogin } from "./openai-codex.ts";
 import type { SubscriptionProvider } from "./types.ts";
@@ -55,7 +57,7 @@ export interface FlowState {
   status: FlowStatus;
   /** Set on `pending` (so the UI can re-open the browser) and on `success`. */
   authUrl?: string;
-  /** Anthropic only — the user must paste `code#state`; Codex uses the loopback callback. */
+  /** Whether the client must offer a callback URL/code input. */
   needsCodeSubmission: boolean;
   account?: FlowAccountSummary;
   error?: string;
@@ -66,16 +68,23 @@ export interface FlowState {
 export interface OAuthFlowHandle {
   sessionId: string;
   authUrl: string;
-  /** Codex flows resolve via the loopback listener; Anthropic requires `submitCode`. */
+  /** One-time code entered on the provider's device authorization page. */
+  userCode?: string;
+  /** Whether the client must offer a callback URL/code input. */
   needsCodeSubmission: boolean;
   /** Resolves with the saved AccountCredentialRecord; rejects on cancel/timeout/error. */
   completion: Promise<{ account: AccountCredentialRecord }>;
-  /** Anthropic only — submit `code#state` from the redirect page. Ignored for Codex. */
+  /** Submit the provider's callback URL or authorization code. */
   submitCode: (code: string) => void;
   cancel: (reason?: string) => void;
 }
 
-const FLOW_TIMEOUT_MS = 5 * 60 * 1000;
+// Browser subscription login can include MFA, account selection, and consent.
+// Five minutes routinely expired before a remote user could copy the loopback
+// callback URL back into Eliza, destroying the PKCE verifier. Keep the verifier
+// in memory long enough for a normal interactive login while retaining a hard
+// upper bound and terminal-state cleanup.
+const FLOW_TIMEOUT_MS = 15 * 60 * 1000;
 const FLOW_GC_MS = 10 * 60 * 1000;
 
 interface InternalFlowEntry {
@@ -121,12 +130,27 @@ function persistAccount(args: {
   access: string;
   refresh: string;
   expires: number;
+  idToken?: string;
   organizationId?: string;
   email?: string;
 }): AccountCredentialRecord {
   const now = Date.now();
+  const normalizedEmail = args.email?.trim().toLowerCase();
+  const existing = listAccounts(args.providerId).find((account) => {
+    if (args.organizationId && account.organizationId === args.organizationId) {
+      return true;
+    }
+    return Boolean(
+      normalizedEmail &&
+        account.email?.trim().toLowerCase() === normalizedEmail,
+    );
+  });
   const record: AccountCredentialRecord = {
-    id: args.accountId,
+    // OAuth starts before the provider identity is known, so callers commonly
+    // reserve a fresh UUID for every attempt. Once we have a stable provider
+    // identity, update its existing credential record instead of creating a
+    // duplicate account on every relink.
+    id: existing?.id ?? args.accountId,
     providerId: args.providerId,
     label: args.label,
     source: "oauth",
@@ -134,9 +158,12 @@ function persistAccount(args: {
       access: args.access,
       refresh: args.refresh,
       expires: args.expires,
+      ...(args.idToken ? { idToken: args.idToken } : {}),
     },
-    createdAt: now,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    ...(existing?.lastUsedAt ? { lastUsedAt: existing.lastUsedAt } : {}),
+    ...(existing?.userId ? { userId: existing.userId } : {}),
     ...(args.organizationId ? { organizationId: args.organizationId } : {}),
     ...(args.email ? { email: args.email } : {}),
   };
@@ -147,6 +174,8 @@ function persistAccount(args: {
 interface StartOptions {
   label: string;
   accountId?: string;
+  /** Remote/headless clients use Codex device auth instead of loopback PKCE. */
+  headless?: boolean;
   /**
    * Called after the account is saved on disk. Used by the HTTP
    * route layer to also write a `LinkedAccountConfig` row into
@@ -192,19 +221,37 @@ export function startAnthropicOAuthFlow(
 // Codex (OpenAI ChatGPT subscription).
 
 /**
- * Start a programmatic Codex OAuth flow. Codex has a loopback listener
- * on :1455, so the user just signs in in the browser and the listener
- * picks up the redirect — `submitCode()` is accepted but unused. The accountId
+ * Start a programmatic Codex OAuth flow. Native/local clients can use the
+ * loopback listener on :1455. Remote web clients must paste the localhost
+ * callback URL because that URL resolves in the browser's device, not on the
+ * remote Eliza host. The accountId
  * baked into the JWT is preserved on `LinkedAccountConfig.organizationId`
  * (used by the Codex usage probe via the `ChatGPT-Account-Id` header).
  */
 export function startCodexOAuthFlow(
   opts: StartOptions,
 ): Promise<OAuthFlowHandle> {
+  if (opts.headless) {
+    return startGenericFlow({
+      providerId: "openai-codex",
+      opts,
+      needsCodeSubmission: false,
+      begin: async () => {
+        const flow = await startCodexDeviceLogin();
+        return {
+          authUrl: flow.authUrl,
+          userCode: flow.userCode,
+          completion: flow.credentials.then((creds) => ({ creds })),
+          submitCode: () => undefined,
+          cancel: () => flow.close(),
+        };
+      },
+    });
+  }
   return startGenericFlow({
     providerId: "openai-codex",
     opts,
-    needsCodeSubmission: false,
+    needsCodeSubmission: true,
     begin: async () => {
       const flow: CodexFlow = await startCodexLogin();
       const completion = (async () => {
@@ -225,8 +272,14 @@ export function startCodexOAuthFlow(
 
 interface VendorFlow {
   authUrl: string;
+  userCode?: string;
   completion: Promise<{
-    creds: { access: string; refresh: string; expires: number };
+    creds: {
+      access: string;
+      refresh: string;
+      expires: number;
+      idToken?: string;
+    };
     codexFlow?: CodexFlow;
   }>;
   submitCode: (code: string) => void;
@@ -263,6 +316,13 @@ async function startGenericFlow(args: {
       rejectCompletion = reject;
     },
   );
+  // HTTP/SSE callers observe terminal state through the registry and may never
+  // await this in-process promise. Attach a rejection observer so timeout or
+  // cancellation does not become a process-level unhandled rejection; callers
+  // that do await `completion` still receive the original rejection.
+  // error-policy:J5 terminal state is observed through the flow registry/SSE;
+  // callers awaiting `completion` still receive the original rejection.
+  void completion.catch(() => undefined);
 
   const entry: InternalFlowEntry = {
     state: initialState,
@@ -301,20 +361,31 @@ async function startGenericFlow(args: {
       const { creds } = await vendor.completion;
       clearTimeout(timer);
       let organizationId: string | undefined;
+      let email: string | undefined;
+      let providerAccountId: string | undefined;
+      if (providerId === "anthropic-subscription") {
+        const profile = await fetchAnthropicOAuthProfile(creds.access);
+        organizationId = profile.organizationId;
+        email = profile.email;
+        providerAccountId = profile.accountId;
+      }
       // Codex bakes the account_id into the JWT — pull it back out for
       // the usage probe header.
       if (providerId === "openai-codex") {
         const codexAccountId = extractCodexAccountId(creds.access);
         if (codexAccountId) organizationId = codexAccountId;
+        email = extractJwtEmail(creds.idToken);
       }
       const record = persistAccount({
         providerId,
-        accountId,
-        label: opts.label,
+        accountId: providerAccountId ?? accountId,
+        label: email ?? opts.label,
         access: creds.access,
         refresh: creds.refresh,
         expires: creds.expires,
+        ...(creds.idToken ? { idToken: creds.idToken } : {}),
         ...(organizationId ? { organizationId } : {}),
+        ...(email ? { email } : {}),
       });
       if (opts.onAccountSaved) {
         await opts.onAccountSaved(record);
@@ -336,6 +407,7 @@ async function startGenericFlow(args: {
   const handle: OAuthFlowHandle = {
     sessionId,
     authUrl: vendor.authUrl,
+    ...(vendor.userCode ? { userCode: vendor.userCode } : {}),
     needsCodeSubmission,
     completion,
     submitCode: (code: string) => {
@@ -406,6 +478,37 @@ export function submitFlowCode(sessionId: string, code: string): boolean {
   if (!entry.state.needsCodeSubmission) return false;
   entry.handle.submitCode(code);
   return true;
+}
+
+/**
+ * Submit a callback to the pending flow for a provider when a legacy client
+ * does not know the newer account-flow session id. A callback `state` is
+ * matched against the authorization URL, so parallel flows cannot consume one
+ * another's PKCE code. A state-less raw code is accepted only when exactly one
+ * provider flow is pending.
+ */
+export function submitProviderFlowCode(
+  providerId: SubscriptionProvider,
+  code: string,
+): OAuthFlowHandle | null {
+  const callbackState = URL.parse(code)?.searchParams.get("state") ?? null;
+
+  const candidates = [...flows.values()].filter(
+    (entry) =>
+      entry.state.providerId === providerId &&
+      entry.state.status === "pending" &&
+      entry.state.needsCodeSubmission,
+  );
+  const matching = callbackState
+    ? candidates.filter(
+        (entry) =>
+          URL.parse(entry.state.authUrl ?? "")?.searchParams.get("state") ===
+          callbackState,
+      )
+    : candidates;
+  if (matching.length !== 1) return null;
+  matching[0]?.handle.submitCode(code);
+  return matching[0]?.handle ?? null;
 }
 
 /**
@@ -480,4 +583,95 @@ function extractCodexAccountId(accessToken: string): string | null {
   } catch {
     return null;
   }
+}
+
+function extractJwtEmail(token: string | undefined): string | undefined {
+  if (!token) return undefined;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return undefined;
+    const decoded = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf-8"),
+    ) as Record<string, unknown>;
+    return typeof decoded.email === "string" && decoded.email.length > 0
+      ? decoded.email
+      : undefined;
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — an imported id_token without
+    // a decodable JWT payload has no usable email identity.
+    return undefined;
+  }
+}
+
+export async function fetchAnthropicOAuthProfile(
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{
+  email?: string;
+  accountId?: string;
+  organizationId?: string;
+}> {
+  let response: Response;
+  try {
+    response = await fetchImpl("https://api.anthropic.com/api/oauth/profile", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "anthropic-beta": "oauth-2025-04-20",
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — account linking cannot claim a
+    // loaded identity when the authenticated profile request never completed.
+    throw new ElizaError("Anthropic OAuth profile request failed", {
+      code: "anthropic_oauth.profile_request_failed",
+      severity: "ephemeral",
+      cause,
+    });
+  }
+  if (!response.ok) {
+    throw new ElizaError("Anthropic OAuth profile request was rejected", {
+      code: "anthropic_oauth.profile_http_error",
+      severity: response.status >= 500 ? "ephemeral" : "fatal",
+      context: { status: response.status },
+    });
+  }
+
+  let profile: unknown;
+  try {
+    profile = await response.json();
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — malformed authenticated data is
+    // a failed profile load, not a valid profile with empty identity fields.
+    throw new ElizaError("Anthropic OAuth profile response was not JSON", {
+      code: "anthropic_oauth.profile_invalid_json",
+      severity: "fatal",
+      cause,
+    });
+  }
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+    throw new ElizaError("Anthropic OAuth profile response was invalid", {
+      code: "anthropic_oauth.profile_invalid_shape",
+      severity: "fatal",
+    });
+  }
+  const record = profile as {
+    account?: { uuid?: unknown; email?: unknown; email_address?: unknown };
+    organization?: { uuid?: unknown };
+  };
+  const rawEmail = record.account?.email ?? record.account?.email_address;
+  const rawAccountId = record.account?.uuid;
+  const rawOrganizationId = record.organization?.uuid;
+  return {
+    ...(typeof rawEmail === "string" && rawEmail.length > 0
+      ? { email: rawEmail }
+      : {}),
+    ...(typeof rawAccountId === "string" && rawAccountId.length > 0
+      ? { accountId: rawAccountId }
+      : {}),
+    ...(typeof rawOrganizationId === "string" && rawOrganizationId.length > 0
+      ? { organizationId: rawOrganizationId }
+      : {}),
+  };
 }

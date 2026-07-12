@@ -18,6 +18,7 @@ import {
   setAgentHostBridge,
 } from "@elizaos/agent/runtime/host-bridge";
 import { getBuildVariant, isStoreBuild } from "@elizaos/core";
+import { resolveAuthorizedRouteRole } from "../api/auth";
 import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import {
   captureWalletEnvBootBaseline,
@@ -46,6 +47,19 @@ export function installAgentHostBridge(): void {
     getBuildVariant,
     isStoreBuild,
     handleCloudPairRoute,
+    isHttpRequestAuthorized: async (req, runtime) => {
+      const resolved = await resolveAuthorizedRouteRole(req, {
+        // Agent-owned legacy mutations predate app-core's CSRF header and the
+        // web client does not attach it to that surface. These requests have
+        // already passed the server's strict Origin/CORS gate; validate the
+        // host session here without imposing the compat-route CSRF contract.
+        skipCsrf: true,
+        state: {
+          current: runtime,
+        },
+      });
+      return resolved.ok;
+    },
   };
   setAgentHostBridge(bridge);
   installed = true;

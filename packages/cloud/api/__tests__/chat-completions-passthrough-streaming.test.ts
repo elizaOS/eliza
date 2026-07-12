@@ -34,6 +34,12 @@ const USER = "00000000-0000-4000-8000-0000000000bb";
 const MODEL = "openai/gpt-oss-120b";
 
 // --- module mocks (same boundaries as the sibling streaming suites) ---------
+let generateTextImpl: ((config: Record<string, unknown>) => unknown) | null =
+  null;
+const generateText = mock((config: Record<string, unknown>) => {
+  if (!generateTextImpl) throw new Error("generateTextImpl not set");
+  return generateTextImpl(config);
+});
 let streamTextImpl: ((config: Record<string, unknown>) => unknown) | null =
   null;
 const streamText = mock((config: Record<string, unknown>) => {
@@ -42,6 +48,7 @@ const streamText = mock((config: Record<string, unknown>) => {
 });
 mock.module("ai", () => ({
   ...aiActual,
+  generateText,
   streamText,
 }));
 
@@ -110,9 +117,13 @@ mock.module("@/lib/services/team-credential-pool", () => ({
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
-const { __streamingCreditTestHooks, __passthroughStreamingTestHooks } =
-  await import("../v1/chat/completions/route");
+const {
+  __streamingCreditTestHooks,
+  __passthroughStreamingTestHooks,
+  __reasoningEffortTestHooks,
+} = await import("../v1/chat/completions/route");
 const { handleStreamingRequest } = __streamingCreditTestHooks;
+const { handleNonStreamingRequest } = __reasoningEffortTestHooks;
 const { qualifiesForPassthroughStreaming, mapPassthroughUpstreamStatus } =
   __passthroughStreamingTestHooks;
 
@@ -155,6 +166,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  generateText.mockClear();
   streamText.mockClear();
   billUsage.mockClear();
   recordUsageAnalytics.mockClear();
@@ -162,6 +174,7 @@ beforeEach(() => {
   poolRecordUse.mockClear();
   poolRecordProviderFailure.mockClear();
   fetchMock.mockClear();
+  generateTextImpl = null;
   streamTextImpl = null;
   fetchImpl = null;
   billUsageGate = null;
@@ -209,6 +222,7 @@ const QUALIFYING_REQUEST = {
 function callStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
   options: {
+    model?: string;
     request?: unknown;
     estimatedInputTokens?: number;
     signal?: AbortSignal;
@@ -218,7 +232,7 @@ function callStreaming(
   } = {},
 ) {
   return handleStreamingRequest(
-    MODEL,
+    options.model ?? MODEL,
     undefined,
     [{ role: "user", content: "hello" }] as never,
     (options.request ?? QUALIFYING_REQUEST) as never,
@@ -240,6 +254,36 @@ function callStreaming(
     (options.pooledCredential ?? null) as never,
     false,
     options.executionCtx,
+  );
+}
+
+function callNonStreaming(model: string, reasoningEffort: "none" | "low") {
+  return handleNonStreamingRequest(
+    model,
+    undefined,
+    [{ role: "user", content: "hello" }] as never,
+    {
+      model,
+      messages: [{ role: "user", content: "hello" }],
+      reasoning_effort: reasoningEffort,
+    } as never,
+    { id: USER, organization_id: ORG },
+    null,
+    null,
+    "idem-1",
+    "req-1",
+    null,
+    Date.now(),
+    undefined,
+    30_000,
+    async () => null,
+    {} as never,
+    512,
+    {} as never,
+    "cerebras" as never,
+    null,
+    false,
+    undefined,
   );
 }
 
@@ -464,6 +508,29 @@ describe("passthrough streaming — qualifying request pipes bytes verbatim and 
     expect(passthroughUsage.outputTokens).toBe(sdkUsage.outputTokens);
     expect(passthroughUsage.totalTokens).toBe(sdkUsage.totalTokens);
   });
+
+  test("forwards validated reasoning_effort and the exact disabled-reasoning cap", async () => {
+    fetchImpl = async () => sseResponse(UPSTREAM_SSE);
+    const model = "zai-glm-4.7";
+    const res = await callStreaming(async () => null, {
+      model,
+      request: {
+        model,
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+        stream_options: { include_usage: true },
+        reasoning_effort: "none",
+      },
+      effectiveMaxTokens: 512,
+    });
+    await res.text();
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const sentBody = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(sentBody.model).toBe(model);
+    expect(sentBody.reasoning_effort).toBe("none");
+    expect(sentBody.max_tokens).toBe(512);
+  });
 });
 
 describe("passthrough streaming — fallthrough to the SDK path", () => {
@@ -541,6 +608,53 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
     expect(streamText).toHaveBeenCalledTimes(1);
     expect(body).toContain("Hello");
     expect(res.headers.get("X-Eliza-Inference-Path")).toBeNull();
+  });
+
+  test("SDK streaming forwards reasoning_effort through OpenAI provider options", async () => {
+    sdkFaithfulStream();
+    const model = "zai-glm-4.7";
+    const res = await callStreaming(async () => null, {
+      model,
+      request: {
+        model,
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+        stream_options: { include_usage: true },
+        reasoning_effort: "none",
+        tools: [
+          {
+            type: "function",
+            function: { name: "get_weather", parameters: {} },
+          },
+        ],
+      },
+      effectiveMaxTokens: 512,
+    });
+    await res.text();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(streamText).toHaveBeenCalledTimes(1);
+    expect(streamText.mock.calls[0]?.[0]).toMatchObject({
+      maxOutputTokens: 512,
+      providerOptions: { openai: { reasoningEffort: "none" } },
+    });
+  });
+
+  test("SDK non-streaming forwards reasoning_effort through OpenAI provider options", async () => {
+    generateTextImpl = () => ({
+      text: "Hello",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: { inputTokens: 72, outputTokens: 1, totalTokens: 73 },
+    });
+
+    const res = await callNonStreaming("zai-glm-4.7", "none");
+    expect(res.status).toBe(200);
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+      maxOutputTokens: 512,
+      providerOptions: { openai: { reasoningEffort: "none" } },
+    });
   });
 
   test("missing provider key → SDK path (no half-configured passthrough)", async () => {
