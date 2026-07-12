@@ -22,7 +22,8 @@
     "voice:validate:dry": "bun src/voice/voice-live-validation.ts",
     "voice:validate:live": "bun src/voice/voice-live-validation.ts",
     "build:preload": "node ../../scripts/build-electrobun-preload.mjs",
-    "build:native-effects": "bash scripts/build-macos-effects.sh"
+    "build:native-effects": "bash scripts/build-macos-effects.sh",
+    "build:native-transcript": "bash scripts/build-macos-transcript.sh"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
