@@ -467,7 +467,7 @@ test.describe("real touch (touchscreen taps + CDP touch-point swipe)", () => {
 
     // Backdrop taps collapse. The first tap only drops the keyboard when the
     // composer is focused (two-step dismiss by design — see
-    // ContinuousChatOverlay composerFocusedAtPress), so tap until collapsed,
+    // ChatOverlay composerFocusedAtPress), so tap until collapsed,
     // bounded at 3.
     for (let tap = 0; tap < 3; tap += 1) {
       const open = (await overlay.getAttribute("data-open")) === "true";

@@ -45,8 +45,8 @@ These are the surfaces the redesign should treat as the aesthetic north star. Th
 **flat color field + floating liquid-glass + icon-first + whitespace + fixed light text** — they do
 NOT read theme tokens, they carry their own contrast.
 
-### A1. `ContinuousChatOverlay.tsx` — the PRIMARY interface
-`packages/ui/src/components/shell/ContinuousChatOverlay.tsx`
+### A1. `ChatOverlay.tsx` — the PRIMARY interface
+`packages/ui/src/components/shell/ChatOverlay.tsx`
 
 The always-present floating chat that sits over every view. Two stated design rules
 (`:69-77`): **self-contained contrast** (every surface carries its own dark-glass scrim + fixed
@@ -424,7 +424,7 @@ Derived from the reference surfaces (A), the token system (B), and the prompt's 
    have content; the resting view is calm (clock + tiles). No empty cards, no placeholder rows.
 
 7. **The floating chat is the primary surface; views are the calm backdrop.** Build views to sit
-   BEHIND the `ContinuousChatOverlay` (pointer-events-none container), with bottom clearance for the
+   BEHIND the `ChatOverlay` (pointer-events-none container), with bottom clearance for the
    composer (`--eliza-continuous-chat-clearance`, see `HomeScreen.tsx:355`). Don't compete with the
    chat for the bottom edge or add a second chat entry point.
 
@@ -453,7 +453,7 @@ Derived from the reference surfaces (A), the token system (B), and the prompt's 
 - Brand theme injection: `packages/app/src/main.tsx:322`; applied in
   `packages/ui/src/state/AppContext.tsx:148-153`; pre-paint in `main.tsx:2279-2281`
 - Theme toggle UI: `packages/ui/src/components/settings/AppearanceSettingsSection.tsx`
-- Reference surfaces: `packages/ui/src/components/shell/{ContinuousChatOverlay,HomeScreen,
+- Reference surfaces: `packages/ui/src/components/shell/{ChatOverlay,HomeScreen,
   ChatAmbientBackground,glass-composer}.tsx`, `packages/ui/src/first-run/FirstRunRuntimeChooser.tsx`
 - Primitives: `packages/ui/src/components/ui/*`; agent primitives:
   `packages/ui/src/agent-surface/components.tsx`

@@ -1,6 +1,6 @@
 /**
  * Bounded render window for a chat transcript — the one engine behind ChatView,
- * the ContinuousChatOverlay, and the infinite-scroll e2e fixture (#15281,
+ * the ChatOverlay, and the infinite-scroll e2e fixture (#15281,
  * #14329, #9955). State keeps every loaded turn; only the DOM is bounded.
  *
  * The window opens at MAX_RENDERED_SHELL_MESSAGES so even a long thread mounts a

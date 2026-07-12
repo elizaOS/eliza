@@ -46,7 +46,7 @@ export const COMMAND_COVERAGE: CoverageEntry = {
     "packages/agent/src/api/commands-routes.real-server.test.ts",
     "packages/scenario-runner/test/scenarios/deterministic-slash-commands.scenario.ts",
     "packages/app/test/ui-smoke/slash-commands.spec.ts",
-    "packages/ui/src/components/shell/ContinuousChatOverlay.slash.test.tsx",
+    "packages/ui/src/components/shell/ChatOverlay.slash.test.tsx",
   ],
   // The full-catalog contract appears in the real-server test + the scenario;
   // the menu-dispatch path appears in the Playwright + overlay specs.

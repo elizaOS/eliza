@@ -1,7 +1,7 @@
 /**
  * Reusable mock chat data + a configurable ShellController hook for the Design
  * Lab. Extracted from the chat-sheet e2e fixture's Harness so the lab and the
- * e2e drive the REAL ContinuousChatOverlay through one controller shape — the
+ * e2e drive the REAL ChatOverlay through one controller shape — the
  * lab just swaps the URL-param seeding for live React state a control panel can
  * mutate, and adds imperative actions (send, stream a reply) so the drag/scroll
  * behaviours can be exercised by hand without an agent.

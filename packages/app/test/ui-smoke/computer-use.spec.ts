@@ -51,7 +51,7 @@ test("first-run starts with setup choices before capability settings", async ({
   await installDefaultAppRoutes(page);
   // #9952: onboarding is in-chat. Boot with first-run NOT complete so the
   // headless conductor seeds the greeting + runtime choice into the live
-  // floating ContinuousChatOverlay (installDefaultAppRoutes serves a static
+  // floating ChatOverlay (installDefaultAppRoutes serves a static
   // complete first-run; this override wins).
   await page.route("**/api/first-run/status", async (route) => {
     if (route.request().method() !== "GET") {

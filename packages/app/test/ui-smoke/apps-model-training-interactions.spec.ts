@@ -13,7 +13,7 @@ import { DIRECT_ROUTE_CASES, escapeRegExp } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
   expectNoPageDiagnostics,
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   installPageDiagnosticsGuard,
   openAppPath,
@@ -839,7 +839,7 @@ async function installTrajectoryViewerInteractionRoutes(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   installPageDiagnosticsGuard(page);
-  await hideContinuousChatOverlay(page);
+  await hideChatOverlay(page);
   await seedAppStorage(page, {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",

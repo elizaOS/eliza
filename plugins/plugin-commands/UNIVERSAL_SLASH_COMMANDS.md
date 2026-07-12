@@ -128,7 +128,7 @@ serialization onto the wire.
 
 ### Web / desktop chat — the floating composer
 
-`ContinuousChatOverlay` (the always-present ambient composer) gets an inline
+`ChatOverlay` (the always-present ambient composer) gets an inline
 autocomplete menu (`SlashCommandMenu` + `useSlashMenu`):
 
 - Type `/` → dark-glass menu floats above the bar listing all `gui` commands.

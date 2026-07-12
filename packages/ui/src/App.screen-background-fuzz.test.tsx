@@ -272,8 +272,8 @@ vi.mock("./components/shell/BugReportModal", () => ({
 vi.mock("./components/shell/ChatSurface", () => ({
   ChatSurface: () => <div data-testid="chat-surface" />,
 }));
-vi.mock("./components/shell/ContinuousChatOverlay", () => ({
-  ContinuousChatOverlay: () => null,
+vi.mock("./components/shell/ChatOverlay", () => ({
+  ChatOverlay: () => null,
 }));
 vi.mock("./components/shell/HomePill", () => ({
   HomePill: () => <button type="button">home pill</button>,

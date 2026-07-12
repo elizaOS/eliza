@@ -12,12 +12,12 @@ const modules = import.meta.glob("../**/*.stories.tsx", { eager: true });
 smokeStoryModules("shell", modules, {
   minModules: 1,
   skip: [
-    "ContinuousChatOverlay/Ambient",
-    "ContinuousChatOverlay/PromptSuggestions",
-    "ContinuousChatOverlay/Listening",
-    "ContinuousChatOverlay/Responding",
-    "ContinuousChatOverlay/Booting",
-    "ContinuousChatOverlay/SlashCommands",
+    "ChatOverlay/Ambient",
+    "ChatOverlay/PromptSuggestions",
+    "ChatOverlay/Listening",
+    "ChatOverlay/Responding",
+    "ChatOverlay/Booting",
+    "ChatOverlay/SlashCommands",
     "StartupScreen/Pairing",
   ],
 });

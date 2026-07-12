@@ -4,7 +4,7 @@
  */
 import { expect, type Locator, test } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -162,7 +162,7 @@ test.describe("plugin view interaction coverage", () => {
       // aria-hidden drag-handle pill sits over the composer textarea and has no
       // click affordance, so the generic click-loop would otherwise fight it —
       // exactly as the sibling all-views-interaction spec already does.
-      await hideContinuousChatOverlay(page);
+      await hideChatOverlay(page);
       await installDefaultAppRoutes(page);
       await openAppPath(page, view.path);
       await page.locator("body").waitFor({ state: "visible", timeout: 60_000 });

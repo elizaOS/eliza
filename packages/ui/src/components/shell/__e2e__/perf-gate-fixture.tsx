@@ -1,5 +1,5 @@
 // Fixture for the chat perf gate (#9954 Item 5, retargeted for #13531). Mounts
-// the REAL ContinuousChatOverlay — the LIVE chat surface the gate protects —
+// the REAL ChatOverlay — the LIVE chat surface the gate protects —
 // with a LONG overflowing thread so the two surviving high-cost gestures can be
 // driven for real:
 //
@@ -22,13 +22,13 @@
 // to the tail assistant message (flipping `responding` to true) and force a
 // REAL transcript re-render, so the gate can measure the frame budget of the
 // hot path the memoized widgets protect: streaming into the open chat. Driving
-// it from the fixture keeps ContinuousChatOverlay itself untouched.
+// it from the fixture keeps ChatOverlay itself untouched.
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 
 import { MockAppProvider } from "../../../storybook/mock-providers";
-import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
+import { ChatOverlay } from "../ChatOverlay";
 import type { ConversationNav } from "../conversation-nav";
 import type { ShellMessage } from "../shell-state";
 import type { ShellController } from "../useShellController";
@@ -200,12 +200,12 @@ function Harness(): React.JSX.Element {
       <div style={{ padding: "40px 24px", maxWidth: 640 }}>
         <h1 style={{ fontSize: 26, fontWeight: 600, margin: 0 }}>Workspace</h1>
         <p style={{ opacity: 0.7, marginTop: 10, lineHeight: 1.6 }}>
-          The floating chat below is the REAL ContinuousChatOverlay. The perf
+          The floating chat below is the REAL ChatOverlay. The perf
           gate scrolls its overflowing thread and drives pull-to-maximize /
           top-pull-restore to measure frame budget + layout stability.
         </p>
       </div>
-      <ContinuousChatOverlay controller={controller} />
+      <ChatOverlay controller={controller} />
     </div>
   );
 }

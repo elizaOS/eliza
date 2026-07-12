@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// The backend-free chat harness mounts the REAL ContinuousChatOverlay with a
+// The backend-free chat harness mounts the REAL ChatOverlay with a
 // scripted conversation. These tests render it in jsdom (API client stubbed —
 // no network) and assert the onboarding opening, that composer sends advance
 // the script entirely in local state, and that the onboarding pin releases.

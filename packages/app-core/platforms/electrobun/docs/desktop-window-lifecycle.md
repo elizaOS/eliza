@@ -34,7 +34,7 @@ summoned on demand.
 | Kiosk (fullscreen, exclusive) | `isKioskShellMode()` | opt-in; wins over bottom-bar |
 
 The renderer's `ChatOverlayShell` (`packages/ui/src/App.tsx`) renders just the
-`HomePill` + `ContinuousChatOverlay` over a transparent background when
+`HomePill` + `ChatOverlay` over a transparent background when
 `shellMode === "chat-overlay"`. No full-app tab system is mounted in this mode;
 "show a view" intents open a dedicated window instead (see **Summoning views**).
 Escape collapses the overlay first, then (when already collapsed) hides the

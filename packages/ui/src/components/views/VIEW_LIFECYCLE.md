@@ -57,7 +57,7 @@ Resolved per view by `resolveViewLifecyclePolicy(viewId)` →
   the `BUILTIN_VIEW_POLICY` map, or at runtime via `registerViewPolicy(id, …)`.
 - **Pinned** — `PINNED_VIEW_IDS = { "chat", "background" }`. **Never evicted.**
   These are **structural** surfaces that live outside the routed host
-  (`ContinuousChatOverlay`/`HomeScreenMount` + `AppBackground` at the shell
+  (`ChatOverlay`/`HomeScreenMount` + `AppBackground` at the shell
   root) and are always mounted by `App()` directly. The controller refuses to
   evict their records (the explicit exemption), and `publish()` excludes them
   from the host render set (the routed host never paints a hidden slot for a

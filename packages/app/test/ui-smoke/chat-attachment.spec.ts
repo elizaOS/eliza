@@ -5,7 +5,7 @@
 // stub.
 //
 // Surface notes (verified against source, load-bearing for the asserts):
-//   * The overlay (ContinuousChatOverlay.tsx) renders pending attachments as
+//   * The overlay (ChatOverlay.tsx) renders pending attachments as
 //     `<img alt={img.name}>` in the composer BEFORE send, then clears them on
 //     submit (setPendingImages([])) — so the thumbnail is a pre-send assertion.
 //   * `send(text, { images })` -> useShellController.send -> sendChatText(text,

@@ -123,7 +123,7 @@ test("chat overlay: sending opens the chat, click-out collapses, Escape collapse
   // Sending leaves the composer focused (keyboard up). Tapping the dimming
   // scrim is a two-step gesture by design: the FIRST tap only drops the
   // keyboard (returning to the prior detent), the SECOND tap collapses the
-  // chat back to the input. (See ContinuousChatOverlay: composerFocusedAtPress
+  // chat back to the input. (See ChatOverlay: composerFocusedAtPress
   // + dismissKeyboardToPriorState — "first tap drops keyboard, second closes".)
   const backdrop = page.getByTestId("chat-sheet-backdrop");
   await backdrop.click({ position: { x: 14, y: 14 }, force: true });

@@ -5,7 +5,7 @@
  * reasoning/tool tags, and any registry-driven inline widget
  * (`[CHOICE]`/`[FOLLOWUPS]`/`[FORM]`/`[TASK]`/plugin markers). `parseSegments`
  * is the single entry point both `MessageContent` (ChatView) and
- * `InlineWidgetText` (ContinuousChatOverlay) delegate to, so the same agent
+ * `InlineWidgetText` (ChatOverlay) delegate to, so the same agent
  * output renders identically on every surface.
  *
  * The message string is UNTRUSTED agent output, so the patch/UiSpec path is the

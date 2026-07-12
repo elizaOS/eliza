@@ -4,7 +4,7 @@
  * window where a stray re-render (a settle spring landing under a loaded main
  * thread) would unmount the element under a captured pointer — Chromium then
  * fires pointercancel/lostpointercapture on the dead node and the gesture's
- * settle never runs (#15807). Consumed by ContinuousChatOverlay's grabber and
+ * settle never runs (#15807). Consumed by ChatOverlay's grabber and
  * maximize-restore strip mount gates.
  */
 import type * as React from "react";

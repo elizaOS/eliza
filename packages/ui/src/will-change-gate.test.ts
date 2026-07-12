@@ -24,7 +24,7 @@ const ALLOWED = new Set<string>([
   // per-frame transform morph onto its own compositor layer so the frosted
   // glass composites instead of repainting each frame (the installed-PWA
   // micro-stutter) — exactly the justified, non-permanent case.
-  "components/shell/ContinuousChatOverlay.tsx",
+  "components/shell/ChatOverlay.tsx",
   // The horizontal home pager rail: the same drag-scoped playbook (#14501) on
   // the horizontal axis — `will-change: transform` set on pointerdown, cleared
   // on settle — so the paged rail transform composites without repainting the

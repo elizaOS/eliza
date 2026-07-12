@@ -274,7 +274,7 @@ describe("App chat-overlay first-run composition", () => {
     // its seed effect (greeting + runtime/provider/tutorial turns) runs.
     expect(conductorMock.mount).toHaveBeenCalled();
     // The conductor mounts inside the shell-controller subtree, mirroring the
-    // full-shell composition at the ContinuousChatOverlay mount site.
+    // full-shell composition at the ChatOverlay mount site.
     expect(
       getByTestId("shell-controller-provider").querySelector(
         '[data-testid="first-run-conductor-mount"]',

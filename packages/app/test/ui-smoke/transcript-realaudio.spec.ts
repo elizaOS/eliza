@@ -2,7 +2,7 @@
  * REAL-AUDIO transcript e2e (#8789) — runs in the `chromium-voice-mic` project
  * (Chromium launched with --use-file-for-fake-audio-capture=known-phrase.wav).
  *
- * This drives the REAL ContinuousChatOverlay transcript flow end-to-end with no
+ * This drives the REAL ChatOverlay transcript flow end-to-end with no
  * human and no microphone:
  *
  *   tap mic (hands-free) -> run /transcribe (transcription mode) -> the REAL

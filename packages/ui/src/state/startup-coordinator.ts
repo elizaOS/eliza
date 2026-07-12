@@ -494,7 +494,7 @@ export function isStartupTerminal(state: StartupState): boolean {
  * Deliberately FALSE for phases that legitimately own the whole screen — session
  * restore, backend polling, pairing — and for terminal `error`; those still
  * render StartupScreen. `first-run-required` IS paintable: onboarding now happens
- * IN the live chat (homescreen + auto-opened ContinuousChatOverlay seeded by the
+ * IN the live chat (homescreen + auto-opened ChatOverlay seeded by the
  * headless first-run conductor), not as a full-screen gate. Effects that need a
  * live runtime must stay gated on agent readiness (`canRespond`), NOT on this —
  * this un-gates RENDERING only.

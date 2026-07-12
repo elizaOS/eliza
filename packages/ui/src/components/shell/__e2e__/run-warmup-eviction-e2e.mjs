@@ -1,7 +1,7 @@
 /**
  * Real-browser e2e for #11670 — a user message sent during local-model warm-up
  * must never be silently evicted from the thread. Mounts the REAL useChatSend
- * pipeline + ContinuousChatOverlay (warm-up 503 simulated at the client-API
+ * pipeline + ChatOverlay (warm-up 503 simulated at the client-API
  * boundary) and drives:
  *
  *   1. Send while the agent 503s every turn (warm-up window).

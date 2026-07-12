@@ -35,7 +35,7 @@ data streams (WebSocket / store), not by reply markers.
 
 | Surface | File | Renderer | Mounted |
 |---|---|---|---|
-| **ContinuousChatOverlay** (primary, web/mobile) | `shell/ContinuousChatOverlay.tsx` | `InlineWidgetText` (raw `content` string) | shell root, floats over every route (`App.tsx`) |
+| **ChatOverlay** (primary, web/mobile) | `shell/ChatOverlay.tsx` | `InlineWidgetText` (raw `content` string) | shell root, floats over every route (`App.tsx`) |
 | **ChatView** (full desktop) | `pages/ChatView.tsx` | `MessageContent` (full `ConversationMessage`) | routed view, inside the desktop layout wrapper |
 
 Both renderers share the inline registry, so inline widgets render on both.
@@ -75,7 +75,7 @@ for the overlay (importing the same renderers from `MessageContent`). The
 |---|---|---|---|---|
 | Plugin config / connector setup | `[CONFIG:<pluginId>]` | plugin-config flows | `InlinePluginConfig` (in `ChatWidgetShell`) | `InlinePluginConfig` (`InlineWidgetText.tsx` case `config`) |
 | Permission card | `__permission:...` | mobile/desktop permission requests | `MessagePermissionCard` | `MessagePermissionCard` (case `permission`) |
-| Secret / OAuth request | `message.secretRequest` passthrough | credential/OAuth actions | `SensitiveRequestBlock` | `SensitiveRequestBlock` (mounted by `ContinuousChatOverlay` body) |
+| Secret / OAuth request | `message.secretRequest` passthrough | credential/OAuth actions | `SensitiveRequestBlock` | `SensitiveRequestBlock` (mounted by `ChatOverlay` body) |
 | Code block | fenced ``` ``` ``` ``` | any | `CodeBlock` | `CodeBlock` (case `code`) |
 | GenUI ui-spec | fenced JSON / JSONL patches | Chat-Mode / Generate-Mode GenUI | `MessageUiSpecBlock` (wraps `UiRenderer`) | `MessageUiSpecBlock` (case `ui-spec`) |
 
@@ -204,7 +204,7 @@ only navigation affordance).
 - **D1 - segment parity (resolved, no longer a divergence).** `[CONFIG]`,
   permission, secret/OAuth, code blocks, and GenUI ui-spec now render on **both**
   surfaces: the overlay's `InlineWidgetText` handles `config` / `ui-spec` /
-  `permission` / `code` and `ContinuousChatOverlay` mounts `SensitiveRequestBlock`
+  `permission` / `code` and `ChatOverlay` mounts `SensitiveRequestBlock`
   for `message.secretRequest`. The old "ChatView-only, mobile flow uncompletable"
   gap is closed and pinned by tests - see the D1-parity rows under Coverage. Kept
   here only as a pointer; there is no remaining segment-kind divergence.
@@ -249,6 +249,6 @@ _Last verified against code: this matrix was re-checked row-by-row against the
 current renderers for #14327. The load-bearing correction (D1: the overlay
 renders `[CONFIG]` / permission / secret / code / GenUI, not ChatView-only) is
 proven by `InlineWidgetText.tsx` (cases `config` / `ui-spec` / `permission` /
-`code`) + `ContinuousChatOverlay.tsx` (`SensitiveRequestBlock` on
+`code`) + `ChatOverlay.tsx` (`SensitiveRequestBlock` on
 `message.secretRequest`), and pinned by `InlineWidgetText.test.tsx` +
 `render-parity.contract.test.tsx`._

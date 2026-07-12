@@ -6,7 +6,7 @@ import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DIRECT_ROUTE_CASES } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -202,7 +202,7 @@ test.beforeEach(async ({ page }) => {
     "elizaos:ui:sidebar:eliza:page-sidebar:wallets:nfts:collapsed": "false",
   });
   await installDefaultAppRoutes(page);
-  await hideContinuousChatOverlay(page);
+  await hideChatOverlay(page);
 });
 
 test("utility app-window routes render without red errors or overflow", async ({

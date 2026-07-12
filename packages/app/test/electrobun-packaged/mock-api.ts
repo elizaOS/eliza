@@ -839,7 +839,7 @@ export async function startMockApiServer(
       return;
     }
 
-    // Streaming chat send — the path the ContinuousChatOverlay actually uses
+    // Streaming chat send — the path the ChatOverlay actually uses
     // (`sendConversationMessageStream` -> `POST …/messages/stream`, Accept:
     // text/event-stream). Emits token frames then a terminal `done` frame per the
     // client SSE contract (client-base.ts `streamChatEndpoint`) so a real

@@ -32,4 +32,4 @@ disabled (no agent to serve media yet); the seeded CHOICE/OAuth widgets remain
 the primary input. The full contract (and which seam enforces each
 guarantee) is documented in
 [`IN_CHAT_ONBOARDING_DESIGN.md`](./IN_CHAT_ONBOARDING_DESIGN.md) and covered by
-`../components/shell/ContinuousChatOverlay.firstrun.test.tsx`.
+`../components/shell/ChatOverlay.firstrun.test.tsx`.

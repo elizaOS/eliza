@@ -1048,7 +1048,7 @@ export function __renderThreadLineForParity(
   );
 }
 
-export function ContinuousChatOverlay({
+export function ChatOverlay({
   controller,
   agentName = "Eliza",
   slash: slashProp,
@@ -1140,7 +1140,7 @@ export function ContinuousChatOverlay({
     copyTextToClipboard(text).catch((err: unknown) => {
       // error-policy:J7 best-effort copy — the failure is logged, never thrown
       // into the gesture handler.
-      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+      logger.warn({ err }, "[ChatOverlay] copy to clipboard failed");
     });
   }, []);
   // Press-and-hold copy adds a light haptic on top of the copy (the only
@@ -1148,7 +1148,7 @@ export function ContinuousChatOverlay({
   const handleLongPressCopy = React.useCallback((text: string) => {
     copyTextToClipboard(text).catch((err: unknown) => {
       // error-policy:J7 best-effort copy — logged, never thrown (see above).
-      logger.warn({ err }, "[ContinuousChatOverlay] copy to clipboard failed");
+      logger.warn({ err }, "[ChatOverlay] copy to clipboard failed");
     });
     detentHaptic();
   }, []);

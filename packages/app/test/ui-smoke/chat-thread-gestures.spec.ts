@@ -1,5 +1,5 @@
 // Full-stack e2e for the single-infinite-thread chat gestures (#13531) on the
-// REAL web app — the genuinely-real ContinuousChatOverlay over the shell,
+// REAL web app — the genuinely-real ChatOverlay over the shell,
 // driven with genuine pointer/touch input. Covers the gestures that REPLACED
 // the removed maximize/minimize/clear header buttons and the removed
 // conversation edge-swipe:

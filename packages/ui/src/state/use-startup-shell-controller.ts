@@ -286,7 +286,7 @@ export function useStartupShellController(): StartupShellController {
       (firstRunCloudProvisionedContainer && needsBootstrapSession()));
 
   // Onboarding now happens IN the live chat (homescreen + auto-opened
-  // ContinuousChatOverlay seeded by the headless first-run conductor), so the
+  // ChatOverlay seeded by the headless first-run conductor), so the
   // controller no longer forces a full-screen `first-run` view. For
   // first-run-required (non-bootstrap) we yield `{ kind: "none" }` — the shell
   // is painted by App.tsx (isShellPaintable now true for first-run-required)

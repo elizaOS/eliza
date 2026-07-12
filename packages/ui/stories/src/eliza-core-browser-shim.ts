@@ -325,7 +325,7 @@ export * from "../../../core/src/name-tokens.ts";
 export * from "../../../core/src/recent-messages-state.ts";
 // --- Design Lab: extra exports the shell/home/chat/widgets surfaces reach ----
 // The Design Lab (stories/lab.html) mounts real full-viewport surfaces
-// (ContinuousChatOverlay, HomeScreen, WidgetHost, notifications) that pull more
+// (ChatOverlay, HomeScreen, WidgetHost, notifications) that pull more
 // of @elizaos/core than the atomic-component gallery. These live in core's
 // browser-safe leaf modules — pure logic + constant tables, no runtime/node
 // deps — so we re-export them straight from source. Node builtins are already

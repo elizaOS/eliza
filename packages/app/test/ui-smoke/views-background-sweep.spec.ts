@@ -49,7 +49,7 @@ const VIEW_CASES: readonly ViewCase[] = [
   {
     name: "chat",
     path: "/chat",
-    // The /chat route floats the ContinuousChatOverlay over the ambient home;
+    // The /chat route floats the ChatOverlay over the ambient home;
     // the overlay is the stable per-view marker to walk up from.
     shellSelector: '[data-testid="continuous-chat-overlay"]',
     readySelector: '[data-testid="chat-composer-textarea"]',

@@ -4,7 +4,7 @@
  */
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -918,7 +918,7 @@ test.describe("orchestrator GUI workbench", () => {
   test("shows the read-only empty workbench when no tasks are in flight", async ({
     page,
   }) => {
-    await hideContinuousChatOverlay(page);
+    await hideChatOverlay(page);
     await seedAppStorage(page);
     await installDefaultAppRoutes(page);
     await installOrchestratorWorkbenchRoutes(page);

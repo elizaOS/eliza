@@ -1,7 +1,7 @@
 /**
  * Pure layout math for the continuous-chat sheet's height + top clearance.
  *
- * Extracted from ContinuousChatOverlay so the geometry that decides where the
+ * Extracted from ChatOverlay so the geometry that decides where the
  * panel's TOP edge lands (and thus whether the header buttons sit below the
  * notch) is unit-testable without rendering the overlay. The overlay is a
  * bottom-anchored fixed element (`bottom: effectiveKeyboardInset`) whose panel

@@ -27,7 +27,7 @@
 
 import { expect, type Page, test } from "@playwright/test";
 import {
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
@@ -407,7 +407,7 @@ async function scanUnwiredControls(page: Page, label: string): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
-  await hideContinuousChatOverlay(page);
+  await hideChatOverlay(page);
   await installDefaultAppRoutes(page);
 });
 

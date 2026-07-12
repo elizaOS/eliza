@@ -39,7 +39,7 @@ import {
 } from "./view-lifecycle-types";
 
 /**
- * Views that must never be evicted. chat (ContinuousChatOverlay/HomeScreenMount)
+ * Views that must never be evicted. chat (ChatOverlay/HomeScreenMount)
  * and background (AppBackground) already live structurally OUTSIDE the routed
  * host, so they are inherently retained; the controller additionally refuses to
  * ever evict these ids. This is the single, explicit exemption surface
@@ -178,7 +178,7 @@ class ViewLifecycleController {
       .filter((id) => {
         const record = this.records.get(id);
         // Pinned views (chat/background) are STRUCTURAL surfaces rendered
-        // OUTSIDE the routed host (ContinuousChatOverlay/AppBackground); the
+        // OUTSIDE the routed host (ChatOverlay/AppBackground); the
         // host only renders them when they are the active tab. Their "retained"
         // guarantee is that their record is never evicted — not that the routed
         // host paints a hidden slot for them (which would be an empty,

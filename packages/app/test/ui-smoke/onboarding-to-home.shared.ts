@@ -1060,8 +1060,8 @@ async function expectCloudOnlyCompletion(
 ): Promise<{ surface: Locator }> {
   // Completion fires at provisioning success and returns the user to the home
   // surface. Cloud-only completion rides the SAME full→half falling-edge settle
-  // as chooser mode (ContinuousChatOverlay's wasFirstRunOpenRef effect →
-  // goToDetent("half"); ContinuousChatOverlay.firstrun.test), so the sheet rests
+  // as chooser mode (ChatOverlay's wasFirstRunOpenRef effect →
+  // goToDetent("half"); ChatOverlay.firstrun.test), so the sheet rests
   // at the half detent with the home revealed behind it and the composer
   // unlocked. The durable contract is asserted on that settle, the onboarded
   // home, the absent tutorial gate, and the exactly-once POST. The wrap-up copy
@@ -1293,7 +1293,7 @@ export async function connectRemoteFirstRunToHome(
 }
 
 /**
- * Collapse the floating ContinuousChatOverlay back to its composer-only resting
+ * Collapse the floating ChatOverlay back to its composer-only resting
  * state if it happens to be open. The overlay AUTO-COLLAPSES on the onboarding
  * completion edge, so post-onboarding this is normally a no-op guard (the
  * early-return below); it still handles a sheet a test deliberately opened.

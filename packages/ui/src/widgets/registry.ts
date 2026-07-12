@@ -71,7 +71,7 @@ registerWidgetComponent(
   MODEL_DOWNLOAD_HOME_WIDGET.Component,
 );
 // Cloud-agent provisioning is no longer a host/home widget — it renders in the
-// chat (ContinuousChatOverlay, above the composer), so it is neither registered
+// chat (ChatOverlay, above the composer), so it is neither registered
 // as a widget component here nor given a home slot below.
 // Per-plugin frontpage widgets: each surfaces a compact, attention-ranked slice
 // of its plugin's own state on the home grid, self-hides when empty, and

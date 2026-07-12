@@ -1,7 +1,7 @@
 /**
  * Backend-free, device-runnable chat UX harness.
  *
- * Mounts the REAL ContinuousChatOverlay — the production expandable/collapsible
+ * Mounts the REAL ChatOverlay — the production expandable/collapsible
  * chat sheet — over a fake view backdrop, driven by a mock ShellController and
  * a scripted back-and-forth conversation. The script opens with the in-chat
  * onboarding widgets (choice, profile form, permission card, secret request)
@@ -22,7 +22,7 @@ import {
 } from "../../first-run/first-run-greeting";
 import { GlassStyles } from "../../glass";
 import { MockAppProvider } from "../../storybook/mock-providers";
-import { ContinuousChatOverlay } from "../shell/ContinuousChatOverlay";
+import { ChatOverlay } from "../shell/ChatOverlay";
 import type { ShellController, CaptureIntent } from "../shell/useShellController";
 import type { ShellMessage } from "../shell/shell-state";
 import { registerTaskWidget } from "./widgets/task-widget";
@@ -451,7 +451,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
               gap: 12,
             }}
           >
-            {["Ship mobile polish", "Review the glass sheet", "Plan tomorrow", "Inbox zero"].map(
+            {["Polish the home screen", "Review the glass sheet", "Plan tomorrow", "Inbox zero"].map(
               (t, i) => (
                 <div
                   key={t}
@@ -471,7 +471,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
           </div>
         </div>
         <GlassStyles />
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={controller}
           firstRunOpen={firstRunOpen}
         />

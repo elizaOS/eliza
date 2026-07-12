@@ -84,7 +84,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
-import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
   buildConversationNav,
@@ -213,20 +213,20 @@ function AppComposerHarness({
       <span data-testid="harness-chat-input" hidden>
         {chatInput}
       </span>
-      <ContinuousChatOverlay controller={controller} />
+      <ChatOverlay controller={controller} />
     </ChatComposerCtx.Provider>
   );
 }
 
-describe("ContinuousChatOverlay", () => {
+describe("ChatOverlay", () => {
   it("shows the mic and no send button when the draft is empty", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByLabelText("talk")).toBeTruthy();
     expect(screen.queryByLabelText("send")).toBeNull();
   });
 
   it("swaps mic → send once the user types (ChatGPT-style)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "hello" },
     });
@@ -237,7 +237,7 @@ describe("ContinuousChatOverlay", () => {
   it("reports typing start and pause from the real composer draft", () => {
     vi.useFakeTimers();
     try {
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
       fireEvent.change(screen.getByLabelText("message"), {
         target: { value: "hello" },
       });
@@ -278,7 +278,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("reports draft_abandoned only when the user clears typed text", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const input = screen.getByLabelText("message");
 
     fireEvent.change(input, { target: { value: "discard me" } });
@@ -305,7 +305,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("shows a disabled, no-op send control when the agent can't accept input (canSend false)", () => {
     const controller = makeController({ canSend: false });
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "hello" },
     });
@@ -318,7 +318,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("swaps send → mic again once the draft is cleared", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
     fireEvent.change(input, { target: { value: "hello" } });
     expect(screen.getByLabelText("send")).toBeTruthy();
@@ -329,7 +329,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("submits the draft on Enter, calls send(), and clears the input", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const input = screen.getByLabelText("message") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "ping" } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -339,7 +339,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("does NOT send on the Enter that commits an IME composition (CJK), only a real Enter", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const input = screen.getByLabelText("message") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "にほんご" } });
 
@@ -359,7 +359,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("prefills and focuses the composer from the shared chat prefill event", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message") as HTMLInputElement;
 
     await act(async () => {
@@ -385,7 +385,7 @@ describe("ContinuousChatOverlay", () => {
       .mockImplementation(() => undefined);
     try {
       const { unmount } = render(
-        <ContinuousChatOverlay controller={makeController()} />,
+        <ChatOverlay controller={makeController()} />,
       );
       requestFrame.mockClear();
       cancelFrame.mockClear();
@@ -413,7 +413,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("opens the sheet when the composer input is focused (type-to-open)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     fireEvent.focus(screen.getByLabelText("message"));
@@ -421,7 +421,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const overlay = screen.getByTestId("continuous-chat-overlay");
     expect(overlay.getAttribute("data-open")).toBeNull();
     fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
@@ -433,7 +433,7 @@ describe("ContinuousChatOverlay", () => {
     // conversation's messages arrive. The focus→expand used to be a one-shot
     // no-op with nothing revealable, so data-open never flipped.
     const { rerender } = render(
-      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+      <ChatOverlay controller={makeController({ messages: [] })} />,
     );
     const overlay = screen.getByTestId("continuous-chat-overlay");
     const composer = screen.getByTestId("chat-composer-textarea");
@@ -445,13 +445,13 @@ describe("ContinuousChatOverlay", () => {
 
     // The restored conversation's messages land while the composer is still
     // focused: the parked focus-open intent completes the open.
-    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    rerender(<ChatOverlay controller={makeController()} />);
     expect(overlay.getAttribute("data-open")).toBe("true");
   });
 
   it("drops the parked focus-open intent if the composer blurred before the thread arrived", () => {
     const { rerender } = render(
-      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+      <ChatOverlay controller={makeController({ messages: [] })} />,
     );
     const overlay = screen.getByTestId("continuous-chat-overlay");
     const composer = screen.getByTestId("chat-composer-textarea");
@@ -461,12 +461,12 @@ describe("ContinuousChatOverlay", () => {
     });
 
     // The thread arriving later must NOT pop the sheet open — the user left.
-    rerender(<ContinuousChatOverlay controller={makeController()} />);
+    rerender(<ChatOverlay controller={makeController()} />);
     expect(overlay.getAttribute("data-open")).toBeNull();
   });
 
   it("does not move the overlay bottom padding just because the composer is focused", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const overlay = screen.getByTestId("continuous-chat-overlay");
     const initialPadding = overlay.style.paddingBottom;
 
@@ -486,7 +486,7 @@ describe("ContinuousChatOverlay", () => {
     // "bottom has excess padding") so the composer sits one finger above the
     // indicator, not floating in a dead band, no longer the old 40% inset
     // compensation that was tuned around the collapsed-ICB float.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const overlay = screen.getByTestId("continuous-chat-overlay");
     expect(overlay.style.paddingBottom).toBe(
       "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
@@ -535,7 +535,7 @@ describe("ContinuousChatOverlay", () => {
       );
 
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController()}
           agentName="Playwright Smoke"
         />,
@@ -596,7 +596,7 @@ describe("ContinuousChatOverlay", () => {
         configurable: true,
         value: 844,
       });
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
 
       const overlay = screen.getByTestId("continuous-chat-overlay");
       const wrapper = screen.getByTestId("chat-sheet").parentElement;
@@ -647,13 +647,13 @@ describe("ContinuousChatOverlay", () => {
     // the strip below the composer; with the app shell painting that zone
     // (wallpaper on shared-background routes), the repaint band WAS the
     // residual visible gap on the standalone home view. It must stay gone.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(screen.queryByTestId("continuous-chat-bottom-floor")).toBeNull();
   });
 
   it("blurs the focused composer when the active view leaves chat (drops the iOS accessory bar)", () => {
     const { rerender } = render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           currentTab: "chat",
         } as Partial<ShellController>)}
@@ -669,7 +669,7 @@ describe("ContinuousChatOverlay", () => {
     // without an explicit blur the textarea keeps DOM focus on Settings and iOS
     // strands the keyboard input-accessory bar (the ‹ › chevrons + "Done").
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           currentTab: "settings",
         } as Partial<ShellController>)}
@@ -680,7 +680,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
     const { rerender } = render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           currentTab: "chat",
         } as Partial<ShellController>)}
@@ -692,7 +692,7 @@ describe("ContinuousChatOverlay", () => {
     });
     // A re-render that does not change the active view must not steal focus.
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           currentTab: "chat",
         } as Partial<ShellController>)}
@@ -715,7 +715,7 @@ describe("ContinuousChatOverlay", () => {
     });
     const windowAdd = vi.spyOn(window, "addEventListener");
     try {
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
 
       const windowResizeHandler = windowAdd.mock.calls.find(
         ([type]) => type === "resize",
@@ -744,7 +744,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("opens the sheet on a pull-up drag of the grabber", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
@@ -761,7 +761,7 @@ describe("ContinuousChatOverlay", () => {
     // swipe-up begun anywhere near the bottom opens the chat — while still
     // floating above the input row so it never eats taps meant for the
     // textarea.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(grabber.className).toContain("inset-x-6");
     expect(grabber.className).not.toContain("px-16");
@@ -775,7 +775,7 @@ describe("ContinuousChatOverlay", () => {
   // adjacent mic and must not recolor this separate control.
   describe("waveform + pill pulse while capture is hot (#14331)", () => {
     it("does not pulse the mic while idle (neutral resting, no motion)", () => {
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
       const mic = screen.getByTestId("chat-composer-mic");
       expect(mic.className).not.toContain("animate-pulse");
       expect(mic.className).not.toContain("text-accent");
@@ -783,7 +783,7 @@ describe("ContinuousChatOverlay", () => {
 
     it("pulses the accent waveform while hands-free conversation is active", () => {
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({ handsFree: true })}
         />,
       );
@@ -797,7 +797,7 @@ describe("ContinuousChatOverlay", () => {
       ["recording", { recording: true }],
       ["transcribing", { transcriptionMode: true }],
     ] as const)("keeps the pulsing waveform neutral while %s", (_label, override) => {
-      render(<ContinuousChatOverlay controller={makeController(override)} />);
+      render(<ChatOverlay controller={makeController(override)} />);
       const waveform = screen.getByTestId("chat-composer-mic");
       expect(waveform.className).toContain("animate-pulse");
       expect(waveform.className).not.toContain("text-accent");
@@ -805,7 +805,7 @@ describe("ContinuousChatOverlay", () => {
 
     it("drops the pulse the moment the capture predicate clears", () => {
       const { rerender } = render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({ recording: true })}
         />,
       );
@@ -813,7 +813,7 @@ describe("ContinuousChatOverlay", () => {
         "animate-pulse",
       );
       rerender(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({ recording: false })}
         />,
       );
@@ -824,7 +824,7 @@ describe("ContinuousChatOverlay", () => {
 
     it("breathes the collapsed pill bar in white only while listening", () => {
       const { rerender } = render(
-        <ContinuousChatOverlay controller={makeController()} />,
+        <ChatOverlay controller={makeController()} />,
       );
       const sheet = screen.getByTestId("chat-sheet");
       const spanOf = () =>
@@ -836,7 +836,7 @@ describe("ContinuousChatOverlay", () => {
       // renders outside the panel theme) — kept identical to the grabber bar.
       expect(spanOf()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
       rerender(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({ phase: "listening", recording: true })}
         />,
       );
@@ -855,7 +855,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("toggles the sheet open and closed on repeated grabber taps", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -872,7 +872,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("opens a loading conversation on the first grabber tap", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [],
           conversationLoading: true,
@@ -895,7 +895,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("routes a horizontal swipe on the collapsed grabber to the launcher rail instead of opening chat", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -923,7 +923,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("dismisses the OPEN sheet to the pill on a horizontal swipe (left), never navigating", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -956,7 +956,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("dismisses the OPEN sheet to the pill on a horizontal swipe (right) too", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -989,7 +989,7 @@ describe("ContinuousChatOverlay", () => {
     // REAL touch on a janked Android WebView delivers pointerdown → pointerup
     // with the whole travel between them (every pointermove coalesced away).
     // The swipe must still commit from the release deltas.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -1014,7 +1014,7 @@ describe("ContinuousChatOverlay", () => {
     // Android's touch pipeline can revoke the pointer AFTER the finger already
     // completed the swipe (renderer-unresponsive ack timeout) — the observed
     // track must commit instead of being discarded.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -1044,7 +1044,7 @@ describe("ContinuousChatOverlay", () => {
   // unconditionally, so on desktop/web (no OS home indicator) the handle was
   // grabbable but the bar never painted. It must be visible off-iOS.
   it("paints a visible grabber bar off-iOS (sheet grabber + pill)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     // The test runtime resolves the Capacitor platform to "web", so isIOS is
     // false and both bars must render visibly (opacity-100, not opacity-0).
     const grabberBar = screen
@@ -1063,7 +1063,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("steps COLLAPSED→HALF→FULL on successive pull-ups and back down again", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     const pull = (fromY: number, toY: number) => {
@@ -1083,7 +1083,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("lands full when a collapsed drag is released above the half threshold", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -1096,7 +1096,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("opens on a fast flick even below the distance threshold (velocity)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     // 15px travel (< 56px distance threshold) but synchronous → high velocity.
@@ -1114,7 +1114,7 @@ describe("ContinuousChatOverlay", () => {
       .spyOn(Event.prototype, "timeStamp", "get")
       .mockImplementation(() => performance.now() || Number.MIN_VALUE);
     try {
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
       const sheet = screen.getByTestId("chat-sheet");
       const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -1135,7 +1135,7 @@ describe("ContinuousChatOverlay", () => {
   it("collapses to the pill when a slow downward drag crosses the pill threshold", () => {
     const now = vi.spyOn(performance, "now");
     try {
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
       const sheet = screen.getByTestId("chat-sheet");
       const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -1153,7 +1153,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("opens to HALF when sending (conversation above the keyboard, not a full-screen takeover)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const input = screen.getByLabelText("message");
     fireEvent.change(input, { target: { value: "ping" } });
@@ -1162,7 +1162,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("exposes the mic control with a stable test id at rest", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
   });
 
@@ -1172,7 +1172,7 @@ describe("ContinuousChatOverlay", () => {
     // 40px with a 20px mark (the "icons slightly too big" fix); the invisible
     // before-overlay pads the pointer target back out to 44×44 (WCAG 2.5.5).
     const { unmount } = render(
-      <ContinuousChatOverlay controller={makeController()} />,
+      <ChatOverlay controller={makeController()} />,
     );
     for (const id of [
       "chat-composer-plus",
@@ -1197,7 +1197,7 @@ describe("ContinuousChatOverlay", () => {
     // Active (hands-free): distinguishable via accent icon color + pulse — never
     // by reintroducing a background/border fill on the resting-style control.
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({ handsFree: true })}
       />,
     );
@@ -1212,14 +1212,14 @@ describe("ContinuousChatOverlay", () => {
 
   it("never renders a resting suggestion strip (removed — the agent is proactive)", () => {
     render(
-      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+      <ChatOverlay controller={makeController({ messages: [] })} />,
     );
     expect(screen.queryByTestId("chat-suggestions")).toBeNull();
     expect(screen.queryByTestId("chat-suggestion-0")).toBeNull();
   });
 
   it("filters whitespace-only messages from the expanded thread", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     fireEvent.focus(screen.getByLabelText("message"));
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("hi there");
@@ -1233,7 +1233,7 @@ describe("ContinuousChatOverlay", () => {
     // "— GREETING —" divider above the only message. One topic group must
     // open clean — no chips rail, no divider.
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [
             {
@@ -1265,7 +1265,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("shows the chips bar + dividers once the thread spans two topics", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [
             {
@@ -1300,7 +1300,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("aligns the assistant bubble left and the user bubble right", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [
             { id: "a", role: "assistant", content: "hi there", createdAt: 1 },
@@ -1341,7 +1341,7 @@ describe("ContinuousChatOverlay", () => {
       ],
     });
     const { rerender } = render(
-      <ContinuousChatOverlay controller={optimistic} />,
+      <ChatOverlay controller={optimistic} />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
 
@@ -1351,7 +1351,7 @@ describe("ContinuousChatOverlay", () => {
     ).toHaveLength(2);
 
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [
             { id: "user-1", role: "user", content: "hello", createdAt: 1 },
@@ -1373,7 +1373,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("composes the in-flight status as a busy transcript row", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({ phase: "responding", responding: true })}
       />,
     );
@@ -1393,7 +1393,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("closes the sheet on Escape", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(input);
@@ -1403,7 +1403,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("closes the sheet and marks the intent handled on an Android back-intent while open", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
     const sheet = screen.getByTestId("chat-sheet");
     // Open the sheet (type-to-open → half detent).
@@ -1423,7 +1423,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("leaves the Android back-intent unhandled while the sheet is at rest (native falls through)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     // At rest: the sheet is closed (collapsed input bar), not opened.
     expect(sheet.getAttribute("data-variant")).toBe("closed");
@@ -1442,7 +1442,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("collapsing blurs the composer so the mobile keyboard drops", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     fireEvent.focus(input); // onFocus → expand → sheetOpen true (flushed by act)
     input.focus(); // also move real activeElement (jsdom fireEvent.focus doesn't)
@@ -1452,7 +1452,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("tapping outside the panel blurs the composer (drops the keyboard)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     input.focus();
     expect(document.activeElement).toBe(input);
@@ -1463,7 +1463,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("composes multi-line with an auto-growing textarea (Enter still sends)", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.tagName).toBe("TEXTAREA");
     // Shift+Enter must NOT submit (it inserts a newline); plain Enter submits.
@@ -1475,7 +1475,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("closes the sheet on a pull-down drag of the grabber", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.focus(screen.getByLabelText("message"));
@@ -1487,7 +1487,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("fades the backdrop in with the chat and COLLAPSES on an outside tap", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const backdrop = screen.getByTestId("chat-sheet-backdrop");
     // Collapsed: inactive + click-through (the live view behind stays usable).
@@ -1503,7 +1503,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -1541,7 +1541,7 @@ describe("ContinuousChatOverlay", () => {
     // so tapping a notification did NOTHING ("interacting is cooked"). The
     // swallower exempts [data-notif-row]; a tap on a row must leave the chat
     // OPEN and not be swallowed.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -1586,7 +1586,7 @@ describe("ContinuousChatOverlay", () => {
     // chromeless center section. A tap on the bare field AROUND the rows (which
     // looks like plain home background) must still collapse the chat — exempting
     // the whole section made most of the home band a dead zone (#15145 review).
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     // Focus alone keeps the sheet open but arms composerFocusedAtPress; blur so
@@ -1607,7 +1607,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("lets an open dialog own Escape — the chat only collapses once the dialog is gone", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -1630,7 +1630,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("lets the transcript viewer own Escape — the chat only collapses once the viewer is gone (#9148)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -1655,7 +1655,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("Escape closes an in-progress message edit without collapsing the whole sheet (#9148)", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [
             { id: "u", role: "user", content: "fix my typo", createdAt: 1 },
@@ -1692,7 +1692,7 @@ describe("ContinuousChatOverlay", () => {
         { id: "c", role: "assistant", content: "three", createdAt: 3 },
       ],
     } as unknown as Partial<ShellController>);
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     fireEvent.focus(screen.getByLabelText("message"));
 
     // The full transcript is one vertical scroll region while open.
@@ -1706,7 +1706,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("does not mount hidden header or transcript layers while collapsed", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
     expect(sheet.getAttribute("data-revealed")).toBe("false");
@@ -1724,7 +1724,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("mounts an inert transcript preview during an upward drag before release", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
 
@@ -1744,14 +1744,14 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("shows the attach (+) control", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
     expect(screen.getByLabelText("chat actions")).toBeTruthy();
   });
 
   it("attaches an image and enables an image-only send", async () => {
     const controller = makeController({ messages: [] });
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     // Empty draft + no image → mic, no send.
     expect(screen.getByLabelText("talk")).toBeTruthy();
     expect(screen.queryByLabelText("send")).toBeNull();
@@ -1784,7 +1784,7 @@ describe("ContinuousChatOverlay", () => {
     const onSubmit = vi.fn(() => true);
     setViewChatBinding({ onSubmit });
     const controller = makeController({ messages: [] });
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
 
     const fileInput = document.querySelector(
       'input[type="file"]',
@@ -1811,14 +1811,14 @@ describe("ContinuousChatOverlay", () => {
 
   it("toggles hands-free conversation when the mic is tapped", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     fireEvent.click(screen.getByLabelText("talk"));
     expect(controller.toggleHandsFree).toHaveBeenCalled();
   });
 
   it("shows a waking-up placeholder while booting (typing allowed)", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({ phase: "booting", canSend: false })}
       />,
     );
@@ -1830,7 +1830,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("uses the pulsing composer glyph instead of rendering interim transcript text", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           phase: "listening",
           recording: true,
@@ -1854,7 +1854,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("keeps the ambient layer non-blocking for controls behind it", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
 
     const root = screen.getByTestId("continuous-chat-overlay");
     expect(root.className).toContain("pointer-events-none");
@@ -1869,7 +1869,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("exposes the canonical chat composer test id on the overlay input only", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
 
     expect(screen.getByTestId("chat-composer-textarea")).toBe(
       screen.getByLabelText("message"),
@@ -1878,7 +1878,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("keeps composer controls in one non-wrapping input row inside the constrained panel", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
 
     const input = screen.getByTestId("chat-composer-textarea");
     const bar = input.parentElement;
@@ -1897,7 +1897,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [],
         } as unknown as Partial<ShellController>)}
@@ -1911,7 +1911,7 @@ describe("ContinuousChatOverlay", () => {
   it("keeps a new user turn at the live bottom", async () => {
     const base = [{ id: "a", role: "assistant", content: "hi", createdAt: 1 }];
     const { rerender } = render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: base,
         } as unknown as Partial<ShellController>)}
@@ -1932,7 +1932,7 @@ describe("ContinuousChatOverlay", () => {
     try {
       scrollHeight = 500;
       rerender(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             messages: [
               ...base,
@@ -1961,7 +1961,7 @@ describe("ContinuousChatOverlay", () => {
     const scrollTo = vi.fn();
     Element.prototype.scrollTo = scrollTo as unknown as Element["scrollTo"];
     try {
-      render(<ContinuousChatOverlay controller={controller} />);
+      render(<ChatOverlay controller={controller} />);
       const input = screen.getByLabelText("message");
       fireEvent.focus(input);
 
@@ -1998,7 +1998,7 @@ describe("ContinuousChatOverlay", () => {
         { id: "a", role: "assistant", content: "hi", createdAt: 1 },
       ];
       const { rerender } = render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             messages: base,
           } as unknown as Partial<ShellController>)}
@@ -2012,7 +2012,7 @@ describe("ContinuousChatOverlay", () => {
       expect(root.getAttribute(LAYOUT_SHIFT_INTENT_ATTR)).toBeNull();
 
       rerender(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             messages: [
               ...base,
@@ -2035,7 +2035,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("does NOT close on an outside pointer-down while the keyboard is DOWN", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     // fireEvent.focus drives the React open state but does NOT move
     // document.activeElement in jsdom — i.e. the composer isn't really focused
@@ -2050,7 +2050,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("does NOT close when the underlying app scrolls", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -2061,7 +2061,7 @@ describe("ContinuousChatOverlay", () => {
   it("shows a stop control while a reply streams (and wires it)", () => {
     const stop = vi.fn();
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           phase: "responding",
           responding: true,
@@ -2080,7 +2080,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("reverts the trailing control to send the moment a draft exists mid-stream", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({ phase: "responding", responding: true })}
       />,
     );
@@ -2095,7 +2095,7 @@ describe("ContinuousChatOverlay", () => {
   it("renders the no_provider failure as a recovery gate with a Settings jump, while a normal turn still renders its content", () => {
     const openSettings = vi.fn();
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           openSettings,
           messages: [
@@ -2146,7 +2146,7 @@ describe("ContinuousChatOverlay", () => {
     try {
       vi.mocked(copyTextToClipboard).mockClear();
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             messages: [
               {
@@ -2177,7 +2177,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("keeps chat message text selectable for normal highlight/copy", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [
             {
@@ -2215,7 +2215,7 @@ describe("ContinuousChatOverlay", () => {
     try {
       vi.mocked(copyTextToClipboard).mockClear();
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             messages: [
               { id: "a", role: "assistant", content: "tap me", createdAt: 1 },
@@ -2239,7 +2239,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("pulls DOWN from the input to collapse into a recoverable pill", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
@@ -2262,7 +2262,7 @@ describe("ContinuousChatOverlay", () => {
     // so while NOT pilled it must be pointer-events-none — otherwise it
     // intercepts the tap meant for the composer and the mobile keyboard never
     // opens.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
 
@@ -2278,7 +2278,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("makes the pill handle interactive (drag-to-open) once collapsed to the pill", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     // Collapse the input down into the pill.
@@ -2305,7 +2305,7 @@ describe("ContinuousChatOverlay", () => {
     // chat "blinked" without opening) and needed a SECOND tap to reach half.
     // With a conversation to show, ONE tap must open straight to half — exactly
     // like a flick-up.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
@@ -2332,7 +2332,7 @@ describe("ContinuousChatOverlay", () => {
     // With no conversation yet there's no thread to reveal, so a pill tap forms
     // the input bar (and raises the keyboard) rather than an empty half sheet.
     render(
-      <ContinuousChatOverlay controller={makeController({ messages: [] })} />,
+      <ChatOverlay controller={makeController({ messages: [] })} />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -2351,7 +2351,7 @@ describe("ContinuousChatOverlay", () => {
   it("opens the pill on keyboard activation (Enter)", () => {
     // Keyboard users still open the pill via onKeyDown even though the native
     // onClick was removed in favour of the gesture binding.
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
@@ -2363,7 +2363,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("flicks UP from the pill to recover the input", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
@@ -2385,7 +2385,7 @@ describe("ContinuousChatOverlay", () => {
     // starts a transcription/dictation session, the waveform glyph next to it
     // is the spoken conversation. (Previously transcribe only appeared once a
     // voice session was already live.)
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     const transcribe = screen.getByTestId("chat-composer-transcribe");
     expect(transcribe).toBeTruthy();
@@ -2395,7 +2395,7 @@ describe("ContinuousChatOverlay", () => {
   it("resting transcribe tap starts a transcription session", () => {
     const toggleTranscriptionMode = vi.fn();
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           toggleTranscriptionMode,
         } as unknown as Partial<ShellController>)}
@@ -2406,7 +2406,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("hides BOTH trailing voice controls while a draft exists (send owns the slot)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     fireEvent.change(screen.getByLabelText("message"), {
       target: { value: "typing…" },
     });
@@ -2417,7 +2417,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("shows the transcribe button in voice mode, next to the mic (#10699)", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           handsFree: true,
           phase: "listening",
@@ -2435,7 +2435,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("shows the transcribe button (as stop) while transcribing, alongside the status badge (#10699)", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
         } as unknown as Partial<ShellController>)}
@@ -2451,7 +2451,7 @@ describe("ContinuousChatOverlay", () => {
   it("clicking the transcribe button toggles transcription mode (#10699)", () => {
     const toggleTranscriptionMode = vi.fn();
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           handsFree: true,
           recording: true,
@@ -2465,7 +2465,7 @@ describe("ContinuousChatOverlay", () => {
 
   it("keeps the waveform pressed but visually neutral while the mic transcribes", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
           toggleTranscriptionMode: vi.fn(),
@@ -2483,7 +2483,7 @@ describe("ContinuousChatOverlay", () => {
     const stopTranscriptionAndMic = vi.fn();
     const toggleHandsFree = vi.fn();
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
           stopTranscriptionAndMic,
@@ -2508,7 +2508,7 @@ describe("ContinuousChatOverlay", () => {
     const stopTranscriptionAndMic = vi.fn();
     const toggleHandsFree = vi.fn();
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           transcriptionMode: true,
           recording: true,
@@ -2532,7 +2532,7 @@ describe("ContinuousChatOverlay", () => {
     // open. The whole overlay now counts as inside.
     const unlockAudio = vi.fn();
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           needsAudioUnlock: true,
           unlockAudio,
@@ -2561,7 +2561,7 @@ describe("ContinuousChatOverlay", () => {
       const stopTranscriptionAndMic = vi.fn();
       const startRecording = vi.fn();
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             transcriptionMode: true,
             stopTranscriptionAndMic,
@@ -2598,7 +2598,7 @@ describe("ContinuousChatOverlay", () => {
         },
       );
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             send,
             startRecording,
@@ -2652,7 +2652,7 @@ describe("ContinuousChatOverlay", () => {
         sink = fn as typeof sink;
       }) as unknown as ShellController["setTranscriptSessionSink"],
     });
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     expect(typeof sink).toBe("function");
 
     // Text typed BEFORE the session must survive — the transcript appends.
@@ -2707,7 +2707,7 @@ describe("ContinuousChatOverlay", () => {
         sink = fn as typeof sink;
       }) as unknown as ShellController["setTranscriptSessionSink"],
     });
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     act(() => {
       sink?.(
         [{ id: "s1", startMs: 0, endMs: 900, text: "just words", words: [] }],
@@ -2729,7 +2729,7 @@ describe("ContinuousChatOverlay", () => {
   // to the pill, the grabber must go fully inert so it can't steal the pill's
   // taps or sit in the tab order behind it.
   it("keeps the sheet grabber live + in the a11y tree while NOT pilled", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
 
@@ -2742,7 +2742,7 @@ describe("ContinuousChatOverlay", () => {
   });
 
   it("makes the sheet grabber fully inert (pointer/tab/a11y) once collapsed to the pill", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     // Collapse the input down into the pill.
@@ -2766,7 +2766,7 @@ describe("ContinuousChatOverlay", () => {
   // safe-area inset + hosts the transcription badge).
   it("renders no nav buttons in the chat-full header", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           currentTab: "chat",
         } as Partial<ShellController>)}
@@ -2799,7 +2799,7 @@ describe("ContinuousChatOverlay", () => {
   describe("turn status indicator", () => {
     it("labels the thinking phase in the standalone status row", () => {
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             phase: "responding",
             responding: true,
@@ -2822,7 +2822,7 @@ describe("ContinuousChatOverlay", () => {
 
     it("humanizes the action name for a running_action phase", () => {
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             phase: "responding",
             responding: true,
@@ -2838,7 +2838,7 @@ describe("ContinuousChatOverlay", () => {
 
     it("shows one shimmering status marker inside the in-flight assistant row", () => {
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             phase: "responding",
             responding: true,
@@ -2864,7 +2864,7 @@ describe("ContinuousChatOverlay", () => {
 
     it("hides reasoning disclosure while the latest assistant turn is streaming", () => {
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             phase: "responding",
             responding: true,
@@ -2893,7 +2893,7 @@ describe("ContinuousChatOverlay", () => {
 
     it("shows reasoning disclosure after the assistant turn settles", () => {
       render(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             phase: "idle",
             responding: false,
@@ -2919,7 +2919,7 @@ describe("ContinuousChatOverlay", () => {
       vi.useFakeTimers();
       try {
         const { rerender } = render(
-          <ContinuousChatOverlay
+          <ChatOverlay
             controller={makeController({
               phase: "responding",
               responding: true,
@@ -2935,7 +2935,7 @@ describe("ContinuousChatOverlay", () => {
         // A near-instant change to running_action must NOT flip the label yet —
         // the first status is held for the min dwell so words don't strobe in.
         rerender(
-          <ContinuousChatOverlay
+          <ChatOverlay
             controller={makeController({
               phase: "responding",
               responding: true,
@@ -2971,7 +2971,7 @@ describe("ContinuousChatOverlay", () => {
  * conversation and NO swipe edge hint renders. (The collapsed-composer
  * home↔launcher swipe is a separate binding, covered elsewhere.)
  */
-describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
+describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
   function conv(id: string): Conversation {
     return {
       id,
@@ -3032,7 +3032,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("a committed LEFT drag does NOT switch to the next conversation", () => {
     const { controller, onSelect } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     const el = thread();
@@ -3046,7 +3046,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("a committed RIGHT drag does NOT switch to the previous conversation", () => {
     const { controller, onSelect } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     const el = thread();
@@ -3060,7 +3060,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("never renders a conversation-swipe edge hint mid-drag", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     const el = thread();
@@ -3074,7 +3074,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("exposes no maximize / minimize button (maximize is a pull now)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     // Maximize/minimize became a vertical pull in #13531 — still no button.
@@ -3083,7 +3083,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("exposes no left header controls (search + new-chat moved off the header)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     // The thread is one infinite conversation and the header carries no
@@ -3095,7 +3095,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("carries no voice control in the top bar — voice lives on the composer mic", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     // The redundant top-bar mic was removed: voice has exactly one entry point,
@@ -3107,7 +3107,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("opens the message-search panel from the composer + menu (#14279)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     // Panel is closed at rest.
@@ -3166,7 +3166,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     });
 
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     openSearchFromComposerMenu();
@@ -3211,7 +3211,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
 
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     openSearchFromComposerMenu();
@@ -3229,7 +3229,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("never invokes clearConversation from the header (no new-chat control)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     // The new-chat header control was removed: nothing in the header may
@@ -3240,7 +3240,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("renders the infinite-scroll top sentinel above a populated flat thread (#14279)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     openSheet();
 
     // The load-older prefetch sentinel mounts above the oldest turn so
@@ -3266,7 +3266,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("a big upward over-pull of the grabber maximizes to full-bleed", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
@@ -3275,7 +3275,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("renders the top-20% pull-down restore zone ONLY while maximized", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     // Not present at rest / half.
     openSheet();
     expect(screen.queryByTestId("chat-maximize-restore-zone")).toBeNull();
@@ -3286,7 +3286,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("a downward pull in the top-20% restore zone exits full-bleed back to the overlay (not a full collapse)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
@@ -3305,7 +3305,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("a FULL downward pull in the restore zone drops full-bleed and collapses the sheet all the way (the un-maximize→collapse bug)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
@@ -3325,7 +3325,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("keyboard-activates the restore zone (ArrowDown exits full-bleed)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
@@ -3339,7 +3339,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("Escape from maximized collapses the whole sheet (not just restore)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
@@ -3374,7 +3374,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("round-trips INPUT → open → MAXIMIZED → open → re-MAXIMIZED → collapsed with no wedged state", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
 
     // Rest is the composer-only INPUT state; no restore strip yet.
@@ -3414,7 +3414,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("toggles MAXIMIZED ⇄ open cleanly across repeated cycles (no drift)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     openSheet();
 
@@ -3432,7 +3432,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("steps INPUT → pill (CLOSED) on a grabber pull-down, then back to INPUT on tap", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
 
@@ -3452,7 +3452,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
   it("an upward hold in the restore zone keeps it MAXIMIZED (only a downward pull exits)", () => {
     const { controller } = makeSwipeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
     bigPullUp();
     expect(sheet.getAttribute("data-maximized")).toBe("true");
@@ -3469,7 +3469,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 // The fix renders the thread whenever the sheet is OPEN (not only when there are
 // messages), so an emptied/cleared conversation keeps its size and shows a
 // loading state until its greeting lands.
-describe("ContinuousChatOverlay — empty thread while the sheet is open", () => {
+describe("ChatOverlay — empty thread while the sheet is open", () => {
   function openSheetToHalf(): void {
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
@@ -3483,7 +3483,7 @@ describe("ContinuousChatOverlay — empty thread while the sheet is open", () =>
   it("keeps the thread mounted (no collapse) when the open conversation empties, and shows the loading spinner", () => {
     // Open with messages present (the gesture needs a thread to open into).
     const { rerender } = render(
-      <ContinuousChatOverlay controller={makeController()} />,
+      <ChatOverlay controller={makeController()} />,
     );
     openSheetToHalf();
     expect(document.getElementById("continuous-thread")).not.toBeNull();
@@ -3491,7 +3491,7 @@ describe("ContinuousChatOverlay — empty thread while the sheet is open", () =>
     // Emptying the conversation (a clear in flight, awaiting the greeting) must
     // NOT unmount the thread — the sheet stays open at its size with a spinner.
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [],
           conversationLoading: true,
@@ -3507,12 +3507,12 @@ describe("ContinuousChatOverlay — empty thread while the sheet is open", () =>
 
   it("shows no spinner on an empty open thread that is not loading", () => {
     const { rerender } = render(
-      <ContinuousChatOverlay controller={makeController()} />,
+      <ChatOverlay controller={makeController()} />,
     );
     openSheetToHalf();
 
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           messages: [],
           conversationLoading: false,
@@ -3525,7 +3525,7 @@ describe("ContinuousChatOverlay — empty thread while the sheet is open", () =>
   });
 });
 
-describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () => {
+describe("ChatOverlay — streaming + thinking render (#10712)", () => {
   const reasoningMessages: ShellMessage[] = [
     { id: "u", role: "user", content: "why X over Y?", createdAt: 1 },
     {
@@ -3539,7 +3539,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
 
   it("renders the collapsed Thinking disclosure for an assistant turn that carries reasoning", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           responding: false,
           messages: reasoningMessages,
@@ -3559,7 +3559,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
 
   it("reveals the reasoning body when the Thinking disclosure is toggled", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           responding: false,
           messages: reasoningMessages,
@@ -3575,7 +3575,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
 
   it("suppresses reasoning on the last assistant turn while it is still streaming", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           // suppressReasoning = responding && isLastAssistant → the Thinking
           // block stays hidden until the stream completes.
@@ -3617,7 +3617,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
       }));
 
     const { rerender } = render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           responding: true,
           turnStatus: { kind: "thinking" },
@@ -3633,7 +3633,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
       fullText: "Token one",
     });
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           responding: true,
           turnStatus: { kind: "streaming" },
@@ -3651,7 +3651,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
       fullText: "Token one and two",
     });
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           responding: true,
           turnStatus: { kind: "streaming" },
@@ -3668,7 +3668,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
       reasoning: "Waited for the done frame before showing reasoning.",
     });
     rerender(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           responding: false,
           messages: toShellMessages(),
@@ -3691,10 +3691,10 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
 
 // Per-message click-to-reveal action row (#10713): assistant → Copy + Play,
 // user → Copy + Edit-and-resend, temp turns are not editable.
-describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
+describe("ChatOverlay — per-message action row (#10713)", () => {
   function openThreadWith(overrides: Partial<ShellController>) {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController(overrides as Partial<ShellController>)}
       />,
     );
@@ -3879,7 +3879,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   });
 });
 
-describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", () => {
+describe("ChatOverlay — OS assistant / deep-link launch (#9148)", () => {
   beforeEach(() => {
     __resetAssistantLaunchPayloadClaimsForTests();
     window.history.replaceState(null, "", "/");
@@ -3897,7 +3897,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
       "",
       "/#chat?text=Remind%20me%20at%205&source=siri&assistant.launchId=launch-9148",
     );
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("Remind me at 5");
@@ -3908,7 +3908,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
       "/#chat?text=Water%20plants&source=macos-shortcuts&assistant.launchId=launch-once";
     window.history.replaceState(null, "", hash);
     const first = render(
-      <ContinuousChatOverlay controller={makeController()} />,
+      <ChatOverlay controller={makeController()} />,
     );
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
@@ -3918,7 +3918,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
     // The same launch id arrives again (re-open / re-render); claiming dedupes
     // by launchId so it is NOT consumed a second time.
     window.history.replaceState(null, "", hash);
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("");
@@ -3932,7 +3932,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
       "/#chat?text=start%20talking&source=assistant-entry&voice=1&assistant.launchId=launch-voice",
     );
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({ toggleHandsFree })}
       />,
     );
@@ -3950,7 +3950,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
       "/#chat?text=malicious&source=unknown-shortcut&voice=1",
     );
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({ toggleHandsFree })}
       />,
     );
@@ -3978,7 +3978,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
         },
       ],
     } as unknown as Partial<ShellController>);
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     fireEvent.focus(screen.getByLabelText("message"));
     const retry = screen.getByTestId("thread-line-retry");
     expect(retry).toBeTruthy();
@@ -3999,7 +3999,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
         },
       ],
     } as unknown as Partial<ShellController>);
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     fireEvent.focus(screen.getByLabelText("message"));
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
@@ -4114,7 +4114,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
           index: 0,
         },
       } as unknown as Partial<ShellController>);
-      render(<ContinuousChatOverlay controller={controller} />);
+      render(<ChatOverlay controller={controller} />);
       const input = screen.getByLabelText("message") as HTMLTextAreaElement;
       fireEvent.change(input, { target: { value: "ship it" } });
       fireEvent.keyDown(input, { key: "Enter" });
@@ -4133,7 +4133,7 @@ describe("ContinuousChatOverlay — OS assistant / deep-link launch (#9148)", ()
 // conductor (use-boot-recovery-conductor.test.tsx covers that path); this pins
 // the overlay's side of the contract — no pill ever, no matter how long the
 // boot runs.
-describe("ContinuousChatOverlay — no floating boot pill", () => {
+describe("ChatOverlay — no floating boot pill", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -4143,7 +4143,7 @@ describe("ContinuousChatOverlay — no floating boot pill", () => {
 
   it("never renders a floating boot-status pill, even deep into a cold boot", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({ phase: "booting" })}
       />,
     );
@@ -4158,7 +4158,7 @@ describe("ContinuousChatOverlay — no floating boot pill", () => {
 // so `phase` stays "booting" forever. The controller flags `noProviderConfigured`
 // and the overlay stops promising the agent is "waking up" — the in-transcript
 // no_provider gate is the real error surface.
-describe("ContinuousChatOverlay — no LLM provider configured", () => {
+describe("ChatOverlay — no LLM provider configured", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -4168,7 +4168,7 @@ describe("ContinuousChatOverlay — no LLM provider configured", () => {
 
   it("swaps the 'waking up…' composer placeholder for a Settings CTA hint", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           phase: "booting",
           noProviderConfigured: true,

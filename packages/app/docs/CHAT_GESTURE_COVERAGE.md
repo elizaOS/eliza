@@ -67,23 +67,23 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 
 | # | Interaction | Surface | Sites | Coverage |
 | --- | --- | --- | --- | --- |
-| 1 | Sheet drag detents (pill↔input↔full), flick vs slow | overlay grabber | `use-pull-gesture.ts`, `ContinuousChatOverlay.tsx` | L1 `chat-panel-layout.test.ts` + `use-pull-gesture.test.ts`; L3 `run-chat-sheet-e2e.mjs` (video) + `gesture-matrix.spec.ts` |
-| 2 | Pull-to-maximize / top-pull-restore (full-bleed toggle) | overlay grabber + top strip | `ContinuousChatOverlay.tsx`, `use-pull-gesture.ts` | L1 `use-pull-gesture.test.ts`; L3 `run-chat-perf-gate.mjs` + `run-perf-gate-e2e.mjs` (video, real maximize↔restore) |
-| 3 | Long-press copy on message (420 ms, move-cancel) | overlay row | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` |
+| 1 | Sheet drag detents (pill↔input↔full), flick vs slow | overlay grabber | `use-pull-gesture.ts`, `ChatOverlay.tsx` | L1 `chat-panel-layout.test.ts` + `use-pull-gesture.test.ts`; L3 `run-chat-sheet-e2e.mjs` (video) + `gesture-matrix.spec.ts` |
+| 2 | Pull-to-maximize / top-pull-restore (full-bleed toggle) | overlay grabber + top strip | `ChatOverlay.tsx`, `use-pull-gesture.ts` | L1 `use-pull-gesture.test.ts`; L3 `run-chat-perf-gate.mjs` + `run-perf-gate-e2e.mjs` (video, real maximize↔restore) |
+| 3 | Long-press copy on message (420 ms, move-cancel) | overlay row | `ChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` |
 | 4 | Tap-reveal action row (touch) / hover rail (desktop) | chat-message | `chat-message.tsx` | L2 `chat-message.tap-reveal.test.tsx` |
 | 5 | Long-press conversation item → context menu (450 ms) | chat-conversation-item | `usePressAndHold.ts` (spread by `chat-conversation-item.tsx`) | L2 `chat-conversation-item.test.tsx`, `gestures.test.ts` |
 | 6 | Push-to-talk hold (composer + overlay + ChatSurface mic) | composer + overlay + ChatSurface mic | `usePushToTalk.ts` (pointer-capture hold) | L2 `chat-composer.test.tsx`, `ChatSurface.test.tsx`, `usePushToTalk.test.tsx` |
-| 7 | Tap-outside collapse; drag-vs-tap slop; scrim click-through | overlay | `ContinuousChatOverlay.tsx` | L3 `gesture-matrix.spec.ts` |
+| 7 | Tap-outside collapse; drag-vs-tap slop; scrim click-through | overlay | `ChatOverlay.tsx` | L3 `gesture-matrix.spec.ts` |
 | 8 | Home↔launcher pager swipe, nested-pager arbitration (#12179) | pager | `useHorizontalPager.ts`, `HomeLauncherSurface.tsx`, `state/rail-gesture-store.ts` | L1 `useHorizontalPager.test.ts`; L3 `gesture-matrix.spec.ts` + `run-home-screen-e2e.mjs` (video) + `HomeLauncherSurface.test.tsx`; L4 Android |
 | 9 | Topic group flick collapse/expand | TopicGroup | `TopicGroup.tsx` | L3 `run-chatux-gesture-e2e.mjs` (video) |
-| 10 | Send/stop/edit/delete/retry; streaming render; typing phases | chat thread | `ContinuousChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` (video) |
+| 10 | Send/stop/edit/delete/retry; streaming render; typing phases | chat thread | `ChatOverlay.tsx` | L3 `run-chat-sheet-e2e.mjs` (video) |
 | 11 | Attachments: add/paste/remove outbound; open/lightbox inbound | composer + thread | _not a gesture (see note)_ | L2 `MessageAttachments.test.tsx` |
 | 12 | Keyboard avoidance (visualViewport vs native lift) | overlay layout | _layout math_ | L1 `chat-panel-layout.test.ts` |
-| 13 | Auto-scroll at bottom, reading-scrollback, jump-to-latest | thread | `ContinuousChatOverlay.tsx` | L1 `useThreadAutoScroll.test.tsx` + L3 `run-chat-sheet-e2e.mjs` AUTOSCROLL leg (desktop screenshot + mobile video) |
+| 13 | Auto-scroll at bottom, reading-scrollback, jump-to-latest | thread | `ChatOverlay.tsx` | L1 `useThreadAutoScroll.test.tsx` + L3 `run-chat-sheet-e2e.mjs` AUTOSCROLL leg (desktop screenshot + mobile video) |
 | 14 | Kiosk window drag; sidebar/panel resize drags | shell surfaces | `KioskViewCanvas.tsx`, `TasksEventsPanel.tsx`, `sidebar-root.tsx` | L2 `KioskViewCanvas.gestures.test.tsx` |
 | 15 | Graph pan/pinch/wheel-zoom | RelationshipsGraphPanel | `RelationshipsGraphPanel.tsx` | **gap** — L3 planned (app-side `touchPinch`/`touchPan`) |
-| 16 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ContinuousChatOverlay.slash.test.tsx` + `composer-core.test.tsx` + `MessageContent.slash-command.test.tsx` |
-| 17 | Pinch/dblclick on chat surface (should NOT zoom/break layout) | overlay | `ContinuousChatOverlay.tsx` | **gap** — L3 negative test planned |
+| 16 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ChatOverlay.slash.test.tsx` + `composer-core.test.tsx` + `MessageContent.slash-command.test.tsx` |
+| 17 | Pinch/dblclick on chat surface (should NOT zoom/break layout) | overlay | `ChatOverlay.tsx` | **gap** — L3 negative test planned |
 | 18 | Notification row swipe-dismiss / long-press menu; shade pull-expand | home notification center | `NotificationsHomeCenter.tsx` | L2 `NotificationsHomeCenter.test.tsx`; L3 `gesture-matrix.spec.ts` (list-pan + row-swipe legs) |
 
 Notifications live in `NotificationsHomeCenter`, a widget pinned on the home

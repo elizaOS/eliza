@@ -1,6 +1,6 @@
 /**
  * Conversation-overlay PERF GATE (#9954, retargeted for #13531): drives the REAL
- * ContinuousChatOverlay under thread-scroll + repeated pull-to-maximize /
+ * ChatOverlay under thread-scroll + repeated pull-to-maximize /
  * top-pull-restore, harvests REAL PerformanceObserver + requestAnimationFrame
  * entries, and feeds them into the SAME shared detectors the dev HUD uses
  * (frame-budget summarizeFrameSamples + shouldReportFrameBudget, layout-stability

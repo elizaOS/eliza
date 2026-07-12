@@ -5,14 +5,14 @@
 import { test } from "@playwright/test";
 import {
   assertReadyChecks,
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await hideContinuousChatOverlay(page);
+  await hideChatOverlay(page);
   await seedAppStorage(page, {
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",

@@ -4,9 +4,9 @@
 // "stop generation" control wired to useChatSend.handleChatStop.
 //
 // WHY THIS LIVES HERE (and not as a /chat ui-smoke Playwright spec): the web
-// /chat surface is the ContinuousChatOverlay, which has NO stop control — its
+// /chat surface is the ChatOverlay, which has NO stop control — its
 // only trailing action is send/mic, and `handleChatStop`/`onStop` is never
-// wired into it (ContinuousChatOverlay.tsx). The full ChatComposer that DOES
+// wired into it (ChatOverlay.tsx). The full ChatComposer that DOES
 // carry the stop button (chat-composer.tsx, shouldShowStopButton) is consumed
 // by ChatView, which is no longer mounted on any web route (AppWorkspaceChrome
 // stopped falling back to an in-view ChatView; /chat is overlay-only). So the

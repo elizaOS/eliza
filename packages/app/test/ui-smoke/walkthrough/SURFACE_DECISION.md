@@ -5,7 +5,7 @@ Resolves the **Open Surface Decision** in [`JOURNEY.md`](./JOURNEY.md). The issu
 
 ## Decision
 
-**Steps 11–14 run on the web `/chat` overlay surface (`ContinuousChatOverlay`).
+**Steps 11–14 run on the web `/chat` overlay surface (`ChatOverlay`).
 No surface switch is required for the journey as documented.**
 
 The desktop-only full `ChatView` is targeted **only** if a future step needs a
@@ -19,7 +19,7 @@ copy." Reading the actual component, the overlay's real capabilities are:
 
 | Step | Affordance | Overlay support | Evidence |
 |---|---|---|---|
-| 11 Copy a message | per-message copy button | **Yes** (assistant messages) | `ContinuousChatOverlay.tsx:52` `canCopy = isAssistant && !!onCopy && message.content.trim().length > 0`; button at `:53-58`; wired `onCopy={handleCopyMessage}` (`:1327` → `handleCopyMessage` `:1057`) |
+| 11 Copy a message | per-message copy button | **Yes** (assistant messages) | `ChatOverlay.tsx:52` `canCopy = isAssistant && !!onCopy && message.content.trim().length > 0`; button at `:53-58`; wired `onCopy={handleCopyMessage}` (`:1327` → `handleCopyMessage` `:1057`) |
 | 13 Paste into composer | clipboard → composer input | **Yes** (surface-agnostic composer op) | composer is the same on every surface |
 | 14 Delete it (draft) | clear composer draft | **Yes** | `JOURNEY.md` step 14 scopes this as draft removal ("If draft-only: composer is empty") |
 | — per-message edit | edit a sent message | **No** | overlay exposes no `onEdit` |

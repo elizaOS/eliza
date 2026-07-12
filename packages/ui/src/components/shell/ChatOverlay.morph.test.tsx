@@ -28,11 +28,11 @@ vi.mock("../../api/client", () => ({
 }));
 
 import {
-  ContinuousChatOverlay,
+  ChatOverlay,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillMorphScale,
-} from "./ContinuousChatOverlay";
+} from "./ChatOverlay";
 import type { ShellController } from "./useShellController";
 
 beforeAll(() => {
@@ -161,7 +161,7 @@ describe("handle fade through the maximize over-pull (grabberBarOpacity)", () =>
 
 describe("follow-the-finger after an over-pull past the top (overshoot rebase)", () => {
   it("tracks the pointer 1:1 back down after pulling beyond the screen top", async () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const el = grabber();
 
     // jsdom viewport: innerHeight 768 → insetPanelMaxH 696, full ceiling 768,
@@ -211,7 +211,7 @@ describe("follow-the-finger after an over-pull past the top (overshoot rebase)",
 describe("handle glow while recording (pill-only pulse)", () => {
   it("does NOT pulse the open-sheet grabber while recording", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           phase: "listening",
           recording: true,
@@ -223,7 +223,7 @@ describe("handle glow while recording (pill-only pulse)", () => {
 
   it("breathes the grabber for a streaming reply when the mic is cold", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           responding: true,
         } as unknown as Partial<ShellController>)}
@@ -237,7 +237,7 @@ describe("handle glow while recording (pill-only pulse)", () => {
 
   it("breathes the PILL in white while recording once minimized", () => {
     render(
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={makeController({
           recording: true,
         } as unknown as Partial<ShellController>)}
@@ -255,7 +255,7 @@ describe("handle glow while recording (pill-only pulse)", () => {
 
 describe("chat column width is pinned through maximize (no spread, no reflow)", () => {
   it("keeps the inner reading column at mx-auto max-w-3xl when open and at full-bleed", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     // The chat COLUMN is pinned on the inner rows (thread + composer both carry
     // `mx-auto max-w-3xl`), NOT on chat-content — chat-content spans the full
     // glass so the restore-drag strip and drag-drop intake cover the whole

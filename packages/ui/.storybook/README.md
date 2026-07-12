@@ -85,7 +85,7 @@ bun run --cwd packages/ui build-storybook  # static build
 
 ## Tracked test follow-ups (not ignored)
 
-- **`ContinuousChatOverlay`** — covered by `ContinuousChatOverlay.test.tsx` (pure
+- **`ChatOverlay`** — covered by `ChatOverlay.test.tsx` (pure
   component, mock controller).
 - **Header-less shell** (`hideComposer`, no mounted `Header`, no primary nav bar,
   gating) — covered at the source-invariant level in `App.cloud-shell.test.tsx`.

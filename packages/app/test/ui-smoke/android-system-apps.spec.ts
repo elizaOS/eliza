@@ -5,7 +5,7 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   seedAppStorage,
 } from "./helpers";
@@ -150,7 +150,7 @@ async function openFreshAppWindow(
     "eliza:ui-theme": "dark",
     "elizaos:ui-theme": "dark",
   });
-  await hideContinuousChatOverlay(page);
+  await hideChatOverlay(page);
   await installDefaultAppRoutes(page);
   const issues = installIssueGuards(page);
   await openAppWindow(page, routeCase);

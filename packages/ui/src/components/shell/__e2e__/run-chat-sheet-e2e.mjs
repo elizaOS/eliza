@@ -233,7 +233,7 @@ async function assertDarkChatSurface(p, label) {
   const rgb = tone.parsed;
   // The INSET sheet is deliberately frosted glass — a translucent (~68%) dark
   // warm fill over a backdrop blur (product direction; see the surface layer's
-  // backgroundColor note in ContinuousChatOverlay). Full-bleed is opaque. Both
+  // backgroundColor note in ChatOverlay). Full-bleed is opaque. Both
   // must stay DARK and locally themed, never the orange app theme.
   assert(
     Boolean(
@@ -3543,7 +3543,7 @@ try {
     );
     // Sign-in-first onboarding (#15339 supersedes the #12178 unlocked design):
     // the composer is locked until the user signs in, matching the sign-in
-    // placeholder above and ContinuousChatOverlay.firstrun.test.tsx.
+    // placeholder above and ChatOverlay.firstrun.test.tsx.
     assert(
       (await p
         .getByTestId("chat-composer-textarea")

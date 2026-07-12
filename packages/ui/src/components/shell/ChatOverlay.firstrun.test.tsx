@@ -40,7 +40,7 @@ import { __setAppValueForTests } from "../../state/app-store";
 import type { AppContextValue } from "../../state/internal";
 import { resetShellSurfaceForTests } from "../../state/shell-surface-store";
 import { setViewChatBinding } from "../../state/view-chat-binding";
-import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
 import type { ShellController } from "./useShellController";
 
 beforeAll(() => {
@@ -117,10 +117,10 @@ function seedAppStoreWithActionSpy(): ReturnType<typeof vi.fn> {
   return sendActionMessage;
 }
 
-describe("ContinuousChatOverlay first-run gating", () => {
+describe("ChatOverlay first-run gating", () => {
   it("pins the sheet OPEN during onboarding so the seeded choices are visible (not hidden behind a collapsed grabber)", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     // firstRunOpen must force the sheet open structurally — the mount/effect
     // openness was raceable and could settle collapsed, leaving the frozen
@@ -132,7 +132,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
   it("locks the composer text during onboarding with a sign-in placeholder; attach + mic stay inert", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     expect(input.disabled).toBe(true);
@@ -155,7 +155,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
   it("ignores prefill/free-text entry during onboarding so setup stays sign-in-first", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     act(() => {
       window.dispatchEvent(
@@ -175,7 +175,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
   it("does not submit typed text with Enter while the onboarding composer is locked", () => {
     const sendActionMessage = seedAppStoreWithActionSpy();
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "will this work yet?" } });
@@ -187,7 +187,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
   it("preserves the shell wallpaper behind a neutral onboarding scrim", () => {
     render(
-      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+      <ChatOverlay controller={makeController()} firstRunOpen />,
     );
     const backdrop = screen.getByTestId("chat-first-run-backdrop");
     expect(backdrop.getAttribute("data-first-run-opaque")).toBe("true");
@@ -200,7 +200,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
   it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
     const controller = makeController();
     const { rerender } = render(
-      <ContinuousChatOverlay controller={controller} firstRunOpen />,
+      <ChatOverlay controller={controller} firstRunOpen />,
     );
     expect(
       screen
@@ -212,7 +212,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     // already unmounted under reduced-motion) — either way it is no longer the
     // full-opacity launcher-hiding layer.
     rerender(
-      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+      <ChatOverlay controller={controller} firstRunOpen={false} />,
     );
     const after = screen.queryByTestId("chat-first-run-backdrop");
     expect(after?.getAttribute("data-first-run-opaque") ?? "false").not.toBe(
@@ -222,7 +222,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
   it("opens edge-to-edge full-bleed (maximized) during onboarding without drag affordances", () => {
     render(
-      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+      <ChatOverlay controller={makeController()} firstRunOpen />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     // The login/first-run chat is full-screen: full-bleed edge-to-edge.
@@ -234,7 +234,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
   it("opens pinned at FULL and ignores Escape while onboarding is active", () => {
     render(
-      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+      <ChatOverlay controller={makeController()} firstRunOpen />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -247,7 +247,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
   it("ignores an outside tap while onboarding is active", () => {
     render(
-      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+      <ChatOverlay controller={makeController()} firstRunOpen />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -268,7 +268,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
   it("renders a non-interactive composer handle without changing its height", () => {
     render(
-      <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+      <ChatOverlay controller={makeController()} firstRunOpen />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     const composer = screen.getByTestId("chat-composer-row");
@@ -296,7 +296,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
         },
       ],
     } as unknown as Partial<ShellController>);
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     // All three location chips render — including the Remote third option.
     expect(
@@ -324,7 +324,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
         },
       ],
     } as unknown as Partial<ShellController>);
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     // The tap-to-reveal bubble wrapper (a role=button with a "message actions"
     // label) collapses its subtree into a single atomic AX node in WKWebView,
@@ -349,7 +349,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
         },
       ],
     } as unknown as Partial<ShellController>);
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     const message = screen.getByTestId("thread-line");
     expect(message.getAttribute("data-role")).toBe("assistant");
@@ -364,7 +364,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     seedAppStoreWithActionSpy();
     try {
       render(
-        <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+        <ChatOverlay controller={makeController()} firstRunOpen />,
       );
 
       expect(screen.queryByText(FIRST_RUN_GREETING)).toBeNull();
@@ -401,7 +401,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
     try {
       const { rerender } = render(
-        <ContinuousChatOverlay controller={makeController()} firstRunOpen />,
+        <ChatOverlay controller={makeController()} firstRunOpen />,
       );
 
       act(() => {
@@ -409,7 +409,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
       });
 
       rerender(
-        <ContinuousChatOverlay
+        <ChatOverlay
           controller={makeController({
             messages: [realGreeting],
           } as unknown as Partial<ShellController>)}
@@ -453,7 +453,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
       ],
     } as unknown as Partial<ShellController>);
 
-    render(<ContinuousChatOverlay controller={controller} firstRunOpen />);
+    render(<ChatOverlay controller={controller} firstRunOpen />);
 
     expect(screen.getAllByText("Sign in to Eliza Cloud")).toHaveLength(1);
     expect(screen.getAllByText(FIRST_RUN_GREETING)).toHaveLength(1);
@@ -473,7 +473,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
       ],
     } as unknown as Partial<ShellController>);
     const { rerender } = render(
-      <ContinuousChatOverlay controller={controller} firstRunOpen />,
+      <ChatOverlay controller={controller} firstRunOpen />,
     );
     const probe = screen.getByTestId("onboarding-state-probe");
     expect(probe.textContent).toContain("onboarding-step:runtime");
@@ -482,7 +482,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
     // Once onboarding completes the probe is gone.
     rerender(
-      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+      <ChatOverlay controller={controller} firstRunOpen={false} />,
     );
     expect(screen.queryByTestId("onboarding-state-probe")).toBeNull();
   });
@@ -490,7 +490,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
   it("settles to half exactly once on the completion edge, unlocks the composer, and re-arms Escape", () => {
     const controller = makeController();
     const { rerender } = render(
-      <ContinuousChatOverlay controller={controller} firstRunOpen />,
+      <ChatOverlay controller={controller} firstRunOpen />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     const overlay = screen.getByTestId("continuous-chat-overlay");
@@ -499,7 +499,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
 
     // Onboarding completes: firstRunOpen falls true → false.
     rerender(
-      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+      <ChatOverlay controller={controller} firstRunOpen={false} />,
     );
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(sheet.getAttribute("data-detent")).toBe("half");
@@ -515,7 +515,7 @@ describe("ContinuousChatOverlay first-run gating", () => {
     fireEvent.focus(input);
     expect(sheet.getAttribute("data-variant")).toBe("open");
     rerender(
-      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+      <ChatOverlay controller={controller} firstRunOpen={false} />,
     );
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
@@ -527,14 +527,14 @@ describe("ContinuousChatOverlay first-run gating", () => {
   it("never auto-collapses a session where onboarding was not active", () => {
     const controller = makeController();
     const { rerender } = render(
-      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+      <ChatOverlay controller={controller} firstRunOpen={false} />,
     );
     const sheet = screen.getByTestId("chat-sheet");
     fireEvent.focus(screen.getByLabelText("message"));
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     rerender(
-      <ContinuousChatOverlay controller={controller} firstRunOpen={false} />,
+      <ChatOverlay controller={controller} firstRunOpen={false} />,
     );
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });

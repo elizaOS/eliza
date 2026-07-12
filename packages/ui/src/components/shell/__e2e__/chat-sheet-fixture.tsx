@@ -1,5 +1,5 @@
 // Self-contained fixture for the pull-up chat-sheet e2e. Mounts the real
-// ContinuousChatOverlay with a stateful mock controller over a fake "view"
+// ChatOverlay with a stateful mock controller over a fake "view"
 // background, so a headless browser can drive real drag gestures and capture
 // styled screenshots without an app server. Paired with run-chat-sheet-e2e.mjs.
 
@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 
 import { MockAppProvider } from "../../../storybook/mock-providers";
 import { GlassStyles } from "../../../glass";
-import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
+import { ChatOverlay } from "../ChatOverlay";
 import type { ShellMessage } from "../shell-state";
 import type { CaptureIntent, ShellController } from "../useShellController";
 
@@ -551,7 +551,7 @@ function Harness(): React.JSX.Element {
       </div>
       {/* One glass stylesheet per document, as the app shell mounts it. */}
       <GlassStyles />
-      <ContinuousChatOverlay
+      <ChatOverlay
         controller={controller}
         firstRunOpen={firstRunOpen}
       />

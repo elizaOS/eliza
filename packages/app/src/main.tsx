@@ -2624,7 +2624,7 @@ function handleDeepLink(url: string): void {
   // served over file: and is not an app-window, so the hash is never read for
   // tab navigation (`getWindowNavigationPath` returns `location.pathname`) and
   // the target tab never opened. (Chat-launch deep links below stay on the
-  // hash — the always-mounted ContinuousChatOverlay claims the launch payload
+  // hash — the always-mounted ChatOverlay claims the launch payload
   // from the hash directly.)
   const navigationIntent = resolveDeepLinkNavigationIntent(path);
   if (navigationIntent) {
@@ -2986,7 +2986,9 @@ const ChatWidgetHarness = lazy(async () => {
   if (__ELIZA_CHAT_UI_HARNESS__ !== true) {
     throw new Error("ChatWidgetHarness is disabled in this build");
   }
-  const mod = await import("@elizaos/ui");
+  // Direct subpath (not the barrel): tsgo cannot type the full @elizaos/ui
+  // barrel through a dynamic import, and the narrow chunk is smaller anyway.
+  const mod = await import("@elizaos/ui/components/chat/ChatWidgetHarness");
   return { default: mod.ChatWidgetHarness };
 });
 

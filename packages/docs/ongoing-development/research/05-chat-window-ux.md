@@ -26,9 +26,9 @@ which delete, wire, or repair what already exists.
 
 ### Render paths (three, not two)
 
-1. **`ContinuousChatOverlay`** — the primary surface, always mounted over every
+1. **`ChatOverlay`** — the primary surface, always mounted over every
    view ([packages/ui/src/App.tsx:2513](../../../ui/src/App.tsx),
-   [packages/ui/src/components/shell/ContinuousChatOverlay.tsx:128-157](../../../ui/src/components/shell/ContinuousChatOverlay.tsx)).
+   [packages/ui/src/components/shell/ChatOverlay.tsx:128-157](../../../ui/src/components/shell/ChatOverlay.tsx)).
    One infinite thread since #13531 — no conversation switcher, no clear/new-chat.
 2. **`ChatSurface` + `AssistantOverlay` + `HomePill`** — mounted only by
    `ShellFoundationMount` for the desktop OS chat-overlay window and the kiosk
@@ -46,10 +46,10 @@ change must land in both.
 
 Single source of truth: `ChatMode = "pill" | "input" | "half" | "full"` with
 derived `ChatState` (`CLOSED | INPUT | OPEN_UNDER_HALF | OPEN_HALF_OR_OVER |
-MAXIMIZED`) — [ContinuousChatOverlay.tsx:177-193](../../../ui/src/components/shell/ContinuousChatOverlay.tsx).
+MAXIMIZED`) — [ChatOverlay.tsx:177-193](../../../ui/src/components/shell/ChatOverlay.tsx).
 The interaction constants ARE the spec (all verified in code):
 
-| Parameter | Value | Ref (ContinuousChatOverlay.tsx) |
+| Parameter | Value | Ref (ChatOverlay.tsx) |
 |---|---|---|
 | HALF detent | 0.46 × viewport height | `:197` |
 | FULL detent | ≈0.9 × viewport (inset, under status bar) | `:198-206` |
@@ -66,7 +66,7 @@ per frame, `:3985-3995`); flicks step one detent; slow drags free-rest with
 magnetism; pull-down through input→pill reverses the morph under the finger
 (`:3171-3183`). **The maximize button is already removed** — header carries
 only a Launcher button (`:3895-3901`), and
-`ContinuousChatOverlay.test.tsx:2308-2309` pins `chat-full-maximize` /
+`ChatOverlay.test.tsx:2308-2309` pins `chat-full-maximize` /
 `chat-full-clear` absent. Pull-to-maximize + top-20% restore are e2e-covered
 with real CDP touch (`__e2e__/run-chat-sheet-e2e.mjs:256-354`).
 
@@ -80,7 +80,7 @@ transcript swipe binding (grep: only definition sites match).
 ### Scrolling — what works and what is missing
 
 Works: the transcript scroller (`#continuous-thread`,
-[ContinuousChatOverlay.tsx:4025](../../../ui/src/components/shell/ContinuousChatOverlay.tsx))
+[ChatOverlay.tsx:4025](../../../ui/src/components/shell/ChatOverlay.tsx))
 is `touch-pan-y overflow-y-auto overscroll-contain` with the iOS
 `-webkit-overflow-scrolling:touch` fix and a WebKit-safe bounded-height flex
 chain (`:3966-3995`, guarded by `run-chat-scroll-web-e2e.mjs` on Chromium AND
@@ -136,7 +136,7 @@ are fine — they carry `overscroll-x-contain`.
 
 ### Mic + '+' buttons (req 5)
 
-`SoftButton` ([ContinuousChatOverlay.tsx:309-370](../../../ui/src/components/shell/ContinuousChatOverlay.tsx)):
+`SoftButton` ([ChatOverlay.tsx:309-370](../../../ui/src/components/shell/ChatOverlay.tsx)):
 borderless 44×44 hit target (WCAG 2.5.5), lucide icons at 26px, hand-drawn
 glyphs at 30px — the icons were already sized up when chrome was removed; the
 26px-vs-30px mix is a minor optical inconsistency (plus glyph renders larger
@@ -186,7 +186,7 @@ Stale (post-#13531): `chat-clear-swipe.spec.ts:386,424,497` and
 `chat-full-clear` button; `walkthrough/journey.ts:1108-1121` still expects
 `chat-full-maximize`; `chat-clear-swipe.spec.ts` is still in a CI lane
 (`scenario-pr.yml:341`). The unit suite already pins those testids as ABSENT
-(`ContinuousChatOverlay.test.tsx:2308-2309`) — the repo is testing both sides
+(`ChatOverlay.test.tsx:2308-2309`) — the repo is testing both sides
 of the same contradiction. Minor slop: literal `"   "` filler class strings in
 `cn()` calls (`:497`, `:570`, HomePill.tsx:54).
 
@@ -258,7 +258,7 @@ by ownership: the transcript gets `overflow-x-hidden` (parity with
 
 **Q6. Bring ChatSurface/kiosk and detached-window paths to parity?** A: Not
 for MVP. They are desktop/kiosk-only surfaces; the MVP surfaces are web +
-mobile where `ContinuousChatOverlay` is the only path. Keep the render-parity
+mobile where `ChatOverlay` is the only path. Keep the render-parity
 contract green; take no feature work there.
 
 **Q7. Virtualize long threads?** A: No virtualizer for MVP. Measured-first:

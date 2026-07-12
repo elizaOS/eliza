@@ -283,7 +283,7 @@ describe("brand surfaces", () => {
       'root.classList.toggle("eliza-chat-overlay-shell", chatOverlayShell)',
     );
     expect(appSrc).toContain('data-testid="chat-overlay-shell"');
-    expect(appSrc).toContain("<ContinuousChatOverlay");
+    expect(appSrc).toContain("<ChatOverlay");
     expect(stylesSrc).toContain("html.eliza-chat-overlay-shell #root");
     expect(stylesSrc).toContain("background: transparent");
   });

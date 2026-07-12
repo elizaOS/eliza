@@ -7,7 +7,7 @@
 // SCOPE NOTE — page-scoped clear is intentionally NOT driven here. The old
 // in-chrome page-scoped chat rail was removed; the web /chat route is
 // overlay-only and the overlay carries no per-conversation clear/truncate
-// affordance (ContinuousChatOverlay.tsx). So no keyless web route exposes the
+// affordance (ChatOverlay.tsx). So no keyless web route exposes the
 // clear control; that path stays covered by the component tests. This spec
 // asserts the reachable half: send + persistence.
 

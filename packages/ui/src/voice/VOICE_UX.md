@@ -43,7 +43,7 @@ listening turn; always-on is *staying* in listening; transcript mode is a
 - `useContinuousChat` exposes the three continuous modes
   (`off` | `vad-gated` | `always-on`) and aggregates status.
 - `ChatComposer` renders the mic button (180ms hold → push-to-talk, tap →
-  compose/toggle). `ContinuousChatOverlay` is the live-mic surface and renders
+  compose/toggle). `ChatOverlay` is the live-mic surface and renders
   the mic button **with the transcript toggle next to it**.
 
 ### Wake word

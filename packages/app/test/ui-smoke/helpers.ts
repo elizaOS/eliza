@@ -307,7 +307,7 @@ export async function seedFirstRunCompleteBeforeLoad(
   });
 }
 
-export async function hideContinuousChatOverlay(page: Page): Promise<void> {
+export async function hideChatOverlay(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const install = () => {
       if (document.getElementById("ui-smoke-hide-continuous-chat-overlay")) {

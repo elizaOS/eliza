@@ -5,7 +5,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import {
   assertReadyChecks,
-  hideContinuousChatOverlay,
+  hideChatOverlay,
   installDefaultAppRoutes,
   openSettingsSection,
   seedAppStorage,
@@ -1124,7 +1124,7 @@ test.describe("Android communications app interactions", () => {
     page,
   }) => {
     const issues = installIssueGuards(page);
-    await hideContinuousChatOverlay(page);
+    await hideChatOverlay(page);
     await installDefaultAppRoutes(page);
 
     await openAppWindow(page, "phone", "/phone", [
@@ -1309,7 +1309,7 @@ test.describe("Smartglasses GUI interactions", () => {
     page,
   }) => {
     const issues = installIssueGuards(page);
-    await hideContinuousChatOverlay(page);
+    await hideChatOverlay(page);
 
     await installDefaultAppRoutes(page);
     await openSettingsSection(page, "Wearables");

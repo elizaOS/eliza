@@ -1702,7 +1702,7 @@ function AppProviderInner({
 
   // conversationMessages lives in ConversationMessagesContext so per-token
   // streaming updates re-render only the chat surfaces (ChatView + the shell
-  // controller behind ContinuousChatOverlay) instead of cascading through
+  // controller behind ChatOverlay) instead of cascading through
   // AppContext to all ~135 useApp() subscribers.
   const removeConversationMessage = useCallback(
     (messageId: string) => {

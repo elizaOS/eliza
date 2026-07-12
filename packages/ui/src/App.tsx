@@ -68,7 +68,7 @@ import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
-import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
+import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
@@ -1299,7 +1299,7 @@ function ViewLayoutSurface({
 
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
- * ContinuousChatOverlay that floats over every view — views never embed an
+ * ChatOverlay that floats over every view — views never embed an
  * inline ChatView — so an unavailable view falls back to the Launcher page
  * of the retained Home/Launcher surface, not a chat surface.
  */
@@ -1731,7 +1731,7 @@ type ShellContentProps = {
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
   // The /chat route is the ambient conversational home: open space behind the
-  // always-present ContinuousChatOverlay (mounted at the shell root), which is
+  // always-present ChatOverlay (mounted at the shell root), which is
   // the whole chat experience. Ask it anything, or ask it to open a view ("show
   // me the coding view") which surfaces over this base. The home is wordless,
   // sitting directly on the unified app background (mounted once at the shell
@@ -1779,7 +1779,7 @@ function routedShellMainClass(tab: string): string {
  * The single routed shell for every view. ViewRouter already resolves every tab
  * — static page views, dynamic plugin pages, and remote view bundles — so the
  * shell only adds the desktop tab bar and per-tab padding around it. Chat is the
- * always-present ContinuousChatOverlay floating over this base, never embedded
+ * always-present ChatOverlay floating over this base, never embedded
  * per-view.
  */
 function RoutedShellContent(props: ShellContentProps): ReactNode {
@@ -1930,7 +1930,7 @@ function ShellFoundationMount() {
  * including the /chat route's ambient home. Returns null until a controller
  * provider is present.
  */
-function ContinuousChatOverlayMount(): ReactNode {
+function ChatOverlayMount(): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
     useAppSelectorShallow((s) => ({
@@ -1954,7 +1954,7 @@ function ContinuousChatOverlayMount(): ReactNode {
   const agentName =
     characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
   return (
-    <ContinuousChatOverlay
+    <ChatOverlay
       controller={controller}
       agentName={agentName}
       slash={slash}
@@ -2948,7 +2948,7 @@ export function App() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         {/*
-          Continuous chat overlay (ContinuousChatOverlay) — one ambient glass
+          Continuous chat overlay (ChatOverlay) — one ambient glass
           conversation (the app's single active conversation via
           useShellController) that floats over EVERY view, including the /chat
           route (whose base is now just ambient space). It survives tab/view
@@ -2956,7 +2956,7 @@ export function App() {
           is pointer-events-none except its own composer/messages, so the view
           behind stays live.
         */}
-        <ContinuousChatOverlayMount />
+        <ChatOverlayMount />
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the

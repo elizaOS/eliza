@@ -3487,8 +3487,8 @@
       "count": 2,
       "entries": [
         {
-          "file": "src/components/shell/ContinuousChatOverlay.tsx",
-          "name": "ContinuousChatOverlay",
+          "file": "src/components/shell/ChatOverlay.tsx",
+          "name": "ChatOverlay",
           "tokens": ["continuous", "chat", "overlay"]
         },
         {

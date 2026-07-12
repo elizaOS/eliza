@@ -109,7 +109,7 @@ export function useContextMenu(): ContextMenuState {
       if (!command?.text) return;
       const quoted = `> ${command.text}\n\n`;
       // Route through the same prefill channel the live floating composer
-      // (ContinuousChatOverlay) consumes. Writing to the app-store `chatInput`
+      // (ChatOverlay) consumes. Writing to the app-store `chatInput`
       // slice would land in the detached-window ChatView, which is not mounted
       // on the surface where the context menu fires — so the quote vanished.
       dispatchChatPrefill({ text: quoted, select: false });

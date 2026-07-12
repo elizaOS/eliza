@@ -418,7 +418,7 @@ async function collectBorderRadiusViolations(page: Page): Promise<string[]> {
     // eliza radius — so 3 is the canonical rendered value (#10710). The rem
     // scale (0.375rem=6 … 1.5rem=24) stays admitted for surfaces that read
     // presets.ts tokens directly rather than the base.css custom properties.
-    // 32 is the floating chat capsule: ContinuousChatOverlay animates the
+    // 32 is the floating chat capsule: ChatOverlay animates the
     // glass-panel radius 32→24 as the sheet opens (collapsed pill endpoint),
     // and the overlay is mounted on every view.
     const allowedPx = [0, 3, 6, 8, 12, 16, 20, 24, 32];

@@ -5,7 +5,7 @@
  *
  * The overlay's own perf-critical gestures (thread-scroll + maximize/restore, the
  * survivors of the single-infinite-thread redesign #13531) are driven against the
- * REAL ContinuousChatOverlay in run-perf-gate-e2e.mjs / run-chat-perf-gate.mjs.
+ * REAL ChatOverlay in run-perf-gate-e2e.mjs / run-chat-perf-gate.mjs.
  * Mechanics come from the shared e2e-runner.
  *
  * Run: bun run --cwd packages/ui test:chatux-gesture-e2e

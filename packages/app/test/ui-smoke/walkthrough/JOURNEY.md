@@ -80,7 +80,7 @@ journey.
 ## Open Surface Decision
 
 The web `/chat` route is overlay-only. The desktop-only full `ChatView` owns the
-per-message copy/edit/delete rail; `ContinuousChatOverlay` currently supports
+per-message copy/edit/delete rail; `ChatOverlay` currently supports
 long-press/tap transcript copy but not the full rail. Step 11 through step 14
 must choose one of these paths before automation:
 

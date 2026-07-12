@@ -81,7 +81,7 @@ test.describe("onboarding → home → launcher (mobile viewport)", () => {
     ).toBe(true);
 
     // Tap (not click) the inline choice buttons — the touch path through the
-    // WebView, inside the same floating ContinuousChatOverlay. The shared flow
+    // WebView, inside the same floating ChatOverlay. The shared flow
     // also asserts the onboarding lock (disabled composer, Escape gated) and
     // the auto-collapse on completion.
     const { surface } = await completeOnboardingToHome(

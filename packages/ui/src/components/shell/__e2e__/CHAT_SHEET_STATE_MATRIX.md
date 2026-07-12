@@ -1,7 +1,7 @@
 # Continuous chat sheet — state × gesture transition matrix
 
 The single source of truth for what every gesture does from every resting state
-of the pull-up chat sheet (`ContinuousChatOverlay.tsx`). The e2e continuum suite
+of the pull-up chat sheet (`ChatOverlay.tsx`). The e2e continuum suite
 (`run-chat-sheet-e2e.mjs`, `runContinuumSuite`) asserts the load-bearing rows.
 
 ## Resting states

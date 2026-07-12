@@ -114,7 +114,7 @@ interface GestureRow {
 }
 
 const S = (p: string) => `packages/ui/src/${p}`;
-const OVERLAY = S("components/shell/ContinuousChatOverlay.tsx");
+const OVERLAY = S("components/shell/ChatOverlay.tsx");
 const CHAT_SHEET_RUNNER = S("components/shell/__e2e__/run-chat-sheet-e2e.mjs");
 const GESTURE_MATRIX_SPEC = "packages/app/test/ui-smoke/gesture-matrix.spec.ts";
 const ANDROID_TOUCH_SPEC =
@@ -264,7 +264,7 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
     interaction: "Slash menu open/dismiss (incl. outside pointerdown)",
     sites: [],
     tests: [
-      S("components/shell/ContinuousChatOverlay.slash.test.tsx"),
+      S("components/shell/ChatOverlay.slash.test.tsx"),
       S("components/chat/MessageContent.slash-command.test.tsx"),
     ],
   },
@@ -305,7 +305,7 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/composites/chat/chat-message.tsx",
   "packages/ui/src/components/composites/sidebar/sidebar-root.tsx",
   "packages/ui/src/components/pages/RelationshipsGraphPanel.tsx",
-  "packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
+  "packages/ui/src/components/shell/ChatOverlay.tsx",
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
   "packages/ui/src/components/shell/KioskViewCanvas.tsx",
   "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",

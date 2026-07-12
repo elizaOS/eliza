@@ -1000,7 +1000,7 @@ test.describe("assistant home app flow", () => {
       pointerType: "mouse",
     });
     // Holding past the push-to-talk threshold (200ms) begins capture. The held
-    // voice control is labelled "release to insert" (ContinuousChatOverlay) —
+    // voice control is labelled "release to insert" (ChatOverlay) —
     // push-to-talk dictates into the composer draft and does NOT auto-send, so
     // the label is "insert", not "send".
     const releaseButton = page.getByRole("button", {

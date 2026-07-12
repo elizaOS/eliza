@@ -1,7 +1,7 @@
 name: Chat shell gestures
 
 # Real-browser gesture + interleaving e2e for the floating chat shell
-# (packages/ui ContinuousChatOverlay + home screen), the component-tree
+# (packages/ui ChatOverlay + home screen), the component-tree
 # render-parity contract, and the CHAT_GESTURE_COVERAGE gate (#12188).
 #
 # All 11 __e2e__ runners compose the shared runner toolkit

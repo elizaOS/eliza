@@ -134,7 +134,7 @@ interface ChatViewProps {
   onPtySessionClick?: (sessionId: string) => void;
   /**
    * Hide the in-view composer. Used on the chat tab when the always-present
-   * ContinuousChatOverlay provides the (single, shared) input instead, so there
+   * ChatOverlay provides the (single, shared) input instead, so there
    * is no duplicate composer. The transcript and side panels still render.
    */
   hideComposer?: boolean;

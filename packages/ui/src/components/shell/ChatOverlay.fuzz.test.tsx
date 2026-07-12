@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-// Adversarial + fuzz coverage for the floating chat (ContinuousChatOverlay).
+// Adversarial + fuzz coverage for the floating chat (ChatOverlay).
 //
 // The overlay is a small state machine: ONE `mode` ∈ {pill, input, half, full}
 // with `maximized` and a free-drag rest height as orthogonal overrides. Every
@@ -38,7 +38,7 @@ vi.mock("../../utils/clipboard", () => ({
   copyTextToClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
+import { ChatOverlay } from "./ChatOverlay";
 import type { ShellController } from "./useShellController";
 
 beforeAll(() => {
@@ -291,9 +291,9 @@ function gotoMaximized(): void {
   expect(sheet().getAttribute("data-maximized")).toBe("true");
 }
 
-describe("ContinuousChatOverlay — reachable states", () => {
+describe("ChatOverlay — reachable states", () => {
   it("reaches every named state and each satisfies the invariants", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     assertInvariants("fresh");
     expect(detentOf()).toBe("collapsed"); // INPUT peek is the resting state
 
@@ -301,23 +301,23 @@ describe("ContinuousChatOverlay — reachable states", () => {
     assertInvariants("pill");
 
     cleanup();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoHalf();
     assertInvariants("half");
 
     cleanup();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoFull();
     assertInvariants("full");
 
     cleanup();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoMaximized();
     assertInvariants("maximized");
 
     // Free-rest above half (a deliberate slow drag that lands between detents).
     cleanup();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoHalf();
     slowDrag(grabber() as Element, 300, 150); // pull up ~150px into the gap
     assertInvariants("free-rest");
@@ -325,7 +325,7 @@ describe("ContinuousChatOverlay — reachable states", () => {
   });
 });
 
-describe("ContinuousChatOverlay — state × action matrix", () => {
+describe("ChatOverlay — state × action matrix", () => {
   // Every action, applied from every reachable resting state, must leave the
   // chat in a valid state (and never throw). Where the transition is fully
   // determined we also assert the destination.
@@ -402,7 +402,7 @@ describe("ContinuousChatOverlay — state × action matrix", () => {
   for (const setup of setups) {
     for (const action of actions) {
       it(`${setup.name} + ${action.name} stays valid`, () => {
-        render(<ContinuousChatOverlay controller={makeController()} />);
+        render(<ChatOverlay controller={makeController()} />);
         setup.go();
         assertInvariants(`${setup.name}:before:${action.name}`);
         action.run();
@@ -417,16 +417,16 @@ describe("ContinuousChatOverlay — state × action matrix", () => {
   }
 });
 
-describe("ContinuousChatOverlay — out-of-state / nonsensical actions are no-ops", () => {
+describe("ChatOverlay — out-of-state / nonsensical actions are no-ops", () => {
   it("Escape while collapsed does not open or break the chat", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     fireEvent.keyDown(input(), { key: "Escape" });
     expect(detentOf()).toBe("collapsed");
     assertInvariants("escape-collapsed");
   });
 
   it("backdrop click while collapsed is inert (no handler attached)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(backdrop().getAttribute("data-active")).toBe("false");
     fireEvent.click(backdrop());
     expect(detentOf()).toBe("collapsed");
@@ -435,7 +435,7 @@ describe("ContinuousChatOverlay — out-of-state / nonsensical actions are no-op
 
   it("Enter with an empty draft never sends", () => {
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     fireEvent.keyDown(input(), { key: "Enter" });
     fireEvent.keyDown(input(), { key: "Enter" });
     expect(controller.send).not.toHaveBeenCalled();
@@ -443,7 +443,7 @@ describe("ContinuousChatOverlay — out-of-state / nonsensical actions are no-op
   });
 
   it("flick DOWN while already pilled stays pilled (lowest detent)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoPill();
     flickDown(pill());
     expect(detentOf()).toBe("pill");
@@ -451,7 +451,7 @@ describe("ContinuousChatOverlay — out-of-state / nonsensical actions are no-op
   });
 
   it("flick UP while already at full stays full (highest detent)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoFull();
     flickUp(grabber() as Element);
     expect(detentOf()).toBe("full");
@@ -459,16 +459,16 @@ describe("ContinuousChatOverlay — out-of-state / nonsensical actions are no-op
   });
 
   it("typing while pilled (synthetic, bypasses inert) never lands in a broken state", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoPill();
     fireEvent.change(input(), { target: { value: "ghost" } });
     assertInvariants("type-while-pilled");
   });
 });
 
-describe("ContinuousChatOverlay — multi-press storms", () => {
+describe("ChatOverlay — multi-press storms", () => {
   it("hammering the grabber tap 40× ends in a valid state", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     for (let i = 0; i < 40; i++) {
       const g = grabber();
       if (g) tap(g, 180);
@@ -477,7 +477,7 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
   });
 
   it("hammering pill flick-up then grabber flick-down 30× never sticks", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     for (let i = 0; i < 30; i++) {
       const g = grabber();
       if (g) flickDown(g); // → pill
@@ -492,7 +492,7 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
   });
 
   it("focus/blur storm 50× leaves the composer reachable", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     for (let i = 0; i < 50; i++) {
       focusReal();
       assertInvariants(`focus-${i}`);
@@ -502,7 +502,7 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
   }, 15_000);
 
   it("Escape spam 25× while toggling open never throws or sticks open", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     for (let i = 0; i < 25; i++) {
       fireEvent.focus(input()); // open
       fireEvent.keyDown(input(), { key: "Escape" }); // close
@@ -512,7 +512,7 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
   });
 
   it("pull-up-to-maximize then a restore-zone pull-down drops full-bleed and rests open (not a collapse)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     // Big over-pull maximizes.
     gotoMaximized();
     expect(sheet().getAttribute("data-maximized")).toBe("true");
@@ -527,16 +527,16 @@ describe("ContinuousChatOverlay — multi-press storms", () => {
   });
 });
 
-describe("ContinuousChatOverlay — adversarial malformed pointer streams", () => {
+describe("ChatOverlay — adversarial malformed pointer streams", () => {
   it("pointerUp with no prior pointerDown is a no-op", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     fireEvent.pointerUp(grabber() as Element, { clientY: 300, pointerId: 9 });
     expect(detentOf()).toBe("collapsed");
     assertInvariants("orphan-up");
   });
 
   it("double pointerDown then a single pointerUp does not double-fire", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = grabber() as Element;
     fireEvent.pointerDown(g, { clientY: 420, pointerId: 1 });
     fireEvent.pointerDown(g, { clientY: 420, pointerId: 1 });
@@ -546,7 +546,7 @@ describe("ContinuousChatOverlay — adversarial malformed pointer streams", () =
   });
 
   it("pointerCancel mid-drag settles cleanly (no stranded morph)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = grabber() as Element;
     fireEvent.pointerDown(g, { clientY: 420, pointerId: 1 });
     fireEvent.pointerMove(g, { clientY: 300, pointerId: 1 });
@@ -555,7 +555,7 @@ describe("ContinuousChatOverlay — adversarial malformed pointer streams", () =
   });
 
   it("lostPointerCapture mid-drag settles cleanly (rotation case)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = grabber() as Element;
     fireEvent.pointerDown(g, { clientY: 200, pointerId: 1 });
     fireEvent.pointerMove(g, { clientY: 360, pointerId: 1 });
@@ -564,7 +564,7 @@ describe("ContinuousChatOverlay — adversarial malformed pointer streams", () =
   });
 
   it("interleaved pointer ids do not corrupt the gesture", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const g = grabber() as Element;
     fireEvent.pointerDown(g, { clientY: 420, pointerId: 1 });
     fireEvent.pointerMove(g, { clientY: 410, pointerId: 2 });
@@ -573,7 +573,7 @@ describe("ContinuousChatOverlay — adversarial malformed pointer streams", () =
   });
 
   it("a flood of random pointer events on random targets never breaks state", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     const targets = () => [
       grabber(),
       pill(),
@@ -616,7 +616,7 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-describe("ContinuousChatOverlay — seeded random fuzz", () => {
+describe("ChatOverlay — seeded random fuzz", () => {
   const fuzzActions: Array<(rng: () => number) => void> = [
     () => grabber() && tap(grabber() as Element, 180),
     () => grabber() && flickUp(grabber() as Element),
@@ -667,7 +667,7 @@ describe("ContinuousChatOverlay — seeded random fuzz", () => {
   // after every single step so any seed that finds a broken state pinpoints it.
   for (const seed of [1, 42, 1337, 0xbeef, 271828]) {
     it(`survives a 60-step random walk (seed ${seed})`, () => {
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
       const rng = mulberry32(seed);
       for (let step = 0; step < 60; step++) {
         const idx = Math.floor(rng() * fuzzActions.length);
@@ -696,9 +696,9 @@ describe("ContinuousChatOverlay — seeded random fuzz", () => {
 });
 
 // ── The two reported bugs, pinned ────────────────────────────────────────────
-describe("ContinuousChatOverlay — bug (a): a single pill tap opens to half", () => {
+describe("ChatOverlay — bug (a): a single pill tap opens to half", () => {
   it("ONE tap on the pill opens the chat to half (no blink-back, no second tap)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoPill();
     tap(pill(), 400); // a single tap
     expect(detentOf()).toBe("half");
@@ -708,7 +708,7 @@ describe("ContinuousChatOverlay — bug (a): a single pill tap opens to half", (
   });
 
   it("repeated open/collapse via the pill always reaches half on the very next tap", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     for (let i = 0; i < 5; i++) {
       gotoPill();
       tap(pill(), 400);
@@ -719,9 +719,9 @@ describe("ContinuousChatOverlay — bug (a): a single pill tap opens to half", (
   });
 });
 
-describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior state", () => {
+describe("ChatOverlay — bug (b): keyboard dismiss restores prior state", () => {
   it("input → focus (auto-opens) → tap OUTSIDE → returns to the input peek", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     expect(detentOf()).toBe("collapsed");
     focusReal(); // keyboard up; auto-expands to half
     expect(detentOf()).toBe("half");
@@ -732,7 +732,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
   });
 
   it("half (already open) → focus → tap OUTSIDE → STAYS open (size returns)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoHalf();
     focusReal(); // keyboard up over an already-open sheet
     expect(detentOf()).toBe("half");
@@ -743,7 +743,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
   });
 
   it("half (already open) → focus → tap the SCRIM → STAYS open (first tap only drops keyboard)", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoHalf();
     focusReal();
     fireEvent.pointerDown(backdrop());
@@ -753,7 +753,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
   });
 
   it("input → focus → tap the SCRIM → collapses back to the input peek", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     focusReal(); // auto-opens to half from the input peek
     expect(detentOf()).toBe("half");
     fireEvent.pointerDown(backdrop(), {
@@ -768,7 +768,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
   });
 
   it("a SECOND scrim tap (keyboard already down) closes an open chat", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoHalf(); // open, but not composer-focused (keyboard down)
     expect(document.activeElement).not.toBe(input());
     fireEvent.pointerDown(backdrop(), {
@@ -784,7 +784,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
 
   it("tap the GRABBER with the keyboard up restores prior state (half stays, input collapses)", () => {
     // already-open: grabber tap drops keyboard, stays half
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoHalf();
     focusReal();
     tap(grabber() as Element, 180);
@@ -794,7 +794,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
 
     // auto-opened-from-input: grabber tap drops keyboard AND re-collapses
     cleanup();
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     focusReal();
     expect(detentOf()).toBe("half");
     tap(grabber() as Element, 180);
@@ -803,7 +803,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
   });
 
   it("pill tap → half, then dismissing the keyboard keeps the chat open at half", () => {
-    render(<ContinuousChatOverlay controller={makeController()} />);
+    render(<ChatOverlay controller={makeController()} />);
     gotoPill();
     tap(pill(), 400); // opens to half + raises keyboard (bug a)
     expect(detentOf()).toBe("half");
@@ -818,7 +818,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
     // collapse back to the bare input peek, which would hide the chat you just
     // had. (Contrast: tapping in and dismissing WITHOUT sending re-collapses.)
     const controller = makeController();
-    render(<ContinuousChatOverlay controller={controller} />);
+    render(<ChatOverlay controller={controller} />);
     expect(detentOf()).toBe("collapsed");
     focusReal(); // tap into the input
     expect(detentOf()).toBe("half");
@@ -840,7 +840,7 @@ describe("ContinuousChatOverlay — bug (b): keyboard dismiss restores prior sta
 // invariant set must hold; whenever the composer is live it must round-trip the
 // exact input; and after the whole storm the sheet must recover to a usable,
 // unstuck composer. Reproduces deterministically per seed.
-describe("ContinuousChatOverlay — long adversarial random walk", () => {
+describe("ChatOverlay — long adversarial random walk", () => {
   const ADVERSARIAL_INPUTS: readonly string[] = [
     "",
     "   ",
@@ -886,7 +886,7 @@ describe("ContinuousChatOverlay — long adversarial random walk", () => {
 
   for (const seed of [1, 7, 42, 101, 2718, 31337]) {
     it(`seed ${seed}: 150-step walk keeps invariants + round-trips input + recovers`, () => {
-      render(<ContinuousChatOverlay controller={makeController()} />);
+      render(<ChatOverlay controller={makeController()} />);
       let s = seed >>> 0;
       const rand = () => {
         s = (Math.imul(s, 1103515245) + 12345) & 0x7fffffff;
