@@ -1,7 +1,7 @@
-<!doctype html><html><head><meta charset="utf-8"><title>restore half repro</title>
+<!doctype html><html><head><meta charset="utf-8"><title>input pill probe</title>
 <script src="https://cdn.tailwindcss.com"></script><script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}</style>
-<style>.bg-bg{background-color:#0a0d16}</style>
+
 </head><body><div id="root"></div><script>"use strict";
 (() => {
   var __create = Object.create;
@@ -151891,29 +151891,23 @@ void main(){
       return () => observer2.disconnect();
     }, [composerRowH]);
     const threadUnderlapMargin = useMotionValue(0);
-    const underlapBaseRef = React75.useRef(0);
-    const firstRunOpenRef = React75.useRef(firstRunOpen);
-    firstRunOpenRef.current = firstRunOpen;
     React75.useEffect(() => {
-      const update = () => {
-        if (firstRunOpenRef.current) {
-          threadUnderlapMargin.set(0);
-          return;
-        }
-        const h = Math.max(0, threadHeight.get());
-        const base = draggingRef.current ? underlapBaseRef.current : fullBleedT.get() * composerRowH.get();
-        threadUnderlapMargin.set(-Math.min(base, h));
-      };
+      if (isDragging2 || restoreDragging) return;
+      const update = () => threadUnderlapMargin.set(-(fullBleedT.get() * composerRowH.get()));
       update();
       const unsubT = fullBleedT.on("change", update);
       const unsubH = composerRowH.on("change", update);
-      const unsubHt = threadHeight.on("change", update);
       return () => {
         unsubT();
         unsubH();
-        unsubHt();
       };
-    }, [fullBleedT, composerRowH, threadHeight, threadUnderlapMargin]);
+    }, [
+      isDragging2,
+      restoreDragging,
+      fullBleedT,
+      composerRowH,
+      threadUnderlapMargin
+    ]);
     const threadTailSpacerH = useTransform(
       [fullBleedT, composerRowH],
       // 12px LESS than the capsule height: the newest bubble's bottom edge rests
@@ -152065,12 +152059,6 @@ void main(){
       setMode("full");
       setMaximized(true);
       animateFullBleedTo(1);
-      if (reduce) {
-        threadHeight.set(fullPanelMaxH);
-        setDraggingState(false);
-      } else {
-        animateThreadHeight(fullPanelMaxH);
-      }
       overpullCapT.set(0);
       detentHaptic();
     }, [
@@ -152078,12 +152066,7 @@ void main(){
       stopThreadAnimation,
       stopOpenProgressAnimation,
       animateFullBleedTo,
-      overpullCapT,
-      reduce,
-      threadHeight,
-      fullPanelMaxH,
-      setDraggingState,
-      animateThreadHeight
+      overpullCapT
     ]);
     const restoreFromMaximized = React75.useCallback(() => {
       draggingRef.current = false;
@@ -152705,7 +152688,6 @@ void main(){
           dragOffAtPinRef.current = 0;
           dragPinTopRef.current = 0;
           overpullCapT.set(0);
-          underlapBaseRef.current = fullBleedT.get() * composerRowH.get();
         }
         draggingRef.current = true;
         if (!reduce) setDraggingState(true);
@@ -153032,34 +153014,6 @@ void main(){
       overpullCapT,
       setDragPreviewMounted
     ]);
-    const settleRestoreFlickDown = React75.useCallback(() => {
-      draggingRef.current = false;
-      setDragPreviewMounted(false);
-      setRestoreDragging(false);
-      if (pinnedOpen || !restoreDidUnmaximizeRef.current) return settleDrag();
-      animateFullBleedTo(0);
-      overpullCapT.set(0);
-      const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
-      if (h <= SHEET_DETENT_MAGNET) return collapseFromRelease();
-      focusThreadRef.current = true;
-      if (h > halfH + 1) {
-        inputRef.current?.blur();
-        goToDetent("half");
-      } else {
-        goToDetent("collapsed");
-      }
-    }, [
-      pinnedOpen,
-      settleDrag,
-      animateFullBleedTo,
-      overpullCapT,
-      threadHeight,
-      panelMaxH,
-      halfH,
-      collapseFromRelease,
-      goToDetent,
-      setDragPreviewMounted
-    ]);
     const resetRestore = React75.useCallback(() => {
       setRestoreDragging(false);
       settleDrag();
@@ -153081,10 +153035,9 @@ void main(){
       },
       onDrag: onRestoreDrag,
       onDragReset: resetRestore,
-      // Upward flick / slow release settle at the finger height; a downward
-      // FLICK steps decisively (see settleRestoreFlickDown).
+      // Flick or slow-release both settle at the current finger height.
       onPullUp: settleRestore,
-      onPullDown: settleRestoreFlickDown,
+      onPullDown: settleRestore,
       onSettleFree: settleRestore,
       // A pointercancel / lost capture (rotation, OS takeover) must NOT strand
       // `restoreDragging` true — that would keep the panel max-height full-screen

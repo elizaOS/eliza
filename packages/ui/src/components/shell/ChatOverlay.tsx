@@ -2910,31 +2910,45 @@ export function ChatOverlay({
     observer.observe(el);
     return () => observer.disconnect();
   }, [composerRowH]);
-  // FROZEN DURING DRAGS: the margin changes the panel's layout height, and
-  // fullBleedT springs mid-gesture (maximize commit / restore hysteresis) —
-  // a live margin injected up to a capsule-height of top-edge motion AGAINST
-  // the finger (the reversal-tracking e2e caught ~35px drift). The value only
-  // syncs while no drag is live; at settled full-bleed the panel is clamped
-  // at its cap, so the sync lands with zero visible motion.
+  // The margin changes the panel's layout height, so it must never move
+  // AGAINST a live finger (fullBleedT springs mid-gesture at the maximize
+  // commit — riding it directly injected ~35px of top-edge drift, caught by
+  // the reversal-tracking e2e). Per-frame rule set:
+  //   finger-owned  → -min(base-at-gesture-start, threadHeight): constant
+  //     while the thread is taller than the capsule (zero drift), draining
+  //     with the thread in the tail so the composer row is never consumed
+  //     (panel bottoms out at the input height, then the pill morph takes
+  //     over — the continuum the user rides from maximize to pill).
+  //   at rest/settle → -min(fullBleedT × capsuleH, threadHeight): the
+  //     content tuck at settled full-bleed, 0 at every inset rest.
+  // First-run keeps 0: onboarding pins fullBleedT=1 but its composer is part
+  // of the pinned layout, not a floating capsule.
   const threadUnderlapMargin = useMotionValue(0);
+  const underlapBaseRef = React.useRef(0);
+  const firstRunOpenRef = React.useRef(firstRunOpen);
+  firstRunOpenRef.current = firstRunOpen;
   React.useEffect(() => {
-    if (isDragging || restoreDragging) return;
-    const update = () =>
-      threadUnderlapMargin.set(-(fullBleedT.get() * composerRowH.get()));
+    const update = () => {
+      if (firstRunOpenRef.current) {
+        threadUnderlapMargin.set(0);
+        return;
+      }
+      const h = Math.max(0, threadHeight.get());
+      const base = draggingRef.current
+        ? underlapBaseRef.current
+        : fullBleedT.get() * composerRowH.get();
+      threadUnderlapMargin.set(-Math.min(base, h));
+    };
     update();
     const unsubT = fullBleedT.on("change", update);
     const unsubH = composerRowH.on("change", update);
+    const unsubHt = threadHeight.on("change", update);
     return () => {
       unsubT();
       unsubH();
+      unsubHt();
     };
-  }, [
-    isDragging,
-    restoreDragging,
-    fullBleedT,
-    composerRowH,
-    threadUnderlapMargin,
-  ]);
+  }, [fullBleedT, composerRowH, threadHeight, threadUnderlapMargin]);
   const threadTailSpacerH = useTransform(
     [fullBleedT, composerRowH] as MotionValue<number>[],
     // 12px LESS than the capsule height: the newest bubble's bottom edge rests
@@ -3195,8 +3209,19 @@ export function ChatOverlay({
     // fullBleedT partway (≥0.5) and the state effect is gated during the release
     // frame, so drive it home rather than waiting for the `fullBleed` flip.
     animateFullBleedTo(1);
-    // Hand the cap to the maximized detent spring (`threadHeight` → fullPanelMaxH);
-    // the finger-only pin fraction rests at 0.
+    // Settle the height spring EXPLICITLY. The maximize COMMIT happens
+    // mid-drag, so the [baseH] settle effect already ran (and early-returned,
+    // drag-gated) — nothing re-runs it at release, which stranded the drag
+    // GPU promotion (will-change) resident and the isDragging latch true
+    // until some later gesture. The spring's clean finish is what drops them.
+    if (reduce) {
+      threadHeight.set(fullPanelMaxH);
+      setDraggingState(false);
+    } else {
+      animateThreadHeight(fullPanelMaxH);
+    }
+    // Hand the cap to the maximized detent spring; the finger-only pin
+    // fraction rests at 0.
     overpullCapT.set(0);
     detentHaptic();
   }, [
@@ -3205,6 +3230,11 @@ export function ChatOverlay({
     stopOpenProgressAnimation,
     animateFullBleedTo,
     overpullCapT,
+    reduce,
+    threadHeight,
+    fullPanelMaxH,
+    setDraggingState,
+    animateThreadHeight,
   ]);
 
   // Restore OUT of full-bleed back to the inset FULL-detent overlay (#13531).
@@ -4256,6 +4286,10 @@ export function ChatOverlay({
         // Clear any stale pin fraction from a prior gesture; this frame re-sets it
         // from the fresh over-pull below.
         overpullCapT.set(0);
+        // Freeze the composer-underlap for the gesture: the finger owns the
+        // panel edge, so the tuck amount must not follow the mid-drag
+        // fullBleedT spring (see threadUnderlapMargin).
+        underlapBaseRef.current = fullBleedT.get() * composerRowH.get();
       }
       draggingRef.current = true;
       // Promote the panel + thread to their own GPU layer for the duration of
@@ -4794,6 +4828,41 @@ export function ChatOverlay({
     overpullCapT,
     setDragPreviewMounted,
   ]);
+  // Downward FLICK on the restore strip: complete decisively (the grabber's
+  // pull-down semantics), never a free stub rest. On device the restore
+  // continuum (full-bleed ceiling + pill distance) EXCEEDS the finger's
+  // travel budget — the strip sits below the screen top — so a run to the
+  // bottom edge ends while the thread still has height; without a flick
+  // completion the release free-rested a sliver ("keeps pulling height
+  // instead of changing state", the maximize → input → pill complaint).
+  const settleRestoreFlickDown = React.useCallback(() => {
+    draggingRef.current = false;
+    setDragPreviewMounted(false);
+    setRestoreDragging(false);
+    if (pinnedOpen || !restoreDidUnmaximizeRef.current) return settleDrag();
+    animateFullBleedTo(0);
+    overpullCapT.set(0);
+    const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
+    if (h <= SHEET_DETENT_MAGNET) return collapseFromRelease();
+    focusThreadRef.current = true;
+    if (h > halfH + 1) {
+      inputRef.current?.blur();
+      goToDetent("half");
+    } else {
+      goToDetent("collapsed");
+    }
+  }, [
+    pinnedOpen,
+    settleDrag,
+    animateFullBleedTo,
+    overpullCapT,
+    threadHeight,
+    panelMaxH,
+    halfH,
+    collapseFromRelease,
+    goToDetent,
+    setDragPreviewMounted,
+  ]);
   // Cancel/tap on the strip: drop the drag flag and spring back to the current
   // detent (a tap keeps it maximized; a rotation-canceled drag re-settles).
   const resetRestore = React.useCallback(() => {
@@ -4817,9 +4886,10 @@ export function ChatOverlay({
     },
     onDrag: onRestoreDrag,
     onDragReset: resetRestore,
-    // Flick or slow-release both settle at the current finger height.
+    // Upward flick / slow release settle at the finger height; a downward
+    // FLICK steps decisively (see settleRestoreFlickDown).
     onPullUp: settleRestore,
-    onPullDown: settleRestore,
+    onPullDown: settleRestoreFlickDown,
     onSettleFree: settleRestore,
     // A pointercancel / lost capture (rotation, OS takeover) must NOT strand
     // `restoreDragging` true — that would keep the panel max-height full-screen

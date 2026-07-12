@@ -203,8 +203,8 @@
           "widgetKind": "followups",
           "data": {
             "start": 177,
-            "end": 309,
-            "id": "2db80edc-304e-48f8-9e2a-725d20357fb7",
+            "end": 330,
+            "id": "harness-followups",
             "options": [
               {
                 "kind": "reply",

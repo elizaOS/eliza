@@ -16,6 +16,7 @@
 import * as React from "react";
 
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
+import { serializeTranscript } from "../../chat/native-transcript/spec";
 import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
@@ -26,13 +27,41 @@ import {
   setNativeGlassBackdrop,
   useNativeGlassBackdropActive,
 } from "../../glass";
+import {
+  isNativeTranscriptAvailable,
+  nativeTranscriptBridge,
+} from "../../glass/native-transcript-bridge";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { ChatOverlay } from "../shell/ChatOverlay";
-import type { ShellController, CaptureIntent } from "../shell/useShellController";
 import type { ShellMessage } from "../shell/shell-state";
+import type {
+  CaptureIntent,
+  ShellController,
+} from "../shell/useShellController";
 import { registerTaskWidget } from "./widgets/task-widget";
 
 registerTaskWidget();
+
+/** Build-time seam for the native-transcript demo: `packages/app` bakes
+ *  `ELIZA_NATIVE_TRANSCRIPT_DEMO=1` in via a Vite define because host tooling
+ *  (`simctl spawn … defaults`) cannot reach WKWebView localStorage on a
+ *  simulator. Web/jsdom builds leave it undefined. */
+declare const __ELIZA_NATIVE_TRANSCRIPT_DEMO__: boolean | undefined;
+
+export const NATIVE_TRANSCRIPT_DEMO_FLAG = "eliza:native-transcript-demo";
+
+function nativeTranscriptDemoRequested(): boolean {
+  if (
+    typeof __ELIZA_NATIVE_TRANSCRIPT_DEMO__ !== "undefined" &&
+    __ELIZA_NATIVE_TRANSCRIPT_DEMO__ === true
+  ) {
+    return true;
+  }
+  return (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem(NATIVE_TRANSCRIPT_DEMO_FLAG) === "1"
+  );
+}
 
 let nextId = 1000;
 const uid = () => `harness-${nextId++}`;
@@ -43,7 +72,12 @@ const PROFILE_FORM = JSON.stringify({
   description: "Everything stays on this device — nothing is sent anywhere.",
   submitLabel: "Save profile",
   fields: [
-    { name: "name", label: "What should I call you?", type: "text", required: true },
+    {
+      name: "name",
+      label: "What should I call you?",
+      type: "text",
+      required: true,
+    },
     {
       name: "focus",
       label: "Primary focus",
@@ -149,14 +183,22 @@ export const CHAT_HARNESS_SCRIPT: Scene[] = [
         mode: "inline_owner_app",
         submitLabel: "Save key",
         fields: [
-          { name: "HARNESS_API_KEY", label: "API key", input: "secret", required: true },
+          {
+            name: "HARNESS_API_KEY",
+            label: "API key",
+            input: "secret",
+            required: true,
+          },
         ],
       },
     },
   },
   {
+    // Explicit id: without one the parser mints a fresh randomUUID per parse,
+    // which would make the committed native-transcript golden fixture
+    // (regenerated from this script) nondeterministic.
     content:
-      "You're all set — onboarding done, sheet unpinned. Pull the grabber down to collapse this chat, pull up (or type) to expand it again. Want to see what I can do mid-conversation?\n[FOLLOWUPS]\nreply:Show me widgets=Show me\nprompt:Refine the plan for =Prefill composer\nnavigate:/settings=Open settings\n[/FOLLOWUPS]",
+      "You're all set — onboarding done, sheet unpinned. Pull the grabber down to collapse this chat, pull up (or type) to expand it again. Want to see what I can do mid-conversation?\n[FOLLOWUPS id=harness-followups]\nreply:Show me widgets=Show me\nprompt:Refine the plan for =Prefill composer\nnavigate:/settings=Open settings\n[/FOLLOWUPS]",
   },
   {
     content:
@@ -258,8 +300,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
       void clearNativeGlassBackdrop();
     };
   }, []);
-  const [messages, setMessages] = React.useState<ShellMessage[]>(CHAT_HARNESS_OPENING);
-  const [phase, setPhase] = React.useState<ShellController["phase"]>("summoned");
+  const [messages, setMessages] =
+    React.useState<ShellMessage[]>(CHAT_HARNESS_OPENING);
+  const [phase, setPhase] =
+    React.useState<ShellController["phase"]>("summoned");
   const [recording, setRecording] = React.useState(false);
   const [handsFree, setHandsFree] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
@@ -281,7 +325,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
     // turns and locks the composer (advancement comes from widget taps), so
     // the echoed user turn must carry the tag to stay visible until the
     // pin releases.
-    const nextScene = CHAT_HARNESS_SCRIPT[Math.min(sceneIndexRef.current, CHAT_HARNESS_SCRIPT.length - 1)];
+    const nextScene =
+      CHAT_HARNESS_SCRIPT[
+        Math.min(sceneIndexRef.current, CHAT_HARNESS_SCRIPT.length - 1)
+      ];
     if (!isProtocol) {
       setMessages((current) => [
         ...current,
@@ -296,7 +343,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
     }
     setPhase("responding");
     window.setTimeout(() => {
-      const scene = CHAT_HARNESS_SCRIPT[Math.min(sceneIndexRef.current, CHAT_HARNESS_SCRIPT.length - 1)];
+      const scene =
+        CHAT_HARNESS_SCRIPT[
+          Math.min(sceneIndexRef.current, CHAT_HARNESS_SCRIPT.length - 1)
+        ];
       sceneIndexRef.current += 1;
       setMessages((current) => [
         ...current,
@@ -307,7 +357,9 @@ export function ChatWidgetHarness(): React.JSX.Element {
           createdAt: nextId,
           ...(scene.source ? { source: scene.source } : {}),
           ...(scene.failureKind ? { failureKind: scene.failureKind } : {}),
-          ...(scene.secretRequest ? { secretRequest: scene.secretRequest } : {}),
+          ...(scene.secretRequest
+            ? { secretRequest: scene.secretRequest }
+            : {}),
           ...(scene.toolEvents ? { toolEvents: scene.toolEvents } : {}),
           ...(scene.reasoning ? { reasoning: scene.reasoning } : {}),
         },
@@ -316,6 +368,63 @@ export function ChatWidgetHarness(): React.JSX.Element {
       setPhase("summoned");
     }, 600);
   }, []);
+
+  // Native-transcript side-by-side REVIEW mode (not production wiring): with
+  // the demo flag set and the NativeTranscript plugin present, the harness
+  // mirrors every transcript change into the platform-native list mounted
+  // over the TOP half of the screen while the DOM overlay stays interactive
+  // below, so the two renderers can be compared on-device frame for frame.
+  // Native widget taps come back as the SAME action strings the DOM widgets
+  // pass to sendActionMessage and land in the same scripted advance — there
+  // is exactly one action channel (see chat/native-transcript/spec.ts).
+  const [nativeDemoActive, setNativeDemoActive] = React.useState(false);
+  React.useEffect(() => {
+    if (!nativeTranscriptDemoRequested()) return;
+    let disposed = false;
+    let listener: { remove: () => Promise<void> } | null = null;
+    let shown = false;
+    void (async () => {
+      if (!(await isNativeTranscriptAvailable()) || disposed) return;
+      const bridge = nativeTranscriptBridge();
+      if (!bridge) return;
+      const handle = await bridge.addListener(
+        "transcriptAction",
+        ({ message }) => appendUserAndAdvance(message),
+      );
+      if (disposed) {
+        void handle.remove();
+        return;
+      }
+      listener = handle;
+      await bridge.show({
+        rect: {
+          x: 0,
+          y: 0,
+          width: window.innerWidth,
+          height: Math.round(window.innerHeight / 2),
+        },
+      });
+      shown = true;
+      if (!disposed) setNativeDemoActive(true);
+    })();
+    return () => {
+      disposed = true;
+      setNativeDemoActive(false);
+      void listener?.remove();
+      if (shown) void nativeTranscriptBridge()?.hide();
+    };
+  }, [appendUserAndAdvance]);
+
+  React.useEffect(() => {
+    if (!nativeDemoActive) return;
+    const bridge = nativeTranscriptBridge();
+    if (!bridge) return;
+    void bridge.setTranscript({
+      frame: serializeTranscript(messages, {
+        turnStatus: phase === "responding" ? { kind: "thinking" } : null,
+      }),
+    });
+  }, [nativeDemoActive, messages, phase]);
 
   const send = React.useCallback<ShellController["send"]>(
     (text) => appendUserAndAdvance(text),
@@ -469,7 +578,12 @@ export function ChatWidgetHarness(): React.JSX.Element {
             review queue is clear.
           </p>
           <div
-            style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              marginTop: 18,
+            }}
           >
             {["Calendar", "Tasks", "Notes", "Wallet", "Settings"].map((t) => (
               <span
@@ -494,30 +608,30 @@ export function ChatWidgetHarness(): React.JSX.Element {
               gap: 12,
             }}
           >
-            {["Polish the home screen", "Review the glass sheet", "Plan tomorrow", "Inbox zero"].map(
-              (t, i) => (
-                <div
-                  key={t}
-                  style={{
-                    borderRadius: 16,
-                    padding: "14px 16px",
-                    background:
-                      i % 2 ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.14)",
-                    fontSize: 14,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {t}
-                </div>
-              ),
-            )}
+            {[
+              "Polish the home screen",
+              "Review the glass sheet",
+              "Plan tomorrow",
+              "Inbox zero",
+            ].map((t, i) => (
+              <div
+                key={t}
+                style={{
+                  borderRadius: 16,
+                  padding: "14px 16px",
+                  background:
+                    i % 2 ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.14)",
+                  fontSize: 14,
+                  lineHeight: 1.4,
+                }}
+              >
+                {t}
+              </div>
+            ))}
           </div>
         </div>
         <GlassStyles />
-        <ChatOverlay
-          controller={controller}
-          firstRunOpen={firstRunOpen}
-        />
+        <ChatOverlay controller={controller} firstRunOpen={firstRunOpen} />
       </div>
     </MockAppProvider>
   );
