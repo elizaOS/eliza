@@ -515,11 +515,16 @@ export function ChatWidgetHarness(): React.JSX.Element {
     [appendUserAndAdvance],
   );
 
+  // Native mode: the DOM overlay is composer-only (native renders the
+  // transcript), so hand it an empty message list — its sheet has nothing to
+  // expand into and stays the resting input bar + pull handle.
+  const domMessages = hideDomHome ? [] : messages;
+  const domFirstRunOpen = hideDomHome ? false : firstRunOpen;
   const controller: ShellController = {
     phase,
     responding: phase === "responding",
     turnStatus: phase === "responding" ? { kind: "thinking" as const } : null,
-    messages,
+    messages: domMessages,
     noProviderConfigured: false,
     canSend: true,
     waveformMode: recording
@@ -708,7 +713,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
           </div>
         </div>
         <GlassStyles />
-        <ChatOverlay controller={controller} firstRunOpen={firstRunOpen} />
+        <ChatOverlay controller={controller} firstRunOpen={domFirstRunOpen} />
       </div>
     </MockAppProvider>
   );
