@@ -13,6 +13,7 @@ import {
 	matchShortcut,
 	normalizeForMatch,
 	ShortcutRegistry,
+	stripLeadingMentionForShortcut,
 } from "./shortcut-registry";
 
 const settingsExplicit: ShortcutDefinition = {
@@ -103,6 +104,48 @@ describe("matchShortcut — explicit tier (always-on)", () => {
 			priority: 5,
 		};
 		expect(matchShortcut([a, b], "/x")?.shortcut.id).toBe("b");
+	});
+
+	// #16172 gap 1: a leading connector-native mention must not defeat the
+	// deterministic explicit shortcut (strict-mention Discord requires `<@bot>`).
+	it("matches an explicit alias behind a leading <@id> mention", () => {
+		expect(matchShortcut(defs, "<@123> /settings")?.shortcut.id).toBe(
+			"cmd:settings",
+		);
+	});
+	it("matches an explicit alias behind a leading <@!id> nickname mention", () => {
+		expect(matchShortcut(defs, "<@!123> /set billing")?.shortcut.id).toBe(
+			"cmd:settings",
+		);
+	});
+	it("matches a mention-prefixed alias even when natural is disabled", () => {
+		expect(
+			matchShortcut(defs, "<@123> /settings", { allowNatural: false })
+				?.shortcut.id,
+		).toBe("cmd:settings");
+	});
+	it("does not strip a mention that is part of an argument", () => {
+		// `/settings <@123>` still matches /settings (the mention is an arg), and
+		// the leading-mention strip must not corrupt it into a non-match.
+		expect(matchShortcut(defs, "/settings <@123>")?.shortcut.id).toBe(
+			"cmd:settings",
+		);
+	});
+});
+
+describe("stripLeadingMentionForShortcut (#16172)", () => {
+	it("strips a leading <@id> and its whitespace", () => {
+		expect(stripLeadingMentionForShortcut("<@123> /model show")).toBe(
+			"/model show",
+		);
+	});
+	it("strips a leading <@!id> nickname mention", () => {
+		expect(stripLeadingMentionForShortcut("<@!42> /help")).toBe("/help");
+	});
+	it("leaves an inner mention untouched", () => {
+		expect(stripLeadingMentionForShortcut("/model <@123>")).toBe(
+			"/model <@123>",
+		);
 	});
 });
 

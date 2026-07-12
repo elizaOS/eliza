@@ -97,6 +97,25 @@ function patternRegex(pattern: ShortcutPattern): RegExp | null {
 	return null;
 }
 
+/**
+ * A single leading connector-native user mention (`<@id>` / `<@!id>`) plus its
+ * trailing whitespace. Stripped before explicit slash/`!` alias matching so a
+ * mention-prefixed command (`<@bot> /model show`, which strict-mention Discord
+ * servers require) fires the SAME deterministic shortcut as a bare `/model
+ * show` instead of falling through to the planner (issue #16172, gap 1).
+ */
+const LEADING_RAW_MENTION = /^<@!?\d+>\s*/;
+
+/**
+ * Remove a single leading connector-native bot mention so the pre-LLM explicit
+ * shortcut gate sees the raw command. Only the id form (`<@id>` / `<@!id>`) is
+ * handled here — it is connector-neutral and needs no display name; textual
+ * `@name` mentions are stripped upstream by the command parser.
+ */
+export function stripLeadingMentionForShortcut(text: string): string {
+	return text.replace(LEADING_RAW_MENTION, "");
+}
+
 function aliasMatches(raw: string, alias: string): boolean {
 	const a = alias.toLowerCase();
 	if (raw === a) return true;
@@ -140,7 +159,11 @@ export function matchShortcut(
 	text: string,
 	context: ShortcutMatchContext = {},
 ): ShortcutMatch | null {
-	const raw = text.trim().toLowerCase();
+	// Strip a leading connector-native mention so `<@bot> /cmd` matches the same
+	// explicit shortcut as `/cmd` (issue #16172). Only the explicit tier needs
+	// this pre-strip; the natural tier already dissolves mentions via
+	// `normalizeForMatch` (which drops non-alphanumeric tokens).
+	const raw = stripLeadingMentionForShortcut(text.trim()).trim().toLowerCase();
 	if (!raw) return null;
 
 	// ── Tier 1: explicit (slash/`!`) — unambiguous, always eligible ──────────

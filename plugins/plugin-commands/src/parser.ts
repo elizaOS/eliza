@@ -13,11 +13,40 @@ const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
+ * A leading bot mention followed by optional whitespace/newlines. Matches the
+ * connector-native raw mention forms so command detection sees the same text
+ * regardless of whether the server requires an explicit mention:
+ *   - Discord user mention `<@123>` / `<@!123>` (the `!` is the legacy nickname form)
+ *   - Discord role/channel-style angle mentions are intentionally NOT stripped
+ *     (only user mentions prefix a command); a bare `@name` textual mention is
+ *     handled separately by {@link normalizeCommandBody} with the known name.
+ *
+ * Only a SINGLE leading mention is stripped, and only when it sits at the very
+ * start — so `/model <@123>` (a mention inside an argument) is untouched.
+ */
+const LEADING_RAW_MENTION = /^<@!?\d+>\s*/;
+
+/**
+ * Strip a leading connector-native bot mention (`<@id>` / `<@!id>`) plus the
+ * whitespace/newline that separates it from the command, so a mention-prefixed
+ * command (`<@bot> /model show`, common on strict-mention Discord servers)
+ * matches the deterministic command layer exactly like a bare `/model show`.
+ *
+ * Text-form `@name` mentions are left to {@link normalizeCommandBody} (which
+ * needs the bot's display name); this handles the id form every connector emits
+ * in `content.text` before command detection runs, so no connector-specific
+ * pre-normalization is required for the raw mention to be defeated.
+ */
+export function stripLeadingBotMention(text: string): string {
+	return text.replace(LEADING_RAW_MENTION, "");
+}
+
+/**
  * Check if text contains a command
  */
 export function hasCommand(text: string): boolean {
 	if (!text) return false;
-	const trimmed = text.trim();
+	const trimmed = stripLeadingBotMention(text.trim()).trim();
 	if (!trimmed.startsWith("/") && !trimmed.startsWith("!")) return false;
 	return Boolean(startsWithCommand(trimmed));
 }
@@ -30,7 +59,7 @@ export function detectCommand(text: string): CommandDetectionResult {
 		return { isCommand: false };
 	}
 
-	const trimmed = text.trim();
+	const trimmed = stripLeadingBotMention(text.trim()).trim();
 
 	// Quick check for command prefix
 	if (!trimmed.startsWith("/") && !trimmed.startsWith("!")) {
@@ -189,7 +218,12 @@ export function normalizeCommandBody(
 ): string {
 	let normalized = text.trim();
 
-	// Remove bot mention prefix (e.g., "@bot /status" -> "/status")
+	// Remove a leading connector-native mention (`<@id>` / `<@!id>`) first — the
+	// id form every connector emits in content.text, independent of any known
+	// display name.
+	normalized = stripLeadingBotMention(normalized).trim();
+
+	// Remove textual bot mention prefix (e.g., "@bot /status" -> "/status")
 	if (botMention) {
 		const mentionPattern = new RegExp(`^@${escapeRegExp(botMention)}\\s*`, "i");
 		normalized = normalized.replace(mentionPattern, "");
