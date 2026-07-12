@@ -145,17 +145,21 @@ const CLAUDE_CODING_ENTRIES: ModelCatalogEntry[] = CLAUDE_MODELS.map((m) => ({
   roles: ["coding"],
 }));
 
+// All three Cerebras-served models are reasoning models: `reasoning_effort`
+// was live-probed 2026-07-12 and modulates the emitted reasoning on each
+// (glm 90->1337 reasoning chars low->high; gemma 663->1133), so every entry
+// carries the knob — not just gpt-oss.
 const CEREBRAS_ENTRIES: ModelCatalogEntry[] = [
   {
     id: "gemma-4-31b",
     display: "Gemma 4 31B",
-    efforts: [],
+    efforts: ["low", "medium", "high"],
     roles: ["small"],
   },
   {
     id: "zai-glm-4.7",
     display: "GLM-4.7",
-    efforts: [],
+    efforts: ["low", "medium", "high"],
     roles: ["small", "large"],
   },
   {
@@ -185,13 +189,13 @@ const ELIZACLOUD_ENTRIES: ModelCatalogEntry[] = [
   {
     id: "zai-glm-4.7",
     display: "GLM-4.7",
-    efforts: [],
+    efforts: ["low", "medium", "high"],
     roles: ["small", "large"],
   },
   {
     id: "gemma-4-31b",
     display: "Gemma 4 31B",
-    efforts: [],
+    efforts: ["low", "medium", "high"],
     roles: ["small", "large"],
   },
 ];

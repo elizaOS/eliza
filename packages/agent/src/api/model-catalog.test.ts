@@ -215,10 +215,24 @@ describe("claude chat/coding effort gates", () => {
 describe("cerebras + elizacloud", () => {
   const catalog = buildModelCatalog(NO_CACHE);
 
-  it("exposes no effort knob for gemma or zai-glm-4.7", () => {
-    expect(entry(catalog, "cerebras", "gemma-4-31b").efforts).toEqual([]);
-    expect(entry(catalog, "cerebras", "zai-glm-4.7").efforts).toEqual([]);
-    expect(entry(catalog, "elizacloud", "zai-glm-4.7").efforts).toEqual([]);
+  // reasoning_effort was live-probed 2026-07-12: gemma and zai-glm-4.7 both
+  // modulate their emitted reasoning low->high, so they carry the knob too.
+  it("exposes the low/medium/high effort knob on gemma and zai-glm-4.7", () => {
+    expect(entry(catalog, "cerebras", "gemma-4-31b").efforts).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(entry(catalog, "cerebras", "zai-glm-4.7").efforts).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
+    expect(entry(catalog, "elizacloud", "zai-glm-4.7").efforts).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
   });
 
   it("keeps gpt-oss reasoning_effort at low/medium/high", () => {
@@ -254,7 +268,11 @@ describe("cerebras + elizacloud", () => {
     first.providers.cerebras[0]?.efforts.push("bogus");
     first.providers.cerebras[0]?.roles.push("large");
     const second = buildModelCatalog(NO_CACHE);
-    expect(entry(second, "cerebras", "gemma-4-31b").efforts).toEqual([]);
+    expect(entry(second, "cerebras", "gemma-4-31b").efforts).toEqual([
+      "low",
+      "medium",
+      "high",
+    ]);
     expect(entry(second, "cerebras", "gemma-4-31b").roles).toEqual(["small"]);
   });
 });

@@ -98,17 +98,19 @@ describe("POST /api/models/config validation", () => {
     expect(String(body.error)).toContain("xhigh");
   });
 
-  it("rejects effort on gemma (model with no effort knob)", async () => {
+  // gemma carries a live-proven low/medium/high knob (2026-07-12 probe), so
+  // effort validation on it rejects values outside that list, not all effort.
+  it("rejects an effort outside gemma's supported list", async () => {
     const { ctx, json } = makeHarness("POST", {
       target: "small",
       provider: "cerebras",
       model: "gemma-4-31b",
-      effort: "low",
+      effort: "xhigh",
     });
     await handleModelConfigRoutes(ctx as never);
     const { body, status } = responseOf(json);
     expect(status).toBe(400);
-    expect(String(body.error)).toContain("no effort control");
+    expect(String(body.error)).toContain("not supported by model");
   });
 
   it("rejects an unknown model for the provider", async () => {
@@ -291,7 +293,9 @@ describe("POST /api/models/config coding writes", () => {
         target: "coding",
         backend: "codex",
         model: "gpt-5.6-terra",
-        effort: "ultra",
+        // xhigh is the ceiling the pinned codex-acp adapter can parse; ultra
+        // is rejected at the route (see the pin-gate suite below).
+        effort: "xhigh",
       });
     await handleModelConfigRoutes(ctx as never);
 
@@ -302,7 +306,7 @@ describe("POST /api/models/config coding writes", () => {
     expect(env.ELIZA_CODEX_MODEL_POWERFUL).toBe("gpt-5.6-terra");
     expect(env.vars.ELIZA_CODEX_MODEL_POWERFUL).toBe("gpt-5.6-terra");
     expect(processEnv.ELIZA_CODEX_MODEL_POWERFUL).toBe("gpt-5.6-terra");
-    expect(env.ELIZA_CODEX_EFFORT).toBe("ultra");
+    expect(env.ELIZA_CODEX_EFFORT).toBe("xhigh");
     expect(saveElizaConfig).toHaveBeenCalledWith(config);
     expect(managerStart).not.toHaveBeenCalled();
     const { body } = responseOf(json);
@@ -415,5 +419,21 @@ describe("route matching", () => {
     await expect(handleModelConfigRoutes(other.ctx as never)).resolves.toBe(
       false,
     );
+  });
+});
+
+describe("codex-acp effort pin gate (review amendment)", () => {
+  it("rejects ultra on gpt-5.6-terra (model supports it; pinned acp cannot parse it)", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "coding",
+      backend: "codex",
+      model: "gpt-5.6-terra",
+      effort: "ultra",
+    });
+    await expect(handleModelConfigRoutes(ctx as never)).resolves.toBe(true);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("codex-acp");
+    expect(saveElizaConfig).not.toHaveBeenCalled();
   });
 });
