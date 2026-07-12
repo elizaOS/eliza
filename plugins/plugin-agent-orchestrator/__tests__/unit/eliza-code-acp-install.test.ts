@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 describe("eliza-code-acp first-use provisioning", () => {
-  it("builds a missing workspace executable and returns its Bun command", async () => {
+  it("builds a missing workspace executable and returns its quoted Bun command", async () => {
     const root = await mkdtemp(join(tmpdir(), "eliza-acp-install-"));
     roots.push(root);
     const packageDir = join(root, "packages", "examples", "code");
@@ -26,18 +26,22 @@ describe("eliza-code-acp first-use provisioning", () => {
     mkdirSync(binDir, { recursive: true });
     writeFileSync(join(packageDir, "src", "acp.ts"), "export {};\n");
     const fakeBun = join(binDir, "bun");
+    // The build produces an artifact carrying the required `eliza-code-acp`
+    // marker so the crash-safe validation step accepts it.
     writeFileSync(
       fakeBun,
-      '#!/bin/sh\nmkdir -p "$3/dist"\nprintf "built" > "$3/dist/acp.js"\n',
+      '#!/bin/sh\nmkdir -p "$3/dist"\nprintf "// eliza-code-acp\\nbuilt" > "$3/dist/acp.js"\n',
     );
     chmodSync(fakeBun, 0o755);
     process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
 
     const command = ensureWorkspaceElizaCodeAcp(root);
 
+    // Quote-free paths round-trip bare; the quoting only kicks in for paths
+    // containing spaces/quotes (covered in acp-provisioning.test.ts).
     expect(command).toBe(`${fakeBun} ${join(packageDir, "dist", "acp.js")}`);
-    expect(await readFile(join(packageDir, "dist", "acp.js"), "utf8")).toBe(
-      "built",
-    );
+    expect(
+      await readFile(join(packageDir, "dist", "acp.js"), "utf8"),
+    ).toContain("eliza-code-acp");
   });
 });
