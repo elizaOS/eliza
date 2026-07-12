@@ -3769,6 +3769,11 @@ function ensureIosCapacitorPluginClass(pluginClass) {
 export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
+  // GlassBridge is a loose template Swift file (not an npm Capacitor plugin),
+  // so cap sync never adds it to packageClassList — without this it silently
+  // stays unregistered and every surface falls back to the CSS glass tier.
+  // Android's half registers in MainActivity.java; this is the iOS parallel.
+  ensureIosCapacitorPluginClass("GlassBridge");
   if (
     shouldIncludeIosFullBunEngine() ||
     process.env.ELIZA_IOS_RUNTIME_MODE === "local"
