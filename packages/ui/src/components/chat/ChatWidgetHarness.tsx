@@ -422,17 +422,22 @@ export function ChatWidgetHarness(): React.JSX.Element {
         return;
       }
       listener = handle;
-      // Top-45% comparison rect. KNOWN TRADE (review surface only): within
-      // this rect the native host owns ALL touches — SwiftUI's scroll
-      // container hit-tests its empty background too, so DOM content under
-      // the rect is not tappable. Production integration mounts native as
-      // the ONLY transcript surface, where this cannot arise.
+      // Native transcript rect. Default: FULL height — native IS the
+      // transcript (the production shape; the native host owns all touches
+      // in its rect, so a full-screen mount is the real single-surface
+      // model). The env/localStorage `…-split` flag drops it to the top 45%
+      // for the side-by-side DOM comparison used during visual review.
+      const splitReview =
+        typeof localStorage !== "undefined" &&
+        localStorage.getItem("eliza:native-transcript-split") === "1";
       await bridge.show({
         rect: {
           x: 0,
           y: 0,
           width: window.innerWidth,
-          height: Math.round(window.innerHeight * 0.45),
+          height: splitReview
+            ? Math.round(window.innerHeight * 0.45)
+            : window.innerHeight,
         },
       });
       shown = true;

@@ -164,6 +164,11 @@ public class NativeTranscriptPlugin: CAPPlugin, CAPBridgedPlugin {
             )
             host.view.backgroundColor = .clear
             host.view.isOpaque = false
+            // The hosting view does NOT clip by default, and the SwiftUI
+            // scroll surface happily paints past the mounted rect (content
+            // visibly overflowed the chat window on-sim). The rect IS the
+            // window: clip at the UIKit boundary.
+            host.view.clipsToBounds = true
             host.view.frame = frame
             if let owner {
                 owner.addChild(host)

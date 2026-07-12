@@ -273,7 +273,7 @@ describe("ChatWidgetHarness native-transcript demo", () => {
       x: 0,
       y: 0,
       width: window.innerWidth,
-      height: Math.round(window.innerHeight * 0.45),
+      height: window.innerHeight,
     });
 
     // A DOM widget tap (protocol action — no user echo) advances the script;

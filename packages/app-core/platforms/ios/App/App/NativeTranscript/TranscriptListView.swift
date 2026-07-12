@@ -81,6 +81,10 @@ struct TranscriptListView: View {
         // The list draws for the dark-glass surface regardless of the system
         // appearance — the backdrop behind it is always dark.
         .environment(\.colorScheme, .dark)
+        // Belt to the host's clipsToBounds braces: SwiftUI scroll-edge
+        // effects can paint outside the proposed bounds; the mounted rect is
+        // the chat window, nothing may draw past it.
+        .clipped()
     }
 }
 
