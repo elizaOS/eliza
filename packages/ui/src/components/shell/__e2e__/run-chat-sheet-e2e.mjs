@@ -1628,14 +1628,20 @@ async function runAnimationAppearanceSuite(page) {
     `[appearance] collapse ANIMATES smoothly (${collapse.steppedFrames} stepped frames, max ${Math.round(collapse.maxStep)}px/frame < 260 — not a one-frame snap)`,
   );
 
-  // (2) Pill bar is the SAME light bar as the grabber (identical through the
-  // crossfade).
+  // (2) Single-bar contract: the pill renders NO bar of its own — the grabber
+  // bar (constant size, outside the scale transform) stays the one visible
+  // handle while pilled.
   await gesture(page, -120, { pointer: "mouse", slow: false, steps: 1 });
   await page.waitForTimeout(SETTLE);
-  const pillRgb = parseColor(await barColor("chat-pill"));
+  const pillHasBar = await page
+    .getByTestId("chat-pill")
+    .evaluate((el) => Boolean(el.querySelector("span[aria-hidden='true']")));
+  const pilledGrabberO = await page
+    .getByTestId("chat-sheet-grabber")
+    .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
   assert(
-    !!pillRgb && !!grabberRgb && Math.abs(pillRgb.r - grabberRgb.r) < 8,
-    `[appearance] pill bar matches the grabber bar color (pill ${JSON.stringify(pillRgb)})`,
+    !pillHasBar && pilledGrabberO > 0.85,
+    `[appearance] one constant handle bar: pill has no bar of its own and the grabber bar stays visible while pilled (pillHasBar ${pillHasBar}, grabber ${pilledGrabberO})`,
   );
   console.log(
     `  ℹ collapse: ${collapse.steppedFrames} frames, ${Math.round(collapse.maxStep)}px/frame max, settle ${Math.round(collapse.settleT)}ms`,
@@ -3297,12 +3303,14 @@ try {
       const grabO = await pg
         .getByTestId("chat-sheet-grabber")
         .evaluate((el) => Number.parseFloat(getComputedStyle(el).opacity));
-      const pillO = await pg
+      // Single-bar contract: the pill owns NO bar span — the grabber bar is
+      // the one visible handle in every non-full-bleed state.
+      const pillBars = await pg
         .getByTestId("chat-pill")
-        .evaluate((el) =>
-          Number.parseFloat(getComputedStyle(el.parentElement).opacity),
+        .evaluate(
+          (el) => el.querySelectorAll("span[aria-hidden='true']").length,
         );
-      return { grabO, pillO, two: grabO > 0.15 && pillO > 0.15 };
+      return { grabO, pillBars };
     };
 
     // Rotate MID-MORPH with the pointer HELD — the orphaned-drag case. Flick to
@@ -3335,12 +3343,12 @@ try {
     {
       const b = await barOpacities(p);
       assert(
-        !b.two,
-        `ROTATION: never two bars after rotating mid-morph (grab ${b.grabO}, pill ${b.pillO})`,
+        b.pillBars === 0,
+        `ROTATION: pill owns no bar of its own after rotating mid-morph (pill bars ${b.pillBars})`,
       );
       assert(
-        b.pillO > 0.85 && b.grabO < 0.15,
-        `ROTATION: morph re-settled to the single pill bar (grab ${b.grabO}, pill ${b.pillO})`,
+        b.grabO > 0.85,
+        `ROTATION: the single grabber bar stays visible after the forced settle (grab ${b.grabO})`,
       );
     }
     await release(p, "mouse");

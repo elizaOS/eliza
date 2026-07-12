@@ -110056,7 +110056,7 @@ ${selector}::before {
       const el = ref.current;
       const bridge2 = glassBridge();
       if (!el || !bridge2) return;
-      const radius = Number.parseFloat(getComputedStyle(el).borderRadius) || 12;
+      const radiusOf = () => Number.parseFloat(getComputedStyle(el).borderRadius) || 12;
       const rectOf = () => {
         const r2 = el.getBoundingClientRect();
         return { x: r2.x, y: r2.y, width: r2.width, height: r2.height };
@@ -110064,7 +110064,7 @@ ${selector}::before {
       void bridge2.attachGlass({
         id: regionId,
         rect: rectOf(),
-        cornerRadius: radius,
+        cornerRadius: radiusOf(),
         interactive
       });
       let raf2 = 0;
@@ -110072,7 +110072,11 @@ ${selector}::before {
         if (raf2) return;
         raf2 = requestAnimationFrame(() => {
           raf2 = 0;
-          void bridge2.updateRect({ id: regionId, rect: rectOf() });
+          void bridge2.updateRect({
+            id: regionId,
+            rect: rectOf(),
+            cornerRadius: radiusOf()
+          });
         });
       };
       const observer2 = new ResizeObserver(sync);
@@ -150443,12 +150447,14 @@ void main(){
   var RESTORE_UNMAX_SLOP = 24;
   var clamp01 = (v) => Math.min(1, Math.max(0, v));
   var PILL_MORPH_MIN_SCALE = 0.45;
+  var HANDLE_BAR_W_PX = 40;
+  var HANDLE_BAR_H_PX = 5;
   function pillMorphScale(progress2) {
     return PILL_MORPH_MIN_SCALE + (1 - PILL_MORPH_MIN_SCALE) * clamp01(progress2);
   }
   function grabberBarOpacity(openProgress, fullBleedT) {
-    const openFade = clamp01((openProgress - 0.55) / 0.4);
-    return openFade * (1 - clamp01(fullBleedT));
+    void openProgress;
+    return 1 - clamp01(fullBleedT);
   }
   var PLUS_GLYPH = "M15 3H21V15H33V21H21V33H15V21H3V15H15Z";
   var STOP_GLYPH = "M8 8H28V28H8Z";
@@ -150552,6 +150558,7 @@ void main(){
     binding,
     breathing,
     opacity,
+    y,
     pilled,
     inert
   }) {
@@ -150559,7 +150566,7 @@ void main(){
     return /* @__PURE__ */ (0, import_jsx_runtime102.jsx)(
       motion2.button,
       {
-        style: { opacity, pointerEvents: disabled ? "none" : "auto" },
+        style: { opacity, y, pointerEvents: disabled ? "none" : "auto" },
         tabIndex: disabled ? -1 : void 0,
         "aria-hidden": disabled || void 0,
         type: "button",
@@ -150607,12 +150614,16 @@ void main(){
               // strictly anti-phase with the pill bar so the two are never on screen
               // together. The bar paints at full opacity — a prior regression pinned
               // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
-              "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
+              "rounded-full opacity-100 transition-colors duration-300",
               // A dedicated opacity/scale breath marks live agent work without
               // repurposing shadcn's text-only shimmer utility.
               breathing && "eliza-chat-handle-breathe"
             ),
-            style: { backgroundColor: HANDLE_BAR_COLOR }
+            style: {
+              backgroundColor: HANDLE_BAR_COLOR,
+              width: HANDLE_BAR_W_PX,
+              height: HANDLE_BAR_H_PX
+            }
           }
         )
       }
@@ -150650,23 +150661,6 @@ void main(){
           // let taps fall through to the composer textarea below it — otherwise its
           // tall hit zone steals the tap and the keyboard never opens.
           pilled ? "pointer-events-auto" : "pointer-events-none"
-        ),
-        children: /* @__PURE__ */ (0, import_jsx_runtime102.jsx)(
-          "span",
-          {
-            "aria-hidden": "true",
-            className: cn(
-              // Identical to the SheetGrabber bar — same white shape + color whether
-              // the chat is open or collapsed to the pill. Its show/hide is driven by
-              // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
-              // The bar paints at full opacity — a prior regression pinned it to
-              // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
-              "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
-              // Same compositor-only work-state breath as the SheetGrabber bar.
-              breathing && "eliza-chat-handle-breathe"
-            ),
-            style: { backgroundColor: HANDLE_BAR_COLOR }
-          }
         )
       }
     );
@@ -151881,9 +151875,42 @@ void main(){
     const composerCapsuleMarginBottom = useMotionTemplate`calc(${fullBleedT} * (max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.75rem))`;
     const composerCapsuleWidth = useMotionTemplate`calc(100% - ${fullBleedT} * 24px)`;
     const composerCapsuleBorder = useMotionTemplate`color-mix(in srgb, var(--border-strong) calc(${fullBleedT} * 100%), transparent)`;
-    const composerCapsuleBg = useMotionTemplate`color-mix(in srgb, var(--card) calc(${fullBleedT} * 44%), transparent)`;
+    const composerCapsuleBg = useMotionTemplate`rgba(255, 255, 255, calc(${fullBleedT} * 0.09))`;
     const composerCapsuleBlurPx = useTransform(fullBleedT, [0, 1], [0, 28]);
     const composerCapsuleBackdrop = useMotionTemplate`blur(${composerCapsuleBlurPx}px) saturate(1.5)`;
+    const composerRowH = useMotionValue(76);
+    const composerRowRef = React75.useRef(null);
+    React75.useEffect(() => {
+      const el = composerRowRef.current;
+      if (!el || typeof ResizeObserver === "undefined") return;
+      const observer2 = new ResizeObserver(() => {
+        composerRowH.set(el.getBoundingClientRect().height);
+      });
+      observer2.observe(el);
+      return () => observer2.disconnect();
+    }, [composerRowH]);
+    const threadUnderlapMargin = useMotionValue(0);
+    React75.useEffect(() => {
+      if (isDragging2 || restoreDragging) return;
+      const update = () => threadUnderlapMargin.set(-(fullBleedT.get() * composerRowH.get()));
+      update();
+      const unsubT = fullBleedT.on("change", update);
+      const unsubH = composerRowH.on("change", update);
+      return () => {
+        unsubT();
+        unsubH();
+      };
+    }, [
+      isDragging2,
+      restoreDragging,
+      fullBleedT,
+      composerRowH,
+      threadUnderlapMargin
+    ]);
+    const threadTailSpacerH = useTransform(
+      [fullBleedT, composerRowH],
+      ([t2, h]) => t2 * (h + 10)
+    );
     const panelScale = useTransform(openProgress, pillMorphScale);
     const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
     const pillOpacity = useTransform(openProgress, [0, 0.55], [1, 0], {
@@ -151892,6 +151919,20 @@ void main(){
     const grabberOpacity = useTransform(
       [openProgress, fullBleedT],
       ([p, t2]) => grabberBarOpacity(p, t2)
+    );
+    const panelLayoutH = useMotionValue(0);
+    React75.useEffect(() => {
+      const el = getPanelElement();
+      if (!el || typeof ResizeObserver === "undefined") return;
+      const observer2 = new ResizeObserver(() => {
+        panelLayoutH.set(el.offsetHeight);
+      });
+      observer2.observe(el);
+      return () => observer2.disconnect();
+    }, [getPanelElement, panelLayoutH]);
+    const grabberY = useTransform(
+      [panelScale, panelLayoutH],
+      ([scale2, h]) => (1 - scale2) * h
     );
     const headerOpacity = useTransform(
       threadHeight,
@@ -153148,7 +153189,8 @@ void main(){
                       onOpen: openFromGrabber,
                       onClose: collapse,
                       binding: grabberBinding,
-                      breathing: (listening || responding) && !recording,
+                      y: grabberY,
+                      breathing: pilled ? listening || responding || recording : (listening || responding) && !recording,
                       opacity: grabberOpacity,
                       pilled,
                       inert: !sheetOpen && (hasImages || Boolean(imageError))
@@ -153292,7 +153334,10 @@ void main(){
                           "data-testid": "chat-sheet-fullbleed-cover",
                           className: "pointer-events-none absolute inset-0 z-0",
                           style: {
-                            opacity: fullBleedT,
+                            // Onboarding pins the sheet full-bleed but must stay a see-through
+                            // scrim over the wallpaper — the opaque reading cover is only for
+                            // the user-maximized chat.
+                            opacity: firstRunOpen ? 0 : fullBleedT,
                             borderRadius: morphRadius,
                             backgroundColor: FULL_BLEED_PANEL_BG,
                             top: glassTopExtension
@@ -153425,7 +153470,10 @@ void main(){
                                   "mx-auto max-w-3xl"
                                 ),
                                 style: {
-                                  flexBasis: firstRunOpen ? `${openH}px` : threadFlexBasis
+                                  flexBasis: firstRunOpen ? `${openH}px` : threadFlexBasis,
+                                  // Full-bleed only (0 at rest): extend under the floating
+                                  // glass capsule so the blur frosts scrolling messages.
+                                  marginBottom: threadUnderlapMargin
                                 },
                                 children: [
                                   searchOpen && sheetOpen ? /* @__PURE__ */ (0, import_jsx_runtime102.jsx)(
@@ -153574,7 +153622,15 @@ void main(){
                                                             )
                                                           },
                                                           "turn-status"
-                                                        ) : null })
+                                                        ) : null }),
+                                                        /* @__PURE__ */ (0, import_jsx_runtime102.jsx)(
+                                                          motion2.div,
+                                                          {
+                                                            "aria-hidden": "true",
+                                                            className: "w-full shrink-0",
+                                                            style: { height: threadTailSpacerH }
+                                                          }
+                                                        )
                                                       ]
                                                     }
                                                   )
@@ -153679,6 +153735,7 @@ void main(){
                             /* @__PURE__ */ (0, import_jsx_runtime102.jsxs)(
                               motion2.div,
                               {
+                                ref: composerRowRef,
                                 "data-testid": "chat-composer-row",
                                 className: cn(
                                   // items-center vertically centers a single-line composer with
@@ -153720,7 +153777,7 @@ void main(){
                                     {
                                       "aria-hidden": "true",
                                       "data-testid": "chat-first-run-grabber",
-                                      className: "pointer-events-none absolute left-1/2 top-1.5 h-1.5 w-12 -translate-x-1/2 select-none rounded-full bg-white/45"
+                                      className: "pointer-events-none absolute left-1/2 top-1.5 h-[5px] w-10 -translate-x-1/2 select-none rounded-full bg-white/45"
                                     }
                                   ) : null,
                                   slashProp && !slashDismissed ? /* @__PURE__ */ (0, import_jsx_runtime102.jsx)(

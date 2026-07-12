@@ -822,13 +822,15 @@ describe("ChatOverlay", () => {
       );
     });
 
-    it("breathes the collapsed pill bar in white only while listening", () => {
+    it("breathes the collapsed handle bar in white only while listening", () => {
       const { rerender } = render(
         <ChatOverlay controller={makeController()} />,
       );
       const sheet = screen.getByTestId("chat-sheet");
       const spanOf = () =>
-        screen.getByTestId("chat-pill").querySelector("span");
+        screen
+          .getByTestId("chat-sheet-grabber")
+          .querySelector("span[aria-hidden='true']") as HTMLElement | null;
       const barOf = () => spanOf()?.className ?? "";
       expect(barOf()).not.toContain("eliza-chat-handle-breathe");
       // Resting bar color is an explicit white inline style (not the
@@ -1054,12 +1056,11 @@ describe("ChatOverlay", () => {
     expect(grabberBar?.className).toContain("opacity-100");
     expect(grabberBar?.className).not.toContain("opacity-0");
 
-    const pillBar = screen
-      .getByTestId("chat-pill")
-      .querySelector("span[aria-hidden='true']");
-    expect(pillBar).toBeTruthy();
-    expect(pillBar?.className).toContain("opacity-100");
-    expect(pillBar?.className).not.toContain("opacity-0");
+    // Single-bar contract: the pill renders NO bar of its own — the grabber
+    // bar (constant size, outside the scale transform) is the pill's visual.
+    expect(
+      screen.getByTestId("chat-pill").querySelector("span[aria-hidden='true']"),
+    ).toBeNull();
   });
 
   it("steps COLLAPSED→HALF→FULL on successive pull-ups and back down again", () => {

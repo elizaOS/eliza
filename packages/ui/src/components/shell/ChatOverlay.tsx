@@ -455,8 +455,12 @@ export function grabberBarOpacity(
   openProgress: number,
   fullBleedT: number,
 ): number {
-  const openFade = clamp01((openProgress - 0.55) / 0.4);
-  return openFade * (1 - clamp01(fullBleedT));
+  // ONE bar across pill ↔ input ↔ chat: the handle never crossfades with a
+  // second pill bar anymore (the pill's visual IS this bar, held at constant
+  // size and pointer-locked by the y/counter-scale transforms below), so the
+  // only fade left is into full-bleed, where the restore strip owns the top.
+  void openProgress;
+  return 1 - clamp01(fullBleedT);
 }
 
 // Glyphs (viewBox 0 0 36 36), rendered in currentColor inside a soft chip. Send
@@ -607,6 +611,7 @@ function SheetGrabber({
   binding,
   breathing,
   opacity,
+  y,
   pilled,
   inert,
 }: {
@@ -615,10 +620,13 @@ function SheetGrabber({
   onClose: () => void;
   binding: PullGestureBinding;
   breathing: boolean;
-  // Crossfade opacity (driven by openProgress): 0 while the pill capsule owns the
-  // handle, fading to 1 only AFTER the pill has fully faded out — so the grabber
-  // bar and the (identical) pill bar are NEVER both visible (the "two pills" bug).
+  // Fades only into full-bleed now: this is the ONE visible bar across
+  // pill ↔ input ↔ chat (the pill state keeps it visible and pointer-inert;
+  // the pill capsule below owns the gesture with the same binding).
   opacity: MotionValue<number>;
+  // Visual-top tracker: (1 − panelScale) × panel layout height, so the bar
+  // rides the top edge of the scaling panel 1:1 under the pointer.
+  y: MotionValue<number>;
   // Inert while pilled so the invisible grabber can't steal taps meant for the
   // pill capsule (or pass-through to the home screen) below it.
   pilled: boolean;
@@ -629,7 +637,7 @@ function SheetGrabber({
   const disabled = pilled || inert;
   return (
     <motion.button
-      style={{ opacity, pointerEvents: disabled ? "none" : "auto" }}
+      style={{ opacity, y, pointerEvents: disabled ? "none" : "auto" }}
       // Invisible + inert while pilled: the pill capsule below owns the drag, so
       // keep this out of the tab order and the a11y tree until it's the handle.
       tabIndex={disabled ? -1 : undefined}
@@ -753,27 +761,10 @@ function PillHandle({
         pilled ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          // Identical to the SheetGrabber bar — same white shape + color whether
-          // the chat is open or collapsed to the pill. Its show/hide is driven by
-          // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
-          // The bar paints at full opacity — a prior regression pinned it to
-          // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
-          "rounded-full opacity-100 transition-colors duration-300",
-          // Same compositor-only work-state breath as the SheetGrabber bar.
-          breathing && "eliza-chat-handle-breathe",
-        )}
-        // Same explicit color as the grabber bar; the size counter-scales the
-        // panel's pill morph so the RESTING pill bar renders at exactly the
-        // grabber's visual size (mid-morph it is already crossfading out).
-        style={{
-          backgroundColor: HANDLE_BAR_COLOR,
-          width: HANDLE_BAR_W_PX / PILL_MORPH_MIN_SCALE,
-          height: HANDLE_BAR_H_PX / PILL_MORPH_MIN_SCALE,
-        }}
-      />
+      {/* No visual of its own: the SheetGrabber bar (constant size, outside
+          the scale transform, pointer-locked to the panel's visual top) IS the
+          pill's visible handle. This button keeps the big invisible hit area
+          + the same pull binding, so pill gestures/taps are unchanged. */}
     </Button>
   );
 }
@@ -2896,6 +2887,53 @@ export function ChatOverlay({
   const composerCapsuleBg = useMotionTemplate`rgba(255, 255, 255, calc(${fullBleedT} * 0.09))`;
   const composerCapsuleBlurPx = useTransform(fullBleedT, [0, 1], [0, 28]);
   const composerCapsuleBackdrop = useMotionTemplate`blur(${composerCapsuleBlurPx}px) saturate(1.5)`;
+  // Glass needs something BEHIND it: in the flex column the composer sits
+  // BELOW the thread, so at full-bleed its backdrop was the flat reading
+  // surface and the capsule blur had nothing to frost ("looks like CSS").
+  // Riding the morph, the thread extends under the floating capsule (negative
+  // bottom margin = the capsule's measured height) and the scroller gains a
+  // matching tail spacer so the last message still rests above the capsule —
+  // messages now scroll beneath the glass and the blur frosts real content.
+  const composerRowH = useMotionValue(76);
+  const composerRowRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const el = composerRowRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      composerRowH.set(el.getBoundingClientRect().height);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [composerRowH]);
+  // FROZEN DURING DRAGS: the margin changes the panel's layout height, and
+  // fullBleedT springs mid-gesture (maximize commit / restore hysteresis) —
+  // a live margin injected up to a capsule-height of top-edge motion AGAINST
+  // the finger (the reversal-tracking e2e caught ~35px drift). The value only
+  // syncs while no drag is live; at settled full-bleed the panel is clamped
+  // at its cap, so the sync lands with zero visible motion.
+  const threadUnderlapMargin = useMotionValue(0);
+  React.useEffect(() => {
+    if (isDragging || restoreDragging) return;
+    const update = () =>
+      threadUnderlapMargin.set(-(fullBleedT.get() * composerRowH.get()));
+    update();
+    const unsubT = fullBleedT.on("change", update);
+    const unsubH = composerRowH.on("change", update);
+    return () => {
+      unsubT();
+      unsubH();
+    };
+  }, [
+    isDragging,
+    restoreDragging,
+    fullBleedT,
+    composerRowH,
+    threadUnderlapMargin,
+  ]);
+  const threadTailSpacerH = useTransform(
+    [fullBleedT, composerRowH] as MotionValue<number>[],
+    ([t, h]: number[]) => t * (h + 10),
+  );
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
   // The panel is ONE persistent element; the pill capsule and the full
   // input crossfade by opacity (compositor-cheap) while the whole panel scales
@@ -2922,6 +2960,29 @@ export function ChatOverlay({
   const grabberOpacity = useTransform(
     [openProgress, fullBleedT] as MotionValue<number>[],
     ([p, t]: number[]) => grabberBarOpacity(p, t),
+  );
+  // The handle is rendered OUTSIDE the scaled fieldset (the wrapper is never
+  // transformed), so its size is constant by construction. Its Y tracks the
+  // VISUAL top of the panel: scale() shrinks the panel toward its bottom
+  // origin without changing layout height, so visual-top = (1 − scale) ×
+  // layout-height. pillMorphScale is linear in openProgress, which is linear
+  // in the drag's pixel offset — the bar rides the pointer 1:1 while the
+  // input scales away beneath it.
+  const panelLayoutH = useMotionValue(0);
+  React.useEffect(() => {
+    const el = getPanelElement();
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      // offsetHeight: LAYOUT height — getBoundingClientRect is post-transform
+      // and would feed the scale back into its own compensation.
+      panelLayoutH.set(el.offsetHeight);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [getPanelElement, panelLayoutH]);
+  const grabberY = useTransform(
+    [panelScale, panelLayoutH] as MotionValue<number>[],
+    ([scale, h]: number[]) => (1 - (scale as number)) * (h as number),
   );
   // Header reveal tracks the LIVE height: as the panel approaches the half
   // detent the top buttons FADE in and their space LERPS open; pulling back
@@ -4993,12 +5054,16 @@ export function ChatOverlay({
             onOpen={openFromGrabber}
             onClose={collapse}
             binding={grabberBinding}
-            // The handle stays QUIET while the mic is recording — the composer
-            // mic/voice glyphs already carry the "capture is hot" pulse right
-            // next to the user's attention; a second pulsing bar above them
-            // read as noise. Only the collapsed PILL (where no composer glyph
-            // is visible) pulses for a live capture — see PillHandle below.
-            breathing={(listening || responding) && !recording}
+            y={grabberY}
+            // The ONE bar carries the pill's live-capture pulse while
+            // minimized (no composer glyph is visible there); open, it stays
+            // QUIET during recording — the composer mic/voice glyphs already
+            // carry the "capture is hot" pulse right next to the attention.
+            breathing={
+              pilled
+                ? listening || responding || recording
+                : (listening || responding) && !recording
+            }
             opacity={grabberOpacity}
             pilled={pilled}
             inert={!sheetOpen && (hasImages || Boolean(imageError))}
@@ -5402,6 +5467,9 @@ export function ChatOverlay({
                 // ends and the sheet becomes interactive.
                 style={{
                   flexBasis: firstRunOpen ? `${openH}px` : threadFlexBasis,
+                  // Full-bleed only (0 at rest): extend under the floating
+                  // glass capsule so the blur frosts scrolling messages.
+                  marginBottom: threadUnderlapMargin,
                 }}
               >
                 {/* Message search (#14279): an in-sheet panel that covers the
@@ -5593,6 +5661,15 @@ export function ChatOverlay({
                               </MessageScrollerItem>
                             ) : null}
                           </AnimatePresence>
+                          {/* Full-bleed tail spacer: reserves the capsule's
+                              height at the end of the scroll content so the
+                              newest message rests ABOVE the floating glass
+                              input while older ones frost beneath it. */}
+                          <motion.div
+                            aria-hidden="true"
+                            className="w-full shrink-0"
+                            style={{ height: threadTailSpacerH }}
+                          />
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>
@@ -5706,6 +5783,7 @@ export function ChatOverlay({
             wrapper crossfades + scales in from the pill (openProgress), so this
             row needs no separate entrance — it just sits at the panel base. */}
             <motion.div
+              ref={composerRowRef}
               data-testid="chat-composer-row"
               className={cn(
                 // items-center vertically centers a single-line composer with

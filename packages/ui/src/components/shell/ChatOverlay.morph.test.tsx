@@ -150,12 +150,13 @@ describe("handle fade through the maximize over-pull (grabberBarOpacity)", () =>
     expect(grabberBarOpacity(1, 1)).toBe(0);
   });
 
-  it("keeps the strict anti-phase crossfade with the pill capsule", () => {
-    // While the pill still owns the bottom (openProgress ≤ 0.55) the grabber
-    // bar stays hidden regardless of the shape morph — the "two pills" guard.
-    expect(grabberBarOpacity(0, 0)).toBe(0);
-    expect(grabberBarOpacity(0.55, 0)).toBe(0);
-    expect(grabberBarOpacity(0.95, 0)).toBeCloseTo(1, 10);
+  it("keeps the ONE bar visible through the whole pill ↔ input morph", () => {
+    // Single-bar contract: the grabber bar IS the pill's visual (constant
+    // size, pointer-locked outside the scale transform), so it never fades
+    // during the pill morph — only into full-bleed.
+    expect(grabberBarOpacity(0, 0)).toBe(1);
+    expect(grabberBarOpacity(0.55, 0)).toBe(1);
+    expect(grabberBarOpacity(0.95, 0)).toBe(1);
   });
 });
 
@@ -235,7 +236,7 @@ describe("handle glow while recording (pill-only pulse)", () => {
     expect(grabberBar()?.className ?? "").not.toContain("animate-pulse");
   });
 
-  it("breathes the PILL in white while recording once minimized", () => {
+  it("breathes the ONE bar in white while recording once minimized", () => {
     render(
       <ChatOverlay
         controller={makeController({
@@ -243,13 +244,18 @@ describe("handle glow while recording (pill-only pulse)", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Collapse the input down to the pill.
+    // Collapse the input down to the pill: the grabber bar (the single
+    // handle visual) carries the pill's live-capture pulse.
     flick(grabber(), 200, 260);
     expect(sheet().getAttribute("data-detent")).toBe("pill");
-    expect(pillBar()?.className ?? "").toContain("eliza-chat-handle-breathe");
-    expect(pillBar()?.className ?? "").not.toContain("animate-pulse");
-    expect(pillBar()?.className ?? "").not.toContain("bg-accent");
-    expect(pillBar()?.style.backgroundColor).toBe("rgba(255, 255, 255, 0.96)");
+    expect(grabberBar()?.className ?? "").toContain(
+      "eliza-chat-handle-breathe",
+    );
+    expect(grabberBar()?.className ?? "").not.toContain("animate-pulse");
+    expect(grabberBar()?.className ?? "").not.toContain("bg-accent");
+    expect(grabberBar()?.style.backgroundColor).toBe(
+      "rgba(255, 255, 255, 0.96)",
+    );
   });
 });
 
