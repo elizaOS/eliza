@@ -10,6 +10,9 @@ name: coverage-gate
 # focused unit test in this gate. Docs-only PRs do not spend coverage time.
 # Standalone Node self-tests are excluded only when listed in the manifest that
 # the Develop PR Test Integrity job executes on every PR.
+# Exact process entrypoints may be listed in the subprocess manifest when their
+# contract tests must launch a child process. They still require changed tests,
+# but the parent Bun process cannot claim in-process LCOV for them.
 # A test-only PR (changed tests, no changed source) executes its changed tests —
 # gating the run steps on changed *source* let such PRs go vacuously green with
 # the new test never running (#15849); the per-file floor simply has no source
@@ -72,10 +75,11 @@ jobs:
             "${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Require changed tests for changed source
-        if: steps.changed.outputs.files != '' && steps.changed.outputs.bun_tests == '' && steps.changed.outputs.vitest_tests == '' && steps.changed.outputs.node_tests == ''
+        if: (steps.changed.outputs.files != '' || steps.changed.outputs.subprocess_files != '') && steps.changed.outputs.bun_tests == '' && steps.changed.outputs.vitest_tests == '' && steps.changed.outputs.node_tests == ''
         run: |
           echo "Changed source files require at least one changed Bun or Vitest unit test:"
           printf '%s\n' "${{ steps.changed.outputs.files }}"
+          printf '%s\n' "${{ steps.changed.outputs.subprocess_files }}"
           exit 1
 
       - name: Setup Bun workspace
@@ -165,12 +169,17 @@ jobs:
         env:
           COVERAGE_GATE_ENFORCE: "1"   # enforced (issue #9943)
         run: |
+          if [ -z "${{ steps.changed.outputs.files }}" ]; then
+            if [ -n "${{ steps.changed.outputs.subprocess_files }}" ]; then
+              echo "changed subprocess entrypoints were exercised by changed contract tests:"
+              printf '%s\n' "${{ steps.changed.outputs.subprocess_files }}"
+            else
+              echo "changed tests ran; no changed source files require LCOV enforcement"
+            fi
+            exit 0
+          fi
           mapfile -t lcov_files < <(find coverage -name lcov.info -type f | sort)
           if [ "${#lcov_files[@]}" -eq 0 ]; then
-            if [ -z "${{ steps.changed.outputs.files }}" ]; then
-              echo "changed tests ran; no changed source files require LCOV enforcement"
-              exit 0
-            fi
             echo "changed tests ran but no coverage/lcov.info files were produced"
             exit 1
           fi

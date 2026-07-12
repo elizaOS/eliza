@@ -21,6 +21,7 @@ BASE=$1
 HEAD=$2
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 NODE_SELF_TEST_MANIFEST="$SCRIPT_DIR/coverage-node-self-tests.txt"
+SUBPROCESS_SOURCE_MANIFEST=${COVERAGE_SUBPROCESS_SOURCE_MANIFEST:-"$SCRIPT_DIR/coverage-subprocess-sources.txt"}
 
 # Fail fast: an empty merge-base means the two commits share no history (bad
 # fetch depth / wrong refs), which would otherwise silently diff the entire tree.
@@ -51,9 +52,20 @@ changed_source() {
     | while IFS= read -r file; do
         [ -f "$file" ] || continue
         grep -Fxq "$file" "$NODE_SELF_TEST_MANIFEST" && continue
+        grep -Fxq "$file" "$SUBPROCESS_SOURCE_MANIFEST" && continue
         echo "$file"
       done \
     | node --no-warnings "$SCRIPT_DIR/coverage-source-classifier.mjs"
+}
+
+changed_subprocess_sources() {
+  git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" \
+    | while IFS= read -r file; do
+        [ -f "$file" ] || continue
+        if grep -Fxq "$file" "$SUBPROCESS_SOURCE_MANIFEST"; then
+          echo "$file"
+        fi
+      done
 }
 
 changed_tests() {
@@ -76,6 +88,10 @@ changed_node_self_tests() {
 
 echo 'files<<EOF'
 changed_source
+echo 'EOF'
+
+echo 'subprocess_files<<EOF'
+changed_subprocess_sources
 echo 'EOF'
 
 echo 'node_tests<<EOF'

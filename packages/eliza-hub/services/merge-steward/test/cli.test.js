@@ -5,6 +5,8 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { loadConfig } from "../src/config.js";
+import { validateProductionGateArtifactSources } from "../src/production-artifact-sources.js";
+import { validateProductionEvidenceFreshness } from "../src/production-evidence-freshness.js";
 import { createServer } from "../src/server.js";
 import { MergeSteward } from "../src/steward.js";
 import { InMemoryQueueStore } from "../src/store.js";
@@ -568,6 +570,20 @@ describe("merge steward CLI", () => {
     assert.equal(artifactCheck.ok, true);
     assert.equal(freshnessCheck.ok, true);
     assert.equal(body.productionGate.summary.total, 18);
+  });
+
+  it("validates production artifacts and freshness in-process", () => {
+    const evidence = completeEvidenceWithRolloutArtifacts();
+
+    const artifactCheck = validateProductionGateArtifactSources(evidence);
+    const freshnessCheck = validateProductionEvidenceFreshness(evidence, {
+      now: new Date("2026-07-07T00:00:00.000Z"),
+    });
+
+    assert.equal(artifactCheck.ok, true);
+    assert.deepEqual(artifactCheck.errors, []);
+    assert.equal(freshnessCheck.ok, true);
+    assert.deepEqual(freshnessCheck.errors, []);
   });
 
   it("renders strict production readiness with artifact and freshness checks", async () => {

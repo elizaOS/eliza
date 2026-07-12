@@ -1,0 +1,25 @@
+# Exact runtime entrypoints exercised through child-process contract tests.
+#
+# These files still require a changed unit test when modified, but they are not
+# expected in the parent Bun process's LCOV report. Keep this list narrow: plain
+# importable modules belong in normal in-process coverage.
+packages/eliza-hub/deployment/hetzner-staging/scripts/backup-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/database-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/image-provenance-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/mail-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/merge-queue-live-drill-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/merge-queue-rollout-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/observability-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/pilot-bootstrap.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/production-evidence-assemble.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/production-evidence-inventory.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/repository-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/runner-smoke-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/secret-management-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/security-review-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/sso-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/sso-smoke-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/steward-evidence.mjs
+packages/eliza-hub/deployment/hetzner-staging/scripts/storage-evidence.mjs
+packages/eliza-hub/services/merge-steward/scripts/sync-openapi-production-evidence-schema.mjs
+packages/eliza-hub/services/merge-steward/src/cli.js

@@ -1174,6 +1174,145 @@ describe("Postgres queue store", () => {
     assert.equal(queries.length, 1);
   });
 
+  it("persists durable run, attempt, event, and signal lifecycles", async () => {
+    const { pool, state } = createLifecyclePool();
+    const store = new PostgresQueueStore({ pool });
+    const now = "2026-07-06T00:10:00.000Z";
+
+    const run = await store.upsertRun({
+      id: "run-one",
+      repo: "elizaos/eliza",
+      queueItemId: "elizaos/eliza#42",
+      pullRequestId: 42,
+      sourceBranch: "agent/run-one",
+      targetBranch: "develop",
+      ownerKind: "agent",
+      ownerId: "agent-one",
+      status: "running",
+      summary: { phase: "build" },
+      createdAt: now,
+      updatedAt: now,
+    });
+    assert.equal(run.id, "run-one");
+    assert.equal(run.queueItemId, "elizaos/eliza#42");
+    assert.deepEqual(run.summary, { phase: "build" });
+    assert.equal((await store.getRun("run-one")).status, "running");
+    assert.equal((await store.listRuns({ status: "running" })).length, 1);
+
+    const node = await store.upsertRunNode({
+      runId: "run-one",
+      nodeId: "build",
+      iteration: 0,
+      status: "running",
+      agentId: "agent-one",
+      output: { command: "bun test" },
+      createdAt: now,
+      updatedAt: now,
+    });
+    assert.equal(node.id, "run-one:build:0");
+    assert.equal(node.agentId, "agent-one");
+    assert.equal((await store.listRunNodes("run-one")).length, 1);
+
+    const started = await store.startAttempt({
+      runId: "run-one",
+      nodeId: "build",
+      ownerId: "worker-one",
+      startedAt: now,
+      heartbeatAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+    assert.equal(started.attempt, 1);
+    assert.equal(started.status, "running");
+    assert.equal((await store.getAttempt(started.id)).ownerId, "worker-one");
+    assert.equal(
+      (await store.listAttempts({ runId: "run-one", status: "running" }))
+        .length,
+      1,
+    );
+
+    const heartbeat = await store.heartbeatAttempt(started.id, {
+      ownerId: "worker-one",
+      now: "2026-07-06T00:11:00.000Z",
+    });
+    assert.equal(heartbeat.heartbeatAt, "2026-07-06T00:11:00.000Z");
+
+    const finished = await store.finishAttempt(started.id, {
+      output: { passed: true },
+      now: "2026-07-06T00:12:00.000Z",
+    });
+    assert.equal(finished.status, "succeeded");
+    assert.deepEqual(finished.output, { passed: true });
+
+    const failed = await store.failAttempt(started.id, {
+      error: new Error("integration failed"),
+      output: { passed: false },
+      retryAfterMs: 60_000,
+      now: "2026-07-06T00:13:00.000Z",
+    });
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.lastError.message, "integration failed");
+    assert.equal(failed.availableAt, "2026-07-06T00:14:00.000Z");
+
+    const cancelled = await store.cancelAttempt(started.id, {
+      reason: "superseded",
+      cancelledBy: "agent-one",
+      now: "2026-07-06T00:14:00.000Z",
+    });
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(cancelled.cancelReason, "superseded");
+
+    state.attempt = attemptRow({
+      ...started,
+      status: "running",
+      ownerId: "worker-old",
+      heartbeatAt: "2026-07-06T00:00:00.000Z",
+      updatedAt: "2026-07-06T00:00:00.000Z",
+    });
+    const recovered = await store.claimStaleAttempt({
+      workerId: "worker-recovery",
+      now: "2026-07-06T00:15:00.000Z",
+      staleAfterMs: 30_000,
+    });
+    assert.equal(recovered.claimed, true);
+    assert.equal(recovered.attempt.status, "recovering");
+    assert.equal(recovered.attempt.recoveredFromOwnerId, "worker-old");
+
+    const event = await store.appendRunEvent({
+      runId: "run-one",
+      type: "attempt_recovered",
+      queueItemId: "elizaos/eliza#42",
+      actorKind: "worker",
+      actorId: "worker-recovery",
+      createdAt: now,
+    });
+    assert.equal(event.seq, 1);
+    assert.equal(event.type, "attempt_recovered");
+    assert.equal((await store.listRunEvents("run-one", { afterSeq: 0 })).length, 1);
+
+    const signal = await store.appendSignal({
+      runId: "run-one",
+      correlationKey: "deploy:42",
+      type: "approval",
+      createdAt: now,
+    });
+    assert.equal(signal.status, "received");
+    assert.equal((await store.listSignals({ runId: "run-one" })).length, 1);
+
+    const consumed = await store.consumeSignal(signal.id, {
+      consumerId: "worker-recovery",
+      now: "2026-07-06T00:16:00.000Z",
+    });
+    assert.equal(consumed.status, "consumed");
+    assert.equal(consumed.consumedBy, "worker-recovery");
+
+    await assert.rejects(store.appendRunEvent({}), /requires runId/);
+    await assert.rejects(
+      store.appendSignal({}),
+      /requires runId or correlationKey/,
+    );
+  });
+
   it("selects the Postgres store when DATABASE_URL is configured", async () => {
     const store = createQueueStore(
       loadConfig({
@@ -1217,5 +1356,226 @@ function queueRow({ pullRequestId, targetBranch = "develop" } = {}) {
     payload_json: {},
     created_at: "2026-07-06T00:00:00.000Z",
     updated_at: "2026-07-06T00:00:00.000Z",
+  };
+}
+
+function createLifecyclePool() {
+  const state = {
+    run: null,
+    node: null,
+    attempt: null,
+    event: null,
+    signal: null,
+  };
+
+  return {
+    state,
+    pool: {
+      async query(sql, values = []) {
+        if (sql.includes("SELECT COALESCE(MAX(attempt)")) {
+          return { rows: [{ next_attempt: 1 }] };
+        }
+        if (sql.includes("SELECT COALESCE(MAX(seq)")) {
+          return { rows: [{ next_seq: 1 }] };
+        }
+        if (sql.includes("SELECT COUNT(*) + 1 AS next_signal")) {
+          return { rows: [{ next_signal: 1 }] };
+        }
+        if (sql.includes("INSERT INTO steward_queue_items")) {
+          return { rows: [] };
+        }
+
+        if (sql.includes("INSERT INTO steward_runs")) {
+          state.run = runRow(JSON.parse(values[18]));
+          return { rows: [state.run] };
+        }
+        if (sql.includes("SELECT * FROM steward_runs WHERE id")) {
+          return { rows: state.run ? [state.run] : [] };
+        }
+        if (sql.includes("SELECT * FROM steward_runs")) {
+          return { rows: state.run ? [state.run] : [] };
+        }
+
+        if (sql.includes("INSERT INTO steward_run_nodes")) {
+          if (!sql.includes("RETURNING *")) return { rows: [] };
+          state.node = runNodeRow(JSON.parse(values[17]));
+          return { rows: [state.node] };
+        }
+        if (sql.includes("SELECT * FROM steward_run_nodes WHERE id")) {
+          return { rows: state.node ? [state.node] : [] };
+        }
+        if (sql.includes("SELECT * FROM steward_run_nodes")) {
+          return { rows: state.node ? [state.node] : [] };
+        }
+
+        if (sql.includes("FROM steward_attempts") && sql.includes("status IN")) {
+          return { rows: state.attempt ? [state.attempt] : [] };
+        }
+        if (sql.includes("INSERT INTO steward_attempts")) {
+          state.attempt = attemptRow(JSON.parse(values[16]));
+          return { rows: [state.attempt] };
+        }
+        if (sql.includes("UPDATE steward_attempts")) {
+          const payloadIndex = sql.includes("SET status = 'failed'")
+            ? 6
+            : sql.includes("SET status = 'succeeded'") ||
+                sql.includes("SET status = 'cancelled'")
+              ? 3 - Number(sql.includes("SET status = 'cancelled'"))
+              : sql.includes("SET status = 'recovering'")
+                ? 4
+                : 3;
+          const payload = JSON.parse(values[payloadIndex]);
+          state.attempt = attemptRow({ ...state.attempt, ...payload });
+          return { rows: [state.attempt] };
+        }
+        if (sql.includes("SELECT * FROM steward_attempts WHERE id")) {
+          return { rows: state.attempt ? [state.attempt] : [] };
+        }
+        if (sql.includes("SELECT * FROM steward_attempts")) {
+          return { rows: state.attempt ? [state.attempt] : [] };
+        }
+
+        if (sql.includes("INSERT INTO steward_run_events")) {
+          state.event = runEventRow({
+            ...JSON.parse(values[7]),
+            id: values[0],
+            runId: values[1],
+            seq: values[2],
+            type: values[3],
+            createdAt: values[8],
+          });
+          return { rows: [state.event] };
+        }
+        if (sql.includes("SELECT * FROM steward_run_events")) {
+          return { rows: state.event ? [state.event] : [] };
+        }
+
+        if (sql.includes("INSERT INTO steward_signals")) {
+          state.signal = signalRow(JSON.parse(values[5]));
+          return { rows: [state.signal] };
+        }
+        if (sql.includes("UPDATE steward_signals")) {
+          state.signal = signalRow({
+            ...state.signal.payload_json,
+            ...JSON.parse(values[3]),
+            id: values[0],
+          });
+          return { rows: [state.signal] };
+        }
+        if (sql.includes("SELECT * FROM steward_signals")) {
+          return { rows: state.signal ? [state.signal] : [] };
+        }
+
+        throw new Error(`Unexpected lifecycle SQL: ${sql}`);
+      },
+    },
+  };
+}
+
+function runRow(run = {}) {
+  return {
+    id: run.id,
+    repo: run.repo,
+    queue_item_id: run.queueItemId,
+    pull_request_id: run.pullRequestId,
+    source_branch: run.sourceBranch,
+    target_branch: run.targetBranch,
+    owner_kind: run.ownerKind,
+    owner_id: run.ownerId,
+    status: run.status,
+    runtime_owner_id: run.runtimeOwnerId,
+    heartbeat_at: run.heartbeatAt,
+    correlation_key: run.correlationKey,
+    started_at: run.startedAt,
+    finished_at: run.finishedAt,
+    resumed_by_signal_id: run.resumedBySignalId,
+    resumed_by_approval_id: run.resumedByApprovalId,
+    last_error: run.lastError,
+    summary_json: run.summary ?? {},
+    payload_json: run,
+    created_at: run.createdAt,
+    updated_at: run.updatedAt,
+  };
+}
+
+function runNodeRow(node = {}) {
+  return {
+    id: node.id,
+    run_id: node.runId,
+    node_id: node.nodeId,
+    iteration: node.iteration,
+    status: node.status,
+    agent_id: node.agentId,
+    model_id: node.modelId,
+    approval_id: node.approvalId,
+    correlation_key: node.correlationKey,
+    signal_type: node.signalType,
+    wake_at: node.wakeAt,
+    started_at: node.startedAt,
+    completed_at: node.completedAt,
+    completed_by_signal_id: node.completedBySignalId,
+    completed_by_approval_id: node.completedByApprovalId,
+    output_json: node.output ?? {},
+    error_json: node.error ?? {},
+    payload_json: node,
+    created_at: node.createdAt,
+    updated_at: node.updatedAt,
+  };
+}
+
+function attemptRow(attempt = {}) {
+  return {
+    id: attempt.id,
+    run_id: attempt.runId,
+    node_id: attempt.nodeId,
+    iteration: attempt.iteration,
+    attempt: attempt.attempt,
+    status: attempt.status,
+    owner_id: attempt.ownerId,
+    heartbeat_at: attempt.heartbeatAt,
+    started_at: attempt.startedAt,
+    finished_at: attempt.finishedAt,
+    available_at: attempt.availableAt,
+    recovered_from_owner_id: attempt.recoveredFromOwnerId,
+    recovered_at: attempt.recoveredAt,
+    output_json: attempt.output ?? {},
+    error_json:
+      attempt.lastError && typeof attempt.lastError === "object"
+        ? attempt.lastError
+        : {},
+    last_error:
+      typeof attempt.lastError === "string" ? attempt.lastError : null,
+    payload_json: attempt,
+    created_at: attempt.createdAt,
+    updated_at: attempt.updatedAt,
+  };
+}
+
+function runEventRow(event = {}) {
+  return {
+    id: event.id,
+    run_id: event.runId,
+    seq: event.seq,
+    type: event.type,
+    queue_item_id: event.queueItemId,
+    actor_kind: event.actorKind,
+    actor_id: event.actorId,
+    payload_json: event,
+    created_at: event.createdAt,
+  };
+}
+
+function signalRow(signal = {}) {
+  return {
+    id: signal.id,
+    run_id: signal.runId,
+    correlation_key: signal.correlationKey,
+    type: signal.type,
+    status: signal.status,
+    consumed_by: signal.consumedBy,
+    consumed_at: signal.consumedAt,
+    payload_json: signal,
+    created_at: signal.createdAt,
+    updated_at: signal.updatedAt ?? signal.createdAt,
   };
 }
