@@ -157,6 +157,70 @@ describe("accounts routes provider-scoped account resolution", () => {
     );
   });
 
+  it("surfaces runtime eligibility so Fable subscription chat is honestly blocked", async () => {
+    poolMock.list.mockImplementation((providerId?: string) =>
+      providerId === "anthropic-subscription"
+        ? [linkedAccount("anthropic-subscription")]
+        : [],
+    );
+    const ctx = createContext({ method: "GET", pathname: "/api/accounts" });
+
+    const handled = await handleAccountsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    const response = ctx.body as {
+      providers: Array<{
+        providerId: string;
+        runtimeEligibility: {
+          chat: {
+            available: boolean;
+            defaultModel?: string;
+            unavailableReason?: string;
+          };
+          codingAgent: { available: boolean; defaultModel?: string };
+        };
+      }>;
+    };
+    const anthropic = response.providers.find(
+      (entry) => entry.providerId === "anthropic-subscription",
+    );
+    expect(anthropic?.runtimeEligibility.chat).toMatchObject({
+      available: false,
+      defaultModel: "claude-fable-5",
+    });
+    expect(anthropic?.runtimeEligibility.chat.unavailableReason).toContain(
+      "Claude Code CLI/coding-agent",
+    );
+    expect(anthropic?.runtimeEligibility.codingAgent).toMatchObject({
+      available: true,
+      defaultModel: "claude-fable-5",
+    });
+  });
+
+  it("keeps Codex marked chat-capable through the account-pool path", async () => {
+    poolMock.list.mockReturnValue([]);
+    const ctx = createContext({ method: "GET", pathname: "/api/accounts" });
+
+    const handled = await handleAccountsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    const response = ctx.body as {
+      providers: Array<{
+        providerId: string;
+        runtimeEligibility: {
+          chat: { available: boolean; credentialPath?: string };
+        };
+      }>;
+    };
+    const codex = response.providers.find(
+      (entry) => entry.providerId === "openai-codex",
+    );
+    expect(codex?.runtimeEligibility.chat).toMatchObject({
+      available: true,
+      credentialPath: "account-pool",
+    });
+  });
+
   it("lists multiple accounts for a single provider", async () => {
     const personal = linkedAccount("openai-codex", {
       id: "personal",

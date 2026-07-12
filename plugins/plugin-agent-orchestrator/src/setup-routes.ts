@@ -84,6 +84,8 @@ const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/orchestrator/accounts" },
   { type: "GET", path: "/api/orchestrator/accounts/readiness" },
   { type: "GET", path: "/api/orchestrator/rooms" },
+  { type: "GET", path: "/api/orchestrator/widgets" },
+  { type: "GET", path: "/api/orchestrator/widgets/stream" },
   { type: "GET", path: "/api/orchestrator/built-apps" },
   { type: "DELETE", path: "/api/orchestrator/built-apps/:target/:slug" },
   { type: "POST", path: "/api/orchestrator/pause-all" },
