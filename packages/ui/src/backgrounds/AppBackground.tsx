@@ -5,8 +5,15 @@
  */
 import type * as React from "react";
 import { lazy, Suspense, useEffect, useState } from "react";
+import {
+  clearNativeGlassBackdrop,
+  setNativeGlassBackdrop,
+} from "../glass/native-bridge";
 import type { ShaderConfig } from "../state/ui-preferences";
-import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
+import {
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BACKGROUND_GLOW,
+} from "../state/ui-preferences";
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
 import { useVoiceSettingsApplyChannel } from "../voice/useVoiceSettingsApplyChannel";
 import { applyRootCanvasPaint } from "./html-canvas-paint";
@@ -78,6 +85,41 @@ export function AppBackground({
   useAppearanceApplyChannel();
   useVoiceSettingsApplyChannel();
 
+  // Layered-glass shell: on Capacitor with the GlassBridge available (iOS 26+
+  // / Android 12+), the DEFAULT ember field moves into a native layer BEHIND a
+  // transparent webview — that is the only arrangement where a native glass
+  // panel has real content to refract (glass under the webview is blind to
+  // DOM pixels). Only the plain shader mode goes native: image and GLSL
+  // wallpapers are inherently DOM/GPU-in-page and keep the CSS-blur tier.
+  const mode =
+    backgroundConfig && typeof backgroundConfig === "object"
+      ? backgroundConfig.mode
+      : "shader";
+  const nativeEligible = mode !== "image" && mode !== "glsl";
+  const baseColor =
+    (backgroundConfig && typeof backgroundConfig === "object"
+      ? backgroundConfig.color
+      : null) ?? DEFAULT_BACKGROUND_COLOR;
+  const [nativeBackdrop, setNativeBackdropActive] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!nativeEligible) {
+      setNativeBackdropActive(false);
+      void clearNativeGlassBackdrop();
+      return;
+    }
+    void setNativeGlassBackdrop({
+      kind: "ember",
+      colors: [baseColor, DEFAULT_BACKGROUND_GLOW],
+      animated: true,
+    }).then((active) => {
+      if (!cancelled) setNativeBackdropActive(active);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [nativeEligible, baseColor]);
+
   // Mirror the active background onto the ROOT element so the viewport CANVAS —
   // the surface behind every box, which ALWAYS covers the full drawable screen
   // regardless of the collapsed fixed-body ICB on standalone iOS — paints the
@@ -89,10 +131,23 @@ export function AppBackground({
   // App-lifetime: updated on every background change, never torn down (this
   // layer is mounted once at the shell root for the whole session).
   useEffect(() => {
+    if (nativeBackdrop) {
+      // The native layer owns the canvas: every DOM layer above it must be
+      // see-through or the backdrop (and the glass panels sampling it) is
+      // occluded by the page's own root paint.
+      const root = document.documentElement;
+      root.style.backgroundColor = "transparent";
+      root.style.backgroundImage = "";
+      if (document.body) document.body.style.backgroundColor = "transparent";
+      return;
+    }
     applyRootCanvasPaint(backgroundConfig);
-  }, [backgroundConfig]);
+  }, [backgroundConfig, nativeBackdrop]);
 
   if (!visible) return null;
+  // Native backdrop active: the ember field is painted by the OS layer behind
+  // the transparent webview — rendering the DOM shader too would occlude it.
+  if (nativeBackdrop) return null;
   // Defensive: the app store can return a non-object slice before the provider
   // seeds it (e.g. the test fallback proxy). Fall back to the default shader.
   const config =

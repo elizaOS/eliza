@@ -20,7 +20,12 @@ import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
-import { GlassStyles } from "../../glass";
+import {
+  clearNativeGlassBackdrop,
+  GlassStyles,
+  setNativeGlassBackdrop,
+  useNativeGlassBackdropActive,
+} from "../../glass";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { ChatOverlay } from "../shell/ChatOverlay";
 import type { ShellController, CaptureIntent } from "../shell/useShellController";
@@ -217,6 +222,20 @@ const SCRIPT: Scene[] = [
 ];
 
 export function ChatWidgetHarness(): React.JSX.Element {
+  // Layered-glass demo: on a native shell with the GlassBridge available the
+  // ember field moves behind the (transparent) webview, and the sheet anchors
+  // a REAL glass panel over it. The DOM backdrop below stays for CSS tiers.
+  const nativeBackdrop = useNativeGlassBackdropActive();
+  React.useEffect(() => {
+    void setNativeGlassBackdrop({
+      kind: "ember",
+      colors: ["#1a0c06", "#ef5a1f"],
+      animated: true,
+    });
+    return () => {
+      void clearNativeGlassBackdrop();
+    };
+  }, []);
   const [messages, setMessages] = React.useState<ShellMessage[]>(OPENING);
   const [phase, setPhase] = React.useState<ShellController["phase"]>("summoned");
   const [recording, setRecording] = React.useState(false);
@@ -401,8 +420,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
           position: "fixed",
           inset: 0,
           // The real /chat ambient home backdrop — the glass sheet must be
-          // reviewed over the composite it ships on.
-          background: "#ef5a1f",
+          // reviewed over the composite it ships on. Transparent while the
+          // NATIVE backdrop owns the field (occluding it would blind the
+          // native glass panels sampling it).
+          background: nativeBackdrop ? "transparent" : "#ef5a1f",
           overflow: "hidden",
         }}
       >

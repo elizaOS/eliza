@@ -166,15 +166,19 @@ export async function setNativeGlassBackdrop(
   const bridge = glassBridge();
   if (!bridge) return false;
   try {
-    return (await bridge.setBackdrop(options)).active;
+    const active = (await bridge.setBackdrop(options)).active;
+    notifyBackdropActive(active);
+    return active;
   } catch {
     // error-policy:J4 capability probe — an older native shell without the
     // method is honestly "no native backdrop"; the DOM field stays.
+    notifyBackdropActive(false);
     return false;
   }
 }
 
 export async function clearNativeGlassBackdrop(): Promise<void> {
+  notifyBackdropActive(false);
   const bridge = glassBridge();
   if (!bridge) return;
   try {
@@ -185,8 +189,37 @@ export async function clearNativeGlassBackdrop(): Promise<void> {
   }
 }
 
+// ── Backdrop-active signal ──────────────────────────────────────────────────
+// Whether a native ambient backdrop is currently installed. Surfaces that can
+// anchor native glass (the chat sheet) subscribe: a native panel only has
+// something to refract while the backdrop layer exists, so this is the gate
+// between "attach real material" and "CSS blur only".
+let backdropActive = false;
+const backdropListeners = new Set<(active: boolean) => void>();
+
+function notifyBackdropActive(active: boolean): void {
+  if (backdropActive === active) return;
+  backdropActive = active;
+  for (const listener of backdropListeners) listener(active);
+}
+
+export function isNativeGlassBackdropActive(): boolean {
+  return backdropActive;
+}
+
+export function subscribeNativeGlassBackdrop(
+  listener: (active: boolean) => void,
+): () => void {
+  backdropListeners.add(listener);
+  return () => {
+    backdropListeners.delete(listener);
+  };
+}
+
 /** Test seam: reset memoized plugin + availability between cases. */
 export function resetGlassBridgeForTests(): void {
   cached = undefined;
   availability = null;
+  backdropActive = false;
+  backdropListeners.clear();
 }

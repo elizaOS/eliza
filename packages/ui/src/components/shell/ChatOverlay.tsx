@@ -143,7 +143,11 @@ import {
   measureSafeAreaInsetTop,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
-import { useNativeGlass } from "../../glass";
+import {
+  useNativeGlass,
+  useNativeGlassAnchor,
+  useNativeGlassBackdropActive,
+} from "../../glass";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -2526,15 +2530,26 @@ export function ChatOverlay({
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
   // panel styles + a zero top margin.
   const fullBleed = maximized && expanded && sheetOpen && !pilled;
-  // The sheet's material is ALWAYS the CSS backdrop-filter, on every platform
-  // including Capacitor. The GlassBridge's native UIGlassEffect/Material view
-  // mounts BELOW the WKWebView, so it can only show through where the DOM is
-  // transparent — and everything behind this sheet (home field, widgets, the
-  // open view) is DOM content painted inside the webview. An under-webview
-  // native panel is invisible behind those pixels; only the webview's own
-  // backdrop-filter can refract them. Native glass stays the right tool for
-  // chrome that floats over NATIVE content — never for this sheet.
+  // Two materials compose on this sheet (layered-glass shell):
+  //  - The CSS backdrop-filter ALWAYS runs: it frosts DOM content that slides
+  //    under the sheet (home widgets, views) — the band native glass is blind
+  //    to, since the GlassBridge panel mounts BELOW the webview.
+  //  - When the native ambient backdrop is installed (transparent webview over
+  //    the OS ember layer), a REAL UIGlassEffect/Material panel additionally
+  //    anchors to the sheet rect and lenses that backdrop — the pixels the
+  //    CSS filter cannot reach (a webview backdrop-filter samples only the
+  //    page's own layers; transparent regions sample nothing).
   const glassTier = useNativeGlass();
+  const nativeBackdropActive = useNativeGlassBackdropActive();
+  const chatSurfaceRef = React.useRef<HTMLDivElement>(null);
+  const nativeGlassActive =
+    glassTier === "native" &&
+    nativeBackdropActive &&
+    sheetOpen &&
+    !pilled &&
+    !fullBleed &&
+    !firstRunOpen;
+  useNativeGlassAnchor(chatSurfaceRef, nativeGlassActive);
   // Only the panel MAX-HEIGHT stays full-screen-sized for the whole restore drag,
   // so the height can track the finger without the max-height clamping it shorter
   // on the first frame (a vertical pop). Every other property (side inset, bottom
@@ -5007,7 +5022,9 @@ export function ChatOverlay({
           <motion.div
             aria-hidden="true"
             data-testid="chat-sheet-surface"
+            ref={chatSurfaceRef}
             data-glass-tier={glassTier}
+            data-native-glass={nativeGlassActive ? "on" : undefined}
             // The directional specular rim (mask-composite ring) replaces the
             // flat CSS border on the inset sheet — the "liquid" edge cue. Off
             // at full-bleed (no edge to catch light) and during first-run.
@@ -5050,7 +5067,9 @@ export function ChatOverlay({
                 ? "transparent"
                 : fullBleed
                   ? FULL_BLEED_PANEL_BG
-                  : "color-mix(in srgb, var(--card) 30%, transparent)",
+                  : nativeGlassActive
+                    ? "color-mix(in srgb, var(--card) 16%, transparent)"
+                    : "color-mix(in srgb, var(--card) 30%, transparent)",
               // Lensed material, not a tinted card: heavy blur destroys the
               // detail (legibility), lifted saturation + brightness make the
               // field GLOW through the panel the way Liquid Glass transmits

@@ -19,7 +19,11 @@
  */
 
 import { useEffect, useState } from "react";
-import { isNativeGlassAvailable } from "./native-bridge";
+import {
+  isNativeGlassAvailable,
+  isNativeGlassBackdropActive,
+  subscribeNativeGlassBackdrop,
+} from "./native-bridge";
 
 /**
  * BREAKING (documented): the native tier value renamed `ios26-native` →
@@ -52,4 +56,15 @@ export function useNativeGlass(): GlassTier {
     };
   }, []);
   return tier;
+}
+
+/**
+ * Live view of {@link isNativeGlassBackdropActive}: true while a native
+ * ambient backdrop is installed behind the transparent webview — the only
+ * state in which anchoring native glass to an in-page surface shows anything.
+ */
+export function useNativeGlassBackdropActive(): boolean {
+  const [active, setActive] = useState(isNativeGlassBackdropActive);
+  useEffect(() => subscribeNativeGlassBackdrop(setActive), []);
+  return active;
 }

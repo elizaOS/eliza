@@ -10,6 +10,8 @@ export {
   clearNativeGlassBackdrop,
   glassBridge,
   isNativeGlassAvailable,
+  isNativeGlassBackdropActive,
+  subscribeNativeGlassBackdrop,
   type NativeGlassBackdropOptions,
   type NativeGlassOptions,
   setNativeGlassBackdrop,
@@ -25,4 +27,8 @@ export {
   type GlassRecipe,
   type GlassVariant,
 } from "./tokens";
-export { type GlassTier, useNativeGlass } from "./useNativeGlass";
+export {
+  type GlassTier,
+  useNativeGlass,
+  useNativeGlassBackdropActive,
+} from "./useNativeGlass";
