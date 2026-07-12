@@ -1063,23 +1063,33 @@ describe("ChatOverlay", () => {
     ).toBeNull();
   });
 
-  it("steps COLLAPSED→HALF→FULL on successive pull-ups and back down again", () => {
+  it("steps COLLAPSED→HALF→MAXIMIZED on successive pull-ups (FULL is never a rest), and back down", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    const pull = (fromY: number, toY: number) => {
-      fireEvent.pointerDown(grabber, { clientY: fromY, pointerId: 1 });
-      fireEvent.pointerMove(grabber, { clientY: toY, pointerId: 1 });
-      fireEvent.pointerUp(grabber, { clientY: toY, pointerId: 1 });
+    const pullGrabber = (fromY: number, toY: number) => {
+      const g = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.pointerDown(g, { clientY: fromY, pointerId: 1 });
+      fireEvent.pointerMove(g, { clientY: toY, pointerId: 1 });
+      fireEvent.pointerUp(g, { clientY: toY, pointerId: 1 });
     };
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
-    pull(420, 280); // up → HALF (one step, not straight to full)
+    pullGrabber(420, 280); // up → HALF (one step)
     expect(sheet.getAttribute("data-detent")).toBe("half");
-    pull(420, 280); // up → FULL
-    expect(sheet.getAttribute("data-detent")).toBe("full");
-    pull(280, 420); // down → HALF
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
+    // up from HALF steps straight to MAXIMIZED — the inset FULL detent is
+    // ungrabbable (grabber under the status bar, no restore zone), so it is
+    // never a rest; the ladder skips it.
+    pullGrabber(420, 280);
+    expect(sheet.getAttribute("data-maximized")).toBe("true");
+    expect(sheet.getAttribute("data-chat-state")).toBe("MAXIMIZED");
+    // Down from maximized is the restore zone (the grabber is gone while maxed).
+    const zone = screen.getByTestId("chat-maximize-restore-zone");
+    fireEvent.pointerDown(zone, { clientY: 20, pointerId: 2 });
+    fireEvent.pointerMove(zone, { clientY: 200, pointerId: 2 });
+    fireEvent.pointerUp(zone, { clientY: 300, pointerId: 2 });
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
     expect(sheet.getAttribute("data-detent")).toBe("half");
-    pull(280, 420); // down → COLLAPSED
+    pullGrabber(280, 420); // down → COLLAPSED
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
@@ -2996,16 +3006,17 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     return { controller, onSelect };
   }
 
+  // Open to the first reading rest — HALF, a non-maximized OPEN sheet. (The
+  // inset FULL detent is no longer a rest: a pull to the top maximizes, so
+  // "open but not maximized" means HALF now.)
   function openSheet() {
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
     fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
-    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
-    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
-    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("full");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-maximized")).toBeNull();
   }
 
   // Search moved off the header into the composer "+" actions menu; open it the

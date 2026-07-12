@@ -3351,6 +3351,21 @@ export function ChatOverlay({
     ],
   );
 
+  // Reaching the TOP settles to MAXIMIZED, never the inset FULL detent. FULL
+  // rests with its grabber tucked under the status bar and carries no restore
+  // zone, so it is ungrabbable — a dead-end the user cannot escape by touch.
+  // Maximized IS escapable (its top restore zone pulls it back down), so it is
+  // the ONLY top rest. Every "pulled/stepped to the top" settle routes here
+  // instead of `goToDetent("full")`, which keeps FULL a transient drag shape
+  // only. Sole exception: a soft keyboard blocks the edge-to-edge maximize (it
+  // would spill above the shrunk visual viewport); there the keyboard has lifted
+  // the sheet top back into reach, so the inset FULL is grabbable and used.
+  const settleTop = React.useCallback(() => {
+    focusThreadRef.current = true;
+    if (keyboardBlocksMaximize) goToDetent("full");
+    else maximizeFromPull();
+  }, [keyboardBlocksMaximize, goToDetent, maximizeFromPull]);
+
   // Trackpad two-finger swipe steps the sheet through its detents
   // (pill ↔ input ↔ half ↔ full ↔ maximized) — the macOS-feel complement to
   // the pointer drag. Wheel events accumulate with a short decay and step once
@@ -3391,8 +3406,8 @@ export function ChatOverlay({
       if (grow) {
         if (pilled) goToDetent("collapsed");
         else if (!sheetOpen) goToDetent("half");
-        else if (!expanded) goToDetent("full");
-        else if (!maximized) maximizeFromPull();
+        // half → MAXIMIZED directly: FULL is not a rest, so the step skips it.
+        else if (!maximized) settleTop();
       } else {
         if (maximized) restoreFromMaximized();
         else if (expanded) goToDetent("half");
@@ -4586,7 +4601,8 @@ export function ChatOverlay({
           return;
         }
         focusThreadRef.current = true;
-        goToDetent(releasedH >= halfH + SHEET_DETENT_MAGNET ? "full" : "half");
+        if (releasedH >= halfH + SHEET_DETENT_MAGNET) settleTop();
+        else goToDetent("half");
         return;
       }
       // Over-pull past the 80%-viewport threshold maximizes from ANY open state
@@ -4598,14 +4614,13 @@ export function ChatOverlay({
         // open; `expand` still guards the passive focus-to-open path.
         const releasedH = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
         if (releasedH >= halfH + SHEET_DETENT_MAGNET) {
-          goToDetent("full");
+          settleTop();
         } else {
           goToDetent("half");
         }
         focusThreadRef.current = true;
       } else if (!expanded) {
-        goToDetent("full");
-        focusThreadRef.current = true;
+        settleTop();
       } else {
         settleDrag();
       }
@@ -4713,7 +4728,7 @@ export function ChatOverlay({
       }
       focusThreadRef.current = true;
       if (h >= openH - SHEET_DETENT_MAGNET) {
-        goToDetent("full");
+        settleTop();
       } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
         goToDetent("half");
       } else {
@@ -4833,9 +4848,11 @@ export function ChatOverlay({
     // full/half/input, not strand a sliver of thread ("keeps pulling height
     // instead of changing state"). Nearest-detent by midpoint split; the
     // grabber's deliberate free-rest sizing is untouched.
-    if (h >= (halfH + openH) / 2) {
-      goToDetent("full");
-    } else if (h >= halfH / 2) {
+    if (h >= halfH / 2) {
+      // A restore is "exit full screen": it drops full-bleed and rests at the
+      // highest GRABBABLE detent — HALF — never the ungrabbable inset FULL, and
+      // never a re-maximize (the user is leaving the top). A big pull-down
+      // collapses; anything above the half midpoint lands at HALF.
       goToDetent("half");
     } else {
       goToDetent("collapsed");

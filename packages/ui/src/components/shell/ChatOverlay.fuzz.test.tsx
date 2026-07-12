@@ -280,9 +280,13 @@ function gotoHalf(): void {
   expect(detentOf()).toBe("half");
 }
 function gotoFull(): void {
+  // FULL is no longer a distinct rest: a flick up from HALF goes straight to
+  // MAXIMIZED (the inset FULL detent is ungrabbable, so it is never a settle).
+  // `data-detent` still labels the maximized top as "full".
   gotoHalf();
   flickUp(grabber() as Element);
   expect(detentOf()).toBe("full");
+  expect(sheet().getAttribute("data-maximized")).toBe("true");
 }
 function gotoMaximized(): void {
   // Maximize is a big upward over-pull now (#13531), not a header button.
@@ -450,12 +454,15 @@ describe("ChatOverlay — out-of-state / nonsensical actions are no-ops", () => 
     assertInvariants("pill-flickdown");
   });
 
-  it("flick UP while already at full stays full (highest detent)", () => {
+  it("flick UP while already MAXIMIZED stays maximized (highest state)", () => {
     render(<ChatOverlay controller={makeController()} />);
-    gotoFull();
-    flickUp(grabber() as Element);
-    expect(detentOf()).toBe("full");
-    assertInvariants("full-flickup");
+    gotoFull(); // reaches MAXIMIZED (FULL is not a rest)
+    // The grabber is gone while maximized (the restore zone replaces it); an
+    // upward flick in the restore zone must not un-maximize or wedge.
+    const zone = screen.queryByTestId("chat-maximize-restore-zone");
+    if (zone) flickUp(zone);
+    expect(sheet().getAttribute("data-maximized")).toBe("true");
+    assertInvariants("max-flickup");
   });
 
   it("typing while pilled (synthetic, bypasses inert) never lands in a broken state", () => {
