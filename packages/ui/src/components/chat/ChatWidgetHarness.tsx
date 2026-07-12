@@ -96,14 +96,14 @@ const SCRIPT: Scene[] = [
   },
   {
     source: "first_run",
+    // Releases the first-run pin here: the REAL permission card's buttons act
+    // on the live platform permission registry (Open System Settings actually
+    // leaves the app), so the composer must already be unlocked for the
+    // conversation to continue regardless of which button the reviewer taps.
+    endsOnboarding: true,
     content: `Saved. One quick permission so I can remind you about things later:\n\`\`\`json\n${PERMISSION_CARD}\n\`\`\``,
   },
   {
-    source: "first_run",
-    // Releases the first-run pin here: the secure form's submit posts through
-    // the real client (absent in the harness), so the composer must be
-    // unlocked for the conversation to continue past its genuine error state.
-    endsOnboarding: true,
     content:
       "Last onboarding step — connect a model provider key. This secure field never leaves the device in this harness. (Feel free to skip — just keep typing.)",
     secretRequest: {
