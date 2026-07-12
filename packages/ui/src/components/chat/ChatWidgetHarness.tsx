@@ -232,21 +232,27 @@ export function ChatWidgetHarness(): React.JSX.Element {
   const appendUserAndAdvance = React.useCallback((text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    // Widget action protocols (__first_run__:, __permission_card__:, …) are
+    // machine channels the production pipeline consumes without echoing into
+    // the visible transcript — advance the script without a user bubble.
+    const isProtocol = trimmed.startsWith("__");
     // While onboarding is pinned the overlay renders ONLY first_run-tagged
     // turns and locks the composer (advancement comes from widget taps), so
     // the echoed user turn must carry the tag to stay visible until the
     // pin releases.
     const nextScene = SCRIPT[Math.min(sceneIndexRef.current, SCRIPT.length - 1)];
-    setMessages((current) => [
-      ...current,
-      {
-        id: uid(),
-        role: "user",
-        content: trimmed,
-        createdAt: nextId,
-        ...(nextScene.source ? { source: nextScene.source } : {}),
-      },
-    ]);
+    if (!isProtocol) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: uid(),
+          role: "user",
+          content: trimmed,
+          createdAt: nextId,
+          ...(nextScene.source ? { source: nextScene.source } : {}),
+        },
+      ]);
+    }
     setPhase("responding");
     window.setTimeout(() => {
       const scene = SCRIPT[Math.min(sceneIndexRef.current, SCRIPT.length - 1)];
