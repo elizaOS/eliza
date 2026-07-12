@@ -30,11 +30,11 @@ import {
   type ContinuousVoiceSessionState,
   useContinuousVoiceSession,
 } from "../../hooks/useContinuousVoiceSession";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import {
   isRealtimeVoiceFlagEnabled,
   useRealtimeVoiceSession,
 } from "../../hooks/useRealtimeVoiceSession";
-import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { useApp } from "../../state/useApp";

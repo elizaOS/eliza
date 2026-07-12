@@ -24,7 +24,10 @@
  */
 
 import { useCallback, useMemo } from "react";
-
+import type {
+  VoiceContinuousStatus,
+  VoiceSpeakerMetadata,
+} from "../voice/voice-chat-types";
 import type {
   ContinuousChatLatency,
   ContinuousChatState,
@@ -33,10 +36,6 @@ import type {
   RealtimeVoiceError,
   UseRealtimeVoiceSessionState,
 } from "./useRealtimeVoiceSession";
-import type {
-  VoiceContinuousStatus,
-  VoiceSpeakerMetadata,
-} from "../voice/voice-chat-types";
 
 export interface UseContinuousVoiceSessionOptions {
   /** The batch continuous-chat engine state (always present). */
@@ -133,7 +132,9 @@ export function useContinuousVoiceSession(
       status,
       interimTranscript,
       finalTranscript: realtimeActive ? realtime.transcriptFinal : "",
-      agentSpeaking: realtimeActive ? realtime.agentSpeaking : batch.status === "speaking",
+      agentSpeaking: realtimeActive
+        ? realtime.agentSpeaking
+        : batch.status === "speaking",
       paused: realtimeActive ? realtime.paused : false,
       realtimeError: realtime.error,
       latency: batch.latency,
