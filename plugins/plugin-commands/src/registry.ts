@@ -318,8 +318,13 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 					"account (id, id prefix, label, or email) — for strategy: priority, round-robin, least-used, quota-aware",
 			},
 		],
+		// requiresAuth only, matching /model: reads are authorized-only, and the
+		// write subcommands (use/enable/disable/strategy) re-check isElevated in
+		// the handler. Definition-level requiresElevated would make connectors
+		// (which gate before runCommand) refuse the bare read to non-elevated
+		// authorized senders — the exact bug the handler exemption tried and
+		// failed to work around.
 		requiresAuth: true,
-		requiresElevated: true,
 	},
 	{
 		key: "backend",
@@ -336,8 +341,9 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 				choices: ["codex", "claude", "opencode", "eliza-code"],
 			},
 		],
+		// requiresAuth only (see /accounts): the bare read is authorized-only,
+		// the write re-checks isElevated in the handler.
 		requiresAuth: true,
-		requiresElevated: true,
 	},
 	{
 		key: "config",

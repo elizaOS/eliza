@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveCommand } from "../src/actions";
 import { parseAccountsArgs } from "../src/actions/accounts";
 import { parseBackendArgs } from "../src/actions/backend";
+import { gateConnectorCommandByName } from "../src/connector-bridge";
 import { initForRuntime } from "../src/registry";
 
 function makeRuntime(): IAgentRuntime {
@@ -635,5 +636,39 @@ describe("/backend", () => {
 
 		const r = await resolveCommand(runtime, msg("/backend opencode"), OWNER);
 		expect(r.reply).toContain(error);
+	});
+});
+
+describe("connector read gate (requiresAuth only, not requiresElevated)", () => {
+	beforeEach(() => {
+		initForRuntime("agent-accounts-backend");
+	});
+
+	// Regression: definition-level requiresElevated made connectors (which gate
+	// via gateConnectorCommandByName BEFORE runCommand) refuse the bare read to
+	// an authorized-but-not-elevated sender. With requiresAuth only, the read
+	// passes the bridge and the write subcommands re-check isElevated in-handler.
+	it.each([
+		"accounts",
+		"backend",
+	])("lets an authorized non-elevated sender through the bridge for /%s", (name) => {
+		const decision = gateConnectorCommandByName(
+			"agent-accounts-backend",
+			name,
+			{ isAuthorized: true, isElevated: false, senderName: "t" },
+		);
+		expect(decision.allowed).toBe(true);
+	});
+
+	it.each([
+		"accounts",
+		"backend",
+	])("refuses an unauthorized sender at the bridge for /%s", (name) => {
+		const decision = gateConnectorCommandByName(
+			"agent-accounts-backend",
+			name,
+			{ isAuthorized: false, isElevated: false, senderName: "t" },
+		);
+		expect(decision.allowed).toBe(false);
 	});
 });

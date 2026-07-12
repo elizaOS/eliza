@@ -75,16 +75,6 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"backend",
 ];
 
-/**
- * Commands whose definitions carry `requiresElevated` for connector pickers
- * but gate elevation per subcommand in their handlers: reads stay
- * authorized-only, writes require elevation.
- */
-const HANDLER_ELEVATION_GATED_KEYS: ReadonlySet<string> = new Set([
-	"accounts",
-	"backend",
-]);
-
 const DETERMINISTIC_KEYS: ReadonlySet<string> = new Set(
 	DETERMINISTIC_COMMAND_KEYS,
 );
@@ -325,11 +315,7 @@ export async function runCommand(
 
 	// Auth gate — enforced server-side on every surface, never client-trusted.
 	if (definition?.requiresAuth && !context.isAuthorized) return authError();
-	if (
-		definition?.requiresElevated &&
-		!context.isElevated &&
-		!HANDLER_ELEVATION_GATED_KEYS.has(parsed.key)
-	) {
+	if (definition?.requiresElevated && !context.isElevated) {
 		return reply("This command requires elevated permissions.");
 	}
 
