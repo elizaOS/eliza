@@ -31,6 +31,15 @@ import type { PullGestureBinding } from "./use-pull-gesture";
 export function withPressLatch(
   binding: PullGestureBinding,
   pressed: React.MutableRefObject<number | null>,
+  /**
+   * Re-render hook: the ref alone cannot re-evaluate a JSX mount gate — a
+   * release whose handlers only set already-current state values renders
+   * NOTHING, so a gate that mounted the handle mid-press stays stale-mounted
+   * forever (the invisible grabber over the maximize-restore strip, #16151
+   * follow-up). Passing a state setter here guarantees exactly one re-render
+   * on press and one on release, so ref-gated mounts settle deterministically.
+   */
+  onChange?: (pressed: boolean) => void,
 ): PullGestureBinding {
   // Mirrors the gesture's own acceptance rule (use-pull-gesture onPointerDown
   // rejects secondary touch/pen pointers) plus the primary-button rule for
@@ -46,11 +55,17 @@ export function withPressLatch(
     return event.pointerType !== "mouse" || event.button === 0;
   };
   const clear = (event: React.PointerEvent) => {
-    if (pressed.current === event.pointerId) pressed.current = null;
+    if (pressed.current === event.pointerId) {
+      pressed.current = null;
+      onChange?.(false);
+    }
   };
   return {
     onPointerDown: (event) => {
-      if (eligible(event)) pressed.current = event.pointerId;
+      if (eligible(event)) {
+        pressed.current = event.pointerId;
+        onChange?.(true);
+      }
       binding.onPointerDown(event);
     },
     onPointerMove: binding.onPointerMove,

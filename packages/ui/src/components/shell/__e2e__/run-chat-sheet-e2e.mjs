@@ -231,14 +231,15 @@ const chatSurfaceTone = (p) =>
 async function assertDarkChatSurface(p, label) {
   const tone = await chatSurfaceTone(p);
   const rgb = tone.parsed;
-  // The INSET sheet is deliberately frosted glass — a translucent (~68%) dark
-  // warm fill over a backdrop blur (product direction; see the surface layer's
-  // backgroundColor note in ChatOverlay). Full-bleed is opaque. Both
-  // must stay DARK and locally themed, never the orange app theme.
+  // The INSET sheet is deliberately LIQUID glass — a light (~30%) dark fill
+  // whose legibility comes from the heavy backdrop blur destroying detail,
+  // not from fill opacity (product direction; see the surface layer's
+  // backgroundColor note in ChatOverlay). Full-bleed is opaque. Both must
+  // stay DARK and locally themed, never the orange app theme.
   assert(
     Boolean(
       rgb &&
-        rgb.a >= 0.6 &&
+        rgb.a >= 0.25 &&
         rgb.r < 60 &&
         rgb.g < 50 &&
         rgb.b < 45 &&

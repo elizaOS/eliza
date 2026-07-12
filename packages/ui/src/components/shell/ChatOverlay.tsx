@@ -1527,6 +1527,9 @@ export function ChatOverlay({
   // secondary finger's up can never unlatch a still-held primary drag.
   const grabberPressRef = React.useRef<number | null>(null);
   const restorePressRef = React.useRef<number | null>(null);
+  // State mirror of restorePressRef — see grabberPressed for why refs alone
+  // cannot drive the mount gates.
+  const [restorePressed, setRestorePressed] = React.useState(false);
   // Peak RAW (pre-clamp) pull height reached during the current upward drag
   // (#13531). The visible `threadHeight` is rubber-band-clamped at `openH`, so a
   // deliberate over-pull past FULL is invisible to a `threadHeight.get()` read on
@@ -4580,8 +4583,12 @@ export function ChatOverlay({
   });
   // Latch a press on the open-sheet grabber so its mount gate can't drop the
   // captured pointer between pointerdown and the integrator's first frame.
+  // Pressed STATE mirrors of the latch refs: the setter forces the one
+  // re-render per press/release that lets the JSX mount gates below settle —
+  // the refs alone go stale when a release's handlers set no new state.
+  const [grabberPressed, setGrabberPressed] = React.useState(false);
   const grabberBinding = React.useMemo(
-    () => withPressLatch(pullBinding, grabberPressRef),
+    () => withPressLatch(pullBinding, grabberPressRef, setGrabberPressed),
     [pullBinding],
   );
 
@@ -4623,13 +4630,21 @@ export function ChatOverlay({
       // peak (any upward drift is consumed by onDragOffset's ceiling rebase, so
       // the sheet leaves the ceiling exactly here, not at raw `offset < 0`).
       // The small slop absorbs touch jitter so a held-at-top hand doesn't flap.
-      if (
-        maximized &&
-        offset < restorePeakOffsetRef.current - RESTORE_UNMAX_SLOP
-      ) {
-        setMaximized(false);
-        setRestoreDragging(true);
-        restoreDidUnmaximizeRef.current = true;
+      // The bookkeeping (restoreDragging + didUnmaximize) keys on the DRAG's
+      // own downward commitment, NOT on the `maximized` closure value:
+      // onDragOffset's maximize-release hysteresis can flip `maximized` false
+      // on an earlier frame than this slop check (it fires the moment the
+      // over-pull fraction drops below its release threshold), and gating the
+      // bookkeeping on `maximized` then skipped it entirely — settleRestore
+      // saw didUnmaximize=false, bailed to settleDrag(), and the sheet sprang
+      // back to the full-height baseH un-maximized (the maximize →
+      // pull-to-half "bounces back tall" bug).
+      if (offset < restorePeakOffsetRef.current - RESTORE_UNMAX_SLOP) {
+        if (maximized) setMaximized(false);
+        if (!restoreDidUnmaximizeRef.current) {
+          setRestoreDragging(true);
+          restoreDidUnmaximizeRef.current = true;
+        }
       }
       onDragOffset(offset);
     },
@@ -4717,7 +4732,8 @@ export function ChatOverlay({
   // never runs, so `restoreDragging`/`draggingRef` stay true and freeze the
   // sheet — the corrupted state the desktop-held drain leg then trips over.
   const restoreZoneBinding = React.useMemo(
-    () => withPressLatch(maximizeRestoreBinding, restorePressRef),
+    () =>
+      withPressLatch(maximizeRestoreBinding, restorePressRef, setRestorePressed),
     [maximizeRestoreBinding],
   );
 
@@ -4933,17 +4949,22 @@ export function ChatOverlay({
       >
         {!firstRunOpen &&
         ((!fullBleed && !restoreDragging) ||
-          draggingRef.current ||
+          grabberPressed ||
           grabberPressRef.current != null) ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
           // while a restore drag is in flight (so the strip keeps the pointer
-          // capture through the un-maximize) — EXCEPT while a grabber drag is
-          // live OR merely pressed: a MID-DRAG commit (pill or maximize) must not
-          // unmount or disable the element holding the pointer capture, or the
-          // gesture dies at the exact moment it commits. `grabberPressRef` widens
-          // that window back to the pointerdown, before the integrator's first
-          // frame flips `draggingRef`. Onboarding hides the grabber entirely: it
-          // is pinned, undismissable, and sign-in-first.
+          // capture through the un-maximize) — EXCEPT while the grabber itself
+          // holds a live press: a MID-DRAG commit (pill or maximize) must not
+          // unmount the element holding the pointer capture, or the gesture
+          // dies at the exact moment it commits. The press latch spans
+          // pointerdown → release, so it covers that whole window, and it must
+          // be the ONLY exception: the old `draggingRef.current` term here was
+          // a ref read at render — a mid-drag maximize commit rendered it true
+          // and nothing re-rendered it false after release, so an INVISIBLE
+          // grabber stayed parked over the restore strip and captured the next
+          // top-edge drag with inset-detent release logic (the maximize →
+          // pull-to-half "bounces tall / collapses" bug). Onboarding hides the
+          // grabber entirely: it is pinned, undismissable, and sign-in-first.
           <SheetGrabber
             open={sheetOpen}
             onOpen={openFromGrabber}
@@ -5207,6 +5228,7 @@ export function ChatOverlay({
                 stays WCAG 2.1.1 operable. */}
             {(fullBleed ||
               restoreDragging ||
+              restorePressed ||
               restorePressRef.current != null) &&
             !pinnedOpen ? (
               <button

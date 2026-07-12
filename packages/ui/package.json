@@ -82,7 +82,8 @@
     "test:wallet-widget-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-wallet-widget-e2e.mjs",
     "test:task-pipeline-e2e": "bun run --cwd ../.. packages/ui/src/components/chat/widgets/__e2e__/run-task-pipeline-e2e.mjs",
     "test:home-locale-e2e": "bun run --cwd ../.. packages/ui/src/components/shell/__e2e__/run-home-locale-e2e.mjs",
-    "audit:surface-realm-writers": "node scripts/scan-reserved-storage-writers.mjs"
+    "audit:surface-realm-writers": "node scripts/scan-reserved-storage-writers.mjs",
+    "test:chat-restore-e2e": "node --experimental-strip-types src/components/shell/__e2e__/run-restore-half-e2e.mjs"
   },
   "exports": {
     ".": {
