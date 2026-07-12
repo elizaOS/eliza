@@ -61,6 +61,17 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
   /^\/bsc(?:\/|$)/,
   /^\/dashboard(?:\/|$)/,
   /^\/login(?:\/|$)/,
+  // `/join` is the post-OAuth provisioning landing (JoinPage). Its own
+  // registration (cloud/join/register.ts) documents that it "needs the Steward
+  // runtime so the session resolves", but the route was missing here — so the
+  // runtime only mounted when a token already sat in localStorage. On the
+  // returning-user / cookie-session hand back from OAuth the token isn't yet
+  // stored, so `LocalStewardAuthContext` stayed null, `useJoinSessionAuth`
+  // never became authenticated, and JoinPage sat on the provisioning spinner
+  // (or bounced back to /login) instead of running the join flow and
+  // navigating into the app. Load the runtime for `/join` unconditionally so
+  // the session resolves and provisioning + the post-provision redirect fire.
+  /^\/join(?:\/|$)/,
   /^\/invite(?:\/|$)/,
   /^\/accept-invitation(?:\/|$)/,
   /^\/payment(?:\/|$)/,
@@ -69,7 +80,14 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
   /^\/ballot(?:\/|$)/,
 ] as const;
 
-function shouldLoadStewardRuntime(pathname: string): boolean {
+/**
+ * Whether the heavy `@stwd/*` Steward runtime must mount for this route. Exported
+ * for unit coverage: the `/join` provisioning landing depends on this returning
+ * true even before a token is persisted, so the session resolves and JoinPage
+ * can provision + redirect (regression guard for the post-OAuth stuck-loading
+ * bug).
+ */
+export function shouldLoadStewardRuntime(pathname: string): boolean {
   if (readStoredToken()) return true;
   return STEWARD_RUNTIME_ROUTE_PATTERNS.some((pattern) =>
     pattern.test(pathname),

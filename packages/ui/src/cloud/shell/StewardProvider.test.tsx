@@ -55,12 +55,20 @@ vi.mock("./StewardProviderRuntime", () => ({
   },
 }));
 
-import { StewardAuthProvider } from "./StewardProvider";
+import {
+  StewardAuthProvider,
+  shouldLoadStewardRuntime,
+} from "./StewardProvider";
 
 afterEach(() => {
   runtimeGate.release();
   cleanup();
   resolveBrowserStewardApiUrl.mockReturnValue("placeholder-steward-url");
+  try {
+    window.localStorage.clear();
+  } catch {
+    // jsdom storage is always available; ignore if a test disabled it.
+  }
 });
 
 function renderAt(pathname: string) {
@@ -130,5 +138,70 @@ describe("StewardAuthProvider", () => {
     expect(await screen.findByTestId("steward-runtime")).toBeTruthy();
     expect(screen.getByTestId("protected-child")).toBeTruthy();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  // Regression: the post-OAuth `/join` provisioning landing was left on its
+  // loading spinner (and never redirected into the app) because the Steward
+  // runtime only mounted when a token already sat in localStorage. On the
+  // returning-user / cookie-session handback the token isn't stored yet, so the
+  // runtime never loaded, the session never resolved, and JoinPage stalled.
+  // `/join` must load the runtime even with NO stored token so provisioning +
+  // the post-provision redirect run.
+  it("loads the Steward runtime on /join with no stored token so provisioning can redirect", async () => {
+    resolveBrowserStewardApiUrl.mockReturnValue(
+      "https://api.elizacloud.ai/steward",
+    );
+    window.localStorage.clear();
+
+    renderAt("/join");
+
+    expect(await screen.findByTestId("steward-runtime")).toBeTruthy();
+    expect(screen.getByTestId("protected-child")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("shouldLoadStewardRuntime", () => {
+  afterEach(() => {
+    try {
+      window.localStorage.clear();
+    } catch {
+      // ignore
+    }
+  });
+
+  it("loads the runtime for /join (and its subpaths) even with no stored token", () => {
+    // The gate receives `location.pathname` (query already split off by the
+    // router), so only the bare path forms are asserted here.
+    window.localStorage.clear();
+    expect(shouldLoadStewardRuntime("/join")).toBe(true);
+    expect(shouldLoadStewardRuntime("/join/")).toBe(true);
+    expect(shouldLoadStewardRuntime("/join/next")).toBe(true);
+  });
+
+  it("keeps loading the runtime for the existing auth routes with no stored token", () => {
+    window.localStorage.clear();
+    for (const path of [
+      "/login",
+      "/app-auth/authorize",
+      "/auth/callback/email",
+      "/dashboard",
+      "/payment/abc",
+    ]) {
+      expect(shouldLoadStewardRuntime(path)).toBe(true);
+    }
+  });
+
+  it("does not load the runtime for a non-auth route with no stored token", () => {
+    window.localStorage.clear();
+    expect(shouldLoadStewardRuntime("/docs")).toBe(false);
+    // A route that merely CONTAINS 'join' as a segment substring must not match.
+    expect(shouldLoadStewardRuntime("/rejoinder")).toBe(false);
+  });
+
+  it("loads the runtime for any route once a token is stored", () => {
+    window.localStorage.setItem("steward_session_token", "tkn");
+    expect(shouldLoadStewardRuntime("/docs")).toBe(true);
+    expect(shouldLoadStewardRuntime("/anything")).toBe(true);
   });
 });

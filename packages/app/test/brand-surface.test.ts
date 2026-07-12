@@ -193,6 +193,32 @@ describe("brand surfaces", () => {
     expect(html).toContain("Booting up&hellip;");
   });
 
+  it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {
+    // Regression: the preboot <img> used a hard RELATIVE `./brand/logos/...`
+    // path. The deployed web SPA (base "/") serves nested routes
+    // (/auth/callback, /app-auth/authorize) from the origin root, so a browser
+    // resolved `./brand/...` against the route directory
+    // (→ /auth/brand/logos/...). The Pages SPA catch-all returns index.html
+    // (text/html) for that miss, so the <img> loaded HTML instead of the SVG
+    // and rendered a broken-image icon on the OAuth loading screen.
+    //
+    // The fix uses Vite's `%BASE_URL%` token, which is base-aware: the web
+    // build (`ELIZA_WEB_ABSOLUTE_BASE=1` → base "/") emits `/brand/...`, so
+    // every route depth resolves to the origin root; native/desktop builds
+    // (base "./", Electrobun/Capacitor load assets relative to the HTML doc)
+    // keep `./brand/...` and resolve the bundled asset. A hard `/brand/...`
+    // would have regressed native by resolving outside the bundle, and a hard
+    // `./brand/...` regressed deep web routes — the token satisfies both.
+    const html = read("index.html");
+    expect(html).toMatch(
+      /class="eliza-preboot-shell__mark"\s+src="%BASE_URL%brand\/logos\/logo_white_nobg\.svg"/,
+    );
+    // Must NOT regress back to a hard relative path (breaks deep web routes).
+    expect(html).not.toMatch(
+      /class="eliza-preboot-shell__mark"\s+src="\.\/brand/,
+    );
+  });
+
   it("renderer root CSS keeps the pre-app surface on the launch black", () => {
     // Same persistence argument as index.html: html/body/#root in the
     // renderer CSS is the page background under the app, so its --launch-bg
