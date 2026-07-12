@@ -106,11 +106,28 @@ public class NativeTranscriptPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.resolve()
                 return
             }
-            guard let webView = self.webView, let container = webView.superview,
-                let parent = self.bridge?.viewController
+            guard let webView = self.webView, let container = webView.superview
             else {
                 call.reject("webview not ready")
                 return
+            }
+            // Child-VC containment must target the CONTAINER's true owning
+            // view controller. In this shell the bridge VC is not always that
+            // owner (the webview can sit inside an intermediate container
+            // VC), and UIKit hard-raises on insertSubview when the inserted
+            // view's controller is parented elsewhere (SIGABRT on launch,
+            // caught by the sim run). Walk the responder chain from the
+            // container; with no owner in the chain, mount plain — a root
+            // -level subview without containment is legal, containment with
+            // the WRONG parent is not.
+            var responder: UIResponder? = container
+            var owner: UIViewController?
+            while let current = responder {
+                if let viewController = current as? UIViewController {
+                    owner = viewController
+                    break
+                }
+                responder = current.next
             }
             let frame = rect.offsetBy(dx: webView.frame.origin.x, dy: webView.frame.origin.y)
             if let host = self.hostController {
@@ -141,16 +158,20 @@ public class NativeTranscriptPlugin: CAPPlugin, CAPBridgedPlugin {
                         self?.notifyListeners("transcriptAction", data: data)
                     }
                 )
-                // The rect is the full layout truth from the web layer; safe
-                // areas are already accounted for on that side.
-                .ignoresSafeArea()
+                // Respect the safe area: with real owner-VC containment the
+                // insets propagate, and ignoring them rendered the first row
+                // under the status bar (verified on-sim).
             )
             host.view.backgroundColor = .clear
             host.view.isOpaque = false
             host.view.frame = frame
-            parent.addChild(host)
-            container.insertSubview(host.view, aboveSubview: webView)
-            host.didMove(toParent: parent)
+            if let owner {
+                owner.addChild(host)
+                container.insertSubview(host.view, aboveSubview: webView)
+                host.didMove(toParent: owner)
+            } else {
+                container.insertSubview(host.view, aboveSubview: webView)
+            }
             self.hostController = host
             call.resolve()
         }

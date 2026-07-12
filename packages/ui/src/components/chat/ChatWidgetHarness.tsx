@@ -422,12 +422,17 @@ export function ChatWidgetHarness(): React.JSX.Element {
         return;
       }
       listener = handle;
+      // Top-45% comparison rect. KNOWN TRADE (review surface only): within
+      // this rect the native host owns ALL touches — SwiftUI's scroll
+      // container hit-tests its empty background too, so DOM content under
+      // the rect is not tappable. Production integration mounts native as
+      // the ONLY transcript surface, where this cannot arise.
       await bridge.show({
         rect: {
           x: 0,
           y: 0,
           width: window.innerWidth,
-          height: Math.round(window.innerHeight / 2),
+          height: Math.round(window.innerHeight * 0.45),
         },
       });
       shown = true;
