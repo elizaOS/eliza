@@ -136,6 +136,14 @@ describe("plugin-health smoke (W1-B)", () => {
     expect(healthPlugin.actions ?? []).toEqual([]);
   });
 
+  it("registers deterministic routing for host-adapted owner health reads", () => {
+    expect(
+      healthPlugin.responseHandlerEvaluators?.map(
+        (evaluator) => evaluator.name,
+      ),
+    ).toContain("health.owner-telemetry-routing");
+  });
+
   it("does not export removed scaffold owner actions", () => {
     expect("ownerHealthAction" in healthActionExports).toBe(false);
     expect("ownerScreentimeAction" in healthActionExports).toBe(false);

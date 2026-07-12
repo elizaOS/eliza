@@ -151,7 +151,12 @@ import { AcpService } from "../../src/services/acp-service.js";
 function runtime(settings: Record<string, string | undefined> = {}) {
   // ELIZA_ACP_TRANSPORT undefined selects the native transport (the fake client
   // mocked above), so spawns resolve to "ready" without the CLI proc-mock dance.
-  const values: Record<string, string | undefined> = { ...settings };
+  const values: Record<string, string | undefined> = {
+    // NativeAcpClient is mocked in this concurrency suite; command provisioning
+    // is outside its scope and must not depend on workspace build artifacts.
+    ELIZA_ELIZAOS_ACP_COMMAND: "test-eliza-code-acp",
+    ...settings,
+  };
   return {
     logger: {
       debug: vi.fn(),

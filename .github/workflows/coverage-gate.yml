@@ -111,12 +111,30 @@ jobs:
             echo "no changed Bun-native test files; skipping coverage run"
             exit 0
           fi
+          shared_tests=()
+          process_isolated_tests=()
+          for test_file in "${changed_tests[@]}"; do
+            case "$test_file" in
+              packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts|packages/tools/voice-evidence-harness/src/cli-run.test.ts)
+                process_isolated_tests+=("$test_file")
+                ;;
+              *) shared_tests+=("$test_file") ;;
+            esac
+          done
           # This lane runs before workspace builds, so package defaults point at
           # absent dist files; source exports keep changed tests self-contained.
-          bun test --conditions=eliza-source "${changed_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun
+          if [ "${#shared_tests[@]}" -gt 0 ]; then
+            bun test --conditions=eliza-source "${shared_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun/shared
+          fi
+          # Bun module mocks remain process-global despite `--isolate`. Tests
+          # listed here run in fresh processes and emit separate LCOV files;
+          # the gate below already aggregates every coverage/**/lcov.info.
+          for index in "${!process_isolated_tests[@]}"; do
+            ELIZA_PROCESS_ISOLATED_TEST=1 bun test --conditions=eliza-source "${process_isolated_tests[$index]}" --coverage --coverage-reporter=lcov --coverage-dir="coverage/bun/isolated-$index"
+          done
         env:
-          # Tests must produce coverage/lcov.info. If a package emits to a
-          # different path, surface it here.
+          # Tests must produce LCOV under this coverage root; the enforced gate
+          # recursively aggregates process-isolated and shared outputs.
           BUN_COVERAGE_DIR: coverage/bun
 
       - name: Build core for changed Vitest tests

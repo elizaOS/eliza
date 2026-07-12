@@ -257,6 +257,19 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(elevenLabsTextToSpeech).not.toHaveBeenCalled();
   });
 
+  test("rejects an empty text body before any provider selection or upstream call", async () => {
+    const response = await postTts(
+      { text: "", voiceId: "af_heart" },
+      { KOKORO_TTS_URL: "https://kokoro.example.test" },
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body).toEqual({ error: "No text provided" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(assertSafeForPublicUse).not.toHaveBeenCalled();
+  });
+
   test("preserves ElevenLabs routing and observability for a custom voice", async () => {
     const response = await postTts({
       text: "Hello from a custom voice.",

@@ -243,6 +243,10 @@ jobs:
       - name: Run EA + connector live scenarios
         id: run
         env:
+          # The runner and ordinary workspace dependencies stay on checkout
+          # sources; generated/native and dist-only artifacts come from the
+          # dependency-closure build above.
+          NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -305,6 +309,7 @@ jobs:
       - name: Run plugin-health live scenarios
         id: run-health
         env:
+          NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -331,6 +336,7 @@ jobs:
         id: run-app-control
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
+          NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}

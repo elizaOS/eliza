@@ -23,7 +23,12 @@ import type { CommandDefinition, CommandSurface } from "./types";
 
 const IN_APP_SURFACES: CommandSurface[] = ["gui"];
 
-/** Navigation destinations — open an in-app route on any surface. */
+/**
+ * Navigation destinations — open an in-app route. App-surface only
+ * (`IN_APP_SURFACES`): navigating needs a viewport, so on chat connectors
+ * (Discord/Telegram) these would only reply with a text description of a
+ * destination the user cannot see — a dozen commands of picker clutter.
+ */
 const NAVIGATE_COMMANDS: CommandDefinition[] = [
 	{
 		key: "settings",
@@ -31,6 +36,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open agent settings",
 		textAliases: ["/settings"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "settings",
 		target: { kind: "navigate", path: "/settings", tab: "settings" },
@@ -51,6 +57,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Return to the chat",
 		textAliases: ["/chat"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "message-circle",
 		target: { kind: "navigate", path: "/chat", tab: "chat" },
@@ -61,6 +68,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the agent's views",
 		textAliases: ["/views"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "layout-grid",
 		target: { kind: "navigate", path: "/views", tab: "views" },
@@ -80,6 +88,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the agent orchestrator",
 		textAliases: ["/orchestrator"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "workflow",
 		target: { kind: "navigate", path: "/orchestrator", viewId: "orchestrator" },
@@ -90,6 +99,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the character editor",
 		textAliases: ["/character"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "user",
 		target: { kind: "navigate", path: "/character", tab: "character" },
@@ -100,6 +110,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the knowledge base",
 		textAliases: ["/knowledge"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "book-open",
 		target: {
@@ -114,6 +125,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the wallet & inventory",
 		textAliases: ["/wallet"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "wallet",
 		target: { kind: "navigate", path: "/wallet", tab: "inventory" },
@@ -124,6 +136,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open automations",
 		textAliases: ["/automations"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "zap",
 		target: { kind: "navigate", path: "/automations", tab: "automations" },
@@ -134,6 +147,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open tasks",
 		textAliases: ["/tasks"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "check-square",
 		target: { kind: "navigate", path: "/apps/tasks", tab: "tasks" },
@@ -144,6 +158,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the skills library",
 		textAliases: ["/skills"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "sparkles",
 		target: { kind: "navigate", path: "/apps/skills", tab: "skills" },
@@ -154,6 +169,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open installed plugins",
 		textAliases: ["/plugins"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "plug",
 		target: { kind: "navigate", path: "/apps/plugins", tab: "plugins" },
@@ -164,6 +180,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the logs",
 		textAliases: ["/logs"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "scroll-text",
 		target: { kind: "navigate", path: "/apps/logs", tab: "logs" },
@@ -174,6 +191,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		description: "Open the database browser",
 		textAliases: ["/database"],
 		scope: "both",
+		surfaces: IN_APP_SURFACES,
 		category: "docks",
 		icon: "database",
 		target: { kind: "navigate", path: "/apps/database", tab: "database" },

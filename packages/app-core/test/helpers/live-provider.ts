@@ -464,7 +464,7 @@ function selectCliProvider(): LiveProviderConfig | null {
   const isCodex = backend.startsWith("codex");
   const model = isCodex
     ? getTrimmedEnv("ELIZA_CLI_CODEX_MODEL") || "gpt-5.5"
-    : getTrimmedEnv("ELIZA_CLI_CLAUDE_MODEL") || "claude-opus-4-7";
+    : getTrimmedEnv("ELIZA_CLI_CLAUDE_MODEL") || "claude-opus-4-8";
 
   const env: Record<string, string> = { ELIZA_CHAT_VIA_CLI: backend };
   for (const envVar of CLI_PASSTHROUGH_ENV_VARS) {

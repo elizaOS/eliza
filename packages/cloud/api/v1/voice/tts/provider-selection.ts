@@ -8,8 +8,13 @@
  */
 
 const DEFAULT_KOKORO_VOICE_ID = "af_heart";
-/** Default injected by the existing cloud TTS proxy when callers omit voiceId. */
-const LEGACY_DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
+/**
+ * Default injected by the existing cloud TTS proxy when callers omit voiceId.
+ * Exported so the route can recognize "caller did not pin a voice" (the proxy
+ * normalizes omitted/OpenAI/Edge voice names to this id before forwarding) —
+ * the gate for provider substitutions that would change voice identity.
+ */
+export const LEGACY_DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const KOKORO_VOICE_ID_PATTERN = /^[ab][fm]_[a-z0-9][a-z0-9_-]*$/;
 
 export const KOKORO_VOICE_IDS = new Set([

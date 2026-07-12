@@ -132,6 +132,7 @@ describe("frontend KPI budgets", () => {
   it("runs the browser measurement path and records a passing result", async () => {
     const recorded = [];
     let browserClosed = false;
+    let contextOptions;
     const metrics = {
       fcpMs: 0,
       lcpMs: 0,
@@ -155,7 +156,10 @@ describe("frontend KPI budgets", () => {
     const playwright = {
       chromium: {
         launch: async () => ({
-          newContext: async () => context,
+          newContext: async (options) => {
+            contextOptions = options;
+            return context;
+          },
           close: async () => {
             browserClosed = true;
           },
@@ -176,6 +180,7 @@ describe("frontend KPI budgets", () => {
 
     expect(exitCode).toBe(0);
     expect(browserClosed).toBe(true);
+    expect(contextOptions).toEqual({ serviceWorkers: "block" });
     expect(recorded).toEqual([
       {
         name: "frontend",

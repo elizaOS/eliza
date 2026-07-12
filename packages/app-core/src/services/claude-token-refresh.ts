@@ -68,7 +68,10 @@ export function resolveClaudeExpectedRunMs(
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return DEFAULT_CLAUDE_EXPECTED_RUN_MS;
   }
-  return Math.min(Math.max(Math.floor(parsed), MIN_EXPECTED_RUN_MS), MAX_EXPECTED_RUN_MS);
+  return Math.min(
+    Math.max(Math.floor(parsed), MIN_EXPECTED_RUN_MS),
+    MAX_EXPECTED_RUN_MS,
+  );
 }
 
 /**
@@ -102,7 +105,7 @@ export function shouldProactivelyRefreshClaudeToken(args: {
 }
 
 export {
-  classifyAuthFailureReason,
   type CodingAuthFailureReason,
+  classifyAuthFailureReason,
   isTokenExpiryText,
 } from "@elizaos/auth/token-expiry";

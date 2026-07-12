@@ -15,7 +15,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { __nativeToolingTestHooks } from "../v1/chat/completions/route";
+import {
+  __nativeToolingTestHooks,
+  __passthroughStreamingTestHooks,
+  __streamingCreditTestHooks,
+} from "../v1/chat/completions/route";
 
 const {
   mapToolChoice,
@@ -23,8 +27,14 @@ const {
   computeEffectiveMaxTokens,
   validateCerebrasReasoningEffort,
   buildReasoningEffortProviderOptions,
+  isEmptyButBilled,
   toOpenAiFinishReason,
+  resolvePromptCacheKey,
+  mergePromptCacheProviderOptions,
 } = __nativeToolingTestHooks;
+const { getRecoverableProviderErrorStatus } = __streamingCreditTestHooks;
+const { qualifiesForPassthroughStreaming, mapPassthroughUpstreamStatus } =
+  __passthroughStreamingTestHooks;
 
 // Mirror of MIN_RESPONSE_TOKENS in route.ts. Kept as a literal here so the test
 // fails loudly if the production floor changes without intent.
@@ -104,11 +114,8 @@ describe("convertTools", () => {
 });
 
 /**
- * computeEffectiveMaxTokens guarantees a response-token budget so reasoning
- * models do not truncate mid-chain-of-thought and return empty (but billed)
- * completions. Before the fix, only Anthropic CoT (cotBudget != null) got a
- * floor; every other reasoning model fell through and returned the raw
- * (often tiny) request max_tokens.
+ * computeEffectiveMaxTokens preserves an explicit caller output/spend ceiling.
+ * Reasoning models receive a safer default only when max_tokens is omitted.
  */
 describe("computeEffectiveMaxTokens", () => {
   test("non-reasoning model: passes request max_tokens through unchanged", () => {
@@ -124,14 +131,10 @@ describe("computeEffectiveMaxTokens", () => {
     ).toBeUndefined();
   });
 
-  test("reasoning model with tiny max_tokens: floors to MIN_RESPONSE_TOKENS", () => {
-    // This is the bug: minimax/m3 at max_tokens=10 spent all 10 on reasoning
-    // and returned null content while billing the tokens.
-    expect(computeEffectiveMaxTokens(10, null, "minimax/minimax-m3")).toBe(
-      MIN_RESPONSE_TOKENS,
-    );
+  test("reasoning model: preserves an explicit tiny max_tokens ceiling", () => {
+    expect(computeEffectiveMaxTokens(10, null, "minimax/minimax-m3")).toBe(10);
     expect(computeEffectiveMaxTokens(16, null, "deepseek/deepseek-r1")).toBe(
-      MIN_RESPONSE_TOKENS,
+      16,
     );
   });
 
@@ -166,23 +169,49 @@ describe("computeEffectiveMaxTokens", () => {
     expect(computeEffectiveMaxTokens(512, null, "gemma-4-31b")).toBe(512);
   });
 
-  test("active Cerebras reasoning retains the response-token floor", () => {
+  test("active Cerebras reasoning preserves an explicit caller ceiling", () => {
     expect(
       computeEffectiveMaxTokens(512, null, "gemma-4-31b", undefined, "low"),
+    ).toBe(512);
+    expect(computeEffectiveMaxTokens(512, null, "zai-glm-4.7")).toBe(512);
+    expect(
+      computeEffectiveMaxTokens(512, null, "gpt-oss-120b", undefined, "low"),
+    ).toBe(512);
+  });
+
+  test("active Cerebras reasoning floors omitted max_tokens to the response-token floor", () => {
+    expect(
+      computeEffectiveMaxTokens(
+        undefined,
+        null,
+        "gemma-4-31b",
+        undefined,
+        "low",
+      ),
     ).toBe(MIN_RESPONSE_TOKENS);
-    expect(computeEffectiveMaxTokens(512, null, "zai-glm-4.7")).toBe(
+    expect(computeEffectiveMaxTokens(undefined, null, "zai-glm-4.7")).toBe(
       MIN_RESPONSE_TOKENS,
     );
     expect(
-      computeEffectiveMaxTokens(512, null, "gpt-oss-120b", undefined, "low"),
+      computeEffectiveMaxTokens(
+        undefined,
+        null,
+        "gpt-oss-120b",
+        undefined,
+        "low",
+      ),
     ).toBe(MIN_RESPONSE_TOKENS);
   });
 
-  test("Anthropic CoT budget: reserves response capacity beyond the thinking budget", () => {
-    // cotBudget=8000 -> must be at least 8000 + MIN_RESPONSE_TOKENS regardless of
-    // a smaller requested max_tokens.
+  test("Anthropic CoT budget: preserves an explicit caller ceiling", () => {
     expect(
       computeEffectiveMaxTokens(1000, 8000, "anthropic/claude-opus-4.8"),
+    ).toBe(1000);
+  });
+
+  test("Anthropic CoT budget: reserves response capacity when max_tokens is omitted", () => {
+    expect(
+      computeEffectiveMaxTokens(undefined, 8000, "anthropic/claude-opus-4.8"),
     ).toBe(8000 + MIN_RESPONSE_TOKENS);
   });
 
@@ -192,20 +221,28 @@ describe("computeEffectiveMaxTokens", () => {
     ).toBe(20000);
   });
 
-  test("catalog reasoning signal: floors even when the id has no reasoning pattern", () => {
+  test("catalog reasoning signal: preserves explicit max_tokens", () => {
     // glm-5.1 / kimi-k2.6 / deepseek-v4-pro have no "think"/"reasoning" id but
-    // advertise reasoning in supported_parameters. These were the
-    // production-reported failures.
+    // advertise reasoning in supported_parameters.
     expect(
       computeEffectiveMaxTokens(50, null, "z-ai/glm-5.1", [
         "max_tokens",
         "reasoning",
       ]),
-    ).toBe(MIN_RESPONSE_TOKENS);
+    ).toBe(50);
     expect(
       computeEffectiveMaxTokens(50, null, "deepseek/deepseek-v4-pro", [
         "max_tokens",
         "include_reasoning",
+      ]),
+    ).toBe(50);
+  });
+
+  test("catalog reasoning signal: defaults omitted max_tokens to the safe floor", () => {
+    expect(
+      computeEffectiveMaxTokens(undefined, null, "z-ai/glm-5.1", [
+        "max_tokens",
+        "reasoning",
       ]),
     ).toBe(MIN_RESPONSE_TOKENS);
   });
@@ -275,6 +312,28 @@ describe("Cerebras reasoning_effort validation", () => {
   });
 });
 
+describe("isEmptyButBilled", () => {
+  test("detects a streamed reasoning completion with billed output but no visible result", () => {
+    expect(isEmptyButBilled("", false, { outputTokens: 32 })).toBe(true);
+    expect(isEmptyButBilled("", false, { completionTokens: 32 })).toBe(true);
+  });
+
+  test("does not override visible text, tool calls, or genuinely empty usage", () => {
+    expect(isEmptyButBilled("answer", false, { outputTokens: 32 })).toBe(false);
+    expect(isEmptyButBilled("", true, { outputTokens: 32 })).toBe(false);
+    expect(isEmptyButBilled("", false, { outputTokens: 0 })).toBe(false);
+  });
+
+  test("preserves a provider-declared content-filter result", () => {
+    expect(
+      isEmptyButBilled("", false, { outputTokens: 32 }, "content-filter"),
+    ).toBe(false);
+    expect(
+      isEmptyButBilled("", false, { completionTokens: 32 }, "content_filter"),
+    ).toBe(false);
+  });
+});
+
 describe("toOpenAiFinishReason", () => {
   test("maps AI-SDK finish reasons to valid OpenAI enum values", () => {
     // The streaming path used to emit these raw — "content-filter" (hyphen),
@@ -295,5 +354,220 @@ describe("toOpenAiFinishReason", () => {
   test("passes through already-normalized values idempotently", () => {
     expect(toOpenAiFinishReason("tool_calls")).toBe("tool_calls");
     expect(toOpenAiFinishReason("content_filter")).toBe("content_filter");
+  });
+});
+
+describe("getRecoverableProviderErrorStatus", () => {
+  function gatewayError(name: string, statusCode?: number) {
+    return Object.assign(new Error(`${name} from gateway`), {
+      name,
+      ...(statusCode === undefined ? {} : { statusCode }),
+    });
+  }
+
+  test("preserves gateway caller-fault statuses from stable error names", () => {
+    expect(
+      getRecoverableProviderErrorStatus(
+        gatewayError("GatewayInvalidRequestError"),
+      ),
+    ).toBe(400);
+    expect(
+      getRecoverableProviderErrorStatus(
+        gatewayError("GatewayModelNotFoundError"),
+      ),
+    ).toBe(404);
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayRateLimitError")),
+    ).toBe(429);
+  });
+
+  test("preserves explicit gateway caller-fault status fields", () => {
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 400)),
+    ).toBe(400);
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 404)),
+    ).toBe(404);
+    expect(
+      getRecoverableProviderErrorStatus(gatewayError("GatewayError", 429)),
+    ).toBe(429);
+  });
+
+  test("maps quota language to rate limit and leaves infrastructure errors to the boundary", () => {
+    expect(
+      getRecoverableProviderErrorStatus(new Error("provider quota exceeded")),
+    ).toBe(429);
+    expect(
+      getRecoverableProviderErrorStatus(
+        gatewayError("GatewayResponseError", 500),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("passthrough streaming qualification", () => {
+  function passthroughRequest(overrides: Record<string, unknown> = {}) {
+    return {
+      model: "openai/gpt-4o-mini",
+      stream: true,
+      stream_options: { include_usage: true },
+      messages: [{ role: "user" as const, content: "hello" }],
+      ...overrides,
+    };
+  }
+
+  test("accepts the plain streamed chat shape that can be piped byte-for-byte", () => {
+    expect(qualifiesForPassthroughStreaming(passthroughRequest())).toBe(true);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        response_format: { type: "text" },
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects shapes that require route-side SSE synthesis or provider options", () => {
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        stream: false,
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        stream_options: { include_usage: false },
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        tools: [{ type: "function", function: { name: "search" } }],
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        tool_choice: "required",
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        response_format: { type: "json_object" },
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        webSearchEnabled: true,
+      }),
+    ).toBe(false);
+  });
+
+  test("rejects message shapes whose semantics must be converted by the route", () => {
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        messages: [{ role: "tool", content: "result", tool_call_id: "call-1" }],
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        messages: [
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "call-1",
+                type: "function",
+                function: { name: "lookup", arguments: "{}" },
+              },
+            ],
+          },
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForPassthroughStreaming({
+        ...passthroughRequest(),
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: "multimodal part" }],
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("mapPassthroughUpstreamStatus", () => {
+  test("passes caller-fault statuses through and hides provider auth/infra state", () => {
+    expect(mapPassthroughUpstreamStatus(400)).toBe(400);
+    expect(mapPassthroughUpstreamStatus(402)).toBe(402);
+    expect(mapPassthroughUpstreamStatus(404)).toBe(404);
+    expect(mapPassthroughUpstreamStatus(429)).toBe(429);
+    expect(mapPassthroughUpstreamStatus(401)).toBe(503);
+    expect(mapPassthroughUpstreamStatus(403)).toBe(503);
+    expect(mapPassthroughUpstreamStatus(500)).toBe(503);
+  });
+});
+
+describe("Cerebras prompt cache key", () => {
+  test("accepts canonical and compatibility forms with canonical precedence", () => {
+    expect(
+      resolvePromptCacheKey({ prompt_cache_key: "v5:abc" } as never),
+    ).toEqual({ key: "v5:abc" });
+    expect(
+      resolvePromptCacheKey({ promptCacheKey: "legacy" } as never),
+    ).toEqual({ key: "legacy" });
+    expect(
+      resolvePromptCacheKey({
+        prompt_cache_key: "canonical",
+        promptCacheKey: "legacy",
+      } as never),
+    ).toEqual({ key: "canonical" });
+  });
+  test("rejects empty, oversized, and non-string values", () => {
+    for (const value of ["", "x".repeat(1025), 42, null])
+      expect(
+        resolvePromptCacheKey({ prompt_cache_key: value } as never),
+      ).toHaveProperty("error");
+  });
+  test("merges provider options without overwriting existing providers", () => {
+    const merged = mergePromptCacheProviderOptions(
+      {
+        providerOptions: {
+          anthropic: { thinking: { type: "enabled", budgetTokens: 1024 } },
+        },
+      } as never,
+      "v5:abc",
+    );
+    expect(merged.providerOptions?.anthropic).toBeDefined();
+    expect(merged.providerOptions?.openai).toMatchObject({
+      promptCacheKey: "v5:abc",
+    });
+    expect(merged.providerOptions?.cerebras).toMatchObject({
+      prompt_cache_key: "v5:abc",
+      promptCacheKey: "v5:abc",
+    });
+    expect(merged.providerOptions?.eliza).toMatchObject({
+      promptCacheKey: "v5:abc",
+    });
+  });
+  test("redacts an echoed cache key without changing unrelated errors", () => {
+    const { redactPromptCacheKey } = __nativeToolingTestHooks;
+    expect(
+      redactPromptCacheKey(
+        "provider rejected opaque-cache-key in request",
+        "opaque-cache-key",
+      ),
+    ).toBe("provider rejected [REDACTED_PROMPT_CACHE_KEY] in request");
+    expect(redactPromptCacheKey("queue is saturated", "opaque-cache-key")).toBe(
+      "queue is saturated",
+    );
   });
 });

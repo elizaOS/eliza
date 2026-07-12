@@ -1,0 +1,8 @@
+node_modules/
+*.log
+/tmp/
+
+# The root .gitignore ignores *.wav globally; the harness's synthetic speech
+# fixtures are required to run it and are committed on purpose (provenance in
+# fixtures/PROVENANCE.md). Re-include them here.
+!fixtures/*.wav

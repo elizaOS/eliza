@@ -29,6 +29,23 @@ export function firstRunOwnsLoginSurface(
 }
 
 /**
+ * Whether App's top-level auth gate owns the current surface. A resolved 401
+ * may override first-run for real agent backends, but never for the agentless
+ * Cloud app origin whose first-run conductor is the Cloud login surface.
+ */
+export function topLevelAuthGateOwnsSurface(
+  coordinatorPhase: string,
+  firstRunComplete: boolean | null | undefined,
+  authPhase: string,
+  isAgentlessCloudOrigin: boolean,
+): boolean {
+  return (
+    !firstRunOwnsLoginSurface(coordinatorPhase, firstRunComplete) ||
+    (authPhase === "unauthenticated" && !isAgentlessCloudOrigin)
+  );
+}
+
+/**
  * Whether the main shell should stay unmounted while the top-level auth probe is
  * still deciding. Returning users with an expired Cloud session can have a
  * persisted agent base in localStorage; mounting the shell before `/api/auth/me`

@@ -44,6 +44,9 @@ async function installCloudOnboardingHarness(
     "steward_session_token",
     "eliza:first-run:cloud-resume",
     "elizaos:first-run:force-fresh",
+    // A leftover shared→dedicated handoff marker from a previous run pins the
+    // home provisioning tile and suppresses the fresh upgrade path (#15902).
+    "eliza:cloud-handoff-pending",
   ];
 
   // Capacitor Preferences outlives WebView navigation and otherwise restores

@@ -573,7 +573,7 @@ describe("Anthropic model defaults", () => {
     } as IAgentRuntime;
 
     expect(getResponseHandlerModel(runtime)).toBe("claude-haiku-4-5-20251001");
-    expect(getActionPlannerModel(runtime)).toBe("claude-opus-4-7");
+    expect(getActionPlannerModel(runtime)).toBe("claude-opus-4-8");
 
     const overrideRuntime = {
       getSetting: vi.fn((key: string) => {

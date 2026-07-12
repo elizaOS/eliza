@@ -23,25 +23,76 @@ import { buildDiscordWorldMetadata } from "./identity";
 import type { DiscordSlashCommand } from "./types";
 import { DiscordEventTypes } from "./types";
 
+/** Discord `InteractionContextType`: where a command may be invoked. */
+const CONTEXT_GUILD = 0;
+const CONTEXT_BOT_DM = 1;
+const CONTEXT_PRIVATE_CHANNEL = 2; // group DMs + DMs with non-bot users
+/** Discord `ApplicationIntegrationType`: how the app is installed. */
+const INTEGRATION_GUILD_INSTALL = 0;
+const INTEGRATION_USER_INSTALL = 1;
+
 /**
  * Transforms an ElizaOS slash command to Discord API format.
+ *
+ * `opts.userInstall` opts the command into user-installable / group-DM
+ * availability: a non-guild-only command is offered in guilds, bot DMs, AND
+ * private channels (group DMs) with both install types. Discord only accepts
+ * `integrationTypes` including USER_INSTALL when the application itself is
+ * configured as user-installable in the developer portal — so this stays
+ * OFF by default (`DISCORD_USER_INSTALL`), because registering user-install
+ * commands against a guild-install-only app is rejected by the API.
  */
+/**
+ * Discord's hard limit on command and option description length. Exceeding it
+ * fails the WHOLE `commands.set()` call (it is atomic), so a single over-long
+ * description from the shared command catalog would silently drop EVERY command
+ * from the guild — the failure mode that stranded /accounts + /backend. Clamp
+ * defensively here, the single choke point before registration, so one bad
+ * description can never nuke the rest.
+ */
+const DISCORD_DESCRIPTION_MAX = 100;
+
+function clampDescription(description: string): string {
+	return description.length > DISCORD_DESCRIPTION_MAX
+		? `${description.slice(0, DISCORD_DESCRIPTION_MAX - 1)}…`
+		: description;
+}
+
 export function transformCommandToDiscordApi(
 	cmd: DiscordSlashCommand,
+	opts?: { userInstall?: boolean; guildScoped?: boolean },
 ): ApplicationCommandDataResolvable {
 	const discordCmd: ChatInputApplicationCommandData & {
 		contexts?: number[];
+		integrationTypes?: number[];
 		default_member_permissions?: string;
 	} = {
 		name: cmd.name,
-		description: cmd.description,
-		options: cmd.options,
+		description: clampDescription(cmd.description),
+		options: cmd.options?.map((option) => ({
+			...option,
+			description: clampDescription(option.description),
+		})),
 	};
 
-	if (cmd.contexts) {
+	if (opts?.guildScoped) {
+		// A guild command is already scoped by its registration endpoint. Discord
+		// accepts contexts/integration_types only for global command definitions.
+	} else if (cmd.contexts) {
 		discordCmd.contexts = cmd.contexts;
 	} else if (cmd.guildOnly) {
-		discordCmd.contexts = [0]; // 0 = Guild only (no DMs)
+		discordCmd.contexts = [CONTEXT_GUILD]; // guild only (no DMs)
+	} else if (opts?.userInstall) {
+		// Everywhere: servers, bot DMs, and group DMs — installable per-user too.
+		discordCmd.contexts = [
+			CONTEXT_GUILD,
+			CONTEXT_BOT_DM,
+			CONTEXT_PRIVATE_CHANNEL,
+		];
+		discordCmd.integrationTypes = [
+			INTEGRATION_GUILD_INSTALL,
+			INTEGRATION_USER_INSTALL,
+		];
 	}
 
 	if (cmd.requiredPermissions != null) {

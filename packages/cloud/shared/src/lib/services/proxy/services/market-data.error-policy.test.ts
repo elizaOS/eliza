@@ -6,7 +6,21 @@
  * distinguishable 502 error Response — never conflated with a success response,
  * and never swallowed into a fabricated default.
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+
+import * as realFetch from "../fetch";
+import * as realPricing from "../pricing";
+
+// bun's `mock.module` patches the process-global module registry, and this file
+// only cleaned env in afterEach — it never reinstalled the modules stubbed
+// below. Under the batched cloud-unit runner (`--isolate` occasionally fails to
+// contain these on a memory-pressured runner) this `../fetch` (retryFetch)
+// double otherwise bleeds into later sibling suites that drive the real
+// transport (e.g. rpc/solana-rpc error-policy), whose `response.ok` then reads
+// off an undefined mock result. Snapshot the real exports now and reinstall
+// them in afterAll so this file's stubs are strictly local.
+const realFetchExports = { ...realFetch };
+const realPricingExports = { ...realPricing };
 
 const retryFetch = mock();
 
@@ -32,6 +46,11 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.MARKET_DATA_PROVIDER_API_KEY;
+});
+
+afterAll(() => {
+  mock.module("../fetch", () => realFetchExports);
+  mock.module("../pricing", () => realPricingExports);
 });
 
 describe("executeMarketDataProviderRequest error policy", () => {

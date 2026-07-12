@@ -50,7 +50,6 @@ env:
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
   GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
   XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-  ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
 
 jobs:
   # Real LOCAL chat turn through the live stack: a real app-core runtime + a real
@@ -203,18 +202,35 @@ jobs:
   # Real CLOUD login + provisioning + chat through the app UI against real Eliza
   # Cloud. cloud-live.spec.ts mocks nothing; ELIZA_UI_SMOKE_CLOUD_LIVE=1 leaves
   # first-run open so the spec drives cloud onboarding, and ELIZAOS_CLOUD_API_KEY
-  # authenticates. Skips cleanly if the key is absent.
+  # authenticates. The secret-gated job fails before setup when neither accepted
+  # repository secret is configured; the spec remains safely skippable outside
+  # this workflow so keyless PR lanes cannot spend Cloud credits.
   cloud-live:
     name: cloud login + provision + chat (real Eliza Cloud)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
       ELIZA_UI_SMOKE_CLOUD_LIVE: "1"
+      # Prefer the variable named for the runtime contract, but retain the
+      # repository's established ELIZACLOUD_API_KEY as the canonical fallback.
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       PGLITE_WASM_MODE: node
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           submodules: false
+
+      - name: Require real Cloud credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          cloud_key_without_whitespace="${ELIZAOS_CLOUD_API_KEY:-}"
+          cloud_key_without_whitespace="${cloud_key_without_whitespace//[[:space:]]/}"
+          if [[ -z "$cloud_key_without_whitespace" ]]; then
+            echo "::error::App Live E2E requires ELIZAOS_CLOUD_API_KEY or ELIZACLOUD_API_KEY; refusing a green-by-skip Cloud job."
+            exit 1
+          fi
+          unset cloud_key_without_whitespace
 
       - name: Free disk space for browser smoke
         run: |

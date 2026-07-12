@@ -26,6 +26,7 @@ import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovisi
 import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
+import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import jwksRoute from "../.well-known/jwks.json/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
@@ -314,18 +315,21 @@ export function createApp(): Hono<AppEnv> {
   // still enforce it; this only guarantees that a route which forgot to add one
   // is not completely unprotected against per-IP flooding. The ceiling is
   // deliberately generous (10 req/s sustained) so it sits above every per-route
-  // policy and never interferes with legitimate traffic. Enforced only when
-  // REDIS_RATE_LIMITING=true (falls open otherwise). Registered before
+  // policy and never interferes with legitimate traffic. Cloudflare's local
+  // protective counter avoids a network hop at ingress. Registered before
   // authMiddleware so unauthenticated routes are covered too.
   app.use(
     "*",
-    rateLimit({
-      windowMs: 60_000,
-      maxRequests: 600,
-      // Namespaced so this backstop counter never collides with a per-route
-      // IP-keyed limiter sharing the same `ip:<addr>` key.
-      keyGenerator: (c) => `global:${getIpKey(c)}`,
-    }),
+    rateLimit(
+      {
+        windowMs: 60_000,
+        maxRequests: 600,
+        // Namespaced so this backstop counter never collides with a per-route
+        // IP-keyed limiter sharing the same `ip:<addr>` key.
+        keyGenerator: (c) => `global:${getIpKey(c)}`,
+      },
+      { bindingName: "GLOBAL_RATE_LIMITER" },
+    ),
   );
 
   app.use("*", authMiddleware);
@@ -425,7 +429,14 @@ export function createApp(): Hono<AppEnv> {
       return failureResponse(c, err);
     }
 
-    logger.error("[CloudApi] Unhandled error", { error: err });
+    // Log a plain-object summary, not the raw Error: the log-sink redactor
+    // rebuilds Error instances with non-enumerable message/stack, so a JSON
+    // tail otherwise shows only `{name}` — which made the staging KMS
+    // misconfig (#16145) a multi-hour reverse-engineering job instead of a
+    // one-line read. String values/keys still pass the same redaction sink.
+    logger.error("[CloudApi] Unhandled error", {
+      error: describeUnhandledError(err),
+    });
     return failureResponse(c, err);
   });
 

@@ -1,3 +1,4 @@
 packages/scripts/ci-path-gate.self-test.mjs
+packages/scripts/test-cloud-run-flush.self-test.mjs
 scripts/security/coverage-changed-files.self-test.mjs
 scripts/security/coverage-gate.self-test.mjs

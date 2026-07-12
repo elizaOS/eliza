@@ -284,8 +284,10 @@ export const TASK_AGENT_DEFAULT_MODEL_PREFS: Record<
 > = {
   elizaos: {},
   "pi-agent": {},
-  claude: { powerful: "claude-opus-4-7" },
-  codex: { powerful: "gpt-5.5", fast: "gpt-5.4-mini" },
+  claude: { powerful: "claude-opus-4-8" },
+  // The codex powerful default mirrors CODING_MODEL_DEFAULTS in
+  // packages/agent/src/api/model-catalog.ts — keep the two in sync.
+  codex: { powerful: "gpt-5.6-terra", fast: "gpt-5.4-mini" },
   opencode: {},
 };
 

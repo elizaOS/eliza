@@ -24,6 +24,8 @@ const workflow = readFileSync(workflowPath, "utf8");
 const ENV_KEY = "SANDBOX_REGISTRY_REDIS_URL";
 const FIELD_ENCRYPTION_KEY = "SECRETS_MASTER_KEY";
 const BRIDGE_FALLBACK_KEY = "AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK";
+const AGENT_BASE_DOMAIN_KEY = "ELIZA_CLOUD_AGENT_BASE_DOMAIN";
+const CONTAINERS_SSH_KEY = "CONTAINERS_SSH_KEY";
 
 // The reconcile loop runs the workflow's VERBATIM bash, which uses GNU
 // `sed -i "/^KEY=/d"` (no backup-suffix argument). BSD/macOS `sed -i` parses
@@ -92,6 +94,22 @@ describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring
     );
   });
 
+  it("reconciles the protected agent-node SSH key into the daemon environment", () => {
+    expect(workflow).toContain(
+      `${CONTAINERS_SSH_KEY}: \${{ secrets.${CONTAINERS_SSH_KEY} }}`,
+    );
+    const envsLine = workflow
+      .split("\n")
+      .find(
+        (line) =>
+          line.trim().startsWith("envs:") && line.includes(CONTAINERS_SSH_KEY),
+      );
+    expect(envsLine).toBeDefined();
+    expect(workflow).toContain(
+      `"${CONTAINERS_SSH_KEY}=$${CONTAINERS_SSH_KEY}"`,
+    );
+  });
+
   it("scrubs the deprecated bridge-host fallback flag during env reconciliation", () => {
     expect(workflow).toContain(
       `sed -i "/^${BRIDGE_FALLBACK_KEY}=/d" "$ENV_FILE"`,
@@ -104,6 +122,25 @@ describe("deploy-eliza-provisioning-worker.yml SANDBOX_REGISTRY_REDIS_URL wiring
     expect(secretLoopIdx).toBeGreaterThan(-1);
     expect(lanePinIdx).toBeLessThan(scrubIdx);
     expect(scrubIdx).toBeLessThan(secretLoopIdx);
+  });
+
+  it("pins the agent router to the protected deployment environment", () => {
+    expect(workflow).toContain(
+      `${AGENT_BASE_DOMAIN_KEY}: \${{ needs.determine-env.outputs.environment == 'production' && 'elizacloud.ai' || 'staging.elizacloud.ai' }}`,
+    );
+    const deployEnvs = workflow
+      .split("\n")
+      .find(
+        (line) =>
+          line.trim().startsWith("envs:") && line.includes("DEPLOY_SHA"),
+      );
+    expect(deployEnvs).toContain(AGENT_BASE_DOMAIN_KEY);
+    expect(workflow).toContain(
+      `"${AGENT_BASE_DOMAIN_KEY}=$${AGENT_BASE_DOMAIN_KEY}"`,
+    );
+    expect(workflow).toContain(
+      "Agent router base-domain drift: expected $ELIZA_CLOUD_AGENT_BASE_DOMAIN",
+    );
   });
 });
 

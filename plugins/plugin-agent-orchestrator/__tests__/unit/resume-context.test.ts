@@ -20,9 +20,9 @@ import {
   buildResumePreamble,
   MAX_RESUME_CHANGED_FILES,
   MAX_RESUME_PROGRESS_CHARS,
-  readResumeContext,
   RESUME_CONTEXT_METADATA_KEY,
   type ResumeContext,
+  readResumeContext,
   resumeEventFields,
 } from "../../src/services/resume-context.js";
 

@@ -20,8 +20,19 @@ import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
 const appState = vi.hoisted(() => ({
+  firstRunComplete: true,
   setTab: vi.fn(),
+  startupPhase: "ready",
   tab: "chat",
+}));
+
+const authStatusMock = vi.hoisted(() => ({
+  phase: "authenticated" as "authenticated" | "unauthenticated",
+  use: vi.fn(),
+}));
+
+const cloudOriginMock = vi.hoisted(() => ({
+  agentless: false,
 }));
 
 const desktopTabsMock = vi.hoisted(() => ({
@@ -233,13 +244,31 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 
 vi.mock("./hooks/useAuthStatus", () => ({
-  useAuthStatus: () => ({
-    state: { phase: "authenticated" },
-    refetch: vi.fn(),
-  }),
+  useAuthStatus: (options: { skip?: boolean } = {}) => {
+    authStatusMock.use(options);
+    return {
+      state: { phase: authStatusMock.phase },
+      refetch: vi.fn(),
+    };
+  },
   // Home widgets gate their loaders on this (#11084); the mounted App renders
   // them, so the mock must export it alongside useAuthStatus.
-  useIsAuthenticated: () => true,
+  useIsAuthenticated: () => authStatusMock.phase === "authenticated",
+}));
+
+vi.mock("./utils/cloud-agent-base", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./utils/cloud-agent-base")>();
+  return {
+    ...actual,
+    isElizaCloudControlPlaneAgentlessBase: () => cloudOriginMock.agentless,
+  };
+});
+
+vi.mock("./first-run/use-first-run-conductor", () => ({
+  FirstRunConductorMount: () => <div data-testid="first-run-conductor-mount" />,
+  surfaceCloudLoginRetryTurn: vi.fn(),
+  useFirstRunConductor: vi.fn(),
 }));
 
 vi.mock("./hooks/useMediaQuery", () => ({
@@ -288,7 +317,7 @@ vi.mock("./state", async () => {
     gameOverlayEnabled: false,
     handlePluginToggle: vi.fn(),
     loadDropStatus: vi.fn(async () => undefined),
-    firstRunComplete: true,
+    firstRunComplete: appState.firstRunComplete,
     firstRunName: "",
     ownerName: "Test Owner",
     plugins: [],
@@ -300,7 +329,7 @@ vi.mock("./state", async () => {
     setUiTheme: vi.fn(),
     setUiThemeMode: vi.fn(),
     startupCoordinator: {
-      phase: "ready",
+      phase: appState.startupPhase,
       retry: vi.fn(),
     },
     startupError: null,
@@ -447,11 +476,16 @@ describe("App navigate-view event wiring", () => {
     Reflect.deleteProperty(window, "__ELIZAOS_API_BASE__");
     Reflect.deleteProperty(window, "__ELIZA_API_TOKEN__");
     Reflect.deleteProperty(window, "__ELIZAOS_API_TOKEN__");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "ready";
     appState.tab = "chat";
+    authStatusMock.phase = "authenticated";
+    cloudOriginMock.agentless = false;
     mediaQueryState.matches = false;
     desktopTabsState.tabs = [];
     resetMockAvailableViews();
     appState.setTab.mockClear();
+    authStatusMock.use.mockClear();
     desktopTabsMock.openTab.mockClear();
     desktopTabsMock.closeTab.mockClear();
     desktopBridgeMock.invokeDesktopBridgeRequest.mockClear();
@@ -463,6 +497,22 @@ describe("App navigate-view event wiring", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+  });
+
+  it("keeps an unauthenticated shared Cloud app inside first-run onboarding", () => {
+    window.history.replaceState(null, "", "/?shellMode=full");
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    authStatusMock.phase = "unauthenticated";
+    cloudOriginMock.agentless = true;
+
+    render(<App />);
+
+    expect(authStatusMock.use).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: true }),
+    );
+    expect(screen.getByTestId("first-run-conductor-mount")).toBeTruthy();
+    expect(screen.queryByText("Open this agent from Eliza Cloud")).toBeNull();
   });
 
   it("routes view-manager events through the mounted App listener", async () => {

@@ -189,6 +189,19 @@ const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const DEFAULT_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
 const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
+/**
+ * Effort levels the Claude Code CLI honors via CLAUDE_CODE_EFFORT_LEVEL (its
+ * own default is xhigh). The CLI does not validate the env var, so buildEnv
+ * gates the config-env ELIZA_CLAUDE_EFFORT value against this set and skips
+ * anything else instead of forwarding a value the CLI would misread.
+ */
+const CLAUDE_CODE_EFFORT_LEVELS: ReadonlySet<string> = new Set([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
 
 /**
  * Resolve the absolute workdir for a spawned session. When `isolate` is true,
@@ -3706,9 +3719,37 @@ export class AcpService extends Service {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
+    } else if (agentType === "claude") {
+      // No per-spawn model: fall back to the app-configured claude coding
+      // model (what POST /api/models/config writes). Config-env read, so a
+      // UI/API save applies to the next spawn with no restart. Without this
+      // the key was write-only — no spawn path ever consumed it.
+      const configured = readConfigEnvKey(
+        "ELIZA_CLAUDE_MODEL_POWERFUL",
+      )?.trim();
+      if (configured) env.ANTHROPIC_MODEL = configured;
     }
     if (childSessionId?.trim()) {
       env.PARALLAX_SESSION_ID = childSessionId.trim();
+    }
+    if (agentType === "claude") {
+      // Config-env (UI-saved, restart-free — falls back to process.env) effort
+      // override for the spawned Claude Code CLI.
+      const effort = readConfigEnvKey("ELIZA_CLAUDE_EFFORT")
+        ?.trim()
+        .toLowerCase();
+      if (effort) {
+        if (CLAUDE_CODE_EFFORT_LEVELS.has(effort)) {
+          env.CLAUDE_CODE_EFFORT_LEVEL = effort;
+        } else {
+          // error-policy:J7 a bad operator effort must not fail the spawn —
+          // warn and leave the CLI on its own default.
+          this.log("warn", "ignoring invalid ELIZA_CLAUDE_EFFORT", {
+            value: effort,
+            expected: [...CLAUDE_CODE_EFFORT_LEVELS],
+          });
+        }
+      }
     }
     if (agentType === "claude" && env.CLAUDE_CODE_OAUTH_TOKEN) {
       // A specific subscription account was selected for this sub-agent. Claude
@@ -3936,7 +3977,9 @@ export class AcpService extends Service {
   private authFailureFields(
     text: string,
     agentType?: AgentType,
-  ): { failureKind: "auth"; authReason?: "token_expired" } | Record<string, never> {
+  ):
+    | { failureKind: "auth"; authReason?: "token_expired" }
+    | Record<string, never> {
     // Explicit token-expiry phrasing ("token expired", "session expired", …) is
     // auth-shaped too, but `isAuthText` only matches 401/unauthorized/
     // authenticate/login/api key/invalid_grant — NOT a bare "expired" — so a run
@@ -4324,6 +4367,9 @@ export function shouldForwardEnv(
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
       "OPENCODE_MODEL",
+      // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
+      // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
+      "CLAUDE_CODE_EFFORT_LEVEL",
       "OPENCODE_DISABLE_AUTOUPDATE",
       "OPENCODE_DISABLE_TERMINAL_TITLE",
       "CODEX_HOME",

@@ -7,7 +7,20 @@
  * exported function runs unmocked.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+
+import * as realDbClient from "../../../../db/client";
+import * as realSecrets from "../../secrets";
+
+// bun's `mock.restore()` (called in afterEach below) restores spies but does NOT
+// undo `mock.module` overrides — those patch the process-global module registry
+// and persist. Under the batched cloud-unit runner (`--isolate` occasionally
+// fails to contain these on a memory-pressured runner) these db/client + secrets
+// doubles otherwise bleed into later suites (e.g. pii-scrub-jobs, which needs a
+// real PGlite db/client), turning them red. Snapshot the real exports now and
+// reinstall them in afterAll so this file's stubs are strictly local.
+const realDbClientExports = { ...realDbClient };
+const realSecretsExports = { ...realSecrets };
 
 let secretsToReturn: Array<{ id: string; name: string; created_at: Date }> = [];
 const deleteCalls: Array<{ id: string; organizationId: string }> = [];
@@ -46,6 +59,11 @@ describe("deletePlatformSecrets — fail-closed revoke (#13415)", () => {
 
   afterEach(() => {
     mock.restore();
+  });
+
+  afterAll(() => {
+    mock.module("../../../../db/client", () => realDbClientExports);
+    mock.module("../../secrets", () => realSecretsExports);
   });
 
   it("legitimately-empty match returns designed 0-count, no throw, no delete attempts", async () => {

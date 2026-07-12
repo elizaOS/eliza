@@ -48,10 +48,6 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import {
-  claudeMinRemainingMs,
-  resolveClaudeExpectedRunMs,
-} from "./claude-token-refresh.js";
 import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
@@ -59,6 +55,10 @@ import {
   type Strategy,
   selectionForProvider,
 } from "./account-pool.js";
+import {
+  claudeMinRemainingMs,
+  resolveClaudeExpectedRunMs,
+} from "./claude-token-refresh.js";
 
 const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "priority",
@@ -241,6 +241,36 @@ export async function adoptRotatedCodexTokens(
 }
 
 /**
+ * Reasoning-effort values the Codex model catalog knows. Codex itself silently
+ * accepts an invalid `model_reasoning_effort`, so validation is on us: an
+ * unknown operator value is warned about and dropped, never interpolated.
+ */
+const CODEX_EFFORT_VALUES: ReadonlySet<string> = new Set([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+]);
+
+/**
+ * The effort subset the pinned codex-acp adapter can deserialize. Its bundled
+ * codex core's `ReasoningEffort` enum is `minimal|low|medium|high|xhigh`
+ * (verified against the @zed-industries/codex-acp@0.14.0 binary's serde
+ * variant table); an unknown variant fails the WHOLE config.toml parse, which
+ * would also discard the `model` pin ChatGPT-account auth requires — far worse
+ * than running at the default effort. `max`/`ultra` are valid catalog values
+ * on newer Codex builds but are withheld here until the adapter pin moves.
+ */
+const PINNED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
+/**
  * Materialize a per-account `CODEX_HOME` so Codex authenticates as the selected
  * account instead of the machine's single `~/.codex` login. Writes the
  * ChatGPT-login `auth.json` shape Codex reads; the account_id is the OAuth
@@ -279,21 +309,34 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
   // Codex reads its model from CODEX_HOME/config.toml; with none, codex-acp
   // falls back to a built-in default (e.g. gpt-5.3-codex) that ChatGPT-account
   // auth rejects ("model is not supported when using Codex with a ChatGPT
-  // account"). Write a MINIMAL config.toml with just the model — reusing the
-  // operator's working model (extracted from ~/.codex/config.toml) but NOT the
-  // rest of their config, which can carry fields the pinned codex-acp rejects
-  // (e.g. newer reasoning-effort variants). Falls back to a compatible default.
+  // account"). Write a MINIMAL config.toml — the model plus an optional
+  // validated reasoning effort — reusing the operator's working model
+  // (extracted from ~/.codex/config.toml) but NOT the rest of their config,
+  // which can carry fields the pinned codex-acp rejects (e.g. newer
+  // reasoning-effort variants; see PINNED_CODEX_ACP_EFFORTS). Falls back to a
+  // compatible default.
   const targetConfig = path.join(dir, "config.toml");
   try {
-    let model = process.env.ELIZA_CODEX_MODEL?.trim();
-    // Validate the operator-supplied model: it is interpolated into TOML, so a
-    // stray quote/newline would break out of the string (corrupt config) — and
-    // a model name is a conservative token anyway. Reject anything else.
-    if (model && !/^[\w.:/-]+$/.test(model)) {
-      logger.warn(
-        `[coding-account-bridge] ignoring malformed ELIZA_CODEX_MODEL=${JSON.stringify(model)}`,
-      );
-      model = undefined;
+    // Resolution order: explicit env pin > app-configured model (what
+    // POST /api/models/config writes for the codex coding target) > the
+    // operator's machine config > the compatible default. Without the
+    // POWERFUL read here, the app-configured model was a dead-end key — the
+    // machine ~/.codex/config.toml silently won on every spawn.
+    let model: string | undefined;
+    for (const key of ["ELIZA_CODEX_MODEL", "ELIZA_CODEX_MODEL_POWERFUL"]) {
+      const candidate = process.env[key]?.trim();
+      if (!candidate) continue;
+      // Validate the operator-supplied model: it is interpolated into TOML, so
+      // a stray quote/newline would break out of the string (corrupt config) —
+      // and a model name is a conservative token anyway. Reject anything else.
+      if (!/^[\w.:/-]+$/.test(candidate)) {
+        logger.warn(
+          `[coding-account-bridge] ignoring malformed ${key}=${JSON.stringify(candidate)}`,
+        );
+        continue;
+      }
+      model = candidate;
+      break;
     }
     if (!model) {
       const machineConfig = path.join(os.homedir(), ".codex", "config.toml");
@@ -307,9 +350,29 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
         if (m?.[1]) model = m[1];
       }
     }
-    writeFileSync(targetConfig, `model = "${model || "gpt-5.1-codex"}"\n`, {
-      mode: 0o600,
-    });
+    let effort = process.env.ELIZA_CODEX_EFFORT?.trim().toLowerCase();
+    if (effort && !CODEX_EFFORT_VALUES.has(effort)) {
+      // error-policy:J7 an invalid operator effort must not poison the spawn —
+      // warn and omit the line; the model pin below still ships.
+      logger.warn(
+        `[coding-account-bridge] ignoring invalid ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} (expected low|medium|high|xhigh|max|ultra)`,
+      );
+      effort = undefined;
+    } else if (effort && !PINNED_CODEX_ACP_EFFORTS.has(effort)) {
+      // error-policy:J7 see PINNED_CODEX_ACP_EFFORTS — writing max/ultra would
+      // fail the pinned adapter's whole config.toml parse and drop the model pin.
+      logger.warn(
+        `[coding-account-bridge] ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} is not parseable by the pinned codex-acp (supported: low|medium|high|xhigh); omitting model_reasoning_effort so config.toml stays loadable`,
+      );
+      effort = undefined;
+    }
+    writeFileSync(
+      targetConfig,
+      `model = "${model || "gpt-5.6-terra"}"\n${
+        effort ? `model_reasoning_effort = "${effort}"\n` : ""
+      }`,
+      { mode: 0o600 },
+    );
   } catch (err) {
     logger.warn(
       `[coding-account-bridge] could not materialize codex config.toml: ${String(err)}`,
@@ -408,9 +471,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           providerId === "anthropic-subscription"
             ? {
                 minRemainingMs: claudeMinRemainingMs(
-                  resolveClaudeExpectedRunMs(
-                    (key) => process.env[key],
-                  ),
+                  resolveClaudeExpectedRunMs((key) => process.env[key]),
                 ),
               }
             : undefined;

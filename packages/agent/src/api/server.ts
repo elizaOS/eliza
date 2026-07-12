@@ -237,7 +237,8 @@ type BrowserWorkspaceTabKind = NonNullable<
 >;
 
 let agentSkillsApiPromise:
-  Promise<typeof import("@elizaos/plugin-agent-skills")> | undefined;
+  | Promise<typeof import("@elizaos/plugin-agent-skills")>
+  | undefined;
 function getAgentSkillsApi(): Promise<
   typeof import("@elizaos/plugin-agent-skills")
 > {
@@ -248,7 +249,8 @@ function getAgentSkillsApi(): Promise<
 }
 
 let appManagerApiPromise:
-  Promise<typeof import("@elizaos/plugin-app-manager")> | undefined;
+  | Promise<typeof import("@elizaos/plugin-app-manager")>
+  | undefined;
 function getAppManagerApi(): Promise<
   typeof import("@elizaos/plugin-app-manager")
 > {
@@ -259,7 +261,8 @@ function getAppManagerApi(): Promise<
 }
 
 let walletApiPromise:
-  Promise<typeof import("@elizaos/plugin-wallet")> | undefined;
+  | Promise<typeof import("@elizaos/plugin-wallet")>
+  | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
   walletApiPromise ??= importOptionalPlugin<
     typeof import("@elizaos/plugin-wallet")
@@ -441,6 +444,7 @@ import {
   handleMemoryRoutes,
   handleMiscRoutes,
   handleMobileOptionalRoutes,
+  handleModelConfigRoutes,
   handleModelsRoutes,
   handlePermissionRoutes,
   handlePermissionsExtraRoutes,
@@ -2109,9 +2113,13 @@ async function handleRequest(
       }
       return Boolean(
         localInferenceServerApi.handleLocalInferenceTtsRoute &&
-        (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
-          current: state.runtime,
-        })),
+          (await localInferenceServerApi.handleLocalInferenceTtsRoute(
+            req,
+            res,
+            {
+              current: state.runtime,
+            },
+          )),
       );
     })())
   ) {
@@ -2510,6 +2518,29 @@ async function handleRequest(
     return;
   }
 
+  // Gate on the exact path before building the context so the runtime
+  // operation manager is not instantiated on unrelated requests.
+  if (pathname === "/api/models/config") {
+    if (
+      await handleModelConfigRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        json,
+        readJsonBody,
+        state: { config: state.config },
+        saveElizaConfig,
+        runtimeOperationManager: getOrCreateRuntimeOperationManager(
+          state,
+          restartRuntime,
+        ),
+      })
+    ) {
+      return;
+    }
+  }
+
   if (
     await handleRegistryRoutes({
       req,
@@ -2584,8 +2615,9 @@ async function handleRequest(
       return;
     }
     try {
-      const { unloadPluginFromDirectory } =
-        await import("../runtime/load-plugin-from-directory.ts");
+      const { unloadPluginFromDirectory } = await import(
+        "../runtime/load-plugin-from-directory.ts"
+      );
       const result = await unloadPluginFromDirectory({
         runtime: state.runtime as Parameters<
           typeof unloadPluginFromDirectory
@@ -4374,8 +4406,9 @@ export async function startApiServer(opts?: {
 
         // Build destination registry — all configured destinations
         const _connectors = state.config.connectors ?? {};
-        const streaming = (state.config as Record<string, unknown>)
-          .streaming as Record<string, unknown> | undefined;
+        const streaming = (state.config as Record<string, unknown>).streaming as
+          | Record<string, unknown>
+          | undefined;
         const destinations = new Map<string, StreamRouteDestination>();
 
         try {
@@ -5252,7 +5285,8 @@ export async function startApiServer(opts?: {
           ? Object.fromEntries(Object.entries(dbAgent))
           : null;
       const saved = agentRecord?.character as
-        Record<string, unknown> | undefined;
+        | Record<string, unknown>
+        | undefined;
       if (!saved || typeof saved !== "object") return;
 
       const c = rt.character;

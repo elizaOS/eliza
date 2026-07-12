@@ -18,10 +18,7 @@ import {
   type HealthDailySummary,
   type HealthDataPoint,
   HealthOAuthError,
-  healthConnectorCapabilities,
-  readStoredHealthToken,
   refreshStoredHealthToken,
-  resolveHealthOAuthConfig,
   startHealthConnectorOAuth,
   syncHealthConnectorData,
 } from "@elizaos/plugin-health";
@@ -60,6 +57,10 @@ import {
   normalizeOptionalConnectorSide,
 } from "../service-normalize-connector.js";
 import { LifeOpsServiceError } from "../service-types.js";
+import {
+  getHealthDataConnectorStatus,
+  getHealthDataConnectorStatuses,
+} from "./health-connector-status.js";
 
 type HealthSyncRequest = SyncLifeOpsHealthConnectorRequest & {
   failOnProviderError?: boolean;
@@ -191,17 +192,6 @@ function normalizeHealthMetrics(
     return undefined;
   }
   return [...new Set(metrics)];
-}
-
-function healthCapabilitiesFromGrant(
-  capabilities: readonly string[],
-): LifeOpsHealthConnectorCapability[] {
-  return capabilities.filter(
-    (capability): capability is LifeOpsHealthConnectorCapability =>
-      (LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES as readonly string[]).includes(
-        capability,
-      ),
-  );
 }
 
 function emptyDailySummary(
@@ -364,15 +354,12 @@ export class HealthDomain {
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
   ): Promise<LifeOpsHealthConnectorStatus[]> {
-    return Promise.all(
-      LIFEOPS_HEALTH_CONNECTOR_PROVIDERS.map((provider) =>
-        this.getHealthDataConnectorStatus(
-          provider,
-          requestUrl,
-          requestedMode,
-          requestedSide,
-        ),
-      ),
+    return getHealthDataConnectorStatuses(
+      this.ctx,
+      LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
+      requestUrl,
+      requestedMode,
+      requestedSide,
     );
   }
 
@@ -382,95 +369,13 @@ export class HealthDomain {
     requestedMode?: LifeOpsConnectorMode,
     requestedSide?: LifeOpsConnectorSide,
   ): Promise<LifeOpsHealthConnectorStatus> {
-    const provider = normalizeHealthProvider(providerInput);
-    const side =
-      normalizeOptionalConnectorSide(requestedSide, "side") ?? "owner";
-    const explicitMode = normalizeOptionalConnectorMode(requestedMode, "mode");
-    const grants = (
-      await this.ctx.repository.listConnectorGrants(this.ctx.agentId())
-    ).filter(
-      (grant) =>
-        grant.provider === provider &&
-        grant.side === side &&
-        (!explicitMode || grant.mode === explicitMode),
-    );
-    const preferredGrant =
-      [...grants].sort((left, right) =>
-        right.updatedAt.localeCompare(left.updatedAt),
-      )[0] ?? null;
-    const config = resolveHealthOAuthConfig(
-      provider,
+    return getHealthDataConnectorStatus(
+      this.ctx,
+      providerInput,
       requestUrl,
-      explicitMode ?? preferredGrant?.mode,
+      requestedMode,
+      requestedSide,
     );
-    const grant =
-      preferredGrant ??
-      (await this.ctx.repository.getConnectorGrant(
-        this.ctx.agentId(),
-        provider,
-        config.mode,
-        side,
-      ));
-    const token = readStoredHealthToken(grant.tokenRef);
-    const syncState = grant
-      ? await this.ctx.repository.getHealthSyncState(
-          this.ctx.agentId(),
-          provider,
-          grant.id,
-        )
-      : null;
-    const metadataAuthState =
-      typeof grant.metadata.authState === "string"
-        ? grant.metadata.authState
-        : null;
-    const connected = Boolean(
-      grant && token && metadataAuthState !== "needs_reauth",
-    );
-    const reason: LifeOpsHealthConnectorStatus["reason"] = connected
-      ? syncState?.lastSyncError
-        ? "sync_failed"
-        : "connected"
-      : grant && (grant.tokenRef || metadataAuthState === "needs_reauth")
-        ? "needs_reauth"
-        : config.configured
-          ? "disconnected"
-          : "config_missing";
-    return {
-      provider,
-      side,
-      mode: grant.mode,
-      defaultMode: config.defaultMode,
-      availableModes: config.availableModes,
-      executionTarget: grant.executionTarget,
-      sourceOfTruth: grant.sourceOfTruth,
-      configured: config.configured,
-      connected,
-      reason,
-      identity: token?.identity ?? grant.identity,
-      grantedCapabilities: grant
-        ? healthCapabilitiesFromGrant(grant.capabilities)
-        : healthConnectorCapabilities(provider),
-      grantedScopes: token?.grantedScopes ?? grant.grantedScopes,
-      expiresAt: token?.expiresAt
-        ? new Date(token.expiresAt).toISOString()
-        : typeof grant.metadata.expiresAt === "string"
-          ? grant.metadata.expiresAt
-          : null,
-      hasRefreshToken:
-        Boolean(token?.refreshToken) || Boolean(grant.metadata.hasRefreshToken),
-      lastSyncAt: syncState?.lastSyncedAt ?? null,
-      grant,
-      degradations: syncState?.lastSyncError
-        ? [
-            {
-              axis: "delivery-degraded",
-              code: "last_sync_failed",
-              message: syncState.lastSyncError,
-              retryable: true,
-            },
-          ]
-        : undefined,
-    };
   }
 
   async startHealthConnector(

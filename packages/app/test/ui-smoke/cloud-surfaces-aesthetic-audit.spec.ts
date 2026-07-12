@@ -488,21 +488,39 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
   test("coverage matches the registered cloud routes", async ({ page }) => {
     await seedStewardToken(page);
     await installCloudApiStubs(page);
-    await page.goto("/login", { waitUntil: "domcontentloaded" });
-    const readRegistryPaths = () =>
-      page.evaluate(() => {
-        const store = (globalThis as unknown as Record<symbol, unknown>)[
-          Symbol.for("elizaos.ui.cloud-route-registry")
-        ] as { entries: Map<string, unknown> } | undefined;
-        return store ? [...store.entries.keys()] : [];
-      });
+    await page.goto("/dashboard/agents", { waitUntil: "domcontentloaded" });
+    const readRegistryPaths = async () => {
+      try {
+        return await page.evaluate(() => {
+          const store = (globalThis as unknown as Record<symbol, unknown>)[
+            Symbol.for("elizaos.ui.cloud-route-registry")
+          ] as { entries: Map<string, unknown> } | undefined;
+          return store ? [...store.entries.keys()] : [];
+        });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes("Execution context was destroyed")
+        ) {
+          return [];
+        }
+        throw error;
+      }
+    };
+    let registeredPaths = await readRegistryPaths();
     await expect
-      .poll(async () => (await readRegistryPaths()).length, {
-        message: "cloud-route registry populated by the running shell",
-        timeout: 30_000,
-      })
+      .poll(
+        async () => {
+          registeredPaths = await readRegistryPaths();
+          return registeredPaths.length;
+        },
+        {
+          message: "cloud-route registry populated by the running shell",
+          timeout: 30_000,
+        },
+      )
       .toBeGreaterThan(0);
-    const registered = new Set(await readRegistryPaths());
+    const registered = new Set(registeredPaths);
     const audited = new Set(CLOUD_AUDIT_CASES.map((c) => c.route));
     const unaudited = [...registered].filter((p) => !audited.has(p));
     expect(

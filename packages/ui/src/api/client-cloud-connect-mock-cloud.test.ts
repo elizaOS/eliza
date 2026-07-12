@@ -74,6 +74,14 @@ type MockAgent = {
   pollsSinceResume: number;
   /** After running: how many dedicated-proxy calls still answer 202. */
   proxy202sRemaining: number;
+  executionTier: "shared" | "dedicated-always";
+  /**
+   * Proxy-readiness window (#15901): how many dedicated-proxy calls answer a
+   * flat router 404 even though the control-plane record already says
+   * `running` — models the real agent-router serving "agent not found or not
+   * running" until the container's mesh route registers.
+   */
+  proxy404sRemaining?: number;
 };
 
 type MockMessage = { id: string; role: string; text: string };
@@ -100,6 +108,7 @@ function agentDto(agent: MockAgent) {
         : agent.webUiUrl,
     bridgeUrl: agent.bridgeUrl,
     errorMessage: agent.errorMessage ?? null,
+    executionTier: agent.executionTier,
     createdAt: "2026-07-01T00:00:00.000Z",
     updatedAt: "2026-07-01T00:00:00.000Z",
   };
@@ -156,13 +165,16 @@ function createMockCloud(state: MockCloudState): Server {
         json(res, 200, { status: "ok", agentId: agent.id });
         return;
       }
+      // Conversations are stored per agent (`<agentId>:<conversationId>`), so
+      // the shared source and the dedicated target hold DISTINCT stores — the
+      // handoff test can assert the import actually copied bytes across.
       if (method === "POST" && rest === "/api/conversations") {
         const conversation = {
           id: `conv-${state.conversations.size + 1}`,
           title: "Mock conversation",
           messages: [] as MockMessage[],
         };
-        state.conversations.set(conversation.id, conversation);
+        state.conversations.set(`${agent.id}:${conversation.id}`, conversation);
         json(res, 200, {
           conversation: {
             id: conversation.id,
@@ -173,11 +185,45 @@ function createMockCloud(state: MockCloudState): Server {
         });
         return;
       }
+      // The agent-side silent-import primitive the handoff supervisor drives
+      // (`POST /api/conversations/:id/import` — idempotent, no inference).
+      const importMatch = /^\/api\/conversations\/([^/]+)\/import$/.exec(rest);
+      if (importMatch && method === "POST") {
+        const body = JSON.parse(await readBody(req)) as {
+          messages?: Array<{ role?: unknown; text?: unknown }>;
+        };
+        const key = `${agent.id}:${importMatch[1]}`;
+        let conversation = state.conversations.get(key);
+        if (conversation && conversation.messages.length > 0) {
+          json(res, 200, { inserted: 0, alreadyPopulated: true });
+          return;
+        }
+        if (!conversation) {
+          conversation = {
+            id: importMatch[1],
+            title: "Imported conversation",
+            messages: [],
+          };
+          state.conversations.set(key, conversation);
+        }
+        const incoming = Array.isArray(body.messages) ? body.messages : [];
+        conversation.messages.push(
+          ...incoming.map((m, i) => ({
+            id: `imp-${i + 1}`,
+            role: String(m.role ?? ""),
+            text: String(m.text ?? ""),
+          })),
+        );
+        json(res, 200, { inserted: incoming.length });
+        return;
+      }
       const messagesMatch = /^\/api\/conversations\/([^/]+)\/messages$/.exec(
         rest,
       );
       if (messagesMatch) {
-        const conversation = state.conversations.get(messagesMatch[1]);
+        const conversation = state.conversations.get(
+          `${agent.id}:${messagesMatch[1]}`,
+        );
         if (!conversation) {
           json(res, 404, { error: "conversation not found" });
           return;
@@ -213,6 +259,14 @@ function createMockCloud(state: MockCloudState): Server {
       const agent = state.agents.get(dedicated[1]);
       if (!agent) {
         json(res, 404, { error: "unknown dedicated agent" });
+        return;
+      }
+      // Proxy-readiness window (#15901): the router 404s BEFORE any auth or
+      // forwarding — a `running` record whose mesh route has not registered is
+      // indistinguishable from a missing agent at this layer.
+      if ((agent.proxy404sRemaining ?? 0) > 0) {
+        agent.proxy404sRemaining = (agent.proxy404sRemaining ?? 0) - 1;
+        json(res, 404, { error: "agent not found or not running" });
         return;
       }
       // The unified proxy only forwards for authenticated org members.
@@ -373,6 +427,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "dedicated-always",
       ...overrides,
     };
     state.agents.set(agent.id, agent);
@@ -531,6 +586,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "shared",
     };
     state.agents.set(shared.id, shared);
 
@@ -595,6 +651,7 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
       resumeRequested: false,
       pollsSinceResume: 0,
       proxy202sRemaining: 0,
+      executionTier: "dedicated-always",
     };
     state.agents.set(other.id, other);
 
@@ -613,6 +670,127 @@ describe("mock-cloud connect e2e — dedicated cold boot + shared chat bridge", 
     expect(state.resumeCalls).toEqual(["agent-remembered"]);
     expect(remembered.status).toBe("running");
     expect(result.apiBase).toBe(`${base}/dedicated/agent-remembered`);
+  });
+
+  it("handoff survives the proxy-readiness 404 window (#15901): CP says running, router 404s, client waits it out and lands the migration", async () => {
+    // Shared source: container-free row serving the conversation the user
+    // already built through the REST adapter.
+    const shared: MockAgent = {
+      id: "agent-shared",
+      agentName: "Shared Eliza",
+      status: "running",
+      webUiUrl: null,
+      bridgeUrl: null,
+      bootAfterPolls: 0,
+      resumeRequested: false,
+      pollsSinceResume: 0,
+      proxy202sRemaining: 0,
+      executionTier: "shared",
+    };
+    state.agents.set(shared.id, shared);
+    state.conversations.set("agent-shared:agent-shared", {
+      id: "agent-shared",
+      title: "Shared conversation",
+      messages: [
+        { id: "m-1", role: "user", text: "hi from the shared adapter" },
+        { id: "m-2", role: "assistant", text: "hello! (shared)" },
+      ],
+    });
+
+    // Dedicated target: the control-plane record reports `running` with its
+    // URL from the FIRST poll, but the router keeps answering flat 404s for a
+    // while — the exact on-device #15901 window (running at 00:34, proxy
+    // routes 404 for minutes after).
+    const dedicated = seedDedicated({
+      status: "running",
+      webUiUrl: `${base}/dedicated/agent-ded`,
+      runningWebUiUrl: `${base}/dedicated/agent-ded`,
+      proxy404sRemaining: 4,
+    });
+
+    const client = makeClient();
+    client.setToken(AUTH_TOKEN);
+    const onSwitch = vi.fn();
+
+    const result = await client.startCloudAgentHandoff({
+      agentId: "agent-shared",
+      sharedApiBase: `${base}/api/v1/eliza/agents/agent-shared`,
+      conversationId: "agent-shared",
+      dedicatedAgentId: "agent-ded",
+      cloudApiBase: base,
+      authToken: AUTH_TOKEN,
+      onSwitch,
+      intervalMs: 20,
+      timeoutMs: 10_000,
+      log: () => {},
+    });
+
+    // The 404 window was fully consumed by patient readiness probes — the
+    // one-shot import against a 404ing router (the old failure) never fired.
+    expect(dedicated.proxy404sRemaining).toBe(0);
+    const healthProbes = state.requests.filter(
+      (r) => r.path === "/dedicated/agent-ded/api/health",
+    );
+    expect(healthProbes.length).toBeGreaterThanOrEqual(5);
+
+    // The migration landed inside the budget: copied, then switched.
+    expect(result).toEqual({ status: "switched", imported: 2 });
+    expect(onSwitch).toHaveBeenCalledWith(`${base}/dedicated/agent-ded`);
+
+    // Domain artifact: the dedicated agent's OWN store now holds the copied
+    // transcript (not a fabricated success).
+    const migrated = state.conversations.get("agent-ded:agent-shared");
+    expect(migrated?.messages.map((m) => m.text)).toEqual([
+      "hi from the shared adapter",
+      "hello! (shared)",
+    ]);
+  });
+
+  it("handoff reports timed-out (never failed-fast) when the router 404s past the whole budget (#15901)", async () => {
+    const shared: MockAgent = {
+      id: "agent-shared",
+      agentName: "Shared Eliza",
+      status: "running",
+      webUiUrl: null,
+      bridgeUrl: null,
+      bootAfterPolls: 0,
+      resumeRequested: false,
+      pollsSinceResume: 0,
+      proxy202sRemaining: 0,
+      executionTier: "shared",
+    };
+    state.agents.set(shared.id, shared);
+    seedDedicated({
+      status: "running",
+      webUiUrl: `${base}/dedicated/agent-ded`,
+      runningWebUiUrl: `${base}/dedicated/agent-ded`,
+      proxy404sRemaining: Number.POSITIVE_INFINITY,
+    });
+
+    const client = makeClient();
+    client.setToken(AUTH_TOKEN);
+    const onSwitch = vi.fn();
+
+    const result = await client.startCloudAgentHandoff({
+      agentId: "agent-shared",
+      sharedApiBase: `${base}/api/v1/eliza/agents/agent-shared`,
+      conversationId: "agent-shared",
+      dedicatedAgentId: "agent-ded",
+      cloudApiBase: base,
+      authToken: AUTH_TOKEN,
+      onSwitch,
+      intervalMs: 20,
+      timeoutMs: 300,
+      log: () => {},
+    });
+
+    expect(result.status).toBe("timed-out");
+    expect(onSwitch).not.toHaveBeenCalled();
+    // Multiple probes prove the budget was spent polling, not abandoned.
+    const healthProbes = state.requests.filter(
+      (r) => r.path === "/dedicated/agent-ded/api/health",
+    );
+    expect(healthProbes.length).toBeGreaterThanOrEqual(3);
   });
 
   it("falls through to create only when every existing agent is terminally failed", async () => {

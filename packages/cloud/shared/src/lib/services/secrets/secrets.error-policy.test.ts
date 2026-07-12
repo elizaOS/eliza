@@ -6,7 +6,17 @@
  * encrypt/size-validation failure is captured as a structured errors[] entry —
  * the two outcomes are distinguishable, never conflated into an all-errors batch.
  */
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeEach, describe, expect, it, mock } from "bun:test";
+
+import * as realSecretsRepository from "../../../db/repositories/secrets";
+
+// bun's `mock.module` patches the process-global module registry. Under the
+// batched cloud-unit runner (`--isolate` occasionally fails to contain these on
+// a memory-pressured runner), this repository double otherwise bleeds into
+// later suites that import the real barrel, turning them red. Snapshot the real
+// exports now and reinstall them in afterAll so this file's stub is strictly
+// local.
+const realSecretsRepositoryExports = { ...realSecretsRepository };
 
 const secretsRepository = {
   findByName: mock(),
@@ -29,6 +39,10 @@ mock.module("../../../db/repositories/secrets", () => ({
 
 import { createEncryptionService, type KMSProvider } from "./encryption";
 import { SecretsService } from "./secrets";
+
+afterAll(() => {
+  mock.module("../../../db/repositories/secrets", () => realSecretsRepositoryExports);
+});
 
 const fakeKms: KMSProvider = {
   async generateDataKey() {

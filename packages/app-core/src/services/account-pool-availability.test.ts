@@ -150,6 +150,15 @@ describe("describe() healthy count agrees with select() eligibility", () => {
       isAccountSelectableNow(
         account("x", {
           health: "rate-limited",
+          healthDetail: { until: now },
+        }),
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      isAccountSelectableNow(
+        account("x", {
+          health: "rate-limited",
           healthDetail: { until: now - 1 },
         }),
         now,

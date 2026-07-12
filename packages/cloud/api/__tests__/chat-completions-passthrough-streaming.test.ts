@@ -118,6 +118,7 @@ mock.module("@/lib/services/team-credential-pool", () => ({
 
 // Import the route AFTER the mocks so it binds to the stubs.
 const {
+  default: chatCompletionsRouter,
   __streamingCreditTestHooks,
   __passthroughStreamingTestHooks,
   __reasoningEffortTestHooks,
@@ -183,6 +184,33 @@ beforeEach(() => {
   process.env.CEREBRAS_API_KEY = "test-cerebras-key";
 });
 
+test("the route invokes its dedicated native limiter before provider work", async () => {
+  const keys: string[] = [];
+  const response = await chatCompletionsRouter.fetch(
+    new Request("https://api.example.test/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(QUALIFYING_REQUEST),
+    }),
+    {
+      NODE_ENV: "production",
+      CHAT_ROUTE_RATE_LIMITER: {
+        async limit({ key }: { key: string }) {
+          keys.push(key);
+          return { success: false };
+        },
+      },
+    } as never,
+  );
+
+  expect(response.status).toBe(429);
+  expect(keys).toEqual(["public"]);
+  expect(response.headers.get("X-RateLimit-Policy")).toBe("cloudflare-native");
+  expect(generateText).not.toHaveBeenCalled();
+  expect(streamText).not.toHaveBeenCalled();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 /** In-memory credit ledger, identical to the credit-leak suite's. */
 function makeLedgerReservation(startBalance: number, hold: number) {
   let balance = startBalance - hold;
@@ -212,12 +240,12 @@ function makeLedgerReservation(startBalance: number, hold: number) {
   };
 }
 
-const QUALIFYING_REQUEST = {
+const QUALIFYING_REQUEST: Record<string, unknown> = {
   model: MODEL,
   messages: [{ role: "user", content: "hello" }],
   stream: true,
   stream_options: { include_usage: true },
-} as never;
+};
 
 function callStreaming(
   settleReservation: (actualCost: number) => Promise<unknown> | unknown,
@@ -257,7 +285,11 @@ function callStreaming(
   );
 }
 
-function callNonStreaming(model: string, reasoningEffort: "none" | "low") {
+function callNonStreaming(
+  model: string,
+  reasoningEffort: "none" | "low",
+  promptCacheKey?: string,
+) {
   return handleNonStreamingRequest(
     model,
     undefined,
@@ -266,6 +298,7 @@ function callNonStreaming(model: string, reasoningEffort: "none" | "low") {
       model,
       messages: [{ role: "user", content: "hello" }],
       reasoning_effort: reasoningEffort,
+      ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
     } as never,
     { id: USER, organization_id: ORG },
     null,
@@ -434,7 +467,10 @@ describe("passthrough streaming — qualifying request pipes bytes verbatim and 
     const settle = createCreditReservationSettler(ledger.reservation);
     fetchImpl = async () => sseResponse(UPSTREAM_SSE);
 
-    const res = await callStreaming(settle, { effectiveMaxTokens: 4096 });
+    const res = await callStreaming(settle, {
+      effectiveMaxTokens: 4096,
+      request: { ...QUALIFYING_REQUEST, prompt_cache_key: "v5:stable-prefix" },
+    });
     const body = await res.text();
 
     // Byte-for-byte pass-through: vendor fields, reasoning delta, upstream id,
@@ -461,6 +497,8 @@ describe("passthrough streaming — qualifying request pipes bytes verbatim and 
     expect(sentBody.stream).toBe(true);
     expect(sentBody.stream_options).toEqual({ include_usage: true });
     expect(sentBody.max_tokens).toBe(4096);
+    expect(sentBody.prompt_cache_key).toBe("v5:stable-prefix");
+    expect(sentBody).not.toHaveProperty("promptCacheKey");
     expect(sentBody.messages).toEqual([{ role: "user", content: "hello" }]);
 
     // Billing: the terminal usage frame's tokens, through the real settler.
@@ -610,9 +648,10 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
     expect(res.headers.get("X-Eliza-Inference-Path")).toBeNull();
   });
 
-  test("SDK streaming forwards reasoning_effort through OpenAI provider options", async () => {
+  test("SDK streaming preserves prompt_cache_key alongside reasoning_effort", async () => {
     sdkFaithfulStream();
     const model = "zai-glm-4.7";
+    const promptCacheKey = "v5:reasoning-prefix";
     const res = await callStreaming(async () => null, {
       model,
       request: {
@@ -621,6 +660,7 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
         stream: true,
         stream_options: { include_usage: true },
         reasoning_effort: "none",
+        prompt_cache_key: promptCacheKey,
         tools: [
           {
             type: "function",
@@ -636,11 +676,13 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
     expect(streamText).toHaveBeenCalledTimes(1);
     expect(streamText.mock.calls[0]?.[0]).toMatchObject({
       maxOutputTokens: 512,
-      providerOptions: { openai: { reasoningEffort: "none" } },
+      providerOptions: {
+        openai: { promptCacheKey, reasoningEffort: "none" },
+      },
     });
   });
 
-  test("SDK non-streaming forwards reasoning_effort through OpenAI provider options", async () => {
+  test("SDK non-streaming preserves prompt_cache_key alongside reasoning_effort", async () => {
     generateTextImpl = () => ({
       text: "Hello",
       toolCalls: [],
@@ -648,12 +690,15 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
       usage: { inputTokens: 72, outputTokens: 1, totalTokens: 73 },
     });
 
-    const res = await callNonStreaming("zai-glm-4.7", "none");
+    const promptCacheKey = "v5:reasoning-prefix";
+    const res = await callNonStreaming("zai-glm-4.7", "none", promptCacheKey);
     expect(res.status).toBe(200);
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(generateText.mock.calls[0]?.[0]).toMatchObject({
       maxOutputTokens: 512,
-      providerOptions: { openai: { reasoningEffort: "none" } },
+      providerOptions: {
+        openai: { promptCacheKey, reasoningEffort: "none" },
+      },
     });
   });
 
@@ -777,6 +822,29 @@ describe("passthrough streaming — upstream errors fail closed and refund the h
     expect(ledger.balance).toBeCloseTo(ledger.startBalance, 10);
     expect(billUsage).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("redacts an echoed prompt cache key from an upstream error", async () => {
+    const promptCacheKey = "opaque-cache-key-secret";
+    fetchImpl = async () =>
+      Response.json(
+        {
+          error: {
+            message: `prompt cache key ${promptCacheKey} is invalid`,
+            type: "invalid_request_error",
+          },
+        },
+        { status: 400 },
+      );
+
+    const res = await callStreaming(async () => null, {
+      request: { ...QUALIFYING_REQUEST, prompt_cache_key: promptCacheKey },
+    });
+    const body = await res.text();
+
+    expect(res.status).toBe(400);
+    expect(body).toContain("[REDACTED_PROMPT_CACHE_KEY]");
+    expect(body).not.toContain(promptCacheKey);
   });
 
   test("upstream 500 surfaces as 503 service_unavailable; hold refunded", async () => {

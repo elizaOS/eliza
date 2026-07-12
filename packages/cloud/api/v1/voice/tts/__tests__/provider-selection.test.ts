@@ -6,7 +6,29 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { selectTtsProvider } from "../provider-selection";
+import {
+  isKokoroShapedVoiceId,
+  isKokoroVoiceId,
+  selectTtsProvider,
+} from "../provider-selection";
+
+describe("isKokoroVoiceId", () => {
+  test("recognizes only the catalogued Kokoro voice ids", () => {
+    expect(isKokoroVoiceId("af_heart")).toBe(true);
+    expect(isKokoroVoiceId("bm_lewis")).toBe(true);
+    expect(isKokoroVoiceId("af_not_a_voice")).toBe(false);
+    expect(isKokoroVoiceId("custom-elevenlabs-voice")).toBe(false);
+  });
+});
+
+describe("isKokoroShapedVoiceId", () => {
+  test("matches the Kokoro naming pattern regardless of catalog membership", () => {
+    expect(isKokoroShapedVoiceId("af_heart")).toBe(true);
+    expect(isKokoroShapedVoiceId("af_not_a_voice")).toBe(true);
+    expect(isKokoroShapedVoiceId("custom-elevenlabs-voice")).toBe(false);
+    expect(isKokoroShapedVoiceId("EXAVITQu4vr4xnSDxMaL")).toBe(false);
+  });
+});
 
 describe("selectTtsProvider", () => {
   test("selects configured Kokoro for omitted voice and known Kokoro ids", () => {

@@ -1,5 +1,7 @@
 // Exercises rate limit default key behavior with deterministic cloud-shared lib fixtures.
+
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import type { AppContext } from "../../types/cloud-worker-env";
 import { getDefaultKey } from "./rate-limit-hono-cloudflare";
 
@@ -24,11 +26,13 @@ function ctx(headers: Record<string, string>, user?: { id: string }): AppContext
 
 describe("getDefaultKey — #11087 per-IP anonymous bucketing", () => {
   test("api key (x-api-key) → apikey: bucket", () => {
-    expect(getDefaultKey(ctx({ "x-api-key": "abc" }))).toBe("apikey:abc");
+    const hash = createHash("sha256").update("abc").digest("hex");
+    expect(getDefaultKey(ctx({ "x-api-key": "abc" }))).toBe(`apikey:${hash}`);
   });
 
   test("Bearer eliza_ token → apikey: bucket", () => {
-    expect(getDefaultKey(ctx({ authorization: "Bearer eliza_xyz" }))).toBe("apikey:eliza_xyz");
+    const hash = createHash("sha256").update("eliza_xyz").digest("hex");
+    expect(getDefaultKey(ctx({ authorization: "Bearer eliza_xyz" }))).toBe(`apikey:${hash}`);
   });
 
   test("authenticated user → user: bucket", () => {
@@ -36,7 +40,8 @@ describe("getDefaultKey — #11087 per-IP anonymous bucketing", () => {
   });
 
   test("anon session header → anon: bucket", () => {
-    expect(getDefaultKey(ctx({ "x-anonymous-session": "s1" }))).toBe("anon:s1");
+    const hash = createHash("sha256").update("s1").digest("hex");
+    expect(getDefaultKey(ctx({ "x-anonymous-session": "s1" }))).toBe(`anon:${hash}`);
   });
 
   test("UNAUTHENTICATED with an IP → per-IP bucket, NOT global 'public' (the fix)", () => {

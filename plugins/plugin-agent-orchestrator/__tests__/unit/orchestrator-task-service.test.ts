@@ -13,11 +13,11 @@
  *  - cross-task status aggregation and bulk pause/resume.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
@@ -1235,15 +1235,9 @@ describe("OrchestratorTaskService — event bridge session status", () => {
       await service.start();
       const task = await service.createTask(createInput());
       await store.updateTask(task.id, { boundWorkdir: repo });
-      const spawned = must(
-        await service.spawnAgentForTask(task.id),
-        "spawned",
-      );
+      const spawned = must(await service.spawnAgentForTask(task.id), "spawned");
       const sessionId = must(spawned.sessions[0], "session").sessionId;
-      const live = must(
-        acp.liveSessions.get(sessionId),
-        "live ACP session",
-      );
+      const live = must(acp.liveSessions.get(sessionId), "live ACP session");
       live.metadata = {
         lastChangeSet: {
           changedFiles: "src/foo.ts",
@@ -1413,7 +1407,8 @@ describe("OrchestratorTaskService — event bridge session status", () => {
         }),
         expect.objectContaining({
           eventType: "account_failover_resumed",
-          summary: "Resumed after a capacity/overload condition (work preserved)",
+          summary:
+            "Resumed after a capacity/overload condition (work preserved)",
         }),
       ]),
     );
@@ -1826,9 +1821,10 @@ describe("OrchestratorTaskService — aggregation and bulk controls", () => {
         },
       },
     });
-    (
-      service as unknown as { admissionQueue: string[] }
-    ).admissionQueue.push(task.id, "missing-task");
+    (service as unknown as { admissionQueue: string[] }).admissionQueue.push(
+      task.id,
+      "missing-task",
+    );
 
     await expect(service.getAdmissionSnapshot()).resolves.toEqual({
       queueDepth: 1,
@@ -1851,7 +1847,9 @@ describe("OrchestratorTaskService — aggregation and bulk controls", () => {
         writeAdmission: (taskId: string, value: null) => Promise<void>;
       }
     ).writeAdmission(task.id, null);
-    expect((await store.getTask(task.id))?.task.metadata?.admission).toBeUndefined();
+    expect(
+      (await store.getTask(task.id))?.task.metadata?.admission,
+    ).toBeUndefined();
 
     const noAcpService = makeService(undefined, {
       ELIZA_ACP_QUEUE_AGING_MS: "600000",

@@ -249,7 +249,9 @@ describe("coding account selection helpers", () => {
             healthy: 0,
           },
         ],
-        codex: [{ providerId: "openai-codex", total: 1, enabled: 1, healthy: 1 }],
+        codex: [
+          { providerId: "openai-codex", total: 1, enabled: 1, healthy: 1 },
+        ],
       }),
       select: vi.fn(async () => null),
       markRateLimited: vi.fn(async () => undefined),

@@ -10,6 +10,8 @@
 
 import { fetchWithCsrf } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
+import { ttsDebug } from "../utils/tts-debug";
+import { resolveAudioWorkletModuleUrl } from "./audio-worklet-module-urls";
 import {
   markTtsPlaybackEnded,
   markTtsPlaybackStarted,
@@ -21,34 +23,6 @@ const FRAME_MS = 20;
 const MAX_BATCH_FRAMES = 49;
 const FLUSH_INTERVAL_MS = 250;
 const WORKLET_NAME = "eliza-playback-reference-tap";
-
-const WORKLET_SOURCE = `
-class ElizaPlaybackReferenceTap extends AudioWorkletProcessor {
-  process(inputs) {
-    const input = inputs[0] || [];
-    const first = input[0];
-    if (first && first.length > 0) {
-      const mono = new Float32Array(first.length);
-      const channels = Math.max(1, input.length);
-      for (let i = 0; i < first.length; i += 1) {
-        let sum = 0;
-        let count = 0;
-        for (let ch = 0; ch < channels; ch += 1) {
-          const channel = input[ch];
-          if (channel) {
-            sum += channel[i] || 0;
-            count += 1;
-          }
-        }
-        mono[i] = count > 0 ? sum / count : 0;
-      }
-      this.port.postMessage({ pcm: mono, sampleRate }, [mono.buffer]);
-    }
-    return true;
-  }
-}
-registerProcessor("${WORKLET_NAME}", ElizaPlaybackReferenceTap);
-`;
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
@@ -73,6 +47,8 @@ export interface PlaybackFramePumpOptions {
 }
 
 export interface PlaybackFrameTap {
+  /** Worklet taps may join playback in progress; scheduled fallbacks may not. */
+  readonly lateAttachSafe?: boolean;
   start(startTimestampMs?: number): void;
   stop(options?: { reset?: boolean; drain?: boolean }): Promise<void>;
 }
@@ -91,10 +67,7 @@ function getNowMs(): number {
 function hasAudioWorklet(ctx: AudioContext): boolean {
   return (
     typeof ctx.audioWorklet?.addModule === "function" &&
-    typeof AudioWorkletNode !== "undefined" &&
-    typeof Blob !== "undefined" &&
-    typeof URL !== "undefined" &&
-    typeof URL.createObjectURL === "function"
+    typeof AudioWorkletNode !== "undefined"
   );
 }
 
@@ -102,18 +75,166 @@ async function ensurePlaybackWorklet(ctx: AudioContext): Promise<void> {
   const existing = workletModules.get(ctx);
   if (existing) return existing;
 
-  const pending = (async () => {
-    const url = URL.createObjectURL(
-      new Blob([WORKLET_SOURCE], { type: "text/javascript" }),
-    );
-    try {
-      await ctx.audioWorklet.addModule(url);
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  })();
+  const pending = ctx.audioWorklet.addModule(
+    resolveAudioWorkletModuleUrl("playback-reference"),
+  );
   workletModules.set(ctx, pending);
   return pending;
+}
+
+/** Best-effort preload so the first reply does not pay worklet setup inline. */
+export function warmPlaybackWorklet(ctx: AudioContext): void {
+  if (!hasAudioWorklet(ctx)) return;
+  void ensurePlaybackWorklet(ctx).catch(() => {
+    // error-policy:J6 The visualizer is optional and tapSource can degrade.
+  });
+}
+
+function isPlaybackContextRunning(ctx: AudioContext): boolean {
+  return ctx.state === "running";
+}
+
+/**
+ * Resumes a suspended or interrupted AudioContext with a timeout, so a
+ * `resume()` call that never settles (observed on some mobile WebViews) cannot
+ * block playback forever. Returns whether the context is running afterward.
+ */
+export async function resumeAudioContextForPlayback(
+  ctx: AudioContext,
+  timeoutMs = 1200,
+): Promise<boolean> {
+  if (isPlaybackContextRunning(ctx)) return true;
+  if (ctx.state !== "suspended" && ctx.state !== "interrupted") return false;
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const resumed = await Promise.race([
+      ctx.resume().then(
+        () => true,
+        () => false,
+      ),
+      new Promise<boolean>((resolve) => {
+        timeoutId = setTimeout(() => resolve(false), timeoutMs);
+      }),
+    ]);
+    return resumed && isPlaybackContextRunning(ctx);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Shared resume-or-fail-closed gate the three TTS provider paths in
+ * `useVoiceChat` each duplicated. Returns normally once `ctx` is running;
+ * throws `NotAllowedError` (and reports via `onBlocked`) if a browser
+ * autoplay gesture is still required, so the caller fails closed instead of
+ * silently playing nothing.
+ */
+export async function ensurePlaybackContextRunning(
+  ctx: AudioContext,
+  provider: string,
+  onBlocked: () => void,
+): Promise<void> {
+  if (isPlaybackContextRunning(ctx)) return;
+  const resumed = await resumeAudioContextForPlayback(ctx);
+  if (resumed) return;
+  ttsDebug("play:audio-context-blocked", { provider, state: ctx.state });
+  onBlocked();
+  throw new DOMException(
+    "Audio playback is blocked until a user gesture unlocks the audio context",
+    "NotAllowedError",
+  );
+}
+
+/**
+ * Wait briefly for the optional visualizer tap without allowing a slow worklet
+ * module load to gate audible playback.
+ */
+export async function attachPlaybackTapWithGrace(
+  tapPromise: Promise<PlaybackFrameTap | null>,
+  onLateTap: (tap: PlaybackFrameTap) => void,
+  graceMs = 150,
+): Promise<PlaybackFrameTap | null> {
+  const timeout = Symbol("playback-tap-timeout");
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    tapPromise,
+    new Promise<typeof timeout>((resolve) => {
+      timeoutId = setTimeout(() => resolve(timeout), graceMs);
+    }),
+  ]);
+  if (timeoutId !== undefined) clearTimeout(timeoutId);
+  if (result !== timeout) return result;
+
+  void tapPromise.then((tap) => {
+    // A scheduled-buffer fallback starts at offset zero and would send stale
+    // reference frames if joined mid-clip. Only live worklet taps are safe.
+    if (tap?.lateAttachSafe) onLateTap(tap);
+  });
+  return null;
+}
+
+/**
+ * Owns one playback-reference tap's lifecycle across the grace-window attach,
+ * a possible late (post-grace) attach, and teardown. `useVoiceChat` drove this
+ * as three near-identical inline blocks (one per TTS provider path); this
+ * class is the single implementation those call sites now share, matching
+ * `activeTapRef` (the hook's `playbackFrameTapRef`) to whichever tap instance
+ * is currently live so a stale reference can never be started/stopped twice.
+ */
+export class PlaybackTapLifecycle {
+  private tap: PlaybackFrameTap | null = null;
+  private started = false;
+  private finished = false;
+
+  constructor(
+    private readonly activeTapRef: { current: PlaybackFrameTap | null },
+  ) {}
+
+  get current(): PlaybackFrameTap | null {
+    return this.tap;
+  }
+
+  /** Races the tap against the grace window; a late-arriving worklet tap self-attaches via the callback below. */
+  async attach(
+    tapPromise: Promise<PlaybackFrameTap | null>,
+  ): Promise<PlaybackFrameTap | null> {
+    this.tap = await attachPlaybackTapWithGrace(tapPromise, (lateTap) => {
+      if (this.finished) {
+        void lateTap.stop({ reset: true }).catch((error) => {
+          // error-policy:J6 Late reference-tap teardown cannot affect completed audio.
+          ttsDebug("playback-reference:late-tap-stop-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
+        return;
+      }
+      this.tap = lateTap;
+      this.activeTapRef.current = lateTap;
+      if (this.started) lateTap.start(getNowMs());
+    });
+    return this.tap;
+  }
+
+  /** Call once, immediately before `source.start(0)`. */
+  start(startTimestampMs: number): void {
+    this.started = true;
+    if (this.tap) {
+      this.activeTapRef.current = this.tap;
+      this.tap.start(startTimestampMs);
+    }
+  }
+
+  /** Call from the playback `finish()` teardown; best-effort, never throws. */
+  finish(): void {
+    this.finished = true;
+    if (this.activeTapRef.current === this.tap) {
+      this.activeTapRef.current = null;
+    }
+    void this.tap?.stop({ reset: true }).catch(() => {
+      // error-policy:J6 best-effort teardown; playback has already ended.
+    });
+  }
 }
 
 function clampPcm(value: number): number {
@@ -459,7 +580,7 @@ export class PlaybackFramePump {
         session.appendPcm(pcm, sampleRate);
       }
     };
-    return session;
+    return Object.assign(session, { lateAttachSafe: true as const });
   }
 
   private createScheduledBufferSession(buffer: AudioBuffer): PlaybackFrameTap {

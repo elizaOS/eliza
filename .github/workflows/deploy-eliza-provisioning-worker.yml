@@ -129,6 +129,10 @@ jobs:
       HEADSCALE_API_URL: ${{ vars.HEADSCALE_API_URL }}
       HEADSCALE_PUBLIC_URL: ${{ vars.HEADSCALE_PUBLIC_URL }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+      # Base64 private key used by the daemon to reach dedicated-agent nodes.
+      # Keep this in the protected environment instead of relying on a
+      # hand-copied file that can drift or disappear when the CP host is rebuilt.
+      CONTAINERS_SSH_KEY: ${{ secrets.CONTAINERS_SSH_KEY }}
       # Sandbox-registry Redis (TCP redis:// proxy, sandbox-reachable — never a
       # *.railway.internal host) so provisioned sandboxes self-register and
       # Discord/Telegram inbound routing works (#8621 / #8756). Reconciled into
@@ -164,6 +168,10 @@ jobs:
       # image ref is auditable config) to roll the fleet pin via deploy;
       # leave it unset to preserve whatever is hand-set on the box.
       ELIZA_AGENT_IMAGE: ${{ vars.ELIZA_AGENT_IMAGE }}
+      # The edge Worker forwards the original per-agent host to this daemon.
+      # Keep the daemon's parser on the same environment-specific suffix or a
+      # staging host (`<uuid>.staging.elizacloud.ai`) is rejected as malformed.
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: ${{ needs.determine-env.outputs.environment == 'production' && 'elizacloud.ai' || 'staging.elizacloud.ai' }}
     steps:
       - name: Check deploy configuration
         id: deploy_config
@@ -241,7 +249,7 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 10m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,ELIZA_CLOUD_AGENT_BASE_DOMAIN
           script: |
             set -euo pipefail
             echo "=== Deploying eliza-provisioning-worker (branch: $DEPLOY_BRANCH sha: $DEPLOY_SHA) ==="
@@ -413,10 +421,12 @@ jobs:
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
               "HEADSCALE_API_KEY=$HEADSCALE_API_KEY" \
+              "CONTAINERS_SSH_KEY=$CONTAINERS_SSH_KEY" \
               "SANDBOX_REGISTRY_REDIS_URL=$SANDBOX_REGISTRY_REDIS_URL" \
               "DATABASE_URL=$DATABASE_URL" \
               "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY" \
-              "ELIZA_AGENT_IMAGE=$ELIZA_AGENT_IMAGE"; do
+              "ELIZA_AGENT_IMAGE=$ELIZA_AGENT_IMAGE" \
+              "ELIZA_CLOUD_AGENT_BASE_DOMAIN=$ELIZA_CLOUD_AGENT_BASE_DOMAIN"; do
               key="${kv%%=*}"
               val="${kv#*=}"
               [ -n "$val" ] || continue
@@ -437,9 +447,15 @@ jobs:
           username: deploy
           key: ${{ env.DEPLOY_SSH_KEY }}
           command_timeout: 5m
-          envs: SYSTEMD_UNIT
+          envs: SYSTEMD_UNIT,ELIZA_CLOUD_AGENT_BASE_DOMAIN
           script: |
             set -euo pipefail
+            ENV_FILE=/opt/eliza/cloud/.env.local
+            ACTUAL_AGENT_BASE_DOMAIN=$(sudo awk -F= '$1=="ELIZA_CLOUD_AGENT_BASE_DOMAIN" { value=$2 } END { print value }' "$ENV_FILE")
+            if [ "$ACTUAL_AGENT_BASE_DOMAIN" != "$ELIZA_CLOUD_AGENT_BASE_DOMAIN" ]; then
+              echo "::error::Agent router base-domain drift: expected $ELIZA_CLOUD_AGENT_BASE_DOMAIN, found ${ACTUAL_AGENT_BASE_DOMAIN:-<missing>}."
+              exit 1
+            fi
             # The worker logs to journald via systemd's stdout/stderr capture.
             # Info-level logs are filtered unless VERBOSE_LOGGING=true, so we
             # rely on systemd's own signals: process is active AND no fatal

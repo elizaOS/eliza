@@ -21,6 +21,7 @@
     "esModuleInterop": true,
     "paths": {
       "@/*": ["./src/*"],
+      "@elizaos/shared": ["../shared/src/i18n/language.ts"],
       "@elizaos/shared/brand": ["../shared/src/brand/index.ts"],
       "@elizaos/ui/cloud-ui/components/icons": [
         "../ui/src/cloud-ui/components/icons.tsx"

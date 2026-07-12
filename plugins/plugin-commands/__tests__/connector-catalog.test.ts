@@ -214,3 +214,25 @@ describe("connector catalog — view-scoped command visibility (#8798)", () => {
 		expect(discord.some((c) => c.name === "calendar-add")).toBe(false);
 	});
 });
+
+describe("connector catalog — navigation command surface filtering (#picker-clutter)", () => {
+	it("keeps navigation commands on the shipped in-app surface", () => {
+		const names = new Set(getConnectorCommands("gui").map((c) => c.name));
+		for (const name of ["views", "wallet", "tasks", "knowledge", "plugins"]) {
+			expect(names.has(name), `${name} must stay on gui`).toBe(true);
+		}
+	});
+
+	it("filters navigation commands off chat connectors (discord/telegram)", () => {
+		// Navigating needs a viewport: on a chat connector these commands could
+		// only reply with a text description of a destination the user cannot
+		// see, while adding a dozen entries to every member's command picker.
+		for (const surface of ["discord", "telegram"]) {
+			const cmds = getConnectorCommands(surface);
+			expect(
+				cmds.some((c) => c.target.kind === "navigate"),
+				`${surface} must carry no navigate targets`,
+			).toBe(false);
+		}
+	});
+});

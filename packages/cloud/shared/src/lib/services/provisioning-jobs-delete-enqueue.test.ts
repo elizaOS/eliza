@@ -12,10 +12,25 @@
  * helpers module with chainable query builders that capture the generated SQL.
  */
 
-import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
+import * as realDbHelpers from "../../db/helpers";
+import * as realJobsRepository from "../../db/repositories/jobs";
 import * as realOutboundUrl from "../security/outbound-url";
+
+// bun's `mock.module` patches the process-global module registry, and this
+// file's `afterEach` only resets local capture state — it never reinstalls the
+// real modules. Under the batched cloud-unit runner (`--isolate` occasionally
+// fails to contain these on a memory-pressured runner) the db/helpers,
+// repositories/jobs (`jobsRepository: {}`), and outbound-url doubles otherwise
+// bleed into later suites — e.g. provisioning-jobs-execute-dispatch spies on
+// the real `jobsRepository.claimPendingJobs`, which becomes undefined. Snapshot
+// the real exports now and reinstall them in afterAll so this file's stubs are
+// strictly local.
+const realDbHelpersExports = { ...realDbHelpers };
+const realJobsRepositoryExports = { ...realJobsRepository };
+const realOutboundUrlExports = { ...realOutboundUrl };
 
 // ---- captured query state ----
 let capturedSelectWhere: SQL | undefined;
@@ -114,6 +129,12 @@ afterEach(() => {
   selectRows = [];
   cancelledReturning = [];
   txSelectCall = 0;
+});
+
+afterAll(() => {
+  mock.module("../../db/helpers", () => realDbHelpersExports);
+  mock.module("../../db/repositories/jobs", () => realJobsRepositoryExports);
+  mock.module("../security/outbound-url", () => realOutboundUrlExports);
 });
 
 describe("enqueueAgentDeleteOnce.beforeInsert — cancels other pending jobs", () => {

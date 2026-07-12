@@ -129,3 +129,155 @@ describe("startCloudAgentHandoff — dedicated migration target", () => {
     expect(getCloudCompatAgent).toHaveBeenCalledWith("agent-self");
   });
 });
+
+describe("startCloudAgentHandoff — proxy-readiness gate (#15901)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("does NOT declare the base ready while the runtime proxy 404s a `running` agent, then lands once it routes", async () => {
+    const { client } = fakeClient({ "dedicated-1": runningDedicated() });
+
+    // Control-plane record says running + URL set from the first poll, but the
+    // subdomain 404s (router not registered yet) for the first probes — the
+    // exact window seen on device in #15901.
+    let healthProbes = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/health")) {
+        healthProbes += 1;
+        return {
+          status: healthProbes < 3 ? 404 : 200,
+          json: async () => ({}),
+        };
+      }
+      if (url.endsWith("/messages")) {
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 2_000,
+      log: () => {},
+    });
+
+    expect(healthProbes).toBe(3);
+    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(result.status).toBe("switched-empty");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://dedicated-1.elizacloud.ai/api/health",
+      expect.anything(),
+    );
+  });
+
+  it("treats a routed auth challenge (401) as routable — the import carries its own credentials", async () => {
+    const { client } = fakeClient({ "dedicated-1": runningDedicated() });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/health")) {
+          return { status: 401, json: async () => ({}) };
+        }
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }),
+    );
+
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 500,
+      log: () => {},
+    });
+
+    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(result.status).toBe("switched-empty");
+  });
+
+  it("treats a network-layer fetch failure as not-yet-routable, then lands once the probe stops throwing", async () => {
+    const { client } = fakeClient({ "dedicated-1": runningDedicated() });
+
+    let healthProbes = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/health")) {
+          healthProbes += 1;
+          if (healthProbes < 2) throw new TypeError("Failed to fetch");
+          return { status: 200, json: async () => ({}) };
+        }
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }),
+    );
+
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 2_000,
+      log: () => {},
+    });
+
+    expect(healthProbes).toBe(2);
+    expect(onSwitch).toHaveBeenCalledWith("https://dedicated-1.elizacloud.ai");
+    expect(result.status).toBe("switched-empty");
+  });
+
+  it("times out honestly (still on the shared adapter) when the proxy never routes", async () => {
+    const { client } = fakeClient({ "dedicated-1": runningDedicated() });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/health")) {
+          return { status: 404, json: async () => ({}) };
+        }
+        return { status: 200, json: async () => ({ messages: [] }) };
+      }),
+    );
+
+    const onSwitch = vi.fn();
+    const result = await client.startCloudAgentHandoff({
+      agentId: "shared-1",
+      sharedApiBase: SHARED_BASE,
+      conversationId: "shared-1",
+      dedicatedAgentId: "dedicated-1",
+      cloudApiBase: "https://www.elizacloud.ai",
+      authToken: "tok",
+      onSwitch,
+      intervalMs: 1,
+      timeoutMs: 60,
+      log: () => {},
+    });
+
+    expect(result.status).toBe("timed-out");
+    expect(onSwitch).not.toHaveBeenCalled();
+  });
+});

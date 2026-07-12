@@ -6,7 +6,13 @@
  * CEREBRAS_API_KEY), usage attribution, and rate-limit skipping. Runs against a
  * real temp ELIZA_HOME / ELIZA_STATE_DIR and real account storage — no mocked pool.
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { saveAccount } from "@elizaos/auth/account-storage";
@@ -28,6 +34,7 @@ let home: string;
 let prevHome: string | undefined;
 let prevStateDir: string | undefined;
 let prevCodexModel: string | undefined;
+let prevCodexEffort: string | undefined;
 let prevCodingStrategy: string | undefined;
 
 function writeAccount(
@@ -99,6 +106,8 @@ beforeEach(() => {
   prevHome = process.env.ELIZA_HOME;
   prevStateDir = process.env.ELIZA_STATE_DIR;
   prevCodexModel = process.env.ELIZA_CODEX_MODEL;
+  prevCodexEffort = process.env.ELIZA_CODEX_EFFORT;
+  delete process.env.ELIZA_CODEX_EFFORT;
   prevCodingStrategy = process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
   delete process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
   home = mkdtempSync(path.join(tmpdir(), "coding-acct-"));
@@ -118,6 +127,8 @@ afterEach(() => {
   else process.env.ELIZA_STATE_DIR = prevStateDir;
   if (prevCodexModel === undefined) delete process.env.ELIZA_CODEX_MODEL;
   else process.env.ELIZA_CODEX_MODEL = prevCodexModel;
+  if (prevCodexEffort === undefined) delete process.env.ELIZA_CODEX_EFFORT;
+  else process.env.ELIZA_CODEX_EFFORT = prevCodexEffort;
   if (prevCodingStrategy === undefined) {
     delete process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
   } else {
@@ -131,6 +142,24 @@ afterEach(() => {
 const originalFetch = globalThis.fetch;
 
 describe("coding-account-bridge", () => {
+  it("derives identity only from a structurally valid three-segment id token", () => {
+    const encodedPayload = Buffer.from(
+      JSON.stringify({ email: "valid@example.com" }),
+    ).toString("base64url");
+    writeAccount("openai-codex", "valid-jwt", "valid-access", {
+      idToken: `e30.${encodedPayload}.signature`,
+    });
+    writeAccount("openai-codex", "extra-segment", "invalid-access", {
+      idToken: `e30.${encodedPayload}.signature.untrusted`,
+    });
+
+    const pool = getDefaultAccountPool();
+    expect(pool.get("valid-jwt", "openai-codex")?.email).toBe(
+      "valid@example.com",
+    );
+    expect(pool.get("extra-segment", "openai-codex")?.email).toBeUndefined();
+  });
+
   it("selects the least-used Claude subscription and returns CLAUDE_CODE_OAUTH_TOKEN", async () => {
     writeAccount("anthropic-subscription", "busy", "sk-ant-oat-BUSY");
     writeAccount("anthropic-subscription", "idle", "sk-ant-oat-IDLE");
@@ -247,6 +276,147 @@ describe("coding-account-bridge", () => {
     // Clean single model line, no injected table/keys.
     expect(cfg).toMatch(/^model = "[\w.:/-]+"\n$/);
     expect(cfg).not.toContain("[evil]");
+  });
+
+  it("prefers the app-configured ELIZA_CODEX_MODEL_POWERFUL over the machine config", async () => {
+    writeAccount("openai-codex", "cx-pow", "cx-pow-access", {
+      organizationId: "a",
+    });
+    const prevOsHome = process.env.HOME;
+    const prevPowerful = process.env.ELIZA_CODEX_MODEL_POWERFUL;
+    // Isolated HOME carrying a machine ~/.codex/config.toml — without the
+    // POWERFUL read this operator config silently won on every spawn.
+    process.env.HOME = home;
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(home, ".codex", "config.toml"),
+      'model = "gpt-5.5"\n',
+    );
+    delete process.env.ELIZA_CODEX_MODEL;
+    process.env.ELIZA_CODEX_MODEL_POWERFUL = "gpt-5.6-terra";
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toContain('model = "gpt-5.6-terra"');
+    } finally {
+      if (prevOsHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevOsHome;
+      if (prevPowerful === undefined) {
+        delete process.env.ELIZA_CODEX_MODEL_POWERFUL;
+      } else {
+        process.env.ELIZA_CODEX_MODEL_POWERFUL = prevPowerful;
+      }
+    }
+  });
+
+  it("lets an explicit ELIZA_CODEX_MODEL pin beat the app-configured model", async () => {
+    writeAccount("openai-codex", "cx-pin", "cx-pin-access", {
+      organizationId: "a",
+    });
+    const prevPowerful = process.env.ELIZA_CODEX_MODEL_POWERFUL;
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.5";
+    process.env.ELIZA_CODEX_MODEL_POWERFUL = "gpt-5.6-terra";
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toContain('model = "gpt-5.5"');
+    } finally {
+      if (prevPowerful === undefined) {
+        delete process.env.ELIZA_CODEX_MODEL_POWERFUL;
+      } else {
+        process.env.ELIZA_CODEX_MODEL_POWERFUL = prevPowerful;
+      }
+    }
+  });
+
+  it("falls back to gpt-5.6-terra when no model is configured anywhere", async () => {
+    writeAccount("openai-codex", "cx-fb", "cx-fb-access", {
+      organizationId: "a",
+    });
+    // Isolate os.homedir() so a real ~/.codex/config.toml on the test machine
+    // can't supply the operator-model fallback and mask the compiled default.
+    const prevOsHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toBe('model = "gpt-5.6-terra"\n');
+    } finally {
+      if (prevOsHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevOsHome;
+    }
+  });
+
+  it("writes model_reasoning_effort for a valid ELIZA_CODEX_EFFORT", async () => {
+    writeAccount("openai-codex", "cx-eff", "cx-eff-access", {
+      organizationId: "a",
+    });
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.6-terra";
+    process.env.ELIZA_CODEX_EFFORT = "xhigh";
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    const cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toContain('model = "gpt-5.6-terra"');
+    expect(cfg).toContain('model_reasoning_effort = "xhigh"');
+  });
+
+  it("skips the effort line for an invalid ELIZA_CODEX_EFFORT (keeps the model pin)", async () => {
+    writeAccount("openai-codex", "cx-bad", "cx-bad-access", {
+      organizationId: "a",
+    });
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.6-terra";
+    process.env.ELIZA_CODEX_EFFORT = 'banana"\n[evil]\nx = "1';
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    const cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toBe('model = "gpt-5.6-terra"\n');
+    expect(cfg).not.toContain("model_reasoning_effort");
+    expect(cfg).not.toContain("[evil]");
+  });
+
+  it("skips ultra/max: valid catalog values the pinned codex-acp cannot parse", async () => {
+    // Writing an effort variant the pinned adapter's serde enum lacks would
+    // fail the WHOLE config.toml parse and drop the model pin ChatGPT-account
+    // auth requires — so these are withheld, not written.
+    writeAccount("openai-codex", "cx-ultra", "cx-ultra-access", {
+      organizationId: "a",
+    });
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.6-sol";
+    for (const effort of ["ultra", "max"]) {
+      process.env.ELIZA_CODEX_EFFORT = effort;
+      __resetDefaultAccountPoolForTests();
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toBe('model = "gpt-5.6-sol"\n');
+    }
   });
 
   it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {

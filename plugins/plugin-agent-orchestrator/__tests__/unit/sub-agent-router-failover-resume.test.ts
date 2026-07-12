@@ -32,13 +32,13 @@ vi.mock("../../src/services/config-env.js", () => ({
 // registered symbol the source's bridgeSlot() reads/writes.
 const BRIDGE_SYMBOL = Symbol.for("eliza.account-pool.coding-agent.v1");
 
+import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
+import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
+import type { OrchestratorTaskSession } from "../../src/services/orchestrator-task-types.js";
 import {
   RESUME_CONTEXT_METADATA_KEY,
   readResumeContext,
 } from "../../src/services/resume-context.js";
-import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
-import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
-import type { OrchestratorTaskSession } from "../../src/services/orchestrator-task-types.js";
 import { SubAgentRouter } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
 

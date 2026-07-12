@@ -56,8 +56,12 @@ import {
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
 import {
+  ensurePlaybackContextRunning,
   PlaybackFramePump,
   type PlaybackFrameTap,
+  PlaybackTapLifecycle,
+  resumeAudioContextForPlayback,
+  warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
 import {
   currentSharedRuntimeVoiceOrigin,
@@ -145,7 +149,6 @@ declare global {
 // ── Shared mutable state ─────────────────────────────────────────────
 
 let sharedAudioCtx: AudioContext | null = null;
-const AUDIO_CONTEXT_RESUME_TIMEOUT_MS = 1200;
 const CLOUD_TTS_TIMEOUT_MS = 60_000;
 const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60_000;
 /** How long the transient `micReconnected` pulse stays set after an auto-restart. */
@@ -163,29 +166,6 @@ const MIC_RECONNECT_PULSE_MS = 1500;
 const CAPTURE_PAUSE_GRACE_MS = 1500;
 
 // ── Internal helpers ─────────────────────────────────────────────────
-
-async function resumeAudioContextForPlayback(
-  ctx: AudioContext,
-  timeoutMs = AUDIO_CONTEXT_RESUME_TIMEOUT_MS,
-): Promise<boolean> {
-  if (ctx.state !== "suspended") return true;
-
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const resumed = await Promise.race([
-      ctx.resume().then(
-        () => true,
-        () => false,
-      ),
-      new Promise<boolean>((resolve) => {
-        timeoutId = setTimeout(() => resolve(false), timeoutMs);
-      }),
-    ]);
-    return resumed && ctx.state !== "suspended";
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
 
 function shouldPreferNativeTalkMode(): boolean {
   if (typeof window === "undefined") return false;
@@ -505,6 +485,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     try {
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
     } catch (error) {
@@ -1537,22 +1518,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "elevenlabs",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(ctx, "elevenlabs", markAudioBlocked);
       markAudioPlaying();
 
       const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
@@ -1755,32 +1724,37 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
+      let playStartMs = 0;
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -1821,10 +1795,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
@@ -1858,22 +1829,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "eliza-cloud",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(ctx, "eliza-cloud", markAudioBlocked);
       markAudioPlaying();
 
       const cacheKey =
@@ -1979,32 +1938,37 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
+      let playStartMs = 0;
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -2023,10 +1987,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         wrappedFinish = finish;
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
@@ -2060,22 +2021,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "local-inference",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(
+        ctx,
+        "local-inference",
+        markAudioBlocked,
+      );
       markAudioPlaying();
 
       const cacheKey =
@@ -2149,32 +2102,37 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
+      let playStartMs = 0;
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -2193,10 +2151,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         wrappedFinish = finish;
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),

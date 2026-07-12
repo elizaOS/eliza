@@ -70,6 +70,10 @@ jobs:
 
       - name: Setup workspace dependencies
         uses: ./.github/actions/setup-bun-workspace
+        env:
+          # The legacy fixture bundle contains stale visual baselines; homepage
+          # tests must use the expectations committed with the checked-out SHA.
+          ELIZA_SKIP_ARTIFACT_SYNC: "1"
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile

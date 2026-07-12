@@ -275,7 +275,10 @@ export async function runFrontendKpi({
   let browser = null;
   try {
     browser = await playwright.chromium.launch({ args: ["--no-sandbox"] });
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+      // Keep Resource Timing scoped to network responses instead of decoded service-worker cache bodies.
+      serviceWorkers: "block",
+    });
     await context.addInitScript(OBSERVER_INIT);
     const page = await context.newPage();
     await page.goto(target, { waitUntil: "load", timeout: 60_000 });

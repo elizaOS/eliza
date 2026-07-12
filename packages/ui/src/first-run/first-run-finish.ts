@@ -22,9 +22,11 @@ import type { CloudCompatAgent } from "../api/client-types-cloud";
 import { getDesktopRuntimeMode, invokeDesktopBridgeRequest } from "../bridge";
 import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
 import {
+  clearPendingCloudHandoff,
   loadPendingCloudHandoff,
   savePendingCloudHandoff,
 } from "../cloud/handoff/pending-handoff-store";
+import { resumePendingCloudHandoff } from "../cloud/handoff/resume-pending-handoff";
 import { runCloudAgentHandoff } from "../cloud/handoff/run-cloud-agent-handoff";
 import { silentlyRepointToDedicated } from "../cloud/handoff/silent-repoint";
 import { getBootConfig } from "../config/boot-config";
@@ -42,6 +44,7 @@ import {
   loadPersistedActiveServer,
   removeAgentProfile,
   savePersistedActiveServer,
+  savePersistedFirstRunComplete,
 } from "../state";
 import { runAgentSessionRecovery } from "../state/agent-session-recovery-runner";
 import { isCloudStatusAuthenticated } from "../utils";
@@ -547,10 +550,18 @@ export async function bindCloudAgent(
         persistMobileRuntimeModeForServerTarget("elizacloud");
         clearForceFreshFirstRun();
         clearPersistedFirstRunState();
+        // Durable completion is persisted HERE, at the landing itself, for the
+        // same reason as the main bind path below (#15903).
+        savePersistedFirstRunComplete(true);
         ports.onStatus?.(null);
         ports.completeFirstRun("chat");
         return { kind: "done" };
       }
+      // `navigate` hands the window to the agent's /pair relay — this JS
+      // session ends now, so the conductor's completion callback never runs.
+      // Persist the durable flag before the unload or the returning boot
+      // re-enters first-run despite a successful landing (#15903).
+      savePersistedFirstRunComplete(true);
       return { kind: "handoff-started" };
     } catch (err) {
       return {
@@ -600,8 +611,29 @@ export async function bindCloudAgent(
   // app-shell path's submitFirstRun already cleared it above).
   clearForceFreshFirstRun();
   clearPersistedFirstRunState();
+  // Persist the durable completion contract at the landing ITSELF, not only
+  // through the conductor's completion callback: every successful cloud
+  // landing — fresh provision AND the returning-account "Finding your
+  // agents…" reuse — must leave `eliza:first-run-complete` set, or the next
+  // launch re-enters first-run for a user whose agent is healthy (#15903).
+  // Idempotent with the callback's own setFirstRunComplete(true) persist.
+  savePersistedFirstRunComplete(true);
   ports.onStatus?.(null);
   ports.completeFirstRun("chat");
+
+  // Marker hygiene (#15902): a pending-handoff marker is only meaningful for
+  // the shared agent it was minted for. A leftover marker from a different
+  // (earlier, failed) onboarding must not suppress this landing's upgrade path
+  // or pin the provisioning tile in "Setting up…" — clear it; this landing's
+  // own state drives from here.
+  const pendingHandoff = loadPendingCloudHandoff();
+  const pendingHandoffForThisAgent =
+    pendingHandoff && pendingHandoff.sharedAgentId === selectedAgent.agentId
+      ? pendingHandoff
+      : null;
+  if (pendingHandoff && !pendingHandoffForThisAgent) {
+    clearPendingCloudHandoff();
+  }
 
   // Seamless shared→dedicated cloud-agent handoff (background). Flag OFF →
   // `selectedAgent` is the dedicated agent itself and this branch is skipped.
@@ -610,14 +642,19 @@ export async function bindCloudAgent(
   // (`created:false`, e.g. re-login after a failed first run) — #15310 #3: the
   // old `created`-only gate meant a reused shared agent never re-entered the
   // upgrade path, stranding the user on the shared adapter with the
-  // provisioning tile forever. The one reuse case that must NOT start a fresh
-  // handoff is an interrupted-but-live one: a persisted pending marker means
-  // resumePendingCloudHandoff owns it (it verifies the target and re-arms a
-  // fresh create itself when the target is dead), and double-firing here would
-  // provision a second dedicated agent.
+  // provisioning tile forever. Two reuse cases must NOT start a fresh handoff:
+  //  - an interrupted-but-live one (a pending marker FOR THIS AGENT):
+  //    resumePendingCloudHandoff owns it below — it verifies the target and
+  //    re-arms a fresh create itself when the target is dead; double-firing
+  //    here would provision a second dedicated agent;
+  //  - a reused agent that already OWNS a dedicated container (`bridgeUrl`
+  //    set) but was bound via the shared adapter by tier preference — minting
+  //    another dedicated agent for it would duplicate a billed container
+  //    (#15902 run-2 class).
   if (
     getBootConfig().preferSharedCloudTier &&
-    (selectedAgent.created || loadPendingCloudHandoff() === null) &&
+    !selectedAgent.bridgeUrl &&
+    (selectedAgent.created || pendingHandoffForThisAgent === null) &&
     isDirectCloudSharedAgentBase(cloudAgentApiBase)
   ) {
     const sharedAgentId = selectedAgent.agentId;
@@ -689,6 +726,17 @@ export async function bindCloudAgent(
           });
       },
     );
+  } else if (
+    pendingHandoffForThisAgent &&
+    isDirectCloudSharedAgentBase(cloudAgentApiBase)
+  ) {
+    // Interrupted-but-live migration for THIS shared agent: resume it at the
+    // landing instead of waiting for a later boot's 404 path to notice — the
+    // resume path verifies the persisted dedicated target, clears the marker
+    // when it is provably dead, and re-runs the same migration otherwise, so
+    // the provisioning tile tracks a live handoff rather than pinning
+    // "Setting up…" forever (#15902).
+    resumePendingCloudHandoff();
   }
   return { kind: "done" };
 }

@@ -129,6 +129,7 @@ function makeSlash(
     isAuthorized: true,
     isElevated: true,
     resolveChoices: () => [],
+    describeChoice: () => "",
     resolveSection: (t: string) =>
       ({ model: "ai-model", voice: "voice", connectors: "connectors" })[t],
     navigateTab: vi.fn(),

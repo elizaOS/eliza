@@ -226,6 +226,9 @@ jobs:
       - name: Build packages
         run: bun run build
 
+      - name: Remove source-adjacent build output
+        run: bun run clean:stale-js
+
       - name: Install Playwright Chromium
         run: bunx playwright install --with-deps chromium
 

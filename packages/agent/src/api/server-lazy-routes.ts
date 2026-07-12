@@ -463,6 +463,17 @@ export async function handleModelsRoutes(
   return (await import("./models-routes.ts")).handleModelsRoutes(...args);
 }
 
+type ModelConfigRoutesModule = typeof import("./model-config-routes.ts");
+export async function handleModelConfigRoutes(
+  ...args: Parameters<ModelConfigRoutesModule["handleModelConfigRoutes"]>
+): ReturnType<ModelConfigRoutesModule["handleModelConfigRoutes"]> {
+  const ctx = routeContext(args);
+  if (ctx?.pathname !== "/api/models/config") return false;
+  return (await import("./model-config-routes.ts")).handleModelConfigRoutes(
+    ...args,
+  );
+}
+
 type MusicPlayerFallbackModule =
   typeof import("./music-player-route-fallback.ts");
 export async function tryHandleMusicPlayerStatusFallbackLazy(

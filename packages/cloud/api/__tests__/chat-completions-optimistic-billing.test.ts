@@ -204,9 +204,8 @@ mock.module("ai", () => ({
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
-const { handleChatCompletionsPOST } = await import(
-  "../v1/chat/completions/route"
-);
+const { default: chatCompletionsRouter, handleChatCompletionsPOST } =
+  await import("../v1/chat/completions/route");
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
@@ -241,8 +240,9 @@ afterAll(() => {
 function makeRequest(
   affiliateCode?: string,
   overrides: Record<string, unknown> = {},
+  url = "https://api.test/api/v1/chat/completions",
 ): Request {
-  return new Request("https://api.test/api/v1/chat/completions", {
+  return new Request(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -302,6 +302,23 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     streamText.mockClear();
   });
 
+  test("forwards the prompt cache key through the full Cerebras route", async () => {
+    await handleChatCompletionsPOST(
+      makeRequest(undefined, {
+        model: "gpt-oss-120b",
+        prompt_cache_key: "v5:optimistic-route",
+      }),
+      { skipOrgRateLimit: true },
+    );
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(generateText.mock.calls[0]?.[0]).toMatchObject({
+      providerOptions: {
+        openai: { promptCacheKey: "v5:optimistic-route" },
+      },
+    });
+  });
+
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
     await drive();
     // POSITIVE: the decision was reached and chose optimistic.
@@ -309,6 +326,41 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
     // The synchronous reserve write (the latency we are removing) is skipped.
     expect(reserveCredits).not.toHaveBeenCalled();
+  });
+
+  test("an allowed native route decision reaches the handler and preserves limiter headers", async () => {
+    const keys: string[] = [];
+    const waitUntilPromises: Promise<unknown>[] = [];
+    const response = await chatCompletionsRouter.fetch(
+      makeRequest(undefined, {}, "https://api.test/"),
+      {
+        NODE_ENV: "production",
+        CHAT_ROUTE_RATE_LIMITER: {
+          async limit({ key }: { key: string }) {
+            keys.push(key);
+            return { success: true };
+          },
+        },
+      } as never,
+      {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+        passThroughOnException() {},
+        props: {},
+      } as never,
+    );
+
+    // The model stub throws after dispatch. A 500 here proves the native gate
+    // allowed the request into the same real route handler exercised below.
+    expect(response.status).toBe(500);
+    expect(keys).toEqual(["public"]);
+    expect(response.headers.get("X-RateLimit-Policy")).toBe(
+      "cloudflare-native",
+    );
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+    await Promise.all(waitUntilPromises);
   });
 
   test("billing requestId is server-generated, not copied from x-request-id", async () => {

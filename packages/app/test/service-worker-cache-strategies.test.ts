@@ -199,13 +199,18 @@ describe("service worker navigation preload", () => {
 
   it("purges unknown caches on activate but keeps known ones", async () => {
     const worker = loadServiceWorker({
-      preexistingCaches: ["stale-cache-v0", "elizaos-shell-v5"],
+      preexistingCaches: [
+        "stale-cache-v0",
+        "elizaos-shell-v5",
+        "elizaos-shell-v6",
+      ],
     });
     const event = makeActivateEvent();
     worker.dispatch("activate", event);
     await Promise.all(event._work);
     expect(worker.caches.has("stale-cache-v0")).toBe(false);
-    expect(worker.caches.has("elizaos-shell-v5")).toBe(true);
+    expect(worker.caches.has("elizaos-shell-v5")).toBe(false);
+    expect(worker.caches.has("elizaos-shell-v6")).toBe(true);
   });
 
   it("consumes the navigation preload response instead of issuing a second fetch", async () => {

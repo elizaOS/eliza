@@ -145,7 +145,7 @@ describe("handleCommandsRoutes", () => {
     expect(payload.surface).toBe("discord");
     const keys = new Set(payload.commands.map((c) => c.key));
     expect(keys.has("fullscreen")).toBe(false); // gui-only
-    expect(keys.has("settings")).toBe(true); // all-surface
+    expect(keys.has("settings")).toBe(false); // app navigation is GUI-only
   });
 
   it("ignores an invalid surface and serves the unscoped catalog", async () => {
@@ -192,13 +192,14 @@ describe("handleCommandsRoutes", () => {
       expect(keys.has("fullscreen")).toBe(true);
     });
 
-    it("excludes client-only commands on discord but keeps navigation", async () => {
+    it("excludes local client and navigation commands on discord", async () => {
       const payload = await fetchCatalog("?surface=discord");
       expect(payload.surface).toBe("discord");
       const keys = new Set(payload.commands.map((c) => c.key));
       expect(keys.has("clear")).toBe(false);
       expect(keys.has("fullscreen")).toBe(false);
-      expect(keys.has("settings")).toBe(true);
+      expect(keys.has("settings")).toBe(false);
+      expect(keys.has("think")).toBe(true);
     });
 
     it("excludes client-only commands on telegram too", async () => {
@@ -207,7 +208,8 @@ describe("handleCommandsRoutes", () => {
       const keys = new Set(payload.commands.map((c) => c.key));
       expect(keys.has("clear")).toBe(false);
       expect(keys.has("fullscreen")).toBe(false);
-      expect(keys.has("settings")).toBe(true);
+      expect(keys.has("settings")).toBe(false);
+      expect(keys.has("think")).toBe(true);
     });
   });
 

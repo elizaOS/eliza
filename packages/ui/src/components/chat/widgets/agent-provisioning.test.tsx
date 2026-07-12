@@ -2,8 +2,11 @@
 //
 // AgentProvisioningWidget lifecycle: renders the migrating state (opening chat on
 // tap), a Retry control on a failed handoff (dispatching the retry event), and
-// self-hides once the dedicated agent attaches or for a local/non-shared runtime.
-// jsdom render with the cloud-compat agent helpers + events mocked (no backend).
+// self-hides once the dedicated agent attaches, for a local/non-shared runtime,
+// or when no migration is actually pending (no live phase + no matching
+// pending-handoff marker — the #15902 stale-tile pin). jsdom render with the
+// cloud-compat agent helpers + events mocked (no backend); the pending-handoff
+// marker store runs REAL against jsdom localStorage.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CloudHandoffPhaseDetail } from "../../../events";
@@ -80,6 +83,10 @@ vi.mock("./home-widget-card", async () => {
   };
 });
 
+import {
+  clearPendingCloudHandoff,
+  savePendingCloudHandoff,
+} from "../../../cloud/handoff/pending-handoff-store";
 import { AgentProvisioningWidget } from "./agent-provisioning";
 
 const SHARED_SERVER = {
@@ -93,6 +100,16 @@ function phase(p: CloudHandoffPhaseDetail["phase"]): CloudHandoffPhaseDetail {
   return { agentId: "agent-123", phase: p };
 }
 
+function seedPendingHandoffMarker(sharedAgentId: string): void {
+  savePendingCloudHandoff({
+    sharedAgentId,
+    dedicatedAgentId: "dedicated-456",
+    sharedApiBase: SHARED_SERVER.apiBase,
+    cloudApiBase: "https://www.elizacloud.ai",
+    startedAt: Date.now(),
+  });
+}
+
 describe("AgentProvisioningWidget", () => {
   beforeEach(() => {
     getCloudCompatAgentMock.mockReset();
@@ -103,6 +120,7 @@ describe("AgentProvisioningWidget", () => {
     navOpenTab.mockReset();
     openCloudBillingConsoleMock.mockReset();
     openCloudBillingConsoleMock.mockResolvedValue(undefined);
+    clearPendingCloudHandoff();
   });
   afterEach(cleanup);
 
@@ -115,11 +133,26 @@ describe("AgentProvisioningWidget", () => {
     expect(navOpenTab).toHaveBeenCalledWith("chat");
   });
 
-  it("renders on a shared cloud server even before any handoff phase arrives", () => {
+  it("renders on a shared cloud server before any phase arrives when a matching handoff marker is pending", () => {
+    seedPendingHandoffMarker("agent-123");
     useCloudHandoffPhaseMock.mockReturnValue(null);
     render(<AgentProvisioningWidget />);
     expect(screen.getByTestId("chat-widget-agent-provisioning")).toBeTruthy();
     expect(screen.getByTestId("value").textContent).toBe("Setting up…");
+  });
+
+  it("self-hides on a shared cloud server with NO pending marker and no live phase (#15902 stale pin)", () => {
+    useCloudHandoffPhaseMock.mockReturnValue(null);
+    const { container } = render(<AgentProvisioningWidget />);
+    expect(screen.queryByTestId("chat-widget-agent-provisioning")).toBeNull();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("self-hides when the only pending marker belongs to a DIFFERENT shared agent", () => {
+    seedPendingHandoffMarker("some-other-agent");
+    useCloudHandoffPhaseMock.mockReturnValue(null);
+    const { container } = render(<AgentProvisioningWidget />);
+    expect(container.firstChild).toBeNull();
   });
 
   it("renders a Retry control on a failed handoff and dispatches the retry event", () => {

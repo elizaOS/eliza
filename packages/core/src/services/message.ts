@@ -2129,11 +2129,23 @@ function appendStateProviderEvents(
 	events: ContextEvent[],
 	state: State,
 	excludedProviderNames?: readonly string[],
+	providerDefinitions?: readonly { name: string; cacheStable?: boolean }[],
 ): void {
 	const providers = state.data?.providers;
 	const excluded = excludedProviderNames
 		? new Set(excludedProviderNames.map((name) => name.toUpperCase()))
 		: null;
+	// Provider.cacheStable lives on the registered provider definition, not on
+	// composeState's per-call ProviderResult, so resolve it by name here and
+	// stamp it on the event for context-renderer.ts to read.
+	const cacheStableByName = new Map<string, boolean>();
+	if (providerDefinitions) {
+		for (const def of providerDefinitions) {
+			if (typeof def.cacheStable === "boolean") {
+				cacheStableByName.set(def.name.toUpperCase(), def.cacheStable);
+			}
+		}
+	}
 	if (!providers || typeof providers !== "object") {
 		const fallbackText =
 			typeof state.text === "string" ? state.text.trim() : "";
@@ -2177,15 +2189,17 @@ function appendStateProviderEvents(
 		if (!text) {
 			continue;
 		}
+		const resolvedName =
+			typeof provider.providerName === "string"
+				? provider.providerName
+				: providerName;
 		events.push({
 			id: `provider:${providerName}`,
 			type: "provider",
 			source: "composeState",
-			name:
-				typeof provider.providerName === "string"
-					? provider.providerName
-					: providerName,
+			name: resolvedName,
 			text,
+			cacheStable: cacheStableByName.get(resolvedName.toUpperCase()),
 		});
 	}
 }
@@ -2781,7 +2795,12 @@ async function createV5MessageContextObject(args: {
 			? ["RECENT_MESSAGES"]
 			: []),
 	];
-	appendStateProviderEvents(events, args.state, renderExclusions);
+	appendStateProviderEvents(
+		events,
+		args.state,
+		renderExclusions,
+		args.runtime.providers,
+	);
 
 	if (hasStructuredRecentMessagesProvider(args.state)) {
 		events.push({

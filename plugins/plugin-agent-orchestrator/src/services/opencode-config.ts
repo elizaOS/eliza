@@ -188,7 +188,7 @@ export function buildOpencodeSpawnConfig(
       OPENCODE_OPENAI_COMPATIBLE_NPM,
       ELIZA_CLOUD_OPENAI_BASE,
       cloudKey,
-      powerful || "claude-opus-4-7",
+      powerful || "claude-opus-4-8",
       fast || "claude-haiku-4-5",
     );
   }

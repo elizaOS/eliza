@@ -32,6 +32,18 @@ const aliases = [
       new URL("../plugin-scheduling/src/index.ts", import.meta.url),
     ),
   },
+  {
+    find: /^@elizaos\/ui$/,
+    replacement: fileURLToPath(
+      new URL("../../packages/ui/src/api/client.ts", import.meta.url),
+    ),
+  },
+  {
+    find: /^@elizaos\/ui\/spatial$/,
+    replacement: fileURLToPath(
+      new URL("../../packages/ui/src/spatial/index.ts", import.meta.url),
+    ),
+  },
 ];
 
 export default defineConfig({

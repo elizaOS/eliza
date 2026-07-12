@@ -29,6 +29,7 @@ describe("shouldForwardEnv", () => {
     expect(shouldForwardEnv("ANTHROPIC_API_KEY")).toBe(true);
     expect(shouldForwardEnv("OPENAI_API_KEY")).toBe(true);
     expect(shouldForwardEnv("CEREBRAS_BASE_URL")).toBe(true);
+    expect(shouldForwardEnv("CLAUDE_CODE_EFFORT_LEVEL")).toBe(true);
     expect(shouldForwardEnv("PATH")).toBe(true);
   });
 

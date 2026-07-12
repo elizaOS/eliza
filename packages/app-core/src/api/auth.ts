@@ -46,7 +46,8 @@ export {
 
 export interface CompatStateLike {
   current:
-    (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null }) | null;
+    | (EmbedSessionSecretRuntime & { adapter?: { db?: unknown } | null })
+    | null;
 }
 
 /**

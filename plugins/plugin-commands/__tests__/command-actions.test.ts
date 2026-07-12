@@ -148,13 +148,15 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 	});
 
 	it("rejects invalid option values deterministically", async () => {
-		const r = await resolveCommand(runtime, msg("/think enormous"));
+		const r = await resolveCommand(runtime, msg("/think enormous"), {
+			isAuthorized: true,
+		});
 		expect(r.handled).toBe(true);
 		expect(r.reply).toContain("Invalid thinking value");
 	});
 
 	it("deterministically handles lifecycle commands (reset/new/compact)", async () => {
-		await resolveCommand(runtime, msg("/think high"));
+		await resolveCommand(runtime, msg("/think high"), { isAuthorized: true });
 		const reset = await resolveCommand(runtime, msg("/reset"), {
 			isAuthorized: true,
 		});
@@ -164,7 +166,9 @@ describe("runCommand / resolveCommand — deterministic handlers (#8790)", () =>
 		expect(await getCommandSettings(runtime, "room-1")).toEqual({});
 
 		await resolveCommand(runtime, msg("/model gpt-5"));
-		const next = await resolveCommand(runtime, msg("/new"));
+		const next = await resolveCommand(runtime, msg("/new"), {
+			isAuthorized: true,
+		});
 		expect(next.handled).toBe(true);
 		expect(next.reply).toBe(
 			"Started a new conversation context for this room.",
@@ -320,6 +324,8 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 			.sort();
 
 		expect(signatures).toEqual([
+			"cmd:accounts:/accounts->ACCOUNTS_COMMAND",
+			"cmd:backend:/backend->BACKEND_COMMAND",
 			"cmd:commands:/cmds->COMMANDS_COMMAND",
 			"cmd:commands:/commands->COMMANDS_COMMAND",
 			"cmd:compact:/compact->COMPACT_COMMAND",

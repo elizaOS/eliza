@@ -11,6 +11,8 @@ vi.mock("@capacitor/core", () => ({
 
 import {
   buildCloudSharedAgentApiBase,
+  buildDedicatedCloudAgentApiBase,
+  dedicatedCloudAgentIdFromBase,
   isCloudAgentsCollectionBase,
   isElizaCloudControlPlaneAgentlessBase,
 } from "../utils/cloud-agent-base";
@@ -139,6 +141,40 @@ describe("cloud-agent-base helpers", () => {
     ).toBe("https://api.elizacloud.ai/api/v1/eliza/agents/abc");
   });
 
+  it("buildDedicatedCloudAgentApiBase preserves production as the default", () => {
+    expect(buildDedicatedCloudAgentApiBase("agent-123")).toBe(
+      "https://agent-123.elizacloud.ai",
+    );
+    expect(
+      buildDedicatedCloudAgentApiBase(
+        "agent-123",
+        "https://api.elizacloud.ai/api/v1",
+      ),
+    ).toBe("https://agent-123.elizacloud.ai");
+  });
+
+  it("buildDedicatedCloudAgentApiBase keeps staging agents on staging ingress", () => {
+    for (const cloudBase of [
+      "https://staging.elizacloud.ai",
+      "https://api-staging.elizacloud.ai/api/v1",
+      "https://app-staging.elizacloud.ai",
+      "https://existing.staging.elizacloud.ai",
+    ]) {
+      expect(buildDedicatedCloudAgentApiBase("agent-123", cloudBase)).toBe(
+        "https://agent-123.staging.elizacloud.ai",
+      );
+    }
+  });
+
+  it("dedicatedCloudAgentIdFromBase extracts production and staging ids", () => {
+    expect(
+      dedicatedCloudAgentIdFromBase("https://agent-123.elizacloud.ai"),
+    ).toBe("agent-123");
+    expect(
+      dedicatedCloudAgentIdFromBase("https://agent-123.staging.elizacloud.ai"),
+    ).toBe("agent-123");
+  });
+
   it("isCloudAgentsCollectionBase flags blank/bare/collection bases", () => {
     expect(isCloudAgentsCollectionBase("")).toBe(true);
     expect(isCloudAgentsCollectionBase(null)).toBe(true);
@@ -158,6 +194,14 @@ describe("cloud-agent-base helpers", () => {
 
   it("isElizaCloudControlPlaneAgentlessBase is host-checked (only cloud hosts)", () => {
     expect(
+      isElizaCloudControlPlaneAgentlessBase("https://app.elizacloud.ai"),
+    ).toBe(true);
+    expect(
+      isElizaCloudControlPlaneAgentlessBase(
+        "https://app-staging.elizacloud.ai",
+      ),
+    ).toBe(true);
+    expect(
       isElizaCloudControlPlaneAgentlessBase("https://api.elizacloud.ai"),
     ).toBe(true);
     expect(
@@ -173,6 +217,11 @@ describe("cloud-agent-base helpers", () => {
     // A raw dedicated bridge (non-cloud host) is NOT agentless.
     expect(
       isElizaCloudControlPlaneAgentlessBase("http://195.201.57.227:19411"),
+    ).toBe(false);
+    expect(
+      isElizaCloudControlPlaneAgentlessBase(
+        "https://ff479713-41c8-4d82-92b8-5f0881062189.elizacloud.ai",
+      ),
     ).toBe(false);
   });
 });

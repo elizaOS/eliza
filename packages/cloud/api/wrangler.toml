@@ -73,12 +73,24 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
-# Cache + rate-limit storage runs through Railway TCP Redis via REDIS_URL in
-# Worker envs (in-Worker SocketRedis, RESP2 over cloudflare:sockets); set
-# REDIS_URL as a Wrangler secret. Upstash REST (KV_REST_API_URL /
-# KV_REST_API_TOKEN) remains a legacy fallback only. Shared-runtime chat history
-# depends on this being durable across Worker requests. Local dev still uses
-# embedded Wadis by default when no Redis credentials are present.
+[[ratelimits]]
+name = "GLOBAL_RATE_LIMITER"
+namespace_id = "1615301"
+simple = { limit = 600, period = 60 }
+
+[[ratelimits]]
+name = "CHAT_ROUTE_RATE_LIMITER"
+namespace_id = "1615302"
+simple = { limit = 200, period = 60 }
+
+# Exact organization limits and non-native route limits use Railway TCP Redis
+# via REDIS_URL (in-Worker SocketRedis, RESP2 over cloudflare:sockets). The
+# global flood backstop and chat API-key gate above use Cloudflare's local
+# protective counters, so Railway connection setup no longer blocks those two
+# outer ingress checks. The exact organization quota remains Redis-backed in
+# the handler. Upstash REST remains a legacy fallback. Shared-runtime chat
+# history still depends on durable Redis; local dev uses embedded Wadis when
+# unconfigured.
 
 # Vectorize — embeddings (uncomment after `wrangler vectorize create`)
 # [[vectorize]]
@@ -438,6 +450,16 @@ id = "ef65eb94c74144a3a3848ad1945571fb"
 binding = "CACHE_KV"
 id = "f7e24faaff734e7c8cd8e12b093c3571"
 
+[[env.staging.ratelimits]]
+name = "GLOBAL_RATE_LIMITER"
+namespace_id = "1615311"
+simple = { limit = 600, period = 60 }
+
+[[env.staging.ratelimits]]
+name = "CHAT_ROUTE_RATE_LIMITER"
+namespace_id = "1615312"
+simple = { limit = 200, period = 60 }
+
 [env.production]
 name = "eliza-cloud-api-prod"
 # Smart Placement (#15513, prod leg): staging soak showed mode=smart applied
@@ -603,3 +625,13 @@ id = "9f59e4ec65f048f7b87e29e7b9c5d728"
 [[env.production.kv_namespaces]]
 binding = "CACHE_KV"
 id = "1dafabf1293d4b6b97f61c5cc22d6fec"
+
+[[env.production.ratelimits]]
+name = "GLOBAL_RATE_LIMITER"
+namespace_id = "1615321"
+simple = { limit = 600, period = 60 }
+
+[[env.production.ratelimits]]
+name = "CHAT_ROUTE_RATE_LIMITER"
+namespace_id = "1615322"
+simple = { limit = 200, period = 60 }

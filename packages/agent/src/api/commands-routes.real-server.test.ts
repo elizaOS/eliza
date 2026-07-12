@@ -196,7 +196,7 @@ describe("GET /api/commands (real loopback server)", () => {
     expect(byKey.get("think")?.target.kind).toBe("agent");
   });
 
-  it("filters client-only commands off chat connectors but keeps navigation", async () => {
+  it("filters local client and navigation commands off chat connectors", async () => {
     const baseUrl = await startCommandsServer();
     const body = (await (
       await fetch(`${baseUrl}/api/commands?surface=discord`)
@@ -207,8 +207,8 @@ describe("GET /api/commands (real loopback server)", () => {
     // GUI-only client behaviors have no remote surface.
     expect(keys.has("clear")).toBe(false);
     expect(keys.has("fullscreen")).toBe(false);
-    // Navigation + agent commands remain available remotely.
-    expect(keys.has("settings")).toBe(true);
+    // In-app navigation is GUI-only; agent commands remain available remotely.
+    expect(keys.has("settings")).toBe(false);
     expect(keys.has("think")).toBe(true);
   });
 

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
+  topLevelAuthGateOwnsSurface,
 } from "./top-level-auth-gate";
 
 describe("firstRunOwnsLoginSurface — top-level LoginView vs in-chat onboarding", () => {
@@ -41,6 +42,42 @@ describe("firstRunOwnsLoginSurface — top-level LoginView vs in-chat onboarding
     // or a normal session could be locked out of the top-level login.
     expect(firstRunOwnsLoginSurface("ready", undefined)).toBe(false);
     expect(firstRunOwnsLoginSurface("ready", null)).toBe(false);
+  });
+});
+
+describe("topLevelAuthGateOwnsSurface — first-run 401 routing", () => {
+  it("keeps a shared Cloud app 401 inside in-chat onboarding", () => {
+    expect(
+      topLevelAuthGateOwnsSurface(
+        "first-run-required",
+        false,
+        "unauthenticated",
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      topLevelAuthGateOwnsSurface("hydrating", false, "unauthenticated", true),
+    ).toBe(false);
+  });
+
+  it("lets a real agent backend 401 override optimistic first-run", () => {
+    expect(
+      topLevelAuthGateOwnsSurface(
+        "first-run-required",
+        false,
+        "unauthenticated",
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  it("activates normally after first-run on every origin", () => {
+    expect(topLevelAuthGateOwnsSurface("ready", true, "loading", true)).toBe(
+      true,
+    );
+    expect(
+      topLevelAuthGateOwnsSurface("ready", true, "authenticated", false),
+    ).toBe(true);
   });
 });
 

@@ -29,11 +29,24 @@ import type {
 	ParsedCommand,
 } from "../types";
 import {
+	parseAccountsArgs,
+	runAccountsRefreshViaRoute,
+	runAccountsReportViaRoute,
+	runAccountsStrategyViaRoute,
+	runAccountsToggleViaRoute,
+} from "./accounts";
+import { parseBackendArgs, runBackendShowViaRoute } from "./backend";
+import {
 	type CommandSettings,
 	clearCommandSettings,
 	getCommandSettings,
 	setCommandSetting,
 } from "./command-settings";
+import {
+	parseModelConfigArgs,
+	runModelConfigShowViaRoute,
+	runModelConfigWriteViaRoute,
+} from "./model-config";
 
 /**
  * Commands whose effects are fully owned by this deterministic layer. Broader
@@ -58,6 +71,8 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"elevated",
 	"model",
 	"tts",
+	"accounts",
+	"backend",
 ];
 
 const DETERMINISTIC_KEYS: ReadonlySet<string> = new Set(
@@ -363,13 +378,93 @@ export async function runCommand(
 		}
 
 		case "model": {
+			// `/model show|small|large|coding …` drives the validated global
+			// model-config route. The definition now carries requiresAuth (the
+			// whole command is operator-facing — connector pickers gate it), and
+			// the write subcommands are additionally owner-only here because they
+			// mutate config.env for every room (and restart the agent for chat
+			// targets).
+			const configCommand = parseModelConfigArgs(parsed);
+			if (configCommand) {
+				if (configCommand.kind === "show") {
+					if (!context.isAuthorized) return authError();
+					return runModelConfigShowViaRoute();
+				}
+				if (!context.isElevated) {
+					return reply("This command requires elevated permissions.");
+				}
+				if (configCommand.kind === "usage") {
+					return reply(configCommand.error);
+				}
+				return runModelConfigWriteViaRoute(configCommand.body);
+			}
 			// `/model local|cloud [id]` is a runtime inference switch shared with
 			// the MODEL_SWITCH action; a bare model name stays a per-room setting.
+			// The switch mutates the global inference backend — same blast radius
+			// as the config writes above, so it carries the same owner-only gate.
 			const switchArgs = parseModelSwitchArgs(parsed);
 			if (switchArgs) {
+				if (!context.isElevated) {
+					return reply("This command requires elevated permissions.");
+				}
 				return runModelSwitchViaRoute(switchArgs.target, switchArgs.model);
 			}
 			return setOptionCommand(runtime, roomId, parsed, OPTION_COMMANDS.model);
+		}
+
+		case "accounts": {
+			// Bare `/accounts` is a read the definition-level requiresAuth gate
+			// already covers; every subcommand mutates the global account pool, so
+			// it carries the same owner-only gate as the /model config writes —
+			// including usage errors, so an unprivileged sender can't probe the
+			// grammar.
+			const accountsCommand = parseAccountsArgs(parsed);
+			if (accountsCommand.kind === "report") {
+				return runAccountsReportViaRoute();
+			}
+			if (!context.isElevated) {
+				return reply("This command requires elevated permissions.");
+			}
+			if (accountsCommand.kind === "usage") {
+				return reply(accountsCommand.error);
+			}
+			if (accountsCommand.kind === "strategy") {
+				return runAccountsStrategyViaRoute(
+					accountsCommand.provider,
+					accountsCommand.strategy,
+				);
+			}
+			if (accountsCommand.kind === "refresh") {
+				return runAccountsRefreshViaRoute(
+					accountsCommand.provider,
+					accountsCommand.account,
+				);
+			}
+			return runAccountsToggleViaRoute(
+				accountsCommand.kind,
+				accountsCommand.provider,
+				accountsCommand.account,
+			);
+		}
+
+		case "backend": {
+			const backendCommand = parseBackendArgs(parsed);
+			if (backendCommand.kind === "show") {
+				return runBackendShowViaRoute();
+			}
+			if (!context.isElevated) {
+				return reply("This command requires elevated permissions.");
+			}
+			if (backendCommand.kind === "usage") {
+				return reply(backendCommand.error);
+			}
+			// Persist through the config route (config.env + config.env.vars +
+			// process.env) — runtime.setSetting is in-memory only and would
+			// silently revert on restart.
+			return runModelConfigWriteViaRoute({
+				target: "coding",
+				defaultBackend: backendCommand.backend,
+			});
 		}
 
 		case "think":

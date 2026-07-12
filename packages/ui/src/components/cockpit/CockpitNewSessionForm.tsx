@@ -121,7 +121,7 @@ export function CockpitNewSessionForm({
 
       <label htmlFor="cockpit-repo-input" className="flex flex-col gap-1.5">
         <span className="text-xs font-semibold text-muted">
-          Repo <span className="font-normal text-muted/70">(optional)</span>
+          Repo <span className="font-normal text-muted">(optional)</span>
         </span>
         <Input
           id="cockpit-repo-input"
@@ -142,7 +142,7 @@ export function CockpitNewSessionForm({
             ))}
           </datalist>
         ) : null}
-        <span className="text-[11px] text-muted/70">
+        <span className="text-[11px] text-muted">
           {repoSuggestionsUnavailable
             ? "Repo suggestions are unavailable. Enter a repo manually or leave blank for a scratch workspace."
             : "Leave blank to run in a scratch workspace."}
@@ -152,7 +152,7 @@ export function CockpitNewSessionForm({
       <label htmlFor="cockpit-workdir-input" className="flex flex-col gap-1.5">
         <span className="text-xs font-semibold text-muted">
           Working directory{" "}
-          <span className="font-normal text-muted/70">(optional)</span>
+          <span className="font-normal text-muted">(optional)</span>
         </span>
         <Input
           id="cockpit-workdir-input"
