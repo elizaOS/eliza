@@ -146,9 +146,12 @@ app.get("/", (c) => {
     // an honest failure). The handler has no sync Blob path, so fail the
     // upgrade closed rather than serving a broken realtime session. The Workers
     // runtime accepts this write, so this is a defensive guard, not a hot path.
-    logger.error("[voice-session-ws] cannot set server binaryType; refusing upgrade", {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.error(
+      "[voice-session-ws] cannot set server binaryType; refusing upgrade",
+      {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
     return c.json({ error: "voice realtime transport unavailable" }, 503);
   }
 

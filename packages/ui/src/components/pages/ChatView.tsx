@@ -404,7 +404,6 @@ export function ChatView({
   const {
     beginVoiceCapture,
     endVoiceCapture,
-    continuous,
     voiceSession,
     handleEditMessage,
     handleSpeakMessage,
