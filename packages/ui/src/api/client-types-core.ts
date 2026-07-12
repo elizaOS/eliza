@@ -282,6 +282,31 @@ export interface ProviderModelRecord {
   category: ProviderModelCategory;
 }
 
+/**
+ * One selectable model in the `catalog` field of `GET /api/models` — the
+ * validated provider→model→efforts catalog `POST /api/models/config` checks
+ * writes against (packages/agent/src/api/model-catalog.ts).
+ */
+export interface ModelCatalogEntry {
+  id: string;
+  display: string;
+  /** Accepted reasoning-effort levels; empty = the model has no effort knob. */
+  efforts: string[];
+  defaultEffort?: string;
+  roles: Array<"small" | "large" | "coding">;
+  costHint?: string;
+  /** false = listed by the provider but not callable via the API tier. */
+  apiSupported?: boolean;
+}
+
+/** Provider→entries map inside the `catalog` field of `GET /api/models`. */
+export type ModelCatalogProviders = Record<string, ModelCatalogEntry[]>;
+
+/** The slice of the `GET /api/models` response the model completions consume. */
+export interface ModelCatalogResponse {
+  catalog: { providers: ModelCatalogProviders };
+}
+
 export interface AgentAutomationModeResponse {
   mode: AgentAutomationMode;
   options: AgentAutomationMode[];

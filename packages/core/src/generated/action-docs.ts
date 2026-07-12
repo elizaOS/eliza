@@ -3370,13 +3370,44 @@ export const allActionsSpec = {
 			description: "Set or show current model",
 			parameters: [
 				{
-					name: "model",
-					description: "provider/model or alias",
+					name: "target",
+					description:
+						"small, large, coding, show, local, cloud — or a model for this room",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "provider/model or alias",
+					descriptionCompressed:
+						"small, large, coding, show, local, cloud - or a model for this room",
+				},
+				{
+					name: "model",
+					description:
+						"model id — for coding, the backend (codex, claude, opencode, elizaos)",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"model id - for coding, the backend (codex, claude, opencode, elizaos)",
+				},
+				{
+					name: "effort",
+					description: "reasoning effort — for coding, the model id",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reasoning effort - for coding, the model id",
+				},
+				{
+					name: "coding-effort",
+					description: "reasoning effort (coding target)",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "reasoning effort (coding target)",
 				},
 			],
 			similes: ["/model", "/m"],

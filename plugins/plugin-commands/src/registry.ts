@@ -166,8 +166,26 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		acceptsArgs: true,
 		args: [
 			{
+				name: "target",
+				description:
+					"small, large, coding, show, local, cloud — or a model for this room",
+				choices: ["small", "large", "coding", "show", "local", "cloud"],
+				dynamicChoices: "models",
+			},
+			{
 				name: "model",
-				description: "provider/model or alias",
+				description:
+					"model id — for coding, the backend (codex, claude, opencode, elizaos)",
+				dynamicChoices: "models",
+			},
+			{
+				name: "effort",
+				description: "reasoning effort — for coding, the model id",
+				dynamicChoices: "models",
+			},
+			{
+				name: "coding-effort",
+				description: "reasoning effort (coding target)",
 				dynamicChoices: "models",
 			},
 		],

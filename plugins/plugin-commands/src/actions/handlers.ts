@@ -34,6 +34,11 @@ import {
 	getCommandSettings,
 	setCommandSetting,
 } from "./command-settings";
+import {
+	parseModelConfigArgs,
+	runModelConfigShowViaRoute,
+	runModelConfigWriteViaRoute,
+} from "./model-config";
 
 /**
  * Commands whose effects are fully owned by this deterministic layer. Broader
@@ -363,6 +368,27 @@ export async function runCommand(
 		}
 
 		case "model": {
+			// `/model show|small|large|coding …` drives the validated global
+			// model-config route. `show` reads config so authorization suffices; the
+			// write subcommands mutate config.env for every room (and restart the
+			// agent for chat targets), so they are owner-only. Gated here per
+			// subcommand rather than via definition-level flags, which would also
+			// gate (and hide from the GUI menu) the pre-existing per-room and
+			// local/cloud behaviors below.
+			const configCommand = parseModelConfigArgs(parsed);
+			if (configCommand) {
+				if (configCommand.kind === "show") {
+					if (!context.isAuthorized) return authError();
+					return runModelConfigShowViaRoute();
+				}
+				if (!context.isElevated) {
+					return reply("This command requires elevated permissions.");
+				}
+				if (configCommand.kind === "usage") {
+					return reply(configCommand.error);
+				}
+				return runModelConfigWriteViaRoute(configCommand.body);
+			}
 			// `/model local|cloud [id]` is a runtime inference switch shared with
 			// the MODEL_SWITCH action; a bare model name stays a per-room setting.
 			const switchArgs = parseModelSwitchArgs(parsed);

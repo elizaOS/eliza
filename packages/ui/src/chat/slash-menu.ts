@@ -236,6 +236,21 @@ export function activeArgIndex(
   return Math.min(idx, command.args.length - 1);
 }
 
+/**
+ * Where an argument completion is happening, threaded to dynamic choice
+ * resolvers so a source like "models" can return different values per
+ * subcommand position (e.g. `/model small <model>` vs `/model coding
+ * <backend> <model>`). Resolvers without positional needs ignore it.
+ */
+export interface SlashArgChoiceContext {
+  /** Key of the matched command whose argument is being completed. */
+  commandKey: string;
+  /** Index of the argument being completed (see {@link activeArgIndex}). */
+  argIndex: number;
+  /** Argument tokens committed before the one being completed. */
+  precedingTokens: string[];
+}
+
 /** Filter a set of resolved arg choices by the partial token being typed. */
 export function filterArgChoices(choices: string[], query: string): string[] {
   if (!query) return [...choices];
