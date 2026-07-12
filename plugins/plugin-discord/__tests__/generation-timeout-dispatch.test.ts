@@ -194,6 +194,55 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 		expect(timeoutReplies).toHaveLength(1);
 	});
 
+	it("sends no timeout reply and never aborts when the run finishes in time", async () => {
+		const sends: Sent[] = [];
+		const channel = makeDmChannel(sends);
+		const client = { user: { id: "888000000000000000" } };
+		const captured: { signal?: AbortSignal } = {};
+		// Same runtime shape as makeHangingRuntime, but the dispatch resolves
+		// promptly after replying — the healthy path the timeout must not touch.
+		const runtime = {
+			agentId: AGENT_ID,
+			character: { name: "Eliza" },
+			logger: { debug: noop, info: noop, warn: noop, error: noop },
+			getSetting: (key: string) =>
+				key === "ELIZA_LIFEOPS_PASSIVE_CONNECTORS"
+					? "false"
+					: key === "DISCORD_GENERATION_TIMEOUT_MS"
+						? "30000"
+						: undefined,
+			getService: () => null,
+			ensureConnection: async () => {},
+			getMemoryById: async () => null,
+			createMemory: async (memory: Memory) => memory.id,
+			messageService: {
+				handleMessage: async (
+					_runtime: unknown,
+					_message: Memory,
+					callback: (content: Content) => Promise<unknown>,
+					options?: HandleMessageOptions,
+				) => {
+					captured.signal = options?.abortSignal;
+					await callback({ text: "prompt answer", source: "discord" });
+					return {};
+				},
+			},
+		} as unknown as ICompatRuntime;
+		const manager = new MessageManager(makeDiscordService(client), runtime);
+
+		await manager.handleMessage(makeInbound(channel));
+		// Fast-forward past where the timeout WOULD fire; nothing must happen.
+		await vi.advanceTimersByTimeAsync(31_000);
+
+		expect(captured.signal?.aborted).toBe(false);
+		expect(sends.some((s) => String(s.content).includes("timed out"))).toBe(
+			false,
+		);
+		expect(sends.some((s) => String(s.content).includes("prompt answer"))).toBe(
+			true,
+		);
+	});
+
 	it("does not double-dispatch when the orphaned run resolves late", async () => {
 		const sends: Sent[] = [];
 		const channel = makeDmChannel(sends);

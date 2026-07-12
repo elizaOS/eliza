@@ -285,6 +285,35 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		expect(runtime.logger.warn).toHaveBeenCalledTimes(2);
 	});
 
+	it("classifies malformed close events and non-object rejections as transient", () => {
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime: makeRuntime(),
+		}) as unknown as DiscordService & {
+			getGatewayCloseCode: (closeEvent: unknown) => number | undefined;
+			isTerminalInitialLoginError: (error: unknown) => boolean;
+		};
+
+		// A close event without a numeric `code` must never read as a terminal
+		// gateway close — the fail-safe direction is transient (keep retrying),
+		// since misclassifying a flaky transport as terminal leaves the account
+		// connected-but-deaf forever.
+		expect(service.getGatewayCloseCode(null)).toBeUndefined();
+		expect(service.getGatewayCloseCode("closed")).toBeUndefined();
+		expect(service.getGatewayCloseCode({ code: "4004" })).toBeUndefined();
+		expect(service.getGatewayCloseCode({ code: 4004 })).toBe(4004);
+
+		// Only a discord.js TokenInvalid-coded error is terminal pre-gateway;
+		// string rejections and differently-coded errors stay retryable.
+		expect(service.isTerminalInitialLoginError("TokenInvalid")).toBe(false);
+		expect(service.isTerminalInitialLoginError(new Error("boom"))).toBe(false);
+		expect(
+			service.isTerminalInitialLoginError({ code: "TokenInvalid" }),
+		).toBe(true);
+		expect(service.isTerminalInitialLoginError({ code: "ECONNRESET" })).toBe(
+			false,
+		);
+	});
+
 	it("does not schedule a retry when the first login succeeds", async () => {
 		const runtime = makeRuntime();
 		const clients: FakeClient[] = [];

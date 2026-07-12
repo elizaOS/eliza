@@ -19,7 +19,7 @@ import type {
 } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { describe, expect, it } from "vitest";
-import { MessageManager } from "../messages.ts";
+import { buildDmSendOptions, MessageManager } from "../messages.ts";
 import type { ICompatRuntime, IDiscordService } from "../types.ts";
 
 interface CapturedSend {
@@ -284,5 +284,26 @@ describe("Discord outbound component delivery (#14527)", () => {
 			"Yes, ship it",
 			"Cancel",
 		]);
+	});
+});
+
+describe("buildDmSendOptions payload shape", () => {
+	it("omits empty files/components keys entirely — Discord rejects empty arrays", () => {
+		const bare = buildDmSendOptions("hi", [], undefined);
+		expect(bare).toEqual({ content: "hi" });
+		expect("files" in bare).toBe(false);
+		expect("components" in bare).toBe(false);
+
+		const alsoEmptyRows = buildDmSendOptions("hi", [], []);
+		expect("components" in alsoEmptyRows).toBe(false);
+	});
+
+	it("carries files and component rows through when present", () => {
+		const file = { name: "a.png" } as never;
+		const row = { toJSON: () => ({}) } as never;
+		const out = buildDmSendOptions("look:", [file], [row]);
+		expect(out.content).toBe("look:");
+		expect(out.files).toEqual([file]);
+		expect(out.components).toEqual([row]);
 	});
 });

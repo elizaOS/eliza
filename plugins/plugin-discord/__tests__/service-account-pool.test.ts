@@ -341,6 +341,24 @@ describe("DiscordAccountClientPool", () => {
 	});
 });
 
+describe("DiscordService.getAccountLabel", () => {
+	it("prefers the configured account name, then falls back to the service default id", () => {
+		const pool = new DiscordAccountClientPool("default");
+		pool.set(makeState("default", null));
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			accountPool: pool,
+			defaultAccountId: "default",
+		}) as DiscordService;
+
+		// Named account resolves to its display name ("Primary" from makeState),
+		// which is what list_connections and the settings UI show to the owner.
+		expect(service.getAccountLabel("default")).toBe("Primary");
+		// An unknown id has no state; the label falls back to the service's
+		// default account id rather than throwing or returning undefined.
+		expect(service.getAccountLabel("nope")).toBe("default");
+	});
+});
+
 describe("DiscordService account-scoped primitives", () => {
 	it("registers account connectors and scopes wrapper calls to the selected account", async () => {
 		const { runtime, service } = makeService();
