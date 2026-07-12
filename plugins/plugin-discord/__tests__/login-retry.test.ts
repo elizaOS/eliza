@@ -306,9 +306,9 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		// string rejections and differently-coded errors stay retryable.
 		expect(service.isTerminalInitialLoginError("TokenInvalid")).toBe(false);
 		expect(service.isTerminalInitialLoginError(new Error("boom"))).toBe(false);
-		expect(
-			service.isTerminalInitialLoginError({ code: "TokenInvalid" }),
-		).toBe(true);
+		expect(service.isTerminalInitialLoginError({ code: "TokenInvalid" })).toBe(
+			true,
+		);
 		expect(service.isTerminalInitialLoginError({ code: "ECONNRESET" })).toBe(
 			false,
 		);

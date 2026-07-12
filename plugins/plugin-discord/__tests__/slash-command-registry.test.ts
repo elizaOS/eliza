@@ -5,15 +5,42 @@
  * and `handleAutocomplete`'s three branches (no autocomplete handler, a
  * successful respond, and a thrown error falling back to an empty respond).
  */
+import type { IAgentRuntime } from "@elizaos/core";
 import type { AutocompleteInteraction } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	addCommand,
 	getRegisteredCommands,
 	handleAutocomplete,
+	registerSlashCommands,
 	removeCommand,
 } from "../slash-commands";
 import type { DiscordSlashCommand } from "../types";
+
+describe("registerSlashCommands event emission", () => {
+	it("emits DISCORD_REGISTER_COMMANDS with every registered command transformed", async () => {
+		const emitted: Array<{ events: string[]; payload: unknown }> = [];
+		const runtime = {
+			logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+			emitEvent: vi.fn(async (events: string[], payload: unknown) => {
+				emitted.push({ events, payload });
+			}),
+		} as unknown as IAgentRuntime;
+
+		await registerSlashCommands(runtime);
+
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].events).toEqual(["DISCORD_REGISTER_COMMANDS"]);
+		const { commands } = emitted[0].payload as {
+			commands: Array<{ name: string; description: string }>;
+		};
+		// Every built-in reaches the service's registration listener with the
+		// transport shape (name + description survive the transform).
+		expect(commands.length).toBe(getRegisteredCommands().size);
+		const ask = commands.find((c) => c.name === "ask");
+		expect(ask?.description).toBeTruthy();
+	});
+});
 
 describe("slash-commands registry", () => {
 	afterEach(() => {

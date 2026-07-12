@@ -318,9 +318,9 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 
 		// Same account/channel/text inside the window → duplicate (this is the
 		// callback-vs-connector-send double-delivery guard).
-		expect(
-			beginDiscordOutboundDelivery({ ...base, now: 3_000 }).kind,
-		).toBe("duplicate");
+		expect(beginDiscordOutboundDelivery({ ...base, now: 3_000 }).kind).toBe(
+			"duplicate",
+		);
 
 		// A different channel is a different logical send.
 		expect(
@@ -329,9 +329,9 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 		).toBe("deliver");
 
 		// Past the window the reservation has expired and delivery is allowed.
-		expect(
-			beginDiscordOutboundDelivery({ ...base, now: 7_000 }).kind,
-		).toBe("deliver");
+		expect(beginDiscordOutboundDelivery({ ...base, now: 7_000 }).kind).toBe(
+			"deliver",
+		);
 	});
 
 	it("released (failed) sends do not block a retry, and empty payloads bypass dedupe", () => {
@@ -349,9 +349,9 @@ describe("beginDiscordOutboundDelivery dedupe window", () => {
 		// The REST send failed; releasing must let the retry through instead of
 		// eating it as a duplicate of the failed attempt.
 		first.reservation.release();
-		expect(
-			beginDiscordOutboundDelivery({ ...params, now: 1_100 }).kind,
-		).toBe("deliver");
+		expect(beginDiscordOutboundDelivery({ ...params, now: 1_100 }).kind).toBe(
+			"deliver",
+		);
 
 		// No text and no attachments → nothing to dedupe on; always deliver.
 		expect(
