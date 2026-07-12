@@ -189,6 +189,19 @@ const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const DEFAULT_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
 const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
+/**
+ * Effort levels the Claude Code CLI honors via CLAUDE_CODE_EFFORT_LEVEL (its
+ * own default is xhigh). The CLI does not validate the env var, so buildEnv
+ * gates the config-env ELIZA_CLAUDE_EFFORT value against this set and skips
+ * anything else instead of forwarding a value the CLI would misread.
+ */
+const CLAUDE_CODE_EFFORT_LEVELS: ReadonlySet<string> = new Set([
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+]);
 
 /**
  * Resolve the absolute workdir for a spawned session. When `isolate` is true,
@@ -3710,6 +3723,25 @@ export class AcpService extends Service {
     if (childSessionId?.trim()) {
       env.PARALLAX_SESSION_ID = childSessionId.trim();
     }
+    if (agentType === "claude") {
+      // Config-env (UI-saved, restart-free — falls back to process.env) effort
+      // override for the spawned Claude Code CLI.
+      const effort = readConfigEnvKey("ELIZA_CLAUDE_EFFORT")
+        ?.trim()
+        .toLowerCase();
+      if (effort) {
+        if (CLAUDE_CODE_EFFORT_LEVELS.has(effort)) {
+          env.CLAUDE_CODE_EFFORT_LEVEL = effort;
+        } else {
+          // error-policy:J7 a bad operator effort must not fail the spawn —
+          // warn and leave the CLI on its own default.
+          this.log("warn", "ignoring invalid ELIZA_CLAUDE_EFFORT", {
+            value: effort,
+            expected: [...CLAUDE_CODE_EFFORT_LEVELS],
+          });
+        }
+      }
+    }
     if (agentType === "claude" && env.CLAUDE_CODE_OAUTH_TOKEN) {
       // A specific subscription account was selected for this sub-agent. Claude
       // Code prefers ANTHROPIC_API_KEY over CLAUDE_CODE_OAUTH_TOKEN, so drop any
@@ -4324,6 +4356,9 @@ export function shouldForwardEnv(
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
       "OPENCODE_MODEL",
+      // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
+      // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
+      "CLAUDE_CODE_EFFORT_LEVEL",
       "OPENCODE_DISABLE_AUTOUPDATE",
       "OPENCODE_DISABLE_TERMINAL_TITLE",
       "CODEX_HOME",

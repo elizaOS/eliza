@@ -12,7 +12,7 @@ import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { createModelName } from "../types";
 
 const DEFAULT_SMALL_MODEL = "claude-haiku-4-5-20251001";
-const DEFAULT_LARGE_MODEL = "claude-opus-4-7";
+const DEFAULT_LARGE_MODEL = "claude-opus-4-8";
 const DEFAULT_BASE_URL = "https://api.anthropic.com/v1";
 
 export function isBrowser(): boolean {

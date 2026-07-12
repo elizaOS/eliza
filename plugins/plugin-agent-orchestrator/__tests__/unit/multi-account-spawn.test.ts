@@ -4,6 +4,9 @@
  * with single-account fallback when the bridge is absent.
  */
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -374,5 +377,78 @@ describe("multi-account coding-agent spawn", () => {
       nativeClientMock.instances[1]?.opts.env?.CLAUDE_CODE_OAUTH_TOKEN,
     ).toBe("sk-ant-oat-acc-b");
     await service.stop();
+  });
+});
+
+// Same spawn-env surface (buildEnv), different knob: the config-env
+// ELIZA_CLAUDE_EFFORT → CLAUDE_CODE_EFFORT_LEVEL plumbing for the Claude Code
+// CLI. Uses a real temp config file behind ELIZA_CONFIG_PATH to prove a
+// freshly-saved UI value applies on the next spawn without a restart.
+describe("claude effort env (ELIZA_CLAUDE_EFFORT → CLAUDE_CODE_EFFORT_LEVEL)", () => {
+  let tempDir: string;
+  let prevConfigPath: string | undefined;
+  let prevEffort: string | undefined;
+  let prevEffortLevel: string | undefined;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-effort-"));
+    prevConfigPath = process.env.ELIZA_CONFIG_PATH;
+    prevEffort = process.env.ELIZA_CLAUDE_EFFORT;
+    prevEffortLevel = process.env.CLAUDE_CODE_EFFORT_LEVEL;
+    delete process.env.ELIZA_CLAUDE_EFFORT;
+    // A host-level effort would forward via the allowlist and mask the
+    // config-driven assertion below.
+    delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
+  });
+
+  afterEach(() => {
+    if (prevConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+    else process.env.ELIZA_CONFIG_PATH = prevConfigPath;
+    if (prevEffort === undefined) delete process.env.ELIZA_CLAUDE_EFFORT;
+    else process.env.ELIZA_CLAUDE_EFFORT = prevEffort;
+    if (prevEffortLevel === undefined) {
+      delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
+    } else {
+      process.env.CLAUDE_CODE_EFFORT_LEVEL = prevEffortLevel;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(env: Record<string, string>): void {
+    const file = path.join(tempDir, "eliza.json");
+    fs.writeFileSync(file, JSON.stringify({ env }));
+    process.env.ELIZA_CONFIG_PATH = file;
+  }
+
+  async function spawnAndGetEnv(agentType: string): Promise<NodeJS.ProcessEnv> {
+    const service = new AcpService(runtime());
+    await service.start();
+    await service.spawnSession({
+      name: `${agentType}-effort`,
+      agentType: agentType as never,
+      workdir: "/tmp/acp-test",
+    });
+    const env = firstNativeClient().opts.env ?? {};
+    await service.stop();
+    return env;
+  }
+
+  it("sets CLAUDE_CODE_EFFORT_LEVEL from a freshly-saved config value (no restart)", async () => {
+    // Mixed case proves the value is normalized before the CLI sees it.
+    writeConfig({ ELIZA_CLAUDE_EFFORT: "Max" });
+    const env = await spawnAndGetEnv("claude");
+    expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBe("max");
+  });
+
+  it("skips an invalid effort — the spawn proceeds and the CLI keeps its default", async () => {
+    writeConfig({ ELIZA_CLAUDE_EFFORT: "turbo" });
+    const env = await spawnAndGetEnv("claude");
+    expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
+  });
+
+  it("does not set the effort env for non-claude agent types", async () => {
+    writeConfig({ ELIZA_CLAUDE_EFFORT: "max" });
+    const env = await spawnAndGetEnv("codex");
+    expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
   });
 });
