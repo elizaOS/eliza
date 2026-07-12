@@ -37,7 +37,16 @@ export async function registerDiscordSlashCommands(
 	accountId?: string | null,
 ): Promise<void> {
 	const state = host.requireAccountState(accountId);
-	await state.clientReadyPromise;
+	// The account's ready promise resolves only AFTER onReady returns (#15855
+	// sequencing) — but onReady itself awaits the DISCORD_REGISTER_COMMANDS
+	// emission that lands here, so awaiting the promise from that path
+	// deadlocks silently and no command set ever reaches Discord's API. The
+	// actual precondition is a ready client; only wait when it isn't ready yet.
+	if (
+		!(typeof state.client?.isReady === "function" && state.client.isReady())
+	) {
+		await state.clientReadyPromise;
+	}
 
 	const client = state.client;
 	const clientApplication = client?.application;

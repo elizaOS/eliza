@@ -747,6 +747,12 @@ function toDiscordSlashCommand(command: SlashCommand): DiscordSlashCommand {
 		name: command.name,
 		description: command.description,
 		options,
+		// Without this the admin gate (default_member_permissions) configured on
+		// a built-in never reaches transformCommandToDiscordApi — every gated
+		// command registered as usable by everyone.
+		...(command.requiredPermissions != null
+			? { requiredPermissions: command.requiredPermissions }
+			: {}),
 	};
 }
 
