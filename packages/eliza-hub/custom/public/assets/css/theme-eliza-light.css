@@ -1,0 +1,357 @@
+/*
+ * Eliza Hub light theme.
+ *
+ * Optional companion to the default dark Eliza theme.
+ */
+
+@import url("./theme-forgejo-light.css");
+
+@font-face {
+  font-display: swap;
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 300;
+  src: url("../fonts/poppins/poppins-latin-300-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-display: swap;
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 400;
+  src: url("../fonts/poppins/poppins-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-display: swap;
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 500;
+  src: url("../fonts/poppins/poppins-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-display: swap;
+  font-family: "Poppins";
+  font-style: normal;
+  font-weight: 700;
+  src: url("../fonts/poppins/poppins-latin-700-normal.woff2") format("woff2");
+}
+
+html[data-theme="eliza-light"] {
+  color-scheme: light;
+
+  --fonts-proportional: "Poppins", Arial, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  --fonts-monospace: "JetBrains Mono", "SF Mono", "Cascadia Code", ui-monospace, monospace !important;
+
+  --eliza-radius: 3px;
+  --eliza-black: #000000;
+  --eliza-bg: #f7f7f5;
+  --eliza-panel: #ffffff;
+  --eliza-surface: #f0f0ee;
+  --eliza-elevated: #ffffff;
+  --eliza-border: #dedde2;
+  --eliza-border-soft: #ecebf0;
+  --eliza-text: #111116;
+  --eliza-text-soft: #383842;
+  --eliza-muted: #696975;
+  --eliza-orange: #ff5800;
+  --eliza-orange-hover: #e94f00;
+  --eliza-orange-active: #c94400;
+  --eliza-gold: #d8a000;
+  --eliza-green: #2f8f67;
+  --eliza-red: #ca4242;
+  --eliza-shadow-soft: 0 10px 28px rgba(17, 17, 22, 0.08);
+
+  --color-primary: var(--eliza-orange) !important;
+  --color-primary-hover: var(--eliza-orange-hover) !important;
+  --color-primary-active: var(--eliza-orange-active) !important;
+  --color-primary-alpha-10: rgba(255, 88, 0, 0.10) !important;
+  --color-primary-alpha-20: rgba(255, 88, 0, 0.20) !important;
+  --color-primary-alpha-30: rgba(255, 88, 0, 0.30) !important;
+  --color-accent: var(--eliza-gold) !important;
+  --color-body: var(--eliza-bg) !important;
+  --color-navbar: #ffffff !important;
+  --color-nav-bg: #ffffff !important;
+  --color-header: #ffffff !important;
+  --color-footer: #ffffff !important;
+  --color-box-header: #ffffff !important;
+  --color-box-body: var(--eliza-panel) !important;
+  --color-box-body-highlight: var(--eliza-surface) !important;
+  --color-card: var(--eliza-panel) !important;
+  --color-border: var(--eliza-border) !important;
+  --color-input-border: #cfcdd5 !important;
+  --color-input-background: #ffffff !important;
+  --color-input-text: var(--eliza-text) !important;
+  --color-text: var(--eliza-text) !important;
+  --color-text-light: var(--eliza-text-soft) !important;
+  --color-text-light-1: #4b4b56 !important;
+  --color-text-light-2: var(--eliza-muted) !important;
+  --color-text-light-3: #868690 !important;
+  --color-button-primary-bg: var(--eliza-orange) !important;
+  --color-button-primary-text: #ffffff !important;
+  --color-button-primary-hover-bg: var(--eliza-orange-hover) !important;
+  --color-button-primary-hover-text: #ffffff !important;
+}
+
+html[data-theme="eliza-light"],
+html[data-theme="eliza-light"] body {
+  background: var(--eliza-bg) !important;
+  color: var(--eliza-text) !important;
+  font-family: var(--fonts-proportional) !important;
+  letter-spacing: 0;
+}
+
+html[data-theme="eliza-light"] body {
+  background-image: linear-gradient(180deg, rgba(255, 88, 0, 0.10), rgba(247, 247, 245, 0) 260px) !important;
+}
+
+html[data-theme="eliza-light"] a:not(.ui.button):not(.label) {
+  color: var(--eliza-orange);
+}
+
+html[data-theme="eliza-light"] a:not(.ui.button):not(.label):hover {
+  color: var(--eliza-orange-hover);
+}
+
+html[data-theme="eliza-light"] #navbar {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-bottom: 1px solid rgba(255, 88, 0, 0.22) !important;
+  box-shadow: 0 8px 22px rgba(17, 17, 22, 0.06) !important;
+}
+
+html[data-theme="eliza-light"] #navbar .item {
+  color: #24242c !important;
+  font-weight: 550;
+}
+
+html[data-theme="eliza-light"] #navbar .item:hover,
+html[data-theme="eliza-light"] #navbar .active.item {
+  background: rgba(255, 88, 0, 0.08) !important;
+  color: #000000 !important;
+}
+
+html[data-theme="eliza-light"] #navbar-logo {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  padding-inline: 14px !important;
+}
+
+html[data-theme="eliza-light"] #navbar-logo::after {
+  content: "Eliza Hub";
+  color: #000000;
+  font-size: 14px;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+html[data-theme="eliza-light"] #navbar-logo img {
+  width: 27px !important;
+  height: 31px !important;
+  object-fit: contain;
+}
+
+html[data-theme="eliza-light"] .ui.segment,
+html[data-theme="eliza-light"] .ui.attached.segment,
+html[data-theme="eliza-light"] .ui.card,
+html[data-theme="eliza-light"] .ui.cards > .card,
+html[data-theme="eliza-light"] .repository .repo-header,
+html[data-theme="eliza-light"] .repository .repo-body {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-color: var(--eliza-border) !important;
+  border-radius: var(--eliza-radius) !important;
+  box-shadow: var(--eliza-shadow-soft) !important;
+}
+
+html[data-theme="eliza-light"] .ui.header {
+  color: var(--eliza-text) !important;
+}
+
+html[data-theme="eliza-light"] .ui.button {
+  border-radius: var(--eliza-radius) !important;
+  font-weight: 650 !important;
+  letter-spacing: 0;
+}
+
+html[data-theme="eliza-light"] .ui.primary.button {
+  background: var(--eliza-orange) !important;
+  border: 1px solid rgba(255, 88, 0, 0.50) !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="eliza-light"] .ui.primary.button:hover {
+  background: var(--eliza-orange-hover) !important;
+}
+
+html[data-theme="eliza-light"] .ui.basic.button {
+  background: #ffffff !important;
+  border-color: #d4d3d8 !important;
+  color: #24242c !important;
+}
+
+html[data-theme="eliza-light"] .ui.basic.button:hover {
+  background: rgba(255, 88, 0, 0.08) !important;
+  border-color: rgba(255, 88, 0, 0.42) !important;
+}
+
+html[data-theme="eliza-light"] .page-content.user.signin {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: calc(100vh - 53px);
+  padding: 48px 16px;
+  width: 100%;
+}
+
+html[data-theme="eliza-light"] .page-content.user.signin > .ui.grid {
+  margin-inline: auto !important;
+  padding-inline: 0 !important;
+  width: min(100%, 460px) !important;
+}
+
+html[data-theme="eliza-light"] .page-content.user.signin .column {
+  margin-inline: auto !important;
+  max-width: 460px !important;
+  padding-inline: 0 !important;
+  width: 100%;
+}
+
+html[data-theme="eliza-light"] .page-content.user.signin h4.ui.top.attached.header {
+  align-items: center;
+  border-bottom: 0 !important;
+  border-radius: var(--eliza-radius) var(--eliza-radius) 0 0 !important;
+  display: flex;
+  flex-direction: column;
+  font-size: 18px;
+  font-weight: 750;
+  gap: 10px;
+  padding: 24px 24px 16px !important;
+}
+
+html[data-theme="eliza-light"] .page-content.user.signin h4.ui.top.attached.header::before {
+  background: url("/assets/img/logo.svg") center / contain no-repeat;
+  content: "";
+  display: block;
+  height: 44px;
+  width: 42px;
+}
+
+html[data-theme="eliza-light"] .repository .secondary-nav,
+html[data-theme="eliza-light"] .secondary-nav {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border-bottom: 1px solid rgba(255, 88, 0, 0.18) !important;
+}
+
+html[data-theme="eliza-light"] .repository .repo-header .flex-item-leading .svg {
+  color: var(--eliza-orange) !important;
+}
+
+html[data-theme="eliza-light"] .overflow-menu .active.item,
+html[data-theme="eliza-light"] .ui.tabular.menu .active.item {
+  border-color: var(--eliza-orange) !important;
+  color: #000000 !important;
+}
+
+html[data-theme="eliza-light"] .repository .fork-flag {
+  background: rgba(255, 88, 0, 0.07) !important;
+  border: 1px solid rgba(255, 88, 0, 0.24) !important;
+  border-radius: var(--eliza-radius);
+  color: var(--eliza-text-soft);
+  padding: 10px 12px;
+}
+
+html[data-theme="eliza-light"] table#repo-files-table {
+  background: #ffffff !important;
+  border: 1px solid var(--eliza-border) !important;
+  border-radius: var(--eliza-radius) !important;
+  overflow: hidden;
+}
+
+html[data-theme="eliza-light"] table#repo-files-table tr:hover {
+  background: rgba(255, 88, 0, 0.06) !important;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .project-column {
+  background: #f3f3f1 !important;
+  border: 1px solid var(--eliza-border) !important;
+  border-radius: var(--eliza-radius) !important;
+  box-shadow: var(--eliza-shadow-soft) !important;
+  min-width: 286px;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .project-column-header {
+  padding: 10px 10px 0;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .project-column-title {
+  background: #ffffff !important;
+  border: 1px solid var(--eliza-border) !important;
+  border-left: 3px solid var(--eliza-orange) !important;
+  border-radius: var(--eliza-radius) !important;
+  color: var(--eliza-text) !important;
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .project-column[data-id="1"] .project-column-title {
+  border-left-color: #8a8a94 !important;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .project-column[data-id="2"] .project-column-title {
+  border-left-color: var(--eliza-gold) !important;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .project-column[data-id="3"] .project-column-title {
+  border-left-color: var(--eliza-orange) !important;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .project-column[data-id="4"] .project-column-title {
+  border-left-color: var(--eliza-green) !important;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .issue-card {
+  background: #ffffff !important;
+  border: 1px solid #d8d7dd !important;
+  border-radius: var(--eliza-radius) !important;
+  box-shadow: 0 8px 18px rgba(17, 17, 22, 0.06) !important;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .issue-card:hover {
+  border-color: rgba(255, 88, 0, 0.52) !important;
+}
+
+html[data-theme="eliza-light"] .repository.projects.view-project .issue-card-title {
+  color: var(--eliza-text) !important;
+  font-weight: 650;
+}
+
+html[data-theme="eliza-light"] .page-footer {
+  background: #ffffff !important;
+  border-top: 1px solid rgba(255, 88, 0, 0.18) !important;
+  color: var(--eliza-muted) !important;
+}
+
+html[data-theme="eliza-light"] .page-footer .left-links::before {
+  color: var(--eliza-orange);
+  content: "Eliza Hub";
+  font-weight: 700;
+  margin-right: 12px;
+}
+
+html[data-theme="eliza-light"] .page-footer .right-links::after {
+  color: var(--eliza-muted);
+  content: "Local POC";
+  margin-left: 12px;
+}
+
+@media (max-width: 767px) {
+  html[data-theme="eliza-light"] #navbar-logo::after {
+    content: "Eliza";
+    font-size: 13px;
+  }
+}

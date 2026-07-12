@@ -1,0 +1,35 @@
+# Private staging Caddy template.
+# Copy to the host-level Caddy config and replace git.staging.example.invalid
+# with the private staging hostname. Keep host-specific values outside Git.
+
+git.staging.example.invalid {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	handle /steward {
+		redir /steward/ 308
+	}
+
+	handle_path /steward/* {
+		reverse_proxy 127.0.0.1:8080 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-For {remote_host}
+		}
+	}
+}

@@ -1,0 +1,28 @@
+environment  = "staging"
+server_name = "eliza-hub-staging-1"
+server_type = "cpx32"
+server_image = "ubuntu-24.04"
+location     = "hel1"
+
+cloudflare_zone_id = "00000000000000000000000000000000"
+web_hostname       = "git-staging.example.invalid"
+ssh_hostname       = "ssh-git-staging.example.invalid"
+
+operator_ssh_public_keys = {
+  eliza-hub-operator = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIReplaceWithARealOperatorPublicKey eliza-hub-operator"
+}
+
+operator_ssh_cidrs = [
+  "192.0.2.10/32",
+]
+
+git_ssh_port  = 2222
+git_ssh_cidrs = ["0.0.0.0/0", "::/0"]
+
+cloudflare_proxy_web    = false
+enable_hcloud_backups   = true
+enable_delete_protection = true
+
+extra_labels = {
+  owner = "eliza"
+}

@@ -1,0 +1,32 @@
+log:
+  level: info
+  job_level: info
+
+runner:
+  file: /data/.runner
+  capacity: 1
+  envs:
+    DOCKER_HOST: tcp://actions-dind.internal:2375
+  env_file: ""
+  timeout: 45m
+  shutdown_timeout: 2m
+  insecure: false
+  fetch_timeout: 30s
+  fetch_interval: 2s
+  report_interval: 1s
+  labels:
+    - docker:docker://node:24-bookworm
+    - node-24:docker://node:24-bookworm
+    - ubuntu-latest:docker://node:24-bookworm
+
+cache:
+  enabled: false
+
+container:
+  docker_host: tcp://actions-dind:2375
+  options: --add-host=actions-dind.internal:host-gateway
+  network: bridge
+  privileged: false
+
+host:
+  workdir_parent: /data/work

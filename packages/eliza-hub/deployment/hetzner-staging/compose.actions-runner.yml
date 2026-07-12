@@ -1,0 +1,47 @@
+services:
+  actions-dind:
+    image: ${FORGEJO_RUNNER_DIND_IMAGE:-docker:28-dind}
+    restart: unless-stopped
+    privileged: true
+    command:
+      - dockerd
+      - -H
+      - tcp://0.0.0.0:2375
+      - --tls=false
+      - --userland-proxy=false
+    volumes:
+      - actions-dind-data:/var/lib/docker
+    networks:
+      - runner
+    healthcheck:
+      test: ["CMD-SHELL", "docker info >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  actions-runner:
+    image: ${FORGEJO_RUNNER_IMAGE:?set FORGEJO_RUNNER_IMAGE to an approved Forgejo runner image in the private .env file}
+    restart: unless-stopped
+    profiles:
+      - actions-runner
+    depends_on:
+      actions-dind:
+        condition: service_healthy
+      forgejo:
+        condition: service_healthy
+    environment:
+      DOCKER_HOST: tcp://actions-dind:2375
+    volumes:
+      - ./runner/data:/data
+    command: ["forgejo-runner", "daemon", "--config", "/data/config.yml"]
+    networks:
+      - public
+      - runner
+
+networks:
+  runner:
+    internal: true
+
+volumes:
+  actions-dind-data:

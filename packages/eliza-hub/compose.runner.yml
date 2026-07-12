@@ -1,0 +1,29 @@
+networks:
+  forgejo:
+    external: false
+
+services:
+  docker-in-docker:
+    image: docker:dind
+    container_name: eliza-forgejo-runner-dind
+    privileged: true
+    command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
+    restart: unless-stopped
+    networks:
+      - forgejo
+
+  runner:
+    image: data.forgejo.org/forgejo/runner:12
+    container_name: eliza-forgejo-runner
+    depends_on:
+      docker-in-docker:
+        condition: service_started
+    environment:
+      DOCKER_HOST: tcp://docker-in-docker:2375
+    user: "1001:1001"
+    volumes:
+      - ./runner/data:/data
+    restart: unless-stopped
+    networks:
+      - forgejo
+    command: "forgejo-runner daemon --config runner-config.yml"

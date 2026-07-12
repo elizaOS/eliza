@@ -1,0 +1,98 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+package_reboot_if_required: false
+timezone: UTC
+
+users:
+  - default
+  - name: ${operator_user}
+    gecos: Eliza Hub operator
+    groups:
+      - adm
+      - sudo
+    lock_passwd: true
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+%{ for key in operator_ssh_public_keys ~}
+      - ${key}
+%{ endfor ~}
+
+disable_root: true
+ssh_pwauth: false
+
+packages:
+  - apt-transport-https
+  - age
+  - ca-certificates
+  - caddy
+  - curl
+  - docker-compose-v2
+  - docker.io
+  - fail2ban
+  - git
+  - gnupg
+  - jq
+  - rsync
+  - rclone
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/caddy/Caddyfile
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${caddyfile_base64}
+
+  - path: /etc/docker/daemon.json
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${docker_daemon_base64}
+
+  - path: /etc/fail2ban/jail.d/eliza-hub-sshd.local
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${fail2ban_base64}
+
+  - path: /etc/ssh/sshd_config.d/99-eliza-hub.conf
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${ssh_hardening_base64}
+
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root:root
+    permissions: "0644"
+    encoding: b64
+    content: ${unattended_upgrades_base64}
+
+  - path: /usr/local/sbin/eliza-hub-install-node-24
+    owner: root:root
+    permissions: "0755"
+    encoding: b64
+    content: ${node_install_base64}
+
+runcmd:
+  - [/usr/local/sbin/eliza-hub-install-node-24]
+  - [install, -d, -m, "0750", -o, "${operator_user}", -g, "${operator_user}", /srv/eliza-hub]
+  - [install, -d, -m, "0750", -o, "${operator_user}", -g, "${operator_user}", /srv/eliza-hub/releases]
+  - [install, -d, -m, "0750", -o, "${operator_user}", -g, "${operator_user}", /srv/eliza-hub/shared]
+  - [install, -d, -m, "0700", -o, "${operator_user}", -g, "${operator_user}", /srv/eliza-hub/shared/artifacts]
+  - [install, -d, -m, "0700", -o, "${operator_user}", -g, "${operator_user}", /srv/eliza-hub/shared/backups]
+  - [install, -d, -m, "0700", -o, "${operator_user}", -g, "${operator_user}", /srv/eliza-hub/shared/cache]
+  - [install, -d, -m, "0750", -o, caddy, -g, caddy, /var/log/caddy]
+  - [usermod, -aG, docker, "${operator_user}"]
+  - [sshd, -t]
+  - [systemctl, restart, ssh]
+  - [systemctl, enable, --now, docker]
+  - [caddy, validate, --config, /etc/caddy/Caddyfile]
+  - [systemctl, enable, --now, caddy]
+  - [systemctl, enable, --now, fail2ban]
+  - [systemctl, enable, --now, unattended-upgrades]
+  - [install, -d, -m, "0755", /var/lib/eliza-hub]
+  - [touch, /var/lib/eliza-hub/bootstrap-complete]
+
+final_message: "Eliza Hub host bootstrap completed in $UPTIME seconds"

@@ -1,0 +1,169 @@
+{
+  "$schema": "../../../services/merge-steward/production-evidence.schema.json",
+  "domain": {
+    "forgejoRootUrl": "https://git.example.invalid/",
+    "forgejoDomain": "git.example.invalid",
+    "probeEvidence": null,
+    "tlsVerified": false,
+    "rootUrlCanonical": false,
+    "reverseProxyReviewed": false
+  },
+  "sso": {
+    "issuerUrl": "https://cloud.example.invalid",
+    "smokeEvidence": null,
+    "bootstrapEvidence": null,
+    "oidcProviderStaged": false,
+    "forgejoOidcSourceConfigured": false,
+    "smokeTested": false,
+    "humanIdentitySmokePassed": false,
+    "agentIdentitySmokePassed": false,
+    "serviceIdentitySmokePassed": false,
+    "publicRegistrationLocked": false,
+    "autoCreateRestrictedToIssuer": false,
+    "recoveryAdminVerified": false
+  },
+  "backups": {
+    "scheduled": false,
+    "offHost": false,
+    "encrypted": false,
+    "backupEvidence": null,
+    "lastBackupAt": null,
+    "lastRestoreCheckAt": null,
+    "includes": []
+  },
+  "database": {
+    "databaseEvidence": null,
+    "forgejoPostgres": false,
+    "stewardPostgres": false,
+    "migrationsApplied": false,
+    "emptyHostRestoreDrillPassed": false,
+    "checksumDriftClean": false
+  },
+  "imageProvenance": {
+    "forgejoImage": null,
+    "stewardImage": null,
+    "runnerImage": null,
+    "dindImage": null,
+    "provenanceEvidence": null,
+    "stewardImageBuiltByCi": false,
+    "stewardImageSignatureVerified": false,
+    "sbomGenerated": false,
+    "vulnerabilityScanClean": false
+  },
+  "runner": {
+    "smokeEvidence": null,
+    "auditEvidence": null,
+    "isolated": false,
+    "noHostDockerSocket": false,
+    "noHostLabels": false,
+    "registrationTested": false,
+    "trustedSmokeWorkflowPassed": false,
+    "egressReviewed": false,
+    "secretExposureReviewed": false
+  },
+  "repository": {
+    "protectedBranches": [],
+    "requiredChecks": [],
+    "forkPolicyReviewed": false,
+    "actionsPolicyReviewed": false,
+    "adminBypassReviewed": false,
+    "liveProtectionEvidence": null
+  },
+  "githubMigration": {
+    "pilotBootstrapEvidence": null,
+    "pilotBootstrapPassed": false,
+    "mirrorVerified": false,
+    "defaultBranchVerified": false,
+    "webhookVerified": false,
+    "branchProtectionVerified": false,
+    "repoPolicyVerified": false,
+    "agentIdentitiesSynced": false,
+    "pilotSurfacesVerified": false,
+    "pullMirrorOnly": false
+  },
+  "secrets": {
+    "secretEvidence": null,
+    "externalSecretStore": false,
+    "rotationPolicyDocumented": false,
+    "appIniSecretsIssued": false,
+    "runnerTokenIssued": false,
+    "oauthSecretsIssued": false,
+    "webhookSecretsIssued": false,
+    "noPlaintextSecretsCommitted": false
+  },
+  "mail": {
+    "mailEvidence": null,
+    "smtpConfigured": false,
+    "inviteSmokePassed": false,
+    "passwordResetSmokePassed": false,
+    "notificationSmokePassed": false
+  },
+  "storage": {
+    "storageEvidence": null,
+    "sizingReviewed": false,
+    "artifactRetentionConfigured": false,
+    "packageRetentionConfigured": false,
+    "lfsCapacityReviewed": false,
+    "logRetentionConfigured": false
+  },
+  "observability": {
+    "observabilityEvidence": null,
+    "prometheusScrapeOk": false,
+    "alertRulesLoaded": false,
+    "alertRoutingConfigured": false,
+    "logsCollected": false,
+    "logRetentionDays": 0,
+    "noPageAlertsFiring": false
+  },
+  "steward": {
+    "preflight": {
+      "ok": false,
+      "mode": "production",
+      "errors": []
+    },
+    "doctor": {
+      "ok": false
+    },
+    "preflightEvidence": null,
+    "doctorEvidence": null,
+    "readyProductionMode": false,
+    "labelMirroringTested": false,
+    "botTokenPermissionsReviewed": false,
+    "strictWorkReservationsEnforced": false,
+    "strictWorkItemsEnforced": false,
+    "strictAgentBranchNamespacesEnforced": false,
+    "verifiedAgentRunReceiptsEnforced": false,
+    "agentIdentityRegistryEnforced": false
+  },
+  "mergeQueueRollout": {
+    "dryRunPassed": false,
+    "stagedLiveDrillPassed": false,
+    "workerLeaseVerified": false,
+    "strictWorkReservationsEnforced": false,
+    "strictWorkItemsEnforced": false,
+    "strictAgentBranchNamespacesEnforced": false,
+    "verifiedAgentRunReceiptsEnforced": false,
+    "agentIdentityRegistryEnforced": false,
+    "stackDependencyOrderEnforced": false,
+    "rollbackDrillPassed": false,
+    "humanApprovalRecorded": false,
+    "dryRunEvidence": null,
+    "liveDrillEvidence": null
+  },
+  "securityReview": {
+    "securityEvidence": null,
+    "authReviewed": false,
+    "tokensReviewed": false,
+    "runnerExecutionReviewed": false,
+    "repoPermissionsReviewed": false,
+    "approvedBy": null,
+    "approvedAt": null
+  },
+  "deployment": {
+    "deployEvidence": null,
+    "postDeployEvidence": null,
+    "mode": "first-boot",
+    "applied": false,
+    "postDeployVerified": false
+  }
+}

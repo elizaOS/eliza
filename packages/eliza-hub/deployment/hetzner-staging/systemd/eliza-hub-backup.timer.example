@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Eliza Hub off-site backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:20:00 UTC
+Persistent=true
+RandomizedDelaySec=20m
+AccuracySec=1m
+Unit=eliza-hub-backup.service
+
+[Install]
+WantedBy=timers.target

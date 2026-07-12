@@ -1,0 +1,19 @@
+name: Runner Smoke
+
+on:
+  workflow_dispatch:
+
+jobs:
+  runner-smoke:
+    name: Isolated runner smoke
+    runs-on: docker
+    timeout-minutes: 5
+    steps:
+      - name: Check job container
+        run: |
+          set -eu
+          node --version
+          pwd
+          test ! -e /var/run/docker.sock
+          test "${DOCKER_HOST:-}" != "unix:///var/run/docker.sock"
+          echo "runner-smoke:ok"

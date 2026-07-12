@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - merge-steward-alerts.yml
+
+scrape_configs:
+  - job_name: eliza-merge-steward
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+          - merge-steward:8080
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/merge-steward-token

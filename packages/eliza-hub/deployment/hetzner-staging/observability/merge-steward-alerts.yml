@@ -1,0 +1,222 @@
+groups:
+  - name: eliza-merge-steward.rules
+    rules:
+      - alert: ElizaMergeStewardDown
+        expr: up{job="eliza-merge-steward"} == 0
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Eliza Merge Steward metrics target is down
+          description: Prometheus cannot scrape the Merge Steward target for more than 2 minutes.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardNotReady
+        expr: eliza_merge_steward_ready != 1
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Eliza Merge Steward readiness is failing
+          description: The /ready probe is not reporting ok=true. Check runtime preflight, queue store, and worker lease readiness.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardReadinessCheckFailed
+        expr: eliza_merge_steward_check_ok == 0
+        for: 5m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Eliza Merge Steward readiness check failed
+          description: Readiness check {{ $labels.name }} has been failing for more than 5 minutes.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardMetricCollectionErrors
+        expr: sum by (source) (eliza_merge_steward_scrape_errors{source!="none"}) > 0
+        for: 5m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: Eliza Merge Steward metric collection is partially failing
+          description: Metric source {{ $labels.source }} is failing during /metrics collection.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardProductionNotOnPostgres
+        expr: eliza_merge_steward_info{deployment_mode="production",store!="postgres"} == 1
+        for: 5m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Production Merge Steward is not using Postgres persistence
+          description: Production mode must use durable Postgres state before live queue or merge execution.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardWorkerWithoutLiveIntegration
+        expr: eliza_merge_steward_worker_enabled == 1 and eliza_merge_steward_integration_live_enabled == 0
+        for: 5m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Merge worker is enabled while live integration is disabled
+          description: The worker can poll, but live integration execution is not enabled. Disable the worker or enable the full live execution path.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardLiveIntegrationWithoutStrictReservations
+        expr: eliza_merge_steward_integration_live_enabled == 1 and on() eliza_merge_steward_work_reservation_required == 0
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Live merge execution is running without strict work reservations
+          description: Live integration is enabled, but agent PR work-reservation enforcement is disabled. Set MERGE_STEWARD_REQUIRE_WORK_RESERVATION_FOR_AGENT_PRS=true before live agent merges.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardLiveIntegrationWithoutStrictWorkItems
+        expr: eliza_merge_steward_integration_live_enabled == 1 and on() eliza_merge_steward_work_item_required == 0
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Live merge execution is running without durable Work items
+          description: Live integration is enabled, but agent PR durable Work-item enforcement is disabled. Set MERGE_STEWARD_REQUIRE_WORK_ITEM_FOR_AGENT_PRS=true before live agent merges.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardLiveIntegrationWithoutAgentBranchNamespaces
+        expr: eliza_merge_steward_integration_live_enabled == 1 and on() eliza_merge_steward_agent_branch_namespace_required == 0
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Live merge execution is running without agent branch namespaces
+          description: Live integration is enabled, but agent PR branch namespace enforcement is disabled. Set MERGE_STEWARD_REQUIRE_AGENT_BRANCH_NAMESPACE=true before live agent merges.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardLiveIntegrationWithoutVerifiedAgentRunReceipts
+        expr: eliza_merge_steward_integration_live_enabled == 1 and on() eliza_merge_steward_verified_agent_run_receipt_required == 0
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Live merge execution is running without signed agent run receipts
+          description: Live integration is enabled, but verified agent run receipt enforcement is disabled. Set MERGE_STEWARD_REQUIRE_VERIFIED_AGENT_RUN_RECEIPT=true before live agent merges.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardLiveIntegrationWithoutAgentIdentityRegistry
+        expr: eliza_merge_steward_integration_live_enabled == 1 and on() eliza_merge_steward_agent_identity_registry_required == 0
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Live merge execution is running without an allowed-agent registry
+          description: Live integration is enabled, but allowed agent identity registry enforcement is disabled. Set MERGE_STEWARD_REQUIRE_AGENT_IDENTITY_REGISTRY=true before live agent merges.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardAgentIdentityRegistryEmpty
+        expr: eliza_merge_steward_integration_live_enabled == 1 and on() eliza_merge_steward_known_agent_id_count < 1
+        for: 2m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Live merge execution has no registered agent identities
+          description: Live integration is enabled, but MERGE_STEWARD_AGENT_IDENTITY_REGISTRY has no known agent ids. Add allowed Eliza agent ids before live agent merges.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardWorkerLeaseDisabled
+        expr: eliza_merge_steward_info{deployment_mode="production"} == 1 and on() eliza_merge_steward_worker_enabled == 1 and on() eliza_merge_steward_worker_lease_enabled == 0
+        for: 5m
+        labels:
+          severity: page
+          service: eliza-merge-steward
+        annotations:
+          summary: Production merge worker is running without durable lease protection
+          description: Production workers must keep MERGE_STEWARD_WORKER_LEASE_ENABLED=true to prevent duplicate live merge execution.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardWorkerLeaseMissing
+        expr: eliza_merge_steward_worker_enabled == 1 and on() eliza_merge_steward_worker_lease_enabled == 1 and on() sum(eliza_merge_steward_worker_lease_active{status="active"}) == 0
+        for: 2m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: No active merge worker lease is visible
+          description: Worker leasing is enabled, but no active lease holder is currently exported.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardExpiredAgentClaims
+        expr: eliza_merge_steward_agent_claims_expired_active > 0
+        for: 15m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: Expired active agent work claims need cleanup
+          description: One or more active agent work claims have expired leases and should be reclaimed or released.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardAgentPerformanceNeedsTriage
+        expr: eliza_merge_steward_agent_performance_failed_runs > 0 or eliza_merge_steward_agent_performance_stale_claims > 0
+        for: 15m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: Agent performance telemetry needs triage
+          description: Agent performance telemetry reports failed runs or stale claims. Check the routing view before assigning more work.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardNoRoutableAgents
+        expr: eliza_merge_steward_agent_routing_unassigned_items > 0 and on() eliza_merge_steward_agent_routing_agents{state="routable"} == 0
+        for: 10m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: Agent routing has unassigned work but no routable agents
+          description: Agent routing has unassigned work and no available agent target. Inspect blocked agent reasons before enqueueing more work.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardReadyQueueBacklogHigh
+        expr: eliza_merge_steward_queue_items{state="ready"} > 25
+        for: 30m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: Ready merge queue backlog is high
+          description: More than 25 ready queue items have been waiting for at least 30 minutes.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardFailedRunsPresent
+        expr: eliza_merge_steward_runs{status="failed"} > 0
+        for: 15m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: Failed Merge Steward runs are present
+          description: Failed run records are present. Inspect the run state before retrying or clearing queue items.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability
+
+      - alert: ElizaMergeStewardFailedAttemptsPresent
+        expr: eliza_merge_steward_attempts{status="failed"} > 0
+        for: 15m
+        labels:
+          severity: ticket
+          service: eliza-merge-steward
+        annotations:
+          summary: Failed Merge Steward attempts are present
+          description: Failed attempt records are present. Inspect the attempt events before retrying live execution.
+          runbook_url: https://git.staging.example.invalid/eliza-hub/runbooks/observability

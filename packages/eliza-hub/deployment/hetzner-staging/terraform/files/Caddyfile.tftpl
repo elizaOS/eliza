@@ -1,0 +1,48 @@
+{
+	admin 127.0.0.1:2019
+}
+
+${web_hostname} {
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/eliza-hub-access.json {
+			roll_size 100MiB
+			roll_keep 10
+			roll_keep_for 720h
+		}
+		format json
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), geolocation=(), microphone=()"
+		-Server
+	}
+
+	handle /steward {
+		redir /steward/ 308
+	}
+
+	handle_path /steward/* {
+		reverse_proxy 127.0.0.1:8080 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-For ${client_ip_header}
+			header_up X-Real-IP ${client_ip_header}
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000 {
+			header_up Host {host}
+			header_up X-Forwarded-Host {host}
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Forwarded-For ${client_ip_header}
+			header_up X-Real-IP ${client_ip_header}
+		}
+	}
+}
