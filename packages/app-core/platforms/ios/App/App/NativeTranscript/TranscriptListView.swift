@@ -17,6 +17,20 @@ import SwiftUI
 /// Bridge-owned observable frame slot: the plugin replaces the whole frame on
 /// every `setTranscript` (main thread only) and SwiftUI diffs by message id
 /// via `ForEach`/`Equatable`.
+private struct TranscriptViewportHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct TranscriptTailOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 final class TranscriptFrameStore: ObservableObject {
     @Published var frame: TranscriptFrame = .empty
 }
@@ -44,6 +58,8 @@ struct TranscriptListView: View {
     let sendEnvelope: ([String: String]) -> Void
 
     private static let tailAnchor = "transcript-tail"
+    @State private var atBottom = true
+    @State private var viewportHeight: CGFloat = 0
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -61,22 +77,47 @@ struct TranscriptListView: View {
                     Color.clear
                         .frame(height: 1)
                         .id(Self.tailAnchor)
+                        .background(
+                            GeometryReader { tail in
+                                Color.clear.preference(
+                                    key: TranscriptTailOffsetKey.self,
+                                    value: tail.frame(in: .named("transcriptScroll")).maxY)
+                            }
+                        )
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
+            }
+            .coordinateSpace(name: "transcriptScroll")
+            .onPreferenceChange(TranscriptViewportHeightKey.self) { viewportHeight = $0 }
+            .onPreferenceChange(TranscriptTailOffsetKey.self) { tailMaxY in
+                // 80px threshold mirrors the DOM AT_BOTTOM_THRESHOLD_PX.
+                atBottom = tailMaxY <= viewportHeight + 80
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .background(Color.clear)
             .onAppear {
                 proxy.scrollTo(Self.tailAnchor, anchor: .bottom)
+                atBottom = true
             }
             .onChange(of: store.frame) { _ in
+                // DOM/Android parity: never yank a reader who scrolled up to
+                // re-read a widget mid-stream. Only auto-follow the tail while
+                // the viewport is already at (or near) the bottom.
+                guard atBottom else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo(Self.tailAnchor, anchor: .bottom)
                 }
             }
+            .background(
+                GeometryReader { outer in
+                    Color.clear.preference(
+                        key: TranscriptViewportHeightKey.self,
+                        value: outer.size.height)
+                }
+            )
         }
         // The list draws for the dark-glass surface regardless of the system
         // appearance — the backdrop behind it is always dark.
@@ -141,12 +182,13 @@ private struct TranscriptMessageRow: View {
             }
             if let events = message.toolEvents, !events.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(Array(events.enumerated()), id: \.offset) { _, event in
+                    ForEach(Array(events.enumerated()), id: \.element.stableId) { _, event in
                         TranscriptToolEventRow(event: event)
                     }
                 }
             }
-            ForEach(Array(message.segments.enumerated()), id: \.offset) { _, segment in
+            ForEach(Array(message.segments.enumerated()), id: \.element.stableId) {
+                _, segment in
                 TranscriptSegmentView(
                     segment: segment, sendAction: sendAction,
                     sendEnvelope: sendEnvelope)
@@ -155,7 +197,9 @@ private struct TranscriptMessageRow: View {
                 TranscriptSecretRequestRow(request: secretRequest)
             }
             if let failureKind = message.failureKind {
-                TranscriptFailureRow(failureKind: failureKind, sendAction: sendAction)
+                TranscriptFailureRow(
+                    failureKind: failureKind, messageId: message.id,
+                    sendEnvelope: sendEnvelope)
             }
             if message.streaming == true {
                 TranscriptBreathingDots()
@@ -230,11 +274,20 @@ struct TranscriptMarkdownText: View {
         // error-policy:J4 designed degrade — markdown that fails to parse
         // renders as its literal text; the words are always shown, only the
         // inline styling is lost.
-        (try? AttributedString(
+        guard var parsed = try? AttributedString(
             markdown: text,
             options: AttributedString.MarkdownParsingOptions(
-                interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(text)
+                interpretedSyntax: .inlineOnlyPreservingWhitespace))
+        else { return AttributedString(text) }
+        // Strip link runs: the DOM/Android renderers deliberately do NOT make
+        // assistant markdown tappable, so a `[label](scheme:…)` must not become
+        // a tap surface with no scheme allowlist here either. The label text
+        // stays; only the link attribute is removed.
+        for run in parsed.runs where run.link != nil {
+            parsed[run.range].link = nil
+            parsed[run.range].foregroundColor = TranscriptTheme.primaryText
+        }
+        return parsed
     }
 }
 
@@ -404,7 +457,15 @@ struct TranscriptToolEventRow: View {
 @available(iOS 16.0, *)
 struct TranscriptFailureRow: View {
     let failureKind: String
-    let sendAction: (String) -> Void
+    let messageId: String
+    let sendEnvelope: ([String: String]) -> Void
+
+    /// DOM parity: only these two kinds get a Retry affordance; the others
+    /// carry their own gates (no_provider → Settings, insufficient_credits →
+    /// credits) which the transcript surface does not own.
+    private var isRetryable: Bool {
+        failureKind == "rate_limited" || failureKind == "provider_issue"
+    }
 
     var body: some View {
         HStack(spacing: 10) {
@@ -415,13 +476,17 @@ struct TranscriptFailureRow: View {
                 .font(.system(size: 13))
                 .foregroundStyle(TranscriptTheme.secondaryText)
             Spacer(minLength: 8)
-            Button("Retry") {
-                // Same retry string the DOM's failed-turn affordance sends.
-                sendAction("Retry the previous request")
+            if isRetryable {
+                Button("Retry") {
+                    // Typed envelope — the JS side re-runs the REAL retry path
+                    // (re-sends the preceding user turn); never a fabricated
+                    // "retry" chat message.
+                    sendEnvelope(["kind": "retry", "messageId": messageId])
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(TranscriptTheme.accent)
+                .buttonStyle(.plain)
             }
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(TranscriptTheme.accent)
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

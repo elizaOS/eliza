@@ -7,7 +7,8 @@
  *
  * The host replaces the whole frame on every update (`setTranscript` is a
  * full-frame replace by contract) and this view diffs by message id: a row
- * whose fingerprint (raw message JSON) is unchanged keeps its live view — and
+ * whose STABLE fingerprint (interactive segments + failureKind, excluding
+ * streaming prose/tool status) is unchanged keeps its live view — and
  * with it every in-progress interaction (choice locks, form drafts, secret
  * text, expanded disclosures). Only changed/new rows rebuild. A framework
  * ScrollView + LinearLayout hosts the rows instead of RecyclerView because

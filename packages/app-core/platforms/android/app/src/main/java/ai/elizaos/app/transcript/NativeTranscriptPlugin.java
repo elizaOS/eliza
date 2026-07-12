@@ -61,6 +61,14 @@ public class NativeTranscriptPlugin extends Plugin {
             call.reject("setTranscript requires frame");
             return;
         }
+        // Reject a frame whose schema this build does not implement (iOS
+        // parity): a future breaking `…/v2` must not render as tolerant-decoded
+        // garbage with a success resolve (red-team MED-8).
+        String schema = rawFrame.optString("schema", "");
+        if (!TranscriptModels.SCHEMA.equals(schema)) {
+            call.reject("unsupported transcript schema: " + schema);
+            return;
+        }
         // Decode off the UI thread (plugin executor); apply on it.
         TranscriptModels.Frame frame = TranscriptModels.decodeFrame(rawFrame);
         Activity activity = getActivity();

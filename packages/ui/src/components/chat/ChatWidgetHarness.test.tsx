@@ -334,9 +334,12 @@ describe("ChatWidgetHarness native-transcript demo", () => {
       nativeTranscript.frames.at(-1)?.messages.length ?? 0;
     const before = messageCount();
 
-    const navigated: string[] = [];
+    const navigated: Array<string | null | undefined> = [];
     const onNavigate = (event: Event) =>
-      navigated.push((event as CustomEvent<{ view: string }>).detail.view);
+      navigated.push(
+        (event as CustomEvent<{ viewPath?: string; viewId?: string }>).detail
+          .viewPath,
+      );
     window.addEventListener("eliza:navigate:view", onNavigate);
     act(() => {
       nativeTranscript.actionHandler?.({ kind: "navigate", view: "/settings" });
@@ -348,7 +351,8 @@ describe("ChatWidgetHarness native-transcript demo", () => {
     });
     window.removeEventListener("eliza:navigate:view", onNavigate);
 
-    // The navigate intent surfaced as the LOCAL event the DOM widget fires…
+    // The navigate intent surfaced as the LOCAL event the DOM widget fires,
+    // in the SHELL's real detail shape (viewPath for a /-prefixed target).
     expect(navigated).toEqual(["/settings"]);
     // …and none of the three envelopes became a chat turn.
     await new Promise((resolve) => setTimeout(resolve, 900));

@@ -176,4 +176,8 @@ export type NativeTranscriptAction =
   | { kind?: "message"; message: string }
   | { kind: "navigate"; view: string }
   | { kind: "prefill"; text: string }
-  | { kind: "background"; presetId: string };
+  | { kind: "background"; presetId: string }
+  // Retry a failed assistant turn. The JS side re-runs the real retry path
+  // (re-sends the preceding user turn) — NEVER a fabricated "retry" chat
+  // string, and only the DOM-retryable failure kinds surface the affordance.
+  | { kind: "retry"; messageId: string };

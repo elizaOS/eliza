@@ -43,6 +43,11 @@ const resultDir = path.join(
 const SET_TRANSCRIPT_MARKER =
   /To Native\s*->\s*NativeTranscript\s+setTranscript/;
 const AVAILABILITY_MARKER = /To Native\s*->\s*NativeTranscript\s+isAvailable/;
+// A native-side reject (unsupported schema, malformed frame) surfaces as a
+// Capacitor error callback; the check must FAIL on it rather than pass on the
+// JS-side setTranscript log alone (red-team MED-13).
+const REJECT_MARKER =
+  /(NativeTranscript.*(reject|error))|unsupported transcript schema|setTranscript requires frame/i;
 const SIM_DEVICE_NAME = process.env.ELIZA_IOS_SIM_DEVICE || "iPhone 17 Pro";
 
 const has = (flag) => process.argv.includes(flag);
@@ -227,6 +232,14 @@ function scan(chunk) {
   // Keep only the tail; markers never span more than one log line.
   if (buffered.length > 65536) buffered = buffered.slice(-16384);
   if (AVAILABILITY_MARKER.test(buffered)) sawAvailabilityProbe = true;
+  if (REJECT_MARKER.test(buffered)) {
+    clearTimeout(timeout);
+    finish(
+      1,
+      "FAIL: the native transcript plugin REJECTED a frame (schema/decode error) — the JS setTranscript call is not proof of a working renderer",
+    );
+    return;
+  }
   if (!sawSetTranscript && SET_TRANSCRIPT_MARKER.test(buffered)) {
     sawSetTranscript = true;
     clearTimeout(timeout);

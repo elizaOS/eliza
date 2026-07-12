@@ -21,6 +21,7 @@ import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
+import { dispatchNavigateViewEvent } from "../../events";
 import {
   clearNativeGlassBackdrop,
   GlassStyles,
@@ -406,14 +407,24 @@ export function ChatWidgetHarness(): React.JSX.Element {
           // store) and must never become chat text.
           switch (action.kind) {
             case "navigate":
-              window.dispatchEvent(
-                new CustomEvent("eliza:navigate:view", {
-                  detail: { view: action.view },
-                }),
+              // Mirror the DOM widget path exactly: a `/`-prefixed payload is
+              // a viewPath, anything else a viewId — the shape the shell's
+              // navigate handler actually reads (shared/events NavigateViewDetail).
+              dispatchNavigateViewEvent(
+                action.view.startsWith("/")
+                  ? { viewPath: action.view }
+                  : { viewId: action.view },
               );
               return;
             case "prefill":
               chatInputSinkRef.current?.(action.text);
+              return;
+            case "retry":
+              // Scripted review harness: no live agent to re-run, so surface
+              // the intent. Production wiring routes this to handleChatRetry.
+              console.info(
+                `[ChatWidgetHarness] native retry intent: ${action.messageId}`,
+              );
               return;
             case "background":
               // Review harness: no display-preferences store is mounted;
@@ -423,7 +434,9 @@ export function ChatWidgetHarness(): React.JSX.Element {
               );
               return;
             default:
-              appendUserAndAdvance(action.message);
+              if (typeof action.message === "string") {
+                appendUserAndAdvance(action.message);
+              }
           }
         },
       );
@@ -455,13 +468,22 @@ export function ChatWidgetHarness(): React.JSX.Element {
         },
       });
       shown = true;
-      if (!disposed) setNativeDemoActive(true);
+      if (disposed) {
+        // Unmount landed during the show() round-trip: the cleanup ran with
+        // shown=false and could not hide, so the leaked native list would
+        // dead-zone its rect forever. Hide now.
+        void nativeTranscriptBridge()?.hide();
+        return;
+      }
+      setNativeDemoActive(true);
     })();
     return () => {
       disposed = true;
       setNativeDemoActive(false);
-      void listener?.remove();
-      if (shown) void nativeTranscriptBridge()?.hide();
+      // error-policy:J6 best-effort teardown — remove/hide are fire-and-forget;
+      // a rejected teardown only leaves the next mount to re-show.
+      void listener?.remove().catch(() => {});
+      if (shown) void nativeTranscriptBridge()?.hide().catch(() => {});
     };
   }, [appendUserAndAdvance]);
 

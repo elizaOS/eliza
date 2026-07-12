@@ -21,7 +21,18 @@ import Foundation
 /// Arbitrary JSON payloads (widget data, permission payloads, tool args and
 /// results) that native code re-interprets per widget kind. Widget bodies read
 /// through the typed accessors instead of re-decoding raw JSON.
-enum TranscriptJSONValue: Equatable, Sendable {
+extension TranscriptJSONValue {
+    /// Identity key for a widget payload: prefer an explicit `id` field so a
+    /// streaming data update (progress %, status) keeps the same view + @State.
+    var stableKey: String {
+        if case .object(let members) = self, case .string(let id)? = members["id"] {
+            return id
+        }
+        return "\(hashValue)"
+    }
+}
+
+enum TranscriptJSONValue: Equatable, Hashable, Sendable {
     case null
     case bool(Bool)
     case number(Double)
@@ -138,6 +149,22 @@ enum TranscriptSegment: Equatable, Sendable {
     /// Kinds this build does not know (newer serializer within v1). Renderers
     /// skip it — DOM parity: the parser maps unknown kinds to null.
     case unknown(kind: String)
+
+    /// Stable identity for ForEach: a widget/config keys by its own id/kind so
+    /// its @State (a locked choice, a form draft) survives a sibling segment
+    /// being inserted or dropped before it (retry rewrite, empty-text trim) —
+    /// offset-keying reused the wrong view's state (red-team HIGH-2).
+    var stableId: String {
+        switch self {
+        case .text(let t): return "text:\(t.hashValue)"
+        case .code(let c, _, _): return "code:\(c.hashValue)"
+        case .widget(let kind, let data): return "widget:\(kind):\(data.stableKey)"
+        case .permission(let data): return "permission:\(data.stableKey)"
+        case .uiSpec(let raw): return "uispec:\(raw.hashValue)"
+        case .config(let id): return "config:\(id)"
+        case .unknown(let kind): return "unknown:\(kind)"
+        }
+    }
 }
 
 extension TranscriptSegment: Codable {
@@ -245,7 +272,9 @@ extension TranscriptSegment: Codable {
 /// args/input, result/output, durationMs/duration); the `resolved*` accessors
 /// collapse each alias group so views never branch on wire spelling. Every
 /// field is optional so an alias-shaped event can never reject a frame.
-struct TranscriptToolEvent: Codable, Equatable, Sendable {
+struct TranscriptToolEvent: Codable, Equatable, Hashable, Sendable {
+    /// callId ?? id keeps a streaming tool row's identity across status flips.
+    var stableId: String { callId ?? id ?? "\(hashValue)" }
     var id: String?
     var type: String?
     var callId: String?

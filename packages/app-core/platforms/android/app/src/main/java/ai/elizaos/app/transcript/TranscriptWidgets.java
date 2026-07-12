@@ -413,11 +413,14 @@ public final class TranscriptWidgets {
 
     // ── Background swatches ─────────────────────────────────────────────
 
-    /** Ember-family + neutral presets; a tap asks the agent's BACKGROUND
-     *  action to apply the color (see TranscriptActions.backgroundPick). */
-    private static final int[] BACKGROUND_PRESETS = {
-            0xFF000000, 0xFF1A0C06, 0xFF7A2D0C, 0xFFEF5A1F, 0xFFFF7A3D,
-            0xFF15171E, 0xFF2C2F3A, 0xFFF2F2F5,
+    /** Shared shader-preset ids (parity with iOS + shader-presets.ts) and a
+     *  representative swatch color for each; a tap emits the preset id as a
+     *  local `background` envelope. */
+    private static final String[] BACKGROUND_PRESET_IDS = {
+            "aurora", "lava", "plasma", "waves",
+    };
+    private static final int[] BACKGROUND_PRESET_COLORS = {
+            0xFF2A805A, 0xFFD84D14, 0xFFA6337F, 0xFF52545C,
     };
 
     public static View background(Context context, ActionSink sink) {
@@ -427,15 +430,17 @@ public final class TranscriptWidgets {
                 TranscriptUi.wrapParams());
         LinearLayout row = new LinearLayout(context);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        for (int color : BACKGROUND_PRESETS) {
-            View swatch = TranscriptUi.swatch(context, color);
-            String hex = TranscriptUi.cssHex(color);
+        for (int i = 0; i < BACKGROUND_PRESET_IDS.length; i++) {
+            String presetId = BACKGROUND_PRESET_IDS[i];
+            View swatch = TranscriptUi.swatch(context, BACKGROUND_PRESET_COLORS[i]);
             swatch.setOnClickListener(v -> {
                 // Local display intent — DOM mutates the BackgroundConfig
-                // store; never chat text (spec.ts NativeTranscriptAction).
+                // store; never chat text. Emit the SHARED preset id (parity
+                // with iOS + shader-presets.ts), not a raw hex the store can't
+                // resolve (red-team MED-7).
                 Map<String, String> envelope = new HashMap<>();
                 envelope.put("kind", "background");
-                envelope.put("presetId", hex);
+                envelope.put("presetId", presetId);
                 sink.sendEnvelope(envelope);
             });
             row.addView(swatch);

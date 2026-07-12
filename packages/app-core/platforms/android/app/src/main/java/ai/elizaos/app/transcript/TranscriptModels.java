@@ -495,7 +495,44 @@ public final class TranscriptModels {
                 optNullableString(json, "failureKind"),
                 secretRequest,
                 json.optBoolean("streaming", false),
-                json.toString());
+                stableFingerprint(json));
+    }
+
+    /**
+     * Rebuild fingerprint that EXCLUDES streaming-volatile fields (trailing
+     * prose text, `streaming`, tool-event status) so an interactive widget's
+     * live view — and its draft/lock/disclosure state — survives token growth
+     * and turn-status flips (red-team HIGH-3). Keyed on the interactive
+     * segments (widget/permission), the failureKind, and the secretRequest
+     * status — the only fields whose change should force a row rebuild.
+     */
+    private static String stableFingerprint(JSONObject json) {
+        StringBuilder key = new StringBuilder();
+        key.append(json.optString("failureKind", "")).append('|');
+        JSONObject secret = json.optJSONObject("secretRequest");
+        key.append(secret != null ? secret.optString("status", "") : "").append('|');
+        JSONArray segs = json.optJSONArray("segments");
+        if (segs != null) {
+            for (int i = 0; i < segs.length(); i++) {
+                JSONObject seg = segs.optJSONObject(i);
+                if (seg == null) continue;
+                String kind = seg.optString("kind", "");
+                // Only structurally-stable, interactive-or-visual segments
+                // contribute; free prose text (which streams) is excluded so
+                // its growth never rebuilds a sibling widget row.
+                if ("widget".equals(kind) || "permission".equals(kind)
+                        || "ui-spec".equals(kind) || "config".equals(kind)
+                        || "code".equals(kind)) {
+                    key.append(kind).append(':').append(seg.toString()).append(';');
+                } else if ("text".equals(kind)) {
+                    // Text identity by LENGTH bucket, not content: a row with
+                    // only prose still rebuilds when text changes materially,
+                    // but a widget-bearing row is not churned per token.
+                    key.append("t").append(seg.optString("text", "").length()).append(';');
+                }
+            }
+        }
+        return key.toString();
     }
 
     public static Segment decodeSegment(JSONObject json) {
