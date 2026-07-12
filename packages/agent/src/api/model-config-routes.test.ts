@@ -358,6 +358,78 @@ describe("POST /api/models/config coding writes", () => {
   });
 });
 
+describe("POST /api/models/config defaultBackend-only writes", () => {
+  it("persists ELIZA_DEFAULT_AGENT_TYPE to all three seams without a restart", async () => {
+    const { ctx, json, saveElizaConfig, managerStart, config, processEnv } =
+      makeHarness("POST", { target: "coding", defaultBackend: "codex" });
+    await handleModelConfigRoutes(ctx as never);
+
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    > & { vars: Record<string, string> };
+    expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("codex");
+    expect(env.vars.ELIZA_DEFAULT_AGENT_TYPE).toBe("codex");
+    expect(processEnv.ELIZA_DEFAULT_AGENT_TYPE).toBe("codex");
+    expect(saveElizaConfig).toHaveBeenCalledWith(config);
+    expect(managerStart).not.toHaveBeenCalled();
+    const { body } = responseOf(json);
+    expect(body).toMatchObject({
+      applied: true,
+      restart: false,
+      keys: ["ELIZA_DEFAULT_AGENT_TYPE"],
+    });
+  });
+
+  it("maps a modelless eliza-code switch to the orchestrator's elizaos spelling", async () => {
+    const { ctx, config } = makeHarness("POST", {
+      target: "coding",
+      defaultBackend: "eliza-code",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    >;
+    expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("elizaos");
+  });
+
+  it("rejects an unknown defaultBackend without writing", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "coding",
+      defaultBackend: "vscode",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("Unknown defaultBackend");
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects model-seam fields on a modelless write", async () => {
+    const { ctx, json } = makeHarness("POST", {
+      target: "coding",
+      backend: "codex",
+      defaultBackend: "codex",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("defaultBackend-only write");
+  });
+
+  it("still requires model for chat targets even with defaultBackend", async () => {
+    const { ctx, json } = makeHarness("POST", {
+      target: "large",
+      defaultBackend: "codex",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("model must be a non-empty string");
+  });
+});
+
 describe("GET /api/models/config resolution order", () => {
   it("reports which source won per key: config.env > config.env.vars > process.env", async () => {
     const { ctx, json } = makeHarness("GET", null, {

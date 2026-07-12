@@ -13,7 +13,10 @@
  * RuntimeOperationManager the provider-switch route uses — the config write
  * happens inside the operation's prepare step so a busy runtime rejects
  * without a half-applied config. Coding targets return without restart:
- * sub-agent spawns re-read the config env on every spawn. When a touched key
+ * sub-agent spawns re-read the config env on every spawn. A coding write may
+ * also be a defaultBackend-only body (no `model`), persisting just
+ * ELIZA_DEFAULT_AGENT_TYPE — the seam the `/backend` slash command drives.
+ * When a touched key
  * already carried a different process-env value that the config did not put
  * there (systemd service.env, shell export), the response lists it in
  * `conflictingServiceEnvKeys` as an honest warning — a full service restart
@@ -45,7 +48,8 @@ export interface ModelConfigWriteBody {
   target: ModelConfigTarget;
   provider?: string;
   backend?: CodingBackend;
-  model: string;
+  /** Omittable only for the defaultBackend-only coding switch. */
+  model?: string;
   effort?: string;
   /** Optional coding-backend switch, persisted as ELIZA_DEFAULT_AGENT_TYPE. */
   defaultBackend?: CodingBackend;
@@ -250,6 +254,12 @@ function resolveChatWrites(
       { target: body.target, backend: body.backend },
     );
   }
+  // parseWriteBody only omits `model` for the defaultBackend-only coding
+  // shape; re-assert here so the chat path stays typed on a plain string.
+  const model = body.model;
+  if (model === undefined) {
+    throw invalid("model must be a non-empty string", { model: null });
+  }
 
   let provider = body.provider;
   if (provider !== undefined && !(provider in CHAT_PROVIDER_KEY_FAMILY)) {
@@ -260,43 +270,43 @@ function resolveChatWrites(
   }
   if (provider === undefined) {
     const matches = Object.keys(CHAT_PROVIDER_KEY_FAMILY).filter((candidate) =>
-      findEntry(catalog, candidate, body.model)?.roles.includes(
+      findEntry(catalog, candidate, model)?.roles.includes(
         body.target as "small" | "large",
       ),
     );
     if (matches.length === 0) {
-      throw invalid(
-        `Unknown model "${body.model}" for target "${body.target}"`,
-        { model: body.model, target: body.target },
-      );
+      throw invalid(`Unknown model "${model}" for target "${body.target}"`, {
+        model,
+        target: body.target,
+      });
     }
     if (matches.length > 1) {
       throw invalid(
-        `Model "${body.model}" is served by multiple providers (${matches.join(", ")}); specify provider`,
-        { model: body.model, providers: matches },
+        `Model "${model}" is served by multiple providers (${matches.join(", ")}); specify provider`,
+        { model, providers: matches },
       );
     }
     provider = matches[0] as string;
   }
 
-  const entry = findEntry(catalog, provider, body.model);
+  const entry = findEntry(catalog, provider, model);
   if (!entry) {
-    throw invalid(`Unknown model "${body.model}" for provider "${provider}"`, {
-      model: body.model,
+    throw invalid(`Unknown model "${model}" for provider "${provider}"`, {
+      model,
       provider,
     });
   }
   if (!entry.roles.includes(body.target as "small" | "large")) {
     throw invalid(
-      `Model "${body.model}" is not offered for the "${body.target}" role on provider "${provider}"`,
-      { model: body.model, provider, target: body.target, roles: entry.roles },
+      `Model "${model}" is not offered for the "${body.target}" role on provider "${provider}"`,
+      { model, provider, target: body.target, roles: entry.roles },
     );
   }
 
   const family = CHAT_PROVIDER_KEY_FAMILY[provider] as "OPENAI" | "ANTHROPIC";
   const targetUpper = body.target.toUpperCase();
   const writes: ResolvedWrite[] = [
-    { key: `${family}_${targetUpper}_MODEL`, value: body.model },
+    { key: `${family}_${targetUpper}_MODEL`, value: model },
   ];
   if (body.effort !== undefined) {
     validateEffort(entry, body.effort);
@@ -313,6 +323,33 @@ function resolveCodingWrites(
   catalog: ModelCatalog,
   body: ModelConfigWriteBody,
 ): ResolvedWrite[] {
+  // defaultBackend-only switch: no model seam is touched, so the model-write
+  // fields would be silently ignored — reject their presence loudly instead.
+  if (body.model === undefined) {
+    if (
+      body.backend !== undefined ||
+      body.provider !== undefined ||
+      body.effort !== undefined
+    ) {
+      throw invalid(
+        "a defaultBackend-only write must not carry backend, provider, or effort",
+        {
+          backend: body.backend ?? null,
+          provider: body.provider ?? null,
+          effort: body.effort ?? null,
+        },
+      );
+    }
+    const writes = resolveDefaultBackendWrites(body);
+    if (writes.length === 0) {
+      // parseWriteBody admits the modelless shape only with a defaultBackend;
+      // never let it decay into an applied-but-empty write.
+      throw invalid("model must be a non-empty string", { model: null });
+    }
+    return writes;
+  }
+  const model = body.model;
+
   const backend = body.backend;
   if (backend === undefined || !CODING_BACKENDS.has(backend)) {
     throw invalid(
@@ -329,10 +366,10 @@ function resolveCodingWrites(
   }
 
   if (seam.catalogProvider) {
-    const entry = findEntry(catalog, seam.catalogProvider, body.model);
+    const entry = findEntry(catalog, seam.catalogProvider, model);
     if (!entry) {
-      throw invalid(`Unknown model "${body.model}" for backend "${backend}"`, {
-        model: body.model,
+      throw invalid(`Unknown model "${model}" for backend "${backend}"`, {
+        model,
         backend,
         provider: seam.catalogProvider,
       });
@@ -365,22 +402,29 @@ function resolveCodingWrites(
     });
   }
 
-  const writes: ResolvedWrite[] = [{ key: seam.modelKey, value: body.model }];
+  const writes: ResolvedWrite[] = [{ key: seam.modelKey, value: model }];
   if (body.effort !== undefined && seam.effortKey) {
     writes.push({ key: seam.effortKey, value: body.effort });
   }
-  if (body.defaultBackend !== undefined) {
-    if (!CODING_BACKENDS.has(body.defaultBackend)) {
-      throw invalid(`Unknown defaultBackend "${body.defaultBackend}"`, {
-        defaultBackend: body.defaultBackend,
-      });
-    }
-    writes.push({
-      key: "ELIZA_DEFAULT_AGENT_TYPE",
-      value: DEFAULT_BACKEND_PERSISTED_VALUE[body.defaultBackend],
+  writes.push(...resolveDefaultBackendWrites(body));
+  return writes;
+}
+
+function resolveDefaultBackendWrites(
+  body: ModelConfigWriteBody,
+): ResolvedWrite[] {
+  if (body.defaultBackend === undefined) return [];
+  if (!CODING_BACKENDS.has(body.defaultBackend)) {
+    throw invalid(`Unknown defaultBackend "${body.defaultBackend}"`, {
+      defaultBackend: body.defaultBackend,
     });
   }
-  return writes;
+  return [
+    {
+      key: "ELIZA_DEFAULT_AGENT_TYPE",
+      value: DEFAULT_BACKEND_PERSISTED_VALUE[body.defaultBackend],
+    },
+  ];
 }
 
 function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
@@ -391,7 +435,13 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
     });
   }
   const model = raw.model;
-  if (typeof model !== "string" || !model.trim()) {
+  // `model` may be omitted only for the defaultBackend-only coding switch;
+  // every other shape validates it exactly as before.
+  const defaultBackendOnly =
+    target === "coding" &&
+    model === undefined &&
+    raw.defaultBackend !== undefined;
+  if (!defaultBackendOnly && (typeof model !== "string" || !model.trim())) {
     throw invalid("model must be a non-empty string", { model: model ?? null });
   }
   const optionalString = (field: string): string | undefined => {
@@ -423,7 +473,7 @@ function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
   }
   return {
     target: target as ModelConfigTarget,
-    model: model.trim(),
+    model: typeof model === "string" ? model.trim() : undefined,
     provider: optionalString("provider"),
     backend: backend as CodingBackend | undefined,
     effort: optionalString("effort"),
