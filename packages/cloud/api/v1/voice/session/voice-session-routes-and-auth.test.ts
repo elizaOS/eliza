@@ -6,8 +6,6 @@
 
 import { afterAll, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
-import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
-
 // Capture the REAL surface of every shared module a sibling changed-test also
 // imports for real (jwt, session-registry, voice-usage-meter). The coverage
 // lane runs all changed files in ONE bun process with no `--isolate`, and
@@ -17,6 +15,7 @@ import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 // exports. We stub over a full passthrough and restore the real modules in
 // afterAll so no sibling is contaminated.
 import * as realCloudWorkerErrors from "@/lib/api/cloud-worker-errors";
+import * as realVoiceUsageMeter from "@/lib/services/voice-usage-meter";
 import * as realJwt from "@/lib/voice-session/jwt";
 import * as realSessionRegistry from "@/lib/voice-session/session-registry";
 import type { AppEnv } from "@/types/cloud-worker-env";
