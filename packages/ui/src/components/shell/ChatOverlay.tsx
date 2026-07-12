@@ -2872,7 +2872,12 @@ export function ChatOverlay({
   const composerCapsuleMarginBottom = useMotionTemplate`calc(${fullBleedT} * (max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.75rem))`;
   const composerCapsuleWidth = useMotionTemplate`calc(100% - ${fullBleedT} * 24px)`;
   const composerCapsuleBorder = useMotionTemplate`color-mix(in srgb, var(--border-strong) calc(${fullBleedT} * 100%), transparent)`;
-  const composerCapsuleBg = useMotionTemplate`color-mix(in srgb, var(--card) calc(${fullBleedT} * 86%), transparent)`;
+  // Glassmorphic capsule: a LIGHT fill whose legibility comes from its own
+  // backdrop blur (the same liquid recipe as the inset sheet), both riding the
+  // shape morph so the capsule condenses out of the panel instead of popping.
+  const composerCapsuleBg = useMotionTemplate`color-mix(in srgb, var(--card) calc(${fullBleedT} * 44%), transparent)`;
+  const composerCapsuleBlurPx = useTransform(fullBleedT, [0, 1], [0, 28]);
+  const composerCapsuleBackdrop = useMotionTemplate`blur(${composerCapsuleBlurPx}px) saturate(1.5)`;
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
   // The panel is ONE persistent element; the pill capsule and the full
   // input crossfade by opacity (compositor-cheap) while the whole panel scales
@@ -5049,7 +5054,7 @@ export function ChatOverlay({
             // The directional specular rim (mask-composite ring) replaces the
             // flat CSS border on the inset sheet — the "liquid" edge cue. Off
             // at full-bleed (no edge to catch light) and during first-run.
-            data-glass-rim={fullBleed || firstRunOpen ? undefined : "on"}
+            data-glass-rim={firstRunOpen ? undefined : "on"}
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
               // SOLID warm-dark panel. The chat floats over the live ember field,
@@ -5106,7 +5111,7 @@ export function ChatOverlay({
               // glass slab. Only on the inset sheet — full-bleed has no edge to
               // catch light. Depth here is the glass rim, not a drop shadow (the
               // flat system keeps all shadow tokens none).
-              boxShadow: fullBleed ? undefined : LIQUID_GLASS_EDGE_SHADOW,
+              boxShadow: firstRunOpen ? undefined : LIQUID_GLASS_EDGE_SHADOW,
               // Specular sheen: a soft radial highlight near the top-left (as if
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
@@ -5115,10 +5120,9 @@ export function ChatOverlay({
               // weird glow on an opaque full-screen surface (the "gradient
               // when maximized" bug) — glass cues only exist while there is
               // glass.
-              backgroundImage:
-                firstRunOpen || fullBleed
-                  ? "none"
-                  : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 22%)`,
+              backgroundImage: firstRunOpen
+                ? "none"
+                : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
@@ -5129,6 +5133,26 @@ export function ChatOverlay({
               // padding) is untouched. Rides the shape spring (0px at rest) so
               // the extension eases in with the morph instead of popping at
               // commit. Harmless when the inset is 0.
+              top: glassTopExtension,
+            }}
+          />
+          {/* FULL-BLEED COVER — the opaque reading surface, crossfaded by the
+              shape spring OVER the always-glass surface above. Maximize fades
+              it in, restore fades it out, so the corner radius/inset morph
+              never coincides with a discrete background swap (the "weird
+              colors at the corners" glitch on exit). Same radius + top
+              extension as the surface so the two layers stay congruent. */}
+          <motion.div
+            aria-hidden="true"
+            data-testid="chat-sheet-fullbleed-cover"
+            className="pointer-events-none absolute inset-0 z-0"
+            style={{
+              // Onboarding pins the sheet full-bleed but must stay a see-through
+              // scrim over the wallpaper — the opaque reading cover is only for
+              // the user-maximized chat.
+              opacity: firstRunOpen ? 0 : fullBleedT,
+              borderRadius: morphRadius,
+              backgroundColor: FULL_BLEED_PANEL_BG,
               top: glassTopExtension,
             }}
           />
@@ -5700,6 +5724,8 @@ export function ChatOverlay({
                 borderRadius: PANEL_RADIUS_PX,
                 borderColor: composerCapsuleBorder,
                 backgroundColor: composerCapsuleBg,
+                backdropFilter: composerCapsuleBackdrop,
+                WebkitBackdropFilter: composerCapsuleBackdrop,
                 boxShadow: fullBleed ? LIQUID_GLASS_EDGE_SHADOW : undefined,
                 width: composerCapsuleWidth,
                 ...(keyboardLiftActive
