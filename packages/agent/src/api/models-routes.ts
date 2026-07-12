@@ -3,10 +3,14 @@
  * control-API auth gate. Returns provider model lists from an on-disk cache:
  * `?provider=` narrows to one provider, `?refresh=true` busts the cache (a
  * single provider's file, or every cached `.json` for an all-providers fetch)
- * before refetching. Filesystem and fetch access are injected through the
- * route context so the handler stays transport-agnostic and unit-testable.
+ * before refetching. Every response additionally carries a `catalog` field —
+ * the validated provider→model→efforts catalog (model-catalog.ts) that
+ * `POST /api/models/config` writes are checked against. Filesystem and fetch
+ * access are injected through the route context so the handler stays
+ * transport-agnostic and unit-testable.
  */
 import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import { buildModelCatalog, type ModelCatalog } from "./model-catalog.ts";
 
 export interface ModelsRouteContext
   extends RouteRequestMeta,
@@ -22,6 +26,8 @@ export interface ModelsRouteContext
   readDir: (targetPath: string) => string[];
   unlinkFile: (targetPath: string) => void;
   joinPath: (left: string, right: string) => string;
+  /** Injectable catalog builder for tests; defaults to buildModelCatalog. */
+  buildCatalog?: () => ModelCatalog;
 }
 
 export async function handleModelsRoutes(
@@ -47,6 +53,9 @@ export async function handleModelsRoutes(
 
   const force = url.searchParams.get("refresh") === "true";
   const specificProvider = url.searchParams.get("provider");
+  // Built per request: the codex slice re-reads the CLI's models_cache.json
+  // at call time so a refreshed server catalog shows up without a restart.
+  const catalog = (ctx.buildCatalog ?? buildModelCatalog)();
 
   if (specificProvider) {
     if (force) {
@@ -57,7 +66,7 @@ export async function handleModelsRoutes(
       }
     }
     const models = await getOrFetchProvider(specificProvider, force);
-    json(res, { provider: specificProvider, models });
+    json(res, { provider: specificProvider, models, catalog });
     return true;
   }
 
@@ -75,6 +84,6 @@ export async function handleModelsRoutes(
   }
 
   const all = await getOrFetchAllProviders(force);
-  json(res, { providers: all });
+  json(res, { providers: all, catalog });
   return true;
 }
