@@ -308,7 +308,12 @@ function renderEvent(
 			id: event.id,
 			label: `provider:${event.name}`,
 			content,
-			stable: false,
+			// Honor the provider's declared cache stability (threaded through by
+			// appendStateProviderEvents). A stable provider's content belongs in
+			// the cached system message; leaving this hardcoded false forced
+			// every provider into the uncached user message in
+			// buildStageChatMessages (planner/evaluator stages).
+			stable: event.cacheStable === true,
 		});
 		return;
 	}

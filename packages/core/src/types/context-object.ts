@@ -75,6 +75,14 @@ export interface ContextProviderEvent extends ContextEventBase {
 	text?: string;
 	values?: Record<string, JsonValue | undefined>;
 	data?: Record<string, unknown>;
+	/**
+	 * Mirrors the originating `Provider.cacheStable`. Read by
+	 * `context-renderer.ts`'s `renderEvent` to mark the rendered prompt segment
+	 * `stable`, so `buildStageChatMessages` (planner/evaluator stages) routes a
+	 * genuinely-stable provider's content into the cached system message rather
+	 * than the uncached user message.
+	 */
+	cacheStable?: boolean;
 }
 
 export interface ContextToolEvent extends ContextEventBase {
