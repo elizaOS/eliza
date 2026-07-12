@@ -116,18 +116,29 @@ async function backfillCloudApiBase(
     getBootConfig().preferSharedCloudTier === true &&
     Boolean(pending && agentId === pending.sharedAgentId) &&
     active.apiBase === pending?.sharedApiBase;
+  const dedicatedApiBase = agentId
+    ? buildDedicatedCloudAgentApiBase(
+        agentId,
+        getBootConfig().cloudApiBase || active.apiBase,
+      )
+    : null;
   const shouldRepair =
     !active.apiBase ||
     isElizaCloudControlPlaneAgentlessBase(active.apiBase) ||
-    (isDirectCloudSharedAgentBase(active.apiBase) && !isPendingSharedRuntime);
-  // A concrete per-agent base is fine, including a dedicated subdomain.
+    (isDirectCloudSharedAgentBase(active.apiBase) && !isPendingSharedRuntime) ||
+    (isDedicatedCloudAgentBase(active.apiBase) &&
+      Boolean(dedicatedApiBase) &&
+      active.apiBase !== dedicatedApiBase);
+  // Custom per-agent hosts stay untouched; managed dedicated hosts must match
+  // the current Cloud environment.
   if (!shouldRepair) return active;
 
-  if (!agentId) return active;
-  const apiBase = buildDedicatedCloudAgentApiBase(agentId);
-  if (!apiBase) return active;
+  if (!dedicatedApiBase) return active;
 
-  const updated: PersistedActiveServer = { ...active, apiBase };
+  const updated: PersistedActiveServer = {
+    ...active,
+    apiBase: dedicatedApiBase,
+  };
   savePersistedActiveServer(updated);
   return updated;
 }

@@ -3037,7 +3037,9 @@ function resolveDedicatedCloudAgentApiBase(args: {
 }): string {
   const resolved = resolveCloudAgentApiBase(args);
   if (!isDirectCloudSharedAgentBase(resolved)) return resolved;
-  return buildDedicatedCloudAgentApiBase(args.agentId) ?? resolved;
+  return (
+    buildDedicatedCloudAgentApiBase(args.agentId, args.cloudApiBase) ?? resolved
+  );
 }
 
 /**

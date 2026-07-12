@@ -209,6 +209,33 @@ describe("selectOrProvisionCloudAgent — never duplicate on a failed lookup", (
     expect(createCloudCompatAgent).not.toHaveBeenCalled();
   });
 
+  it("converts a staging shared-style agent URL to staging dedicated ingress", async () => {
+    const { client, getCloudCompatAgents, createCloudCompatAgent } =
+      fakeClient();
+    getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        makeAgent({
+          agent_id: "agent-staging",
+          bridge_url: null,
+          web_ui_url:
+            "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-staging",
+          webUiUrl:
+            "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-staging",
+        }),
+      ],
+    });
+
+    const result = await client.selectOrProvisionCloudAgent({
+      ...BASE_OPTS,
+      cloudApiBase: "https://api-staging.elizacloud.ai/api/v1",
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.apiBase).toBe("https://agent-staging.staging.elizacloud.ai");
+    expect(createCloudCompatAgent).not.toHaveBeenCalled();
+  });
+
   it("does NOT provision when the list fetch throws (transient/network error)", async () => {
     const { client, getCloudCompatAgents, createCloudCompatAgent } =
       fakeClient();

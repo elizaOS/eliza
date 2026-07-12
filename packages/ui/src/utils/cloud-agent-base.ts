@@ -49,6 +49,14 @@ export function normalizeDirectCloudSharedAgentApiBase(value: string): string {
   return stripTrailingSlash(url.toString());
 }
 
+// Staging apex + API. Without these, `staging.elizacloud.ai` ends with
+// `.elizacloud.ai` and is misclassified as a per-agent subdomain.
+const STAGING_CONSOLE_HOSTS = new Set([
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
+]);
+
 /**
  * Eliza Cloud control-plane hostnames. The bare origin (and the
  * `/api/v1/eliza/agents` collection) on any of these is NOT a per-agent base —
@@ -61,14 +69,15 @@ export const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
   "app.elizacloud.ai",
-  // Staging apex + API. Without these, `staging.elizacloud.ai` ends with
-  // `.elizacloud.ai` but isn't in the set, so isDedicatedCloudAgentBase
-  // mis-classifies the staging console as a per-agent subdomain (and the apex
-  // login redirect never fires on staging — so staging can't validate it).
-  "staging.elizacloud.ai",
-  "api-staging.elizacloud.ai",
-  "app-staging.elizacloud.ai",
+  ...STAGING_CONSOLE_HOSTS,
 ]);
+
+function isStagingCloudHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return (
+    STAGING_CONSOLE_HOSTS.has(host) || host.endsWith(".staging.elizacloud.ai")
+  );
+}
 
 /**
  * Build the shared-runtime REST adapter base for a known agent id:
@@ -86,18 +95,25 @@ export function buildCloudSharedAgentApiBase(
 
 /**
  * Build the dedicated Cloud agent REST base for the standard
- * `<agentId>.elizacloud.ai` ingress. Returns null when the id cannot be a
- * single DNS label; callers should then fall back to a server-reported URL
- * instead of producing a malformed host.
+ * `<agentId>.elizacloud.ai` production ingress or the environment-matched
+ * `<agentId>.staging.elizacloud.ai` staging ingress. Returns null when the id
+ * cannot be a single DNS label; callers should then fall back to a
+ * server-reported URL instead of producing a malformed host.
  */
 export function buildDedicatedCloudAgentApiBase(
   agentId: string | null | undefined,
+  cloudApiBase?: string | null,
 ): string | null {
   const label = agentId?.trim().toLowerCase() ?? "";
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) {
     return null;
   }
-  return `https://${label}.elizacloud.ai`;
+  const cloudUrl = cloudApiBase ? normalizeHttpUrl(cloudApiBase.trim()) : null;
+  const suffix =
+    cloudUrl && isStagingCloudHostname(cloudUrl.hostname)
+      ? ".staging.elizacloud.ai"
+      : ".elizacloud.ai";
+  return `https://${label}${suffix}`;
 }
 
 /**
@@ -157,8 +173,9 @@ export function isDedicatedCloudAgentBase(
 
 /**
  * Extract the agent id from a dedicated cloud agent base
- * (`https://<agentId>.elizacloud.ai`) — the left-most subdomain label. Returns
- * null for any base that is not a dedicated cloud agent subdomain.
+ * (`https://<agentId>.elizacloud.ai` or its staging equivalent) — the
+ * left-most subdomain label. Returns null for any base that is not a dedicated
+ * cloud agent subdomain.
  */
 export function dedicatedCloudAgentIdFromBase(
   value: string | null | undefined,
@@ -167,7 +184,10 @@ export function dedicatedCloudAgentIdFromBase(
   const url = normalizeHttpUrl((value as string).trim());
   if (!url) return null;
   const host = url.hostname.toLowerCase();
-  const label = host.slice(0, host.length - ".elizacloud.ai".length);
+  const suffix = isStagingCloudHostname(host)
+    ? ".staging.elizacloud.ai"
+    : ".elizacloud.ai";
+  const label = host.slice(0, host.length - suffix.length);
   return label.includes(".") ? label.slice(label.lastIndexOf(".") + 1) : label;
 }
 
@@ -179,16 +199,6 @@ export const PROD_ELIZA_APP_ORIGIN = "https://app.elizacloud.ai";
  * `staging.elizacloud.ai`; its paired app is `app-staging.elizacloud.ai`
  * (a DIFFERENT tenant/session from prod). */
 export const STAGING_ELIZA_APP_ORIGIN = "https://app-staging.elizacloud.ai";
-
-/** Console hostnames that belong to the STAGING environment. Derived from the
- * same control-plane host knowledge used elsewhere (client-cloud.ts /
- * steward-url.ts): the staging console apex, its API origins, and the staging
- * app host itself all point back to the staging app. */
-const STAGING_CONSOLE_HOSTS = new Set([
-  "staging.elizacloud.ai",
-  "api-staging.elizacloud.ai",
-  "app-staging.elizacloud.ai",
-]);
 
 /**
  * Resolve the Eliza *app* origin (the create-agent / "Open Eliza app" target)

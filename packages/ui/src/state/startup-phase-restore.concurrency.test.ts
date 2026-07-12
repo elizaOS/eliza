@@ -209,6 +209,57 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     expect(sharedClient.setBaseUrl).toHaveBeenCalledWith(sharedApiBase);
     expect(sharedClient.setToken).toHaveBeenCalledWith("paired-token");
   });
+
+  it("repairs a staging shared adapter to staging dedicated ingress", async () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    const restored: PersistedActiveServer = {
+      id: "cloud:agent-staging",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase:
+        "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-staging",
+      accessToken: "paired-token",
+    };
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef,
+    });
+
+    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
+      "https://agent-staging.staging.elizacloud.ai",
+    );
+    expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
+  });
+
+  it("repairs a previously persisted production ingress in the staging app", async () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    const restored: PersistedActiveServer = {
+      id: "cloud:agent-staging",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://agent-staging.elizacloud.ai",
+      accessToken: "paired-token",
+    };
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef,
+    });
+
+    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
+      "https://agent-staging.staging.elizacloud.ai",
+    );
+    expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
+  });
 });
 
 describe("desktop local restore shares one runtime-mode RPC", () => {
