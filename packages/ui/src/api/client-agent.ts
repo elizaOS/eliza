@@ -2970,7 +2970,6 @@ ElizaClient.prototype.updateModelsConfig = async function (
   });
 };
 
->>>>>>> feat/settings-models-panel
 ElizaClient.prototype.getCorePlugins = async function (this: ElizaClient) {
   try {
     const viaRpc = await invokeLocalDesktopAgentRpc<CorePluginsResponse>(

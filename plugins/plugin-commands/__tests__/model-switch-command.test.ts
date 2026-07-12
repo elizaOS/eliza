@@ -34,6 +34,10 @@ function msg(text: string): Memory {
 	} as unknown as Memory;
 }
 
+// The runtime switch mutates the global inference backend, so it is
+// owner-gated exactly like the /model config writes.
+const OWNER = { isAuthorized: true, isElevated: true };
+
 describe("parseModelSwitchArgs", () => {
 	it("parses local/cloud targets and an optional id", () => {
 		expect(
@@ -99,7 +103,7 @@ describe("/model local|cloud → shared runtime-switch route", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model cloud"));
+		const r = await resolveCommand(runtime, msg("/model cloud"), OWNER);
 		expect(r.handled).toBe(true);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		const [url, init] = fetchMock.mock.calls[0];
@@ -127,7 +131,11 @@ describe("/model local|cloud → shared runtime-switch route", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model local eliza-1-4b"));
+		const r = await resolveCommand(
+			runtime,
+			msg("/model local eliza-1-4b"),
+			OWNER,
+		);
 		expect(r.handled).toBe(true);
 		expect(
 			JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string),
@@ -145,9 +153,19 @@ describe("/model local|cloud → shared runtime-switch route", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model local"));
+		const r = await resolveCommand(runtime, msg("/model local"), OWNER);
 		expect(r.handled).toBe(true);
 		expect(r.reply).toMatch(/no provider/);
+	});
+
+	it("refuses the runtime switch without elevated trust and never hits the route", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+
+		const r = await resolveCommand(runtime, msg("/model cloud"));
+		expect(r.handled).toBe(true);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(r.reply).toMatch(/elevated permissions/);
 	});
 
 	it("does NOT hit the route for a bare /model <name> (per-room preference)", async () => {

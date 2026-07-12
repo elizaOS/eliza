@@ -418,7 +418,11 @@ describe("regression — pre-existing /model behaviors are untouched", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model local eliza-1-4b"));
+		const r = await resolveCommand(
+			runtime,
+			msg("/model local eliza-1-4b"),
+			OWNER,
+		);
 		expect(r.handled).toBe(true);
 		expect(String(fetchMock.mock.calls[0][0])).toContain(
 			"/api/runtime/model-switch",

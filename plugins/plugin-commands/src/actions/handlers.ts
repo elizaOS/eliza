@@ -391,8 +391,13 @@ export async function runCommand(
 			}
 			// `/model local|cloud [id]` is a runtime inference switch shared with
 			// the MODEL_SWITCH action; a bare model name stays a per-room setting.
+			// The switch mutates the global inference backend — same blast radius
+			// as the config writes above, so it carries the same owner-only gate.
 			const switchArgs = parseModelSwitchArgs(parsed);
 			if (switchArgs) {
+				if (!context.isElevated) {
+					return reply("This command requires elevated permissions.");
+				}
 				return runModelSwitchViaRoute(switchArgs.target, switchArgs.model);
 			}
 			return setOptionCommand(runtime, roomId, parsed, OPTION_COMMANDS.model);

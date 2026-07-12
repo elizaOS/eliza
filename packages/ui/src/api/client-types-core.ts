@@ -385,7 +385,6 @@ export type ModelsConfigWriteResult =
     }
   | { kind: "busy"; error: string; activeOperationId: string };
 
->>>>>>> feat/settings-models-panel
 export interface AgentAutomationModeResponse {
   mode: AgentAutomationMode;
   options: AgentAutomationMode[];
