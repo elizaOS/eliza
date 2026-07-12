@@ -47,6 +47,24 @@ function makeRuntime(
 }
 
 describe("maybeAugmentChatMessageWithDocuments", () => {
+  it.each([
+    ["/help"],
+    ["/model show"],
+    ["!status"],
+  ])("never rewrites a command turn (%s) — the deterministic command path needs the verbatim text", async (text) => {
+    const message = makeMessage();
+    (message.content as { text: string }).text = text;
+    const documents = { searchDocuments: vi.fn() };
+    const runtime = makeRuntime(documents);
+
+    const result = await maybeAugmentChatMessageWithDocuments(runtime, message);
+
+    expect(result).toBe(message);
+    // The skip happens before any retrieval work — no embed/search cost.
+    expect(documents.searchDocuments).not.toHaveBeenCalled();
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
   it("skips optional document context when lookup exceeds its budget", async () => {
     const message = makeMessage();
     const documents = {
