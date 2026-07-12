@@ -2884,7 +2884,12 @@ export function ChatOverlay({
   // reading surface behind it (a dark-card mix was indistinguishable from the
   // background — "not glass"), over its own backdrop blur; both ride the
   // shape morph so the capsule condenses out of the panel instead of popping.
-  const composerCapsuleBg = useMotionTemplate`rgba(255, 255, 255, calc(${fullBleedT} * 0.09))`;
+  const composerCapsuleBg = useMotionTemplate`rgba(255, 255, 255, calc(${fullBleedT} * 0.07))`;
+  // Over the flat reading surface a blur alone is invisible (nothing detailed
+  // behind it at rest) — the glass READ comes from the material itself: a
+  // vertical luminance gradient + the top-left specular sheen, both riding
+  // the morph so the inset state stays untouched.
+  const composerCapsuleSheen = useMotionTemplate`radial-gradient(120% 80% at 28% -20%, rgb(255 255 255 / calc(${fullBleedT} * 0.18)) 0%, transparent 58%), linear-gradient(180deg, rgb(255 255 255 / calc(${fullBleedT} * 0.10)) 0%, rgb(255 255 255 / calc(${fullBleedT} * 0.02)) 100%)`;
   const composerCapsuleBlurPx = useTransform(fullBleedT, [0, 1], [0, 28]);
   const composerCapsuleBackdrop = useMotionTemplate`blur(${composerCapsuleBlurPx}px) saturate(1.5)`;
   // Glass needs something BEHIND it: in the flex column the composer sits
@@ -2932,7 +2937,11 @@ export function ChatOverlay({
   ]);
   const threadTailSpacerH = useTransform(
     [fullBleedT, composerRowH] as MotionValue<number>[],
-    ([t, h]: number[]) => t * (h + 10),
+    // 12px LESS than the capsule height: the newest bubble's bottom edge rests
+    // just under the glass, so the blur frosts real content even at rest —
+    // over a flat surface a backdrop blur with nothing behind it reads as a
+    // plain gray bar, not glass.
+    ([t, h]: number[]) => t * Math.max(0, h - 12),
   );
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------
   // The panel is ONE persistent element; the pill capsule and the full
@@ -5831,6 +5840,7 @@ export function ChatOverlay({
                 borderRadius: PANEL_RADIUS_PX,
                 borderColor: composerCapsuleBorder,
                 backgroundColor: composerCapsuleBg,
+                backgroundImage: composerCapsuleSheen,
                 backdropFilter: composerCapsuleBackdrop,
                 WebkitBackdropFilter: composerCapsuleBackdrop,
                 boxShadow: fullBleed ? LIQUID_GLASS_EDGE_SHADOW : undefined,
