@@ -133,8 +133,6 @@ export interface Bindings {
   CEREBRAS_API_KEY?: string;
   /** Deepgram Flux realtime STT key (server-held; NEVER returned to clients). */
   DEEPGRAM_API_KEY?: string;
-  /** Cartesia Sonic realtime TTS key (server-held; NEVER returned to clients). */
-  CARTESIA_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
   OPENROUTER_BASE_URL?: string;
