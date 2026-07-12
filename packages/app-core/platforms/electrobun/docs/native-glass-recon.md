@@ -69,11 +69,22 @@ including the empty region beside the pill, which #12184 rejected as the
 resting look. `vibrancyEnabled` in the main-window runtime snapshot
 (`src/main-window-runtime.ts`) reports the actual native result.
 
-Known limitation to solve before default-ON: the vibrancy view has no region
-clipping. Making the glass pill-shaped needs either a mask layer on the
-`NSVisualEffectView` (`maskImage` / `layer.mask` sized to the pill rect,
-updated from the renderer) or a separate small vibrancy child window under the
-pill.
+Known limitations to solve before default-ON:
+
+- **No region clipping.** The vibrancy view is full-window. Making the glass
+  pill-shaped needs either a mask layer on the `NSVisualEffectView`
+  (`maskImage` / `layer.mask` sized to the pill rect, updated from the
+  renderer) or a separate small vibrancy child window under the pill.
+- **Window drag on the frosted region.** `enableWindowVibrancy` sets
+  `movableByWindowBackground:YES`, so with the flag on, a drag on the frosted
+  empty region beside the pill moves the anchored bottom-bar window (the 5s
+  reanchor poll snaps it back). Skip `setMovableByWindowBackground` for the
+  bottom-bar window when promoting this past opt-in.
+- **Click-through is unverified over the effect view.** The bar relies on OS
+  click-through over transparent regions (the `passthrough` window option);
+  whether clicks beside the pill still pass through with a full-window
+  `NSVisualEffectView` installed depends on Electrobun's native hit-testing in
+  the zig binary — verify on-device before default-ON.
 
 ## What an upstream Electrobun change would look like
 

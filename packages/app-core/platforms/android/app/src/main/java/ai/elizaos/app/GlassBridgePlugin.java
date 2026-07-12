@@ -4,9 +4,9 @@
  * sibling of the iOS 26 {@code UIGlassEffect} bridge
  * ({@code packages/app-core/platforms/ios/App/App/GlassBridge.swift}). TS
  * half: {@code packages/ui/src/glass/native-bridge.ts}. The JS API (attach /
- * updateRect / detach / setGrouping / isAvailable) and the rect contract
- * (viewport-relative CSS px) are identical on both platforms, so web callers
- * never branch per OS.
+ * updateRect / detach / setGrouping / setBackdrop / clearBackdrop /
+ * isAvailable) and the rect contract (viewport-relative CSS px) are identical
+ * on both platforms, so web callers never branch per OS.
  *
  * <p>Layering model mirrors iOS: the WebView composites its own pixels, so a
  * native material can never live INSIDE the DOM. The web layer reports a rect,
@@ -14,6 +14,11 @@
  * the page keeps that region transparent so the native material shows
  * through. On first attach the WebView background is set transparent —
  * without that Android paints an opaque backing and the panel is invisible.
+ * {@code setBackdrop} extends the same model with a full-bleed ambient field
+ * pinned to container index 0 — below the WebView AND below every panel — so
+ * glass regions always have real native content behind them to read as
+ * material; {@code clearBackdrop} removes it and restores WebView opacity
+ * once no glass regions remain.
  *
  * <p>Android has no system glass material, so the panel is built from the
  * Material dynamic palette: a rounded neutral-surface gradient with a
@@ -36,13 +41,16 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebView;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Native material regions behind the WebView; see the file header. */
@@ -50,6 +58,10 @@ import java.util.Map;
 public class GlassBridgePlugin extends Plugin {
 
     private static final long RECT_ANIMATION_MS = 150;
+    private static final long BACKDROP_BREATH_MS = 9_000;
+    /** Warm ember gradient stops, darkest first — the TS-contract default. */
+    private static final int[] DEFAULT_EMBER_COLORS = {
+            0xFF1A0C06, 0xFF7A2D0C, 0xFFEF5A1F };
     // Untrusted-boundary rect bounds (CSS px): a dimension must be a finite
     // positive number and no coordinate may leave this envelope — far above
     // any real viewport, far below anything that could stress LayoutParams
@@ -60,6 +72,10 @@ public class GlassBridgePlugin extends Plugin {
     private final Map<String, View> regions = new HashMap<>();
     private float groupingSpacing = 0f;
     private boolean webViewMadeTransparent = false;
+    /** WebView background captured before first transparency, for restore. */
+    /** Ambient backdrop view + breathing animator. Main-thread only. */
+    private View backdropView = null;
+    private ValueAnimator backdropAnimator = null;
 
     private static boolean glassSupported() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
@@ -210,6 +226,16 @@ public class GlassBridgePlugin extends Plugin {
             if (panel != null && panel.getParent() instanceof ViewGroup) {
                 ((ViewGroup) panel.getParent()).removeView(panel);
             }
+            // Opacity-restore parity with clearBackdrop: after the LAST panel
+            // goes and no backdrop remains, nothing needs the transparent
+            // WebView — leaving it transparent would show the theme window
+            // background instead of the app's.
+            WebView webView = bridge.getWebView();
+            if (webView != null && webViewMadeTransparent && regions.isEmpty()
+                    && backdropView == null) {
+                webView.setBackgroundColor(webViewRestoreColor());
+                webViewMadeTransparent = false;
+            }
             call.resolve();
         });
     }
@@ -267,6 +293,119 @@ public class GlassBridgePlugin extends Plugin {
         call.resolve();
     }
 
+    /**
+     * Installs the ambient backdrop field at the very bottom of the Capacitor
+     * container. Called again it replaces the existing backdrop in place;
+     * below the glass floor it resolves {@code active:false} with no side
+     * effects, matching {@code attachGlass}.
+     */
+    @PluginMethod
+    public void setBackdrop(PluginCall call) {
+        if (!glassSupported()) {
+            JSObject result = new JSObject();
+            result.put("active", false);
+            call.resolve(result);
+            return;
+        }
+        boolean flat = "color".equals(call.getString("kind", "ember"));
+        boolean animated = Boolean.TRUE.equals(call.getBoolean("animated", false));
+        int[] colors = parseBackdropColors(call.getArray("colors"));
+
+        Activity activity = getActivity();
+        if (activity == null) {
+            JSObject result = new JSObject();
+            result.put("active", false);
+            call.resolve(result);
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            WebView webView = bridge.getWebView();
+            ViewGroup container =
+                    webView != null ? (ViewGroup) webView.getParent() : null;
+            if (webView == null || container == null) {
+                JSObject result = new JSObject();
+                result.put("active", false);
+                call.resolve(result);
+                return;
+            }
+            makeWebViewTransparentOnce(webView);
+            removeBackdrop();
+
+            GradientDrawable drawable;
+            if (flat) {
+                drawable = new GradientDrawable();
+                drawable.setColor(colors[0]);
+            } else {
+                drawable = new GradientDrawable(
+                        GradientDrawable.Orientation.TL_BR, colors);
+            }
+            View backdrop = new View(activity);
+            backdrop.setBackground(drawable);
+            backdrop.setClickable(false);
+            backdrop.setFocusable(false);
+            backdrop.setLayoutParams(new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
+            // Index 0 = the very bottom of the container: below the WebView
+            // and below every glass panel. Panels insert at
+            // indexOfChild(webView) (see attachGlass), which is always above
+            // slot 0 once the backdrop occupies it — so the field can never
+            // cover a panel, and adding it later shifts panels up intact.
+            container.addView(backdrop, 0);
+            backdropView = backdrop;
+
+            // areAnimatorsEnabled() is false exactly when the user's
+            // Settings.Global.ANIMATOR_DURATION_SCALE is 0 (reduced motion) —
+            // then the field stays static instead of breathing.
+            if (animated && ValueAnimator.areAnimatorsEnabled()) {
+                ValueAnimator breath = ValueAnimator.ofFloat(0.85f, 1f);
+                breath.setDuration(BACKDROP_BREATH_MS);
+                breath.setRepeatMode(ValueAnimator.REVERSE);
+                breath.setRepeatCount(ValueAnimator.INFINITE);
+                breath.addUpdateListener(animation -> drawable.setAlpha(
+                        Math.round(255 * (float) animation.getAnimatedValue())));
+                breath.start();
+                backdropAnimator = breath;
+            }
+
+            JSObject result = new JSObject();
+            result.put("active", true);
+            call.resolve(result);
+        });
+    }
+
+    @PluginMethod
+    public void clearBackdrop(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.resolve();
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            removeBackdrop();
+            // Restore opacity only when no glass panels remain — panels also
+            // live below the WebView and need it transparent to be visible.
+            WebView webView = bridge.getWebView();
+            if (webView != null && webViewMadeTransparent && regions.isEmpty()) {
+                webView.setBackgroundColor(webViewRestoreColor());
+                webViewMadeTransparent = false;
+            }
+            call.resolve();
+        });
+    }
+
+    /**
+     * The process outlives MainActivity here (foreground agent service), so an
+     * INFINITE breathing animator would keep firing on the Choreographer and
+     * pin the destroyed Activity through the backdrop view's context. Drop the
+     * backdrop (and its animator) with the plugin.
+     */
+    @Override
+    protected void handleOnDestroy() {
+        removeBackdrop();
+        super.handleOnDestroy();
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     /**
@@ -318,6 +457,61 @@ public class GlassBridgePlugin extends Plugin {
         if (webViewMadeTransparent) return;
         webViewMadeTransparent = true;
         webView.setBackgroundColor(Color.TRANSPARENT);
+    }
+
+    /**
+     * The color an opacity restore should paint: AOSP WebView.setBackgroundColor
+     * forwards to the chromium provider WITHOUT installing a ColorDrawable, so
+     * the pre-transparency color is NOT recoverable from getBackground(). The
+     * authoritative source is Capacitor's own config (Bridge applies
+     * android.backgroundColor at boot the same way); WHITE is the WebView
+     * factory default when unconfigured.
+     */
+    private int webViewRestoreColor() {
+        try {
+            String configured = bridge.getConfig().getBackgroundColor();
+            if (configured != null && !configured.isEmpty()) {
+                return com.getcapacitor.util.WebColor.parseColor(configured);
+            }
+        } catch (RuntimeException ignored) {
+            // error-policy:J3 config color is untrusted input; fall through.
+        }
+        return Color.WHITE;
+    }
+
+    /** Main-thread only: drops the backdrop view and its breathing animator. */
+    private void removeBackdrop() {
+        if (backdropAnimator != null) {
+            backdropAnimator.cancel();
+            backdropAnimator = null;
+        }
+        if (backdropView != null) {
+            if (backdropView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) backdropView.getParent()).removeView(backdropView);
+            }
+            backdropView = null;
+        }
+    }
+
+    // error-policy:J3 untrusted Capacitor boundary — each entry runs through
+    // the shared CSS hex parser; unparsable entries are dropped and an empty
+    // result falls back to the default ember set, so malformed input can
+    // never crash the bridge or produce an invisible backdrop.
+    private static int[] parseBackdropColors(JSArray raw) {
+        List<Integer> parsed = new ArrayList<>();
+        if (raw != null) {
+            for (int i = 0; i < raw.length(); i++) {
+                Integer color = parseCssHexColor(raw.optString(i, null));
+                if (color != null) parsed.add(color);
+            }
+        }
+        if (parsed.isEmpty()) return DEFAULT_EMBER_COLORS.clone();
+        // GradientDrawable needs >= 2 stops; one color becomes a flat pair.
+        int[] colors = new int[Math.max(parsed.size(), 2)];
+        for (int i = 0; i < colors.length; i++) {
+            colors[i] = parsed.get(Math.min(i, parsed.size() - 1));
+        }
+        return colors;
     }
 
     private static RectF toDevicePixels(RectF cssRect, float density) {
