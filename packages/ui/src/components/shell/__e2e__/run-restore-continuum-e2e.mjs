@@ -109,6 +109,19 @@ const snap = (p) =>
   await p.close();
 }
 
+// (3b) SLOW mid-restore release also completes — no free stub rest.
+{
+  const p = await freshMaximizedPage();
+  await drag(p, "chat-maximize-restore-zone", 560, 22, 24);
+  await p.waitForTimeout(900);
+  const s = await snap(p);
+  assert(
+    s.chat !== "MAXIMIZED" && s.chat !== "OPEN_UNDER_HALF",
+    `slow mid release completes to a real detent (${s.chat} / ${s.detent})`,
+  );
+  await p.close();
+}
+
 // (3) Downward flick mid-restore completes to a real state.
 {
   const p = await freshMaximizedPage();

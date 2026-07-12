@@ -4806,14 +4806,19 @@ export function ChatOverlay({
       return;
     }
     focusThreadRef.current = true;
-    if (h >= openH - SHEET_DETENT_MAGNET) {
+    // A restore ALWAYS completes to a real detent — never a free rest. The
+    // gesture semantically is "exit full screen": a mid-height release (very
+    // common on device, where the continuum exceeds the finger's travel
+    // budget and slow synthetic/mouse drags classify as non-flicks) must land
+    // full/half/input, not strand a sliver of thread ("keeps pulling height
+    // instead of changing state"). Nearest-detent by midpoint split; the
+    // grabber's deliberate free-rest sizing is untouched.
+    if (h >= (halfH + openH) / 2) {
       goToDetent("full");
-    } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+    } else if (h >= halfH / 2) {
       goToDetent("half");
     } else {
-      setFreeH(h);
-      setMode("half");
-      setMaximized(false);
+      goToDetent("collapsed");
     }
   }, [
     pinnedOpen,
