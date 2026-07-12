@@ -5,6 +5,7 @@ import {
   computeBottomBarFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
   resolveDesktopShellWindowPresentation,
+  shouldEnableNativeGlass,
   shouldReanchorBottomBar,
   shouldStartBottomBar,
 } from "./desktop-bottom-bar-config";
@@ -36,6 +37,38 @@ describe("desktop bottom-bar config", () => {
         false,
       );
       expect(shouldStartBottomBar({}, ["--shell-mode=kiosk"])).toBe(false);
+    });
+  });
+
+  describe("shouldEnableNativeGlass", () => {
+    it("is OFF by default (pill-paints-itself presentation, #12184)", () => {
+      expect(shouldEnableNativeGlass({}, "darwin")).toBe(false);
+      expect(
+        shouldEnableNativeGlass({ ELIZA_DESKTOP_NATIVE_GLASS: "" }, "darwin"),
+      ).toBe(false);
+      expect(
+        shouldEnableNativeGlass({ ELIZA_DESKTOP_NATIVE_GLASS: "0" }, "darwin"),
+      ).toBe(false);
+    });
+
+    it("opts in via explicit truthy ELIZA_DESKTOP_NATIVE_GLASS on macOS", () => {
+      for (const value of ["1", "true", "yes", "on", " TRUE "]) {
+        expect(
+          shouldEnableNativeGlass(
+            { ELIZA_DESKTOP_NATIVE_GLASS: value },
+            "darwin",
+          ),
+        ).toBe(true);
+      }
+    });
+
+    it("is gated off non-macOS platforms (no native vibrancy hook there)", () => {
+      expect(
+        shouldEnableNativeGlass({ ELIZA_DESKTOP_NATIVE_GLASS: "1" }, "win32"),
+      ).toBe(false);
+      expect(
+        shouldEnableNativeGlass({ ELIZA_DESKTOP_NATIVE_GLASS: "1" }, "linux"),
+      ).toBe(false);
     });
   });
 

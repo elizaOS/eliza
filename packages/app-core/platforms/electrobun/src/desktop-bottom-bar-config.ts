@@ -28,6 +28,39 @@ function parseFalsy(value: string | undefined): boolean {
   );
 }
 
+/** Explicit opt-in values for experiments that default OFF. */
+function parseTruthy(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
+/**
+ * Whether the chat-overlay (bottom-bar) window should install a real
+ * NSVisualEffectView behind its transparent WKWebView — the layered-glass
+ * architecture: [desktop] → [NSVisualEffectView, BehindWindow blending] →
+ * [transparent WKWebView] → [CSS glass in the renderer]. With it on, the
+ * renderer's glass surfaces refract the actual desktop instead of compositing
+ * over pure transparency.
+ *
+ * Opt-in via `ELIZA_DESKTOP_NATIVE_GLASS=1` and macOS-only: the effect view is
+ * full-window, so it frosts the entire bar frame including the empty region
+ * beside the pill (#12184 rejected exactly that look as the default), and the
+ * native hook (`enableWindowVibrancy` in libMacWindowEffects.dylib) exists only
+ * on darwin. Default OFF preserves the pill-paints-itself presentation.
+ */
+export function shouldEnableNativeGlass(
+  env: Record<string, string | undefined> = process.env,
+  platform: typeof process.platform = process.platform,
+): boolean {
+  return platform === "darwin" && parseTruthy(env.ELIZA_DESKTOP_NATIVE_GLASS);
+}
+
 /**
  * Whether the desktop should launch as a chromeless bottom chat bar instead of
  * the full-window dashboard. Default ON (#10350); opt out with

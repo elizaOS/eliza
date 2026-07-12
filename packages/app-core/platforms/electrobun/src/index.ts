@@ -45,6 +45,7 @@ import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
   resolveDesktopShellWindowPresentation,
+  shouldEnableNativeGlass,
 } from "./desktop-bottom-bar-config";
 import {
   classifyDeepLinkRoute,
@@ -97,6 +98,7 @@ import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
+  enableVibrancy,
   ensureShadow,
   setNativeDragRegion,
   setTrafficLightsPosition,
@@ -445,12 +447,20 @@ const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
  * native layout whenever the window or webview subtree may have reordered so
  * the drag view stays above WKWebView.
  *
- * Deliberately applies NO vibrancy (#12184): a vibrancy NSVisualEffectView
+ * Applies NO vibrancy by default (#12184): a vibrancy NSVisualEffectView
  * behind a transparent window renders as a full-window frosted-glass sheet over
  * the desktop. Only the chromeless pill and the tray popover are transparent,
  * and each paints its own surface — the dashboard is a normal opaque window.
+ *
+ * `nativeGlass` (opt-in, chat-overlay bar only) installs the real
+ * NSVisualEffectView from libMacWindowEffects.dylib behind the transparent
+ * WKWebView so the renderer's CSS glass refracts the actual desktop:
+ * [desktop] → [NSVisualEffectView] → [transparent WKWebView] → [CSS glass].
  */
-function applyMacOSWindowEffects(win: BrowserWindow): void {
+function applyMacOSWindowEffects(
+  win: BrowserWindow,
+  options?: { nativeGlass?: boolean },
+): void {
   if (process.platform !== "darwin") return;
 
   const ptr = (win as { ptr?: unknown }).ptr;
@@ -460,8 +470,17 @@ function applyMacOSWindowEffects(win: BrowserWindow): void {
   }
 
   const shadowEnabled = ensureShadow(ptr as Parameters<typeof ensureShadow>[0]);
+  const vibrancyEnabled =
+    options?.nativeGlass === true
+      ? enableVibrancy(ptr as Parameters<typeof enableVibrancy>[0])
+      : false;
+  if (options?.nativeGlass === true && !vibrancyEnabled) {
+    logger.warn(
+      "[MacEffects] ELIZA_DESKTOP_NATIVE_GLASS requested but enableWindowVibrancy failed (dylib missing or window pointer invalid)",
+    );
+  }
   updateCurrentMainWindowEffectsState({
-    vibrancyEnabled: false,
+    vibrancyEnabled,
     shadowEnabled,
   });
 
@@ -1224,9 +1243,10 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   }
 
   // Bottom-bar shell: pin always-on-top and apply the macOS chrome (shadow,
-  // drag region — no vibrancy, so the pill is the only painted surface). The bar
-  // has fixed, display-derived geometry, so skip bounds persistence + the
-  // first-launch maximize entirely.
+  // drag region — no vibrancy by default, so the pill is the only painted
+  // surface; ELIZA_DESKTOP_NATIVE_GLASS=1 opts into a real NSVisualEffectView
+  // behind the transparent webview). The bar has fixed, display-derived
+  // geometry, so skip bounds persistence + the first-launch maximize entirely.
   if (bottomBar) {
     try {
       (
@@ -1253,7 +1273,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         );
       }
     }
-    applyMacOSWindowEffects(win);
+    applyMacOSWindowEffects(win, { nativeGlass: shouldEnableNativeGlass() });
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
     getDesktopManager().enableBottomBarReanchor();
