@@ -48,10 +48,11 @@ describe("ChatWidgetHarness", () => {
     render(<ChatWidgetHarness />);
 
     expect(screen.getByTestId("chat-widget-harness")).toBeTruthy();
-    // The scripted greeting renders through the production widget parser.
-    expect(screen.getByText(/set things up right here in chat/i)).toBeTruthy();
-    expect(screen.getByText("Set me up")).toBeTruthy();
-    expect(screen.getByText("Quick tour")).toBeTruthy();
+    // The production first-run greeting + the REAL sign-into-cloud choice
+    // widget, rendered through the production widget parser.
+    expect(screen.getByText("Hi, I'm Eliza.")).toBeTruthy();
+    expect(screen.getByText("Sign in to Eliza Cloud")).toBeTruthy();
+    expect(screen.getByText("Stay local for now")).toBeTruthy();
   });
 
   it("advances the scripted onboarding from a widget tap, all local", async () => {
@@ -59,7 +60,7 @@ describe("ChatWidgetHarness", () => {
 
     // Onboarding pins the sheet and locks the composer — advancement comes
     // from the transcript widgets, exactly like the production first run.
-    fireEvent.click(screen.getByText("Set me up"));
+    fireEvent.click(screen.getByText("Sign in to Eliza Cloud"));
 
     // The tap echoes as a user turn, then the scripted assistant reply (the
     // onboarding profile form) lands after the local delay.
@@ -78,8 +79,9 @@ describe("ChatWidgetHarness", () => {
     };
     const tap = (el: Element) => fireEvent.click(el);
 
-    // Scene 0 → profile form (real form-request widget).
-    tap(screen.getByText("Set me up"));
+    // Scene 0 → sign-in tap → profile form (real form-request widget); the
+    // first-run pin releases with this reply.
+    tap(screen.getByText("Sign in to Eliza Cloud"));
     await advance(() => screen.getByText("Set up your assistant"));
 
     // Scene 1 → permission card (real MessagePermissionCard). The real form
@@ -112,29 +114,39 @@ describe("ChatWidgetHarness", () => {
     await advance(() => screen.getByTestId("workflow-steps"));
     expect(screen.getByText("Ship mobile polish")).toBeTruthy();
 
-    // Scene 5 → checklist widget.
+    // Scene 5 → live activity: REAL ToolCallEventLog rows (success + running)
+    // and the REAL collapsed ThinkingBlock.
+    fireEvent.change(composer, { target: { value: "next" } });
+    tap(screen.getByLabelText("send"));
+    await advance(() => screen.getAllByTestId("tool-call-event-log"));
+    expect(screen.getAllByTestId("tool-call-event-log")).toHaveLength(2);
+    expect(screen.getByText("CALENDAR_FIND_EVENTS")).toBeTruthy();
+    expect(screen.getByText("Running")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /thinking/i })).toBeTruthy();
+
+    // Scene 6 → checklist widget.
     fireEvent.change(composer, { target: { value: "next" } });
     tap(screen.getByLabelText("send"));
     await advance(() => screen.getByText("UX review"));
 
-    // Scene 6 → real task widget + background picker.
+    // Scene 7 → real task widget + background picker.
     fireEvent.change(composer, { target: { value: "next" } });
     tap(screen.getByLabelText("send"));
     await advance(() => screen.getByTestId("task-widget"));
     expect(screen.getByText("Refine native chat glass")).toBeTruthy();
 
-    // Scene 7 → code block + generated UI.
+    // Scene 8 → code block.
     fireEvent.change(composer, { target: { value: "next" } });
     tap(screen.getByLabelText("send"));
     await advance(() => screen.getAllByTestId("code-block"));
 
-    // Scene 8 → generated UI through the REAL GenUI renderer (a live Heading
+    // Scene 9 → generated UI through the REAL GenUI renderer (a live Heading
     // element), not a raw JSON code block.
     fireEvent.change(composer, { target: { value: "next" } });
     tap(screen.getByLabelText("send"));
     await advance(() => screen.getByText("Interactive generated UI"));
 
-    // Scene 9 → failure turn with the REAL retry affordance.
+    // Scene 10 → failure turn with the REAL retry affordance.
     fireEvent.change(composer, { target: { value: "next" } });
     tap(screen.getByLabelText("send"));
     await advance(() => screen.getByText(/temporarily busy/i));

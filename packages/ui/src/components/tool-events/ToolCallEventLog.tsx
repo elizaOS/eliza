@@ -96,51 +96,51 @@ export function ToolCallEventLog({
   const args = event.args ?? event.input;
   const result = event.result ?? event.output ?? event.error;
 
+  // Collapsed-by-default: inside a chat turn only the one-line header (state
+  // icon + tool name + duration + state word) earns resting space; everything
+  // else — stage, arg/result previews, raw JSON — lives behind the disclosure.
   return (
-    <div className={`py-1 ${className}`} data-testid="tool-call-event-log">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className={`shrink-0 ${
-                state === "failure"
-                  ? "text-danger"
-                  : state === "success"
-                    ? "text-success"
-                    : "text-primary"
-              }`}
-            >
-              <StateIcon state={state} />
-            </span>
-            <div className="truncate text-sm font-semibold text-txt">
-              {actionName}
-            </div>
-          </div>
-          <div className="mt-1 text-xs-tight text-muted">
-            {event.stage ? String(event.stage).replace(/_/g, " ") : "tool"}
-            {event.durationMs || event.duration ? (
-              <> - {event.durationMs ?? event.duration}ms</>
-            ) : null}
-          </div>
-        </div>
+    <details
+      className={`group py-0.5 ${className}`}
+      data-testid="tool-call-event-log"
+    >
+      <summary className="flex cursor-pointer select-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+        <span
+          className={`shrink-0 ${
+            state === "failure"
+              ? "text-danger"
+              : state === "success"
+                ? "text-success"
+                : "text-primary"
+          }`}
+        >
+          <StateIcon state={state} />
+        </span>
+        <span className="min-w-0 truncate text-sm font-medium text-txt">
+          {actionName}
+        </span>
+        {event.durationMs || event.duration ? (
+          <span className="shrink-0 text-xs-tight text-muted">
+            {event.durationMs ?? event.duration}ms
+          </span>
+        ) : null}
         <StatePill state={state} />
-      </div>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted transition-transform group-open:rotate-180" />
+      </summary>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2">
-        <PreviewRow label="Args" value={truncate(previewValue(args))} />
-        <PreviewRow label="Result" value={truncate(previewValue(result))} />
-      </div>
-
-      <details className="group mt-3">
-        <summary className="flex cursor-pointer select-none items-center gap-1 text-xs-tight font-semibold text-muted hover:text-txt">
-          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" />
-          JSON details
-        </summary>
+      <div className="mt-2 space-y-3 pl-6">
+        <div className="text-xs-tight text-muted">
+          {event.stage ? String(event.stage).replace(/_/g, " ") : "tool"}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <PreviewRow label="Args" value={truncate(previewValue(args))} />
+          <PreviewRow label="Result" value={truncate(previewValue(result))} />
+        </div>
         {/* Keeps the code-block fill (it is code), border dropped. */}
-        <pre className="mt-2 max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-3 py-3 text-xs leading-6 text-txt">
+        <pre className="max-h-[24rem] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded-sm bg-bg/60 px-3 py-3 text-xs leading-6 text-txt">
           {formatJson(event)}
         </pre>
-      </details>
-    </div>
+      </div>
+    </details>
   );
 }

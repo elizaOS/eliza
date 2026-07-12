@@ -24,13 +24,16 @@ export function ThinkingBlock({
   if (!trimmed) {
     return null;
   }
+  // Chrome-free disclosure: a bare accent toggle line, and when open the
+  // reasoning indented behind a thin accent left rule — no box, no fill, the
+  // minimum a reader needs to find and expand the side-channel.
   return (
-    <div className="my-2 border border-accent/20 rounded-sm bg-accent/5 overflow-hidden">
+    <div className="my-1.5">
       <Button
         variant="ghost"
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
-        className="h-auto w-full justify-start gap-1.5 rounded-none bg-accent/10 px-3 py-1 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-accent/20"
+        className="h-auto justify-start gap-1.5 rounded-none bg-transparent p-0 text-xs font-bold text-accent uppercase tracking-wider transition-colors hover:bg-transparent hover:text-accent/80"
       >
         <span
           aria-hidden="true"
@@ -41,7 +44,7 @@ export function ThinkingBlock({
         Thinking
       </Button>
       {open ? (
-        <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-words opacity-80 m-0 overflow-x-auto">
+        <pre className="m-0 mt-1.5 overflow-x-auto whitespace-pre-wrap break-words border-l-2 border-accent/30 pl-3 text-xs font-mono opacity-80">
           {trimmed}
         </pre>
       ) : null}

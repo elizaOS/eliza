@@ -15,6 +15,11 @@
  */
 import * as React from "react";
 
+import type { NativeToolCallEvent } from "../../api/client-types-cloud";
+import {
+  FIRST_RUN_GREETING,
+  FIRST_RUN_SIGN_IN_PROMPT,
+} from "../../first-run/first-run-greeting";
 import { GlassStyles } from "../../glass";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { ContinuousChatOverlay } from "../shell/ContinuousChatOverlay";
@@ -74,33 +79,52 @@ interface Scene {
   source?: string;
   failureKind?: ShellMessage["failureKind"];
   secretRequest?: ShellMessage["secretRequest"];
+  toolEvents?: NativeToolCallEvent[];
+  reasoning?: string;
   endsOnboarding?: boolean;
 }
 
-/** Onboarding first: greeting choice → profile form → permission → secret. */
+/**
+ * Onboarding opening — the production first-run turns verbatim: the greeting,
+ * then the REAL sign-into-cloud choice widget using the same `__first_run__:`
+ * action protocol the overlay's own sign-in fallback bakes. In the harness the
+ * tap lands in the scripted sendActionMessage instead of the onboarding
+ * conductor, advancing the tour.
+ */
 const OPENING: ShellMessage[] = [
   {
-    id: "harness-onboarding-greeting",
+    id: "first-run:greeting",
     role: "assistant",
     source: "first_run",
     createdAt: 1,
-    content:
-      "Hey — I'm your assistant. Let's set things up right here in chat. How do you want to start?\n[CHOICE:onboarding-start id=onboarding-start allowCustom=true]\nsetup=Set me up\ntour=Quick tour\nexplore=Just explore\n[/CHOICE]",
+    content: FIRST_RUN_GREETING,
+  },
+  {
+    id: "first-run:cloud-oauth",
+    role: "assistant",
+    source: "first_run",
+    createdAt: 2,
+    content: [
+      FIRST_RUN_SIGN_IN_PROMPT,
+      "",
+      "[CHOICE:first-run id=runtime]",
+      "__first_run__:runtime:cloud=Sign in to Eliza Cloud",
+      "__first_run__:runtime:local=Stay local for now",
+      "[/CHOICE]",
+    ].join("\n"),
   },
 ];
 
 const SCRIPT: Scene[] = [
   {
     source: "first_run",
-    content: `Great. Tell me a little about yourself so I can tailor things.\n[FORM]\n${PROFILE_FORM}\n[/FORM]`,
+    // The sign-in tap is the last pinned interaction: release the first-run
+    // pin with this reply so the whole tour stays reachable from the composer.
+    endsOnboarding: true,
+    content: `Signed in — welcome! Tell me a little about yourself so I can tailor things.\n[FORM]\n${PROFILE_FORM}\n[/FORM]`,
   },
   {
     source: "first_run",
-    // Releases the first-run pin here: the REAL permission card's buttons act
-    // on the live platform permission registry (Open System Settings actually
-    // leaves the app), so the composer must already be unlocked for the
-    // conversation to continue regardless of which button the reviewer taps.
-    endsOnboarding: true,
     content: `Saved. One quick permission so I can remind you about things later:\n\`\`\`json\n${PERMISSION_CARD}\n\`\`\``,
   },
   {
@@ -132,6 +156,37 @@ const SCRIPT: Scene[] = [
   {
     content:
       'Here\'s a live plan. Steps update as work happens:\n[WORKFLOW]\n{"id":"harness-workflow","title":"Ship mobile polish","steps":[{"label":"Capture iOS","status":"done"},{"label":"Tune glass","status":"running"},{"label":"Verify Android","status":"pending"}]}\n[/WORKFLOW]',
+  },
+  {
+    // Live activity channel: real ToolCallEventLog rows (success + running) and
+    // the real collapsed ThinkingBlock, exactly as a streamed agent turn
+    // carries them (ShellMessage.toolEvents / .reasoning).
+    reasoning:
+      "The user wants a status check. Query the calendar first, then start the follow-up search; keep the summary short.",
+    toolEvents: [
+      {
+        id: "harness-tool-1",
+        type: "tool_result",
+        callId: "call-1",
+        actionName: "CALENDAR_FIND_EVENTS",
+        args: { query: "today", limit: 5 },
+        result: { count: 2 },
+        status: "completed",
+        durationMs: 412,
+        stage: "action_execution",
+      },
+      {
+        id: "harness-tool-2",
+        type: "tool_call",
+        callId: "call-2",
+        actionName: "WEB_SEARCH",
+        args: { query: "eliza chat glass design" },
+        status: "running",
+        stage: "action_execution",
+      },
+    ],
+    content:
+      "Here's what live agent work looks like — tool calls with their running/success state, expandable for args and results, and my reasoning collapsed under Thinking:",
   },
   {
     content:
@@ -206,6 +261,8 @@ export function ChatWidgetHarness(): React.JSX.Element {
           ...(scene.source ? { source: scene.source } : {}),
           ...(scene.failureKind ? { failureKind: scene.failureKind } : {}),
           ...(scene.secretRequest ? { secretRequest: scene.secretRequest } : {}),
+          ...(scene.toolEvents ? { toolEvents: scene.toolEvents } : {}),
+          ...(scene.reasoning ? { reasoning: scene.reasoning } : {}),
         },
       ]);
       if (scene.endsOnboarding) setFirstRunOpen(false);

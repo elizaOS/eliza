@@ -36,6 +36,8 @@ describe("ThinkingBlock (#10712)", () => {
 
   it("uses the shared accent treatment without blue classes", () => {
     const { container } = render(<ThinkingBlock reasoning="Accent only." />);
+    // The accent left rule only exists on the expanded reasoning pane.
+    fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
     const html = container.innerHTML;
 
     expect(html).toContain("border-accent");
