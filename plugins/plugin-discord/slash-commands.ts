@@ -202,20 +202,6 @@ const searchCommand: SlashCommand = {
 	},
 };
 
-const clearCommand: SlashCommand = {
-	name: "clear",
-	description: "Explain how context clearing works in this channel",
-	ephemeral: true,
-	requiredRole: "USER",
-	async execute(interaction) {
-		await interaction.reply({
-			content:
-				"Context clearing is not wired up for Discord yet. I can search recent messages with `/search`, but I won't pretend existing memory was deleted.",
-			ephemeral: true,
-		});
-	},
-};
-
 const settingsCommand: SlashCommand = {
 	name: "settings",
 	description: "View the current Discord bot settings",
@@ -721,7 +707,6 @@ function registerBuiltins(): void {
 		helpCommand,
 		statusCommand,
 		searchCommand,
-		clearCommand,
 		settingsCommand,
 		setupCommand,
 		appCommand,

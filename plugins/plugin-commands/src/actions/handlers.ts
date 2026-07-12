@@ -369,12 +369,11 @@ export async function runCommand(
 
 		case "model": {
 			// `/model show|small|large|coding …` drives the validated global
-			// model-config route. `show` reads config so authorization suffices; the
-			// write subcommands mutate config.env for every room (and restart the
-			// agent for chat targets), so they are owner-only. Gated here per
-			// subcommand rather than via definition-level flags, which would also
-			// gate (and hide from the GUI menu) the pre-existing per-room and
-			// local/cloud behaviors below.
+			// model-config route. The definition now carries requiresAuth (the
+			// whole command is operator-facing — connector pickers gate it), and
+			// the write subcommands are additionally owner-only here because they
+			// mutate config.env for every room (and restart the agent for chat
+			// targets).
 			const configCommand = parseModelConfigArgs(parsed);
 			if (configCommand) {
 				if (configCommand.kind === "show") {

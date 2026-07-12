@@ -5,6 +5,7 @@
 import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { getConnectorCommands } from "@elizaos/plugin-commands";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PermissionFlagsBits } from "discord.js";
 
 // The connector bridge gates auth via the agent role model (`hasRoleAccess`).
 // Mock it so each test controls the sender's resolved trust level without
@@ -121,6 +122,8 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 					choices: Array.from({ length: 30 }, (_, i) => `token-${i}`),
 				},
 			],
+			requiresAuth: false,
+			requiresElevated: false,
 		});
 		const section = mapped.options?.find((o) => o.name === "section");
 		expect(section).toBeDefined();
@@ -136,6 +139,40 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 	it("omits options for argless commands", () => {
 		const whoami = findCatalog("whoami");
 		expect(whoami.options).toBeUndefined();
+	});
+
+	it("gates the native picker on catalog auth flags", () => {
+		// elevated -> Administrator, auth -> ManageGuild, open -> ungated. Discord
+		// still hides these in the guild picker; server-side trust re-checks.
+		const elevated = mapCatalogCommand({
+			name: "op",
+			description: "op",
+			target: { kind: "agent" },
+			options: [],
+			requiresAuth: true,
+			requiresElevated: true,
+		});
+		expect(elevated.requiredPermissions).toBe(
+			PermissionFlagsBits.Administrator,
+		);
+		const authed = mapCatalogCommand({
+			name: "auth",
+			description: "auth",
+			target: { kind: "agent" },
+			options: [],
+			requiresAuth: true,
+			requiresElevated: false,
+		});
+		expect(authed.requiredPermissions).toBe(PermissionFlagsBits.ManageGuild);
+		const open = mapCatalogCommand({
+			name: "open",
+			description: "open",
+			target: { kind: "agent" },
+			options: [],
+			requiresAuth: false,
+			requiresElevated: false,
+		});
+		expect(open.requiredPermissions).toBeUndefined();
 	});
 });
 

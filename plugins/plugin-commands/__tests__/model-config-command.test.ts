@@ -299,7 +299,7 @@ describe("/model small|large|coding → POST /api/models/config", () => {
 		// resolveCommand defaults are fail-closed (unauthorized, unelevated).
 		const r = await resolveCommand(runtime, msg("/model large zai-glm-4.7"));
 		expect(r.handled).toBe(true);
-		expect(r.reply).toBe("This command requires elevated permissions.");
+		expect(r.reply).toMatch(/requires (authorization|elevated permissions)/);
 		expect(fetchMock).not.toHaveBeenCalled();
 
 		const authorizedOnly = await resolveCommand(
@@ -318,7 +318,7 @@ describe("/model small|large|coding → POST /api/models/config", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const r = await resolveCommand(runtime, msg("/model small"));
-		expect(r.reply).toBe("This command requires elevated permissions.");
+		expect(r.reply).toMatch(/requires (authorization|elevated permissions)/);
 
 		const usage = await resolveCommand(runtime, msg("/model small"), OWNER);
 		expect(usage.reply).toContain("Usage: /model small");
@@ -434,7 +434,7 @@ describe("regression — pre-existing /model behaviors are untouched", () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model claude-opus"));
+		const r = await resolveCommand(runtime, msg("/model claude-opus"), OWNER);
 		expect(r.handled).toBe(true);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(r.reply).toMatch(/Model set to/);
@@ -444,7 +444,7 @@ describe("regression — pre-existing /model behaviors are untouched", () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model"));
+		const r = await resolveCommand(runtime, msg("/model"), OWNER);
 		expect(r.handled).toBe(true);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(r.reply).toMatch(/Model is/);

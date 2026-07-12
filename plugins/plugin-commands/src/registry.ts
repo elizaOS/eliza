@@ -29,6 +29,9 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "status",
 		acceptsArgs: false,
+		// In-app only: on chat connectors it duplicates /help in the native
+		// picker; the text alias still resolves everywhere.
+		surfaces: ["gui"],
 	},
 	{
 		key: "status",
@@ -48,6 +51,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "status",
 		acceptsArgs: true,
 		args: [{ name: "mode", description: "Output mode (list, detail, json)" }],
+		requiresAuth: true,
 	},
 	{
 		key: "whoami",
@@ -97,6 +101,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "session",
 		acceptsArgs: false,
+		requiresAuth: true,
 	},
 	{
 		key: "compact",
@@ -124,6 +129,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		args: [
 			{ name: "level", description: "off, minimal, low, medium, high, xhigh" },
 		],
+		requiresAuth: true,
 	},
 	{
 		key: "verbose",
@@ -134,6 +140,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "options",
 		acceptsArgs: true,
 		args: [{ name: "level", description: "off, on, full" }],
+		requiresAuth: true,
 	},
 	{
 		key: "reasoning",
@@ -144,6 +151,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "options",
 		acceptsArgs: true,
 		args: [{ name: "level", description: "off, on, stream" }],
+		requiresAuth: true,
 	},
 	{
 		key: "elevated",
@@ -189,6 +197,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 				dynamicChoices: "models",
 			},
 		],
+		requiresAuth: true,
 	},
 	{
 		key: "models",
@@ -198,6 +207,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "options",
 		acceptsArgs: false,
+		requiresAuth: true,
 	},
 	{
 		key: "usage",
@@ -207,6 +217,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "options",
 		acceptsArgs: false,
+		requiresAuth: true,
 	},
 	{
 		key: "queue",
@@ -222,6 +233,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 				description: "steer, followup, collect, interrupt, or options",
 			},
 		],
+		requiresAuth: true,
 	},
 
 	// Management commands
@@ -306,6 +318,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 				description: "on, off, status, provider, limit, audio",
 			},
 		],
+		requiresAuth: true,
 	},
 	{
 		key: "transcribe",

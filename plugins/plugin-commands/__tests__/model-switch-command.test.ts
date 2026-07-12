@@ -165,14 +165,16 @@ describe("/model local|cloud → shared runtime-switch route", () => {
 		const r = await resolveCommand(runtime, msg("/model cloud"));
 		expect(r.handled).toBe(true);
 		expect(fetchMock).not.toHaveBeenCalled();
-		expect(r.reply).toMatch(/elevated permissions/);
+		// The definition-level requiresAuth gate fires first for untrusted
+		// senders; elevated is re-checked for authorized-but-not-owner ones.
+		expect(r.reply).toMatch(/authorization|elevated permissions/);
 	});
 
 	it("does NOT hit the route for a bare /model <name> (per-room preference)", async () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model claude-opus"));
+		const r = await resolveCommand(runtime, msg("/model claude-opus"), OWNER);
 		expect(r.handled).toBe(true);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(r.reply).toMatch(/Model set to/);

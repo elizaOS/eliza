@@ -257,7 +257,10 @@ describe("builtin command surface (privileged plumbing hidden from pickers)", ()
 				`${name} must carry requiredPermissions`,
 			).toBeTruthy();
 		}
-		for (const name of ["help", "status", "search", "clear"]) {
+		// /clear was removed: it only explained that clearing isn't wired up,
+		// which /help already covers — placebo commands don't earn picker space.
+		expect(commands.get("clear")).toBeUndefined();
+		for (const name of ["help", "status", "search"]) {
 			expect(
 				commands.get(name)?.requiredPermissions,
 				`${name} must stay visible to everyone`,

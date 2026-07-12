@@ -53,6 +53,14 @@ export interface ConnectorCommand {
 	 * views is the active surface. Omitted = globally available.
 	 */
 	views?: string[];
+	/**
+	 * Auth flags from the definition, so connector bridges can gate the NATIVE
+	 * picker (e.g. Discord default_member_permissions) instead of showing a
+	 * command that execute-time trust will refuse anyway (#16154 deferral).
+	 * Execution is still re-checked server-side — these are presentation gates.
+	 */
+	requiresAuth: boolean;
+	requiresElevated: boolean;
 }
 
 const KNOWN_SURFACES: ReadonlySet<string> = new Set([
@@ -145,6 +153,8 @@ function toConnectorCommand(command: CommandDefinition): ConnectorCommand {
 		...(command.views && command.views.length > 0
 			? { views: command.views }
 			: {}),
+		requiresAuth: command.requiresAuth ?? false,
+		requiresElevated: command.requiresElevated ?? false,
 	};
 }
 
