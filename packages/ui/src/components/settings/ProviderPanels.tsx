@@ -6,7 +6,7 @@
  * button; ProviderSwitcher owns the selection state and passes it in as props.
  */
 
-import type { LinkedAccountProviderId, ModelOption } from "@elizaos/shared";
+import type { ModelOption } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type {
@@ -233,7 +233,6 @@ export interface ApiKeyPanelProps {
   visibleProviderPanelId: string;
   resolvedSelectedId: string | null;
   cloudCallsDisabled: boolean;
-  selectedPanelAccountProvider: LinkedAccountProviderId | null;
   onSwitchProvider: (id: string) => void;
   pluginSaving: Set<string>;
   pluginSaveSuccess: Set<string>;
@@ -250,7 +249,6 @@ export function ApiKeyPanel({
   visibleProviderPanelId,
   resolvedSelectedId,
   cloudCallsDisabled,
-  selectedPanelAccountProvider,
   onSwitchProvider,
   pluginSaving,
   pluginSaveSuccess,
@@ -290,9 +288,6 @@ export function ApiKeyPanel({
           handlePluginConfigSave={handlePluginConfigSave}
           loadPlugins={loadPlugins}
         />
-        {selectedPanelAccountProvider ? (
-          <AccountList providerId={selectedPanelAccountProvider} />
-        ) : null}
       </div>
     </div>
   );

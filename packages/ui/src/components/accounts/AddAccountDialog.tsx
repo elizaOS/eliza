@@ -60,12 +60,14 @@ import {
 
 interface AddAccountDialogProps {
   open: boolean;
-  providerId: LinkedAccountProviderId;
+  /** Optional initial provider. When omitted, the dialog starts with the consolidated provider picker. */
+  providerId?: LinkedAccountProviderId;
   onClose: () => void;
   onCreated: (account: LinkedAccountConfig) => void;
 }
 
 type DialogStep =
+  | "provider-select"
   | "choose"
   | "oauth-starting"
   | "oauth-waiting"
@@ -87,6 +89,112 @@ type SubscriptionAddMode =
   | "external-cli"
   | "unavailable"
   | "none";
+
+export type AccountProviderCategory = "chat" | "coding" | "local" | "cloud";
+
+export interface AccountProviderOption {
+  id: LinkedAccountProviderId;
+  name: string;
+  category: AccountProviderCategory;
+  description: string;
+  eligibility: string[];
+  unavailable?: boolean;
+}
+
+export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
+  {
+    id: "anthropic-api",
+    name: "Anthropic API",
+    category: "chat",
+    description: "Bring your own Anthropic API key for Claude chat models.",
+    eligibility: ["chat", "API key"],
+  },
+  {
+    id: "openai-api",
+    name: "OpenAI API",
+    category: "chat",
+    description: "Bring your own OpenAI API key for GPT chat models.",
+    eligibility: ["chat", "API key"],
+  },
+  {
+    id: "cerebras-api",
+    name: "Cerebras API",
+    category: "chat",
+    description: "Low-latency hosted inference with your Cerebras API key.",
+    eligibility: ["chat", "API key"],
+  },
+  {
+    id: "deepseek-api",
+    name: "DeepSeek API",
+    category: "chat",
+    description: "Direct DeepSeek API billing for chat or agent tasks.",
+    eligibility: ["chat", "API key"],
+  },
+  {
+    id: "zai-api",
+    name: "z.ai API",
+    category: "chat",
+    description: "Direct z.ai API key for model routing.",
+    eligibility: ["chat", "API key"],
+  },
+  {
+    id: "moonshot-api",
+    name: "Kimi / Moonshot API",
+    category: "chat",
+    description: "Direct Moonshot API key for Kimi models.",
+    eligibility: ["chat", "API key"],
+  },
+  {
+    id: "anthropic-subscription",
+    name: "Claude subscription",
+    category: "coding",
+    description: "Browser login for Claude Code. Not used for default chat.",
+    eligibility: ["code-agent", "requires browser login", "not chat"],
+  },
+  {
+    id: "openai-codex",
+    name: "OpenAI Codex subscription",
+    category: "coding",
+    description: "Browser or device login for Codex coding agents.",
+    eligibility: ["code-agent", "requires browser login"],
+  },
+  {
+    id: "gemini-cli",
+    name: "Gemini CLI subscription",
+    category: "coding",
+    description: "Managed by Gemini CLI login outside this app.",
+    eligibility: ["code-agent", "external CLI"],
+  },
+  {
+    id: "zai-coding",
+    name: "z.ai Coding Plan",
+    category: "coding",
+    description: "Dedicated coding-plan credential, separate from API routing.",
+    eligibility: ["code-agent", "API key"],
+  },
+  {
+    id: "kimi-coding",
+    name: "Kimi Code",
+    category: "coding",
+    description:
+      "Dedicated Kimi coding-plan credential, separate from API routing.",
+    eligibility: ["code-agent", "API key"],
+  },
+  {
+    id: "deepseek-coding",
+    name: "DeepSeek coding subscription",
+    category: "coding",
+    description: "No safe first-party subscription flow is available yet.",
+    eligibility: ["code-agent", "unavailable"],
+    unavailable: true,
+  },
+];
+
+export function getAccountProviderOption(
+  providerId: LinkedAccountProviderId,
+): AccountProviderOption | undefined {
+  return ACCOUNT_PROVIDER_OPTIONS.find((option) => option.id === providerId);
+}
 
 const SUBSCRIPTION_ADD_MODE_BY_PROVIDER: Partial<
   Record<LinkedAccountProviderId, SubscriptionAddMode>
@@ -187,12 +295,21 @@ export function AddAccountDialog({
   onCreated,
 }: AddAccountDialogProps) {
   const t = useAppSelector((s) => s.t);
-  const subscriptionAddMode = getSubscriptionAddMode(providerId);
+  const [selectedProviderId, setSelectedProviderId] =
+    useState<LinkedAccountProviderId | null>(providerId ?? null);
+  const activeProviderId = selectedProviderId ?? providerId ?? null;
+  const subscriptionAddMode = activeProviderId
+    ? getSubscriptionAddMode(activeProviderId)
+    : "none";
 
   const [step, setStep] = useState<DialogStep>(
-    initialStepForProvider(providerId),
+    activeProviderId
+      ? initialStepForProvider(activeProviderId)
+      : "provider-select",
   );
-  const [label, setLabel] = useState(() => defaultOAuthLabel(providerId));
+  const [label, setLabel] = useState(() =>
+    activeProviderId ? defaultOAuthLabel(activeProviderId) : "",
+  );
   const [apiKey, setApiKey] = useState("");
   const [oauthCode, setOauthCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -218,22 +335,26 @@ export function AddAccountDialog({
   const cancelInflightFlow = useCallback(async () => {
     closeEventSource();
     const id = sessionIdRef.current;
-    if (id) {
+    if (id && activeProviderId) {
       sessionIdRef.current = null;
       try {
-        await client.cancelAccountOAuth(providerId, { sessionId: id });
+        await client.cancelAccountOAuth(activeProviderId, { sessionId: id });
       } catch {
         // Best-effort cleanup — server times out flows on its own.
       }
     }
-  }, [closeEventSource, providerId]);
+  }, [closeEventSource, activeProviderId]);
 
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
     restoredSessionRef.current = null;
-    setStep(initialStepForProvider(providerId));
-    setLabel(defaultOAuthLabel(providerId));
+    setStep(
+      activeProviderId
+        ? initialStepForProvider(activeProviderId)
+        : "provider-select",
+    );
+    setLabel(activeProviderId ? defaultOAuthLabel(activeProviderId) : "");
     setApiKey("");
     setOauthCode("");
     setErrorMessage(null);
@@ -241,7 +362,7 @@ export function AddAccountDialog({
     setDeviceCode(null);
     setDeviceCodeCopied(false);
     setOauthUrl(null);
-  }, [closeEventSource, providerId]);
+  }, [closeEventSource, activeProviderId]);
 
   const copyDeviceCode = useCallback(async (code: string) => {
     try {
@@ -266,12 +387,13 @@ export function AddAccountDialog({
 
   const subscribeToFlow = useCallback(
     (newSessionId: string) => {
+      if (!activeProviderId) return;
       closeEventSource();
-      const url = `/api/accounts/${providerId}/oauth/status?sessionId=${encodeURIComponent(newSessionId)}`;
+      const url = `/api/accounts/${activeProviderId}/oauth/status?sessionId=${encodeURIComponent(newSessionId)}`;
       const source = openEventSource(url);
       eventSourceRef.current = source;
       if (!source) {
-        clearSubscriptionOAuth(providerId);
+        clearSubscriptionOAuth(activeProviderId);
         setErrorMessage(
           t("accounts.add.oauth.sseUnreachable", {
             defaultValue:
@@ -308,7 +430,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
-            clearSubscriptionOAuth(providerId);
+            clearSubscriptionOAuth(activeProviderId);
             onCreated(data.account);
             onClose();
           } else if (
@@ -319,7 +441,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
-            clearSubscriptionOAuth(providerId);
+            clearSubscriptionOAuth(activeProviderId);
             setErrorMessage(
               data.error ??
                 t(`accounts.add.oauth.${data.status}`, {
@@ -363,12 +485,12 @@ export function AddAccountDialog({
         }, 5_000);
       };
     },
-    [closeEventSource, onClose, onCreated, providerId, t],
+    [closeEventSource, onClose, onCreated, activeProviderId, t],
   );
 
   useEffect(() => {
-    if (!open) return;
-    const pending = readSubscriptionOAuth(providerId);
+    if (!open || !activeProviderId) return;
+    const pending = readSubscriptionOAuth(activeProviderId);
     if (!pending || restoredSessionRef.current === pending.sessionId) return;
     restoredSessionRef.current = pending.sessionId;
     sessionIdRef.current = pending.sessionId;
@@ -378,10 +500,14 @@ export function AddAccountDialog({
       pending.phase === "need-code" ? "oauth-need-code" : "oauth-waiting",
     );
     subscribeToFlow(pending.sessionId);
-  }, [open, providerId, subscribeToFlow]);
+  }, [open, activeProviderId, subscribeToFlow]);
 
   const startOAuth = useCallback(
     async (mode: "localhost" | "device") => {
+      if (!activeProviderId) {
+        setStep("provider-select");
+        return;
+      }
       if (subscriptionAddMode !== "oauth") {
         setStep("unavailable");
         return;
@@ -395,10 +521,11 @@ export function AddAccountDialog({
       // console-callback paste — shows a copyable link instead of hijacking a
       // tab, so the user signs in wherever they want and enters/pastes the code.
       // (preOpenWindow must run synchronously in the click gesture.)
-      const opensWindow = mode === "localhost" && providerId === "openai-codex";
+      const opensWindow =
+        mode === "localhost" && activeProviderId === "openai-codex";
       const win = opensWindow ? preOpenWindow() : null;
       try {
-        const flow = await client.startAccountOAuth(providerId, {
+        const flow = await client.startAccountOAuth(activeProviderId, {
           label: label.trim(),
           mode,
         });
@@ -409,7 +536,7 @@ export function AddAccountDialog({
         // Show the sign-in link for every non-auto-open flow.
         setOauthUrl(opensWindow ? null : (flow.authUrl ?? null));
         writeSubscriptionOAuth({
-          providerId,
+          providerId: activeProviderId,
           sessionId: flow.sessionId,
           mode,
           phase: flow.needsCodeSubmission ? "need-code" : "waiting",
@@ -441,17 +568,18 @@ export function AddAccountDialog({
         }
       }
     },
-    [label, providerId, subscribeToFlow, subscriptionAddMode, t],
+    [label, activeProviderId, subscribeToFlow, subscriptionAddMode, t],
   );
 
   const submitOAuthCode = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
+      if (!activeProviderId) return;
       const code = oauthCode.trim();
       const id = sessionIdRef.current;
       if (!code || !id) return;
       try {
-        await client.submitAccountOAuthCode(providerId, {
+        await client.submitAccountOAuthCode(activeProviderId, {
           sessionId: id,
           code,
         });
@@ -468,19 +596,20 @@ export function AddAccountDialog({
         setStep("error");
       }
     },
-    [oauthCode, providerId, t],
+    [oauthCode, activeProviderId, t],
   );
 
   const submitApiKey = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
+      if (!activeProviderId) return;
       const trimmedLabel = label.trim();
       const trimmedKey = apiKey.trim();
       if (!trimmedLabel || !trimmedKey) return;
       setErrorMessage(null);
       setStep("apikey-submitting");
       try {
-        const account = await client.createApiKeyAccount(providerId, {
+        const account = await client.createApiKeyAccount(activeProviderId, {
           label: trimmedLabel,
           apiKey: trimmedKey,
         });
@@ -497,18 +626,46 @@ export function AddAccountDialog({
         setStep("error");
       }
     },
-    [apiKey, label, onClose, onCreated, providerId, t],
+    [apiKey, label, onClose, onCreated, activeProviderId, t],
   );
 
   const handleClose = useCallback(() => {
-    clearSubscriptionOAuth(providerId);
+    if (activeProviderId) clearSubscriptionOAuth(activeProviderId);
     void cancelInflightFlow();
     reset();
     onClose();
-  }, [cancelInflightFlow, onClose, providerId, reset]);
+  }, [cancelInflightFlow, onClose, activeProviderId, reset]);
 
-  const dialogDescription =
-    subscriptionAddMode === "oauth"
+  const chooseProvider = useCallback(
+    (nextProviderId: LinkedAccountProviderId) => {
+      setSelectedProviderId(nextProviderId);
+      setLabel(defaultOAuthLabel(nextProviderId));
+      setApiKey("");
+      setOauthCode("");
+      setErrorMessage(null);
+      setSessionId(null);
+      setDeviceCode(null);
+      setOauthUrl(null);
+      setStep(initialStepForProvider(nextProviderId));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedProviderId(providerId ?? null);
+    setStep(
+      providerId ? initialStepForProvider(providerId) : "provider-select",
+    );
+    setLabel(providerId ? defaultOAuthLabel(providerId) : "");
+  }, [open, providerId]);
+
+  const dialogDescription = !activeProviderId
+    ? t("accounts.add.chooseDescription", {
+        defaultValue:
+          "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
+      })
+    : subscriptionAddMode === "oauth"
       ? t("accounts.add.subscriptionDescription", {
           defaultValue:
             "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
@@ -541,19 +698,19 @@ export function AddAccountDialog({
       : t("accounts.add.apiKey", { defaultValue: "API key" });
 
   const apiKeyPlaceholder =
-    providerId === "zai-coding"
+    activeProviderId === "zai-coding"
       ? "zai-..."
-      : providerId === "kimi-coding"
+      : activeProviderId === "kimi-coding"
         ? "sk-..."
         : "sk-...";
 
   const unavailableCopy =
-    providerId === "gemini-cli"
+    activeProviderId === "gemini-cli"
       ? t("accounts.add.geminiCliHint", {
           defaultValue:
             "Run gemini auth login in your terminal. Task agents will use the authenticated Gemini CLI directly; no Gemini subscription token is copied into API settings.",
         })
-      : providerId === "deepseek-coding"
+      : activeProviderId === "deepseek-coding"
         ? t("accounts.add.deepseekUnavailableHint", {
             defaultValue:
               "DeepSeek is unavailable here because there is no first-party coding subscription endpoint to integrate safely. Use the DeepSeek API-key provider only if you have direct API billing.",
@@ -590,19 +747,88 @@ export function AddAccountDialog({
         // is not a user cancellation: keep the controlled dialog and its code
         // entry state alive. The visible Cancel button remains the one explicit
         // operation that clears persisted state and cancels the server flow.
-        if (!next && step === "choose") handleClose();
+        if (
+          !next &&
+          step !== "oauth-starting" &&
+          step !== "oauth-waiting" &&
+          step !== "oauth-need-code"
+        ) {
+          handleClose();
+        }
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[min(720px,calc(100vh-2rem))] max-w-md overflow-hidden">
         <DialogHeader>
           <DialogTitle>
-            {t("accounts.add.title", {
-              defaultValue: `Add ${providerDisplayName(providerId, t)} account`,
-              provider: providerDisplayName(providerId, t),
-            })}
+            {activeProviderId
+              ? t("accounts.add.title", {
+                  defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
+                  provider: providerDisplayName(activeProviderId, t),
+                })
+              : t("accounts.add.chooseTitle", {
+                  defaultValue: "Add a provider account",
+                })}
           </DialogTitle>
           <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
+
+        {step === "provider-select" ? (
+          <div className="grid max-h-[calc(100vh-13rem)] gap-4 overflow-y-auto py-2 pr-1">
+            {(["chat", "coding"] as AccountProviderCategory[]).map(
+              (category) => {
+                const options = ACCOUNT_PROVIDER_OPTIONS.filter(
+                  (option) => option.category === category,
+                );
+                return (
+                  <section key={category} className="grid gap-2">
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                        {category === "chat"
+                          ? "Chat providers"
+                          : "Coding subscriptions"}
+                      </h3>
+                      <p className="mt-1 text-xs text-muted">
+                        {category === "chat"
+                          ? "Default chat routes use Cloud, Local, or a BYOK API account."
+                          : "Subscription accounts feed coding agents and workflow runs. Claude subscription does not power chat."}
+                      </p>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {options.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          className={cn(
+                            "rounded-md border border-border/60 bg-card/35 p-3 text-left transition hover:border-txt/35 hover:bg-bg-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/50",
+                            option.unavailable && "opacity-70",
+                          )}
+                          onClick={() => chooseProvider(option.id)}
+                        >
+                          <span className="block text-sm font-medium text-txt-strong">
+                            {option.name}
+                          </span>
+                          <span className="mt-1 block text-xs leading-5 text-muted">
+                            {option.description}
+                          </span>
+                          <span className="mt-2 flex flex-wrap gap-1.5">
+                            {option.eligibility.map((tag) => (
+                              <span
+                                key={tag}
+                                className="rounded-full border border-border/55 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                );
+              },
+            )}
+          </div>
+        ) : null}
 
         {step === "choose" ? (
           <div className="grid gap-3 py-2">
@@ -619,7 +845,7 @@ export function AddAccountDialog({
               }
               className="h-10"
             >
-              {providerId === "openai-codex"
+              {activeProviderId === "openai-codex"
                 ? subscriptionOAuthModeForHostname(window.location.hostname) ===
                   "localhost"
                   ? "Log in with localhost callback"
@@ -635,7 +861,7 @@ export function AddAccountDialog({
               flow (visit auth.openai.com/codex/device + enter a code) without
               needing to reach the app on a non-localhost address.
             */}
-            {providerId === "openai-codex" &&
+            {activeProviderId === "openai-codex" &&
             subscriptionOAuthModeForHostname(window.location.hostname) ===
               "localhost" ? (
               <Button
@@ -835,7 +1061,11 @@ export function AddAccountDialog({
               variant="ghost"
               onClick={() => {
                 setErrorMessage(null);
-                setStep(initialStepForProvider(providerId));
+                setStep(
+                  activeProviderId
+                    ? initialStepForProvider(activeProviderId)
+                    : "provider-select",
+                );
               }}
             >
               {t("accounts.add.tryAgain", { defaultValue: "Try again" })}
