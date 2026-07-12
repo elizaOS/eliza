@@ -149,15 +149,31 @@ export function serializeTranscript(
 }
 
 /**
- * The action-string protocol a native renderer emits back — identical to what
- * the DOM widgets pass to `sendActionMessage`, so the app-side handler cannot
- * tell which renderer produced it. Documented here as the single reference
- * for the Swift/Kotlin sides:
+ * The typed action envelope a native renderer emits back on the single
+ * `transcriptAction` listener. `kind: "message"` carries the SAME strings the
+ * DOM widgets pass to `sendActionMessage` (the app-side handler cannot tell
+ * which renderer produced them):
  *   - choice tap        → the option's value string (or `__first_run__:…`)
- *   - followup tap      → `reply:`-style payloads already encoded in data
+ *   - followup REPLY    → the reply payload string
  *   - form submit       → `[form:submit <formId>] {json}`
  *   - permission fallback → `__permission_card__:use_fallback feature=… permission=…`
- *   - permission granted  → `__permission_card__:granted feature=… permission=…`
- * Free-typed composer text goes through the same channel unchanged.
+ *
+ * The other kinds exist because their DOM equivalents are NOT chat messages —
+ * turning them into chat text would leak local UI intents to the agent:
+ *   - `navigate` → DOM dispatches the local `eliza:navigate:view` event
+ *     (followups.tsx); the JS listener must do the same, send nothing.
+ *   - `prefill`  → DOM prefills the composer via setChatInput; ditto.
+ *   - `background` → DOM mutates the local BackgroundConfig store; the JS
+ *     listener applies it locally, send nothing.
+ *
+ * DELIBERATELY ABSENT from v1 (display-only on native, by security review):
+ * secret submission (values must travel client.updateSecrets /
+ * client.tunnelCredential — never chat text or this bridge) and permission
+ * GRANT (must follow a real OS permission request; emitting `granted`
+ * without one fabricates capability).
  */
-export type NativeTranscriptAction = { message: string };
+export type NativeTranscriptAction =
+  | { kind?: "message"; message: string }
+  | { kind: "navigate"; view: string }
+  | { kind: "prefill"; text: string }
+  | { kind: "background"; presetId: string };

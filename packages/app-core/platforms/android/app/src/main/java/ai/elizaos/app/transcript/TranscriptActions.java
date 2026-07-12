@@ -56,11 +56,6 @@ public final class TranscriptActions {
                 + " permission=" + permission;
     }
 
-    /** Permission card granted — MessagePermissionCard parity. */
-    public static String permissionGranted(String feature, String permission) {
-        return "__permission_card__:granted feature=" + feature
-                + " permission=" + permission;
-    }
 
     /**
      * Config-segment tap: the exact request string the DOM's `plugin:configure`
@@ -69,36 +64,5 @@ public final class TranscriptActions {
     public static String openPluginConfig(String pluginId) {
         return "Please show me the configuration form for the " + pluginId
                 + " plugin";
-    }
-
-    /**
-     * Background swatch tap. The DOM widget drives the local background store
-     * directly; the native list has no store access, so the pick travels the
-     * free-typed-text path and the agent's BACKGROUND action applies it.
-     */
-    public static String backgroundPick(String cssHexColor) {
-        return "Set the app background to " + cssHexColor;
-    }
-
-    /**
-     * Secret-card submit. The DOM writes secrets through the authenticated
-     * secrets API; the native list's only return path is the chat channel,
-     * which the sensitive-request flow explicitly sanctions when
-     * `delivery.canCollectValueInCurrentChannel` is true (the same flow that
-     * accepts a key typed straight into the composer — the renderer only
-     * shows the card when that flag is set). A single field submits its raw
-     * value, exactly like typing it; multiple fields submit `name=value`
-     * lines.
-     */
-    public static String secretSubmit(Map<String, String> valuesByName) {
-        if (valuesByName.size() == 1) {
-            return valuesByName.values().iterator().next();
-        }
-        StringBuilder joined = new StringBuilder();
-        for (Map.Entry<String, String> entry : valuesByName.entrySet()) {
-            if (joined.length() > 0) joined.append('\n');
-            joined.append(entry.getKey()).append('=').append(entry.getValue());
-        }
-        return joined.toString();
     }
 }

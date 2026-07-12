@@ -41,6 +41,7 @@ enum TranscriptTheme {
 struct TranscriptListView: View {
     @ObservedObject var store: TranscriptFrameStore
     let sendAction: (String) -> Void
+    let sendEnvelope: ([String: String]) -> Void
 
     private static let tailAnchor = "transcript-tail"
 
@@ -49,7 +50,9 @@ struct TranscriptListView: View {
             ScrollView(.vertical) {
                 LazyVStack(alignment: .leading, spacing: 18) {
                     ForEach(store.frame.messages) { message in
-                        TranscriptMessageRow(message: message, sendAction: sendAction)
+                        TranscriptMessageRow(
+                            message: message, sendAction: sendAction,
+                            sendEnvelope: sendEnvelope)
                             .id(message.id)
                     }
                     if let status = store.frame.turnStatus {
@@ -87,6 +90,7 @@ struct TranscriptListView: View {
 private struct TranscriptMessageRow: View {
     let message: TranscriptMessage
     let sendAction: (String) -> Void
+    let sendEnvelope: ([String: String]) -> Void
 
     var body: some View {
         if message.role == .user {
@@ -139,7 +143,9 @@ private struct TranscriptMessageRow: View {
                 }
             }
             ForEach(Array(message.segments.enumerated()), id: \.offset) { _, segment in
-                TranscriptSegmentView(segment: segment, sendAction: sendAction)
+                TranscriptSegmentView(
+                    segment: segment, sendAction: sendAction,
+                    sendEnvelope: sendEnvelope)
             }
             if let secretRequest = message.secretRequest {
                 TranscriptSecretRequestRow(request: secretRequest)
@@ -161,6 +167,7 @@ private struct TranscriptMessageRow: View {
 struct TranscriptSegmentView: View {
     let segment: TranscriptSegment
     let sendAction: (String) -> Void
+    let sendEnvelope: ([String: String]) -> Void
 
     var body: some View {
         switch segment {
@@ -175,22 +182,26 @@ struct TranscriptSegmentView: View {
         case .widget(let widgetKind, let data):
             TranscriptWidgetRegistry.view(
                 for: TranscriptWidgetContext(
-                    widgetKind: widgetKind, data: data, sendAction: sendAction))
+                    widgetKind: widgetKind, data: data, sendAction: sendAction,
+                    sendEnvelope: sendEnvelope))
         case .permission(let payload):
             TranscriptWidgetRegistry.view(
                 for: TranscriptWidgetContext(
                     widgetKind: TranscriptWidgetRegistry.permissionKind,
-                    data: payload, sendAction: sendAction))
+                    data: payload, sendAction: sendAction,
+                    sendEnvelope: sendEnvelope))
         case .uiSpec(let raw):
             TranscriptWidgetRegistry.view(
                 for: TranscriptWidgetContext(
                     widgetKind: TranscriptWidgetRegistry.uiSpecKind,
-                    data: .string(raw), sendAction: sendAction))
+                    data: .string(raw), sendAction: sendAction,
+                    sendEnvelope: sendEnvelope))
         case .config(let pluginId):
             TranscriptWidgetRegistry.view(
                 for: TranscriptWidgetContext(
                     widgetKind: TranscriptWidgetRegistry.configKind,
-                    data: .string(pluginId), sendAction: sendAction))
+                    data: .string(pluginId), sendAction: sendAction,
+                    sendEnvelope: sendEnvelope))
         case .unknown:
             // DOM parity: unknown segment kinds render nothing.
             EmptyView()

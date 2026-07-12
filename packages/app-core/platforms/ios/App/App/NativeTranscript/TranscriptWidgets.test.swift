@@ -218,7 +218,6 @@ check(goldenTask?.title == "Refine native chat glass", "task title decode")
 check(goldenTask?.status == nil, "task status absent in marker data")
 
 // background — action string + preset grid
-check(backgroundSetActionString(presetId: "aurora") == "[background:set aurora]", "background action string exact")
 check(transcriptBackgroundPresets.map { $0.id } == ["aurora", "lava", "plasma", "waves"], "2x2 preset grid ids")
 
 // permission — decode + action string + labels
@@ -236,9 +235,6 @@ check(permissionDisplayLabel("unknown-thing") == "unknown-thing", "unknown permi
 check(goldenSecret?.key == "HARNESS_API_KEY", "secretRequest key decode")
 check(goldenSecret?.submitLabel == "Save key", "secretRequest submitLabel decode")
 check(goldenSecret?.fieldLabel == "API key", "secretRequest field label decode")
-check(secretSubmitActionString(key: "HARNESS_API_KEY") == "[secret:submit HARNESS_API_KEY]",
-      "secret submit action string exact")
-
 // malformed data degrades to nil (renders the visible malformed marker, never healthy-empty)
 check(TranscriptChoiceData(dict: [:]) == nil, "empty choice data is rejected")
 check(TranscriptFormSpec(widgetData: ["form": ["fields": []]]) == nil, "fieldless form is rejected")

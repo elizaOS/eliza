@@ -26,7 +26,11 @@ import type { NativeTranscriptRect } from "../../glass/native-transcript-bridge"
 const nativeTranscript = vi.hoisted(() => ({
   frames: [] as NativeTranscriptFrame[],
   rects: [] as NativeTranscriptRect[],
-  actionHandler: null as ((action: { message: string }) => void) | null,
+  actionHandler: null as
+    | ((
+        action: import("../../chat/native-transcript/spec").NativeTranscriptAction,
+      ) => void)
+    | null,
   hides: 0,
   removals: 0,
   reset(): void {
@@ -53,7 +57,7 @@ vi.mock("../../glass/native-transcript-bridge", () => ({
     },
     addListener: async (
       _event: "transcriptAction",
-      handler: (action: { message: string }) => void,
+      handler: (action: import("../../chat/native-transcript/spec").NativeTranscriptAction) => void,
     ) => {
       nativeTranscript.actionHandler = handler;
       return {
@@ -315,6 +319,37 @@ describe("ChatWidgetHarness native-transcript demo", () => {
     expect(userTurn?.segments).toEqual([
       { kind: "text", text: "show me widgets" },
     ]);
+  });
+
+  it("routes navigate/prefill/background envelopes locally — never as chat text", async () => {
+    localStorage.setItem("eliza:native-transcript-demo", "1");
+    render(<ChatWidgetHarness />);
+    await waitFor(() => expect(nativeTranscript.actionHandler).toBeTruthy());
+    const framesBefore = nativeTranscript.frames.length;
+    const messageCount = () =>
+      nativeTranscript.frames.at(-1)?.messages.length ?? 0;
+    const before = messageCount();
+
+    const navigated: string[] = [];
+    const onNavigate = (event: Event) =>
+      navigated.push((event as CustomEvent<{ view: string }>).detail.view);
+    window.addEventListener("eliza:navigate:view", onNavigate);
+    act(() => {
+      nativeTranscript.actionHandler?.({ kind: "navigate", view: "/settings" });
+      nativeTranscript.actionHandler?.({ kind: "prefill", text: "Refine " });
+      nativeTranscript.actionHandler?.({
+        kind: "background",
+        presetId: "aurora",
+      });
+    });
+    window.removeEventListener("eliza:navigate:view", onNavigate);
+
+    // The navigate intent surfaced as the LOCAL event the DOM widget fires…
+    expect(navigated).toEqual(["/settings"]);
+    // …and none of the three envelopes became a chat turn.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(messageCount()).toBe(before);
+    expect(nativeTranscript.frames.length).toBe(framesBefore);
   });
 
   it("hides the native list and removes the listener on unmount", async () => {

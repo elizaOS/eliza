@@ -110,7 +110,10 @@ public class TranscriptView extends ScrollView {
         }
 
         if (wasAtBottom) {
-            post(() -> fullScroll(View.FOCUS_DOWN));
+            // smoothScrollTo, never fullScroll: fullScroll hands FOCUS to the
+            // bottommost view (or reclaims it), blurring a form/secret
+            // EditText mid-typing and dismissing the IME on every frame.
+            post(() -> smoothScrollTo(0, getChildAt(0).getBottom()));
         }
     }
 

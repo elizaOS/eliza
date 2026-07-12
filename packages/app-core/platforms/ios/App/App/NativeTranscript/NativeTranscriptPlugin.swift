@@ -124,9 +124,23 @@ public class NativeTranscriptPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             let host = UIHostingController(
-                rootView: TranscriptListView(store: self.store) { [weak self] message in
-                    self?.notifyListeners("transcriptAction", data: ["message": message])
-                }
+                rootView: TranscriptListView(
+                    store: self.store,
+                    sendAction: { [weak self] message in
+                        // kind "message" — the DOM sendActionMessage strings.
+                        self?.notifyListeners(
+                            "transcriptAction",
+                            data: ["kind": "message", "message": message])
+                    },
+                    sendEnvelope: { [weak self] envelope in
+                        // Typed local intents (navigate/prefill/background) —
+                        // the JS listener routes them like the DOM widgets do;
+                        // they are never chat text (spec.ts contract).
+                        var data: [String: Any] = [:]
+                        for (key, value) in envelope { data[key] = value }
+                        self?.notifyListeners("transcriptAction", data: data)
+                    }
+                )
                 // The rect is the full layout truth from the web layer; safe
                 // areas are already accounted for on that side.
                 .ignoresSafeArea()

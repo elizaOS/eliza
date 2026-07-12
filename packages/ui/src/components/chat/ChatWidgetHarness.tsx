@@ -389,7 +389,33 @@ export function ChatWidgetHarness(): React.JSX.Element {
       if (!bridge) return;
       const handle = await bridge.addListener(
         "transcriptAction",
-        ({ message }) => appendUserAndAdvance(message),
+        (action) => {
+          // Typed envelope routing — mirror the DOM widgets exactly: only
+          // `message` reaches the conversation; navigate/prefill/background
+          // are LOCAL intents (window event / composer prefill / display
+          // store) and must never become chat text.
+          switch (action.kind) {
+            case "navigate":
+              window.dispatchEvent(
+                new CustomEvent("eliza:navigate:view", {
+                  detail: { view: action.view },
+                }),
+              );
+              return;
+            case "prefill":
+              chatInputSinkRef.current?.(action.text);
+              return;
+            case "background":
+              // Review harness: no display-preferences store is mounted;
+              // surface the intent without fabricating an applied change.
+              console.info(
+                `[ChatWidgetHarness] native background intent: ${action.presetId}`,
+              );
+              return;
+            default:
+              appendUserAndAdvance(action.message);
+          }
+        },
       );
       if (disposed) {
         void handle.remove();

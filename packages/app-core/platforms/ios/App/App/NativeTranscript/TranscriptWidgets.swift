@@ -17,7 +17,6 @@ import UIKit
 ///   form submit       → `[form:submit <formId>] {json-of-values}`
 ///   background swatch → `[background:set <presetId>]`
 ///   permission        → `__permission_card__:use_fallback feature=… permission=…`
-///   secret submit     → `[secret:submit <key>]` (JS owns the real submission)
 ///
 /// The pure-logic region below is Foundation-only by design: the sibling
 /// `TranscriptWidgets.test.swift` script extracts it verbatim (between the
@@ -80,6 +79,8 @@ enum TranscriptFormValue: Equatable {
 }
 
 /// `[form:submit <formId>] {json}` with keys serialized in field order —
+
+/// `[form:submit <formId>] {json}` with keys serialized in field order —
 /// matching `JSON.stringify` over the DOM widget's insertion-ordered record.
 func formSubmitActionString(
     formId: String,
@@ -91,16 +92,8 @@ func formSubmitActionString(
     return "[form:submit \(formId)] {\(body)}"
 }
 
-func backgroundSetActionString(presetId: String) -> String {
-    return "[background:set \(presetId)]"
-}
-
 func permissionFallbackActionString(feature: String, permission: String) -> String {
     return "__permission_card__:use_fallback feature=\(feature) permission=\(permission)"
-}
-
-func secretSubmitActionString(key: String) -> String {
-    return "[secret:submit \(key)]"
 }
 
 /// Choice taps pass the option's `value` through unchanged (spec.ts: "choice
@@ -455,7 +448,7 @@ let transcriptBackgroundPresets: [TranscriptBackgroundPreset] = [
 
 // MARK: - Design tokens (dark glass; orange #ff7a3d is the ONLY accent)
 
-enum TranscriptTheme {
+enum TranscriptWidgetTheme {
     static let accent = Color(red: 1.0, green: 122.0 / 255.0, blue: 61.0 / 255.0)
     static let textPrimary = Color.white.opacity(0.92)
     static let textSecondary = Color.white.opacity(0.62)
@@ -520,17 +513,17 @@ private struct TranscriptChipStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(.system(size: 13, weight: .medium))
-            .foregroundColor(highlighted ? TranscriptTheme.accent : TranscriptTheme.textPrimary)
+            .foregroundColor(highlighted ? TranscriptWidgetTheme.accent : TranscriptWidgetTheme.textPrimary)
             .padding(.horizontal, 12)
             .padding(.vertical, 7)
             .background(
                 Capsule(style: .continuous)
-                    .fill(TranscriptTheme.chipFill)
+                    .fill(TranscriptWidgetTheme.chipFill)
             )
             .overlay(
                 Capsule(style: .continuous)
                     .strokeBorder(
-                        highlighted ? TranscriptTheme.accent.opacity(0.7) : TranscriptTheme.hairline,
+                        highlighted ? TranscriptWidgetTheme.accent.opacity(0.7) : TranscriptWidgetTheme.hairline,
                         lineWidth: 1
                     )
             )
@@ -594,17 +587,17 @@ struct TranscriptChoiceView: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(TranscriptTheme.accent)
+                        .foregroundColor(TranscriptWidgetTheme.accent)
                 }
                 Text(option.label)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 8)
                 if !isSelected {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(TranscriptTheme.textMuted)
+                        .foregroundColor(TranscriptWidgetTheme.textMuted)
                 }
             }
             .padding(.horizontal, 14)
@@ -612,12 +605,12 @@ struct TranscriptChoiceView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(TranscriptTheme.chipFill)
+                    .fill(TranscriptWidgetTheme.chipFill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(
-                        isSelected ? TranscriptTheme.accent.opacity(0.7) : TranscriptTheme.hairline,
+                        isSelected ? TranscriptWidgetTheme.accent.opacity(0.7) : TranscriptWidgetTheme.hairline,
                         lineWidth: 1
                     )
             )
@@ -653,12 +646,12 @@ struct TranscriptChoiceView: View {
                     TextField("Type your answer…", text: $customText)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
-                        .foregroundColor(TranscriptTheme.textPrimary)
+                        .foregroundColor(TranscriptWidgetTheme.textPrimary)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(
                             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(TranscriptTheme.chipFill)
+                                .fill(TranscriptWidgetTheme.chipFill)
                         )
                         .frame(minWidth: 140)
                     Button("Send") {
@@ -669,8 +662,8 @@ struct TranscriptChoiceView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(
                         customText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                            ? TranscriptTheme.textMuted
-                            : TranscriptTheme.accent
+                            ? TranscriptWidgetTheme.textMuted
+                            : TranscriptWidgetTheme.accent
                     )
                 }
             } else {
@@ -685,12 +678,14 @@ struct TranscriptChoiceView: View {
 
 // MARK: - followups
 
-/// `[FOLLOWUPS]` — dismissible suggestion chips. Every kind emits its encoded
-/// `payload` string on the one action channel (the JS side routes
-/// reply/navigate/prompt); a `reply` locks the row, `navigate` dismisses it.
+/// `[FOLLOWUPS]` — dismissible suggestion chips. Only a REPLY becomes a chat
+/// message; navigate/prompt are LOCAL intents on the DOM side (window event /
+/// composer prefill), so they travel as typed envelopes the JS listener
+/// routes — never as chat text (contract: spec.ts NativeTranscriptAction).
 struct TranscriptFollowupsView: View {
     let data: TranscriptFollowupsData
     let emit: (String) -> Void
+    let emitEnvelope: ([String: String]) -> Void
 
     @State private var lockedPayload: String?
     @State private var dismissed = false
@@ -705,9 +700,9 @@ struct TranscriptFollowupsView: View {
                     Button(action: { dismissed = true }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(TranscriptTheme.textMuted)
+                            .foregroundColor(TranscriptWidgetTheme.textMuted)
                             .padding(7)
-                            .background(Circle().fill(TranscriptTheme.chipFill))
+                            .background(Circle().fill(TranscriptWidgetTheme.chipFill))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Dismiss suggestions")
@@ -740,13 +735,14 @@ struct TranscriptFollowupsView: View {
 
     private func act(_ option: TranscriptFollowupOption) {
         guard lockedPayload == nil else { return }
-        emit(option.payload)
         switch option.kind {
         case "navigate":
+            emitEnvelope(["kind": "navigate", "view": option.payload])
             dismissed = true
         case "prompt":
-            break
+            emitEnvelope(["kind": "prefill", "text": option.payload])
         default:
+            emit(option.payload)
             lockedPayload = option.payload
         }
     }
@@ -776,12 +772,12 @@ struct TranscriptFormView: View {
             if let title = spec.title {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
             }
             if let description = spec.description {
                 Text(description)
                     .font(.system(size: 12))
-                    .foregroundColor(TranscriptTheme.textSecondary)
+                    .foregroundColor(TranscriptWidgetTheme.textSecondary)
             }
             ForEach(spec.fields, id: \.name) { field in
                 fieldRow(field)
@@ -794,7 +790,7 @@ struct TranscriptFormView: View {
                     .padding(.vertical, 8)
                     .background(
                         Capsule(style: .continuous)
-                            .fill(submitted ? TranscriptTheme.accent.opacity(0.45) : TranscriptTheme.accent)
+                            .fill(submitted ? TranscriptWidgetTheme.accent.opacity(0.45) : TranscriptWidgetTheme.accent)
                     )
             }
             .buttonStyle(.plain)
@@ -804,11 +800,11 @@ struct TranscriptFormView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(TranscriptTheme.cardFill)
+                .fill(TranscriptWidgetTheme.cardFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(TranscriptTheme.hairline, lineWidth: 1)
+                .strokeBorder(TranscriptWidgetTheme.hairline, lineWidth: 1)
         )
     }
 
@@ -832,14 +828,14 @@ struct TranscriptFormView: View {
                 )) {
                     Text(field.displayLabel)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(TranscriptTheme.textPrimary)
+                        .foregroundColor(TranscriptWidgetTheme.textPrimary)
                 }
-                .tint(TranscriptTheme.accent)
+                .tint(TranscriptWidgetTheme.accent)
                 .disabled(submitted)
             } else if field.type == "select" {
                 Text(field.displayLabel)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
                 Menu {
                     ForEach(field.options, id: \.value) { option in
                         Button(option.label) {
@@ -853,19 +849,19 @@ struct TranscriptFormView: View {
                             .font(.system(size: 13))
                             .foregroundColor(
                                 (values[field.name]?.stringValue ?? "").isEmpty
-                                    ? TranscriptTheme.textMuted
-                                    : TranscriptTheme.textPrimary
+                                    ? TranscriptWidgetTheme.textMuted
+                                    : TranscriptWidgetTheme.textPrimary
                             )
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(TranscriptTheme.textMuted)
+                            .foregroundColor(TranscriptWidgetTheme.textMuted)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(TranscriptTheme.chipFill)
+                            .fill(TranscriptWidgetTheme.chipFill)
                     )
                     .overlay(fieldBorder(field))
                 }
@@ -873,17 +869,17 @@ struct TranscriptFormView: View {
             } else {
                 Text(field.displayLabel)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
                 TextField(field.placeholder ?? "", text: stringBinding(for: field))
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
                     .keyboardType(field.type == "number" ? .decimalPad : .default)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(TranscriptTheme.chipFill)
+                            .fill(TranscriptWidgetTheme.chipFill)
                     )
                     .overlay(fieldBorder(field))
                     .disabled(submitted)
@@ -892,7 +888,7 @@ struct TranscriptFormView: View {
             if let error = errors[field.name] {
                 Text(error)
                     .font(.system(size: 11))
-                    .foregroundColor(TranscriptTheme.danger)
+                    .foregroundColor(TranscriptWidgetTheme.danger)
             }
         }
     }
@@ -900,7 +896,7 @@ struct TranscriptFormView: View {
     private func fieldBorder(_ field: TranscriptFormFieldSpec) -> some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
             .strokeBorder(
-                errors[field.name] != nil ? TranscriptTheme.danger.opacity(0.7) : TranscriptTheme.hairline,
+                errors[field.name] != nil ? TranscriptWidgetTheme.danger.opacity(0.7) : TranscriptWidgetTheme.hairline,
                 lineWidth: 1
             )
     }
@@ -950,11 +946,11 @@ struct TranscriptWorkflowView: View {
             HStack {
                 Text(data.title ?? "Workflow")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
                 Spacer()
                 Text("\(data.doneCount)/\(data.steps.count)")
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
-                    .foregroundColor(data.hasFailure ? TranscriptTheme.danger : TranscriptTheme.textMuted)
+                    .foregroundColor(data.hasFailure ? TranscriptWidgetTheme.danger : TranscriptWidgetTheme.textMuted)
             }
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(data.steps.enumerated()), id: \.offset) { index, step in
@@ -963,7 +959,7 @@ struct TranscriptWorkflowView: View {
                             .frame(width: 16)
                         Text("\(index + 1).")
                             .font(.system(size: 11).monospacedDigit())
-                            .foregroundColor(TranscriptTheme.textMuted)
+                            .foregroundColor(TranscriptWidgetTheme.textMuted)
                         Text(step.label)
                             .font(.system(size: 13))
                             .foregroundColor(stepTone(step.status))
@@ -980,27 +976,27 @@ struct TranscriptWorkflowView: View {
         case "done":
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.ok)
+                .foregroundColor(TranscriptWidgetTheme.ok)
         case "failed":
             Image(systemName: "xmark.circle.fill")
                 .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.danger)
+                .foregroundColor(TranscriptWidgetTheme.danger)
         case "running":
             ProgressView()
                 .controlSize(.mini)
-                .tint(TranscriptTheme.accent)
+                .tint(TranscriptWidgetTheme.accent)
         default:
             Image(systemName: "circle")
                 .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.textMuted)
+                .foregroundColor(TranscriptWidgetTheme.textMuted)
         }
     }
 
     private func stepTone(_ status: String) -> Color {
         switch status {
-        case "done": return TranscriptTheme.textMuted
-        case "failed": return TranscriptTheme.danger
-        default: return TranscriptTheme.textPrimary
+        case "done": return TranscriptWidgetTheme.textMuted
+        case "failed": return TranscriptWidgetTheme.danger
+        default: return TranscriptWidgetTheme.textPrimary
         }
     }
 }
@@ -1016,7 +1012,7 @@ struct TranscriptChecklistView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(data.title ?? "Checklist")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(TranscriptTheme.textPrimary)
+                .foregroundColor(TranscriptWidgetTheme.textPrimary)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(data.items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -1026,10 +1022,10 @@ struct TranscriptChecklistView: View {
                             .font(.system(size: 13))
                             .foregroundColor(
                                 item.status == "completed"
-                                    ? TranscriptTheme.textMuted
-                                    : TranscriptTheme.textPrimary
+                                    ? TranscriptWidgetTheme.textMuted
+                                    : TranscriptWidgetTheme.textPrimary
                             )
-                            .strikethrough(item.status == "completed", color: TranscriptTheme.textMuted)
+                            .strikethrough(item.status == "completed", color: TranscriptWidgetTheme.textMuted)
                     }
                 }
             }
@@ -1043,15 +1039,15 @@ struct TranscriptChecklistView: View {
         case "completed":
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.ok)
+                .foregroundColor(TranscriptWidgetTheme.ok)
         case "in_progress":
             Image(systemName: "circle.lefthalf.filled")
                 .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.accent)
+                .foregroundColor(TranscriptWidgetTheme.accent)
         default:
             Image(systemName: "circle")
                 .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.textMuted)
+                .foregroundColor(TranscriptWidgetTheme.textMuted)
         }
     }
 }
@@ -1068,30 +1064,30 @@ struct TranscriptTaskView: View {
         HStack(spacing: 10) {
             Image(systemName: "hammer")
                 .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.textSecondary)
+                .foregroundColor(TranscriptWidgetTheme.textSecondary)
             Text(data.title)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(TranscriptTheme.textPrimary)
+                .foregroundColor(TranscriptWidgetTheme.textPrimary)
                 .lineLimit(2)
             Spacer(minLength: 8)
             Text((data.status ?? "task").replacingOccurrences(of: "_", with: " "))
                 .font(.system(size: 10, weight: .semibold))
                 .textCase(.uppercase)
-                .foregroundColor(TranscriptTheme.textSecondary)
+                .foregroundColor(TranscriptWidgetTheme.textSecondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Capsule(style: .continuous).fill(TranscriptTheme.chipFill))
-                .overlay(Capsule(style: .continuous).strokeBorder(TranscriptTheme.hairline, lineWidth: 1))
+                .background(Capsule(style: .continuous).fill(TranscriptWidgetTheme.chipFill))
+                .overlay(Capsule(style: .continuous).strokeBorder(TranscriptWidgetTheme.hairline, lineWidth: 1))
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(TranscriptTheme.cardFill)
+                .fill(TranscriptWidgetTheme.cardFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(TranscriptTheme.hairline, lineWidth: 1)
+                .strokeBorder(TranscriptWidgetTheme.hairline, lineWidth: 1)
         )
         .accessibilityLabel("Task: \(data.title)")
     }
@@ -1103,7 +1099,7 @@ struct TranscriptTaskView: View {
 /// `[background:set <presetId>]` and marks the swatch selected. Swatch
 /// gradients approximate each shader's hue (no blue; orange stays accent).
 struct TranscriptBackgroundView: View {
-    let emit: (String) -> Void
+    let emitEnvelope: ([String: String]) -> Void
 
     @State private var selectedPresetId: String?
 
@@ -1118,7 +1114,7 @@ struct TranscriptBackgroundView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Background")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(TranscriptTheme.textPrimary)
+                .foregroundColor(TranscriptWidgetTheme.textPrimary)
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
                 spacing: 8
@@ -1136,7 +1132,7 @@ struct TranscriptBackgroundView: View {
         let colors = Self.swatchGradients[preset.id] ?? [Color.black, Color.gray]
         return Button(action: {
             selectedPresetId = preset.id
-            emit(backgroundSetActionString(presetId: preset.id))
+            emitEnvelope(["kind": "background", "presetId": preset.id])
         }) {
             ZStack(alignment: .bottomLeading) {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1154,7 +1150,7 @@ struct TranscriptBackgroundView: View {
                     .padding(8)
                 if isSelected {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(TranscriptTheme.accent, lineWidth: 2)
+                        .strokeBorder(TranscriptWidgetTheme.accent, lineWidth: 2)
                 }
             }
         }
@@ -1181,10 +1177,10 @@ struct TranscriptPermissionCardView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(permissionDisplayLabel(payload.permission))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
                 Text(payload.reason)
                     .font(.system(size: 13))
-                    .foregroundColor(TranscriptTheme.textSecondary)
+                    .foregroundColor(TranscriptWidgetTheme.textSecondary)
                 HStack(spacing: 10) {
                     if payload.fallbackOffered {
                         Button(action: {
@@ -1202,7 +1198,7 @@ struct TranscriptPermissionCardView: View {
                     Button(action: { dismissed = true }) {
                         Text("Not now")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(TranscriptTheme.textMuted)
+                            .foregroundColor(TranscriptWidgetTheme.textMuted)
                     }
                     .buttonStyle(.plain)
                 }
@@ -1211,11 +1207,11 @@ struct TranscriptPermissionCardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(TranscriptTheme.cardFill)
+                    .fill(TranscriptWidgetTheme.cardFill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(TranscriptTheme.hairline, lineWidth: 1)
+                    .strokeBorder(TranscriptWidgetTheme.hairline, lineWidth: 1)
             )
             .accessibilityLabel("Permission request: \(permissionDisplayLabel(payload.permission))")
         }
@@ -1224,77 +1220,42 @@ struct TranscriptPermissionCardView: View {
 
 // MARK: - secretRequest (message side-channel)
 
-/// Pending secret/OAuth request: reason, masked SecureField, submit. Submit
-/// emits only the `[secret:submit <key>]` SIGNAL — the typed value never rides
-/// the action channel; the JS side owns the real secure submission.
+/// Pending secret/OAuth request — DISPLAY-ONLY on native (v1 contract):
+/// credential values must travel client.updateSecrets / tunnelCredential,
+/// never chat text or the transcript bridge, so this card carries no input.
+/// The DOM SensitiveRequestBlock (which the composer surface renders) owns
+/// collection; this row keeps the request visible and legible.
 struct TranscriptSecretRequestView: View {
     let data: TranscriptSecretRequestData
-    let emit: (String) -> Void
-
-    @State private var secretValue = ""
-    @State private var submitted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 12))
-                    .foregroundColor(TranscriptTheme.accent)
+                    .foregroundColor(TranscriptWidgetTheme.accent)
                 Text(data.fieldLabel)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(TranscriptTheme.textPrimary)
+                    .foregroundColor(TranscriptWidgetTheme.textPrimary)
             }
             if let reason = data.reason {
                 Text(reason)
                     .font(.system(size: 12))
-                    .foregroundColor(TranscriptTheme.textSecondary)
+                    .foregroundColor(TranscriptWidgetTheme.textSecondary)
             }
-            SecureField("••••••••", text: $secretValue)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .foregroundColor(TranscriptTheme.textPrimary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(TranscriptTheme.chipFill)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(TranscriptTheme.hairline, lineWidth: 1)
-                )
-                .disabled(submitted)
-            Button(action: {
-                guard !submitted && !secretValue.isEmpty else { return }
-                submitted = true
-                emit(secretSubmitActionString(key: data.key))
-            }) {
-                Text(submitted ? "Submitted" : data.submitLabel)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.black.opacity(0.85))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(
-                                submitted || secretValue.isEmpty
-                                    ? TranscriptTheme.accent.opacity(0.45)
-                                    : TranscriptTheme.accent
-                            )
-                    )
-            }
-            .buttonStyle(.plain)
-            .disabled(submitted || secretValue.isEmpty)
+            Text("Provide it from the chat composer — secure values never travel the transcript surface.")
+                .font(.system(size: 11))
+                .foregroundColor(TranscriptWidgetTheme.textMuted)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(TranscriptTheme.cardFill)
+                .fill(TranscriptWidgetTheme.cardFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(TranscriptTheme.hairline, lineWidth: 1)
+                .strokeBorder(TranscriptWidgetTheme.hairline, lineWidth: 1)
         )
     }
 }
@@ -1310,21 +1271,21 @@ struct TranscriptUiSpecFallbackView: View {
         HStack(spacing: 8) {
             Image(systemName: "sparkles")
                 .font(.system(size: 12))
-                .foregroundColor(TranscriptTheme.accent)
+                .foregroundColor(TranscriptWidgetTheme.accent)
             Text("Generated UI — open in the app view")
                 .font(.system(size: 12))
-                .foregroundColor(TranscriptTheme.textSecondary)
+                .foregroundColor(TranscriptWidgetTheme.textSecondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(TranscriptTheme.cardFill)
+                .fill(TranscriptWidgetTheme.cardFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(TranscriptTheme.hairline, lineWidth: 1)
+                .strokeBorder(TranscriptWidgetTheme.hairline, lineWidth: 1)
         )
         .accessibilityLabel("Generated UI")
     }
@@ -1339,21 +1300,21 @@ struct TranscriptConfigFallbackView: View {
         HStack(spacing: 8) {
             Image(systemName: "gearshape")
                 .font(.system(size: 12))
-                .foregroundColor(TranscriptTheme.textSecondary)
+                .foregroundColor(TranscriptWidgetTheme.textSecondary)
             Text("Plugin configuration — \(pluginId)")
                 .font(.system(size: 12))
-                .foregroundColor(TranscriptTheme.textSecondary)
+                .foregroundColor(TranscriptWidgetTheme.textSecondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(TranscriptTheme.cardFill)
+                .fill(TranscriptWidgetTheme.cardFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(TranscriptTheme.hairline, lineWidth: 1)
+                .strokeBorder(TranscriptWidgetTheme.hairline, lineWidth: 1)
         )
         .accessibilityLabel("Plugin configuration: \(pluginId)")
     }
@@ -1367,12 +1328,12 @@ struct TranscriptMalformedWidgetView: View {
     var body: some View {
         Text("Unavailable widget (\(kind))")
             .font(.system(size: 12))
-            .foregroundColor(TranscriptTheme.textMuted)
+            .foregroundColor(TranscriptWidgetTheme.textMuted)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(TranscriptTheme.cardFill)
+                    .fill(TranscriptWidgetTheme.cardFill)
             )
     }
 }
@@ -1380,11 +1341,11 @@ struct TranscriptMalformedWidgetView: View {
 // MARK: - Registration seam
 
 /// Builder signature the registry consumes: raw widget `data` dictionary from
-/// the decoded frame plus the single action-emit closure, returning the
-/// type-erased widget view.
+/// the decoded frame plus the full widget context (message + envelope
+/// emitters), returning the type-erased widget view.
 typealias TranscriptWidgetBuilder = (
     _ widgetData: [String: Any],
-    _ emit: @escaping (String) -> Void
+    _ context: TranscriptWidgetContext
 ) -> AnyView
 
 /// Every builtin widgetKind → builder. Exposed as a plain dictionary so the
@@ -1392,23 +1353,28 @@ typealias TranscriptWidgetBuilder = (
 /// registration API shape.
 func transcriptBuiltinWidgetBuilders() -> [String: TranscriptWidgetBuilder] {
     return [
-        "choice": { data, emit in
+        "choice": { data, context in
             guard let choice = TranscriptChoiceData(dict: data) else {
                 return AnyView(TranscriptMalformedWidgetView(kind: "choice"))
             }
-            return AnyView(TranscriptChoiceView(data: choice, emit: emit))
+            return AnyView(
+                TranscriptChoiceView(data: choice, emit: context.sendAction))
         },
-        "followups": { data, emit in
+        "followups": { data, context in
             guard let followups = TranscriptFollowupsData(dict: data) else {
                 return AnyView(TranscriptMalformedWidgetView(kind: "followups"))
             }
-            return AnyView(TranscriptFollowupsView(data: followups, emit: emit))
+            return AnyView(
+                TranscriptFollowupsView(
+                    data: followups, emit: context.sendAction,
+                    emitEnvelope: context.sendEnvelope))
         },
-        "form": { data, emit in
+        "form": { data, context in
             guard let spec = TranscriptFormSpec(widgetData: data) else {
                 return AnyView(TranscriptMalformedWidgetView(kind: "form"))
             }
-            return AnyView(TranscriptFormView(spec: spec, emit: emit))
+            return AnyView(
+                TranscriptFormView(spec: spec, emit: context.sendAction))
         },
         "workflow": { data, _ in
             guard let workflow = TranscriptWorkflowData(widgetData: data) else {
@@ -1428,21 +1394,64 @@ func transcriptBuiltinWidgetBuilders() -> [String: TranscriptWidgetBuilder] {
             }
             return AnyView(TranscriptTaskView(data: task))
         },
-        "background": { _, emit in
-            AnyView(TranscriptBackgroundView(emit: emit))
+        "background": { _, context in
+            AnyView(TranscriptBackgroundView(emitEnvelope: context.sendEnvelope))
         },
     ]
 }
 
-/// The seam the ios-core lane calls once at plugin setup. `WidgetRegistry`
-/// (owned by ios-core's WidgetRegistry.swift) is expected to expose
-/// `static func register(_ kind: String, _ build: @escaping TranscriptWidgetBuilder)`;
-/// if core chose a different shape, adapt this loop — the builders dictionary
-/// above is the stable surface.
-extension WidgetRegistry {
+/// The seam ios-core's plugin calls once at setup: register every builtin
+/// widget body (and the reserved permission/ui-spec/config kinds) with the
+/// core registry, adapting its `TranscriptWidgetContext` (JSON-typed data +
+/// action/envelope emitters) to the widget views' plain-dictionary decoders.
+@available(iOS 16.0, *)
+extension TranscriptWidgetRegistry {
     static func registerBuiltins() {
         for (kind, build) in transcriptBuiltinWidgetBuilders() {
-            register(kind, build)
+            register(kind) { context in
+                build(context.data.dictionaryValue ?? [:], context)
+            }
+        }
+        register(TranscriptWidgetRegistry.permissionKind) { context in
+            guard
+                let payload = TranscriptPermissionPayload(
+                    dict: context.data.dictionaryValue ?? [:])
+            else {
+                return AnyView(TranscriptMalformedWidgetView(kind: "permission"))
+            }
+            return AnyView(
+                TranscriptPermissionCardView(
+                    payload: payload, emit: context.sendAction))
+        }
+        register(TranscriptWidgetRegistry.uiSpecKind) { context in
+            AnyView(TranscriptUiSpecFallbackView(raw: context.data.stringValue ?? ""))
+        }
+        register(TranscriptWidgetRegistry.configKind) { context in
+            AnyView(
+                TranscriptConfigFallbackView(
+                    pluginId: context.data.stringValue ?? ""))
         }
     }
+}
+
+/// Bridge core's typed JSON to the widget decoders' `[String: Any]` shape.
+@available(iOS 16.0, *)
+extension TranscriptJSONValue {
+    var anyValue: Any {
+        switch self {
+        case .null: return NSNull()
+        case .bool(let value): return value
+        case .number(let value): return value
+        case .string(let value): return value
+        case .array(let values): return values.map(\.anyValue)
+        case .object(let members):
+            return members.mapValues(\.anyValue)
+        }
+    }
+
+    var dictionaryValue: [String: Any]? {
+        guard case .object(let members) = self else { return nil }
+        return members.mapValues(\.anyValue)
+    }
+
 }

@@ -40,9 +40,12 @@ import SwiftUI
 struct TranscriptWidgetContext {
     let widgetKind: String
     let data: TranscriptJSONValue
-    /// Emits one action string on the shared `transcriptAction` listener —
-    /// the same strings the DOM widgets pass to `sendActionMessage`.
+    /// Emits one `kind: "message"` action — the same strings the DOM widgets
+    /// pass to `sendActionMessage`.
     let sendAction: (String) -> Void
+    /// Emits a typed envelope (navigate / prefill / background — the intents
+    /// whose DOM equivalents are LOCAL, never chat text; see spec.ts).
+    let sendEnvelope: ([String: String]) -> Void
 }
 
 /// Conformance shape for widget bodies registered by type. Closures work too

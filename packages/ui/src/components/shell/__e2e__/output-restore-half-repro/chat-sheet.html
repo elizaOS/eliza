@@ -153010,14 +153010,12 @@ void main(){
         return;
       }
       focusThreadRef.current = true;
-      if (h >= openH - SHEET_DETENT_MAGNET) {
+      if (h >= (halfH + openH) / 2) {
         goToDetent("full");
-      } else if (Math.abs(h - halfH) <= SHEET_DETENT_MAGNET) {
+      } else if (h >= halfH / 2) {
         goToDetent("half");
       } else {
-        setFreeH(h);
-        setMode("half");
-        setMaximized(false);
+        goToDetent("collapsed");
       }
     }, [
       pinnedOpen,

@@ -39,6 +39,7 @@ import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -47,7 +48,15 @@ public final class TranscriptWidgets {
 
     /** Sink for every widget interaction — one channel, plain strings. */
     public interface ActionSink {
+        /** kind "message" — the DOM sendActionMessage strings. */
         void send(String message);
+
+        /**
+         * Typed local intent (navigate / prefill / background — spec.ts
+         * NativeTranscriptAction): the JS listener routes these like the DOM
+         * widgets do; they must never become chat text.
+         */
+        void sendEnvelope(Map<String, String> envelope);
     }
 
     private TranscriptWidgets() {}
@@ -156,13 +165,28 @@ public final class TranscriptWidgets {
             TextView chip = TranscriptUi.chip(context, option.label + glyph);
             chip.setOnClickListener(v -> {
                 if (locked[0]) return;
-                if ("reply".equals(option.kind)) {
-                    // Only a reply locks the row (one decision per prompt);
-                    // prompt/navigate chips stay re-tappable like the DOM.
-                    locked[0] = true;
-                    lockRow(row, chip);
-                    TranscriptUi.markChipSelected(context, chip);
+                if ("navigate".equals(option.kind)) {
+                    // DOM parity: navigate dispatches a LOCAL view event and
+                    // sends nothing to the agent (followups.tsx).
+                    Map<String, String> envelope = new HashMap<>();
+                    envelope.put("kind", "navigate");
+                    envelope.put("view", option.payload);
+                    sink.sendEnvelope(envelope);
+                    return;
                 }
+                if ("prompt".equals(option.kind)) {
+                    // DOM parity: prompt prefills the composer, no message.
+                    Map<String, String> envelope = new HashMap<>();
+                    envelope.put("kind", "prefill");
+                    envelope.put("text", option.payload);
+                    sink.sendEnvelope(envelope);
+                    return;
+                }
+                // Reply (and unknown kinds, DOM default branch): one decision
+                // per prompt — lock the row and send the payload.
+                locked[0] = true;
+                lockRow(row, chip);
+                TranscriptUi.markChipSelected(context, chip);
                 sink.send(TranscriptActions.followup(option.payload));
             });
             LinearLayout.LayoutParams params = TranscriptUi.wrapParams();
@@ -406,8 +430,14 @@ public final class TranscriptWidgets {
         for (int color : BACKGROUND_PRESETS) {
             View swatch = TranscriptUi.swatch(context, color);
             String hex = TranscriptUi.cssHex(color);
-            swatch.setOnClickListener(
-                    v -> sink.send(TranscriptActions.backgroundPick(hex)));
+            swatch.setOnClickListener(v -> {
+                // Local display intent — DOM mutates the BackgroundConfig
+                // store; never chat text (spec.ts NativeTranscriptAction).
+                Map<String, String> envelope = new HashMap<>();
+                envelope.put("kind", "background");
+                envelope.put("presetId", hex);
+                sink.sendEnvelope(envelope);
+            });
             row.addView(swatch);
         }
         HorizontalScrollView scroller = new HorizontalScrollView(context);
@@ -444,17 +474,11 @@ public final class TranscriptWidgets {
 
         LinearLayout buttons = new LinearLayout(context);
         buttons.setOrientation(LinearLayout.HORIZONTAL);
+        // No native "Grant access": the DOM card emits `granted` only after a
+        // REAL OS runtime-permission request succeeds; emitting it from a
+        // button tap fabricates capability. Granting stays on the DOM/plugin
+        // surface until the native card drives ActivityCompat itself.
         final boolean[] decided = {false};
-        TextView grant = TranscriptUi.primaryButton(context, "Grant access");
-        grant.setOnClickListener(v -> {
-            if (decided[0]) return;
-            decided[0] = true;
-            grant.setText("✓ Granted");
-            lockRow(buttons, grant);
-            sink.send(TranscriptActions.permissionGranted(data.feature,
-                    data.permission));
-        });
-        buttons.addView(grant, TranscriptUi.wrapParams());
         if (data.fallbackOffered) {
             TextView fallback = TranscriptUi.chip(context, "Use fallback");
             fallback.setOnClickListener(v -> {
@@ -491,62 +515,16 @@ public final class TranscriptWidgets {
             params.topMargin = dp(context, 4);
             column.addView(reason, params);
         }
-        // Collection is gated exactly like the DOM block: pending status, a
-        // `secret` form, and delivery sanctioning this channel.
-        boolean collectable = "pending".equals(data.status)
-                && "secret".equals(data.formKind)
-                && data.canCollectInChannel
-                && !data.fields.isEmpty();
-        if (!collectable) return column;
-
-        Map<String, EditText> inputs = new LinkedHashMap<>();
-        for (TranscriptModels.SecretField fieldSpec : data.fields) {
-            TextView label = TranscriptUi.text(context, fieldSpec.label, 12f,
-                    TranscriptUi.TEXT_PRIMARY);
-            label.setTypeface(Typeface.DEFAULT_BOLD);
-            LinearLayout.LayoutParams labelParams = TranscriptUi.fillParams();
-            labelParams.topMargin = dp(context, 10);
-            column.addView(label, labelParams);
-            EditText input = field(context, "",
-                    "secret".equals(fieldSpec.input));
-            LinearLayout.LayoutParams params = TranscriptUi.fillParams();
-            params.topMargin = dp(context, 4);
-            column.addView(input, params);
-            inputs.put(fieldSpec.name, input);
-        }
-        TextView error = TranscriptUi.text(context, "", 11f,
-                TranscriptUi.DANGER);
-        error.setVisibility(View.GONE);
-        column.addView(error, TranscriptUi.fillParams());
-
-        TextView submit = TranscriptUi.primaryButton(context,
-                data.submitLabel);
-        final boolean[] saved = {false};
-        submit.setOnClickListener(v -> {
-            if (saved[0]) return;
-            Map<String, String> values = new LinkedHashMap<>();
-            for (TranscriptModels.SecretField fieldSpec : data.fields) {
-                EditText input = inputs.get(fieldSpec.name);
-                String value = input == null
-                        ? "" : input.getText().toString().trim();
-                if (fieldSpec.required && value.isEmpty()) {
-                    error.setText(fieldSpec.label + " is required");
-                    error.setVisibility(View.VISIBLE);
-                    return;
-                }
-                if (!value.isEmpty()) values.put(fieldSpec.name, value);
-            }
-            if (values.isEmpty()) return;
-            saved[0] = true;
-            error.setVisibility(View.GONE);
-            submit.setText("Saved");
-            submit.setAlpha(0.5f);
-            disableInputs(column);
-            sink.send(TranscriptActions.secretSubmit(values));
-        });
-        LinearLayout.LayoutParams submitParams = TranscriptUi.wrapParams();
-        submitParams.topMargin = dp(context, 12);
-        column.addView(submit, submitParams);
+        // DISPLAY-ONLY (v1 contract): credential values must travel
+        // client.updateSecrets / client.tunnelCredential — never chat text or
+        // the transcript bridge. The DOM SensitiveRequestBlock owns
+        // collection; this card keeps the request visible.
+        TextView hint = TranscriptUi.text(context,
+                "Provide it from the chat composer — secure values never travel the transcript surface.",
+                11f, TranscriptUi.TEXT_MUTED);
+        LinearLayout.LayoutParams hintParams = TranscriptUi.fillParams();
+        hintParams.topMargin = dp(context, 8);
+        column.addView(hint, hintParams);
         return column;
     }
 

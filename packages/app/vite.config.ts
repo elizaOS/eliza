@@ -2019,6 +2019,15 @@ export default defineConfig({
     __ELIZA_CHAT_UI_HARNESS__: JSON.stringify(
       process.env.ELIZA_CHAT_UI_HARNESS === "1",
     ),
+    // Native-transcript demo gate for the chat harness (ChatWidgetHarness in
+    // @elizaos/ui). Baked in at build time because host tooling cannot seed
+    // WKWebView localStorage on a simulator (`simctl spawn … defaults` writes
+    // NSUserDefaults, which WKWebView storage never reads) — see
+    // scripts/ios-native-transcript-check.mjs. The localStorage flag
+    // "eliza:native-transcript-demo" remains the runtime alternative.
+    __ELIZA_NATIVE_TRANSCRIPT_DEMO__: JSON.stringify(
+      process.env.ELIZA_NATIVE_TRANSCRIPT_DEMO === "1",
+    ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
     [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(

@@ -244,26 +244,15 @@ public class TranscriptContractTest {
                         + " permission=reminders",
                 TranscriptActions.permissionFallback("onboarding.reminders",
                         "reminders"));
-        assertEquals(
-                "__permission_card__:granted feature=onboarding.reminders"
-                        + " permission=reminders",
-                TranscriptActions.permissionGranted("onboarding.reminders",
-                        "reminders"));
+        // Removed action formatters (granted / backgroundPick / secretSubmit)
+        // are ABSENT by contract: permission grant requires a real OS request,
+        // background is a local envelope intent, and secret values must never
+        // ride the chat channel (spec.ts NativeTranscriptAction). Compilation
+        // of this test is the guard — referencing them would fail the build.
         assertEquals(
                 "Please show me the configuration form for the discord"
                         + " plugin",
                 TranscriptActions.openPluginConfig("discord"));
-        assertEquals("Set the app background to #1a0c06",
-                TranscriptActions.backgroundPick("#1a0c06"));
-
-        Map<String, String> oneSecret = new LinkedHashMap<>();
-        oneSecret.put("HARNESS_API_KEY", "sk-test-123");
-        assertEquals("sk-test-123",
-                TranscriptActions.secretSubmit(oneSecret));
-        Map<String, String> twoSecrets = new LinkedHashMap<>(oneSecret);
-        twoSecrets.put("SECOND", "v2");
-        assertEquals("HARNESS_API_KEY=sk-test-123\nSECOND=v2",
-                TranscriptActions.secretSubmit(twoSecrets));
     }
 
     // ── Histograms ──────────────────────────────────────────────────────

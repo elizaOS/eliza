@@ -100,7 +100,18 @@ public class NativeTranscriptPlugin extends Plugin {
             }
             if (transcriptView == null) {
                 transcriptView = new TranscriptView(activity,
-                        this::emitAction);
+                        new TranscriptWidgets.ActionSink() {
+                            @Override
+                            public void send(String message) {
+                                emitAction(message);
+                            }
+
+                            @Override
+                            public void sendEnvelope(
+                                    java.util.Map<String, String> envelope) {
+                                emitEnvelope(envelope);
+                            }
+                        });
                 // Appended last = above the WebView: the list owns touch for
                 // its rect (glass panels sit below; this must sit on top).
                 container.addView(transcriptView);
@@ -133,10 +144,20 @@ public class NativeTranscriptPlugin extends Plugin {
         });
     }
 
-    /** Every widget interaction reaches JS as one plain action string. */
+    /** kind "message" — the DOM sendActionMessage strings. */
     private void emitAction(String message) {
         JSObject payload = new JSObject();
+        payload.put("kind", "message");
         payload.put("message", message);
+        notifyListeners("transcriptAction", payload);
+    }
+
+    /** Typed local intents (navigate/prefill/background — spec.ts). */
+    private void emitEnvelope(java.util.Map<String, String> envelope) {
+        JSObject payload = new JSObject();
+        for (java.util.Map.Entry<String, String> entry : envelope.entrySet()) {
+            payload.put(entry.getKey(), entry.getValue());
+        }
         notifyListeners("transcriptAction", payload);
     }
 

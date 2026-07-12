@@ -8,7 +8,10 @@
  * resolution (no static @capacitor/core import — this file rides the barrel
  * into Node), memoized availability, capability-probe error policy.
  */
-import type { NativeTranscriptFrame } from "../chat/native-transcript/spec";
+import type {
+  NativeTranscriptAction,
+  NativeTranscriptFrame,
+} from "../chat/native-transcript/spec";
 
 export interface NativeTranscriptRect {
   x: number;
@@ -26,7 +29,7 @@ interface NativeTranscriptPlugin {
   hide(): Promise<void>;
   addListener(
     event: "transcriptAction",
-    handler: (action: { message: string }) => void,
+    handler: (action: NativeTranscriptAction) => void,
   ): Promise<{ remove: () => Promise<void> }>;
 }
 
