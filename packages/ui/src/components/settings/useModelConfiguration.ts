@@ -467,7 +467,15 @@ export function useModelConfiguration(): ModelConfigurationState {
    * `configured` markers are re-resolved.
    */
   const refreshConfig = useCallback(async () => {
-    const config = await client.getModelsConfig();
+    let config: ModelsConfigResponse;
+    try {
+      config = await client.getModelsConfig();
+    } catch {
+      // error-policy:J4 the write itself already succeeded; a failed
+      // source-note refresh must not repaint a successful save as an error.
+      // The markers simply stay as they were until the next full load.
+      return;
+    }
     if (disposedRef.current) return;
     setLoad((prev) =>
       prev.phase === "ready"
@@ -509,16 +517,21 @@ export function useModelConfiguration(): ModelConfigurationState {
   }, []);
 
   const waitForRuntimeRunning = useCallback(async () => {
+    const isRunning = async (): Promise<boolean> => {
+      try {
+        const status = await client.getStatus();
+        return status.state === "running";
+      } catch {
+        // error-policy:J4 status is expected to fail while the agent is down
+        // mid-restart; "unreachable" is the designed not-yet-running signal
+        // the poll loop keeps waiting on.
+        return false;
+      }
+    };
     const startedAt = Date.now();
     for (;;) {
       if (disposedRef.current) return;
-      try {
-        const status = await client.getStatus();
-        if (status.state === "running") return;
-      } catch {
-        // error-policy:J4 status is expected to fail while the agent is down
-        // mid-restart; the poll loop itself is the designed degrade.
-      }
+      if (await isRunning()) return;
       if (Date.now() - startedAt >= RESTART_MAX_WAIT_MS) return;
       await new Promise((resolve) =>
         setTimeout(resolve, RESTART_POLL_INTERVAL_MS),
@@ -573,10 +586,7 @@ export function useModelConfiguration(): ModelConfigurationState {
           await waitForRuntimeRunning();
           if (disposedRef.current) return;
         }
-        await refreshConfig().catch(() => {
-          // error-policy:J4 the write itself succeeded; a failed source-note
-          // refresh must not repaint a successful save as an error.
-        });
+        await refreshConfig();
         if (disposedRef.current) return;
         setSaveState(group, {
           phase: "saved",
