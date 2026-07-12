@@ -2872,10 +2872,11 @@ export function ChatOverlay({
   const composerCapsuleMarginBottom = useMotionTemplate`calc(${fullBleedT} * (max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.75rem))`;
   const composerCapsuleWidth = useMotionTemplate`calc(100% - ${fullBleedT} * 24px)`;
   const composerCapsuleBorder = useMotionTemplate`color-mix(in srgb, var(--border-strong) calc(${fullBleedT} * 100%), transparent)`;
-  // Glassmorphic capsule: a LIGHT fill whose legibility comes from its own
-  // backdrop blur (the same liquid recipe as the inset sheet), both riding the
+  // Glassmorphic capsule: a WHITE-tinted fill lighter than the #212121
+  // reading surface behind it (a dark-card mix was indistinguishable from the
+  // background — "not glass"), over its own backdrop blur; both ride the
   // shape morph so the capsule condenses out of the panel instead of popping.
-  const composerCapsuleBg = useMotionTemplate`color-mix(in srgb, var(--card) calc(${fullBleedT} * 44%), transparent)`;
+  const composerCapsuleBg = useMotionTemplate`rgba(255, 255, 255, calc(${fullBleedT} * 0.09))`;
   const composerCapsuleBlurPx = useTransform(fullBleedT, [0, 1], [0, 28]);
   const composerCapsuleBackdrop = useMotionTemplate`blur(${composerCapsuleBlurPx}px) saturate(1.5)`;
   // --- Liquid-glass pill → input morph (driven by openProgress) ---------------

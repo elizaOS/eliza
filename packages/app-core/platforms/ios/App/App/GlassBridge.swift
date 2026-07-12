@@ -434,10 +434,13 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         gradient.locations = (0..<stops.count).map {
             NSNumber(value: Double($0) / Double(stops.count - 1))
         }
-        // Focus at bottom-center; radii large enough to sweep the whole
-        // container so the darkest stop lands past the top corners.
+        // Focus at bottom-center, radius ending BELOW mid-screen: the ember
+        // pool lives low near the composer, and everything above the radius is
+        // the flat darkest stop — sweeping the radial to the top corners
+        // painted the mid-stops as a red dome band across the upper field
+        // instead of the black the rest of the screen rests on.
         gradient.startPoint = CGPoint(x: 0.5, y: 1.0)
-        gradient.endPoint = CGPoint(x: 1.6, y: -0.4)
+        gradient.endPoint = CGPoint(x: 1.35, y: 0.42)
         view.breathes = animated
         view.installBreatheIfNeeded()
         return view
