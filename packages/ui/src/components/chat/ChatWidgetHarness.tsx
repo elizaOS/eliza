@@ -226,10 +226,31 @@ export function ChatWidgetHarness(): React.JSX.Element {
   // ember field moves behind the (transparent) webview, and the sheet anchors
   // a REAL glass panel over it. The DOM backdrop below stays for CSS tiers.
   const nativeBackdrop = useNativeGlassBackdropActive();
+  // The document canvas (html/body launch background) sits between the
+  // transparent webview and the DOM — it must go transparent too or it
+  // occludes the native field exactly like an opaque backdrop div would.
+  // AppBackground owns this in the real shell; the harness mirrors it.
+  React.useEffect(() => {
+    if (!nativeBackdrop) return;
+    const root = document.documentElement;
+    const prevRoot = root.style.backgroundColor;
+    const prevRootImage = root.style.backgroundImage;
+    const prevBody = document.body?.style.backgroundColor ?? "";
+    root.style.backgroundColor = "transparent";
+    root.style.backgroundImage = "";
+    if (document.body) document.body.style.backgroundColor = "transparent";
+    return () => {
+      root.style.backgroundColor = prevRoot;
+      root.style.backgroundImage = prevRootImage;
+      if (document.body) document.body.style.backgroundColor = prevBody;
+    };
+  }, [nativeBackdrop]);
   React.useEffect(() => {
     void setNativeGlassBackdrop({
       kind: "ember",
-      colors: ["#1a0c06", "#ef5a1f"],
+      // Brighter than the app's black-based default: the demo field must have
+      // real luminance for the glass lensing to be visible at a glance.
+      colors: ["#7a2d0c", "#ef5a1f", "#ff9757"],
       animated: true,
     });
     return () => {
