@@ -4728,11 +4728,18 @@ export function ChatOverlay({
         if (!restoreDidUnmaximizeRef.current) {
           setRestoreDragging(true);
           restoreDidUnmaximizeRef.current = true;
+          // Drive the shape morph home HERE: the state-driven settle effect is
+          // drag-gated and onDragOffset's release hysteresis requires a still-
+          // true `maximized`, so without this the corners/insets/handle all
+          // stayed in the full-bleed pose until the finger lifted (the "handle
+          // doesn't appear until letting go" bug).
+          if (reduce) fullBleedT.set(0);
+          else animateFullBleedTo(0);
         }
       }
       onDragOffset(offset);
     },
-    [pinnedOpen, maximized, onDragOffset],
+    [pinnedOpen, maximized, onDragOffset, reduce, fullBleedT, animateFullBleedTo],
   );
   // Release from a restore drag: if it never un-maximized (an upward/stationary
   // gesture) keep it pinned full-bleed; otherwise settle at the released height —
@@ -5032,9 +5039,7 @@ export function ChatOverlay({
         className="pointer-events-none relative flex w-full flex-col items-center"
       >
         {!firstRunOpen &&
-        ((!fullBleed && !restoreDragging) ||
-          grabberPressed ||
-          grabberPressRef.current != null) ? (
+        (!fullBleed || grabberPressed || grabberPressRef.current != null) ? (
           // Suppressed while full-bleed (the restore strip owns the top) and
           // while a restore drag is in flight (so the strip keeps the pointer
           // capture through the un-maximize) — EXCEPT while the grabber itself
@@ -5066,7 +5071,13 @@ export function ChatOverlay({
             }
             opacity={grabberOpacity}
             pilled={pilled}
-            inert={!sheetOpen && (hasImages || Boolean(imageError))}
+            // Pointer-inert during a restore drag: the bar must be VISIBLE
+            // under the finger (it fades in with the shape spring) while the
+            // restore strip keeps the pointer capture.
+            inert={
+              restoreDragging ||
+              (!sheetOpen && (hasImages || Boolean(imageError)))
+            }
           />
         ) : null}
         <motion.fieldset
