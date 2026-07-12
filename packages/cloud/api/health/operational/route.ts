@@ -15,6 +15,10 @@
  */
 
 import { Hono } from "hono";
+import {
+  evaluateKmsPreflight,
+  type KmsBackendClass,
+} from "@/api-app/services/kms-preflight";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { isStewardPlatformConfigured } from "@/lib/services/steward-platform-users";
@@ -22,6 +26,19 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface CheckResult {
   configured: boolean;
+  message: string;
+}
+
+interface KmsCheckResult {
+  /**
+   * The KMS backend CLASS the crypto factory resolves to for this isolate.
+   * NEVER key material — only the backend name, so a deploy verifier can assert
+   * a deployed environment did not silently fall back to the ephemeral
+   * `memory` backend (#15310).
+   */
+  backend: KmsBackendClass;
+  /** `false` when a deployed environment resolved the ephemeral `memory` backend. */
+  durable: boolean;
   message: string;
 }
 
@@ -66,10 +83,25 @@ app.get("/", (c) => {
         : "CRON_SECRET not set — scheduled jobs (container-billing, process-redemptions) cannot authenticate",
     };
 
+    // KMS backend CLASS (never key material). Surfaces which crypto backend the
+    // factory resolves to so a deploy verifier can assert a deployed
+    // environment did not silently fall back to the ephemeral `memory` backend
+    // (#15310: staging ran memory KMS and orphaned every org DEK on restart).
+    // Pure: reads only env, instantiates no adapters, touches no key material.
+    const kmsPreflight = evaluateKmsPreflight(env);
+    const kms: KmsCheckResult = {
+      backend: kmsPreflight.backend,
+      durable: kmsPreflight.durable,
+      message: kmsPreflight.durable
+        ? `KMS backend '${kmsPreflight.backend}' is durable and resolves to a usable client for this environment`
+        : `KMS backend '${kmsPreflight.backend}' is NOT durable: ${kmsPreflight.reason ?? "backend does not resolve to a usable client"}. Encrypted records will be lost or crypto writes will 500. Set ELIZA_KMS_BACKEND=local with a persistent base64 32-byte ELIZA_LOCAL_ROOT_KEY (or configure steward) and redeploy.`,
+    };
+
     const allOk =
       steward.configured &&
       (evmConfigured || solanaConfigured) &&
-      crons.configured;
+      crons.configured &&
+      kms.durable;
 
     return c.json(
       {
@@ -80,6 +112,7 @@ app.get("/", (c) => {
           steward_platform: steward,
           payouts,
           crons,
+          kms,
         },
       },
       200,

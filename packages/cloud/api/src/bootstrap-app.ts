@@ -34,6 +34,7 @@ import { mountRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
 import { authMiddleware } from "./middleware/auth";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
+import { runKmsPreflightOnce } from "./services/kms-preflight";
 import { embeddedStewardHandler } from "./steward/embedded";
 
 /**
@@ -177,11 +178,21 @@ export function createApp(): Hono<AppEnv> {
     setRuntimeR2Bucket(c.env.BLOB);
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
-      async () =>
+      async () => {
+        // KMS backend preflight (#15310). Runs at most ONCE per isolate, on the
+        // first request — INSIDE the cloud-bindings store so `getCloudAwareEnv()`
+        // sees the real `c.env` (wrangler secrets like ELIZA_KMS_BACKEND live on
+        // c.env, not process.env, and are invisible at `createApp()` cold start).
+        // Emits a LOUD structured `logger.error` if the backend resolved to the
+        // ephemeral `memory` backend where the shared policy forbids it, so a
+        // misconfigured deploy is observable in logs before a user (or QA) trips
+        // the crypto path. Never throws (the crypto paths already fail closed via
+        // `getKmsClient()`).
+        runKmsPreflightOnce();
         // Expose the client IP + a stable per-request idempotency key to shared
         // library code (anti-sybil grant checks; idempotent money settlement,
         // #10423) without threading them through every call site.
-        runWithRequestContext(
+        return runWithRequestContext(
           {
             clientIp: getRequestIp(c),
             idempotencyKey:
@@ -190,7 +201,8 @@ export function createApp(): Hono<AppEnv> {
               crypto.randomUUID(),
           },
           async () => runWithDbCacheAsync(async () => next()),
-        ),
+        );
+      },
     );
   });
 
