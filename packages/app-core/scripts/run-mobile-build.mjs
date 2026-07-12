@@ -1144,6 +1144,14 @@ async function buildWeb(platform) {
   } = lanePolicy;
   const env = withMobileBuildNodeOptions({
     ...process.env,
+    // Explicitly forward the harness/demo flags to the vite subprocess: the
+    // renderer-build-manifest plugin stamps `chatUiHarness` from
+    // ELIZA_CHAT_UI_HARNESS, and the lane-stamp guard rejects a dist whose
+    // stamp disagrees — a plain process.env spread was not reliably reaching
+    // the bun-spawned build:web on every host, so the android chat-harness
+    // lane failed the stamp recheck.
+    ELIZA_CHAT_UI_HARNESS: process.env.ELIZA_CHAT_UI_HARNESS ?? "",
+    ELIZA_NATIVE_TRANSCRIPT_DEMO: process.env.ELIZA_NATIVE_TRANSCRIPT_DEMO ?? "",
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
     ELIZA_RELEASE_AUTHORITY:
