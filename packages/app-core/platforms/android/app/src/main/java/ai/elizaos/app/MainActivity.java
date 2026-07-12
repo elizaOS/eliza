@@ -87,6 +87,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ElizaVoicePlugin.class);
         registerPlugin(ResourceProbePlugin.class);
         registerPlugin(GlassBridgePlugin.class);
+        registerPlugin(ai.elizaos.app.transcript.NativeTranscriptPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Replace the auto-registered community PushNotifications plugin with
