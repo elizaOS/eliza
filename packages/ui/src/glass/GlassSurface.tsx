@@ -62,10 +62,14 @@ export function GlassStyles(): React.JSX.Element {
     const rim = r.rim ? liquidGlassRimCss(`.eliza-glass-${variant}`) : "";
     return base + refraction + rim;
   }).join("\n");
+  // Opt-in rim for surfaces that carry their own material (e.g. the chat
+  // sheet, whose fill/blur ride motion values): the same directional ring,
+  // keyed by attribute so it can follow a morph without a class swap.
+  const attrRim = liquidGlassRimCss('[data-glass-rim="on"]');
   return (
     <>
       {/* biome-ignore lint/security/noDangerouslySetInnerHtml: build-time constant CSS from tokens — no user input reaches it */}
-      <style dangerouslySetInnerHTML={{ __html: css }} />
+      <style dangerouslySetInnerHTML={{ __html: css + attrRim }} />
       <LiquidGlassRefractionDefs />
     </>
   );
@@ -81,15 +85,23 @@ export interface GlassSurfaceProps
   interactive?: boolean;
 }
 
-/** Anchor/unanchor the native material to this element's rect. */
-function useNativeAnchor(
+/**
+ * Anchor/unanchor the native material to this element's rect. Exported so
+ * surfaces that cannot render through `GlassSurface` (the chat sheet, whose
+ * fill and radius ride motion values) can still get the real OS material at
+ * the native tier: pass `enabled` = tier is native AND the surface is in a
+ * state where glass applies (e.g. inset, not full-bleed). Rect sync is
+ * rAF-coalesced so a drag that resizes the element per frame issues at most
+ * one bridge call per frame.
+ */
+export function useNativeGlassAnchor(
   ref: React.RefObject<HTMLDivElement | null>,
-  tier: GlassTier,
-  interactive: boolean,
+  enabled: boolean,
+  interactive = false,
 ): void {
   const regionId = useId();
   useEffect(() => {
-    if (tier !== "native") return;
+    if (!enabled) return;
     const el = ref.current;
     const bridge = glassBridge();
     if (!el || !bridge) return;
@@ -104,16 +116,24 @@ function useNativeAnchor(
       cornerRadius: radius,
       interactive,
     });
-    const sync = () => void bridge.updateRect({ id: regionId, rect: rectOf() });
+    let raf = 0;
+    const sync = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        void bridge.updateRect({ id: regionId, rect: rectOf() });
+      });
+    };
     const observer = new ResizeObserver(sync);
     observer.observe(el);
     window.addEventListener("resize", sync);
     return () => {
+      if (raf) cancelAnimationFrame(raf);
       observer.disconnect();
       window.removeEventListener("resize", sync);
       void bridge.detachGlass({ id: regionId });
     };
-  }, [tier, interactive, ref, regionId]);
+  }, [enabled, interactive, ref, regionId]);
 }
 
 export function GlassSurface({
@@ -125,7 +145,7 @@ export function GlassSurface({
 }: GlassSurfaceProps): React.JSX.Element {
   const tier = useNativeGlass();
   const ref = useRef<HTMLDivElement>(null);
-  useNativeAnchor(ref, tier, interactive);
+  useNativeGlassAnchor(ref, tier === "native", interactive);
   return (
     <div
       {...rest}

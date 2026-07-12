@@ -2,6 +2,7 @@
 
 export {
   GlassStyles,
+  useNativeGlassAnchor,
   GlassSurface,
   type GlassSurfaceProps,
 } from "./GlassSurface";

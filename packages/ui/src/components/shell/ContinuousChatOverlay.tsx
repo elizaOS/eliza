@@ -143,6 +143,7 @@ import {
   measureSafeAreaInsetTop,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
+import { useNativeGlass, useNativeGlassAnchor } from "../../glass";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -213,6 +214,11 @@ const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
 // `--card` is brand orange. Keep the sheet's local tokens dark, neutral, and
 // self-owned so open/maximized chat never turns into a transparent-looking
 // orange overlay.
+// Maximized chat is a reading surface, not a glass one: it covers the whole
+// screen, so there is no backdrop to refract and any lighting gradient reads
+// as a rendering artifact. Flat neutral dark gray (ChatGPT-style), no sheen.
+const FULL_BLEED_PANEL_BG = "#212121";
+
 const CHAT_PANEL_THEME = {
   "--bg": "#101114",
   "--bg-hover": "rgba(255, 255, 255, 0.08)",
@@ -2520,6 +2526,21 @@ export function ContinuousChatOverlay({
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
   // panel styles + a zero top margin.
   const fullBleed = maximized && expanded && sheetOpen && !pilled;
+  // Glass tier: on Capacitor iOS 26+ / Android 12+ the inset sheet anchors the
+  // REAL OS material (UIGlassEffect / Material panel) behind its rect via the
+  // GlassBridge; the DOM then paints only a light scrim + rim/sheen. CSS tiers
+  // keep the frosted backdrop-filter. Native glass applies ONLY to the open
+  // inset sheet: full-bleed is an opaque reading surface, the pill/closed
+  // states are too small/transient, and first-run owns its own backdrop.
+  const glassTier = useNativeGlass();
+  const chatSurfaceRef = React.useRef<HTMLDivElement>(null);
+  const nativeGlassActive =
+    glassTier === "native" &&
+    sheetOpen &&
+    !pilled &&
+    !fullBleed &&
+    !firstRunOpen;
+  useNativeGlassAnchor(chatSurfaceRef, nativeGlassActive);
   // Only the panel MAX-HEIGHT stays full-screen-sized for the whole restore drag,
   // so the height can track the finger without the max-height clamping it shorter
   // on the first frame (a vertical pop). Every other property (side inset, bottom
@@ -4992,6 +5013,12 @@ export function ContinuousChatOverlay({
           <motion.div
             aria-hidden="true"
             data-testid="chat-sheet-surface"
+            ref={chatSurfaceRef}
+            data-glass-tier={glassTier}
+            // The directional specular rim (mask-composite ring) replaces the
+            // flat CSS border on the inset sheet — the "liquid" edge cue. Off
+            // at full-bleed (no edge to catch light) and during first-run.
+            data-glass-rim={fullBleed || firstRunOpen ? undefined : "on"}
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
               // SOLID warm-dark panel. The chat floats over the live ember field,
@@ -5003,9 +5030,7 @@ export function ContinuousChatOverlay({
               // by the inline backgroundColor below (inline wins over this
               // class); this class supplies the edge. Flat system: depth =
               // border, not a drop shadow (all shadow tokens are none).
-              fullBleed
-                ? "border-0 bg-card"
-                : "border border-border-strong bg-card",
+              "border-0 bg-card",
             )}
             style={{
               opacity: glassOpacity,
@@ -5023,17 +5048,23 @@ export function ContinuousChatOverlay({
               // CHAT_PANEL_THEME on the fieldset, not the orange app theme behind.
               // Full-bleed stays fully opaque (it covers the whole screen — there
               // is nothing to see through, and the blur would be wasted battery).
+              // Native tier: the OS material provides fill + blur, so the DOM
+              // keeps only a light legibility scrim over it.
               backgroundColor: firstRunOpen
                 ? "transparent"
                 : fullBleed
-                  ? "var(--bg)"
-                  : "color-mix(in srgb, var(--card) 62%, transparent)",
-              backdropFilter: fullBleed
-                ? undefined
-                : "blur(30px) saturate(1.4)",
-              WebkitBackdropFilter: fullBleed
-                ? undefined
-                : "blur(30px) saturate(1.4)",
+                  ? FULL_BLEED_PANEL_BG
+                  : nativeGlassActive
+                    ? "color-mix(in srgb, var(--card) 28%, transparent)"
+                    : "color-mix(in srgb, var(--card) 62%, transparent)",
+              backdropFilter:
+                fullBleed || nativeGlassActive
+                  ? undefined
+                  : "blur(30px) saturate(1.4)",
+              WebkitBackdropFilter:
+                fullBleed || nativeGlassActive
+                  ? undefined
+                  : "blur(30px) saturate(1.4)",
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
@@ -5044,9 +5075,14 @@ export function ContinuousChatOverlay({
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
               // warm `--surface` gradient that read as brown.
-              backgroundImage: firstRunOpen
-                ? "none"
-                : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
+              // Full-bleed is FLAT: the sheen/lighting gradients read as a
+              // weird glow on an opaque full-screen surface (the "gradient
+              // when maximized" bug) — glass cues only exist while there is
+              // glass.
+              backgroundImage:
+                firstRunOpen || fullBleed
+                  ? "none"
+                  : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.05) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
