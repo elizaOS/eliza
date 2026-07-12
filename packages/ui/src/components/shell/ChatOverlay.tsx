@@ -4835,9 +4835,11 @@ export function ChatOverlay({
     overpullCapT.set(0);
     const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
     if (h <= SHEET_DETENT_MAGNET) {
-      // The restore drag started full-height, so a run to the bottom lands on
-      // the PILL (collapseFromRelease reads the gesture-start height).
-      collapseFromRelease();
+      // Pulled down to input size → rest at the INPUT bar, NOT the pill. A
+      // restore steps maximized → half → input; the pill is only reached by a
+      // further pull-down FROM input, never in one leap from maximized (that was
+      // the "collapses to minimized instead of input" bug).
+      goToDetent("collapsed");
       return;
     }
     focusThreadRef.current = true;
@@ -4885,7 +4887,9 @@ export function ChatOverlay({
     animateFullBleedTo(0);
     overpullCapT.set(0);
     const h = Math.max(0, Math.min(threadHeight.get(), panelMaxH));
-    if (h <= SHEET_DETENT_MAGNET) return collapseFromRelease();
+    // A flick-down restore that runs to input size rests at the INPUT bar, not
+    // the pill (maximized → half → input; the pill is a separate pull FROM input).
+    if (h <= SHEET_DETENT_MAGNET) return goToDetent("collapsed");
     focusThreadRef.current = true;
     if (h > halfH + 1) {
       inputRef.current?.blur();

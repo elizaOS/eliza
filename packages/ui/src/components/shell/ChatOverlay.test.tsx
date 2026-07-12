@@ -3315,7 +3315,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("a FULL downward pull in the restore zone drops full-bleed and collapses the sheet all the way (the un-maximize→collapse bug)", () => {
+  it("a FULL downward pull in the restore zone drops full-bleed and lands at the INPUT bar (never the pill in one leap)", () => {
     const { controller } = makeSwipeController();
     render(<ChatOverlay controller={controller} />);
     const sheet = screen.getByTestId("chat-sheet");
@@ -3324,15 +3324,19 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
 
     // Drag the restore zone from the top all the way past the bottom: the strip
     // must stay grabbable through the un-maximize (it un-mounts on `fullBleed`,
-    // so a naive gate would freeze the drag here) and drive the sheet to closed.
+    // so a naive gate would freeze the drag here) and drive the sheet down.
     const zone = screen.getByTestId("chat-maximize-restore-zone");
     fireEvent.pointerDown(zone, { clientY: 20, pointerId: 9 });
     fireEvent.pointerMove(zone, { clientY: 400, pointerId: 9 });
     fireEvent.pointerMove(zone, { clientY: 900, pointerId: 9 });
     fireEvent.pointerUp(zone, { clientY: 900, pointerId: 9 });
 
+    // A restore steps maximized → half → INPUT; pulling to input size lands at
+    // the INPUT composer bar, NOT the minimized pill (that was the reported bug).
+    // The pill is only reached by a further pull-down FROM input.
     expect(sheet.getAttribute("data-maximized")).toBeNull();
-    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
   it("keyboard-activates the restore zone (ArrowDown exits full-bleed)", () => {
