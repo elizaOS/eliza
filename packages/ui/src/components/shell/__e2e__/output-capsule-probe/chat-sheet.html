@@ -1,7 +1,7 @@
-<!doctype html><html><head><meta charset="utf-8"><title>restore half repro</title>
+<!doctype html><html><head><meta charset="utf-8"><title>capsule probe</title>
 <script src="https://cdn.tailwindcss.com"></script><script>window.process=window.process||{env:{NODE_ENV:"production"},platform:"browser",cwd:function(){return "/"}};</script>
 <style>html,body{margin:0;height:100%;background:#0a0d16}</style>
-<style>.bg-bg{background-color:#0a0d16}</style>
+
 </head><body><div id="root"></div><script>"use strict";
 (() => {
   var __create = Object.create;
@@ -151875,7 +151875,8 @@ void main(){
     const composerCapsuleMarginBottom = useMotionTemplate`calc(${fullBleedT} * (max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.75rem))`;
     const composerCapsuleWidth = useMotionTemplate`calc(100% - ${fullBleedT} * 24px)`;
     const composerCapsuleBorder = useMotionTemplate`color-mix(in srgb, var(--border-strong) calc(${fullBleedT} * 100%), transparent)`;
-    const composerCapsuleBg = useMotionTemplate`rgba(255, 255, 255, calc(${fullBleedT} * 0.09))`;
+    const composerCapsuleBg = useMotionTemplate`rgba(255, 255, 255, calc(${fullBleedT} * 0.07))`;
+    const composerCapsuleSheen = useMotionTemplate`radial-gradient(120% 80% at 28% -20%, rgb(255 255 255 / calc(${fullBleedT} * 0.18)) 0%, transparent 58%), linear-gradient(180deg, rgb(255 255 255 / calc(${fullBleedT} * 0.10)) 0%, rgb(255 255 255 / calc(${fullBleedT} * 0.02)) 100%)`;
     const composerCapsuleBlurPx = useTransform(fullBleedT, [0, 1], [0, 28]);
     const composerCapsuleBackdrop = useMotionTemplate`blur(${composerCapsuleBlurPx}px) saturate(1.5)`;
     const composerRowH = useMotionValue(76);
@@ -151909,7 +151910,11 @@ void main(){
     ]);
     const threadTailSpacerH = useTransform(
       [fullBleedT, composerRowH],
-      ([t2, h]) => t2 * (h + 10)
+      // 12px LESS than the capsule height: the newest bubble's bottom edge rests
+      // just under the glass, so the blur frosts real content even at rest —
+      // over a flat surface a backdrop blur with nothing behind it reads as a
+      // plain gray bar, not glass.
+      ([t2, h]) => t2 * Math.max(0, h - 12)
     );
     const panelScale = useTransform(openProgress, pillMorphScale);
     const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
@@ -153767,6 +153772,7 @@ void main(){
                                   borderRadius: PANEL_RADIUS_PX,
                                   borderColor: composerCapsuleBorder,
                                   backgroundColor: composerCapsuleBg,
+                                  backgroundImage: composerCapsuleSheen,
                                   backdropFilter: composerCapsuleBackdrop,
                                   WebkitBackdropFilter: composerCapsuleBackdrop,
                                   boxShadow: fullBleed ? LIQUID_GLASS_EDGE_SHADOW : void 0,

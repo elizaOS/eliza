@@ -79,7 +79,7 @@ const GENERATED_UI = JSON.stringify({
 });
 
 /** One scripted assistant turn. `endsOnboarding` collapses the first-run pin. */
-interface Scene {
+export interface Scene {
   content: string;
   source?: string;
   failureKind?: ShellMessage["failureKind"];
@@ -96,7 +96,7 @@ interface Scene {
  * tap lands in the scripted sendActionMessage instead of the onboarding
  * conductor, advancing the tour.
  */
-const OPENING: ShellMessage[] = [
+export const CHAT_HARNESS_OPENING: ShellMessage[] = [
   {
     id: "first-run:greeting",
     role: "assistant",
@@ -120,7 +120,7 @@ const OPENING: ShellMessage[] = [
   },
 ];
 
-const SCRIPT: Scene[] = [
+export const CHAT_HARNESS_SCRIPT: Scene[] = [
   {
     source: "first_run",
     // The sign-in tap is the last pinned interaction: release the first-run
@@ -258,7 +258,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
       void clearNativeGlassBackdrop();
     };
   }, []);
-  const [messages, setMessages] = React.useState<ShellMessage[]>(OPENING);
+  const [messages, setMessages] = React.useState<ShellMessage[]>(CHAT_HARNESS_OPENING);
   const [phase, setPhase] = React.useState<ShellController["phase"]>("summoned");
   const [recording, setRecording] = React.useState(false);
   const [handsFree, setHandsFree] = React.useState(false);
@@ -281,7 +281,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
     // turns and locks the composer (advancement comes from widget taps), so
     // the echoed user turn must carry the tag to stay visible until the
     // pin releases.
-    const nextScene = SCRIPT[Math.min(sceneIndexRef.current, SCRIPT.length - 1)];
+    const nextScene = CHAT_HARNESS_SCRIPT[Math.min(sceneIndexRef.current, CHAT_HARNESS_SCRIPT.length - 1)];
     if (!isProtocol) {
       setMessages((current) => [
         ...current,
@@ -296,7 +296,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
     }
     setPhase("responding");
     window.setTimeout(() => {
-      const scene = SCRIPT[Math.min(sceneIndexRef.current, SCRIPT.length - 1)];
+      const scene = CHAT_HARNESS_SCRIPT[Math.min(sceneIndexRef.current, CHAT_HARNESS_SCRIPT.length - 1)];
       sceneIndexRef.current += 1;
       setMessages((current) => [
         ...current,
@@ -419,7 +419,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
     navigateHome: () => {},
     clearConversation: () => {
       sceneIndexRef.current = 0;
-      setMessages(OPENING);
+      setMessages(CHAT_HARNESS_OPENING);
       setFirstRunOpen(true);
       setPhase("summoned");
     },

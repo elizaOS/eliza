@@ -32,3 +32,9 @@ export {
   useNativeGlass,
   useNativeGlassBackdropActive,
 } from "./useNativeGlass";
+export {
+  isNativeTranscriptAvailable,
+  nativeTranscriptBridge,
+  type NativeTranscriptRect,
+  resetNativeTranscriptBridgeForTests,
+} from "./native-transcript-bridge";
