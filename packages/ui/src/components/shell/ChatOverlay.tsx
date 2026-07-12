@@ -430,6 +430,14 @@ const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 // The glass crossfades out over the same progress, so the deep scale never
 // shows a crumpled composer: by the time content would distort it has faded.
 export const PILL_MORPH_MIN_SCALE = 0.45;
+
+// One VISUAL size for the drag handle in every state (input grabber, pinned
+// first-run, collapsed pill) — slightly smaller than the old 48×6 input bar.
+// The pill's bar is counter-scaled by PILL_MORPH_MIN_SCALE because the whole
+// panel scales down in the pill morph; without the counter the collapsed bar
+// rendered at ~22×3 (the "pill tab shrinks" complaint).
+const HANDLE_BAR_W_PX = 40;
+const HANDLE_BAR_H_PX = 5;
 /** Panel scale for a pill↔input morph progress (0 = pill, 1 = input). */
 export function pillMorphScale(progress: number): number {
   return PILL_MORPH_MIN_SCALE + (1 - PILL_MORPH_MIN_SCALE) * clamp01(progress);
@@ -673,14 +681,18 @@ function SheetGrabber({
           // strictly anti-phase with the pill bar so the two are never on screen
           // together. The bar paints at full opacity — a prior regression pinned
           // it to `opacity-0`, leaving the handle grabbable but invisible (#9142).
-          "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
+          "rounded-full opacity-100 transition-colors duration-300",
           // A dedicated opacity/scale breath marks live agent work without
           // repurposing shadcn's text-only shimmer utility.
           breathing && "eliza-chat-handle-breathe",
         )}
         // Explicit fixed color (see HANDLE_BAR_COLOR) so the grabber — rendered
         // outside the panel theme — never inherits a dark ambient token.
-        style={{ backgroundColor: HANDLE_BAR_COLOR }}
+        style={{
+          backgroundColor: HANDLE_BAR_COLOR,
+          width: HANDLE_BAR_W_PX,
+          height: HANDLE_BAR_H_PX,
+        }}
       />
     </motion.button>
   );
@@ -749,13 +761,18 @@ function PillHandle({
           // the WRAPPER's `pillOpacity` crossfade (anti-phase with the grabber).
           // The bar paints at full opacity — a prior regression pinned it to
           // `opacity-0`, leaving the pill handle grabbable but invisible (#9142).
-          "h-1.5 w-12 rounded-full opacity-100 transition-colors duration-300",
+          "rounded-full opacity-100 transition-colors duration-300",
           // Same compositor-only work-state breath as the SheetGrabber bar.
           breathing && "eliza-chat-handle-breathe",
         )}
-        // Same explicit color as the grabber bar so the two are pixel-identical
-        // through the crossfade (HANDLE_BAR_COLOR).
-        style={{ backgroundColor: HANDLE_BAR_COLOR }}
+        // Same explicit color as the grabber bar; the size counter-scales the
+        // panel's pill morph so the RESTING pill bar renders at exactly the
+        // grabber's visual size (mid-morph it is already crossfading out).
+        style={{
+          backgroundColor: HANDLE_BAR_COLOR,
+          width: HANDLE_BAR_W_PX / PILL_MORPH_MIN_SCALE,
+          height: HANDLE_BAR_H_PX / PILL_MORPH_MIN_SCALE,
+        }}
       />
     </Button>
   );
@@ -5738,7 +5755,7 @@ export function ChatOverlay({
                 <span
                   aria-hidden="true"
                   data-testid="chat-first-run-grabber"
-                  className="pointer-events-none absolute left-1/2 top-1.5 h-1.5 w-12 -translate-x-1/2 select-none rounded-full bg-white/45"
+                  className="pointer-events-none absolute left-1/2 top-1.5 h-[5px] w-10 -translate-x-1/2 select-none rounded-full bg-white/45"
                 />
               ) : null}
               {/* Inline slash-command autocomplete, floating just above the

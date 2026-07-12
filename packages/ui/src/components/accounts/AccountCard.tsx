@@ -15,7 +15,6 @@ import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +25,6 @@ import {
 } from "../ui/dialog";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
-import { EditableAccountLabel } from "./EditableAccountLabel";
 
 export interface AccountCardProps {
   account: AccountWithCredentialFlag;
@@ -204,17 +202,12 @@ export function AccountCard({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <StatusBadge label={health.label} tone={health.tone} withDot />
-          <EditableAccountLabel
-            value={account.label}
-            onSubmit={(label) => onPatch({ label })}
-            disabled={saving}
-            inputAriaLabel={t("accounts.label.edit", {
-              defaultValue: "Account label",
-            })}
-            editTitle={t("accounts.label.editTooltip", {
-              defaultValue: "Click to rename",
-            })}
-          />
+          <span
+            className="min-w-0 truncate text-sm font-medium text-txt"
+            title={account.label}
+          >
+            {account.label}
+          </span>
           <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
             {isCodingPlan
               ? t("accounts.source.codingPlan", {
@@ -265,19 +258,6 @@ export function AccountCard({
           >
             <ChevronDown className="h-3.5 w-3.5" aria-hidden />
           </Button>
-          <div className="ml-1 inline-flex items-center gap-1.5 text-xs text-muted">
-            <Checkbox
-              checked={account.enabled}
-              disabled={saving}
-              onCheckedChange={(value) => {
-                void onPatch({ enabled: value === true });
-              }}
-              aria-label={t("accounts.enabledToggle", {
-                defaultValue: "Account enabled",
-              })}
-            />
-            {t("accounts.enabled", { defaultValue: "Enabled" })}
-          </div>
           <Button
             type="button"
             variant="outline"
