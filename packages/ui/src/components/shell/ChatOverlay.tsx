@@ -5326,10 +5326,16 @@ export function ChatOverlay({
             data-testid="chat-sheet-fullbleed-cover"
             className="pointer-events-none absolute inset-0 z-0"
             style={{
-              // Onboarding pins the sheet full-bleed but must stay a see-through
-              // scrim over the wallpaper — the opaque reading cover is only for
-              // the user-maximized chat.
-              opacity: firstRunOpen ? 0 : fullBleedT,
+              // Onboarding pins the sheet full-bleed, and the full-screen chat
+              // must MASK whatever is behind it (home widgets, wallpaper) — a
+              // dark ChatGPT-style takeover, not a see-through scrim that lets
+              // the home bleed through the sign-in copy. So the opaque cover is
+              // fully on during first-run. On completion `firstRunOpen` flips
+              // false while `fullBleedT` is still 1, then the sheet springs to
+              // half (fullBleed→false) and `fullBleedT` eases 1→0 — so the cover
+              // crossfades out over the exact reveal the cover was built for,
+              // hiding the surface's opaque→glass swap underneath.
+              opacity: firstRunOpen ? 1 : fullBleedT,
               borderRadius: morphRadius,
               backgroundColor: FULL_BLEED_PANEL_BG,
               top: glassTopExtension,

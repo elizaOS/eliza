@@ -185,16 +185,19 @@ describe("ChatOverlay first-run gating", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("preserves the shell wallpaper behind a neutral onboarding scrim", () => {
+  it("masks whatever is behind it with an opaque full-screen onboarding cover", () => {
     render(
       <ChatOverlay controller={makeController()} firstRunOpen />,
     );
-    const backdrop = screen.getByTestId("chat-first-run-backdrop");
-    expect(backdrop.getAttribute("data-first-run-opaque")).toBe("true");
-    expect(backdrop.className).toContain("bg-black/15");
+    // The glass surface itself stays transparent during onboarding (the liquid
+    // frost is off) — the masking is done by the opaque full-bleed cover on top,
+    // so the sign-in copy reads on a dark ChatGPT-style takeover instead of the
+    // home widgets bleeding through (issue #14051).
     const surface = screen.getByTestId("chat-sheet-surface");
     expect(surface.style.backgroundColor).toBe("transparent");
     expect(surface.style.backgroundImage).toBe("none");
+    const cover = screen.getByTestId("chat-sheet-fullbleed-cover");
+    expect(cover.style.opacity).toBe("1");
   });
 
   it("drops the opaque backdrop off its opaque state on the completion edge (revealing the launcher)", () => {
