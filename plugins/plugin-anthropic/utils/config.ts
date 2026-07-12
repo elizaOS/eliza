@@ -8,6 +8,7 @@
  * max-output-token override parsers documented in this package's CLAUDE.md.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { createModelName } from "../types";
 
@@ -145,6 +146,44 @@ export function getExperimentalTelemetry(runtime: IAgentRuntime): boolean {
     return false;
   }
   return setting.toLowerCase() === "true";
+}
+
+/** Effort levels the Anthropic API's `output_config.effort` accepts (the AI
+ * SDK's `effort` provider option maps onto it). Per-model ceilings — xhigh/max
+ * only on opus >= 4.7 / fable-5, haiku capped at high — are enforced at the
+ * call site in models/text.ts, which knows the resolved model id. */
+const ANTHROPIC_EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type AnthropicEffort = (typeof ANTHROPIC_EFFORT_LEVELS)[number];
+
+function isAnthropicEffort(value: string): value is AnthropicEffort {
+  return (ANTHROPIC_EFFORT_LEVELS as readonly string[]).includes(value);
+}
+
+/**
+ * The operator-configured reasoning effort for a model size, from
+ * ANTHROPIC_EFFORT_SMALL / ANTHROPIC_EFFORT_LARGE (what POST /api/models/config
+ * persists for claude chat targets) with ANTHROPIC_EFFORT as the shared
+ * fallback. An unrecognized value is ignored with a warning rather than sent —
+ * the API would 400 the whole request.
+ */
+export function getAnthropicEffort(
+  runtime: IAgentRuntime,
+  modelSize: ModelSize
+): AnthropicEffort | undefined {
+  const specificKey = modelSize === "small" ? "ANTHROPIC_EFFORT_SMALL" : "ANTHROPIC_EFFORT_LARGE";
+  const raw = getRawSetting(runtime, specificKey) ?? getRawSetting(runtime, "ANTHROPIC_EFFORT");
+  if (raw === undefined) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (!isAnthropicEffort(normalized)) {
+    logger.warn(
+      `[Anthropic] ignoring invalid effort ${JSON.stringify(raw)} (expected ${ANTHROPIC_EFFORT_LEVELS.join(
+        "|"
+      )})`
+    );
+    return undefined;
+  }
+  return normalized;
 }
 
 export function getCoTBudget(runtime: IAgentRuntime, modelSize: ModelSize): number {

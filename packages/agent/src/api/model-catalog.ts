@@ -106,9 +106,17 @@ const CODEX_STATIC_ENTRIES: ModelCatalogEntry[] = [
   },
 ];
 
-// Anthropic effort gate: xhigh/max only on opus >= 4.7 and fable-5; haiku
-// caps at high; sonnets cap at high.
-const CLAUDE_MODELS: Array<{ id: string; display: string; full: boolean }> = [
+// Anthropic effort gate: xhigh/max only on opus >= 4.7 and fable-5; sonnets
+// cap at high. Haiku takes NO chat-API effort at all — live-probed 2026-07-12,
+// the Messages API answers "This model does not support the effort parameter"
+// (and rejects adaptive thinking); the coding CLI's CLAUDE_CODE_EFFORT_LEVEL
+// is a separate mechanism and keeps its low..high range there.
+const CLAUDE_MODELS: Array<{
+  id: string;
+  display: string;
+  full: boolean;
+  chatEffort?: false;
+}> = [
   { id: "claude-fable-5", display: "Claude Fable 5", full: true },
   { id: "claude-opus-4-8", display: "Claude Opus 4.8", full: true },
   { id: "claude-opus-4-7", display: "Claude Opus 4.7", full: true },
@@ -119,6 +127,7 @@ const CLAUDE_MODELS: Array<{ id: string; display: string; full: boolean }> = [
     id: "claude-haiku-4-5-20251001",
     display: "Claude Haiku 4.5",
     full: false,
+    chatEffort: false,
   },
 ];
 
@@ -131,7 +140,7 @@ function claudeEfforts(full: boolean): string[] {
 const CLAUDE_CHAT_ENTRIES: ModelCatalogEntry[] = CLAUDE_MODELS.map((m) => ({
   id: m.id,
   display: m.display,
-  efforts: claudeEfforts(m.full),
+  efforts: m.chatEffort === false ? [] : claudeEfforts(m.full),
   roles: ["small", "large"],
 }));
 

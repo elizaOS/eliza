@@ -191,7 +191,6 @@ describe("claude chat/coding effort gates", () => {
         "claude-opus-4-6",
         "claude-sonnet-5",
         "claude-sonnet-4-6",
-        "claude-haiku-4-5-20251001",
       ]) {
         expect(entry(catalog, provider, id).efforts).toEqual([
           "low",
@@ -200,6 +199,12 @@ describe("claude chat/coding effort gates", () => {
         ]);
       }
     }
+    // Live-probed 2026-07-12: haiku rejects the chat-API effort parameter
+    // entirely; only the coding CLI's separate effort env applies to it.
+    expect(entry(catalog, "claude-chat", "claude-haiku-4-5-20251001").efforts).toEqual([]);
+    expect(
+      entry(catalog, "claude-coding", "claude-haiku-4-5-20251001").efforts,
+    ).toEqual(["low", "medium", "high"]);
   });
 
   it("assigns chat models small+large and coding models coding", () => {

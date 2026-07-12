@@ -84,18 +84,18 @@ describe("POST /api/models/config validation", () => {
     expect(saveElizaConfig).not.toHaveBeenCalled();
   });
 
-  it("rejects xhigh on haiku via claude-chat", async () => {
+  it("rejects any effort on haiku via claude-chat (no chat effort knob)", async () => {
     const { ctx, json } = makeHarness("POST", {
       target: "small",
       provider: "claude-chat",
       model: "claude-haiku-4-5-20251001",
-      effort: "xhigh",
+      effort: "high",
     });
     await handleModelConfigRoutes(ctx as never);
     const { body, status } = responseOf(json);
     expect(status).toBe(400);
     expect(body.code).toBe("MODEL_CONFIG_INVALID");
-    expect(String(body.error)).toContain("xhigh");
+    expect(String(body.error)).toContain("no effort control");
   });
 
   // gemma carries a live-proven low/medium/high knob (2026-07-12 probe), so
@@ -221,10 +221,11 @@ describe("POST /api/models/config chat writes", () => {
   });
 
   it("writes ANTHROPIC keys (model + per-target effort) for claude-chat", async () => {
+    // sonnet-5, not haiku: haiku carries no chat effort knob (live-probed).
     const { ctx, config, processEnv } = makeHarness("POST", {
       target: "small",
       provider: "claude-chat",
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-5",
       effort: "high",
     });
     await handleModelConfigRoutes(ctx as never);
@@ -232,7 +233,7 @@ describe("POST /api/models/config chat writes", () => {
       string,
       unknown
     >;
-    expect(env.ANTHROPIC_SMALL_MODEL).toBe("claude-haiku-4-5-20251001");
+    expect(env.ANTHROPIC_SMALL_MODEL).toBe("claude-sonnet-5");
     expect(env.ANTHROPIC_EFFORT_SMALL).toBe("high");
     expect(processEnv.ANTHROPIC_EFFORT_SMALL).toBe("high");
   });
