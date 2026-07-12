@@ -105,7 +105,8 @@ export function useNativeGlassAnchor(
     const el = ref.current;
     const bridge = glassBridge();
     if (!el || !bridge) return;
-    const radius = Number.parseFloat(getComputedStyle(el).borderRadius) || 12;
+    const radiusOf = () =>
+      Number.parseFloat(getComputedStyle(el).borderRadius) || 12;
     const rectOf = () => {
       const r = el.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
@@ -113,7 +114,7 @@ export function useNativeGlassAnchor(
     void bridge.attachGlass({
       id: regionId,
       rect: rectOf(),
-      cornerRadius: radius,
+      cornerRadius: radiusOf(),
       interactive,
     });
     let raf = 0;
@@ -121,7 +122,14 @@ export function useNativeGlassAnchor(
       if (raf) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
-        void bridge.updateRect({ id: regionId, rect: rectOf() });
+        // Radius rides along with every rect: the maximize morph animates the
+        // sheet's corners, and a native panel with a frozen attach-time radius
+        // visibly separates from the DOM corners.
+        void bridge.updateRect({
+          id: regionId,
+          rect: rectOf(),
+          cornerRadius: radiusOf(),
+        });
       });
     };
     const observer = new ResizeObserver(sync);

@@ -191,6 +191,15 @@ public class GlassBridgePlugin extends Plugin {
             float startX = panel.getX();
             float startY = panel.getY();
 
+            // Optional live radius resync — the chat sheet's corners animate
+            // during the maximize morph, so a radius frozen at attach time
+            // visibly drifts from the DOM corners (iOS parity).
+            Double cornerRadius = call.getDouble("cornerRadius");
+            if (cornerRadius != null && panel.getBackground() instanceof GradientDrawable) {
+                ((GradientDrawable) panel.getBackground())
+                        .setCornerRadius((float) (cornerRadius * density));
+            }
+
             // One animator lerps position and size together — the Android
             // mirror of the iOS 0.15s UIView.animate frame change.
             ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);

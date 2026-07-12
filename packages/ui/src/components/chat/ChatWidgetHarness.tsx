@@ -248,9 +248,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
   React.useEffect(() => {
     void setNativeGlassBackdrop({
       kind: "ember",
-      // Brighter than the app's black-based default: the demo field must have
-      // real luminance for the glass lensing to be visible at a glance.
-      colors: ["#7a2d0c", "#ef5a1f", "#ff9757"],
+      // Grounded to BLACK at the top like the app's real field — only the
+      // low-center ember pool carries luminance (the radial's bright focus
+      // sits at bottom-center; the first stop is the outer/top field).
+      colors: ["#000000", "#7a2d0c", "#ff7a3d"],
       animated: true,
     });
     return () => {

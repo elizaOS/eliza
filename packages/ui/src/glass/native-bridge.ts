@@ -74,6 +74,8 @@ interface GlassBridgePlugin {
   updateRect(options: {
     id: string;
     rect: NativeGlassOptions["rect"];
+    /** Live radius resync for surfaces whose corners animate (chat sheet). */
+    cornerRadius?: number;
   }): Promise<void>;
   detachGlass(options: { id: string }): Promise<void>;
   /** UIGlassContainerEffect merge distance for sibling regions. */

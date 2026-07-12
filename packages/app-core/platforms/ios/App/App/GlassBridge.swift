@@ -136,8 +136,15 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             let frame = self.containerFrame(for: rect, webView: webView)
+            // Optional live radius: the chat sheet's corners ANIMATE during the
+            // maximize morph, so a radius frozen at attach time visibly drifts
+            // from the DOM corners. Callers resync it with each rect.
+            let cornerRadius = call.getDouble("cornerRadius")
             UIView.animate(withDuration: 0.15) {
                 effectView.frame = frame
+                if let cornerRadius {
+                    effectView.layer.cornerRadius = CGFloat(cornerRadius)
+                }
             }
             call.resolve()
         }
