@@ -3158,10 +3158,7 @@ async function handleNonStreamingRequest(
       ...(effectiveMaxTokens != null && {
         maxOutputTokens: effectiveMaxTokens,
       }),
-      ...combineProviderOptions(
-        modelProviderOptions,
-        reasoningProviderOptions,
-      ),
+      ...combineProviderOptions(modelProviderOptions, reasoningProviderOptions),
     } as Parameters<typeof generateText>[0]);
 
     // Token counts for the OpenAI-compat response come straight from the
