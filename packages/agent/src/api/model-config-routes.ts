@@ -1,0 +1,569 @@
+/**
+ * Validated read/write surface for user-configurable models behind the
+ * authenticated control API. `POST /api/models/config` checks every request
+ * against the provider→model→efforts catalog (model-catalog.ts) before
+ * touching config — Codex silently accepts an invalid
+ * `model_reasoning_effort`, so this route is the enforcement seam — then
+ * persists the selection to all three config seams at once:
+ * `config.env.vars[KEY]`, `config.env[KEY]` (the section the orchestrator's
+ * `readConfigEnvKey` re-reads per spawn), and `process.env[KEY]`.
+ *
+ * Chat-brain targets (small/large) require a runtime restart for the model
+ * plugin to pick up the new ids, driven through the same idempotent
+ * RuntimeOperationManager the provider-switch route uses — the config write
+ * happens inside the operation's prepare step so a busy runtime rejects
+ * without a half-applied config. Coding targets return without restart:
+ * sub-agent spawns re-read the config env on every spawn. When a touched key
+ * already carried a different process-env value that the config did not put
+ * there (systemd service.env, shell export), the response lists it in
+ * `conflictingServiceEnvKeys` as an honest warning — a full service restart
+ * may resurrect the external value.
+ *
+ * `GET /api/models/config` reports the current effective value for every key
+ * this route owns, with the source that won (`config.env` → `config.env.vars`
+ * → `process.env`, mirroring the orchestrator's direct-section-first read).
+ */
+import {
+  ElizaError,
+  logger,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/core";
+import type { ElizaConfig } from "../config/config.ts";
+import type { RuntimeOperationManager } from "../runtime/operations/index.ts";
+import {
+  buildModelCatalog,
+  CODING_MODEL_DEFAULTS,
+  type ModelCatalog,
+  type ModelCatalogEntry,
+} from "./model-catalog.ts";
+
+export type ModelConfigTarget = "small" | "large" | "coding";
+export type CodingBackend = "codex" | "claude" | "opencode" | "eliza-code";
+
+export interface ModelConfigWriteBody {
+  target: ModelConfigTarget;
+  provider?: string;
+  backend?: CodingBackend;
+  model: string;
+  effort?: string;
+  /** Optional coding-backend switch, persisted as ELIZA_DEFAULT_AGENT_TYPE. */
+  defaultBackend?: CodingBackend;
+}
+
+export interface ModelConfigRouteContext
+  extends RouteRequestMeta,
+    Pick<RouteHelpers, "json" | "readJsonBody"> {
+  state: { config: ElizaConfig };
+  saveElizaConfig: (config: ElizaConfig) => void;
+  runtimeOperationManager: RuntimeOperationManager;
+  /** Injectable catalog for tests; defaults to the live buildModelCatalog(). */
+  catalog?: ModelCatalog;
+  /** Injectable process env for tests; defaults to process.env. */
+  processEnv?: NodeJS.ProcessEnv;
+}
+
+const TARGETS = new Set<ModelConfigTarget>(["small", "large", "coding"]);
+const CODING_BACKENDS = new Set<CodingBackend>([
+  "codex",
+  "claude",
+  "opencode",
+  "eliza-code",
+]);
+
+// Chat providers → the env-var family the corresponding model plugin reads.
+// cerebras and elizacloud both serve through the OpenAI-compatible plugin.
+const CHAT_PROVIDER_KEY_FAMILY: Record<string, "OPENAI" | "ANTHROPIC"> = {
+  cerebras: "OPENAI",
+  elizacloud: "OPENAI",
+  "claude-chat": "ANTHROPIC",
+};
+
+interface CodingBackendSeam {
+  modelKey: string;
+  /** null = the backend has no effort seam; sending effort is a 400. */
+  effortKey: string | null;
+  /** Catalog provider to validate against; null = free-form model string. */
+  catalogProvider: string | null;
+}
+
+// Model keys are the `powerful` slots of TASK_AGENT_MODEL_PREF_SETTING_KEYS
+// (plugin-agent-orchestrator/src/services/task-agent-frameworks.ts) — the keys
+// spawns actually read. The effort keys are persisted now; the CLI adapters
+// grow their consumers in a follow-on wiring change.
+const CODING_BACKEND_SEAMS: Record<CodingBackend, CodingBackendSeam> = {
+  codex: {
+    modelKey: "ELIZA_CODEX_MODEL_POWERFUL",
+    effortKey: "ELIZA_CODEX_EFFORT",
+    catalogProvider: "codex",
+  },
+  claude: {
+    modelKey: "ELIZA_CLAUDE_MODEL_POWERFUL",
+    effortKey: "ELIZA_CLAUDE_EFFORT",
+    catalogProvider: "claude-coding",
+  },
+  opencode: {
+    modelKey: "ELIZA_OPENCODE_MODEL_POWERFUL",
+    effortKey: null,
+    catalogProvider: null,
+  },
+  "eliza-code": {
+    modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL",
+    effortKey: null,
+    catalogProvider: null,
+  },
+};
+
+// The orchestrator's KNOWN_ADAPTER_TYPES spells the in-house backend
+// "elizaos"; persisting the API's "eliza-code" literal would be silently
+// dropped by its adapter normalization.
+const DEFAULT_BACKEND_PERSISTED_VALUE: Record<CodingBackend, string> = {
+  codex: "codex",
+  claude: "claude",
+  opencode: "opencode",
+  "eliza-code": "elizaos",
+};
+
+function invalid(
+  message: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "MODEL_CONFIG_INVALID",
+    context,
+    severity: "ephemeral",
+  });
+}
+
+function findEntry(
+  catalog: ModelCatalog,
+  provider: string,
+  model: string,
+): ModelCatalogEntry | undefined {
+  return catalog.providers[provider]?.find((entry) => entry.id === model);
+}
+
+function validateEffort(entry: ModelCatalogEntry, effort: string): void {
+  if (entry.efforts.length === 0) {
+    throw invalid(`Model "${entry.id}" exposes no effort control`, {
+      model: entry.id,
+      effort,
+    });
+  }
+  if (!entry.efforts.includes(effort)) {
+    throw invalid(
+      `Effort "${effort}" is not supported by model "${entry.id}" (supported: ${entry.efforts.join(", ")})`,
+      { model: entry.id, effort, supported: entry.efforts },
+    );
+  }
+}
+
+function ensureEnvSections(config: ElizaConfig): {
+  direct: Record<string, unknown>;
+  vars: Record<string, string>;
+} {
+  const record = config as Record<string, unknown>;
+  if (
+    !record.env ||
+    typeof record.env !== "object" ||
+    Array.isArray(record.env)
+  ) {
+    record.env = {};
+  }
+  const direct = record.env as Record<string, unknown>;
+  if (
+    !direct.vars ||
+    typeof direct.vars !== "object" ||
+    Array.isArray(direct.vars)
+  ) {
+    direct.vars = {};
+  }
+  return { direct, vars: direct.vars as Record<string, string> };
+}
+
+function readConfigEnvString(
+  config: ElizaConfig,
+  key: string,
+): { value: string; source: "config.env" | "config.env.vars" } | null {
+  const env = (config as Record<string, unknown>).env;
+  if (!env || typeof env !== "object" || Array.isArray(env)) return null;
+  const direct = (env as Record<string, unknown>)[key];
+  if (typeof direct === "string" && direct.trim()) {
+    return { value: direct, source: "config.env" };
+  }
+  const vars = (env as Record<string, unknown>).vars;
+  if (vars && typeof vars === "object" && !Array.isArray(vars)) {
+    const nested = (vars as Record<string, unknown>)[key];
+    if (typeof nested === "string" && nested.trim()) {
+      return { value: nested, source: "config.env.vars" };
+    }
+  }
+  return null;
+}
+
+/**
+ * Write one key to all three seams. Returns true when process.env already
+ * carried a different value that the config did not put there — i.e. it came
+ * from an external source (systemd service.env, shell export) that a full
+ * service restart may re-apply over this save.
+ */
+function writeModelEnvKey(
+  config: ElizaConfig,
+  processEnv: NodeJS.ProcessEnv,
+  key: string,
+  value: string,
+): boolean {
+  const priorProcess = processEnv[key];
+  const priorConfig = readConfigEnvString(config, key)?.value;
+  const { direct, vars } = ensureEnvSections(config);
+  direct[key] = value;
+  vars[key] = value;
+  processEnv[key] = value;
+  return (
+    typeof priorProcess === "string" &&
+    priorProcess !== value &&
+    priorProcess !== priorConfig
+  );
+}
+
+interface ResolvedWrite {
+  key: string;
+  value: string;
+}
+
+function resolveChatWrites(
+  catalog: ModelCatalog,
+  body: ModelConfigWriteBody,
+): ResolvedWrite[] {
+  if (body.backend !== undefined) {
+    throw invalid(
+      `backend is a coding-target field; target "${body.target}" selects a chat provider`,
+      { target: body.target, backend: body.backend },
+    );
+  }
+
+  let provider = body.provider;
+  if (provider !== undefined && !(provider in CHAT_PROVIDER_KEY_FAMILY)) {
+    throw invalid(
+      `Unknown chat provider "${provider}" (expected one of: ${Object.keys(CHAT_PROVIDER_KEY_FAMILY).join(", ")})`,
+      { provider },
+    );
+  }
+  if (provider === undefined) {
+    const matches = Object.keys(CHAT_PROVIDER_KEY_FAMILY).filter((candidate) =>
+      findEntry(catalog, candidate, body.model)?.roles.includes(
+        body.target as "small" | "large",
+      ),
+    );
+    if (matches.length === 0) {
+      throw invalid(
+        `Unknown model "${body.model}" for target "${body.target}"`,
+        { model: body.model, target: body.target },
+      );
+    }
+    if (matches.length > 1) {
+      throw invalid(
+        `Model "${body.model}" is served by multiple providers (${matches.join(", ")}); specify provider`,
+        { model: body.model, providers: matches },
+      );
+    }
+    provider = matches[0] as string;
+  }
+
+  const entry = findEntry(catalog, provider, body.model);
+  if (!entry) {
+    throw invalid(`Unknown model "${body.model}" for provider "${provider}"`, {
+      model: body.model,
+      provider,
+    });
+  }
+  if (!entry.roles.includes(body.target as "small" | "large")) {
+    throw invalid(
+      `Model "${body.model}" is not offered for the "${body.target}" role on provider "${provider}"`,
+      { model: body.model, provider, target: body.target, roles: entry.roles },
+    );
+  }
+
+  const family = CHAT_PROVIDER_KEY_FAMILY[provider] as "OPENAI" | "ANTHROPIC";
+  const targetUpper = body.target.toUpperCase();
+  const writes: ResolvedWrite[] = [
+    { key: `${family}_${targetUpper}_MODEL`, value: body.model },
+  ];
+  if (body.effort !== undefined) {
+    validateEffort(entry, body.effort);
+    writes.push(
+      family === "ANTHROPIC"
+        ? { key: `ANTHROPIC_EFFORT_${targetUpper}`, value: body.effort }
+        : { key: "OPENAI_REASONING_EFFORT", value: body.effort },
+    );
+  }
+  return writes;
+}
+
+function resolveCodingWrites(
+  catalog: ModelCatalog,
+  body: ModelConfigWriteBody,
+): ResolvedWrite[] {
+  const backend = body.backend;
+  if (backend === undefined || !CODING_BACKENDS.has(backend)) {
+    throw invalid(
+      `target "coding" requires backend (one of: ${[...CODING_BACKENDS].join(", ")})`,
+      { backend: backend ?? null },
+    );
+  }
+  const seam = CODING_BACKEND_SEAMS[backend];
+  if (body.provider !== undefined && body.provider !== seam.catalogProvider) {
+    throw invalid(
+      `provider "${body.provider}" does not match coding backend "${backend}"`,
+      { provider: body.provider, backend },
+    );
+  }
+
+  if (seam.catalogProvider) {
+    const entry = findEntry(catalog, seam.catalogProvider, body.model);
+    if (!entry) {
+      throw invalid(`Unknown model "${body.model}" for backend "${backend}"`, {
+        model: body.model,
+        backend,
+        provider: seam.catalogProvider,
+      });
+    }
+    if (body.effort !== undefined) validateEffort(entry, body.effort);
+  } else if (body.effort !== undefined) {
+    throw invalid(`backend "${backend}" has no effort control`, {
+      backend,
+      effort: body.effort,
+    });
+  }
+
+  const writes: ResolvedWrite[] = [{ key: seam.modelKey, value: body.model }];
+  if (body.effort !== undefined && seam.effortKey) {
+    writes.push({ key: seam.effortKey, value: body.effort });
+  }
+  if (body.defaultBackend !== undefined) {
+    if (!CODING_BACKENDS.has(body.defaultBackend)) {
+      throw invalid(`Unknown defaultBackend "${body.defaultBackend}"`, {
+        defaultBackend: body.defaultBackend,
+      });
+    }
+    writes.push({
+      key: "ELIZA_DEFAULT_AGENT_TYPE",
+      value: DEFAULT_BACKEND_PERSISTED_VALUE[body.defaultBackend],
+    });
+  }
+  return writes;
+}
+
+function parseWriteBody(raw: Record<string, unknown>): ModelConfigWriteBody {
+  const target = raw.target;
+  if (typeof target !== "string" || !TARGETS.has(target as ModelConfigTarget)) {
+    throw invalid(`target must be one of: ${[...TARGETS].join(", ")}`, {
+      target: target ?? null,
+    });
+  }
+  const model = raw.model;
+  if (typeof model !== "string" || !model.trim()) {
+    throw invalid("model must be a non-empty string", { model: model ?? null });
+  }
+  const optionalString = (field: string): string | undefined => {
+    const value = raw[field];
+    if (value === undefined) return undefined;
+    if (typeof value !== "string" || !value.trim()) {
+      throw invalid(`${field} must be a non-empty string when provided`, {
+        [field]: value,
+      });
+    }
+    return value.trim();
+  };
+  const backend = optionalString("backend");
+  if (backend !== undefined && !CODING_BACKENDS.has(backend as CodingBackend)) {
+    throw invalid(
+      `Unknown backend "${backend}" (expected one of: ${[...CODING_BACKENDS].join(", ")})`,
+      { backend },
+    );
+  }
+  const defaultBackend = optionalString("defaultBackend");
+  if (
+    defaultBackend !== undefined &&
+    !CODING_BACKENDS.has(defaultBackend as CodingBackend)
+  ) {
+    throw invalid(
+      `Unknown defaultBackend "${defaultBackend}" (expected one of: ${[...CODING_BACKENDS].join(", ")})`,
+      { defaultBackend },
+    );
+  }
+  return {
+    target: target as ModelConfigTarget,
+    model: model.trim(),
+    provider: optionalString("provider"),
+    backend: backend as CodingBackend | undefined,
+    effort: optionalString("effort"),
+    defaultBackend: defaultBackend as CodingBackend | undefined,
+  };
+}
+
+type EffectiveValue = {
+  value: string;
+  source: "config.env" | "config.env.vars" | "process.env" | "default";
+} | null;
+
+function resolveEffective(
+  config: ElizaConfig,
+  processEnv: NodeJS.ProcessEnv,
+  key: string,
+): EffectiveValue {
+  const fromConfig = readConfigEnvString(config, key);
+  if (fromConfig) return fromConfig;
+  const fromProcess = processEnv[key];
+  if (typeof fromProcess === "string" && fromProcess.trim()) {
+    return { value: fromProcess, source: "process.env" };
+  }
+  return null;
+}
+
+function buildEffectiveConfig(
+  config: ElizaConfig,
+  processEnv: NodeJS.ProcessEnv,
+): Record<string, Record<string, EffectiveValue>> {
+  const resolve = (key: string): EffectiveValue =>
+    resolveEffective(config, processEnv, key);
+  const chatKeys = (target: "SMALL" | "LARGE") => ({
+    [`OPENAI_${target}_MODEL`]: resolve(`OPENAI_${target}_MODEL`),
+    [`ANTHROPIC_${target}_MODEL`]: resolve(`ANTHROPIC_${target}_MODEL`),
+    OPENAI_REASONING_EFFORT: resolve("OPENAI_REASONING_EFFORT"),
+    [`ANTHROPIC_EFFORT_${target}`]: resolve(`ANTHROPIC_EFFORT_${target}`),
+  });
+  const codexDefault = CODING_MODEL_DEFAULTS.codex;
+  return {
+    small: chatKeys("SMALL"),
+    large: chatKeys("LARGE"),
+    coding: {
+      ELIZA_DEFAULT_AGENT_TYPE: resolve("ELIZA_DEFAULT_AGENT_TYPE"),
+      ELIZA_CODEX_MODEL_POWERFUL:
+        resolve("ELIZA_CODEX_MODEL_POWERFUL") ??
+        (codexDefault ? { value: codexDefault, source: "default" } : null),
+      ELIZA_CODEX_EFFORT: resolve("ELIZA_CODEX_EFFORT"),
+      ELIZA_CLAUDE_MODEL_POWERFUL: resolve("ELIZA_CLAUDE_MODEL_POWERFUL"),
+      ELIZA_CLAUDE_EFFORT: resolve("ELIZA_CLAUDE_EFFORT"),
+      ELIZA_OPENCODE_MODEL_POWERFUL: resolve("ELIZA_OPENCODE_MODEL_POWERFUL"),
+      ELIZA_ELIZAOS_MODEL_POWERFUL: resolve("ELIZA_ELIZAOS_MODEL_POWERFUL"),
+    },
+  };
+}
+
+/**
+ * Handle `GET`/`POST /api/models/config`. Returns true when the request was
+ * handled.
+ */
+export async function handleModelConfigRoutes(
+  ctx: ModelConfigRouteContext,
+): Promise<boolean> {
+  const { req, res, method, pathname, state, json, readJsonBody } = ctx;
+  if (pathname !== "/api/models/config") return false;
+  const processEnv = ctx.processEnv ?? process.env;
+
+  if (method === "GET") {
+    json(res, { targets: buildEffectiveConfig(state.config, processEnv) });
+    return true;
+  }
+
+  if (method !== "POST") return false;
+
+  const raw = await readJsonBody<Record<string, unknown>>(req, res);
+  if (raw === null) return true;
+
+  try {
+    const body = parseWriteBody(raw);
+    const catalog = ctx.catalog ?? buildModelCatalog();
+
+    if (body.target === "coding") {
+      const writes = resolveCodingWrites(catalog, body);
+      const conflicts: string[] = [];
+      for (const write of writes) {
+        if (
+          writeModelEnvKey(state.config, processEnv, write.key, write.value)
+        ) {
+          conflicts.push(write.key);
+        }
+      }
+      ctx.saveElizaConfig(state.config);
+      logger.info(
+        `[ModelConfigRoutes] coding model config applied: ${writes.map((w) => `${w.key}=${w.value}`).join(" ")}`,
+      );
+      // No restart: the orchestrator re-reads the config env section on every
+      // sub-agent spawn (readConfigEnvKey), so the write is live immediately.
+      json(res, {
+        applied: true,
+        restart: false,
+        keys: writes.map((w) => w.key),
+        ...(conflicts.length > 0
+          ? { conflictingServiceEnvKeys: conflicts }
+          : {}),
+      });
+      return true;
+    }
+
+    const writes = resolveChatWrites(catalog, body);
+    const conflicts: string[] = [];
+    const outcome = await ctx.runtimeOperationManager.start({
+      intent: {
+        kind: "restart",
+        reason: `model-config: ${body.target} model set to ${body.model}`,
+      },
+      // Writing inside prepare keeps the config change atomic with operation
+      // acceptance: a rejected-busy outcome leaves the config untouched.
+      prepare: async () => {
+        for (const write of writes) {
+          if (
+            writeModelEnvKey(state.config, processEnv, write.key, write.value)
+          ) {
+            conflicts.push(write.key);
+          }
+        }
+        ctx.saveElizaConfig(state.config);
+        return undefined;
+      },
+    });
+
+    if (outcome.kind === "rejected-busy") {
+      json(
+        res,
+        {
+          error: "A runtime operation is already in progress",
+          activeOperationId: outcome.activeOperationId,
+        },
+        409,
+      );
+      return true;
+    }
+
+    logger.info(
+      `[ModelConfigRoutes] ${body.target} model config applied: ${writes.map((w) => `${w.key}=${w.value}`).join(" ")} op=${outcome.operation.id}`,
+    );
+    json(res, {
+      applied: outcome.kind === "accepted",
+      restart: true,
+      operationId: outcome.operation.id,
+      keys: writes.map((w) => w.key),
+      ...(outcome.kind === "deduped" ? { deduped: true } : {}),
+      ...(conflicts.length > 0 ? { conflictingServiceEnvKeys: conflicts } : {}),
+    });
+    return true;
+  } catch (err) {
+    // error-policy:J1 route transport boundary — translate the typed
+    // validation failure into a structured 400 and anything else into a 500.
+    if (err instanceof ElizaError) {
+      json(
+        res,
+        { error: err.message, code: err.code, context: err.context },
+        400,
+      );
+      return true;
+    }
+    logger.error(
+      `[ModelConfigRoutes] model config write failed: ${err instanceof Error ? err.stack : String(err)}`,
+    );
+    json(res, { error: "Model config update failed" }, 500);
+    return true;
+  }
+}

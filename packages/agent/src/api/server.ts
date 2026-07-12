@@ -441,6 +441,7 @@ import {
   handleMemoryRoutes,
   handleMiscRoutes,
   handleMobileOptionalRoutes,
+  handleModelConfigRoutes,
   handleModelsRoutes,
   handlePermissionRoutes,
   handlePermissionsExtraRoutes,
@@ -2508,6 +2509,29 @@ async function handleRequest(
     })
   ) {
     return;
+  }
+
+  // Gate on the exact path before building the context so the runtime
+  // operation manager is not instantiated on unrelated requests.
+  if (pathname === "/api/models/config") {
+    if (
+      await handleModelConfigRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        json,
+        readJsonBody,
+        state: { config: state.config },
+        saveElizaConfig,
+        runtimeOperationManager: getOrCreateRuntimeOperationManager(
+          state,
+          restartRuntime,
+        ),
+      })
+    ) {
+      return;
+    }
   }
 
   if (
