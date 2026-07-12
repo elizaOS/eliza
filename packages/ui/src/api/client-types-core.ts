@@ -283,9 +283,10 @@ export interface ProviderModelRecord {
 }
 
 /**
- * One selectable model in the `catalog` field of `GET /api/models` — the
- * validated provider→model→efforts catalog `POST /api/models/config` checks
- * writes against (packages/agent/src/api/model-catalog.ts).
+ * One selectable model in the validated provider→model→efforts catalog that
+ * every `GET /api/models` response carries (`catalog` field). Mirrors
+ * `ModelCatalogEntry` in packages/agent/src/api/model-catalog.ts — the server
+ * validates `POST /api/models/config` writes against exactly this shape.
  */
 export interface ModelCatalogEntry {
   id: string;
@@ -307,6 +308,84 @@ export interface ModelCatalogResponse {
   catalog: { providers: ModelCatalogProviders };
 }
 
+export interface ModelCatalog {
+  providers: ModelCatalogProviders;
+}
+
+export type ModelsConfigTarget = "small" | "large" | "coding";
+
+/**
+ * Coding backend wire values accepted by `POST /api/models/config`. The
+ * in-house backend is spelled `eliza-code` on the wire (the server persists it
+ * as `ELIZA_DEFAULT_AGENT_TYPE=elizaos`).
+ */
+export type ModelsConfigCodingBackend =
+  | "codex"
+  | "claude"
+  | "opencode"
+  | "eliza-code";
+
+/** Which config seam won for a key reported by `GET /api/models/config`. */
+export type ModelsConfigSource =
+  | "config.env"
+  | "config.env.vars"
+  | "process.env"
+  | "default";
+
+export interface ModelsConfigEffectiveValue {
+  value: string;
+  source: ModelsConfigSource;
+}
+
+export interface ModelsConfigResponse {
+  targets: {
+    small: Record<string, ModelsConfigEffectiveValue | null>;
+    large: Record<string, ModelsConfigEffectiveValue | null>;
+    coding: Record<string, ModelsConfigEffectiveValue | null>;
+  };
+}
+
+export interface ModelsConfigWriteRequest {
+  target: ModelsConfigTarget;
+  /** Chat targets: cerebras | elizacloud | claude-chat. */
+  provider?: string;
+  /** Coding target only. */
+  backend?: ModelsConfigCodingBackend;
+  model: string;
+  effort?: string;
+  /** Persist this backend as ELIZA_DEFAULT_AGENT_TYPE alongside the write. */
+  defaultBackend?: ModelsConfigCodingBackend;
+}
+
+/**
+ * Normalized `POST /api/models/config` outcome. The route answers three
+ * designed shapes — 2xx applied/deduped, 400 `MODEL_CONFIG_INVALID`, 409
+ * operation-busy — which the client folds into one discriminated union so
+ * panels render each as a distinct state instead of losing the 400 context
+ * payload inside a generic ApiError message. Transport failures and 500s
+ * still throw.
+ */
+export type ModelsConfigWriteResult =
+  | {
+      kind: "applied";
+      /** True when the write requires (and already triggered) an agent restart. */
+      restart: boolean;
+      keys: string[];
+      operationId?: string;
+      /** True when an identical restart was already in flight and this write joined it. */
+      deduped?: boolean;
+      /** Keys whose process-env value came from outside the config (service env). */
+      conflictingServiceEnvKeys?: string[];
+    }
+  | {
+      kind: "invalid";
+      error: string;
+      /** Values the route would have accepted, when the failure names them. */
+      supported?: string[];
+    }
+  | { kind: "busy"; error: string; activeOperationId: string };
+
+>>>>>>> feat/settings-models-panel
 export interface AgentAutomationModeResponse {
   mode: AgentAutomationMode;
   options: AgentAutomationMode[];

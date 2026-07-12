@@ -40,6 +40,10 @@
     "streamGoLive": { "action": "STREAM" },
     "streamGoOffline": { "action": "STREAM" },
     "switchProvider": { "action": "MODEL_SWITCH" },
+    "updateModelsConfig": {
+      "action": "MODEL_SWITCH",
+      "note": "per-role model/effort write (POST /api/models/config) from the settings Models panel — same chat twin as the provider switch"
+    },
     "updateCharacter": { "action": "CHARACTER" },
     "updateConfig": {
       "action": "SETTINGS",

@@ -317,7 +317,7 @@ export function useSlashCommandController(
         )
       ) {
         void client
-          .fetchModelCatalog()
+          .getModelsCatalog()
           .then((models) => {
             if (!cancelled) setModelCatalog(models.catalog.providers);
           })

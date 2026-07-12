@@ -15,12 +15,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SlashCommandCatalogItem } from "../api/client-types-commands";
 import { ApiError, type ModelCatalogResponse } from "../api/client-types-core";
 
-const { listCommands, listCustomActions, fetchModelCatalog } = vi.hoisted(
+const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
   () => ({
     listCommands:
       vi.fn<(surface?: string) => Promise<SlashCommandCatalogItem[]>>(),
     listCustomActions: vi.fn<() => Promise<CustomActionDef[]>>(),
-    fetchModelCatalog: vi.fn<() => Promise<ModelCatalogResponse>>(),
+    getModelsCatalog: vi.fn<() => Promise<ModelCatalogResponse>>(),
   }),
 );
 
@@ -28,7 +28,7 @@ vi.mock("../api", () => ({
   client: {
     listCommands: (surface?: string) => listCommands(surface),
     listCustomActions: () => listCustomActions(),
-    fetchModelCatalog: () => fetchModelCatalog(),
+    getModelsCatalog: () => getModelsCatalog(),
   },
 }));
 vi.mock("../config/boot-config-react.hooks", () => ({
@@ -119,7 +119,7 @@ function apiError(status: number, message: string): ApiError {
 beforeEach(() => {
   listCommands.mockReset();
   listCustomActions.mockReset();
-  fetchModelCatalog.mockReset();
+  getModelsCatalog.mockReset();
   listCustomActions.mockResolvedValue([]);
   window.localStorage.clear();
 });
@@ -127,12 +127,12 @@ beforeEach(() => {
 describe("useSlashCommandController — models choice source", () => {
   it("fetches the catalog when a command declares a models arg and resolves per-position choices", async () => {
     listCommands.mockResolvedValue([MODEL_COMMAND]);
-    fetchModelCatalog.mockResolvedValue(CATALOG_RESPONSE);
+    getModelsCatalog.mockResolvedValue(CATALOG_RESPONSE);
 
     const { result } = renderHook(() => useSlashCommandController());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetchModelCatalog).toHaveBeenCalledTimes(1);
+    expect(getModelsCatalog).toHaveBeenCalledTimes(1);
     await waitFor(() =>
       expect(
         result.current.resolveChoices("models", {
@@ -160,7 +160,7 @@ describe("useSlashCommandController — models choice source", () => {
 
   it("labels model values and /model target tokens via describeChoice", async () => {
     listCommands.mockResolvedValue([MODEL_COMMAND]);
-    fetchModelCatalog.mockResolvedValue(CATALOG_RESPONSE);
+    getModelsCatalog.mockResolvedValue(CATALOG_RESPONSE);
 
     const { result } = renderHook(() => useSlashCommandController());
 
@@ -182,7 +182,7 @@ describe("useSlashCommandController — models choice source", () => {
     const { result } = renderHook(() => useSlashCommandController());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetchModelCatalog).not.toHaveBeenCalled();
+    expect(getModelsCatalog).not.toHaveBeenCalled();
     expect(
       result.current.resolveChoices("models", {
         commandKey: "model",
@@ -198,7 +198,7 @@ describe("useSlashCommandController — models choice source", () => {
       .mockImplementation(() => {});
     listCommands.mockResolvedValue([MODEL_COMMAND]);
     const failure = new Error("models route down");
-    fetchModelCatalog.mockRejectedValue(failure);
+    getModelsCatalog.mockRejectedValue(failure);
 
     const { result } = renderHook(() => useSlashCommandController());
 
@@ -226,12 +226,12 @@ describe("useSlashCommandController — models choice source", () => {
       .spyOn(console, "error")
       .mockImplementation(() => {});
     listCommands.mockResolvedValue([MODEL_COMMAND]);
-    fetchModelCatalog.mockRejectedValue(apiError(401, "Unauthorized"));
+    getModelsCatalog.mockRejectedValue(apiError(401, "Unauthorized"));
 
     const { result } = renderHook(() => useSlashCommandController());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(fetchModelCatalog).toHaveBeenCalledTimes(1);
+    expect(getModelsCatalog).toHaveBeenCalledTimes(1);
     expect(consoleError).not.toHaveBeenCalled();
     expect(
       result.current.resolveChoices("models", {
