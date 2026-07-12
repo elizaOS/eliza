@@ -11,7 +11,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("../../api/client", () => ({
   client: {
     fetch: vi.fn().mockRejectedValue(new Error("no api in test")),
-    getCodingAgentTaskThread: vi.fn().mockResolvedValue(null),
+    getCodingAgentTaskThread: vi.fn().mockRejectedValue(new Error("no api in test")),
     onWsEvent: vi.fn(() => () => undefined),
     searchConversationMessages: vi.fn(),
     createTranscript: vi
@@ -69,4 +69,92 @@ describe("ChatWidgetHarness", () => {
     );
     expect(screen.getByText("Set up your assistant")).toBeTruthy();
   });
+
+  it("walks the whole script rendering only REAL production widgets — no raw markers", async () => {
+    render(<ChatWidgetHarness />);
+
+    const advance = async (matcher: () => unknown) => {
+      await waitFor(matcher, { timeout: 3000 });
+    };
+    const tap = (el: Element) => fireEvent.click(el);
+
+    // Scene 0 → profile form (real form-request widget).
+    tap(screen.getByText("Set me up"));
+    await advance(() => screen.getByText("Set up your assistant"));
+
+    // Scene 1 → permission card (real MessagePermissionCard). The real form
+    // widget enforces its required field, so fill it before submitting.
+    fireEvent.change(screen.getByLabelText(/what should i call you/i), {
+      target: { value: "Shaw" },
+    });
+    tap(screen.getByText("Save profile"));
+    await advance(() => screen.getByText(/quick permission/i));
+
+    // Scene 2 → secret request (real SensitiveRequestBlock). The permission
+    // card's fallback button routes through the real sendActionMessage
+    // (`__permission_card__:use_fallback …`), which advances the script.
+    tap(screen.getByTestId("permission-card-fallback"));
+    await advance(() => screen.getByText(/connect a model provider key/i));
+
+    // The secret scene releases the onboarding pin (its real submit needs the
+    // API), so the composer is unlocked from here. The block still renders the
+    // REAL secure input field.
+    expect(screen.getAllByText(/API key/i).length).toBeGreaterThan(0);
+
+    // Scene 3 → follow-ups widget (real followups chips) via composer send.
+    const composer = screen.getByLabelText("message");
+    fireEvent.change(composer, { target: { value: "skip for now" } });
+    tap(screen.getByLabelText("send"));
+    await advance(() => screen.getByText("Show me"));
+
+    // Scene 4 → workflow widget.
+    tap(screen.getByText("Show me"));
+    await advance(() => screen.getByTestId("workflow-steps"));
+    expect(screen.getByText("Ship mobile polish")).toBeTruthy();
+
+    // Scene 5 → checklist widget.
+    fireEvent.change(composer, { target: { value: "next" } });
+    tap(screen.getByLabelText("send"));
+    await advance(() => screen.getByText("UX review"));
+
+    // Scene 6 → real task widget + background picker.
+    fireEvent.change(composer, { target: { value: "next" } });
+    tap(screen.getByLabelText("send"));
+    await advance(() => screen.getByTestId("task-widget"));
+    expect(screen.getByText("Refine native chat glass")).toBeTruthy();
+
+    // Scene 7 → code block + generated UI.
+    fireEvent.change(composer, { target: { value: "next" } });
+    tap(screen.getByLabelText("send"));
+    await advance(() => screen.getAllByTestId("code-block"));
+
+    // Scene 8 → generated UI through the REAL GenUI renderer (a live Heading
+    // element), not a raw JSON code block.
+    fireEvent.change(composer, { target: { value: "next" } });
+    tap(screen.getByLabelText("send"));
+    await advance(() => screen.getByText("Interactive generated UI"));
+
+    // Scene 9 → failure turn with the REAL retry affordance.
+    fireEvent.change(composer, { target: { value: "next" } });
+    tap(screen.getByLabelText("send"));
+    await advance(() => screen.getByText(/temporarily busy/i));
+
+    // Anti-larp: no raw widget markers may leak anywhere as literal text.
+    const bodyText = document.body.textContent ?? "";
+    for (const marker of [
+      "[CHOICE",
+      "[/CHOICE]",
+      "[FORM]",
+      "[FOLLOWUPS]",
+      "[WORKFLOW]",
+      "[CHECKLIST]",
+      "[TASK:",
+      "[BACKGROUND]",
+      "permission_request",
+    ]) {
+      expect(bodyText.includes(marker), `raw marker leaked: ${marker}`).toBe(
+        false,
+      );
+    }
+  }, 30000);
 });

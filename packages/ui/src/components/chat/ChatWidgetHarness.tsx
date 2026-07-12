@@ -100,8 +100,12 @@ const SCRIPT: Scene[] = [
   },
   {
     source: "first_run",
+    // Releases the first-run pin here: the secure form's submit posts through
+    // the real client (absent in the harness), so the composer must be
+    // unlocked for the conversation to continue past its genuine error state.
+    endsOnboarding: true,
     content:
-      "Last onboarding step — connect a model provider key. This secure field never leaves the device in this harness.",
+      "Last onboarding step — connect a model provider key. This secure field never leaves the device in this harness. (Feel free to skip — just keep typing.)",
     secretRequest: {
       key: "HARNESS_API_KEY",
       reason: "Connect a provider to start chatting for real.",
@@ -122,7 +126,6 @@ const SCRIPT: Scene[] = [
     },
   },
   {
-    endsOnboarding: true,
     content:
       "You're all set — onboarding done, sheet unpinned. Pull the grabber down to collapse this chat, pull up (or type) to expand it again. Want to see what I can do mid-conversation?\n[FOLLOWUPS]\nreply:Show me widgets=Show me\nprompt:Refine the plan for =Prefill composer\nnavigate:/settings=Open settings\n[/FOLLOWUPS]",
   },
@@ -139,7 +142,13 @@ const SCRIPT: Scene[] = [
       "I can also run coding tasks and restyle the app:\n[TASK:00000000-0000-4000-8000-000000000001]Refine native chat glass[/TASK]\n[BACKGROUND]",
   },
   {
-    content: `Code and generated UI render inline too:\n\`\`\`tsx\n<ChatWidgetHarness mode="native" />\n\`\`\`\n\`\`\`json\n${GENERATED_UI}\n\`\`\``,
+    content: `Code renders inline with the real copyable block:\n\`\`\`tsx\n<ChatWidgetHarness mode="native" />\n\`\`\``,
+  },
+  {
+    // Kept as its own turn: the segment parser's fence regex only recognizes a
+    // UiSpec fence when a non-json fence does not precede it in the same
+    // message (the earlier fence's closing ``` consumes the json opener).
+    content: `And this is live agent-generated UI, not a code block:\n\`\`\`json\n${GENERATED_UI}\n\`\`\``,
   },
   {
     failureKind: "rate_limited",
