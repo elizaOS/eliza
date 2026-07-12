@@ -37,7 +37,10 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import type {
+  VoiceContinuousStatus,
+  VoiceSpeakerMetadata,
+} from "../voice/voice-chat-types";
 import {
   createVoiceSessionClient,
   type VoiceSessionClient,
@@ -49,11 +52,6 @@ import type {
   ServerControlFrame,
   VoiceSessionMintResponse,
 } from "../voice/voice-session-protocol";
-import type {
-  VoiceContinuousStatus,
-  VoiceSpeakerMetadata,
-} from "../voice/voice-chat-types";
-import { toContinuousStatus } from "../voice/voice-session-state";
 
 /** A realtime-voice error the UI can branch on for an actionable message. */
 export type RealtimeVoiceErrorKind =
