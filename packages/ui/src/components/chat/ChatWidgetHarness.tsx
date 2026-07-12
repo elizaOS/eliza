@@ -406,6 +406,70 @@ export function ChatWidgetHarness(): React.JSX.Element {
           overflow: "hidden",
         }}
       >
+        {/* Detail behind the sheet: frosted glass is invisible over a flat
+            color — these stand-in home widgets give the blur something real
+            to refract, matching what the sheet floats over in the app. */}
+        <div
+          aria-hidden
+          style={{
+            padding: "72px 28px",
+            maxWidth: 720,
+            color: "rgba(255,255,255,0.92)",
+            fontFamily: "inherit",
+          }}
+        >
+          <h1 style={{ fontSize: 30, fontWeight: 600, margin: 0 }}>
+            Good evening
+          </h1>
+          <p style={{ opacity: 0.75, marginTop: 10, lineHeight: 1.6 }}>
+            Three meetings today. The build finished 12 minutes ago and the
+            review queue is clear.
+          </p>
+          <div
+            style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}
+          >
+            {["Calendar", "Tasks", "Notes", "Wallet", "Settings"].map((t) => (
+              <span
+                key={t}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.12)",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  fontSize: 13,
+                }}
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+          <div
+            style={{
+              marginTop: 22,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            {["Ship mobile polish", "Review the glass sheet", "Plan tomorrow", "Inbox zero"].map(
+              (t, i) => (
+                <div
+                  key={t}
+                  style={{
+                    borderRadius: 16,
+                    padding: "14px 16px",
+                    background:
+                      i % 2 ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.14)",
+                    fontSize: 14,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {t}
+                </div>
+              ),
+            )}
+          </div>
+        </div>
         <GlassStyles />
         <ContinuousChatOverlay
           controller={controller}
