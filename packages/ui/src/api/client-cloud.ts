@@ -131,6 +131,11 @@ type DirectCloudAgent = {
   execution_tier?: string | null;
 };
 
+type CloudCompatAgentWithExecutionTier = CloudCompatAgent & {
+  /** Server-authoritative runtime placement. Older compat responses may omit it. */
+  execution_tier?: string | null;
+};
+
 type DirectCloudJob = {
   id?: string;
   jobId?: string;
@@ -907,7 +912,9 @@ function parseDirectCloudAgentCreateData(
   };
 }
 
-function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
+function toCloudCompatAgent(
+  input: DirectCloudAgent,
+): CloudCompatAgentWithExecutionTier {
   const id = stringOrNull(input.agentId) ?? requireString(input.id, "agent id");
   const agentName =
     stringOrNull(input.agentName) ?? stringOrNull(input.name) ?? id;
@@ -1220,7 +1227,7 @@ declare module "./client-base" {
     cloudDisconnect(): Promise<{ ok: boolean }>;
     getCloudCompatAgents(): Promise<{
       success: boolean;
-      data: CloudCompatAgent[];
+      data: CloudCompatAgentWithExecutionTier[];
       error?: string;
     }>;
     createCloudCompatAgent(opts: {
@@ -1274,7 +1281,7 @@ declare module "./client-base" {
     ): Promise<CloudCompatAgentProvisionResponse>;
     getCloudCompatAgent(agentId: string): Promise<{
       success: boolean;
-      data: CloudCompatAgent;
+      data: CloudCompatAgentWithExecutionTier;
     }>;
     getCloudCompatAgentManagedDiscord(agentId: string): Promise<{
       success: boolean;
@@ -3267,7 +3274,7 @@ export async function waitForCloudAgentRunning(
     timeoutMs?: number;
     onProgress?: (status: string, detail?: string) => void;
   },
-): Promise<CloudCompatAgent> {
+): Promise<CloudCompatAgentWithExecutionTier> {
   const { agentId, onProgress } = options;
   const pollIntervalMs = Math.max(
     50,
@@ -3334,11 +3341,11 @@ export async function waitForCloudAgentRunning(
  * deletion rows are unreusable.
  */
 function pickPreferredCloudAgent(
-  agents: CloudCompatAgent[],
+  agents: CloudCompatAgentWithExecutionTier[],
   preferAgentId?: string | null,
-): CloudCompatAgent | null {
+): CloudCompatAgentWithExecutionTier | null {
   if (!agents.length) return null;
-  const byNewest = (rows: CloudCompatAgent[]) =>
+  const byNewest = (rows: CloudCompatAgentWithExecutionTier[]) =>
     [...rows].sort((a, b) =>
       String(b.created_at).localeCompare(String(a.created_at)),
     );
