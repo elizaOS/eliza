@@ -111,11 +111,7 @@ import type { ICompatRuntime } from "./compat";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import type { ChannelDebouncer } from "./debouncer";
 import { DiscordVoiceTargetAudioSink } from "./discord-audio-sink";
-import {
-	handleGuildCreate as handleGuildCreateExtracted,
-	isGuildOnlyCommand,
-	transformCommandToDiscordApi,
-} from "./discord-commands";
+import { handleGuildCreate as handleGuildCreateExtracted } from "./discord-commands";
 import {
 	type DiscordServiceInternals,
 	setupDiscordEventListeners,
@@ -149,6 +145,10 @@ import {
 	type DiscordOutboundDeliveryReservation,
 	MessageManager,
 } from "./messages";
+import {
+	registerDiscordSlashCommands,
+	type SlashCommandRegistrationHost,
+} from "./slash-command-registration";
 import type {
 	BuildMemoryFromMessageOptions,
 	ChannelHistoryOptions,
@@ -666,236 +666,35 @@ export class DiscordService extends Service implements IDiscordService {
 		commands: DiscordSlashCommand[],
 		accountId?: string | null,
 	): Promise<void> {
-		const state = this.requireAccountState(accountId);
-		await state.clientReadyPromise;
-
-		const client = state.client;
-		const clientApplication = client?.application;
-		if (!clientApplication) {
-			this.runtime.logger.warn(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					accountId: state.accountId,
-				},
-				"Cannot register commands - Discord client application not available",
-			);
-			return;
-		}
-
-		if (!Array.isArray(commands) || commands.length === 0) {
-			this.runtime.logger.warn(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					accountId: state.accountId,
-				},
-				"Cannot register commands - no commands provided",
-			);
-			return;
-		}
-
-		for (const cmd of commands) {
-			if (!cmd.name || !cmd.description) {
-				this.runtime.logger.warn(
-					{
-						src: "plugin:discord",
-						agentId: this.runtime.agentId,
-						accountId: state.accountId,
-					},
-					"Cannot register commands - invalid command (missing name or description)",
-				);
-				return;
-			}
-		}
-
-		let registrationError: Error | null = null;
-		let registrationFailed = false;
-
-		// Opt into user-installable / group-DM command availability. Off by
-		// default: Discord rejects user-install command registration unless the
-		// app is configured as user-installable in the developer portal.
-		const userInstall = parseBooleanFromText(
-			String(this.runtime.getSetting("DISCORD_USER_INSTALL") ?? ""),
+		const service = this;
+		// `runtime` is protected on DiscordService, so the host object copies it
+		// rather than passing `this` directly (which TS structurally rejects: a
+		// protected member can't satisfy a public interface field). The mutable
+		// fields are live getters/setters so the extracted registration logic's
+		// writes (queue chaining, merged command list) land back on the service.
+		const host: SlashCommandRegistrationHost = {
+			runtime: this.runtime,
+			get slashCommands() {
+				return service.slashCommands;
+			},
+			set slashCommands(value) {
+				service.slashCommands = value;
+			},
+			allowAllSlashCommands: this.allowAllSlashCommands,
+			get commandRegistrationQueue() {
+				return service.commandRegistrationQueue;
+			},
+			set commandRegistrationQueue(value) {
+				service.commandRegistrationQueue = value;
+			},
+			requireAccountState: (id) => this.requireAccountState(id),
+		};
+		return registerDiscordSlashCommands(
+			host,
+			commands,
+			parseBooleanFromText,
+			accountId,
 		);
-
-		this.commandRegistrationQueue = this.commandRegistrationQueue
-			.then(async () => {
-				const commandMap = new Map<string, DiscordSlashCommand>();
-				for (const cmd of this.slashCommands) {
-					if (cmd.name) commandMap.set(cmd.name, cmd);
-				}
-				for (const cmd of commands) {
-					if (cmd.name) commandMap.set(cmd.name, cmd);
-				}
-				this.slashCommands = Array.from(commandMap.values());
-
-				this.allowAllSlashCommands.clear();
-				for (const cmd of this.slashCommands) {
-					if (cmd.bypassChannelWhitelist) {
-						this.allowAllSlashCommands.add(cmd.name);
-					}
-				}
-
-				const generalCommands = this.slashCommands.filter(
-					(cmd) => (cmd.guildIds?.length ?? 0) === 0,
-				);
-				const globalCommands = generalCommands.filter(
-					(cmd) => !isGuildOnlyCommand(cmd),
-				);
-				const guildOnlyCommands = generalCommands.filter((cmd) =>
-					isGuildOnlyCommand(cmd),
-				);
-				const targetedGuildCommands = this.slashCommands.filter(
-					(cmd) => cmd.guildIds && cmd.guildIds.length > 0,
-				);
-
-				const transformedGlobalCommands = globalCommands.map((cmd) =>
-					transformCommandToDiscordApi(cmd, { userInstall }),
-				);
-				const transformedGuildOnlyCommands = guildOnlyCommands.map((cmd) =>
-					transformCommandToDiscordApi(cmd, { userInstall }),
-				);
-
-				const clientApp = client.application;
-				if (!clientApp) {
-					throw new Error("Discord client application is not available");
-				}
-
-				try {
-					await clientApp.commands.set(transformedGlobalCommands);
-				} catch (err) {
-					this.runtime.logger.error(
-						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
-							accountId: state.accountId,
-							error: err instanceof Error ? err.message : String(err),
-						},
-						"Failed to register/clear global commands",
-					);
-				}
-
-				// Per-guild registration pushes ONLY the guild-only commands: global
-				// commands live in the global scope, and Discord renders a command
-				// present in BOTH scopes twice in the slash menu. Setting the
-				// guild-only set (often empty) also clears any stale guild-scoped
-				// copies of global commands, which is what removes existing
-				// duplicates.
-				const guilds = client.guilds.cache;
-				if (guilds) {
-					await Promise.all(
-						[...guilds].map(async ([guildId, guild]) => {
-							try {
-								await clientApp.commands.set(
-									transformedGuildOnlyCommands,
-									guildId,
-								);
-							} catch (err) {
-								// error-policy:J7 one guild's failed command write must not
-								// abort the sync fan-out to the remaining guilds; the partial
-								// sync is surfaced to the agent/owner via reportError rather
-								// than left as a healthy-looking startup.
-								this.runtime.reportError(
-									"DiscordService.commandSync",
-									err instanceof Error ? err : new Error(String(err)),
-									{
-										accountId: state.accountId,
-										guildId,
-										guildName: guild.name,
-									},
-								);
-								this.runtime.logger.warn(
-									{
-										src: "plugin:discord",
-										agentId: this.runtime.agentId,
-										accountId: state.accountId,
-										guildId,
-										guildName: guild.name,
-										error: err instanceof Error ? err.message : String(err),
-									},
-									"Failed to register commands to guild",
-								);
-							}
-						}),
-					);
-				}
-
-				if (guilds && targetedGuildCommands.length > 0) {
-					await Promise.all(
-						targetedGuildCommands.flatMap((cmd) => {
-							const transformedCmd = transformCommandToDiscordApi(cmd, {
-								userInstall,
-								guildScoped: true,
-							});
-							return (cmd.guildIds ?? []).map(async (guildId) => {
-								const guild = guilds.get(guildId);
-								if (!guild) return;
-								try {
-									const fullGuild = await guild.fetch();
-									const existingCommands = await fullGuild.commands.fetch();
-									const existingCommand = existingCommands.find(
-										(c) => c.name === cmd.name,
-									);
-									if (existingCommand) {
-										await existingCommand.edit(
-											transformedCmd as Partial<
-												import("discord.js").ApplicationCommandData
-											>,
-										);
-									} else {
-										await fullGuild.commands.create(transformedCmd);
-									}
-								} catch (error) {
-									this.runtime.logger.error(
-										{
-											src: "plugin:discord",
-											agentId: this.runtime.agentId,
-											accountId: state.accountId,
-											commandName: cmd.name,
-											guildId,
-											error:
-												error instanceof Error ? error.message : String(error),
-										},
-										"Failed to register targeted command in guild",
-									);
-								}
-							});
-						}),
-					);
-				}
-
-				this.runtime.logger.info(
-					{
-						src: "plugin:discord",
-						agentId: this.runtime.agentId,
-						accountId: state.accountId,
-						newCommands: commands.length,
-						totalCommands: this.slashCommands.length,
-					},
-					"Commands registered",
-				);
-			})
-			.catch((error) => {
-				registrationFailed = true;
-				registrationError =
-					error instanceof Error ? error : new Error(String(error));
-				this.runtime.logger.error(
-					{
-						src: "plugin:discord",
-						agentId: this.runtime.agentId,
-						accountId: state.accountId,
-						error: registrationError.message,
-					},
-					"Error registering Discord commands",
-				);
-			});
-
-		await this.commandRegistrationQueue;
-
-		if (registrationFailed && registrationError) {
-			throw registrationError;
-		}
 	}
 
 	private async resolveDiscordTargetUserId(
