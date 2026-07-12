@@ -11,7 +11,7 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GlassStyles, GlassSurface } from "./GlassSurface";
-import { resetGlassBridgeForTests } from "./native-bridge";
+import { nativeGlassPlatform, resetGlassBridgeForTests } from "./native-bridge";
 import { GLASS_RECIPES, type GlassVariant } from "./tokens";
 
 type CapGlobal = { Capacitor?: unknown };
@@ -91,6 +91,27 @@ describe("glass tokens", () => {
     expect(GLASS_RECIPES.menu.refraction).toMatch(/^url\(/);
     expect(GLASS_RECIPES.sheet.refraction).toBeNull();
     expect(GLASS_RECIPES.banner.refraction).toBeNull();
+  });
+});
+
+describe("nativeGlassPlatform", () => {
+  it("is null off-Capacitor", () => {
+    expect(nativeGlassPlatform()).toBeNull();
+  });
+
+  it("reports the injected native platform so surfaces can branch material", () => {
+    installCapacitor(fakeBridge(), "android");
+    expect(nativeGlassPlatform()).toBe("android");
+    installCapacitor(fakeBridge(), "ios");
+    expect(nativeGlassPlatform()).toBe("ios");
+  });
+
+  it("is null on a non-mobile Capacitor platform (web/electrobun)", () => {
+    (globalThis as CapGlobal).Capacitor = {
+      isNativePlatform: () => false,
+      getPlatform: () => "web",
+    };
+    expect(nativeGlassPlatform()).toBeNull();
   });
 });
 

@@ -11,6 +11,7 @@ export {
   glassBridge,
   isNativeGlassAvailable,
   isNativeGlassBackdropActive,
+  nativeGlassPlatform,
   subscribeNativeGlassBackdrop,
   type NativeGlassBackdropOptions,
   type NativeGlassOptions,

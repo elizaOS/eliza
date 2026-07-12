@@ -104,6 +104,21 @@ function capacitorGlobal(): CapacitorGlobal | null {
   return (globalThis as { Capacitor?: CapacitorGlobal }).Capacitor ?? null;
 }
 
+/**
+ * The native platform behind the glass, or null off-Capacitor. The two native
+ * platforms render the `"native"` tier with DIFFERENT materials — iOS gets the
+ * `UIGlassEffect` liquid frost, Android the flat Material sheet — so a surface
+ * on the native tier must branch its own CSS (fill/blur/sheen) on this instead
+ * of painting one identical liquid-glass layer on both (which hid the native
+ * panel's platform character and made Android look like iOS). Reads the
+ * bridge-injected global, never `@capacitor/core`, for the same server-node
+ * safety as {@link glassBridge}.
+ */
+export function nativeGlassPlatform(): "ios" | "android" | null {
+  const platform = capacitorGlobal()?.getPlatform?.();
+  return platform === "ios" || platform === "android" ? platform : null;
+}
+
 let cached: GlassBridgePlugin | null | undefined;
 
 /**

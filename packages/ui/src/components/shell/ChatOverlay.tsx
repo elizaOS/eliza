@@ -144,6 +144,7 @@ import {
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import {
+  nativeGlassPlatform,
   useNativeGlass,
   useNativeGlassAnchor,
   useNativeGlassBackdropActive,
@@ -2554,13 +2555,31 @@ export function ChatOverlay({
   const glassTier = useNativeGlass();
   const nativeBackdropActive = useNativeGlassBackdropActive();
   const chatSurfaceRef = React.useRef<HTMLDivElement>(null);
+  // The `"native"` tier is one value for two very different materials: iOS a
+  // UIGlassEffect liquid frost, Android a flat Material sheet. The chosen
+  // material must be STABLE across every detent. Keying it on the platform
+  // (constant) + tier (never downgrades) — NOT on the transient
+  // open/maximize/collapse state — is what stops the sheet BLIPPING from native
+  // material to the CSS liquid-glass fallback for the frames a drag/collapse
+  // leaves an open-state gate momentarily false. `nativeBackdropActive` is the
+  // one non-detent input (installed once at boot), so it does not flip per drag.
+  const glassPlatform = glassTier === "native" ? nativeGlassPlatform() : null;
+  // Android's Material sheet is OPAQUE — it masks on its own and never refracts,
+  // so it does not depend on the native backdrop and is stable the moment the
+  // tier resolves. iOS's frost is translucent and reads the UIGlassEffect behind
+  // the webview, so it requires the backdrop to be installed to look right.
+  const androidNative = glassPlatform === "android";
+  const iosNative = glassPlatform === "ios" && nativeBackdropActive;
+  // Only iOS anchors a real native glass PANEL behind the sheet: its surface is
+  // mostly transparent so the UIGlassEffect below the webview is the visible
+  // frost. Android's Material sheet is opaque (see the fill below), so a panel
+  // behind it is fully occluded — attaching/detaching one per detent was pure
+  // native-view churn (new View + GradientDrawable + LayoutParams every open,
+  // removeView every close) for zero visible pixels. The native ember backdrop
+  // still stands on both platforms. This gate stays transient by design: it
+  // governs the real native view's lifetime, not the (now stable) surface look.
   const nativeGlassActive =
-    glassTier === "native" &&
-    nativeBackdropActive &&
-    sheetOpen &&
-    !pilled &&
-    !fullBleed &&
-    !firstRunOpen;
+    iosNative && sheetOpen && !pilled && !fullBleed && !firstRunOpen;
   useNativeGlassAnchor(chatSurfaceRef, nativeGlassActive);
   // Only the panel MAX-HEIGHT stays full-screen-sized for the whole restore drag,
   // so the height can track the finger without the max-height clamping it shorter
@@ -5229,11 +5248,11 @@ export function ChatOverlay({
             data-testid="chat-sheet-surface"
             ref={chatSurfaceRef}
             data-glass-tier={glassTier}
-            data-native-glass={nativeGlassActive ? "on" : undefined}
+            data-native-glass={androidNative || iosNative ? "on" : undefined}
             // The directional specular rim (mask-composite ring) replaces the
             // flat CSS border on the inset sheet — the "liquid" edge cue. Off
             // at full-bleed (no edge to catch light) and during first-run.
-            data-glass-rim={firstRunOpen ? undefined : "on"}
+            data-glass-rim={firstRunOpen || androidNative ? undefined : "on"}
             className={cn(
               "pointer-events-none absolute inset-0 z-0",
               // SOLID warm-dark panel. The chat floats over the live ember field,
@@ -5272,25 +5291,43 @@ export function ChatOverlay({
                 ? "transparent"
                 : fullBleed
                   ? FULL_BLEED_PANEL_BG
-                  : nativeGlassActive
-                    ? "color-mix(in srgb, var(--card) 16%, transparent)"
-                    : "color-mix(in srgb, var(--card) 30%, transparent)",
+                  : androidNative
+                    ? // Android Material: a near-opaque flat sheet, not a light
+                      // frost. It masks the content into the frame on its own
+                      // (no blur to lean on) and reads as a solid Material
+                      // surface distinct from iOS liquid glass. Stable across
+                      // detents — never the css-tier fill below — so a
+                      // drag/collapse never blips to liquid glass.
+                      "color-mix(in srgb, var(--card) 92%, transparent)"
+                    : iosNative
+                      ? "color-mix(in srgb, var(--card) 16%, transparent)"
+                      : "color-mix(in srgb, var(--card) 30%, transparent)",
               // Lensed material, not a tinted card: heavy blur destroys the
               // detail (legibility), lifted saturation + brightness make the
               // field GLOW through the panel the way Liquid Glass transmits
               // its backdrop instead of darkening it.
-              backdropFilter: fullBleed
-                ? undefined
-                : "blur(40px) saturate(1.8) brightness(1.12)",
-              WebkitBackdropFilter: fullBleed
-                ? undefined
-                : "blur(40px) saturate(1.8) brightness(1.12)",
+              // Android Material is FLAT — no liquid frost. The near-opaque
+              // fill above is the material, so skip the blur (it would re-read
+              // as iOS-style glass and waste GPU on an already-opaque sheet).
+              backdropFilter:
+                fullBleed || androidNative
+                  ? undefined
+                  : "blur(40px) saturate(1.8) brightness(1.12)",
+              WebkitBackdropFilter:
+                fullBleed || androidNative
+                  ? undefined
+                  : "blur(40px) saturate(1.8) brightness(1.12)",
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
               // catch light. Depth here is the glass rim, not a drop shadow (the
-              // flat system keeps all shadow tokens none).
-              boxShadow: firstRunOpen ? undefined : LIQUID_GLASS_EDGE_SHADOW,
+              // flat system keeps all shadow tokens none). Android Material is
+              // flat: a single faint top hairline, no specular bevel.
+              boxShadow: firstRunOpen
+                ? undefined
+                : androidNative
+                  ? "inset 0 1px 0 0 rgb(255 255 255 / 8%)"
+                  : LIQUID_GLASS_EDGE_SHADOW,
               // Specular sheen: a soft radial highlight near the top-left (as if
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
@@ -5298,10 +5335,11 @@ export function ChatOverlay({
               // Full-bleed is FLAT: the sheen/lighting gradients read as a
               // weird glow on an opaque full-screen surface (the "gradient
               // when maximized" bug) — glass cues only exist while there is
-              // glass.
-              backgroundImage: firstRunOpen
-                ? "none"
-                : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 22%)`,
+              // glass. Android Material is flat too: no specular sheen.
+              backgroundImage:
+                firstRunOpen || androidNative
+                  ? "none"
+                  : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
               // dark background reaches the true top of the screen. The panel
               // height comes from visualViewport (which excludes the Android
