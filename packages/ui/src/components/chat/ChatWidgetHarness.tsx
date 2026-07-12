@@ -378,13 +378,16 @@ export function ChatWidgetHarness(): React.JSX.Element {
   // pass to sendActionMessage and land in the same scripted advance — there
   // is exactly one action channel (see chat/native-transcript/spec.ts).
   const [nativeDemoActive, setNativeDemoActive] = React.useState(false);
-  // Full-height native demo hides the DOM overlay so the native list reads
-  // cleanly (production single-surface shape); the split-review flag keeps the
-  // DOM visible for side-by-side comparison.
+  // The native list renders the TRANSCRIPT only; the composer + pull-to-open
+  // handle stay DOM (ChatOverlay). So the native rect fills the transcript
+  // area but RESERVES the bottom for the DOM composer, which must remain
+  // visible and interactive. `hideDomHome` drops just the stand-in home
+  // widgets (not the overlay) so nothing bleeds through above the native rect.
+  // The split-review flag restores the 45% side-by-side comparison.
   const splitReview =
     typeof localStorage !== "undefined" &&
     localStorage.getItem("eliza:native-transcript-split") === "1";
-  const hideDomForNative = nativeDemoActive && !splitReview;
+  const hideDomHome = nativeDemoActive && !splitReview;
   React.useEffect(() => {
     if (!nativeTranscriptDemoRequested()) return;
     let disposed = false;
@@ -437,6 +440,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
       const splitReview =
         typeof localStorage !== "undefined" &&
         localStorage.getItem("eliza:native-transcript-split") === "1";
+      // Reserve the DOM composer band (input bar + pull handle + safe area)
+      // at the bottom so it stays visible and interactive beneath the native
+      // list. 132px covers the resting composer + home indicator.
+      const COMPOSER_BAND_PX = 132;
       await bridge.show({
         rect: {
           x: 0,
@@ -444,7 +451,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
           width: window.innerWidth,
           height: splitReview
             ? Math.round(window.innerHeight * 0.45)
-            : window.innerHeight,
+            : Math.max(0, window.innerHeight - COMPOSER_BAND_PX),
         },
       });
       shown = true;
@@ -597,7 +604,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
           // reviewed over the composite it ships on. Transparent while the
           // NATIVE backdrop owns the field (occluding it would blind the
           // native glass panels sampling it).
-          background: hideDomForNative
+          background: hideDomHome
             ? "#000000"
             : nativeBackdrop
               ? "transparent"
@@ -611,7 +618,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
         <div
           aria-hidden
           style={{
-            display: hideDomForNative ? "none" : "block",
+            display: hideDomHome ? "none" : "block",
             padding: "72px 28px",
             maxWidth: 720,
             color: "rgba(255,255,255,0.92)",
@@ -679,9 +686,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
           </div>
         </div>
         <GlassStyles />
-        {hideDomForNative ? null : (
-          <ChatOverlay controller={controller} firstRunOpen={firstRunOpen} />
-        )}
+        <ChatOverlay controller={controller} firstRunOpen={firstRunOpen} />
       </div>
     </MockAppProvider>
   );
