@@ -42,6 +42,22 @@ const INTEGRATION_USER_INSTALL = 1;
  * OFF by default (`DISCORD_USER_INSTALL`), because registering user-install
  * commands against a guild-install-only app is rejected by the API.
  */
+/**
+ * Discord's hard limit on command and option description length. Exceeding it
+ * fails the WHOLE `commands.set()` call (it is atomic), so a single over-long
+ * description from the shared command catalog would silently drop EVERY command
+ * from the guild — the failure mode that stranded /accounts + /backend. Clamp
+ * defensively here, the single choke point before registration, so one bad
+ * description can never nuke the rest.
+ */
+const DISCORD_DESCRIPTION_MAX = 100;
+
+function clampDescription(description: string): string {
+	return description.length > DISCORD_DESCRIPTION_MAX
+		? `${description.slice(0, DISCORD_DESCRIPTION_MAX - 1)}…`
+		: description;
+}
+
 export function transformCommandToDiscordApi(
 	cmd: DiscordSlashCommand,
 	opts?: { userInstall?: boolean; guildScoped?: boolean },
@@ -52,8 +68,11 @@ export function transformCommandToDiscordApi(
 		default_member_permissions?: string;
 	} = {
 		name: cmd.name,
-		description: cmd.description,
-		options: cmd.options,
+		description: clampDescription(cmd.description),
+		options: cmd.options?.map((option) => ({
+			...option,
+			description: clampDescription(option.description),
+		})),
 	};
 
 	if (opts?.guildScoped) {

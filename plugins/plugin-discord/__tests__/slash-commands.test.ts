@@ -287,4 +287,24 @@ describe("builtin command surface (privileged plumbing hidden from pickers)", ()
 		expect(wireSetup.default_member_permissions).toBe("8");
 		expect(wireHelp.default_member_permissions).toBeUndefined();
 	});
+
+	it("clamps over-long command + option descriptions to Discord's 100-char limit", async () => {
+		// commands.set() is atomic — one over-limit description fails the WHOLE
+		// registration, dropping every command. The transform must clamp so a
+		// long catalog description can never strand the rest.
+		const { transformCommandToDiscordApi } = await import(
+			"../discord-commands"
+		);
+		const long = "x".repeat(140);
+		const wire = transformCommandToDiscordApi({
+			name: "probe",
+			description: long,
+			options: [{ name: "arg", type: 3, description: long }],
+		} as never) as unknown as {
+			description: string;
+			options?: Array<{ description: string }>;
+		};
+		expect(wire.description.length).toBeLessThanOrEqual(100);
+		expect(wire.options?.[0]?.description.length).toBeLessThanOrEqual(100);
+	});
 });

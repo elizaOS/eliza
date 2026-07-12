@@ -315,7 +315,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 			{
 				name: "value",
 				description:
-					"account (id, id prefix, label, or email) — for strategy: priority, round-robin, least-used, quota-aware",
+					"account by id, label, or email — or the strategy name for `strategy`",
 			},
 		],
 		// requiresAuth only, matching /model: reads are authorized-only, and the
