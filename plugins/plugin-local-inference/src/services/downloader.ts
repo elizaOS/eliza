@@ -535,6 +535,23 @@ async function resumableStartByte(
 	return 0;
 }
 
+async function promoteCompletePartial(
+	stagingPath: string,
+	finalPath: string,
+	expectedSha256: string,
+	sizeBytes: number,
+): Promise<DownloadedFile | null> {
+	const sha256 = await hashFile(stagingPath);
+	if (sha256 !== expectedSha256) return null;
+	await fsp.rename(stagingPath, finalPath);
+	await fsp
+		// error-policy:J6 best-effort removal after the verified artifact is committed;
+		// a stale sidecar cannot invalidate or replace the final sha-pinned file.
+		.rm(stagingMetaPath(stagingPath), { force: true })
+		.catch(() => undefined);
+	return { path: finalPath, sizeBytes, sha256 };
+}
+
 export class Downloader {
 	private readonly active = new Map<string, ActiveJob>();
 	private readonly terminal = new Map<string, DownloadJob>();
@@ -1530,6 +1547,18 @@ export class Downloader {
 				let startByte = 0;
 				if (expectedSha256) {
 					startByte = await resumableStartByte(stagingPath, expectedSha256);
+					if (startByte > 0) {
+						const completed = await promoteCompletePartial(
+							stagingPath,
+							finalPath,
+							expectedSha256,
+							startByte,
+						);
+						if (completed) {
+							record.job.received = baseBytes + completed.sizeBytes;
+							return completed;
+						}
+					}
 					// Stamp the partial with the content hash it is being fetched
 					// against so a later resume can tell whether the .part still
 					// belongs to THIS content version.
