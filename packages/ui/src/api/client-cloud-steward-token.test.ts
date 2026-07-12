@@ -1,13 +1,22 @@
 // @vitest-environment jsdom
 
 /**
- * Unit coverage for reading the Steward session token and computing its
- * seconds-remaining from the JWT `exp`. Tokens hand-built, no live cloud.
+ * Unit coverage for reading the Steward session token, computing its
+ * seconds-remaining from the JWT `exp`, the cookie-backed Steward refresh
+ * (web/fetch branch — native/Electrobun HTTP has its own dedicated coverage),
+ * and the cloud web/API host-normalization helpers. Tokens hand-built, no
+ * live cloud.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client-base";
-import { cloudTokenSecsRemaining, getCloudAuthToken } from "./client-cloud";
+import {
+  cloudTokenSecsRemaining,
+  getCloudAuthToken,
+  refreshCloudStewardSession,
+  resolveDirectCloudAuthApiBase,
+  resolveDirectCloudWebBase,
+} from "./client-cloud";
 
 const STEWARD_TOKEN_KEY = "steward_session_token";
 
@@ -105,5 +114,99 @@ describe("cloudTokenSecsRemaining", () => {
 
   it("returns null for a non-JWT opaque token", () => {
     expect(cloudTokenSecsRemaining("opaque-device-code-token")).toBeNull();
+  });
+});
+
+describe("resolveDirectCloudWebBase / resolveDirectCloudAuthApiBase", () => {
+  it("maps a known API host to the browser-navigable web host", () => {
+    expect(resolveDirectCloudWebBase("https://api.elizacloud.ai")).toBe(
+      "https://elizacloud.ai",
+    );
+  });
+
+  it("maps a staging API host to the staging web host", () => {
+    expect(
+      resolveDirectCloudWebBase("https://api-staging.elizacloud.ai"),
+    ).toBe("https://staging.elizacloud.ai");
+  });
+
+  it("passes through an unmapped host unchanged (trailing slash trimmed)", () => {
+    expect(resolveDirectCloudWebBase("https://example.com/")).toBe(
+      "https://example.com",
+    );
+  });
+
+  it("falls back to the raw input for an unparseable base", () => {
+    expect(resolveDirectCloudWebBase("not a url")).toBe("not a url");
+  });
+
+  it("maps a known site host to its API host", () => {
+    expect(resolveDirectCloudAuthApiBase("https://www.elizacloud.ai")).toBe(
+      "https://api.elizacloud.ai",
+    );
+  });
+
+  it("passes through an unmapped host unchanged for the auth API base", () => {
+    expect(resolveDirectCloudAuthApiBase("https://example.com")).toBe(
+      "https://example.com",
+    );
+  });
+
+  it("falls back to the raw input for an unparseable auth API base", () => {
+    expect(resolveDirectCloudAuthApiBase("not a url")).toBe("not a url");
+  });
+});
+
+describe("refreshCloudStewardSession (web/fetch branch)", () => {
+  // Not native and not Electrobun in jsdom — shouldUseNativeStewardRefreshHttp
+  // is false, so every case here exercises the plain `fetch` + credentials
+  // branch, mirroring cloud-frontend's AuthTokenSync.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("POSTs with credentials included and returns the rotated token payload", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ token: "rotated-jwt", expiresIn: 900 }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await refreshCloudStewardSession({
+      endpoint: "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+    expect(result).toEqual({ token: "rotated-jwt", expiresIn: 900 });
+  });
+
+  it("returns null when the refresh endpoint responds non-OK (no rotated cookie)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, json: async () => ({}) })),
+    );
+    const result = await refreshCloudStewardSession({
+      endpoint: "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
+    });
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the response body is not parseable JSON (J3 fail-closed)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => {
+          throw new SyntaxError("Unexpected token");
+        },
+      })),
+    );
+    const result = await refreshCloudStewardSession({
+      endpoint: "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
+    });
+    expect(result).toBeNull();
   });
 });
