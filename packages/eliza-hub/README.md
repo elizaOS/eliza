@@ -10,6 +10,29 @@ intentionally excludes runtime databases, runner tokens, cloned repositories,
 local passwords, generated Forgejo secrets, Terraform state, backups, and
 production evidence.
 
+## Status
+
+Forgejo is a mature, production-capable Git forge. Eliza Hub packages Forgejo
+with Eliza branding and adds Merge Steward for agent coordination and merge
+policy. The package source and automated tests are ready for local and staging
+use; a running instance is created only when an operator starts the stack.
+
+| Surface | Status |
+| --- | --- |
+| Forgejo Git hosting, issues, PRs, releases, packages, wiki, and Kanban projects | Available when the Compose stack is running |
+| Eliza dark and light themes | Included and enabled by the local configuration |
+| Package checks and Merge Steward tests | Automated in the package and monorepo CI |
+| Forgejo Actions | Enabled; at least one separately registered runner is required to execute jobs |
+| Merge Steward APIs and dry-run queue planning | Implemented and tested |
+| Live agent merges | Disabled until identity, persistence, runner, repository-protection, and private-evidence gates pass |
+| Team-wide hosted access | Requires an operator-managed deployment, domain, TLS, authentication, backups, and monitoring |
+| Eliza Cloud production cutover | Not performed by this source package |
+
+In short: this repository is a tested distribution, not a running hosted
+service. It can host real repositories locally as soon as the Compose stack is
+started. Production readiness describes the target deployment, not the
+maturity of Forgejo itself.
+
 ## Monorepo Quick Start
 
 From the root of the `elizaOS/eliza` repository:
@@ -26,25 +49,43 @@ Open `http://127.0.0.1:3000`. The local Compose stack stores runtime data in
 ignored paths under this package. Stop it with the same Compose arguments and
 `down`; add `-v` only when you explicitly intend to delete local Forgejo data.
 
+### Host a Repository Locally
+
+The local configuration allows account registration and does not include a
+default username or password. After opening Eliza Hub, register an account,
+create an empty repository, and push an existing local repository to it:
+
+```sh
+git remote add eliza http://127.0.0.1:3000/YOUR_USER/YOUR_REPO.git
+git push -u eliza HEAD
+```
+
+The repository can then use Forgejo issues, pull requests, reviews, releases,
+packages, wiki, and Kanban projects without GitHub. Actions workflows require a
+runner; use the isolated runner overlay described below before treating CI as
+available. Merge Steward is optional for ordinary Git hosting and is required
+only for the Eliza-specific agent coordination and merge-queue workflows.
+
 The directory is also portable. After extracting `packages/eliza-hub` into its
 own repository, run `npm ci --prefix services/merge-steward` before the same
 package-local commands. The nested `.forgejo/workflows` files become active
 when this directory is the repository root.
 
-## What This Package Is
+## Architecture and Readiness
 
-This is an Eliza Hub proof of concept and production-oriented staging seed.
-Forgejo provides the Git forge. Merge Steward provides the agent-native control
-plane that GitHub does not natively model: per-agent identities, work
+Eliza Hub is a tested Forgejo distribution and production-oriented deployment
+seed. Forgejo provides the Git forge. Merge Steward provides the agent-native
+control plane that GitHub does not natively model: per-agent identities, work
 reservations, queue simulation, CI budget checks, PR evidence, merge train
 planning, release readiness, and deployment gates.
 
-It works today as a local/private demo and as a base for a private hosted
-staging deployment. It is not yet a production Eliza Cloud replacement for
-GitHub until the domain, TLS, SSO, backups, runner isolation, monitoring, branch
-protection evidence, and staged live-merge rollout are completed.
+It works today for local/private repository hosting and as the base for a
+private hosted staging deployment. The checked-in source is not itself an
+operated Eliza Cloud service. A production cutover still requires domain, TLS,
+SSO, backups, runner isolation, monitoring, branch-protection evidence, and a
+staged live-merge rollout in the target environment.
 
-## What This Proves
+## What This Provides
 
 - Forgejo can mirror `elizaOS/eliza`.
 - Forgejo has repo Projects with Kanban boards.
