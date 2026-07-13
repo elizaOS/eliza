@@ -1,39 +1,18 @@
 package ai.elizaos.app;
 
-import android.app.PendingIntent;
-import android.net.Uri;
-import android.os.Build;
-import android.service.quicksettings.TileService;
-import android.content.Intent;
+/**
+ * Quick Settings tile that starts a hands-free voice conversation
+ * (elizaos://voice → #chat?voice=1). The android-qs-tile source is required:
+ * the renderer's claim gate drops capture launches from untrusted sources, so
+ * the historical android-quick-settings value left a tile that opened the app
+ * but never started capture.
+ */
+public class ElizaVoiceTileService extends ElizaAssistantTileService {
 
-public class ElizaVoiceTileService extends TileService {
+    static final String DEEP_LINK_URI = "elizaos://voice?source=android-qs-tile";
 
     @Override
-    public void onClick() {
-        super.onClick();
-        unlockAndRun(this::openVoiceChat);
-    }
-
-    private void openVoiceChat() {
-        Intent intent = new Intent(this, MainActivity.class);
-        intent.setAction(Intent.ACTION_VIEW);
-        intent.setData(Uri.parse(
-                "elizaos://voice?source=android-quick-settings&action=voice&voice=1"));
-        intent.setFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK
-                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            PendingIntent pendingIntent = PendingIntent.getActivity(
-                    this,
-                    0,
-                    intent,
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            startActivityAndCollapse(pendingIntent);
-            return;
-        }
-
-        startActivityAndCollapse(intent);
+    protected String deepLinkUri() {
+        return DEEP_LINK_URI;
     }
 }

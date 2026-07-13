@@ -146,6 +146,40 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
+<!--
+            Quick Settings tiles — one per bindable assistant intent (chat /
+            voice / transcribe), all subclasses of ElizaAssistantTileService.
+            Users add them from the QS edit panel; each tap deep-links into
+            MainActivity with source=android-qs-tile (the renderer's trusted
+            assistant-launch source for this surface).
+        -->
+<service
+            android:name="ai.elizaos.app.ElizaChatTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_monochrome"
+            android:label="@string/app_action_chat_long"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="false" />
+        </service>
+
+        <service
+            android:name="ai.elizaos.app.ElizaTranscribeTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_monochrome"
+            android:label="@string/app_action_transcribe_long"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="false" />
+        </service>
 <service
             android:name="ai.elizaos.app.GatewayConnectionService"
             android:exported="false"

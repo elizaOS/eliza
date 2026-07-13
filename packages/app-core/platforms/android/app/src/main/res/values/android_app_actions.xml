@@ -4,6 +4,8 @@
     <string name="app_action_chat_long">Chat with Eliza</string>
     <string name="app_action_voice_short">Voice</string>
     <string name="app_action_voice_long">Start voice chat</string>
+    <string name="app_action_transcribe_short">Transcribe</string>
+    <string name="app_action_transcribe_long">Start transcription</string>
     <string name="app_action_daily_brief_short">Daily brief</string>
     <string name="app_action_daily_brief_long">Open daily brief</string>
     <string name="app_action_new_task_short">New task</string>
@@ -23,6 +25,14 @@
         <item>voice</item>
         <item>voice chat</item>
         <item>talk</item>
+    </string-array>
+    <!-- Mirrors the renderer's feature/open aliases for transcription
+         (packages/app/src/deep-link-routing.ts resolveAndroidFeatureOpenPath). -->
+    <string-array name="app_action_transcribe_features">
+        <item>transcribe</item>
+        <item>transcription</item>
+        <item>dictate</item>
+        <item>dictation</item>
     </string-array>
     <string-array name="app_action_daily_brief_features">
         <item>daily brief</item>

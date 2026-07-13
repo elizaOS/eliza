@@ -199,7 +199,7 @@ public class TranscriptContractTest {
     // ── Tolerance (unknown kinds → fallback, never a throw) ────────────
 
     @Test
-    public void unknownKindsDecodeToFallbacks() {
+    public void unknownKindsDecodeToFallbacks() throws Exception {
         TranscriptModels.Segment unknownSegment =
                 TranscriptModels.decodeSegment(new JSONObject(
                         "{\"kind\":\"hologram\",\"payload\":42}"));

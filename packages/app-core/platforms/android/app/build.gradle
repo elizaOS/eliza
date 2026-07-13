@@ -426,6 +426,11 @@ dependencies {
     implementation "com.google.code.gson:gson:2.14.0"
     implementation "com.google.firebase:firebase-common-ktx:21.0.0"
     testImplementation "junit:junit:$junitVersion"
+    // JVM unit tests run against the mockable android.jar, whose org.json
+    // methods throw "not mocked"; the real org.json on the test classpath wins
+    // over the stub so JSON-parsing contracts (TranscriptContractTest) run
+    // off-device.
+    testImplementation "org.json:json:20240303"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')

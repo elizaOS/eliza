@@ -39,6 +39,18 @@
         </intent>
     </capability>
 
+    <!--
+        Static shortcuts only — no ShortcutManager dynamic shortcuts. The three
+        bindable assistant intents (chat / voice / transcribe) plus the LifeOps
+        entries are all fixed launch points; dynamic shortcuts would add a
+        code-side publishing path with nothing user-specific to publish.
+
+        Order is deliberate: launchers surface only the first ~4 static
+        shortcuts on long-press, so the assistant capture intents (chat, voice,
+        transcribe) come first and the LifeOps entries take the fold. All six
+        stay well under the framework's per-activity shortcut cap and remain
+        App-Actions-bindable regardless of launcher display.
+    -->
     <shortcut
         android:shortcutId="eliza_app_action_chat"
         android:shortcutShortLabel="@string/app_action_chat_short"
@@ -55,6 +67,12 @@
         </capability-binding>
     </shortcut>
 
+    <!--
+        Voice and transcribe carry capture flags (voice=1 / transcribe=1), and
+        the renderer's claim gate drops capture launches from untrusted sources
+        — so these two must use the trusted android-app-actions source. The
+        non-capture shortcuts below keep the inert android-static-shortcut tag.
+    -->
     <shortcut
         android:shortcutId="eliza_app_action_voice"
         android:shortcutShortLabel="@string/app_action_voice_short"
@@ -63,11 +81,27 @@
             android:action="android.intent.action.VIEW"
             android:targetPackage="ai.elizaos.app"
             android:targetClass="ai.elizaos.app.MainActivity"
-            android:data="elizaos://voice?source=android-static-shortcut" />
+            android:data="elizaos://voice?source=android-app-actions" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
                 android:key="feature"
                 android:value="@array/app_action_voice_features" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="eliza_app_action_transcribe"
+        android:shortcutShortLabel="@string/app_action_transcribe_short"
+        android:shortcutLongLabel="@string/app_action_transcribe_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="ai.elizaos.app"
+            android:targetClass="ai.elizaos.app.MainActivity"
+            android:data="elizaos://transcribe?source=android-app-actions" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/app_action_transcribe_features" />
         </capability-binding>
     </shortcut>
 
