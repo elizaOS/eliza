@@ -25,6 +25,7 @@ import type {
   DatabaseResetResult,
   DatabaseSnapshot,
 } from "./database";
+import type { ChatOverlayWindowTier } from "./desktop-bottom-bar-config";
 import type { KioskViewEvent } from "./dynamic-views/kiosk-canvas";
 import type {
   DynamicViewCloseParams,
@@ -1559,6 +1560,10 @@ export type ElizaDesktopRPCSchema = {
       desktopSetWindowOptions: { params: WindowOptions; response: undefined };
       desktopGetWindowBounds: { params: undefined; response: WindowBounds };
       desktopSetWindowBounds: { params: WindowBounds; response: undefined };
+      desktopSetChatOverlayTier: {
+        params: ChatOverlayWindowTier;
+        response: undefined;
+      };
       desktopMinimizeWindow: { params: undefined; response: undefined };
       desktopUnminimizeWindow: { params: undefined; response: undefined };
       desktopMaximizeWindow: { params: undefined; response: undefined };
@@ -2506,6 +2511,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:setWindowOptions": "desktopSetWindowOptions",
   "desktop:getWindowBounds": "desktopGetWindowBounds",
   "desktop:setWindowBounds": "desktopSetWindowBounds",
+  "desktop:setChatOverlayTier": "desktopSetChatOverlayTier",
   "desktop:minimizeWindow": "desktopMinimizeWindow",
   "desktop:unminimizeWindow": "desktopUnminimizeWindow",
   "desktop:maximizeWindow": "desktopMaximizeWindow",

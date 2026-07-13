@@ -83,7 +83,11 @@ describe("App standalone chat-overlay wiring", () => {
       APP_TSX.indexOf("function ChatOverlayShell()"),
       APP_TSX.indexOf("function TrayPopoverShell()"),
     );
-    expect(chatOverlayShell).toContain("<ChatOverlayMount />");
+    // The desktop bottom-bar renders ChatOverlayMount, resting as the pill and
+    // driving the OS window sizing for click-through (#16200).
+    expect(chatOverlayShell).toContain("<ChatOverlayMount");
+    expect(chatOverlayShell).toContain("restAtPill");
+    expect(chatOverlayShell).toContain("onWindowSizingChange");
     const kioskShell = APP_TSX.slice(
       APP_TSX.indexOf("function KioskShell()"),
       APP_TSX.indexOf("function TabScrollView("),

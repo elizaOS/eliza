@@ -43,7 +43,7 @@ import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-se
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import {
   appendChatOverlayShellModeParam,
-  computeBottomBarFrame,
+  computeChatOverlayWindowFrame,
   resolveDesktopShellWindowPresentation,
   shouldEnableNativeGlass,
 } from "./desktop-bottom-bar-config";
@@ -1086,7 +1086,10 @@ function resolveBottomBarFrame(): {
       `[main-window] bottom-bar Screen.getPrimaryDisplay() failed; using default geometry: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  return computeBottomBarFrame(workArea);
+  // Boot at the resting-pill footprint: a small centered bottom window so the
+  // rest of the screen is click-through from the first frame. The renderer
+  // grows it to `open` (desktopSetChatOverlayTier) the instant the user engages.
+  return computeChatOverlayWindowFrame(workArea, "pill");
 }
 
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
@@ -1149,10 +1152,16 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // transparency there reads as a frosted-glass sheet (#12184). Win/Linux
   // transparency support varies, so the bar stays opaque there for now.
   const transparent = presentation.transparent;
-  // The pill spans the full work-area width but only the small bar is visible;
-  // OS-level click-through (passthrough) lets clicks on the transparent region
-  // land on the app underneath instead of being eaten by the invisible window.
-  const passthrough = bottomBar;
+  // No whole-window passthrough (#16200). The old full-width band relied on a
+  // static OS click-through flag, but a single webview is opaque to OS
+  // hit-testing across its ENTIRE frame — the flag was all-or-nothing (either
+  // the whole band ate clicks, killing click-through, or the whole webview went
+  // passthrough, killing the pill). The overlay window is now sized to its
+  // content instead: a small centered pill footprint at rest (so the rest of
+  // the screen has no window to eat clicks) that grows to the full work area
+  // only while the user is engaged. Click-through is the absence of a window,
+  // not a passthrough flag.
+  const passthrough = false;
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
     process.platform,

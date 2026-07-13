@@ -68,6 +68,7 @@ import type {
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
+  CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   CHAT_SEND_EVENT,
   ELIZA_BACK_INTENT_EVENT,
@@ -232,6 +233,60 @@ function openThreadViaGrabber(): void {
   fireEvent.pointerMove(g, { clientY: 280, pointerId: 111 });
   fireEvent.pointerUp(g, { clientY: 280, pointerId: 111 });
 }
+
+describe("ChatOverlay — desktop window sizing (#16200)", () => {
+  it("restAtPill mounts as the collapsed pill and reports the 'pill' tier", () => {
+    const onWindowSizingChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        restAtPill
+        onWindowSizingChange={onWindowSizingChange}
+      />,
+    );
+    // Resting pill is present; the always-ready composer input is not the
+    // resting surface.
+    expect(screen.getByTestId("chat-pill")).toBeTruthy();
+    expect(onWindowSizingChange).toHaveBeenCalledWith("pill");
+    expect(onWindowSizingChange).not.toHaveBeenCalledWith("open");
+  });
+
+  it("without restAtPill mounts at the input composer and reports 'open'", () => {
+    const onWindowSizingChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        onWindowSizingChange={onWindowSizingChange}
+      />,
+    );
+    // The composer input is the resting surface on web/mobile (the pill capsule
+    // still renders but is inert — aria-hidden — while not resting at the pill).
+    expect(screen.getByLabelText("message")).toBeTruthy();
+    expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
+      "true",
+    );
+    expect(onWindowSizingChange).toHaveBeenCalledWith("open");
+    expect(onWindowSizingChange).not.toHaveBeenCalledWith("pill");
+  });
+
+  it("grows to 'open' when the resting pill is summoned", () => {
+    const onWindowSizingChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        restAtPill
+        onWindowSizingChange={onWindowSizingChange}
+      />,
+    );
+    onWindowSizingChange.mockClear();
+    // The "open chat" intent (deep link / launcher tile) un-pills to the
+    // composer, so the host grows the OS window to the full work area.
+    act(() => {
+      window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
+    });
+    expect(onWindowSizingChange).toHaveBeenCalledWith("open");
+  });
+});
 
 describe("ChatOverlay", () => {
   it("shows the mic and no send button when the draft is empty", () => {

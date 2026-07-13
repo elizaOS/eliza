@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
+  computeChatOverlayWindowFrame,
   DEFAULT_BOTTOM_BAR_HEIGHT,
+  PILL_WINDOW_BOTTOM_MARGIN,
+  PILL_WINDOW_HEIGHT,
+  PILL_WINDOW_WIDTH,
   resolveDesktopShellWindowPresentation,
   shouldEnableNativeGlass,
   shouldReanchorBottomBar,
@@ -86,6 +90,55 @@ describe("desktop bottom-bar config", () => {
       expect(appendChatOverlayShellModeParam("not a url?x=1")).toBe(
         "not a url?x=1&shellMode=chat-overlay",
       );
+    });
+  });
+
+  describe("computeChatOverlayWindowFrame (#16200 click-through)", () => {
+    const workArea = { x: 0, y: 0, width: 1920, height: 1080 };
+
+    it("pill tier is a small centered window hugging the bottom edge", () => {
+      const frame = computeChatOverlayWindowFrame(workArea, "pill");
+      expect(frame.width).toBe(PILL_WINDOW_WIDTH);
+      expect(frame.height).toBe(PILL_WINDOW_HEIGHT);
+      // Horizontally centered.
+      expect(frame.x).toBe((1920 - PILL_WINDOW_WIDTH) / 2);
+      // Bottom-pinned with the small gap.
+      expect(frame.y).toBe(1080 - PILL_WINDOW_HEIGHT - PILL_WINDOW_BOTTOM_MARGIN);
+      // Far narrower than the screen — the sides are click-through (no window).
+      expect(frame.width).toBeLessThan(workArea.width / 2);
+    });
+
+    it("open tier fills the full work area so detents map to real screen space", () => {
+      const frame = computeChatOverlayWindowFrame(workArea, "open");
+      expect(frame).toEqual({ x: 0, y: 0, width: 1920, height: 1080 });
+    });
+
+    it("both tiers share the SAME bottom edge so the pill never jumps on grow", () => {
+      const pill = computeChatOverlayWindowFrame(workArea, "pill");
+      const open = computeChatOverlayWindowFrame(workArea, "open");
+      // pill bottom = y + height (+ the bottom margin gap); open bottom = y + height.
+      expect(pill.y + pill.height + PILL_WINDOW_BOTTOM_MARGIN).toBe(
+        open.y + open.height,
+      );
+    });
+
+    it("respects a multi-monitor work-area origin for the pill", () => {
+      const frame = computeChatOverlayWindowFrame(
+        { x: 1920, y: 24, width: 1440, height: 900 },
+        "pill",
+      );
+      expect(frame.x).toBe(1920 + (1440 - PILL_WINDOW_WIDTH) / 2);
+      expect(frame.y).toBe(24 + 900 - PILL_WINDOW_HEIGHT - PILL_WINDOW_BOTTOM_MARGIN);
+    });
+
+    it("never exceeds a tiny work area (clamps pill to the screen)", () => {
+      const frame = computeChatOverlayWindowFrame(
+        { x: 0, y: 0, width: 320, height: 200 },
+        "pill",
+      );
+      expect(frame.width).toBeLessThanOrEqual(320);
+      expect(frame.height).toBeLessThanOrEqual(200);
+      expect(frame.x).toBeGreaterThanOrEqual(0);
     });
   });
 

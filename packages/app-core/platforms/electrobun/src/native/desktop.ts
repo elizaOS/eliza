@@ -45,7 +45,8 @@ import Electrobun, {
 import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
 import {
-  computeBottomBarFrame,
+  type ChatOverlayWindowTier,
+  computeChatOverlayWindowFrame,
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
@@ -427,6 +428,13 @@ export class DesktopManager {
   private bottomBarReanchorEnabled = false;
   private bottomBarWorkArea: ScreenWorkArea | null = null;
   private bottomBarPoller: ReturnType<typeof setInterval> | null = null;
+  // The overlay window's current footprint tier (#16200). `pill` is a small
+  // centered bottom window so the rest of the screen is click-through; `open`
+  // is the full work area so the overlay's detents map to real screen space.
+  // The renderer drives this via desktopSetChatOverlayTier as the overlay
+  // opens/collapses; the reanchor poll re-derives the frame at the SAME tier so
+  // a display change never resets an open overlay back to the pill footprint.
+  private chatOverlayTier: ChatOverlayWindowTier = "pill";
 
   // Callback to open the settings window (set by index.ts)
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
@@ -1542,9 +1550,33 @@ X-GNOME-Autostart-enabled=true
     ) {
       return;
     }
-    const frame = computeBottomBarFrame(nextWorkArea);
+    // Re-derive at the CURRENT tier so a display plug/unplug never snaps an
+    // open overlay back to the pill footprint.
+    const frame = computeChatOverlayWindowFrame(
+      nextWorkArea,
+      this.chatOverlayTier,
+    );
     win.setFrame(frame.x, frame.y, frame.width, frame.height);
     this.bottomBarWorkArea = nextWorkArea;
+  }
+
+  /**
+   * Set the floating overlay window's footprint tier and re-frame the window
+   * immediately (#16200). `pill` shrinks to the small centered bottom window so
+   * clicks off the pill fall through to the app underneath; `open` grows to the
+   * full work area so the overlay's half/full/maximized detents have room.
+   * No-op unless the main window is the bottom-bar pill (reanchor enabled).
+   */
+  async setChatOverlayTier(tier: ChatOverlayWindowTier): Promise<void> {
+    this.chatOverlayTier = tier;
+    if (!this.bottomBarReanchorEnabled) return;
+    const win = this.mainWindow;
+    if (!win) return;
+    const workArea = this.bottomBarWorkArea ?? this.readPrimaryWorkArea();
+    if (!workArea) return;
+    const frame = computeChatOverlayWindowFrame(workArea, tier);
+    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    this.bottomBarWorkArea = workArea;
   }
 
   private _startFocusPoller(): void {

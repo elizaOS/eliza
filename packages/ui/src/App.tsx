@@ -27,6 +27,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -502,12 +503,56 @@ function useShellMode(): ShellMode {
  * platform and window; the older HomePill/AssistantOverlay/ChatSurface stack it
  * replaced is gone.
  */
+/**
+ * Relocate the desktop overlay OS window between the pill footprint (rest of the
+ * screen click-through) and the full work area (detents have room), driven by
+ * the ChatOverlay's `onWindowSizingChange` reports (#16200). Two seams keep the
+ * window ahead of the overlay: the tier report shrinks/grows on settled detent
+ * changes, and a `pointerdown` while resting at the pill grows to `open`
+ * immediately — before the drag commits a new mode — so an upward pull is never
+ * clipped by the small window. No-op off the Electrobun desktop runtime.
+ */
+function useDesktopChatOverlayWindowSizing(): (tier: "pill" | "open") => void {
+  const desktop = isElectrobunRuntime();
+  const currentTierRef = useRef<"pill" | "open">("pill");
+
+  const applyTier = useCallback(
+    (tier: "pill" | "open") => {
+      if (!desktop || currentTierRef.current === tier) return;
+      currentTierRef.current = tier;
+      void invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopSetChatOverlayTier",
+        ipcChannel: "desktop:setChatOverlayTier",
+        params: tier,
+      });
+    },
+    [desktop],
+  );
+
+  // Grow to `open` on the first pointer press while resting at the pill, so a
+  // pull-up has a full-work-area window to expand into from the first frame
+  // (the overlay's settled-tier report would otherwise arrive only after the
+  // drag commits a new detent, clipping the sheet mid-drag).
+  useEffect(() => {
+    if (!desktop || typeof document === "undefined") return undefined;
+    const onPointerDown = (): void => {
+      if (currentTierRef.current === "pill") applyTier("open");
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [desktop, applyTier]);
+
+  return applyTier;
+}
+
 function ChatOverlayShell() {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
+  const onWindowSizingChange = useDesktopChatOverlayWindowSizing();
   // Escape collapses the overlay first — while it is open, ChatOverlay's own
   // Escape handling collapses it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background
@@ -530,7 +575,10 @@ function ChatOverlayShell() {
   // this wrapper only carries the shell test id and the transparent backdrop.
   return (
     <div data-testid="chat-overlay-shell" className="contents">
-      <ChatOverlayMount />
+      <ChatOverlayMount
+        onWindowSizingChange={onWindowSizingChange}
+        restAtPill
+      />
     </div>
   );
 }
@@ -1876,7 +1924,17 @@ function SecretsManagerModalMount(): ReactNode {
  * including the /chat route's ambient home. Returns null until a controller
  * provider is present.
  */
-function ChatOverlayMount(): ReactNode {
+function ChatOverlayMount({
+  onWindowSizingChange,
+  restAtPill = false,
+}: {
+  /** Desktop bottom-bar window only: relocates the OS window between the pill
+   *  footprint and the full work area as the overlay opens/collapses. */
+  onWindowSizingChange?: (tier: "pill" | "open") => void;
+  /** Desktop bottom-bar window only: rest as the collapsed pill, not the input
+   *  bar, so the ambient overlay is the least-intrusive floating pill. */
+  restAtPill?: boolean;
+} = {}): ReactNode {
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete } =
     useAppSelectorShallow((s) => ({
@@ -1905,6 +1963,8 @@ function ChatOverlayMount(): ReactNode {
       agentName={agentName}
       slash={slash}
       firstRunOpen={firstRunComplete === false}
+      onWindowSizingChange={onWindowSizingChange}
+      restAtPill={restAtPill}
     />
   );
 }

@@ -143,10 +143,59 @@ export function resolveDesktopShellWindowPresentation(
 export const DEFAULT_BOTTOM_BAR_HEIGHT = 140;
 
 /**
+ * Two window footprints for the floating chat overlay (#16200). The singular
+ * ChatOverlay computes its detents (pill → input → half → full → maximized)
+ * against its viewport, so the WINDOW must be full-screen whenever the overlay
+ * is open for those detents to map correctly. But a full-screen transparent
+ * window is opaque to OS hit-testing across its whole frame — it eats every
+ * click in the empty region beside the pill, so the user can't click the app
+ * underneath. The fix is to shrink the window to the pill's own footprint while
+ * it RESTS at the pill (`pill`), and grow it to the full work area the instant
+ * the user engages (`open`). Both frames are bottom-pinned to the same edge, so
+ * the pill never jumps as the window grows/shrinks. There is no static
+ * whole-window passthrough anymore — click-through at rest is simply the
+ * absence of a window over the rest of the screen.
+ */
+export type ChatOverlayWindowTier = "pill" | "open";
+
+/** Resting-pill window footprint (centered bottom). */
+export const PILL_WINDOW_WIDTH = 560;
+export const PILL_WINDOW_HEIGHT = 140;
+/** Gap between the pill window and the work-area bottom edge. */
+export const PILL_WINDOW_BOTTOM_MARGIN = 12;
+
+/**
+ * Compute the chat-overlay window frame for a display's usable work area at the
+ * given tier. `pill` is a small centered window hugging the bottom edge (so the
+ * rest of the screen is click-through — there is no window there); `open` is the
+ * full usable work area (so the overlay's half/full/maximized detents map to
+ * real screen space). Both are bottom-pinned to the same edge.
+ */
+export function computeChatOverlayWindowFrame(
+  workArea: ScreenWorkArea,
+  tier: ChatOverlayWindowTier,
+): BottomBarFrame {
+  const areaX = Math.round(workArea.x);
+  const areaY = Math.round(workArea.y);
+  const areaW = Math.max(1, Math.round(workArea.width));
+  const areaH = Math.max(1, Math.round(workArea.height));
+  if (tier === "open") {
+    return { x: areaX, y: areaY, width: areaW, height: areaH };
+  }
+  const width = Math.min(areaW, PILL_WINDOW_WIDTH);
+  const height = Math.min(areaH, PILL_WINDOW_HEIGHT);
+  const x = areaX + Math.round((areaW - width) / 2);
+  const y = areaY + areaH - height - PILL_WINDOW_BOTTOM_MARGIN;
+  return { x, y, width, height };
+}
+
+/**
  * Compute the bottom-bar window frame for a display's usable work area: full
  * usable width, a fixed bar height, pinned to the bottom edge (above the
  * taskbar/dock, which `workArea` already excludes). An optional side margin
- * insets the bar horizontally.
+ * insets the bar horizontally. Retained for callers/tests that want the legacy
+ * full-width band; the live shell now uses {@link computeChatOverlayWindowFrame}
+ * with a tier.
  */
 export function computeBottomBarFrame(
   workArea: ScreenWorkArea,

@@ -1106,6 +1106,8 @@ export function ChatOverlay({
   slash: slashProp,
   firstRunOpen = false,
   onFullBleedChange,
+  onWindowSizingChange,
+  restAtPill = false,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
@@ -1118,6 +1120,25 @@ export function ChatOverlay({
    * liquid-glass surface blurs only the bare app wallpaper, not the home content.
    */
   onFullBleedChange?: (fullBleed: boolean) => void;
+  /**
+   * Desktop only (#16200): reports the footprint the overlay needs from its OS
+   * window — `"pill"` while resting at the collapsed pill (the host shrinks the
+   * window to the pill so the rest of the screen is click-through), `"open"` the
+   * moment the overlay leaves the pill (the host grows the window to the full
+   * work area so the half/full/maximized detents map to real screen space).
+   * Web/mobile/the full dashboard don't pass this — the overlay already lives in
+   * a full-viewport surface there.
+   */
+  onWindowSizingChange?: (tier: "pill" | "open") => void;
+  /**
+   * Desktop floating overlay only (#16200): rest as the collapsed bottom PILL
+   * rather than the always-ready INPUT composer bar. On web/mobile the composer
+   * is the resting surface (the app IS the chat), but the desktop floating
+   * overlay is an ambient pill over the user's other apps — it should occupy the
+   * least space (and let the host shrink the OS window to the pill for
+   * click-through) until the user summons it.
+   */
+  restAtPill?: boolean;
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay opens as the normal full-screen chat and pins
@@ -1377,7 +1398,7 @@ export function ChatOverlay({
   // structurally FULL and undismissable (see firstRunOpen docs above).
   const pinnedOpen = firstRunOpen;
   const [mode, setMode] = React.useState<ChatMode>(
-    pinnedOpen ? "full" : "input",
+    pinnedOpen ? "full" : restAtPill ? "pill" : "input",
   );
   // The pin-at-full + auto-collapse edge effect lives below `goToDetent` (it
   // needs the detent animator); the mount state above still opens FULL first.
@@ -2642,6 +2663,15 @@ export function ChatOverlay({
   React.useEffect(() => {
     onFullBleedChange?.(fullBleed);
   }, [fullBleed, onFullBleedChange]);
+  // Desktop overlay window sizing (#16200): report `pill` while resting at the
+  // collapsed pill and `open` for every other detent, so the host can shrink
+  // the OS window to the pill (rest of the screen click-through) or grow it to
+  // the full work area (the half/full/maximized detents need real viewport).
+  // `pilled` already collapses the pinned/first-run and free-drag cases, so it
+  // is the single source of "is only the resting pill showing".
+  React.useEffect(() => {
+    onWindowSizingChange?.(pilled ? "pill" : "open");
+  }, [pilled, onWindowSizingChange]);
   // Two materials compose on this sheet (layered-glass shell):
   //  - The CSS backdrop-filter ALWAYS runs: it frosts DOM content that slides
   //    under the sheet (home widgets, views) — the band native glass is blind

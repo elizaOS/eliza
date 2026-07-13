@@ -781,6 +781,9 @@ export function buildBunRpcHandlers({
     desktopSetWindowBounds: async (
       params: Parameters<typeof desktop.setWindowBounds>[0],
     ) => desktop.setWindowBounds(params),
+    desktopSetChatOverlayTier: async (
+      params: Parameters<typeof desktop.setChatOverlayTier>[0],
+    ) => desktop.setChatOverlayTier(params),
     desktopMinimizeWindow: async () => desktop.minimizeWindow(),
     desktopUnminimizeWindow: async () => desktop.unminimizeWindow(),
     desktopMaximizeWindow: async () => desktop.maximizeWindow(),
