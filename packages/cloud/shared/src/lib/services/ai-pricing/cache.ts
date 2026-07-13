@@ -1,4 +1,4 @@
-// Coordinates cloud service cache behavior behind route handlers.
+/** Coalesces and briefly caches canonical pricing reads on the inference billing hot path. */
 import type { AiPricingEntry } from "../../../db/schemas/ai-pricing";
 import {
   EXTERNAL_CACHE_TTL_MS,
@@ -7,15 +7,7 @@ import {
   type PreparedPricingEntry,
 } from "./types";
 
-/**
- * Share one in-flight loader across concurrent cold misses for the same key,
- * then forget it once it settles. `lookup.ts` resolves independent input and
- * output rates concurrently, so on a fresh isolate both can miss the completed-
- * value cache and issue two identical reads for the same key before either is
- * cached (#16162). The promise is dropped on BOTH fulfillment and rejection, so
- * a failed load never poisons a later retry and the in-flight map stays bounded
- * by completion.
- */
+/** Input and output rates resolve concurrently, so cold reads share one promise per canonical key. */
 function coalesce<T>(
   inFlight: Map<string, Promise<T>>,
   key: string,
