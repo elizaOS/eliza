@@ -90,4 +90,27 @@ describe("Hetzner E2E reaper credential boundary", () => {
     expect(requestedMethods).toEqual(["GET", "DELETE"]);
     expect(requestedUrls[1]).toBe("https://api.hetzner.cloud/v1/servers/42");
   });
+
+  test("continues the sweep but fails the process when any deletion fails", async () => {
+    responseQueue.push(
+      Response.json({
+        servers: [
+          { id: 42, name: "first", created: "2000-01-01T00:00:00.000Z" },
+          { id: 43, name: "second", created: "2000-01-01T00:00:00.000Z" },
+        ],
+      }),
+      Response.json(
+        { error: { code: "conflict", message: "server locked" } },
+        { status: 409 },
+      ),
+      new Response(null, { status: 204 }),
+    );
+
+    await expect(runHetznerE2eReaper("valid-ci-token")).rejects.toMatchObject({
+      name: "AggregateError",
+      message: "Hetzner E2E reaper failed to delete 1 stale server(s)",
+    });
+    expect(requestedMethods).toEqual(["GET", "DELETE", "DELETE"]);
+    expect(requestedUrls[2]).toBe("https://api.hetzner.cloud/v1/servers/43");
+  });
 });

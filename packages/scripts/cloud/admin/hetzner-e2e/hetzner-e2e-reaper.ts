@@ -24,6 +24,7 @@ export async function runHetznerE2eReaper(
   });
   const now = Date.now();
   let deleted = 0;
+  const failures: Error[] = [];
   for (const server of servers) {
     const created = Date.parse(server.created);
     if (!Number.isFinite(created)) continue;
@@ -36,8 +37,13 @@ export async function runHetznerE2eReaper(
       await client.deleteServer(server.id);
       deleted++;
     } catch (err) {
-      // error-policy:J6 Best-effort cleanup keeps sweeping other stale servers.
+      // error-policy:J2 Preserve per-server context while completing the remaining sweep.
       const message = err instanceof Error ? err.message : String(err);
+      failures.push(
+        new Error(`Failed to delete Hetzner server ${server.id}: ${message}`, {
+          cause: err,
+        }),
+      );
       console.warn(
         `[hetzner-e2e-reaper] delete ${server.id} failed: ${message}`,
       );
@@ -46,6 +52,13 @@ export async function runHetznerE2eReaper(
   console.log(
     `[hetzner-e2e-reaper] swept ${deleted}/${servers.length} servers`,
   );
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures,
+      `Hetzner E2E reaper failed to delete ${failures.length} stale server(s)`,
+      { cause: failures[0] },
+    );
+  }
 }
 
 if (import.meta.main) {
