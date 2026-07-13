@@ -6774,19 +6774,17 @@ export async function runV5MessageRuntimeStage1(args: {
 				ChannelTopicsService.serviceType,
 			);
 			if (channelTopics) {
-				// error-policy:J5 This detached persistence write is observed through
-				// runtime.reportError, which exposes the failure to the agent and owner.
 				void channelTopics
 					.recordTopics(args.message.roomId, topics)
 					.catch((error) => {
-						args.runtime.reportError(
-							"MessageService.recordChannelTopics",
-							error,
+						args.runtime.logger?.warn?.(
 							{
+								err: error,
 								messageId: args.message.id,
 								roomId: args.message.roomId,
 								topicCount: topics.length,
 							},
+							"[message] recordTopics failed",
 						);
 					});
 			}
