@@ -5,6 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { type Memory, type State, stringToUuid } from '@elizaos/core';
+import { sql } from 'drizzle-orm';
 import { activeWorkflowsProvider } from '../../../src/providers/activeWorkflows';
 import { pendingDraftProvider } from '../../../src/providers/pendingDraft';
 import { workflowStatusProvider } from '../../../src/providers/workflowStatus';
@@ -224,6 +225,28 @@ describe('workflow providers with real runtime services', () => {
     expect(result.text).toContain('success');
     expect(result.values).toEqual({ workflowCount: 1 });
     expect(result.data?.workflows).toHaveLength(1);
+  });
+
+  test('renders execution history as unavailable and reports a real database failure', async () => {
+    await createOwnedWorkflow(harness, 'History unavailable workflow');
+    const database = harness.runtime.db as { execute(query: unknown): Promise<unknown> };
+    await database.execute(sql`DROP TABLE workflow.embedded_executions`);
+
+    const result = await workflowStatusProvider.get(harness.runtime, message(), state());
+
+    expect(result.text).toContain('History unavailable workflow');
+    expect(result.text).toContain('Last run: unavailable');
+  });
+
+  test('surfaces a stopped workflow facade as a status-provider failure', async () => {
+    await service.stop();
+
+    await expect(
+      workflowStatusProvider.get(harness.runtime, message(), state())
+    ).rejects.toMatchObject({
+      code: 'WORKFLOW_PROVIDER_STATUS_LOAD_FAILED',
+      cause: expect.objectContaining({ message: expect.stringContaining('not initialized') }),
+    });
   });
 
   test('limits rendered status while retaining the persisted total', async () => {

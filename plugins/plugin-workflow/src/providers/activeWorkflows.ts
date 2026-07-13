@@ -1,4 +1,7 @@
-// Provides active workflow context to workflow-aware agent turns.
+/**
+ * Provides each administrator's persisted workflows to workflow-aware turns,
+ * using message text to select either the full list or ranked search results.
+ */
 import {
   ElizaError,
   type IAgentRuntime,

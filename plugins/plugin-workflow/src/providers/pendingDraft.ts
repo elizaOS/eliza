@@ -1,4 +1,7 @@
-// Provides pending workflow draft context for confirmation turns.
+/**
+ * Restores a conversation's pending workflow draft so confirmations,
+ * cancellations, and edits remain routed through the workflow action.
+ */
 import {
   ElizaError,
   type IAgentRuntime,
