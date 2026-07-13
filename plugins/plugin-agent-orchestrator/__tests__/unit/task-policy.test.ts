@@ -45,7 +45,6 @@ describe("requireTaskAgentAccess — policy merge", () => {
         discordMessage,
         "create",
       );
-      // Discord still requires OWNER despite the slack-only override (#16203).
       expect(result.requiredRole).toBe("OWNER");
     },
     COLD_CORE_IMPORT_TIMEOUT_MS,
