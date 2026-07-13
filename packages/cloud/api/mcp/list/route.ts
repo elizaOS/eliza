@@ -71,13 +71,13 @@ const mcpDefinitions = [
           model: {
             type: "enum",
             options: [
-              "gpt-4o",
+              "gemma-4-31b",
               "gpt-5-mini",
-              "claude-sonnet-4-6",
-              "gemini-2.0-flash-exp",
+              "claude-sonnet-5",
+              "gemini-2.0-flash-001",
             ],
             optional: true,
-            default: "gpt-4o",
+            default: "gemma-4-31b",
             description: "The AI model to use for generation",
           },
           maxLength: {

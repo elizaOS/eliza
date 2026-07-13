@@ -45,7 +45,12 @@ export const BITROUTER_NITRO_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
 export const BITROUTER_DEFAULT_FREE_MODEL = "openai/gpt-oss-120b:free";
 export const CEREBRAS_DEFAULT_TEXT_MODEL = "gemma-4-31b";
 export const CEREBRAS_DEFAULT_TEXT_SMALL_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
-export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = CEREBRAS_DEFAULT_TEXT_MODEL;
+// Large is a genuinely stronger model than small: gemma serves the cheap
+// high-volume slots while GLM-4.7 carries planner/reasoning duty. Mirrors
+// DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL in core/shared service-routing.ts.
+// Fresh dedicated agents get this via applyManagedAgentInferenceEnvDefaults,
+// and existing agents heal on the next blue/green fleet upgrade (#8434).
+export const CEREBRAS_DEFAULT_TEXT_LARGE_MODEL = "zai-glm-4.7";
 export const CEREBRAS_NATIVE_TEXT_MODELS = [
   CEREBRAS_DEFAULT_TEXT_MODEL,
   "gpt-oss-120b",

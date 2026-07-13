@@ -108,7 +108,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
             model: {
               type: "string",
               description: "Model to use (default: gpt-5-mini)",
-              enum: ["gpt-5-mini", "gpt-4o", "claude-sonnet-4-6"],
+              enum: ["gpt-5-mini", "gemma-4-31b", "claude-sonnet-5"],
             },
           },
           required: ["message"],

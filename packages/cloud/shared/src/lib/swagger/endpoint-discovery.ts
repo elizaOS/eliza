@@ -215,7 +215,7 @@ export const API_ENDPOINTS: ApiEndpoint[] = [
           type: "string",
           required: false,
           description: "Model to use for completion",
-          defaultValue: "gpt-4o",
+          defaultValue: "gemma-4-31b",
           example: "gpt-5-mini",
         },
       ],
