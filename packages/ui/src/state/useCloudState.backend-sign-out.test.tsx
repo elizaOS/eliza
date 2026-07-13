@@ -14,7 +14,6 @@
 
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { client } from "../api";
 import { clearStaleStewardSession } from "../cloud/shell/StewardProviderShared";
 import { useCloudState } from "./useCloudState";
 

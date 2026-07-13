@@ -92,7 +92,7 @@ const frame = (): Promise<void> =>
 const grabber = () => screen.getByTestId("chat-sheet-grabber");
 const sheet = () => screen.getByTestId("chat-sheet");
 const grabberBar = () => grabber().querySelector("span");
-const pillBar = () => screen.getByTestId("chat-pill").querySelector("span");
+const _pillBar = () => screen.getByTestId("chat-pill").querySelector("span");
 
 function flick(el: Element, fromY: number, toY: number): void {
   const now = vi.spyOn(performance, "now");

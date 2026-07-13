@@ -169,7 +169,6 @@ export function AccountCard({
   isFirst,
   isLast,
   saving,
-  onPatch,
   onMoveUp,
   onMoveDown,
   onTest,

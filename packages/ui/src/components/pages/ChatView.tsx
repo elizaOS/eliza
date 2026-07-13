@@ -30,6 +30,7 @@ import {
   isConversationMessage,
 } from "../../api/client-types-chat";
 import { isRoutineCodingAgentMessage } from "../../chat";
+import { dispatchVoiceControl } from "../../events";
 import { readPersistedMobileRuntimeMode } from "../../first-run/mobile-runtime-mode";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
@@ -41,7 +42,6 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { useViewEvent } from "../../hooks/useViewEvent";
-import { dispatchVoiceControl } from "../../events";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,

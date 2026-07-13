@@ -27,7 +27,7 @@ import {
 } from "../components/shell/liquid-glass";
 import { glassBridge } from "./native-bridge";
 import { GLASS_RECIPES, type GlassVariant } from "./tokens";
-import { type GlassTier, useNativeGlass } from "./useNativeGlass";
+import { useNativeGlass } from "./useNativeGlass";
 
 const VARIANTS = Object.keys(GLASS_RECIPES) as GlassVariant[];
 

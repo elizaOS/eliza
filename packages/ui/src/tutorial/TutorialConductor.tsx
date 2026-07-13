@@ -97,7 +97,8 @@ export function useTutorialConductor(): void {
   const textTurnSeqRef = React.useRef(0);
 
   const seedStopped = React.useCallback(() => {
-    const seq = (textTurnSeqRef.current += 1);
+    textTurnSeqRef.current += 1;
+    const seq = textTurnSeqRef.current;
     seedTurn(makeTurn(`tutorial:stopped:${seq}`, STOPPED_TEXT));
   }, [seedTurn]);
 
@@ -130,7 +131,8 @@ export function useTutorialConductor(): void {
       // "stop tutorial" with no tour running is just chat about the tutorial —
       // let it reach the agent.
       if (command === "stop" && current.status !== "active") return false;
-      const seq = (textTurnSeqRef.current += 1);
+      textTurnSeqRef.current += 1;
+      const seq = textTurnSeqRef.current;
       seedTurn({
         id: `tutorial:user:${seq}`,
         role: "user",

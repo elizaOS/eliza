@@ -120,6 +120,7 @@ export function useNativePlatformSurface<Props, Event = never>(
   // Live handle shared by the mount effect (owner) and the props effect.
   const handleRef = useRef<NativeSurfaceHandle<Props> | null>(null);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: props/onEvent are seeded via refs and pushed by the setProps effect below, so a prop change must NOT re-run this mount effect (that would remount/thrash the native surface).
   useEffect(() => {
     if (!enabled) return;
     const el = ref.current;
@@ -130,19 +131,18 @@ export function useNativePlatformSurface<Props, Event = never>(
     // is correct even before the props effect below has run.
     propsRef.current = props;
 
-    void driver.attach(
-      regionId,
-      geometryOf(el),
-      propsRef.current,
-      (event) => onEventRef.current?.(event),
-    ).then((handle) => {
-      if (cancelled || !handle) {
-        void handle?.detach();
-        return;
-      }
-      handleRef.current = handle;
-      setActive(true);
-    });
+    void driver
+      .attach(regionId, geometryOf(el), propsRef.current, (event) =>
+        onEventRef.current?.(event),
+      )
+      .then((handle) => {
+        if (cancelled || !handle) {
+          void handle?.detach();
+          return;
+        }
+        handleRef.current = handle;
+        setActive(true);
+      });
 
     const sync = () => {
       if (raf || !handleRef.current) return;
@@ -165,9 +165,8 @@ export function useNativePlatformSurface<Props, Event = never>(
       handleRef.current = null;
       setActive(false);
     };
-    // `props`/`onEvent` are intentionally excluded: they flow via refs +
-    // the setProps effect below, so a prop change never re-mounts the surface.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: props/onEvent handled via refs to avoid remount churn.
+    // `props`/`onEvent` are intentionally excluded (see the ignore above the
+    // hook): they flow via refs + the setProps effect below.
   }, [driver, enabled, ref, regionId]);
 
   // Push prop changes to the live handle (no remount). Skipped while inactive.

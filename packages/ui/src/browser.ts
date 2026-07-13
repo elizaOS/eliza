@@ -40,6 +40,10 @@ export * from "./components/apps/overlay-app-api.ts";
 export * from "./components/apps/overlay-app-registry.ts";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
+// Simulator/dev chat gallery — reachable only through the compile-time-gated
+// __ELIZA_CHAT_UI_HARNESS__ lazy import in packages/app; without the flag that
+// import site is dead code, so this export tree-shakes out of ordinary bundles.
+export { ChatWidgetHarness } from "./components/chat/ChatWidgetHarness.tsx";
 export * from "./components/chat/widgets/shared.tsx";
 export {
   EmptyWidgetState,
@@ -50,10 +54,6 @@ export {
 // the root index.ts too; keep both in sync. Missing here breaks
 // `packages/app build:web` (plugin-task-coordinator/register-slots.ts).
 export { registerTaskWidget } from "./components/chat/widgets/task-widget.tsx";
-// Simulator/dev chat gallery — reachable only through the compile-time-gated
-// __ELIZA_CHAT_UI_HARNESS__ lazy import in packages/app; without the flag that
-// import site is dead code, so this export tree-shakes out of ordinary bundles.
-export { ChatWidgetHarness } from "./components/chat/ChatWidgetHarness.tsx";
 export { DiffReviewPanel } from "./components/composites/code/DiffReviewPanel.tsx";
 export { PagePanel } from "./components/composites/page-panel/index.ts";
 export { SidebarContent } from "./components/composites/sidebar/sidebar-content.tsx";
