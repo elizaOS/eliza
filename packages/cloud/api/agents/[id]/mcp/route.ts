@@ -60,6 +60,11 @@ const ToolCallParamsSchema = z.object({
   arguments: z.record(z.string(), z.unknown()).default({}),
 });
 
+const ChatArgumentsSchema = z.object({
+  message: z.string().trim().min(1),
+  model: z.string().trim().min(1).default("gpt-5-mini"),
+});
+
 const app = new Hono<AppEnv>();
 
 function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
@@ -302,17 +307,18 @@ export async function handleToolCall(
   }
 
   if (name === "chat") {
-    const { message, model = "gpt-5-mini" } = args as {
-      message: string;
-      model?: string;
-    };
-    if (!message) {
-      return c.json({
-        jsonrpc: "2.0",
-        error: { code: -32602, message: "message required" },
-        id: rpcId,
-      });
+    const parsedArguments = ChatArgumentsSchema.safeParse(args);
+    if (!parsedArguments.success) {
+      return c.json(
+        {
+          jsonrpc: "2.0",
+          error: { code: -32602, message: "valid chat arguments are required" },
+          id: rpcId,
+        },
+        400,
+      );
     }
+    const { message, model } = parsedArguments.data;
 
     const bioText = Array.isArray(character.bio)
       ? character.bio.join("\n")
@@ -375,6 +381,12 @@ export async function handleToolCall(
     }
 
     try {
+      logger.info("[Agent MCP] Invoking configured provider", {
+        agentId: character.id,
+        model,
+        maxOutputTokens: estimatedOutputTokens,
+        thinkingBudgetTokens: effectiveThinkingBudget,
+      });
       const result = await streamText({
         model: getLanguageModel(model),
         messages,
@@ -486,6 +498,7 @@ export async function handleToolCall(
         result: {
           content: [{ type: "text", text: fullText }],
           _meta: {
+            admittedOutputTokens: estimatedOutputTokens,
             cost: {
               base: actualBaseCost,
               markup: actualCreatorMarkup,

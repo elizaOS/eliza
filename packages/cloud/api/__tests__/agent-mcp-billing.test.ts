@@ -216,9 +216,8 @@ describe("Agent MCP billing", () => {
   });
 
   // #16148: the reserved output ceiling and the provider-facing cap must be one
-  // immutable value for every resolved thinking budget — the acceptance table.
-  // Previously reserve used `4096 + budget` while the provider got
-  // `max(4096, budget) + 4096` (and no cap with thinking off).
+  // immutable value for every resolved thinking budget. The table covers both
+  // the finite no-thinking floor and admitted thinking budgets.
   test.each([
     [null, 4096, 0],
     [1024, 5120, 1024],
@@ -230,6 +229,9 @@ describe("Agent MCP billing", () => {
 
     const response = await callChat();
     expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      result?: { _meta?: { admittedOutputTokens?: number } };
+    };
 
     // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
     expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
@@ -239,6 +241,7 @@ describe("Agent MCP billing", () => {
     expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
       estimateRequestCost.mock.calls[0]?.[2],
     );
+    expect(body.result?._meta?.admittedOutputTokens).toBe(expectedCap);
     // Provider thinking policy uses the already-resolved effective budget
     // (`effectiveThinkingBudget ?? 0`), not a recomputed value.
     expect(mergeAnthropicCotProviderOptions.mock.calls[0]?.[2]).toBe(
@@ -263,13 +266,8 @@ describe("Agent MCP billing", () => {
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 
-  // Regression for #10266: a post-settlement earnings failure must NOT trigger a
-  // second reconcile. The consumer is settled with reconcile(actualTotal); if
-  // recordCreatorEarnings throws, the pre-fix code let it reach the outer catch,
-  // which ran the NON-idempotent reconcile(0) — double-refunding the WHOLE
-  // reservation (free inference + a net credit grant) and returning an error.
-  // The degraded response carries an explicit warning, so reconcile fires
-  // exactly once without presenting the accounting path as fully healthy.
+  // The consumer settlement is non-idempotent: a later creator-accounting
+  // failure must remain visible without entering the outer refund boundary.
   test("post-settlement earnings failure does not double-refund the reservation", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
     recordCreatorEarnings.mockRejectedValue(
@@ -350,17 +348,28 @@ describe("Agent MCP billing", () => {
     expect(streamText).not.toHaveBeenCalled();
   });
 
-  test("chat with an empty message is rejected before billing", async () => {
+  test.each([
+    ["missing message", { model: "gpt-5-mini" }],
+    ["blank message", { message: "   ", model: "gpt-5-mini" }],
+    ["non-string message", { message: 42, model: "gpt-5-mini" }],
+    ["blank model", { message: "hello", model: "" }],
+  ])("chat with %s is rejected before billing", async (_case, args) => {
     const response = await handleToolCall(
       makeContext() as never,
       makeCharacter(),
-      { name: "chat", arguments: { model: "gpt-5-mini" } },
+      { name: "chat", arguments: args },
       "rpc-1",
       { id: USER_ID, organization_id: ORG_ID },
     );
-    const body = (await response.json()) as { error?: { code: number } };
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
 
-    expect(body.error?.code).toBe(-32602);
+    expect(response.status).toBe(400);
+    expect(body.error).toEqual({
+      code: -32602,
+      message: "valid chat arguments are required",
+    });
     expect(reserve).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
   });

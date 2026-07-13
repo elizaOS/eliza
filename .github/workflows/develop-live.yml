@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       filter:
-        description: "Optional task-label regex; use a2a-receipt for only the exact A2A proof"
+        description: "Optional task-label regex; use a2a-receipt or mcp-receipt for an exact billing proof"
         type: string
         default: ""
   schedule:
@@ -119,7 +119,7 @@ jobs:
           fi
 
       - name: Post-merge live matrix
-        if: inputs.filter != 'a2a-receipt'
+        if: inputs.filter != 'a2a-receipt' && inputs.filter != 'mcp-receipt'
         env:
           RUNNER_TEMP_LOG: ${{ runner.temp }}/develop-live-sweep.log
           TEST_FILTER: ${{ inputs.filter }}
@@ -132,7 +132,7 @@ jobs:
           node packages/scripts/run-all-tests.mjs --all --no-cloud "${filter_args[@]}" 2>&1 | tee "$RUNNER_TEMP_LOG"
 
       - name: Cloud unit suite
-        if: always() && inputs.filter != 'a2a-receipt'
+        if: always() && inputs.filter != 'a2a-receipt' && inputs.filter != 'mcp-receipt'
         run: bun run test:cloud
 
       - name: Exact-head A2A live provider and billing receipt
@@ -141,6 +141,16 @@ jobs:
           (inputs.filter == '' || inputs.filter == 'cloud-api' || inputs.filter == 'a2a-receipt')
         env:
           E2E_ONLY: group-c-agents
+          E2E_RECEIPT_TARGET: a2a
+        run: bun run --cwd packages/cloud/api test:e2e
+
+      - name: Exact-head MCP live provider and billing receipt
+        if: >-
+          always() &&
+          (inputs.filter == '' || inputs.filter == 'cloud-api' || inputs.filter == 'mcp-receipt')
+        env:
+          E2E_ONLY: group-c-agents
+          E2E_RECEIPT_TARGET: mcp
         run: bun run --cwd packages/cloud/api test:e2e
 
       - name: Teardown Postgres

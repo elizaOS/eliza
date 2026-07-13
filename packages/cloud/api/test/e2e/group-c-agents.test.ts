@@ -37,6 +37,7 @@ import {
 } from "./_helpers/api";
 
 const UNOWNED_AGENT_ID = "00000000-0000-4000-8000-000000000000";
+const MCP_LIVE_ADMITTED_OUTPUT_TOKENS = 4096;
 
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
@@ -45,6 +46,7 @@ const hasLiveProvider = Boolean(
     process.env.OPENROUTER_API_KEY?.trim() ||
     process.env.AI_GATEWAY_API_KEY?.trim(),
 );
+const receiptTarget = process.env.E2E_RECEIPT_TARGET?.trim();
 if (!serverReachable) {
   console.warn(
     `[group-c-agents] ${getBaseUrl()} did not respond to /api/health. ` +
@@ -61,8 +63,8 @@ if (!hasTestApiKey) {
 if (!hasLiveProvider) {
   console.warn(
     "[group-c-agents] OPENAI_API_KEY, OPENROUTER_API_KEY, and " +
-      "AI_GATEWAY_API_KEY are not set; the exact-head A2A " +
-      "provider/billing receipt test will SKIP.",
+      "AI_GATEWAY_API_KEY are not set; exact-head A2A and MCP " +
+      "provider/billing receipt tests will SKIP.",
   );
 }
 
@@ -80,6 +82,7 @@ async function seedOwnedCharacter(input: {
   settings?: Record<string, unknown>;
   isPublic?: boolean;
   a2aEnabled?: boolean;
+  mcpEnabled?: boolean;
 }): Promise<void> {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -111,6 +114,7 @@ async function seedOwnedCharacter(input: {
          is_template,
          is_public,
          a2a_enabled,
+         mcp_enabled,
          source,
          view_count,
          interaction_count,
@@ -135,6 +139,7 @@ async function seedOwnedCharacter(input: {
          false,
          $9,
          $10,
+         $11,
          'cloud',
          3,
          2,
@@ -156,6 +161,9 @@ async function seedOwnedCharacter(input: {
         }),
         input.isPublic ?? false,
         input.a2aEnabled ?? false,
+        // Match the schema default for normal fixtures while allowing access-
+        // control cases to seed an explicitly disabled MCP agent.
+        input.mcpEnabled ?? true,
       ],
     );
   } finally {
@@ -327,7 +335,7 @@ describeE2E("/api/agents/:id/a2a", () => {
     });
   });
 
-  test.skipIf(!hasLiveProvider)(
+  test.skipIf(!hasLiveProvider || receiptTarget === "mcp")(
     "live provider stays within the admitted ceiling and settles the real credit hold",
     async () => {
       const userId = process.env.TEST_USER_ID;
@@ -434,6 +442,139 @@ describeE2E("/api/agents/:id/a2a", () => {
         `${JSON.stringify(
           {
             evidence: "exact-head-a2a-live-provider-billing-receipt",
+            agent: { id: agentId, name: agentName },
+            httpStatus: response.status,
+            providerReceipt: receipt.result,
+            databaseSettlement: settlement,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    },
+    120_000,
+  );
+});
+
+// -------------------------------------------------------------------------
+// /api/agents/:id/mcp — live provider + credit settlement receipt
+// -------------------------------------------------------------------------
+describeE2E("/api/agents/:id/mcp", () => {
+  test.skipIf(!hasLiveProvider || receiptTarget === "a2a")(
+    "live provider stays within the admitted ceiling and settles the real credit hold",
+    async () => {
+      const userId = process.env.TEST_USER_ID;
+      const organizationId = process.env.TEST_ORGANIZATION_ID;
+      const databaseUrl =
+        process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+      if (!userId || !organizationId || !databaseUrl) {
+        throw new Error(
+          "TEST_USER_ID, TEST_ORGANIZATION_ID, and the e2e database URL are required",
+        );
+      }
+
+      const agentId = crypto.randomUUID();
+      const agentName = `MCP live ceiling ${crypto.randomUUID()}`;
+      await seedOwnedCharacter({
+        id: agentId,
+        organizationId,
+        userId,
+        name: agentName,
+        isPublic: true,
+        mcpEnabled: true,
+      });
+      createdCharacterIds.push(agentId);
+
+      const response = await api.post(
+        `/api/agents/${agentId}/mcp`,
+        {
+          jsonrpc: "2.0",
+          method: "tools/call",
+          id: "mcp-live-ceiling",
+          params: {
+            name: "chat",
+            arguments: {
+              message: "Confirm this live MCP request in one short sentence.",
+              model: "gpt-5-mini",
+            },
+          },
+        },
+        { headers: bearerHeaders() },
+      );
+      const rawBody = await response.text();
+      expect(response.status, rawBody).toBe(200);
+      const receipt = z
+        .object({
+          jsonrpc: z.literal("2.0"),
+          id: z.literal("mcp-live-ceiling"),
+          result: z.object({
+            content: z
+              .array(z.object({ type: z.literal("text"), text: z.string() }))
+              .min(1),
+            _meta: z.object({
+              admittedOutputTokens: z.literal(MCP_LIVE_ADMITTED_OUTPUT_TOKENS),
+              usage: z.object({
+                inputTokens: z.number().int().nonnegative(),
+                outputTokens: z
+                  .number()
+                  .int()
+                  .positive()
+                  .max(MCP_LIVE_ADMITTED_OUTPUT_TOKENS),
+              }),
+              cost: z.object({
+                base: z.number().nonnegative(),
+                markup: z.number().nonnegative(),
+                total: z.number().positive(),
+              }),
+            }),
+          }),
+        })
+        .parse(JSON.parse(rawBody));
+      expect(receipt.result.content.some((part) => part.text.length > 0)).toBe(
+        true,
+      );
+
+      const client = new Client({ connectionString: databaseUrl });
+      await client.connect();
+      let settlement: {
+        amount: string;
+        description: string | null;
+        settled_at: Date | null;
+        metadata: Record<string, unknown>;
+      };
+      try {
+        const result = await client.query<{
+          amount: string;
+          description: string | null;
+          settled_at: Date | null;
+          metadata: Record<string, unknown>;
+        }>(
+          `SELECT amount, description, settled_at, metadata
+             FROM credit_transactions
+            WHERE organization_id = $1
+              AND description = $2
+            ORDER BY created_at DESC
+            LIMIT 1`,
+          [organizationId, `Agent MCP: ${agentName} (gpt-5-mini) (reserved)`],
+        );
+        const row = result.rows[0];
+        if (!row) throw new Error("MCP reservation row was not persisted");
+        settlement = row;
+      } finally {
+        await client.end();
+      }
+
+      expect(settlement.settled_at).toBeInstanceOf(Date);
+      expect(Number(settlement.amount)).toBeLessThan(0);
+      expect(settlement.metadata.type).toBe("reservation");
+      expect(settlement.metadata.settlement_marker).toBe(
+        "credit_reservation_v1",
+      );
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            evidence: "exact-head-mcp-live-provider-billing-receipt",
             agent: { id: agentId, name: agentName },
             httpStatus: response.status,
             providerReceipt: receipt.result,
