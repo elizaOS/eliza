@@ -6,6 +6,9 @@ import {
   WalletRiskSummary,
   WalletTrustSummary,
 } from "../types";
+import {
+  createConfidenceResponse,
+} from "../confidence/framework";
 
 export function analyzeWalletTrust(
   age: WalletAgeSummary,
@@ -28,40 +31,60 @@ export function analyzeWalletTrust(
     trustScore += 5;
     limitations.push("Wallet is relatively new.");
   } else {
-    limitations.push("Wallet age could not be confidently determined.");
+    limitations.push(
+      "Wallet age could not be confidently determined.",
+    );
   }
 
   if (activity.activityLevel === "high") {
     trustScore += 20;
-    positiveSignals.push("Wallet has consistent recent activity.");
+    positiveSignals.push(
+      "Wallet has consistent recent activity.",
+    );
   } else if (activity.activityLevel === "medium") {
     trustScore += 15;
-    positiveSignals.push("Wallet has moderate recent activity.");
+    positiveSignals.push(
+      "Wallet has moderate recent activity.",
+    );
   } else if (activity.activityLevel === "low") {
     trustScore += 8;
-    positiveSignals.push("Wallet has some recent activity.");
+    positiveSignals.push(
+      "Wallet has some recent activity.",
+    );
   } else {
-    limitations.push("No recent activity was found in the analyzed sample.");
+    limitations.push(
+      "No recent activity was found in the analyzed sample.",
+    );
   }
 
   if (funding.fundingSourceType === "exchange") {
     trustScore += 20;
-    positiveSignals.push("Wallet appears to have exchange-linked funding.");
+    positiveSignals.push(
+      "Wallet appears to have exchange-linked funding.",
+    );
   } else if (funding.fundingSourceType === "wallet") {
     trustScore += 10;
-    positiveSignals.push("Wallet has an identifiable funding wallet.");
+    positiveSignals.push(
+      "Wallet has an identifiable funding wallet.",
+    );
   } else {
     limitations.push("Funding source is unknown.");
   }
 
   if (exposure.exposureLevel === "none") {
     trustScore += 20;
-    positiveSignals.push("No known exposure was identified.");
+    positiveSignals.push(
+      "No known exposure was identified.",
+    );
   } else if (exposure.exposureLevel === "low") {
     trustScore += 8;
-    limitations.push("Low exposure indicators were identified.");
+    limitations.push(
+      "Low exposure indicators were identified.",
+    );
   } else {
-    limitations.push("Known exposure indicators reduce trust.");
+    limitations.push(
+      "Known exposure indicators reduce trust.",
+    );
   }
 
   if (risk.level === "low") {
@@ -70,10 +93,15 @@ export function analyzeWalletTrust(
   } else if (risk.level === "medium") {
     limitations.push("Medium risk level limits trust.");
   } else {
-    limitations.push("High risk level significantly limits trust.");
+    limitations.push(
+      "High risk level significantly limits trust.",
+    );
   }
 
-  trustScore = Math.max(0, Math.min(100, trustScore));
+  trustScore = Math.max(
+    0,
+    Math.min(100, trustScore),
+  );
 
   const trustLevel =
     trustScore >= 85
@@ -86,6 +114,56 @@ export function analyzeWalletTrust(
             ? "low"
             : "very_low";
 
+  const confidenceAnalysis = createConfidenceResponse([
+    {
+      condition: age.classification !== "unknown",
+      score: 20,
+      reason:
+        "Wallet age evidence was available.",
+    },
+    {
+      condition:
+        typeof activity.recentTransactionCount === "number",
+      score: 20,
+      reason:
+        "Wallet activity metrics were available.",
+    },
+    {
+      condition:
+        funding.evidenceConfidence === "high",
+      score: 20,
+      reason:
+        "Funding evidence confidence is high.",
+    },
+    {
+      condition:
+        funding.evidenceConfidence === "medium",
+      score: 10,
+      reason:
+        "Funding evidence confidence is medium.",
+    },
+    {
+      condition:
+        exposure.evidenceConfidence === "high",
+      score: 25,
+      reason:
+        "Exposure evidence confidence is high.",
+    },
+    {
+      condition:
+        exposure.evidenceConfidence === "medium",
+      score: 15,
+      reason:
+        "Exposure evidence confidence is medium.",
+    },
+    {
+      condition: Boolean(risk.level),
+      score: 15,
+      reason:
+        "A wallet risk assessment was available.",
+    },
+  ]);
+
   const confidence =
     limitations.length === 0
       ? "high"
@@ -96,6 +174,8 @@ export function analyzeWalletTrust(
   return {
     trustScore,
     trustLevel,
+    evidenceConfidence: confidenceAnalysis.level,
+    confidenceAnalysis,
     confidence,
     positiveSignals,
     limitations,
