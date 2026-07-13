@@ -112,7 +112,7 @@ bun run --cwd packages/app test:e2e:android:routes
 | `--build` | Build the APK before installing |
 | `--skip-local-chat` | Skip the on-device agent/chat bring-up |
 | `--skip-route-coverage` | Skip the Playwright WebView sweep |
-| `--cloud` | Also run the real Hetzner provisioning probe |
+| `--cloud` | Also run the real Cloud runtime probe (shared by default; not dedicated/Hetzner ingress proof) |
 | `--no-emulator-boot` | Use an already-running device, don't boot an AVD |
 | `ELIZA_ANDROID_REQUIRE_AGENT=0` | Don't gate route coverage on local agent health (cloud/remote mode) |
 | `ELIZA_EMULATOR_MEMORY_MB` / `ELIZA_EMULATOR_CORES` | Override emulator sizing |

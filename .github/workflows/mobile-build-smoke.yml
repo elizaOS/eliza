@@ -489,8 +489,9 @@ jobs:
   ios-cloud-mode:
     name: iOS Cloud Runtime-Mode Smoke
     # Nightly / on-demand only — never on the PR path. Provisioning a real Eliza
-    # Cloud agent (Hetzner-backed) is slow and costs org credit, so the cloud
-    # runtime mode gates the scheduled run alongside the full-Bun local lane.
+    # Cloud agent route smoke is kept off the PR path. The current programmatic
+    # create omits `alwaysOn`, so it covers the shared Cloud runtime and is NOT
+    # managed dedicated/Hetzner ingress evidence.
     # This closes the third row of the #13578 coverage matrix: remote mode is
     # PR-blocking and local (full-Bun) mode gates nightly, but cloud mode had no
     # unattended lane at all — the XCUITest cloud-onboarding path XCTSkips at the
@@ -526,9 +527,9 @@ jobs:
 
       - name: Run iOS cloud runtime-mode provisioning smoke (#13578)
         # Gating check for the cloud runtime mode. With the seed present this is a
-        # HARD gate (no continue-on-error): a regression in cloud agent creation,
-        # Hetzner provisioning, or the provisioned runtime never answering fails
-        # the scheduled run. cloud-provisioning-e2e.mjs provisions a real agent,
+        # HARD gate (no continue-on-error): a regression in shared Cloud agent
+        # creation or the selected runtime never answering fails the scheduled
+        # run. cloud-provisioning-e2e.mjs resolves/creates a real shared agent,
         # waits for its runtime URL, and probes /api/status|health|me — the same
         # programmatic cloud path the iOS `ios-e2e.mjs --cloud` route calls. When
         # the secret is absent (forks without secret access) the lane records an
