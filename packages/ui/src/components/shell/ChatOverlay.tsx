@@ -4070,11 +4070,19 @@ export function ChatOverlay({
   // keyboard/first-responder lifecycle vs the detent+keyboard-inset machine still
   // needs to land (focusing the native field must keep the sheet maximized, not
   // collapse it), so the DOM composer stays the default until that is finished.
-  const [nativeComposerFlag] = React.useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage?.getItem("eliza:native-composer") === "1",
-  );
+  const [nativeComposerFlag] = React.useState(() => {
+    if (typeof window === "undefined") return false;
+    const override = window.localStorage?.getItem("eliza:native-composer");
+    if (override === "1") return true;
+    if (override === "0") return false;
+    // Default ON where the native path is device-verified end-to-end (Android:
+    // mount → focus → type → Return-submit → restore, all proven on-device, the
+    // sheet staying maximized throughout). iOS stays OPT-IN ("1") until its
+    // runtime is verified on a real device — the sim WebView can't be
+    // drag-maximized via idb. The DOM composer is the fallback everywhere (the
+    // driver returns null off-native or on any attach error).
+    return nativeGlassPlatform() === "android";
+  });
   const nativeComposerEnabled =
     nativeComposerFlag &&
     fullBleed &&
