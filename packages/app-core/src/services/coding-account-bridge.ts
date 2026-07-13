@@ -276,11 +276,23 @@ const PINNED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
  * ChatGPT-login `auth.json` shape Codex reads; the account_id is the OAuth
  * account id baked into the credential record (`organizationId`).
  */
-function materializeCodexHome(accountId: string, accessToken: string): string {
+async function materializeCodexHome(
+  accountId: string,
+  accessToken: string,
+): Promise<string> {
   const dir = codexHomeDir(accountId);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
+  // A CLI session (still running or just exited) may have rotated the
+  // ONE-TIME refresh token into auth.json after the caller's adoption pass at
+  // select time. Overwriting a divergent file with pool tokens would strand
+  // the only valid copy of the rotated pair — the next refresh with the
+  // pool's consumed token then trips OpenAI's reuse detection and revokes the
+  // whole grant family (the 2026-07-13 double-account revocation). Adopt
+  // (mutex-serialized, newer-only) immediately before writing so the pool is
+  // authoritative at the moment of materialization.
+  await adoptRotatedCodexTokens(accountId).catch(() => false);
   const record = loadAccount("openai-codex", accountId);
   const refreshToken = record?.credentials.refresh;
   if (!refreshToken) {
@@ -298,7 +310,10 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
     OPENAI_API_KEY: null as string | null,
     tokens: {
       ...(idToken ? { id_token: idToken } : {}),
-      access_token: accessToken,
+      // Prefer the pool record's access token: when adoption just landed a
+      // rotated pair, the caller-resolved token belongs to the consumed
+      // generation and must not be re-paired with the adopted refresh token.
+      access_token: record?.credentials.access ?? accessToken,
       refresh_token: refreshToken,
       ...(chatgptAccountId ? { account_id: chatgptAccountId } : {}),
     },
@@ -366,9 +381,16 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
       );
       effort = undefined;
     }
+    // `cli_auth_credentials_store = "file"` pins rotated tokens into
+    // CODEX_HOME/auth.json where adoptRotatedCodexTokens can harvest them.
+    // The default (`auto`) may pick a keyring/ephemeral store on some hosts —
+    // on a headless box the rotated ONE-TIME refresh token then evaporates
+    // with the process and the pool's copy is already consumed. Value
+    // validated against the pinned codex-acp's config parser (enum:
+    // file|keyring|auto|ephemeral; an unknown variant fails the WHOLE parse).
     writeFileSync(
       targetConfig,
-      `model = "${model || "gpt-5.6-sol"}"\n${
+      `model = "${model || "gpt-5.6-sol"}"\ncli_auth_credentials_store = "file"\n${
         effort ? `model_reasoning_effort = "${effort}"\n` : ""
       }`,
       { mode: 0o600 },
@@ -390,7 +412,7 @@ async function buildEnvPatch(
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     case "openai-codex":
-      return { CODEX_HOME: materializeCodexHome(accountId, accessToken) };
+      return { CODEX_HOME: await materializeCodexHome(accountId, accessToken) };
     default: {
       // Direct API providers (e.g. cerebras-api → CEREBRAS_API_KEY for opencode)
       // inject under their canonical env key; run-main.ts normalizes aliases
