@@ -1,35 +1,8 @@
 /**
- * `useRealtimeVoiceMint` — resolves the two app-specific inputs the realtime
- * voice session needs from the SAME auth/runtime source the rest of the app
- * uses for /api/v1 calls:
- *   1. the owner agent UUID for the mint (`agentId`), and
- *   2. a consent-nonce fetch (`getConsentNonce`) that POSTs
- *      `/api/v1/voice/session/consent` through `fetchWithCsrf` (the exact same
- *      CSRF/bearer helper every other dashboard `/api/v1` route uses).
- *
- * Agent-id resolution: a realtime session mints against the CLOUD worker route,
- * which requires the caller's dedicated cloud agent UUID. We derive it from the
- * persisted active server (`resolveDedicatedAgentId`), which is the same id the
- * cloud REST adapter base carries. A local/self-hosted runtime has no cloud
- * agent id → `agentId` is null → the realtime path never arms and the mic runs
- * the batch flow unchanged.
- *
- * FORCE-ARM OVERRIDE (`VITE_VOICE_REALTIME_FORCE`, default OFF): a build can opt
- * in to arming realtime even when no cloud agent id is resolvable. This exists
- * for a same-origin standalone voice backend (e.g. sol-dev) whose mint binds a
- * FIXED server-side identity and IGNORES the client `agentId` — so a sentinel
- * UUID is a safe stand-in there (the server never reads it). The override ONLY
- * substitutes the sentinel WHEN the normal resolution yields null AND a
- * same-origin health probe succeeds; a real cloud agent id always wins. Probe
- * failure keeps `agentId` null, so an absent/broken/permission-denied backend
- * falls straight back to batch before realtime owns the mic. With the flag OFF
- * the behavior is byte-for-byte the current behavior: null agentId on a
- * self-hosted runtime, no probe change.
- *
- * Consent: `getConsentNonce` calls the consent route on the visible gesture that
- * starts a session. A 404 (feature off) or 503 (consent store not configured)
- * both resolve to null, which the session hook reads as "fall back to batch".
- * The nonce is never fabricated.
+ * Resolves the cloud agent identity and one-time consent required before
+ * realtime voice may own the microphone. Self-hosted runtimes stay on batch
+ * voice unless an explicit force build also passes its same-origin health
+ * probe; failed consent or availability checks never fabricate eligibility.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -61,6 +34,7 @@ export function isRealtimeVoiceForceEnabled(): boolean {
     const v = raw.trim().toLowerCase();
     return v === "1" || v === "true" || v === "yes" || v === "on";
   } catch {
+    // error-policy:J4 An unreadable build flag leaves force-arming explicitly disabled.
     return false;
   }
 }
@@ -125,7 +99,7 @@ async function fetchConsentNonce(
     const nonce = json?.consentNonce;
     return typeof nonce === "string" && nonce.trim() ? nonce : null;
   } catch {
-    // Transport/parse failure → no nonce → batch fallback. Never fabricate.
+    // error-policy:J4 Transport/parse failure selects the existing batch-voice path.
     return null;
   }
 }
@@ -138,6 +112,7 @@ async function probeRealtimeVoiceAvailability(
     const res = await doFetch(probePath, { method: "GET" });
     return res.ok;
   } catch {
+    // error-policy:J4 An unreachable probe leaves realtime unavailable to the caller.
     return false;
   }
 }

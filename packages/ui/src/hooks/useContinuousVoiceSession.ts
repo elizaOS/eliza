@@ -1,26 +1,8 @@
 /**
- * `useContinuousVoiceSession` — the single mic-facing surface the chat composer
- * consumes. It COMPOSES the existing batch continuous-chat engine
- * (`useContinuousChat`) with the realtime WebSocket session
- * (`useRealtimeVoiceSession`) and picks the path per the flag + mint result,
- * WITHOUT forking a second UI surface.
- *
- * Selection (the critical non-regression contract):
- *   - realtime path drives the mic ONLY when `realtime.available` is true (the
- *     VITE flag is on AND the server mint didn't report the feature disabled).
- *   - otherwise the mic runs the EXISTING batch path (`useContinuousChat` /
- *     passive capture) COMPLETELY UNCHANGED. A flag-off build, a 404 mint, a
- *     consent 503, or a missing agent id all fall through to batch.
- *
- * Status surface: both paths map onto the SAME `VoiceContinuousStatus` union
- * (#15924), so `ChatVoiceStatusBar` renders one vocabulary regardless of path.
- * When realtime is active its status/transcript wins; otherwise the batch
- * `continuous.status` is shown verbatim.
- *
- * Lifecycle: `start()`/`stop()` route to realtime when available, else to the
- * batch capture pause/resume. `bargeIn()` is a realtime-only affordance (batch
- * barge-in is already wired at the speech-detected edge in useVoiceChat) — it's
- * a no-op on the batch path.
+ * Single microphone controller shared by batch and realtime chat voice. The
+ * realtime client owns the mic only after its feature and consent gates pass;
+ * otherwise the established batch controller remains authoritative while both
+ * paths expose the same status vocabulary to the composer.
  */
 
 import { useCallback, useMemo } from "react";

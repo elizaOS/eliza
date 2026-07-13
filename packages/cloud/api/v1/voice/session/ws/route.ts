@@ -1,4 +1,8 @@
-// Handles the realtime voice-session WebSocket upgrade (Phase 1, flag-gated).
+/**
+ * Flag-gated realtime voice WebSocket upgrade. Authentication occurs in the
+ * first hello frame because embedded WebViews cannot attach upgrade headers;
+ * provider sockets and metering remain closed until that frame is verified.
+ */
 import { Hono } from "hono";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
 import {
@@ -140,6 +144,7 @@ app.get("/", (c) => {
   try {
     server.binaryType = "arraybuffer";
   } catch (error) {
+    // error-policy:J4 A runtime without binary ArrayBuffer delivery gets an explicit 503.
     // If a runtime exposes binaryType as read-only, binary frames would arrive
     // as Blob and every audio frame would parse as invalid control text while
     // the session still reaches `ready` (a silent no-audio session, worse than

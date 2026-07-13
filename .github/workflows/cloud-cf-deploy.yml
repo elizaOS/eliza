@@ -488,10 +488,8 @@ jobs:
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
-          # Prefer dedicated voice secrets; fall back to the existing ElizaCloud API key
-          # for staging so the realtime Worker is not deployed half-configured.
-          VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION != '' && secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION || format('Bearer {0}', secrets.ELIZACLOUD_API_KEY) }}
-          VOICE_AMBIENT_PENDANT_AUTHORIZATION: ${{ secrets.VOICE_AMBIENT_PENDANT_AUTHORIZATION != '' && secrets.VOICE_AMBIENT_PENDANT_AUTHORIZATION || format('Bearer {0}', secrets.ELIZACLOUD_API_KEY) }}
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
+          VOICE_AMBIENT_PENDANT_AUTHORIZATION: ${{ secrets.VOICE_AMBIENT_PENDANT_AUTHORIZATION }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
           # shared default tenant (#11461). publish_secret no-ops with a notice
@@ -528,6 +526,15 @@ jobs:
             echo "::error::wrangler secret put $name failed after 3 attempts"
             return 1
           }
+
+          if [ "${{ steps.env.outputs.deploy_environment }}" = "staging" ]; then
+            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION VOICE_AMBIENT_PENDANT_AUTHORIZATION; do
+              if [ -z "${!name:-}" ]; then
+                echo "::error::Required staging voice secret is missing: $name"
+                exit 1
+              fi
+            done
+          fi
 
           for name in \
             OPENROUTER_API_KEY \

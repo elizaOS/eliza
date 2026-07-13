@@ -1,11 +1,4 @@
-/**
- * Unit coverage for the successful WebSocket upgrade branch of the voice-session
- * ws route. The route-level guard cases (flag off / not an upgrade / capacity /
- * misconfigured / transport unavailable) are covered by
- * voice-session-routes-and-auth.test.ts; this file drives the happy path where a
- * Workers `WebSocketPair` exists, so lines that mint the pair, pick the usage
- * store, and attach the WS handler execute.
- */
+/** Exercises the real voice upgrade route with deterministic socket/provider boundaries. */
 
 import {
   afterAll,
@@ -42,6 +35,7 @@ const attachCalls: Array<Record<string, unknown>> = [];
 let registrySize = 0;
 let evalCapableRedis = true;
 let durableStoreValue: unknown = { kind: "durable" };
+let binaryTypeWritable = true;
 
 mock.module("@elizaos/core", () => ({
   isSensitiveKeyName: () => false,
@@ -132,6 +126,7 @@ const baseEnv = {
 
 class FakeServerSocket {
   accepted = false;
+  binaryType = "blob";
   accept() {
     this.accepted = true;
   }
@@ -149,9 +144,20 @@ beforeEach(() => {
   registrySize = 0;
   evalCapableRedis = true;
   durableStoreValue = { kind: "durable" };
+  binaryTypeWritable = true;
   (globalThis as { WebSocketPair?: unknown }).WebSocketPair = class {
     0 = {};
-    1 = new FakeServerSocket();
+    1 = (() => {
+      const server = new FakeServerSocket();
+      if (!binaryTypeWritable) {
+        Object.defineProperty(server, "binaryType", {
+          set() {
+            throw new Error("read only");
+          },
+        });
+      }
+      return server;
+    })();
   };
 });
 
@@ -210,6 +216,7 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(attachCalls.length).toBe(1);
     const server = attachCalls[0].server as FakeServerSocket;
     expect(server.accepted).toBe(true);
+    expect(server.binaryType).toBe("arraybuffer");
   });
 
   test("prefers the durable usage store when Redis is eval-capable", async () => {
@@ -249,5 +256,12 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect((await res.json()) as unknown).toEqual({
       error: "voice realtime transport unavailable",
     });
+  });
+
+  test("fails closed when the runtime cannot deliver binary ArrayBuffers", async () => {
+    binaryTypeWritable = false;
+    const res = await upgrade();
+    expect(res.status).toBe(503);
+    expect(attachCalls).toHaveLength(0);
   });
 });

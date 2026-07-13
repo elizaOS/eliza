@@ -11,7 +11,14 @@
 // useLoadOlderOnScroll self-bails — scroll-driven growth is covered by the hook
 // unit tests + the real-Chromium e2e; this asserts the mount + reveal contract.
 
-import { act, cleanup, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConversationMessage } from "../../api/client-types-chat";
@@ -40,11 +47,33 @@ function seedMessages(count: number): ConversationMessage[] {
 }
 
 const seeded = seedMessages(THREAD_LENGTH);
+const inboxClient = vi.hoisted(() => ({
+  getInboxMessages: vi.fn(async () => ({
+    messages: [
+      {
+        id: "inbox-1",
+        role: "assistant",
+        text: "Connector message",
+        timestamp: 10,
+        source: "discord",
+      },
+    ],
+  })),
+  sendInboxMessage: vi.fn(async () => ({
+    message: {
+      id: "inbox-2",
+      role: "user",
+      text: "Reply",
+      timestamp: 20,
+      source: "discord",
+    },
+  })),
+}));
 
 const appState = {
   agentStatus: { state: "running", canRespond: true },
   activeConversationId: "conv-1",
-  activeInboxChat: null,
+  activeInboxChat: null as unknown,
   activeTerminalSessionId: null,
   characterData: { name: "Eliza" },
   chatFirstTokenReceived: false,
@@ -102,7 +131,24 @@ vi.mock("../../state/PtySessionsContext.hooks", () => ({
   usePtySessions: () => ({ ptySessions: [] }),
 }));
 
-vi.mock("../../api/client", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: inboxClient }));
+
+vi.mock("../../hooks/useConnectorSendAsAccount", () => ({
+  useConnectorSendAsAccount: () => ({
+    accountRequired: false,
+    accountRequiredReason: null,
+    accounts: [],
+    connectAccount: vi.fn(async () => {}),
+    context: null,
+    loading: false,
+    reconnectAccount: vi.fn(async () => {}),
+    saving: new Set(),
+    selectAccount: vi.fn(),
+    selectedAccount: null,
+    sendAsMetadata: {},
+    showPicker: false,
+  }),
+}));
 
 vi.mock("../../hooks/useChatAvatarVoiceBridge", () => ({
   useChatAvatarVoiceBridge: () => {},
@@ -123,6 +169,19 @@ vi.mock("./chat-view-hooks", () => ({
       unlockAudio: vi.fn(),
       micReconnected: false,
       ttsError: null,
+    },
+    voiceSession: {
+      status: "idle",
+      interimTranscript: "",
+      latency: null,
+      needsAudioUnlock: false,
+      unlockAudio: vi.fn(),
+      micReconnected: false,
+      ttsError: null,
+      realtimeActive: false,
+      realtimeAvailable: false,
+      paused: false,
+      realtimeError: null,
     },
     handleEditMessage: vi.fn(),
     handleSpeakMessage: vi.fn(),
@@ -160,6 +219,8 @@ afterEach(cleanup);
 describe("ChatView transcript render window (#15281)", () => {
   beforeEach(() => {
     appState.activeConversationId = "conv-1";
+    appState.activeInboxChat = null;
+    appState.activeTerminalSessionId = null;
   });
 
   it("mounts at most MAX_RENDERED_SHELL_MESSAGES rows for a long thread, with the top sentinel present", () => {
@@ -185,5 +246,38 @@ describe("ChatView transcript render window (#15281)", () => {
     expect(threadRowCount(container)).toBe(
       Math.min(THREAD_LENGTH, MAX_LOADED_SHELL_WINDOW),
     );
+  });
+
+  it("renders the game-modal composer against the same bounded transcript", () => {
+    render(<ChatView variant="game-modal" />);
+    expect(screen.getByRole("textbox")).toBeTruthy();
+  });
+
+  it("routes transcript copy, reply, edit, and delete actions through app boundaries", async () => {
+    render(<ChatView />);
+    fireEvent.click(screen.getAllByLabelText("Copy message")[0]);
+    fireEvent.click(screen.getAllByLabelText("Reply")[0]);
+    fireEvent.click(screen.getAllByLabelText("aria.editMessage")[0]);
+    fireEvent.click(screen.getAllByLabelText("aria.deleteMessage")[0]);
+    await waitFor(() => expect(appState.copyToClipboard).toHaveBeenCalled());
+    expect(appState.handleChatDelete).toHaveBeenCalled();
+  });
+
+  it("loads and replies through the connector inbox boundary", async () => {
+    appState.activeInboxChat = {
+      id: "room-1",
+      title: "Discord room",
+      source: "discord",
+      canSend: true,
+    };
+    render(<ChatView />);
+    expect(await screen.findByText("Connector message")).toBeTruthy();
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "Reply" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    await waitFor(() =>
+      expect(inboxClient.sendInboxMessage).toHaveBeenCalled(),
+    );
+    expect(await screen.findByText("Reply")).toBeTruthy();
   });
 });
