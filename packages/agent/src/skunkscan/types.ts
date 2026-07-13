@@ -274,9 +274,22 @@ export type WalletCaseSummary = {
 
 export type WalletTrustSummary = {
   trustScore: number;
-  trustLevel: "very_low" | "low" | "medium" | "high" | "very_high";
+
+  trustLevel:
+    | "very_low"
+    | "low"
+    | "medium"
+    | "high"
+    | "very_high";
+
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
   confidence: "low" | "medium" | "high";
+
   positiveSignals: string[];
+
   limitations: string[];
 };
 
