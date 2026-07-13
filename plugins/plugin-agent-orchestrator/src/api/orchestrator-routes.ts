@@ -313,6 +313,7 @@ async function dispatchOrchestratorRoutes(
     try {
       await writeSnapshot();
     } catch (error) {
+      // error-policy:J1 SSE headers are committed, so this boundary emits a terminal event.
       if (!res.writableEnded) {
         res.write("event: error\n");
         res.write(
@@ -327,24 +328,31 @@ async function dispatchOrchestratorRoutes(
       }
       return true;
     }
-    const heartbeat = setInterval(() => {
-      if (!res.writableEnded) res.write(": ping\n\n");
-    }, 20_000);
-    const refresh = setInterval(() => {
-      void writeSnapshot().catch(() => {
-        if (!res.writableEnded) {
-          res.write(`event: change\n`);
-          res.write(
-            `data: ${JSON.stringify({ type: "change", at: Date.now() })}\n\n`,
-          );
-        }
-      });
-    }, 5_000);
+    let heartbeat: ReturnType<typeof setInterval>;
+    let refresh: ReturnType<typeof setInterval>;
     const cleanup = () => {
       clearInterval(heartbeat);
       clearInterval(refresh);
       if (!res.writableEnded) res.end();
     };
+    heartbeat = setInterval(() => {
+      if (!res.writableEnded) res.write(": ping\n\n");
+    }, 20_000);
+    refresh = setInterval(() => {
+      void writeSnapshot().catch((error: unknown) => {
+        // error-policy:J7 Background refresh failures are reported and terminate the stream.
+        ctx.runtime.reportError("OrchestratorWidgetStream.refresh", error, {
+          projectId: query.get("projectId") ?? undefined,
+        });
+        if (!res.writableEnded) {
+          res.write("event: error\n");
+          res.write(
+            `data: ${JSON.stringify({ error: error instanceof Error ? error.message : "Failed to refresh widget snapshot" })}\n\n`,
+          );
+        }
+        cleanup();
+      });
+    }, 5_000);
     req.on("close", cleanup);
     req.on("error", cleanup);
     return true;

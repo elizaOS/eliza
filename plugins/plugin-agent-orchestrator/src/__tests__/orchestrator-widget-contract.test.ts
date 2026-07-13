@@ -1,6 +1,9 @@
+/** Validates task-widget snapshots from deterministic durable task DTOs. */
+
 import { describe, expect, it } from "vitest";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { buildOrchestratorWidgetSnapshot } from "../services/orchestrator-widget-contract.js";
+import { CODING_AGENT_ROUTE_PATHS } from "../setup-routes.js";
 
 function task(overrides: Partial<TaskThreadDto>): TaskThreadDto {
   return {
@@ -96,7 +99,6 @@ describe("orchestrator widget contract", () => {
   });
 });
 
-// Child relationship is sourced from the list DTO, not detail-only payloads.
 describe("orchestrator widget lineage", () => {
   it("populates parentTaskId and childTaskIds from list rows", () => {
     const snapshot = buildOrchestratorWidgetSnapshot([
@@ -111,4 +113,13 @@ describe("orchestrator widget lineage", () => {
       "parent",
     );
   });
+});
+
+it("registers snapshot and stream routes with the plugin dispatcher", () => {
+  expect(CODING_AGENT_ROUTE_PATHS).toEqual(
+    expect.arrayContaining([
+      { type: "GET", path: "/api/orchestrator/widgets" },
+      { type: "GET", path: "/api/orchestrator/widgets/stream" },
+    ]),
+  );
 });

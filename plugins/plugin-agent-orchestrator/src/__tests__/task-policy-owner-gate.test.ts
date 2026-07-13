@@ -1,3 +1,5 @@
+/** Validates connector role gates with deterministic runtime and message fixtures. */
+
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

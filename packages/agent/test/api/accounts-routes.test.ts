@@ -1,7 +1,11 @@
 /** Exercises account API route behavior with deterministic auth and storage fixtures. */
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
-import { listAccounts, saveAccount } from "@elizaos/auth/account-storage";
+import {
+  deleteAccount,
+  listAccounts,
+  saveAccount,
+} from "@elizaos/auth/account-storage";
 import { getAccessToken } from "@elizaos/auth/credentials";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -104,6 +108,15 @@ describe("accounts routes provider-scoped account resolution", () => {
     _resetAgentHostBridge();
   });
 
+  it("leaves unrelated API paths to the next dispatcher", async () => {
+    const ctx = createContext({
+      method: "GET",
+      pathname: "/api/orchestrator/status",
+    });
+    expect(await handleAccountsRoutes(ctx)).toBe(false);
+    expect(ctx.body).toBeUndefined();
+  });
+
   it("sends the oauth beta header when testing an anthropic subscription", async () => {
     vi.mocked(getAccessToken).mockResolvedValue("sk-ant-oat01-test");
     poolMock.get.mockReturnValue(linkedAccount("anthropic-subscription"));
@@ -155,6 +168,119 @@ describe("accounts routes provider-scoped account resolution", () => {
     expect((ctx.body as LinkedAccountConfig).providerId).toBe(
       "anthropic-subscription",
     );
+  });
+
+  it("returns a typed not-found response for a missing account patch", async () => {
+    poolMock.get.mockReturnValue(null);
+    const ctx = createContext({
+      method: "PATCH",
+      pathname: "/api/accounts/openai-api/missing",
+      body: { enabled: false },
+    });
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+    expect(ctx.status).toBe(404);
+    expect(ctx.body).toEqual({ error: "Account not found" });
+  });
+
+  it("updates provider strategy through the config boundary", async () => {
+    const ctx = createContext({
+      method: "PATCH",
+      pathname: "/api/providers/openai-api/strategy",
+      body: { strategy: "round-robin" },
+    });
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+    expect(ctx.saveConfig).toHaveBeenCalledWith(ctx.state.config);
+    expect(ctx.body).toEqual({
+      providerId: "openai-api",
+      strategy: "round-robin",
+    });
+  });
+
+  it("rejects invalid providers and strategy values explicitly", async () => {
+    const unknown = createContext({
+      method: "PATCH",
+      pathname: "/api/providers/not-real/strategy",
+    });
+    await handleAccountsRoutes(unknown);
+    expect(unknown.status).toBe(400);
+
+    const invalid = createContext({
+      method: "PATCH",
+      pathname: "/api/providers/openai-api/strategy",
+      body: { strategy: "random" },
+    });
+    await handleAccountsRoutes(invalid);
+    expect(invalid.status).toBe(400);
+  });
+
+  it("deletes both pool metadata and the matching credential", async () => {
+    const ctx = createContext({
+      method: "DELETE",
+      pathname: "/api/accounts/openai-api/shared-id",
+    });
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+    expect(poolMock.deleteMetadata).toHaveBeenCalledWith(
+      "openai-api",
+      "shared-id",
+    );
+    expect(vi.mocked(deleteAccount)).toHaveBeenCalledWith(
+      "openai-api",
+      "shared-id",
+    );
+    expect(ctx.body).toEqual({ deleted: true });
+  });
+
+  it("returns honest test and usage failures when credentials are absent", async () => {
+    poolMock.get.mockReturnValue(linkedAccount("openai-api"));
+    vi.mocked(getAccessToken).mockResolvedValue(null);
+    const test = createContext({
+      method: "POST",
+      pathname: "/api/accounts/openai-api/shared-id/test",
+    });
+    await handleAccountsRoutes(test);
+    expect(test.body).toEqual({ ok: false, error: "No credential available" });
+
+    const usage = createContext({
+      method: "POST",
+      pathname: "/api/accounts/openai-api/shared-id/refresh-usage",
+    });
+    await handleAccountsRoutes(usage);
+    expect(usage.status).toBe(400);
+    expect(usage.body).toEqual({ error: "No credential available" });
+  });
+
+  it("refreshes direct-provider health through a real HTTP response boundary", async () => {
+    const account = linkedAccount("openai-api", { health: "unknown" });
+    poolMock.get.mockReturnValue(account);
+    poolMock.upsert.mockResolvedValue(undefined);
+    vi.mocked(getAccessToken).mockResolvedValue("sk-openai-test");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response('{"data":[]}', { status: 200 })),
+    );
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/openai-api/shared-id/refresh-usage",
+    });
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+    expect(poolMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "shared-id", health: "ok" }),
+    );
+    expect(ctx.body).toMatchObject({ account: { health: "ok" } });
+  });
+
+  it("reports an absent external-CLI credential without fabricating success", async () => {
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/gemini-cli/shared-id/test",
+    });
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+    expect(ctx.body).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        "Gemini subscription credentials stay inside Gemini CLI",
+      ),
+    });
   });
 
   it("surfaces runtime eligibility so Fable subscription chat is honestly blocked", async () => {

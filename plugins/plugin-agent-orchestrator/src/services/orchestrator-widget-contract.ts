@@ -1,3 +1,9 @@
+/**
+ * Stable, compact task snapshots for chat-adjacent orchestration widgets. The
+ * contract derives display state from durable task DTOs while leaving detailed
+ * task history on the existing per-task endpoints.
+ */
+
 import type { TaskThreadDto } from "./orchestrator-task-mapper.js";
 
 export type OrchestratorWidgetStatus =

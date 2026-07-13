@@ -77,7 +77,7 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
 /** Path templates registered with the runtime route registry. The handler
  * delegates internally based on the actual `req.url`, so several entries
  * resolve to the same dispatcher. */
-const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
+export const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   // Orchestrator durable-task surface
   { type: "GET", path: "/api/orchestrator/status" },
   { type: "GET", path: "/api/orchestrator/capacity" },
