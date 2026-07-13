@@ -87,21 +87,24 @@ describe("desktop experience contract — tray", () => {
     expect(shouldCreateDesktopTray({ ELIZA_DESKTOP_TRAY: "0" })).toBe(false);
   });
 
-  it("defaults dockless (tray-first) ON for macOS with a =0 kill switch; popover stays opt-in", () => {
+  it("defaults dockless (tray-first) AND the popover launcher ON for macOS, each with a =0 kill switch", () => {
     // #12184: dockless is now the resting macOS experience — pill + menu-bar
-    // icon, no Dock icon until a full window opens.
+    // icon, no Dock icon until a full window opens. The popover launcher is
+    // default-ON too: NSStatusItem.menu swallows icon clicks, so the popover
+    // is the only macOS tray surface that can show every launcher view
+    // without sacrificing one-click chat (its first row).
     expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "0" }, "darwin", []),
     ).toBe(false);
-    expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(false);
+    expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(true);
     expect(
       shouldEnableTrayPopover(
-        { ELIZA_DESKTOP_TRAY_POPOVER: "1" },
+        { ELIZA_DESKTOP_TRAY_POPOVER: "0" },
         "darwin",
         [],
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("gates dockless and popover off non-macOS platforms", () => {
