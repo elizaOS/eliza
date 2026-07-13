@@ -7,7 +7,7 @@
  * Token grammar (bare `/accounts` renders the per-provider report):
  *   /accounts
  *   /accounts use|enable|disable <provider> <account>
- *   /accounts strategy <provider> <priority|round-robin|least-used|quota-aware>
+ *   /accounts strategy <provider> <priority|round-robin|least-used|quota-aware|reset-soonest>
  *   /accounts refresh <provider> [account]
  *
  * `<provider>` accepts the wire ids plus the short aliases claude/codex/
@@ -25,6 +25,7 @@ export const ACCOUNT_STRATEGIES = [
 	"round-robin",
 	"least-used",
 	"quota-aware",
+	"reset-soonest",
 ] as const;
 type AccountStrategy = (typeof ACCOUNT_STRATEGIES)[number];
 
