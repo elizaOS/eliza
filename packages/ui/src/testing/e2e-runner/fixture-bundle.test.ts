@@ -25,7 +25,9 @@ describe("fixture bundle", () => {
         {
           name: "observe-conditions",
           setup(build) {
-            observedConditions.push([...(build.initialOptions.conditions ?? [])]);
+            observedConditions.push([
+              ...(build.initialOptions.conditions ?? []),
+            ]);
           },
         },
       ],
@@ -76,8 +78,8 @@ describe("fixture bundle", () => {
     });
 
     expect(url).toBe(`file://${join(root, "fixture.html")}`);
-    await expect(readFile(join(root, "fixture.html"), "utf8")).resolves.toContain(
-      "written",
-    );
+    await expect(
+      readFile(join(root, "fixture.html"), "utf8"),
+    ).resolves.toContain("written");
   });
 });

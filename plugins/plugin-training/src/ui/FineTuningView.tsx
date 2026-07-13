@@ -2297,10 +2297,7 @@ export function FineTuningDashboard({
   }
 
   return (
-    <ContentLayout
-      contentHeader={contentHeader}
-      contentClassName="pe-[var(--eliza-continuous-chat-side-clearance,0px)]"
-    >
+    <ContentLayout contentHeader={contentHeader}>
       <div
         data-testid="fine-tuning-view"
         className="chat-native-scrollbar eliza-continuous-chat-scroll space-y-4 overflow-y-auto pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1rem)]"

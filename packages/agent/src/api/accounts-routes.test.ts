@@ -233,9 +233,9 @@ describe("accounts routes", () => {
   });
 
   it("creates, edits, probes, refreshes, and deletes a direct account", async () => {
-		const created = makeContext("POST", "/api/accounts/openai-api", {
-			source: "api-key",
-			label: "Secondary",
+    const created = makeContext("POST", "/api/accounts/openai-api", {
+      source: "api-key",
+      label: "Secondary",
       apiKey: "sk-test-value",
     });
     await handleAccountsRoutes(created.ctx);
@@ -291,9 +291,9 @@ describe("accounts routes", () => {
 
   it("starts and controls OAuth flows and validates the status stream", async () => {
     const started = makeContext(
-			"POST",
-			"/api/accounts/openai-codex/oauth/start",
-			{ label: "Codex", mode: "auto" },
+      "POST",
+      "/api/accounts/openai-codex/oauth/start",
+      { label: "Codex", mode: "auto" },
     );
     await handleAccountsRoutes(started.ctx);
     expect(started.jsonCalls[0]?.body).toMatchObject({
