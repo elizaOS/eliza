@@ -10,14 +10,19 @@
 
 import { resolveServerOnlyPort } from "@elizaos/core";
 import type { CommandResult, ParsedCommand } from "../types";
-import { CODING_BACKEND_TOKENS, type CodingBackend } from "./model-config";
+import {
+	CODING_BACKEND_DISPLAY,
+	CODING_BACKEND_TOKENS,
+	type CodingBackend,
+	displayCodingBackend,
+} from "./model-config";
 
 export type BackendCommand =
 	| { kind: "show" }
 	| { kind: "write"; backend: CodingBackend }
 	| { kind: "usage"; error: string };
 
-const BACKEND_TOKEN_LIST = Object.keys(CODING_BACKEND_TOKENS).join(", ");
+const BACKEND_TOKEN_LIST = CODING_BACKEND_DISPLAY.join(", ");
 
 const BACKEND_USAGE = `Usage: /backend [backend] — backend is one of ${BACKEND_TOKEN_LIST}.`;
 
@@ -81,7 +86,7 @@ export async function runBackendShowViaRoute(): Promise<CommandResult> {
 	}
 	const effective = parsed.targets.coding?.ELIZA_DEFAULT_AGENT_TYPE ?? null;
 	const current = effective
-		? `${effective.value} (${effective.source})`
+		? `${displayCodingBackend(effective.value)} (${effective.source})`
 		: "not set — the orchestrator picks per task";
 	return reply(
 		[

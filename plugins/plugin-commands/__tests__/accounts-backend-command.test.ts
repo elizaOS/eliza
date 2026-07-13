@@ -557,7 +557,7 @@ describe("/backend", () => {
 		expect(call?.url).toContain("/api/models/config");
 		expect(call?.method).toBe("GET");
 		expect(r.reply).toContain("Default coding backend: opencode (config.env)");
-		expect(r.reply).toContain("codex, claude, opencode, eliza-code");
+		expect(r.reply).toContain("codex, claude, opencode, eliza");
 	});
 
 	it("bare /backend reports the unset state", async () => {

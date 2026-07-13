@@ -183,7 +183,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 			{
 				name: "model",
 				description:
-					"model id — for coding, the backend (codex, claude, opencode, elizaos)",
+					"model id — for coding, the backend (codex, claude, opencode, eliza)",
 				dynamicChoices: "models",
 			},
 			{
@@ -338,7 +338,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 			{
 				name: "backend",
 				description: "default coding backend for new tasks",
-				choices: ["codex", "claude", "opencode", "eliza-code"],
+				choices: ["codex", "claude", "opencode", "eliza"],
 			},
 		],
 		// requiresAuth only (see /accounts): the bare read is authorized-only,
