@@ -132,6 +132,7 @@ describe("TASKS:create", () => {
       "task_complete",
       expect.objectContaining({ response: "done" }),
     );
+    expect(svc.stopSession).toHaveBeenCalledWith("abcdef123456");
   });
   it("handles missing service, auth error, generic failure", async () => {
     expect(

@@ -388,6 +388,11 @@ async function expectNoFirstRunRedirect(page: Page): Promise<void> {
 }
 
 async function expectStartupSettled(page: Page): Promise<void> {
+  // DOMContentLoaded includes the static preboot shell. Its brand copy is not
+  // route readiness; wait until the renderer has taken ownership of #root.
+  await expect(page.locator(".eliza-preboot-shell")).toHaveCount(0, {
+    timeout: STARTUP_SETTLED_TIMEOUT_MS,
+  });
   await page
     .getByText(/Initializing agent|Connecting to backend/i)
     .waitFor({ state: "hidden", timeout: STARTUP_SETTLED_TIMEOUT_MS });

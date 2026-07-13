@@ -85,6 +85,7 @@ describe("DefaultMessageService message persistence", () => {
 		const result = await service.handleMessage(runtime, message);
 
 		expect(result.mode).toBe("none");
+		expect(result.actionResults).toBeUndefined();
 		expect(message.id).toBe(CREATED_MESSAGE_ID);
 		expect(message.content.text).toBe(wrapped);
 

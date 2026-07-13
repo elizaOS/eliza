@@ -28,6 +28,8 @@ import type {
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 
 export interface AcpActionService {
+  /** The service emits its own per-prompt terminal session event. */
+  readonly emitsPromptTerminalEvents?: boolean;
   defaultApprovalPreset?: ApprovalPreset;
   agentSelectionStrategy?: string;
   spawnSession(opts: SpawnOptions): Promise<SpawnResult>;

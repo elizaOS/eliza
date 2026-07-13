@@ -35,6 +35,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, delimiter, dirname, join, resolve, sep } from "node:path";
 import {
   SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE as CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE,
+  ElizaError,
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
@@ -46,9 +47,7 @@ import {
 } from "./acp-provisioning.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
-  appendCodexAcpSandboxConfig,
   type CodexSandboxMode,
-  commandHasCodexSandboxConfig,
   detectLandlockAvailability,
   isCodexLandlockPanic,
   normalizeCodexApprovalPolicy,
@@ -189,8 +188,83 @@ const LEASE_REVOKE_EVENTS: ReadonlySet<SessionEventName> = new Set([
   "error",
   "cancelled",
 ]);
+
+function isIncompletePromptStopReason(stopReason: string | undefined): boolean {
+  const reason = (stopReason ?? "").toLowerCase();
+  return (
+    reason.includes("max") ||
+    reason.includes("length") ||
+    reason.includes("interrupt")
+  );
+}
+
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
-const DEFAULT_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
+const SUCCESSOR_CODEX_ACP_PACKAGE = "@agentclientprotocol/codex-acp@1.1.2";
+const LEGACY_CODEX_ACP_COMMAND = "npx -y @zed-industries/codex-acp@0.14.0";
+const DECLARED_SUCCESSOR_CODEX_ACP_COMMAND = `npx -y ${SUCCESSOR_CODEX_ACP_PACKAGE}`;
+
+/**
+ * Bootstrap codex-acp outside the caller's project manifest. npm validates a
+ * working tree's direct-dependency/override pairs before `npx` starts its
+ * requested package, so an unrelated host manifest conflict can otherwise
+ * prevent every Codex session from reaching the ACP handshake. The explicit
+ * package selection and argument boundary keep npm's own flags separate from
+ * the adapter's Codex configuration flags.
+ */
+export function defaultCodexAcpCommand(tempRoot = tmpdir()): string {
+  const safeTempRoot = tempRoot.replace(/["\r\n]/gu, "");
+  return `npx -y --prefix "${safeTempRoot}" --package=${SUCCESSOR_CODEX_ACP_PACKAGE} -- codex-acp`;
+}
+
+const DEFAULT_CODEX_ACP_COMMAND = defaultCodexAcpCommand();
+
+export function resolveCodexAcpCommand(
+  configured: string | undefined,
+  fallback = DEFAULT_CODEX_ACP_COMMAND,
+): string {
+  if (!configured) return fallback;
+  const trimmed = configured.trim();
+  if (
+    !trimmed ||
+    trimmed === LEGACY_CODEX_ACP_COMMAND ||
+    trimmed === DECLARED_SUCCESSOR_CODEX_ACP_COMMAND
+  ) {
+    return fallback;
+  }
+  return configured;
+}
+
+type CodexAcpInitialAgentMode = "read-only" | "agent" | "agent-full-access";
+
+/**
+ * The maintained Codex ACP server exposes sandbox and approval as three fixed
+ * mode pairs. Rejecting an impossible pair keeps an operator setting from
+ * appearing to apply while the adapter silently chooses different semantics.
+ */
+export function resolveCodexAcpInitialAgentMode(
+  sandboxMode: CodexSandboxMode,
+  approvalPolicy?: string,
+): CodexAcpInitialAgentMode {
+  const mode =
+    sandboxMode === "read-only"
+      ? "read-only"
+      : sandboxMode === "workspace-write"
+        ? "agent"
+        : "agent-full-access";
+  const supportedApproval =
+    mode === "agent-full-access" ? "never" : "on-request";
+  if (approvalPolicy && approvalPolicy !== supportedApproval) {
+    throw new ElizaError(
+      `Codex ACP mode ${mode} requires approval policy ${supportedApproval}`,
+      {
+        code: "CODEX_ACP_MODE_CONFLICT",
+        context: { sandboxMode, approvalPolicy, supportedApproval },
+        severity: "fatal",
+      },
+    );
+  }
+  return mode;
+}
 const CODEX_NO_LANDLOCK_SANDBOX_MODE: CodexSandboxMode = "danger-full-access";
 const CODEX_NO_LANDLOCK_APPROVAL_POLICY = "never";
 /**
@@ -620,13 +694,15 @@ export function resolveInitialTaskPromptTimeoutMs(
   return explicitTimeoutMs ?? 0;
 }
 const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
-// Path segment the app-core coding-account bridge uses for per-account Codex
-// homes (`<stateDir>/auth/_codex-home/<accountId>`). buildEnv keys off this
-// marker to know a subscription account was selected and drop a forwarded
-// OPENAI_API_KEY that would otherwise override the per-account auth.json. Kept
-// in sync with coding-account-bridge.ts:codexHomeDir (cross-package, no shared
-// import — the orchestrator depends only on @elizaos/core).
+// Path segment for Codex homes whose auth.json carries a selected ChatGPT
+// subscription. The marker stays in sync with
+// coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
+// be API-key homes and must never trigger subscription credential stripping.
 const CODEX_PER_ACCOUNT_HOME_MARKER = "_codex-home";
+
+function isCodexSubscriptionHome(home: string | undefined): boolean {
+  return Boolean(home?.includes(CODEX_PER_ACCOUNT_HOME_MARKER));
+}
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -665,6 +741,8 @@ export const ACP_SUBPROCESS_SERVICE_TYPE =
 
 export class AcpService extends Service {
   static serviceType = ACP_SUBPROCESS_SERVICE_TYPE;
+  /** sendPrompt owns terminal event emission for both native and CLI transports. */
+  readonly emitsPromptTerminalEvents = true;
 
   // Process-wide registry of live AcpService instances. The SIGTERM/SIGINT
   // listener is registered exactly ONCE per Node process and fans out to
@@ -716,6 +794,10 @@ export class AcpService extends Service {
   private readonly nativeCancelledPromptSessionIds = new Set<string>();
   private readonly nativeStoppingSessionIds = new Set<string>();
   private readonly outputBuffers = new Map<string, string[]>();
+  // Full session output remains available for history, while custom validators
+  // need the exact latest prompt turn so a retry cannot re-consume an older
+  // completion proof from the same long-lived ACP session.
+  private readonly turnOutputBuffers = new Map<string, string[]>();
   // Sessions whose raw stdout has been teed to disk at least once. Drives the
   // `task_complete` stdoutLogPath reference: only sessions that actually wrote a
   // file get the path attached, so the task document never points at a
@@ -1383,6 +1465,13 @@ export class AcpService extends Service {
       if (Number.isFinite(lastActivityMs) && lastActivityMs > liveCutoffMs) {
         continue;
       }
+      // A native transport client is the live session state. Its protocol
+      // session id belongs to the adapter (Codex, Claude, etc.), not to acpx's
+      // on-disk session store, so probing that store would falsely declare a
+      // healthy long-running prompt lost whenever it pauses past the grace
+      // window. Detached CLI sessions have no attached client and still take
+      // the state-artifact recovery path below.
+      if (this.nativeClients.has(s.id)) continue;
       const { exists } = await this.acpxSessionStateStat(s.acpxSessionId);
       if (!exists) {
         // Descriptive status, NOT an imperative. The old text literally said
@@ -1439,6 +1528,7 @@ export class AcpService extends Service {
     }
     for (const id of swept) {
       this.outputBuffers.delete(id);
+      this.turnOutputBuffers.delete(id);
       this.changedPathsBySession.delete(id);
       this.nativeClients.delete(id);
       this.persistedStdoutSessions.delete(id);
@@ -1895,6 +1985,7 @@ export class AcpService extends Service {
       // onto the same native session. Teardown on the pre-prompt error paths;
       // sendNativePrompt's own finally clears it on the normal path.
       this.nativePromptSessionIds.add(sessionId);
+      this.turnOutputBuffers.set(sessionId, []);
       try {
         await this.store.updateStatus(sessionId, "busy");
         return await this.sendNativePrompt(session, text, opts, startedAt);
@@ -1905,6 +1996,7 @@ export class AcpService extends Service {
         throw err;
       }
     }
+    this.turnOutputBuffers.set(sessionId, []);
     await this.store.updateStatus(sessionId, "busy");
     const args = this.baseArgs({
       workdir: session.workdir,
@@ -2119,6 +2211,7 @@ export class AcpService extends Service {
     await this.removeOwnedGitIndex(session);
     await this.store.delete(sessionId);
     this.outputBuffers.delete(sessionId);
+    this.turnOutputBuffers.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
     this.persistedStdoutSessions.delete(sessionId);
     this.pendingStdoutWrites.delete(sessionId);
@@ -2359,6 +2452,11 @@ export class AcpService extends Service {
     return (this.outputBuffers.get(sessionId) ?? []).slice(-lines).join("");
   }
 
+  /** Output captured during the most recent prompt turn only. */
+  async getSessionTurnOutput(sessionId: string, lines = 200): Promise<string> {
+    return (this.turnOutputBuffers.get(sessionId) ?? []).slice(-lines).join("");
+  }
+
   private baseArgs(opts: {
     workdir: string;
     approvalPreset: ApprovalPreset;
@@ -2427,59 +2525,96 @@ export class AcpService extends Service {
     return mode ?? CODEX_NO_LANDLOCK_SANDBOX_MODE;
   }
 
-  private codexAgentCommand(): string {
-    const command =
-      this.setting("ELIZA_CODEX_ACP_COMMAND") ?? DEFAULT_CODEX_ACP_COMMAND;
-    const configuredSandboxMode = this.codexAcpSandboxMode();
-    if (configuredSandboxMode) {
-      return appendCodexAcpSandboxConfig(
-        command,
-        configuredSandboxMode,
-        this.codexAcpApprovalPolicy() ??
-          (configuredSandboxMode === "danger-full-access"
+  private validateManagedCodexAcpModeConfiguration(): void {
+    const sandboxMode = this.codexAcpSandboxMode();
+    const approvalPolicy = this.codexAcpApprovalPolicy();
+    if (!sandboxMode && approvalPolicy) {
+      throw new ElizaError(
+        "Managed Codex ACP approval policy requires an explicit sandbox mode",
+        {
+          code: "CODEX_ACP_MODE_CONFLICT",
+          context: { approvalPolicy },
+          severity: "fatal",
+        },
+      );
+    }
+    if (sandboxMode) {
+      resolveCodexAcpInitialAgentMode(
+        sandboxMode,
+        approvalPolicy ??
+          (sandboxMode === "danger-full-access"
             ? CODEX_NO_LANDLOCK_APPROVAL_POLICY
             : undefined),
       );
     }
-    if (commandHasCodexSandboxConfig(command)) return command;
-
-    const landlock = detectLandlockAvailability({
-      env: {
-        ELIZA_CODEX_ACP_LANDLOCK: this.setting("ELIZA_CODEX_ACP_LANDLOCK"),
-        ELIZA_CODEX_LANDLOCK: this.setting("ELIZA_CODEX_LANDLOCK"),
-      },
-    });
-    if (landlock !== "unavailable") return command;
-
-    this.log(
-      "warn",
-      "Landlock unavailable; starting Codex ACP with sandbox fallback",
-      {
-        sandboxMode: this.codexNoLandlockSandboxMode(),
-        approvalPolicy:
-          this.codexAcpApprovalPolicy() ?? CODEX_NO_LANDLOCK_APPROVAL_POLICY,
-      },
-    );
-    return appendCodexAcpSandboxConfig(
-      command,
-      this.codexNoLandlockSandboxMode(),
-      this.codexAcpApprovalPolicy() ?? CODEX_NO_LANDLOCK_APPROVAL_POLICY,
-    );
   }
 
-  private codexLandlockFallbackCommand(
+  private managedCodexAcpInitialAgentMode(
+    forceNoLandlockFallback = false,
+  ): CodexAcpInitialAgentMode | undefined {
+    this.validateManagedCodexAcpModeConfiguration();
+    const configuredSandboxMode = this.codexAcpSandboxMode();
+    const landlock =
+      configuredSandboxMode || forceNoLandlockFallback
+        ? undefined
+        : detectLandlockAvailability({
+            env: {
+              ELIZA_CODEX_ACP_LANDLOCK: this.setting(
+                "ELIZA_CODEX_ACP_LANDLOCK",
+              ),
+              ELIZA_CODEX_LANDLOCK: this.setting("ELIZA_CODEX_LANDLOCK"),
+            },
+          });
+    const sandboxMode = forceNoLandlockFallback
+      ? this.codexNoLandlockSandboxMode()
+      : (configuredSandboxMode ??
+        (landlock === "unavailable"
+          ? this.codexNoLandlockSandboxMode()
+          : undefined));
+    if (!sandboxMode) return undefined;
+    const approvalPolicy =
+      this.codexAcpApprovalPolicy() ??
+      (sandboxMode === "danger-full-access"
+        ? CODEX_NO_LANDLOCK_APPROVAL_POLICY
+        : undefined);
+    const mode = resolveCodexAcpInitialAgentMode(sandboxMode, approvalPolicy);
+    if (!configuredSandboxMode && landlock === "unavailable") {
+      this.log(
+        "warn",
+        "Codex ACP Landlock unavailable; starting with sandbox fallback",
+        {
+          sandboxMode,
+          approvalPolicy: mode === "agent-full-access" ? "never" : "on-request",
+        },
+      );
+    }
+    return mode;
+  }
+
+  private codexAgentCommand(): string {
+    const command = resolveCodexAcpCommand(
+      this.setting("ELIZA_CODEX_ACP_COMMAND"),
+    );
+    if (command === DEFAULT_CODEX_ACP_COMMAND) {
+      this.validateManagedCodexAcpModeConfiguration();
+    }
+    // Operator commands are opaque adapter boundaries. Mutating them with
+    // flags from a different codex-acp generation can silently change their
+    // argv contract, so only the declared legacy default is upgraded above.
+    return command;
+  }
+
+  private shouldRetryManagedCodexLandlock(
     agentType: AgentType,
     command: string,
     message: string,
-  ): string | undefined {
+  ): boolean {
     if ((normalizeTaskAgentAdapter(agentType) ?? agentType) !== "codex")
-      return undefined;
-    if (!isCodexLandlockPanic(message)) return undefined;
-    if (commandHasCodexSandboxConfig(command)) return undefined;
-    return appendCodexAcpSandboxConfig(
-      command,
-      this.codexAcpSandboxMode() ?? this.codexNoLandlockSandboxMode(),
-      this.codexAcpApprovalPolicy() ?? CODEX_NO_LANDLOCK_APPROVAL_POLICY,
+      return false;
+    return (
+      command === DEFAULT_CODEX_ACP_COMMAND &&
+      !this.codexAcpSandboxMode() &&
+      isCodexLandlockPanic(message)
     );
   }
 
@@ -2489,7 +2624,11 @@ export class AcpService extends Service {
     opts: SpawnOptions,
   ): Promise<SpawnResult> {
     const command = this.nativeAgentCommand(session.agentType);
-    const createClient = (clientCommand: string, stderr: string[]) =>
+    const createClient = (
+      clientCommand: string,
+      stderr: string[],
+      codexInitialAgentModeOverride?: CodexAcpInitialAgentMode,
+    ) =>
       new NativeAcpClient({
         command: clientCommand,
         cwd: session.workdir,
@@ -2502,6 +2641,7 @@ export class AcpService extends Service {
           opts.model,
           session.agentType,
           id,
+          codexInitialAgentModeOverride,
         ),
         // Auto-inherit the parent runtime's configured MCP servers (config
         // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
@@ -2571,25 +2711,26 @@ export class AcpService extends Service {
       // the failure happened before the set.
       this.nativeClients.delete(id);
       let message = stderr.join("").trim() || errorMessage(err);
-      const fallbackCommand = this.codexLandlockFallbackCommand(
+      const shouldRetryLandlock = this.shouldRetryManagedCodexLandlock(
         session.agentType,
         command,
         message,
       );
-      if (fallbackCommand) {
+      if (shouldRetryLandlock) {
+        const fallbackSandboxMode = this.codexNoLandlockSandboxMode();
+        const fallbackMode = this.managedCodexAcpInitialAgentMode(true);
         this.log(
           "warn",
           "Codex ACP Landlock unavailable; retrying with sandbox fallback",
           {
             sessionId: id,
-            sandboxMode: this.codexNoLandlockSandboxMode(),
+            sandboxMode: fallbackSandboxMode,
             approvalPolicy:
-              this.codexAcpApprovalPolicy() ??
-              CODEX_NO_LANDLOCK_APPROVAL_POLICY,
+              fallbackMode === "agent-full-access" ? "never" : "on-request",
           },
         );
         stderr = [];
-        client = createClient(fallbackCommand, stderr);
+        client = createClient(command, stderr, fallbackMode);
         try {
           return await attachClient(client);
         } catch (retryErr) {
@@ -3009,7 +3150,8 @@ export class AcpService extends Service {
           const cleanCompletion =
             !record.cancelled &&
             (code === 0 || code === null) &&
-            finalText.trim().length > 0;
+            finalText.trim().length > 0 &&
+            !isIncompletePromptStopReason(stopReason);
           if (record.cancelled) {
             this.emitSessionEvent(opts.sessionId, "cancelled", {
               sessionId: opts.sessionId,
@@ -3034,7 +3176,7 @@ export class AcpService extends Service {
               exitCode: code,
               ...this.stdoutLogRef(opts.sessionId),
             });
-          } else {
+          } else if (!isIncompletePromptStopReason(stopReason)) {
             this.emitSessionEvent(opts.sessionId, "stopped", {
               sessionId: opts.sessionId,
               response: finalText,
@@ -3364,14 +3506,10 @@ export class AcpService extends Service {
             sourceEventId: `${sessionId}:${startedAt}`,
           });
         }
-        // Treat any non-error terminal stopReason as a completion so
-        // downstream evaluators get a chance to summarize the work for
-        // the user. claude-agent-sdk emits a variety of stopReasons
-        // (`end_turn`, `max_tokens`, `interrupted`, `tool_use`, ...);
-        // limiting completion to `end_turn` silently dropped sessions
-        // that hit token limits, ran out of turns, or stopped for any
-        // other non-error reason — the sub-agent did real work (commits,
-        // edits, deploys) and the user got nothing back.
+        // Truncated and interrupted turns remain resumable input to the durable
+        // task loop. Advertising them as task_complete would let downstream
+        // stores and the user observe success before the loop continues or
+        // rejects the exhausted run.
         // A terminal stopReason of `error` does NOT mean the work was lost: the
         // sub-agent often wrote files, deployed, and printed a verified result
         // before its LAST step errored (a flaky post-build verify, a lint exit,
@@ -3384,18 +3522,32 @@ export class AcpService extends Service {
         if (deferPromptTerminalEvent) {
           return { finalText, stopReason };
         }
-        if (stopReason === "error" && !finalText?.trim()) {
-          this.emitSessionEvent(sessionId, "error", {
-            message: "acpx prompt ended with stopReason error",
-            stopReason,
-          });
-        } else {
-          this.emitSessionEvent(sessionId, "task_complete", {
-            response: finalText,
-            durationMs: Date.now() - startedAt,
-            stopReason,
-            ...this.stdoutLogRef(sessionId),
-          });
+        if (!isIncompletePromptStopReason(stopReason)) {
+          if (stopReason === "cancelled") {
+            this.emitSessionEvent(sessionId, "cancelled", {
+              response: finalText,
+              durationMs: Date.now() - startedAt,
+              stopReason,
+            });
+          } else if (stopReason === "stopped") {
+            this.emitSessionEvent(sessionId, "stopped", {
+              response: finalText,
+              durationMs: Date.now() - startedAt,
+              stopReason,
+            });
+          } else if (stopReason === "error" && !finalText?.trim()) {
+            this.emitSessionEvent(sessionId, "error", {
+              message: "acpx prompt ended with stopReason error",
+              stopReason,
+            });
+          } else {
+            this.emitSessionEvent(sessionId, "task_complete", {
+              response: finalText,
+              durationMs: Date.now() - startedAt,
+              stopReason,
+              ...this.stdoutLogRef(sessionId),
+            });
+          }
         }
       }
     }
@@ -3651,6 +3803,7 @@ export class AcpService extends Service {
     model?: string,
     agentType?: AgentType,
     childSessionId?: string,
+    codexInitialAgentModeOverride?: CodexAcpInitialAgentMode,
   ): NodeJS.ProcessEnv {
     // Deny-list-filtered, allowlisted, casing-canonicalized host env (see
     // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
@@ -3710,6 +3863,15 @@ export class AcpService extends Service {
     if (childSessionId?.trim()) {
       env.PARALLAX_SESSION_ID = childSessionId.trim();
     }
+    if (
+      agentType === "codex" &&
+      resolveCodexAcpCommand(this.setting("ELIZA_CODEX_ACP_COMMAND")) ===
+        DEFAULT_CODEX_ACP_COMMAND
+    ) {
+      const initialAgentMode =
+        codexInitialAgentModeOverride ?? this.managedCodexAcpInitialAgentMode();
+      if (initialAgentMode) env.INITIAL_AGENT_MODE = initialAgentMode;
+    }
     if (agentType === "claude") {
       // Config-env (UI-saved, restart-free — falls back to process.env) effort
       // override for the spawned Claude Code CLI.
@@ -3758,10 +3920,9 @@ export class AcpService extends Service {
     if (
       agentType === "codex" &&
       typeof env.CODEX_HOME === "string" &&
-      env.CODEX_HOME.includes(CODEX_PER_ACCOUNT_HOME_MARKER)
+      isCodexSubscriptionHome(env.CODEX_HOME)
     ) {
-      // A specific Codex subscription account was selected: its ChatGPT-login
-      // auth.json lives in the injected per-account CODEX_HOME.
+      // A Codex ChatGPT subscription login lives in the injected CODEX_HOME.
       if (env.OPENAI_API_KEY) {
         // Codex treats a present env OPENAI_API_KEY as api-key mode, which
         // OVERRIDES that subscription login — silently defeating multi-account
@@ -3770,7 +3931,7 @@ export class AcpService extends Service {
         delete env.OPENAI_API_KEY;
         this.log(
           "debug",
-          "Dropped OPENAI_API_KEY for codex sub-agent in favor of selected per-account CODEX_HOME",
+          "Dropped OPENAI_API_KEY for codex sub-agent in favor of subscription CODEX_HOME",
         );
       }
       if (env.OPENAI_MODEL) {
@@ -4039,6 +4200,13 @@ export class AcpService extends Service {
     buffer.push(text);
     if (buffer.length > 2_000) buffer.splice(0, buffer.length - 2_000);
     this.outputBuffers.set(sessionId, buffer);
+    const turnBuffer = this.turnOutputBuffers.get(sessionId);
+    if (turnBuffer) {
+      turnBuffer.push(text);
+      if (turnBuffer.length > 2_000) {
+        turnBuffer.splice(0, turnBuffer.length - 2_000);
+      }
+    }
   }
 
   // Tool-call arg keys that carry a target file path / signal a write.

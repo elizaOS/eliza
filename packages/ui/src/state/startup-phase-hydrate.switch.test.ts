@@ -112,6 +112,7 @@ describe("bindReadyPhase shell:switch-agent handler", () => {
     );
 
     cleanup();
+    expect(clientMock.handlers.has("shell:switch-agent")).toBe(false);
   });
 
   it("applies a trusted local profile and reports success", () => {

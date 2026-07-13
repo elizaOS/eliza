@@ -158,7 +158,7 @@ describe("/model slash handler ↔ real /api/models/config route", () => {
     expect(h.managerStart).not.toHaveBeenCalled();
   });
 
-  it("surfaces the route's real codex-acp effort-pin 400 verbatim", async () => {
+  it("surfaces the managed codex-acp effort-contract 400 verbatim", async () => {
     const h = await startHarness();
 
     const r = await resolveCommand(
@@ -167,7 +167,7 @@ describe("/model slash handler ↔ real /api/models/config route", () => {
       OWNER,
     );
 
-    expect(r.reply).toContain("pinned codex-acp adapter");
+    expect(r.reply).toContain("managed codex-acp contract");
     expect(r.reply).toContain("low, medium, high, xhigh");
     expect(h.saveElizaConfig).not.toHaveBeenCalled();
   });

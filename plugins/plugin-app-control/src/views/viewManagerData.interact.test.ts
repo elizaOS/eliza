@@ -71,6 +71,7 @@ describe("interact() happy paths", () => {
 			"/api/views/messages/navigate?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
+				credentials: "include",
 				body: JSON.stringify({ path: "/messages", viewType: "gui" }),
 			}),
 		);
@@ -78,6 +79,19 @@ describe("interact() happy paths", () => {
 });
 
 describe("interact() error paths", () => {
+	it("rejects a malformed registry payload instead of fabricating an empty list", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => jsonResponse({ status: "ready" })),
+		);
+
+		await expect(interact("list-views")).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "VIEW_MANAGER_LIST_RESPONSE_INVALID",
+			message: "GET /api/views response must contain a views array",
+		});
+	});
+
 	it("open-view rejects with 'viewId is required' when viewId is missing", async () => {
 		// No fetch should be needed before the guard fires; stub defensively.
 		vi.stubGlobal(

@@ -20,6 +20,7 @@ import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
+	projectActionResultForClipboard,
 } from "./execute-planned-tool-call";
 import {
 	actionResultToPlannerToolResult,
@@ -291,7 +292,7 @@ export async function runSubPlanner(
 				};
 			}
 
-			const result = await execute(
+			const rawResult = await execute(
 				params.runtime,
 				subPlannerCtx,
 				{ ...toolCall, name: resolvedChildAction.name },
@@ -299,6 +300,11 @@ export async function runSubPlanner(
 					...(params.options ?? {}),
 					actions: childActions,
 				},
+			);
+			const result = projectActionResultForClipboard(
+				resolvedChildAction,
+				rawResult,
+				resolvedChildAction.name,
 			);
 			return actionResultToPlannerToolResult(result, {
 				summary: summarizeActionResultForPlanner(

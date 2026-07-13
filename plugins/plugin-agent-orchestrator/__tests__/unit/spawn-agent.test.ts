@@ -24,6 +24,12 @@ describe("TASKS:spawn_agent", () => {
     ).not.toContain("lockWorkdir");
   });
 
+  it("does not expose keepAliveAfterComplete to planner-generated tool calls", () => {
+    expect(
+      spawnAgentAction.parameters?.map((param) => param.name),
+    ).not.toContain("keepAliveAfterComplete");
+  });
+
   it("validates with explicit payload and a service available", async () => {
     expect(
       await spawnAgentAction.validate(
@@ -108,6 +114,63 @@ describe("TASKS:spawn_agent", () => {
       metadata?: Record<string, unknown>;
     };
     expect(call.metadata?.originConnectorMessageId).toBe("1506941896755249255");
+  });
+
+  it("persists custom verification and retry policy on the ACP session", async () => {
+    const svc = serviceMock();
+    const workdir = process.cwd();
+    const validator = {
+      service: "app-verification",
+      method: "verifyPlugin",
+      params: { workdir, pluginName: "proof-view", profile: "full" },
+    };
+    await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "build a plugin view", agentType: "codex" }),
+      state,
+      {
+        parameters: {
+          action: "spawn_agent",
+          workdir,
+          lockWorkdir: true,
+          validator,
+          maxRetries: 2,
+          onVerificationFail: "retry",
+        },
+      },
+      callback(),
+    );
+
+    const call = svc.spawnSession.mock.calls[0]?.[0] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(call.metadata).toMatchObject({
+      validator,
+      maxRetries: 2,
+      onVerificationFail: "retry",
+      keepAliveAfterComplete: true,
+    });
+  });
+
+  it("ignores a standalone keep-alive request without a validator owner", async () => {
+    const svc = serviceMock();
+    await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "build a script", agentType: "codex" }),
+      state,
+      {
+        parameters: {
+          action: "spawn_agent",
+          keepAliveAfterComplete: true,
+        },
+      },
+      callback(),
+    );
+
+    const call = svc.spawnSession.mock.calls[0]?.[0] as {
+      metadata?: Record<string, unknown>;
+    };
+    expect(call.metadata?.keepAliveAfterComplete).toBe(false);
   });
 
   it("stamps deterministic deduped task/worktree swarm room metadata", async () => {

@@ -255,15 +255,12 @@ const CODEX_EFFORT_VALUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The effort subset the pinned codex-acp adapter can deserialize. Its bundled
- * codex core's `ReasoningEffort` enum is `minimal|low|medium|high|xhigh`
- * (verified against the @zed-industries/codex-acp@0.14.0 binary's serde
- * variant table); an unknown variant fails the WHOLE config.toml parse, which
- * would also discard the `model` pin ChatGPT-account auth requires — far worse
- * than running at the default effort. `max`/`ultra` are valid catalog values
- * on newer Codex builds but are withheld here until the adapter pin moves.
+ * Effort values guaranteed by the managed Codex ACP contract across linked
+ * account spawns. The catalog recognizes newer variants for other consumers,
+ * but this bridge withholds them until the managed adapter path supports them
+ * end to end so a generated CODEX_HOME never advertises an unhonored setting.
  */
-const PINNED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
+const MANAGED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
   "low",
   "medium",
   "high",
@@ -322,8 +319,7 @@ async function materializeCodexHome(
   // account"). Write a MINIMAL config.toml — the model plus an optional
   // validated reasoning effort — reusing the operator's working model
   // (extracted from ~/.codex/config.toml) but NOT the rest of their config,
-  // which can carry fields the pinned codex-acp rejects (e.g. newer
-  // reasoning-effort variants; see PINNED_CODEX_ACP_EFFORTS). Falls back to a
+  // which can carry unrelated interactive-only settings. Falls back to a
   // compatible default.
   const targetConfig = path.join(dir, "config.toml");
   try {
@@ -368,11 +364,9 @@ async function materializeCodexHome(
         `[coding-account-bridge] ignoring invalid ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} (expected low|medium|high|xhigh|max|ultra)`,
       );
       effort = undefined;
-    } else if (effort && !PINNED_CODEX_ACP_EFFORTS.has(effort)) {
-      // error-policy:J7 see PINNED_CODEX_ACP_EFFORTS — writing max/ultra would
-      // fail the pinned adapter's whole config.toml parse and drop the model pin.
+    } else if (effort && !MANAGED_CODEX_ACP_EFFORTS.has(effort)) {
       logger.warn(
-        `[coding-account-bridge] ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} is not parseable by the pinned codex-acp (supported: low|medium|high|xhigh); omitting model_reasoning_effort so config.toml stays loadable`,
+        `[coding-account-bridge] ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} is not supported by the managed codex-acp contract (supported: low|medium|high|xhigh); omitting model_reasoning_effort`,
       );
       effort = undefined;
     }

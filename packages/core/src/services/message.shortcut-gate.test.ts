@@ -89,6 +89,16 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(result).not.toBeNull();
 		expect(result?.kind).toBe("direct_reply");
 		expect(result?.result.responseContent.text).toBe("echoed: /echo hi");
+		expect(result?.result.actionResults).toEqual([
+			{
+				success: true,
+				text: "echoed: /echo hi",
+				data: { actionName: "ECHO_COMMAND" },
+			},
+		]);
+		expect(result?.result.state.data.actionResults).toEqual(
+			result?.result.actionResults,
+		);
 		expect(useModel).not.toHaveBeenCalled();
 		// #8792: a SLASH_COMMAND_INVOKED interaction event is emitted.
 		expect(emitEvent).toHaveBeenCalledTimes(1);
@@ -236,12 +246,89 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			senderRole: "OWNER",
 		});
 		expect(result?.kind).toBe("direct_reply");
+		expect(result?.result.actionResults).toMatchObject([
+			{ success: true, data: { actionName: "ECHO_COMMAND" } },
+		]);
+		expect(result?.result.responseContent.thought).toBe("Shortcut: nl:echo");
 		expect(seenOptions[0]).toEqual({ what: "hello there", mode: "simple" });
 		expect(useModel).not.toHaveBeenCalled();
 		const shortcutEvents = emitEvent.mock.calls.filter(
 			(c) => c[0] === EventType.SHORTCUT_FIRED,
 		);
 		expect(shortcutEvents).toHaveLength(1);
+	});
+
+	it("does not publish sensitive shortcut result data or values", async () => {
+		const sensitiveAction: Action = {
+			...echoAction(),
+			suppressActionResultClipboard: true,
+			handler: async (_rt, _message, _state, _options, callback) => {
+				await callback?.({ text: "Sensitive action completed." });
+				return {
+					success: true,
+					text: "Sensitive action completed.",
+					values: { secret: "must-not-leak" },
+					data: { credential: "must-not-leak" },
+				};
+			},
+		};
+		const { runtime } = makeRuntime({ actions: [sensitiveAction] });
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo secret"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+
+		expect(result?.result.actionResults).toEqual([
+			{
+				success: true,
+				text: "Sensitive action completed.",
+				data: { actionName: "ECHO_COMMAND" },
+			},
+		]);
+	});
+
+	it("honors dynamic shortcut suppression and preserves a failed outcome", async () => {
+		const sensitiveAction: Action = {
+			...echoAction(),
+			handler: async (_rt, _message, _state, _options, callback) => {
+				await callback?.({ text: "View edit did not start." });
+				return {
+					success: false,
+					text: "View edit did not start.",
+					userFacingText: "View edit did not start.",
+					values: { workdir: "/private/must-not-leak" },
+					data: {
+						task: { sessionId: "must-not-leak" },
+						suppressActionResultClipboard: true,
+					},
+				};
+			},
+		};
+		const { runtime } = makeRuntime({ actions: [sensitiveAction] });
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo edit view"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+
+		expect(result?.result.actionResults).toEqual([
+			{
+				success: false,
+				text: "View edit did not start.",
+				userFacingText: "View edit did not start.",
+				data: { actionName: "ECHO_COMMAND" },
+			},
+		]);
+		expect(JSON.stringify(result)).not.toContain("must-not-leak");
 	});
 
 	// #12087 Item 3: the shortcut path enforces the target action's declared

@@ -24,15 +24,22 @@ The default `infoProvider` is a smoke implementation. Add real actions, provider
 
 ## 4. Verify before signaling done
 
+Install the scaffold's declared dependencies once:
+
+```bash
+bun install
+```
+
 Run, in this order, from the plugin's package directory:
 
 ```bash
 bun run typecheck
 bun run lint
 bun run test
+bun run build
 ```
 
-All three must exit zero. If one fails, fix it. Do not silence errors with unsafe casts to `any`, `// @ts-ignore`, broad `try/catch`, or `?? defaultValue` patterns that hide missing data.
+All four must exit zero. If the plugin declares a view, the build must produce every declared `bundlePath` or `framePath` under `dist/`; a successful source-only compile is not a loadable view. If one command fails, fix it. Do not silence errors with unsafe casts to `any`, `// @ts-ignore`, broad `try/catch`, or `?? defaultValue` patterns that hide missing data.
 
 ## 5. Signal completion
 

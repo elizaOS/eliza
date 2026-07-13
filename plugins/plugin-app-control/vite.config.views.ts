@@ -16,4 +16,5 @@ export default createViewBundleConfig({
 	entry: "./src/views/app-control-view-bundle.ts",
 	outDir: "dist/views",
 	componentExport: "ViewManagerView",
+	additionalExternals: ["@elizaos/core"],
 });

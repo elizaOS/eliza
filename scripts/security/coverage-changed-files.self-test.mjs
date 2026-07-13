@@ -183,6 +183,11 @@ try {
   );
   write(
     dir,
+    "packages/app-core/scripts/playwright-ui-live-stack.ts",
+    "export async function startLiveStack() {}\n",
+  );
+  write(
+    dir,
     "scripts/security/tool.self-test.mjs",
     "throw new Error('self-test only');\n",
   );
@@ -195,6 +200,11 @@ try {
     dir,
     "plugins/plugin-demo/vitest.config.ts",
     "export default { test: { include: ['scripts/**/*.test.mjs'] } };\n",
+  );
+  write(
+    dir,
+    "plugins/plugin-demo/vite.config.views.ts",
+    "export default { build: { outDir: 'dist/views' } };\n",
   );
   write(
     dir,
@@ -311,6 +321,11 @@ try {
       assert.ok(
         !out.files.includes("packages/app/scripts/walkthrough-e2e.mjs"),
       );
+      assert.ok(
+        !out.files.includes(
+          "packages/app-core/scripts/playwright-ui-live-stack.ts",
+        ),
+      );
     },
   );
 
@@ -329,10 +344,14 @@ try {
     );
   });
 
-  assertCase("vitest config changes are not LCOV-enforced source", () => {
+  assertCase("Vite config changes are not LCOV-enforced source", () => {
     assert.ok(
       !out.files.includes("plugins/plugin-demo/vitest.config.ts"),
       `vitest config leaked into changed source: ${out.files.join(",")}`,
+    );
+    assert.ok(
+      !out.files.includes("plugins/plugin-demo/vite.config.views.ts"),
+      `Vite config leaked into changed source: ${out.files.join(",")}`,
     );
   });
 

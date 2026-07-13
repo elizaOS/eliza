@@ -345,8 +345,6 @@ describe("POST /api/models/config coding writes", () => {
         target: "coding",
         backend: "codex",
         model: "gpt-5.6-terra",
-        // xhigh is the ceiling the pinned codex-acp adapter can parse; ultra
-        // is rejected at the route (see the pin-gate suite below).
         effort: "xhigh",
       });
     await handleModelConfigRoutes(ctx as never);
@@ -629,8 +627,8 @@ describe("route matching", () => {
   });
 });
 
-describe("codex-acp effort pin gate (review amendment)", () => {
-  it("rejects ultra on gpt-5.6-terra (model supports it; pinned acp cannot parse it)", async () => {
+describe("managed codex-acp effort contract", () => {
+  it("rejects ultra even when the selected model advertises it", async () => {
     const { ctx, json, saveElizaConfig } = makeHarness("POST", {
       target: "coding",
       backend: "codex",
@@ -640,7 +638,8 @@ describe("codex-acp effort pin gate (review amendment)", () => {
     await expect(handleModelConfigRoutes(ctx as never)).resolves.toBe(true);
     const { body, status } = responseOf(json);
     expect(status).toBe(400);
-    expect(String(body.error)).toContain("codex-acp");
+    expect(String(body.error)).toContain("managed codex-acp contract");
+    expect(String(body.error)).toContain("low, medium, high, xhigh");
     expect(saveElizaConfig).not.toHaveBeenCalled();
   });
 });
