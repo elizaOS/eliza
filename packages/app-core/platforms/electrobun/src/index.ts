@@ -101,6 +101,7 @@ import {
   disableBackForwardNavigationGestures,
   enableVibrancy,
   ensureShadow,
+  isWindowMovable,
   setNativeDragRegion,
   setTrafficLightsPosition,
   setWindowMovable,
@@ -492,6 +493,9 @@ function applyMacOSWindowEffects(
   updateCurrentMainWindowEffectsState({
     vibrancyEnabled,
     shadowEnabled,
+    // Report the OS-honored movable flag (not just what we asked): the overlay
+    // must read back `false`, asserted by the not-draggable desktop e2e.
+    movable: isWindowMovable(ptr as Parameters<typeof isWindowMovable>[0]),
   });
 
   const alignButtons = () =>

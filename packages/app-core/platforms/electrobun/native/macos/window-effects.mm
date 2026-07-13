@@ -2498,6 +2498,26 @@ extern "C" bool setWindowMovable(void *windowPtr, bool movable) {
 	return success;
 }
 
+/** Read the window's OS-level movable flag — the ground truth the not-draggable
+ *  e2e asserts (proves [window setMovable:NO] actually took, not just that we
+ *  asked). */
+extern "C" bool isWindowMovable(void *windowPtr) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL result = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+		result = [window isMovable];
+	});
+
+	return result;
+}
+
 /** Lays out top drag strip + resize overlays (same depth for both).
  *  `height` ≤ 0: derive depth from window.screen (see elizaChromeDepthPoints).
  *  WHY one entry point: TS calls this whenever geometry may have changed so

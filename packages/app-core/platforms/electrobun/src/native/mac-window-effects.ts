@@ -20,6 +20,7 @@ type MacEffectsSymbols = {
   isAppActive(): boolean;
   isWindowKey(ptr: Pointer): boolean;
   setWindowMovable(ptr: Pointer, movable: boolean): boolean;
+  isWindowMovable(ptr: Pointer): boolean;
   createSecurityScopedBookmark(path: Pointer): Pointer | null;
   startAccessingSecurityScopedBookmark(bookmark: Pointer): Pointer | null;
   stopAccessingSecurityScopedBookmarks(): void;
@@ -88,6 +89,7 @@ function loadLib(): MacEffectsLib {
         args: [FFIType.ptr, FFIType.bool],
         returns: FFIType.bool,
       },
+      isWindowMovable: { args: [FFIType.ptr], returns: FFIType.bool },
       createSecurityScopedBookmark: {
         args: [FFIType.ptr],
         returns: FFIType.ptr,
@@ -218,6 +220,12 @@ export function isKeyWindow(ptr: Pointer): boolean {
  */
 export function setWindowMovable(ptr: Pointer, movable: boolean): boolean {
   return getLib()?.symbols.setWindowMovable(ptr, movable) ?? false;
+}
+
+/** Read the window's OS-level movable flag (ground truth for the e2e that the
+ *  overlay is pinned immovable). Returns false when the native lib is absent. */
+export function isWindowMovable(ptr: Pointer): boolean {
+  return getLib()?.symbols.isWindowMovable(ptr) ?? false;
 }
 
 export function createSecurityScopedBookmark(path: string): string | null {

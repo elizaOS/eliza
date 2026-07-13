@@ -13,6 +13,9 @@ export interface MainWindowRuntimeSnapshot {
   transparent: boolean | null;
   vibrancyEnabled: boolean | null;
   shadowEnabled: boolean | null;
+  /** OS-level movable flag. The floating chat overlay reports `false` — it must
+   *  never be user-draggable (asserted by the desktop e2e). */
+  movable: boolean | null;
   bounds: {
     x: number;
     y: number;
@@ -30,6 +33,7 @@ let currentWindowMeta: Omit<
   transparent: null,
   vibrancyEnabled: null,
   shadowEnabled: null,
+  movable: null,
 };
 
 export function setCurrentMainWindow(
@@ -57,6 +61,7 @@ export function clearCurrentMainWindow(window?: BrowserWindow | null): void {
 export function updateCurrentMainWindowEffectsState(state: {
   vibrancyEnabled?: boolean | null;
   shadowEnabled?: boolean | null;
+  movable?: boolean | null;
 }): void {
   currentWindowMeta = {
     ...currentWindowMeta,
@@ -66,6 +71,7 @@ export function updateCurrentMainWindowEffectsState(state: {
     ...(typeof state.shadowEnabled !== "undefined"
       ? { shadowEnabled: state.shadowEnabled }
       : {}),
+    ...(typeof state.movable !== "undefined" ? { movable: state.movable } : {}),
   };
 }
 

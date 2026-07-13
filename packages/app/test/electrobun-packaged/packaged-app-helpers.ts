@@ -52,6 +52,8 @@ export interface DesktopTestBridgeState {
     transparent: boolean | null;
     vibrancyEnabled: boolean | null;
     shadowEnabled: boolean | null;
+    /** OS-level movable flag — the floating chat overlay reports `false`. */
+    movable: boolean | null;
     bounds: { x: number; y: number; width: number; height: number } | null;
   };
   shell: {
