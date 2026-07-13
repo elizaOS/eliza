@@ -71,7 +71,12 @@ describe("AddAccountDialog", () => {
     const onCreated = vi.fn();
     render(<AddAccountDialog open onClose={onClose} onCreated={onCreated} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /OpenAI API/ }));
+    // Provider selection is now a searchable command-palette list; the row is
+    // exposed as a listbox option. Narrow via search, then pick the option.
+    fireEvent.change(screen.getByPlaceholderText("Search providers"), {
+      target: { value: "OpenAI API" },
+    });
+    fireEvent.click(screen.getByRole("option", { name: /OpenAI API/ }));
     expect(
       (screen.getByLabelText("Account name") as HTMLInputElement).value,
     ).toBe("API account");

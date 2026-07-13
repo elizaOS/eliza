@@ -38,12 +38,14 @@ const accounts = vi.hoisted(() => ({
     ],
   },
   loading: false,
+  error: null,
   patch: vi.fn().mockResolvedValue(undefined),
   refresh: vi.fn().mockResolvedValue(undefined),
   refreshUsage: vi.fn().mockResolvedValue(undefined),
   remove: vi.fn().mockResolvedValue(undefined),
   saving: new Set<string>(),
   setStrategy: vi.fn().mockResolvedValue(undefined),
+  setRouting: vi.fn().mockResolvedValue(undefined),
   test: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -122,11 +124,14 @@ describe("AccountManagementPanel", () => {
         onSelectSubscription={vi.fn()}
       />,
     );
-    expect(screen.getByText("1/2 healthy")).toBeTruthy();
-    expect(screen.getByText("1 needs attention")).toBeTruthy();
-    expect(screen.getAllByText("Not connected").length).toBeGreaterThan(0);
+    // Unified surface: a provider with a needs-reauth account collapses to a
+    // single "Needs attention" signal on the row header (no pill maze).
+    expect(screen.getByText("Needs attention")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Add account" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
+    // Account operations live behind progressive disclosure: expand the
+    // connected provider row to reveal its account cards + strategy picker.
+    fireEvent.click(screen.getByRole("button", { name: /OpenAI API/ }));
     fireEvent.click(screen.getByRole("button", { name: "move First" }));
     await waitFor(() => expect(accounts.patch).toHaveBeenCalledTimes(2));
     fireEvent.click(screen.getByRole("button", { name: "test First" }));
