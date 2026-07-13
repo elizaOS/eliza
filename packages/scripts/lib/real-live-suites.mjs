@@ -59,6 +59,13 @@ const DISCOVERY_SKIP_DIRS = new Set([
 
 export const GUARDED_REAL_LIVE_SUITES = [
   {
+    file: "packages/cloud/shared/src/lib/providers/anthropic-thinking.live.test.ts",
+    requires: ["ANTHROPIC_API_KEY"],
+    optIn: "ELIZA_LIVE_TEST",
+    notes:
+      "exact cloud resolver request/response trajectory proving Opus 4.7 adaptive thinking reaches Anthropic without budget_tokens",
+  },
+  {
     file: "packages/agent/src/services/push/push-delivery.real.test.ts",
     anyOf: [["ELIZA_APNS_KEY_ID"], ["ELIZA_FCM_SERVICE_ACCOUNT"]],
     guardVia: [
