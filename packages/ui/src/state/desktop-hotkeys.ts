@@ -11,6 +11,7 @@
  * accelerator live over the desktop bridge; this module only owns persistence
  * and the parsed shape.
  */
+import { logger } from "@elizaos/logger";
 import { useSyncExternalStore } from "react";
 import { shellLocalStorage } from "../surface-realm-channel";
 
@@ -195,9 +196,14 @@ export function createDesktopHotkeyStore(options: {
       if (typeof window !== "undefined") {
         try {
           shellLocalStorage.setItem(storageKey, JSON.stringify(resolved));
-        } catch {
+        } catch (error) {
           // error-policy:J6 localStorage unavailable (private mode, quota) —
           // the in-memory state still updates below; only persistence degrades.
+          logger.debug(
+            `[desktopHotkeys] persist skipped for ${storageKey}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
         }
       }
       if (sameHotkey(resolved, cached)) {
