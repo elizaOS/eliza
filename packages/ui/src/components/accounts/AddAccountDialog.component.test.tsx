@@ -31,6 +31,21 @@ const eventSource = vi.hoisted(() => ({
   readyState: 1,
 }));
 
+const oauthState = vi.hoisted(() => ({
+  clearSubscriptionOAuth: vi.fn(),
+  readSubscriptionOAuth: vi.fn(
+    () =>
+      null as null | {
+        providerId: "anthropic-subscription";
+        sessionId: string;
+        mode: "device";
+        phase: "need-code";
+        startedAt: number;
+      },
+  ),
+  writeSubscriptionOAuth: vi.fn(),
+}));
+
 vi.mock("../../api", () => ({ client: api }));
 vi.mock("../../state", () => ({
   useAppSelector: (
@@ -47,11 +62,7 @@ vi.mock("../../utils/clipboard", () => ({ copyTextToClipboard: vi.fn() }));
 vi.mock("../../utils/event-source", () => ({
   openEventSource: vi.fn(() => eventSource),
 }));
-vi.mock("./subscription-oauth-state", () => ({
-  clearSubscriptionOAuth: vi.fn(),
-  readSubscriptionOAuth: vi.fn(() => null),
-  writeSubscriptionOAuth: vi.fn(),
-}));
+vi.mock("./subscription-oauth-state", () => oauthState);
 
 describe("AddAccountDialog", () => {
   beforeEach(() => {
@@ -63,6 +74,7 @@ describe("AddAccountDialog", () => {
     });
     eventSource.readyState = 1;
     eventSource.onmessage = null;
+    oauthState.readSubscriptionOAuth.mockReturnValue(null);
   });
   afterEach(cleanup);
 
@@ -181,6 +193,30 @@ describe("AddAccountDialog", () => {
       expect(onCreated).toHaveBeenCalledWith({ id: "oauth-1", label: "Codex" }),
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("restores a persisted paste-code flow without resetting its step", async () => {
+    oauthState.readSubscriptionOAuth.mockReturnValue({
+      providerId: "anthropic-subscription",
+      sessionId: "restored-session",
+      mode: "device",
+      phase: "need-code",
+      startedAt: Date.now(),
+    });
+
+    render(
+      <AddAccountDialog
+        open
+        providerId="anthropic-subscription"
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByPlaceholderText("Paste the code or redirect URL"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Log in/ })).toBeNull();
   });
 
   it("submits an OAuth callback code and reports terminal stream errors", async () => {
