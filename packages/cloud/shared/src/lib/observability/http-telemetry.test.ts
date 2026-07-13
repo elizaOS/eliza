@@ -3,10 +3,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   appendServerTiming,
-  bindProviderDispatchTelemetry,
+  bindGatewayHandoffTelemetry,
   copyHttpTelemetryHeaders,
   ELIZA_TRACE_ID_HEADER,
-  invokeWithProviderDispatchTelemetry,
+  invokeAtGatewayHandoff,
   resolveElizaTraceId,
   setGatewayPreforwardTelemetryHeaders,
   setHttpTelemetryHeaders,
@@ -15,11 +15,11 @@ import {
 } from "./http-telemetry";
 
 describe("HTTP telemetry", () => {
-  test("preserves a safe caller trace id", () => {
+  test("preserves an opaque caller trace id", () => {
     const headers = new Headers({
-      [ELIZA_TRACE_ID_HEADER]: "turn_12345678",
+      [ELIZA_TRACE_ID_HEADER]: "123E4567-E89B-42D3-A456-426614174000",
     });
-    expect(resolveElizaTraceId(headers)).toBe("turn_12345678");
+    expect(resolveElizaTraceId(headers)).toBe("123e4567-e89b-42d3-a456-426614174000");
   });
 
   test("uses the W3C trace id when the application header is absent", () => {
@@ -41,8 +41,12 @@ describe("HTTP telemetry", () => {
     );
   });
 
-  test("rejects unsafe reflected ids and generates a UUID", () => {
-    const headers = new Headers({ [ELIZA_TRACE_ID_HEADER]: "bad value\n" });
+  test.each([
+    "bad value\n",
+    "customer-email@example.com",
+    "turn_12345678",
+  ])("rejects caller-chosen trace text %s and generates a UUID", (traceId) => {
+    const headers = new Headers({ [ELIZA_TRACE_ID_HEADER]: traceId });
     expect(resolveElizaTraceId(headers)).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
@@ -82,7 +86,7 @@ describe("HTTP telemetry", () => {
     expect(headers.get("Server-Timing")).toContain("gateway_preforward;dur=42.13");
   });
 
-  test("invokes providers between capture and emit, including synchronous errors", () => {
+  test("wraps gateway handoffs between capture and emit, including synchronous errors", () => {
     const events: string[] = [];
     const telemetry = {
       capture: () => events.push("capture"),
@@ -90,37 +94,37 @@ describe("HTTP telemetry", () => {
     };
 
     expect(
-      invokeWithProviderDispatchTelemetry(telemetry, () => {
-        events.push("provider");
+      invokeAtGatewayHandoff(telemetry, () => {
+        events.push("handoff");
         return "started";
       }),
     ).toBe("started");
-    expect(events).toEqual(["capture", "provider", "emit"]);
+    expect(events).toEqual(["capture", "handoff", "emit"]);
 
     events.length = 0;
-    const failure = new Error("synchronous provider failure");
+    const failure = new Error("synchronous handoff failure");
     let caught: unknown;
     try {
-      invokeWithProviderDispatchTelemetry(telemetry, () => {
-        events.push("provider");
+      invokeAtGatewayHandoff(telemetry, () => {
+        events.push("handoff");
         throw failure;
       });
     } catch (error) {
       caught = error;
     }
     expect(caught).toBe(failure);
-    expect(events).toEqual(["capture", "provider", "emit"]);
+    expect(events).toEqual(["capture", "handoff", "emit"]);
 
     events.length = 0;
-    const monitoredOperation = bindProviderDispatchTelemetry(telemetry, (input: string) => {
-      events.push(`provider:${input}`);
+    const monitoredOperation = bindGatewayHandoffTelemetry(telemetry, (input: string) => {
+      events.push(`handoff:${input}`);
     });
     const input = (() => {
       events.push("config");
       return "ready";
     })();
     monitoredOperation(input);
-    expect(events).toEqual(["config", "capture", "provider:ready", "emit"]);
+    expect(events).toEqual(["config", "capture", "handoff:ready", "emit"]);
   });
 
   test("re-wraps a gated provider stream without buffering or breaking cancellation", async () => {

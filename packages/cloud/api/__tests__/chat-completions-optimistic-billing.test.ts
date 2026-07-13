@@ -250,7 +250,7 @@ function makeRequest(
     headers: {
       "content-type": "application/json",
       "x-request-id": CLIENT_REQUEST_ID,
-      "x-eliza-trace-id": "trace_optimistic_12345678",
+      "x-eliza-trace-id": "11111111-1111-4111-8111-111111111111",
       ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
     },
     body: JSON.stringify({
@@ -328,7 +328,7 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
 
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "trace_optimistic_12345678",
+      "11111111-1111-4111-8111-111111111111",
     );
     const preforward = response.headers.get("X-Eliza-Preforward-Ms");
     expect(preforward).toMatch(
@@ -681,7 +681,7 @@ describe("responses compatibility transformations", () => {
       headers: {
         Authorization: "Bearer eliza_test_key",
         "Content-Length": "999",
-        "X-Eliza-Trace-Id": "trace_responses_contract",
+        "X-Eliza-Trace-Id": "33333333-3333-4333-8333-333333333333",
       },
       body: "{}",
     });
@@ -699,7 +699,7 @@ describe("responses compatibility transformations", () => {
     expect(request.headers.get("Authorization")).toBe("Bearer eliza_test_key");
     expect(request.headers.get("Content-Length")).toBeNull();
     expect(request.headers.get("X-Eliza-Trace-Id")).toBe(
-      "trace_responses_contract",
+      "33333333-3333-4333-8333-333333333333",
     );
     const chatBody = (await request.json()) as Record<string, unknown>;
     expect(chatBody).toEqual({

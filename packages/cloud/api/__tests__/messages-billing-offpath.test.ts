@@ -398,7 +398,7 @@ function postMessages(bodyOverrides: Record<string, unknown> = {}) {
     headers: {
       "content-type": "application/json",
       "x-api-key": "eliza_test_key",
-      "x-eliza-trace-id": "trace_messages_route_12345678",
+      "x-eliza-trace-id": "22222222-2222-4222-8222-222222222222",
     },
     body: JSON.stringify({
       model: MODEL,
@@ -418,7 +418,7 @@ describe("messages route preforward telemetry", () => {
     const response = await postMessages();
     expect(response.status).toBe(200);
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "trace_messages_route_12345678",
+      "22222222-2222-4222-8222-222222222222",
     );
     expect(response.headers.get("X-Eliza-Preforward-Ms")).toMatch(
       /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
@@ -441,7 +441,7 @@ describe("messages route preforward telemetry", () => {
     expect(body).toContain(TEXT);
     expect(body).toContain('"type":"message_stop"');
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "trace_messages_route_12345678",
+      "22222222-2222-4222-8222-222222222222",
     );
     expect(response.headers.get("Server-Timing")).toContain(
       "gateway_preforward;dur=",
@@ -459,7 +459,7 @@ describe("messages route preforward telemetry", () => {
     const response = await postMessages();
     expect(response.status).toBe(500);
     expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
-      "trace_messages_route_12345678",
+      "22222222-2222-4222-8222-222222222222",
     );
     expect(response.headers.get("X-Eliza-Preforward-Ms")).toContain("total=");
     expect(response.headers.get("Server-Timing")).toContain(

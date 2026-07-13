@@ -10,7 +10,8 @@ export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 export const ELIZA_PREFORWARD_HEADER = "X-Eliza-Preforward-Ms";
 export const ELIZA_TELEMETRY_HEADER = "X-Eliza-Telemetry";
 
-const SAFE_TRACE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/;
+const OPAQUE_TRACE_ID =
+  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const W3C_TRACEPARENT_V00 = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
 const ZERO_TRACE_ID = "0".repeat(32);
 const ZERO_PARENT_ID = "0".repeat(16);
@@ -29,16 +30,16 @@ export interface GatewayPreforwardTiming {
   readonly setupMs: number;
 }
 
-/** Hooks placed immediately around the synchronous provider invocation. */
-export interface ProviderDispatchTelemetry {
+/** Hooks placed at the gateway's direct-fetch or AI SDK handoff boundary. */
+export interface GatewayHandoffTelemetry {
   capture(): void;
   emit(): void;
 }
 
-/** Resolve a safe, stable id without reflecting arbitrary header bytes. */
+/** Resolve an opaque correlation id without retaining caller-chosen text. */
 export function resolveElizaTraceId(headers: Headers): string {
   const supplied = headers.get(ELIZA_TRACE_ID_HEADER)?.trim();
-  if (supplied && SAFE_TRACE_ID.test(supplied)) return supplied;
+  if (supplied && OPAQUE_TRACE_ID.test(supplied)) return supplied.toLowerCase();
 
   const traceparent = headers.get("traceparent")?.trim();
   const match = traceparent?.match(W3C_TRACEPARENT_V00);
@@ -71,11 +72,11 @@ export function snapshotGatewayPreforwardTiming(
 }
 
 /**
- * Snapshot immediately before invoking a provider and emit only after the
- * operation has started. `finally` preserves telemetry for synchronous throws.
+ * Snapshot immediately before gateway control passes to fetch or the AI SDK.
+ * `finally` preserves telemetry when that synchronous invocation throws.
  */
-export function invokeWithProviderDispatchTelemetry<T>(
-  telemetry: ProviderDispatchTelemetry | undefined,
+export function invokeAtGatewayHandoff<T>(
+  telemetry: GatewayHandoffTelemetry | undefined,
   operation: () => T,
 ): T {
   telemetry?.capture();
@@ -87,11 +88,11 @@ export function invokeWithProviderDispatchTelemetry<T>(
 }
 
 /** Bind telemetry without moving argument/config construction past the boundary. */
-export function bindProviderDispatchTelemetry<TInput, TOutput>(
-  telemetry: ProviderDispatchTelemetry | undefined,
+export function bindGatewayHandoffTelemetry<TInput, TOutput>(
+  telemetry: GatewayHandoffTelemetry | undefined,
   operation: (input: TInput) => TOutput,
 ): (input: TInput) => TOutput {
-  return (input) => invokeWithProviderDispatchTelemetry(telemetry, () => operation(input));
+  return (input) => invokeAtGatewayHandoff(telemetry, () => operation(input));
 }
 
 /** Append metrics while preserving Server-Timing values set by inner hops. */

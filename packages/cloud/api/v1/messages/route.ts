@@ -31,9 +31,9 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
-  bindProviderDispatchTelemetry,
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
   type GatewayPreforwardTiming,
-  type ProviderDispatchTelemetry,
   resolveElizaTraceId,
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
@@ -758,19 +758,22 @@ app.post("/", async (c) => {
   settleReservation = createCreditReservationSettler(reservation);
   const tAfterReserve = performance.now();
 
-  let providerDispatchAt: number | undefined;
-  const providerDispatchTelemetry: ProviderDispatchTelemetry = {
+  // The outer AI SDK invocation is the last gateway-controlled boundary.
+  // Model doGenerate/doStream dispatch occurs later inside the SDK and is not
+  // represented as provider latency by this preforward snapshot.
+  let gatewayHandoffAt: number | undefined;
+  const gatewayHandoffTelemetry: GatewayHandoffTelemetry = {
     capture: () => {
-      providerDispatchAt ??= performance.now();
+      gatewayHandoffAt ??= performance.now();
     },
     emit: () => {
-      if (providerDispatchAt === undefined || preforwardTiming) return;
+      if (gatewayHandoffAt === undefined || preforwardTiming) return;
       preforwardTiming = snapshotGatewayPreforwardTiming({
         authMs: tAuth - telemetryStartedAt,
         middleMs: tBeforeReserve - tAuth,
         reserveMs: tAfterReserve - tBeforeReserve,
-        setupMs: providerDispatchAt - tAfterReserve,
-        totalMs: providerDispatchAt - telemetryStartedAt,
+        setupMs: gatewayHandoffAt - tAfterReserve,
+        totalMs: gatewayHandoffAt - telemetryStartedAt,
       });
       logger.info("[Messages API][preforward]", {
         traceId,
@@ -832,7 +835,7 @@ app.post("/", async (c) => {
           billingSource,
           requestId,
           executionCtx,
-          providerDispatchTelemetry,
+          gatewayHandoffTelemetry,
         )
       : await handleNonStream(
           model,
@@ -852,12 +855,10 @@ app.post("/", async (c) => {
           billingSource,
           requestId,
           executionCtx,
-          providerDispatchTelemetry,
+          gatewayHandoffTelemetry,
         );
     if (!preforwardTiming) {
-      throw new Error(
-        "[Messages API] provider dispatch timing was not captured",
-      );
+      throw new Error("[Messages API] gateway handoff timing was not captured");
     }
     return attachPreforwardTelemetry(preforwardResponse);
   } catch (error) {
@@ -930,7 +931,7 @@ async function handleNonStream(
   // affiliate earnings. Mirrors chat/completions (#11588).
   requestId: string,
   executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
-  providerDispatchTelemetry?: ProviderDispatchTelemetry,
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   const provider = getProviderFromModel(model);
 
@@ -947,11 +948,11 @@ async function handleNonStream(
 
   try {
     const languageModel = getLanguageModel(model);
-    const dispatchGenerateText = bindProviderDispatchTelemetry(
-      providerDispatchTelemetry,
+    const invokeGenerateText = bindGatewayHandoffTelemetry(
+      gatewayHandoffTelemetry,
       (options: Parameters<typeof generateText>[0]) => generateText(options),
     );
-    const result = await dispatchGenerateText({
+    const result = await invokeGenerateText({
       model: languageModel,
       system: systemPrompt,
       messages,
@@ -1301,7 +1302,7 @@ async function handleStream(
   // affiliate earnings. Mirrors chat/completions (#11588).
   requestId: string,
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
-  providerDispatchTelemetry?: ProviderDispatchTelemetry,
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
@@ -1363,11 +1364,11 @@ async function handleStream(
   );
 
   const languageModel = getLanguageModel(model);
-  const dispatchStreamText = bindProviderDispatchTelemetry(
-    providerDispatchTelemetry,
+  const invokeStreamText = bindGatewayHandoffTelemetry(
+    gatewayHandoffTelemetry,
     (options: Parameters<typeof streamText>[0]) => streamText(options),
   );
-  const result = dispatchStreamText({
+  const result = invokeStreamText({
     model: languageModel,
     system: systemPrompt,
     messages,

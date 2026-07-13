@@ -112,10 +112,14 @@ jobs:
             exit 0
           fi
           shared_tests=()
+          chat_group_tests=()
           process_isolated_tests=()
           for test_file in "${changed_tests[@]}"; do
             case "$test_file" in
-              packages/cloud/api/__tests__/agent-a2a-billing.test.ts|packages/cloud/api/__tests__/bootstrap-app-unhandled-error.test.ts|packages/cloud/api/__tests__/chat-completions-optimistic-billing.test.ts|packages/cloud/api/__tests__/chat-completions-passthrough-streaming.test.ts|packages/cloud/api/__tests__/messages-billing-offpath.test.ts|packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts|packages/tools/voice-evidence-harness/src/cli-run.test.ts)
+              packages/cloud/api/__tests__/chat-completions-optimistic-billing.test.ts|packages/cloud/api/__tests__/chat-completions-passthrough-streaming.test.ts)
+                chat_group_tests+=("$test_file")
+                ;;
+              packages/cloud/api/__tests__/agent-a2a-billing.test.ts|packages/cloud/api/__tests__/bootstrap-app-unhandled-error.test.ts|packages/cloud/api/__tests__/messages-billing-offpath.test.ts|packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts|packages/tools/voice-evidence-harness/src/cli-run.test.ts)
                 process_isolated_tests+=("$test_file")
                 ;;
               *) shared_tests+=("$test_file") ;;
@@ -125,6 +129,12 @@ jobs:
           # absent dist files; source exports keep changed tests self-contained.
           if [ "${#shared_tests[@]}" -gt 0 ]; then
             bun test --conditions=eliza-source "${shared_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun/shared
+          fi
+          # These two suites cover complementary branches in the same large
+          # route and are compatible with one another, but not with the other
+          # process-global Cloud API mocks.
+          if [ "${#chat_group_tests[@]}" -gt 0 ]; then
+            ELIZA_PROCESS_ISOLATED_TEST=1 bun test --conditions=eliza-source "${chat_group_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun/chat-group
           fi
           # Bun module mocks remain process-global despite `--isolate`. Tests
           # listed here run in fresh processes and emit separate LCOV files;

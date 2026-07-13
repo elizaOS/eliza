@@ -32,10 +32,10 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
-  bindProviderDispatchTelemetry,
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
   type GatewayPreforwardTiming,
-  invokeWithProviderDispatchTelemetry,
-  type ProviderDispatchTelemetry,
+  invokeAtGatewayHandoff,
   resolveElizaTraceId,
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
@@ -1838,22 +1838,22 @@ export async function handleChatCompletionsPOST(
       webSearchEnabled: webSearchActive,
     });
 
-    // Capture at the actual provider-dispatch boundary inside the streaming or
-    // non-streaming helper. This includes all synchronous request conversion
-    // and provider setup while excluding provider-to-headers latency.
-    let providerDispatchAt: number | undefined;
-    const providerDispatchTelemetry: ProviderDispatchTelemetry = {
+    // The boundary is the direct upstream fetch or outer AI SDK invocation.
+    // SDK-internal prompt conversion and model dispatch happen afterward and
+    // are intentionally outside this gateway-preforward measurement.
+    let gatewayHandoffAt: number | undefined;
+    const gatewayHandoffTelemetry: GatewayHandoffTelemetry = {
       capture: () => {
-        providerDispatchAt ??= performance.now();
+        gatewayHandoffAt ??= performance.now();
       },
       emit: () => {
-        if (providerDispatchAt === undefined || preforwardTiming) return;
+        if (gatewayHandoffAt === undefined || preforwardTiming) return;
         preforwardTiming = snapshotGatewayPreforwardTiming({
           authMs: tAuth - telemetryStartedAt,
           middleMs: tBeforeReserve - tAuth,
           reserveMs: tAfterReserve - tBeforeReserve,
-          setupMs: providerDispatchAt - tAfterReserve,
-          totalMs: providerDispatchAt - telemetryStartedAt,
+          setupMs: gatewayHandoffAt - tAfterReserve,
+          totalMs: gatewayHandoffAt - telemetryStartedAt,
         });
         logger.info("[Chat Completions][preforward]", {
           traceId,
@@ -1893,7 +1893,7 @@ export async function handleChatCompletionsPOST(
           pooledCredential,
           useMonetizedAppBilling,
           options.executionCtx,
-          providerDispatchTelemetry,
+          gatewayHandoffTelemetry,
         )
       : await handleNonStreamingRequest(
           model,
@@ -1917,11 +1917,11 @@ export async function handleChatCompletionsPOST(
           pooledCredential,
           useMonetizedAppBilling,
           options.executionCtx,
-          providerDispatchTelemetry,
+          gatewayHandoffTelemetry,
         );
     if (!preforwardTiming) {
       throw new Error(
-        "[Chat Completions] provider dispatch timing was not captured",
+        "[Chat Completions] gateway handoff timing was not captured",
       );
     }
     // Re-wrap instead of mutating a fetch Response, whose headers can be
@@ -2299,7 +2299,7 @@ async function tryPassthroughStreamingRequest(params: {
   effectiveMaxTokens: number | undefined;
   billingSource: PricingBillingSource;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
-  providerDispatchTelemetry?: ProviderDispatchTelemetry;
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry;
 }): Promise<Response | null> {
   const { model, request, settleReservation } = params;
   if (!isPassthroughStreamingEnabled()) return null;
@@ -2374,8 +2374,8 @@ async function tryPassthroughStreamingRequest(params: {
     ...(signals.length ? { signal: AbortSignal.any(signals) } : {}),
   };
   try {
-    upstreamResponse = await invokeWithProviderDispatchTelemetry(
-      params.providerDispatchTelemetry,
+    upstreamResponse = await invokeAtGatewayHandoff(
+      params.gatewayHandoffTelemetry,
       () => fetch(upstream.url, upstreamInit),
     );
   } catch (error) {
@@ -2580,7 +2580,7 @@ async function handleStreamingRequest(
   pooledCredential: PooledInferenceCredential | null,
   useMonetizedAppBilling: boolean,
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
-  providerDispatchTelemetry?: ProviderDispatchTelemetry,
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   // #15428 pass-through fast path: qualifying plain streamed chat against a
   // direct OpenAI-compatible upstream pipes the provider bytes straight
@@ -2612,7 +2612,7 @@ async function handleStreamingRequest(
       effectiveMaxTokens,
       billingSource,
       executionCtx,
-      providerDispatchTelemetry,
+      gatewayHandoffTelemetry,
     });
     if (passthroughResponse) return passthroughResponse;
   }
@@ -2695,11 +2695,11 @@ async function handleStreamingRequest(
   );
 
   const languageModel = getLanguageModel(model, pooledCredential ?? undefined);
-  const dispatchStreamText = bindProviderDispatchTelemetry(
-    providerDispatchTelemetry,
+  const invokeStreamText = bindGatewayHandoffTelemetry(
+    gatewayHandoffTelemetry,
     (options: Parameters<typeof streamText>[0]) => streamText(options),
   );
-  const result = dispatchStreamText({
+  const result = invokeStreamText({
     model: languageModel,
     system: systemPrompt,
     messages,
@@ -3176,7 +3176,7 @@ async function handleNonStreamingRequest(
   pooledCredential: PooledInferenceCredential | null,
   useMonetizedAppBilling: boolean,
   executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
-  providerDispatchTelemetry?: ProviderDispatchTelemetry,
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
@@ -3215,11 +3215,11 @@ async function handleNonStreamingRequest(
       model,
       pooledCredential ?? undefined,
     );
-    const dispatchGenerateText = bindProviderDispatchTelemetry(
-      providerDispatchTelemetry,
+    const invokeGenerateText = bindGatewayHandoffTelemetry(
+      gatewayHandoffTelemetry,
       (options: Parameters<typeof generateText>[0]) => generateText(options),
     );
-    const result = await dispatchGenerateText({
+    const result = await invokeGenerateText({
       model: languageModel,
       system: systemPrompt,
       messages,
