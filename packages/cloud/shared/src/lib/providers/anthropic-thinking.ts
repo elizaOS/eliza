@@ -195,10 +195,17 @@ const anthropicThinkingOptions = (budgetTokens: number): AnthropicProviderOption
 
 // Adaptive models let the provider choose thinking depth and reject a manual
 // `budgetTokens` (#16149). A configured numeric budget still gates thinking
-// on/off (see `anthropicThinkingProviderOptions`) but is NOT forwarded as a
-// token cap; `effort` control is intentionally left to a follow-up per the issue.
+// on/off but is not forwarded as a token cap.
 const anthropicAdaptiveThinkingOptions = (): AnthropicProviderOptions => ({
   thinking: { type: "adaptive" },
+});
+
+// The cloud resolver may serve an Anthropic model through OpenRouter's
+// OpenAI-compatible client. That client ignores the `anthropic` namespace, so
+// the equivalent normalized signal must travel in its own provider namespace.
+// OpenRouter maps `reasoning_effort` to adaptive thinking for Opus 4.7+.
+const openRouterAdaptiveThinkingOptions = (): CloudJsonObject => ({
+  reasoningEffort: "high",
 });
 
 /**
@@ -220,14 +227,14 @@ export function anthropicThinkingProviderOptions(
   // models (Opus 4.7/4.8) must NOT receive the manual `budgetTokens` — the
   // provider 400s on it — so emit the adaptive shape; the numeric budget stays a
   // gate, not a forwarded cap (#16149). Manual-budget models are unchanged.
+  const adaptive = usesAdaptiveThinking(modelId);
   const anthropic = (
-    usesAdaptiveThinking(modelId)
-      ? anthropicAdaptiveThinkingOptions()
-      : anthropicThinkingOptions(budget)
+    adaptive ? anthropicAdaptiveThinkingOptions() : anthropicThinkingOptions(budget)
   ) as CloudJsonObject;
   return {
     providerOptions: {
       anthropic,
+      ...(adaptive ? { openai: openRouterAdaptiveThinkingOptions() } : {}),
     },
   };
 }

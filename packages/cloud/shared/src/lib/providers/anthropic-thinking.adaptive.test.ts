@@ -22,6 +22,12 @@ function thinkingOf(modelId: string): Record<string, unknown> | undefined {
   return anthropic?.thinking;
 }
 
+function openRouterReasoningOf(modelId: string): Record<string, unknown> | undefined {
+  const result = anthropicThinkingProviderOptions(modelId, ENV);
+  if (!("providerOptions" in result)) return undefined;
+  return result.providerOptions.openai;
+}
+
 describe("Anthropic adaptive thinking (Opus 4.7/4.8) — #16149", () => {
   // Bare, dot, hyphen, and provider-prefixed alias forms. (Model IDs are
   // lowercase by convention — `getProviderFromModel` is case-sensitive upstream,
@@ -43,6 +49,7 @@ describe("Anthropic adaptive thinking (Opus 4.7/4.8) — #16149", () => {
       // Adaptive models reject a manual budget — assert neither casing leaks in.
       expect(JSON.stringify(thinking)).not.toContain("budgetTokens");
       expect(JSON.stringify(thinking)).not.toContain("budget_tokens");
+      expect(openRouterReasoningOf(id)).toEqual({ reasoningEffort: "high" });
     });
   }
 
@@ -56,6 +63,7 @@ describe("Anthropic adaptive thinking (Opus 4.7/4.8) — #16149", () => {
       expect(usesAdaptiveThinking(id)).toBe(false);
       expect(supportsExtendedThinking(id)).toBe(true);
       expect(thinkingOf(id)).toEqual({ type: "enabled", budgetTokens: 5000 });
+      expect(openRouterReasoningOf(id)).toBeUndefined();
     }
   });
 
