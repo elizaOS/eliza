@@ -46,6 +46,14 @@ describe("Android native build authority", () => {
       'description: "Comma-separated subset of supported ABIs: arm64-v8a,x86_64"',
     );
     expect(producer).toContain(
+      `ABI_FILTER: \${{ github.event_name == 'push' && 'arm64-v8a,x86_64' || inputs.abi_filter }}`,
+    );
+    expect(producer).not.toContain("inputs.abi_filter ||");
+    expect(producer).toContain(
+      "const filterRaw = process.env.ABI_FILTER.trim();",
+    );
+    expect(producer).not.toContain("context.payload.inputs");
+    expect(producer).toContain(
       '{ abi: "arm64-v8a", target: "android-arm64-vulkan-fused" }',
     );
     expect(producer).toContain(

@@ -67,9 +67,15 @@ jobs:
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3
         id: set
+        # The unified inputs context covers reusable and manual runs; an env
+        # boundary keeps the caller-provided value out of generated JavaScript.
+        # Only push events lack an inputs payload. Dispatch/call defaults are
+        # applied by Actions itself, so preserving an explicit empty value lets
+        # the script reject it instead of silently widening it to both ABIs.
+        env:
+          ABI_FILTER: ${{ github.event_name == 'push' && 'arm64-v8a,x86_64' || inputs.abi_filter }}
         with:
           script: |
-            const inputs = context.payload.inputs ?? {};
             // compile-libllama.mjs fused targets: arm64 gets the Vulkan GPU
             // backend (the QJL/Polar/Mali-FA-mitigation kernels live here),
             // x86_64 (emulator/cuttlefish) is CPU-only. armeabi-v7a (32-bit)
@@ -78,7 +84,7 @@ jobs:
               { abi: "arm64-v8a", target: "android-arm64-vulkan-fused" },
               { abi: "x86_64",    target: "android-x86_64-cpu-fused" },
             ];
-            const filterRaw = (inputs.abi_filter ?? "arm64-v8a,x86_64").trim();
+            const filterRaw = process.env.ABI_FILTER.trim();
             const requested = filterRaw.split(",").map((s) => s.trim()).filter(Boolean);
             const supported = new Set(all.map((entry) => entry.abi));
             const unsupported = requested.filter((abi) => !supported.has(abi));
