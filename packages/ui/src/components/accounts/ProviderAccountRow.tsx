@@ -29,12 +29,12 @@ import {
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { AccountCard } from "./AccountCard";
-import type { AccountProviderOption } from "./AddAccountDialog";
 import {
   eligibilityChips,
   providerConnectionState,
   resolveProviderEligibility,
 } from "./account-eligibility";
+import type { AccountProviderOption } from "./account-provider-options";
 import { ProviderMark } from "./provider-icons";
 import { RotationStrategyPicker } from "./RotationStrategyPicker";
 import { accountResetAt, bySoonestReset, formatResetIn } from "./reset-time";

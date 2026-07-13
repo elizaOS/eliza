@@ -34,6 +34,7 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
+import { ProviderPicker } from "./ProviderPicker";
 import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
 import {
   clearSubscriptionOAuth,
@@ -73,111 +74,15 @@ type SubscriptionAddMode =
   | "unavailable"
   | "none";
 
-export type AccountProviderCategory = "chat" | "coding" | "local" | "cloud";
-
-export interface AccountProviderOption {
-  id: LinkedAccountProviderId;
-  name: string;
-  category: AccountProviderCategory;
-  description: string;
-  eligibility: string[];
-  unavailable?: boolean;
-}
-
-export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
-  {
-    id: "anthropic-api",
-    name: "Anthropic API",
-    category: "chat",
-    description: "Bring your own Anthropic API key for Claude chat models.",
-    eligibility: ["chat", "API key"],
-  },
-  {
-    id: "openai-api",
-    name: "OpenAI API",
-    category: "chat",
-    description: "Bring your own OpenAI API key for GPT chat models.",
-    eligibility: ["chat", "API key"],
-  },
-  {
-    id: "cerebras-api",
-    name: "Cerebras API",
-    category: "chat",
-    description: "Low-latency hosted inference with your Cerebras API key.",
-    eligibility: ["chat", "API key"],
-  },
-  {
-    id: "deepseek-api",
-    name: "DeepSeek API",
-    category: "chat",
-    description: "Direct DeepSeek API billing for chat or agent tasks.",
-    eligibility: ["chat", "API key"],
-  },
-  {
-    id: "zai-api",
-    name: "z.ai API",
-    category: "chat",
-    description: "Direct z.ai API key for model routing.",
-    eligibility: ["chat", "API key"],
-  },
-  {
-    id: "moonshot-api",
-    name: "Kimi / Moonshot API",
-    category: "chat",
-    description: "Direct Moonshot API key for Kimi models.",
-    eligibility: ["chat", "API key"],
-  },
-  {
-    id: "anthropic-subscription",
-    name: "Claude subscription",
-    category: "coding",
-    description: "Browser login for Claude Code. Not used for default chat.",
-    eligibility: ["code-agent", "requires browser login", "not chat"],
-  },
-  {
-    id: "openai-codex",
-    name: "OpenAI Codex subscription",
-    category: "coding",
-    description: "Browser or device login for Codex coding agents.",
-    eligibility: ["code-agent", "requires browser login"],
-  },
-  {
-    id: "gemini-cli",
-    name: "Gemini CLI subscription",
-    category: "coding",
-    description: "Managed by Gemini CLI login outside this app.",
-    eligibility: ["code-agent", "external CLI"],
-  },
-  {
-    id: "zai-coding",
-    name: "z.ai Coding Plan",
-    category: "coding",
-    description: "Dedicated coding-plan credential, separate from API routing.",
-    eligibility: ["code-agent", "API key"],
-  },
-  {
-    id: "kimi-coding",
-    name: "Kimi Code",
-    category: "coding",
-    description:
-      "Dedicated Kimi coding-plan credential, separate from API routing.",
-    eligibility: ["code-agent", "API key"],
-  },
-  {
-    id: "deepseek-coding",
-    name: "DeepSeek coding subscription",
-    category: "coding",
-    description: "No safe first-party subscription flow is available yet.",
-    eligibility: ["code-agent", "unavailable"],
-    unavailable: true,
-  },
-];
-
-export function getAccountProviderOption(
-  providerId: LinkedAccountProviderId,
-): AccountProviderOption | undefined {
-  return ACCOUNT_PROVIDER_OPTIONS.find((option) => option.id === providerId);
-}
+// The static provider catalog + its types now live in their own module so
+// presentational pieces can import them without a circular dependency on this
+// dialog. Re-exported here for backward compatibility.
+export {
+  ACCOUNT_PROVIDER_OPTIONS,
+  type AccountProviderCategory,
+  type AccountProviderOption,
+  getAccountProviderOption,
+} from "./account-provider-options";
 
 const SUBSCRIPTION_ADD_MODE_BY_PROVIDER: Partial<
   Record<LinkedAccountProviderId, SubscriptionAddMode>
@@ -761,61 +666,7 @@ export function AddAccountDialog({
         </DialogHeader>
 
         {step === "provider-select" ? (
-          <div className="grid max-h-[calc(100vh-13rem)] gap-4 overflow-y-auto py-2 pr-1">
-            {(["chat", "coding"] as AccountProviderCategory[]).map(
-              (category) => {
-                const options = ACCOUNT_PROVIDER_OPTIONS.filter(
-                  (option) => option.category === category,
-                );
-                return (
-                  <section key={category} className="grid gap-2">
-                    <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-muted">
-                        {category === "chat"
-                          ? "Chat providers"
-                          : "Coding subscriptions"}
-                      </h3>
-                      <p className="mt-1 text-xs text-muted">
-                        {category === "chat"
-                          ? "Default chat routes use Cloud, Local, or a BYOK API account."
-                          : "Subscription accounts feed coding agents and workflow runs. Claude subscription does not power chat."}
-                      </p>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {options.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          className={cn(
-                            "rounded-md border border-border/60 bg-card/35 p-3 text-left transition hover:border-txt/35 hover:bg-bg-accent/70 focus:outline-none focus:ring-2 focus:ring-accent/50",
-                            option.unavailable && "opacity-70",
-                          )}
-                          onClick={() => chooseProvider(option.id)}
-                        >
-                          <span className="block text-sm font-medium text-txt-strong">
-                            {option.name}
-                          </span>
-                          <span className="mt-1 block text-xs leading-5 text-muted">
-                            {option.description}
-                          </span>
-                          <span className="mt-2 flex flex-wrap gap-1.5">
-                            {option.eligibility.map((tag) => (
-                              <span
-                                key={tag}
-                                className="rounded-full border border-border/55 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                );
-              },
-            )}
-          </div>
+          <ProviderPicker onPick={chooseProvider} />
         ) : null}
 
         {step === "choose" ? (

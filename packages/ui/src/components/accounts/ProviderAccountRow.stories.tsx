@@ -14,7 +14,7 @@ import { AppContext } from "../../state/useApp";
 import {
   type AccountProviderOption,
   getAccountProviderOption,
-} from "./AddAccountDialog";
+} from "./account-provider-options";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 
 function option(

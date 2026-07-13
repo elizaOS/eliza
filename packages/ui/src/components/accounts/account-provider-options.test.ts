@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { ACCOUNT_PROVIDER_OPTIONS } from "./AddAccountDialog";
+import { ACCOUNT_PROVIDER_OPTIONS } from "./account-provider-options";
 
 describe("consolidated account provider picker", () => {
   it("keeps chat API providers separate from coding subscription providers", () => {

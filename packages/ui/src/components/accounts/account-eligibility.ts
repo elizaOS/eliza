@@ -15,7 +15,7 @@ import type {
   AccountsListProvider,
   ProviderRuntimeEligibility,
 } from "../../api/client-agent";
-import type { AccountProviderOption } from "./AddAccountDialog";
+import type { AccountProviderOption } from "./account-provider-options";
 
 export interface ResolvedEligibility {
   chat: boolean;

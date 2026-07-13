@@ -30,7 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { getAccountProviderOption } from "./AddAccountDialog";
+import { getAccountProviderOption } from "./account-provider-options";
 import { ProviderMark } from "./provider-icons";
 import { formatResetIn } from "./reset-time";
 

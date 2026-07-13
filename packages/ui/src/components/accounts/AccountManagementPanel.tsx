@@ -28,12 +28,12 @@ import type { SubscriptionProviderSelectionId } from "../../providers";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
+import { AddAccountDialog } from "./AddAccountDialog";
 import {
   ACCOUNT_PROVIDER_OPTIONS,
   type AccountProviderOption,
-  AddAccountDialog,
   getAccountProviderOption,
-} from "./AddAccountDialog";
+} from "./account-provider-options";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 import { readSubscriptionOAuth } from "./subscription-oauth-state";
 import { UseCaseRouting } from "./UseCaseRouting";

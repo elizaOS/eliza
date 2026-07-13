@@ -5,12 +5,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { getAccountProviderOption } from "./AddAccountDialog";
 import {
   eligibilityChips,
   providerConnectionState,
   resolveProviderEligibility,
 } from "./account-eligibility";
+import { getAccountProviderOption } from "./account-provider-options";
 
 function option(id: Parameters<typeof getAccountProviderOption>[0]) {
   const found = getAccountProviderOption(id);
