@@ -125,22 +125,38 @@ text locally at 60fps, JS gets a debounced `change` only. Send is instant (Enter
 **stable** `props` object (rebuilt only when placeholder/disabled/slashItems
 change) and a `useCallback` `onEvent` so `setProps` diffs fire rarely.
 
-## Staged rollout
+## Staged rollout — status
 
-- **Stage 0** — add `native-surface.ts` + `useNativePlatformSurface`; refactor
-  `useNativeGlassAnchor` (and the transcript demo) onto it, behavior byte-identical
-  (glass tests + transcript golden are the guardrail). No flag. Lands the
-  abstraction with two proven consumers **before** the composer — so it is not a
-  dead abstraction. (Friction to resolve: glass reads `cornerRadius` from the DOM
-  per frame; either fold it into the rect geometry or a `readGeometry()` the hook
-  calls each frame.)
-- **Stage 1** — iOS NativeComposer, text-only, behind `eliza:native-composer`
-  (mirrors `eliza:native-transcript-demo`). Prove in `ChatWidgetHarness` on-sim
-  first, then wire into ChatOverlay behind the flag. Slash yields to DOM.
-- **Stage 2** — Android NativeComposer + golden.
-- **Stage 3** — polish (native slash popover, attachment badge).
-- **Stage 4** — desktop macOS via Electrobun RPC driver. Windows/Linux deferred
-  (DOM stands).
+- **Stage 0 — DONE.** `native-surface.ts` (`NativeSurfaceDriver`/`Handle`) +
+  `useNativePlatformSurface` (generalizes `useNativeGlassAnchor`: probe → attach →
+  rAF-coalesced `ResizeObserver`+resize sync → `setProps` diff → detach), 5 unit
+  tests. Its first real consumer is the composer (below), so it is not a dead
+  abstraction. Adopting `useNativeGlassAnchor` + the transcript demo onto it is a
+  follow-up cleanup (glass reads `cornerRadius` from the DOM per frame — the
+  geometry already carries it, so the adoption is mechanical, deferred only to
+  avoid churning the device-verified glass in the same pass).
+- **Stage 1 — DONE (behind the flag).** iOS `NativeComposerPlugin.swift`
+  (UITextView above the webview) — compiles + registers. Android
+  `NativeComposerPlugin.java` (EditText) — **proven end-to-end on the emulator**:
+  maximize → native field mounts (DOM textarea hidden) → typing into the NATIVE
+  field mirrors to the JS draft via the `change` intent. Wired at the composer
+  swap point; native owns the buffer, JS owns intents; setProps echo-guarded.
+  Slash yields to DOM. Gated `localStorage["eliza:native-composer"]="1"`, **OFF by
+  default** — DOM composer is the default so no regression ships.
+- **REMAINING before default-on:**
+  1. **Keyboard/first-responder lifecycle.** Focusing the native field currently
+     collapses the sheet (the native focus/keyboard is out-of-DOM, so it isn't
+     coordinated with the detent + keyboard-inset machine). The native field's
+     focus/blur intents must keep the sheet at maximized and drive the same
+     keyboard-inset lift the DOM composer does. This is the load-bearing item.
+  2. **Gate stability.** `enabled` flips during the maximize morph → a few
+     attach/detach cycles. Gate on the settled `maximized` (not mid-drag) to make
+     it a single attach, like the glass stability fix.
+  3. Placeholder styling parity; multi-line (Return currently sends).
+- **Stage 2 — polish:** native slash popover (Phase 2), attachment badge.
+- **Stage 3 — desktop macOS** via Electrobun RPC driver (NSTextView); the
+  abstraction already returns the DOM fallback on Windows/Linux. Desktop chat also
+  needs the ChatOverlay swap + OS-window-grow (separate track, see §3).
 
 **Anti-goals:** one mega-plugin; a shared native base class as a prerequisite;
 native composer at pill/half; echoing draft per keystroke or JS↔native keystroke
