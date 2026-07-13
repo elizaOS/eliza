@@ -284,4 +284,11 @@ app.post("/", async (c) => {
   }
 });
 
+/** Deterministic compatibility transformations exposed for route contract tests. */
+export const __responsesRouteTestHooks = {
+  buildChatRequest,
+  mapChatCompletionToResponse,
+  toChatMessages,
+};
+
 export default app;

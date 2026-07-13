@@ -147,9 +147,7 @@ describeE2E("Group D — /api/v1/responses", () => {
     );
     expect(res.status).toBe(401);
     expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
-    expect(res.headers.get("Server-Timing")).toContain(
-      "cloud_worker;dur=",
-    );
+    expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=");
     expect(res.headers.get("Timing-Allow-Origin")).toBe(
       "https://www.elizacloud.ai",
     );
@@ -171,9 +169,7 @@ describeE2E("Group D — /api/v1/responses", () => {
     );
     expect(res.status).toBe(400);
     expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
-    expect(res.headers.get("Server-Timing")).toContain(
-      "cloud_worker;dur=",
-    );
+    expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=");
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe("missing_required_parameter");
   });
