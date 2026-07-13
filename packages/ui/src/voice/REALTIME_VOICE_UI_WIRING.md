@@ -16,8 +16,9 @@ batch ASR path completely unchanged.
 - `useRealtimeVoiceMint` — resolves `agentId` (dedicated cloud agent UUID from
   the persisted active server) + `getConsentNonce` (POST
   `/api/v1/voice/session/consent` via the same `fetchWithCsrf` every other
-  `/api/v1` call uses). A local/self-hosted runtime yields no UUID → realtime
-  never arms.
+  `/api/v1` call uses). The client obtains a fresh one-use nonce immediately
+  before every initial or reconnect mint. A local/self-hosted runtime yields no
+  UUID → realtime never arms.
 - `useContinuousVoiceSession` — composes the batch continuous-chat engine with
   the realtime session; selects realtime when `available`, else batch UNCHANGED.
 - `chat-view-hooks.tsx` — `useChatVoiceController` now creates the realtime
@@ -91,9 +92,17 @@ path to arm.
 ## Evidence status (honest)
 
 - Hook + component behavior is covered by real-hook + real-client tests driving
-  the client's fake TRANSPORTS (60 tests green: `useRealtimeVoiceSession` 9,
-  `useContinuousVoiceSession` 6, `useRealtimeVoiceMint` 7, `ChatVoiceStatusBar`
-  17, `voice-session-client` 12, `voice-session-state` 9).
+  the client's fake TRANSPORTS. The focused suite includes manual-vs-continuous
+  session intent, agent/conversation re-minting, user-activation ordering,
+  actionable autoplay unlock, mint/trace correlation, fallback, barge-in, and
+  reconnect/cancellation coverage. The deploy workflow also has an executable
+  fail-closed contract for staging provider/bridge secrets and production auth
+  isolation. Production realtime is explicitly off, so any legacy Worker
+  authorization remains inert; before enabling production, ops must configure
+  the dedicated `VOICE_REALTIME_ELIZA_AUTHORIZATION`, provider secrets, the
+  Cartesia voice ID, and the production Eliza endpoint, then run a managed
+  deploy that overwrites the stale value. The workflow contract fails an
+  enabled production deploy when any of those values are absent.
 - Browser-level proof (screen recording + audio, both-side logs, real
   Deepgram/Cerebras/Cartesia round-trip) is the INTEGRATION-run's job on a real
   device against the deployed server — this branch does NOT claim device-tested.
