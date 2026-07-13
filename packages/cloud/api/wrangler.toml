@@ -45,6 +45,19 @@ __filename = '"/worker.js"'
 [observability]
 enabled = true
 
+# Logs and traces are configured separately. Keep logs complete for production
+# diagnostics while sampling distributed traces to bound storage volume.
+[observability.logs]
+enabled = true
+head_sampling_rate = 1.0
+
+# Automatic Workers traces capture fetch, Hyperdrive/KV/R2 binding calls, and
+# handler spans; X-Eliza-Trace-Id separately correlates caller measurements and
+# application logs.
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.05
+
 # -----------------------------------------------------------------------------
 # Cron triggers — Cloudflare requires unique schedule strings. Multiple
 # handlers per schedule are fanned out by the dispatcher in `src/lib/cron.ts`

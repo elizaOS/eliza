@@ -57,6 +57,8 @@ describe("createApp onError (unhandled-error logging)", () => {
     console.error = originalConsoleError;
 
     expect(res.status).toBe(500);
+    expect(res.headers.get("X-Eliza-Trace-Id")).toMatch(/^[\w.-]{8,128}$/);
+    expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=");
     const body = (await res.json()) as { success: boolean };
     expect(body.success).toBe(false);
 

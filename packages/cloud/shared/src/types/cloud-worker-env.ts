@@ -354,6 +354,8 @@ export interface Variables {
   user: AuthedUser | null | undefined;
   authMethod?: "session" | "api_key" | "wallet_signature" | "anonymous";
   requestId: string;
+  /** Application-level correlation id forwarded across Worker/origin hops. */
+  traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
 }

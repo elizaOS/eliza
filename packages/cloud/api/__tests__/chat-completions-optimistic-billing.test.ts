@@ -206,6 +206,9 @@ mock.module("ai", () => ({
 // Import the route AFTER the mocks so it binds to the stubs.
 const { default: chatCompletionsRouter, handleChatCompletionsPOST } =
   await import("../v1/chat/completions/route");
+const { __responsesRouteTestHooks } = await import("../v1/responses/route");
+const { buildChatRequest, mapChatCompletionToResponse, toChatMessages } =
+  __responsesRouteTestHooks;
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
@@ -247,6 +250,7 @@ function makeRequest(
     headers: {
       "content-type": "application/json",
       "x-request-id": CLIENT_REQUEST_ID,
+      "x-eliza-trace-id": "11111111-1111-4111-8111-111111111111",
       ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
     },
     body: JSON.stringify({
@@ -258,10 +262,10 @@ function makeRequest(
   });
 }
 
-async function drive(affiliateCode?: string): Promise<void> {
+async function drive(affiliateCode?: string): Promise<Response> {
   // The handler owns its try/catch and always returns a Response (the stubbed
   // model call makes it an error response); we only read the spies.
-  await handleChatCompletionsPOST(makeRequest(affiliateCode), {
+  return await handleChatCompletionsPOST(makeRequest(affiliateCode), {
     skipOrgRateLimit: true,
   });
 }
@@ -317,6 +321,22 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
         openai: { promptCacheKey: "v5:optimistic-route" },
       },
     });
+  });
+
+  test("provider errors preserve the exact frozen preforward boundary", async () => {
+    const response = await drive();
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    const preforward = response.headers.get("X-Eliza-Preforward-Ms");
+    expect(preforward).toMatch(
+      /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
   });
 
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
@@ -595,6 +615,100 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
       expect(captured).toHaveLength(0);
       expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
       expect(reserveCredits).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("responses compatibility transformations", () => {
+  test("converts instructions and mixed input parts into chat messages", () => {
+    expect(
+      toChatMessages({
+        instructions: " Be concise. ",
+        input: [
+          {
+            role: "assistant",
+            content: [
+              { type: "output_text", output_text: " Prior answer " },
+              { type: "input_text", input_text: "Additional context" },
+            ],
+          },
+          { role: undefined, content: " Follow up " },
+          { role: "tool", content: [] },
+        ],
+      }),
+    ).toEqual([
+      { role: "system", content: "Be concise." },
+      {
+        role: "assistant",
+        content: "Prior answer \nAdditional context",
+      },
+      { role: "user", content: "Follow up" },
+    ]);
+    expect(toChatMessages({ input: " Hello " })).toEqual([
+      { role: "user", content: "Hello" },
+    ]);
+    expect(toChatMessages({ input: undefined })).toEqual([]);
+  });
+
+  test("maps a chat completion without fabricating usage", () => {
+    const mapped = mapChatCompletionToResponse(
+      {
+        id: "resp_existing",
+        model: "provider/model",
+        choices: [{ message: { content: " Hello from the provider " } }],
+        usage: { prompt_tokens: 4, completion_tokens: 3 },
+      },
+      "requested/model",
+    );
+
+    expect(mapped).toMatchObject({
+      id: "resp_existing",
+      object: "response",
+      model: "provider/model",
+      status: "completed",
+      output_text: "Hello from the provider",
+      usage: { input_tokens: 4, output_tokens: 3, total_tokens: 7 },
+    });
+    expect(mapped.output[0]?.content[0]).toEqual({
+      type: "output_text",
+      text: "Hello from the provider",
+    });
+  });
+
+  test("builds a non-streaming compatibility request with caller headers", async () => {
+    const original = new Request("https://cloud.test/api/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer eliza_test_key",
+        "Content-Length": "999",
+        "X-Eliza-Trace-Id": "33333333-3333-4333-8333-333333333333",
+      },
+      body: "{}",
+    });
+    const request = buildChatRequest(
+      original,
+      {
+        model: "provider/model",
+        temperature: 0.2,
+        max_output_tokens: 64,
+        top_p: 0.9,
+      },
+      [{ role: "user", content: "hello" }],
+    );
+
+    expect(request.headers.get("Authorization")).toBe("Bearer eliza_test_key");
+    expect(request.headers.get("Content-Length")).toBeNull();
+    expect(request.headers.get("X-Eliza-Trace-Id")).toBe(
+      "33333333-3333-4333-8333-333333333333",
+    );
+    const chatBody = (await request.json()) as Record<string, unknown>;
+    expect(chatBody).toEqual({
+      model: "provider/model",
+      messages: [{ role: "user", content: "hello" }],
+      temperature: 0.2,
+      max_tokens: 64,
+      top_p: 0.9,
+      stream: false,
     });
   });
 });
