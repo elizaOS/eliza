@@ -59,7 +59,13 @@ describe("transactional npm release workflow", () => {
     ]);
     for (const trigger of ["workflow_call", "workflow_dispatch"]) {
       const inputs = workflow.on?.[trigger]?.inputs;
-      for (const name of ["source_sha", "version", "channel"]) {
+      for (const name of [
+        "source_sha",
+        "source_ref",
+        "version",
+        "channel",
+        "npm_publisher",
+      ]) {
         expect(inputs?.[name]?.required).toBe(true);
       }
       expect(inputs?.candidate_run_id?.required).toBe(false);
@@ -69,6 +75,7 @@ describe("transactional npm release workflow", () => {
       "cancel-in-progress": false,
     });
     expect(workflow.permissions).toEqual({ contents: "read" });
+    expect(workflowSource).not.toContain("overwrite: true");
   });
 
   test("keeps credentials out of candidate work and source mutation out of publication", () => {
@@ -124,6 +131,20 @@ describe("transactional npm release workflow", () => {
     expect(
       step("publish", "Publish immutable tarballs and promote full cohort").run,
     ).not.toMatch(/\b(build|pack)\b/);
+    expect(step("candidate", "Bind source ref and repository").run).toContain(
+      "release-candidate.mjs source",
+    );
+    expect(step("candidate", "Verify immutable candidate bytes").run).toContain(
+      '--github-output "$GITHUB_OUTPUT"',
+    );
+    for (const jobName of ["publish", "finalize"]) {
+      const source = (job(jobName).steps ?? [])
+        .map(({ run }) => run ?? "")
+        .join("\n");
+      expect(source).toContain("--plan-integrity");
+      expect(source).toContain("--source-ref");
+      expect(source).toContain("--publisher");
+    }
   });
 
   test("resumes an existing candidate without rebuilding and gates finalization on npm", () => {
@@ -207,11 +228,18 @@ describe("transactional npm release workflow", () => {
 
 describe("public release input contract", () => {
   const sourceSha = "a".repeat(40);
+  const identity = {
+    sourceRef: "refs/heads/develop",
+    repository: "elizaOS/eliza",
+    registry: "https://registry.npmjs.org/",
+    publisher: "release-bot",
+  };
 
   test("binds beta and latest to the matching semver class", () => {
     expect(
       validatePublicReleaseInputs({
         sourceSha,
+        ...identity,
         version: "3.0.0-beta.1",
         channel: "beta",
       }),
@@ -222,6 +250,7 @@ describe("public release input contract", () => {
     expect(
       validatePublicReleaseInputs({
         sourceSha,
+        ...identity,
         version: "3.0.0",
         channel: "latest",
       }),
@@ -229,6 +258,7 @@ describe("public release input contract", () => {
     expect(() =>
       validatePublicReleaseInputs({
         sourceSha,
+        ...identity,
         version: "3.0.0",
         channel: "beta",
       }),
@@ -236,6 +266,7 @@ describe("public release input contract", () => {
     expect(() =>
       validatePublicReleaseInputs({
         sourceSha,
+        ...identity,
         version: "3.0.0-beta.1",
         channel: "latest",
       }),
@@ -243,10 +274,29 @@ describe("public release input contract", () => {
     expect(() =>
       validatePublicReleaseInputs({
         sourceSha,
+        ...identity,
         version: "3.0.0-beta.1",
         channel: "next",
       }),
     ).toThrow("beta or latest");
+    expect(() =>
+      validatePublicReleaseInputs({
+        sourceSha,
+        ...identity,
+        registry: "https://registry.example/",
+        version: "3.0.0-beta.1",
+        channel: "beta",
+      }),
+    ).toThrow("require https://registry.npmjs.org/");
+    expect(() =>
+      validatePublicReleaseInputs({
+        sourceSha,
+        ...identity,
+        publisher: "Not Canonical",
+        version: "3.0.0-beta.1",
+        channel: "beta",
+      }),
+    ).toThrow("Invalid npm publisher");
   });
 
   test("writes validated values to the real GitHub output file boundary", async () => {
@@ -257,6 +307,14 @@ describe("public release input contract", () => {
         "inputs",
         "--source-sha",
         sourceSha,
+        "--source-ref",
+        identity.sourceRef,
+        "--repository",
+        identity.repository,
+        "--registry",
+        identity.registry,
+        "--publisher",
+        identity.publisher,
         "--version",
         "3.0.0-beta.1",
         "--channel",
@@ -266,6 +324,8 @@ describe("public release input contract", () => {
       ]);
       const output = readFileSync(outputPath, "utf8");
       expect(output).toContain(`source_sha=${sourceSha}\n`);
+      expect(output).toContain(`source_ref=${identity.sourceRef}\n`);
+      expect(output).toContain(`repository=${identity.repository}\n`);
       expect(output).toContain("tag=v3.0.0-beta.1\n");
       expect(output).toContain("artifact_name=npm-release-candidate-");
     } finally {

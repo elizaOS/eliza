@@ -19,6 +19,12 @@ import { stableStringify } from "../lib/release-contract.mjs";
 import { main as candidateMain } from "../release-candidate.mjs";
 
 const roots: string[] = [];
+const releaseIdentity = {
+  repository: "elizaOS/eliza",
+  sourceRef: "refs/heads/develop",
+  registry: "https://registry.npmjs.org/",
+  publisher: "release-fixture",
+};
 
 afterEach(() => {
   for (const root of roots.splice(0))
@@ -97,6 +103,7 @@ function createCandidate(
     channel: "beta",
     sourceSha: fixture.sourceSha,
     expectedCommit: fixture.sourceSha,
+    ...releaseIdentity,
     build: { command: process.execPath, args: ["build.mjs"] },
     npmCommand: "npm",
   });
@@ -130,17 +137,26 @@ describe("immutable release candidate", () => {
     expect(
       fs.readFileSync(path.join(fixture.repoRoot, "build-count"), "utf8"),
     ).toBe("1");
-    expect(
+    const verified = verifyReleaseCandidate({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory: path.join(fixture.base, "candidate-one"),
+      expectedIdentity: {
+        sourceSha: fixture.sourceSha,
+        version: "1.2.3",
+        channel: "beta",
+        ...releaseIdentity,
+      },
+    });
+    expect(verified.planIntegrity).toMatch(/^sha512-/);
+    expect(verified.plan.cohortIntegrity).toMatch(/^sha512-/);
+    expect(verified.plan.candidateTag).toMatch(/^eliza-candidate-/);
+    expect(() =>
       verifyReleaseCandidate({
         repoRoot: fixture.repoRoot,
         candidateDirectory: path.join(fixture.base, "candidate-one"),
-        expectedIdentity: {
-          sourceSha: fixture.sourceSha,
-          version: "1.2.3",
-          channel: "beta",
-        },
-      }).planIntegrity,
-    ).toMatch(/^sha512-/);
+        expectedPlanIntegrity: "sha512-wrong",
+      }),
+    ).toThrow("does not match requested");
     expect(() =>
       verifyReleaseCandidate({
         repoRoot: fixture.repoRoot,
@@ -149,6 +165,7 @@ describe("immutable release candidate", () => {
           sourceSha: fixture.sourceSha,
           version: "1.2.3",
           channel: "latest",
+          ...releaseIdentity,
         },
       }),
     ).toThrow("does not match requested");
@@ -328,6 +345,14 @@ describe("immutable release candidate", () => {
       fixture.sourceSha,
       "--expected-commit",
       fixture.sourceSha,
+      "--repository",
+      releaseIdentity.repository,
+      "--source-ref",
+      releaseIdentity.sourceRef,
+      "--registry",
+      releaseIdentity.registry,
+      "--publisher",
+      releaseIdentity.publisher,
       "--build-command",
       process.execPath,
       "--build-arg",

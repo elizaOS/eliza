@@ -16,6 +16,8 @@ import {
   releaseTransitionEvidence,
   stableStringify,
   validateCommitSha,
+  validateGitHubRepository,
+  validateSourceRef,
 } from "./release-contract.mjs";
 
 const RESERVED_TAGS = new Set([
@@ -23,6 +25,9 @@ const RESERVED_TAGS = new Set([
   "v2.0.3-beta.9",
   "v2.0.3-beta.10",
 ]);
+const RELEASE_TAGGER_NAME = "github-actions[bot]";
+const RELEASE_TAGGER_EMAIL =
+  "41898282+github-actions[bot]@users.noreply.github.com";
 
 function runGit(repoRoot, args) {
   const result = spawnSync("git", args, {
@@ -65,6 +70,98 @@ function resolveRemotePushUrls(repoRoot, remote) {
   if (urls.length === 0)
     throw new Error(`Git remote ${remote} has no push URL`);
   return urls;
+}
+
+function repositoryFromRemoteUrl(remoteUrl, remote) {
+  let owner;
+  let name;
+  const scp = remoteUrl.match(/^git@github\.com:([^/]+)\/(.+)$/i);
+  if (scp) {
+    owner = scp[1];
+    name = scp[2];
+  } else {
+    let parsed;
+    try {
+      parsed = new URL(remoteUrl);
+    } catch (error) {
+      // error-policy:J2 identify the non-canonical release remote
+      throw new Error(`Release remote ${remote} is not a GitHub URL`, {
+        cause: error,
+      });
+    }
+    if (
+      parsed.hostname.toLowerCase() !== "github.com" ||
+      (parsed.protocol !== "https:" && parsed.protocol !== "ssh:") ||
+      parsed.port ||
+      parsed.search ||
+      parsed.hash ||
+      (parsed.protocol === "https:" && (parsed.username || parsed.password)) ||
+      (parsed.protocol === "ssh:" &&
+        (parsed.username !== "git" || parsed.password))
+    ) {
+      throw new Error(`Release remote ${remote} is not a canonical GitHub URL`);
+    }
+    const pathParts = parsed.pathname.replace(/^\//, "").split("/");
+    if (pathParts.length !== 2) {
+      throw new Error(`Release remote ${remote} is not a canonical GitHub URL`);
+    }
+    [owner, name] = pathParts;
+  }
+  if (name?.endsWith(".git")) name = name.slice(0, -4);
+  return validateGitHubRepository(`${owner}/${name}`);
+}
+
+function configuredRemoteRepository(repoRoot, remote) {
+  if (typeof remote !== "string" || !/^[A-Za-z0-9._-]+$/.test(remote)) {
+    throw new Error("Release publication requires a named Git remote");
+  }
+  const configuredUrls = [
+    runGit(repoRoot, ["config", "--get", `remote.${remote}.url`]),
+  ];
+  const pushUrls = spawnSync(
+    "git",
+    ["config", "--get-all", `remote.${remote}.pushurl`],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (pushUrls.error) throw pushUrls.error;
+  if (pushUrls.status !== 0 && pushUrls.status !== 1) {
+    throw new Error(`Unable to read push URLs for release remote ${remote}`);
+  }
+  if (pushUrls.status === 0) {
+    configuredUrls.push(
+      ...pushUrls.stdout
+        .split("\n")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    );
+  }
+  const repositories = configuredUrls.map((remoteUrl) =>
+    repositoryFromRemoteUrl(remoteUrl, remote),
+  );
+  const [repository] = repositories;
+  if (
+    repositories.some(
+      (candidate) => candidate.toLowerCase() !== repository.toLowerCase(),
+    )
+  ) {
+    throw new Error(`Release remote ${remote} has conflicting repositories`);
+  }
+  return repository;
+}
+
+function assertRemoteRepository(repoRoot, remote, repository) {
+  const expected = validateGitHubRepository(repository);
+  const actual = configuredRemoteRepository(repoRoot, remote);
+  if (actual.toLowerCase() !== expected.toLowerCase()) {
+    throw new Error(
+      `Release remote ${remote} identifies ${actual}, expected ${expected}`,
+    );
+  }
+  return actual;
 }
 
 export function assertReleaseTagAllowed(tag) {
@@ -131,7 +228,14 @@ function localTagCommit(repoRoot, tagRef) {
   return result.stdout.trim().toLowerCase();
 }
 
-function ensureLocalAnnotatedTag(repoRoot, tag, tagRef, expectedCommit) {
+function ensureLocalAnnotatedTag(
+  repoRoot,
+  tag,
+  tagRef,
+  expectedCommit,
+  plan,
+  planIntegrity,
+) {
   const existingCommit = localTagCommit(repoRoot, tagRef);
   if (existingCommit) {
     if (existingCommit !== expectedCommit) {
@@ -139,17 +243,84 @@ function ensureLocalAnnotatedTag(repoRoot, tag, tagRef, expectedCommit) {
         `Local tag ${tagRef} resolves to ${existingCommit}, expected ${expectedCommit}`,
       );
     }
+    if (runGit(repoRoot, ["cat-file", "-t", tagRef]) !== "tag") {
+      throw new Error(`Local release tag ${tagRef} must be annotated`);
+    }
     return;
   }
   runGit(repoRoot, [
+    "-c",
+    `user.name=${RELEASE_TAGGER_NAME}`,
+    "-c",
+    `user.email=${RELEASE_TAGGER_EMAIL}`,
     "tag",
     "-a",
     "-m",
-    `Release ${tag}`,
+    [
+      `Release ${tag}`,
+      "",
+      `Repository: ${plan.repository}`,
+      `Source-Ref: ${plan.sourceRef}`,
+      `Source-SHA: ${expectedCommit}`,
+      `Cohort-Integrity: ${plan.cohortIntegrity}`,
+      `Plan-Integrity: ${planIntegrity}`,
+    ].join("\n"),
     "--",
     tag,
     expectedCommit,
   ]);
+}
+
+/** Prove an exact checked-out source SHA is the tip of its named repository ref. */
+export function verifyReleaseSource({
+  repoRoot,
+  remote,
+  repository,
+  sourceRef,
+  sourceSha,
+}) {
+  const expectedRepository = validateGitHubRepository(repository);
+  const expectedRef = validateSourceRef(sourceRef);
+  const expectedCommit = validateCommitSha(sourceSha, "sourceSha");
+  assertRemoteRepository(repoRoot, remote, expectedRepository);
+  const actualHead = runGit(repoRoot, ["rev-parse", "HEAD"]).toLowerCase();
+  if (actualHead !== expectedCommit) {
+    throw new Error(
+      `Checked-out source is ${actualHead}, expected ${expectedCommit}`,
+    );
+  }
+  const refs = parseLsRemote(
+    runGit(repoRoot, ["ls-remote", "--", remote, expectedRef]),
+  );
+  const actualRefCommit = refs.get(expectedRef) || null;
+  if (actualRefCommit !== expectedCommit) {
+    throw new Error(
+      `Release source ref ${expectedRef} resolves to ${actualRefCommit}, expected ${expectedCommit}`,
+    );
+  }
+  return {
+    repository: expectedRepository,
+    sourceRef: expectedRef,
+    sourceSha: expectedCommit,
+    remote,
+  };
+}
+
+function assertSourceStillReachable(
+  repoRoot,
+  remote,
+  sourceRef,
+  expectedCommit,
+) {
+  const refs = parseLsRemote(
+    runGit(repoRoot, ["ls-remote", "--", remote, sourceRef]),
+  );
+  const current = refs.get(sourceRef) || null;
+  if (!current) throw new Error(`Release source ref ${sourceRef} is missing`);
+  if (current !== expectedCommit) {
+    runGit(repoRoot, ["fetch", "--no-tags", "--quiet", remote, sourceRef]);
+    assertFastForward(repoRoot, expectedCommit, current);
+  }
 }
 
 function assertFastForward(repoRoot, oldCommit, expectedCommit) {
@@ -181,31 +352,49 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
   assertReleaseTagAllowed(tag);
   const tagRef = `refs/tags/${tag}`;
   assertRefName(repoRoot, tagRef);
-  const { plan, state } = verifyReleaseCandidate({
+  const { plan, state, planIntegrity } = verifyReleaseCandidate({
     repoRoot,
     candidateDirectory,
   });
+  assertRemoteRepository(repoRoot, remote, plan.repository);
   assertTagMatchesPlan(tag, plan.version);
   const expectedCommit = validateCommitSha(
     plan.expectedCommit,
     "expectedCommit",
   );
   assertCommitExists(repoRoot, expectedCommit);
-  const phaseIndex = RELEASE_PHASES.indexOf(state.phase);
-  if (phaseIndex < RELEASE_PHASES.indexOf("channel-promoted")) {
+  let phaseIndex = RELEASE_PHASES.indexOf(state.phase);
+  const promotedIndex = RELEASE_PHASES.indexOf("channel-promoted");
+  const boundIndex = RELEASE_PHASES.indexOf("git-bound");
+  const taggedIndex = RELEASE_PHASES.indexOf("git-tagged");
+  if (phaseIndex < promotedIndex) {
     throw new Error(
       `Git tag cannot be published from release phase ${state.phase}`,
     );
   }
 
-  const transitionEvidence = { remote, tagRef, expectedCommit };
-  if (phaseIndex >= RELEASE_PHASES.indexOf("git-tagged")) {
-    const recorded = releaseTransitionEvidence(state, "git-tagged");
-    if (stableStringify(recorded) !== stableStringify(transitionEvidence)) {
+  assertSourceStillReachable(repoRoot, remote, plan.sourceRef, expectedCommit);
+  const bindingEvidence = {
+    remote,
+    remotePushUrls: resolveRemotePushUrls(repoRoot, remote),
+    repository: plan.repository,
+    sourceRef: plan.sourceRef,
+    tagRef,
+    expectedCommit,
+    cohortIntegrity: plan.cohortIntegrity,
+    planIntegrity,
+  };
+  if (phaseIndex >= boundIndex) {
+    const recorded = releaseTransitionEvidence(state, "git-bound");
+    if (stableStringify(recorded) !== stableStringify(bindingEvidence)) {
       throw new Error(
-        "Conflicting evidence for already-recorded phase git-tagged",
+        "Conflicting evidence for already-recorded phase git-bound",
       );
     }
+  }
+  if (phaseIndex === promotedIndex) {
+    recordReleaseTransition(candidateDirectory, "git-bound", bindingEvidence);
+    phaseIndex = boundIndex;
   }
 
   const before = remoteReleaseRefs(
@@ -221,7 +410,14 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
   }
   let pushed = false;
   if (!before.tagCommit) {
-    ensureLocalAnnotatedTag(repoRoot, tag, tagRef, expectedCommit);
+    ensureLocalAnnotatedTag(
+      repoRoot,
+      tag,
+      tagRef,
+      expectedCommit,
+      plan,
+      planIntegrity,
+    );
     const push = spawnSync(
       "git",
       ["push", "--atomic", "--", remote, `${tagRef}:${tagRef}`],
@@ -262,11 +458,23 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
       `Release tag verification failed: tag=${after.tagCommit}, expected=${expectedCommit}`,
     );
   }
-  if (state.phase === "channel-promoted") {
+  const completionEvidence = {
+    ...bindingEvidence,
+    tagCommit: after.tagCommit,
+  };
+  if (phaseIndex >= taggedIndex) {
+    const recorded = releaseTransitionEvidence(state, "git-tagged");
+    if (stableStringify(recorded) !== stableStringify(completionEvidence)) {
+      throw new Error(
+        "Conflicting evidence for already-recorded phase git-tagged",
+      );
+    }
+  }
+  if (phaseIndex === boundIndex) {
     recordReleaseTransition(
       candidateDirectory,
       "git-tagged",
-      transitionEvidence,
+      completionEvidence,
     );
   }
   return { tagRef, expectedCommit, pushed };
@@ -295,10 +503,16 @@ export function pushAtomicReleaseRefs({
     expectedOldBranchSha,
     "expectedOldBranchSha",
   );
-  const { plan, state } = verifyReleaseCandidate({
+  const { plan, state, planIntegrity } = verifyReleaseCandidate({
     repoRoot,
     candidateDirectory,
   });
+  assertRemoteRepository(repoRoot, remote, plan.repository);
+  if (branchRef !== plan.sourceRef) {
+    throw new Error(
+      `Release branch ${branchRef} does not match planned source ref ${plan.sourceRef}`,
+    );
+  }
   assertTagMatchesPlan(tag, plan.version);
   const expectedCommit = validateCommitSha(
     plan.expectedCommit,
@@ -318,10 +532,14 @@ export function pushAtomicReleaseRefs({
   const bindingEvidence = {
     remote,
     remotePushUrls: resolveRemotePushUrls(repoRoot, remote),
+    repository: plan.repository,
+    sourceRef: plan.sourceRef,
     branchRef,
     tagRef,
     expectedCommit,
     expectedOldBranchSha: expectedOld,
+    cohortIntegrity: plan.cohortIntegrity,
+    planIntegrity,
   };
   if (phaseIndex >= boundIndex) {
     const recorded = releaseTransitionEvidence(state, "git-bound");
@@ -351,7 +569,14 @@ export function pushAtomicReleaseRefs({
     assertFastForward(repoRoot, before.branchCommit, expectedCommit);
   }
   if (!before.tagCommit)
-    ensureLocalAnnotatedTag(repoRoot, tag, tagRef, expectedCommit);
+    ensureLocalAnnotatedTag(
+      repoRoot,
+      tag,
+      tagRef,
+      expectedCommit,
+      plan,
+      planIntegrity,
+    );
 
   const refspecs = [];
   const pushArgs = ["push", "--atomic"];

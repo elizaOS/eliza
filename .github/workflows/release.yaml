@@ -12,12 +12,20 @@ on:
         description: Full source commit SHA of the prepared release candidate
         required: true
         type: string
+      source_ref:
+        description: Canonical branch ref whose exact tip was verified
+        required: true
+        type: string
       version:
         description: Exact canonical semver already present in every cohort manifest
         required: true
         type: string
       channel:
         description: Public npm channel (beta or latest)
+        required: true
+        type: string
+      npm_publisher:
+        description: Exact npm username represented by NPM_TOKEN
         required: true
         type: string
       candidate_run_id:
@@ -33,12 +41,27 @@ on:
       source_sha:
         description: Verified source commit
         value: ${{ jobs.finalize.outputs.source_sha }}
+      source_ref:
+        description: Verified canonical source branch ref
+        value: ${{ jobs.finalize.outputs.source_ref }}
+      repository:
+        description: Verified GitHub repository identity
+        value: ${{ jobs.finalize.outputs.repository }}
       version:
         description: Published exact version
         value: ${{ jobs.finalize.outputs.version }}
       channel:
         description: Verified public npm channel
         value: ${{ jobs.finalize.outputs.channel }}
+      npm_publisher:
+        description: Authenticated npm publisher identity
+        value: ${{ jobs.finalize.outputs.npm_publisher }}
+      plan_integrity:
+        description: SHA-512 integrity of the canonical release plan
+        value: ${{ jobs.finalize.outputs.plan_integrity }}
+      cohort_integrity:
+        description: SHA-512 integrity of the immutable package cohort
+        value: ${{ jobs.finalize.outputs.cohort_integrity }}
       registry_verified:
         description: Full immutable cohort and channel verification result
         value: ${{ jobs.finalize.outputs.registry_verified }}
@@ -49,6 +72,10 @@ on:
     inputs:
       source_sha:
         description: Full source commit SHA of the prepared release candidate
+        required: true
+        type: string
+      source_ref:
+        description: Canonical branch ref whose exact tip was verified
         required: true
         type: string
       version:
@@ -62,6 +89,10 @@ on:
         options:
           - beta
           - latest
+      npm_publisher:
+        description: Exact npm username represented by NPM_TOKEN
+        required: true
+        type: string
       candidate_run_id:
         description: Prior workflow run ID to resume without rebuilding (0 creates one)
         required: false
@@ -84,11 +115,17 @@ jobs:
       actions: read
       contents: read
     outputs:
-      artifact_name: ${{ format('npm-release-candidate-{0}-{1}-{2}', inputs.source_sha, inputs.version, inputs.channel) }}
-      source_sha: ${{ inputs.source_sha }}
-      version: ${{ inputs.version }}
-      channel: ${{ inputs.channel }}
-      tag: ${{ format('v{0}', inputs.version) }}
+      artifact_name: ${{ steps.release_inputs.outputs.artifact_name }}
+      source_sha: ${{ steps.candidate_verify.outputs.source_sha }}
+      source_ref: ${{ steps.candidate_verify.outputs.source_ref }}
+      repository: ${{ steps.candidate_verify.outputs.repository }}
+      registry: ${{ steps.candidate_verify.outputs.registry }}
+      publisher: ${{ steps.candidate_verify.outputs.publisher }}
+      version: ${{ steps.candidate_verify.outputs.version }}
+      channel: ${{ steps.candidate_verify.outputs.channel }}
+      tag: ${{ steps.release_inputs.outputs.tag }}
+      plan_integrity: ${{ steps.candidate_verify.outputs.plan_integrity }}
+      cohort_integrity: ${{ steps.candidate_verify.outputs.cohort_integrity }}
     steps:
       - name: Checkout exact source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -108,7 +145,11 @@ jobs:
         id: release_inputs
         run: >-
           node packages/scripts/release-candidate.mjs inputs
+          --repository "${{ github.repository }}"
+          --source-ref "${{ inputs.source_ref }}"
           --source-sha "${{ inputs.source_sha }}"
+          --registry https://registry.npmjs.org/
+          --publisher "${{ inputs.npm_publisher }}"
           --version "${{ inputs.version }}"
           --channel "${{ inputs.channel }}"
           --github-output "$GITHUB_OUTPUT"
@@ -120,6 +161,18 @@ jobs:
           actual_sha="$(git rev-parse HEAD)"
           test "$actual_sha" = "$EXPECTED_SOURCE_SHA"
           test -z "$(git status --porcelain=v1 --untracked-files=all)"
+
+      - name: Bind source ref and repository
+        run: >-
+          node packages/scripts/release-candidate.mjs source
+          --repository "${{ steps.release_inputs.outputs.repository }}"
+          --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
+          --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
+          --registry "${{ steps.release_inputs.outputs.registry }}"
+          --publisher "${{ steps.release_inputs.outputs.publisher }}"
+          --version "${{ steps.release_inputs.outputs.version }}"
+          --channel "${{ steps.release_inputs.outputs.channel }}"
+          --remote origin
 
       - name: Download prior immutable candidate
         if: inputs.candidate_run_id != 0
@@ -138,6 +191,19 @@ jobs:
         if: inputs.candidate_run_id == 0
         run: bun run test
 
+      - name: Rebind source immediately before pack
+        if: inputs.candidate_run_id == 0
+        run: >-
+          node packages/scripts/release-candidate.mjs source
+          --repository "${{ steps.release_inputs.outputs.repository }}"
+          --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
+          --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
+          --registry "${{ steps.release_inputs.outputs.registry }}"
+          --publisher "${{ steps.release_inputs.outputs.publisher }}"
+          --version "${{ steps.release_inputs.outputs.version }}"
+          --channel "${{ steps.release_inputs.outputs.channel }}"
+          --remote origin
+
       - name: Build and pack once
         if: inputs.candidate_run_id == 0
         run: >-
@@ -148,17 +214,40 @@ jobs:
           --channel "${{ steps.release_inputs.outputs.channel }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
           --expected-commit "${{ steps.release_inputs.outputs.source_sha }}"
+          --repository "${{ steps.release_inputs.outputs.repository }}"
+          --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
+          --registry "${{ steps.release_inputs.outputs.registry }}"
+          --publisher "${{ steps.release_inputs.outputs.publisher }}"
           --build-command bun
           --build-arg run
           --build-arg build
 
+      - name: Rebind source after pack
+        if: inputs.candidate_run_id == 0
+        run: >-
+          node packages/scripts/release-candidate.mjs source
+          --repository "${{ steps.release_inputs.outputs.repository }}"
+          --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
+          --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
+          --registry "${{ steps.release_inputs.outputs.registry }}"
+          --publisher "${{ steps.release_inputs.outputs.publisher }}"
+          --version "${{ steps.release_inputs.outputs.version }}"
+          --channel "${{ steps.release_inputs.outputs.channel }}"
+          --remote origin
+
       - name: Verify immutable candidate bytes
+        id: candidate_verify
         run: >-
           node packages/scripts/release-candidate.mjs verify
           --candidate "${{ runner.temp }}/release-candidate"
+          --repository "${{ steps.release_inputs.outputs.repository }}"
+          --source-ref "${{ steps.release_inputs.outputs.source_ref }}"
           --source-sha "${{ steps.release_inputs.outputs.source_sha }}"
+          --registry "${{ steps.release_inputs.outputs.registry }}"
+          --publisher "${{ steps.release_inputs.outputs.publisher }}"
           --version "${{ steps.release_inputs.outputs.version }}"
           --channel "${{ steps.release_inputs.outputs.channel }}"
+          --github-output "$GITHUB_OUTPUT"
 
       - name: Upload immutable candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -166,7 +255,6 @@ jobs:
           name: ${{ format('npm-release-candidate-{0}-{1}-{2}', inputs.source_sha, inputs.version, inputs.channel) }}
           path: ${{ runner.temp }}/release-candidate
           if-no-files-found: error
-          overwrite: true
           retention-days: 14
 
   publish:
@@ -213,9 +301,14 @@ jobs:
           node packages/scripts/release-candidate.mjs verify
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
+          --repository "${{ needs.candidate.outputs.repository }}"
+          --source-ref "${{ needs.candidate.outputs.source_ref }}"
           --source-sha "${{ needs.candidate.outputs.source_sha }}"
+          --registry "${{ needs.candidate.outputs.registry }}"
+          --publisher "${{ needs.candidate.outputs.publisher }}"
           --version "${{ needs.candidate.outputs.version }}"
           --channel "${{ needs.candidate.outputs.channel }}"
+          --plan-integrity "${{ needs.candidate.outputs.plan_integrity }}"
 
       - name: Publish immutable tarballs and promote full cohort
         env:
@@ -227,7 +320,14 @@ jobs:
           node packages/scripts/release-candidate.mjs publish \
             --repo-root "${{ github.workspace }}/release-source" \
             --candidate "${{ runner.temp }}/release-candidate" \
-            --registry https://registry.npmjs.org/ \
+            --repository "${{ needs.candidate.outputs.repository }}" \
+            --source-ref "${{ needs.candidate.outputs.source_ref }}" \
+            --source-sha "${{ needs.candidate.outputs.source_sha }}" \
+            --registry "${{ needs.candidate.outputs.registry }}" \
+            --publisher "${{ needs.candidate.outputs.publisher }}" \
+            --version "${{ needs.candidate.outputs.version }}" \
+            --channel "${{ needs.candidate.outputs.channel }}" \
+            --plan-integrity "${{ needs.candidate.outputs.plan_integrity }}" \
             --allow-public-registry \
             --token-env NODE_AUTH_TOKEN
 
@@ -237,7 +337,6 @@ jobs:
           name: ${{ needs.candidate.outputs.artifact_name }}-npm-verified
           path: ${{ runner.temp }}/release-candidate
           if-no-files-found: error
-          overwrite: true
           retention-days: 14
 
   finalize:
@@ -252,8 +351,13 @@ jobs:
       contents: write
     outputs:
       source_sha: ${{ needs.candidate.outputs.source_sha }}
+      source_ref: ${{ needs.candidate.outputs.source_ref }}
+      repository: ${{ needs.candidate.outputs.repository }}
       version: ${{ needs.candidate.outputs.version }}
       channel: ${{ needs.candidate.outputs.channel }}
+      npm_publisher: ${{ needs.candidate.outputs.publisher }}
+      plan_integrity: ${{ needs.candidate.outputs.plan_integrity }}
+      cohort_integrity: ${{ needs.candidate.outputs.cohort_integrity }}
       registry_verified: "true"
       candidate_artifact: ${{ needs.candidate.outputs.artifact_name }}-finalized
     steps:
@@ -292,7 +396,14 @@ jobs:
           node packages/scripts/release-candidate.mjs verify-promoted
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
-          --registry https://registry.npmjs.org/
+          --repository "${{ needs.candidate.outputs.repository }}"
+          --source-ref "${{ needs.candidate.outputs.source_ref }}"
+          --source-sha "${{ needs.candidate.outputs.source_sha }}"
+          --registry "${{ needs.candidate.outputs.registry }}"
+          --publisher "${{ needs.candidate.outputs.publisher }}"
+          --version "${{ needs.candidate.outputs.version }}"
+          --channel "${{ needs.candidate.outputs.channel }}"
+          --plan-integrity "${{ needs.candidate.outputs.plan_integrity }}"
           --allow-public-registry
 
       - name: Push only the exact planned Git tag
@@ -302,6 +413,14 @@ jobs:
           --candidate "${{ runner.temp }}/release-candidate"
           --remote origin
           --tag "${{ needs.candidate.outputs.tag }}"
+          --repository "${{ needs.candidate.outputs.repository }}"
+          --source-ref "${{ needs.candidate.outputs.source_ref }}"
+          --source-sha "${{ needs.candidate.outputs.source_sha }}"
+          --registry "${{ needs.candidate.outputs.registry }}"
+          --publisher "${{ needs.candidate.outputs.publisher }}"
+          --version "${{ needs.candidate.outputs.version }}"
+          --channel "${{ needs.candidate.outputs.channel }}"
+          --plan-integrity "${{ needs.candidate.outputs.plan_integrity }}"
 
       - name: Publish idempotent GitHub Release
         env:
@@ -311,6 +430,13 @@ jobs:
           --repo-root "${{ github.workspace }}/release-source"
           --candidate "${{ runner.temp }}/release-candidate"
           --repository "${{ github.repository }}"
+          --source-ref "${{ needs.candidate.outputs.source_ref }}"
+          --source-sha "${{ needs.candidate.outputs.source_sha }}"
+          --registry "${{ needs.candidate.outputs.registry }}"
+          --publisher "${{ needs.candidate.outputs.publisher }}"
+          --version "${{ needs.candidate.outputs.version }}"
+          --channel "${{ needs.candidate.outputs.channel }}"
+          --plan-integrity "${{ needs.candidate.outputs.plan_integrity }}"
           --tag "${{ needs.candidate.outputs.tag }}"
           --allow-public-github
           --token-env GITHUB_TOKEN
@@ -321,12 +447,15 @@ jobs:
           name: ${{ needs.candidate.outputs.artifact_name }}-finalized
           path: ${{ runner.temp }}/release-candidate
           if-no-files-found: error
-          overwrite: true
           retention-days: 30
 
       - name: Write release summary
         env:
           RELEASE_CHANNEL: ${{ needs.candidate.outputs.channel }}
+          RELEASE_COHORT_INTEGRITY: ${{ needs.candidate.outputs.cohort_integrity }}
+          RELEASE_PLAN_INTEGRITY: ${{ needs.candidate.outputs.plan_integrity }}
+          RELEASE_PUBLISHER: ${{ needs.candidate.outputs.publisher }}
+          RELEASE_SOURCE_REF: ${{ needs.candidate.outputs.source_ref }}
           RELEASE_SOURCE_SHA: ${{ needs.candidate.outputs.source_sha }}
           RELEASE_TAG: ${{ needs.candidate.outputs.tag }}
           RELEASE_VERSION: ${{ needs.candidate.outputs.version }}
@@ -335,8 +464,12 @@ jobs:
             echo "# Transactional npm release"
             echo
             echo "- Source: \`$RELEASE_SOURCE_SHA\`"
+            echo "- Source ref: \`$RELEASE_SOURCE_REF\`"
             echo "- Version: \`$RELEASE_VERSION\`"
             echo "- Channel: \`$RELEASE_CHANNEL\`"
+            echo "- npm publisher: \`$RELEASE_PUBLISHER\`"
+            echo "- Cohort integrity: \`$RELEASE_COHORT_INTEGRITY\`"
+            echo "- Plan integrity: \`$RELEASE_PLAN_INTEGRITY\`"
             echo "- Tag: \`$RELEASE_TAG\`"
             echo "- Registry cohort: verified before Git/GitHub finalization"
           } >> "$GITHUB_STEP_SUMMARY"

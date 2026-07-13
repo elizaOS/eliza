@@ -15,6 +15,8 @@ import {
   RELEASE_PHASES,
   releaseTransitionEvidence,
   stableStringify,
+  validateNpmPublisher,
+  validateRegistryUrl,
 } from "./release-contract.mjs";
 
 export class RegistryInspectionError extends Error {
@@ -27,22 +29,7 @@ export class RegistryInspectionError extends Error {
 }
 
 export function normalizeRegistryUrl(registryUrl) {
-  let parsed;
-  try {
-    parsed = new URL(registryUrl);
-  } catch (error) {
-    // error-policy:J2 the registry boundary needs the rejected input in context
-    throw new Error(`Invalid registry URL ${registryUrl}`, { cause: error });
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error(`Registry URL must use http or https: ${registryUrl}`);
-  }
-  if (parsed.username || parsed.password)
-    throw new Error("Registry URL must not contain credentials");
-  parsed.hash = "";
-  parsed.search = "";
-  if (!parsed.pathname.endsWith("/")) parsed.pathname += "/";
-  return parsed.toString();
+  return validateRegistryUrl(registryUrl);
 }
 
 function registryHeaders(token) {
@@ -110,7 +97,11 @@ function packageMetadataUrl(registryUrl, packageName) {
 }
 
 /** Classify a registry version response without performing I/O. */
-export function classifyRegistryVersion(packageRecord, metadata) {
+export function classifyRegistryVersion(
+  packageRecord,
+  metadata,
+  { sourceSha, publisher, requireRegistryProvenance = true },
+) {
   if (metadata === null) return { state: "missing" };
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     throw new RegistryInspectionError(
@@ -148,20 +139,72 @@ export function classifyRegistryVersion(packageRecord, metadata) {
       actualIntegrity,
     };
   }
-  return { state: "matched", integrity: actualIntegrity };
+  const actualSourceSha = metadata.gitHead;
+  const actualPublisher = metadata._npmUser?.name;
+  const hasRegistryProvenance =
+    actualSourceSha !== undefined || actualPublisher !== undefined;
+  if (
+    (hasRegistryProvenance &&
+      (actualSourceSha !== sourceSha || actualPublisher !== publisher)) ||
+    (!hasRegistryProvenance && requireRegistryProvenance)
+  ) {
+    throw new RegistryInspectionError(
+      `Registry provenance for ${packageRecord.name}@${packageRecord.version} is ${actualPublisher ?? "missing"}/${actualSourceSha ?? "missing"}, expected ${publisher}/${sourceSha}`,
+      { kind: "provenance-conflict" },
+    );
+  }
+  return {
+    state: "matched",
+    integrity: actualIntegrity,
+    sourceSha,
+    publisher,
+    provenance: hasRegistryProvenance
+      ? "registry-metadata"
+      : "candidate-integrity+authenticated-publisher",
+  };
 }
 
 export async function inspectRegistryVersion({
   registryUrl,
   packageRecord,
   token,
+  sourceSha,
+  publisher,
 }) {
   const registry = normalizeRegistryUrl(registryUrl);
   const metadata = await requestRegistryJson(
     packageVersionUrl(registry, packageRecord.name, packageRecord.version),
     { token, allowMissing: true },
   );
-  return classifyRegistryVersion(packageRecord, metadata);
+  return classifyRegistryVersion(packageRecord, metadata, {
+    sourceSha,
+    publisher,
+    requireRegistryProvenance:
+      new URL(registry).hostname === "registry.npmjs.org",
+  });
+}
+
+/** Resolve the registry account behind a publication token before mutation. */
+export async function inspectRegistryPublisher({ registryUrl, token }) {
+  if (typeof token !== "string" || token.length === 0) {
+    throw new Error("Registry publication requires an explicit token");
+  }
+  const registry = normalizeRegistryUrl(registryUrl);
+  const metadata = await requestRegistryJson(new URL("-/whoami", registry), {
+    token,
+    allowMissing: false,
+  });
+  if (
+    !metadata ||
+    typeof metadata !== "object" ||
+    Array.isArray(metadata) ||
+    typeof metadata.username !== "string"
+  ) {
+    throw new RegistryInspectionError("Registry returned malformed whoami", {
+      kind: "malformed-response",
+    });
+  }
+  return validateNpmPublisher(metadata.username);
 }
 
 export async function inspectRegistryChannel({
@@ -213,7 +256,13 @@ export async function inspectReleaseRegistry({ registryUrl, plan, token }) {
     records.push({
       name: packageRecord.name,
       version: packageRecord.version,
-      ...(await inspectRegistryVersion({ registryUrl, packageRecord, token })),
+      ...(await inspectRegistryVersion({
+        registryUrl,
+        packageRecord,
+        token,
+        sourceSha: plan.sourceSha,
+        publisher: plan.publisher,
+      })),
     });
   }
   return records;
@@ -271,6 +320,8 @@ async function stageMissingPackages({
       registryUrl,
       packageRecord,
       token,
+      sourceSha: plan.sourceSha,
+      publisher: plan.publisher,
     });
     if (current.state === "conflict") {
       assertNoRegistryConflicts([
@@ -314,10 +365,13 @@ async function verifyAllIntegrities({ registryUrl, plan, token }) {
       `Registry is missing planned versions: ${missing.map(({ name }) => name).join(", ")}`,
     );
   }
-  return records.map(({ name, version, integrity }) => ({
+  return records.map(({ name, version, integrity, provenance }) => ({
     name,
     version,
     integrity,
+    sourceSha: plan.sourceSha,
+    publisher: plan.publisher,
+    provenance,
   }));
 }
 
@@ -447,10 +501,18 @@ export async function verifyPromotedReleaseCandidate({
     );
   }
   const normalizedRegistry = normalizeRegistryUrl(registryUrl);
-  const recorded = releaseTransitionEvidence(verified.state, "registry-staged");
-  if (recorded?.registry !== normalizedRegistry) {
+  if (verified.plan.registry !== normalizedRegistry) {
     throw new Error(
-      `Candidate registry is ${recorded?.registry}, not ${normalizedRegistry}`,
+      `Candidate registry is ${verified.plan.registry}, not ${normalizedRegistry}`,
+    );
+  }
+  const recorded = releaseTransitionEvidence(verified.state, "registry-staged");
+  if (
+    recorded?.registry !== normalizedRegistry ||
+    recorded?.publisher !== verified.plan.publisher
+  ) {
+    throw new Error(
+      `Recorded registry identity is ${recorded?.registry}/${recorded?.publisher}, not ${normalizedRegistry}/${verified.plan.publisher}`,
     );
   }
 
@@ -516,10 +578,25 @@ export async function publishReleaseCandidate({
   const stagedIndex = RELEASE_PHASES.indexOf("registry-staged");
   const promotedIndex = RELEASE_PHASES.indexOf("channel-promoted");
   const normalizedRegistry = normalizeRegistryUrl(registryUrl);
+  if (plan.registry !== normalizedRegistry) {
+    throw new Error(
+      `Candidate registry is ${plan.registry}, not ${normalizedRegistry}`,
+    );
+  }
+  const authenticatedPublisher = await inspectRegistryPublisher({
+    registryUrl: normalizedRegistry,
+    token,
+  });
+  if (authenticatedPublisher !== plan.publisher) {
+    throw new Error(
+      `Registry token identifies ${authenticatedPublisher}, expected ${plan.publisher}`,
+    );
+  }
   if (phaseIndex < candidateIndex)
     throw new Error(`Candidate is only at ${verified.state.phase}`);
   const bindingEvidence = {
     registry: normalizedRegistry,
+    publisher: authenticatedPublisher,
     candidateTag: plan.candidateTag,
   };
   if (phaseIndex >= boundIndex) {
@@ -527,9 +604,12 @@ export async function publishReleaseCandidate({
       verified.state,
       "registry-bound",
     );
-    if (recorded?.registry !== normalizedRegistry) {
+    if (
+      recorded?.registry !== normalizedRegistry ||
+      recorded?.publisher !== authenticatedPublisher
+    ) {
       throw new Error(
-        `Candidate registry is ${recorded?.registry}, not ${normalizedRegistry}`,
+        `Recorded registry identity is ${recorded?.registry}/${recorded?.publisher}, not ${normalizedRegistry}/${authenticatedPublisher}`,
       );
     }
     if (stableStringify(recorded) !== stableStringify(bindingEvidence))

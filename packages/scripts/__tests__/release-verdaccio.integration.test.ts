@@ -162,8 +162,10 @@ async function startVerdaccio(base: string, port: number) {
   throw new Error(`Verdaccio did not become ready:\n${logs}`);
 }
 
-async function createUser(registryUrl: string) {
-  const username = "release-integration";
+async function createUser(
+  registryUrl: string,
+  username = "release-integration",
+) {
   const response = await fetch(
     new URL(`-/user/org.couchdb.user:${username}`, registryUrl),
     {
@@ -171,8 +173,8 @@ async function createUser(registryUrl: string) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         name: username,
-        password: "release-password",
-        email: "release@example.test",
+        password: `${username}-password`,
+        email: `${username}@example.test`,
         type: "user",
         roles: [],
       }),
@@ -267,6 +269,13 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "release-verdaccio-"));
   roots.push(base);
   const fixture = makeRepo(base);
+  const port = await unusedPort();
+  const firstServer = await startVerdaccio(base, port);
+  const token = await createUser(firstServer.registryUrl);
+  const wrongPublisherToken = await createUser(
+    firstServer.registryUrl,
+    "other-publisher",
+  );
   const candidateDirectory = path.join(base, "candidate");
   const candidate = buildAndPackReleaseCandidate({
     repoRoot: fixture.repoRoot,
@@ -279,12 +288,37 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
     channel: "beta",
     sourceSha: fixture.sourceSha,
     expectedCommit: fixture.sourceSha,
+    repository: "elizaOS/eliza",
+    sourceRef: "refs/heads/develop",
+    registry: firstServer.registryUrl,
+    publisher: "release-integration",
     build: { command: process.execPath, args: ["build.mjs"] },
   });
-  const port = await unusedPort();
-  const firstServer = await startVerdaccio(base, port);
-  const token = await createUser(firstServer.registryUrl);
   const npmConfigPath = writeNpmConfig(base, firstServer.registryUrl);
+  await expect(
+    publishReleaseCandidate({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory,
+      registryUrl: firstServer.registryUrl,
+      token: wrongPublisherToken,
+      npmCommand: writeAuthenticatedNpm(base, npmConfigPath),
+    }),
+  ).rejects.toThrow(
+    "Registry token identifies other-publisher, expected release-integration",
+  );
+  expect(
+    await inspectReleaseRegistry({
+      registryUrl: firstServer.registryUrl,
+      plan: candidate.plan,
+      token,
+    }),
+  ).toEqual(
+    candidate.plan.packages.map(({ name, version }) => ({
+      name,
+      version,
+      state: "missing",
+    })),
+  );
   const interruptingNpm = writeInterruptingNpm(
     base,
     firstServer.child.pid as number,
@@ -347,6 +381,9 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
       version,
       state: "matched",
       integrity: tarball.integrity,
+      sourceSha: fixture.sourceSha,
+      publisher: "release-integration",
+      provenance: "candidate-integrity+authenticated-publisher",
     })),
   );
   for (const packageRecord of candidate.plan.packages) {

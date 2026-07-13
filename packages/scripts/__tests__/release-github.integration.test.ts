@@ -53,7 +53,8 @@ function makeTaggedCandidate() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "release-github-"));
   roots.push(base);
   const repoRoot = path.join(base, "source");
-  const remote = path.join(base, "remote.git");
+  const remotePath = path.join(base, "remote.git");
+  const remote = "origin";
   fs.mkdirSync(repoRoot);
   writeJson(path.join(repoRoot, "package.json"), {
     private: true,
@@ -78,11 +79,18 @@ function makeTaggedCandidate() {
   git(repoRoot, ["add", "."]);
   git(repoRoot, ["commit", "-m", "prepared release source"]);
   const sourceSha = git(repoRoot, ["rev-parse", "HEAD"]);
-  execFileSync("git", ["init", "--bare", remote]);
+  execFileSync("git", ["init", "--bare", remotePath]);
+  const canonicalRemote = "https://github.com/elizaOS/eliza.git";
+  git(repoRoot, [
+    "config",
+    `url.file://${remotePath}.insteadOf`,
+    canonicalRemote,
+  ]);
+  git(repoRoot, ["remote", "add", remote, canonicalRemote]);
   git(repoRoot, ["push", remote, `${sourceSha}:refs/heads/develop`]);
 
   const candidateDirectory = path.join(base, "candidate");
-  buildAndPackReleaseCandidate({
+  const { plan } = buildAndPackReleaseCandidate({
     repoRoot,
     outputDirectory: candidateDirectory,
     packageNames: ["@release-github/a"],
@@ -90,16 +98,32 @@ function makeTaggedCandidate() {
     channel: "beta",
     sourceSha,
     expectedCommit: sourceSha,
+    repository: "elizaOS/eliza",
+    sourceRef: "refs/heads/develop",
+    registry: "https://registry.npmjs.org/",
+    publisher: "release-github",
     build: { command: process.execPath, args: ["build.mjs"] },
   });
+  recordReleaseTransition(candidateDirectory, "registry-bound", {
+    registry: plan.registry,
+    publisher: plan.publisher,
+    candidateTag: plan.candidateTag,
+  });
   recordReleaseTransition(candidateDirectory, "registry-staged", {
-    registry: "fixture",
+    registry: plan.registry,
+    publisher: plan.publisher,
+    candidateTag: plan.candidateTag,
+    actions: [],
   });
   recordReleaseTransition(candidateDirectory, "registry-verified", {
-    registry: "fixture",
+    registry: plan.registry,
+    packages: [],
   });
   recordReleaseTransition(candidateDirectory, "channel-promoted", {
-    channel: "beta",
+    registry: plan.registry,
+    channel: plan.channel,
+    promotions: [],
+    candidateTagCleanup: [],
   });
   pushReleaseTag({
     repoRoot,
@@ -151,6 +175,7 @@ async function startApi({
       release = {
         id: 71,
         tag_name: body.tag_name,
+        target_commitish: body.target_commitish,
         draft: body.draft,
         prerelease: body.prerelease,
         html_url: "https://github.example/elizaOS/eliza/releases/71",
@@ -232,6 +257,44 @@ describe("GitHub release finalization", () => {
         html_url: "https://github.example/elizaOS/eliza/releases/71",
       },
     });
+    await expect(
+      publishGitHubRelease({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        repository: "elizaOS/eliza",
+        tag: "v1.0.0-beta.1",
+        token: "fixture-token",
+        apiUrl: api.apiUrl,
+      }),
+    ).rejects.toThrow("does not match the planned public identity");
+    expect(api.posts).toHaveLength(0);
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-tagged",
+    );
+  }, 30_000);
+
+  test("rejects a mismatched repository or release target before recording finalization", async () => {
+    const fixture = makeTaggedCandidate();
+    const api = await startApi({
+      initialRelease: {
+        id: 71,
+        tag_name: "v1.0.0-beta.1",
+        target_commitish: "b".repeat(40),
+        draft: false,
+        prerelease: true,
+        html_url: "https://github.example/elizaOS/eliza/releases/71",
+      },
+    });
+    await expect(
+      publishGitHubRelease({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        repository: "other/repository",
+        tag: "v1.0.0-beta.1",
+        token: "fixture-token",
+        apiUrl: api.apiUrl,
+      }),
+    ).rejects.toThrow("does not match planned elizaOS/eliza");
     await expect(
       publishGitHubRelease({
         repoRoot: fixture.repoRoot,

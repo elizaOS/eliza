@@ -14,6 +14,7 @@ import {
   RELEASE_PHASES,
   releaseTransitionEvidence,
   stableStringify,
+  validateGitHubRepository,
 } from "./release-contract.mjs";
 
 export class GitHubReleaseError extends Error {
@@ -50,16 +51,6 @@ export function normalizeGitHubApiUrl(apiUrl) {
   parsed.search = "";
   if (!parsed.pathname.endsWith("/")) parsed.pathname += "/";
   return parsed.toString();
-}
-
-function validateRepository(repository) {
-  if (
-    typeof repository !== "string" ||
-    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)
-  ) {
-    throw new Error(`Invalid GitHub repository ${JSON.stringify(repository)}`);
-  }
-  return repository;
 }
 
 function statusKind(status) {
@@ -115,7 +106,7 @@ async function requestGitHubJson(
 }
 
 function releaseEndpoint(apiUrl, repository, tag) {
-  const [owner, name] = validateRepository(repository).split("/");
+  const [owner, name] = validateGitHubRepository(repository).split("/");
   return new URL(
     `repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases/tags/${encodeURIComponent(tag)}`,
     normalizeGitHubApiUrl(apiUrl),
@@ -123,14 +114,17 @@ function releaseEndpoint(apiUrl, repository, tag) {
 }
 
 function releasesEndpoint(apiUrl, repository) {
-  const [owner, name] = validateRepository(repository).split("/");
+  const [owner, name] = validateGitHubRepository(repository).split("/");
   return new URL(
     `repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/releases`,
     normalizeGitHubApiUrl(apiUrl),
   ).toString();
 }
 
-function validatePublishedRelease(release, { tag, prerelease }) {
+function validatePublishedRelease(
+  release,
+  { tag, prerelease, expectedCommit },
+) {
   if (
     !release ||
     typeof release !== "object" ||
@@ -138,6 +132,7 @@ function validatePublishedRelease(release, { tag, prerelease }) {
     !Number.isSafeInteger(release.id) ||
     release.id <= 0 ||
     release.tag_name !== tag ||
+    release.target_commitish !== expectedCommit ||
     release.draft !== false ||
     release.prerelease !== prerelease ||
     typeof release.html_url !== "string" ||
@@ -165,6 +160,15 @@ export async function publishGitHubRelease({
   }
   const normalizedApiUrl = normalizeGitHubApiUrl(apiUrl);
   const verified = verifyReleaseCandidate({ repoRoot, candidateDirectory });
+  const plannedRepository = validateGitHubRepository(verified.plan.repository);
+  if (
+    validateGitHubRepository(repository).toLowerCase() !==
+    plannedRepository.toLowerCase()
+  ) {
+    throw new Error(
+      `GitHub release repository ${repository} does not match planned ${plannedRepository}`,
+    );
+  }
   if (tag !== `v${verified.plan.version}`) {
     throw new Error(
       `GitHub release tag must be exactly v${verified.plan.version}, received ${tag}`,
@@ -179,7 +183,11 @@ export async function publishGitHubRelease({
   const gitEvidence = releaseTransitionEvidence(verified.state, "git-tagged");
   if (
     gitEvidence?.tagRef !== `refs/tags/${tag}` ||
-    gitEvidence?.expectedCommit !== verified.plan.expectedCommit
+    gitEvidence?.expectedCommit !== verified.plan.expectedCommit ||
+    gitEvidence?.repository !== verified.plan.repository ||
+    gitEvidence?.sourceRef !== verified.plan.sourceRef ||
+    gitEvidence?.cohortIntegrity !== verified.plan.cohortIntegrity ||
+    gitEvidence?.planIntegrity !== verified.planIntegrity
   ) {
     throw new Error(
       "Git-tag evidence does not match the planned GitHub release",
@@ -209,12 +217,19 @@ export async function publishGitHubRelease({
     created = true;
     release = await requestGitHubJson(endpoint, { token });
   }
-  validatePublishedRelease(release, { tag, prerelease });
+  validatePublishedRelease(release, {
+    tag,
+    prerelease,
+    expectedCommit: verified.plan.expectedCommit,
+  });
   const evidence = {
     apiUrl: normalizedApiUrl,
-    repository: validateRepository(repository),
+    repository: plannedRepository,
     tag,
     expectedCommit: verified.plan.expectedCommit,
+    sourceRef: verified.plan.sourceRef,
+    cohortIntegrity: verified.plan.cohortIntegrity,
+    planIntegrity: verified.planIntegrity,
     releaseId: release.id,
     url: release.html_url,
     prerelease,

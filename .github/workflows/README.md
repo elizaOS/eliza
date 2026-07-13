@@ -43,7 +43,8 @@ publication.
 
 **Triggers:**
 
-- Explicit reusable-workflow call with `source_sha`, `version`, and `channel`
+- Explicit reusable-workflow call with `source_sha`, canonical `source_ref`,
+  `version`, `channel`, and the expected npm publisher username
 - Manual dispatch with the same required identity
 - Optional `candidate_run_id` resumes a prior candidate artifact without
   rebuilding or repacking it
@@ -239,9 +240,10 @@ Manual workflow for generating JSDoc documentation.
 1. Prepare a clean commit whose allowlisted manifests already contain the
    exact release version, public access metadata, and published internal semver
    ranges.
-2. Dispatch `release.yaml` with that commit's full SHA, the same exact semver,
-   and either `beta` or `latest`. Beta requires prerelease semver; latest
-   requires stable semver.
+2. Dispatch `release.yaml` with that commit's full SHA, the canonical branch
+   ref that currently resolves to it, the same exact semver, either `beta` or
+   `latest`, and the npm username represented by the granular token. Beta
+   requires prerelease semver; latest requires stable semver.
 3. If a run is interrupted after candidate creation, dispatch with the same
    identity and the original `candidate_run_id`. The workflow downloads and
    verifies the recorded tarballs instead of rebuilding them.
@@ -286,17 +288,23 @@ version, or incompatible runtime target fails candidate creation.
 
 `packages/scripts/release-candidate.mjs` is the fail-closed boundary for the
 transactional release workflow. Candidate creation requires an explicit JSON
-allowlist (`{"schemaVersion":1,"packages":[...]}`), a clean source SHA, the
-same expected commit, exact semver/channel values, and one explicit build
-command. It then runs that build once and invokes `npm pack --ignore-scripts`
-once per package. An existing output directory is never overwritten or
-repacked.
+allowlist (`{"schemaVersion":1,"packages":[...]}`), canonical repository and
+branch-ref identities, a clean source SHA, the same expected commit, the exact
+registry and publisher, exact semver/channel values, and one explicit build
+command. The workflow proves the remote branch resolves to the checked-out SHA
+immediately before and after packing. It runs that build once and invokes
+`npm pack --ignore-scripts` once per package. An existing output directory is
+never overwritten or repacked.
 
 Each candidate directory contains `release-plan.json`, `release-state.json`,
 and the immutable `tarballs/*.tgz` cohort. The plan records package directories,
 hard-dependency ordering and ranges, entrypoint metadata, manifest integrity,
-and both hexadecimal SHA-512 and npm SRI integrity for every tarball. The state
-can advance only through this sequence:
+and both hexadecimal SHA-512 and npm SRI integrity for every tarball. A cohort
+digest binds those package subjects and their dependency graph to the source,
+repository, registry, and publisher; the candidate staging tag derives from
+that digest. The complete canonical plan has a second digest that every later
+job must present before it can mutate npm, Git, or GitHub. The state can advance
+only through this sequence:
 
 ```
 planned -> built-packed -> candidate-recorded -> registry-bound
@@ -304,15 +312,20 @@ planned -> built-packed -> candidate-recorded -> registry-bound
         -> git-bound -> git-tagged -> release-published -> version-sync-pr
 ```
 
-Registry publication stages missing versions under a candidate-specific tag,
-accepts a retry only when an existing version's `dist.integrity` exactly matches
-the plan, verifies the full cohort, promotes the requested channel, and removes
-the staging tags. The normalized registry and resolved Git push destination are
-recorded before their first external mutation, so an interrupted run cannot be
-resumed against a different target. Only HTTP 404 is absence; auth, throttling,
-transport, server, redirect, and parse failures abort. A credential-free final
-read verifies every version, public channel, and removed candidate tag again
-before Git advances. Git publication uses explicitly named refs, never
+Registry publication first proves the token's `/-/whoami` identity equals the
+planned publisher, then stages missing versions under a candidate-specific
+tag. A retry accepts an existing version only when its `dist.integrity` exactly
+matches the plan. npmjs metadata must also bind `_npmUser` and `gitHead` to the
+planned publisher and source SHA; local registry fixtures that do not emit
+those npmjs fields bind provenance through authenticated publisher identity
+plus the exact candidate bytes. The workflow verifies the full cohort,
+promotes the requested channel, and removes the staging tags. Only HTTP 404 is
+absence; auth, throttling, transport, server, redirect, provenance, and parse
+failures abort. A credential-free final read verifies every version, public
+channel, provenance field, and removed candidate tag again before Git advances.
+The normalized registry and resolved Git push destination are recorded before
+their first external mutation, so an interrupted run cannot be resumed against
+a different target. Git publication uses explicitly named refs, never
 `--follow-tags`, and binds the resolved push destination before mutation.
 The credential-bearing jobs execute release tooling checked out from
 `github.workflow_sha`; the candidate source is a separate checkout used only as
@@ -323,12 +336,15 @@ local owner or an expired cross-runner lease is recoverable without treating a
 live writer as stale.
 
 Finalization pushes only `refs/tags/v<exact-version>`; it never pushes a branch,
-uses `--follow-tags`, rebases, or resolves conflicts automatically. A matching
-remote tag is an idempotent retry and a conflicting tag fails. The GitHub
-Release is then created or read back with the candidate's exact tag and
-prerelease identity. One fixed workflow concurrency group serializes all
-versions and channels. `v2.0.3-beta.8`, `.9`, and `.10` are permanently
-reserved.
+uses `--follow-tags`, rebases, or resolves conflicts automatically. The named
+Git remote must resolve to the planned GitHub repository, and the planned
+source commit must remain reachable from the planned branch. New annotated
+tags use the fixed GitHub Actions bot identity and record the source, cohort,
+and plan digests. A matching remote tag target is an idempotent retry and a
+conflicting tag fails. The GitHub Release is then created or read back with the
+candidate's exact repository, tag, target commit, and prerelease identity. One
+fixed workflow concurrency group serializes all versions and channels.
+`v2.0.3-beta.8`, `.9`, and `.10` are permanently reserved.
 
 ## Troubleshooting
 
