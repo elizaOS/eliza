@@ -1,5 +1,5 @@
 // Exercises eliza sandbox dedicated bootstrap behavior with deterministic cloud-shared lib fixtures.
-import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -18,10 +18,12 @@ import * as realRunSharedAgentTurnNs from "./shared-runtime/run-shared-agent-tur
  */
 
 // See eliza-sandbox-shared-billing.test.ts for why these process-global mocks
-// must be snapshot + restored in afterAll.
+// are installed in beforeAll and restored in afterAll.
 const realRunSharedAgentTurn = { ...realRunSharedAgentTurnNs };
 const realAiBilling = { ...realAiBillingNs };
 const realAiBillingRecords = { ...realAiBillingRecordsNs };
+const originalFetch = globalThis.fetch;
+const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
 
 const reconcileReservation = mock(async (actualCost: number) => ({
   reservedAmount: 0.002,
@@ -61,18 +63,7 @@ class MockInsufficientCreditsError extends Error {
   }
 }
 
-mock.module("./ai-billing", () => ({
-  reserveCredits,
-  billUsage,
-  recordUsageAnalytics,
-  estimateInputTokens,
-  InsufficientCreditsError: MockInsufficientCreditsError,
-}));
-
 const aiBillingRecord = mock(async () => ({ id: "ai-billing-1" }));
-mock.module("./ai-billing-records", () => ({
-  aiBillingRecordsService: { record: aiBillingRecord },
-}));
 
 const runSharedAgentTurn = mock(async () => ({
   reply: "bootstrap reply",
@@ -86,10 +77,22 @@ const runSharedAgentTurn = mock(async () => ({
 }));
 const resolveSharedAgentTurnModel = mock(() => "gpt-oss-120b");
 
-mock.module("./shared-runtime/run-shared-agent-turn", () => ({
-  runSharedAgentTurn,
-  resolveSharedAgentTurnModel,
-}));
+beforeAll(() => {
+  mock.module("./ai-billing", () => ({
+    reserveCredits,
+    billUsage,
+    recordUsageAnalytics,
+    estimateInputTokens,
+    InsufficientCreditsError: MockInsufficientCreditsError,
+  }));
+  mock.module("./ai-billing-records", () => ({
+    aiBillingRecordsService: { record: aiBillingRecord },
+  }));
+  mock.module("./shared-runtime/run-shared-agent-turn", () => ({
+    runSharedAgentTurn,
+    resolveSharedAgentTurnModel,
+  }));
+});
 
 afterAll(() => {
   mock.module("./shared-runtime/run-shared-agent-turn", () => realRunSharedAgentTurn);
@@ -145,7 +148,24 @@ function dedicatedSandbox(overrides: Partial<AgentSandbox> = {}): AgentSandbox {
   } as AgentSandbox;
 }
 
+function enterWorkerRuntime(): void {
+  Object.defineProperty(globalThis, "WebSocketPair", {
+    value: class WebSocketPair {},
+    configurable: true,
+  });
+}
+
+function restoreWorkerRuntime(): void {
+  if (originalWebSocketPair) {
+    Object.defineProperty(globalThis, "WebSocketPair", originalWebSocketPair);
+  } else {
+    Reflect.deleteProperty(globalThis, "WebSocketPair");
+  }
+}
+
 afterEach(() => {
+  globalThis.fetch = originalFetch;
+  restoreWorkerRuntime();
   reconcileReservation.mockClear();
   reserveCredits.mockClear();
   billUsage.mockClear();
@@ -223,6 +243,9 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
 
   test("a freshly-minted tier-upgrade migration target (pending + marker) gets the bootstrap window too (#15943)", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    enterWorkerRuntime();
+    const fetchMock = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchMock;
     // Exactly the row the single-flight mint commits: dedicated-always, born
     // `pending` with its provision job, carrying the server-side reattach
     // marker and its own minted platform env. Users keep chatting against the
@@ -251,17 +274,24 @@ describe("ElizaSandboxService bridge — dedicated bootstrap window", () => {
     );
 
     try {
-      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
-        new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
-          jsonrpc: "2.0",
-          id: "upgrade-boot-turn",
-          method: "message.send",
-          params: { text: "hello" },
-        }),
+      const response = await runWithCloudBindings(
+        {
+          CEREBRAS_API_KEY: "test-key",
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+          AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+        },
+        () =>
+          new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+            jsonrpc: "2.0",
+            id: "upgrade-boot-turn",
+            method: "message.send",
+            params: { text: "hello" },
+          }),
       );
       expect(response.error).toBeUndefined();
       expect((response.result as { text?: string }).text).toBe("bootstrap reply");
       expect(runSharedAgentTurn).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       findRunningSpy.mockRestore();
       findByIdSpy.mockRestore();

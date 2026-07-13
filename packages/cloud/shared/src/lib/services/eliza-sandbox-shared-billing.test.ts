@@ -1,5 +1,5 @@
 // Exercises eliza sandbox shared billing behavior with deterministic cloud-shared lib fixtures.
-import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -11,17 +11,19 @@ import * as realRunSharedAgentTurnNs from "./shared-runtime/run-shared-agent-tur
 
 // Bun runs every cloud-shared test file in a single process, and `mock.module`
 // overrides are process-global with no built-in per-file teardown. The mocks
-// below replace `./shared-runtime/run-shared-agent-turn`, `./ai-billing`, and
-// `./ai-billing-records`; without an explicit restore they leak into later
-// files that import the real modules (e.g. `agent-tier.test.ts` picking up the
-// stub `runSharedAgentTurn` that always returns `degraded: false`), producing
+// installed in `beforeAll` replace `./shared-runtime/run-shared-agent-turn`,
+// `./ai-billing`, and `./ai-billing-records`; without an explicit restore they
+// leak into later files that import the real modules (e.g.
+// `agent-tier.test.ts` picking up the stub `runSharedAgentTurn` that always returns
+// `degraded: false`), producing
 // order-dependent failures. Snapshot the real exports into plain objects at
-// module-evaluation time (the `import *` namespaces above are hoisted before
-// the `mock.module` calls run, but they are live bindings, so the eager spread
-// is what captures the real exports) and re-install them in `afterAll`.
+// module-evaluation time. Install only when this suite starts, then re-install
+// the real exports in `afterAll`.
 const realRunSharedAgentTurn = { ...realRunSharedAgentTurnNs };
 const realAiBilling = { ...realAiBillingNs };
 const realAiBillingRecords = { ...realAiBillingRecordsNs };
+const originalFetch = globalThis.fetch;
+const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
 
 const reconcileReservation = mock(async (actualCost: number) => ({
   reservedAmount: 0.002,
@@ -83,21 +85,7 @@ class MockInsufficientCreditsError extends Error {
   }
 }
 
-mock.module("./ai-billing", () => ({
-  reserveCredits,
-  billUsage,
-  recordUsageAnalytics,
-  estimateInputTokens,
-  InsufficientCreditsError: MockInsufficientCreditsError,
-}));
-
 const aiBillingRecord = mock(async () => ({ id: "ai-billing-1" }));
-
-mock.module("./ai-billing-records", () => ({
-  aiBillingRecordsService: {
-    record: aiBillingRecord,
-  },
-}));
 
 const runSharedAgentTurn = mock(async () => ({
   reply: "metered reply",
@@ -116,10 +104,24 @@ const runSharedAgentTurn = mock(async () => ({
 
 const resolveSharedAgentTurnModel = mock(() => "gpt-oss-120b");
 
-mock.module("./shared-runtime/run-shared-agent-turn", () => ({
-  runSharedAgentTurn,
-  resolveSharedAgentTurnModel,
-}));
+beforeAll(() => {
+  mock.module("./ai-billing", () => ({
+    reserveCredits,
+    billUsage,
+    recordUsageAnalytics,
+    estimateInputTokens,
+    InsufficientCreditsError: MockInsufficientCreditsError,
+  }));
+  mock.module("./ai-billing-records", () => ({
+    aiBillingRecordsService: {
+      record: aiBillingRecord,
+    },
+  }));
+  mock.module("./shared-runtime/run-shared-agent-turn", () => ({
+    runSharedAgentTurn,
+    resolveSharedAgentTurnModel,
+  }));
+});
 
 afterAll(() => {
   mock.module("./shared-runtime/run-shared-agent-turn", () => realRunSharedAgentTurn);
@@ -174,7 +176,24 @@ function sharedSandbox(): AgentSandbox {
   };
 }
 
+function enterWorkerRuntime(): void {
+  Object.defineProperty(globalThis, "WebSocketPair", {
+    value: class WebSocketPair {},
+    configurable: true,
+  });
+}
+
+function restoreWorkerRuntime(): void {
+  if (originalWebSocketPair) {
+    Object.defineProperty(globalThis, "WebSocketPair", originalWebSocketPair);
+  } else {
+    Reflect.deleteProperty(globalThis, "WebSocketPair");
+  }
+}
+
 afterEach(() => {
+  globalThis.fetch = originalFetch;
+  restoreWorkerRuntime();
   reconcileReservation.mockClear();
   reserveCredits.mockClear();
   billUsage.mockClear();
@@ -186,6 +205,69 @@ afterEach(() => {
 });
 
 describe("ElizaSandboxService shared runtime billing", () => {
+  test("running dedicated turns use the Worker router origin and bypass shared billing", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    enterWorkerRuntime();
+    const sandbox = {
+      ...sharedSandbox(),
+      execution_tier: "dedicated-always",
+      bridge_url: "https://legacy-bridge.example",
+      health_url: "http://100.64.0.10:23816/api/health",
+      node_id: "node-1",
+      bridge_port: 18923,
+      web_ui_port: 23816,
+      headscale_ip: "100.64.0.10",
+      sandbox_id: "sandbox-e06bb509",
+      environment_vars: { ELIZA_API_TOKEN: "agent-token" },
+    } as AgentSandbox;
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const requests: Array<{ url: string; headers: Headers }> = [];
+    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        url: typeof input === "string" ? input : input.toString(),
+        headers: new Headers(init?.headers),
+      });
+      return Response.json({
+        jsonrpc: "2.0",
+        id: "dedicated-turn",
+        result: { text: "dedicated reply" },
+      });
+    });
+
+    try {
+      const response = await runWithCloudBindings(
+        {
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+          AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+        },
+        () =>
+          new ElizaSandboxService().bridge(sandbox.id, sandbox.organization_id, {
+            jsonrpc: "2.0",
+            id: "dedicated-turn",
+            method: "message.send",
+            params: { text: "hello" },
+          }),
+      );
+
+      expect(response.result).toMatchObject({
+        text: "dedicated reply",
+        transport: "native-jsonrpc",
+      });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.url).toBe("https://eliza-production-1.elizacloud.ai/bridge");
+      expect(requests[0]?.headers.get("authorization")).toBe("Bearer agent-token");
+      expect(requests[0]?.headers.get("x-forwarded-host")).toBe(`${sandbox.id}.elizacloud.ai`);
+      expect(runSharedAgentTurn).not.toHaveBeenCalled();
+      expect(reserveCredits).not.toHaveBeenCalled();
+      expect(billUsage).not.toHaveBeenCalled();
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+    }
+  });
+
   test("meters successful shared-runtime turns", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = sharedSandbox();
