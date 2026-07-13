@@ -1,4 +1,7 @@
-// Exercises eliza sandbox shared billing behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Covers shared-runtime reservation, settlement, and dedicated-routing billing
+ * boundaries using deterministic repository and provider fixtures.
+ */
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";

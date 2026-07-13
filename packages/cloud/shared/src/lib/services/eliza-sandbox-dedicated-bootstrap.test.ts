@@ -1,4 +1,7 @@
-// Exercises eliza sandbox dedicated bootstrap behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Covers dedicated-agent bootstrap routing through shared and container
+ * runtimes using deterministic repository and transport fixtures.
+ */
 import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test } from "bun:test";
 
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";

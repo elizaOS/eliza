@@ -1,4 +1,7 @@
-// Exercises eliza sandbox behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Covers sandbox lifecycle, state transfer, recovery, and upgrade invariants
+ * using deterministic repository and provider fixtures.
+ */
 import {
   afterAll,
   afterEach,
