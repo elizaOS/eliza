@@ -1,5 +1,7 @@
 /**
- * Real-engine concurrency lifecycle e2e (#13778, epic #13766 WS8): 10 tasks
+ * Real-engine concurrency lifecycle integration test (#13778, epic #13766
+ * WS8) — "integration", not "e2e": the ACP subprocess is a deterministic
+ * in-process stand-in, while everything else is real. 10 tasks
  * submitted against a maxSessions=5 worker cap through the REAL
  * OrchestratorTaskService + real TaskWatchdogService, driven by a cap-enforcing
  * deterministic ACP that manages REAL per-session scratch directories the same
@@ -274,24 +276,31 @@ async function newTask(
   return detail.task.id;
 }
 
-/** Assert a status is terminal AND reachable from `active`/`validating` only via
- * a real transition-table edge — never set arbitrarily. */
+/** Terminal statuses actually reachable via an edge in the transition table —
+ * derived from the table itself so the assertion can never degenerate into
+ * comparing a constant against itself. */
+const REACHABLE_TERMINAL_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
+  new Set(
+    Object.values(TASK_STATUS_TRANSITIONS)
+      .flatMap((edges) => Object.values(edges))
+      .filter((status) => TERMINAL_TASK_STATUSES.has(status)),
+  );
+
+/** Assert a status is terminal AND that at least one real transition-table edge
+ * produces it — a status the table cannot reach fails here even if someone adds
+ * it to TERMINAL_TASK_STATUSES. */
 function assertLegalTerminal(status: OrchestratorTaskStatus): void {
   expect(TERMINAL_TASK_STATUSES.has(status)).toBe(true);
-  if (status === "done") {
-    expect(TASK_STATUS_TRANSITIONS.validating.validation_passed).toBe("done");
-  } else if (status === "failed") {
-    // The sole producer of `failed` is the `unrecoverable` trigger.
-    expect(TASK_STATUS_TRANSITIONS.active.unrecoverable).toBe("failed");
-  } else if (status === "archived") {
-    expect(TASK_STATUS_TRANSITIONS.active.archived).toBe("archived");
-  }
+  expect(
+    REACHABLE_TERMINAL_STATUSES.has(status),
+    `terminal status '${status}' is not produced by any TASK_STATUS_TRANSITIONS edge`,
+  ).toBe(true);
 }
 
 const CAP = 5;
 const TOTAL = 10;
 
-describe("real-engine concurrency lifecycle e2e (#13778)", () => {
+describe("real-engine concurrency lifecycle integration (#13778)", () => {
   const saved: Record<string, string | undefined> = {};
   const roots: string[] = [];
 

@@ -7,8 +7,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import * as pluginModule from "../src/index.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as pluginModule from "../src/index.ts";
 import codingToolsPlugin, {
   availableToolsProvider,
   CODING_TOOLS_CONTEXTS,
@@ -20,7 +20,7 @@ import codingToolsPlugin, {
   SandboxService,
   SESSION_CWD_SERVICE,
   SessionCwdService,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 const EXPECTED_ACTIONS = ["FILE", "SHELL", "WORKTREE"];
 
@@ -87,6 +87,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
 
   it("does not export removed actions or service constants", () => {
     expect("bashAction" in pluginModule).toBe(false);
+    expect("CodingTaskExecutor" in pluginModule).toBe(false);
     expect("BASH_AST_SERVICE" in pluginModule).toBe(false);
     expect("OS_SANDBOX_SERVICE" in pluginModule).toBe(false);
     expect("SHELL_TASK_SERVICE" in pluginModule).toBe(false);
@@ -115,6 +116,64 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
       const ok = await action.validate?.(runtime, message);
       expect(ok, action.name).toBe(true);
     }
+  });
+
+  it("auto-enables only for configured terminal-capable environments", () => {
+    const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
+    expect(shouldEnable).toBeTypeOf("function");
+    if (!shouldEnable) return;
+
+    expect(shouldEnable({}, { features: {} })).toBe(false);
+    expect(shouldEnable({}, { features: { codingTools: true } })).toBe(true);
+    expect(
+      shouldEnable(
+        { ELIZA_BUILD_VARIANT: "store" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnable(
+        { ELIZA_PLATFORM: "ios" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnable(
+        { ELIZA_PLATFORM: "android", ELIZA_RUNTIME_MODE: "local-yolo" },
+        { features: { "coding-agent": {} } },
+      ),
+    ).toBe(true);
+    expect(
+      shouldEnable(
+        { ANDROID_ROOT: "/system", RUNTIME_MODE: "remote" },
+        { features: { codingTools: { enabled: false } } },
+      ),
+    ).toBe(false);
+  });
+
+  it("disposes every registered long-lived service", async () => {
+    const stop = {
+      sandbox: vi.fn(async () => undefined),
+      fileState: vi.fn(async () => undefined),
+      session: vi.fn(async () => undefined),
+      ripgrep: vi.fn(async () => undefined),
+    };
+    const instances = new Map<string, { stop: () => Promise<void> }>([
+      [SandboxService.serviceType, { stop: stop.sandbox }],
+      [FileStateService.serviceType, { stop: stop.fileState }],
+      [SessionCwdService.serviceType, { stop: stop.session }],
+      [RipgrepService.serviceType, { stop: stop.ripgrep }],
+    ]);
+    const runtime = {
+      getService: (serviceType: string) => instances.get(serviceType),
+    } as IAgentRuntime;
+
+    await codingToolsPlugin.dispose?.(runtime);
+
+    expect(stop.sandbox).toHaveBeenCalledOnce();
+    expect(stop.fileState).toHaveBeenCalledOnce();
+    expect(stop.session).toHaveBeenCalledOnce();
+    expect(stop.ripgrep).toHaveBeenCalledOnce();
   });
 });
 
@@ -235,20 +294,24 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     expect(result.text).toContain("other.md");
   });
 
-  it("GREP finds the NEEDLE token (skip when ripgrep absent)", async () => {
+  it("FILE action=grep finds the NEEDLE token via the plugin's own ripgrep resolution", async (ctx) => {
+    // The service under test IS the resolution path: RipgrepService.start()
+    // resolved either the bundled `@vscode/ripgrep` binary or a system `rg`.
+    // Assert that resolution produced a runnable binary; when neither exists
+    // on the host, skip VISIBLY (never a silent vacuous pass), without ever
+    // poking a substitute path into the service.
     const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
+    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
     if (!rg) return;
-    const fs2 = await import("node:fs");
-    const initial = rg.binary();
-    if (!fs2.existsSync(initial)) {
-      const candidates = [
-        "/opt/homebrew/bin/rg",
-        "/usr/local/bin/rg",
-        "/usr/bin/rg",
-      ];
-      const sys = candidates.find((p) => fs2.existsSync(p));
-      if (!sys) return;
-      (rg as { rgPath: string }).rgPath = sys;
+    const binary = rg.binary();
+    const { execFileSync } = await import("node:child_process");
+    try {
+      execFileSync(binary, ["--version"], { stdio: "ignore" });
+    } catch {
+      ctx.skip(
+        `ripgrep unavailable: RipgrepService resolved '${binary}' but it is not runnable on this host`,
+      );
+      return;
     }
     const action = findAction("FILE");
     const result = await action.handler?.(runtime, makeMessage(), undefined, {

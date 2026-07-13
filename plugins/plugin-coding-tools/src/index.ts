@@ -90,7 +90,6 @@ export default codingToolsPlugin;
 export { availableToolsProvider } from "./providers/available-tools.js";
 export * from "./services/coding-agent-context.js";
 export {
-  CodingTaskExecutor,
   FileStateService,
   RipgrepService,
   SandboxService,
