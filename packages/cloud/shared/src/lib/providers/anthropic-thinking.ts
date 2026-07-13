@@ -42,6 +42,26 @@ export function supportsExtendedThinking(modelId: string): boolean {
   return EXTENDED_THINKING_MODEL_PATTERNS.some((pattern) => pattern.test(normalizedId));
 }
 
+/**
+ * Opus models that use ADAPTIVE extended thinking (`thinking: { type: "adaptive" }`,
+ * the provider chooses depth) rather than a manual `enabled + budgetTokens`.
+ * Sending a manual budget to these produces the provider 400 this fixes (#16149).
+ * Dot and hyphen aliases + provider prefixes are covered (no `^` anchor).
+ */
+const ADAPTIVE_THINKING_MODEL_PATTERNS = [
+  /claude-opus-4[.-]7/, // Claude Opus 4.7
+  /claude-opus-4[.-]8/, // Claude Opus 4.8
+];
+
+/**
+ * Whether the model uses ADAPTIVE extended thinking (vs a manual token budget).
+ * Adaptive models are a subset of {@link supportsExtendedThinking}.
+ */
+export function usesAdaptiveThinking(modelId: string): boolean {
+  const normalizedId = modelId.toLowerCase();
+  return ADAPTIVE_THINKING_MODEL_PATTERNS.some((pattern) => pattern.test(normalizedId));
+}
+
 const ENV_KEY = "ANTHROPIC_COT_BUDGET";
 const ENV_MAX_KEY = "ANTHROPIC_COT_BUDGET_MAX";
 
@@ -173,6 +193,14 @@ const anthropicThinkingOptions = (budgetTokens: number): AnthropicProviderOption
   thinking: { type: "enabled", budgetTokens },
 });
 
+// Adaptive models let the provider choose thinking depth and reject a manual
+// `budgetTokens` (#16149). A configured numeric budget still gates thinking
+// on/off (see `anthropicThinkingProviderOptions`) but is NOT forwarded as a
+// token cap; `effort` control is intentionally left to a follow-up per the issue.
+const anthropicAdaptiveThinkingOptions = (): AnthropicProviderOptions => ({
+  thinking: { type: "adaptive" },
+});
+
 /**
  * AI SDK provider options fragment when budget is active and model is Anthropic.
  *
@@ -188,7 +216,15 @@ export function anthropicThinkingProviderOptions(
   if (budget === null) {
     return {};
   }
-  const anthropic = anthropicThinkingOptions(budget) as CloudJsonObject;
+  // The resolved budget already gated thinking on/off (and 0 → off). Adaptive
+  // models (Opus 4.7/4.8) must NOT receive the manual `budgetTokens` — the
+  // provider 400s on it — so emit the adaptive shape; the numeric budget stays a
+  // gate, not a forwarded cap (#16149). Manual-budget models are unchanged.
+  const anthropic = (
+    usesAdaptiveThinking(modelId)
+      ? anthropicAdaptiveThinkingOptions()
+      : anthropicThinkingOptions(budget)
+  ) as CloudJsonObject;
   return {
     providerOptions: {
       anthropic,
