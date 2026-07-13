@@ -18,7 +18,6 @@ type ClaimResult =
       claimed: true;
       session: CliAuthSession;
       apiKey: ApiKey;
-      plainKey: string;
     }
   | {
       claimed: false;
@@ -54,7 +53,7 @@ export class CliAuthSessionCompletionService {
     userId: string;
     organizationId: string;
   }): Promise<ClaimResult> {
-    const { apiKey, plainKey } = await this.prepareApiKey(params.userId, params.organizationId);
+    const { apiKey } = await this.prepareApiKey(params.userId, params.organizationId);
     const now = new Date();
 
     return await dbWrite.transaction(async (tx) => {
@@ -103,7 +102,6 @@ export class CliAuthSessionCompletionService {
         claimed: true,
         session: claimedSession,
         apiKey: createdKey,
-        plainKey,
       };
     });
   }
@@ -111,7 +109,7 @@ export class CliAuthSessionCompletionService {
   private async prepareApiKey(
     userId: string,
     organizationId: string,
-  ): Promise<{ apiKey: NewApiKey; plainKey: string }> {
+  ): Promise<{ apiKey: NewApiKey }> {
     const { key, hash, prefix } = apiKeysService.generateApiKey();
     const id = crypto.randomUUID();
     const encrypted = await encryptApiKey(organizationId, id, key);
@@ -134,7 +132,6 @@ export class CliAuthSessionCompletionService {
         key_kms_key_id: encrypted.kms_key_id,
         key_kms_key_version: encrypted.kms_key_version,
       },
-      plainKey: key,
     };
   }
 }

@@ -1,4 +1,7 @@
-/** Drives CLI-session re-completion through the real route, service, DB transaction, KMS boundary, and PGlite; auth/logger are controlled, and the race test barriers the real primary read. */
+/**
+ * Drives CLI-session completion through the real route, transaction, and KMS
+ * boundary against PGlite by default and PostgreSQL when configured.
+ */
 import {
   afterAll,
   beforeAll,
@@ -11,8 +14,10 @@ import {
 } from "bun:test";
 import { Hono } from "hono";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
+const databaseUrl =
+  process.env.CLI_AUTH_POSTGRES_URL?.trim() || "pglite://memory";
+process.env.DATABASE_URL = databaseUrl;
+process.env.TEST_DATABASE_URL = databaseUrl;
 process.env.NODE_ENV ||= "test";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -22,8 +27,7 @@ const API_KEY_ID = "44444444-4444-4444-8444-444444444444";
 
 interface CompleteResponseBody {
   alreadyAuthenticated: boolean;
-  apiKey: string | null;
-  keyPrefix: string | null;
+  keyPrefix: string;
 }
 
 let currentUserId = USER_ID;
@@ -41,6 +45,7 @@ mock.module("@/lib/utils/logger", () => ({
 
 let dbWrite: typeof import("../../../../../shared/src/db/client").dbWrite;
 let cliAuthSessionCompletionService: typeof import("../../../../../shared/src/lib/services/cli-auth-session-completion").cliAuthSessionCompletionService;
+let apiKeysService: typeof import("../../../../../shared/src/lib/services/api-keys").apiKeysService;
 let closeDb:
   | typeof import("../../../../../shared/src/db/client").closeDatabaseConnectionsForTests
   | undefined;
@@ -52,6 +57,9 @@ beforeAll(async () => {
   ));
   ({ cliAuthSessionCompletionService } = await import(
     "../../../../../shared/src/lib/services/cli-auth-session-completion"
+  ));
+  ({ apiKeysService } = await import(
+    "../../../../../shared/src/lib/services/api-keys"
   ));
   await dbWrite.execute(`CREATE TABLE api_keys (
     id uuid PRIMARY KEY, name text NOT NULL, description text, key_hash text NOT NULL UNIQUE,
@@ -160,7 +168,6 @@ describe("CLI session completion with real persistence", () => {
     expect(await response.json()).toMatchObject({
       success: true,
       alreadyAuthenticated: true,
-      apiKey: null,
       keyPrefix: "eliza_cli",
     });
     const count = await dbWrite.execute(
@@ -196,9 +203,8 @@ describe("CLI session completion with real persistence", () => {
     ]);
     const winner = bodies.find((body) => !body.alreadyAuthenticated);
     const retry = bodies.find((body) => body.alreadyAuthenticated);
-    expect(winner?.apiKey).toStartWith("eliza_");
-    expect(retry?.apiKey).toBeNull();
     expect(retry?.keyPrefix).toBe(winner?.keyPrefix);
+    expect(bodies.every((body) => !("apiKey" in body))).toBe(true);
 
     const keys = await dbWrite.execute(
       "SELECT id, is_active FROM api_keys ORDER BY created_at, id",
@@ -264,6 +270,57 @@ describe("CLI session completion with real persistence", () => {
     expect(JSON.stringify(await response.json())).toContain(
       "Session already authenticated or expired",
     );
+  });
+
+  test("rolls back the session claim when API-key insertion fails", async () => {
+    await seedPendingSession("insert-failure");
+    const generate = spyOn(apiKeysService, "generateApiKey").mockReturnValue({
+      key: "eliza_duplicate_plaintext",
+      hash: "hash",
+      prefix: "eliza_duplicate",
+    });
+
+    try {
+      const response = await complete("insert-failure");
+      expect(response.status).toBe(500);
+    } finally {
+      generate.mockRestore();
+    }
+
+    const session = await dbWrite.execute(
+      "SELECT status, user_id, api_key_id, authenticated_at FROM cli_auth_sessions WHERE session_id = 'insert-failure'",
+    );
+    expect(session.rows[0]).toMatchObject({
+      status: "pending",
+      user_id: null,
+      api_key_id: null,
+      authenticated_at: null,
+    });
+    const keys = await dbWrite.execute(
+      "SELECT count(*)::int AS count FROM api_keys",
+    );
+    expect(keys.rows[0]).toMatchObject({ count: 1 });
+  });
+
+  test.each([
+    [
+      "missing-key-reference",
+      "UPDATE cli_auth_sessions SET api_key_id = NULL WHERE session_id = 'missing-key-reference'",
+    ],
+    ["missing-key-row", `DELETE FROM api_keys WHERE id = '${API_KEY_ID}'`],
+    [
+      "mismatched-key-owner",
+      `UPDATE api_keys SET user_id = '${OTHER_USER_ID}' WHERE id = '${API_KEY_ID}'`,
+    ],
+  ])("fails closed for authenticated session integrity defect: %s", async (sessionId, mutation) => {
+    await seedSession(sessionId, USER_ID);
+    await dbWrite.execute(mutation);
+
+    const response = await complete(sessionId);
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.success).not.toBe(true);
+    expect(JSON.stringify(body)).not.toContain("eliza_cli");
   });
 
   test("rejects a missing session", async () => {

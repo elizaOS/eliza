@@ -77,7 +77,13 @@ function completionState(session: CliAuthSession, keyPrefix?: string) {
   return {
     session,
     apiKey: keyPrefix
-      ? ({ id: API_KEY_ID, key_prefix: keyPrefix, expires_at: null } as never)
+      ? ({
+          id: API_KEY_ID,
+          key_prefix: keyPrefix,
+          expires_at: null,
+          user_id: USER_ID,
+          organization_id: ORG_ID,
+        } as never)
       : undefined,
   };
 }
@@ -112,14 +118,12 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
           key_prefix: "ek_live_pre",
           expires_at: null,
         } as never,
-        plainKey: "ek_live_plaintext_secret",
       } as never),
     );
     const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
 
     expect(createSpy).toHaveBeenCalledTimes(1);
     expect(result.alreadyAuthenticated).toBe(false);
-    expect(result.apiKey).toBe("ek_live_plaintext_secret");
     expect(result.keyPrefix).toBe("ek_live_pre");
   });
 
@@ -137,6 +141,8 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
           id: API_KEY_ID,
           key_prefix: "ek_live_pre",
           expires_at: null,
+          user_id: USER_ID,
+          organization_id: ORG_ID,
         } as never,
       }),
     );
@@ -144,7 +150,6 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
 
     expect(result).toMatchObject({
       alreadyAuthenticated: true,
-      apiKey: null,
       keyPrefix: "ek_live_pre",
     });
   });
@@ -162,22 +167,19 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
     // The crux of the regression fix: NO error thrown, and NO duplicate key.
     expect(result.alreadyAuthenticated).toBe(true);
     expect(result.keyPrefix).toBe("ek_live_pre");
-    // Plaintext is never re-derivable (D-6) — the browser only needs keyPrefix.
-    expect(result.apiKey).toBeNull();
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  test("re-completing when the api_keys row is gone still succeeds with a null keyPrefix", async () => {
+  test("fails fast when an authenticated session references no API-key row", async () => {
     track(
       spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
         completionState(authenticatedSession(USER_ID)),
       ),
     );
 
-    const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
-
-    expect(result.alreadyAuthenticated).toBe(true);
-    expect(result.keyPrefix).toBeNull();
+    await expect(
+      cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),
+    ).rejects.toMatchObject({ code: "CLI_AUTH_SESSION_INTEGRITY" });
   });
 
   test("rejects an authenticated legacy session whose owner cannot be proven", async () => {

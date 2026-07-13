@@ -2,6 +2,7 @@
  * Service for managing CLI authentication sessions.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { decryptApiKey } from "../../db/crypto/api-keys";
 import { apiKeysRepository, cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
@@ -20,11 +21,11 @@ export class CliAuthSessionsService {
   private async alreadyAuthenticatedResult(
     session: CliAuthSession,
     userId: string,
+    organizationId: string,
     primaryApiKey: ApiKey | null,
   ): Promise<{
     session: CliAuthSession;
-    apiKey: null;
-    keyPrefix: string | null;
+    keyPrefix: string;
     expiresAt: Date | null;
     alreadyAuthenticated: true;
   }> {
@@ -32,22 +33,35 @@ export class CliAuthSessionsService {
       throw new Error("Session already authenticated or expired");
     }
 
-    let keyPrefix: string | null = null;
-    let expiresAt: Date | null = null;
-    if (session.api_key_id) {
-      if (primaryApiKey) {
-        keyPrefix = primaryApiKey.key_prefix;
-        expiresAt = primaryApiKey.expires_at ?? null;
-      }
+    if (!session.api_key_id) {
+      throw new ElizaError("Authenticated CLI session has no API key reference", {
+        code: "CLI_AUTH_SESSION_INTEGRITY",
+        context: { sessionId: session.session_id, defect: "missing_api_key_id" },
+        severity: "fatal",
+      });
+    }
+    if (!primaryApiKey) {
+      throw new ElizaError("Authenticated CLI session references a missing API key", {
+        code: "CLI_AUTH_SESSION_INTEGRITY",
+        context: { sessionId: session.session_id, defect: "missing_api_key_row" },
+        severity: "fatal",
+      });
+    }
+    if (primaryApiKey.user_id !== userId || primaryApiKey.organization_id !== organizationId) {
+      throw new ElizaError(
+        "Authenticated CLI session references an API key with different ownership",
+        {
+          code: "CLI_AUTH_SESSION_INTEGRITY",
+          context: { sessionId: session.session_id, defect: "api_key_owner_mismatch" },
+          severity: "fatal",
+        },
+      );
     }
 
     return {
       session,
-      // Plaintext is never re-derivable (D-6); the CLI reads it via the
-      // single-use poll endpoint. The browser only consumes `keyPrefix`.
-      apiKey: null,
-      keyPrefix,
-      expiresAt,
+      keyPrefix: primaryApiKey.key_prefix,
+      expiresAt: primaryApiKey.expires_at ?? null,
       alreadyAuthenticated: true,
     };
   }
@@ -99,8 +113,7 @@ export class CliAuthSessionsService {
     organizationId: string,
   ): Promise<{
     session: CliAuthSession;
-    apiKey: string | null;
-    keyPrefix: string | null;
+    keyPrefix: string;
     expiresAt: Date | null;
     alreadyAuthenticated: boolean;
   }> {
@@ -117,7 +130,12 @@ export class CliAuthSessionsService {
     // Browser retries are safe only when ownership is positively established;
     // a legacy row without an owner cannot prove that the caller completed it.
     if (session.status === "authenticated") {
-      return await this.alreadyAuthenticatedResult(session, userId, state.apiKey ?? null);
+      return await this.alreadyAuthenticatedResult(
+        session,
+        userId,
+        organizationId,
+        state.apiKey ?? null,
+      );
     }
 
     if (session.status !== "pending") {
@@ -136,7 +154,12 @@ export class CliAuthSessionsService {
       // update. This avoids a read-replica lag window after another request
       // wins the claim.
       if (claim.session?.status === "authenticated") {
-        return await this.alreadyAuthenticatedResult(claim.session, userId, claim.apiKey ?? null);
+        return await this.alreadyAuthenticatedResult(
+          claim.session,
+          userId,
+          organizationId,
+          claim.apiKey ?? null,
+        );
       }
       if (!claim.session || claim.session.expires_at <= new Date()) {
         throw new Error("Invalid or expired session");
@@ -146,7 +169,6 @@ export class CliAuthSessionsService {
 
     return {
       session: claim.session,
-      apiKey: claim.plainKey,
       keyPrefix: claim.apiKey.key_prefix,
       expiresAt: claim.apiKey.expires_at,
       alreadyAuthenticated: false,

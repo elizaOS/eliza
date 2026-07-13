@@ -33,7 +33,6 @@ app.post("/", async (c) => {
 
     return c.json({
       success: true,
-      apiKey: result.apiKey,
       keyPrefix: result.keyPrefix,
       expiresAt: result.expiresAt,
       // Idempotent completion: true when this call found the session already
