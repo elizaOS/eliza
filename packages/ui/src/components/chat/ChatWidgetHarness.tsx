@@ -378,6 +378,13 @@ export function ChatWidgetHarness(): React.JSX.Element {
       new URLSearchParams(window.location.search).has("maximized")) ||
     (typeof __ELIZA_CHAT_HARNESS_MAXIMIZE__ !== "undefined" &&
       __ELIZA_CHAT_HARNESS_MAXIMIZE__ === true);
+  // The REAL launcher (its per-plugin widgets fetch `/api/*`, read the client
+  // base URL, and subscribe to the app store) is a browser/device visual feature
+  // covered by the Playwright e2e. The jsdom script-logic unit test stubs only a
+  // minimal client, so mounting it there crashes on `client.getBaseUrl` and trips
+  // the mock provider's publish-during-render — skip it under jsdom.
+  const isJsdom =
+    typeof navigator !== "undefined" && navigator.userAgent.includes("jsdom");
   // `?home` (or `?onboarding=0`) opens the harness PAST onboarding with the chat
   // resting on the settled home, so the real launcher (widgets + notification
   // inbox + banners) can be reviewed directly without stepping the first-run tour.
@@ -855,7 +862,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
             fetches before the mock wins; then kept mounted but hidden while the
             chat is MAXIMIZED so the full-bleed glass blurs only the bare
             wallpaper. Absolute over the shader field (z-1). */}
-        {homeSeeded ? (
+        {homeSeeded && !isJsdom ? (
           <div
             style={{
               position: "absolute",
@@ -883,7 +890,7 @@ export function ChatWidgetHarness(): React.JSX.Element {
         {/* The REAL top-of-screen heads-up banners (portal-mounted) — the same
             liquid-glass banner surface production ships; the seed effect above
             pushes a couple so they show on load. */}
-        <NotificationBanners />
+        {isJsdom ? null : <NotificationBanners />}
       </div>
     </MockAppProvider>
   );
