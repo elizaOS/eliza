@@ -20,8 +20,8 @@
  *     `runtime.updateRoom` so it survives a restart.
  *   - The in-memory cache is hydrated from `room.metadata.currentTopics` the
  *     first time a room is touched.
- *   - All persistence is defensive: any failure is logged and swallowed — it
- *     must never throw into the message loop.
+ *   - Missing rooms are expected during deletion races and skip persistence;
+ *     database failures propagate to the message-loop boundary for reporting.
  *
  * This service is PURE LOGIC (no fs / process / native deps) so it is safe for
  * the Node, browser, and edge build targets.
@@ -90,25 +90,18 @@ export class ChannelTopicsService extends Service {
 
 	/**
 	 * Hydrate a room's LRU from `room.metadata.currentTopics` the first time it
-	 * is accessed. Defensive: any failure leaves the room with an empty list.
+	 * is accessed. Failed database reads remain unhydrated so callers can retry.
 	 */
 	private async hydrateRoom(roomId: UUID): Promise<void> {
 		if (this.hydrated.has(roomId)) return;
-		this.hydrated.add(roomId);
-		try {
-			const room = await this.runtime.getRoom(roomId);
-			const persisted = coerceTopicList(
-				room?.metadata?.[CHANNEL_TOPICS_METADATA_KEY],
-			);
-			if (persisted.length > 0) {
-				this.topicsByRoom.set(roomId, persisted);
-			}
-		} catch (error) {
-			logger.warn(
-				{ src: "service:channel_topics", roomId, err: error },
-				`${LOG_PREFIX} hydrate from room metadata failed`,
-			);
+		const room = await this.runtime.getRoom(roomId);
+		const persisted = coerceTopicList(
+			room?.metadata?.[CHANNEL_TOPICS_METADATA_KEY],
+		);
+		if (persisted.length > 0) {
+			this.topicsByRoom.set(roomId, persisted);
 		}
+		this.hydrated.add(roomId);
 	}
 
 	/**
@@ -142,57 +135,40 @@ export class ChannelTopicsService extends Service {
 	}
 
 	/**
-	 * Persist a room's topic list to `room.metadata.currentTopics`. Defensive:
-	 * a missing room or a failed update is logged and swallowed — it must never
-	 * throw into the message loop.
+	 * Persist a room's topic list to `room.metadata.currentTopics`. A missing room
+	 * is an expected deletion race; database failures propagate to the boundary.
 	 */
 	private async persistRoom(roomId: UUID, topics: string[]): Promise<void> {
-		try {
-			const room = await this.runtime.getRoom(roomId);
-			if (!room) {
-				logger.debug(
-					{ src: "service:channel_topics", roomId },
-					`${LOG_PREFIX} room not found; skipping topic persistence`,
-				);
-				return;
-			}
-			const updated: Room = {
-				...room,
-				metadata: {
-					...room.metadata,
-					[CHANNEL_TOPICS_METADATA_KEY]: topics,
-				},
-			};
-			await this.runtime.updateRoom(updated);
-		} catch (error) {
-			logger.warn(
-				{ src: "service:channel_topics", roomId, err: error },
-				`${LOG_PREFIX} persist topics to room metadata failed`,
+		const room = await this.runtime.getRoom(roomId);
+		if (!room) {
+			logger.debug(
+				{ src: "service:channel_topics", roomId },
+				`${LOG_PREFIX} room not found; skipping topic persistence`,
 			);
+			return;
 		}
+		const updated: Room = {
+			...room,
+			metadata: {
+				...room.metadata,
+				[CHANNEL_TOPICS_METADATA_KEY]: topics,
+			},
+		};
+		await this.runtime.updateRoom(updated);
 	}
 
 	/**
 	 * Record newly-extracted topics for a room: hydrate (first touch) → apply to
 	 * the LRU (dedupe + FIFO evict) → persist to room metadata. A no-op when
-	 * `topics` is empty. Never throws — safe to fire-and-forget from the loop.
+	 * `topics` is empty. Persistence failures propagate to the caller boundary.
 	 */
 	async recordTopics(roomId: UUID, topics: string[]): Promise<void> {
 		if (!roomId || !Array.isArray(topics) || topics.length === 0) {
 			return;
 		}
-		try {
-			await this.hydrateRoom(roomId);
-			const next = this.applyTopics(roomId, topics);
-			await this.persistRoom(roomId, next);
-		} catch (error) {
-			// Belt-and-suspenders: the inner helpers already swallow, but the
-			// public entry point must NEVER throw into the turn.
-			logger.warn(
-				{ src: "service:channel_topics", roomId, err: error },
-				`${LOG_PREFIX} recordTopics failed`,
-			);
-		}
+		await this.hydrateRoom(roomId);
+		const next = this.applyTopics(roomId, topics);
+		await this.persistRoom(roomId, next);
 	}
 
 	/**
