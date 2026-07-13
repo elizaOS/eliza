@@ -305,7 +305,8 @@ interface AccountRoutingShape {
 }
 
 function readAccountRouting(config: ElizaConfig): AccountUseCaseRouting {
-  return (config as ElizaConfig & AccountRoutingShape).accountRouting ?? {};
+  const routing = (config as ElizaConfig & AccountRoutingShape).accountRouting;
+  return routing ? routing : {};
 }
 
 function writeAccountRouting(
@@ -686,8 +687,9 @@ type TierStatus = "available" | "throttled" | "unavailable";
 
 function resolveTierStatus(
   tier: AccountRoutingTier,
-  accountsForProvider: LinkedAccountConfig[],
+  accountsForProvider: LinkedAccountConfig[] | undefined,
 ): { status: TierStatus; resetsAt?: number; accountId?: string } {
+  if (!accountsForProvider) return { status: "unavailable" };
   const now = Date.now();
   const scoped = tier.accountId
     ? accountsForProvider.filter((a) => a.id === tier.accountId)
@@ -719,9 +721,17 @@ function resolveTierStatus(
         typeof a.healthDetail?.until === "number" &&
         a.healthDetail.until > now,
     )
-    .sort(
-      (x, y) => (x.healthDetail?.until ?? 0) - (y.healthDetail?.until ?? 0),
-    );
+    .sort((x, y) => {
+      const xUntil = x.healthDetail?.until;
+      const yUntil = y.healthDetail?.until;
+      if (typeof xUntil !== "number" || typeof yUntil !== "number") {
+        throw new ElizaError("Rate-limited account is missing its reset time", {
+          code: "ACCOUNT_RATE_LIMIT_RESET_MISSING",
+          context: { xAccountId: x.id, yAccountId: y.id },
+        });
+      }
+      return xUntil - yUntil;
+    });
   const soonest = throttled[0];
   if (soonest) {
     return {
@@ -752,11 +762,15 @@ function buildRoutingView(
     Array<AccountRoutingTier & { status: TierStatus; resetsAt?: number }>
   >;
   for (const useCase of ACCOUNT_USE_CASES) {
-    const tiers = routing[useCase] ?? [];
+    const tiers = routing[useCase];
+    if (!tiers) {
+      view[useCase] = [];
+      continue;
+    }
     view[useCase] = tiers.map((tier) => {
       const { status, resetsAt } = resolveTierStatus(
         tier,
-        accountsByProvider.get(tier.providerId) ?? [],
+        accountsByProvider.get(tier.providerId),
       );
       return { ...tier, status, ...(resetsAt ? { resetsAt } : {}) };
     });
