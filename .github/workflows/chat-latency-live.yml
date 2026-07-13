@@ -3,6 +3,18 @@ name: Chat Latency Live
 # Manual, privacy-safe comparison of Cerebras direct and the Eliza Cloud model
 # gateway from the same GitHub-hosted runner. Production is never automatic:
 # selecting it binds the job to the protected production environment.
+#
+# Dispatch sequence for exact artifacts (checkout SHA == deployed SHA, #16185):
+#   1. Merge to develop; Cloud CF Deploy ships that exact commit and
+#      /api/health serves it as `commit`.
+#   2. Confirm refs/heads/develop still equals the served deployment SHA.
+#   3. Dispatch this workflow on ref develop with expected_gateway_sha set to
+#      that commit. GITHUB_SHA of the dispatched run is the head of the
+#      dispatch ref, so the live job's bind step fails before any paid request
+#      unless the checkout equals expected_gateway_sha; the served SHA is then
+#      re-verified before and after the benchmark. If develop advanced past
+#      the deployment, redeploy (or wait for CF Deploy) instead of bypassing —
+#      there is intentionally no feature-branch or stale-checkout escape hatch.
 on:
   pull_request:
     branches: [develop, main]
@@ -81,6 +93,31 @@ jobs:
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "24.15.0"
+
+      # Fails closed before any network or paid request: the artifact must be
+      # intrinsically tied to one source revision, so the checkout that supplies
+      # scripts and config has to be the same commit the gateway serves.
+      - name: Bind checkout to the requested gateway SHA
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const checkout = process.env.GITHUB_SHA ?? "";
+          if (!/^[a-f0-9]{40}$/.test(expected)) {
+            throw new Error("expected_gateway_sha must be a 40-character lowercase commit");
+          }
+          if (checkout !== expected) {
+            throw new Error(
+              "Checkout " +
+                (checkout || "<missing>") +
+                " does not match expected_gateway_sha " +
+                expected +
+                "; dispatch from develop at the exact deployed commit (see the dispatch sequence at the top of this workflow).",
+            );
+          }
+          console.log("Checkout " + checkout + " matches the requested gateway deployment");
+          NODE
 
       - name: Verify the exact deployed gateway SHA
         env:
@@ -195,8 +232,14 @@ jobs:
           const summaries = summarizeLatencyRecords(records);
           console.log("### Paired chat latency: direct + gateway / ${{ inputs.environment }}");
           console.log("");
+          // Both provenance SHAs are emitted so the summary alone shows the
+          // checkout-SHA == deployed-SHA invariant the bind step enforces. The
+          // gateway value is the requested SHA; the verify/reverify steps prove
+          // /api/health served exactly it before and after the benchmark.
+          console.log("Checkout: " + (process.env.GITHUB_SHA ?? "unknown"));
+          console.log("");
           console.log(
-            "Gateway deployment: " +
+            "Gateway deployment (requested, health-verified before/after): " +
               (process.env.ELIZA_GATEWAY_DEPLOY_SHA ?? "unknown"),
           );
           console.log("");
