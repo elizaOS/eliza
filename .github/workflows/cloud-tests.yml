@@ -107,7 +107,7 @@ jobs:
       # Guards the clean-install preflight (#16187): `bun run test:cloud` must
       # build the missing @elizaos/core dist / generated keyword modules itself
       # instead of dying in `Cannot find module` cascades after a frozen
-      # install with ELIZA_SKIP_ARTIFACT_SYNC=1.
+      # install.
       - name: Batch runner clean-install preflight self-test
         run: node packages/scripts/test-cloud-run-preflight.self-test.mjs
       - name: Run cloud unit tests

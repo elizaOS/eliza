@@ -2,7 +2,7 @@
 
 // Guards the clean-install preflight in test-cloud-run.mjs (#16187).
 //
-// A frozen `bun install` with ELIZA_SKIP_ARTIFACT_SYNC=1 leaves no
+// A frozen `bun install` leaves no
 // @elizaos/core dist and no generated i18n keyword modules, and
 // `bun run test:cloud` previously started the batches anyway — 10/11 batches
 // red with hundreds of `Cannot find module '@elizaos/core'` /

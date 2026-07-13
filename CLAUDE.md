@@ -34,7 +34,7 @@ say **Eliza agents**. Exception: the **Eliza Classic** plugin keeps `Eliza`
 
 ```bash
 bun install            # workspace install (runs postinstall: submodules, patches)
-bun run install:light  # install without downloading the large artifact bundle
+bun run install:light  # compatibility alias for the standard workspace install
 bun run dev            # boot the API + dashboard UI (packages/app-core dev-ui)
 bun run build          # turbo build across the workspace
 bun run verify         # typecheck + lint (alias: bun run check) — run before "done"
@@ -423,6 +423,16 @@ rewrite/rehost on the pre-auth serve path (rehost only on authenticated write);
 or a repurpose/removal of a `ContentType` enum value (it is **frozen,
 append-only** — derive fine-grained kind from `mimeType` at read time). Scope,
 deferrals, and rationale live in issue #8876.
+
+## Build artifacts: explicit producers, scoped consumers
+
+Repository install never downloads or extracts a checkout-wide artifact bundle.
+Generated native libraries, mobile/OS agent bundles, benchmark fixtures, and
+test evidence each belong to the package that produces and consumes them. A
+required generated artifact must be built or fetched by that package's explicit
+command, verified before use, and fail closed when absent; postinstall may not
+make the repository look complete by overlaying a global snapshot. The
+source-owned authority ratchet is `bun run audit:artifact-authority`.
 
 ## Definition of Done — sync, PR, and human-verifiable evidence
 

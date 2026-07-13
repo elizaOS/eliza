@@ -45,7 +45,6 @@ jobs:
     env:
       BASE_REF: ${{ github.event.pull_request.base.ref }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      ELIZA_SKIP_ARTIFACT_SYNC: "1"
     steps:
       - name: Checkout PR head
         # actions/checkout@v4
@@ -253,8 +252,6 @@ jobs:
           run-postinstall: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
-        env:
-          ELIZA_SKIP_ARTIFACT_SYNC: "1"
 
       - name: Commit-drift helper tests
         if: steps.changes.outputs.relevant == 'true'

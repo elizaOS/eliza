@@ -1,5 +1,10 @@
 [
   {
+    "file": "packages/scripts/artifact-authority-contract.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "repository bootstrap ratchet pins the source-owned native producers that replace the retired global artifact overlay"
+  },
+  {
     "file": "packages/scripts/audit-build-typecheck.mjs",
     "tokens": [
       "plugins/plugin-app-manager",

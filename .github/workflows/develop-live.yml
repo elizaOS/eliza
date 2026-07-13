@@ -41,7 +41,6 @@ jobs:
       TEST_LANE: post-merge
       ELIZA_LIVE_TEST: "1"
       ELIZA_REAL_APIS: "1"
-      ELIZA_SKIP_ARTIFACT_SYNC: "1"
       # Canonical post-merge secret set (packages/scripts/post-merge-secrets.txt).
       # A missing secret self-skips its suites with a named accounting line.
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}

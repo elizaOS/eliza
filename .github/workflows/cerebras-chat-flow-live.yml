@@ -164,7 +164,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      ELIZA_SKIP_ARTIFACT_SYNC: "1"
       ELIZA_TOOLCALL_EXPECTED_SHA: ${{ inputs.expected_sha }}
       ELIZA_TOOLCALL_EVIDENCE_PATH: reports/16997-plugin-toolcall-stream-live.json
     steps:

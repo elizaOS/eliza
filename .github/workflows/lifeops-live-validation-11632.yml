@@ -25,7 +25,6 @@ jobs:
     timeout-minutes: 45
     env:
       CI: "true"
-      ELIZA_SKIP_ARTIFACT_SYNC: "1"
       ELIZA_LIVE_TEST: "1"
       LIFEOPS_EVIDENCE_DIR: ${{ github.workspace }}/reports/lifeops-live-validation/11632-status
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
