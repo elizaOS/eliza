@@ -1014,6 +1014,24 @@ function isFirstRunShellMessage(m: ShellMessage): boolean {
   );
 }
 
+// The wrap-up turns the conductor seeds as ONE batch after provisioning:
+// accent, the platform-gated auto-start ask, the tutorial offer, plus any
+// late auto-start failure notice. They are alternatives-plus-finisher, not
+// sequential steps — all must be on screen together so ignoring accent /
+// auto-start and tapping a tutorial option is always possible.
+const FIRST_RUN_WRAP_UP_TURN_IDS = new Set([
+  "first-run:appearance",
+  "first-run:autostart",
+  "first-run:tutorial",
+]);
+
+function isFirstRunWrapUpTurn(message: ShellMessage): boolean {
+  return (
+    FIRST_RUN_WRAP_UP_TURN_IDS.has(message.id) ||
+    message.id.startsWith("first-run:autostart-error:")
+  );
+}
+
 function selectFirstRunDisplayMessages(
   messages: readonly ShellMessage[],
   showFallback: boolean,
@@ -1033,11 +1051,14 @@ function selectFirstRunDisplayMessages(
   ) {
     return [previous, latest];
   }
-  if (
-    previous?.id === "first-run:appearance" &&
-    latest.id === "first-run:tutorial"
-  ) {
-    return [previous, latest];
+  // Wrap-up window: show the contiguous trailing run of wrap-up turns as one
+  // card stack instead of only the newest turn.
+  if (isFirstRunWrapUpTurn(latest)) {
+    let start = firstRunMessages.length - 1;
+    while (start > 0 && isFirstRunWrapUpTurn(firstRunMessages[start - 1])) {
+      start -= 1;
+    }
+    return firstRunMessages.slice(start);
   }
 
   return [latest];
@@ -4043,8 +4064,23 @@ export function ChatOverlay({
           : booting
             ? `Ask ${agentName} — waking up…`
             : (viewChatBinding?.placeholder ?? `Ask ${agentName}`);
+  // Staged behind a runtime flag (`localStorage["eliza:native-composer"] = "1"`),
+  // OFF by default — mirrors the native-transcript demo flag. The native field
+  // renders + round-trips text on device (proven on iOS/Android), but the
+  // keyboard/first-responder lifecycle vs the detent+keyboard-inset machine still
+  // needs to land (focusing the native field must keep the sheet maximized, not
+  // collapse it), so the DOM composer stays the default until that is finished.
+  const [nativeComposerFlag] = React.useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.localStorage?.getItem("eliza:native-composer") === "1",
+  );
   const nativeComposerEnabled =
-    fullBleed && glassTier === "native" && !firstRunOpen && !isSlashDraft;
+    nativeComposerFlag &&
+    fullBleed &&
+    glassTier === "native" &&
+    !firstRunOpen &&
+    !isSlashDraft;
   const nativeComposerProps = React.useMemo(
     () => ({ draft, placeholder: composerPlaceholder, disabled: firstRunOpen }),
     [draft, composerPlaceholder, firstRunOpen],
