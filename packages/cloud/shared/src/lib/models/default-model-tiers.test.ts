@@ -20,18 +20,12 @@ describe("dedicated-agent default text tiers", () => {
 
   test("large is a genuinely stronger model than small", () => {
     expect(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL).toBe("zai-glm-4.7");
-    expect(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL).not.toBe(
-      CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-    );
+    expect(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL).not.toBe(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL);
   });
 
   test("both tiers route cerebras-native (bare ids, no gateway decoration)", () => {
-    expect(CEREBRAS_NATIVE_TEXT_MODELS).toContain(
-      CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-    );
-    expect(CEREBRAS_NATIVE_TEXT_MODELS).toContain(
-      CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
-    );
+    expect(CEREBRAS_NATIVE_TEXT_MODELS).toContain(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL);
+    expect(CEREBRAS_NATIVE_TEXT_MODELS).toContain(CEREBRAS_DEFAULT_TEXT_LARGE_MODEL);
   });
 });
 
