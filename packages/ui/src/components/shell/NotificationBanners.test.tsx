@@ -66,10 +66,12 @@ describe("NotificationBanners", () => {
     act(() => pushNotificationBanner(makeNotification({ body: "Build #42" })));
     const card = screen.getByTestId("notification-banner");
     expect(card.textContent).toContain("Deploy done");
-    // Glass look: translucent surface + hairline border + blur on the card body.
+    // Liquid-glass material: the card body carries the shared glass recipe class
+    // (sheen + inset edge light + refracting/frosted backdrop, defined in
+    // BANNER_CSS) rather than a flat utility border + blur.
     const surface = card.parentElement;
-    expect(surface?.className).toMatch(/backdrop-blur/);
-    expect(surface?.className).toMatch(/border/);
+    expect(surface?.className).toMatch(/eliza-notif-banner-glass/);
+    expect(surface?.className).toMatch(/rounded-2xl/);
   });
 
   it("carries an urgent accent rail", () => {

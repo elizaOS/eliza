@@ -26,10 +26,21 @@ import {
   useNotificationBanners,
 } from "../../state/notifications/notification-banner-store";
 import { removeNotification } from "../../state/notifications/notification-store";
+import {
+  LIQUID_GLASS_BLUR,
+  LIQUID_GLASS_EDGE_SHADOW,
+  LIQUID_GLASS_REFRACTION,
+  LIQUID_GLASS_SHEEN,
+  LiquidGlassRefractionDefs,
+  liquidGlassRimCss,
+} from "./liquid-glass";
 import { RelativeTime } from "./RelativeTime";
 
 // Slide down from the top + fade; an upward swipe/close scales it away. Opacity
-// and transform only, fully stilled under prefers-reduced-motion.
+// and transform only, fully stilled under prefers-reduced-motion. The card wears
+// the shared liquid-glass material (same recipe as the chat sheet + notification
+// inbox): a specular sheen + inset edge light + a directional rim, refracting the
+// background at the rim on Chromium and frosted-blurring it everywhere else.
 const BANNER_CSS = `
 @keyframes eliza-notif-banner-in {
   from { opacity: 0; transform: translateY(-14px) scale(0.98); }
@@ -39,6 +50,22 @@ const BANNER_CSS = `
 @media (prefers-reduced-motion: reduce) {
   .eliza-notif-banner { animation: none; }
 }
+.eliza-notif-banner-glass {
+  background-color: rgb(12 12 14 / 48%);
+  background-image: ${LIQUID_GLASS_SHEEN};
+  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW};
+  -webkit-backdrop-filter: ${LIQUID_GLASS_BLUR};
+  backdrop-filter: ${LIQUID_GLASS_BLUR};
+}
+/* Chromium honors url(#…) on backdrop-filter → refract the wallpaper at the rim
+   (the "liquid" cue). WebKit can't, so it keeps the frosted blur above. */
+@supports (backdrop-filter: url(#x)) or (-webkit-backdrop-filter: url(#x)) {
+  .eliza-notif-banner-glass {
+    -webkit-backdrop-filter: ${LIQUID_GLASS_REFRACTION};
+    backdrop-filter: ${LIQUID_GLASS_REFRACTION};
+  }
+}
+${liquidGlassRimCss(".eliza-notif-banner-glass")}
 `;
 
 /** Dwell before auto-dismiss, scaled by how interruptive the arrival is. */
@@ -84,12 +111,12 @@ function BannerCard({
     >
       <div
         className={cn(
-          // Glass card: translucent dark surface + hairline border + blur, the
-          // iOS/Android banner idiom. `supports-[backdrop-filter]` keeps an
-          // opaque-enough fallback where blur is unsupported.
-          "group relative flex items-stretch overflow-hidden rounded-2xl border shadow-lg",
-          "border-white/15 bg-black/55 text-white backdrop-blur-xl supports-[backdrop-filter]:bg-black/45",
-          urgent && "border-red-400/40",
+          // Liquid-glass card (recipe in BANNER_CSS): the specular rim + inset
+          // edge light replace a flat hairline border, and the fill sits over a
+          // refracting/frosted backdrop — the iOS/Android heads-up idiom, matched
+          // to the chat sheet + inbox. Depth is inset light, no outer drop shadow.
+          "eliza-notif-banner-glass group relative flex items-stretch overflow-hidden rounded-2xl text-white",
+          urgent && "ring-1 ring-inset ring-red-400/40",
         )}
       >
         {/* Priority rail: urgent/high only, a 2px leading tint — restraint. */}
@@ -159,6 +186,8 @@ export function NotificationBanners(): React.JSX.Element | null {
       style={{ ["--z" as string]: Z_SHELL_OVERLAY + 6 }}
     >
       <style>{BANNER_CSS}</style>
+      {/* Edge-refraction SVG filter the glass cards reference; mounted once. */}
+      <LiquidGlassRefractionDefs />
       {banners.map((n) => (
         <BannerCard key={n.id} notification={n} />
       ))}

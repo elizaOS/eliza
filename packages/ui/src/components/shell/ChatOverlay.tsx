@@ -225,10 +225,18 @@ const EMPTY_SLASH_CONTROLLER: SlashCommandController = {
 // `--card` is brand orange. Keep the sheet's local tokens dark, neutral, and
 // self-owned so open/maximized chat never turns into a transparent-looking
 // orange overlay.
-// Maximized chat is a reading surface, not a glass one: it covers the whole
-// screen, so there is no backdrop to refract and any lighting gradient reads
-// as a rendering artifact. Flat neutral dark gray (ChatGPT-style), no sheen.
+// Opaque near-black used ONLY for the first-run onboarding takeover, where the
+// sheet must fully MASK the home/launcher behind the sign-in copy (a see-through
+// scrim let the home bleed through). Normal maximize is glass, not this.
 const FULL_BLEED_PANEL_BG = "#212121";
+// Maximized (full-bleed) chat is LIQUID GLASS: the sheet covers the screen and
+// blurs the app background behind it while the home/views are hidden, so only
+// the wallpaper's color + light bleed through the frost. A light warm tint over
+// the heavy blur keeps text legible without collapsing back into a dark slab.
+const FULL_BLEED_GLASS_BG = "color-mix(in srgb, var(--card) 22%, transparent)";
+// The frosted-glass backdrop filter shared by the inset sheet and the maximized
+// full-bleed surface, so the half→full morph never changes the blur character.
+const GLASS_BACKDROP_FILTER = "blur(40px) saturate(1.8) brightness(1.12)";
 
 const CHAT_PANEL_THEME = {
   "--bg": "#101114",
@@ -1101,12 +1109,19 @@ export function ChatOverlay({
   agentName = "Eliza",
   slash: slashProp,
   firstRunOpen = false,
+  onFullBleedChange,
 }: {
   controller: ShellController;
   /** Name shown in the composer placeholder ("Ask {agentName}"). Defaults to Eliza. */
   agentName?: string;
   /** Universal slash-command catalog + app-level nav effects. */
   slash?: SlashCommandController;
+  /**
+   * Fired when the sheet enters/leaves the maximized full-bleed state. The host
+   * hides the home/views behind the chat while it is `true` so the maximized
+   * liquid-glass surface blurs only the bare app wallpaper, not the home content.
+   */
+  onFullBleedChange?: (fullBleed: boolean) => void;
   /**
    * True while in-chat first-run onboarding is active (`firstRunComplete ===
    * false` upstream). The overlay opens as the normal full-screen chat and pins
@@ -2625,6 +2640,12 @@ export function ChatOverlay({
   // a stale flag can never leak into half/collapsed/pill. Drives the edge-to-edge
   // panel styles + a zero top margin.
   const fullBleed = maximized && expanded && sheetOpen && !pilled;
+  // Tell the host to hide the home/views the moment the chat commits to full-
+  // bleed (and restore them on the way out), so the maximized glass blurs only
+  // the bare wallpaper. Effect (not inline) so it fires once per transition.
+  React.useEffect(() => {
+    onFullBleedChange?.(fullBleed);
+  }, [fullBleed, onFullBleedChange]);
   // Two materials compose on this sheet (layered-glass shell):
   //  - The CSS backdrop-filter ALWAYS runs: it frosts DOM content that slides
   //    under the sheet (home widgets, views) — the band native glass is blind
@@ -2851,6 +2872,13 @@ export function ChatOverlay({
   // Start at the committed shape so pinned first paint does not flash the inset
   // panel before the full-screen morph effect catches up.
   const fullBleedT = useMotionValue(fullBleed ? 1 : 0);
+  // Opacity of the opaque first-run COVER, decoupled from `fullBleedT`. The
+  // cover exists only for the onboarding takeover (mask the home behind sign-in);
+  // a normal maximize is glass, so the cover must NOT reappear when `fullBleedT`
+  // hits 1 outside first-run. Tracks `firstRunOpen`: 1 while onboarding is
+  // pinned, springs to 0 on completion so the opaque takeover crossfades out to
+  // reveal the glass surface underneath as the sheet settles to half.
+  const firstRunCoverT = useMotionValue(firstRunOpen ? 1 : 0);
   // Live over-pull fraction the FINGER drives every drag frame (0 = at/below the
   // inset ceiling, 1 = full over-pull). It supplements the height cap through the
   // inset-ceiling DEAD ZONE: the FULL-detent thread flex-basis deliberately
@@ -2912,6 +2940,21 @@ export function ChatOverlay({
     fullBleedAnimRef.current = controls;
     return () => controls.stop();
   }, [fullBleed, reduce, fullBleedT, stopFullBleedAnimation]);
+  // First-run cover crossfade: opaque while onboarding is pinned, eases out on
+  // completion so the sign-in takeover dissolves into the glass surface as the
+  // sheet springs down to half. Never touched by a normal maximize.
+  React.useEffect(() => {
+    if (reduce) {
+      firstRunCoverT.set(firstRunOpen ? 1 : 0);
+      return;
+    }
+    const controls = animate(
+      firstRunCoverT,
+      firstRunOpen ? 1 : 0,
+      SHEET_SPRING,
+    );
+    return () => controls.stop();
+  }, [firstRunOpen, reduce, firstRunCoverT]);
   // Side inset (12→0px), corner radius (inset radius→0), and the composer bottom
   // inset (full→0), each scaled by the spring so they collapse/return together.
   const overlayPadX = useTransform(fullBleedT, [0, 1], [12, 0]);
@@ -4094,7 +4137,8 @@ export function ChatOverlay({
   // keyboard against the still-settling sheet into a collapse, and flipped the
   // gate a few times during the transition (attach/detach churn). Disable is
   // immediate so un-maximize/collapse drops the native field at once.
-  const [nativeComposerSettled, setNativeComposerSettled] = React.useState(false);
+  const [nativeComposerSettled, setNativeComposerSettled] =
+    React.useState(false);
   React.useEffect(() => {
     if (!nativeComposerEnabled) {
       setNativeComposerSettled(false);
@@ -5544,9 +5588,10 @@ export function ChatOverlay({
               // through: nothing sharp bleeds, but the panel is unmistakably
               // glass, not a gray card. `--card` / `--bg` are scoped by
               // CHAT_PANEL_THEME on the fieldset, not the orange app theme behind.
-              // Full-bleed stays fully opaque (it covers the whole screen — there
-              // is nothing to see through, and the blur would be wasted battery).
-              // Liquid glass = mostly the BACKDROP, tinted: a light fill over
+              // Full-bleed is ALSO glass now: it covers the screen but the home/
+              // views behind it are hidden, so the heavy blur lenses the bare app
+              // wallpaper — a light warm tint, not the flat gray slab it used to
+              // be. Liquid glass = mostly the BACKDROP, tinted: a light fill over
               // a heavy blur with lifted saturation, so the field behind glows
               // through the panel instead of dying behind a dark card (the
               // "looks like a web panel" failure). Legibility comes from the
@@ -5554,7 +5599,7 @@ export function ChatOverlay({
               backgroundColor: firstRunOpen
                 ? "transparent"
                 : fullBleed
-                  ? FULL_BLEED_PANEL_BG
+                  ? FULL_BLEED_GLASS_BG
                   : androidNative
                     ? // Android Material: a near-opaque flat sheet, not a light
                       // frost. It masks the content into the frame on its own
@@ -5569,39 +5614,44 @@ export function ChatOverlay({
               // Lensed material, not a tinted card: heavy blur destroys the
               // detail (legibility), lifted saturation + brightness make the
               // field GLOW through the panel the way Liquid Glass transmits
-              // its backdrop instead of darkening it.
+              // its backdrop instead of darkening it. Kept ON at full-bleed so
+              // maximized blurs the wallpaper behind it (the home is hidden).
               // Android Material is FLAT — no liquid frost. The near-opaque
               // fill above is the material, so skip the blur (it would re-read
               // as iOS-style glass and waste GPU on an already-opaque sheet).
+              // First-run wears the opaque cover on top, so the blur underneath
+              // is wasted there — skip it too.
               backdropFilter:
-                fullBleed || androidNative
+                androidNative || firstRunOpen
                   ? undefined
-                  : "blur(40px) saturate(1.8) brightness(1.12)",
+                  : GLASS_BACKDROP_FILTER,
               WebkitBackdropFilter:
-                fullBleed || androidNative
+                androidNative || firstRunOpen
                   ? undefined
-                  : "blur(40px) saturate(1.8) brightness(1.12)",
+                  : GLASS_BACKDROP_FILTER,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
               // catch light. Depth here is the glass rim, not a drop shadow (the
               // flat system keeps all shadow tokens none). Android Material is
               // flat: a single faint top hairline, no specular bevel.
-              boxShadow: firstRunOpen
-                ? undefined
-                : androidNative
-                  ? "inset 0 1px 0 0 rgb(255 255 255 / 8%)"
-                  : LIQUID_GLASS_EDGE_SHADOW,
+              boxShadow:
+                firstRunOpen || fullBleed
+                  ? undefined
+                  : androidNative
+                    ? "inset 0 1px 0 0 rgb(255 255 255 / 8%)"
+                    : LIQUID_GLASS_EDGE_SHADOW,
               // Specular sheen: a soft radial highlight near the top-left (as if
               // lit from above) over the faint neutral top-edge fade — the glass
               // catches light instead of just fading. Neutral white only, NOT the
               // warm `--surface` gradient that read as brown.
-              // Full-bleed is FLAT: the sheen/lighting gradients read as a
-              // weird glow on an opaque full-screen surface (the "gradient
-              // when maximized" bug) — glass cues only exist while there is
-              // glass. Android Material is flat too: no specular sheen.
+              // Full-bleed drops the sheen: the specular highlight + top-edge
+              // fade read as a weird glow stretched across a full screen (the
+              // "gradient when maximized" bug). Maximized glass is CLEAN — just
+              // the blur + tint, no edge lighting (there is no visible edge).
+              // Android Material is flat too: no specular sheen.
               backgroundImage:
-                firstRunOpen || androidNative
+                firstRunOpen || androidNative || fullBleed
                   ? "none"
                   : `${LIQUID_GLASS_SHEEN}, linear-gradient(180deg, rgba(255,255,255,0.09) 0%, transparent 22%)`,
               // Full-bleed: extend the glass UP through the safe-area-top so the
@@ -5617,12 +5667,12 @@ export function ChatOverlay({
               top: glassTopExtension,
             }}
           />
-          {/* FULL-BLEED COVER — the opaque reading surface, crossfaded by the
-              shape spring OVER the always-glass surface above. Maximize fades
-              it in, restore fades it out, so the corner radius/inset morph
-              never coincides with a discrete background swap (the "weird
-              colors at the corners" glitch on exit). Same radius + top
-              extension as the surface so the two layers stay congruent. */}
+          {/* FIRST-RUN COVER — the opaque onboarding takeover, ONLY. A normal
+              maximize is glass (the surface above), so this cover is driven by
+              `firstRunCoverT` (tracks `firstRunOpen`), NOT `fullBleedT` — it must
+              never reappear when a regular maximize drives `fullBleedT` to 1.
+              Same radius + top extension as the surface so the two layers stay
+              congruent while it crossfades out. */}
           <motion.div
             aria-hidden="true"
             data-testid="chat-sheet-fullbleed-cover"
@@ -5632,12 +5682,10 @@ export function ChatOverlay({
               // must MASK whatever is behind it (home widgets, wallpaper) — a
               // dark ChatGPT-style takeover, not a see-through scrim that lets
               // the home bleed through the sign-in copy. So the opaque cover is
-              // fully on during first-run. On completion `firstRunOpen` flips
-              // false while `fullBleedT` is still 1, then the sheet springs to
-              // half (fullBleed→false) and `fullBleedT` eases 1→0 — so the cover
-              // crossfades out over the exact reveal the cover was built for,
-              // hiding the surface's opaque→glass swap underneath.
-              opacity: firstRunOpen ? 1 : fullBleedT,
+              // fully on during first-run. On completion `firstRunCoverT` springs
+              // 1→0 as the sheet settles to half — the opaque takeover dissolves
+              // into the glass surface underneath.
+              opacity: firstRunCoverT,
               borderRadius: morphRadius,
               backgroundColor: FULL_BLEED_PANEL_BG,
               top: glassTopExtension,

@@ -72,14 +72,11 @@ export function ChatBubble({
             ? // Chromeless wallpaper text keeps the shared float shadow but no
               // box edge or padding.
               "text-white"
-            : tone === "user"
-              ? cn(
-                  // Keep authored turns visually scannable while assistant
-                  // replies remain shadcn-style plain text on the wallpaper.
-                  "rounded-2xl rounded-br-md border border-white/15 px-3.5 py-2",
-                  WALLPAPER_GLASS.messageBubble,
-                )
-              : cn("py-1", WALLPAPER_GLASS.messageBubble),
+            : // Both tones read as plain floating text over the glass sheet — no
+              // bubble border or fill (a boxed row nests a card inside the sheet,
+              // the "div borders/backgrounds in the chat" we removed). User turns
+              // stay distinguishable by their right alignment, not a box.
+              cn("py-1", WALLPAPER_GLASS.messageBubble),
           WALLPAPER_FLOAT_SHADOW,
           className,
         )}

@@ -16,12 +16,13 @@
 import * as React from "react";
 
 import type { NativeToolCallEvent } from "../../api/client-types-cloud";
+import { ShaderBackground } from "../../backgrounds/ShaderBackground";
 import { serializeTranscript } from "../../chat/native-transcript/spec";
+import { dispatchNavigateViewEvent } from "../../events";
 import {
   FIRST_RUN_GREETING,
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "../../first-run/first-run-greeting";
-import { dispatchNavigateViewEvent } from "../../events";
 import {
   clearNativeGlassBackdrop,
   GlassStyles,
@@ -32,6 +33,10 @@ import {
   isNativeTranscriptAvailable,
   nativeTranscriptBridge,
 } from "../../glass/native-transcript-bridge";
+import {
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_BACKGROUND_GLOW,
+} from "../../state/ui-preferences";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import { ChatOverlay } from "../shell/ChatOverlay";
 import type { ShellMessage } from "../shell/shell-state";
@@ -310,6 +315,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
   const [transcript, setTranscript] = React.useState("");
   const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(false);
   const [firstRunOpen, setFirstRunOpen] = React.useState(true);
+  // True while the chat sheet is maximized (full-bleed). The maximized surface is
+  // liquid glass that blurs ONLY the app wallpaper, so the stand-in home content
+  // hides while it is up — mirrors the real shell hiding home/views on maximize.
+  const [chatMaximized, setChatMaximized] = React.useState(false);
   const sceneIndexRef = React.useRef(0);
   const chatInputSinkRef = React.useRef<((text: string) => void) | null>(null);
   const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
@@ -398,48 +407,45 @@ export function ChatWidgetHarness(): React.JSX.Element {
       if (!(await isNativeTranscriptAvailable()) || disposed) return;
       const bridge = nativeTranscriptBridge();
       if (!bridge) return;
-      const handle = await bridge.addListener(
-        "transcriptAction",
-        (action) => {
-          // Typed envelope routing — mirror the DOM widgets exactly: only
-          // `message` reaches the conversation; navigate/prefill/background
-          // are LOCAL intents (window event / composer prefill / display
-          // store) and must never become chat text.
-          switch (action.kind) {
-            case "navigate":
-              // Mirror the DOM widget path exactly: a `/`-prefixed payload is
-              // a viewPath, anything else a viewId — the shape the shell's
-              // navigate handler actually reads (shared/events NavigateViewDetail).
-              dispatchNavigateViewEvent(
-                action.view.startsWith("/")
-                  ? { viewPath: action.view }
-                  : { viewId: action.view },
-              );
-              return;
-            case "prefill":
-              chatInputSinkRef.current?.(action.text);
-              return;
-            case "retry":
-              // Scripted review harness: no live agent to re-run, so surface
-              // the intent. Production wiring routes this to handleChatRetry.
-              console.info(
-                `[ChatWidgetHarness] native retry intent: ${action.messageId}`,
-              );
-              return;
-            case "background":
-              // Review harness: no display-preferences store is mounted;
-              // surface the intent without fabricating an applied change.
-              console.info(
-                `[ChatWidgetHarness] native background intent: ${action.presetId}`,
-              );
-              return;
-            default:
-              if (typeof action.message === "string") {
-                appendUserAndAdvance(action.message);
-              }
-          }
-        },
-      );
+      const handle = await bridge.addListener("transcriptAction", (action) => {
+        // Typed envelope routing — mirror the DOM widgets exactly: only
+        // `message` reaches the conversation; navigate/prefill/background
+        // are LOCAL intents (window event / composer prefill / display
+        // store) and must never become chat text.
+        switch (action.kind) {
+          case "navigate":
+            // Mirror the DOM widget path exactly: a `/`-prefixed payload is
+            // a viewPath, anything else a viewId — the shape the shell's
+            // navigate handler actually reads (shared/events NavigateViewDetail).
+            dispatchNavigateViewEvent(
+              action.view.startsWith("/")
+                ? { viewPath: action.view }
+                : { viewId: action.view },
+            );
+            return;
+          case "prefill":
+            chatInputSinkRef.current?.(action.text);
+            return;
+          case "retry":
+            // Scripted review harness: no live agent to re-run, so surface
+            // the intent. Production wiring routes this to handleChatRetry.
+            console.info(
+              `[ChatWidgetHarness] native retry intent: ${action.messageId}`,
+            );
+            return;
+          case "background":
+            // Review harness: no display-preferences store is mounted;
+            // surface the intent without fabricating an applied change.
+            console.info(
+              `[ChatWidgetHarness] native background intent: ${action.presetId}`,
+            );
+            return;
+          default:
+            if (typeof action.message === "string") {
+              appendUserAndAdvance(action.message);
+            }
+        }
+      });
       if (disposed) {
         void handle.remove();
         return;
@@ -483,7 +489,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
       // error-policy:J6 best-effort teardown — remove/hide are fire-and-forget;
       // a rejected teardown only leaves the next mount to re-show.
       void listener?.remove().catch(() => {});
-      if (shown) void nativeTranscriptBridge()?.hide().catch(() => {});
+      if (shown)
+        void nativeTranscriptBridge()
+          ?.hide()
+          .catch(() => {});
     };
   }, [appendUserAndAdvance]);
 
@@ -627,25 +636,34 @@ export function ChatWidgetHarness(): React.JSX.Element {
         style={{
           position: "fixed",
           inset: 0,
-          // The real /chat ambient home backdrop — the glass sheet must be
-          // reviewed over the composite it ships on. Transparent while the
-          // NATIVE backdrop owns the field (occluding it would blind the
-          // native glass panels sampling it).
-          background: hideDomHome
-            ? "#000000"
-            : nativeBackdrop
-              ? "transparent"
-              : "#ef5a1f",
+          // Black base under the app's real Midnight-ember wallpaper below.
+          // Transparent while the NATIVE backdrop owns the field (occluding it
+          // would blind the native glass panels sampling it).
+          background: nativeBackdrop ? "transparent" : "#000000",
           overflow: "hidden",
         }}
       >
-        {/* Detail behind the sheet: frosted glass is invisible over a flat
-            color — these stand-in home widgets give the blur something real
-            to refract, matching what the sheet floats over in the app. */}
+        {/* The app's DEFAULT background (Midnight ember) — the exact wallpaper
+            the chat ships over, so the glass sheet is reviewed against the real
+            composite. The native shell paints its own ember behind the
+            transparent webview, so the DOM field is CSS-tier only. */}
+        {nativeBackdrop ? null : (
+          <ShaderBackground
+            color={DEFAULT_BACKGROUND_COLOR}
+            glow={DEFAULT_BACKGROUND_GLOW}
+          />
+        )}
+        {/* Stand-in home content behind the sheet: gives the frosted glass
+            something real to refract at the inset detents. Hidden while the chat
+            is MAXIMIZED — the full-bleed glass blurs only the bare wallpaper, so
+            all other content drops out (mirrors the real shell hiding home/views
+            on maximize). Lifted above the shader field (z-1 over its z-0). */}
         <div
           aria-hidden
           style={{
-            display: hideDomHome ? "none" : "block",
+            display: hideDomHome || chatMaximized ? "none" : "block",
+            position: "relative",
+            zIndex: 1,
             padding: "72px 28px",
             maxWidth: 720,
             color: "rgba(255,255,255,0.92)",
@@ -713,7 +731,11 @@ export function ChatWidgetHarness(): React.JSX.Element {
           </div>
         </div>
         <GlassStyles />
-        <ChatOverlay controller={controller} firstRunOpen={domFirstRunOpen} />
+        <ChatOverlay
+          controller={controller}
+          firstRunOpen={domFirstRunOpen}
+          onFullBleedChange={setChatMaximized}
+        />
       </div>
     </MockAppProvider>
   );

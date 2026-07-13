@@ -190,7 +190,10 @@ export function PermissionCard({
       data-status={state.status}
       aria-label={`Permission request: ${title}`}
       className={cn(
-        "mt-2 rounded-sm border border-border/40 bg-bg-accent/60 p-3",
+        // Chat-native: no card box — the request reads as part of the message
+        // flow over the glass sheet (header + reason + guidance + actions), not
+        // a bordered/filled panel nested inside the transcript.
+        "mt-2",
         className,
       )}
     >
@@ -201,7 +204,7 @@ export function PermissionCard({
         </span>
       </header>
       <p className="mb-3 text-sm leading-snug text-txt">{reason}</p>
-      <div className="mb-3 rounded-sm border border-border/40 bg-surface/60 p-2 text-xs leading-relaxed text-muted">
+      <div className="mb-3 text-xs leading-relaxed text-muted">
         <p className="font-medium text-txt">{guidance.primary}</p>
         <p className="mt-1">{guidance.secondary}</p>
       </div>

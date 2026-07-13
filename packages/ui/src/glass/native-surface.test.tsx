@@ -12,6 +12,7 @@ import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type NativeSurfaceDriver,
+  type NativeSurfaceGeometry,
   type NativeSurfaceHandle,
   useNativePlatformSurface,
 } from "./native-surface";
@@ -31,15 +32,13 @@ afterEach(cleanup);
 type Props = { label: string };
 
 function makeDriver(available: boolean) {
-  const handle: NativeSurfaceHandle<Props> & {
-    updateGeometry: ReturnType<typeof vi.fn>;
-    setProps: ReturnType<typeof vi.fn>;
-    detach: ReturnType<typeof vi.fn>;
-  } = {
-    updateGeometry: vi.fn(),
-    setProps: vi.fn(),
-    detach: vi.fn(),
-  };
+  // Typed mocks so the object satisfies NativeSurfaceHandle while each method
+  // keeps its `.mock` inspection surface for the assertions below.
+  const handle = {
+    updateGeometry: vi.fn<(geo: NativeSurfaceGeometry) => void>(),
+    setProps: vi.fn<(patch: Partial<Props>) => void>(),
+    detach: vi.fn<() => void>(),
+  } satisfies NativeSurfaceHandle<Props>;
   const driver: NativeSurfaceDriver<Props> = {
     name: "test",
     isAvailable: vi.fn(async () => available),
