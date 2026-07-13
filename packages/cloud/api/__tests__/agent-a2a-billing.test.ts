@@ -268,6 +268,28 @@ describe("Agent A2A billing", () => {
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 
+  test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    streamText.mockResolvedValue({
+      textStream: textStream("unmetered output"),
+      usage: Promise.resolve({
+        inputTokens: undefined,
+        outputTokens: undefined,
+        totalTokens: undefined,
+      }),
+    });
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
   // Regression for #10266 (A2A side).
   test("post-settlement earnings failure does not double-refund the reservation", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
@@ -277,7 +299,10 @@ describe("Agent A2A billing", () => {
 
     const response = await callChat();
     const body = (await response.json()) as {
-      result?: { content: string };
+      result?: {
+        content: string;
+        warnings?: Array<{ code: string; message: string }>;
+      };
       error?: { code: number; message: string };
     };
 
@@ -293,5 +318,11 @@ describe("Agent A2A billing", () => {
     expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
     expect(body.error).toBeUndefined();
     expect(body.result?.content).toBe("hello from model");
+    expect(body.result?.warnings).toEqual([
+      {
+        code: "CREATOR_EARNINGS_UNAVAILABLE",
+        message: "Creator earnings could not be recorded",
+      },
+    ]);
   });
 });
