@@ -120,15 +120,14 @@ jobs:
 
       - name: Install and test snap
         run: |
+          set -euo pipefail
           sudo snap install ${{ steps.snapcraft.outputs.snap }} --dangerous
           echo "=== Installed snap ==="
           snap list elizaos-app
-
-          echo "=== Version check ==="
-          elizaos-app --version || echo "Version check completed (exit $?)"
-
-          echo "=== Help check ==="
-          elizaos-app --help 2>&1 | head -20 || echo "Help check completed (exit $?)"
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          node packages/scripts/verify-packaged-cli.mjs \
+            --expected "$EXPECTED_VERSION" \
+            -- elizaos-app
 
       - name: Upload snap artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

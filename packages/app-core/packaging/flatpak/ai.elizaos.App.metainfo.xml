@@ -51,15 +51,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>elizaOS App agent chat dashboard</caption>
-      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/shakespeare-screenshot.jpeg</image>
+      <image type="source" width="1440" height="900">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/app/scripts/mvp-visual-verify/baseline/desktop-landscape/builtin-chat.png</image>
     </screenshot>
     <screenshot>
-      <caption>Discord connector conversation</caption>
-      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/shakespeare-discord-screenshot.jpeg</image>
+      <caption>Plugin catalog and management</caption>
+      <image type="source" width="1440" height="900">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/app/scripts/mvp-visual-verify/baseline/desktop-landscape/builtin-plugins.png</image>
     </screenshot>
     <screenshot>
-      <caption>Voice channel connection flow</caption>
-      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/ask-to-join-vc.jpeg</image>
+      <caption>Application settings</caption>
+      <image type="source" width="1440" height="900">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/app/scripts/mvp-visual-verify/baseline/desktop-landscape/builtin-settings.png</image>
     </screenshot>
   </screenshots>
 
