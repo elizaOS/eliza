@@ -39,6 +39,87 @@ import { Service, ServiceType } from "../types/service.ts";
 /** Max notifications retained per agent in the inbox (oldest evicted). */
 const MAX_NOTIFICATIONS = 300;
 
+const RECOVERY_BASE_DELAY_MS = 1_000;
+const RECOVERY_MAX_DELAY_MS = 30_000;
+
+export type NotificationServiceAvailability =
+	| "disabled"
+	| "pending"
+	| "registering"
+	| "failed"
+	| "registered";
+
+export interface NotificationServiceRecovery {
+	state: "started" | "in-flight" | "backoff" | "unavailable";
+	retryAfterSeconds: number;
+}
+
+/** Runtime lifecycle surface required by notification transports. */
+export interface NotificationServiceLifecycleRuntime {
+	readonly agentId?: string;
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
+	getService(serviceType: string): unknown;
+	hasService(serviceType: string): boolean;
+	getServiceRegistrationStatus(
+		serviceType: string,
+	): "pending" | "registering" | "registered" | "failed" | "unknown";
+	getServiceLoadPromise(serviceType: string): Promise<Service>;
+}
+
+interface NotificationRecoveryState {
+	failures: number;
+	nextAttemptAt: number;
+	inFlight: Promise<NotificationService | null> | null;
+}
+
+const recoveryByRuntime = new WeakMap<
+	NotificationServiceLifecycleRuntime,
+	NotificationRecoveryState
+>();
+const availabilityByRuntime = new WeakMap<
+	NotificationServiceLifecycleRuntime,
+	NotificationServiceAvailability
+>();
+
+function retryAfterSeconds(delayMs: number): number {
+	return Math.max(1, Math.ceil(delayMs / 1_000));
+}
+
+function recoveryDelayMs(failures: number): number {
+	return Math.min(
+		RECOVERY_MAX_DELAY_MS,
+		RECOVERY_BASE_DELAY_MS * 2 ** Math.max(0, failures - 1),
+	);
+}
+
+function recordAvailability(
+	runtime: NotificationServiceLifecycleRuntime,
+	availability: NotificationServiceAvailability,
+): NotificationServiceAvailability {
+	if (availabilityByRuntime.get(runtime) === availability) return availability;
+	availabilityByRuntime.set(runtime, availability);
+	const context = {
+		src: "service:notification",
+		agentId: runtime.agentId,
+		availability,
+	};
+	if (availability === "failed") {
+		logger.warn(
+			context,
+			"NotificationService unavailable after startup failure",
+		);
+	} else if (availability === "disabled") {
+		logger.info(context, "NotificationService intentionally disabled");
+	} else {
+		logger.debug(context, "NotificationService availability changed");
+	}
+	return availability;
+}
+
 /**
  * True once a notification's explicit `expiresAt` (unix ms) has passed. Only
  * caller-set expiry is honored — there is no per-category default retention.
@@ -81,6 +162,124 @@ export class NotificationService extends Service {
 	/** Resolved cache key (scoped per agent). */
 	private get cacheKey(): string {
 		return `notifications:${this.runtime.agentId}`;
+	}
+
+	/**
+	 * Resolve the runtime lifecycle state without treating a failed instance as
+	 * an intentionally empty inbox. A registered class with no live instance is
+	 * fail-closed even if the runtime reports an inconsistent `registered` state.
+	 */
+	static getAvailability(
+		runtime: NotificationServiceLifecycleRuntime,
+	): NotificationServiceAvailability {
+		const service = runtime.getService(ServiceType.NOTIFICATION);
+		if (service instanceof NotificationService) {
+			recoveryByRuntime.delete(runtime);
+			return recordAvailability(runtime, "registered");
+		}
+		if (!runtime.hasService(ServiceType.NOTIFICATION)) {
+			return recordAvailability(runtime, "disabled");
+		}
+		const status = runtime.getServiceRegistrationStatus(
+			ServiceType.NOTIFICATION,
+		);
+		if (status === "pending" || status === "registering") {
+			return recordAvailability(runtime, status);
+		}
+		if (status === "failed" || status === "registered") {
+			return recordAvailability(runtime, "failed");
+		}
+		return recordAvailability(runtime, "pending");
+	}
+
+	/**
+	 * Start one background recovery attempt after a failed hydration. The
+	 * runtime already deduplicates concurrent service starts; this coordinator
+	 * adds a bounded cooldown so repeated HTTP and Android requests cannot turn
+	 * a persistent adapter outage into a retry stampede.
+	 */
+	static requestRecovery(
+		runtime: NotificationServiceLifecycleRuntime,
+	): NotificationServiceRecovery {
+		const existing = recoveryByRuntime.get(runtime);
+		if (existing?.inFlight) {
+			return { state: "in-flight", retryAfterSeconds: 1 };
+		}
+		if (NotificationService.getAvailability(runtime) !== "failed") {
+			return { state: "unavailable", retryAfterSeconds: 1 };
+		}
+
+		const now = Date.now();
+		if (existing && existing.nextAttemptAt > now) {
+			return {
+				state: "backoff",
+				retryAfterSeconds: retryAfterSeconds(existing.nextAttemptAt - now),
+			};
+		}
+
+		const recovery: NotificationRecoveryState = existing ?? {
+			failures: 0,
+			nextAttemptAt: 0,
+			inFlight: null,
+		};
+		const attempt = recovery.failures + 1;
+		const inFlight = runtime
+			.getServiceLoadPromise(ServiceType.NOTIFICATION)
+			.then((service) => {
+				if (!(service instanceof NotificationService)) {
+					throw new Error(
+						"Recovered notification service has an unexpected implementation",
+					);
+				}
+				recoveryByRuntime.delete(runtime);
+				recordAvailability(runtime, "registered");
+				logger.info(
+					{
+						src: "service:notification",
+						agentId: runtime.agentId,
+						attempt,
+					},
+					"NotificationService recovery succeeded",
+				);
+				return service;
+			})
+			// error-policy:J7 service recovery telemetry must not turn a handled
+			// background retry failure into an unhandled rejection.
+			.catch((error: unknown) => {
+				const failures = recovery.failures + 1;
+				const delayMs = recoveryDelayMs(failures);
+				recovery.failures = failures;
+				recovery.nextAttemptAt = Date.now() + delayMs;
+				runtime.reportError("NotificationService.recovery", error, {
+					attempt,
+					retryAfterSeconds: retryAfterSeconds(delayMs),
+				});
+				logger.warn(
+					{
+						src: "service:notification",
+						agentId: runtime.agentId,
+						attempt,
+						retryAfterSeconds: retryAfterSeconds(delayMs),
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"NotificationService recovery failed; backing off",
+				);
+				return null;
+			})
+			.finally(() => {
+				recovery.inFlight = null;
+			});
+		recovery.inFlight = inFlight;
+		recoveryByRuntime.set(runtime, recovery);
+		logger.info(
+			{
+				src: "service:notification",
+				agentId: runtime.agentId,
+				attempt,
+			},
+			"NotificationService recovery started",
+		);
+		return { state: "started", retryAfterSeconds: 1 };
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<Service> {

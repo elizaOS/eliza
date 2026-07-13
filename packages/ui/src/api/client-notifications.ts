@@ -15,6 +15,7 @@ import { ElizaClient } from "./client-base";
 export interface NotificationListResponse {
   notifications: AgentNotification[];
   unreadCount: number;
+  serviceStatus?: "ready" | "disabled";
 }
 
 export interface ListNotificationsOptions {

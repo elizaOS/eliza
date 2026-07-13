@@ -45,6 +45,7 @@ import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
   __setHydratedForTests,
+  __setHydrationFailureForTests,
 } from "../../state/notifications/notification-store";
 import {
   dampenPull,
@@ -522,6 +523,24 @@ describe("NotificationsHomeCenter", () => {
   it("renders nothing while the empty inbox is still hydrating", () => {
     const { container } = render(<NotificationsHomeCenter />);
     expect(container.firstChild).toBeNull();
+  });
+
+  it("renders terminal hydration failure with a working retry", async () => {
+    __setHydrationFailureForTests("private transport detail");
+    render(<NotificationsHomeCenter />);
+
+    const unavailable = screen.getByTestId("notifications-unavailable");
+    expect(unavailable.getAttribute("role")).toBe("alert");
+    expect(unavailable.textContent).toContain("Notifications unavailable");
+    expect(unavailable.textContent).not.toContain("private transport detail");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByTestId("notifications-unavailable")).toBeNull();
+    expect(screen.queryByTestId("notifications-empty")).not.toBeNull();
   });
 
   it("reveals a subtle empty status through the normal pull gesture", () => {

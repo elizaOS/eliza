@@ -148,6 +148,123 @@ describe("NotificationService", () => {
 		}
 	});
 
+	it("recovers persisted history after a transient hydration failure", async () => {
+		class TransientCacheAdapter extends InMemoryDatabaseAdapter {
+			readAttempts = 0;
+
+			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+				this.readAttempts += 1;
+				if (this.readAttempts === 1) {
+					throw new Error("notification cache temporarily unavailable");
+				}
+				return super.getCaches<T>(keys);
+			}
+		}
+
+		const adapter = new TransientCacheAdapter();
+		const transient = await createRuntime([NotificationService], adapter);
+		try {
+			await expect(
+				transient.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("Service notification not found or failed to start");
+			expect(
+				transient.runtime.getServiceRegistrationStatus(
+					ServiceType.NOTIFICATION,
+				),
+			).toBe("failed");
+
+			const persisted = {
+				id: "00000000-0000-0000-0000-0000000000cc",
+				title: "Recovered history",
+				category: "general",
+				priority: "normal",
+				source: "test",
+				createdAt: Date.now(),
+				readAt: null,
+			} as AgentNotification;
+			await transient.runtime.setCache(
+				`notifications:${transient.runtime.agentId}`,
+				[persisted],
+			);
+
+			const attempts = Array.from({ length: 8 }, () =>
+				NotificationService.requestRecovery(transient.runtime),
+			);
+			expect(
+				attempts.filter((attempt) => attempt.state === "started"),
+			).toHaveLength(1);
+			expect(
+				attempts.filter((attempt) => attempt.state === "in-flight"),
+			).toHaveLength(7);
+
+			const recovered = (await transient.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			expect(adapter.readAttempts).toBe(2);
+			expect(
+				recovered.list().map((notification) => notification.title),
+			).toEqual(["Recovered history"]);
+			expect(
+				transient.runtime.getServiceRegistrationStatus(
+					ServiceType.NOTIFICATION,
+				),
+			).toBe("registered");
+		} finally {
+			await transient.cleanup();
+		}
+	});
+
+	it("backs off repeated recovery requests after a persistent failure", async () => {
+		class UnavailableCacheAdapter extends InMemoryDatabaseAdapter {
+			readAttempts = 0;
+
+			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
+				this.readAttempts += 1;
+				throw new Error("notification cache unavailable");
+			}
+		}
+
+		const adapter = new UnavailableCacheAdapter();
+		const unavailable = await createRuntime([NotificationService], adapter);
+		try {
+			await expect(
+				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			expect(
+				NotificationService.requestRecovery(unavailable.runtime).state,
+			).toBe("started");
+			await expect(
+				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			await Promise.resolve();
+			expect(unavailable.runtime.getRecentReportedErrors()).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						scope: "NotificationService.recovery",
+						message: "Service notification not found or failed to start",
+						context: expect.objectContaining({
+							attempt: 1,
+							retryAfterSeconds: 1,
+						}),
+					}),
+				]),
+			);
+
+			const deferred = Array.from({ length: 10 }, () =>
+				NotificationService.requestRecovery(unavailable.runtime),
+			);
+			expect(deferred.every((attempt) => attempt.state === "backoff")).toBe(
+				true,
+			);
+			expect(deferred.every((attempt) => attempt.retryAfterSeconds === 1)).toBe(
+				true,
+			);
+			expect(adapter.readAttempts).toBe(2);
+		} finally {
+			await unavailable.cleanup();
+		}
+	});
+
 	it("collapses notifications sharing a groupKey", async () => {
 		await service.notify({ title: "Reminder 1", groupKey: "task:abc" });
 		await service.notify({ title: "Reminder 2", groupKey: "task:abc" });

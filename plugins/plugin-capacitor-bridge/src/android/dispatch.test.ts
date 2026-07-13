@@ -6,7 +6,15 @@
  * streaming sink lifecycle without booting a runtime or device.
  */
 
-import type { IAgentRuntime, RouteHandlerResult } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, RouteHandlerResult } from "@elizaos/core";
+import {
+	AgentRuntime,
+	createCharacter,
+	InMemoryDatabaseAdapter,
+	NotificationService,
+	type Service,
+	ServiceType,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 import {
@@ -18,6 +26,33 @@ import {
 } from "./dispatch.ts";
 
 const runtime = {} as IAgentRuntime;
+
+async function createNotificationRuntime(
+	services: NonNullable<Plugin["services"]> = [],
+	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+): Promise<{ runtime: AgentRuntime; cleanup: () => Promise<void> }> {
+	const runtime = new AgentRuntime({
+		character: createCharacter({ name: "AndroidNotificationDispatchTest" }),
+		adapter,
+		logLevel: "fatal",
+		enableAutonomy: false,
+	});
+	await runtime.initialize();
+	if (services.length > 0) {
+		await runtime.registerPlugin({
+			name: "android-notification-dispatch-test",
+			description: "Real notification lifecycle for Android dispatch coverage",
+			services,
+		});
+	}
+	return {
+		runtime,
+		cleanup: async () => {
+			await runtime.stop();
+			await runtime.close();
+		},
+	};
+}
 
 /** A dispatchRoute that returns a fixed buffered result for the matched path. */
 function fixedRoute(result: RouteHandlerResult | null): {
@@ -280,6 +315,7 @@ describe("dispatchBufferedRequest", () => {
 		expect(JSON.parse(list.body)).toEqual({
 			notifications: seeded,
 			unreadCount: 1,
+			serviceStatus: "ready",
 		});
 		// Served inline — the plugin dispatcher was never consulted.
 		expect(calls).toHaveLength(0);
@@ -311,20 +347,147 @@ describe("dispatchBufferedRequest", () => {
 		void push;
 	});
 
-	it("serves an empty inbox when the notification service is not up yet", async () => {
-		const noSvcRuntime = {
-			getService: () => null,
-		} as unknown as IAgentRuntime;
-		const { route } = fixedRoute(null);
-		const res = await dispatchBufferedRequest(noSvcRuntime, route, {
-			method: "GET",
-			path: "/api/notifications",
+	it("serves an explicitly disabled inbox when notification support is unregistered", async () => {
+		const disabled = await createNotificationRuntime();
+		try {
+			const { route } = fixedRoute(null);
+			const res = await dispatchBufferedRequest(disabled.runtime, route, {
+				method: "GET",
+				path: "/api/notifications",
+			});
+			expect(res.status).toBe(200);
+			expect(JSON.parse(res.body)).toEqual({
+				notifications: [],
+				unreadCount: 0,
+				serviceStatus: "disabled",
+			});
+		} finally {
+			await disabled.cleanup();
+		}
+	});
+
+	it("returns typed retryable 503 while the notification service is pending", async () => {
+		const pending = await createNotificationRuntime([NotificationService]);
+		try {
+			const { route } = fixedRoute(null);
+			const res = await dispatchBufferedRequest(pending.runtime, route, {
+				method: "GET",
+				path: "/api/notifications",
+			});
+			expect(res.status).toBe(503);
+			expect(res.headers["retry-after"]).toBe("1");
+			expect(JSON.parse(res.body)).toEqual({
+				error: "Notification service is still starting",
+				code: "NOTIFICATION_SERVICE_NOT_READY",
+				retryAfter: 1,
+			});
+		} finally {
+			await pending.cleanup();
+		}
+	});
+
+	it("returns typed retryable 503 while the notification service is registering", async () => {
+		let releaseStart = () => {};
+		const startGate = new Promise<void>((resolve) => {
+			releaseStart = resolve;
 		});
-		expect(res.status).toBe(200);
-		expect(JSON.parse(res.body)).toEqual({
-			notifications: [],
-			unreadCount: 0,
-		});
+		class SlowNotificationService extends NotificationService {
+			static override serviceType = ServiceType.NOTIFICATION;
+
+			static override async start(runtime: IAgentRuntime): Promise<Service> {
+				await startGate;
+				return NotificationService.start(runtime);
+			}
+		}
+		const registering = await createNotificationRuntime([
+			SlowNotificationService,
+		]);
+		const loading = registering.runtime.getServiceLoadPromise(
+			ServiceType.NOTIFICATION,
+		);
+		try {
+			expect(
+				registering.runtime.getServiceRegistrationStatus(
+					ServiceType.NOTIFICATION,
+				),
+			).toBe("registering");
+			const { route } = fixedRoute(null);
+			const res = await dispatchBufferedRequest(registering.runtime, route, {
+				method: "GET",
+				path: "/api/notifications",
+			});
+			expect(res.status).toBe(503);
+			expect(res.headers["retry-after"]).toBe("1");
+			expect(JSON.parse(res.body).code).toBe("NOTIFICATION_SERVICE_NOT_READY");
+		} finally {
+			releaseStart();
+			await loading;
+			await registering.cleanup();
+		}
+	});
+
+	it("recovers a failed service once and then serves its persisted rows", async () => {
+		class TransientCacheAdapter extends InMemoryDatabaseAdapter {
+			readAttempts = 0;
+
+			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+				this.readAttempts += 1;
+				if (this.readAttempts === 1) throw new Error("cache temporarily down");
+				return super.getCaches<T>(keys);
+			}
+		}
+		const adapter = new TransientCacheAdapter();
+		const failedRuntime = await createNotificationRuntime(
+			[NotificationService],
+			adapter,
+		);
+		try {
+			await expect(
+				failedRuntime.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			await failedRuntime.runtime.setCache(
+				`notifications:${failedRuntime.runtime.agentId}`,
+				[
+					{
+						id: "00000000-0000-0000-0000-0000000000dd",
+						title: "Recovered Android history",
+						category: "general",
+						priority: "normal",
+						source: "test",
+						createdAt: Date.now(),
+						readAt: null,
+					},
+				],
+			);
+			const { route } = fixedRoute(null);
+			const failed = await dispatchBufferedRequest(
+				failedRuntime.runtime,
+				route,
+				{
+					method: "GET",
+					path: "/api/notifications",
+				},
+			);
+			expect(failed.status).toBe(503);
+			expect(JSON.parse(failed.body).code).toBe("NOTIFICATION_SERVICE_FAILED");
+
+			await failedRuntime.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			);
+			const available = await dispatchBufferedRequest(
+				failedRuntime.runtime,
+				route,
+				{ method: "GET", path: "/api/notifications" },
+			);
+			expect(available.status).toBe(200);
+			expect(JSON.parse(available.body)).toMatchObject({
+				serviceStatus: "ready",
+				notifications: [{ title: "Recovered Android history" }],
+			});
+			expect(adapter.readAttempts).toBe(2);
+		} finally {
+			await failedRuntime.cleanup();
+		}
 	});
 });
 

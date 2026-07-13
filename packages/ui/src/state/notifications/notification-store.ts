@@ -16,11 +16,13 @@ import {
 import { logger } from "@elizaos/logger";
 import { useSyncExternalStore } from "react";
 import { client } from "../../api/client";
+import { isApiError } from "../../api/client-types-core";
 import { invokeDesktopBridgeRequest } from "../../bridge/electrobun-rpc";
 import {
   showNativeNotification,
   showWebNotification,
 } from "../../bridge/native-notifications";
+import { APP_RESUME_EVENT } from "../../events";
 import { pushNotificationBanner } from "./notification-banner-store";
 
 /**
@@ -41,17 +43,38 @@ export interface NotificationState {
   notifications: AgentNotification[];
   unreadCount: number;
   hydrated: boolean;
+  hydrationStatus:
+    | "idle"
+    | "loading"
+    | "retrying"
+    | "ready"
+    | "disabled"
+    | "failed";
+  hydrationAttempts: number;
+  hydrationError: string | null;
 }
 
 let state: NotificationState = {
   notifications: [],
   unreadCount: 0,
   hydrated: false,
+  hydrationStatus: "idle",
+  hydrationAttempts: 0,
+  hydrationError: null,
 };
 
 const listeners = new Set<() => void>();
 const ephemeralNotificationIds = new Set<string>();
 let initialized = false;
+const HYDRATION_MAX_ATTEMPTS = 5;
+const HYDRATION_BASE_DELAY_MS = 500;
+const HYDRATION_MAX_DELAY_MS = 30_000;
+const HYDRATION_JITTER_RATIO = 0.2;
+let hydrationInFlight: Promise<void> | null = null;
+let hydrationRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let hydrationGeneration = 0;
+let liveEventRevision = 0;
+const notificationCleanups: Array<() => void> = [];
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -299,38 +322,181 @@ function handleWsAgentEvent(data: Record<string, unknown>): void {
   const unreadCount =
     typeof payload?.unreadCount === "number" ? payload.unreadCount : undefined;
   const deliverUpdate = payload?.type !== "notification_update";
+  liveEventRevision += 1;
   ingest(notification, unreadCount, { deliver: deliverUpdate });
 }
 
-async function hydrate(): Promise<void> {
+function mergeHydratedNotifications(
+  persisted: AgentNotification[],
+): AgentNotification[] {
+  const combined = [...state.notifications, ...persisted].sort(
+    (a, b) => b.createdAt - a.createdAt,
+  );
+  const seenIds = new Set<string>();
+  const seenGroups = new Set<string>();
+  const merged: AgentNotification[] = [];
+  for (const notification of combined) {
+    if (seenIds.has(notification.id)) continue;
+    if (notification.groupKey && seenGroups.has(notification.groupKey))
+      continue;
+    seenIds.add(notification.id);
+    if (notification.groupKey) seenGroups.add(notification.groupKey);
+    merged.push(notification);
+    if (merged.length === 300) break;
+  }
+  return merged;
+}
+
+function isRetryableHydrationError(error: unknown): boolean {
+  if (!isApiError(error)) return true;
+  if (error.kind === "network" || error.kind === "timeout") return true;
+  return (
+    error.status === 408 ||
+    error.status === 429 ||
+    (typeof error.status === "number" && error.status >= 500)
+  );
+}
+
+function hydrationRetryDelayMs(error: unknown, attempt: number): number {
+  const exponential = Math.min(
+    HYDRATION_MAX_DELAY_MS,
+    HYDRATION_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1),
+  );
+  const jitter = exponential * HYDRATION_JITTER_RATIO * (Math.random() * 2 - 1);
+  const jittered = Math.max(0, Math.round(exponential + jitter));
+  const advertised =
+    isApiError(error) && typeof error.retryAfter === "number"
+      ? error.retryAfter * 1_000
+      : 0;
+  return Math.min(HYDRATION_MAX_DELAY_MS, Math.max(jittered, advertised));
+}
+
+function hydrationErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Notification inbox hydration failed";
+}
+
+async function runHydrationAttempt(generation: number): Promise<void> {
+  const attempt = state.hydrationAttempts + 1;
+  const liveRevisionAtStart = liveEventRevision;
+  setState({
+    hydrated: false,
+    hydrationStatus: attempt === 1 ? "loading" : "retrying",
+    hydrationAttempts: attempt,
+  });
   try {
     const res = await client.listNotifications({ limit: 100 });
+    if (generation !== hydrationGeneration) return;
+    if (hydrationRetryTimer) {
+      clearTimeout(hydrationRetryTimer);
+      hydrationRetryTimer = null;
+    }
+    const notifications = mergeHydratedNotifications(res.notifications);
+    const hydrationStatus =
+      res.serviceStatus === "disabled" ? "disabled" : "ready";
     setState({
-      notifications: res.notifications,
-      unreadCount: res.unreadCount,
+      notifications,
+      unreadCount:
+        liveEventRevision === liveRevisionAtStart
+          ? res.unreadCount
+          : state.unreadCount,
       hydrated: true,
+      hydrationStatus,
+      hydrationError: null,
     });
+    if (attempt > 1) {
+      logger.info(
+        { attempt, hydrationStatus },
+        "[notification-store] inbox hydration recovered",
+      );
+    }
   } catch (err) {
-    // error-policy:J1 transport boundary: the inbox HTTP hydrate failed
-    // (endpoint not ready at early boot, or a real 5xx/network fault). Surface
-    // it — a silent swallow here is the banned "not loaded reads as empty".
-    // Recovery is designed: mark hydrated so the surface renders (not a
-    // perpetual spinner) and the live WS stream, subscribed independently in
-    // initNotifications, still populates the inbox from the next event on.
+    // error-policy:J1 transport boundary — bounded background retries keep the
+    // live subscription active while surfacing terminal failure in store state.
+    if (generation !== hydrationGeneration) return;
+    const message = hydrationErrorMessage(err);
+    const retryable =
+      isRetryableHydrationError(err) && attempt < HYDRATION_MAX_ATTEMPTS;
+    if (!retryable) {
+      logger.error(
+        { err, attempt, retryable: isRetryableHydrationError(err) },
+        "[notification-store] inbox hydration terminal failure",
+      );
+      setState({
+        hydrated: false,
+        hydrationStatus: "failed",
+        hydrationError: message,
+      });
+      return;
+    }
+
+    const delayMs = hydrationRetryDelayMs(err, attempt);
     logger.warn(
-      { err },
-      "[notification-store] inbox hydrate failed; live WS stream will populate",
+      { err, attempt, delayMs },
+      "[notification-store] inbox hydration failed; retry scheduled",
     );
-    setState({ hydrated: true });
+    setState({
+      hydrationStatus: "retrying",
+      hydrationError: message,
+    });
+    hydrationRetryTimer = setTimeout(() => {
+      hydrationRetryTimer = null;
+      void requestHydration();
+    }, delayMs);
   }
+}
+
+function requestHydration(): Promise<void> {
+  if (hydrationInFlight) return hydrationInFlight;
+  if (state.hydrationStatus === "failed") return Promise.resolve();
+  const generation = hydrationGeneration;
+  const run = runHydrationAttempt(generation);
+  let tracked: Promise<void>;
+  tracked = run.finally(() => {
+    if (hydrationInFlight === tracked) hydrationInFlight = null;
+  });
+  hydrationInFlight = tracked;
+  return tracked;
+}
+
+/** Retry a terminal inbox load after a user or lifecycle recovery signal. */
+export function retryNotificationHydration(): Promise<void> {
+  if (state.hydrationStatus !== "failed") return Promise.resolve();
+  setState({
+    hydrated: false,
+    hydrationStatus: "idle",
+    hydrationAttempts: 0,
+    hydrationError: null,
+  });
+  return requestHydration();
 }
 
 /** Idempotent boot: hydrate the inbox and subscribe to live notifications. */
 export function initNotifications(): void {
   if (initialized) return;
   initialized = true;
-  void hydrate();
-  client.onWsEvent("agent_event", handleWsAgentEvent);
+  notificationCleanups.push(
+    client.onWsEvent("agent_event", handleWsAgentEvent),
+    client.onWsEvent("ws-reconnected", () => {
+      void retryNotificationHydration();
+    }),
+  );
+  if (typeof window !== "undefined") {
+    const retryOnline = () => void retryNotificationHydration();
+    window.addEventListener("online", retryOnline);
+    notificationCleanups.push(() =>
+      window.removeEventListener("online", retryOnline),
+    );
+  }
+  if (typeof document !== "undefined") {
+    const retryOnResume = () => void retryNotificationHydration();
+    document.addEventListener(APP_RESUME_EVENT, retryOnResume);
+    notificationCleanups.push(() =>
+      document.removeEventListener(APP_RESUME_EVENT, retryOnResume),
+    );
+  }
+  void requestHydration();
 }
 
 let devSeedAttempted = false;
@@ -347,7 +513,10 @@ export async function seedDevNotificationsIfEmpty(): Promise<void> {
   if (devSeedAttempted) return;
   devSeedAttempted = true;
   // Hydrate first so we only seed a genuinely-empty inbox, never over real rows.
-  if (!state.hydrated) await hydrate();
+  if (!state.hydrated) await requestHydration();
+  if (state.hydrationStatus !== "ready" || state.hydrationError !== null) {
+    return;
+  }
   if (state.notifications.length > 0) return;
   try {
     const res = await client.seedDevNotifications();
@@ -474,7 +643,20 @@ export function useNotifications(): NotificationState {
 
 /** Test-only reset hook. */
 export function __resetNotificationStoreForTests(): void {
-  state = { notifications: [], unreadCount: 0, hydrated: false };
+  for (const cleanup of notificationCleanups.splice(0)) cleanup();
+  hydrationGeneration += 1;
+  if (hydrationRetryTimer) clearTimeout(hydrationRetryTimer);
+  hydrationRetryTimer = null;
+  hydrationInFlight = null;
+  liveEventRevision = 0;
+  state = {
+    notifications: [],
+    unreadCount: 0,
+    hydrated: false,
+    hydrationStatus: "idle",
+    hydrationAttempts: 0,
+    hydrationError: null,
+  };
   initialized = false;
   devSeedAttempted = false;
   ephemeralNotificationIds.clear();
@@ -501,6 +683,16 @@ export function __ingestEphemeralNotificationForTests(
 /** Test-only: drive the hydration flag to exercise the not-loaded vs empty UI. */
 export function __setHydratedForTests(value: boolean): void {
   setState({ hydrated: value });
+}
+
+/** Test-only terminal state used to verify the designed unavailable surface. */
+export function __setHydrationFailureForTests(message: string): void {
+  setState({
+    hydrated: false,
+    hydrationStatus: "failed",
+    hydrationAttempts: HYDRATION_MAX_ATTEMPTS,
+    hydrationError: message,
+  });
 }
 
 /** Test-only snapshot of the live store state (the WS-validation path asserts the
