@@ -150,6 +150,7 @@ jobs:
         env:
           LIVE_PROCESS_STATUS: ${{ steps.live.outputs.status }}
           PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
+          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -185,8 +186,13 @@ jobs:
             echo "::error::Staging reported a deploy commit absent from this repository checkout."
             exit 1
           fi
-          if ! git merge-base --is-ancestor "$deployed_commit" "$GITHUB_SHA"; then
-            echo "::error::Staging deploy commit is not an ancestor of this canary's exact run SHA."
+          expected_source_sha="${EXPECTED_SOURCE_SHA:-}"
+          if [[ -z "$expected_source_sha" ]] || ! git cat-file -e "${expected_source_sha}^{commit}" 2>/dev/null; then
+            echo "::error::Expected canary source commit is absent from this repository checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"; then
+            echo "::error::Staging deploy does not contain this canary's expected source commit."
             exit 1
           fi
 

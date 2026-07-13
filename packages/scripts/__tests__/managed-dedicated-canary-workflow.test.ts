@@ -1,6 +1,12 @@
+/**
+ * Locks the staging canary workflow's trigger, privacy, cleanup, and deployment
+ * provenance contracts using parsed YAML and disposable Git histories.
+ */
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const workflowPath = new URL(
   "../../../.github/workflows/managed-dedicated-canary.yml",
@@ -9,6 +15,7 @@ const workflowPath = new URL(
 const workflowSource = readFileSync(workflowPath, "utf8");
 
 interface WorkflowStep {
+  env?: Record<string, string>;
   id?: string;
   if?: string;
   name?: string;
@@ -38,6 +45,20 @@ function step(name: string): WorkflowStep {
   const found = job?.steps?.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`Missing workflow step: ${name}`);
   return found;
+}
+
+function runGit(cwd: string, args: string[]): ReturnType<typeof spawnSync> {
+  return spawnSync("git", args, { cwd, encoding: "utf8" });
+}
+
+function commitFixture(cwd: string, label: string): string {
+  writeFileSync(join(cwd, "fixture.txt"), `${label}\n`, { flag: "a" });
+  expect(runGit(cwd, ["add", "fixture.txt"]).status).toBe(0);
+  const commit = runGit(cwd, ["commit", "-m", label]);
+  expect(commit.status, commit.stderr).toBe(0);
+  const rev = runGit(cwd, ["rev-parse", "HEAD"]);
+  expect(rev.status, rev.stderr).toBe(0);
+  return rev.stdout.trim();
 }
 
 describe("managed dedicated staging canary workflow (#16194)", () => {
@@ -133,10 +154,59 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
     expect(enforce).toContain('[[ ! -s "$evidence_path" ]]');
     expect(enforce).toContain("validateManagedDedicatedCanaryEvidence");
     expect(enforce).toContain("zero-executed/skip outcomes are failures");
-    expect(enforce).toContain("git merge-base --is-ancestor");
+    expect(
+      step("Enforce live proof, deployed SHA, and cleanup").env
+        ?.EXPECTED_SOURCE_SHA,
+    ).toBe(
+      "$" +
+        "{{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+    );
+    expect(enforce).toContain(
+      'git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"',
+    );
+    expect(enforce).not.toContain(
+      'git merge-base --is-ancestor "$deployed_commit" "$GITHUB_SHA"',
+    );
     expect(enforce).toContain("LIVE_PROCESS_STATUS:-missing");
     expect(enforce).toContain("PRIVACY_VALIDATED:-missing");
     expect(enforce).toContain("evidence.cleanup.status");
+  });
+
+  test("rejects an older deployed ancestor and accepts a deploy containing the expected source", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "managed-canary-ancestry-"));
+    try {
+      expect(runGit(cwd, ["init", "--quiet"]).status).toBe(0);
+      expect(
+        runGit(cwd, ["config", "user.email", "canary@example.test"]).status,
+      ).toBe(0);
+      expect(runGit(cwd, ["config", "user.name", "Canary Test"]).status).toBe(
+        0,
+      );
+      const staleDeploy = commitFixture(cwd, "stale deployment");
+      const expectedSource = commitFixture(cwd, "expected source");
+      const containingDeploy = commitFixture(
+        cwd,
+        "deployment containing source",
+      );
+
+      const stale = runGit(cwd, [
+        "merge-base",
+        "--is-ancestor",
+        expectedSource,
+        staleDeploy,
+      ]);
+      expect(stale.status).toBe(1);
+
+      const containing = runGit(cwd, [
+        "merge-base",
+        "--is-ancestor",
+        expectedSource,
+        containingDeploy,
+      ]);
+      expect(containing.status, containing.stderr).toBe(0);
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 
   test("strictly validates both red and green evidence before any artifact upload", () => {
