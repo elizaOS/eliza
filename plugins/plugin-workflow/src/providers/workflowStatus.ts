@@ -2,7 +2,14 @@
  * `workflow_status` provider: lists each user's workflows with their last
  * execution status for the automation/connectors contexts (ADMIN-gated).
  */
-import { type IAgentRuntime, logger, type Memory, type Provider, type State } from '@elizaos/core';
+import {
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type Provider,
+  type State,
+} from '@elizaos/core';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 
 export const workflowStatusProvider: Provider = {
@@ -57,12 +64,17 @@ export const workflowStatusProvider: Provider = {
               lastExec.status === 'success' ? '✅' : lastExec.status === 'error' ? '❌' : '⏳';
             status += `   Last run: ${execEmoji} ${lastExec.status} at ${new Date(lastExec.startedAt).toLocaleString()}\n`;
           }
-        } catch (_error) {
-          // Ignore execution fetch errors
-          logger.debug(
-            { src: 'plugin:workflow:provider:workflowStatus' },
-            `Could not fetch executions for workflow ${workflow.id}`
-          );
+        } catch (error) {
+          // error-policy:J4 The workflow list remains useful, but the missing
+          // execution status is rendered explicitly and reported to the agent.
+          const wrapped = new ElizaError('Failed to load workflow executions', {
+            code: 'WORKFLOW_PROVIDER_EXECUTIONS_LOAD_FAILED',
+            cause: error,
+            context: { workflowId: workflow.id, entityId: userId },
+            severity: 'ephemeral',
+          });
+          await runtime.reportError('WorkflowProvider.status.executions', wrapped);
+          status += '   Last run: unavailable\n';
         }
 
         status += '\n';
@@ -78,15 +90,14 @@ export const workflowStatusProvider: Provider = {
         values: { workflowCount: workflows.length },
       };
     } catch (error) {
-      logger.error(
-        { src: 'plugin:workflow:provider:workflowStatus' },
-        `Failed to get workflow status: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return {
-        text: '',
-        data: {},
-        values: {},
-      };
+      const wrapped = new ElizaError('Failed to load workflow status', {
+        code: 'WORKFLOW_PROVIDER_STATUS_LOAD_FAILED',
+        cause: error,
+        context: { entityId: _message.entityId },
+        severity: 'ephemeral',
+      });
+      await runtime.reportError('WorkflowProvider.status', wrapped);
+      throw wrapped;
     }
   },
 };

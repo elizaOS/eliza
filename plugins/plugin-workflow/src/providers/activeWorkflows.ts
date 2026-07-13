@@ -1,5 +1,11 @@
 // Provides active workflow context to workflow-aware agent turns.
-import { type IAgentRuntime, logger, type Memory, type Provider, type State } from '@elizaos/core';
+import {
+  ElizaError,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
+} from '@elizaos/core';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 
 function getWorkflowSearchQuery(message: Memory): string | null {
@@ -82,15 +88,14 @@ export const activeWorkflowsProvider: Provider = {
         },
       };
     } catch (error) {
-      logger.error(
-        { src: 'plugin:workflow:providers:active-workflows' },
-        `Failed to get active workflows: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return {
-        text: '',
-        data: {},
-        values: {},
-      };
+      const wrapped = new ElizaError('Failed to load active workflows', {
+        code: 'WORKFLOW_PROVIDER_ACTIVE_LOAD_FAILED',
+        cause: error,
+        context: { entityId: _message.entityId },
+        severity: 'ephemeral',
+      });
+      await runtime.reportError('WorkflowProvider.active', wrapped);
+      throw wrapped;
     }
   },
 };

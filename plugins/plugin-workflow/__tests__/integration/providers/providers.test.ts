@@ -1,525 +1,276 @@
-/** Integration coverage for the three workflow providers against a mocked WorkflowService (deterministic, no live model). */
-import { describe, expect, mock, test } from 'bun:test';
+/**
+ * Exercises workflow providers through a real AgentRuntime, WorkflowService,
+ * EmbeddedWorkflowService, runtime cache, and PGlite persistence. No internal
+ * runtime or service boundary is mocked.
+ */
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { type Memory, type State, stringToUuid } from '@elizaos/core';
 import { activeWorkflowsProvider } from '../../../src/providers/activeWorkflows';
 import { pendingDraftProvider } from '../../../src/providers/pendingDraft';
 import { workflowStatusProvider } from '../../../src/providers/workflowStatus';
 import { WORKFLOW_SERVICE_TYPE, WorkflowService } from '../../../src/services/workflow-service';
-import {
-  createExecution,
-  createSlackNode,
-  createTriggerNode,
-  createWorkflowResponse,
-} from '../../fixtures/workflows';
-import { createMockMessage, createMockRuntime, createMockState } from '../../helpers/mockRuntime';
-import { createMockService } from '../../helpers/mockService';
+import type { WorkflowDefinition } from '../../../src/types';
+import { type EmbeddedHarness, makeEmbeddedHarness } from '../embedded-harness';
 
-// ============================================================================
-// activeWorkflowsProvider
-// ============================================================================
+const USER_ID = stringToUuid('workflow-provider-user');
+const OTHER_USER_ID = stringToUuid('workflow-provider-other-user');
 
-describe('activeWorkflowsProvider', () => {
-  test('matches WORKFLOW action chat contexts and uses turn cache', () => {
-    expect(activeWorkflowsProvider.contexts).toEqual([
-      'general',
-      'automation',
-      'tasks',
-      'connectors',
-    ]);
+function message(text = 'Test message', entityId = USER_ID): Memory {
+  return {
+    id: stringToUuid(`workflow-provider-message:${text}:${entityId}`),
+    entityId,
+    agentId: stringToUuid('workflow-provider-agent'),
+    roomId: stringToUuid('workflow-provider-room'),
+    content: { text },
+    createdAt: Date.now(),
+  };
+}
+
+function state(): State {
+  return { data: {}, values: {}, text: '' };
+}
+
+function workflowDefinition(name: string, integration = 'set'): WorkflowDefinition {
+  const actionName = integration === 'slack' ? 'Slack' : 'Set';
+  const actionType =
+    integration === 'slack' ? 'workflows-nodes-base.httpRequest' : 'workflows-nodes-base.set';
+  return {
+    name,
+    nodes: [
+      {
+        id: 'trigger',
+        name: 'Manual Trigger',
+        type: 'workflows-nodes-base.manualTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+      {
+        id: 'action',
+        name: actionName,
+        type: actionType,
+        typeVersion: integration === 'slack' ? 2.2 : 3.4,
+        position: [200, 0],
+        parameters:
+          integration === 'slack'
+            ? { method: 'POST', url: 'https://slack.example.test/hooks/alerts' }
+            : { assignments: { assignments: [] } },
+      },
+    ],
+    connections: {
+      'Manual Trigger': { main: [[{ node: actionName, type: 'main', index: 0 }]] },
+    },
+  };
+}
+
+async function registerWorkflowService(harness: EmbeddedHarness): Promise<WorkflowService> {
+  await harness.runtime.registerPlugin({
+    name: 'workflow-provider-integration-service',
+    description: 'Real workflow facade for provider integration coverage',
+    services: [WorkflowService],
+  });
+  return (await harness.runtime.getServiceLoadPromise(WORKFLOW_SERVICE_TYPE)) as WorkflowService;
+}
+
+async function createOwnedWorkflow(
+  harness: EmbeddedHarness,
+  name: string,
+  integration = 'set'
+): Promise<string> {
+  const workflow = await harness.workflow.createWorkflow(workflowDefinition(name, integration));
+  const tagName = `user_${USER_ID.replace(/-/g, '').slice(0, 8)}`;
+  const tag = await harness.workflow.getOrCreateTag(tagName);
+  await harness.workflow.updateWorkflowTags(workflow.id, [tag.id]);
+  return workflow.id;
+}
+
+describe('workflow providers with real runtime services', () => {
+  let harness: EmbeddedHarness;
+  let service: WorkflowService;
+
+  beforeEach(async () => {
+    harness = await makeEmbeddedHarness(`provider-${crypto.randomUUID()}`);
+    service = await registerWorkflowService(harness);
+  });
+
+  afterEach(async () => {
+    await harness.close();
+  });
+
+  test('declares the provider gates and cache scopes consumed by workflow turns', () => {
     expect(activeWorkflowsProvider.contextGate).toEqual({
       anyOf: ['general', 'automation', 'tasks', 'connectors'],
     });
     expect(activeWorkflowsProvider.cacheScope).toBe('turn');
+    expect(workflowStatusProvider.contextGate).toEqual({
+      anyOf: ['automation', 'connectors'],
+    });
+    expect(pendingDraftProvider.cacheScope).toBe('conversation');
   });
 
-  test('returns empty when service not available', async () => {
-    const runtime = createMockRuntime();
-    const result = await activeWorkflowsProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
+  test('returns explicit empty workflow state from the real persistence path', async () => {
+    const result = await activeWorkflowsProvider.get(harness.runtime, message(), state());
 
-    expect(result.text).toBe('');
-    expect(result.data).toEqual({});
+    expect(result).toEqual({
+      text: '',
+      data: { workflows: [] },
+      values: { hasWorkflows: false },
+    });
   });
 
-  test('returns empty workflows when user has none', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() => Promise.resolve([])),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
-
-    const result = await activeWorkflowsProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
-
-    expect(result.data).toEqual({ workflows: [] });
-    expect(result.values).toEqual({ hasWorkflows: false });
+  test('returns unavailable state when the workflow facade was never registered', async () => {
+    const withoutFacade = await makeEmbeddedHarness(`provider-missing-${crypto.randomUUID()}`);
+    try {
+      const result = await activeWorkflowsProvider.get(withoutFacade.runtime, message(), state());
+      expect(result).toEqual({ text: '', data: {}, values: {} });
+    } finally {
+      await withoutFacade.close();
+    }
   });
 
-  test('returns formatted workflow data', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() =>
-        Promise.resolve([
-          createWorkflowResponse({
-            id: 'wf-1',
-            name: 'Stripe Payments',
-            active: true,
-            nodes: [
-              createTriggerNode({ name: 'n1', position: [0, 0] }),
-              createTriggerNode({ name: 'n2', position: [100, 0] }),
-              createTriggerNode({ name: 'n3', position: [200, 0] }),
-            ],
-          }),
-          createWorkflowResponse({
-            id: 'wf-2',
-            name: 'Gmail Automation',
-            active: false,
-          }),
-        ])
-      ),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
+  test('lists owned workflows with persisted activation and node counts', async () => {
+    const activeId = await createOwnedWorkflow(harness, 'Stripe Payments');
+    await service.activateWorkflow(activeId);
+    await createOwnedWorkflow(harness, 'Daily Summary');
 
     const result = await activeWorkflowsProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
+      harness.runtime,
+      message('What happened this morning?'),
+      state()
     );
 
     expect(result.text).toContain('Stripe Payments');
-    expect(result.text).toContain('Gmail Automation');
+    expect(result.text).toContain('Daily Summary');
     expect(result.text).toContain('ACTIVE');
     expect(result.text).toContain('INACTIVE');
     expect(result.values).toEqual({ hasWorkflows: true, workflowCount: 2 });
-    const workflows = result.data?.workflows as Array<Record<string, unknown>>;
-    expect(workflows).toHaveLength(2);
-    expect(workflows[0]).toEqual({
-      id: 'wf-1',
-      name: 'Stripe Payments',
-      active: true,
-      nodeCount: 3,
-    });
+    expect(result.data?.workflows).toEqual(
+      expect.arrayContaining([
+        { id: activeId, name: 'Stripe Payments', active: true, nodeCount: 2 },
+      ])
+    );
   });
 
-  test('searches workflows from workflow-related message text', async () => {
-    const searchQuery = 'Find the workflow that posts to Slack';
-    const mockService = createMockService({
-      listWorkflows: mock(() => Promise.resolve([])),
-      searchWorkflows: mock(() =>
-        Promise.resolve([
-          createWorkflowResponse({
-            id: 'wf-slack',
-            name: 'Slack Alerts',
-            active: true,
-            nodes: [createTriggerNode({ name: 'Slack', position: [0, 0] })],
-          }),
-        ])
-      ),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
-    const message = createMockMessage({
-      entityId: 'user-123',
-      content: { text: searchQuery },
-    });
+  test('searches through the real workflow ranking path', async () => {
+    await createOwnedWorkflow(harness, 'Gmail digest');
+    const slackId = await createOwnedWorkflow(harness, 'Team notifications', 'slack');
+    const query = 'find the workflow that posts to Slack';
 
-    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
+    const result = await activeWorkflowsProvider.get(harness.runtime, message(query), state());
 
-    expect(mockService.searchWorkflows).toHaveBeenCalledWith(searchQuery, 'user-123');
-    expect(mockService.listWorkflows).not.toHaveBeenCalled();
-    expect(result.text).toContain('# Matching Workflows');
-    expect(result.text).toContain('Slack Alerts');
-    expect(result.data).toEqual({
-      workflows: [
-        {
-          id: 'wf-slack',
-          name: 'Slack Alerts',
-          active: true,
-          nodeCount: 1,
-        },
-      ],
-      searchQuery,
-    });
-    expect(result.values).toEqual({
-      hasWorkflows: true,
-      workflowCount: 1,
-      workflowSearchQuery: searchQuery,
-    });
-  });
-
-  test('searches sentence text through the real workflow ranking path', async () => {
-    const service = Object.assign(Object.create(WorkflowService.prototype), {
-      serviceType: WORKFLOW_SERVICE_TYPE,
-      listWorkflows: mock(() =>
-        Promise.resolve([
-          createWorkflowResponse({
-            id: 'wf-gmail',
-            name: 'Gmail digest',
-          }),
-          createWorkflowResponse({
-            id: 'wf-slack',
-            name: 'Team notifications',
-            nodes: [createTriggerNode(), createSlackNode()],
-          }),
-        ])
-      ),
-    }) as WorkflowService;
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: service },
-    });
-    const message = createMockMessage({
-      entityId: 'user-123',
-      content: { text: 'find the workflow that posts to Slack' },
-    });
-
-    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
-
-    expect(service.listWorkflows).toHaveBeenCalledWith('user-123');
     expect(result.text).toContain('# Matching Workflows');
     expect(result.text).toContain('Team notifications');
     expect(result.text).not.toContain('Gmail digest');
     expect(result.data).toEqual({
       workflows: [
         {
-          id: 'wf-slack',
+          id: slackId,
           name: 'Team notifications',
           active: false,
           nodeCount: 2,
         },
       ],
-      searchQuery: 'find the workflow that posts to Slack',
+      searchQuery: query,
     });
   });
 
-  test('uses full workflow list for non-workflow chat text', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() =>
-        Promise.resolve([createWorkflowResponse({ id: 'wf-1', name: 'Daily Summary' })])
-      ),
-      searchWorkflows: mock(() => Promise.resolve([])),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
-    const message = createMockMessage({
-      content: { text: 'What happened this morning?' },
-    });
+  test('returns a designed no-match result for a real ranked search', async () => {
+    await createOwnedWorkflow(harness, 'Daily Summary');
+    const query = 'search workflows for calendar cleanup';
 
-    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
+    const result = await activeWorkflowsProvider.get(harness.runtime, message(query), state());
 
-    expect(mockService.listWorkflows).toHaveBeenCalledWith('user-001');
-    expect(mockService.searchWorkflows).not.toHaveBeenCalled();
-    expect(result.text).toContain('# Available Workflows');
-    expect(result.data).toEqual({
-      workflows: [
-        {
-          id: 'wf-1',
-          name: 'Daily Summary',
-          active: false,
-          nodeCount: 2,
-        },
-      ],
-    });
+    expect(result.text).toContain(`No workflows match "${query}".`);
+    expect(result.data).toEqual({ workflows: [], searchQuery: query });
   });
 
-  test('returns explicit empty result when workflow search has no matches', async () => {
-    const searchQuery = 'search workflows for calendar cleanup';
-    const mockService = createMockService({
-      searchWorkflows: mock(() => Promise.resolve([])),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
-    const message = createMockMessage({
-      content: { text: searchQuery },
-    });
+  test('scopes persisted workflows by the message entity', async () => {
+    await createOwnedWorkflow(harness, 'Owner workflow');
 
-    const result = await activeWorkflowsProvider.get(runtime, message, createMockState());
+    const result = await activeWorkflowsProvider.get(
+      harness.runtime,
+      message('List workflows', OTHER_USER_ID),
+      state()
+    );
 
-    expect(result.text).toContain(`No workflows match "${searchQuery}".`);
-    expect(result.data).toEqual({ workflows: [], searchQuery });
     expect(result.values).toEqual({
       hasWorkflows: false,
       workflowCount: 0,
-      workflowSearchQuery: searchQuery,
+      workflowSearchQuery: 'List workflows',
     });
   });
 
-  test('passes userId from message', async () => {
-    const mockService = createMockService();
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
-    const message = createMockMessage({
-      entityId: 'custom-user-0000-0000-000000000001',
-    });
+  test('surfaces a stopped workflow service as an observable provider failure', async () => {
+    await service.stop();
 
-    await activeWorkflowsProvider.get(runtime, message, createMockState());
-
-    expect(mockService.listWorkflows).toHaveBeenCalledWith('custom-user-0000-0000-000000000001');
+    await expect(
+      activeWorkflowsProvider.get(harness.runtime, message(), state())
+    ).rejects.toMatchObject({
+      code: 'WORKFLOW_PROVIDER_ACTIVE_LOAD_FAILED',
+      cause: expect.objectContaining({ message: expect.stringContaining('not initialized') }),
+    });
   });
 
-  test('handles service error gracefully', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() => Promise.reject(new Error('Network error'))),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
-
-    const result = await activeWorkflowsProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
-
-    // Should return empty result, not throw
-    expect(result.text).toBe('');
-  });
-});
-
-// ============================================================================
-// workflowStatusProvider
-// ============================================================================
-
-describe('workflowStatusProvider', () => {
-  test('returns empty when service not available', async () => {
-    const runtime = createMockRuntime();
-    const result = await workflowStatusProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
-
-    expect(result.text).toBe('');
-  });
-
-  test('returns message when no workflows', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() => Promise.resolve([])),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
+  test('reports status and a real persisted execution', async () => {
+    const workflowId = await createOwnedWorkflow(harness, 'Executable workflow');
+    await harness.workflow.executeWorkflow(workflowId, {
+      mode: 'manual',
+      triggerData: { source: 'provider-test' },
     });
 
-    const result = await workflowStatusProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
+    const result = await workflowStatusProvider.get(harness.runtime, message(), state());
 
-    expect(result.text).toContain('No workflows');
-  });
-
-  test('includes workflow status and execution info', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() =>
-        Promise.resolve([
-          createWorkflowResponse({
-            id: 'wf-1',
-            name: 'Active WF',
-            active: true,
-          }),
-        ])
-      ),
-      getWorkflowExecutions: mock(() =>
-        Promise.resolve([
-          createExecution({
-            status: 'success',
-            startedAt: '2025-01-15T10:30:00.000Z',
-          }),
-        ])
-      ),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
-
-    const result = await workflowStatusProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
-
-    expect(result.text).toContain('Active WF');
+    expect(result.text).toContain('Executable workflow');
     expect(result.text).toContain('success');
     expect(result.values).toEqual({ workflowCount: 1 });
+    expect(result.data?.workflows).toHaveLength(1);
   });
 
-  test('handles execution fetch error per workflow', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() =>
-        Promise.resolve([createWorkflowResponse({ id: 'wf-1', name: 'WF', active: true })])
-      ),
-      getWorkflowExecutions: mock(() => Promise.reject(new Error('Execution API error'))),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
-    });
+  test('limits rendered status while retaining the persisted total', async () => {
+    for (let index = 0; index < 12; index += 1) {
+      await createOwnedWorkflow(harness, `Workflow ${index}`);
+    }
 
-    const result = await workflowStatusProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
+    const result = await workflowStatusProvider.get(harness.runtime, message(), state());
 
-    // Should still return workflow info even if executions fail
-    expect(result.text).toContain('WF');
+    expect(result.text).toContain('2 more workflows');
+    expect(result.values).toEqual({ workflowCount: 12 });
   });
 
-  test('limits to 10 workflows', async () => {
-    const mockService = createMockService({
-      listWorkflows: mock(() =>
-        Promise.resolve(
-          Array.from({ length: 15 }, (_, i) =>
-            createWorkflowResponse({ id: `wf-${i}`, name: `Workflow ${i}` })
-          )
-        )
-      ),
-    });
-    const runtime = createMockRuntime({
-      services: { [WORKFLOW_SERVICE_TYPE]: mockService },
+  test('reads pending drafts through the real runtime cache', async () => {
+    await harness.runtime.setCache(`workflow_draft:${USER_ID}`, {
+      workflow: workflowDefinition('Gmail to Telegram'),
+      prompt: 'Send gmail to telegram',
+      userId: USER_ID,
+      createdAt: Date.now(),
     });
 
-    const result = await workflowStatusProvider.get(
-      runtime,
-      createMockMessage(),
-      createMockState()
-    );
-
-    expect(result.text).toContain('5 more workflows');
-  });
-});
-
-// ============================================================================
-// pendingDraftProvider
-// ============================================================================
-
-describe('pendingDraftProvider', () => {
-  const draftWorkflow = {
-    name: 'Gmail to Telegram',
-    nodes: [
-      {
-        name: 'Gmail Trigger',
-        type: 'workflows-nodes-base.gmailTrigger',
-        typeVersion: 1,
-        position: [0, 0],
-        parameters: {},
-      },
-      {
-        name: 'Telegram Send',
-        type: 'workflows-nodes-base.telegram',
-        typeVersion: 1,
-        position: [200, 0],
-        parameters: {},
-      },
-    ],
-    connections: {},
-    settings: {},
-  };
-
-  test('returns empty when no draft in cache', async () => {
-    const runtime = createMockRuntime();
-    const result = await pendingDraftProvider.get(runtime, createMockMessage(), createMockState());
-
-    expect(result.text).toBe('');
-    expect(result.data).toEqual({});
-  });
-
-  test('returns draft info when draft exists', async () => {
-    const runtime = createMockRuntime({
-      cache: {
-        'workflow_draft:user-001': {
-          workflow: draftWorkflow,
-          prompt: 'Send gmail to telegram',
-          userId: 'user-001',
-          createdAt: Date.now(),
-        },
-      },
-    });
-
-    const result = await pendingDraftProvider.get(
-      runtime,
-      createMockMessage({ entityId: 'user-001' }),
-      createMockState()
-    );
+    const result = await pendingDraftProvider.get(harness.runtime, message('yes'), state());
 
     expect(result.text).toContain('Gmail to Telegram');
-    expect(result.text).toContain('WORKFLOW');
+    expect(result.text).toContain('Manual Trigger');
     expect(result.data).toEqual({ hasPendingDraft: true, truncated: false });
     expect(result.values).toEqual({ hasPendingDraft: true });
   });
 
-  test('returns empty for expired draft', async () => {
-    const runtime = createMockRuntime({
-      cache: {
-        'workflow_draft:user-001': {
-          workflow: draftWorkflow,
-          prompt: 'test',
-          userId: 'user-001',
-          createdAt: Date.now() - 31 * 60 * 1000, // 31 min ago — expired
-        },
-      },
+  test('distinguishes missing, expired, and other-user drafts', async () => {
+    const missing = await pendingDraftProvider.get(harness.runtime, message(), state());
+    expect(missing).toEqual({ text: '', data: {}, values: {} });
+
+    await harness.runtime.setCache(`workflow_draft:${USER_ID}`, {
+      workflow: workflowDefinition('Expired workflow'),
+      prompt: 'test',
+      userId: USER_ID,
+      createdAt: Date.now() - 31 * 60 * 1000,
     });
 
-    const result = await pendingDraftProvider.get(
-      runtime,
-      createMockMessage({ entityId: 'user-001' }),
-      createMockState()
+    const expired = await pendingDraftProvider.get(harness.runtime, message(), state());
+    const otherUser = await pendingDraftProvider.get(
+      harness.runtime,
+      message('yes', OTHER_USER_ID),
+      state()
     );
-
-    expect(result.text).toBe('');
-    expect(result.data).toEqual({});
-  });
-
-  test('includes node names in text', async () => {
-    const runtime = createMockRuntime({
-      cache: {
-        'workflow_draft:user-001': {
-          workflow: draftWorkflow,
-          prompt: 'test',
-          userId: 'user-001',
-          createdAt: Date.now(),
-        },
-      },
-    });
-
-    const result = await pendingDraftProvider.get(
-      runtime,
-      createMockMessage({ entityId: 'user-001' }),
-      createMockState()
-    );
-
-    expect(result.text).toContain('Gmail Trigger');
-    expect(result.text).toContain('Telegram Send');
-  });
-
-  test('scoped to user — no draft for other user', async () => {
-    const runtime = createMockRuntime({
-      cache: {
-        'workflow_draft:user-001': {
-          workflow: draftWorkflow,
-          prompt: 'test',
-          userId: 'user-001',
-          createdAt: Date.now(),
-        },
-      },
-    });
-
-    const result = await pendingDraftProvider.get(
-      runtime,
-      createMockMessage({ entityId: 'other-user' }),
-      createMockState()
-    );
-
-    expect(result.text).toBe('');
+    expect(expired).toEqual({ text: '', data: {}, values: {} });
+    expect(otherUser).toEqual({ text: '', data: {}, values: {} });
   });
 });
