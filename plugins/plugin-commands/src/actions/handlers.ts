@@ -62,7 +62,6 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"reset",
 	"new",
 	"compact",
-	"models",
 	"usage",
 	"think",
 	"verbose",
@@ -110,6 +109,18 @@ const OPTION_COMMANDS = {
 
 function reply(text: string): CommandResult {
 	return { handled: true, reply: text, shouldContinue: false };
+}
+
+/** Bare hostname of a base URL setting, or undefined when unset/unparsable. */
+function hostOf(value: unknown): string | undefined {
+	if (typeof value !== "string" || !value.trim()) return undefined;
+	try {
+		return new URL(value.trim()).hostname;
+	} catch {
+		// error-policy:J3 an unparsable operator-supplied URL degrades to "no
+		// endpoint shown" rather than a broken show line.
+		return undefined;
+	}
 }
 
 function authError(): CommandResult {
@@ -360,9 +371,6 @@ export async function runCommand(
 			return reply(lines.join("\n"));
 		}
 
-		case "models":
-			return reply(`Current model: ${resolveModelLabel(runtime)}`);
-
 		case "usage": {
 			const usage = await runtime.getCache<{
 				promptTokens?: number;
@@ -388,7 +396,16 @@ export async function runCommand(
 			if (configCommand) {
 				if (configCommand.kind === "show") {
 					if (!context.isAuthorized) return authError();
-					return runModelConfigShowViaRoute();
+					// Names what ACTUALLY serves each family, not just the config:
+					// the OPENAI_* family can point anywhere OpenAI-compatible
+					// (Cerebras, Eliza Cloud, ...) via OPENAI_BASE_URL.
+					return runModelConfigShowViaRoute({
+						openai:
+							hostOf(runtime.getSetting("OPENAI_BASE_URL")) ?? "api.openai.com",
+						anthropic:
+							hostOf(runtime.getSetting("ANTHROPIC_BASE_URL")) ??
+							"api.anthropic.com",
+					});
 				}
 				if (!context.isElevated) {
 					return reply("This command requires elevated permissions.");

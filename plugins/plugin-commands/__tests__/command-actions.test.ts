@@ -338,7 +338,6 @@ describe("command shortcuts ↔ actions linkage (#8790 × #8791)", () => {
 			"cmd:help:/help->HELP_COMMAND",
 			"cmd:model:/m->MODEL_COMMAND",
 			"cmd:model:/model->MODEL_COMMAND",
-			"cmd:models:/models->MODELS_COMMAND",
 			"cmd:new:/new->NEW_COMMAND",
 			"cmd:queue:/q->QUEUE_COMMAND",
 			"cmd:queue:/queue->QUEUE_COMMAND",
