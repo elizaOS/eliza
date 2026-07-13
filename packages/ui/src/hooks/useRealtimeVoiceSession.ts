@@ -1,39 +1,8 @@
 /**
- * `useRealtimeVoiceSession` — the app-surface React hook that drives the
- * realtime voice-session client (`createVoiceSessionClient`) as a lifecycle-tied
- * enhancement of the EXISTING voice UI.
- *
- * Relationship to the batch path (critical acceptance): this hook is an
- * ADDITIVE enhancement, never a replacement. It only "arms" when
- *   - the VITE-side realtime flag is on (`isRealtimeVoiceFlagEnabled`), AND
- *   - the server mint succeeds (the mint route is present + the server flag on).
- * A mint that returns 404 (`VoiceSessionMintError.isFeatureDisabled`) or a
- * consent 503/permission failure leaves the hook in a state the caller reads as
- * "fall back to the existing batch ASR path". The caller wires the mic button to
- * the realtime `start`/`stop`/`bargeIn` ONLY while `available` is true; the
- * moment it isn't, the caller runs its unchanged batch flow. There is no second
- * UI surface — the same mic button, the same `VoiceContinuousStatus` bar.
- *
- * State surfaced (all derived from the REAL client's state machine + trace
- * marks, never synthesized):
- *   - `status`           — the unified `VoiceContinuousStatus` (#15924).
- *   - `transcriptPartial`/`transcriptFinal` — from `stt_partial`/`stt_final`.
- *   - `agentSpeaking`    — the client phase is `speaking`.
- *   - `paused`           — mic was suspended by a visibility-hide (a paused
- *                          state, NOT a broken one — see the mic-capture seat).
- *   - `error`            — a typed, actionable error (permission / transport /
- *                          mint). Permission-denied surfaces as an actionable
- *                          `kind:"permission"` so the UI can show a re-enable CTA.
- *   - `start`/`stop`/`bargeIn`/`unlock` — lifecycle bound to the component.
- *
- * iOS/WebView: `start()` first calls the client's `unlockPlayback()` on the
- * user gesture that begins the session (AudioContext resume), so the very first
- * downlink audio is audible without a separate tap. Visibility-hide surfaces a
- * paused state via the client's `mic_suspended`/`mic_resumed` trace marks.
- *
- * Everything third-party (client factory, mint fetch, consent fetch, flag read) is
- * injectable so the hook is tested through the REAL client + its fake transports
- * (`voice-session-fakes.ts`) — no stub of the thing under test.
+ * React lifecycle adapter for the realtime voice client. It owns sockets and
+ * media only while the build flag, identity, and consent gates remain valid;
+ * client states, transcripts, pause markers, and actionable failures feed the
+ * existing chat voice controls, which fall back to batch voice when disarmed.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -279,6 +248,7 @@ export function useRealtimeVoiceSession(
     const client = clientRef.current;
     clientRef.current = null;
     if (client) {
+      // error-policy:J6 Socket/microphone teardown is best effort after ownership is cleared.
       await client.stop().catch(() => {});
     }
   }, []);
@@ -313,6 +283,7 @@ export function useRealtimeVoiceSession(
     try {
       consentNonce = await getConsentNonceRef.current();
     } catch {
+      // error-policy:J4 Consent failure selects the visible batch-voice path below.
       consentNonce = null;
     }
     if (!isCurrent()) {
@@ -384,6 +355,7 @@ export function useRealtimeVoiceSession(
       await client.start();
       if (!isCurrent()) {
         // A newer start/stop superseded us mid-connect; tear this one down.
+        // error-policy:J6 A superseded session no longer owns UI state or media resources.
         await client.stop().catch(() => {});
         return;
       }
@@ -393,7 +365,7 @@ export function useRealtimeVoiceSession(
       // no-op. Still inside the same synchronous user-gesture task in the
       // browser (start's awaits resolve on microtasks before the gesture's
       // activation window closes for a resume()).
-      await client.unlockPlayback().catch(() => {});
+      await client.unlockPlayback();
       // Only mark active if the client actually connected. A feature-disabled
       // 404 tore the client down; drop the ref and stay inactive so the caller
       // falls back to batch.
@@ -404,6 +376,7 @@ export function useRealtimeVoiceSession(
         setActive(true);
       }
     } catch (err) {
+      // error-policy:J4 Startup failure becomes a surfaced voice error and batch fallback.
       const realError = err instanceof Error ? err : new Error(String(err));
       const classified = classifyError(realError);
       setError(classified);
@@ -415,6 +388,7 @@ export function useRealtimeVoiceSession(
         setFeatureDisabled(true);
       }
       clientRef.current = null;
+      // error-policy:J6 Failed startup teardown follows the surfaced primary error.
       await client.stop().catch(() => {});
       setActive(false);
     } finally {
@@ -427,7 +401,17 @@ export function useRealtimeVoiceSession(
   }, []);
 
   const unlock = useCallback(async () => {
-    await clientRef.current?.unlockPlayback().catch(() => {});
+    try {
+      await clientRef.current?.unlockPlayback();
+    } catch (error) {
+      // error-policy:J4 Playback denial is visible and disarms the realtime path.
+      setError(
+        classifyError(
+          error instanceof Error ? error : new Error(String(error)),
+        ),
+      );
+      setFeatureDisabled(true);
+    }
   }, []);
 
   // Lifecycle: tear down on unmount so a live socket + hot mic never outlive the
@@ -437,6 +421,7 @@ export function useRealtimeVoiceSession(
       sessionGenRef.current += 1;
       const client = clientRef.current;
       clientRef.current = null;
+      // error-policy:J6 Component teardown has already detached ownership of the client.
       void client?.stop().catch(() => {});
     };
   }, []);
@@ -497,6 +482,7 @@ export function isRealtimeVoiceFlagEnabled(): boolean {
     const v = raw.trim().toLowerCase();
     return v === "1" || v === "true" || v === "yes" || v === "on";
   } catch {
+    // error-policy:J4 An unreadable build flag explicitly leaves realtime unavailable.
     return false;
   }
 }
