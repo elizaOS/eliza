@@ -1,5 +1,6 @@
 /** Validates application trace correlation and standards-based HTTP timing headers. */
 import { describe, expect, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
 import {
   appendServerTiming,
@@ -20,6 +21,13 @@ describe("HTTP telemetry", () => {
       [ELIZA_TRACE_ID_HEADER]: "123E4567-E89B-42D3-A456-426614174000",
     });
     expect(resolveElizaTraceId(headers)).toBe("123e4567-e89b-42d3-a456-426614174000");
+  });
+
+  test("preserves UUIDv7 trace ids", () => {
+    const headers = new Headers({
+      [ELIZA_TRACE_ID_HEADER]: "01890F47-6C4A-7B2D-8F31-123456789ABC",
+    });
+    expect(resolveElizaTraceId(headers)).toBe("01890f47-6c4a-7b2d-8f31-123456789abc");
   });
 
   test("uses the W3C trace id when the application header is absent", () => {
@@ -45,11 +53,46 @@ describe("HTTP telemetry", () => {
     "bad value\n",
     "customer-email@example.com",
     "turn_12345678",
+    "00000000000000000000000000000000",
   ])("rejects caller-chosen trace text %s and generates a UUID", (traceId) => {
     const headers = new Headers({ [ELIZA_TRACE_ID_HEADER]: traceId });
     expect(resolveElizaTraceId(headers)).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+  });
+
+  test.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    -0.01,
+  ])("rejects invalid gateway timing %s instead of fabricating zero", (invalidDuration) => {
+    let thrown: unknown;
+    try {
+      snapshotGatewayPreforwardTiming({
+        totalMs: invalidDuration,
+        authMs: 1,
+        middleMs: 1,
+        reserveMs: 1,
+        setupMs: 1,
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ElizaError);
+    expect((thrown as ElizaError).code).toBe("HTTP_TELEMETRY_INVALID_DURATION");
+    expect((thrown as ElizaError).context).toEqual({
+      field: "totalMs",
+      value: String(invalidDuration),
+    });
+  });
+
+  test("rejects invalid standalone Server-Timing metrics before writing headers", () => {
+    const headers = new Headers({ "Server-Timing": "provider;dur=3" });
+    expect(() =>
+      appendServerTiming(headers, [{ name: "cloud_worker", durationMs: Number.NaN }]),
+    ).toThrow("HTTP telemetry duration is invalid");
+    expect(headers.get("Server-Timing")).toBe("provider;dur=3");
   });
 
   test("appends inner and outer Server-Timing without overwriting", () => {

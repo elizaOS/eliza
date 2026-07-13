@@ -20,12 +20,21 @@ import {
 
 type TraceEnv = { Variables: { traceId: string } };
 
+/** WebSocket upgrades carry a workerd-only socket extension that rewrapping drops. */
+export function shouldDecorateHttpTelemetryStatus(status: number): boolean {
+  return status !== 101;
+}
+
 export function httpTelemetryMiddleware(): MiddlewareHandler<TraceEnv> {
   return async (c, next) => {
     const traceId = resolveElizaTraceId(c.req.raw.headers);
     const startedAt = performance.now();
     c.set("traceId", traceId);
     await next();
+    // A status-101 Response carries workerd's non-standard `webSocket` field.
+    // Standard Response reconstruction cannot preserve it, so the upgrade must
+    // leave this middleware byte-for-byte rather than risk dropping the socket.
+    if (!shouldDecorateHttpTelemetryStatus(c.res.status)) return;
     const metrics: ServerTimingMetric[] = [
       {
         name: "cloud_worker",

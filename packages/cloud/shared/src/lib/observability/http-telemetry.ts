@@ -6,12 +6,14 @@
  * provider and dedicated-agent propagation is tracked separately.
  */
 
+import { ElizaError } from "@elizaos/core";
+
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 export const ELIZA_PREFORWARD_HEADER = "X-Eliza-Preforward-Ms";
 export const ELIZA_TELEMETRY_HEADER = "X-Eliza-Telemetry";
 
 const OPAQUE_TRACE_ID =
-  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+  /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const W3C_TRACEPARENT_V00 = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/;
 const ZERO_TRACE_ID = "0".repeat(32);
 const ZERO_PARENT_ID = "0".repeat(16);
@@ -39,7 +41,9 @@ export interface GatewayHandoffTelemetry {
 /** Resolve an opaque correlation id without retaining caller-chosen text. */
 export function resolveElizaTraceId(headers: Headers): string {
   const supplied = headers.get(ELIZA_TRACE_ID_HEADER)?.trim();
-  if (supplied && OPAQUE_TRACE_ID.test(supplied)) return supplied.toLowerCase();
+  if (supplied && OPAQUE_TRACE_ID.test(supplied) && supplied.toLowerCase() !== ZERO_TRACE_ID) {
+    return supplied.toLowerCase();
+  }
 
   const traceparent = headers.get("traceparent")?.trim();
   const match = traceparent?.match(W3C_TRACEPARENT_V00);
@@ -53,8 +57,14 @@ function sanitizeToken(value: string): string {
   return value.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64) || "unknown";
 }
 
-function finiteDuration(value: number): number {
-  if (!Number.isFinite(value) || value < 0) return 0;
+function finiteDuration(value: number, field: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new ElizaError("HTTP telemetry duration is invalid", {
+      code: "HTTP_TELEMETRY_INVALID_DURATION",
+      severity: "fatal",
+      context: { field, value: String(value) },
+    });
+  }
   return Math.round(value * 100) / 100;
 }
 
@@ -63,11 +73,11 @@ export function snapshotGatewayPreforwardTiming(
   timing: GatewayPreforwardTiming,
 ): GatewayPreforwardTiming {
   return Object.freeze({
-    totalMs: finiteDuration(timing.totalMs),
-    authMs: finiteDuration(timing.authMs),
-    middleMs: finiteDuration(timing.middleMs),
-    reserveMs: finiteDuration(timing.reserveMs),
-    setupMs: finiteDuration(timing.setupMs),
+    totalMs: finiteDuration(timing.totalMs, "totalMs"),
+    authMs: finiteDuration(timing.authMs, "authMs"),
+    middleMs: finiteDuration(timing.middleMs, "middleMs"),
+    reserveMs: finiteDuration(timing.reserveMs, "reserveMs"),
+    setupMs: finiteDuration(timing.setupMs, "setupMs"),
   });
 }
 
@@ -99,7 +109,7 @@ export function bindGatewayHandoffTelemetry<TInput, TOutput>(
 export function appendServerTiming(headers: Headers, metrics: readonly ServerTimingMetric[]): void {
   const encoded = metrics.map((metric) => {
     const name = sanitizeToken(metric.name);
-    const duration = finiteDuration(metric.durationMs);
+    const duration = finiteDuration(metric.durationMs, `Server-Timing:${name}`);
     const description = metric.description ? `;desc="${sanitizeToken(metric.description)}"` : "";
     return `${name};dur=${duration}${description}`;
   });
