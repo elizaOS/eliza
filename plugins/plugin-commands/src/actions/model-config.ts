@@ -260,6 +260,7 @@ type EffectiveValue = {
 
 interface ModelConfigShowResponse {
 	targets?: Record<string, Record<string, EffectiveValue>>;
+	activeChat?: ActiveChatInfo;
 	error?: string;
 }
 
@@ -288,30 +289,75 @@ export interface ActiveChatEndpoints {
 	anthropic?: string;
 }
 
+/**
+ * The route's report of which chat provider actually serves inference —
+ * resolved server-side from the serviceRouting topology, so the show can
+ * name the true brain (e.g. elizacloud) even while OPENAI_BASE_URL stays
+ * pinned in the environment but inert under cloud-proxy routing.
+ */
+export interface ActiveChatInfo {
+	provider: string;
+	family: "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+	endpoint: string;
+}
+
+type ChatFamily = "openai" | "anthropic" | "elizacloud";
+
+const FAMILY_ORDER: ChatFamily[] = ["openai", "anthropic", "elizacloud"];
+
+function familyOf(routeFamily: ActiveChatInfo["family"]): ChatFamily {
+	if (routeFamily === "ELIZAOS_CLOUD") return "elizacloud";
+	return routeFamily === "ANTHROPIC" ? "anthropic" : "openai";
+}
+
+function modelKeyFor(family: ChatFamily, target: "SMALL" | "LARGE"): string {
+	if (family === "elizacloud") return `ELIZAOS_CLOUD_${target}_MODEL`;
+	return family === "anthropic"
+		? `ANTHROPIC_${target}_MODEL`
+		: `OPENAI_${target}_MODEL`;
+}
+
+function effortKeyFor(family: ChatFamily, target: "SMALL" | "LARGE"): string {
+	if (family === "elizacloud") return "ELIZAOS_CLOUD_REASONING_EFFORT";
+	return family === "anthropic"
+		? `ANTHROPIC_EFFORT_${target}`
+		: "OPENAI_REASONING_EFFORT";
+}
+
 function chatLine(
 	label: string,
 	keys: Record<string, Effective> | undefined,
-	modelKeys: string[],
-	effortKeys: string[],
+	target: "SMALL" | "LARGE",
+	activeChat?: ActiveChatInfo,
 	endpoints?: ActiveChatEndpoints,
 ): string | null {
 	if (!keys) return null;
+	// The active family is checked first so a stale pin from a previously
+	// active provider can never shadow what actually serves; the effort must
+	// come from the SAME family as the model it annotates.
+	const activeFamily = activeChat ? familyOf(activeChat.family) : undefined;
+	const families = activeFamily
+		? [activeFamily, ...FAMILY_ORDER.filter((f) => f !== activeFamily)]
+		: FAMILY_ORDER;
 	let model: { value: string; source: string } | undefined;
-	let family: "openai" | "anthropic" | undefined;
-	for (const k of modelKeys) {
-		const v = keys[k];
+	let family: ChatFamily | undefined;
+	for (const f of families) {
+		const v = keys[modelKeyFor(f, target)];
 		if (v) {
 			model = v;
-			family = k.startsWith("ANTHROPIC") ? "anthropic" : "openai";
+			family = f;
 			break;
 		}
 	}
-	if (!model) return `${label}: not set`;
-	const effort = effortKeys
-		.map((k) => keys[k])
-		.find((v): v is { value: string; source: string } => Boolean(v));
+	if (!model || !family) return `${label}: not set`;
+	const effort = keys[effortKeyFor(family, target)];
 	const effortPart = effort ? ` — effort ${effort.value}` : "";
-	const host = family ? endpoints?.[family] : undefined;
+	const host =
+		family === activeFamily
+			? activeChat?.endpoint
+			: family === "elizacloud"
+				? undefined
+				: endpoints?.[family];
 	const viaPart = host ? `, via ${host}` : "";
 	return `${label}: ${model.value}${effortPart} (${sourceLabel(model.source)}${viaPart})`;
 }
@@ -325,22 +371,11 @@ function chatLine(
 export function renderModelConfigShow(
 	targets: ShowTargets,
 	endpoints?: ActiveChatEndpoints,
+	activeChat?: ActiveChatInfo,
 ): string {
 	const lines = ["Model configuration:"];
-	const small = chatLine(
-		"small",
-		targets.small,
-		["OPENAI_SMALL_MODEL", "ANTHROPIC_SMALL_MODEL"],
-		["OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT_SMALL"],
-		endpoints,
-	);
-	const large = chatLine(
-		"large",
-		targets.large,
-		["OPENAI_LARGE_MODEL", "ANTHROPIC_LARGE_MODEL"],
-		["OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT_LARGE"],
-		endpoints,
-	);
+	const small = chatLine("small", targets.small, "SMALL", activeChat, endpoints);
+	const large = chatLine("large", targets.large, "LARGE", activeChat, endpoints);
 	if (small) lines.push(small);
 	if (large) lines.push(large);
 
@@ -417,5 +452,7 @@ export async function runModelConfigShowViaRoute(
 		);
 	}
 
-	return reply(renderModelConfigShow(parsed.targets, endpoints));
+	return reply(
+		renderModelConfigShow(parsed.targets, endpoints, parsed.activeChat),
+	);
 }

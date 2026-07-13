@@ -368,7 +368,7 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
     }
     writeFileSync(
       targetConfig,
-      `model = "${model || "gpt-5.6-terra"}"\n${
+      `model = "${model || "gpt-5.6-sol"}"\n${
         effort ? `model_reasoning_effort = "${effort}"\n` : ""
       }`,
       { mode: 0o600 },

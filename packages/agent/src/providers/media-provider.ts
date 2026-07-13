@@ -596,7 +596,8 @@ export class OpenAIVisionProvider implements VisionAnalysisProvider {
       throw new Error(`${this.name} API key is required`);
     }
     this.apiKey = config.apiKey;
-    this.model = config.model ?? "gpt-4o";
+    // Mirrors plugin-openai's IMAGE_DESCRIPTION default (utils/config.ts).
+    this.model = config.model ?? "gpt-5-mini";
     this.maxTokens = config.maxTokens ?? 1024;
   }
 

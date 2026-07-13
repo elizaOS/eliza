@@ -339,7 +339,7 @@ describe("coding-account-bridge", () => {
     }
   });
 
-  it("falls back to gpt-5.6-terra when no model is configured anywhere", async () => {
+  it("falls back to gpt-5.6-sol when no model is configured anywhere", async () => {
     writeAccount("openai-codex", "cx-fb", "cx-fb-access", {
       organizationId: "a",
     });
@@ -355,7 +355,7 @@ describe("coding-account-bridge", () => {
         path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
         "utf-8",
       );
-      expect(cfg).toBe('model = "gpt-5.6-terra"\n');
+      expect(cfg).toBe('model = "gpt-5.6-sol"\n');
     } finally {
       if (prevOsHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevOsHome;

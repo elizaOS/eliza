@@ -379,6 +379,60 @@ describe("/model show → GET /api/models/config", () => {
 		expect(r.reply).not.toContain("unset");
 	});
 
+	it("prefers the ACTIVE family and its endpoint under cloud routing", async () => {
+		// A stale OPENAI_* pin from a previous cerebras stint must not shadow
+		// what actually serves: the route reports activeChat=elizacloud and the
+		// show renders the ELIZAOS_CLOUD values with the cloud endpoint.
+		const fetchMock = vi.fn(async () =>
+			jsonResponse({
+				activeChat: {
+					provider: "elizacloud",
+					family: "ELIZAOS_CLOUD",
+					endpoint: "elizacloud.ai",
+				},
+				targets: {
+					small: {
+						OPENAI_SMALL_MODEL: { value: "stale-pin", source: "config.env" },
+						ELIZAOS_CLOUD_SMALL_MODEL: {
+							value: "gemma-4-31b",
+							source: "default",
+						},
+						OPENAI_REASONING_EFFORT: { value: "low", source: "config.env" },
+					},
+					large: {
+						OPENAI_LARGE_MODEL: { value: "stale-pin", source: "config.env" },
+						ELIZAOS_CLOUD_LARGE_MODEL: {
+							value: "zai-glm-4.7",
+							source: "default",
+						},
+						ELIZAOS_CLOUD_REASONING_EFFORT: {
+							value: "high",
+							source: "config.env",
+						},
+					},
+					coding: {},
+				},
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const r = await resolveCommand(runtime, msg("/model show"), {
+			isAuthorized: true,
+			isElevated: false,
+		});
+		expect(r.handled).toBe(true);
+		expect(r.reply).toContain(
+			"small: gemma-4-31b (default, via elizacloud.ai)",
+		);
+		// Effort must come from the SAME family as the model it annotates: the
+		// stale OPENAI_REASONING_EFFORT=low may not decorate the cloud small.
+		expect(r.reply).not.toContain("gemma-4-31b — effort low");
+		expect(r.reply).toContain(
+			"large: zai-glm-4.7 — effort high (default, via elizacloud.ai)",
+		);
+		expect(r.reply).not.toContain("stale-pin");
+	});
+
 	it("requires authorization and never hits the route when unauthorized", async () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);

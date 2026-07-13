@@ -71,8 +71,8 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_LARGE_MODEL") ??
-    getSetting(runtime, "LARGE_MODEL", "gemini-2.5-pro-preview-03-25") ??
-    "gemini-2.5-pro-preview-03-25"
+    getSetting(runtime, "LARGE_MODEL", "gemini-2.5-pro") ??
+    "gemini-2.5-pro"
   );
 }
 
@@ -107,8 +107,8 @@ export function getActionPlannerModel(runtime: IAgentRuntime): string {
 export function getImageModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_IMAGE_MODEL") ??
-    getSetting(runtime, "IMAGE_MODEL", "gemini-2.5-pro-preview-03-25") ??
-    "gemini-2.5-pro-preview-03-25"
+    getSetting(runtime, "IMAGE_MODEL", "gemini-2.5-pro") ??
+    "gemini-2.5-pro"
   );
 }
 

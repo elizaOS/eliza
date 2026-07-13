@@ -376,6 +376,40 @@ function resolveCerebrasThinkingOffReasoningEffort(
   return undefined;
 }
 
+const VALID_USER_REASONING_EFFORTS: ReadonlySet<string> = new Set([
+  "low",
+  "medium",
+  "high",
+]);
+
+/**
+ * User-pinned reasoning effort (`ELIZAOS_CLOUD_REASONING_EFFORT`) — the seam
+ * `/model … effort=…` and the settings panel persist for cloud-routed chat.
+ * Scoped to the Cerebras-served reasoning trio (recognized via the same
+ * normalizer the thinking-off suppression uses): the cloud proxies many
+ * providers, and an unexpected `reasoning_effort` 400s on models that don't
+ * take the knob. The thinking-off suppression in buildNativeRequestBody runs
+ * after this and overwrites it, so Stage-1 formatting calls stay cheap
+ * regardless of the pin.
+ */
+function resolveUserReasoningEffort(
+  runtime: IAgentRuntime | undefined,
+  modelName: string
+): string | undefined {
+  const raw = runtime?.getSetting("ELIZAOS_CLOUD_REASONING_EFFORT");
+  if (typeof raw !== "string" || !raw.trim()) return undefined;
+  const effort = raw.trim().toLowerCase();
+  if (!VALID_USER_REASONING_EFFORTS.has(effort)) {
+    logger.warn(
+      `[ELIZAOS_CLOUD] ELIZAOS_CLOUD_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${[...VALID_USER_REASONING_EFFORTS].join(", ")}.`
+    );
+    return undefined;
+  }
+  return resolveCerebrasThinkingOffReasoningEffort(modelName) !== undefined
+    ? effort
+    : undefined;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -760,7 +794,8 @@ function buildNativeRequestBody(
   params: GenerateTextParamsWithNativeOptions,
   modelName: string,
   promptText: string,
-  systemPrompt?: string
+  systemPrompt?: string,
+  runtime?: IAgentRuntime
 ): Record<string, unknown> {
   const providerOptions = resolveNativeProviderOptions(params);
   const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions) : undefined;
@@ -780,6 +815,10 @@ function buildNativeRequestBody(
 
   if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
+  }
+  const userReasoningEffort = resolveUserReasoningEffort(runtime, modelName);
+  if (userReasoningEffort) {
+    requestBody.reasoning_effort = userReasoningEffort;
   }
   // The runtime signals "don't reason" via providerOptions.eliza.thinking="off"
   // (e.g. the Stage-1 RESPONSE_HANDLER formatting call), but
@@ -1156,7 +1195,8 @@ export async function generateNativeChatCompletion(
     params,
     context.modelName,
     context.prompt,
-    context.systemPrompt
+    context.systemPrompt,
+    runtime
   );
   const headers: Record<string, string> = {
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
@@ -1437,7 +1477,8 @@ export async function streamNativeChatCompletion(
     params,
     context.modelName,
     context.prompt,
-    context.systemPrompt
+    context.systemPrompt,
+    runtime
   );
   requestBody.stream = true;
   // OpenAI-compatible: ask the server to include a final usage-only frame so we
