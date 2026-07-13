@@ -1,0 +1,116 @@
+{
+  "host": "Apple M4 Max",
+  "os": "macOS 26.2 (Darwin 25.2.0)",
+  "ramGB": 128,
+  "bench": "llama-bench (stock build 9ab5989e8 / b9854)",
+  "date": "2026-06-25",
+  "flags": "-ngl 99 -fa 1 -p 512 -n 128",
+  "tiers": [
+    {
+      "tier": "0_6b",
+      "arch": "qwen3 0.6B Q8_0",
+      "sizeMiB": 604.1,
+      "params_M": 596.0,
+      "pp512_ts": {
+        "avg": 9307.386259,
+        "sd": 375.136422
+      },
+      "tg128_ts": {
+        "avg": 103.161973,
+        "sd": 12.958364
+      }
+    },
+    {
+      "tier": "0_8b",
+      "arch": "qwen35 0.8B Q4_K - Medium",
+      "sizeMiB": 520.7,
+      "params_M": 752.4,
+      "pp512_ts": {
+        "avg": 7059.28579,
+        "sd": 255.180285
+      },
+      "tg128_ts": {
+        "avg": 91.779168,
+        "sd": 11.663773
+      },
+      "tg128_by_depth": {
+        "0": 89.2,
+        "4096": 84.0,
+        "16000": 95.8
+      }
+    },
+    {
+      "tier": "1_7b",
+      "arch": "qwen3 1.7B Q8_0",
+      "sizeMiB": 1743.8,
+      "params_M": 1720.6,
+      "pp512_ts": {
+        "avg": 4017.229951,
+        "sd": 108.03193
+      },
+      "tg128_ts": {
+        "avg": 77.189198,
+        "sd": 6.155101
+      }
+    },
+    {
+      "tier": "2b",
+      "arch": "qwen35 2B Q4_K - Medium",
+      "sizeMiB": 1201.5,
+      "params_M": 1881.8,
+      "pp512_ts": {
+        "avg": 2872.058119,
+        "sd": 326.826512
+      },
+      "tg128_ts": {
+        "avg": 67.192507,
+        "sd": 6.250891
+      },
+      "tg128_by_depth": {
+        "0": 83.7,
+        "4096": 78.0,
+        "16000": 67.8
+      }
+    },
+    {
+      "tier": "4b",
+      "arch": "qwen35 4B Q4_K - Medium",
+      "sizeMiB": 2728.2,
+      "params_M": 4205.8,
+      "pp512_ts": {
+        "avg": 1030.478227,
+        "sd": 85.792962
+      },
+      "tg128_ts": {
+        "avg": 48.133116,
+        "sd": 2.697262
+      },
+      "tg128_by_depth": {
+        "0": 49.1,
+        "4096": 49.1,
+        "16000": 38.7
+      }
+    },
+    {
+      "tier": "9b",
+      "arch": "qwen35 9B Q4_K - Medium",
+      "sizeMiB": 5406.9,
+      "params_M": 8953.8,
+      "pp512_ts": {
+        "avg": 723.729314,
+        "sd": 43.377314
+      },
+      "tg128_ts": {
+        "avg": 40.781372,
+        "sd": 1.130544
+      }
+    }
+  ],
+  "kernelGate": {
+    "metal-verify": "8/8 PASS (24 scalar kernels: turbo3/turbo4/turbo3_tcq/qjl/polar+preht)",
+    "metal-verify-fused": "1536/1536 PASS (2 GQA/MQA cases)",
+    "metal-verify-multiblock": "1920/1920 PASS (4 cases)",
+    "date": "2026-06-25",
+    "maxDiff": "<=7.6e-6"
+  }
+}

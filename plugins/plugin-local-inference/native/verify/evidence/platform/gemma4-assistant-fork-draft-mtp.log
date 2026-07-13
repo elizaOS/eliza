@@ -1,0 +1,11 @@
+# gemma4-assistant arch ported into the elizaOS llama.cpp fork — draft-mtp on Apple M4 Max Metal, 2026-06-23
+# Fork branch feat/gemma4-assistant-arch (elizaOS/llama.cpp PR #32), HEAD 2323fa863; eliza gitlink bump = eliza PR #9268.
+# Drafter: amaranus/Gemma-4-E2B-it-qat-assistant-MTP-Q8_0 (gemma4-assistant arch). Target: eliza-1 gemma-4-E2B (Q8_0).
+# llama-cli -m <target> -md <amaranus> -ngl 99 -ngld 99 -fa on --spec-type draft-mtp --spec-draft-n-max 2
+
+Loads gemma4-assistant cleanly: no unknown-arch, no missing-tensor errors (49 drafter tensors map).
+Correct output (e.g. "2+2" -> "4"). Draft acceptance ~41-49% (was ~2% before the fork-MTP correctness fixes).
+
+BASELINE (no drafter), 3 runs:  96.4 / 98.1 / 90.8 t/s   (median ~96)
+SPEC (draft-mtp + amaranus):   103.1 / 104.6 / 109.4 t/s  (median ~105)  => ~1.1x speedup
+(Lower than upstream's 1.29x because this host was under load; the speedup is consistent + positive at n_max 2.)

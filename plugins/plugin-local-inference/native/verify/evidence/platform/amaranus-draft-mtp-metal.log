@@ -1,0 +1,19 @@
+# Gemma-4-E2B MTP drafter (amaranus/Gemma-4-E2B-it-qat-assistant-MTP-Q8_0) — draft-mtp speculative decode on Apple M4 Max Metal, 2026-06-23
+# Upstream llama.cpp b1-ac4105d (has LLM_ARCH_GEMMA4_ASSISTANT + src/models/gemma4-assistant.cpp + --spec-type draft-mtp)
+# Drafter: amaranus ...MTP-Q8_0.gguf (93MB, gemma4-assistant arch, nextn_predict_layers=4, gemma4 vocab 262144)
+# Target:  eliza-1 gemma-4-E2B (candidates/gemma-2b-base-v1/text/eliza-1-2b-128k.gguf, Q8_0)
+# Command: llama-cli -m <target> -md <amaranus> -ngl 99 -ngld 99 -fa on --spec-type draft-mtp --spec-draft-n-max 3
+
+Drafter arch loaded OK (Gemma4Assistant; ctx_other linked during gen — the init-time warning is the documented "normal during memory fitting").
+Output coherent (target verifies every token).
+
+BASELINE (no drafter):       Generation 105.5 t/s
+SPEC (amaranus draft-mtp):   Generation 136.2 t/s   => 1.29x speedup on Metal
+(matched -it-assistant target gives more; amaranus is trained for gemma-4-E2B-it-assistant, here drafting the eliza-1 base.)
+
+# Matched target google/gemma-4-E2B-it-qat-q4_0 (the README pairing), same drafter:
+#   BASELINE (no drafter): 145.0 t/s  |  SPEC (draft-mtp): 106.1 t/s  => 0.73x (regression)
+# Interpretation: amaranus is QAT/INT4-derived (~35% acceptance ceiling). MTP nets a win on a SLOW
+# target (Q8 eliza-1, 1.29x) but the per-step drafter cost dominates on a FAST Q4 target. A working
+# drafter exists for free today (helps Q8+ tiers); a uniform all-tier speedup needs a higher-acceptance
+# (BF16-distilled / TurboQuant'd) head — the only remaining justification for H200 spend, as an optimization.

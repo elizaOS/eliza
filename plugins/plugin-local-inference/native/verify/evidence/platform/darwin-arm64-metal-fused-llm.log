@@ -1,0 +1,24 @@
+# Fused libelizainference (ABI v12) — gemma-4-E2B text generation on Apple M4 Max Metal (2026-06-23)
+# Built: cmake -DGGML_METAL=ON -DLLAMA_BUILD_OMNIVOICE=ON -DOMNIVOICE_SHARED=ON --target elizainference
+# (required fixing a stale static_assert: eliza_llm_stream_config_t == 80 -> 88, ABI v9 context_size; TS marshaller was already 88)
+
+## Capability probes
+ABI version: 12 | MTP supported: 1 | KV-quant supported: 1
+
+## Text generation (real google/gemma-4-E2B candidate bundle, fused FFI, Metal)
+ggml_metal_device_init: GPU name:   MTL0 (Apple M4 Max)
+ggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)
+ggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)
+ggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)
+llama_model_loader: - kv   0:                       general.architecture str              = gemma4
+llama_model_loader: - kv   9:                         gemma4.block_count u32              = 35
+llama_model_loader: - kv  10:                      gemma4.context_length u32              = 131072
+llama_model_loader: - kv  11:                    gemma4.embedding_length u32              = 1536
+llama_model_loader: - kv  23:    gemma4.embedding_length_per_layer_input u32              = 256
+tokenized: 38 tokens, rc 0
+stream opened in 17 ms (model loaded on Metal)
+prefill rc 0
+generated 15 tokens in 180 ms = 83.4 tok/s
+MTP: drafted 0 accepted 0
+OUTPUT: "The capital of France is Paris.\n<end_of_turn>"
+RESULT=OK
