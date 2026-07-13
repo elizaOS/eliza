@@ -34,11 +34,22 @@ mock.module("@/lib/pricing", () => ({
   getProviderFromModel,
 }));
 
+// Settable so a test can drive the admitted thinking budget through the route
+// (#16148). The resolver's own clamping is unit-tested elsewhere; here it stands
+// in for "whatever budget the route resolved to".
+const resolveAnthropicThinkingBudgetTokens = mock((): number | null => null);
+const mergeAnthropicCotProviderOptions = mock(
+  (
+    _model: string,
+    _env: unknown,
+    _budget?: number,
+  ): Record<string, unknown> => ({}),
+);
 mock.module("@/lib/providers/anthropic-thinking", () => ({
   getAnthropicCotEnv: () => ({}),
-  mergeAnthropicCotProviderOptions: () => ({}),
+  mergeAnthropicCotProviderOptions,
   parseThinkingBudgetFromCharacterSettings: () => null,
-  resolveAnthropicThinkingBudgetTokens: () => null,
+  resolveAnthropicThinkingBudgetTokens,
 }));
 
 const recordCreatorEarnings = mock();
@@ -147,6 +158,10 @@ async function callChat() {
 beforeEach(() => {
   languageModel.mockClear();
   streamText.mockReset();
+  resolveAnthropicThinkingBudgetTokens.mockReset();
+  resolveAnthropicThinkingBudgetTokens.mockReturnValue(null);
+  mergeAnthropicCotProviderOptions.mockReset();
+  mergeAnthropicCotProviderOptions.mockReturnValue({});
   estimateRequestCost.mockReset();
   calculateCost.mockReset();
   getProviderFromModel.mockClear();
@@ -200,6 +215,37 @@ describe("Agent MCP billing", () => {
     );
   });
 
+  // #16148: the reserved output ceiling and the provider-facing cap must be one
+  // immutable value for every resolved thinking budget — the acceptance table.
+  // Previously reserve used `4096 + budget` while the provider got
+  // `max(4096, budget) + 4096` (and no cap with thinking off).
+  test.each([
+    [null, 4096, 0],
+    [1024, 5120, 1024],
+    [4096, 8192, 4096],
+    [8000, 12096, 8000],
+  ] as const)("reserves and caps the provider at one ceiling (budget=%p → cap=%p)", async (budget, expectedCap, expectedProviderBudget) => {
+    makeReservation({ adjustmentType: "none" });
+    resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
+
+    const response = await callChat();
+    expect(response.status).toBe(200);
+
+    // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
+    expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
+    // ...and the provider is capped at the identical value — always sent.
+    expect(streamText).toHaveBeenCalledTimes(1);
+    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
+    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
+      estimateRequestCost.mock.calls[0]?.[2],
+    );
+    // Provider thinking policy uses the already-resolved effective budget
+    // (`effectiveThinkingBudget ?? 0`), not a recomputed value.
+    expect(mergeAnthropicCotProviderOptions.mock.calls[0]?.[2]).toBe(
+      expectedProviderBudget,
+    );
+  });
+
   test("does not record creator earnings when final overage is uncollected", async () => {
     makeReservation({ adjustmentType: "uncollected_overage" });
     calculateCost.mockResolvedValue({ totalCost: 0.02 });
@@ -248,5 +294,70 @@ describe("Agent MCP billing", () => {
     expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
     expect(body.error).toBeUndefined();
     expect(body.result?.content?.[0]?.text).toBe("hello from model");
+  });
+
+  test("get_info returns agent metadata without billing", async () => {
+    const response = await handleToolCall(
+      makeContext() as never,
+      makeCharacter(),
+      { name: "get_info", arguments: {} },
+      "rpc-1",
+      { id: USER_ID, organization_id: ORG_ID },
+    );
+    const body = (await response.json()) as {
+      result?: { content: Array<{ type: string; text: string }> };
+    };
+
+    expect(response.status).toBe(200);
+    const info = JSON.parse(body.result?.content?.[0]?.text ?? "{}");
+    expect(info).toMatchObject({ name: "Markup Agent", monetization: true });
+    // Metadata-only: no reservation, no provider call.
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("chat with an empty message is rejected before billing", async () => {
+    const response = await handleToolCall(
+      makeContext() as never,
+      makeCharacter(),
+      { name: "chat", arguments: { model: "gpt-5-mini" } },
+      "rpc-1",
+      { id: USER_ID, organization_id: ORG_ID },
+    );
+    const body = (await response.json()) as { error?: { code: number } };
+
+    expect(body.error?.code).toBe(-32602);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("insufficient credits at reservation returns -32003 and never calls the provider", async () => {
+    reserve.mockRejectedValue(new InsufficientCreditsError(0.5, 0.1));
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32003);
+    expect(body.error?.message).toContain("Insufficient credits");
+    // Reserve-before-provider: a failed admission performs no inference.
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("a provider error refunds the reservation and returns -32000", async () => {
+    const reconcile = makeReservation({ adjustmentType: "none" });
+    streamText.mockRejectedValue(new Error("provider unavailable"));
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(body.error?.message).toBe("provider unavailable");
+    // The whole reservation is refunded (reconcile(0)); no creator earnings.
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 });

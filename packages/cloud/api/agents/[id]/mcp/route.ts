@@ -351,20 +351,23 @@ export async function handleToolCall(
       throw error;
     }
 
-    const maxOutputTokens = effectiveThinkingBudget
-      ? Math.max(DEFAULT_MIN_OUTPUT_TOKENS, effectiveThinkingBudget) +
-        DEFAULT_MIN_OUTPUT_TOKENS
-      : undefined;
-
     try {
       const result = await streamText({
         model: gateway.languageModel(model),
         messages,
-        ...(maxOutputTokens && { maxOutputTokens }),
+        // Cap the provider at the EXACT ceiling billing reserved above
+        // (`estimatedOutputTokens`), not a second, larger formula (#16148).
+        // Always sent — including the no-thinking 4096 floor — so final usage
+        // cannot outrun the admitted reservation.
+        maxOutputTokens: estimatedOutputTokens,
         ...mergeAnthropicCotProviderOptions(
           model,
           envForThinking,
-          agentThinkingBudget,
+          // Feed the already-resolved effective budget, not the raw character
+          // setting. Idempotent: a positive budget re-resolves to itself and
+          // `0` re-resolves to off, so the provider's thinking policy is exactly
+          // what was priced — never a recomputed, divergent value (#16148).
+          effectiveThinkingBudget ?? 0,
         ),
       });
 
