@@ -19,6 +19,7 @@ type MacEffectsSymbols = {
   makeKeyAndOrderFrontWindow(ptr: Pointer): boolean;
   isAppActive(): boolean;
   isWindowKey(ptr: Pointer): boolean;
+  setWindowMovable(ptr: Pointer, movable: boolean): boolean;
   createSecurityScopedBookmark(path: Pointer): Pointer | null;
   startAccessingSecurityScopedBookmark(bookmark: Pointer): Pointer | null;
   stopAccessingSecurityScopedBookmarks(): void;
@@ -83,6 +84,10 @@ function loadLib(): MacEffectsLib {
       },
       isAppActive: { args: [], returns: FFIType.bool },
       isWindowKey: { args: [FFIType.ptr], returns: FFIType.bool },
+      setWindowMovable: {
+        args: [FFIType.ptr, FFIType.bool],
+        returns: FFIType.bool,
+      },
       createSecurityScopedBookmark: {
         args: [FFIType.ptr],
         returns: FFIType.ptr,
@@ -202,6 +207,17 @@ export function isAppActive(): boolean {
 /** Returns true if the window is currently the key (focused) window */
 export function isKeyWindow(ptr: Pointer): boolean {
   return getLib()?.symbols.isWindowKey(ptr) ?? false;
+}
+
+/**
+ * Pin a window movable/immovable. The floating chat overlay passes `false`: it
+ * is a fixed bottom-pinned pill that grows to a full-screen sheet and must never
+ * be dragged off its computed frame. `false` disables every user-initiated move
+ * (titlebar drag, movableByWindowBackground, drag-region views) at the NSWindow
+ * level.
+ */
+export function setWindowMovable(ptr: Pointer, movable: boolean): boolean {
+  return getLib()?.symbols.setWindowMovable(ptr, movable) ?? false;
 }
 
 export function createSecurityScopedBookmark(path: string): string | null {

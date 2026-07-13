@@ -103,6 +103,7 @@ import {
   ensureShadow,
   setNativeDragRegion,
   setTrafficLightsPosition,
+  setWindowMovable,
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { getRemotePluginHost } from "./native/remote-plugin-host";
@@ -460,7 +461,7 @@ const MAC_NATIVE_DRAG_REGION_HEIGHT = 38;
  */
 function applyMacOSWindowEffects(
   win: BrowserWindow,
-  options?: { nativeGlass?: boolean },
+  options?: { nativeGlass?: boolean; movable?: boolean },
 ): void {
   if (process.platform !== "darwin") return;
 
@@ -468,6 +469,14 @@ function applyMacOSWindowEffects(
   if (!ptr) {
     logger.warn("[MacEffects] win.ptr unavailable — skipping native effects");
     return;
+  }
+
+  // The floating chat overlay is immovable: a fixed bottom-pinned pill that
+  // grows to a full-screen sheet. A drag would strand it off its computed
+  // frame, so pin it not-movable AND never install the titlebar drag strip.
+  const movable = options?.movable !== false;
+  if (!movable) {
+    setWindowMovable(ptr as Parameters<typeof setWindowMovable>[0], false);
   }
 
   const shadowEnabled = ensureShadow(ptr as Parameters<typeof ensureShadow>[0]);
@@ -509,7 +518,9 @@ function applyMacOSWindowEffects(
 
   const alignChrome = () => {
     alignButtons();
-    alignDragRegion();
+    // Immovable overlay: never install the titlebar drag strip — it is what
+    // makes the maximized sheet draggable.
+    if (movable) alignDragRegion();
     disableSwipeBackGesture();
   };
 
@@ -1296,7 +1307,10 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
         );
       }
     }
-    applyMacOSWindowEffects(win, { nativeGlass: shouldEnableNativeGlass() });
+    applyMacOSWindowEffects(win, {
+      nativeGlass: shouldEnableNativeGlass(),
+      movable: false,
+    });
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).
     getDesktopManager().enableBottomBarReanchor();

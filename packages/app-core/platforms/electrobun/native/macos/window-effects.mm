@@ -2473,6 +2473,31 @@ extern "C" bool isWindowKey(void *windowPtr) {
 	return result;
 }
 
+/** Pin a window immovable. The floating chat overlay must NEVER be draggable:
+ *  it is a fixed bottom-pinned pill that grows to a full-screen sheet, and a
+ *  user drag would strand it off its computed frame. `movable = NO` disables
+ *  ALL user-initiated moves at the NSWindow level — the titlebar drag strip,
+ *  movableByWindowBackground, and any drag-region view all no-op — so this is
+ *  the single bulletproof switch regardless of what chrome is installed. */
+extern "C" bool setWindowMovable(void *windowPtr, bool movable) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) {
+			return;
+		}
+		[window setMovable:(movable ? YES : NO)];
+		[window setMovableByWindowBackground:(movable ? YES : NO)];
+		success = YES;
+	});
+
+	return success;
+}
+
 /** Lays out top drag strip + resize overlays (same depth for both).
  *  `height` ≤ 0: derive depth from window.screen (see elizaChromeDepthPoints).
  *  WHY one entry point: TS calls this whenever geometry may have changed so

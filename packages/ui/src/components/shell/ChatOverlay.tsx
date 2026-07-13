@@ -4404,6 +4404,19 @@ export function ChatOverlay({
         suppressNextOutsideClickRef.current = false;
       }, 750);
 
+      // Desktop floating overlay (restAtPill): a click anywhere outside the chat
+      // CLOSES it all the way to the pill on the FIRST click — the window then
+      // shrinks to the pill footprint so the rest of the screen (other apps) is
+      // clickable again. There is no on-screen keyboard on desktop, so the
+      // mobile "first tap drops the keyboard, second tap closes" two-step just
+      // reads as "clicking out doesn't close it". Collapse to pill, not to the
+      // input bar (closeSheet leaves the window full-screen and still blocking).
+      if (restAtPill) {
+        composerFocusedAtPressRef.current = false;
+        collapseToPill();
+        return;
+      }
+
       if (start.composerFocusedAtPress) {
         composerFocusedAtPressRef.current = false;
         return;
@@ -4426,7 +4439,14 @@ export function ChatOverlay({
       document.removeEventListener("pointerup", onPointerEnd, true);
       document.removeEventListener("pointercancel", onPointerCancel, true);
     };
-  }, [sheetOpen, pinnedOpen, collapse, isOverlayControlTarget]);
+  }, [
+    sheetOpen,
+    pinnedOpen,
+    collapse,
+    collapseToPill,
+    restAtPill,
+    isOverlayControlTarget,
+  ]);
 
   // Escape collapses the chat from ANY open state, even a free-drag open with no
   // focused element (the element-level handlers on the textarea/thread only fire

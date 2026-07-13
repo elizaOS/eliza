@@ -1593,6 +1593,33 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-variant")).toBe("closed");
   });
 
+  it("restAtPill: a single outside tap closes the desktop overlay all the way to the pill", () => {
+    // Desktop floating overlay contract: clicking anywhere outside the chat
+    // closes it to the pill on the FIRST click (no mobile "first tap drops the
+    // keyboard" two-step) so the OS window shrinks back to the pill footprint
+    // and the rest of the screen is clickable again — reported as the "pill"
+    // tier to the host. The default (web/mobile) path collapses to the input
+    // bar instead (covered above), so this asserts the restAtPill divergence.
+    const onWindowSizingChange = vi.fn();
+    render(
+      <ChatOverlay
+        controller={makeController()}
+        restAtPill
+        onWindowSizingChange={onWindowSizingChange}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const backdrop = screen.getByTestId("chat-sheet-backdrop");
+    openThreadViaGrabber();
+    expect(sheet.getAttribute("data-variant")).toBe("open");
+    expect(onWindowSizingChange).toHaveBeenCalledWith("open");
+    onWindowSizingChange.mockClear();
+    fireEvent.pointerDown(backdrop, { clientX: 20, clientY: 20, pointerId: 2 });
+    fireEvent.pointerUp(backdrop, { clientX: 20, clientY: 20, pointerId: 2 });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    expect(onWindowSizingChange).toHaveBeenCalledWith("pill");
+  });
+
   it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
