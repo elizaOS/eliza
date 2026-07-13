@@ -1,9 +1,9 @@
 /**
- * Exercises ComputerUseService through an initialized AgentRuntime, using real
- * host integrations when available and permission-independent paths otherwise.
+ * Exercises ComputerUseService through a real AgentRuntime and in-memory
+ * database without capturing or actuating the host desktop.
  */
 
-import { AgentRuntime, createCharacter, stringToUuid } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   afterAll,
   afterEach,
@@ -13,11 +13,10 @@ import {
   expect,
   it,
 } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
-import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
-import { desktopMouseMove } from "../platform/desktop.js";
-import { currentPlatform } from "../platform/helpers.js";
-import { captureScreenshot } from "../platform/screenshot.js";
+import {
+  startComputerUseRuntime,
+  stopComputerUseRuntime,
+} from "../../test/helpers/service-runtime.ts";
 import { ComputerUseService } from "../services/computer-use-service.js";
 
 type RawActionParams = { action: string };
@@ -42,76 +41,6 @@ function executeRawWindowAction(
   return execute.call(service, params);
 }
 
-const os = currentPlatform();
-
-let hasScreenCapture = false;
-try {
-  await captureScreenshot();
-  hasScreenCapture = true;
-} catch {
-  // error-policy:J4 The hardware lane is explicitly unavailable without screen-capture permission.
-}
-
-let hasDesktopControl = false;
-try {
-  desktopMouseMove(0, 0);
-  hasDesktopControl = true;
-} catch {
-  // error-policy:J4 The hardware lane is explicitly unavailable without a desktop driver or permission.
-}
-
-async function startComputerUseRuntime(
-  settings: Record<string, string> = {},
-): Promise<{ runtime: AgentRuntime; service: ComputerUseService }> {
-  const runtime = new AgentRuntime({
-    character: createCharacter({
-      id: stringToUuid(`computeruse-service-${crypto.randomUUID()}`),
-      name: "ComputerUseServiceIntegrationAgent",
-      settings: {
-        COMPUTER_USE_APPROVAL_MODE: "full_control",
-        ...settings,
-      },
-    }),
-    adapter: new InMemoryDatabaseAdapter(),
-    enableAutonomy: false,
-    logLevel: "fatal",
-  });
-  await runtime.initialize();
-  await runtime.registerPlugin({
-    name: "computeruse-service-integration",
-    description: "Real ComputerUseService lifecycle integration",
-    services: [ComputerUseService],
-  });
-  const service = await runtime.getServiceLoadPromise(
-    ComputerUseService.serviceType,
-  );
-  if (!(service instanceof ComputerUseService)) {
-    throw new Error("ComputerUseService did not register with AgentRuntime");
-  }
-  return { runtime, service };
-}
-
-async function stopComputerUseRuntime(runtime: AgentRuntime): Promise<void> {
-  await runtime.stop();
-  await runtime.close();
-}
-
-function skipIfAccessibilityPermissionMissing(
-  skip: (message?: string) => void,
-  result: {
-    permissionDenied?: boolean;
-    permissionType?: string;
-    message?: string;
-    error?: string;
-  },
-): void {
-  if (result.permissionDenied && result.permissionType === "accessibility") {
-    skip(
-      result.message ?? result.error ?? "Accessibility permission is missing",
-    );
-  }
-}
-
 describe("ComputerUseService lifecycle", () => {
   let runtime: AgentRuntime;
   let service: ComputerUseService;
@@ -124,7 +53,7 @@ describe("ComputerUseService lifecycle", () => {
     await stopComputerUseRuntime(runtime);
   });
 
-  it("registers a usable service with detected host capabilities", () => {
+  it("registers the service and reports capability state without claiming availability", () => {
     expect(ComputerUseService.serviceType).toBe("computeruse");
     expect(service.capabilityDescription.length).toBeGreaterThan(0);
     const caps = service.getCapabilities();
@@ -143,55 +72,18 @@ describe("ComputerUseService lifecycle", () => {
       expect(typeof caps[key].available).toBe("boolean");
       expect(typeof caps[key].tool).toBe("string");
     }
-
-    if (os === "darwin") {
-      expect(caps.screenshot.available).toBe(true);
-      expect(caps.screenshot.tool).toContain("screencapture");
-    }
-
-    if (os === "win32") {
-      expect(caps.screenshot.available).toBe(true);
-      expect(caps.computerUse.available).toBe(true);
-    }
-    const size = service.getScreenDimensions();
-    expect(size.width).toBeGreaterThanOrEqual(640);
-    expect(size.height).toBeGreaterThanOrEqual(480);
     expect(service.getRecentActions()).toEqual([]);
   });
 });
 
-const describeIfScreenCapture = hasScreenCapture ? describe : describe.skip;
-const describeIfDesktop = hasDesktopControl ? describe : describe.skip;
-
-describeIfScreenCapture("ComputerUseService screen capture (real)", () => {
-  let runtime: AgentRuntime;
-  let service: ComputerUseService;
-
-  beforeAll(async () => {
-    ({ runtime, service } = await startComputerUseRuntime());
-  });
-
-  afterAll(async () => {
-    await stopComputerUseRuntime(runtime);
-  });
-
-  it("captures a non-blank screenshot", async () => {
-    const result = await service.executeDesktopAction({ action: "screenshot" });
-    expect(result.success).toBe(true);
-    assertScreenshotBase64NotBlank(
-      result.screenshot,
-      "ComputerUseService screenshot action",
-    );
-  });
-});
-
-describeIfDesktop("ComputerUseService desktop actions (real)", () => {
+describe("ComputerUseService configuration", () => {
   let runtime: AgentRuntime;
   let service: ComputerUseService;
 
   beforeAll(async () => {
     ({ runtime, service } = await startComputerUseRuntime({
       COMPUTER_USE_SCREENSHOT_AFTER_ACTION: "false",
+      COMPUTER_USE_ACTION_TIMEOUT_MS: "5000",
     }));
   });
 
@@ -199,57 +91,12 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
     await stopComputerUseRuntime(runtime);
   });
 
-  it("executes mouse_move action", async ({ skip }) => {
-    const result = await service.executeDesktopAction({
-      action: "mouse_move",
-      coordinate: [200, 200],
+  it("applies explicit settings without dispatching an action", () => {
+    expect(service.getConfig()).toMatchObject({
+      screenshotAfterAction: false,
+      actionTimeoutMs: 5000,
     });
-
-    skipIfAccessibilityPermissionMissing(skip, result);
-    expect(result.success).toBe(true);
-    expect(result.screenshot).toBeUndefined();
-  });
-
-  it("executes click action", async ({ skip }) => {
-    const result = await service.executeDesktopAction({
-      action: "click",
-      coordinate: [200, 200],
-    });
-
-    skipIfAccessibilityPermissionMissing(skip, result);
-    expect(result.success).toBe(true);
-  });
-
-  it("executes key action", async ({ skip }) => {
-    const result = await service.executeDesktopAction({
-      action: "key",
-      key: "Escape",
-    });
-
-    skipIfAccessibilityPermissionMissing(skip, result);
-    expect(result.success).toBe(true);
-  });
-
-  it("executes key_combo action", async ({ skip }) => {
-    const result = await service.executeDesktopAction({
-      action: "key_combo",
-      key: "shift+Escape",
-    });
-
-    skipIfAccessibilityPermissionMissing(skip, result);
-    expect(result.success).toBe(true);
-  });
-
-  it("executes scroll action", async ({ skip }) => {
-    const result = await service.executeDesktopAction({
-      action: "scroll",
-      coordinate: [400, 400],
-      scrollDirection: "down",
-      scrollAmount: 2,
-    });
-
-    skipIfAccessibilityPermissionMissing(skip, result);
-    expect(result.success).toBe(true);
+    expect(service.getRecentActions()).toEqual([]);
   });
 });
 
@@ -320,7 +167,7 @@ describe("ComputerUseService desktop validation and history", () => {
   });
 });
 
-describe("ComputerUseService window actions (real)", () => {
+describe("ComputerUseService window validation", () => {
   let runtime: AgentRuntime;
   let service: ComputerUseService;
 
@@ -331,13 +178,6 @@ describe("ComputerUseService window actions (real)", () => {
   afterAll(async () => {
     await stopComputerUseRuntime(runtime);
   });
-
-  it("lists windows", async () => {
-    const result = await service.executeWindowAction({ action: "list" });
-
-    expect(result.success).toBe(true);
-    expect(Array.isArray(result.windows)).toBe(true);
-  }, 15000);
 
   it("returns error for focus without windowId", async () => {
     const result = await service.executeWindowAction({ action: "focus" });

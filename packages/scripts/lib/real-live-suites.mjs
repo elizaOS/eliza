@@ -170,6 +170,14 @@ export const GUARDED_REAL_LIVE_SUITES = [
     optIn: "FORCE_OSWORLD_BENCHMARK",
   },
   {
+    file: "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
+    optIn: "COMPUTER_USE_REAL_DESKTOP_TESTS",
+    blocked:
+      "plugin-computeruse vitest.config.ts excludes *.real.test.ts from workspace sweeps; run this file through packages/test/vitest/real.config.ts on an isolated interactive desktop",
+    notes:
+      "captures the display and actuates pointer, keyboard, and scrolling only after explicit operator opt-in",
+  },
+  {
     file: "plugins/plugin-computeruse/src/__tests__/windows-list.real.test.ts",
     blocked:
       "plugin-computeruse vitest.config.ts excludes *.real.test.ts in every lane (desktop-control host required)",
