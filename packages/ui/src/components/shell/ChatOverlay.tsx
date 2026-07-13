@@ -2076,6 +2076,54 @@ export function ChatOverlay({
     ],
   );
 
+  // Memoize the rendered transcript rows. A ChatOverlay re-render that does NOT
+  // change the messages or the streaming state — a composer keystroke (`draft`
+  // lives on this component), a live-drag frame that flips a React flag, an
+  // unrelated context update — reuses the SAME element references, so React
+  // skips reconciling the entire message list instead of rebuilding every
+  // bubble (each of which re-derives `shellToChatMessageData` + markdown). This
+  // is the load-bearing smoothness win: typing and opening no longer walk the
+  // transcript. `renderThreadLine` already carries the streaming deps
+  // (turnStatus/responding/…), so the list still updates the in-flight row.
+  const flatThreadLines = React.useMemo(
+    () =>
+      hasTopics ? null : visibleMessages.map((m, i) => renderThreadLine(m, i)),
+    [hasTopics, visibleMessages, renderThreadLine],
+  );
+  const topicThreadGroups = React.useMemo(() => {
+    if (!hasTopics) return null;
+    let lineIndex = 0;
+    return topicSegments.map((segment) => {
+      const lines = segment.messages.map((m) =>
+        renderThreadLine(m, lineIndex++),
+      );
+      return (
+        <MessageScrollerItem
+          key={segment.messages[0]?.id ?? segment.key}
+          messageId={`topic:${segment.messages[0]?.id ?? segment.key}`}
+          className="w-full"
+        >
+          <TopicGroup
+            topic={segment.topic}
+            count={segment.messages.length}
+            collapsed={collapsedTopics.has(segment.key)}
+            onCollapsedChange={(collapsed) =>
+              setTopicCollapsed(segment.key, collapsed)
+            }
+          >
+            {lines}
+          </TopicGroup>
+        </MessageScrollerItem>
+      );
+    });
+  }, [
+    hasTopics,
+    topicSegments,
+    collapsedTopics,
+    setTopicCollapsed,
+    renderThreadLine,
+  ]);
+
   const booting = phase === "booting";
   const listening = phase === "listening";
   const hasDraft = draft.trim().length > 0;
@@ -5755,57 +5803,13 @@ export function ChatOverlay({
                               className="pointer-events-none h-px w-full shrink-0"
                             />
                           ) : null}
-                          {hasTopics
-                            ? // Topic-grouped transcript: each cluster collapses via a
-                              // gesture on its header (no visible buttons).
-                              (() => {
-                                let lineIndex = 0;
-                                return topicSegments.map((segment) => {
-                                  const lines = segment.messages.map((m) =>
-                                    renderThreadLine(m, lineIndex++),
-                                  );
-                                  return (
-                                    // The React key is the segment's first message id
-                                    // (stable + unique) because a topic can recur in a
-                                    // non-adjacent run (A → B → A). Collapse state stays
-                                    // keyed by topic (`segment.key`) so a chip tap
-                                    // expands every run of that topic.
-                                    <MessageScrollerItem
-                                      key={
-                                        segment.messages[0]?.id ?? segment.key
-                                      }
-                                      messageId={`topic:${segment.messages[0]?.id ?? segment.key}`}
-                                      className="w-full"
-                                    >
-                                      <TopicGroup
-                                        topic={segment.topic}
-                                        count={segment.messages.length}
-                                        collapsed={collapsedTopics.has(
-                                          segment.key,
-                                        )}
-                                        onCollapsedChange={(collapsed) =>
-                                          setTopicCollapsed(
-                                            segment.key,
-                                            collapsed,
-                                          )
-                                        }
-                                      >
-                                        {lines}
-                                      </TopicGroup>
-                                    </MessageScrollerItem>
-                                  );
-                                });
-                              })()
-                            : // Flat transcript (no topic tags) — unchanged behavior.
-                              // Only the LAST, content-less assistant turn (the
-                              // in-flight one) reads turnStatus — every settled bubble
-                              // gets undefined so its memo identity is unchanged.
-                              null}
-                          {hasTopics
-                            ? null
-                            : visibleMessages.map((m, i) =>
-                                renderThreadLine(m, i),
-                              )}
+                          {/* Topic-grouped transcript (each cluster collapses via a
+                              header gesture) OR the flat transcript — both are
+                              memoized above (flatThreadLines / topicThreadGroups)
+                              so an unrelated re-render reuses the row elements and
+                              React skips the whole list. Only ONE is non-null. */}
+                          {topicThreadGroups}
+                          {flatThreadLines}
                           <AnimatePresence>
                             {/* Rich status row (#8813): what the agent is doing —
                           thinking / running an action / waking / speaking — for
