@@ -55,6 +55,11 @@ const ProviderUsageSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
 });
 
+const ToolCallParamsSchema = z.object({
+  name: z.string().trim().min(1),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+});
+
 const app = new Hono<AppEnv>();
 
 function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
@@ -260,10 +265,18 @@ export async function handleToolCall(
   rpcId: string | number,
   authUser: { id: string; organization_id: string },
 ): Promise<Response> {
-  const { name, arguments: args } = params as {
-    name: string;
-    arguments: Record<string, unknown>;
-  };
+  const parsedParams = ToolCallParamsSchema.safeParse(params);
+  if (!parsedParams.success) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32602, message: "valid tool call params are required" },
+        id: rpcId,
+      },
+      400,
+    );
+  }
+  const { name, arguments: args } = parsedParams.data;
 
   if (name === "get_info") {
     const bioText = Array.isArray(character.bio)
@@ -423,12 +436,10 @@ export async function handleToolCall(
         | { code: "CREATOR_EARNINGS_UNAVAILABLE"; message: string }
         | undefined;
       if (character.monetization_enabled && actualCreatorMarkup > 0) {
-        // Earnings recording is a NON-CRITICAL post-settlement step. The consumer
-        // was already settled above (reconcile(actualTotal)); if this throws it
-        // must NOT propagate to the outer catch, whose reconcile(0) is
-        // non-idempotent and would refund the WHOLE reservation a second time →
-        // free inference + a net credit grant (and the creator may already be
-        // credited). Log and swallow, matching processUsage's documented intent.
+        // Settlement is non-idempotent: a secondary accounting failure cannot
+        // reach the outer refund boundary after reconcile(actualTotal), because
+        // reconcile(0) would issue a second adjustment. The warning below keeps
+        // that degraded outcome visible without corrupting consumer billing.
         try {
           await agentMonetizationService.recordCreatorEarnings({
             agentId: character.id,

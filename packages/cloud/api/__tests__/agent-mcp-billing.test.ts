@@ -292,8 +292,8 @@ describe("Agent MCP billing", () => {
     expect(reconcile).toHaveBeenCalledTimes(1);
     expect(reconcile.mock.calls[0]?.[0]).toBeCloseTo(0.06, 12);
 
-    // The earnings step was attempted (and failed) — but the request still
-    // returns the successful settlement, never the -32000 outer-catch error.
+    // Settlement remains successful, while the warning makes the failed
+    // secondary accounting write observable to the caller.
     expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
     expect(body.error).toBeUndefined();
     expect(body.result?.content?.[0]?.text).toBe("hello from model");
@@ -321,6 +321,31 @@ describe("Agent MCP billing", () => {
     const info = JSON.parse(body.result?.content?.[0]?.text ?? "{}");
     expect(info).toMatchObject({ name: "Markup Agent", monetization: true });
     // Metadata-only: no reservation, no provider call.
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["missing tool name", {}],
+    ["blank tool name", { name: "" }],
+    ["non-object arguments", { name: "chat", arguments: "invalid" }],
+  ])("rejects %s before billing", async (_case, params) => {
+    const response = await handleToolCall(
+      makeContext() as never,
+      makeCharacter(),
+      params,
+      "rpc-1",
+      { id: USER_ID, organization_id: ORG_ID },
+    );
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toEqual({
+      code: -32602,
+      message: "valid tool call params are required",
+    });
     expect(reserve).not.toHaveBeenCalled();
     expect(streamText).not.toHaveBeenCalled();
   });
