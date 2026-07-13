@@ -73,16 +73,30 @@ test("bottom-bar mode opens a chromeless, short, bottom-anchored main window", a
 
     // Grow-on-engage (#16200): summoning the overlay flips the OS window to the
     // full work area so the half/full/maximized detents have real screen space.
-    // Show + focus first to warm the renderer's eval channel.
+    // Show + focus first to warm the renderer's eval channel, and wait for the
+    // overlay to be mounted (the singular ChatOverlay) so the open intent has a
+    // live target.
     await harness.showMainWindow();
     await harness.focusMainWindow();
+    await expect
+      .poll(
+        async () =>
+          harness
+            .eval<{ ready: boolean }>(
+              `(() => ({ ready: Boolean(document.querySelector('[data-testid="chat-overlay-shell"]')) }))()`,
+            )
+            .then((r) => r.ready)
+            .catch(() => false),
+        { timeout: 60_000, message: "Expected the singular chat overlay to mount." },
+      )
+      .toBe(true);
     await harness.eval(`(() => {
       window.dispatchEvent(new CustomEvent("eliza:chat:open"));
       return { ok: true };
     })()`);
     await expect
       .poll(async () => (await harness.getState()).mainWindow.bounds?.width ?? 0, {
-        timeout: 15_000,
+        timeout: 20_000,
         message: "Expected the overlay window to grow past the pill footprint on open.",
       })
       .toBeGreaterThan(720);

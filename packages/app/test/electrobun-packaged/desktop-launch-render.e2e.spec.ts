@@ -8,11 +8,15 @@
  * matters most for the decomposed app: the PACKAGED DESKTOP app (Electrobun +
  * WebKitGTK) actually launches and renders a non-blank UI headlessly on Linux.
  *
- * It uses only the native bridge state (`harness.start()` waits for the main
- * window + tray via the bridge `/state` snapshot — no renderer eval) and a real
- * screenshot of the rendered window (`assertScreenshotNotBlank`), so it does not
- * depend on the eval-seeding path. The same React bundle (and thus the decomposed
- * lifeops views) renders here as in the web + mobile-viewport e2e lanes.
+ * It uses the native bridge state (`harness.start()` waits for the main window +
+ * tray via the bridge `/state` snapshot) plus a light renderer-DOM assertion.
+ * The default surface is a transparent chromeless overlay (#16200), so instead
+ * of an OS-pixel non-blank check (which a mostly-transparent window fails by
+ * design) it summons the overlay and asserts the singular chat surface + live
+ * composer actually mounted — the meaningful "the app painted a real UI" signal.
+ * A screenshot is still captured as a review artifact. The same React bundle
+ * (and thus the decomposed lifeops views) renders here as in the web + mobile
+ * e2e lanes.
  *
  * Requires a prebuilt Electrobun binary (see playwright.electrobun.packaged.config.ts)
  * and, on a GPU-less host, the headless env from packaged-app-helpers (xvfb +
@@ -23,7 +27,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { assertScreenshotNotBlank } from "../ui-smoke/helpers/screenshot-quality";
 import { type MockApiServer, startMockApiServer } from "./mock-api";
 import {
   PackagedDesktopHarness,
@@ -165,15 +168,52 @@ test("packaged desktop app launches and renders a non-blank UI headless", async 
     );
     await waitForRendererShellReady(harness);
 
-    // Real screenshot of the rendered window; assert it painted (not blank).
+    // Summon the overlay so the window grows and paints the real chat surface.
+    await harness.eval(`(() => {
+      window.dispatchEvent(new CustomEvent("eliza:chat:open"));
+      return { ok: true };
+    })()`);
+    await harness.waitForState(
+      (state) => (state.mainWindow.bounds?.width ?? 0) > 720,
+      "Expected the overlay window to grow past the pill footprint after open.",
+      20_000,
+    );
+
+    // Capture the screenshot as a review artifact. NOTE (#16200): the default
+    // desktop surface is a TRANSPARENT overlay (chromeless pill that grows to a
+    // full-screen transparent sheet with the composer at the bottom), so an
+    // OS-level capture is legitimately mostly-transparent — the non-blank OS
+    // pixel check no longer fits this architecture. The meaningful "the app
+    // painted a real UI" signal is the rendered DOM: waitForRendererShellReady
+    // already confirmed the renderer is past the startup shell with real root
+    // content, and here we assert the singular chat surface + its live composer
+    // actually mounted (an all-white/blank boot would fail this).
     const data = await harness.screenshot();
     const base64 = data.replace(/^data:image\/png;base64,/, "");
-    const buffer = Buffer.from(base64, "base64");
     await fs.writeFile(
       testInfo.outputPath("desktop-launch-render.png"),
-      buffer,
+      Buffer.from(base64, "base64"),
     );
-    await assertScreenshotNotBlank(buffer, "packaged desktop launch render");
+    const rendered = await harness.eval<{
+      ok: boolean;
+      hasOverlay: boolean;
+      hasComposer: boolean;
+      rootLength: number;
+    }>(`(() => {
+      const root = document.getElementById("root");
+      return {
+        ok: true,
+        hasOverlay: Boolean(
+          document.querySelector('[data-testid="chat-overlay-shell"]') ||
+          document.querySelector('[data-testid="continuous-chat-overlay"]')
+        ),
+        hasComposer: Boolean(document.querySelector('[aria-label="message"]')),
+        rootLength: (root?.innerHTML ?? "").length,
+      };
+    })()`);
+    expect(rendered.hasOverlay, "singular chat overlay mounted").toBe(true);
+    expect(rendered.hasComposer, "live composer painted").toBe(true);
+    expect(rendered.rootLength).toBeGreaterThan(1000);
   } finally {
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);

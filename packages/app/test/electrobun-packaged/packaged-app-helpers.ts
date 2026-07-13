@@ -59,6 +59,8 @@ export interface DesktopTestBridgeState {
     mainWindowPresent: boolean;
     windowVisible: boolean;
     windowFocused: boolean;
+    /** The window id that currently renders the singular chat (#16200 Stage 3). */
+    activeChatHostWindowId?: number | null;
     shortcuts?: Array<{ id: string; accelerator: string }>;
     trayPopover?: {
       configured: boolean;
@@ -1111,6 +1113,8 @@ export class PackagedDesktopHarness {
     });
   }
 
+  // Same GET /notifications read as getNotifications, typed to the diagnostic
+  // shape some specs assert on.
   async readNotifications(): Promise<DesktopNotificationDiagnostic[]> {
     const response = await fetchJson<{
       notifications: DesktopNotificationDiagnostic[];
@@ -1118,15 +1122,5 @@ export class PackagedDesktopHarness {
       headers: { Authorization: `Bearer ${this.bridgeToken}` },
     });
     return response.notifications;
-  }
-
-  async clearNotifications(): Promise<void> {
-    await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/notifications`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${this.bridgeToken}`,
-        "Content-Type": "application/json",
-      },
-    });
   }
 }

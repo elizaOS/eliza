@@ -1526,6 +1526,18 @@ X-GNOME-Autostart-enabled=true
   enableBottomBarReanchor(): void {
     this.bottomBarReanchorEnabled = true;
     this.bottomBarWorkArea = this.readPrimaryWorkArea();
+    // Apply the tier the renderer already reported (#16200): a fast overlay
+    // open during boot can call setChatOverlayTier BEFORE reanchor is enabled,
+    // where it no-ops — and the renderer dedupes, so it never re-sends. Re-frame
+    // to the current tier here so a boot-race grow is never lost.
+    const win = this.mainWindow;
+    if (win && this.bottomBarWorkArea) {
+      const frame = computeChatOverlayWindowFrame(
+        this.bottomBarWorkArea,
+        this.chatOverlayTier,
+      );
+      win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    }
     if (this.bottomBarPoller) return;
     this.bottomBarPoller = setInterval(() => {
       if (this._windowHidden) return;
