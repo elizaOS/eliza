@@ -1,185 +1,176 @@
 /**
  * Crash-safe first-use provisioning for the workspace-native eliza-code ACP
- * server (`packages/examples/code`, bin `eliza-code-acp`). Development and
- * self-hosted checkouts deliberately do not require a global npm install: the
- * package is built into its normal `dist` directory on first use and launched
- * with the same Bun executable that performed the build.
+ * server. An OS advisory lock serializes builders and is released by the kernel
+ * when its owning process exits, so recovery never depends on PID liveness,
+ * wall-clock age, or deleting another process's lock. Builds target private
+ * artifacts and publish only after validation (#16169).
  *
- * The naive "build if the artifact is missing or older than the source"
- * approach is not multi-process safe and is not crash safe (issue #16169):
- *
- *   - Two orchestrator processes (or two sessions in one process) racing the
- *     first spawn could both start `bun build` into the same `dist/acp.js`,
- *     interleaving writes and publishing a corrupt executable.
- *   - A crash after `bun build` truncated/opened `dist/acp.js` but before it
- *     finished writing leaves a partial artifact whose mtime is newer than the
- *     source, so the fast path treats a broken build as fresh forever.
- *   - Naive lock reclaim (wall-clock age, PID liveness, hard-link inode games)
- *     is either TOCTOU-racy (a waiter can delete a successor's lock) or steals
- *     from a verified-live owner.
- *
- * This module implements a deterministic protocol with the properties required
- * by #16169:
- *
- *   1. **Fenced mutual exclusion.** The lock file is created with
- *      `open(..., "wx")` (`O_CREAT | O_EXCL`). Its content is a JSON record
- *      carrying the owner PID, the process start time, and a random *fence
- *      token*. Ownership is proven by the fence token in the file, never by age
- *      or PID alone.
- *   2. **No stealing from a verified-live owner.** A waiter only attempts
- *      reclaim once the shared deadline has elapsed AND the owner PID is not
- *      alive. A live owner past the nominal budget is waited on, never
- *      overlapped.
- *   3. **Replacement-safe reclaim.** Reclaim is performed by *atomically
- *      renaming* the stale lock to a private scratch name keyed to the
- *      reclaimer's own fence token (`<lock>.reclaim.<fence>`). Only the process
- *      that wins that `rename` may delete the scratch file, and it deletes a
- *      path that embeds its own fence — so an old owner/waiter can never delete
- *      a successor's lock. After winning the reclaim the reclaimer re-creates
- *      the lock with `wx`, re-entering the exclusion protocol from the top.
- *   4. **Atomic publish.** The build writes to a private temp artifact
- *      (`dist/.acp.<fence>.tmp.js`), which is validated (non-empty, contains a
- *      known marker) and then `rename`d into place. A separate completion
- *      marker (`dist/.acp.done`) records the published artifact's size + mtime;
- *      freshness is decided from the marker, so a bare/partial `dist/acp.js`
- *      that appears without a matching marker is never treated as fresh.
- *   5. **Crash / PID-reuse recovery.** Because ownership is the fence token and
- *      reclaim is rename-fenced, a dead owner (crash) is recovered
- *      deterministically on the next start, and PID reuse cannot make a stale
- *      lock look live (a reused PID that happens to be alive only *delays*
- *      reclaim; it can never authorize deleting someone else's lock).
- *   6. **Robust paths.** The returned command double-quotes the Bun binary and
- *      the artifact path so a workspace or Bun install containing spaces
- *      survives `splitCommandLine`.
+ * Linux hosts use util-linux `flock` to acquire the advisory lock on an
+ * inherited file descriptor and GNU `timeout` to terminate the complete build
+ * process group at the shared deadline. Hosts without those proven primitives
+ * decline the workspace build and let the service fall back to its configured/
+ * published ACP command rather than weakening exclusion or supervision.
  */
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   closeSync,
+  type Dirent,
   existsSync,
+  lstatSync,
   mkdirSync,
   openSync,
+  readdirSync,
   readFileSync,
+  readlinkSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync,
-  writeSync,
 } from "node:fs";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
+import { performance } from "node:perf_hooks";
+import { ElizaError, logger } from "@elizaos/core";
 
-/** A `bun build` that produces the ACP executable must not run forever. */
 const BUILD_TIMEOUT_MS = 120_000;
-/**
- * Shared deadline for the whole wait-or-build attempt. A waiter that observes a
- * held lock will poll until this budget elapses before it even *considers*
- * reclaim (and only then if the owner is not alive). It comfortably exceeds
- * `BUILD_TIMEOUT_MS` so a legitimately slow build is never stolen.
- */
 const PROVISION_DEADLINE_MS = 180_000;
-/** Poll cadence while waiting for another process's build to complete. */
 const WAIT_POLL_MS = 100;
-/**
- * How long an existing-but-unparseable lock file must persist before it is
- * treated as a crashed (never-fully-claimed) lock and reclaimed. This only
- * needs to exceed the microsecond window between `open(..., "wx")` creating the
- * empty lock and `writeSync` filling in the record; 5s is generous and keeps a
- * legitimately mid-claim live owner from ever being overlapped.
- */
-const MALFORMED_LOCK_GRACE_MS = 5_000;
-/**
- * Absolute ceiling on how long a lock may be honored against a merely-
- * PID-alive owner. Any real build publishes its artifact or dies well within
- * `BUILD_TIMEOUT_MS`, and a waiter gives up after `PROVISION_DEADLINE_MS`, so a
- * lock still held past a comfortable multiple of both can only be a crashed
- * owner whose PID was reused by an unrelated (possibly long-lived) process.
- * Past this ceiling we override liveness and reclaim, resolving the PID-reuse
- * ambiguity the naive liveness check cannot. Set generously so a genuinely
- * slow-but-live original build is never stolen from.
- */
-const LOCK_MAX_LIFETIME_MS = BUILD_TIMEOUT_MS + PROVISION_DEADLINE_MS + 60_000;
-/** Marker string every valid ACP build embeds; used to validate the artifact. */
 const ACP_ARTIFACT_MARKER = "eliza-code-acp";
+const BUILD_RECIPE_VERSION = "acp-private-bun-build-v1";
+const RUNTIME_TSCONFIG_CONTENT = `${JSON.stringify(
+  { compilerOptions: {} },
+  null,
+  2,
+)}\n`;
 
 export type AcpProvisionResult = {
-  /** Absolute path to the Bun executable that should launch the artifact. */
   command: string;
-  /** Launch arguments (the built `dist/acp.js`). */
   args: string[];
 };
 
-/**
- * Quote a single command token so `splitCommandLine` reconstructs it intact.
- * `splitCommandLine` understands both `"..."` and `'...'` but has no escape
- * syntax, so we pick whichever quote character the value does not itself
- * contain:
- *   - no whitespace/quotes → emit bare (unchanged round-trip)
- *   - contains `"` but not `'` → single-quote it
- *   - otherwise → double-quote it
- * A value containing BOTH quote characters cannot be represented losslessly in
- * that grammar; that is pathological for a filesystem path, so we double-quote
- * as the least-surprising best effort rather than silently corrupting args.
- */
-function quoteAcpToken(value: string): string {
-  if (value.length > 0 && !/[\s"']/u.test(value)) return value;
-  if (value.includes('"') && !value.includes("'")) return `'${value}'`;
-  return `"${value}"`;
-}
-
-/**
- * Format a provision result as a single command string. Both the Bun path and
- * every arg are quoted so `splitCommandLine` reconstructs them intact even when
- * a path contains spaces or a quote character.
- */
-export function formatAcpCommand(result: AcpProvisionResult): string {
-  return [result.command, ...result.args].map(quoteAcpToken).join(" ");
-}
-
-function findExecutableOnPath(name: string): string | undefined {
-  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
-    if (!dir) continue;
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
-}
-
-/**
- * Walk up from `startDir` to the first checkout that contains
- * `packages/examples/code/src/acp.ts`. Exported for tests.
- */
-export function findWorkspaceElizaCodePackage(
-  startDir: string,
-): string | undefined {
-  let dir = resolve(startDir);
-  while (true) {
-    const candidate = join(dir, "packages", "examples", "code");
-    if (existsSync(join(candidate, "src", "acp.ts"))) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-}
-
-type LockRecord = {
-  pid: number;
-  fence: string;
-  startedAtMs: number;
+type BuildResult = {
+  ok: boolean;
+  detail: string;
+  status?: number | null;
+  signal?: NodeJS.Signals | null;
+  stdout?: string;
+  stderr?: string;
+  timedOut?: boolean;
+  inputFiles?: string[];
+  cause?: unknown;
 };
 
-/**
- * Records describing the on-disk layout of a provisioning attempt for one
- * package. Kept together so the protocol steps read declaratively.
- */
+type BuildContext = {
+  bun: string;
+  packageDir: string;
+  source: string;
+  tmpOutput: string;
+  tmpMetafile: string;
+  timeoutMs: number;
+};
+
+type BuildLease = {
+  release: () => void;
+};
+
+export type ProvisionHooks = {
+  build?: (context: BuildContext) => BuildResult;
+  now?: () => number;
+  deadlineMs?: number;
+  tryAcquireBuildLease?: (
+    guardPath: string,
+    timeoutMs: number,
+  ) => BuildLease | undefined;
+};
+
 type ProvisionPaths = {
   packageDir: string;
   distDir: string;
   source: string;
   output: string;
-  lock: string;
-  doneMarker: string;
-  reclaimIntent: string;
+  runtimeTsconfig: string;
+  completionMarker: string;
+  guard: string;
+  ownerMetadata: string;
 };
+
+type OwnerMetadata = {
+  pid: number;
+  fence: string;
+  startedAtMs: number;
+};
+
+type OwnerMetadataRead =
+  | { kind: "absent" }
+  | { kind: "invalid" }
+  | { kind: "valid"; value: OwnerMetadata };
+
+type CompletionMarker = {
+  version: 2;
+  size: number;
+  mtimeMs: number;
+  outputHash: string;
+  inputHash: string;
+  inputFiles: string[];
+};
+
+function quoteAcpToken(value: string): string {
+  if (value.length > 0 && !/[\s"']/u.test(value)) return value;
+  if (value.includes('"') && !value.includes("'")) return `'${value}'`;
+  if (value.includes('"') && value.includes("'")) {
+    throw new ElizaError(
+      "Cannot format ACP command path containing both single and double quotes",
+      {
+        code: "ACP_COMMAND_PATH_UNREPRESENTABLE",
+        context: { tokenLength: value.length },
+        severity: "fatal",
+      },
+    );
+  }
+  return `"${value}"`;
+}
+
+export function formatAcpCommand(result: AcpProvisionResult): string {
+  return [result.command, ...result.args].map(quoteAcpToken).join(" ");
+}
+
+function findExecutableOnPath(name: string): string | undefined {
+  for (const directory of (process.env.PATH ?? "").split(delimiter)) {
+    if (!directory) continue;
+    const candidate = join(directory, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function findUtilLinuxFlockOnPath(timeoutMs: number): string | undefined {
+  const flock = findExecutableOnPath("flock");
+  if (!flock || !Number.isFinite(timeoutMs) || timeoutMs <= 0) return undefined;
+  const probe = spawnSync(flock, ["--version"], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" },
+    timeout: Math.max(1, Math.floor(Math.min(1_000, timeoutMs))),
+    killSignal: "SIGKILL",
+  });
+  return probe.status === 0 &&
+    String(probe.stdout ?? "").includes("flock from util-linux")
+    ? flock
+    : undefined;
+}
+
+export function findWorkspaceElizaCodePackage(
+  startDir: string,
+): string | undefined {
+  let directory = resolve(startDir);
+  while (true) {
+    const candidate = join(directory, "packages", "examples", "code");
+    if (existsSync(join(candidate, "src", "acp.ts"))) return candidate;
+    const parent = dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
 
 function provisionPaths(packageDir: string): ProvisionPaths {
   const distDir = join(packageDir, "dist");
@@ -188,518 +179,823 @@ function provisionPaths(packageDir: string): ProvisionPaths {
     distDir,
     source: join(packageDir, "src", "acp.ts"),
     output: join(distDir, "acp.js"),
-    lock: join(distDir, ".acp.build.lock"),
-    doneMarker: join(distDir, ".acp.done"),
-    // Single-winner reclaim gate: created with O_EXCL so exactly one reclaimer
-    // may replace a stale lock at a time (see tryReclaimStaleLock).
-    reclaimIntent: join(distDir, ".acp.build.reclaiming"),
+    runtimeTsconfig: join(distDir, "tsconfig.json"),
+    completionMarker: join(distDir, ".acp.done"),
+    guard: join(distDir, ".acp.build.guard"),
+    ownerMetadata: join(distDir, ".acp.build.owner"),
   };
 }
 
-/**
- * Injection seam for tests: liveness of a PID. Default uses `process.kill(pid,
- * 0)`. Overridable so crash / PID-reuse scenarios are deterministic.
- */
-export type ProvisionHooks = {
-  isPidAlive?: (pid: number) => boolean;
-  now?: () => number;
-  /**
-   * Perform the actual build into `tmpOutput`. Default runs `bun build`.
-   * Overridable so tests can simulate partial builds, crashes, and failures
-   * without invoking a real toolchain.
-   */
-  build?: (ctx: { bun: string; packageDir: string; tmpOutput: string }) => {
-    ok: boolean;
-    detail: string;
-  };
-};
-
-function defaultIsPidAlive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    // error-policy:J7 liveness translation — process.kill(pid, 0) signals
-    // existence via throw; ESRCH → no such process (dead), EPERM → exists but
-    // not ours (alive). Translated to a boolean, never surfaced.
-    return (err as NodeJS.ErrnoException)?.code === "EPERM";
-  }
+function errnoCode(error: unknown): string | undefined {
+  return error instanceof Error && "code" in error
+    ? String((error as NodeJS.ErrnoException).code)
+    : undefined;
 }
 
-function defaultBuild(ctx: {
-  bun: string;
-  packageDir: string;
-  tmpOutput: string;
-}): { ok: boolean; detail: string } {
-  // The package build script emits `dist/acp.js`; run it, then relocate that
-  // artifact to our private fenced temp path so the atomic publish below owns
-  // the final rename. Building to the canonical dist path first matches the
-  // existing `bun run build` wiring (bundler config, externals) without
-  // reinventing bundler flags here.
-  const canonical = join(ctx.packageDir, "dist", "acp.js");
-  const result = spawnSync(ctx.bun, ["run", "--cwd", ctx.packageDir, "build"], {
-    cwd: ctx.packageDir,
-    env: process.env,
-    encoding: "utf8",
-    timeout: BUILD_TIMEOUT_MS,
-    maxBuffer: 8 * 1024 * 1024,
+function filesystemError(
+  message: string,
+  code: string,
+  path: string,
+  cause: unknown,
+): ElizaError {
+  return new ElizaError(message, {
+    code,
+    cause,
+    context: { path },
+    severity: "fatal",
   });
-  if (result.status !== 0 || !existsSync(canonical)) {
-    const detail = String(
-      result.stderr || result.stdout || "build failed",
-    ).trim();
-    return { ok: false, detail };
-  }
-  try {
-    // Move the freshly built canonical artifact aside into our fenced temp so
-    // validation + atomic publish is the single authority for what becomes the
-    // live `dist/acp.js`. If a concurrent loser also built, whichever temp is
-    // published under the lock wins; the other is discarded.
-    renameSync(canonical, ctx.tmpOutput);
-  } catch (err) {
-    // error-policy:J7 staging failure is reported to the caller as a typed
-    // {ok:false} build result (not thrown) so provisioning can surface a clean
-    // diagnostic and discard the temp.
-    return { ok: false, detail: `stage artifact failed: ${String(err)}` };
-  }
-  return { ok: true, detail: "" };
 }
 
-/**
- * Anchor timestamp for aging a lock: the max of the recorded wall-clock start
- * and the lock file's mtime. Using the max means neither a skewed clock in the
- * record nor a touched mtime can make the lock look artificially young (which
- * would delay a legitimate reclaim). Returns undefined if the lock file has
- * vanished (the caller should retry acquisition rather than reclaim).
- */
-function lockAgeAnchorMs(
-  lockPath: string,
-  recordStartedAtMs: number,
-): number | undefined {
-  let mtimeMs: number;
-  try {
-    mtimeMs = statSync(lockPath).mtimeMs;
-  } catch {
-    // error-policy:J7 the lock vanished between checks; report "no anchor" so
-    // the caller retries acquisition rather than reclaiming a missing lock.
-    return undefined;
-  }
-  return Math.max(recordStartedAtMs, mtimeMs);
-}
-
-function readLockRecord(lockPath: string): LockRecord | undefined {
-  try {
-    const raw = readFileSync(lockPath, "utf8");
-    const parsed = JSON.parse(raw) as Partial<LockRecord>;
-    if (
-      typeof parsed.pid === "number" &&
-      typeof parsed.fence === "string" &&
-      typeof parsed.startedAtMs === "number"
-    ) {
-      return {
-        pid: parsed.pid,
-        fence: parsed.fence,
-        startedAtMs: parsed.startedAtMs,
-      };
-    }
-    return undefined;
-  } catch {
-    // error-policy:J7 missing or unreadable/partial lock → treat as absent; the
-    // caller retries the exclusive create. A parse failure must not throw.
-    return undefined;
-  }
-}
-
-/**
- * Attempt to atomically create the lock with our fence token. Returns true on
- * success (`O_CREAT | O_EXCL` won), false if the lock already exists.
- */
-function tryAcquireLock(lockPath: string, record: LockRecord): boolean {
-  let fd: number | undefined;
-  try {
-    fd = openSync(lockPath, "wx");
-  } catch (err) {
-    // error-policy:J7 EEXIST means another process holds the lock (report
-    // not-acquired); any other error (e.g. EACCES) is a real fault and is
-    // rethrown.
-    if ((err as NodeJS.ErrnoException)?.code === "EEXIST") return false;
-    throw err;
-  }
-  try {
-    writeSync(fd, JSON.stringify(record));
-    return true;
-  } finally {
-    closeSync(fd);
-  }
-}
-
-/** Identity of the specific stale lock a reclaim is authorized to replace. */
-type ReclaimTarget = { kind: "fenced"; fence: string } | { kind: "malformed" };
-
-/**
- * Try to reclaim a stale lock without ever stealing from a verified-live owner.
- *
- * Reclaim is an ATOMIC REPLACE: the reclaimer writes a fresh lock record (under
- * its own fence) to a private temp and `rename`s it OVER `paths.lock` in one
- * step. `paths.lock` is therefore never momentarily absent, so no third process
- * can slip in via `open(..., "wx")` during a reclaim gap (the flaw of a
- * move-aside-then-restore scheme). On success the reclaimer holds the lock and
- * builds directly.
- *
- * A rare multi-waiter race can still have two reclaimers replace each other's
- * lock and both build. That is safe: correctness lives in the ATOMIC PUBLISH
- * (see buildAndPublish), not the lock. Each build writes to a private per-fence
- * temp and publishes via a single atomic `rename` over `dist/acp.js` plus a
- * completion marker, so overlapping builds can never corrupt or partially
- * publish the artifact — the last atomic publish wins with a complete, validated
- * file. The lock is only an optimization to avoid wasted concurrent builds.
- *
- * The staleness gate below still guarantees we NEVER replace a verified-live
- * owner's lock (PID alive within the lifetime ceiling), and only reclaim a
- * malformed lock once it has aged past the write-window grace.
- *
- * Returns true iff we installed our lock (the caller then builds under it).
- */
-function tryReclaimStaleLock(
-  paths: ProvisionPaths,
-  ourFence: string,
-  isPidAlive: (pid: number) => boolean,
-  now: () => number,
-): boolean {
-  // Distinguish "no lock file" from "lock file present but its record is
-  // unreadable". The latter happens when an owner crashed between `open(...,
-  // "wx")` (which creates an empty file) and writing the JSON record: the file
-  // exists so acquisition keeps hitting EEXIST, but there is no owner PID to
-  // check. Such a malformed lock is by definition stale (no process ever
-  // finished claiming it) and MUST be reclaimable, or crash recovery would
-  // deadlock until manual cleanup.
-  if (!existsSync(paths.lock)) {
-    // Lock vanished (owner released). Nothing to reclaim; let the caller retry
-    // acquisition.
-    return false;
-  }
-  const record = readLockRecord(paths.lock);
-  let target: ReclaimTarget;
-  if (record) {
-    if (isPidAlive(record.pid)) {
-      // The PID is alive, but that alone does not prove the ORIGINAL builder is
-      // still running: after a crash the OS can reuse the PID for an unrelated,
-      // possibly long-lived process, which would otherwise pin this lock
-      // forever. Resolve the PID-reuse ambiguity with an absolute lifetime
-      // ceiling: a legitimate build always publishes or dies well within
-      // LOCK_MAX_LIFETIME_MS, so a lock older than that whose PID is "alive" is
-      // necessarily a reused PID, not the original owner. Only past that hard
-      // ceiling do we override liveness and reclaim. Below it we still NEVER
-      // steal from a possibly-live owner. The age is taken as the max of the
-      // recorded wall-clock start and the lock file's mtime so a bad clock in
-      // the record cannot make the lock look artificially young.
-      const startedAtMs = lockAgeAnchorMs(paths.lock, record.startedAtMs);
-      if (startedAtMs === undefined) return false; // lock vanished; retry acquire
-      if (now() - startedAtMs < LOCK_MAX_LIFETIME_MS) return false;
-      // Fall through: aged past the ceiling with a reused PID → reclaim.
-    }
-    // We are authorized to reclaim ONLY the lock bearing this exact fence.
-    target = { kind: "fenced", fence: record.fence };
-  } else {
-    // Malformed/empty record. This is either (a) a crashed owner that never
-    // finished writing its record, or (b) a live owner in the microsecond
-    // window between `open(..., "wx")` and `writeSync` of the record. Only
-    // reclaim once the empty lock has aged past a short grace far exceeding
-    // that write window, so a legitimately mid-claim live owner is never
-    // overlapped.
-    let ageMs: number;
-    try {
-      ageMs = now() - statSync(paths.lock).mtimeMs;
-    } catch {
-      // error-policy:J7 lock disappeared between the existsSync check and the
-      // stat — treat as released; the caller retries acquisition.
-      return false;
-    }
-    if (ageMs < MALFORMED_LOCK_GRACE_MS) return false;
-    // A malformed lock has no fence to key on; we are authorized to reclaim
-    // only a still-malformed lock (verified after the rename below).
-    target = { kind: "malformed" };
-  }
-
-  // SINGLE-WINNER reclaim. A stale lock is replaced by exactly one process at a
-  // time, so concurrent reclaimers can never both enter the build (which, via
-  // the shared `bun run build` canonical output, is NOT safe to run twice at
-  // once). The single-winner gate is an O_EXCL create of a shared reclaim-intent
-  // file: only one reclaimer wins it. The winner re-verifies the lock is still
-  // the SAME stale identity it authorized (guarding against a successor a prior
-  // winner installed), then atomically REPLACES the lock under its own fence via
-  // a temp+rename (so `paths.lock` is never momentarily absent — no window for a
-  // fresh `open(..., "wx")` acquirer). It KEEPS the intent gate held; the caller
-  // releases it via `releaseReclaimIntent` once the build finishes, so no other
-  // reclaimer overlaps the build.
-  let intentFd: number;
-  try {
-    intentFd = openSync(paths.reclaimIntent, "wx");
-  } catch (err) {
-    // error-policy:J7 gate contention/failure is translated to "did not win the
-    // gate" (return false); we never throw out of the single-winner probe.
-    if ((err as NodeJS.ErrnoException)?.code === "EEXIST") {
-      // Another reclaimer is mid-reclaim/mid-build. If its intent-holder is
-      // DEAD (crashed after winning the gate, before releasing it), clear the
-      // gate IMMEDIATELY so crash recovery completes within the outer
-      // provisioning deadline rather than waiting out the lifetime ceiling.
-      // The wall-clock ceiling is only a fallback for a holder whose PID is
-      // unreadable or ambiguously reused.
-      if (isReclaimIntentReclaimable(paths, isPidAlive, now)) {
-        bestEffortRemove(paths.reclaimIntent);
-      }
-      return false;
-    }
-    return false;
-  }
-  // Record our PID in the gate so a future reclaimer can detect and clear it
-  // immediately if we crash while holding it.
-  try {
-    writeSync(
-      intentFd,
-      JSON.stringify({ pid: process.pid, startedAtMs: now() }),
-    );
-  } catch (err) {
-    // error-policy:J6 the gate content is a best-effort crash-recovery hint;
-    // an empty gate still excludes correctly (it just falls back to the
-    // wall-clock ceiling for stale detection), so a write failure is swallowed.
-    void err;
-  } finally {
-    closeSync(intentFd);
-  }
-
-  // Under the single-winner gate, re-verify the lock still bears the exact
-  // stale identity we authorized reclaiming. A concurrent winner may have
-  // already replaced it with a live successor; if so, do NOT reclaim.
-  if (!lockStillMatchesTarget(paths.lock, target)) {
-    bestEffortRemove(paths.reclaimIntent);
-    return false;
-  }
-
-  const claimTmp = `${paths.lock}.claim.${ourFence}`;
-  const claim: LockRecord = {
-    pid: process.pid,
-    fence: ourFence,
-    startedAtMs: now(),
-  };
-  try {
-    writeFileSync(claimTmp, JSON.stringify(claim));
-    // Atomic replace: after this returns, paths.lock carries OUR fence and was
-    // never absent. The caller detects our fence and builds directly, then
-    // releases the intent gate.
-    renameSync(claimTmp, paths.lock);
-  } catch {
-    // error-policy:J6 reclaim install failed; roll back our scratch temp and
-    // release the single-winner gate so another reclaimer may retry. Reported
-    // as "did not reclaim" (return false), never thrown.
-    bestEffortRemove(claimTmp);
-    bestEffortRemove(paths.reclaimIntent);
-    return false;
-  }
-  return true;
-}
-
-/**
- * Remove a path, ignoring "already gone" and other teardown failures. A
- * best-effort unlink whose failure must not abort the caller: a lingering
- * scratch/lock/intent file is inert and is aged out by the staleness gates.
- * error-policy:J6 best-effort teardown — the removal is advisory cleanup, not a
- * correctness step, so a failure is swallowed after being recorded here.
- */
 function bestEffortRemove(path: string): void {
   try {
-    rmSync(path, { force: true });
-  } catch (err) {
-    // error-policy:J6 swallow: cleanup is advisory; surface nothing but keep a
-    // named binding so this is an explicit, non-empty handler.
-    void err;
+    rmSync(path, { force: true, recursive: true });
+  } catch (error) {
+    // error-policy:J6 scratch cleanup cannot change the already-determined
+    // provisioning outcome, but it remains observable for operators.
+    logger.warn(
+      { error, path },
+      "[AcpProvisioning] Could not remove provisioning scratch path",
+    );
   }
 }
 
-/** Release the single-winner reclaim gate after the reclaimer's build. */
-function releaseReclaimIntent(paths: ProvisionPaths): void {
-  // Best-effort; a lingering intent is recovered by isReclaimIntentReclaimable
-  // (dead-holder liveness check, wall-clock ceiling fallback).
-  bestEffortRemove(paths.reclaimIntent);
-}
-
-/**
- * True iff the current lock still bears the exact stale identity a reclaim was
- * authorized against. Guards the single-winner reclaim from clobbering a
- * successor lock installed by a prior winner.
- */
-function lockStillMatchesTarget(
-  lockPath: string,
-  target: ReclaimTarget,
-): boolean {
-  if (!existsSync(lockPath)) return false;
-  const record = readLockRecord(lockPath);
-  if (target.kind === "fenced") return record?.fence === target.fence;
-  return record === undefined; // malformed target must still be malformed
-}
-
-/**
- * True iff a held reclaim-intent gate may be cleared because its holder is
- * gone. Prefers an IMMEDIATE liveness check on the holder PID recorded in the
- * gate (so a crashed reclaimer is recovered within the outer provisioning
- * deadline, not after the multi-minute lifetime ceiling); falls back to the
- * wall-clock ceiling only when the holder PID is unreadable (an empty/legacy
- * gate) or ambiguously alive, so a genuinely live holder is never cleared
- * early.
- */
-function isReclaimIntentReclaimable(
-  paths: ProvisionPaths,
-  isPidAlive: (pid: number) => boolean,
-  now: () => number,
-): boolean {
-  let mtimeMs: number;
+function removeOrThrow(path: string, operation: string): void {
   try {
-    mtimeMs = statSync(paths.reclaimIntent).mtimeMs;
-  } catch {
-    // error-policy:J7 gate vanished (holder released it); nothing to reclaim.
-    return false;
+    rmSync(path, { force: true, recursive: true });
+  } catch (cause) {
+    // error-policy:J2 preserve the filesystem cause while adding operation and
+    // path context at this provisioning boundary.
+    throw filesystemError(
+      `Failed to ${operation}`,
+      "ACP_PROVISIONING_FILESYSTEM_FAILED",
+      path,
+      cause,
+    );
   }
-  const holder = readIntentHolder(paths.reclaimIntent);
-  if (holder && Number.isInteger(holder.pid) && holder.pid > 0) {
-    // Dead holder → reclaim the gate immediately.
-    if (!isPidAlive(holder.pid)) return true;
-    // Live holder → only override past the absolute ceiling (PID-reuse guard),
-    // anchoring on max(recorded start, mtime) so a touched mtime cannot make it
-    // look young.
-    const anchor = Math.max(holder.startedAtMs ?? 0, mtimeMs);
-    return now() - anchor > LOCK_MAX_LIFETIME_MS;
-  }
-  // No readable holder PID (empty/legacy gate): fall back to the wall-clock
-  // ceiling on the gate file's mtime.
-  return now() - mtimeMs > LOCK_MAX_LIFETIME_MS;
 }
 
-type IntentHolder = { pid: number; startedAtMs?: number };
+function createFlockLeaseFactory(
+  flock: string,
+): (guardPath: string, timeoutMs: number) => BuildLease | undefined {
+  return (guardPath, timeoutMs) => {
+    let descriptor: number;
+    try {
+      descriptor = openSync(guardPath, "a+");
+    } catch (cause) {
+      // error-policy:J2 advisory-lock setup failures carry their OS cause and
+      // the exact guard path needed for diagnosis.
+      throw filesystemError(
+        "Failed to open ACP provisioning advisory lock",
+        "ACP_PROVISIONING_LOCK_OPEN_FAILED",
+        guardPath,
+        cause,
+      );
+    }
 
-function readIntentHolder(intentPath: string): IntentHolder | undefined {
-  try {
-    const parsed = JSON.parse(readFileSync(intentPath, "utf8")) as
-      | Partial<IntentHolder>
-      | undefined;
-    if (parsed && typeof parsed.pid === "number") {
+    let result: ReturnType<typeof spawnSync>;
+    try {
+      result = spawnSync(flock, ["-x", "-n", "3"], {
+        stdio: ["ignore", "pipe", "pipe", descriptor],
+        encoding: "utf8",
+        timeout: Math.max(1, Math.floor(Math.min(5_000, timeoutMs))),
+        killSignal: "SIGKILL",
+      });
+    } catch (cause) {
+      // error-policy:J2 acquisition setup failures retain their cause after the
+      // opened descriptor is closed, so a bad invocation cannot leak a lease.
+      try {
+        closeSync(descriptor);
+      } catch (releaseError) {
+        // error-policy:J6 the acquisition failure owns the outcome; descriptor
+        // cleanup failure is logged without replacing that primary error.
+        logger.error(
+          { error: releaseError, guardPath },
+          "[AcpProvisioning] Could not close advisory-lock descriptor after acquisition failed",
+        );
+      }
+      throw new ElizaError("Failed to invoke ACP provisioning advisory lock", {
+        code: "ACP_PROVISIONING_LOCK_FAILED",
+        cause,
+        context: { guardPath, timeoutMs },
+        severity: "fatal",
+      });
+    }
+    if (result.status === 0) {
       return {
-        pid: parsed.pid,
-        startedAtMs:
-          typeof parsed.startedAtMs === "number"
-            ? parsed.startedAtMs
-            : undefined,
+        release: () => {
+          try {
+            closeSync(descriptor);
+          } catch (cause) {
+            // error-policy:J2 a failed lease release is surfaced with its OS
+            // cause because silently retaining exclusion could deadlock work.
+            throw filesystemError(
+              "Failed to release ACP provisioning advisory lock",
+              "ACP_PROVISIONING_LOCK_RELEASE_FAILED",
+              guardPath,
+              cause,
+            );
+          }
+        },
       };
     }
-    return undefined;
-  } catch {
-    // error-policy:J7 unparseable/missing intent holder → report "no holder" so
-    // the caller falls back to the wall-clock ceiling; never thrown.
-    return undefined;
-  }
-}
 
-/** Freshness: a validated artifact + a matching completion marker. */
-function isFreshArtifact(paths: ProvisionPaths): boolean {
-  if (!existsSync(paths.output) || !existsSync(paths.doneMarker)) return false;
-  let sourceMtime: number;
-  let outputStat: ReturnType<typeof statSync>;
-  try {
-    sourceMtime = statSync(paths.source).mtimeMs;
-    outputStat = statSync(paths.output);
-  } catch {
-    // error-policy:J7 a stat failure means we cannot prove freshness → report
-    // not-fresh so provisioning rebuilds; never thrown.
-    return false;
-  }
-  // Source newer than the built artifact → rebuild.
-  if (sourceMtime > outputStat.mtimeMs) return false;
-  // The marker must describe THIS artifact (size + mtime). A bare/partial
-  // `acp.js` written by a crashed build has no matching marker → not fresh.
-  try {
-    const marker = JSON.parse(readFileSync(paths.doneMarker, "utf8")) as {
-      size?: number;
-      mtimeMs?: number;
-    };
-    return (
-      marker.size === outputStat.size && marker.mtimeMs === outputStat.mtimeMs
+    try {
+      closeSync(descriptor);
+    } catch (cause) {
+      // error-policy:J2 closing an unclaimed descriptor is part of the lock
+      // boundary and preserves the underlying OS failure.
+      throw filesystemError(
+        "Failed to close unclaimed ACP provisioning lock descriptor",
+        "ACP_PROVISIONING_LOCK_RELEASE_FAILED",
+        guardPath,
+        cause,
+      );
+    }
+    if (result.status === 1 && result.error === undefined) return undefined;
+
+    const stdout = String(result.stdout ?? "")
+      .trim()
+      .slice(-4000);
+    const stderr = String(result.stderr ?? "")
+      .trim()
+      .slice(-4000);
+    const timedOut = errnoCode(result.error) === "ETIMEDOUT";
+    throw new ElizaError(
+      timedOut
+        ? "Timed out acquiring the ACP provisioning advisory lock"
+        : "Failed to acquire ACP provisioning advisory lock",
+      {
+        code: timedOut
+          ? "ACP_PROVISIONING_LOCK_TIMEOUT"
+          : "ACP_PROVISIONING_LOCK_FAILED",
+        cause: result.error,
+        context: {
+          guardPath,
+          status: result.status,
+          signal: result.signal,
+          timedOut,
+          stdout,
+          stderr,
+        },
+        severity: timedOut ? "ephemeral" : "fatal",
+      },
     );
-  } catch {
-    // error-policy:J7 unreadable/invalid completion marker → report not-fresh so
-    // provisioning rebuilds; never thrown.
-    return false;
-  }
+  };
 }
 
-function validateArtifact(tmpOutput: string): boolean {
-  try {
-    const stat = statSync(tmpOutput);
-    if (stat.size <= 0) return false;
-    const content = readFileSync(tmpOutput, "utf8");
-    return content.includes(ACP_ARTIFACT_MARKER);
-  } catch {
-    // error-policy:J7 unreadable temp artifact → report invalid so the build is
-    // rejected and the temp discarded; never thrown.
-    return false;
-  }
-}
-
-/**
- * Build under an already-held lock, validate, and atomically publish. On
- * success writes the completion marker describing the published artifact.
- * Throws with a bounded diagnostic on build/validation failure. A failed build
- * NEVER leaves a fresh-looking artifact: the temp is discarded and the
- * completion marker is not (re)written for a bad build.
- */
-function buildAndPublish(
+function writeOwnerMetadata(
   paths: ProvisionPaths,
-  bun: string,
-  fence: string,
-  build: NonNullable<ProvisionHooks["build"]>,
+  metadata: OwnerMetadata,
 ): void {
-  const tmpOutput = join(paths.distDir, `.acp.${fence}.tmp.js`);
-  // Clear any stale temp from a previous crashed attempt with this (extremely
-  // unlikely to collide) fence.
-  rmSync(tmpOutput, { force: true });
+  const temporary = `${paths.ownerMetadata}.${metadata.fence}.tmp`;
+  try {
+    writeFileSync(temporary, JSON.stringify(metadata));
+    renameSync(temporary, paths.ownerMetadata);
+  } catch (cause) {
+    // error-policy:J2 metadata publication preserves the filesystem cause and
+    // cleans only this owner's private temporary file.
+    bestEffortRemove(temporary);
+    throw filesystemError(
+      "Failed to publish ACP provisioning owner metadata",
+      "ACP_PROVISIONING_OWNER_METADATA_FAILED",
+      paths.ownerMetadata,
+      cause,
+    );
+  }
+}
 
-  const { ok, detail } = build({
-    bun,
-    packageDir: paths.packageDir,
-    tmpOutput,
-  });
-  if (!ok) {
-    rmSync(tmpOutput, { force: true });
-    throw new Error(
-      `Failed to auto-install eliza-code-acp: ${detail.slice(0, 4000)}`,
+function readOwnerMetadata(path: string): OwnerMetadataRead {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (cause) {
+    // error-policy:J3 absence is an explicit diagnostic state; every other I/O
+    // failure is rethrown with its cause instead of fabricating metadata.
+    if (errnoCode(cause) === "ENOENT") return { kind: "absent" };
+    throw filesystemError(
+      "Failed to read ACP provisioning owner metadata",
+      "ACP_PROVISIONING_OWNER_METADATA_FAILED",
+      path,
+      cause,
     );
   }
-  if (!validateArtifact(tmpOutput)) {
-    rmSync(tmpOutput, { force: true });
-    throw new Error(
-      "Failed to auto-install eliza-code-acp: built artifact failed validation",
+
+  try {
+    const parsed = JSON.parse(raw) as Partial<OwnerMetadata>;
+    if (
+      Number.isInteger(parsed.pid) &&
+      typeof parsed.fence === "string" &&
+      parsed.fence.length > 0 &&
+      typeof parsed.startedAtMs === "number" &&
+      Number.isFinite(parsed.startedAtMs)
+    ) {
+      return { kind: "valid", value: parsed as OwnerMetadata };
+    }
+  } catch {
+    // error-policy:J3 owner metadata is diagnostic-only untrusted input; an
+    // invalid record remains visibly invalid and never authorizes cleanup.
+    return { kind: "invalid" };
+  }
+  return { kind: "invalid" };
+}
+
+function removeOwnedMetadata(paths: ProvisionPaths, fence: string): void {
+  const current = readOwnerMetadata(paths.ownerMetadata);
+  if (current.kind === "valid" && current.value.fence === fence) {
+    removeOrThrow(
+      paths.ownerMetadata,
+      "remove ACP provisioning owner metadata",
     );
   }
-  // Invalidate any prior marker BEFORE publishing so a crash between the
-  // rename and the marker write can never leave the OLD marker validating the
-  // NEW (unmarked) artifact as fresh. Absent marker → not fresh → clean rebuild.
-  rmSync(paths.doneMarker, { force: true });
-  // Atomic publish: rename the validated temp over the live artifact.
-  renameSync(tmpOutput, paths.output);
-  const published = statSync(paths.output);
-  writeFileSync(
-    paths.doneMarker,
-    JSON.stringify({ size: published.size, mtimeMs: published.mtimeMs }),
+}
+
+function collectPackageSourceInputs(packageDir: string): string[] {
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    let entries: Dirent<string>[];
+    try {
+      entries = readdirSync(directory, {
+        withFileTypes: true,
+        encoding: "utf8",
+      });
+    } catch (cause) {
+      // error-policy:J2 input enumeration must fail with directory context
+      // because an incomplete list could incorrectly bless a stale bundle.
+      throw filesystemError(
+        "Failed to enumerate ACP build inputs",
+        "ACP_PROVISIONING_INPUT_READ_FAILED",
+        directory,
+        cause,
+      );
+    }
+    for (const entry of entries.sort((left, right) =>
+      left.name.localeCompare(right.name),
+    )) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile() || entry.isSymbolicLink()) files.push(path);
+    }
+  };
+
+  visit(join(packageDir, "src"));
+  for (const configuration of ["package.json", "tsconfig.json"]) {
+    const path = join(packageDir, configuration);
+    if (existsSync(path)) files.push(path);
+  }
+  return files.sort();
+}
+
+function workspaceRootForPackage(packageDir: string): string {
+  return resolve(packageDir, "../../..");
+}
+
+function isWithinWorkspace(path: string, workspaceRoot: string): boolean {
+  return path === workspaceRoot || path.startsWith(`${workspaceRoot}${sep}`);
+}
+
+function normalizeRecordedInputs(
+  packageDir: string,
+  inputFiles: string[],
+): string[] | undefined {
+  if (inputFiles.length > 10_000) return undefined;
+  const workspaceRoot = workspaceRootForPackage(packageDir);
+  const normalized = new Set<string>();
+  for (const input of inputFiles) {
+    if (typeof input !== "string" || input.length === 0 || input.includes("\0"))
+      return undefined;
+    const absolute = resolve(packageDir, input);
+    if (!isWithinWorkspace(absolute, workspaceRoot)) return undefined;
+    try {
+      const stat = lstatSync(absolute);
+      if (!stat.isFile() && !stat.isSymbolicLink()) return undefined;
+    } catch (cause) {
+      // error-policy:J3 missing prior inputs remain an explicit freshness
+      // change; unreadable or unsupported marker paths invalidate the marker.
+      if (errnoCode(cause) !== "ENOENT") return undefined;
+    }
+    normalized.add(relative(packageDir, absolute));
+  }
+  return [...normalized].sort();
+}
+
+function collectResolverInputs(
+  packageDir: string,
+  recordedInputs: string[],
+): string[] {
+  const workspaceRoot = workspaceRootForPackage(packageDir);
+  const files = new Set(collectPackageSourceInputs(packageDir));
+  let rootEntries: string[];
+  try {
+    rootEntries = readdirSync(workspaceRoot);
+  } catch (cause) {
+    // error-policy:J2 resolver-input enumeration preserves the filesystem
+    // cause rather than hashing an incomplete workspace configuration.
+    throw filesystemError(
+      "Failed to enumerate ACP workspace resolver inputs",
+      "ACP_PROVISIONING_INPUT_READ_FAILED",
+      workspaceRoot,
+      cause,
+    );
+  }
+  for (const name of rootEntries) {
+    if (
+      name === "package.json" ||
+      name === "bun.lock" ||
+      name === "bun.lockb" ||
+      name === "bunfig.toml" ||
+      /^tsconfig(?:\..+)?\.json$/u.test(name)
+    ) {
+      const path = join(workspaceRoot, name);
+      if (existsSync(path)) files.add(path);
+    }
+  }
+
+  for (const recorded of recordedInputs) {
+    const absolute = resolve(packageDir, recorded);
+    files.add(absolute);
+    let directory = dirname(absolute);
+    while (isWithinWorkspace(directory, workspaceRoot)) {
+      const manifest = join(directory, "package.json");
+      if (existsSync(manifest)) {
+        files.add(manifest);
+        break;
+      }
+      if (directory === workspaceRoot) break;
+      directory = dirname(directory);
+    }
+  }
+  return [...files].sort();
+}
+
+function computeBuildInputHash(
+  packageDir: string,
+  bun: string,
+  recordedInputs: string[],
+): string {
+  const hash = createHash("sha256");
+  hash.update(BUILD_RECIPE_VERSION);
+  let resolvedBun: string;
+  let bunStat: ReturnType<typeof statSync>;
+  try {
+    resolvedBun = realpathSync(bun);
+    bunStat = statSync(resolvedBun);
+  } catch (cause) {
+    // error-policy:J2 toolchain identification adds the executable path while
+    // preserving the OS failure as the structured cause.
+    throw filesystemError(
+      "Failed to identify the Bun executable used for ACP provisioning",
+      "ACP_PROVISIONING_INPUT_READ_FAILED",
+      bun,
+      cause,
+    );
+  }
+  hash.update(
+    `\0bun\0${resolvedBun}\0${bunStat.size}\0${bunStat.mtimeMs}\0${bunStat.ino}\0`,
+  );
+  for (const path of collectResolverInputs(packageDir, recordedInputs)) {
+    const relativePath = relative(workspaceRootForPackage(packageDir), path);
+    hash.update(`\0${relativePath}\0`);
+    try {
+      const stat = lstatSync(path);
+      if (stat.isFile()) {
+        const content = readFileSync(path);
+        hash.update(`type=file\0${content.length}\0`);
+        hash.update(content);
+      } else if (stat.isSymbolicLink()) {
+        const target = readlinkSync(path);
+        const content = readFileSync(path);
+        hash.update(
+          `type=symlink\0${Buffer.byteLength(target)}\0${target}\0${content.length}\0`,
+        );
+        hash.update(content);
+      } else {
+        throw new ElizaError("ACP build input is not a file or symbolic link", {
+          code: "ACP_PROVISIONING_INPUT_INVALID",
+          context: { path },
+          severity: "fatal",
+        });
+      }
+    } catch (cause) {
+      if (errnoCode(cause) === "ENOENT") {
+        // error-policy:J3 a recorded input that no longer exists is an explicit
+        // freshness change, not a fabricated empty file or fatal cache state.
+        hash.update("type=missing\0");
+        continue;
+      }
+      // error-policy:J2 hashing must surface the exact unreadable input and OS
+      // cause; omitting it would make the freshness proof unsound.
+      throw filesystemError(
+        "Failed to hash ACP build input",
+        "ACP_PROVISIONING_INPUT_READ_FAILED",
+        path,
+        cause,
+      );
+    }
+  }
+  return hash.digest("hex");
+}
+
+function readCompletionMarker(path: string): CompletionMarker | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch (cause) {
+    // error-policy:J3 a missing marker is the explicit not-built state; other
+    // read failures remain fatal and retain their filesystem cause.
+    if (errnoCode(cause) === "ENOENT") return undefined;
+    throw filesystemError(
+      "Failed to read ACP completion marker",
+      "ACP_PROVISIONING_MARKER_READ_FAILED",
+      path,
+      cause,
+    );
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<CompletionMarker>;
+    if (
+      parsed.version === 2 &&
+      typeof parsed.size === "number" &&
+      typeof parsed.mtimeMs === "number" &&
+      typeof parsed.outputHash === "string" &&
+      typeof parsed.inputHash === "string" &&
+      Array.isArray(parsed.inputFiles) &&
+      parsed.inputFiles.every((input) => typeof input === "string")
+    ) {
+      return parsed as CompletionMarker;
+    }
+  } catch {
+    // error-policy:J3 an interrupted or tampered marker is explicitly invalid,
+    // so callers rebuild instead of treating it as a valid completion record.
+    return undefined;
+  }
+  return undefined;
+}
+
+function recordedBuildInputs(paths: ProvisionPaths): string[] {
+  const marker = readCompletionMarker(paths.completionMarker);
+  if (!marker) return [];
+  const normalized = normalizeRecordedInputs(
+    paths.packageDir,
+    marker.inputFiles,
+  );
+  // An invalid old marker never authorizes reuse. The conservative source,
+  // resolver, lockfile, and toolchain snapshot still protects the rebuild.
+  if (!normalized) return [];
+  return normalized;
+}
+
+function hashFile(path: string): string {
+  try {
+    return createHash("sha256").update(readFileSync(path)).digest("hex");
+  } catch (cause) {
+    // error-policy:J2 artifact hashing retains the underlying read failure and
+    // identifies the file whose integrity could not be established.
+    throw filesystemError(
+      "Failed to hash ACP build artifact",
+      "ACP_PROVISIONING_ARTIFACT_READ_FAILED",
+      path,
+      cause,
+    );
+  }
+}
+
+function isFreshArtifact(paths: ProvisionPaths, bun: string): boolean {
+  const marker = readCompletionMarker(paths.completionMarker);
+  if (!marker) return false;
+  const inputFiles = normalizeRecordedInputs(
+    paths.packageDir,
+    marker.inputFiles,
+  );
+  if (!inputFiles) return false;
+  const inputHash = computeBuildInputHash(paths.packageDir, bun, inputFiles);
+
+  let outputStat: ReturnType<typeof statSync>;
+  let runtimeTsconfig: string;
+  try {
+    outputStat = statSync(paths.output);
+    runtimeTsconfig = readFileSync(paths.runtimeTsconfig, "utf8");
+  } catch (cause) {
+    // error-policy:J3 missing cache components explicitly invalidate the
+    // artifact; other read failures surface with their cause.
+    if (errnoCode(cause) === "ENOENT") return false;
+    throw filesystemError(
+      "Failed to inspect ACP executable freshness",
+      "ACP_PROVISIONING_ARTIFACT_READ_FAILED",
+      paths.output,
+      cause,
+    );
+  }
+
+  return (
+    marker.inputHash === inputHash &&
+    marker.size === outputStat.size &&
+    marker.mtimeMs === outputStat.mtimeMs &&
+    marker.outputHash === hashFile(paths.output) &&
+    runtimeTsconfig === RUNTIME_TSCONFIG_CONTENT
   );
 }
 
-/**
- * Provision the workspace-native eliza-code ACP executable on first use in a
- * crash-safe, multi-process-safe way. Returns the structured launch command,
- * or `undefined` when the workspace package or a Bun executable is unavailable
- * (the caller falls back to the published npm package).
- *
- * Throws only when a build was required and genuinely failed.
- */
+function findGnuTimeoutOnPath(timeoutMs: number): string | undefined {
+  const timeout = findExecutableOnPath("timeout");
+  if (!timeout || !Number.isFinite(timeoutMs) || timeoutMs <= 0)
+    return undefined;
+  const probe = spawnSync(timeout, ["--version"], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" },
+    timeout: Math.max(1, Math.floor(Math.min(1_000, timeoutMs))),
+    killSignal: "SIGKILL",
+  });
+  return probe.status === 0 &&
+    String(probe.stdout ?? "").includes("GNU coreutils")
+    ? timeout
+    : undefined;
+}
+
+function defaultBuild(context: BuildContext, supervisor: string): BuildResult {
+  const buildArgs = [
+    "build",
+    "--conditions=eliza-source",
+    context.source,
+    `--outfile=${context.tmpOutput}`,
+    `--metafile=${context.tmpMetafile}`,
+    "--target=bun",
+    "--external=@elizaos/core",
+    "--external=@elizaos/plugin-*",
+  ];
+  const timeoutMs = Math.max(
+    1,
+    Math.floor(Math.min(BUILD_TIMEOUT_MS, context.timeoutMs)),
+  );
+  if (timeoutMs <= 75) {
+    return {
+      ok: false,
+      detail: "shared deadline has no process-group termination budget",
+      timedOut: true,
+    };
+  }
+  const supervisedTimeoutMs = Math.max(1, timeoutMs - 75);
+  const result = spawnSync(
+    supervisor,
+    [
+      "--signal=TERM",
+      "--kill-after=0.05s",
+      `${supervisedTimeoutMs / 1000}s`,
+      context.bun,
+      ...buildArgs,
+    ],
+    {
+      cwd: context.packageDir,
+      env: process.env,
+      encoding: "utf8",
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+  const stdout = String(result.stdout ?? "").slice(-4000);
+  const stderr = String(result.stderr ?? "").slice(-4000);
+  const timedOut =
+    errnoCode(result.error) === "ETIMEDOUT" ||
+    result.status === 124 ||
+    result.status === 137 ||
+    (result.status === null && result.signal === "SIGKILL");
+  const ok =
+    result.status === 0 &&
+    existsSync(context.tmpOutput) &&
+    existsSync(context.tmpMetafile);
+  let inputFiles: string[] | undefined;
+  if (ok) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(context.tmpMetafile, "utf8"));
+    } catch (cause) {
+      // error-policy:J2 Bun's malformed build record is rethrown with the parse
+      // or read cause and private metafile path.
+      throw new ElizaError("Bun produced an unreadable ACP build metafile", {
+        code: "ACP_PROVISIONING_METAFILE_INVALID",
+        cause,
+        context: { path: context.tmpMetafile },
+        severity: "fatal",
+      });
+    }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("inputs" in parsed) ||
+      typeof parsed.inputs !== "object" ||
+      parsed.inputs === null ||
+      Array.isArray(parsed.inputs)
+    ) {
+      throw new ElizaError("Bun produced an invalid ACP build metafile", {
+        code: "ACP_PROVISIONING_METAFILE_INVALID",
+        context: { path: context.tmpMetafile },
+        severity: "fatal",
+      });
+    }
+    inputFiles = normalizeRecordedInputs(
+      context.packageDir,
+      Object.keys(parsed.inputs),
+    );
+    if (!inputFiles || inputFiles.length === 0) {
+      throw new ElizaError("Bun produced unsafe ACP build input paths", {
+        code: "ACP_PROVISIONING_METAFILE_INVALID",
+        context: { path: context.tmpMetafile },
+        severity: "fatal",
+      });
+    }
+  }
+  return {
+    ok,
+    detail: ok
+      ? ""
+      : `status=${String(result.status)}; signal=${String(result.signal)}; timedOut=${String(timedOut)}`,
+    status: result.status,
+    signal: result.signal,
+    stdout,
+    stderr,
+    timedOut,
+    inputFiles,
+    cause: result.error,
+  };
+}
+
+function validateArtifact(path: string): boolean {
+  try {
+    const stat = statSync(path);
+    return (
+      stat.size > 0 && readFileSync(path, "utf8").includes(ACP_ARTIFACT_MARKER)
+    );
+  } catch (cause) {
+    // error-policy:J3 a missing private artifact is explicitly invalid; other
+    // validation failures retain their filesystem cause.
+    if (errnoCode(cause) === "ENOENT") return false;
+    throw filesystemError(
+      "Failed to validate ACP build artifact",
+      "ACP_PROVISIONING_ARTIFACT_READ_FAILED",
+      path,
+      cause,
+    );
+  }
+}
+
+function publishBuild(
+  paths: ProvisionPaths,
+  bun: string,
+  fence: string,
+  timeoutMs: number,
+  build: (context: BuildContext) => BuildResult,
+  baselineHash: string,
+  baselineInputs: string[],
+): void {
+  const tmpOutput = join(paths.distDir, `.acp.${fence}.tmp.js`);
+  const tmpMetafile = join(paths.distDir, `.acp.${fence}.metafile.tmp.json`);
+  const tmpRuntimeConfig = join(
+    paths.distDir,
+    `.acp.${fence}.runtime-config.tmp.json`,
+  );
+  const tmpMarker = join(paths.distDir, `.acp.${fence}.marker.tmp.json`);
+  removeOrThrow(tmpOutput, "remove an old ACP private build artifact");
+  removeOrThrow(tmpMetafile, "remove an old ACP private build metafile");
+
+  let result: BuildResult;
+  try {
+    result = build({
+      bun,
+      packageDir: paths.packageDir,
+      source: paths.source,
+      tmpOutput,
+      tmpMetafile,
+      timeoutMs,
+    });
+  } catch (cause) {
+    // error-policy:J2 the build boundary adds package/deadline context and
+    // retains the original thrown failure as its cause.
+    bestEffortRemove(tmpOutput);
+    bestEffortRemove(tmpMetafile);
+    throw new ElizaError("ACP workspace build threw before publishing", {
+      code: "ACP_PROVISIONING_BUILD_FAILED",
+      cause,
+      context: { packageDir: paths.packageDir, timeoutMs },
+      severity: "ephemeral",
+    });
+  }
+
+  if (!result.ok || !validateArtifact(tmpOutput)) {
+    bestEffortRemove(tmpOutput);
+    bestEffortRemove(tmpMetafile);
+    throw new ElizaError(
+      result.ok
+        ? "Failed to auto-install eliza-code-acp: built artifact failed validation"
+        : `Failed to auto-install eliza-code-acp: ${result.detail.slice(0, 4000)}`,
+      {
+        code: result.ok
+          ? "ACP_PROVISIONING_ARTIFACT_INVALID"
+          : "ACP_PROVISIONING_BUILD_FAILED",
+        cause: result.cause,
+        context: {
+          packageDir: paths.packageDir,
+          timeoutMs,
+          status: result.status,
+          signal: result.signal,
+          timedOut: result.timedOut,
+          stdout: result.stdout?.slice(-4000),
+          stderr: result.stderr?.slice(-4000),
+        },
+        severity: result.ok ? "fatal" : "ephemeral",
+      },
+    );
+  }
+
+  const completedBaselineHash = computeBuildInputHash(
+    paths.packageDir,
+    bun,
+    baselineInputs,
+  );
+  if (completedBaselineHash !== baselineHash) {
+    bestEffortRemove(tmpOutput);
+    bestEffortRemove(tmpMetafile);
+    throw new ElizaError(
+      "ACP build inputs changed while the bundle was built",
+      {
+        code: "ACP_PROVISIONING_INPUTS_CHANGED",
+        context: { packageDir: paths.packageDir },
+        severity: "ephemeral",
+      },
+    );
+  }
+
+  const inputFiles = result.inputFiles ?? [];
+  const inputHash = computeBuildInputHash(paths.packageDir, bun, inputFiles);
+
+  try {
+    removeOrThrow(
+      paths.completionMarker,
+      "invalidate the previous ACP completion marker",
+    );
+    writeFileSync(tmpRuntimeConfig, RUNTIME_TSCONFIG_CONTENT);
+    renameSync(tmpRuntimeConfig, paths.runtimeTsconfig);
+    renameSync(tmpOutput, paths.output);
+    const published = statSync(paths.output);
+    const marker: CompletionMarker = {
+      version: 2,
+      size: published.size,
+      mtimeMs: published.mtimeMs,
+      outputHash: hashFile(paths.output),
+      inputHash,
+      inputFiles,
+    };
+    writeFileSync(tmpMarker, JSON.stringify(marker));
+    renameSync(tmpMarker, paths.completionMarker);
+  } catch (cause) {
+    // error-policy:J2 atomic publication failures retain their cause and clean
+    // only fence-private artifacts before surfacing.
+    bestEffortRemove(tmpOutput);
+    bestEffortRemove(tmpMetafile);
+    bestEffortRemove(tmpRuntimeConfig);
+    bestEffortRemove(tmpMarker);
+    throw new ElizaError("Failed to atomically publish eliza-code-acp", {
+      code: "ACP_PROVISIONING_PUBLISH_FAILED",
+      cause,
+      context: { packageDir: paths.packageDir },
+      severity: "fatal",
+    });
+  }
+  bestEffortRemove(tmpMetafile);
+}
+
+function cleanupPrivateArtifacts(paths: ProvisionPaths): void {
+  let names: string[];
+  try {
+    names = readdirSync(paths.distDir);
+  } catch (cause) {
+    // error-policy:J6 an absent scratch directory needs no teardown; every
+    // other cleanup-enumeration failure remains observable.
+    if (errnoCode(cause) === "ENOENT") return;
+    throw filesystemError(
+      "Failed to enumerate ACP provisioning scratch artifacts",
+      "ACP_PROVISIONING_FILESYSTEM_FAILED",
+      paths.distDir,
+      cause,
+    );
+  }
+  for (const name of names) {
+    if (/^\.acp\..+\.tmp\.(?:js|json)$/u.test(name)) {
+      bestEffortRemove(join(paths.distDir, name));
+    }
+  }
+}
+
+function ownerContext(metadata: OwnerMetadataRead): Record<string, unknown> {
+  if (metadata.kind === "valid") {
+    return {
+      ownerPid: metadata.value.pid,
+      ownerFence: metadata.value.fence,
+      ownerStartedAtMs: metadata.value.startedAtMs,
+    };
+  }
+  return { ownerMetadata: metadata.kind };
+}
+
 export function provisionWorkspaceElizaCodeAcp(
   startDir: string = process.cwd(),
   hooks: ProvisionHooks = {},
@@ -709,106 +1005,176 @@ export function provisionWorkspaceElizaCodeAcp(
   if (!packageDir || !bun) return undefined;
 
   const paths = provisionPaths(packageDir);
-  const isPidAlive = hooks.isPidAlive ?? defaultIsPidAlive;
-  const now = hooks.now ?? Date.now;
-  const build = hooks.build ?? defaultBuild;
+  const now = hooks.now ?? performance.now.bind(performance);
+  const deadlineMs = hooks.deadlineMs ?? PROVISION_DEADLINE_MS;
+  if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+    throw new ElizaError(
+      "ACP provisioning deadline must be finite and positive",
+      {
+        code: "ACP_PROVISIONING_DEADLINE_INVALID",
+        context: { packageDir, deadlineMs },
+        severity: "fatal",
+      },
+    );
+  }
+  const deadline = now() + deadlineMs;
+  const leaseFactory =
+    hooks.tryAcquireBuildLease ??
+    (() => {
+      const flock = findUtilLinuxFlockOnPath(deadline - now());
+      return flock ? createFlockLeaseFactory(flock) : undefined;
+    })();
+  if (!leaseFactory) return undefined;
 
-  // Fast path: already fresh, no lock needed.
-  if (isFreshArtifact(paths)) {
-    return { command: bun, args: [paths.output] };
+  let build: (context: BuildContext) => BuildResult;
+  if (hooks.build) {
+    build = hooks.build;
+  } else {
+    const supervisor = findGnuTimeoutOnPath(deadline - now());
+    if (!supervisor) return undefined;
+    build = (context) => defaultBuild(context, supervisor);
+  }
+  try {
+    mkdirSync(paths.distDir, { recursive: true });
+  } catch (cause) {
+    // error-policy:J2 provisioning-directory creation preserves the OS cause
+    // and destination path for the caller.
+    throw filesystemError(
+      "Failed to create ACP provisioning directory",
+      "ACP_PROVISIONING_FILESYSTEM_FAILED",
+      paths.distDir,
+      cause,
+    );
   }
 
-  mkdirSync(paths.distDir, { recursive: true });
-
-  const fence = randomBytes(16).toString("hex");
-  const deadline = now() + PROVISION_DEADLINE_MS;
-  // Hard iteration cap as a last-resort guard so a pathological clock/lock
-  // state can never spin forever. At WAIT_POLL_MS cadence this bounds the loop
-  // well beyond PROVISION_DEADLINE_MS while staying finite.
-  const maxAttempts = Math.ceil(PROVISION_DEADLINE_MS / WAIT_POLL_MS) + 100;
-  let attempts = 0;
-
   while (true) {
-    if (++attempts > maxAttempts) {
-      throw new Error(
-        "Failed to auto-install eliza-code-acp: exceeded provisioning attempt budget",
-      );
-    }
-    // Re-check freshness each turn: another process may have published while we
-    // waited or between reclaim attempts.
-    if (isFreshArtifact(paths)) {
+    if (isFreshArtifact(paths, bun)) {
       return { command: bun, args: [paths.output] };
     }
 
-    const record: LockRecord = {
-      pid: process.pid,
-      fence,
-      startedAtMs: now(),
-    };
-    if (tryAcquireLock(paths.lock, record)) {
-      try {
-        // Double-check under the lock: a racer may have published between our
-        // freshness check and acquiring the lock.
-        if (isFreshArtifact(paths)) {
-          return { command: bun, args: [paths.output] };
-        }
-        buildAndPublish(paths, bun, fence, build);
-        return { command: bun, args: [paths.output] };
-      } finally {
-        // Release the lock we own. Only remove it if it still carries our
-        // fence (defensive: never delete a successor's lock).
-        const held = readLockRecord(paths.lock);
-        if (held?.fence === fence) {
-          rmSync(paths.lock, { force: true });
-        }
-      }
+    const acquireBudgetMs = deadline - now();
+    if (acquireBudgetMs <= 0) {
+      const metadata = readOwnerMetadata(paths.ownerMetadata);
+      throw new ElizaError(
+        "Timed out waiting for the live ACP workspace build owner",
+        {
+          code: "ACP_PROVISIONING_LOCK_TIMEOUT",
+          context: { packageDir, deadlineMs, ...ownerContext(metadata) },
+          severity: "ephemeral",
+        },
+      );
     }
-
-    // Someone else holds the lock. A DEAD owner (crash) is reclaimed
-    // immediately — crash recovery must not wait out the whole deadline.
-    // tryReclaimStaleLock only reclaims when the owner PID is not alive, so a
-    // verified-live owner is never stolen from here regardless of age. On
-    // success it atomically installs a lock under OUR fence, so we hold it and
-    // build directly (no re-acquire, which would EEXIST against our own lock).
-    if (tryReclaimStaleLock(paths, fence, isPidAlive, now)) {
+    const lease = leaseFactory(paths.guard, acquireBudgetMs);
+    if (lease) {
+      const fence = randomBytes(16).toString("hex");
+      let operationFailed = false;
+      let operationError: unknown;
+      let provisioned: AcpProvisionResult | undefined;
       try {
-        if (isFreshArtifact(paths)) {
-          return { command: bun, args: [paths.output] };
-        }
-        buildAndPublish(paths, bun, fence, build);
-        return { command: bun, args: [paths.output] };
-      } finally {
-        const held = readLockRecord(paths.lock);
-        if (held?.fence === fence) {
-          rmSync(paths.lock, { force: true });
-        }
-        // Release the single-winner reclaim gate so another reclaimer may
-        // proceed once we are done building under the reclaimed lock.
-        releaseReclaimIntent(paths);
-      }
-    }
-
-    // The owner is alive (or the lock momentarily vanished/was replaced). Never
-    // overlap a live owner: wait until it publishes or the shared deadline
-    // elapses. Only once the budget is exhausted do we surface a timeout — we
-    // still do NOT steal from a process we just observed to be alive.
-    if (now() >= deadline) {
-      // Re-confirm liveness right before giving up: if the owner died in the
-      // meantime the next loop iteration will reclaim it.
-      const owner = readLockRecord(paths.lock);
-      if (owner && isPidAlive(owner.pid)) {
-        throw new Error(
-          "Failed to auto-install eliza-code-acp: timed out waiting for a live concurrent build to finish",
+        cleanupPrivateArtifacts(paths);
+        writeOwnerMetadata(paths, {
+          pid: process.pid,
+          fence,
+          startedAtMs: now(),
+        });
+        const baselineInputs = recordedBuildInputs(paths);
+        const lockedInputHash = computeBuildInputHash(
+          packageDir,
+          bun,
+          baselineInputs,
         );
+        if (isFreshArtifact(paths, bun)) {
+          provisioned = { command: bun, args: [paths.output] };
+        } else {
+          const remainingMs = deadline - now();
+          if (remainingMs <= 0) {
+            throw new ElizaError(
+              "ACP provisioning deadline elapsed before the build started",
+              {
+                code: "ACP_PROVISIONING_DEADLINE_EXCEEDED",
+                context: { packageDir, deadlineMs },
+                severity: "ephemeral",
+              },
+            );
+          }
+          publishBuild(
+            paths,
+            bun,
+            fence,
+            remainingMs,
+            build,
+            lockedInputHash,
+            baselineInputs,
+          );
+          cleanupPrivateArtifacts(paths);
+          provisioned = { command: bun, args: [paths.output] };
+        }
+      } catch (error) {
+        // error-policy:J6 defer the primary failure only long enough to release
+        // the lease and owner metadata, then rethrow it unchanged.
+        operationFailed = true;
+        operationError = error;
       }
-      // Owner is gone now — loop to reclaim.
-      continue;
+
+      let releaseError: unknown;
+      try {
+        removeOwnedMetadata(paths, fence);
+      } catch (error) {
+        // error-policy:J6 lease release must still run when diagnostic metadata
+        // teardown fails; this error is surfaced after the descriptor closes.
+        releaseError = error;
+      }
+      try {
+        lease.release();
+      } catch (error) {
+        // error-policy:J6 descriptor teardown failures are surfaced unless a
+        // primary failure already owns the outcome, in which case they log.
+        if (releaseError === undefined) releaseError = error;
+        else {
+          // error-policy:J6 both release failures are reported while the first
+          // remains the structured failure surfaced to the caller.
+          logger.error(
+            { error, packageDir },
+            "[AcpProvisioning] Advisory lock release also failed after metadata cleanup failed",
+          );
+        }
+      }
+      if (operationFailed) {
+        if (releaseError !== undefined) {
+          // error-policy:J6 release diagnostics must not replace the original
+          // build/publish failure, but they remain observable.
+          logger.error(
+            { error: releaseError, packageDir },
+            "[AcpProvisioning] Failed to release advisory lock after an earlier provisioning failure",
+          );
+        }
+        throw operationError;
+      }
+      if (releaseError !== undefined) throw releaseError;
+      if (provisioned) return provisioned;
+      throw new ElizaError("ACP provisioning produced no result", {
+        code: "ACP_PROVISIONING_INVARIANT_FAILED",
+        context: { packageDir },
+        severity: "fatal",
+      });
     }
-    sleepSync(WAIT_POLL_MS);
+
+    const remainingMs = deadline - now();
+    if (remainingMs <= 0) {
+      const metadata = readOwnerMetadata(paths.ownerMetadata);
+      throw new ElizaError(
+        "Timed out waiting for the live ACP workspace build owner",
+        {
+          code: "ACP_PROVISIONING_LOCK_TIMEOUT",
+          context: { packageDir, deadlineMs, ...ownerContext(metadata) },
+          severity: "ephemeral",
+        },
+      );
+    }
+    sleepSync(Math.min(WAIT_POLL_MS, remainingMs));
   }
 }
 
-/** Synchronous sleep used while polling for another process's build. */
 function sleepSync(ms: number): void {
   const shared = new Int32Array(new SharedArrayBuffer(4));
   Atomics.wait(shared, 0, 0, Math.max(0, ms));

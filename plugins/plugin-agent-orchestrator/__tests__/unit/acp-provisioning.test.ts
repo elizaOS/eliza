@@ -1,91 +1,251 @@
 /**
- * Crash-safety + multi-process-safety tests for the workspace-native
- * eliza-code ACP provisioning protocol (issue #16169).
- *
- * These exercise the deterministic properties required by the issue via the
- * injectable `build` / `isPidAlive` / `now` hooks, so no real Bun toolchain is
- * needed and crashes / PID reuse are reproducible:
- *
- *   - Multiple processes reclaim one dead lock; exactly one build runs.
- *   - A holder writing `partial` (crash before publish) never lets a waiter
- *     return until a validated, atomically published artifact exists.
- *   - A live owner past the wait budget is never overlapped.
- *   - Crash recovery + PID reuse simulation.
- *   - Workspace / Bun paths containing spaces round-trip through the command.
- *   - A failed build never leaves a fresh-looking executable artifact.
+ * Exercises the workspace ACP provisioning boundary with real OS advisory
+ * locks and concurrent Bun processes. Deterministic build hooks cover artifact
+ * validation and freshness; subprocess cases prove exclusion, owner-crash
+ * recovery, partial-build ordering, and deadline enforcement without a model.
  */
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
+  rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { splitCommandLine } from "../../src/services/acp-native-transport";
 import {
   formatAcpCommand,
+  type ProvisionHooks,
   provisionWorkspaceElizaCodeAcp,
 } from "../../src/services/acp-provisioning";
 
 const ACP_MARKER = "eliza-code-acp";
 const roots: string[] = [];
 const originalPath = process.env.PATH;
+const originalChildPidPath = process.env.ACP_TEST_CHILD_PID_PATH;
+const workerFixture = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "fixtures",
+  "acp-provision-worker.ts",
+);
 
-/** Create a checkout skeleton + a fake `bun` on PATH; returns key paths. */
-function makeWorkspace(binName = "bun"): {
+type Workspace = {
   root: string;
   packageDir: string;
   distDir: string;
   output: string;
   fakeBun: string;
-} {
-  const root = mkTemp();
+};
+
+function makeTemp(): string {
+  const root = join(
+    tmpdir(),
+    `eliza-acp-provision-${process.pid}-${Math.random().toString(36).slice(2)}`,
+  );
+  mkdirSync(root, { recursive: true });
+  roots.push(root);
+  return root;
+}
+
+function makeWorkspace(binName = "bun"): Workspace {
+  const root = makeTemp();
   const packageDir = join(root, "packages", "examples", "code");
+  const distDir = join(packageDir, "dist");
   const binDir = join(root, "bin");
   mkdirSync(join(packageDir, "src"), { recursive: true });
   mkdirSync(binDir, { recursive: true });
-  writeFileSync(join(packageDir, "src", "acp.ts"), "export {};\n");
+  writeFileSync(
+    join(packageDir, "src", "acp.ts"),
+    `// ${ACP_MARKER}\nexport {};\n`,
+  );
+  writeFileSync(
+    join(packageDir, "package.json"),
+    JSON.stringify({ name: "@test/acp", type: "module" }),
+  );
+  writeFileSync(join(root, "package.json"), JSON.stringify({ private: true }));
+  writeFileSync(join(root, "bun.lock"), "lockfile-v1\n");
+  writeFileSync(join(root, "tsconfig.json"), '{"compilerOptions":{}}\n');
   const fakeBun = join(binDir, binName);
-  // Inert stub; production builds go through the injected `build` hook in these
-  // tests, so the stub only needs to exist + be executable to satisfy the
-  // PATH lookup.
   writeFileSync(fakeBun, "#!/bin/sh\nexit 0\n");
   chmodSync(fakeBun, 0o755);
   process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
   return {
     root,
     packageDir,
-    distDir: join(packageDir, "dist"),
-    output: join(packageDir, "dist", "acp.js"),
+    distDir,
+    output: join(distDir, "acp.js"),
     fakeBun,
   };
 }
 
-function mkTemp(): string {
-  // Sync unique-dir shim (tests stay synchronous alongside the sync provision
-  // protocol they exercise).
-  const dir = `${tmpdir()}/eliza-acp-prov-${process.pid}-${Math.random()
-    .toString(36)
-    .slice(2)}`;
-  mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
-}
-
-/** A build hook that writes a valid marker-bearing artifact. */
-function goodBuild(distDir: string, counter?: { n: number }) {
+function goodBuild(counter?: { count: number }) {
   return ({ tmpOutput }: { tmpOutput: string }) => {
-    if (counter) counter.n += 1;
-    mkdirSync(distDir, { recursive: true });
-    writeFileSync(tmpOutput, `// ${ACP_MARKER}\nconsole.log("ok");\n`);
+    if (counter) counter.count += 1;
+    writeFileSync(tmpOutput, `// ${ACP_MARKER}\ncomplete\n`);
     return { ok: true, detail: "" };
   };
+}
+
+function withDeterministicLease(hooks: ProvisionHooks): ProvisionHooks {
+  return {
+    tryAcquireBuildLease: () => ({ release: () => undefined }),
+    ...hooks,
+  };
+}
+
+function provisionWithTestLease(startDir: string, hooks: ProvisionHooks) {
+  return provisionWorkspaceElizaCodeAcp(
+    startDir,
+    withDeterministicLease(hooks),
+  );
+}
+
+function findRealBun(): string {
+  for (const directory of (originalPath ?? "").split(delimiter)) {
+    const candidate = join(directory, "bun");
+    if (directory && existsSync(candidate)) return candidate;
+  }
+  throw new Error("A real Bun executable is required for concurrency tests");
+}
+
+function hasRealProvisioningPrimitives(): boolean {
+  const executable = (name: string) => {
+    for (const directory of (originalPath ?? "").split(delimiter)) {
+      const candidate = join(directory, name);
+      if (directory && existsSync(candidate)) return candidate;
+    }
+    return undefined;
+  };
+  const flock = executable("flock");
+  const timeout = executable("timeout");
+  if (!flock || !timeout) return false;
+  const flockVersion = spawnSync(flock, ["--version"], {
+    encoding: "utf8",
+    timeout: 500,
+    killSignal: "SIGKILL",
+  });
+  const timeoutVersion = spawnSync(timeout, ["--version"], {
+    encoding: "utf8",
+    timeout: 500,
+    killSignal: "SIGKILL",
+  });
+  return (
+    flockVersion.status === 0 &&
+    String(flockVersion.stdout).includes("flock from util-linux") &&
+    timeoutVersion.status === 0 &&
+    String(timeoutVersion.stdout).includes("GNU coreutils")
+  );
+}
+
+const realProvisioningPrimitives = hasRealProvisioningPrimitives();
+
+function startProvisionWorker(
+  bun: string,
+  workspaceRoot: string,
+  eventsPath: string,
+) {
+  const child = spawn(bun, [workerFixture, workspaceRoot], {
+    cwd: workspaceRoot,
+    env: { ...process.env, ACP_PROVISION_EVENTS: eventsPath },
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  const completion = new Promise<void>((resolve, reject) => {
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr = `${stderr}${chunk}`.slice(-4000);
+    });
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `ACP provision worker failed (code=${String(code)}, signal=${String(signal)}): ${stderr}`,
+        ),
+      );
+    });
+  });
+  const exit = new Promise<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => resolve({ code, signal }));
+  });
+  return { child, completion, exit };
+}
+
+function runProvisionWorker(
+  bun: string,
+  workspaceRoot: string,
+  eventsPath: string,
+): Promise<void> {
+  return startProvisionWorker(bun, workspaceRoot, eventsPath).completion;
+}
+
+async function waitForEvents(
+  path: string,
+  predicate: (events: string[]) => boolean,
+): Promise<string[]> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const events = existsSync(path)
+      ? readFileSync(path, "utf8").trim().split("\n").filter(Boolean)
+      : [];
+    if (predicate(events)) return events;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for ACP provision events at ${path}`);
+}
+
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function writeEventBuildScript(
+  workspace: Workspace,
+  partialDelaySeconds: string,
+): void {
+  writeFileSync(
+    workspace.fakeBun,
+    [
+      "#!/bin/sh",
+      'events="$ACP_PROVISION_EVENTS"',
+      'metafile=""',
+      'while [ "$#" -gt 0 ]; do',
+      '  case "$1" in',
+      `    --outfile=*) outfile="\${1#--outfile=}" ;;`,
+      `    --metafile=*) metafile="\${1#--metafile=}" ;;`,
+      "  esac",
+      "  shift",
+      "done",
+      'printf "PARTIAL" > "$outfile"',
+      'printf "build-partial:%s\\n" "$$" >> "$events"',
+      `sleep ${partialDelaySeconds}`,
+      'printf "// eliza-code-acp\\ncomplete:%s\\n" "$$" > "$outfile"',
+      'printf \'{"inputs":{"src/acp.ts":{}}}\' > "$metafile"',
+      'printf "build-complete:%s\\n" "$$" >> "$events"',
+      "",
+    ].join("\n"),
+  );
+  chmodSync(workspace.fakeBun, 0o755);
 }
 
 beforeEach(() => {
@@ -94,639 +254,557 @@ beforeEach(() => {
 
 afterEach(async () => {
   process.env.PATH = originalPath;
+  if (originalChildPidPath === undefined)
+    delete process.env.ACP_TEST_CHILD_PID_PATH;
+  else process.env.ACP_TEST_CHILD_PID_PATH = originalChildPidPath;
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
   );
 });
 
-describe("provisionWorkspaceElizaCodeAcp — crash-safe protocol", () => {
-  it("builds once and returns a structured command", () => {
-    const ws = makeWorkspace();
-    const counter = { n: 0 };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
+describe("provisionWorkspaceElizaCodeAcp", () => {
+  it("builds a private artifact once and publishes its runtime contract", () => {
+    const workspace = makeWorkspace();
+    const counter = { count: 0 };
+
+    const result = provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
     });
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    expect(counter.n).toBe(1);
-    expect(existsSync(ws.output)).toBe(true);
-    expect(readFileSync(ws.output, "utf8")).toContain(ACP_MARKER);
+
+    expect(result).toEqual({
+      command: workspace.fakeBun,
+      args: [workspace.output],
+    });
+    expect(counter.count).toBe(1);
+    expect(readFileSync(workspace.output, "utf8")).toContain(ACP_MARKER);
+    expect(readFileSync(join(workspace.distDir, "tsconfig.json"), "utf8")).toBe(
+      '{\n  "compilerOptions": {}\n}\n',
+    );
+    expect(
+      JSON.parse(readFileSync(join(workspace.distDir, ".acp.done"), "utf8")),
+    ).toMatchObject({
+      version: 2,
+      outputHash: expect.any(String),
+      inputHash: expect.any(String),
+      inputFiles: expect.any(Array),
+    });
   });
 
-  it("is idempotent: a fresh artifact + marker skips rebuild", () => {
-    const ws = makeWorkspace();
-    const counter = { n: 0 };
-    provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
+  it("reuses only an artifact tied to the complete local build inputs", () => {
+    const workspace = makeWorkspace();
+    const counter = { count: 0 };
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
     });
-    expect(counter.n).toBe(1);
-    // Second call must NOT rebuild.
-    const again = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
     });
-    expect(counter.n).toBe(1);
-    expect(again).toEqual({ command: ws.fakeBun, args: [ws.output] });
+    expect(counter.count).toBe(1);
+
+    writeFileSync(
+      join(workspace.packageDir, "src", "imported-helper.ts"),
+      "export const changed = true;\n",
+    );
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
+    });
+    expect(counter.count).toBe(2);
+
+    writeFileSync(join(workspace.root, "bun.lock"), "lockfile-v2\n");
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
+    });
+    expect(counter.count).toBe(3);
   });
 
-  it("a partial/unmarked artifact from a crashed build is NOT treated as fresh", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    // Simulate a crash: a truncated acp.js exists but no completion marker.
-    writeFileSync(ws.output, "PARTIAL");
-    const counter = { n: 0 };
-    provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
+  it("detects artifact tampering even when size and timestamps are preserved", () => {
+    const workspace = makeWorkspace();
+    const counter = { count: 0 };
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
     });
-    // Because no matching marker existed, a rebuild must have run and replaced
-    // the partial artifact with a validated one.
-    expect(counter.n).toBe(1);
-    expect(readFileSync(ws.output, "utf8")).toContain(ACP_MARKER);
+    const before = statSync(workspace.output);
+    const original = readFileSync(workspace.output, "utf8");
+    const replacement = original.replace("complete", "tampered");
+    expect(replacement).toHaveLength(original.length);
+    writeFileSync(workspace.output, replacement);
+    utimesSync(workspace.output, before.atime, before.mtime);
+
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
+    });
+
+    expect(counter.count).toBe(2);
+    expect(readFileSync(workspace.output, "utf8")).toContain("complete");
   });
 
-  it("a failed build never leaves a fresh-looking artifact and throws", () => {
-    const ws = makeWorkspace();
+  it("rebuilds when a previously bundled input is deleted", () => {
+    const workspace = makeWorkspace();
+    const imported = join(workspace.packageDir, "src", "imported-helper.ts");
+    writeFileSync(imported, "missing");
+    let builds = 0;
+    const build = ({ tmpOutput }: { tmpOutput: string }) => {
+      builds += 1;
+      writeFileSync(tmpOutput, `// ${ACP_MARKER}\ncomplete\n`);
+      return {
+        ok: true,
+        detail: "",
+        inputFiles: existsSync(imported)
+          ? ["src/acp.ts", "src/imported-helper.ts"]
+          : ["src/acp.ts"],
+      };
+    };
+    provisionWithTestLease(workspace.root, { build });
+    rmSync(imported);
+
+    provisionWithTestLease(workspace.root, { build });
+
+    expect(builds).toBe(2);
+  });
+
+  it("invalidates a marker that records a non-file workspace path", () => {
+    const workspace = makeWorkspace();
+    const counter = { count: 0 };
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
+    });
+    const markerPath = join(workspace.distDir, ".acp.done");
+    const marker: Record<string, unknown> = JSON.parse(
+      readFileSync(markerPath, "utf8"),
+    );
+    marker.inputFiles = ["."];
+    writeFileSync(markerPath, JSON.stringify(marker));
+
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
+    });
+
+    expect(counter.count).toBe(2);
+  });
+
+  it("rejects a partial or marker-less build and never marks it fresh", () => {
+    const workspace = makeWorkspace();
     expect(() =>
-      provisionWorkspaceElizaCodeAcp(ws.root, {
-        build: () => ({ ok: false, detail: "boom" }),
-      }),
-    ).toThrow(/Failed to auto-install eliza-code-acp/);
-    // No artifact and no completion marker → next provision rebuilds cleanly.
-    expect(existsSync(ws.output)).toBe(false);
-    const counter = { n: 0 };
-    provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
-    });
-    expect(counter.n).toBe(1);
-    expect(existsSync(ws.output)).toBe(true);
-  });
-
-  it("a build producing an invalid (marker-less) artifact is rejected", () => {
-    const ws = makeWorkspace();
-    expect(() =>
-      provisionWorkspaceElizaCodeAcp(ws.root, {
+      provisionWithTestLease(workspace.root, {
         build: ({ tmpOutput }) => {
-          mkdirSync(ws.distDir, { recursive: true });
-          writeFileSync(tmpOutput, "no marker here");
+          writeFileSync(tmpOutput, "PARTIAL");
           return { ok: true, detail: "" };
         },
       }),
-    ).toThrow(/failed validation/);
-    expect(existsSync(ws.output)).toBe(false);
-  });
+    ).toThrow(/failed validation/u);
+    expect(existsSync(join(workspace.distDir, ".acp.done"))).toBe(false);
 
-  it("multiple processes reclaim ONE dead lock; exactly one build runs", () => {
-    const ws = makeWorkspace();
-    // Pre-seed a stale lock owned by a dead PID (crash before release).
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: 999999, fence: "deadfence", startedAtMs: 0 }),
-    );
-    const deadPid = 999999;
-    const isPidAlive = (pid: number) => pid !== deadPid; // dead owner only
-    // Deadline immediately elapsed so reclaim is attempted at once.
-    const now = () => 10_000_000;
-    const counter = { n: 0 };
-
-    // Simulate N racers sequentially (single-threaded test): the first reclaims
-    // + builds; the rest see the fresh artifact and never build.
-    const results = [];
-    for (let i = 0; i < 3; i += 1) {
-      results.push(
-        provisionWorkspaceElizaCodeAcp(ws.root, {
-          build: goodBuild(ws.distDir, counter),
-          isPidAlive,
-          now,
-        }),
-      );
-    }
-    expect(counter.n).toBe(1);
-    for (const r of results) {
-      expect(r).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    }
-  });
-
-  it("never overlaps a VERIFIED-LIVE owner past the wait budget", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    const liveOwnerPid = 424242;
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: liveOwnerPid, fence: "livefence", startedAtMs: 0 }),
-    );
-    const isPidAlive = (pid: number) => pid === liveOwnerPid; // owner is alive
-
-    // Advance the clock past the deadline on the FIRST poll, then have the live
-    // owner "finish" by publishing a fresh artifact so the waiter can return
-    // without ever stealing the lock.
-    let tick = 0;
-    const now = () => {
-      tick += 1;
-      // First few calls are before the deadline; then jump past it.
-      return tick < 3 ? 0 : 10_000_000_000;
-    };
-
-    let waiterBuilt = false;
-    // After the deadline elapses and the waiter confirms the owner is alive, it
-    // polls again. On that poll, simulate the live owner publishing.
-    const publishFromOwner = () => {
-      writeFileSync(ws.output, `// ${ACP_MARKER}\nconsole.log("owner");\n`);
-      const st = statSync(ws.output);
-      writeFileSync(
-        join(ws.distDir, ".acp.done"),
-        JSON.stringify({ size: st.size, mtimeMs: st.mtimeMs }),
-      );
-    };
-    // Publish before the waiter loops so the next freshness check succeeds.
-    publishFromOwner();
-
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: () => {
-        waiterBuilt = true;
-        return goodBuild(ws.distDir)({ tmpOutput: "" } as never);
-      },
-      isPidAlive,
-      now,
+    const counter = { count: 0 };
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
     });
-    // The waiter must have returned the owner's published artifact WITHOUT
-    // building (it never overlapped/stole from the live owner).
-    expect(waiterBuilt).toBe(false);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
+    expect(counter.count).toBe(1);
   });
 
-  it("crash recovery: a dead owner's lock is reclaimed on the next start", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    // Owner crashed mid-build: stale lock, partial artifact, no marker.
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: 777001, fence: "crashfence", startedAtMs: 0 }),
-    );
-    writeFileSync(ws.output, "PARTIAL-CRASH");
-    const isPidAlive = () => false; // the crashed owner is gone
-    const now = () => 10_000_000; // deadline already elapsed
-
-    const counter = { n: 0 };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
-      isPidAlive,
-      now,
-    });
-    expect(counter.n).toBe(1);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    expect(readFileSync(ws.output, "utf8")).toContain(ACP_MARKER);
-    // The lock we created + released during recovery is gone.
-    expect(existsSync(lock)).toBe(false);
-  });
-
-  it("PID reuse: a reused-but-alive PID only delays reclaim, never mis-reclaims", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    const reusedPid = 555001;
-    // The original owner crashed, but the PID was reused by an unrelated live
-    // process, so liveness reports alive.
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: reusedPid, fence: "stalefence", startedAtMs: 0 }),
-    );
-
-    // Liveness: the reused PID is "alive" for the first two checks, then the
-    // unrelated process exits and the stale lock becomes reclaimable.
-    let checks = 0;
-    const isPidAlive = (pid: number) => {
-      if (pid !== reusedPid) return false;
-      checks += 1;
-      return checks <= 2;
-    };
-    const now = () => 10_000_000; // past deadline throughout
-
-    const counter = { n: 0 };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
-      isPidAlive,
-      now,
-    });
-    // A reused live PID never authorized deleting the lock; only once it was
-    // observed dead did reclaim + build proceed. Exactly one build.
-    expect(counter.n).toBe(1);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-  });
-
-  it("reclaim installs a lock atomically and never leaves paths.lock absent (no gap for a third builder)", () => {
-    // Reclaim of a stale (dead-owner) lock must REPLACE it atomically — the lock
-    // path is never momentarily missing — so a concurrent acquirer can never win
-    // open('wx') during a reclaim gap. We assert the lock file exists at every
-    // observable point of the reclaim by checking it from inside the build hook
-    // (which only runs once the reclaimer holds the lock).
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: 111, fence: "stale", startedAtMs: 0 }),
-    );
-    let lockPresentDuringBuild = false;
-    let heldFence: string | undefined;
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: ({ tmpOutput }) => {
-        // While building, the reclaimer must hold a lock under its OWN fence.
-        lockPresentDuringBuild = existsSync(lock);
-        heldFence = JSON.parse(readFileSync(lock, "utf8")).fence;
-        mkdirSync(ws.distDir, { recursive: true });
-        writeFileSync(tmpOutput, `// ${ACP_MARKER}\nok\n`);
-        return { ok: true, detail: "" };
-      },
-      isPidAlive: () => false, // stale owner dead → reclaimable
-      now: () => 10_000_000,
-    });
-    expect(lockPresentDuringBuild).toBe(true);
-    expect(heldFence).toBeDefined();
-    expect(heldFence).not.toBe("stale"); // installed under the reclaimer's fence
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    // Lock released after a successful build.
-    expect(existsSync(lock)).toBe(false);
-  });
-
-  it("single-winner reclaim: a held reclaim-intent gate blocks a second reclaimer", () => {
-    // While one reclaimer holds the single-winner intent gate (its build is in
-    // flight), a second reclaimer of the same stale lock must NOT reclaim — it
-    // sees the intent file (EEXIST) and backs off. This is what keeps two
-    // reclaimers from both running the shared `bun run build` concurrently.
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    const intent = join(ws.distDir, ".acp.build.reclaiming");
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: 111, fence: "stale", startedAtMs: 0 }),
-    );
-    // Simulate winner #1 currently mid-reclaim: its intent gate is held by a
-    // LIVE holder PID (so it is not reclaimable) and fresh (not aged out).
-    const intentHolderPid = 424242;
-    writeFileSync(
-      intent,
-      JSON.stringify({ pid: intentHolderPid, startedAtMs: Date.now() }),
-    );
-
-    let builds = 0;
-    let threw = false;
-    // Clock advances past the deadline so the blocked reclaimer eventually
-    // surfaces a timeout instead of spinning the real clock. The stale LOCK
-    // owner (111) is dead, but the intent gate holder is alive.
-    let clock = 0;
-    const now = () => {
-      const t = clock;
-      clock += 100_000;
-      return t;
-    };
+  it("surfaces structured build failures without fabricating an artifact", () => {
+    const workspace = makeWorkspace();
+    let error: unknown;
     try {
-      provisionWorkspaceElizaCodeAcp(ws.root, {
-        build: () => {
-          builds += 1;
+      provisionWithTestLease(workspace.root, {
+        build: () => ({
+          ok: false,
+          detail: "compiler failed",
+          status: 2,
+          signal: null,
+          stdout: "out",
+          stderr: "err",
+        }),
+      });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toMatchObject({
+      code: "ACP_PROVISIONING_BUILD_FAILED",
+      context: expect.objectContaining({
+        status: 2,
+        stdout: "out",
+        stderr: "err",
+      }),
+    });
+    expect(existsSync(workspace.output)).toBe(false);
+    expect(existsSync(join(workspace.distDir, ".acp.done"))).toBe(false);
+  });
+
+  it("fails if local inputs change while the bundle is being produced", () => {
+    const workspace = makeWorkspace();
+    expect(() =>
+      provisionWithTestLease(workspace.root, {
+        build: ({ tmpOutput }) => {
+          writeFileSync(tmpOutput, `// ${ACP_MARKER}\ncomplete\n`);
+          writeFileSync(
+            join(workspace.packageDir, "src", "changed-during-build.ts"),
+            "export {};\n",
+          );
           return { ok: true, detail: "" };
         },
-        // Stale lock owner dead; intent-gate holder alive (gate stays held).
-        isPidAlive: (pid) => pid === intentHolderPid,
-        now,
-      });
-    } catch {
-      threw = true;
-    }
-    // The second reclaimer never built (gate held) and the intent gate is
-    // untouched (only its owner releases it).
-    expect(builds).toBe(0);
-    expect(threw).toBe(true);
-    expect(existsSync(intent)).toBe(true);
+      }),
+    ).toThrow(/inputs changed/u);
+    expect(existsSync(join(workspace.distDir, ".acp.done"))).toBe(false);
   });
 
-  it("single-winner reclaim: a DEAD intent-holder gate is cleared IMMEDIATELY (within the deadline)", () => {
-    // If the intent-holding reclaimer crashed, its gate must be recoverable via
-    // a liveness check on the recorded holder PID — immediately, not after the
-    // multi-minute wall-clock ceiling — so crash recovery completes inside the
-    // outer provisioning deadline.
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    const intent = join(ws.distDir, ".acp.build.reclaiming");
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: 111, fence: "stale", startedAtMs: 0 }),
-    );
-    const deadHolderPid = 909090;
-    writeFileSync(
-      intent,
-      JSON.stringify({ pid: deadHolderPid, startedAtMs: Date.now() }),
-    );
-    const counter = { n: 0 };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
-      // Both the stale lock owner and the crashed intent holder are dead. A
-      // constant real-time clock keeps us WELL within the deadline, proving
-      // recovery does not depend on aging past the ceiling.
-      isPidAlive: () => false,
-      now: () => Date.now(),
+  it("does not let malformed stale diagnostics weaken the advisory lock", () => {
+    const workspace = makeWorkspace();
+    mkdirSync(workspace.distDir, { recursive: true });
+    writeFileSync(join(workspace.distDir, ".acp.build.owner"), "partial-json");
+    const counter = { count: 0 };
+
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
     });
-    expect(counter.n).toBe(1);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    expect(existsSync(lock)).toBe(false);
-    expect(existsSync(intent)).toBe(false);
+
+    expect(counter.count).toBe(1);
+    expect(existsSync(join(workspace.distDir, ".acp.build.owner"))).toBe(false);
   });
 
-  it("single-winner reclaim: an ABANDONED (aged-out) intent gate is cleared so reclaim can progress", () => {
-    // If the intent-holding reclaimer crashed, its stale intent file must be
-    // aged out so a later reclaimer is not deadlocked. Here the intent is old
-    // (mtime far in the past relative to the clock), so it is cleared and
-    // reclaim eventually proceeds.
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    const intent = join(ws.distDir, ".acp.build.reclaiming");
+  it("ignores PID-reused owner metadata when no kernel lease exists", () => {
+    const workspace = makeWorkspace();
+    mkdirSync(workspace.distDir, { recursive: true });
     writeFileSync(
-      lock,
-      JSON.stringify({ pid: 111, fence: "stale", startedAtMs: 0 }),
-    );
-    writeFileSync(intent, "crashed-holder");
-    // Clock is far past the intent's real mtime so it ages out on the first
-    // reclaim attempt; a subsequent attempt then wins the freed gate.
-    const now = () => Date.now() + 24 * 60 * 60 * 1000;
-    const counter = { n: 0 };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
-      isPidAlive: () => false,
-      now,
-    });
-    expect(counter.n).toBe(1);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    // Both the lock and the reclaim gate are released after a successful build.
-    expect(existsSync(lock)).toBe(false);
-    expect(existsSync(intent)).toBe(false);
-  });
-
-  it("overlapping builds never corrupt or partially publish the artifact (atomic-publish invariant)", () => {
-    // The lock is advisory; correctness lives in the atomic publish. Simulate a
-    // second builder finishing DURING our build by publishing a different valid
-    // artifact mid-flight, then assert the final published acp.js is always a
-    // complete, marker-consistent artifact (never a partial/torn file) and its
-    // completion marker matches it exactly.
-    const ws = makeWorkspace();
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: ({ tmpOutput }) => {
-        mkdirSync(ws.distDir, { recursive: true });
-        // A concurrent builder atomically publishes its own complete artifact
-        // + marker before we publish ours.
-        writeFileSync(ws.output, `// ${ACP_MARKER}\nfrom-other-builder\n`);
-        const st = statSync(ws.output);
-        writeFileSync(
-          join(ws.distDir, ".acp.done"),
-          JSON.stringify({ size: st.size, mtimeMs: st.mtimeMs }),
-        );
-        // Our build then publishes its own complete artifact.
-        writeFileSync(tmpOutput, `// ${ACP_MARKER}\nfrom-us\n`);
-        return { ok: true, detail: "" };
-      },
-    });
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    // Final artifact is complete + valid, and the marker describes it exactly.
-    const content = readFileSync(ws.output, "utf8");
-    expect(content).toContain(ACP_MARKER);
-    const st = statSync(ws.output);
-    const marker = JSON.parse(
-      readFileSync(join(ws.distDir, ".acp.done"), "utf8"),
-    ) as { size: number; mtimeMs: number };
-    expect(marker.size).toBe(st.size);
-    expect(marker.mtimeMs).toBe(st.mtimeMs);
-  });
-
-  it("reclaim leaves no scratch claim temp behind after a successful reclaim", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: 111, fence: "old", startedAtMs: 0 }),
-    );
-    const isPidAlive = () => false;
-    const now = () => 10_000_000;
-    provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir),
-      isPidAlive,
-      now,
-    });
-    // No lingering `.claim.` / `.reclaim.` scratch temps after reclaim.
-    const leftovers = readdirSync(ws.distDir).filter(
-      (f: string) => f.includes(".claim.") || f.includes(".reclaim."),
-    );
-    expect(leftovers).toEqual([]);
-  });
-
-  it("reclaims when a crashed owner's PID is reused by a long-lived process (lock past lifetime ceiling)", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    const reusedPid = 314159;
-    // The original builder crashed long ago; startedAtMs is far in the past.
-    // The PID was reused by an unrelated process that is ALWAYS alive.
-    writeFileSync(
-      lock,
-      JSON.stringify({ pid: reusedPid, fence: "ancient", startedAtMs: 0 }),
-    );
-    // Clock is well past the absolute lock lifetime ceiling relative to the
-    // lock file's real mtime (the age anchor is max(startedAtMs, mtime)).
-    const now = () => Date.now() + 24 * 60 * 60 * 1000;
-    const counter = { n: 0 };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
-      isPidAlive: (pid) => pid === reusedPid, // reused PID is perpetually alive
-      now,
-    });
-    // Past the ceiling, liveness is overridden and the stale lock reclaimed;
-    // exactly one build runs and the artifact is published.
-    expect(counter.n).toBe(1);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    expect(existsSync(lock)).toBe(false);
-  });
-
-  it("does NOT override liveness before the lifetime ceiling (slow live build)", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    const liveOwnerPid = 271828;
-    const nowMs = Date.now();
-    writeFileSync(
-      lock,
+      join(workspace.distDir, ".acp.build.owner"),
       JSON.stringify({
-        pid: liveOwnerPid,
-        fence: "slow",
-        startedAtMs: nowMs,
+        pid: process.pid,
+        fence: "reused-owner-record",
+        startedAtMs: Date.now(),
       }),
     );
-    // The slow-but-live owner "finishes" by publishing a fresh artifact after a
-    // couple of reclaim probes; the waiter must return that WITHOUT building or
-    // reclaiming, because the lock has not aged past the ceiling. Drive the
-    // publish off isPidAlive (called once per loop iteration during the reclaim
-    // attempt) so the trigger is deterministic regardless of now() call count.
-    let builds = 0;
-    let probes = 0;
-    const isPidAlive = (pid: number) => {
-      if (pid !== liveOwnerPid) return false;
-      probes += 1;
-      if (probes === 2) {
-        writeFileSync(ws.output, `// ${ACP_MARKER}\nslow-owner\n`);
-        const st = statSync(ws.output);
-        writeFileSync(
-          join(ws.distDir, ".acp.done"),
-          JSON.stringify({ size: st.size, mtimeMs: st.mtimeMs }),
-        );
+    const counter = { count: 0 };
+
+    provisionWithTestLease(workspace.root, {
+      build: goodBuild(counter),
+    });
+
+    expect(counter.count).toBe(1);
+    expect(existsSync(join(workspace.distDir, ".acp.build.owner"))).toBe(false);
+  });
+
+  it.skipIf(!realProvisioningPrimitives)(
+    "runs one real build across concurrent processes and releases all waiters after completion",
+    async () => {
+      const workspace = makeWorkspace();
+      const eventsPath = join(workspace.root, "concurrent-events.log");
+      writeEventBuildScript(workspace, "0.3");
+      const realBun = findRealBun();
+
+      await Promise.all(
+        Array.from({ length: 3 }, () =>
+          runProvisionWorker(realBun, workspace.root, eventsPath),
+        ),
+      );
+
+      const events = readFileSync(eventsPath, "utf8").trim().split("\n");
+      expect(
+        events.filter((event) => event.startsWith("build-partial:")),
+      ).toHaveLength(1);
+      expect(
+        events.filter((event) => event.startsWith("build-complete:")),
+      ).toHaveLength(1);
+      expect(
+        events.filter((event) => event.startsWith("returned:")),
+      ).toHaveLength(3);
+      const completedAt = events.findIndex((event) =>
+        event.startsWith("build-complete:"),
+      );
+      expect(
+        events
+          .map((event, index) => ({ event, index }))
+          .filter(({ event }) => event.startsWith("returned:"))
+          .every(({ index }) => index > completedAt),
+      ).toBe(true);
+    },
+  );
+
+  it.skipIf(!realProvisioningPrimitives)(
+    "recovers when the owner dies while its private builder survives",
+    async () => {
+      const workspace = makeWorkspace();
+      const eventsPath = join(workspace.root, "owner-crash-events.log");
+      writeEventBuildScript(workspace, "1.2");
+      const realBun = findRealBun();
+      const owner = startProvisionWorker(realBun, workspace.root, eventsPath);
+      const ownerResult = owner.completion.catch((error: unknown) => error);
+      await waitForEvents(eventsPath, (events) =>
+        events.some((event) => event.startsWith("build-partial:")),
+      );
+
+      expect(owner.child.kill("SIGKILL")).toBe(true);
+      expect(await owner.exit).toMatchObject({ signal: "SIGKILL" });
+      const recoverers = Promise.all([
+        runProvisionWorker(realBun, workspace.root, eventsPath),
+        runProvisionWorker(realBun, workspace.root, eventsPath),
+      ]);
+      const overlappingEvents = await waitForEvents(
+        eventsPath,
+        (observed) =>
+          observed.filter((event) => event.startsWith("build-partial:"))
+            .length === 2,
+      );
+      const secondPartial = overlappingEvents.findIndex(
+        (event, index) => index > 0 && event.startsWith("build-partial:"),
+      );
+      const firstComplete = overlappingEvents.findIndex((event) =>
+        event.startsWith("build-complete:"),
+      );
+      expect(secondPartial).toBeGreaterThan(0);
+      expect(firstComplete === -1 || secondPartial < firstComplete).toBe(true);
+      await recoverers;
+      expect(await ownerResult).toBeInstanceOf(Error);
+      const events = await waitForEvents(
+        eventsPath,
+        (observed) =>
+          observed.filter((event) => event.startsWith("build-complete:"))
+            .length === 2,
+      );
+
+      expect(
+        events.filter((event) => event.startsWith("build-partial:")),
+      ).toHaveLength(2);
+      expect(
+        events.filter((event) => event.startsWith("returned:")),
+      ).toHaveLength(2);
+      expect(readFileSync(workspace.output, "utf8")).toContain("complete:");
+    },
+  );
+
+  it.skipIf(!realProvisioningPrimitives)(
+    "times out without stealing from a verified live advisory-lock owner",
+    async () => {
+      const workspace = makeWorkspace();
+      const eventsPath = join(workspace.root, "live-owner-events.log");
+      writeEventBuildScript(workspace, "1.0");
+      const realBun = findRealBun();
+      const owner = startProvisionWorker(realBun, workspace.root, eventsPath);
+      await waitForEvents(eventsPath, (events) =>
+        events.some((event) => event.startsWith("build-partial:")),
+      );
+      const ownerRecordBefore = readFileSync(
+        join(workspace.distDir, ".acp.build.owner"),
+        "utf8",
+      );
+      let waiterBuilt = false;
+      let error: unknown;
+
+      try {
+        provisionWorkspaceElizaCodeAcp(workspace.root, {
+          deadlineMs: 200,
+          build: () => {
+            waiterBuilt = true;
+            return { ok: true, detail: "" };
+          },
+        });
+      } catch (caught) {
+        error = caught;
       }
-      return true;
-    };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: () => {
-        builds += 1;
-        return { ok: true, detail: "" };
-      },
-      isPidAlive,
-      now: () => nowMs, // stays well within the lifetime ceiling
-    });
-    expect(builds).toBe(0);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-  });
 
-  it("reclaims a MALFORMED lock left by a crash mid-claim (no owner record)", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    // An owner crashed between open('wx') and writing its record: the lock file
-    // exists but is empty/unparseable. Age it past the grace window.
-    writeFileSync(lock, "");
-    // Clock is far ahead of the lock's real mtime so the malformed-lock grace
-    // has elapsed.
-    const now = () => Date.now() + 60_000;
-    const counter = { n: 0 };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: goodBuild(ws.distDir, counter),
-      isPidAlive: () => false,
-      now,
-    });
-    expect(counter.n).toBe(1);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-    expect(existsSync(lock)).toBe(false);
-  });
+      expect(error).toMatchObject({ code: "ACP_PROVISIONING_LOCK_TIMEOUT" });
+      expect(waiterBuilt).toBe(false);
+      expect(
+        readFileSync(join(workspace.distDir, ".acp.build.owner"), "utf8"),
+      ).toBe(ownerRecordBefore);
+      await owner.completion;
+    },
+  );
 
-  it("does NOT reclaim a fresh malformed lock within the grace window (mid-claim owner)", () => {
-    const ws = makeWorkspace();
-    mkdirSync(ws.distDir, { recursive: true });
-    const lock = join(ws.distDir, ".acp.build.lock");
-    // A live owner just created the empty lock and is about to write its
-    // record; its mtime is "now", inside the grace window.
-    writeFileSync(lock, "");
-    let builds = 0;
-    // Real clock (grace not elapsed) + an immediate attempt budget so we don't
-    // spin the real 3-minute deadline: the mid-claim owner "finishes" by
-    // publishing a fresh artifact, which the waiter then returns.
-    let polls = 0;
-    const now = () => {
-      polls += 1;
-      // First iterations: real time (grace NOT elapsed → no reclaim). After a
-      // couple polls, the owner publishes so freshness short-circuits.
-      if (polls === 2) {
-        writeFileSync(ws.output, `// ${ACP_MARKER}\npublished\n`);
-        const st = statSync(ws.output);
-        writeFileSync(
-          join(ws.distDir, ".acp.done"),
-          JSON.stringify({ size: st.size, mtimeMs: st.mtimeMs }),
-        );
+  it.skipIf(!realProvisioningPrimitives)(
+    "kills a trapped builder and its descendants within the shared deadline",
+    async () => {
+      const workspace = makeWorkspace();
+      const childPidPath = join(workspace.root, "builder-child.pid");
+      process.env.ACP_TEST_CHILD_PID_PATH = childPidPath;
+      writeFileSync(
+        workspace.fakeBun,
+        [
+          "#!/bin/sh",
+          "sleep 10 &",
+          'printf "%s" "$!" > "$ACP_TEST_CHILD_PID_PATH"',
+          "trap '' TERM",
+          "while :; do :; done",
+          "",
+        ].join("\n"),
+      );
+      chmodSync(workspace.fakeBun, 0o755);
+      const startedAt = performance.now();
+      let error: unknown;
+
+      try {
+        provisionWorkspaceElizaCodeAcp(workspace.root, { deadlineMs: 200 });
+      } catch (caught) {
+        error = caught;
       }
-      return Date.now();
-    };
-    const result = provisionWorkspaceElizaCodeAcp(ws.root, {
-      build: () => {
-        builds += 1;
-        return { ok: true, detail: "" };
-      },
-      isPidAlive: () => true,
-      now,
-    });
-    // The waiter must NOT have reclaimed/overlapped the mid-claim owner: it
-    // waited for the owner's published artifact instead of building.
-    expect(builds).toBe(0);
-    expect(result).toEqual({ command: ws.fakeBun, args: [ws.output] });
-  });
 
-  it("returns undefined when no workspace package or bun is available", () => {
-    // Point PATH somewhere without bun and use a startDir with no package.
-    const empty = mkTemp();
-    process.env.PATH = "/nonexistent-dir-for-test";
-    const result = provisionWorkspaceElizaCodeAcp(empty, {
-      build: goodBuild(join(empty, "dist")),
+      expect(performance.now() - startedAt).toBeLessThan(2_000);
+      expect(error).toMatchObject({
+        code: "ACP_PROVISIONING_BUILD_FAILED",
+        context: expect.objectContaining({ timedOut: true }),
+      });
+      const childPid = Number(readFileSync(childPidPath, "utf8"));
+      const childExitDeadline = Date.now() + 1_000;
+      while (isPidAlive(childPid) && Date.now() < childExitDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(isPidAlive(childPid)).toBe(false);
+    },
+  );
+
+  it("bounds advisory-lock capability probing by the shared deadline", () => {
+    const workspace = makeWorkspace();
+    const fakeFlock = join(dirname(workspace.fakeBun), "flock");
+    writeFileSync(fakeFlock, "#!/bin/sh\nwhile :; do :; done\n");
+    chmodSync(fakeFlock, 0o755);
+    const startedAt = performance.now();
+    const result = provisionWorkspaceElizaCodeAcp(workspace.root, {
+      deadlineMs: 200,
+      build: goodBuild(),
     });
+
+    expect(performance.now() - startedAt).toBeLessThan(2_000);
     expect(result).toBeUndefined();
+    expect(existsSync(workspace.output)).toBe(false);
+  });
+
+  it("rejects an invalid shared deadline before opening a lock", () => {
+    const workspace = makeWorkspace();
+    expect(() =>
+      provisionWorkspaceElizaCodeAcp(workspace.root, {
+        deadlineMs: Number.NaN,
+        build: goodBuild(),
+      }),
+    ).toThrow(/finite and positive/u);
+    expect(existsSync(join(workspace.distDir, ".acp.build.guard"))).toBe(false);
+  });
+
+  it.skipIf(!realProvisioningPrimitives)(
+    "does not start a builder without process-group termination budget",
+    () => {
+      const workspace = makeWorkspace();
+      let nowCalls = 0;
+      let error: unknown;
+      try {
+        provisionWorkspaceElizaCodeAcp(workspace.root, {
+          deadlineMs: 200,
+          now: () => {
+            nowCalls += 1;
+            return nowCalls >= 6 ? 140 : 0;
+          },
+        });
+      } catch (caught) {
+        error = caught;
+      }
+
+      expect(error).toMatchObject({
+        code: "ACP_PROVISIONING_BUILD_FAILED",
+        context: expect.objectContaining({ timedOut: true }),
+      });
+      expect(existsSync(workspace.output)).toBe(false);
+    },
+  );
+
+  it("carries one deadline from lock waiting into the build budget", () => {
+    const workspace = makeWorkspace();
+    let nowMs = 0;
+    let attempts = 0;
+    let observedBuildBudget = Number.NaN;
+
+    provisionWorkspaceElizaCodeAcp(workspace.root, {
+      deadlineMs: 200,
+      now: () => nowMs,
+      tryAcquireBuildLease: (_guardPath, timeoutMs) => {
+        attempts += 1;
+        if (attempts === 1) {
+          expect(timeoutMs).toBe(200);
+          nowMs = 150;
+          return undefined;
+        }
+        expect(timeoutMs).toBe(50);
+        return { release: () => undefined };
+      },
+      build: ({ timeoutMs, tmpOutput }) => {
+        observedBuildBudget = timeoutMs;
+        writeFileSync(tmpOutput, `// ${ACP_MARKER}\ncomplete\n`);
+        return { ok: true, detail: "" };
+      },
+    });
+
+    expect(attempts).toBe(2);
+    expect(observedBuildBudget).toBe(50);
+  });
+
+  it("falls back when no proven advisory-lock primitive is available", () => {
+    const workspace = makeWorkspace();
+    process.env.PATH = dirname(workspace.fakeBun);
+    expect(provisionWorkspaceElizaCodeAcp(workspace.root)).toBeUndefined();
+  });
+
+  it("falls back when the build supervisor is not GNU timeout", () => {
+    const workspace = makeWorkspace();
+    const fakeTimeout = join(dirname(workspace.fakeBun), "timeout");
+    writeFileSync(fakeTimeout, '#!/bin/sh\necho "BusyBox timeout"\n');
+    chmodSync(fakeTimeout, 0o755);
+
+    expect(provisionWorkspaceElizaCodeAcp(workspace.root)).toBeUndefined();
+    expect(existsSync(workspace.output)).toBe(false);
+  });
+
+  it("returns undefined when no workspace package or Bun exists", () => {
+    const empty = makeTemp();
+    process.env.PATH = "/definitely-not-a-bin-directory";
+    expect(provisionWorkspaceElizaCodeAcp(empty)).toBeUndefined();
   });
 });
 
-describe("formatAcpCommand — space-safe path propagation", () => {
-  it("double-quotes bun + args so splitCommandLine round-trips spaces", () => {
-    const result = {
+describe("formatAcpCommand", () => {
+  it("round-trips whitespace and either individual quote style", () => {
+    const spaced = formatAcpCommand({
       command: "/opt/my bun/bin/bun",
       args: ["/work space/dist/acp.js"],
-    };
-    const line = formatAcpCommand(result);
-    expect(line).toBe(`"/opt/my bun/bin/bun" "/work space/dist/acp.js"`);
-    const parsed = splitCommandLine(line);
-    expect(parsed.command).toBe("/opt/my bun/bin/bun");
-    expect(parsed.args).toEqual(["/work space/dist/acp.js"]);
-  });
-
-  it("leaves quote-free paths bare and round-trips paths containing quote chars", () => {
-    // A double-quote in the path is single-quoted (and vice versa) so
-    // splitCommandLine's non-escaping grammar still reconstructs it.
-    const dq = formatAcpCommand({
-      command: '/tmp/a"b/bin/bun',
-      args: ['/w"s/dist/acp.js'],
     });
-    expect(splitCommandLine(dq)).toEqual({
-      command: '/tmp/a"b/bin/bun',
-      args: ['/w"s/dist/acp.js'],
+    expect(splitCommandLine(spaced)).toEqual({
+      command: "/opt/my bun/bin/bun",
+      args: ["/work space/dist/acp.js"],
     });
-    const sq = formatAcpCommand({
-      command: "/tmp/it's/bin/bun",
-      args: ["/plain/dist/acp.js"],
-    });
-    expect(splitCommandLine(sq)).toEqual({
-      command: "/tmp/it's/bin/bun",
-      args: ["/plain/dist/acp.js"],
-    });
-    // Quote-free tokens stay bare (no needless quoting).
     expect(
-      formatAcpCommand({ command: "/usr/bin/bun", args: ["/w/dist/acp.js"] }),
-    ).toBe("/usr/bin/bun /w/dist/acp.js");
+      splitCommandLine(
+        formatAcpCommand({
+          command: '/tmp/a"b/bun',
+          args: ["/tmp/it's/acp.js"],
+        }),
+      ),
+    ).toEqual({
+      command: '/tmp/a"b/bun',
+      args: ["/tmp/it's/acp.js"],
+    });
   });
 
-  it("provisioned command survives a workspace path containing a space", () => {
-    // Build the workspace under a directory whose name contains a space.
-    const spaced = mkTemp();
-    const spacedRoot = join(spaced, "with space");
+  it("fails closed when both quote styles make the grammar ambiguous", () => {
+    expect(() =>
+      formatAcpCommand({ command: `/tmp/a'"b/bun`, args: [] }),
+    ).toThrow("both single and double quotes");
+  });
+
+  it("preserves a provisioned workspace path containing spaces", () => {
+    const parent = makeTemp();
+    const spacedRoot = join(parent, "workspace with space");
     const packageDir = join(spacedRoot, "packages", "examples", "code");
     const binDir = join(spacedRoot, "bin");
     mkdirSync(join(packageDir, "src"), { recursive: true });
     mkdirSync(binDir, { recursive: true });
-    writeFileSync(join(packageDir, "src", "acp.ts"), "export {};\n");
+    writeFileSync(join(packageDir, "src", "acp.ts"), `// ${ACP_MARKER}\n`);
     const fakeBun = join(binDir, "bun");
     writeFileSync(fakeBun, "#!/bin/sh\nexit 0\n");
     chmodSync(fakeBun, 0o755);
     process.env.PATH = `${binDir}${delimiter}${originalPath ?? ""}`;
 
-    const distDir = join(packageDir, "dist");
-    const result = provisionWorkspaceElizaCodeAcp(spacedRoot, {
-      build: goodBuild(distDir),
+    const result = provisionWithTestLease(spacedRoot, {
+      build: goodBuild(),
     });
-    if (!result) throw new Error("expected a provisioned command");
-    const line = formatAcpCommand(result);
-    const parsed = splitCommandLine(line);
-    expect(parsed.command).toBe(fakeBun);
-    expect(parsed.args).toEqual([join(distDir, "acp.js")]);
+    if (!result) throw new Error("expected workspace provisioning");
+    expect(splitCommandLine(formatAcpCommand(result))).toEqual({
+      command: fakeBun,
+      args: [join(packageDir, "dist", "acp.js")],
+    });
   });
 });

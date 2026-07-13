@@ -361,6 +361,12 @@ README → "GitHub credentials".
   commands unless deployment config overrides them.
 - **`git-workspace-service`** is a peer dependency (version `0.4.5`). It must be
   installed alongside this plugin.
+- **Workspace ACP auto-provisioning requires proven OS supervision.** Linux
+  hosts use util-linux `flock` for exclusion and GNU `timeout` for
+  build-process-group termination. When either is unavailable, the service
+  skips the workspace build and falls back to `ELIZA_ELIZAOS_ACP_COMMAND`. Do
+  not replace this fail-closed boundary with PID/mtime stale-lock reclamation
+  or direct-child-only timeout handling (#16169).
 - **Route registration side-effect.** `register-routes.ts` is re-exported as
   `codingAgentRouteRegistration` from `index.ts` to prevent Bun's tree-shaker
   from dropping it. Do not convert it back to a bare side-effect import.

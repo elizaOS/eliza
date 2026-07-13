@@ -246,11 +246,10 @@ function findExecutableOnPath(name: string): string | undefined {
  * npm install: the package is built into its normal dist directory and launched
  * with the same Bun executable that performed the build.
  *
- * Delegates to the fenced, multi-process-safe, crash-recoverable protocol in
- * `acp-provisioning.ts` (issue #16169) and returns a single command string with
- * the Bun binary and artifact path double-quoted so `splitCommandLine` survives
- * workspace/Bun paths containing spaces. Kept as a thin adapter so the string
- * command contract callers already depend on is preserved.
+ * Delegates to the advisory-lock and atomic-publish protocol in
+ * `acp-provisioning.ts` (#16169). The thin adapter preserves the string command
+ * contract while the formatter quotes paths only when the downstream parser
+ * needs it.
  */
 export function ensureWorkspaceElizaCodeAcp(
   startDir: string = process.cwd(),
