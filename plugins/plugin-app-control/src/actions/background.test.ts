@@ -220,30 +220,30 @@ describe("inferBackgroundPlan", () => {
 	it("falls through an unknown explicit catalog reference for renderer-side user catalog resolution", () => {
 		expect(
 			inferBackgroundPlan("change my background", undefined, {
-				catalog: "sunset beach",
+				catalog: "beach party",
 			}),
 		).toEqual({
 			op: "set",
 			mode: "catalog",
-			catalogId: "sunset beach",
-			catalogLabel: "sunset beach",
+			catalogId: "beach party",
+			catalogLabel: "beach party",
 		});
 	});
 
 	it("passes a quoted catalog reference through without curated matching", () => {
 		expect(
-			inferBackgroundPlan('use "sunset beach" as my background', undefined),
+			inferBackgroundPlan('use "beach party" as my background', undefined),
 		).toMatchObject({
 			op: "set",
 			mode: "catalog",
-			catalogId: "sunset beach",
+			catalogId: "beach party",
 		});
 	});
 
 	it("does not let an unknown catalog option override explicit image or generate inputs", () => {
 		expect(
 			inferBackgroundPlan("change my background", undefined, {
-				catalog: "sunset beach",
+				catalog: "beach party",
 				imageUrl: "/api/media/generated.png",
 			}),
 		).toEqual({
@@ -253,7 +253,7 @@ describe("inferBackgroundPlan", () => {
 		});
 		expect(
 			inferBackgroundPlan("change my background", undefined, {
-				catalog: "sunset beach",
+				catalog: "beach party",
 				prompt: "a quiet redwood grove",
 			}),
 		).toEqual({
@@ -261,12 +261,12 @@ describe("inferBackgroundPlan", () => {
 			generatePrompt: "a quiet redwood grove",
 		});
 		expect(
-			inferBackgroundPlan("generate a sunset beach background", undefined, {
-				catalog: "sunset beach",
+			inferBackgroundPlan("generate a beach party background", undefined, {
+				catalog: "beach party",
 			}),
 		).toMatchObject({
 			op: "set",
-			generatePrompt: "sunset beach",
+			generatePrompt: "beach party",
 		});
 	});
 
@@ -610,14 +610,14 @@ describe("BACKGROUND action — catalog name-select + upload handoff (#13538)", 
 		const { action, emitted, replies, callback } = setup();
 		const result = await action.handler(
 			runtime,
-			message("use my sunset wallpaper"),
+			message("use my beach party wallpaper"),
 			undefined,
 			undefined,
 			callback,
 		);
-		expect(emitted).toEqual([{ op: "set", catalogId: "sunset" }]);
+		expect(emitted).toEqual([{ op: "set", catalogId: "beach party" }]);
 		expect(result.success).toBe(true);
-		expect(replies[0]).toContain("sunset");
+		expect(replies[0]).toContain("beach party");
 	});
 
 	it("an explicit generate wins over a same-named catalog entry", async () => {
