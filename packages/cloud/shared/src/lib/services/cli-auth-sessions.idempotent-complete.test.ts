@@ -157,12 +157,35 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
     expect(result.keyPrefix).toBeNull();
   });
 
+  test("an authenticated legacy session with no user remains idempotent and does not mint", async () => {
+    const session = authenticatedSession(null);
+    session.api_key_id = null;
+    track(spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(session));
+    const createSpy = track(spyOn(apiKeysService, "create"));
+
+    const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
+
+    expect(result.alreadyAuthenticated).toBe(true);
+    expect(result.keyPrefix).toBeNull();
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
   test("does NOT leak a session authenticated by a DIFFERENT user", async () => {
     track(
       spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(
         authenticatedSession(OTHER_USER_ID),
       ),
     );
+
+    await expect(
+      cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),
+    ).rejects.toThrow("Session already authenticated or expired");
+  });
+
+  test("rejects any other non-pending terminal state", async () => {
+    const session = pendingSession();
+    session.status = "expired";
+    track(spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(session));
 
     await expect(
       cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),

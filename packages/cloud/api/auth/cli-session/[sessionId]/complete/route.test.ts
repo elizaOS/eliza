@@ -64,8 +64,8 @@ const { default: leaf } = await import("./route");
 const app = new Hono();
 app.route("/api/auth/cli-session/:sessionId/complete", leaf);
 
-function post(sessionId: string): Promise<Response> {
-  return app.request(`/api/auth/cli-session/${sessionId}/complete`, {
+async function post(sessionId: string): Promise<Response> {
+  return await app.request(`/api/auth/cli-session/${sessionId}/complete`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({}),
