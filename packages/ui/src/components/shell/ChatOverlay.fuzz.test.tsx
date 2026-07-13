@@ -704,22 +704,22 @@ describe("ChatOverlay — seeded random fuzz", () => {
 
 // ── The two reported bugs, pinned ────────────────────────────────────────────
 describe("ChatOverlay — bug (a): a single pill tap opens to half", () => {
-  it("ONE tap on the pill opens the chat to half (no blink-back, no second tap)", () => {
+  it("ONE tap on the pill opens the chat to INPUT (the ladder: pill → input → half)", () => {
     render(<ChatOverlay controller={makeController()} />);
     gotoPill();
     tap(pill(), 400); // a single tap
-    expect(detentOf()).toBe("half");
-    expect(variantOf()).toBe("open");
+    expect(detentOf()).toBe("collapsed"); // INPUT size, not straight to half
+    expect(chatStateOf()).toBe("INPUT");
     expect(document.activeElement).toBe(input()); // keyboard raised on first tap
-    assertInvariants("bug-a-single-tap");
+    assertInvariants("pill-tap-input");
   });
 
-  it("repeated open/collapse via the pill always reaches half on the very next tap", () => {
+  it("repeated open/collapse via the pill always reaches INPUT on the very next tap", () => {
     render(<ChatOverlay controller={makeController()} />);
     for (let i = 0; i < 5; i++) {
       gotoPill();
       tap(pill(), 400);
-      expect(detentOf(), `cycle ${i}`).toBe("half");
+      expect(detentOf(), `cycle ${i}`).toBe("collapsed");
       // back to the pill for the next cycle
       flickDown(grabber() as Element);
     }
@@ -795,14 +795,18 @@ describe("ChatOverlay — bug (b): keyboard dismiss restores prior state", () =>
     assertInvariants("bug-b-grabber-input");
   });
 
-  it("pill tap → half, then dismissing the keyboard keeps the chat open at half", () => {
+  it("pill tap → INPUT + keyboard, then dismissing the keyboard stays at the input peek", () => {
     render(<ChatOverlay controller={makeController()} />);
     gotoPill();
-    tap(pill(), 400); // opens to half + raises keyboard (bug a)
-    expect(detentOf()).toBe("half");
+    tap(pill(), 400); // opens to INPUT size + raises keyboard
+    expect(detentOf()).toBe("collapsed");
+    expect(document.activeElement).toBe(input());
     fireEvent.pointerDown(document.body); // dismiss keyboard
-    expect(detentOf()).toBe("half"); // deliberate open survives (bug b)
-    assertInvariants("bug-ab-pill-then-dismiss");
+    // A pill-origin open is collapsed-origin, so dismissing the keyboard keeps
+    // the input peek (drops the keyboard) rather than opening the thread.
+    expect(detentOf()).toBe("collapsed");
+    expect(document.activeElement).not.toBe(input());
+    assertInvariants("pill-then-dismiss");
   });
 
   it("SENDING commits to open: tap input → send → dismiss keyboard KEEPS the chat open", () => {

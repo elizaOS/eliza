@@ -51,7 +51,9 @@ import {
   type BackIntentEventDetail,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
+  CHAT_SEND_EVENT,
   type ChatPrefillEventDetail,
+  type ChatSendEventDetail,
   ELIZA_BACK_INTENT_EVENT,
 } from "../../events";
 import {
@@ -3685,49 +3687,55 @@ export function ChatOverlay({
     return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
   }, [pinnedOpen, expand]);
 
-  // OS assistant / deep-link entry (Siri, Shortcuts, App Actions, the assistant
-  // entry point) routes into `#chat?text=…&source=…&voice=1`. On desktop the
-  // detached window's ChatView claims it, but the ambient overlay (mobile, web,
-  // default desktop bottom-bar) is the ONLY chat surface there — so it must
-  // claim the launch payload itself. We PREFILL (never auto-send) the composer:
-  // the `text` is attacker-authorable, so the user reviews it and presses send.
-  // `claimAssistantLaunchPayloadFromHash` dedupes by launchId and clears the
-  // hash, so a re-render / second mount never re-consumes the same launch.
+  // OS assistant / deep-link entry (Siri, Shortcuts, App Intents, controls,
+  // App Actions, QS tiles, the assistant entry point) routes into
+  // `#chat?text=…&source=…` with optional `voice=1` / `transcribe=1` capture
+  // flags. On desktop the detached window's ChatView claims it, but the ambient
+  // overlay (mobile, web, default desktop bottom-bar) is the ONLY chat surface
+  // there — so it must claim the launch payload itself. Text is PREFILLED
+  // (never auto-sent): the `text` is attacker-authorable, so the user reviews
+  // it and presses send. Capture flags ride the claimed payload — a voice or
+  // transcribe launch legitimately carries no text (see
+  // assistant-launch-payload.ts). `claimAssistantLaunchPayloadFromHash` dedupes
+  // by launchId and clears the hash, so a re-render / second mount never
+  // re-consumes the same launch.
   React.useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const consumeFromHash = () => {
       if (firstRunOpen) return;
-      const hash = window.location.hash;
-      // Read the voice flag off the ORIGINAL hash first — claiming clears the
-      // launch params (text/source/action/launchId) but leaves `voice`, and we
-      // want the intent regardless of ordering.
-      const query = hash.includes("?") ? hash.slice(hash.indexOf("?") + 1) : "";
-      const wantsVoice = new URLSearchParams(query).get("voice") === "1";
-      const payload = claimAssistantLaunchPayloadFromHash(hash, {
-        allowedRoutes: ["chat"],
-      });
+      const payload = claimAssistantLaunchPayloadFromHash(
+        window.location.hash,
+        { allowedRoutes: ["chat"] },
+      );
       if (!payload) return;
       setMode((m) => (m === "pill" ? "input" : m));
-      setDraft(payload.text);
-      // Open the history sheet (no-op when there's no thread yet) and focus the
-      // composer so the prefilled text is ready to review + send.
+      // Open the history sheet (no-op when there's no thread yet).
       expand();
-      const focusComposer = () => {
-        prefillFocusFrameRef.current = null;
-        prefillFocusTimerRef.current = null;
-        inputRef.current?.focus();
-      };
-      clearPrefillFocusSchedule();
-      if (typeof window.requestAnimationFrame === "function") {
-        prefillFocusFrameRef.current =
-          window.requestAnimationFrame(focusComposer);
-      } else {
-        prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
+      if (payload.text) {
+        setDraft(payload.text);
+        // Focus the composer so the prefilled text is ready to review + send —
+        // but only for text launches: focusing on a capture launch would pop
+        // the soft keyboard over the voice UI on mobile.
+        const focusComposer = () => {
+          prefillFocusFrameRef.current = null;
+          prefillFocusTimerRef.current = null;
+          inputRef.current?.focus();
+        };
+        clearPrefillFocusSchedule();
+        if (typeof window.requestAnimationFrame === "function") {
+          prefillFocusFrameRef.current =
+            window.requestAnimationFrame(focusComposer);
+        } else {
+          prefillFocusTimerRef.current = window.setTimeout(focusComposer, 0);
+        }
       }
-      // A `voice=1` launch also starts hands-free voice capture (the same intent
-      // a mic tap carries). Only when not already live, so it never toggles an
-      // in-progress session off.
-      if (wantsVoice && !handsFree && !recording) toggleHandsFree();
+      // A `voice=1` launch also starts hands-free voice capture (the same
+      // intent a mic tap carries). Only when not already live, so it never
+      // toggles an in-progress session off.
+      if (payload.voice && !handsFree && !recording) toggleHandsFree();
+      // A `transcribe=1` launch enters transcription mode (long-form
+      // record-only capture) — idempotent when already transcribing.
+      if (payload.transcribe && !transcriptionMode) toggleTranscriptionMode();
     };
     consumeFromHash();
     window.addEventListener("hashchange", consumeFromHash);
@@ -3740,7 +3748,36 @@ export function ChatOverlay({
     recording,
     setDraft,
     toggleHandsFree,
+    transcriptionMode,
+    toggleTranscriptionMode,
   ]);
+
+  // Native-originated auto-send (CHAT_SEND_EVENT): iOS App Intents running
+  // in-process, Android system-bound tile/assistant services, and the desktop
+  // shell send through here — a separate channel from the forgeable URL/hash
+  // spine, which stays prefill-only (see events/index.ts). Goes through the
+  // controller `send` directly (NOT submitText) so an in-progress composer
+  // draft is never clobbered; the turn appears in the thread like any other.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onNativeSend = (event: Event) => {
+      if (firstRunOpen) return;
+      const detail = (event as CustomEvent<ChatSendEventDetail>).detail;
+      const text = typeof detail?.text === "string" ? detail.text.trim() : "";
+      if (!text || !canSend) return;
+      setMode((m) => (m === "pill" ? "input" : m));
+      expand();
+      send(text, {
+        metadata: {
+          assistantLaunch: true,
+          assistantLaunchSource: detail.source,
+          nativeSend: true,
+        },
+      });
+    };
+    window.addEventListener(CHAT_SEND_EVENT, onNativeSend);
+    return () => window.removeEventListener(CHAT_SEND_EVENT, onNativeSend);
+  }, [canSend, expand, firstRunOpen, send]);
 
   // Push-to-talk dictation drops its final transcript into the composer draft
   // (no send): register the sink with the controller while this overlay is
@@ -4240,21 +4277,14 @@ export function ChatOverlay({
   // openProgress → 1 directly so the open never depends on that effect's timing.
   const openFromPill = React.useCallback(() => {
     draggingRef.current = false;
-    // A pill tap OPENS the chat. With a conversation to show, go straight to the
-    // HALF detent — a tap reveals the thread/loader exactly like a flick-up, so a
-    // SINGLE tap always opens the chat (never the old "tap lands on a bare input
-    // bar, tap again to actually open" two-step). Mark it deliberately open so
-    // dismissing the keyboard then KEEPS it at half (preFocusCollapsedRef gates
-    // that). With no thread yet, there's nothing to open into — just form the
-    // bare input bar, and treat a later keyboard dismiss as a re-collapse.
-    if (hasRevealableThread) {
-      goToDetent("half");
-      preFocusCollapsedRef.current = false;
-    } else {
-      setMode("input");
-      preFocusCollapsedRef.current = true;
-      detentHaptic();
-    }
+    // A pill tap opens the chat to INPUT SIZE (the composer bar), NOT straight to
+    // half. The click ladder is pill → input → half → input: revealing the
+    // thread (half) is the NEXT click on the grabber, and clicking again at half
+    // toggles back down to input. Marked as a collapsed-origin open so a keyboard
+    // dismiss re-collapses to the input peek (preFocusCollapsedRef gates that).
+    setMode("input");
+    preFocusCollapsedRef.current = true;
+    detentHaptic();
     if (reduce) {
       stopOpenProgressAnimation();
       openProgress.set(1);
@@ -4278,14 +4308,7 @@ export function ChatOverlay({
     // target is explicitly the composer, so void any queued intent.
     focusThreadRef.current = false;
     inputRef.current?.focus();
-  }, [
-    openProgress,
-    reduce,
-    hasRevealableThread,
-    goToDetent,
-    stopOpenProgressAnimation,
-    animateOpenProgress,
-  ]);
+  }, [openProgress, reduce, stopOpenProgressAnimation, animateOpenProgress]);
 
   // --- Pull gesture --------------------------------------------------------
   // The grabber is the draggable handle. A live drag sets the threadHeight motion

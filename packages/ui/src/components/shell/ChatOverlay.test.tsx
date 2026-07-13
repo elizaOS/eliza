@@ -2332,11 +2332,11 @@ describe("ChatOverlay", () => {
     expect(pill.getAttribute("tabindex")).toBeNull();
   });
 
-  it("opens the chat to HALF on a SINGLE pill tap (not the bare input bar)", () => {
-    // Regression: a tap on the pill used to land on the bare input bar (the
-    // chat "blinked" without opening) and needed a SECOND tap to reach half.
-    // With a conversation to show, ONE tap must open straight to half — exactly
-    // like a flick-up.
+  it("opens the chat to INPUT size on a SINGLE pill tap (the click ladder: pill → input → half → input)", () => {
+    // The pill click opens to the INPUT bar, not straight to half — revealing the
+    // thread (half) is the NEXT grabber click, and clicking again at half toggles
+    // back to input. (One tap still focuses + clears inert so iOS raises the
+    // keyboard on the first tap.)
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
@@ -2348,7 +2348,8 @@ describe("ChatOverlay", () => {
     // pull-gesture binding is the single tap authority (onPointerUp → onTap).
     fireEvent.pointerDown(pill, { clientY: 400, pointerId: 1 });
     fireEvent.pointerUp(pill, { clientY: 400, pointerId: 1 });
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
     const textarea = screen.getByTestId("chat-composer-textarea");
     expect(textarea).toBeTruthy();
     // The pill tap must focus the composer (so iOS raises the keyboard on the
@@ -2391,7 +2392,9 @@ describe("ChatOverlay", () => {
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 1 });
     expect(sheet.getAttribute("data-detent")).toBe("pill");
     fireEvent.keyDown(screen.getByTestId("chat-pill"), { key: "Enter" });
-    expect(sheet.getAttribute("data-detent")).toBe("half");
+    // Pill → INPUT size (the click ladder); revealing the thread is the next step.
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
   it("flicks UP from the pill to recover the input", () => {
