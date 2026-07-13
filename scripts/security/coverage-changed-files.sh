@@ -35,7 +35,7 @@ fi
 # and pull in heavy harnesses that the changed-file coverage gate must not.
 is_excluded_test() {
   case "$1" in
-    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) return 0 ;;
+    *.e2e.test.*|*.live.test.*|*.real.test.*|*.real.e2e.test.*|packages/app/test/android/*.android.spec.*) return 0 ;;
     packages/test/cloud-e2e/tests/*.spec.*) return 0 ;;
     */test/e2e/*|test/e2e/*|*/e2e/*.test.*|e2e/*.test.*) return 0 ;;
   esac
