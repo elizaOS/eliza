@@ -12,7 +12,11 @@ import { useContinuousChat } from "../../hooks/useContinuousChat";
 import { useRealtimeVoiceSession } from "../../hooks/useRealtimeVoiceSession";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { VoiceChatState } from "../../voice/voice-chat-types";
-import { useChatVoiceController } from "./chat-view-hooks";
+import {
+  mapUiLanguageToSpeechLocale,
+  useChatVoiceController,
+  useGameModalMessages,
+} from "./chat-view-hooks";
 
 const realtimeHarness = vi.hoisted(() => ({
   state: {
@@ -250,5 +254,66 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(useContinuousChatMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ disabled: false, mode: "vad-gated" }),
     );
+  });
+});
+
+describe("chat view locale and companion history", () => {
+  const message = (id: string, timestamp: number) =>
+    ({ id, timestamp, role: "assistant", text: id }) as never;
+
+  it.each([
+    ["zh-CN", "zh-CN"],
+    ["ko", "ko-KR"],
+    ["es", "es-ES"],
+    ["pt", "pt-BR"],
+    ["vi", "vi-VN"],
+    ["tl", "fil-PH"],
+    ["unknown", "en-US"],
+  ])("maps %s to a supported speech locale", (input, expected) => {
+    expect(mapUiLanguageToSpeechLocale(input)).toBe(expected);
+  });
+
+  it("keeps the two most recent messages when no cutoff messages exist", () => {
+    const { result } = renderHook(() =>
+      useGameModalMessages({
+        activeConversationId: "conversation-1",
+        companionMessageCutoffTs: 100,
+        isGameModal: true,
+        visibleMsgs: [
+          message("one", 1),
+          message("two", 2),
+          message("three", 3),
+        ],
+      }),
+    );
+    expect(result.current.gameModalVisibleMsgs.map((item) => item.id)).toEqual([
+      "two",
+      "three",
+    ]);
+    expect(result.current.gameModalCarryoverOpacity).toBe(0);
+  });
+
+  it("carries prior messages when the companion cutoff advances", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-12T00:00:00Z"));
+    const messages = [message("old", 10), message("current", 20)];
+    const { result, rerender } = renderHook(
+      ({ cutoff }) =>
+        useGameModalMessages({
+          activeConversationId: "conversation-1",
+          companionMessageCutoffTs: cutoff,
+          isGameModal: true,
+          visibleMsgs: messages,
+        }),
+      { initialProps: { cutoff: 0 } },
+    );
+    act(() => rerender({ cutoff: 15 }));
+    expect(
+      result.current.companionCarryover?.messages.map((item) => item.id),
+    ).toEqual(["old"]);
+    expect(result.current.gameModalVisibleMsgs.map((item) => item.id)).toEqual([
+      "current",
+    ]);
+    vi.useRealTimers();
   });
 });

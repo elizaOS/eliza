@@ -1,4 +1,8 @@
-// Handles the realtime voice-session WebSocket upgrade (Phase 1, flag-gated).
+/**
+ * Flag-gated realtime voice WebSocket upgrade. Authentication occurs in the
+ * first hello frame because embedded WebViews cannot attach upgrade headers;
+ * provider sockets and metering remain closed until that frame is verified.
+ */
 import { Hono } from "hono";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
 import {
