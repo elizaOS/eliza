@@ -129,21 +129,51 @@ describeE2E("Group D — /api/elevenlabs/tts", () => {
 });
 
 describeE2E("Group D — /api/v1/responses", () => {
+  const traceId = "responses_e2e_trace_12345678";
+
   test("auth gate: missing credentials → 401", async () => {
-    const res = await api.post("/api/v1/responses", {
-      model: "google/gemini-2.5-flash",
-      input: "hello",
-    });
+    const res = await api.post(
+      "/api/v1/responses",
+      {
+        model: "google/gemini-2.5-flash",
+        input: "hello",
+      },
+      {
+        headers: {
+          Origin: "https://www.elizacloud.ai",
+          "X-Eliza-Trace-Id": traceId,
+        },
+      },
+    );
     expect(res.status).toBe(401);
+    expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
+    expect(res.headers.get("Server-Timing")).toContain(
+      "cloud_worker;dur=",
+    );
+    expect(res.headers.get("Timing-Allow-Origin")).toBe(
+      "https://www.elizacloud.ai",
+    );
+    expect(
+      res.headers.get("Access-Control-Expose-Headers")?.toLowerCase(),
+    ).toContain("server-timing");
   });
 
   test("validation: malformed body with auth returns 400", async () => {
     const res = await api.post(
       "/api/v1/responses",
       {},
-      { headers: bearerHeaders() },
+      {
+        headers: {
+          ...bearerHeaders(),
+          "X-Eliza-Trace-Id": traceId,
+        },
+      },
     );
     expect(res.status).toBe(400);
+    expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
+    expect(res.headers.get("Server-Timing")).toContain(
+      "cloud_worker;dur=",
+    );
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe("missing_required_parameter");
   });
@@ -192,9 +222,21 @@ describeE2E("Group D — /api/v1/responses", () => {
           instructions: "Reply briefly.",
           input: [{ role: "user", content: "Say hello" }],
         },
-        { headers: bearerHeaders() },
+        {
+          headers: {
+            ...bearerHeaders(),
+            "X-Eliza-Trace-Id": traceId,
+          },
+        },
       );
       expect(res.status).toBe(200);
+      expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
+      expect(res.headers.get("X-Eliza-Preforward-Ms")).toMatch(
+        /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+      );
+      expect(res.headers.get("Server-Timing")).toContain(
+        "gateway_preforward;dur=",
+      );
       const body = (await res.json()) as {
         object?: string;
         output_text?: string;

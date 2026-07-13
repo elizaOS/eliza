@@ -284,12 +284,4 @@ app.post("/", async (c) => {
   }
 });
 
-/** Test-only seam for wire conversion and compatibility-response behavior. */
-export const __responsesRouteTestHooks = {
-  buildChatRequest,
-  jsonError,
-  mapChatCompletionToResponse,
-  toChatMessages,
-} as const;
-
 export default app;
