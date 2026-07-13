@@ -1982,6 +1982,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // first warn), so resolve through the shared origin ladder. Thread
         // routing is unaffected: `threadRoomId` binding and the per-session
         // thread state key off this target the same way they did.
+        // Cast is runtime-checked: resolveOriginRoomId only returns strings
+        // that pass UUID validation, which always satisfy the dashed template
+        // type (core's UUID alias is plain `string`, so it cannot flow here).
         const roomId = resolveOriginRoomId(meta) as
           | `${string}-${string}-${string}-${string}-${string}`
           | undefined;

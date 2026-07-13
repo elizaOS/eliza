@@ -54,14 +54,23 @@ describe("resolveOriginRoomId", () => {
     expect(resolveOriginRoomId(undefined)).toBeUndefined();
   });
 
-  it("ignores blank/non-string values instead of returning them", () => {
+  it("ignores blank/non-string/non-UUID values instead of returning them", () => {
     expect(
       resolveOriginRoomId({
         originRoomId: "  ",
         sourceRoomId: 7,
+        taskRoomId: "not-a-uuid",
         roomId: TASK,
       }),
     ).toBe(TASK);
+  });
+
+  it("rejects non-UUID room ids in the binding set (same validation as readOrigin)", () => {
+    const rooms = sessionBoundRoomIds({
+      roomId: "not-a-uuid",
+      originRoomId: ORIGIN,
+    });
+    expect(rooms).toEqual(new Set([ORIGIN]));
   });
 
   it("agrees with the router's readOrigin reply room (anti-drift contract)", () => {

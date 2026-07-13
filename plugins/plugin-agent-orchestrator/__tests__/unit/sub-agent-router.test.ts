@@ -522,10 +522,11 @@ describe("SubAgentRouter", () => {
     expect(metadata?.worktreeRoomId).toBe(WORKTREE_ROOM);
   });
 
-  it("routes QUESTION_FOR_TASK_CREATOR to BOTH the task room and the origin room when they differ", async () => {
+  it("runs ONE planner turn for QUESTION_FOR_TASK_CREATOR and posts the question directly to the origin room", async () => {
     // Default-on task rooms: the task creator is the USER in the origin
-    // channel. The task-room leg keeps planner context; the origin leg is what
-    // actually surfaces the blocked sub-agent's question to the user.
+    // channel. The task-room leg is the single planner turn; the origin leg is
+    // a DIRECT connector post (no second planner turn — that would
+    // double-answer the question into the same room).
     const TASK_ROOM = "55555555-5555-4555-8555-555555555555";
     session = makeSession({
       metadata: {
@@ -540,7 +541,9 @@ describe("SubAgentRouter", () => {
       },
     });
     acp = makeAcpService(session);
-    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    const { runtime, handleMessage, sendMessageToTarget } = makeRuntime({
+      acp: acp.service,
+    });
     await SubAgentRouter.start(runtime);
 
     acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
@@ -548,26 +551,55 @@ describe("SubAgentRouter", () => {
     });
     await new Promise((r) => setImmediate(r));
 
-    expect(handleMessage).toHaveBeenCalledTimes(2);
-    const postedRooms = handleMessage.mock.calls.map(
-      (call) => (call[1] as Memory).roomId,
-    );
-    expect(postedRooms).toContain(TASK_ROOM);
-    expect(postedRooms).toContain(ROOM);
-    for (const call of handleMessage.mock.calls) {
-      const posted = call[1] as Memory;
-      const metadata = posted.content?.metadata as Record<string, unknown>;
-      expect(posted.content?.text).toContain("Which branch");
-      expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
-    }
-    const originCall = handleMessage.mock.calls.find(
-      (call) => (call[1] as Memory).roomId === ROOM,
-    );
-    const originMeta = (originCall?.[1] as Memory).content?.metadata as Record<
-      string,
-      unknown
-    >;
-    expect(originMeta?.subAgentTargetRoomRole).toBe("origin");
+    // Exactly one planner turn, in the task room.
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1] as Memory;
+    const metadata = posted.content?.metadata as Record<string, unknown>;
+    expect(posted.roomId).toBe(TASK_ROOM);
+    expect(posted.content?.text).toContain("Which branch");
+    expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
+
+    // Exactly one direct user-facing post, in the origin room, attributed to
+    // the sub-agent with the question verbatim (planner header stripped).
+    expect(sendMessageToTarget).toHaveBeenCalledTimes(1);
+    const [target, content] = sendMessageToTarget.mock.calls[0] as [
+      { source: string; roomId?: string },
+      Content,
+    ];
+    expect(target).toEqual({ source: "telegram", roomId: ROOM });
+    expect(content.text).toContain("Which branch");
+    expect(content.text).toContain("❓ [fix-bug-42]");
+    expect(content.text).not.toContain("[sub-agent:");
+    expect(content.source).toBe("sub_agent");
+  });
+
+  it("does not add a direct post for QUESTION_FOR_TASK_CREATOR when the origin room IS the task room", async () => {
+    // Task rooms opted out: one planner turn, no extra direct post — the
+    // planner turn's reply callback already targets this room.
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, sendMessageToTarget } = makeRuntime({
+      acp: acp.service,
+    });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
+      question: "Which branch should I target?",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessageToTarget).not.toHaveBeenCalled();
   });
 
   it("strips leaked routing-kind markdown banners from sub-agent prose", async () => {

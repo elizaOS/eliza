@@ -132,11 +132,28 @@ export function createActiveSessionForwardHandler(
         ].find(
           (v): v is string => typeof v === "string" && v.trim().length > 0,
         );
+        // The message reached this session via its ORIGIN connector channel
+        // rather than a room dedicated to the task (task room / thread). The
+        // origin channel is shared with the orchestrator planner, so the
+        // decider must classify task-relevance there instead of
+        // blanket-delivering planner-directed messages into the sub-agent.
+        const originMatch =
+          message.roomId === meta.originRoomId ||
+          message.roomId === meta.sourceRoomId;
+        const dedicatedMatch =
+          message.roomId === meta.threadRoomId ||
+          message.roomId === meta.taskRoomId ||
+          // Sessions spawned without a distinct task room bind roomId to the
+          // origin channel itself; only then does roomId count as dedicated,
+          // preserving the pre-task-rooms delivery behavior.
+          (meta.taskRoomId === undefined && message.roomId === meta.roomId);
+        const sharedChannel = originMatch && !dedicatedMatch;
         const decision = await decideInterruptionWithModel(runtime, {
           text,
           agentType: active.agentType,
           sessionBusy: busy,
           multiParty,
+          sharedChannel,
           ...(label ? { agentLabel: label } : {}),
           ...(taskContext ? { taskContext } : {}),
         });
@@ -147,6 +164,7 @@ export function createActiveSessionForwardHandler(
             status: active.status,
             busy,
             multiParty,
+            sharedChannel,
             action: decision.action,
             reason: decision.reason,
           },
