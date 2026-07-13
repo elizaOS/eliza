@@ -3,8 +3,7 @@ import {
   WalletExposureSummary,
 } from "../types";
 import {
-  buildConfidenceInput,
-  confidenceLevelFromScore,
+  createConfidenceResponse,
 } from "../confidence/framework";
 
 export function analyzeWalletCompliance(
@@ -65,7 +64,7 @@ export function analyzeWalletCompliance(
     },
   ];
 
-  const evidenceConfidenceInput = buildConfidenceInput([
+  const confidenceAnalysis = createConfidenceResponse([
     {
       condition: exposure.evidenceConfidence === "high",
       score: 35,
@@ -99,22 +98,22 @@ export function analyzeWalletCompliance(
     sourcesChecked,
 
     sanctionsStatus:
-      matches.some((m) => m.type === "sanctions")
+      matches.some((match) => match.type === "sanctions")
         ? "possible_match"
         : "no_match_in_connected_sources",
 
     adverseMediaStatus:
-      matches.some((m) => m.type === "adverse_media")
+      matches.some((match) => match.type === "adverse_media")
         ? "possible_match"
         : "no_match_in_connected_sources",
 
-    evidenceConfidence: confidenceLevelFromScore(
-      evidenceConfidenceInput.score,
-    ),
+    evidenceConfidence: confidenceAnalysis.level,
+
+    confidenceAnalysis,
 
     screeningConfidence:
       matches.length > 0
-        ? confidenceLevelFromScore(evidenceConfidenceInput.score)
+        ? confidenceAnalysis.level
         : "medium",
 
     matches,
