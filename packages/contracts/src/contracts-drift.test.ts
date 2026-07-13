@@ -115,6 +115,7 @@ describe('@elizaos/contracts public literals', () => {
 			'round-robin',
 			'least-used',
 			'quota-aware',
+			'reset-soonest',
 		]);
 		expect(new Set(SERVICE_ROUTE_ACCOUNT_STRATEGIES).size).toBe(
 			SERVICE_ROUTE_ACCOUNT_STRATEGIES.length

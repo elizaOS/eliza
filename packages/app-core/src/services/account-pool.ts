@@ -66,7 +66,8 @@ export type Strategy =
   | "priority"
   | "round-robin"
   | "least-used"
-  | "quota-aware";
+  | "quota-aware"
+  | "reset-soonest";
 
 export type PoolProviderId = LinkedAccountProviderId;
 
@@ -144,6 +145,41 @@ function accountLastUsedAt(account: LinkedAccountConfig): number {
   return typeof account.lastUsedAt === "number" ? account.lastUsedAt : 0;
 }
 
+/**
+ * The instant an account's weekly budget refunds. Prefers the usage
+ * snapshot's `resetsAt`; falls back to a live rate-limit `until`. Undefined
+ * when the provider hasn't reported a reset window yet.
+ */
+function accountResetAt(account: LinkedAccountConfig): number | undefined {
+  return account.usage?.resetsAt ?? account.healthDetail?.until;
+}
+
+/**
+ * `reset-soonest` comparator. Prefer the account whose weekly reset arrives
+ * SOONEST: its budget refunds first, so spending it now is the cheapest.
+ * Accounts with a known reset instant sort ahead of unknowns; ties and
+ * all-unknown pools fall back to least-recently-used (held-in-reserve
+ * heuristic), then priority for a fully stable order.
+ */
+function bySoonestReset(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+): number {
+  const ar = accountResetAt(a);
+  const br = accountResetAt(b);
+  if (ar != null && br != null) {
+    if (ar !== br) return ar - br;
+  } else if (ar != null) {
+    return -1;
+  } else if (br != null) {
+    return 1;
+  }
+  const aUsed = accountLastUsedAt(a);
+  const bUsed = accountLastUsedAt(b);
+  if (aUsed !== bUsed) return aUsed - bUsed;
+  return a.priority - b.priority;
+}
+
 // affinity is keyed by sessionKey, which is per-conversation/per-request, so the
 // map grows one entry per distinct session over the process lifetime. Cap it
 // (FIFO by Map insertion order) — an evicted session simply re-selects on its
@@ -205,6 +241,40 @@ export class AccountPool {
     return picked;
   }
 
+  /**
+   * Non-mutating dry-run of selection for the accounts API / settings UI:
+   * "which account would we serve next for this provider, and why?" Uses the
+   * SAME eligibility + strategy ordering as {@link select} but never stamps a
+   * selection or touches affinity, so polling it from the UI has no runtime
+   * side effects. Ignores session affinity (that's per-request state the UI
+   * can't meaningfully reflect).
+   */
+  selectionState(
+    providerId: PoolProviderId,
+    strategy: Strategy = "priority",
+  ): { activeAccountId: string | null; reason: string | null } {
+    const all = this.deps.readAccounts();
+    const eligible = this.filterEligible(all, { providerId });
+    if (eligible.length === 0) return { activeAccountId: null, reason: null };
+    if (eligible.length === 1) {
+      return {
+        activeAccountId: eligible[0]?.id ?? null,
+        reason: "only-eligible",
+      };
+    }
+    const picked = this.applyStrategy(strategy, eligible, providerId);
+    if (!picked) return { activeAccountId: null, reason: null };
+    let reason: string = strategy;
+    if (strategy === "reset-soonest") {
+      // Distinguish a real reset-time pick from the least-recently-used
+      // fallback so the UI copy stays honest.
+      reason = eligible.some((a) => accountResetAt(a) != null)
+        ? "reset-soonest"
+        : "least-recently-throttled";
+    }
+    return { activeAccountId: picked.id, reason };
+  }
+
   private filterEligible(
     all: Record<string, LinkedAccountConfig>,
     input: SelectInput,
@@ -257,6 +327,16 @@ export class AccountPool {
         );
         const pool = underQuota.length > 0 ? underQuota : eligible;
         return [...pool].sort(byPriorityThenAge)[0] ?? null;
+      }
+      case "reset-soonest": {
+        // Among accounts still under quota, serve the one whose weekly budget
+        // refunds soonest. Accounts that just reset (far-off resetsAt) are
+        // naturally held in reserve because they sort last.
+        const underQuota = eligible.filter(
+          (a) => accountSessionPct(a) < QUOTA_AWARE_SKIP_PCT,
+        );
+        const pool = underQuota.length > 0 ? underQuota : eligible;
+        return [...pool].sort(bySoonestReset)[0] ?? null;
       }
       default:
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
@@ -801,7 +881,8 @@ function normalizeStrategy(value: unknown): Strategy | undefined {
   return value === "priority" ||
     value === "round-robin" ||
     value === "least-used" ||
-    value === "quota-aware"
+    value === "quota-aware" ||
+    value === "reset-soonest"
     ? value
     : undefined;
 }

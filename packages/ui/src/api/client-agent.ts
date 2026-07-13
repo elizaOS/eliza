@@ -326,10 +326,55 @@ export interface AccountWithCredentialFlag extends LinkedAccountConfig {
   hasCredential: boolean;
 }
 
+/**
+ * Runtime capability eligibility for a provider, resolved by the server
+ * from live plugin/route state (#16203 contract). Additive + optional so
+ * older servers that don't emit it fall back to conservative client-side
+ * inference (see `resolveProviderEligibility`).
+ */
+export interface ProviderRuntimeEligibility {
+  /** Can serve the default chat brain right now. */
+  chat: boolean;
+  /** Can back coding agents / task orchestration. */
+  codingAgent: boolean;
+  /** Human-readable one-liner explaining any constraint. */
+  note?: string;
+}
+
+/**
+ * The account the pool would select next for this provider, plus WHY.
+ * Emitted when reset-timestamp-aware selection is active so the UI can
+ * label the active row ("resets soonest") without re-deriving policy.
+ */
+export interface ProviderSelectionState {
+  /** Account id the pool would serve next, or null if none eligible. */
+  activeAccountId: string | null;
+  /**
+   * Machine reason for the pick so the UI renders honest copy:
+   *  - `reset-soonest`: chosen because its weekly budget refunds first
+   *  - `only-eligible`: the single selectable account
+   *  - `priority` / `round-robin` / `least-used` / `quota-aware`: strategy pick
+   *  - `least-recently-throttled`: reset time unknown, fell back to age
+   */
+  reason:
+    | "reset-soonest"
+    | "only-eligible"
+    | "priority"
+    | "round-robin"
+    | "least-used"
+    | "quota-aware"
+    | "least-recently-throttled"
+    | null;
+}
+
 export interface AccountsListProvider {
   providerId: LinkedAccountProviderId;
   strategy: AccountStrategy;
   accounts: AccountWithCredentialFlag[];
+  /** Optional runtime capability signals (#16203). Absent on older servers. */
+  runtimeEligibility?: ProviderRuntimeEligibility;
+  /** Optional next-account selection state. Absent on older servers. */
+  selection?: ProviderSelectionState;
 }
 
 export interface AccountsListResponse {

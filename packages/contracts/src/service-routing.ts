@@ -127,6 +127,11 @@ export const SERVICE_ROUTE_ACCOUNT_STRATEGIES = [
 	'round-robin',
 	'least-used',
 	'quota-aware',
+	// Reset-timestamp-aware: prefer the account whose weekly budget refunds
+	// SOONEST, because spending a budget that's about to reset costs the least
+	// (accounts that just reset are held in reserve). Falls back to
+	// least-recently-used when reset instants are unknown.
+	'reset-soonest',
 ] as const;
 
 export type ServiceRouteAccountStrategy = (typeof SERVICE_ROUTE_ACCOUNT_STRATEGIES)[number];

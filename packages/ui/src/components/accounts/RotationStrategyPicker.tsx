@@ -57,6 +57,14 @@ const STRATEGY_OPTIONS: readonly StrategyOption[] = [
     descriptionKey: "accounts.strategy.quotaAware.description",
     descriptionFallback: "Skip accounts above 85% utilization.",
   },
+  {
+    id: "reset-soonest",
+    labelKey: "accounts.strategy.resetSoonest.label",
+    labelFallback: "Reset-soonest",
+    descriptionKey: "accounts.strategy.resetSoonest.description",
+    descriptionFallback:
+      "Spend the account whose weekly limit resets first; hold freshly-reset accounts in reserve.",
+  },
 ];
 
 export function RotationStrategyPicker({
