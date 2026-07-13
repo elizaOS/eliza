@@ -10,6 +10,12 @@ import { cleanup, render } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@elizaos/ui", () => ({
+  OrchestratorTaskWidget: () => (
+    <div data-testid="live-orchestrator-task-stream">live tasks</div>
+  ),
+}));
+
 // The rich workbench pulls the whole @elizaos/ui surface; stub it so the DOM
 // surface is testable without the full host. The escape hatch renders this stub
 // as its real DOM children in the shipped GUI surface.
@@ -33,6 +39,9 @@ describe("OrchestratorView — GUI route component", () => {
     expect(escapeBox).toBeTruthy();
     expect(
       escapeBox?.querySelector('[data-testid="rich-orchestrator-workbench"]'),
+    ).toBeTruthy();
+    expect(
+      escapeBox?.querySelector('[data-testid="live-orchestrator-task-stream"]'),
     ).toBeTruthy();
   });
 

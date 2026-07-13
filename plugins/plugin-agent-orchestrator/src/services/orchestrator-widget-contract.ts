@@ -37,6 +37,7 @@ export interface OrchestratorWidgetTask {
 export interface OrchestratorWidgetSnapshot {
   version: "orchestrator.widgets.v1";
   generatedAt: string;
+  totalTaskCount: number;
   tasks: OrchestratorWidgetTask[];
 }
 
@@ -82,19 +83,22 @@ function progressSummary(task: TaskThreadDto): string {
 export function buildOrchestratorWidgetSnapshot(
   tasks: TaskThreadDto[],
   now: Date = new Date(),
+  lineageTasks: TaskThreadDto[] = tasks,
 ): OrchestratorWidgetSnapshot {
   const childIdsByParent = new Map<string, string[]>();
-  for (const task of tasks) {
+  for (const task of lineageTasks) {
     const parentTaskId = task.parentTaskId;
     if (!parentTaskId) continue;
     const existing = childIdsByParent.get(parentTaskId) ?? [];
     existing.push(task.id);
     childIdsByParent.set(parentTaskId, existing);
   }
+  for (const childIds of childIdsByParent.values()) childIds.sort();
 
   return {
     version: "orchestrator.widgets.v1",
     generatedAt: now.toISOString(),
+    totalTaskCount: lineageTasks.length,
     tasks: tasks.map((task) => ({
       taskId: task.id,
       label: task.title,

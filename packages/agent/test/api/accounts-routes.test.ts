@@ -219,14 +219,12 @@ describe("accounts routes provider-scoped account resolution", () => {
       pathname: "/api/accounts/openai-api/shared-id",
     });
     expect(await handleAccountsRoutes(ctx)).toBe(true);
-    expect(poolMock.deleteMetadata).toHaveBeenCalledWith(
-      "openai-api",
-      "shared-id",
-    );
-    expect(vi.mocked(deleteAccount)).toHaveBeenCalledWith(
-      "openai-api",
-      "shared-id",
-    );
+    expect(poolMock.deleteMetadata.mock.calls).toEqual([
+      ["openai-api", "shared-id"],
+    ]);
+    expect(vi.mocked(deleteAccount).mock.calls).toEqual([
+      ["openai-api", "shared-id"],
+    ]);
     expect(ctx.body).toEqual({ deleted: true });
   });
 
@@ -263,9 +261,9 @@ describe("accounts routes provider-scoped account resolution", () => {
       pathname: "/api/accounts/openai-api/shared-id/refresh-usage",
     });
     expect(await handleAccountsRoutes(ctx)).toBe(true);
-    expect(poolMock.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "shared-id", health: "ok" }),
-    );
+    expect(poolMock.upsert.mock.calls).toEqual([
+      [expect.objectContaining({ id: "shared-id", health: "ok" })],
+    ]);
     expect(ctx.body).toMatchObject({ account: { health: "ok" } });
   });
 
@@ -450,13 +448,15 @@ describe("accounts routes provider-scoped account resolution", () => {
 
     expect(handled).toBe(true);
     expect(ctx.status).toBe(201);
-    expect(poolMock.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        providerId: "zai-coding",
-        label: "z.ai Coding",
-        source: "api-key",
-      }),
-    );
+    expect(poolMock.upsert.mock.calls).toEqual([
+      [
+        expect.objectContaining({
+          providerId: "zai-coding",
+          label: "z.ai Coding",
+          source: "api-key",
+        }),
+      ],
+    ]);
   });
 
   it("keeps z.ai coding-plan and direct API accounts in separate credential pools", async () => {

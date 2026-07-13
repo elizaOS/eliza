@@ -59,6 +59,7 @@ describe("orchestrator widget contract", () => {
 
     expect(snapshot.version).toBe("orchestrator.widgets.v1");
     expect(snapshot.generatedAt).toBe("2026-07-12T00:02:00.000Z");
+    expect(snapshot.totalTaskCount).toBe(1);
     expect(snapshot.tasks[0]).toMatchObject({
       taskId: "task-1",
       label: "Implement runtime orchestration",
@@ -112,6 +113,22 @@ describe("orchestrator widget lineage", () => {
     expect(snapshot.tasks.find((t) => t.taskId === "child")?.parentTaskId).toBe(
       "parent",
     );
+  });
+
+  it("derives stable lineage from the complete task set outside the visible bound", () => {
+    const parent = task({ id: "parent" });
+    const snapshot = buildOrchestratorWidgetSnapshot(
+      [parent],
+      new Date("2026-07-12T00:02:00.000Z"),
+      [
+        parent,
+        task({ id: "child-z", parentTaskId: "parent" }),
+        task({ id: "child-a", parentTaskId: "parent" }),
+      ],
+    );
+
+    expect(snapshot.totalTaskCount).toBe(3);
+    expect(snapshot.tasks[0]?.childTaskIds).toEqual(["child-a", "child-z"]);
   });
 });
 

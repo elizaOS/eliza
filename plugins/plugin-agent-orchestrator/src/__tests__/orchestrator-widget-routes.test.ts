@@ -281,10 +281,10 @@ describe("orchestrator widget routes", () => {
     expect(h.service.listTasks).toHaveBeenCalledWith({
       includeArchived: true,
       projectId: "project-1",
-      limit: 5,
     });
     expect(JSON.parse(h.chunks.join(""))).toMatchObject({
       version: "orchestrator.widgets.v1",
+      totalTaskCount: 0,
       tasks: [],
     });
   });

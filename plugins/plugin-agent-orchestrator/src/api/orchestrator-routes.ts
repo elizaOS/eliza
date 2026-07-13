@@ -278,12 +278,19 @@ async function dispatchOrchestratorRoutes(
   // task/progress widgets. The full task detail remains on /tasks/:id; this
   // snapshot is intentionally small enough to refresh beside chat messages.
   if (method === "GET" && pathname === `${PREFIX}/widgets`) {
-    const tasks = await service.listTasks({
+    const limit = Math.min(parseLimit(query.get("limit")) ?? 20, 100);
+    const allTasks = await service.listTasks({
       includeArchived: query.get("includeArchived") === "true",
       projectId: query.get("projectId") ?? undefined,
-      limit: parseLimit(query.get("limit")) ?? 20,
     });
-    sendJson(res, buildOrchestratorWidgetSnapshot(tasks));
+    sendJson(
+      res,
+      buildOrchestratorWidgetSnapshot(
+        allTasks.slice(0, limit),
+        new Date(),
+        allTasks,
+      ),
+    );
     return true;
   }
 
@@ -298,15 +305,21 @@ async function dispatchOrchestratorRoutes(
       "X-Accel-Buffering": "no",
     });
     const writeSnapshot = async () => {
-      const tasks = await service.listTasks({
+      const limit = Math.min(parseLimit(query.get("limit")) ?? 20, 100);
+      const allTasks = await service.listTasks({
         includeArchived: query.get("includeArchived") === "true",
         projectId: query.get("projectId") ?? undefined,
-        limit: parseLimit(query.get("limit")) ?? 20,
       });
       if (!res.writableEnded) {
         res.write(`event: snapshot\n`);
         res.write(
-          `data: ${JSON.stringify(buildOrchestratorWidgetSnapshot(tasks))}\n\n`,
+          `data: ${JSON.stringify(
+            buildOrchestratorWidgetSnapshot(
+              allTasks.slice(0, limit),
+              new Date(),
+              allTasks,
+            ),
+          )}\n\n`,
         );
       }
     };

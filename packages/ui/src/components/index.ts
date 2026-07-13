@@ -185,6 +185,10 @@ export {
   OrchestratorAccountsView,
   type OrchestratorAccountsViewProps,
 } from "./chat/widgets/agent-orchestrator-accounts-view";
+export {
+  OrchestratorTaskWidget,
+  type OrchestratorTaskWidgetProps,
+} from "./chat/widgets/orchestrator-task-widget";
 export * from "./chat/widgets/shared";
 export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
