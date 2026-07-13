@@ -11,7 +11,7 @@
 import { describe, expect, test } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
-import { type Character, ModelType } from "../../types";
+import { ModelType } from "../../types";
 import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 
 const MSG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
@@ -31,7 +31,7 @@ function makeRuntime(opts: RuntimeMockOpts): {
 			name: "RecallEmbedIntegrationAgent",
 			bio: "Exercises recall embedding through the real model router.",
 			settings: {},
-		} as Character,
+		},
 		adapter: new InMemoryDatabaseAdapter(),
 		logLevel: "fatal",
 	});
