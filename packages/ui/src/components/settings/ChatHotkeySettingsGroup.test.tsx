@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 
 /**
- * Covers ChatHotkeySettingsGroup: default accelerator + enabled toggle,
- * disabling (persist + unregister shortcut), recording a keystroke to rebind,
- * Escape-cancels-recording, and surfacing an OS-rejected accelerator without
- * persisting. jsdom render with the desktop bridge mocked and the real hotkey
- * store.
+ * Covers the desktop hotkey settings groups (chat summon, voice conversation,
+ * transcribe): default accelerator + enabled toggle, disabling (persist +
+ * unregister shortcut), recording a keystroke to rebind, Escape-cancels-
+ * recording, and surfacing an OS-rejected accelerator without persisting.
+ * jsdom render with the desktop bridge mocked and the real hotkey stores.
  */
 
 import {
@@ -17,6 +17,14 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __setAppValueForTests } from "../../state/app-store";
+import {
+  DEFAULT_TRANSCRIBE_HOTKEY_ACCELERATOR,
+  DEFAULT_VOICE_HOTKEY_ACCELERATOR,
+  getTranscribeHotkey,
+  getVoiceHotkey,
+  setTranscribeHotkey,
+  setVoiceHotkey,
+} from "../../state/desktop-hotkeys";
 import {
   DEFAULT_CHAT_OVERLAY_ACCELERATOR,
   getChatOverlayHotkey,
@@ -38,7 +46,11 @@ vi.mock("../../bridge", () => ({
   }) => invokeDesktopBridgeRequest(options),
 }));
 
-import { ChatHotkeySettingsGroup } from "./ChatHotkeySettingsGroup";
+import {
+  ChatHotkeySettingsGroup,
+  TranscribeHotkeySettingsGroup,
+  VoiceHotkeySettingsGroup,
+} from "./ChatHotkeySettingsGroup";
 
 function seed() {
   __setAppValueForTests({
@@ -50,11 +62,19 @@ function seed() {
 
 beforeEach(() => {
   window.localStorage.clear();
-  // Reset the module-level hotkey store to the default before each test — its
-  // cached snapshot survives a localStorage.clear() on its own.
+  // Reset the module-level hotkey stores to their defaults before each test —
+  // their cached snapshots survive a localStorage.clear() on their own.
   setChatOverlayHotkey({
     accelerator: DEFAULT_CHAT_OVERLAY_ACCELERATOR,
     enabled: true,
+  });
+  setVoiceHotkey({
+    accelerator: DEFAULT_VOICE_HOTKEY_ACCELERATOR,
+    enabled: true,
+  });
+  setTranscribeHotkey({
+    accelerator: DEFAULT_TRANSCRIBE_HOTKEY_ACCELERATOR,
+    enabled: false,
   });
   invokeDesktopBridgeRequest.mockReset();
   invokeDesktopBridgeRequest.mockImplementation(async () => ({
@@ -152,5 +172,86 @@ describe("ChatHotkeySettingsGroup", () => {
         "The operating system rejected CommandOrControl+J. Choose a different shortcut.",
       ),
     ).toBeTruthy();
+  });
+});
+
+describe("VoiceHotkeySettingsGroup", () => {
+  it("renders the default accelerator with the toggle ON (voice is on by default)", () => {
+    render(<VoiceHotkeySettingsGroup />);
+    expect(screen.getByText("CommandOrControl+Shift+M")).toBeTruthy();
+    const sw = screen.getByRole("switch") as HTMLButtonElement;
+    expect(sw.getAttribute("data-state")).toBe("checked");
+  });
+
+  it("recording a keystroke rebinds and re-registers the `voice` shortcut id", async () => {
+    render(<VoiceHotkeySettingsGroup />);
+    act(() => {
+      fireEvent.click(screen.getByText("Record"));
+    });
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "m", ctrlKey: true, altKey: true });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(getVoiceHotkey().accelerator).toBe("CommandOrControl+Alt+M");
+    expect(invokeDesktopBridgeRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMethod: "desktopUnregisterShortcut",
+        params: { id: "voice" },
+      }),
+    );
+    expect(invokeDesktopBridgeRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMethod: "desktopRegisterShortcut",
+        params: { id: "voice", accelerator: "CommandOrControl+Alt+M" },
+      }),
+    );
+  });
+
+  it("disabling the toggle persists disabled and unregisters only", async () => {
+    render(<VoiceHotkeySettingsGroup />);
+    const sw = screen.getByRole("switch") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(sw);
+      await Promise.resolve();
+    });
+    expect(getVoiceHotkey().enabled).toBe(false);
+    expect(invokeDesktopBridgeRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMethod: "desktopUnregisterShortcut",
+        params: { id: "voice" },
+      }),
+    );
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({ rpcMethod: "desktopRegisterShortcut" }),
+    );
+  });
+});
+
+describe("TranscribeHotkeySettingsGroup", () => {
+  it("renders the default accelerator with the toggle OFF (transcribe is opt-in)", () => {
+    render(<TranscribeHotkeySettingsGroup />);
+    expect(screen.getByText("CommandOrControl+Alt+T")).toBeTruthy();
+    const sw = screen.getByRole("switch") as HTMLButtonElement;
+    expect(sw.getAttribute("data-state")).toBe("unchecked");
+    // The recorder is disabled while the hotkey is off.
+    const record = screen.getByText("Record") as HTMLButtonElement;
+    expect(record.closest("button")?.disabled).toBe(true);
+  });
+
+  it("enabling the toggle registers the `transcribe` shortcut with the default accelerator", async () => {
+    render(<TranscribeHotkeySettingsGroup />);
+    const sw = screen.getByRole("switch") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(sw);
+      await Promise.resolve();
+    });
+    expect(getTranscribeHotkey().enabled).toBe(true);
+    expect(invokeDesktopBridgeRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMethod: "desktopRegisterShortcut",
+        params: { id: "transcribe", accelerator: "CommandOrControl+Alt+T" },
+      }),
+    );
   });
 });

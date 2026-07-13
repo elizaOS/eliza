@@ -1,44 +1,50 @@
 /**
- * Desktop settings control for the programmable chat-overlay summon hotkey
- * (#10716), embedded in the Desktop Workspace section. Persists the accelerator
- * via `setChatOverlayHotkey` and re-registers the OS shortcut through the
+ * Desktop settings controls for the programmable global hotkeys, embedded in
+ * the Desktop Workspace section: chat-overlay summon (#10716), the
+ * voice-conversation toggle, and the transcription toggle. One generic
+ * enable-toggle + keystroke-recorder group is instantiated per hotkey store;
+ * each persists through its store and re-registers the OS shortcut through the
  * desktop bridge so a change takes effect without relaunching the shell.
  */
 
-import { Keyboard } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Keyboard, type LucideIcon, Mic, ScrollText } from "lucide-react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { invokeDesktopBridgeRequest } from "../../bridge";
 import { useAppSelector } from "../../state";
 import {
   acceleratorFromKeyboardEvent,
-  DEFAULT_CHAT_OVERLAY_ACCELERATOR,
-  setChatOverlayHotkey,
-  useChatOverlayHotkey,
-} from "../../state/useChatOverlayHotkey";
+  type DesktopHotkeyStore,
+  TRANSCRIBE_SHORTCUT_ID,
+  transcribeHotkeyStore,
+  VOICE_SHORTCUT_ID,
+  voiceHotkeyStore,
+} from "../../state/desktop-hotkeys";
+import { chatOverlayHotkeyStore } from "../../state/useChatOverlayHotkey";
 import { Button } from "../ui/button";
 import { Switch } from "../ui/switch";
 import { SettingsGroup, SettingsRow } from "./settings-layout";
 
 /**
- * Push the current chat-overlay accelerator to the desktop shell so a change
- * takes effect without a relaunch: unregister the old binding, then register
- * the new one when enabled. Best-effort — a bridge failure leaves the persisted
- * setting untouched and is surfaced to the caller.
+ * Push a hotkey's current accelerator to the desktop shell so a change takes
+ * effect without a relaunch: unregister the old binding, then register the new
+ * one when enabled. Best-effort — a bridge failure leaves the persisted setting
+ * untouched and is surfaced to the caller.
  */
-async function syncChatOverlayShortcut(
+async function syncDesktopShortcut(
+  shortcutId: string,
   accelerator: string,
   enabled: boolean,
 ): Promise<void> {
   await invokeDesktopBridgeRequest<void>({
     rpcMethod: "desktopUnregisterShortcut",
     ipcChannel: "desktop:unregisterShortcut",
-    params: { id: "chat-overlay" },
+    params: { id: shortcutId },
   });
   if (enabled) {
     const result = await invokeDesktopBridgeRequest<{ success: boolean }>({
       rpcMethod: "desktopRegisterShortcut",
       ipcChannel: "desktop:registerShortcut",
-      params: { id: "chat-overlay", accelerator },
+      params: { id: shortcutId, accelerator },
     });
     if (result?.success === false) {
       throw new Error(
@@ -48,25 +54,53 @@ async function syncChatOverlayShortcut(
   }
 }
 
+interface HotkeyGroupCopy {
+  title: string;
+  description: string;
+  enableLabel: string;
+  enableDescription: string;
+}
+
 /** Enable toggle plus a keystroke recorder that captures the next key
- * combination as the chat-overlay accelerator. */
-export function ChatHotkeySettingsGroup() {
+ * combination as the hotkey's accelerator. Generic over the store + shortcut
+ * id so chat/voice/transcribe stay one implementation. */
+function DesktopHotkeySettingsGroup({
+  store,
+  shortcutId,
+  icon,
+  i18nPrefix,
+  copy,
+}: {
+  store: DesktopHotkeyStore;
+  shortcutId: string;
+  icon: LucideIcon;
+  /** i18n key prefix, e.g. `desktopworkspacesection.chatHotkey`. */
+  i18nPrefix: string;
+  copy: HotkeyGroupCopy;
+}) {
   const t = useAppSelector((s) => s.t);
-  const hotkey = useChatOverlayHotkey();
+  const hotkey = useSyncExternalStore(
+    store.subscribe,
+    store.get,
+    store.getDefault,
+  );
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const apply = useCallback(async (accelerator: string, enabled: boolean) => {
-    try {
-      await syncChatOverlayShortcut(accelerator, enabled);
-      setChatOverlayHotkey({ accelerator, enabled });
-      setError(null);
-    } catch (syncError) {
-      setError(
-        syncError instanceof Error ? syncError.message : String(syncError),
-      );
-    }
-  }, []);
+  const apply = useCallback(
+    async (accelerator: string, enabled: boolean) => {
+      try {
+        await syncDesktopShortcut(shortcutId, accelerator, enabled);
+        store.set({ accelerator, enabled });
+        setError(null);
+      } catch (syncError) {
+        setError(
+          syncError instanceof Error ? syncError.message : String(syncError),
+        );
+      }
+    },
+    [shortcutId, store],
+  );
 
   useEffect(() => {
     if (!recording) {
@@ -89,24 +123,21 @@ export function ChatHotkeySettingsGroup() {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [recording, apply, hotkey.enabled]);
 
+  const Icon = icon;
   return (
     <SettingsGroup
-      title={t("desktopworkspacesection.chatHotkey.title", {
-        defaultValue: "Chat Summon Hotkey",
-      })}
-      description={t("desktopworkspacesection.chatHotkey.description", {
-        defaultValue:
-          "A global keyboard shortcut that brings the floating chat surface to the foreground.",
+      title={t(`${i18nPrefix}.title`, { defaultValue: copy.title })}
+      description={t(`${i18nPrefix}.description`, {
+        defaultValue: copy.description,
       })}
     >
       <SettingsRow
-        icon={Keyboard}
-        label={t("desktopworkspacesection.chatHotkey.enableLabel", {
-          defaultValue: "Enable chat summon hotkey",
+        icon={Icon}
+        label={t(`${i18nPrefix}.enableLabel`, {
+          defaultValue: copy.enableLabel,
         })}
-        description={t("desktopworkspacesection.chatHotkey.enableDescription", {
-          defaultValue:
-            "The command palette keeps ⌘/Ctrl+K; this is a separate shortcut.",
+        description={t(`${i18nPrefix}.enableDescription`, {
+          defaultValue: copy.enableDescription,
         })}
         control={
           <Switch
@@ -114,19 +145,19 @@ export function ChatHotkeySettingsGroup() {
             onCheckedChange={(checked) =>
               void apply(hotkey.accelerator, checked)
             }
-            aria-label={t("desktopworkspacesection.chatHotkey.enableLabel", {
-              defaultValue: "Enable chat summon hotkey",
+            aria-label={t(`${i18nPrefix}.enableLabel`, {
+              defaultValue: copy.enableLabel,
             })}
           />
         }
       />
       <SettingsRow
-        label={t("desktopworkspacesection.chatHotkey.shortcutLabel", {
+        label={t(`${i18nPrefix}.shortcutLabel`, {
           defaultValue: "Shortcut",
         })}
         description={
           recording
-            ? t("desktopworkspacesection.chatHotkey.recording", {
+            ? t(`${i18nPrefix}.recording`, {
                 defaultValue: "Press a key combination… (Esc to cancel)",
               })
             : hotkey.accelerator
@@ -144,23 +175,23 @@ export function ChatHotkeySettingsGroup() {
               }}
             >
               {recording
-                ? t("desktopworkspacesection.chatHotkey.listening", {
+                ? t(`${i18nPrefix}.listening`, {
                     defaultValue: "Listening…",
                   })
-                : t("desktopworkspacesection.chatHotkey.record", {
+                : t(`${i18nPrefix}.record`, {
                     defaultValue: "Record",
                   })}
             </Button>
-            {hotkey.accelerator !== DEFAULT_CHAT_OVERLAY_ACCELERATOR && (
+            {hotkey.accelerator !== store.defaultHotkey.accelerator && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={() =>
-                  void apply(DEFAULT_CHAT_OVERLAY_ACCELERATOR, hotkey.enabled)
+                  void apply(store.defaultHotkey.accelerator, hotkey.enabled)
                 }
               >
-                {t("desktopworkspacesection.chatHotkey.reset", {
+                {t(`${i18nPrefix}.reset`, {
                   defaultValue: "Reset",
                 })}
               </Button>
@@ -177,5 +208,66 @@ export function ChatHotkeySettingsGroup() {
         </div>
       )}
     </SettingsGroup>
+  );
+}
+
+/** Chat-overlay summon hotkey (#10716) — shortcut id `chat-overlay`. */
+export function ChatHotkeySettingsGroup() {
+  return (
+    <DesktopHotkeySettingsGroup
+      store={chatOverlayHotkeyStore}
+      shortcutId="chat-overlay"
+      icon={Keyboard}
+      i18nPrefix="desktopworkspacesection.chatHotkey"
+      copy={{
+        title: "Chat Summon Hotkey",
+        description:
+          "A global keyboard shortcut that brings the floating chat surface to the foreground.",
+        enableLabel: "Enable chat summon hotkey",
+        enableDescription:
+          "The command palette keeps ⌘/Ctrl+K; this is a separate shortcut.",
+      }}
+    />
+  );
+}
+
+/** Voice-conversation toggle hotkey — shortcut id `voice`; the press summons
+ * the window and flips the hands-free conversation loop. */
+export function VoiceHotkeySettingsGroup() {
+  return (
+    <DesktopHotkeySettingsGroup
+      store={voiceHotkeyStore}
+      shortcutId={VOICE_SHORTCUT_ID}
+      icon={Mic}
+      i18nPrefix="desktopworkspacesection.voiceHotkey"
+      copy={{
+        title: "Voice Conversation Hotkey",
+        description:
+          "A global keyboard shortcut that summons the window and starts (or ends) a hands-free voice conversation.",
+        enableLabel: "Enable voice conversation hotkey",
+        enableDescription:
+          "Press once to start talking, press again to end the conversation.",
+      }}
+    />
+  );
+}
+
+/** Transcription toggle hotkey — shortcut id `transcribe`; disabled by default. */
+export function TranscribeHotkeySettingsGroup() {
+  return (
+    <DesktopHotkeySettingsGroup
+      store={transcribeHotkeyStore}
+      shortcutId={TRANSCRIBE_SHORTCUT_ID}
+      icon={ScrollText}
+      i18nPrefix="desktopworkspacesection.transcribeHotkey"
+      copy={{
+        title: "Transcription Hotkey",
+        description:
+          "A global keyboard shortcut that summons the window and toggles long-form transcription capture.",
+        enableLabel: "Enable transcription hotkey",
+        enableDescription:
+          "Off by default. Transcription records without agent replies until toggled off.",
+      }}
+    />
   );
 }

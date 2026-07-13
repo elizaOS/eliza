@@ -98,9 +98,11 @@ import {
   CONNECT_EVENT,
   createNavigateViewEvent,
   dispatchAppEvent,
+  dispatchVoiceControl,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   SHARE_TARGET_EVENT,
   TRAY_ACTION_EVENT,
+  type VoiceControlEventDetail,
 } from "@elizaos/ui/events";
 import {
   parseFirstRunRemoteConnectDeepLink,
@@ -145,6 +147,12 @@ import {
 } from "@elizaos/ui/platform/window-shell";
 import { AppProvider } from "@elizaos/ui/state";
 import { upsertAndActivateAgentProfile } from "@elizaos/ui/state/agent-profiles";
+import {
+  getTranscribeHotkey,
+  getVoiceHotkey,
+  TRANSCRIBE_SHORTCUT_ID,
+  VOICE_SHORTCUT_ID,
+} from "@elizaos/ui/state/desktop-hotkeys";
 import { initOcrBridge } from "@elizaos/ui/state/ocr-bridge";
 import {
   applyUiTheme,
@@ -202,6 +210,7 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import { initializeIosIntentSendBridge } from "./native/ios-intent-send-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
@@ -2239,6 +2248,8 @@ async function initializePlatform(): Promise<void> {
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
     void registerMobileBlockerBackends();
+    // iOS in-process App Intents auto-send channel (self-gates to native iOS).
+    void initializeIosIntentSendBridge();
   }
 
   if (isDesktopPlatform()) {
@@ -2794,6 +2805,29 @@ async function initializeDesktopShell(): Promise<void> {
     });
   }
 
+  // Global voice hotkeys: `voice` (default CommandOrControl+Shift+M, ON by
+  // default) flips the hands-free conversation loop; `transcribe` (default
+  // CommandOrControl+Alt+T, opt-in) flips transcription mode. A press summons
+  // the window first — press events land only in this main-window webview, and
+  // the voice surfaces live here — then dispatches the renderer voice-control
+  // intent (`desktop-hotkey` is a trusted assistant-launch source). Registered
+  // from the persisted stores at boot; the Settings recorder re-registers a
+  // change live over the desktop bridge, same UX as the chat-overlay hotkey.
+  const voiceHotkey = getVoiceHotkey();
+  if (voiceHotkey.enabled) {
+    await Desktop.registerShortcut({
+      id: VOICE_SHORTCUT_ID,
+      accelerator: voiceHotkey.accelerator,
+    });
+  }
+  const transcribeHotkey = getTranscribeHotkey();
+  if (transcribeHotkey.enabled) {
+    await Desktop.registerShortcut({
+      id: TRANSCRIBE_SHORTCUT_ID,
+      accelerator: transcribeHotkey.accelerator,
+    });
+  }
+
   // Toggle semantics (#12184): a focused + visible overlay is dismissed
   // (focus returns to the previously active app via the macOS orderOut path);
   // otherwise summon + focus it. Blur does NOT hide the pill — it is a resting
@@ -2811,6 +2845,17 @@ async function initializeDesktopShell(): Promise<void> {
     await Desktop.focusWindow();
   };
 
+  // Voice hotkeys always SUMMON (never toggle-hide like chat-overlay): the
+  // press means "talk to me", so the window must be present and focused before
+  // the voice-control intent flips the mic state.
+  const summonForVoiceControl = async (
+    command: VoiceControlEventDetail["command"],
+  ): Promise<void> => {
+    await Desktop.showWindow();
+    await Desktop.focusWindow();
+    dispatchVoiceControl({ command });
+  };
+
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopShortcutPressed",
     ipcChannel: "desktop:shortcutPressed",
@@ -2820,6 +2865,10 @@ async function initializeDesktopShell(): Promise<void> {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
       } else if (id === "chat-overlay") {
         void summonChatOverlay();
+      } else if (id === VOICE_SHORTCUT_ID) {
+        void summonForVoiceControl("converse-toggle");
+      } else if (id === TRANSCRIBE_SHORTCUT_ID) {
+        void summonForVoiceControl("transcribe-toggle");
       }
     },
   });

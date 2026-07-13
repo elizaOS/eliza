@@ -116,9 +116,15 @@ export function resolveTrayClickAction(state: {
 
 /**
  * Whether a tray click should open the widget popover instead of (just) showing
- * the main window. Opt-in (default OFF) via ELIZA_DESKTOP_TRAY_POPOVER=1;
- * requires the tray to be enabled, a platform with a popover implementation, and
- * excludes kiosk shell mode.
+ * the main window. Default ON on macOS: the popover launcher is the menu-bar
+ * views surface (its rows mirror the curated launcher list, published by
+ * DesktopTrayRuntime), and its first row — "Open Eliza" — keeps one-click chat
+ * access, since macOS attaches no NSStatusItem menu (shouldAttachTrayMenu) and
+ * a configured popover claims the icon click. Kill switch:
+ * ELIZA_DESKTOP_TRAY_POPOVER=0 restores the direct click-to-chat toggle.
+ * Requires the tray to be enabled, a platform with a popover implementation
+ * (macOS only today — TRAY_POPOVER_SUPPORTED_PLATFORMS), and excludes kiosk
+ * shell mode.
  */
 export function shouldEnableTrayPopover(
   env: NodeJS.ProcessEnv = process.env,
@@ -128,7 +134,7 @@ export function shouldEnableTrayPopover(
   if (!TRAY_POPOVER_SUPPORTED_PLATFORMS.has(platform)) {
     return false;
   }
-  if (!parseTruthy(env.ELIZA_DESKTOP_TRAY_POPOVER)) {
+  if (parseFalsy(env.ELIZA_DESKTOP_TRAY_POPOVER)) {
     return false;
   }
   if (!shouldCreateDesktopTray(env)) {

@@ -5,6 +5,12 @@
  * the menu-bar VIEW_MENU_ENTRIES both match the desktop-eligible builtin views
  * (id, label, path) and cover the same set, and that tray view-item ids
  * round-trip through parse/build.
+ *
+ * DESKTOP_VIEW_WINDOWS is the INSTANT-BOOT FALLBACK for the tray/popover views
+ * surface — after the view registry loads, the tray "Views" submenu and popover
+ * rows are rebuilt from the curated launcher list (tray-views-runtime.test.ts
+ * covers the dynamic layer). The static mirror must still track BUILTIN_VIEWS
+ * exactly, because it answers every tray click until that first registry read.
  */
 import { BUILTIN_VIEWS } from "@elizaos/agent/api/builtin-views";
 import { describe, expect, it } from "vitest";

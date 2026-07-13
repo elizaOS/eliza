@@ -1,52 +1,22 @@
 /**
- * Data + state wrapper around `Launcher`: pulls the routable views, filters them
- * by the user's enabled view kinds and active modality, curates them into the
- * ordered page (`curateLauncherPages`), and wires tile taps to view navigation
- * and chat-open. `Launcher` itself is pure presentation — one flat grid, no
- * favorites, recents, or section zones.
+ * Data + state wrapper around `Launcher`: reads the shared post-curation
+ * launcher list (`useCuratedLauncherEntries` — the same list the desktop tray
+ * and popover mirror) and wires tile taps to view navigation and chat-open.
+ * `Launcher` itself is pure presentation — one flat grid, no favorites,
+ * recents, or section zones.
  */
 import { logger } from "@elizaos/logger";
 import * as React from "react";
+import { reportUserViewSwitch } from "../../chat/useSlashCommandController";
 import { dispatchChatOpen } from "../../events";
-import { useRoutableViews } from "../../hooks/useAvailableViews";
-import { type ViewEntry, viewToEntry } from "../../hooks/view-catalog";
-import { isAospShellEnabled } from "../../navigation";
-import { getActiveViewModality } from "../../platform/platform-guards";
-import { useAppSelectorShallow } from "../../state";
-import { useEnabledViewKinds } from "../../state/useViewKinds";
+import type { ViewEntry } from "../../hooks/view-catalog";
 import { shellHistory } from "../../surface-realm-channel";
 import { Launcher } from "./Launcher";
-import { curateLauncherPages } from "./launcher-curation";
+import { useCuratedLauncherEntries } from "./useCuratedLauncherEntries";
 
 export const LauncherSurface = React.memo(
   function LauncherSurface(): React.JSX.Element {
-    const { views, loading } = useRoutableViews();
-    const enabledKinds = useEnabledViewKinds();
-    const { elizaCloudConnected } = useAppSelectorShallow((state) => ({
-      elizaCloudConnected: state.elizaCloudConnected,
-    }));
-    const activeModality = React.useMemo(() => getActiveViewModality(), []);
-    const isAosp = React.useMemo(() => isAospShellEnabled(), []);
-
-    // The launcher renders the loaded views for the active modality; the curation
-    // layer owns removal, dedup, AOSP-gating, and developer/preview visibility.
-    const modalEntries = React.useMemo(
-      () =>
-        views
-          .filter((view) => (view.viewType ?? "gui") === activeModality)
-          .map(viewToEntry),
-      [activeModality, views],
-    );
-
-    const page = React.useMemo<ViewEntry[]>(
-      () =>
-        curateLauncherPages(modalEntries, {
-          isAosp,
-          enabledKinds,
-          cloudActive: elizaCloudConnected,
-        }),
-      [modalEntries, isAosp, enabledKinds, elizaCloudConnected],
-    );
+    const { entries: page, loading } = useCuratedLauncherEntries();
 
     const handleLaunch = React.useCallback((entry: ViewEntry) => {
       const path = entry.path ?? `/apps/${entry.id}`;
@@ -58,6 +28,7 @@ export const LauncherSurface = React.memo(
           shellHistory.pushState(null, "", path);
           window.dispatchEvent(new PopStateEvent("popstate"));
         }
+        reportUserViewSwitch(entry.id, path);
         if (entry.id === "chat") {
           // The Messages tile lands on `/chat` (the ambient home). Open the chat
           // so the user arrives in a conversation, not on a collapsed pill.

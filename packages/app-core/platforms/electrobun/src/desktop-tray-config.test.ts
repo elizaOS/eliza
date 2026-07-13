@@ -84,11 +84,8 @@ describe("shouldStartTrayFirst", () => {
 });
 
 describe("shouldEnableTrayPopover", () => {
-  it("is opt-in: off by default on macOS", () => {
-    expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(false);
-  });
-
-  it("enables on macOS when ELIZA_DESKTOP_TRAY_POPOVER is truthy", () => {
+  it("defaults ON for macOS (the popover launcher is the menu-bar views surface)", () => {
+    expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(true);
     expect(
       shouldEnableTrayPopover(
         { ELIZA_DESKTOP_TRAY_POPOVER: "1" },
@@ -96,6 +93,18 @@ describe("shouldEnableTrayPopover", () => {
         [],
       ),
     ).toBe(true);
+  });
+
+  it("honors the ELIZA_DESKTOP_TRAY_POPOVER=0 kill switch (restores click-to-chat)", () => {
+    for (const off of ["0", "false", "no"]) {
+      expect(
+        shouldEnableTrayPopover(
+          { ELIZA_DESKTOP_TRAY_POPOVER: off },
+          "darwin",
+          [],
+        ),
+      ).toBe(false);
+    }
   });
 
   it("stays off on Windows/Linux (tracked follow-up) even when requested", () => {

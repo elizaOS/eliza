@@ -10,6 +10,12 @@
  * graph — the renderer bundle builds the tray synchronously, with no /api/views
  * round-trip. DesktopTrayRuntime consumes these to build and dispatch the native
  * tray.
+ *
+ * The static DESKTOP_VIEW_WINDOWS shape is the INSTANT-BOOT FALLBACK only: once
+ * the view registry loads, DesktopTrayRuntime re-sets the tray with
+ * `buildLocalizedTrayMenuWithViews()` fed from the curated launcher list (the
+ * same post-curation list the Launcher renders) and resolves dynamic ids via
+ * ./tray-views-runtime.
  */
 import type { DesktopClickAuditItem } from "@elizaos/ui/utils/desktop-workspace";
 
@@ -101,13 +107,41 @@ export function parseTrayOpenViewItemId(itemId: string): string | null {
 /**
  * Build the tray "Views" submenu items from {@link DESKTOP_VIEW_WINDOWS}. Each
  * item id is `tray-open-view-<viewId>`; the renderer opens the matching view in
- * its own desktop window. Pure so the menu shape is unit-testable.
+ * its own desktop window. Pure so the menu shape is unit-testable. This static
+ * shape is the instant-boot fallback — once the view registry loads,
+ * DesktopTrayRuntime re-sets the tray with {@link buildDynamicTrayViewItems}
+ * output derived from the curated launcher list.
  */
 export function buildTrayViewItems(): DesktopTrayMenuItem[] {
   return DESKTOP_VIEW_WINDOWS.map((view) => ({
     id: trayOpenViewItemId(view.id),
     label: view.label,
     labelKey: view.labelKey,
+  }));
+}
+
+/**
+ * Minimal view shape the dynamic tray/popover builders need. Produced from the
+ * post-curation launcher list (curateLauncherPages output), so hidden-view
+ * exclusion and alias canonicalization already happened upstream.
+ */
+export interface DesktopTrayViewSource {
+  readonly id: string;
+  readonly label: string;
+}
+
+/**
+ * Build the tray "Views" submenu from the runtime launcher catalog. Dynamic
+ * labels come from the view entries themselves (already display-ready), so no
+ * `labelKey` is attached — localization applies only to the fixed chrome
+ * around them. Pure for unit-testability.
+ */
+export function buildDynamicTrayViewItems(
+  views: readonly DesktopTrayViewSource[],
+): DesktopTrayMenuItem[] {
+  return views.map((view) => ({
+    id: trayOpenViewItemId(view.id),
+    label: view.label,
   }));
 }
 
@@ -199,6 +233,22 @@ export function buildLocalizedTrayMenu(
   return DESKTOP_TRAY_MENU_ITEMS.map(localize);
 }
 
+/**
+ * Localized tray menu with the "Views" submenu replaced by dynamic items from
+ * the runtime launcher catalog. The fixed chrome still localizes through `t`;
+ * the injected view items keep their entry-provided labels (no `labelKey`).
+ * DesktopTrayRuntime re-sets the native tray with this once the curated
+ * launcher list is available, and again on every view-registry change.
+ */
+export function buildLocalizedTrayMenuWithViews(
+  t: (key: string, vars?: { defaultValue?: string }) => string,
+  viewItems: DesktopTrayMenuItem[],
+): DesktopTrayMenuItem[] {
+  return buildLocalizedTrayMenu(t).map((item) =>
+    item.id === "tray-views" ? { ...item, submenu: viewItems } : item,
+  );
+}
+
 export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
   {
     id: "tray-open-chat",
@@ -240,6 +290,21 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     label: "Notifications",
     expectedAction:
       "Show and focus the main window, then open the notification center in place.",
+    runtimeRequirement: "desktop",
+    coverage: "automated",
+  },
+  // One audit row covers the whole dynamic view family: the "Views" submenu is
+  // rebuilt at runtime from the curated launcher list, so its `tray-open-view-
+  // <id>` children cannot be enumerated statically. The submenu container id is
+  // the audited surface; per-item behavior is uniform (open that view in its
+  // own desktop window) and covered by tray-views-runtime.test.ts plus the
+  // packaged desktop-tray-views e2e.
+  {
+    id: "tray-views",
+    entryPoint: "tray",
+    label: "Views",
+    expectedAction:
+      "Submenu of every curated launcher view (dynamic tray-open-view-<id> items). Each opens the view in its own desktop window, resolved against the runtime launcher catalog with the static DESKTOP_VIEW_WINDOWS mirror as the instant-boot fallback.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },

@@ -18,6 +18,13 @@ import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { LauncherSurface } from "./LauncherSurface";
 
 let aospEnabled = false;
+const { reportUserViewSwitch } = vi.hoisted(() => ({
+  reportUserViewSwitch: vi.fn(),
+}));
+
+vi.mock("../../chat/useSlashCommandController", () => ({
+  reportUserViewSwitch,
+}));
 
 vi.mock("../../hooks/useAvailableViews", () => ({
   useRoutableViews: vi.fn(),
@@ -158,5 +165,6 @@ describe("LauncherSurface", () => {
     render(<LauncherSurface />);
     fireEvent.click(screen.getByRole("button", { name: "Browser" }));
     expect(window.location.pathname).toBe("/browser");
+    expect(reportUserViewSwitch).toHaveBeenCalledWith("browser", "/browser");
   });
 });
