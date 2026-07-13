@@ -16,6 +16,7 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  if?: string;
   environment?: string;
   "timeout-minutes"?: number;
   env?: Record<string, string>;
@@ -38,11 +39,12 @@ function step(name: string): WorkflowStep {
 }
 
 describe("managed dedicated staging canary workflow (#16194)", () => {
-  test("is manual + scheduled, staging-only, serialized, and never uses Hetzner credentials", () => {
+  test("is maintainer-triggered or scheduled, staging-only, serialized, and never uses Hetzner credentials", () => {
     expect(workflow.on?.schedule).toBeDefined();
     expect(workflow.on?.workflow_dispatch).toBeDefined();
-    expect(workflow.on?.pull_request).toBeUndefined();
+    expect(workflow.on?.pull_request).toEqual({ types: ["labeled"] });
     expect(workflow.on?.push).toBeUndefined();
+    expect(job?.if).toContain("run-managed-dedicated-canary");
     expect(job?.environment).toBe("staging");
     expect(job?.["timeout-minutes"]).toBe(45);
     expect(job?.env?.CLOUD_DEDICATED_CANARY_BASE_URL).toBe(

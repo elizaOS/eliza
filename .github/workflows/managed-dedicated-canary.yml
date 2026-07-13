@@ -9,6 +9,11 @@ on:
   schedule:
     - cron: "17 8 * * *"
   workflow_dispatch:
+  # A maintainer-applied label lets the workflow prove a new harness before it
+  # reaches the default branch; the staging environment still owns secret and
+  # approval policy.
+  pull_request:
+    types: [labeled]
 
 concurrency:
   group: managed-dedicated-staging-canary
@@ -20,6 +25,7 @@ permissions:
 jobs:
   canary:
     name: Provision + bridge + SSE + cleanup
+    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'run-managed-dedicated-canary' }}
     runs-on: ubuntu-24.04
     environment: staging
     # The script's absolute worst-case request budgets stay below this cap and
