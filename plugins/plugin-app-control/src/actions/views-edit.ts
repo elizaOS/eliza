@@ -1,15 +1,7 @@
 /**
- * @module plugin-app-control/actions/views-edit
- *
- * edit sub-mode of the VIEWS action.
- *
- * Resolves the target view by id/label/plugin, locates its source directory,
- * and dispatches a coding sub-agent (START_CODING_TASK) to perform the
- * requested edit. After the agent completes and emits PLUGIN_CREATE_DONE the
- * view registry picks up bundle changes automatically on the next request.
- *
- * Metadata-only edits (label, description, tags) require plugin config
- * changes, which are outside this coding sub-agent dispatch path.
+ * Delegates verified source edits for an explicitly selected registered view.
+ * The target resolves to local plugin source, stays locked to that worktree,
+ * and returns completion to the originating room after rebuild and reload.
  */
 
 import type {
@@ -22,6 +14,7 @@ import type {
 import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { findAsyncCodingDelegationActionName } from "./scaffold-env.js";
+import { buildVerifiedPluginTaskParameters } from "./verified-plugin-task.js";
 import type { ViewSummary } from "./views-client.js";
 import { isRestrictedPlatform } from "./views-platform.js";
 import { locatePluginSourceDir } from "./views-plugin-source.js";
@@ -189,31 +182,38 @@ async function dispatchEditAgent({
 		`viewLabel: ${view.label}`,
 		`intent: ${intent}`,
 		`sourceDir: ${workdir}`,
+		"deploymentScope: local runtime plugin only; do not publish or register a Cloud app, request parent-agent Cloud commands, or wait for a CDN URL",
 		"referenceDocs: read SCAFFOLD.md or AGENTS.md if present, otherwise README.md",
 		"implementation: minimal requested change; no unrelated refactors",
-		"verificationCommands[3]:",
+		"verificationCommands[4]:",
 		"  bun run typecheck",
 		"  bun run lint",
 		"  bun run test",
+		"  bun run build",
+		"completionFiles: list every changed file as a nonempty relative path array; replace the example path with the actual paths",
+		"completionTests: replace the example passed count with the exact count printed by the test command",
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
-		`PLUGIN_CREATE_DONE {"pluginName":"${view.pluginName}","files":[],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		`PLUGIN_CREATE_DONE {"pluginName":"${view.pluginName}","files":["<changed-relative-path>"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok"}`,
 	].join("\n");
 
 	const label = `edit-view:${view.id}`;
 	const fakeMessage = {
 		entityId: runtime.agentId,
-		roomId: runtime.agentId,
+		// TASKS deliberately trusts the handler message, rather than model-writable
+		// metadata, as the authoritative chat origin for completion routing.
+		roomId: originRoomId,
 		agentId: runtime.agentId,
 		content: { text: prompt },
 	} as Memory;
 
 	const handlerOptions: HandlerOptions = {
-		parameters: {
+		parameters: buildVerifiedPluginTaskParameters({
 			task: prompt,
 			label,
-			approvalPreset: "permissive",
-			metadata: { originRoomId },
-		},
+			workdir,
+			pluginName: view.pluginName,
+			originRoomId,
+		}),
 	};
 
 	const result = await spawnWithTrajectoryLink(

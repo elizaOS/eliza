@@ -297,6 +297,38 @@ function createChunkPlanMessageService(
   } satisfies NonNullable<AgentRuntime["messageService"]>;
 }
 
+function createViewShortcutMessageService(): NonNullable<
+  AgentRuntime["messageService"]
+> {
+  return {
+    async handleMessage() {
+      return {
+        didRespond: true,
+        responseContent: {
+          text: "Navigated to Settings.",
+          thought: "Shortcut: app-control:nl:view-navigation",
+        },
+        responseMessages: [],
+        actionResults: [
+          {
+            success: true,
+            text: "Navigated to Settings.",
+            values: { mode: "show", viewId: "settings", viewType: "gui" },
+            data: { actionName: "VIEWS" },
+          },
+        ],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "view-shortcut-stream-contract-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  } satisfies NonNullable<AgentRuntime["messageService"]>;
+}
+
 function createState(
   messageServiceOverride?: NonNullable<AgentRuntime["messageService"]>,
 ): {
@@ -459,6 +491,29 @@ describe("conversation stream SSE contract (#10712)", () => {
       (payload) => payload.type === "status" && payload.kind === "streaming",
     );
     expect(streamingStatusIndex).toBeLessThan(firstTokenIndex);
+  });
+
+  it("carries a direct VIEWS shortcut result on the terminal done frame", async () => {
+    const { ctx, record } = createCtx(createViewShortcutMessageService());
+
+    await handleConversationRoutes(ctx);
+
+    const done = parseSsePayloads(record.writes).find(
+      (payload) => payload.type === "done",
+    );
+    expect(done).toMatchObject({
+      type: "done",
+      fullText: "Navigated to Settings.",
+      thought: "Shortcut: app-control:nl:view-navigation",
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          text: "Navigated to Settings.",
+          values: { mode: "show", viewId: "settings", viewType: "gui" },
+        },
+      ],
+    });
   });
 
   it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {

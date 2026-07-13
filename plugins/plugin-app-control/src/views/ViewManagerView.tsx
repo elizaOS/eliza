@@ -1,23 +1,17 @@
 /**
- * ViewManagerView — the GUI data wrapper for the "views" surface (the
- * "views view"): the deduped manager that fetches GET /api/views and lists every
- * registered view (collapsed one row per logical id with modality chips and
- * per-view open/available state).
- *
- * It owns the live view list (fetch + loading/error state and the open→navigate
- * handoff) and renders the one presentational {@link ViewManagerSpatialView}
- * inside a {@link SpatialSurface}. The browser DOM surface ships today, while
- * the retained modality contract stays available for future adapters.
- *
- * Built as a standalone ES-module view bundle; loaded dynamically by the
- * frontend shell via `import("/api/views/views-manager/bundle.js")`. External
- * dependencies (react, @elizaos/ui) are provided by the shell host environment
- * and externalized from this bundle.
+ * Connects the registered-view catalog to its spatial manager surface.
+ * It owns fetch, loading, error, reload, and open-to-navigation state while the
+ * presentational component remains transport-agnostic. The shell loads this as
+ * a standalone ES module and supplies its external React and UI dependencies.
  */
 
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { Button } from "@elizaos/ui/components/ui/button";
-import { useViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
+import {
+	dispatchNavigateViewEvent,
+	useViewEvent,
+	VIEW_EVENTS,
+} from "@elizaos/ui/events";
 import { useCallback, useEffect, useState } from "react";
 import {
 	type ViewManagerSnapshot,
@@ -36,6 +30,7 @@ export function ViewManagerView() {
 	const [views, setViews] = useState<ViewEntry[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [openingViewId, setOpeningViewId] = useState<string | null>(null);
 
 	const fetchViews = useCallback(async () => {
 		setLoading(true);
@@ -56,8 +51,27 @@ export function ViewManagerView() {
 		void fetchViews();
 	}, [fetchViews]);
 
-	const openView = useCallback((view: ViewEntry) => {
-		void requestViewNavigation(view);
+	const openView = useCallback(async (view: ViewEntry) => {
+		setOpeningViewId(view.id);
+		setError(null);
+		try {
+			// A user click navigates locally after the server records current-view
+			// state. This works on Cloud/mobile transports that intentionally have no
+			// WebSocket, and `source:user` prevents a duplicate server echo.
+			await requestViewNavigation(view, { source: "user" });
+			dispatchNavigateViewEvent({
+				viewId: view.id,
+				...(view.path ? { viewPath: view.path } : {}),
+				viewLabel: view.label,
+				viewType: view.viewType ?? "gui",
+			});
+		} catch (err) {
+			// error-policy:J4 the manager keeps the catalog visible and renders a
+			// distinct open failure instead of pretending navigation succeeded.
+			setError(err instanceof Error ? err.message : "Could not open view");
+		} finally {
+			setOpeningViewId(null);
+		}
 	}, []);
 
 	const refreshControl = useAgentElement<HTMLButtonElement>({
@@ -72,7 +86,12 @@ export function ViewManagerView() {
 		},
 	});
 
-	const snapshot: ViewManagerSnapshot = { views, loading, error };
+	const snapshot: ViewManagerSnapshot = {
+		views,
+		loading,
+		error,
+		openingViewId,
+	};
 
 	return (
 		<div className="flex flex-col gap-2">

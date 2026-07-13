@@ -727,6 +727,80 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("honors per-result suppression in action events and streaming tool results", async () => {
+		const emitEvent = vi.fn(async () => {});
+		const onToolResult = vi.fn();
+		const action = makeAction({
+			name: "VIEWS",
+			handler: async () => ({
+				success: false,
+				text: "View edit did not start.",
+				values: { workdir: "/private/must-not-leak" },
+				data: {
+					actionName: "VIEWS",
+					task: { sessionId: "must-not-leak" },
+					suppressActionResultClipboard: true,
+				},
+			}),
+		});
+		const runtime = makeRuntime([action], { emitEvent });
+
+		const result = await runWithStreamingContext(
+			{ onStreamChunk: vi.fn(), onToolResult },
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "VIEWS", params: {} },
+				),
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			text: "View edit did not start.",
+			data: expect.objectContaining({
+				suppressActionResultClipboard: true,
+			}),
+		});
+		const emittedSurfaces = JSON.stringify({
+			events: emitEvent.mock.calls,
+			streaming: onToolResult.mock.calls,
+		});
+		expect(emittedSurfaces).not.toContain("must-not-leak");
+		expect(emitEvent).toHaveBeenNthCalledWith(
+			2,
+			EventType.ACTION_COMPLETED,
+			expect.objectContaining({
+				content: expect.objectContaining({
+					actionStatus: "failed",
+					actionResult: expect.objectContaining({
+						success: false,
+						text: "View edit did not start.",
+						data: {
+							actionName: "VIEWS",
+							suppressed: true,
+							reason: "sensitive_action_result",
+						},
+					}),
+				}),
+			}),
+		);
+		expect(onToolResult).toHaveBeenCalledWith(
+			expect.objectContaining({
+				status: "failed",
+				result: expect.objectContaining({
+					success: false,
+					text: "View edit did not start.",
+					data: {
+						actionName: "VIEWS",
+						suppressed: true,
+						reason: "sensitive_action_result",
+					},
+				}),
+			}),
+		);
+	});
+
 	it("emits failed ACTION_COMPLETED events with string errors for thrown handlers", async () => {
 		const emitEvent = vi.fn(async () => {});
 		const action = makeAction({

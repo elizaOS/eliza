@@ -89,4 +89,41 @@ describe("runDurableTask", () => {
     },
     TIMEOUT,
   );
+
+  it(
+    "rejects a clean turn that completes without a response",
+    async () => {
+      const service: AcpTaskService = {
+        sendPrompt: async () => ({ stopReason: "end_turn" }),
+      };
+
+      await expect(
+        runDurableTask(service, uniqueSession(), "x", {}),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "SMITHERS_TASK_RESPONSE_MISSING",
+      });
+    },
+    TIMEOUT,
+  );
+
+  it(
+    "rejects a truncated run instead of emitting task completion",
+    async () => {
+      const service: AcpTaskService = {
+        sendPrompt: async () => ({
+          stopReason: "max_tokens",
+          finalText: "partial output",
+        }),
+      };
+
+      await expect(
+        runDurableTask(service, uniqueSession(), "x", {}),
+      ).rejects.toMatchObject({
+        name: "ElizaError",
+        code: "SMITHERS_TASK_INCOMPLETE",
+      });
+    },
+    TIMEOUT,
+  );
 });

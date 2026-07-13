@@ -93,6 +93,8 @@ import {
 	type ExecutePlannedToolCallContext,
 	type ExecutePlannedToolCallOptions,
 	executePlannedToolCall,
+	projectActionResultForClipboard,
+	shouldSuppressActionResultClipboard,
 } from "../runtime/execute-planned-tool-call";
 import {
 	type FactsAndRelationshipsRunResult,
@@ -182,6 +184,7 @@ import type {
 	HandlerCallback,
 	MessageHandlerResult,
 	Provider,
+	ProviderValue,
 	StreamChunkCallback,
 } from "../types/components";
 import type { ContextEvent, ContextObject } from "../types/context-object";
@@ -1367,6 +1370,7 @@ type StrategyMode = "simple" | "actions" | "none";
 interface StrategyResult {
 	responseContent: Content | null;
 	responseMessages: Memory[];
+	actionResults?: ActionResult[];
 	state: State;
 	mode: StrategyMode;
 }
@@ -5780,11 +5784,16 @@ async function executeV5PlannedToolCall(
 		return subPlannerResultToPlannerToolResult(subResult);
 	}
 
-	const actionResult = await executePlannedToolCall(
+	const rawActionResult = await executePlannedToolCall(
 		args.runtime,
 		executorCtx,
 		toolCall,
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
+	);
+	const actionResult = projectActionResultForClipboard(
+		action,
+		rawActionResult,
+		toolCall.name,
 	);
 	return actionResultToPlannerToolResult(actionResult, {
 		summary: summarizeActionResultForPlanner(
@@ -6060,26 +6069,85 @@ function collectActionsFromContext(context: ContextObject): Action[] {
 
 function collectPreviousActionResults(
 	trajectory: PlannerTrajectory,
+	actions: readonly Action[] = [],
 ): ActionResult[] {
+	const actionsByName = new Map<string, Action>();
+	for (const action of [
+		...collectActionsFromContext(trajectory.context),
+		...actions,
+	]) {
+		actionsByName.set(normalizeActionIdentifier(action.name), action);
+	}
 	const results: ActionResult[] = [];
 	for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
 		if (!step.result || !step.toolCall) {
 			continue;
 		}
+		const actionName = step.toolCall.name;
+		const action = actionsByName.get(normalizeActionIdentifier(actionName));
+		if (shouldSuppressActionResultClipboard(action, step.result)) {
+			results.push({
+				success: step.result.success,
+				...(step.result.text !== undefined ? { text: step.result.text } : {}),
+				...(step.result.userFacingText !== undefined
+					? { userFacingText: step.result.userFacingText }
+					: {}),
+				...(step.result.verifiedUserFacing !== undefined
+					? { verifiedUserFacing: step.result.verifiedUserFacing }
+					: {}),
+				data: { actionName },
+				...(step.result.continueChain !== undefined
+					? { continueChain: step.result.continueChain }
+					: {}),
+			});
+			continue;
+		}
+		const plannerData = step.result.data;
+		const nestedValues = plannerData?.values;
+		const nestedValueEntries =
+			nestedValues !== null &&
+			typeof nestedValues === "object" &&
+			!Array.isArray(nestedValues)
+				? Object.entries(nestedValues)
+				: [];
+		const values =
+			nestedValueEntries.length > 0 &&
+			nestedValueEntries.every(
+				(entry): entry is [string, ProviderValue] =>
+					typeof entry[1] !== "function" && typeof entry[1] !== "symbol",
+			)
+				? Object.fromEntries(nestedValueEntries)
+				: undefined;
+		const actionData =
+			values && plannerData
+				? Object.fromEntries(
+						Object.entries(plannerData).filter(([key]) => key !== "values"),
+					)
+				: plannerData;
+		const error =
+			typeof step.result.error === "string"
+				? step.result.error
+				: step.result.error instanceof Error
+					? step.result.error.message
+					: undefined;
 		results.push({
 			success: step.result.success,
-			text: step.result.text,
+			...(step.result.text !== undefined ? { text: step.result.text } : {}),
+			...(step.result.userFacingText !== undefined
+				? { userFacingText: step.result.userFacingText }
+				: {}),
+			...(step.result.verifiedUserFacing !== undefined
+				? { verifiedUserFacing: step.result.verifiedUserFacing }
+				: {}),
 			data: {
-				actionName: step.toolCall.name,
-				...(step.result.data ?? {}),
+				actionName,
+				...actionData,
 			},
-			error:
-				typeof step.result.error === "string"
-					? step.result.error
-					: step.result.error instanceof Error
-						? step.result.error.message
-						: undefined,
-			continueChain: step.result.continueChain,
+			...(values ? { values } : {}),
+			...(error !== undefined ? { error } : {}),
+			...(step.result.continueChain !== undefined
+				? { continueChain: step.result.continueChain }
+				: {}),
 		});
 	}
 	return results;
@@ -6169,8 +6237,9 @@ export async function runShortcutGate(args: {
 	if (!valid) return null;
 
 	let captured: string | undefined;
+	let shortcutActionResult: ActionResult | undefined;
 	try {
-		await action.handler(
+		shortcutActionResult = await action.handler(
 			args.runtime,
 			args.message,
 			args.state,
@@ -6190,6 +6259,27 @@ export async function runShortcutGate(args: {
 		return null;
 	}
 	if (captured === undefined) return null;
+	let actionResult: ActionResult | undefined;
+	if (shortcutActionResult) {
+		if (shouldSuppressActionResultClipboard(action, shortcutActionResult)) {
+			actionResult = projectActionResultForClipboard(
+				action,
+				shortcutActionResult,
+				action.name,
+			);
+		} else {
+			actionResult = {
+				...shortcutActionResult,
+				data: {
+					...shortcutActionResult.data,
+					actionName: action.name,
+				},
+			};
+		}
+	}
+	const resultState = actionResult
+		? withActionResultsForPrompt(args.state, [actionResult])
+		: args.state;
 
 	// #8792: report the interaction so the proactive-comment decider can react.
 	void emitInteractionEvent(args.runtime, match, args.message);
@@ -6207,14 +6297,17 @@ export async function runShortcutGate(args: {
 				requiresTool: false,
 			},
 		},
-		result: createV5ReplyStrategyResult({
-			runtime: args.runtime,
-			message: args.message,
-			state: args.state,
-			responseId: args.responseId,
-			text: captured,
-			thought,
-		}),
+		result: {
+			...createV5ReplyStrategyResult({
+				runtime: args.runtime,
+				message: args.message,
+				state: resultState,
+				responseId: args.responseId,
+				text: captured,
+				thought,
+			}),
+			...(actionResult ? { actionResults: [actionResult] } : {}),
+		},
 	};
 }
 
@@ -7304,7 +7397,10 @@ export async function runV5MessageRuntimeStage1(args: {
 							state: plannerState,
 							selectedContexts,
 							senderRole,
-							previousResults: collectPreviousActionResults(ctx.trajectory),
+							previousResults: collectPreviousActionResults(
+								ctx.trajectory,
+								exposedPlannerActions,
+							),
 							...(recordingCallback ? { callback: recordingCallback } : {}),
 						}),
 						plannerRuntime,
@@ -7390,6 +7486,7 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const actionResults = collectPreviousActionResults(
 			plannerResult.trajectory,
+			exposedPlannerActions,
 		);
 		const finalPlannerState =
 			actionResults.length > 0
@@ -7482,21 +7579,25 @@ export async function runV5MessageRuntimeStage1(args: {
 			kind: "planned_reply",
 			messageHandler,
 			result: shouldSendPlannedText
-				? createV5ReplyStrategyResult({
-						...args,
-						state: finalPlannerState,
-						text: effectiveReplyText,
-						thought:
-							plannerResult.evaluator?.thought ??
-							plannerResult.trajectory.steps.at(-1)?.thought ??
-							messageHandler.thought,
-						agentVoiced: effectiveReplyIsModelVoice,
-					})
+				? {
+						...createV5ReplyStrategyResult({
+							...args,
+							state: finalPlannerState,
+							text: effectiveReplyText,
+							thought:
+								plannerResult.evaluator?.thought ??
+								plannerResult.trajectory.steps.at(-1)?.thought ??
+								messageHandler.thought,
+							agentVoiced: effectiveReplyIsModelVoice,
+						}),
+						...(actionResults.length > 0 ? { actionResults } : {}),
+					}
 				: {
 						responseContent: null,
 						responseMessages: [],
 						state: finalPlannerState,
 						mode: "none",
+						...(actionResults.length > 0 ? { actionResults } : {}),
 					},
 		};
 	} catch (err) {
@@ -10300,6 +10401,7 @@ export class DefaultMessageService implements IMessageService {
 
 		let responseContent: Content | null = null;
 		let responseMessages: Memory[] = [];
+		let actionResults: ActionResult[] | undefined;
 		let mode: StrategyMode = "none";
 		let simpleReplyDelivered = false;
 
@@ -10324,6 +10426,7 @@ export class DefaultMessageService implements IMessageService {
 					? [...earlyReplyMessages, ...result.responseMessages]
 					: result.responseMessages;
 			state = result.state;
+			actionResults = result.actionResults;
 			mode = result.mode;
 
 			// Race check before we send anything.
@@ -10686,6 +10789,7 @@ export class DefaultMessageService implements IMessageService {
 			didRespond,
 			responseContent,
 			responseMessages,
+			...(actionResults ? { actionResults } : {}),
 			state,
 			mode,
 		};

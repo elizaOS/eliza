@@ -114,6 +114,55 @@ function sensitiveActionResultMarker(
 	};
 }
 
+/**
+ * A result may opt out per invocation because multi-mode actions only return
+ * sensitive data for some operations. Static action metadata remains the
+ * stronger default for actions whose every result is sensitive.
+ */
+export function shouldSuppressActionResultClipboard(
+	action: Pick<Action, "suppressActionResultClipboard"> | undefined,
+	result: { data?: Readonly<Record<string, unknown>> },
+): boolean {
+	return (
+		action?.suppressActionResultClipboard === true ||
+		result.data?.suppressActionResultClipboard === true
+	);
+}
+
+/**
+ * Keep the outcome and intentional user-facing projections while removing the
+ * structured payload that must not enter planner prompts or client clipboards.
+ */
+export function projectActionResultForClipboard(
+	action: Pick<Action, "name" | "suppressActionResultClipboard"> | undefined,
+	result: ActionResult,
+	actionName = action?.name,
+): ActionResult {
+	if (!shouldSuppressActionResultClipboard(action, result)) {
+		return result;
+	}
+
+	const resultActionName =
+		typeof result.data?.actionName === "string"
+			? result.data.actionName
+			: undefined;
+	const safeActionName = actionName ?? resultActionName;
+	return {
+		success: result.success,
+		...(result.text !== undefined ? { text: result.text } : {}),
+		...(result.userFacingText !== undefined
+			? { userFacingText: result.userFacingText }
+			: {}),
+		...(result.verifiedUserFacing !== undefined
+			? { verifiedUserFacing: result.verifiedUserFacing }
+			: {}),
+		...(safeActionName ? { data: { actionName: safeActionName } } : {}),
+		...(result.continueChain !== undefined
+			? { continueChain: result.continueChain }
+			: {}),
+	};
+}
+
 function readMetadataString(message: Memory, key: string): string | undefined {
 	const metadata = isContentRecord(message.metadata) ? message.metadata : null;
 	const value = metadata?.[key];
@@ -372,6 +421,10 @@ export async function executePlannedToolCall(
 			error,
 		});
 	}
+	const suppressActionResult = shouldSuppressActionResultClipboard(
+		action,
+		resultForEvent,
+	);
 
 	if (typeof runtime.emitEvent === "function") {
 		await runtime
@@ -385,7 +438,7 @@ export async function executePlannedToolCall(
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
 					actionResult: actionResultToContentRecord(resultForEvent, {
-						suppressData: action.suppressActionResultClipboard === true,
+						suppressData: suppressActionResult,
 					}),
 					source: executorCtx.message.content.source,
 					error:
@@ -408,7 +461,7 @@ export async function executePlannedToolCall(
 	}
 
 	return emitToolResult(toolCall, resultForEvent, {
-		suppressData: action.suppressActionResultClipboard === true,
+		suppressData: suppressActionResult,
 	});
 }
 

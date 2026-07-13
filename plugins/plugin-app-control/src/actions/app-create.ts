@@ -1,21 +1,8 @@
 /**
- * @module plugin-app-control/actions/app-create
- *
- * create sub-mode of the unified APP action.
- *
- * Multi-turn flow:
- *  1. First turn — search installed apps for fuzzy matches against the
- *     user's intent. If matches exist, render a [CHOICE:...] block via
- *     callback and persist a workbench Task tagged "app-create-intent"
- *     keyed by roomId so the next turn can find it.
- *  2. Follow-up turn — when the user replies with `new` / `edit-N` /
- *     `cancel`, the dispatcher's validate sees the intent task + the
- *     keyword, the dispatcher routes back here, and we resolve the choice.
- *  3. Create-new path — extract a kebab-case name + display name via the
- *     LLM, copy the min-project template, then dispatch a coding agent via
- *     START_CODING_TASK with the AppVerificationService validator.
- *  4. Edit path — same dispatch, but workdir is the existing app's source
- *     directory.
+ * Implements the APP action's multi-turn create and edit workflow.
+ * Choice tasks keep ambiguous intent attached to the originating room; the
+ * selected path then delegates work in the target source directory and routes
+ * structured verification back to that same conversation.
  */
 
 import { promises as fs } from "node:fs";
@@ -418,7 +405,7 @@ async function dispatchCodingAgent({
 
 	const fakeMessage = {
 		entityId: runtime.agentId,
-		roomId: runtime.agentId,
+		roomId: originRoomId,
 		agentId: runtime.agentId,
 		content: { text: prompt },
 	} as Memory;
@@ -427,12 +414,16 @@ async function dispatchCodingAgent({
 		parameters: {
 			task: prompt,
 			label,
+			workdir,
+			lockWorkdir: true,
+			keepAliveAfterComplete: true,
 			approvalPreset: "permissive",
 			validator: {
 				service: "app-verification",
 				method: "verifyApp",
 				params: { workdir, appName, profile: "full" },
 			},
+			maxRetries: 2,
 			onVerificationFail: "retry",
 			metadata: {
 				// Carried into session metadata via start-coding-task.ts so the

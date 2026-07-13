@@ -1,10 +1,20 @@
-// @vitest-environment jsdom
+/**
+ * Exercises pause/resume conversation synchronization and missed-view recovery
+ * against real hook timing with deterministic client boundaries.
+ *
+ * @vitest-environment jsdom
+ */
 
 import { cleanup, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../api";
-import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
+import {
+  APP_PAUSE_EVENT,
+  APP_RESUME_EVENT,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
+} from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import {
   RESUME_DEBOUNCE_MS,
@@ -31,11 +41,27 @@ const mocks = vi.hoisted(() => ({
     fetch: vi.fn(async () => ({ ok: true })),
     getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
   },
+  fetchCurrentView: vi.fn(
+    async () =>
+      new Response(JSON.stringify({ currentView: null, justSwitched: false }), {
+        status: 200,
+      }),
+  ),
 }));
 
 vi.mock("../api", () => ({
   client: mocks.client,
 }));
+
+vi.mock("../api/csrf-client", () => ({
+  fetchWithCsrf: mocks.fetchCurrentView,
+}));
+
+const observedNavigations: NavigateViewDetail[] = [];
+
+function recordNavigation(event: Event): void {
+  observedNavigations.push((event as CustomEvent<NavigateViewDetail>).detail);
+}
 
 function makeMessages(...ms: ConversationMessage[]): ConversationMessage[] {
   return ms;
@@ -106,6 +132,9 @@ describe("useAppLifecycleEvents", () => {
     mocks.client.resetConnection.mockClear();
     mocks.client.fetch.mockClear();
     mocks.client.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
+    mocks.fetchCurrentView.mockClear();
+    observedNavigations.length = 0;
+    window.addEventListener(NAVIGATE_VIEW_EVENT, recordNavigation);
     window.localStorage.clear();
   });
 
@@ -114,11 +143,27 @@ describe("useAppLifecycleEvents", () => {
     // pending debounce timer) so a leftover timer from this test can't fire
     // into the next one's freshly-cleared mocks.
     cleanup();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, recordNavigation);
     vi.clearAllTimers();
     vi.useRealTimers();
   });
 
-  it("on resume: forces WS reconnect + refetches the active conversation tail (D2)", () => {
+  it("on resume: reconnects, refetches the tail, and recovers missed navigation (D2)", async () => {
+    mocks.fetchCurrentView.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          currentView: {
+            viewId: "calendar",
+            viewPath: "/calendar",
+            viewLabel: "Calendar",
+            viewType: "gui",
+            source: "agent",
+          },
+          justSwitched: true,
+        }),
+        { status: 200 },
+      ),
+    );
     const { loadConversationMessages } = setup({ activeId: "conv-42" });
 
     dispatchResume();
@@ -126,11 +171,19 @@ describe("useAppLifecycleEvents", () => {
     expect(mocks.client.resetConnection).not.toHaveBeenCalled();
     expect(loadConversationMessages).not.toHaveBeenCalled();
 
-    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+    await vi.advanceTimersByTimeAsync(RESUME_DEBOUNCE_MS);
 
     expect(mocks.client.resetConnection).toHaveBeenCalledTimes(1);
     expect(loadConversationMessages).toHaveBeenCalledTimes(1);
     expect(loadConversationMessages).toHaveBeenCalledWith("conv-42");
+    expect(observedNavigations).toEqual([
+      {
+        viewId: "calendar",
+        viewPath: "/calendar",
+        viewLabel: "Calendar",
+        viewType: "gui",
+      },
+    ]);
   });
 
   it("debounces rapid fg/bg flips into a single reconnect + refetch", () => {
@@ -168,6 +221,7 @@ describe("useAppLifecycleEvents", () => {
 
     expect(mocks.client.resetConnection).not.toHaveBeenCalled();
     expect(loadConversationMessages).not.toHaveBeenCalled();
+    expect(observedNavigations).toEqual([]);
   });
 
   it("coalesces a visibilitychange resume + bfcache pageshow in the same tick into one run", () => {

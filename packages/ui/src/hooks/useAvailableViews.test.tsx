@@ -1,7 +1,12 @@
-// @vitest-environment jsdom
+/**
+ * Exercises the shared view catalog's fetch, refresh, error, and builtin-merge behavior.
+ * @vitest-environment jsdom
+ */
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { emitViewEvent } from "../views/view-event-bus";
+import { VIEW_EVENTS } from "../views/view-event-types";
 import { __resetResourceCache } from "./resource-cache";
 import {
   useAvailableViews,
@@ -107,7 +112,7 @@ describe("useAvailableViews", () => {
     expect(fetchWithCsrf).not.toHaveBeenCalled();
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(5_000);
     });
 
     expect(fetchWithCsrf).not.toHaveBeenCalled();
@@ -139,6 +144,39 @@ describe("useAvailableViews", () => {
       headers: { "X-Eliza-Platform": "desktop" },
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts the current view-capability transport contract", async () => {
+    fetchWithCsrf.mockResolvedValueOnce(
+      response(200, {
+        views: [
+          view("birdclaw", {
+            capabilities: [
+              {
+                id: "get-state",
+                description: "Read the mounted view state.",
+              },
+            ],
+          }),
+        ],
+      }),
+    );
+
+    const { result } = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.views).toEqual([
+      expect.objectContaining({
+        id: "birdclaw",
+        capabilities: [
+          {
+            id: "get-state",
+            description: "Read the mounted view state.",
+          },
+        ],
+      }),
+    ]);
   });
 
   it("strips views declaring `nativeOs: true` off the AOSP fork", async () => {
@@ -239,14 +277,17 @@ describe("useAvailableViews", () => {
     ]);
   });
 
-  it("treats malformed payloads as empty lists", async () => {
+  it("surfaces malformed payloads instead of rendering a healthy empty list", async () => {
     fetchWithCsrf.mockResolvedValueOnce(response(200, { ok: true }));
 
     const { result } = renderHook(() => useAvailableViews());
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.views).toEqual([]);
-    expect(result.current.error).toBeNull();
+    expect(result.current.error).toMatchObject({
+      name: "ElizaError",
+      code: "VIEW_REGISTRY_RESPONSE_INVALID",
+    });
   });
 
   it("adds built-in shell entries only for routable consumers", async () => {
@@ -353,7 +394,7 @@ describe("useAvailableViews", () => {
     expect(result.current.views[0]?.id).toBe("second");
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(5_000);
     });
     await flushHookEffects();
     expect(result.current.views[0]?.id).toBe("third");
@@ -361,16 +402,66 @@ describe("useAvailableViews", () => {
 
     unmount();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(10_000);
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
+  });
+
+  it("refreshes the shared registry immediately after a plugin create/edit reload", async () => {
+    fetchWithCsrf
+      .mockResolvedValueOnce(
+        response(200, {
+          views: [
+            view("notes", {
+              bundleUrl: "/api/views/notes/bundle.js?v=before",
+            }),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        response(200, {
+          views: [
+            view("notes", {
+              bundleUrl: "/api/views/notes/bundle.js?v=after",
+            }),
+            view("new-dashboard"),
+          ],
+        }),
+      );
+
+    // App mounts one consumer for routing and another for desktop tabs. The
+    // plugin event must refresh their shared cache once, not race two reads.
+    const router = renderHook(() => useAvailableViews());
+    const tabs = renderHook(() => useAvailableViews());
+    await waitFor(() => expect(router.result.current.loading).toBe(false));
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      emitViewEvent(
+        VIEW_EVENTS.PLUGIN_RELOADED,
+        { pluginName: "test-plugin" },
+        "agent",
+      );
+    });
+
+    await waitFor(() =>
+      expect(router.result.current.views).toEqual([
+        expect.objectContaining({
+          id: "notes",
+          bundleUrl: "/api/views/notes/bundle.js?v=after",
+        }),
+        expect.objectContaining({ id: "new-dashboard" }),
+      ]),
+    );
+    expect(tabs.result.current.views).toEqual(router.result.current.views);
+    expect(fetchWithCsrf).toHaveBeenCalledTimes(2);
   });
 
   it("runs only one background poll when the hook is mounted twice", async () => {
     vi.useFakeTimers();
     // Two simultaneous mounts (App.tsx mounts the hook in ViewRouter and again
     // in the shell). They share one cache key, so they must share one poll timer
-    // — a single 30s tick should issue exactly one registry fetch, not two.
+    // — a single 5s tick should issue exactly one registry fetch, not two.
     fetchWithCsrf.mockResolvedValue(response(200, { views: [] }));
 
     const first = renderHook(() => useAvailableViews());
@@ -381,7 +472,7 @@ describe("useAvailableViews", () => {
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(5_000);
     });
     await flushHookEffects();
 
@@ -391,7 +482,7 @@ describe("useAvailableViews", () => {
     // With one mount unmounted, the surviving mount keeps the single timer alive.
     first.unmount();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(5_000);
     });
     await flushHookEffects();
     expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
@@ -399,7 +490,7 @@ describe("useAvailableViews", () => {
     // Last unmount tears the timer down — no further polling.
     second.unmount();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(60_000);
+      await vi.advanceTimersByTimeAsync(10_000);
     });
     expect(fetchWithCsrf).toHaveBeenCalledTimes(3);
   });
@@ -417,7 +508,7 @@ describe("useAvailableViews", () => {
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(5_000);
     });
     await flushHookEffects();
     expect(fetchWithCsrf).toHaveBeenCalledTimes(1);

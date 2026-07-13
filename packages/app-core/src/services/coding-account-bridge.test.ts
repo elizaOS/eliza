@@ -403,10 +403,7 @@ describe("coding-account-bridge", () => {
     expect(cfg).not.toContain("[evil]");
   });
 
-  it("skips ultra/max: valid catalog values the pinned codex-acp cannot parse", async () => {
-    // Writing an effort variant the pinned adapter's serde enum lacks would
-    // fail the WHOLE config.toml parse and drop the model pin ChatGPT-account
-    // auth requires — so these are withheld, not written.
+  it("omits max and ultra outside the managed codex-acp effort contract", async () => {
     writeAccount("openai-codex", "cx-ultra", "cx-ultra-access", {
       organizationId: "a",
     });

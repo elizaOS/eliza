@@ -4,6 +4,7 @@
  * shapes the message service returns. Consumed by the runtime message handler.
  */
 import type {
+	ActionResult,
 	AgentContext,
 	HandlerCallback,
 	StreamChunkCallback,
@@ -48,6 +49,8 @@ export interface MessageProcessingResult {
 	didRespond: boolean;
 	responseContent?: Content | null;
 	responseMessages: Memory[];
+	/** Results executed during this turn, preserved across planner/cache cleanup. */
+	actionResults?: ActionResult[];
 	state?: State;
 	mode?: MessageProcessingMode;
 	skipEvaluation?: boolean;

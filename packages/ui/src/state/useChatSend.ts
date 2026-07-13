@@ -11,6 +11,7 @@ import { asRecord } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import type { Conversation, CustomActionDef } from "../api";
 import {
+  type ChatActionResultSummary,
   type ChatToolCallEvent,
   type ChatTurnStatus,
   type CodingAgentSession,
@@ -38,6 +39,10 @@ import {
   type CloudHandoffPhaseDetail,
 } from "../events";
 import { getWindowNavigationPath, type Tab } from "../navigation";
+import {
+  dispatchViewActionHandoff,
+  findViewActionHandoff,
+} from "../view-action-handoff";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
@@ -55,6 +60,26 @@ import {
 // ── Types ────────────────────────────────────────────────────────────
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+
+async function handoffCompletedViewAction(
+  actionResults: ChatActionResultSummary[] | undefined,
+  showFailure: (message: string) => void,
+): Promise<void> {
+  if (!findViewActionHandoff(actionResults)) return;
+  try {
+    await dispatchViewActionHandoff(actionResults);
+  } catch (err) {
+    // error-policy:J4 the chat turn succeeded, so preserve it while surfacing a
+    // distinct navigation failure instead of fabricating an opened view.
+    logger.warn(
+      { err },
+      "[useChatSend] completed VIEWS action could not reach the renderer",
+    );
+    showFailure(
+      "The agent chose a view, but the app couldn't open it. Try opening the view again.",
+    );
+  }
+}
 
 // Sentinel for the streaming buffer's `pendingStatus`: "no status update
 // parked", distinct from a parked `null` (an explicit clear-the-status commit).
@@ -1584,6 +1609,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         if (chatSendQueueRef.current.length === 0) {
           setChatSending(false);
         }
+        await handoffCompletedViewAction(data.actionResults, (message) => {
+          setActionNotice(message, "error", 8_000);
+        });
 
         // Action callbacks can persist additional assistant turns that are not
         // mirrored by the optimistic streaming draft in local state.
@@ -1777,6 +1805,13 @@ export function useChatSend(deps: UseChatSendDeps) {
               // Same idempotency key across the whole logical turn, including
               // the 404 recreate-and-replay recovery.
               clientMessageId,
+            );
+
+            await handoffCompletedViewAction(
+              retryData.actionResults,
+              (message) => {
+                setActionNotice(message, "error", 8_000);
+              },
             );
 
             // Commit any throttle-parked token before the terminal modification.
@@ -2331,6 +2366,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
           flushStreamingText();
+          await handoffCompletedViewAction(data.actionResults, (message) => {
+            setActionNotice(message, "error", 8_000);
+          });
 
           if (!data.text.trim()) {
             if (data.failureKind) {

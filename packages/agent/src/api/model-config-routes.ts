@@ -166,9 +166,11 @@ function findEntry(
   return catalog.providers[provider]?.find((entry) => entry.id === model);
 }
 
-// Mirrors PINNED_CODEX_ACP_EFFORTS in app-core's coding-account-bridge.ts:
-// the effort values the pinned codex-acp adapter's config parser accepts.
-const CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
+// Keep this aligned with MANAGED_CODEX_ACP_EFFORTS in app-core's
+// coding-account-bridge.ts. The model catalog may advertise newer effort
+// variants before the managed Codex ACP spawn path supports them end to end;
+// accepting one here would persist a selection the coding backend cannot honor.
+const MANAGED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
   "low",
   "medium",
   "high",
@@ -406,21 +408,14 @@ function resolveCodingWrites(
     }
     if (body.effort !== undefined) {
       validateEffort(entry, body.effort);
-      // The catalog carries the MODEL's truth (sol/terra do support ultra),
-      // but the pinned @zed-industries/codex-acp@0.14.0 adapter cannot parse
-      // `max`/`ultra` in config.toml — the whole file would fail to parse and
-      // drop the model pin ChatGPT-account auth requires. The bridge
-      // (coding-account-bridge.ts, PINNED_CODEX_ACP_EFFORTS) would skip the
-      // write, so accepting the value here would be a silent no-op. Reject it
-      // loudly instead; widen BOTH sets together when the acp pin is bumped.
-      if (backend === "codex" && !CODEX_ACP_EFFORTS.has(body.effort)) {
+      if (backend === "codex" && !MANAGED_CODEX_ACP_EFFORTS.has(body.effort)) {
         throw invalid(
-          `Effort "${body.effort}" is valid for ${entry.id} but not parseable by the pinned codex-acp adapter (supported until the pin is bumped: ${[...CODEX_ACP_EFFORTS].join(", ")})`,
+          `Effort "${body.effort}" is valid for ${entry.id} but not supported by the managed codex-acp contract (supported: ${[...MANAGED_CODEX_ACP_EFFORTS].join(", ")})`,
           {
             model: entry.id,
             effort: body.effort,
-            supported: [...CODEX_ACP_EFFORTS],
-            reason: "codex-acp-pin",
+            supported: [...MANAGED_CODEX_ACP_EFFORTS],
+            reason: "codex-acp-contract",
           },
         );
       }

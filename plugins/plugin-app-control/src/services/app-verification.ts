@@ -1,14 +1,7 @@
 /**
- * @module plugin-app-control/services/app-verification
- * @description AppVerificationService — runs a structured verification
- * pipeline (typecheck / lint / test / build / launch / browser) against
- * an app workdir and returns a result the orchestrator can use to decide
- * pass / retry / escalate.
- *
- * Other agents wire this into the parent's APP_CREATE / PLUGIN_CREATE flow:
- * when a child coding agent claims completion, the parent calls
- * `verifyApp()` and either accepts the result, retries with the
- * `retryablePromptForChild` message, or escalates to the user.
+ * Verifies generated app and plugin workdirs through build, test, launch, and browser checks.
+ * The orchestrator consumes its structured verdict, diagnostics, artifacts,
+ * and corrective prompt before accepting or retrying a coding-agent result.
  */
 
 import { type ExecFileOptions, execFile } from "node:child_process";
@@ -161,7 +154,15 @@ function expandProfile(
 	projectKind: ProjectKind,
 ): VerificationCheck[] {
 	if (projectKind === "plugin") {
-		return [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }];
+		// Plugin loading executes the compiled package entrypoint. A source-only
+		// pass would let create/edit verification succeed while load-from-directory
+		// either fails on a missing dist entry or reloads the previous build.
+		return [
+			{ kind: "typecheck" },
+			{ kind: "lint" },
+			{ kind: "test" },
+			{ kind: "build" },
+		];
 	}
 	if (profile === "fast" || profile === undefined) {
 		return [{ kind: "typecheck" }, { kind: "lint" }];
@@ -1079,7 +1080,7 @@ function buildRetryPrompt(
 	}
 	lines.push("");
 	lines.push(
-		"After fixing the issues, rerun `bun run typecheck`, `bun run lint`, and `bun run test`, then re-emit exactly one structured completion line:",
+		"After fixing the issues, rerun `bun run typecheck`, `bun run lint`, `bun run test`, and `bun run build`, then re-emit exactly one structured completion line:",
 	);
 	const nameField = proofKind === "APP_CREATE_DONE" ? "appName" : "pluginName";
 	lines.push(

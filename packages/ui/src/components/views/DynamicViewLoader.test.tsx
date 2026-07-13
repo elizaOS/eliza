@@ -1,13 +1,13 @@
-// @vitest-environment jsdom
-//
-// DynamicViewLoader: the same-origin bundle-URL gate (the RCE guard), that the
-// test-only import hook is stripped from minified production builds, and the
-// runtime load/cache/error behavior. The origin gate and the production-strip
-// check compile the REAL DynamicViewLoader.tsx source with esbuild rather than
-// asserting against a mock.
+/**
+ * Exercises dynamic view origin enforcement, host externals, and runtime
+ * lifecycle behavior against the real loader implementation.
+ *
+ * @vitest-environment jsdom
+ */
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { type ReactElement, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -72,6 +72,7 @@ describe("isSameOriginBundleUrl (view-bundle origin gate)", () => {
     }
 
     expect(output.code).not.toContain("__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__");
+    expect(output.code).not.toMatch(/import\((["'])@elizaos\/core\1\)/u);
     expect(output.code).toContain("isSameOriginBundleUrl");
   });
 });
@@ -102,6 +103,19 @@ describe("host-external importer resolution (factory hostImport)", () => {
   it("still resolves a framework module from the trunk map", async () => {
     const react = await resolveHostExternal("react");
     expect(typeof react.useState).toBe("function");
+  });
+
+  it("exposes only the browser-safe core view contract", async () => {
+    const core = await resolveHostExternal("@elizaos/core");
+
+    expect(core).toEqual({ ElizaError });
+    expect(core.ElizaError).toBe(ElizaError);
+    expect(Object.isFrozen(core)).toBe(true);
+  });
+
+  it("provides the authenticated fetch helper to plugin view bundles", async () => {
+    const api = await resolveHostExternal("@elizaos/ui/api/csrf-client");
+    expect(typeof api.fetchWithCsrf).toBe("function");
   });
 
   it("throws for an unknown specifier that is neither framework nor registered", async () => {
