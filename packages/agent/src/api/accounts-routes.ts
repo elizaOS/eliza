@@ -193,6 +193,104 @@ const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
   "cerebras-api",
 ]);
 
+type ProviderRuntimeCapability = {
+  available: boolean;
+  defaultModel?: string;
+  credentialPath?: "account-pool" | "direct-api" | "external-cli" | "none";
+  unavailableReason?: string;
+};
+
+type ProviderRuntimeEligibility = {
+  chat: ProviderRuntimeCapability;
+  codingAgent: ProviderRuntimeCapability;
+};
+
+const ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON =
+  "Claude subscription OAuth credentials are scoped to Claude Code CLI/coding-agent use. Fable chat must use a direct Anthropic API/app-owned provider path; the shared external Anthropic proxy is a dev fallback only.";
+
+function runtimeEligibilityForProvider(
+  providerId: LinkedAccountProviderId,
+): ProviderRuntimeEligibility {
+  switch (providerId) {
+    case "anthropic-subscription":
+      return {
+        chat: {
+          available: false,
+          defaultModel: "claude-fable-5",
+          credentialPath: "none",
+          unavailableReason: ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON,
+        },
+        codingAgent: {
+          available: true,
+          defaultModel: "claude-fable-5",
+          credentialPath: "account-pool",
+        },
+      };
+    case "openai-codex":
+      return {
+        chat: {
+          available: true,
+          defaultModel: "gpt-5.6-sol",
+          credentialPath: "account-pool",
+        },
+        codingAgent: {
+          available: true,
+          defaultModel: "gpt-5.6-terra",
+          credentialPath: "account-pool",
+        },
+      };
+    case "anthropic-api":
+      return {
+        chat: {
+          available: true,
+          defaultModel: "claude-fable-5",
+          credentialPath: "direct-api",
+        },
+        codingAgent: {
+          available: true,
+          defaultModel: "claude-fable-5",
+          credentialPath: "direct-api",
+        },
+      };
+    case "gemini-cli":
+      return {
+        chat: {
+          available: false,
+          credentialPath: "none",
+          unavailableReason:
+            "Gemini subscription auth stays inside Gemini CLI and is not a runtime chat provider.",
+        },
+        codingAgent: { available: true, credentialPath: "external-cli" },
+      };
+    default: {
+      const direct = DIRECT_PROVIDER_IDS.has(providerId);
+      const codingPlan = isCodingPlanKeySubscriptionProvider(providerId);
+      return {
+        chat: {
+          available: direct,
+          credentialPath: direct ? "direct-api" : "none",
+          ...(direct
+            ? {}
+            : {
+                unavailableReason:
+                  "This provider is not registered as a runtime chat provider.",
+              }),
+        },
+        codingAgent: {
+          available: direct || codingPlan,
+          credentialPath: direct ? "direct-api" : "account-pool",
+          ...(!direct && !codingPlan
+            ? {
+                unavailableReason:
+                  "This provider is not registered as a coding-agent credential source.",
+              }
+            : {}),
+        },
+      };
+    }
+  }
+}
+
 function asSubscriptionProvider(
   providerId: LinkedAccountProviderId,
 ): SubscriptionProvider | null {
@@ -615,26 +713,6 @@ export async function handleAccountsRoutes(
 
 // ─── Handlers ───────────────────────────────────────────────────────
 
-/**
- * Runtime eligibility for a provider. Direct API/BYOK providers back chat and
- * coding agents; first-party subscription transports remain coding-agent-only.
- */
-function runtimeEligibilityFor(providerId: LinkedAccountProviderId): {
-  chat: boolean;
-  codingAgent: boolean;
-  note?: string;
-} {
-  if (DIRECT_PROVIDER_IDS.has(providerId)) {
-    return { chat: true, codingAgent: true };
-  }
-  // Subscription / coding-plan providers.
-  return {
-    chat: false,
-    codingAgent: true,
-    note: "Powers coding agents. Not the default chat brain.",
-  };
-}
-
 async function handleListAllAccounts(
   ctx: AccountsRouteContext,
 ): Promise<boolean> {
@@ -657,11 +735,11 @@ async function handleListAllAccounts(
     return {
       providerId,
       strategy,
+      runtimeEligibility: runtimeEligibilityForProvider(providerId),
       accounts: linkedConfigs.map((cfg) => ({
         ...cfg,
         hasCredential: onDiskSet.has(cfg.id),
       })),
-      runtimeEligibility: runtimeEligibilityFor(providerId),
       ...(selection ? { selection } : {}),
     };
   });

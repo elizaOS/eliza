@@ -49,6 +49,11 @@ export interface TaskThreadDto {
   activeSessionCount: number;
   latestSessionId: string | null;
   latestSessionLabel: string | null;
+  latestSessionModel: string | null;
+  latestAccountProviderId: string | null;
+  latestAccountId: string | null;
+  latestAccountLabel: string | null;
+  parentTaskId: string | null;
   /**
    * The task's stable workdir/repo. Prefers the durable binding pinned at first
    * spawn (`task.boundWorkdir`/`boundRepo`) over the most-recent session's
@@ -417,6 +422,11 @@ export function toTaskThread(doc: OrchestratorTaskDocument): TaskThreadDto {
     activeSessionCount,
     latestSessionId: latest?.sessionId ?? null,
     latestSessionLabel: latest?.label ?? null,
+    latestSessionModel: latest?.model ?? null,
+    latestAccountProviderId: latest?.accountProviderId ?? null,
+    latestAccountId: latest?.accountId ?? null,
+    latestAccountLabel: latest?.accountLabel ?? null,
+    parentTaskId: doc.task.parentTaskId ?? null,
     latestWorkdir: doc.task.boundWorkdir ?? latest?.workdir ?? null,
     latestRepo,
     projectId: doc.task.projectId ?? null,

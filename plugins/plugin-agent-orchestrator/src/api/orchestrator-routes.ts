@@ -32,6 +32,7 @@ import type {
   OrchestratorTaskPriority,
   TaskProviderPolicy,
 } from "../services/orchestrator-task-types.js";
+import { buildOrchestratorWidgetSnapshot } from "../services/orchestrator-widget-contract.js";
 import { AdmissionQueueFullError } from "../services/types.js";
 import type { RouteContext } from "./route-utils.js";
 import {
@@ -270,6 +271,103 @@ async function dispatchOrchestratorRoutes(
   // to the flat /accounts assignment map.
   if (method === "GET" && pathname === `${PREFIX}/rooms`) {
     sendJson(res, await service.getRoomRoster());
+    return true;
+  }
+
+  // GET /api/orchestrator/widgets — compact contract for chat-app floating
+  // task/progress widgets. The full task detail remains on /tasks/:id; this
+  // snapshot is intentionally small enough to refresh beside chat messages.
+  if (method === "GET" && pathname === `${PREFIX}/widgets`) {
+    const limit = Math.min(parseLimit(query.get("limit")) ?? 20, 100);
+    const allTasks = await service.listTasks({
+      includeArchived: query.get("includeArchived") === "true",
+      projectId: query.get("projectId") ?? undefined,
+    });
+    sendJson(
+      res,
+      buildOrchestratorWidgetSnapshot(
+        allTasks.slice(0, limit),
+        new Date(),
+        allTasks,
+      ),
+    );
+    return true;
+  }
+
+  // GET /api/orchestrator/widgets/stream — snapshot SSE for chat widgets.
+  // Clients receive an initial snapshot and then can refresh on the lightweight
+  // change event. Per-task /stream remains the high-frequency detail channel.
+  if (method === "GET" && pathname === `${PREFIX}/widgets/stream`) {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    const writeSnapshot = async () => {
+      const limit = Math.min(parseLimit(query.get("limit")) ?? 20, 100);
+      const allTasks = await service.listTasks({
+        includeArchived: query.get("includeArchived") === "true",
+        projectId: query.get("projectId") ?? undefined,
+      });
+      if (!res.writableEnded) {
+        res.write(`event: snapshot\n`);
+        res.write(
+          `data: ${JSON.stringify(
+            buildOrchestratorWidgetSnapshot(
+              allTasks.slice(0, limit),
+              new Date(),
+              allTasks,
+            ),
+          )}\n\n`,
+        );
+      }
+    };
+    try {
+      await writeSnapshot();
+    } catch (error) {
+      // error-policy:J1 SSE headers are committed, so this boundary emits a terminal event.
+      if (!res.writableEnded) {
+        res.write("event: error\n");
+        res.write(
+          `data: ${JSON.stringify({
+            error:
+              error instanceof Error
+                ? error.message
+                : "Failed to build widget snapshot",
+          })}\n\n`,
+        );
+        res.end();
+      }
+      return true;
+    }
+    let heartbeat: ReturnType<typeof setInterval>;
+    let refresh: ReturnType<typeof setInterval>;
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      clearInterval(refresh);
+      if (!res.writableEnded) res.end();
+    };
+    heartbeat = setInterval(() => {
+      if (!res.writableEnded) res.write(": ping\n\n");
+    }, 20_000);
+    refresh = setInterval(() => {
+      void writeSnapshot().catch((error: unknown) => {
+        // error-policy:J7 Background refresh failures are reported and terminate the stream.
+        ctx.runtime.reportError("OrchestratorWidgetStream.refresh", error, {
+          projectId: query.get("projectId") ?? undefined,
+        });
+        if (!res.writableEnded) {
+          res.write("event: error\n");
+          res.write(
+            `data: ${JSON.stringify({ error: error instanceof Error ? error.message : "Failed to refresh widget snapshot" })}\n\n`,
+          );
+        }
+        cleanup();
+      });
+    }, 5_000);
+    req.on("close", cleanup);
+    req.on("error", cleanup);
     return true;
   }
 
