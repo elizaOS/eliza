@@ -1,9 +1,7 @@
 /**
- * The four per-provider panel bodies rendered by ProviderSwitcher inside the AI
- * Model settings section: Local (on-device inference), Eliza Cloud (routing +
- * model selection), Subscription (Claude/Codex plans), and API-key providers.
- * Each renders a shared header with an agent-addressable "use this" activation
- * button; ProviderSwitcher owns the selection state and passes it in as props.
+ * Provider-specific bodies for local inference, cloud routing, coding
+ * subscriptions, and API keys. The parent owns selection state while each
+ * panel exposes an agent-addressable activation control.
  */
 
 import type { ModelOption } from "@elizaos/shared";

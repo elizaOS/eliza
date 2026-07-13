@@ -1,25 +1,8 @@
 /**
- * AddAccountDialog — modal that walks the user through adding a new
- * credential to a provider's account pool.
- *
- * Paths:
- *   - **OAuth** (subscription providers): start the server-side OAuth
- *     flow, open the auth URL in a real browser window via
- *     `preOpenWindow` + `navigatePreOpenedWindow` (preserves the user
- *     gesture so popup blockers don't fire), then subscribe to the
- *     SSE stream at `/api/accounts/:provider/oauth/status` for terminal
- *     state. On `success`, hand the new `LinkedAccountConfig` to the
- *     parent. On error / timeout / cancel, surface the message inline
- *     and let the user retry. If the dialog closes mid-flow we cancel
- *     the server-side listener so it doesn't leak.
- *   - **Coding-plan key**: simple label + key form for dedicated coding
- *     endpoints only. These credentials are not written to general API env vars.
- *   - **External CLI**: show the first-party CLI login instruction; no token import.
- *   - **Unavailable**: explain why the provider cannot be linked safely.
- *   - **API key**: simple label + key form, immediate POST.
- *
- * The dialog is provider-aware: subscription providers are intentionally
- * constrained to their first-party coding surfaces.
+ * Provider-aware account enrollment for API keys and first-party coding
+ * subscriptions. OAuth state persists across browser handoffs and is observed
+ * through the server status stream; subscription credentials remain confined
+ * to their supported coding surfaces.
  */
 
 import type {
@@ -340,7 +323,7 @@ export function AddAccountDialog({
       try {
         await client.cancelAccountOAuth(activeProviderId, { sessionId: id });
       } catch {
-        // Best-effort cleanup — server times out flows on its own.
+        // error-policy:J6 The server independently expires abandoned OAuth flows.
       }
     }
   }, [closeEventSource, activeProviderId]);
@@ -369,6 +352,7 @@ export function AddAccountDialog({
       await copyTextToClipboard(code);
       setDeviceCodeCopied(true);
     } catch {
+      // error-policy:J4 Clipboard denial is represented by the unchanged copy affordance.
       setDeviceCodeCopied(false);
     }
   }, []);
@@ -456,7 +440,7 @@ export function AddAccountDialog({
             setStep("error");
           }
         } catch {
-          // Malformed SSE event — ignore; the next valid one will progress.
+          // error-policy:J3 Invalid status events cannot advance the OAuth state machine.
         }
       };
 
@@ -553,6 +537,7 @@ export function AddAccountDialog({
           navigatePreOpenedWindow(win, flow.authUrl);
         }
       } catch (err) {
+        // error-policy:J4 Enrollment failures remain visible and retryable in the dialog.
         setErrorMessage(
           err instanceof Error && err.message
             ? err.message
@@ -564,7 +549,7 @@ export function AddAccountDialog({
         try {
           win?.close();
         } catch {
-          // Cross-origin — ignore.
+          // error-policy:J6 A cross-origin popup closes with its own browsing context.
         }
       }
     },
@@ -586,6 +571,7 @@ export function AddAccountDialog({
         setOauthCode("");
         setStep("oauth-waiting");
       } catch (err) {
+        // error-policy:J4 Code rejection remains visible and retryable in the dialog.
         setErrorMessage(
           err instanceof Error && err.message
             ? err.message
@@ -616,6 +602,7 @@ export function AddAccountDialog({
         onCreated(account);
         onClose();
       } catch (err) {
+        // error-policy:J4 Credential rejection remains visible and retryable in the dialog.
         setErrorMessage(
           err instanceof Error && err.message
             ? err.message

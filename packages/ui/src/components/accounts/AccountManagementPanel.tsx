@@ -1,10 +1,7 @@
 /**
- * AccountManagementPanel — consolidated settings surface for account-backed
- * model providers.
- *
- * Keeps chat API keys, coding subscriptions, account health, provider rotation,
- * and add-account entry points in one place so Models & Providers does not need
- * separate provider-scoped account tables.
+ * Consolidated settings surface for account-backed model providers. It keeps
+ * chat keys, coding subscriptions, health, and rotation controls within the
+ * Models & Providers ownership boundary.
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
@@ -280,16 +277,22 @@ export function AccountManagementPanel({
           priority: self.priority,
         });
       } catch (error) {
+        // error-policy:J2 Restore the first priority before surfacing the reorder failure.
         try {
           await accounts.patch(providerId, self.id, {
             priority: self.priority,
           });
-        } catch {
-          // error-policy:J4 best-effort rollback failed; refresh canonical state
-          // before rethrowing the original reorder error.
-          await accounts.refresh();
+        } catch (rollbackError) {
+          // error-policy:J2 Preserve both failures when the compensating write also fails.
+          throw new AggregateError(
+            [error, rollbackError],
+            "Failed to reorder provider accounts and restore their priorities.",
+            { cause: error },
+          );
         }
-        throw error;
+        throw new Error("Failed to reorder provider accounts.", {
+          cause: error,
+        });
       }
     },
     [accounts],
