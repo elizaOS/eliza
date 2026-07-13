@@ -19,6 +19,10 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `codeql.yml` | Push/PR to main, Weekly | Static security analysis |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
 | `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
+| `build-llama-ffi-android.yml` | Native-source push to develop, tag, manual, reusable | Canonical fused Android producer: arm64-v8a Vulkan and x86_64 CPU artifacts |
+| `build-android.yml` | Manual | Android app build; finds an input-compatible native producer run through the Actions API |
+| `mobile-build-smoke.yml` | Main PR, nightly, manual, reusable | Canonical iOS and Android simulator build/smoke authority |
+| `apple-store-release.yml` | Manual, reusable | Canonical signed iOS/macOS store build and publish authority |
 | `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
 | `weekly-maintenance.yml` | Weekly, Manual | Dependency/security audits |
 | `jsdoc-automation.yml` | Manual | JSDoc generation |
