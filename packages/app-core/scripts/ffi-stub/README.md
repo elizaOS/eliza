@@ -195,11 +195,13 @@ fallback" path.
                        end-to-end loader validation without the fused
                        dylib. The stub library itself is a build
                        artifact (`make`-produced, `.gitignore`d) — not
-                       checked in; CI/tests that need it run `make`
-                       first or skip.
+                       checked in; the binding test compiles it into a
+                       temporary directory and fails if compilation fails.
 - `Makefile`         — Builds the stub. `make` produces the
                        platform-default artifact; `make verify` lists
                        the exported `eliza_inference_*` symbols;
+                       `make build-output OUTPUT=<path>` emits into an
+                       explicit temporary/build directory; and
                        `make verify-stub-rejected` confirms the real
                        symbol verifier rejects the stub.
 
@@ -304,7 +306,7 @@ silent downgrade or hang.
 Example 9B latency probe:
 
 ```bash
-bun packages/app-core/scripts/omnivoice-merged/tts-stream-ffi-smoke.ts \
+bun packages/app-core/scripts/ffi-stub/tts-stream-ffi-smoke.ts \
   --bundle ~/.eliza/local-inference/models/eliza-1-9b.bundle \
   --cancel-mode none \
   --maskgit-steps 8 \
@@ -349,7 +351,7 @@ startup precondition is a structured throw.
 ## Building the stub for tests
 
 ```sh
-make -C packages/app-core/scripts/omnivoice-merged
+make -C packages/app-core/scripts/ffi-stub
 # → libelizainference_stub.dylib (macOS) or .so (linux)
 
 # Symbol verification:
@@ -358,18 +360,17 @@ nm -gU libelizainference_stub.dylib | grep eliza_inference_
 # Fail-closed real-library smoke. This intentionally renames the stub
 # as libelizainference and verifies the real fused-symbol checker
 # rejects it with an OMNIVOICE_FUSE_VERIFY.json failure report:
-make -C packages/app-core/scripts/omnivoice-merged verify-stub-rejected
+make -C packages/app-core/scripts/ffi-stub verify-stub-rejected
 
 # JS-side coverage (requires Bun on PATH for the integration scenarios):
-cd packages/app-core
-bunx vitest run src/services/local-inference/voice/ffi-bindings.test.ts
+bunx vitest run --config plugins/plugin-local-inference/vitest.config.ts \
+  plugins/plugin-local-inference/src/services/voice/ffi-bindings.test.ts
 ```
 
-The test harness spawns a `bun -e` subprocess that loads the stub
-dylib via `bun:ffi` and exercises `create`/`destroy`/`mmapEvict`/
-`ttsSynthesize`/ABI-mismatch scenarios. The vitest worker itself runs
-on Node 22 (no `bun:ffi`), so the pure-unit cases assert that the
-loader throws structurally on the no-Bun path.
+The test harness first compiles the stub into an isolated temporary directory,
+then spawns a `bun` subprocess that loads it via `bun:ffi` and exercises
+`create`/`destroy`/`mmapEvict`/`ttsSynthesize`/ABI-mismatch scenarios. Pure-unit
+cases independently assert that the loader throws structurally on a no-Bun path.
 
 ## Verifying a real fused artifact
 
@@ -377,7 +378,7 @@ After `build-llama-cpp-mtp.mjs --target <fused-target>` installs
 `libelizainference`, the build runs the same verifier as this CLI:
 
 ```sh
-node packages/app-core/scripts/omnivoice-merged/verify-symbols.mjs \
+node packages/app-core/scripts/build-helpers/verify-fused-symbols.mjs \
   --out-dir <installed-bin-dir> \
   --target darwin-arm64-metal-fused
 ```

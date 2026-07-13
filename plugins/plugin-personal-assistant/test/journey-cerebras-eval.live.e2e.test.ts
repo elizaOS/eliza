@@ -71,9 +71,9 @@ const CEREBRAS_MODEL =
   process.env.EVAL_MODEL ?? process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
 const CEREBRAS_PROVIDER = process.env.EVAL_MODEL_PROVIDER ?? "cerebras";
 const RESULTS_PATH = path.join(
-  packageRoot,
-  "docs",
-  "audit",
+  repoRoot,
+  "evidence",
+  "lifeops",
   "cerebras-journey-eval-results.json",
 );
 
