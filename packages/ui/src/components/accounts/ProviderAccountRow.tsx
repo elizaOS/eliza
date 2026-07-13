@@ -15,11 +15,11 @@
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { ChevronRight } from "lucide-react";
 import { useMemo } from "react";
+import type { ProviderSelectionState } from "../../api/client-accounts";
 import type {
   AccountStrategy,
   AccountsListProvider,
   AccountWithCredentialFlag,
-  ProviderSelectionState,
 } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
 import {

@@ -464,6 +464,12 @@ describe("FineTuningView analysis coverage panel", () => {
 
     render(React.createElement(FineTuningView));
 
+    const statusHeading = await screen.findByText("finetuningview.Status");
+    const statusGrid = statusHeading.parentElement?.nextElementSibling;
+    expect(statusGrid?.className).toContain(
+      "grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]",
+    );
+
     // No coverage before the index is built.
     expect(
       await screen.findByText("finetuningview.NoAnalysisIndexBuilt"),

@@ -1,6 +1,6 @@
 /**
  * Verifies strategy descriptions remain list-only so Radix cannot mirror a
- * two-line option into the compact trigger.
+ * two-line option into the compact trigger, including reset-soonest selection.
  */
 // @vitest-environment jsdom
 
@@ -51,5 +51,25 @@ describe("RotationStrategyPicker", () => {
     expect(
       screen.getByText("Prefer the account with the lowest current usage."),
     ).toBeTruthy();
+  });
+
+  it("offers and selects the reset-soonest strategy", () => {
+    const onChange = vi.fn();
+    render(
+      <RotationStrategyPicker
+        providerId="openai-api"
+        value="priority"
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.pointerDown(screen.getByRole("combobox"), {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 2,
+      pointerType: "mouse",
+    });
+    fireEvent.click(screen.getByRole("option", { name: /Reset-soonest/i }));
+    expect(onChange).toHaveBeenCalledWith("reset-soonest");
   });
 });

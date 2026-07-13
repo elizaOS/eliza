@@ -18,8 +18,10 @@ import { AlertTriangle, Plus, RotateCw, Route } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type {
   AccountRoutingTier,
-  AccountStrategy,
   AccountUseCaseId,
+} from "../../api/client-accounts";
+import type {
+  AccountStrategy,
   AccountWithCredentialFlag,
 } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";

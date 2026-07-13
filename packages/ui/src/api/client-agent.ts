@@ -326,86 +326,14 @@ export interface AccountWithCredentialFlag extends LinkedAccountConfig {
   hasCredential: boolean;
 }
 
-/**
- * Runtime capability eligibility for a provider, resolved by the server
- * from live plugin/route state (#16203 contract). Additive + optional so
- * older servers that don't emit it fall back to conservative client-side
- * inference (see `resolveProviderEligibility`).
- */
-export interface ProviderRuntimeEligibility {
-  /** Can serve the default chat brain right now. */
-  chat: boolean;
-  /** Can back coding agents / task orchestration. */
-  codingAgent: boolean;
-  /** Human-readable one-liner explaining any constraint. */
-  note?: string;
-}
-
-/**
- * The account the pool would select next for this provider, plus WHY.
- * Emitted when reset-timestamp-aware selection is active so the UI can
- * label the active row ("resets soonest") without re-deriving policy.
- */
-export interface ProviderSelectionState {
-  /** Account id the pool would serve next, or null if none eligible. */
-  activeAccountId: string | null;
-  /**
-   * Machine reason for the pick so the UI renders honest copy:
-   *  - `reset-soonest`: chosen because its weekly budget refunds first
-   *  - `only-eligible`: the single selectable account
-   *  - `priority` / `round-robin` / `least-used` / `quota-aware`: strategy pick
-   *  - `least-recently-throttled`: reset time unknown, fell back to age
-   */
-  reason:
-    | "reset-soonest"
-    | "only-eligible"
-    | "priority"
-    | "round-robin"
-    | "least-used"
-    | "quota-aware"
-    | "least-recently-throttled"
-    | null;
-}
-
 export interface AccountsListProvider {
   providerId: LinkedAccountProviderId;
   strategy: AccountStrategy;
   accounts: AccountWithCredentialFlag[];
-  /** Optional runtime capability signals (#16203). Absent on older servers. */
-  runtimeEligibility?: ProviderRuntimeEligibility;
-  /** Optional next-account selection state. Absent on older servers. */
-  selection?: ProviderSelectionState;
 }
-
-/** Use cases a request can be routed for (mirrors the contract union). */
-export type AccountUseCaseId = "chat" | "codingAgent";
-
-/** One rung in a use-case fallback chain (a provider, optionally an account). */
-export interface AccountRoutingTier {
-  providerId: LinkedAccountProviderId;
-  accountId?: string;
-}
-
-/** Live status of a routing tier right now. */
-export type RoutingTierStatus = "available" | "throttled" | "unavailable";
-
-/** A routing tier annotated with its live status for the chain view. */
-export interface ResolvedRoutingTier extends AccountRoutingTier {
-  status: RoutingTierStatus;
-  /** epoch ms — when a throttled tier's soonest account recovers. */
-  resetsAt?: number;
-}
-
-/** Resolved per-use-case routing chains with live status. */
-export type AccountRoutingView = Record<
-  AccountUseCaseId,
-  ResolvedRoutingTier[]
->;
 
 export interface AccountsListResponse {
   providers: AccountsListProvider[];
-  /** User-defined fallback chains per use case, annotated with live status. */
-  routing?: AccountRoutingView;
 }
 
 export interface AccountTestResult {
@@ -692,13 +620,6 @@ declare module "./client-base" {
     ): Promise<{
       providerId: LinkedAccountProviderId;
       strategy: AccountStrategy;
-    }>;
-    putUseCaseRouting(body: {
-      useCase: AccountUseCaseId;
-      tiers: AccountRoutingTier[];
-    }): Promise<{
-      useCase: AccountUseCaseId;
-      tiers: AccountRoutingTier[];
     }>;
     getConnectors(): Promise<{
       connectors: Record<string, ConnectorConfig>;
@@ -5043,19 +4964,6 @@ ElizaClient.prototype.patchProviderStrategy = async function (
     strategy: AccountStrategy;
   }>(`/api/providers/${encodeURIComponent(providerId)}/strategy`, {
     method: "PATCH",
-    body: JSON.stringify(body),
-  });
-};
-
-ElizaClient.prototype.putUseCaseRouting = async function (
-  this: ElizaClient,
-  body,
-) {
-  return this.fetch<{
-    useCase: AccountUseCaseId;
-    tiers: AccountRoutingTier[];
-  }>("/api/accounts/routing", {
-    method: "PUT",
     body: JSON.stringify(body),
   });
 };

@@ -16,12 +16,14 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type {
-  AccountRefreshUsageResult,
   AccountRoutingTier,
+  AccountUseCaseId,
+} from "../api/client-accounts";
+import type {
+  AccountRefreshUsageResult,
   AccountStrategy,
   AccountsListResponse,
   AccountTestResult,
-  AccountUseCaseId,
 } from "../api/client-agent";
 import type { ActionNoticeFn } from "../state/action-notice";
 import { useIntervalWhenDocumentVisible } from "./useDocumentVisibility";

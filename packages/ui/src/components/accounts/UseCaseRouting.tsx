@@ -16,10 +16,10 @@ import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
   AccountRoutingTier,
-  AccountsListProvider,
   AccountUseCaseId,
   ResolvedRoutingTier,
-} from "../../api/client-agent";
+} from "../../api/client-accounts";
+import type { AccountsListProvider } from "../../api/client-agent";
 import { cn } from "../../lib/utils";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";

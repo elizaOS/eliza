@@ -96,6 +96,7 @@ const result = await build({
   bundle: true,
   format: "iife",
   platform: "browser",
+  conditions: ["eliza-source", "browser"],
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts" },
   define: { "process.env.NODE_ENV": '"production"' },

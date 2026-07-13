@@ -11,10 +11,8 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import type {
-  AccountsListProvider,
-  ProviderRuntimeEligibility,
-} from "../../api/client-agent";
+import type { ProviderRuntimeEligibility } from "../../api/client-accounts";
+import type { AccountsListProvider } from "../../api/client-agent";
 import type { AccountProviderOption } from "./account-provider-options";
 
 export interface ResolvedEligibility {
