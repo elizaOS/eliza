@@ -10,6 +10,7 @@ import type { ChatMessage, PluginAutoEnableContext } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
 import {
+  buildModelMetadata,
   buildModels,
   ClaudeCli,
   ClaudeSdkSession,
@@ -610,5 +611,59 @@ describe("models map gating (large-tier only)", () => {
   it("auto-enables for claude-sdk with the same trim/case normalization", () => {
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "  Claude-SDK " }))).toBe(true);
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "gemini" }))).toBe(false);
+  });
+});
+
+describe("buildModelMetadata (RUNTIME_MODEL_CONTEXT self-report)", () => {
+  const prev = {
+    planner: process.env.ELIZA_PLANNER_NATIVE_TOOLS,
+    claudeLarge: process.env.ELIZA_CLI_CLAUDE_MODEL,
+    claudePlanner: process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL,
+    codexLarge: process.env.ELIZA_CLI_CODEX_MODEL,
+  };
+  afterEach(() => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = prev.planner ?? "";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = prev.claudeLarge ?? "";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = prev.claudePlanner ?? "";
+    process.env.ELIZA_CLI_CODEX_MODEL = prev.codexLarge ?? "";
+  });
+
+  it("is undefined when the plugin is inert", () => {
+    expect(buildModelMetadata({ ELIZA_CHAT_VIA_CLI: undefined })).toBeUndefined();
+    expect(buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "gemini" })).toBeUndefined();
+  });
+
+  it("reports the configured claude models per tier (nubs's live config shape)", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-sonnet-5";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "claude-opus-4-8";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    for (const t of LARGE_TIER_MODEL_TYPES) {
+      expect(md?.[t]).toEqual({ displayModel: "claude-sonnet-5" });
+    }
+    expect(md?.ACTION_PLANNER).toEqual({ displayModel: "claude-opus-4-8" });
+  });
+
+  it("planner falls back to the large model when its own key is unset", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-opus-4-8";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    expect(md?.ACTION_PLANNER).toEqual({ displayModel: "claude-opus-4-8" });
+  });
+
+  it("omits ACTION_PLANNER when native-tools planner mode is on (not served here)", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "1";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-opus-4-8";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    expect(md?.ACTION_PLANNER).toBeUndefined();
+    expect(md?.RESPONSE_HANDLER).toEqual({ displayModel: "claude-opus-4-8" });
+  });
+
+  it("reports codex models for the codex backend", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    process.env.ELIZA_CLI_CODEX_MODEL = "gpt-5.6-sol";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "codex-sdk" });
+    expect(md?.RESPONSE_HANDLER).toEqual({ displayModel: "gpt-5.6-sol" });
   });
 });

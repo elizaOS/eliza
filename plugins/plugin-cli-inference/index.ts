@@ -448,10 +448,49 @@ export function buildModels(
   return models as Plugin["models"];
 }
 
+/**
+ * Per-slot display-model metadata so RUNTIME_MODEL_CONTEXT (the provider that
+ * answers "what model are you running?") reports the ACTUAL Claude/Codex model
+ * this plugin calls, not the losing provider's `SMALL_MODEL` fallback. Resolved
+ * from env at construction (service.env is hydrated into process.env before
+ * plugin load) using the SAME precedence as resolveSdkModel/resolveCodexModel,
+ * so the self-report matches what actually runs. Without it the winning
+ * cli-inference registration carries no displayModel and the provider walks the
+ * generic OPENAI_/ANTHROPIC_ prefix chain, mis-reporting the cerebras triage
+ * model (e.g. "gemma-4-31b") for a slot Claude actually serves.
+ */
+export function buildModelMetadata(
+  source: { ELIZA_CHAT_VIA_CLI?: string } = {
+    ELIZA_CHAT_VIA_CLI: readEnv("ELIZA_CHAT_VIA_CLI"),
+  },
+): Plugin["modelMetadata"] {
+  const backend = resolveCliBackend(source);
+  if (!backend) return undefined;
+  const isCodex = backend === "codex" || backend === "codex-sdk";
+  const large = isCodex
+    ? (readEnv("ELIZA_CLI_CODEX_MODEL")?.trim() || "gpt-5.5")
+    : (readEnv("ELIZA_CLI_CLAUDE_MODEL")?.trim() || "claude-opus-4-8");
+  const plannerRaw = isCodex
+    ? readEnv("ELIZA_CLI_CODEX_PLANNER_MODEL")?.trim()
+    : readEnv("ELIZA_CLI_CLAUDE_PLANNER_MODEL")?.trim();
+  const planner = plannerRaw || large;
+  const metadata: Record<string, { displayModel: string }> = {};
+  for (const modelType of LARGE_TIER_MODEL_TYPES) {
+    metadata[modelType] = { displayModel: large };
+  }
+  if (textPlannerEnabled()) {
+    for (const modelType of PLANNER_MODEL_TYPES) {
+      metadata[modelType] = { displayModel: planner };
+    }
+  }
+  return metadata;
+}
+
 export const cliInferencePlugin: Plugin = {
   name: "cli-inference",
   description:
     "TOS-clean SAFE/CLOUD inference: serves large-tier model handlers through sanctioned claude, claude-sdk, or codex routes; each route reads its own creds. Inert unless ELIZA_CHAT_VIA_CLI=claude|claude-sdk|codex.",
+  modelMetadata: buildModelMetadata(),
   // High priority so that, when ELIZA_CHAT_VIA_CLI is set, this plugin
   // deterministically wins the tiers it registers (TEXT_LARGE / TEXT_MEGA /
   // RESPONSE_HANDLER) over default-priority (0) model providers like
