@@ -79,6 +79,8 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   ],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-commands": [
+    "ACCOUNTS_COMMAND",
+    "BACKEND_COMMAND",
     "COMMANDS_COMMAND",
     "COMPACT_COMMAND",
     "CONTEXT_COMMAND",
@@ -234,6 +236,8 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // /compact, /think, /model, /tts, …) are dispatched through the command
   // palette, not the keyless scenario pipeline, so they have no deterministic
   // scenario yet.
+  "ACCOUNTS_COMMAND",
+  "BACKEND_COMMAND",
   "COMMANDS_COMMAND",
   "COMPACT_COMMAND",
   "CONTEXT_COMMAND",
