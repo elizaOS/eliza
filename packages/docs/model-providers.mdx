@@ -293,6 +293,56 @@ For remote Ollama instances, point to your server's address instead.
 
 ---
 
+## OpenAI-compatible gateways (DaoXE example)
+
+The bundled `@elizaos/plugin-openai` works with any OpenAI Chat Completions-compatible endpoint. Point `OPENAI_BASE_URL` at the gateway and put the gateway key in `OPENAI_API_KEY` — the same pattern used for Cerebras, EvoLink, and local OpenAI-compatible servers.
+
+[DaoXE](https://daoxe.com) is one such multi-model multi-protocol API gateway. For Eliza, use the **OpenAI-compatible** path (`https://daoxe.com/v1`). DaoXE also exposes OpenAI Responses and Anthropic Messages for other clients; those protocols are not what `@elizaos/plugin-openai` speaks.
+
+### Setup
+
+1. Create a DaoXE API key and note the exact model IDs available on your account (they are account-scoped — do not hardcode a public model list).
+2. Add to `~/.local/state/eliza/.env`:
+
+```bash
+OPENAI_API_KEY=your-daoxe-api-key
+OPENAI_BASE_URL=https://daoxe.com/v1
+# Optional: pin text tiers to IDs from GET /v1/models
+# OPENAI_LARGE_MODEL=<exact-account-model-id>
+# OPENAI_SMALL_MODEL=<exact-account-model-id>
+```
+
+3. Optionally set defaults in `~/.local/state/eliza/eliza.json`:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "openai/<exact-account-model-id>",
+      },
+    },
+  },
+}
+```
+
+4. Smoke-check the endpoint:
+
+```bash
+curl -sS https://daoxe.com/v1/models \
+  -H "Authorization: Bearer $OPENAI_API_KEY"
+```
+
+The plugin auto-enables when `OPENAI_API_KEY` is present. With `OPENAI_BASE_URL` set, traffic goes to DaoXE instead of `api.openai.com`.
+
+### Notes
+
+- Use the **exact** model IDs returned by your DaoXE account (`GET /v1/models`). Catalog strings from other providers will not work.
+- DaoXE is **not available in mainland China**.
+- Maintainer affiliation: DaoXE is maintained by the author of this section ([@seven7763](https://github.com/seven7763)); example clients: [DaoXE-AI](https://github.com/seven7763/DaoXE-AI).
+
+---
+
 ## Env Variable Quick Reference
 
 Every env variable that triggers auto-enable, grouped by provider:
