@@ -38,28 +38,28 @@ const COLD_CORE_IMPORT_TIMEOUT_MS = 30_000;
 
 describe("requireTaskAgentAccess — policy merge", () => {
   it(
-    "keeps the built-in Discord ADMIN gate when only another connector is overridden",
+    "keeps the built-in Discord OWNER gate when only another connector is overridden",
     async () => {
       const result = await requireTaskAgentAccess(
         runtimeWith({ connectors: { slack: "ADMIN" } }),
         discordMessage,
         "create",
       );
-      // Discord still requires ADMIN despite the slack-only override.
-      expect(result.requiredRole).toBe("ADMIN");
+      // Discord still requires OWNER despite the slack-only override (#16203).
+      expect(result.requiredRole).toBe("OWNER");
     },
     COLD_CORE_IMPORT_TIMEOUT_MS,
   );
 
   it(
-    "still requires Discord ADMIN under the default policy (no override)",
+    "still requires Discord OWNER under the default policy (no override)",
     async () => {
       const result = await requireTaskAgentAccess(
         runtimeWith(undefined),
         discordMessage,
         "interact",
       );
-      expect(result.requiredRole).toBe("ADMIN");
+      expect(result.requiredRole).toBe("OWNER");
     },
     COLD_CORE_IMPORT_TIMEOUT_MS,
   );
