@@ -554,4 +554,46 @@ describe("FineTuningView analysis coverage panel", () => {
       ),
     ).toBeTruthy();
   });
+
+  it("keeps the complete empty-state action surface operable", async () => {
+    for (const [name, operation] of Object.entries(trainingClient)) {
+      if (name !== "onWsEvent" && "mockRejectedValue" in operation) {
+        operation.mockRejectedValue(new Error("expected boundary failure"));
+      }
+    }
+    mockBaselineState();
+
+    render(React.createElement(FineTuningView));
+    await screen.findByText("finetuningview.Status");
+
+    const actionIds = [
+      "action-build-analysis-index",
+      "action-build-readiness-report",
+      "action-ingest-hf-dataset",
+      "action-generate-feed-trajectories",
+      "action-run-scenarios",
+      "action-run-eval-comparison",
+      "action-run-benchmark-vs-cerebras",
+      "action-stage-eliza1-bundle",
+      "action-run-action-benchmark",
+      "action-collection-preflight",
+      "action-collect-and-index",
+    ];
+    for (const actionId of actionIds) {
+      const button = document.querySelector<HTMLButtonElement>(
+        `[data-agent-id="${actionId}"]`,
+      );
+      expect(button, `${actionId} should render`).toBeTruthy();
+      if (button) fireEvent.click(button);
+      await Promise.resolve();
+    }
+
+    await waitFor(() => {
+      const transportCalls = Object.values(trainingClient).reduce(
+        (total, operation) => total + operation.mock.calls.length,
+        0,
+      );
+      expect(transportCalls).toBeGreaterThan(12);
+    });
+  });
 });

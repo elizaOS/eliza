@@ -23,7 +23,12 @@ import path from "node:path";
 import { getCodingAgentSelectorBridge } from "@elizaos/core";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AccountPool, isAccountSelectableNow } from "./account-pool";
+import {
+  AccountPool,
+  configureDefaultAccountPoolSelection,
+  isAccountSelectableNow,
+  selectionForProvider,
+} from "./account-pool";
 import { installCodingAgentSelectorBridge } from "./coding-account-bridge";
 
 let stateDir: string;
@@ -245,5 +250,82 @@ describe("account health mutation lifecycle", () => {
     expect(deleted).toEqual(["anthropic-subscription:inserted"]);
     expect(await pool.reprobeFlagged()).toContain("b");
     expect(await pool.reprobeFlagged()).not.toContain("c");
+  });
+
+  it("leaves persistence untouched for missing accounts and unsupported probes", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openai-api:direct": {
+        ...account("direct"),
+        providerId: "openai-api",
+        source: "api-key",
+      },
+    };
+    const writes: LinkedAccountConfig[] = [];
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        writes.push(next);
+      },
+    });
+
+    await pool.recordCall("missing", { ok: false });
+    await pool.refreshUsage("missing", "token");
+    await pool.markRateLimited("missing", Date.now());
+    await pool.markNeedsReauth("missing");
+    await pool.markInvalid("missing");
+    await pool.markHealthy("missing");
+    await pool.refreshUsage("direct", "token", { providerId: "openai-api" });
+    await pool.markHealthy("direct", { providerId: "openai-api" });
+    await pool.deleteMetadata("openai-api", "direct");
+
+    expect(writes).toEqual([]);
+    expect(pool.list()).toEqual([accounts["openai-api:direct"]]);
+    expect(pool.list("anthropic-subscription")).toEqual([]);
+    expect(pool.get("missing")).toBeNull();
+  });
+});
+
+describe("configured provider selection", () => {
+  it("normalizes provider strategies and route-scoped account pins", () => {
+    configureDefaultAccountPoolSelection({
+      accountStrategies: {
+        "anthropic-api": "reset-soonest",
+        "openai-api": "invalid",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "anthropic",
+          strategy: "quota-aware",
+          accountIds: [" primary ", "", "fallback"],
+        },
+      },
+    });
+
+    expect(selectionForProvider("anthropic-api")).toEqual({
+      strategy: "quota-aware",
+      accountIds: ["primary", "fallback"],
+    });
+    expect(selectionForProvider("anthropic-subscription")).toEqual({
+      strategy: "quota-aware",
+      accountIds: ["primary", "fallback"],
+    });
+    expect(selectionForProvider("openai-api")).toEqual({
+      strategy: undefined,
+      accountIds: undefined,
+    });
+
+    configureDefaultAccountPoolSelection({
+      serviceRouting: {
+        llmText: {
+          backend: "openai",
+          accountId: " codex-primary ",
+          strategy: "round-robin",
+        },
+      },
+    });
+    expect(selectionForProvider("openai-codex")).toEqual({
+      strategy: "round-robin",
+      accountIds: ["codex-primary"],
+    });
   });
 });
