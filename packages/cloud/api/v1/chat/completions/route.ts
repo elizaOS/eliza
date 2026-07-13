@@ -2424,6 +2424,30 @@ async function tryPassthroughStreamingRequest(params: {
   }
 
   const [clientBranch, meterBranch] = upstreamResponse.body.tee();
+  const meterAbortController = new AbortController();
+  const clientReader = clientBranch.getReader();
+  const cancelAwareClientBranch = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value } = await clientReader.read();
+        if (done) {
+          controller.close();
+        } else {
+          controller.enqueue(value);
+        }
+      } catch (error) {
+        // error-policy:J1 translate upstream read failure to the client stream.
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      // A tee keeps the upstream alive until both branches stop. Explicitly
+      // stop the metering branch when the client disconnects so billing can
+      // settle the observed partial output inside Cloudflare's waitUntil window.
+      meterAbortController.abort(reason);
+      await clientReader.cancel(reason);
+    },
+  });
   const billingPrompt = buildChatPromptForBilling(request);
 
   // Meter + settle on the teed branch, OFF the response path when a Workers
@@ -2431,7 +2455,10 @@ async function tryPassthroughStreamingRequest(params: {
   // through); inline for tests / non-Worker callers — tee buffers the client
   // branch, so inline draining never deadlocks the response.
   await settleOffResponsePath(params.executionCtx, async () => {
-    const tail = await readPassthroughStreamTail(meterBranch);
+    const tail = await readPassthroughStreamTail(
+      meterBranch,
+      meterAbortController.signal,
+    );
     if (tail.usage) {
       // Success settle — the same chain, amounts, and record shapes as the SDK
       // path's onFinish, fed by the provider-reported usage frame.
@@ -2537,7 +2564,7 @@ async function tryPassthroughStreamingRequest(params: {
   });
 
   return addCorsHeaders(
-    new Response(clientBranch, {
+    new Response(cancelAwareClientBranch, {
       status: 200,
       headers: {
         "Content-Type": "text/event-stream",

@@ -737,6 +737,56 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
 });
 
 describe("passthrough streaming — client abort cancels upstream and settles the delivered portion", () => {
+  test("response cancellation stops the meter and completes deferred settlement", async () => {
+    const ledger = makeLedgerReservation(100, 0.9);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const deliveredText = "partial response before disconnect";
+    const waitUntilPromises: Promise<unknown>[] = [];
+    let upstreamCancelled = false;
+
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: {"id":"c1","choices":[{"index":0,"delta":{"content":${JSON.stringify(deliveredText)}},"finish_reason":null}],"usage":null}\n\n`,
+              ),
+            );
+          },
+          cancel() {
+            upstreamCancelled = true;
+          },
+        }),
+        { status: 200 },
+      );
+
+    const res = await callStreaming(settle, {
+      estimatedInputTokens: 9,
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("expected passthrough response body");
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain(deliveredText);
+
+    await reader.cancel(new DOMException("client disconnected", "AbortError"));
+    await Promise.all(waitUntilPromises);
+
+    expect(upstreamCancelled).toBe(true);
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(billUsage.mock.calls[0][1]).toMatchObject({
+      inputTokens: 9,
+      outputTokens: estimateTokens(deliveredText),
+    });
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+  });
+
   test("abort mid-stream: upstream signal aborted, estimate-based partial settle", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);
