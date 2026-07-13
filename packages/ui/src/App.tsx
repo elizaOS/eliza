@@ -131,6 +131,7 @@ import {
   useAppSelectorShallow,
 } from "./state";
 import { isShellPaintable } from "./state/startup-coordinator";
+import { useIsChatHostWindow } from "./state/useDesktopChatHost";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
@@ -1951,7 +1952,15 @@ function ChatOverlayMount({
     isElevated: isOwner,
     isAuthorized: atLeast("USER"),
   });
+  // Desktop "one chat, in the active window" gate (#16200 Stage 3): this window
+  // renders the chat only when the shell says it is the active host — the
+  // focused Eliza window, or the main floating-pill window when none is focused.
+  // Always `true` off the desktop shell (web/mobile) and during onboarding (the
+  // first-run conductor lives inside this overlay and must never be hidden by a
+  // focus change).
+  const isChatHost = useIsChatHostWindow();
   if (!controller) return null;
+  if (!isChatHost && firstRunComplete !== false) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
   // reported name; "Eliza" is the default the overlay falls back to.

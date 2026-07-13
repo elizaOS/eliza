@@ -93,6 +93,10 @@ describe("App standalone chat-overlay wiring", () => {
       APP_TSX.indexOf("function TabScrollView("),
     );
     expect(kioskShell).toContain("<ChatOverlayMount />");
+    // The single overlay is gated on being the active chat host window
+    // (#16200 Stage 3), so the chat renders in exactly one window at a time.
+    expect(APP_TSX).toContain("useIsChatHostWindow");
+    expect(APP_TSX).toContain("if (!isChatHost && firstRunComplete !== false)");
     // The old three-component stack is gone: no imports, no JSX usage. (A prose
     // comment may still name them to explain the removal — assert on code, not
     // the mention.)

@@ -47,6 +47,7 @@ import {
   resolveDesktopShellWindowPresentation,
   shouldEnableNativeGlass,
 } from "./desktop-bottom-bar-config";
+import { getActiveChatHostBroadcaster } from "./desktop-chat-host";
 import {
   classifyDeepLinkRoute,
   readOpenUrlEventUrl,
@@ -792,6 +793,19 @@ function sendManagedWindowsChanged(): void {
   });
 }
 
+/**
+ * The electrobun numeric window id, which the preload injects into each
+ * renderer as `window.__electrobunWindowId` — so it is the id the chat-host
+ * broadcaster keys sends on and the renderer compares against. `ManagedWindowLike`
+ * omits it from its structural type, so read it defensively.
+ */
+function readManagedWindowId(
+  window: ManagedWindowLike | BrowserWindow,
+): number | null {
+  const id = (window as { id?: number }).id;
+  return typeof id === "number" ? id : null;
+}
+
 function shouldRestoreWindowBeforeMenuAction(
   action: string | undefined,
 ): boolean {
@@ -1322,6 +1336,11 @@ function attachMainWindow(
   wireMainWindowAfterCreate(win, rpc, sendToWebview);
   currentWindow = win;
   currentSendToWebview = sendToWebview;
+  // The main window is the fallback chat host. A pill<->dashboard swap mints a
+  // new window id, so re-declaring it here keeps the broadcaster pointed at the
+  // live main webview. The initial host push waits for dom-ready below, when
+  // the renderer's RPC bridge can actually receive it.
+  getActiveChatHostBroadcaster().setMainWindow(win.id, sendToWebview);
   const presentation = resolveDesktopShellWindowPresentation();
   setCurrentMainWindow(win, {
     titleBarStyle: presentation.titleBarStyle,
@@ -1338,6 +1357,9 @@ function attachMainWindow(
 
   win.webview.on("dom-ready", () => {
     injectApiBase(win);
+    // Bridge is live now — hand the renderer the current chat host so it knows
+    // whether to mount the chat at startup (and after any reload).
+    getActiveChatHostBroadcaster().sendCurrentHostToWindow(win.id);
   });
 
   // Prevent the main webview from navigating to external URLs.
@@ -1432,6 +1454,9 @@ function attachMainWindow(
       currentWindow = null;
       currentSendToWebview = null;
     }
+    const chatHost = getActiveChatHostBroadcaster();
+    chatHost.unregisterWindow(win.id);
+    chatHost.broadcastActiveChatHost();
     clearCurrentMainWindow(win);
     getDesktopManager().clearMainWindow(win);
 
@@ -2711,12 +2736,27 @@ async function main(): Promise<void> {
 
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
-      const { rpc } = createDesktopRpc("surface");
+      const { rpc, sendToWebview } = createDesktopRpc("surface");
+      // `surface` is registry metadata, not a BrowserWindow constructor option.
+      const { surface, ...windowOptions } = options;
       const window = createElectrobunBrowserWindow({
-        ...options,
+        ...windowOptions,
         rpc,
       }) as BrowserWindow & ManagedWindowLike;
       surfaceRpcs.set(window, rpc);
+      // Every surface window joins the broadcast set (so it can be told the
+      // host), but only the detached chat window is chat-host-capable — a
+      // focused documents/character/etc. surface renders no chat and must never
+      // take the host from the pill (retaining the sendToWebview the old code
+      // discarded).
+      const surfaceWindowId = readManagedWindowId(window);
+      if (surfaceWindowId !== null) {
+        getActiveChatHostBroadcaster().registerWindow(
+          surfaceWindowId,
+          sendToWebview,
+          surface === "chat",
+        );
+      }
       return window;
     },
     resolveRendererUrl,
@@ -2731,10 +2771,34 @@ async function main(): Promise<void> {
       }
       wireSettingsRpcAfterCreate(rpc);
     },
-    injectApiBase: (window) =>
-      injectApiBase(window as BrowserWindow & ManagedWindowLike),
+    injectApiBase: (window) => {
+      injectApiBase(window as BrowserWindow & ManagedWindowLike);
+      // dom-ready (and later api-base updates) — the surface renderer can now
+      // receive, so catch it up to the current chat host.
+      const surfaceWindowId = readManagedWindowId(window);
+      if (surfaceWindowId !== null) {
+        getActiveChatHostBroadcaster().sendCurrentHostToWindow(surfaceWindowId);
+      }
+    },
     onWindowFocused: (window) => {
       lastFocusedWindow = window;
+      // A focused surface hosts the chat while the app is frontmost.
+      const surfaceWindowId = readManagedWindowId(window);
+      if (surfaceWindowId !== null) {
+        const chatHost = getActiveChatHostBroadcaster();
+        chatHost.setFocusedSurface(surfaceWindowId);
+        chatHost.broadcastActiveChatHost();
+      }
+    },
+    onWindowClosed: (window) => {
+      // A closing surface drops out of the broadcast set; if it was the host,
+      // focus falls back to the main window.
+      const surfaceWindowId = readManagedWindowId(window);
+      if (surfaceWindowId !== null) {
+        const chatHost = getActiveChatHostBroadcaster();
+        chatHost.unregisterWindow(surfaceWindowId);
+        chatHost.broadcastActiveChatHost();
+      }
     },
     onRegistryChanged: () => {
       sendManagedWindowsChanged();

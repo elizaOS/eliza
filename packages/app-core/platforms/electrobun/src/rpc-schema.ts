@@ -2344,6 +2344,10 @@ export type ElizaDesktopRPCSchema = {
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];
       };
+      // The window that should render the singular chat right now (#16200
+      // Stage 3). `hostWindowId` is the electrobun numeric window id, matching
+      // the renderer's own `window.__electrobunWindowId`.
+      desktopActiveChatHostChanged: { hostWindowId: number };
       remotePluginStoreChanged: { snapshot: RemotePluginStoreSnapshot };
       remotePluginWorkerChanged: { status: RemotePluginWorkerStatus };
 
@@ -2816,6 +2820,7 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "desktop:windowClose": "desktopWindowClose",
   "desktop:shutdownStarted": "desktopShutdownStarted",
   "desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
+  "desktop:activeChatHostChanged": "desktopActiveChatHostChanged",
   "remote-plugin:storeChanged": "remotePluginStoreChanged",
   "remote-plugin:workerChanged": "remotePluginWorkerChanged",
   "canvas:windowEvent": "canvasWindowEvent",

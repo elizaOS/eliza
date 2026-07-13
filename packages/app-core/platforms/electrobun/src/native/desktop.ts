@@ -50,6 +50,7 @@ import {
   type ScreenWorkArea,
   shouldReanchorBottomBar,
 } from "../desktop-bottom-bar-config";
+import { getActiveChatHostBroadcaster } from "../desktop-chat-host";
 import {
   resolveTrayClickAction,
   shouldAttachTrayMenu,
@@ -516,6 +517,7 @@ export class DesktopManager {
     mainWindowPresent: boolean;
     windowVisible: boolean;
     windowFocused: boolean;
+    activeChatHostWindowId: number | null;
     shortcuts: Array<{ id: string; accelerator: string }>;
     trayPopover: {
       configured: boolean;
@@ -529,6 +531,10 @@ export class DesktopManager {
       mainWindowPresent: Boolean(this.mainWindow),
       windowVisible: (await this.isWindowVisible()).visible,
       windowFocused: this._windowFocused,
+      // The window that should render the singular chat right now (#16200), so
+      // the packaged e2e can assert host truth without native introspection.
+      activeChatHostWindowId:
+        getActiveChatHostBroadcaster().getActiveChatHostWindowId(),
       shortcuts: Array.from(this.shortcuts.values()).map((shortcut) => ({
         id: shortcut.id,
         accelerator: shortcut.accelerator,
@@ -1442,6 +1448,12 @@ X-GNOME-Autostart-enabled=true
     const focusHandler = () => {
       this._windowFocused = true;
       this.send("desktopWindowFocus");
+      // The main window is the key window, so no surface hosts the chat. On
+      // Win/Linux this focus event is the only host signal (no focus poller);
+      // on macOS the poller does the same, but reacting here too is harmless.
+      const chatHost = getActiveChatHostBroadcaster();
+      chatHost.clearFocusedSurface();
+      chatHost.broadcastActiveChatHost();
     };
     this.windowEventHandlers.focus = focusHandler;
     win.on("focus", focusHandler);
@@ -1594,8 +1606,18 @@ X-GNOME-Autostart-enabled=true
       }
       this._appActive = appActive;
 
+      // Chat-host truth on macOS rides this poller: blur is unreliable, so we
+      // read isKeyWindow(main) + isAppActive() every tick. When another app is
+      // frontmost the host falls back to the main window; when the main window
+      // is the key window no surface holds focus.
+      const chatHost = getActiveChatHostBroadcaster();
+      chatHost.setAppActive(appActive);
+
       const ptr = (win as { ptr?: unknown }).ptr;
-      if (!ptr) return;
+      if (!ptr) {
+        chatHost.broadcastActiveChatHost();
+        return;
+      }
       const focused = isKeyWindow(ptr as Parameters<typeof isKeyWindow>[0]);
       if (focused !== this._windowFocused) {
         this._windowFocused = focused;
@@ -1603,6 +1625,10 @@ X-GNOME-Autostart-enabled=true
           this.send("desktopWindowBlur");
         }
       }
+      if (focused) {
+        chatHost.clearFocusedSurface();
+      }
+      chatHost.broadcastActiveChatHost();
     }, 500);
   }
 

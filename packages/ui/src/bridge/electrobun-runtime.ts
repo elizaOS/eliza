@@ -32,6 +32,18 @@ function hasElectrobunRendererBridge(): boolean {
   );
 }
 
+/**
+ * This webview's Electrobun window id (preload-injected), or `null` off the
+ * desktop shell. Used to decide whether THIS window is the active chat host
+ * when the shell broadcasts `desktopActiveChatHostChanged` (#16200).
+ */
+export function getElectrobunWindowId(): number | null {
+  const runtimeWindow = getRuntimeWindow();
+  return typeof runtimeWindow?.__electrobunWindowId === "number"
+    ? runtimeWindow.__electrobunWindowId
+    : null;
+}
+
 export function isElectrobunRuntime(): boolean {
   const runtimeWindow = getRuntimeWindow();
   if (!runtimeWindow) {

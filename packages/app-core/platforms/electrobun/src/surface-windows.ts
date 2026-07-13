@@ -62,6 +62,12 @@ export interface CreateManagedWindowOptions {
   frame: ManagedWindowFrame;
   titleBarStyle: "default";
   transparent: boolean;
+  /**
+   * Which managed surface this window renders. The factory uses it to mark the
+   * chat window as chat-host-capable; it is NOT a BrowserWindow constructor
+   * option (the factory destructures it off before constructing).
+   */
+  surface: ManagedSurface;
 }
 
 interface ManagedWindowRecord extends ManagedWindowSnapshot {
@@ -76,6 +82,14 @@ interface SurfaceWindowManagerOptions {
   wireRpc: (window: ManagedWindowLike) => void;
   injectApiBase: (window: ManagedWindowLike) => void;
   onWindowFocused?: (window: ManagedWindowLike) => void;
+  /**
+   * Fired as a managed window closes, before its registry slot is dropped.
+   * WHY: the active-chat-host broadcaster keys per-window send channels by the
+   * numeric window id, which only lives on the live window object — the
+   * registry snapshots carry the string id, not it — so cleanup needs the
+   * closing window itself.
+   */
+  onWindowClosed?: (window: ManagedWindowLike) => void;
   onRegistryChanged?: () => void;
   /**
    * Optional per-slug bounds persistence. When supplied, slug-keyed
@@ -188,6 +202,7 @@ export class SurfaceWindowManager {
   private readonly wireRpcFn: SurfaceWindowManagerOptions["wireRpc"];
   private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
   private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
+  private readonly onWindowClosed?: SurfaceWindowManagerOptions["onWindowClosed"];
   private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
   private readonly boundsStore?: BoundsStore;
   private readonly windows = new Map<string, ManagedWindowRecord>();
@@ -204,6 +219,7 @@ export class SurfaceWindowManager {
     this.wireRpcFn = options.wireRpc;
     this.injectApiBaseFn = options.injectApiBase;
     this.onWindowFocused = options.onWindowFocused;
+    this.onWindowClosed = options.onWindowClosed;
     this.onRegistryChanged = options.onRegistryChanged;
     this.boundsStore = options.boundsStore;
   }
@@ -412,6 +428,7 @@ export class SurfaceWindowManager {
       frame,
       titleBarStyle: "default",
       transparent: false,
+      surface,
     });
     if (alwaysOnTop) {
       window.setAlwaysOnTop(true);
@@ -437,6 +454,7 @@ export class SurfaceWindowManager {
       window.webview.loadURL?.(url);
     }, 0);
     window.on("close", () => {
+      this.onWindowClosed?.(window);
       this.windows.delete(id);
       this.notifyRegistryChanged();
     });
