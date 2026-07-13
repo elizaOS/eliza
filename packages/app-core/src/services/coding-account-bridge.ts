@@ -284,15 +284,11 @@ async function materializeCodexHome(
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  // A CLI session (still running or just exited) may have rotated the
-  // ONE-TIME refresh token into auth.json after the caller's adoption pass at
-  // select time. Overwriting a divergent file with pool tokens would strand
-  // the only valid copy of the rotated pair — the next refresh with the
-  // pool's consumed token then trips OpenAI's reuse detection and revokes the
-  // whole grant family (the 2026-07-13 double-account revocation). Adopt
-  // (mutex-serialized, newer-only) immediately before writing so the pool is
-  // authoritative at the moment of materialization.
-  await adoptRotatedCodexTokens(accountId).catch(() => false);
+  // Codex refresh tokens are one-time credentials. A session may rotate the
+  // pair after selection but before materialization, so adoption is repeated
+  // under the account mutex immediately before writing. Any adoption failure
+  // must abort the write; continuing could destroy the only valid token pair.
+  await adoptRotatedCodexTokens(accountId);
   const record = loadAccount("openai-codex", accountId);
   const refreshToken = record?.credentials.refresh;
   if (!refreshToken) {
@@ -310,9 +306,8 @@ async function materializeCodexHome(
     OPENAI_API_KEY: null as string | null,
     tokens: {
       ...(idToken ? { id_token: idToken } : {}),
-      // Prefer the pool record's access token: when adoption just landed a
-      // rotated pair, the caller-resolved token belongs to the consumed
-      // generation and must not be re-paired with the adopted refresh token.
+      // Access and refresh tokens are a generation pair; never combine a
+      // caller-cached access token with a newly adopted refresh token.
       access_token: record?.credentials.access ?? accessToken,
       refresh_token: refreshToken,
       ...(chatgptAccountId ? { account_id: chatgptAccountId } : {}),
@@ -381,13 +376,9 @@ async function materializeCodexHome(
       );
       effort = undefined;
     }
-    // `cli_auth_credentials_store = "file"` pins rotated tokens into
-    // CODEX_HOME/auth.json where adoptRotatedCodexTokens can harvest them.
-    // The default (`auto`) may pick a keyring/ephemeral store on some hosts —
-    // on a headless box the rotated ONE-TIME refresh token then evaporates
-    // with the process and the pool's copy is already consumed. Value
-    // validated against the pinned codex-acp's config parser (enum:
-    // file|keyring|auto|ephemeral; an unknown variant fails the WHOLE parse).
+    // The file store makes every rotated pair observable to the pool. The
+    // adapter's `auto` mode can select a process-local or unavailable keyring
+    // on headless hosts, which is incompatible with durable pool adoption.
     writeFileSync(
       targetConfig,
       `model = "${model || "gpt-5.6-sol"}"\ncli_auth_credentials_store = "file"\n${

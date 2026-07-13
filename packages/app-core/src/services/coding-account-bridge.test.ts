@@ -358,8 +358,8 @@ describe("coding-account-bridge", () => {
         "utf-8",
       );
       expect(cfg).toBe(
-      'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
-    );
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
     } finally {
       if (prevOsHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevOsHome;
@@ -422,17 +422,14 @@ describe("coding-account-bridge", () => {
         "utf-8",
       );
       expect(cfg).toBe(
-      'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
-    );
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
     }
   });
 
   it("adopts a CLI-rotated refresh token at materialize time instead of clobbering it", async () => {
-    // OpenAI refresh tokens are ONE-TIME-USE. A prior session's CLI rotated
-    // the pair into CODEX_HOME/auth.json; re-materializing the pool's stale
-    // copy over it would strand the only valid refresh token and the next
-    // canonical refresh would trip reuse detection (grant revoked — the
-    // 2026-07-13 double-account failure). The spawn must adopt first.
+    // The session file is the only surviving copy after a one-time refresh
+    // token rotates, so materialization must adopt it before writing.
     writeAccount("openai-codex", "cx-rot", "cx-rot-access", {
       organizationId: "a",
     });
@@ -445,13 +442,15 @@ describe("coding-account-bridge", () => {
         OPENAI_API_KEY: null,
         tokens: {
           access_token: `e30.${Buffer.from(
-            JSON.stringify({ exp: Math.floor((Date.now() + 86_400_000) / 1000) }),
+            JSON.stringify({
+              exp: Math.floor((Date.now() + 86_400_000) / 1000),
+            }),
           ).toString("base64url")}.sig`,
           refresh_token: "cx-rot-access-refresh-ROTATED",
           account_id: "a",
         },
-        // Newer than the record's updatedAt so adoption treats the CLI copy
-        // as the freshest truth.
+        // Adoption is newer-only so re-linking an account cannot be undone by
+        // a stale session file.
         last_refresh: new Date(Date.now() + 60_000).toISOString(),
       }),
     );
@@ -461,11 +460,8 @@ describe("coding-account-bridge", () => {
     )?.select("codex");
     expect(sel?.accountId).toBe("cx-rot");
 
-    // The pool record now carries the rotated pair…
     const pool = getDefaultAccountPool();
-    const adopted = pool
-      .list("openai-codex")
-      .find((a) => a.id === "cx-rot");
+    const adopted = pool.list("openai-codex").find((a) => a.id === "cx-rot");
     expect(adopted).toBeTruthy();
     const authOnDisk = JSON.parse(
       readFileSync(
@@ -473,8 +469,6 @@ describe("coding-account-bridge", () => {
         "utf-8",
       ),
     ) as { tokens?: { refresh_token?: string } };
-    // …and the materialized auth.json keeps the rotated refresh token — the
-    // stale pool copy must never overwrite it.
     expect(authOnDisk.tokens?.refresh_token).toBe(
       "cx-rot-access-refresh-ROTATED",
     );
