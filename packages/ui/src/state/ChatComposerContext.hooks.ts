@@ -74,7 +74,7 @@ export function useChatComposer(): ChatComposerValue {
 }
 
 /**
- * The composer draft for chat input SURFACES (overlay, ChatSurface): the
+ * The composer draft for chat input surfaces (the ChatOverlay composer): the
  * shared ChatComposerContext slot when a provider is mounted — so every
  * surface targeting the app's active conversation edits ONE draft, and
  * AppContext-level draft persistence/handoff repaints them all — with a

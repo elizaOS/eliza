@@ -288,15 +288,6 @@ export {
   ViewHeader,
 } from "./components/shared/ViewHeader";
 export {
-  AssistantOverlay,
-  type AssistantOverlayProps,
-} from "./components/shell/AssistantOverlay";
-export {
-  ChatSurface,
-  type ChatSurfaceProps,
-} from "./components/shell/ChatSurface";
-export { HomePill, type HomePillProps } from "./components/shell/HomePill";
-export {
   HomeScreen,
   type HomeScreenProps,
   type HomeTileTarget,

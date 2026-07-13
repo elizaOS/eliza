@@ -177,11 +177,10 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 6,
-    interaction: "Push-to-talk hold (composer + overlay + ChatSurface mic)",
+    interaction: "Push-to-talk hold (composer + ChatOverlay mic)",
     sites: [S("hooks/usePushToTalk.ts")],
     tests: [
       S("components/composites/chat/chat-composer.test.tsx"),
-      S("components/shell/ChatSurface.test.tsx"),
       S("hooks/usePushToTalk.test.tsx"),
     ],
   },

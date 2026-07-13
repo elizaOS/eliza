@@ -186,20 +186,6 @@ vi.mock("./components/shell/BugReportModal", () => ({
   BugReportModal: () => null,
 }));
 
-vi.mock("./components/shell/HomePill", () => ({
-  HomePill: () => <button type="button">home pill</button>,
-}));
-
-vi.mock("./components/shell/AssistantOverlay", () => ({
-  AssistantOverlay: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="assistant-overlay">{children}</div>
-  ),
-}));
-
-vi.mock("./components/shell/ChatSurface", () => ({
-  ChatSurface: () => <div data-testid="chat-surface" />,
-}));
-
 vi.mock("./components/shell/SystemWarningBanner", () => ({
   SystemWarningBanner: () => null,
 }));

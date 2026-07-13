@@ -8,10 +8,10 @@
  * spoken assistant output (through useShellVoiceOutput). Conversation switching
  * and horizontal swipe navigation resolve through conversation-nav.
  *
- * ChatSurface / AssistantOverlay / ChatOverlay and the home surfaces
- * are the consumers; they read the controller and render, holding no chat/voice
- * state of their own. ShellControllerContext provides one instance so the pill
- * and the overlay stay in lock-step without double-mounting this hook.
+ * {@link ChatOverlay} and the home surfaces are the consumers; they read the
+ * controller and render, holding no chat/voice state of their own.
+ * ShellControllerContext provides one instance so every surface stays in
+ * lock-step without double-mounting this hook.
  */
 import {
   VOICE_SETTINGS_APPLY_EVENT,
@@ -272,10 +272,10 @@ export interface ShellController {
 }
 
 /**
- * Bridges the shell foundation (HomePill + AssistantOverlay + ChatSurface) to
- * the real agent message flow exposed by {@link useApp}. Replaces the v1
- * mocked echo: text submitted here goes through `sendChatText`, the same path
- * the main ChatView uses, so messages actually send and stream back.
+ * Bridges the singular chat surface ({@link ChatOverlay}) to the real agent
+ * message flow exposed by {@link useApp}: text submitted here goes through
+ * `sendChatText`, the same path the main ChatView uses, so messages actually
+ * send and stream back.
  *
  * Voice capture uses the hook-free {@link createVoiceCapture} factory (the
  * standalone-surface path). A final transcript is submitted through the same

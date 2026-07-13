@@ -18,9 +18,6 @@ import { createRoot } from "react-dom/client";
 import { MockAppProvider } from "../../../storybook/mock-providers";
 import { registerDesktopFusedWake } from "../../../voice/fused-wake-desktop-bridge";
 import { useWakeListenWindow } from "../../../voice/useWakeListenWindow";
-import { AssistantOverlay } from "../AssistantOverlay";
-import { ChatSurface } from "../ChatSurface";
-import { HomePill } from "../HomePill";
 import type { ShellMessage, ShellPhase } from "../shell-state";
 
 type Listener = (payload: unknown) => void;
@@ -112,25 +109,42 @@ function FusedWakeIntegrationShell() {
             "radial-gradient(1200px 700px at 18% -5%, #36204d 0%, #0c0c12 58%), linear-gradient(135deg,#1c1238 0%,#08080d 100%)",
         }}
       />
+      {/*
+        Minimal observable of the wake CHAIN — this fixture proves the
+        producer→transport→renderer→onOpen path (the useWakeListenWindow onOpen
+        flips phase to "summoned"), not any chat-surface rendering. It exposes
+        the two test ids the e2e runner waits on: a resting pill, and a composer
+        that appears only once wake summons the bar. The real ChatOverlay is
+        exercised by its own gesture/scroll/first-run e2e suites; coupling this
+        transport test to it would only add flakiness.
+      */}
       <div
         data-testid="chat-overlay-shell"
         className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
       >
-        <HomePill
-          phase={phase}
-          onOpen={() => setPhase("summoned")}
-          onClose={() => setPhase("idle")}
-        />
-        <AssistantOverlay phase={phase} onClose={() => setPhase("idle")}>
-          <ChatSurface
-            messages={messages}
-            onSend={send}
-            canSend
-            greeting="Ask Eliza anything."
-            recording={false}
-            onToggleRecording={() => {}}
-          />
-        </AssistantOverlay>
+        <button
+          type="button"
+          data-testid="shell-home-pill"
+          className="pointer-events-auto fixed bottom-4"
+          onClick={() => setPhase("summoned")}
+        >
+          {phase === "idle" ? "Ask Eliza" : "Listening…"}
+        </button>
+        {phase !== "idle" ? (
+          <div data-testid="shell-chat-surface" className="pointer-events-auto">
+            <input
+              aria-label="message"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") send(e.currentTarget.value);
+              }}
+            />
+            <ol>
+              {messages.map((m) => (
+                <li key={m.id}>{m.content}</li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
       </div>
     </>
   );

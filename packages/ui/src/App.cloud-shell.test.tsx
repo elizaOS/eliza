@@ -47,8 +47,11 @@ const CHATVIEW_TSX = readFileSync(
 describe("App standalone chat-overlay wiring", () => {
   it("mounts the continuous chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
-    expect(APP_TSX).toContain("<ShellFoundationMount />");
-    expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
+    // The desktop bottom-bar (chat-overlay) window renders the SINGULAR
+    // ChatOverlay via ChatOverlayMount — the same element the full shell and
+    // web/mobile use. The old HomePill+AssistantOverlay+ChatSurface stack
+    // (ShellFoundationMount) is gone: there is one chat implementation.
+    expect(APP_TSX).not.toContain("ShellFoundationMount");
     // The floating glass chat remains available in the main shell, including
     // the ambient /chat route.
     expect(APP_TSX).toContain("Continuous chat overlay");
@@ -68,6 +71,34 @@ describe("App standalone chat-overlay wiring", () => {
     );
     expect(branch).toContain("<ChatOverlayShell />");
     expect(branch).toContain("<FirstRunConductorMount />");
+  });
+
+  it("routes every desktop chat surface through the ONE ChatOverlay element", () => {
+    // Consolidation guard (#16200): the desktop bottom-bar (ChatOverlayShell)
+    // and the Linux kiosk (KioskShell) both render the singular ChatOverlay via
+    // ChatOverlayMount — not the retired HomePill/AssistantOverlay/ChatSurface
+    // stack. If someone reintroduces a second chat surface for a window, this
+    // fails.
+    const chatOverlayShell = APP_TSX.slice(
+      APP_TSX.indexOf("function ChatOverlayShell()"),
+      APP_TSX.indexOf("function TrayPopoverShell()"),
+    );
+    expect(chatOverlayShell).toContain("<ChatOverlayMount />");
+    const kioskShell = APP_TSX.slice(
+      APP_TSX.indexOf("function KioskShell()"),
+      APP_TSX.indexOf("function TabScrollView("),
+    );
+    expect(kioskShell).toContain("<ChatOverlayMount />");
+    // The old three-component stack is gone: no imports, no JSX usage. (A prose
+    // comment may still name them to explain the removal — assert on code, not
+    // the mention.)
+    expect(APP_TSX).not.toContain('from "./components/shell/HomePill"');
+    expect(APP_TSX).not.toContain('from "./components/shell/AssistantOverlay"');
+    expect(APP_TSX).not.toContain('from "./components/shell/ChatSurface"');
+    expect(APP_TSX).not.toContain("<HomePill");
+    expect(APP_TSX).not.toContain("<AssistantOverlay");
+    expect(APP_TSX).not.toContain("<ChatSurface");
+    expect(APP_TSX).not.toContain("ShellFoundationMount");
   });
 
   it("renders a header-less app shell", () => {

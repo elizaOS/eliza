@@ -63,15 +63,12 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay";
-import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
 import { ChatOverlay } from "./components/shell/ChatOverlay";
-import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
-import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { NotificationBanners } from "./components/shell/NotificationBanners";
@@ -132,10 +129,6 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "./state";
-import {
-  useChatComposer,
-  useChatInputRef,
-} from "./state/ChatComposerContext.hooks";
 import { isShellPaintable } from "./state/startup-coordinator";
 import {
   authProbeShouldHoldShell,
@@ -502,9 +495,12 @@ function useShellMode(): ShellMode {
 }
 
 /**
- * Floating, transparent assistant overlay surface for the OS chat-overlay
- * window. Renders ONLY the waveform + pill + chat/voice overlay — no app
- * chrome — over a transparent background.
+ * Floating, transparent chat surface for the OS chat-overlay window (the desktop
+ * bottom-bar pill and the Linux kiosk). Renders the SINGULAR {@link ChatOverlay}
+ * — the same element web/mobile/the full dashboard use — over a transparent
+ * background, no app chrome. There is one chat implementation across every
+ * platform and window; the older HomePill/AssistantOverlay/ChatSurface stack it
+ * replaced is gone.
  */
 function ChatOverlayShell() {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
@@ -512,8 +508,8 @@ function ChatOverlayShell() {
   useBarSurfaceWindows();
   const controller = useShellControllerContext();
   const overlayOpen = controller?.isOpen ?? false;
-  // Escape collapses the overlay first — while it is open, AssistantOverlay's
-  // own Escape handler closes it. Once already collapsed, Escape hides the
+  // Escape collapses the overlay first — while it is open, ChatOverlay's own
+  // Escape handling collapses it. Once already collapsed, Escape hides the
   // desktop window entirely (#12184) so the pill dismisses to the background
   // like a summoned panel. Desktop-only (web has no window to hide).
   useEffect(() => {
@@ -530,12 +526,11 @@ function ChatOverlayShell() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [overlayOpen]);
+  // ChatOverlay owns its own `fixed inset-0 pointer-events-none` positioning;
+  // this wrapper only carries the shell test id and the transparent backdrop.
   return (
-    <div
-      data-testid="chat-overlay-shell"
-      className="pointer-events-none fixed inset-0 flex items-end justify-center bg-transparent"
-    >
-      <ShellFoundationMount />
+    <div data-testid="chat-overlay-shell" className="contents">
+      <ChatOverlayMount />
     </div>
   );
 }
@@ -577,8 +572,8 @@ function KioskShell() {
       <div className="min-h-0 flex-1">
         <KioskViewCanvas surfaces={surfaces} />
       </div>
-      {/* Always-visible bottom chat pill + assistant overlay. */}
-      <ShellFoundationMount />
+      {/* Always-visible bottom chat pill — the one singular ChatOverlay. */}
+      <ChatOverlayMount />
     </div>
   );
 }
@@ -1695,13 +1690,6 @@ function ViewRouter({
   );
 }
 
-function greetingForTimeOfDay(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning! What would you like to do?";
-  if (hour < 18) return "Good afternoon! What would you like to do?";
-  return "Good evening! What would you like to do?";
-}
-
 const APP_SHELL_CLASS =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg";
 
@@ -1878,50 +1866,6 @@ function SecretsManagerModalMount(): ReactNode {
         onConsumeInitial={clearFocus}
       />
     </Suspense>
-  );
-}
-
-function ShellFoundationMount() {
-  const controller = useShellControllerContext();
-  const { setChatInput } = useChatComposer();
-  const chatInputRef = useChatInputRef();
-  // Push-to-talk dictation on the ChatSurface mic drops its transcript into
-  // the SHARED composer draft (never auto-sends) — the same sink contract the
-  // continuous overlay registers on its surface. This shell and the overlay
-  // are mutually exclusive App surfaces, so the controller's single sink slot
-  // is never contended.
-  useEffect(() => {
-    if (!controller) return undefined;
-    controller.setDictationSink((text) => {
-      const current = chatInputRef?.current ?? "";
-      setChatInput(current ? `${current} ${text}` : text);
-    });
-    return () => controller.setDictationSink(null);
-  }, [controller, setChatInput, chatInputRef]);
-  if (!controller) return null;
-
-  return (
-    <>
-      <HomePill
-        phase={controller.phase}
-        onOpen={controller.open}
-        onClose={controller.close}
-      />
-      <AssistantOverlay phase={controller.phase} onClose={controller.close}>
-        <ChatSurface
-          messages={controller.messages}
-          onSend={controller.send}
-          canSend={controller.canSend}
-          greeting={greetingForTimeOfDay()}
-          recording={controller.recording}
-          onToggleRecording={controller.toggleRecording}
-          onDictateStart={() => controller.startRecording("dictate")}
-          onDictateEnd={controller.stopRecording}
-          onVision={controller.captureVision}
-          visionActive={controller.visionCapturing}
-        />
-      </AssistantOverlay>
-    </>
   );
 }
 
