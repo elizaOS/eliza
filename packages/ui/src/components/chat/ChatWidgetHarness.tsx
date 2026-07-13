@@ -33,6 +33,7 @@ import {
   isNativeTranscriptAvailable,
   nativeTranscriptBridge,
 } from "../../glass/native-transcript-bridge";
+import { __setAuthStatusForTests } from "../../hooks/useAuthStatus";
 import type { ViewEntry } from "../../hooks/view-catalog";
 import {
   DEFAULT_BACKGROUND_COLOR,
@@ -381,6 +382,25 @@ export function ChatWidgetHarness(): React.JSX.Element {
   // is in place.
   const [homeSeeded, setHomeSeeded] = React.useState(false);
   React.useLayoutEffect(() => {
+    // Publish an authenticated local session BEFORE the launcher mounts. The
+    // per-plugin home widgets gate their connector probe + data poll on
+    // useIsAuthenticated(); with no auth backend the snapshot stays `loading`
+    // forever and every widget self-hides. This is the harness-only seam the
+    // hook documents (the home-screen e2e aliases the module for the same gap).
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: {
+        id: "harness-owner",
+        displayName: "Harness Owner",
+        kind: "owner",
+      },
+      session: { id: "harness-session", kind: "local", expiresAt: null },
+      access: {
+        mode: "local",
+        passwordConfigured: false,
+        ownerConfigured: true,
+      },
+    });
     seedHomeWidgetNotifications();
     // Installed for the whole harness session and deliberately NOT restored: the
     // cleanup that reverts window.fetch would, under React StrictMode's dev
@@ -750,7 +770,9 @@ export function ChatWidgetHarness(): React.JSX.Element {
             <HomeLauncherSurface
               initialPage="home"
               home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
-              launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
+              launcher={
+                <Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />
+              }
             />
           </div>
         ) : null}
