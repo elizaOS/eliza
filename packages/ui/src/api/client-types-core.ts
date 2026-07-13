@@ -343,6 +343,15 @@ export interface ModelsConfigResponse {
     large: Record<string, ModelsConfigEffectiveValue | null>;
     coding: Record<string, ModelsConfigEffectiveValue | null>;
   };
+  /**
+   * The chat provider actually serving inference, resolved server-side from
+   * the serviceRouting topology (absent when no routing is configured).
+   */
+  activeChat?: {
+    provider: string;
+    family: "OPENAI" | "ANTHROPIC" | "ELIZAOS_CLOUD";
+    endpoint: string;
+  };
 }
 
 export interface ModelsConfigWriteRequest {

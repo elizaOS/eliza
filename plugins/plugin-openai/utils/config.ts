@@ -304,7 +304,7 @@ export function getLargeModel(runtime: IAgentRuntime): string {
     getCerebrasModel(runtime) ??
     getEvoLinkModel(runtime) ??
     getSetting(runtime, "LARGE_MODEL") ??
-    "gpt-5"
+    "gpt-5.5"
   );
 }
 

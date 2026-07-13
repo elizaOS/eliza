@@ -90,7 +90,7 @@ describe("Google GenAI config", () => {
     });
 
     expect(getResponseHandlerModel(runtime)).toBe("google-response");
-    expect(getLargeModel(runtime)).toBe("gemini-2.5-pro-preview-03-25");
+    expect(getLargeModel(runtime)).toBe("gemini-2.5-pro");
   });
 
   it("does not create a Google client for blank API keys", () => {
