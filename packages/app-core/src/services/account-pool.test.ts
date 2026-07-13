@@ -564,3 +564,129 @@ describe("AccountPool.filterEligible eligibility gating", () => {
     ).resolves.toMatchObject({ id: "healthy" });
   });
 });
+
+// ── reset-soonest strategy + selectionState dry-run ──────────────────
+// Reset-soonest prefers the account whose weekly budget refunds first (its
+// resetsAt is nearest), holding freshly-reset accounts in reserve. When no
+// reset instants are known it degrades to least-recently-used. selectionState
+// is a non-mutating mirror the accounts API/UI polls to label the active row.
+describe("AccountPool reset-soonest selection", () => {
+  const poolOf = (accounts: Record<string, LinkedAccountConfig>) =>
+    new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async () => {},
+    });
+
+  const now = Date.now();
+
+  it("serves the account whose weekly limit resets soonest", async () => {
+    const accounts = {
+      "anthropic-subscription:soon": account("anthropic-subscription", {
+        id: "soon",
+        priority: 5,
+        usage: { sessionPct: 40, resetsAt: now + 3_600_000, refreshedAt: now },
+      }),
+      "anthropic-subscription:later": account("anthropic-subscription", {
+        id: "later",
+        priority: 0,
+        usage: {
+          sessionPct: 10,
+          resetsAt: now + 50 * 3_600_000,
+          refreshedAt: now,
+        },
+      }),
+    };
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "reset-soonest",
+      }),
+    ).resolves.toMatchObject({ id: "soon" });
+  });
+
+  it("skips over-quota accounts before applying reset ordering", async () => {
+    const accounts = {
+      "anthropic-subscription:capped": account("anthropic-subscription", {
+        id: "capped",
+        usage: { sessionPct: 96, resetsAt: now + 3_600_000, refreshedAt: now },
+      }),
+      "anthropic-subscription:open": account("anthropic-subscription", {
+        id: "open",
+        usage: {
+          sessionPct: 20,
+          resetsAt: now + 20 * 3_600_000,
+          refreshedAt: now,
+        },
+      }),
+    };
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "reset-soonest",
+      }),
+    ).resolves.toMatchObject({ id: "open" });
+  });
+
+  it("selectionState reports reset-soonest reason without mutating state", () => {
+    const accounts = {
+      "anthropic-subscription:soon": account("anthropic-subscription", {
+        id: "soon",
+        usage: { sessionPct: 40, resetsAt: now + 3_600_000, refreshedAt: now },
+      }),
+      "anthropic-subscription:later": account("anthropic-subscription", {
+        id: "later",
+        usage: {
+          sessionPct: 10,
+          resetsAt: now + 50 * 3_600_000,
+          refreshedAt: now,
+        },
+      }),
+    };
+    const pool = poolOf(accounts);
+    const state = pool.selectionState(
+      "anthropic-subscription",
+      "reset-soonest",
+    );
+    expect(state).toEqual({ activeAccountId: "soon", reason: "reset-soonest" });
+    // Idempotent: a second call returns the same pick (no rotation side effect).
+    expect(
+      pool.selectionState("anthropic-subscription", "reset-soonest"),
+    ).toEqual(state);
+  });
+
+  it("selectionState falls back to least-recently-throttled when resets unknown", () => {
+    const accounts = {
+      "anthropic-subscription:stale": account("anthropic-subscription", {
+        id: "stale",
+        lastUsedAt: now - 100_000,
+      }),
+      "anthropic-subscription:recent": account("anthropic-subscription", {
+        id: "recent",
+        lastUsedAt: now - 1_000,
+      }),
+    };
+    expect(
+      poolOf(accounts).selectionState(
+        "anthropic-subscription",
+        "reset-soonest",
+      ),
+    ).toEqual({
+      activeAccountId: "stale",
+      reason: "least-recently-throttled",
+    });
+  });
+
+  it("selectionState returns only-eligible for a single account", () => {
+    const accounts = {
+      "anthropic-subscription:solo": account("anthropic-subscription", {
+        id: "solo",
+      }),
+    };
+    expect(
+      poolOf(accounts).selectionState(
+        "anthropic-subscription",
+        "reset-soonest",
+      ),
+    ).toEqual({ activeAccountId: "solo", reason: "only-eligible" });
+  });
+});

@@ -143,6 +143,14 @@ interface PoolFacade {
     accessToken: string,
     opts?: { codexAccountId?: string; providerId?: string },
   ): Promise<void>;
+  /**
+   * Non-mutating "which account is next + why" dry-run for the accounts API.
+   * Older host bridges may not implement it; callers must null-guard.
+   */
+  selectionState?(
+    providerId: string,
+    strategy?: ServiceRouteAccountStrategy,
+  ): { activeAccountId: string | null; reason: string | null };
 }
 
 let cachedPool: PoolFacade | null = null;
@@ -240,6 +248,7 @@ const STRATEGY_VALUES = [
   "round-robin",
   "least-used",
   "quota-aware",
+  "reset-soonest",
 ] as const satisfies readonly ServiceRouteAccountStrategy[];
 
 const strategyPatchSchema = z.object({
@@ -606,6 +615,26 @@ export async function handleAccountsRoutes(
 
 // ─── Handlers ───────────────────────────────────────────────────────
 
+/**
+ * Runtime eligibility for a provider. Direct API/BYOK providers back chat and
+ * coding agents; first-party subscription transports remain coding-agent-only.
+ */
+function runtimeEligibilityFor(providerId: LinkedAccountProviderId): {
+  chat: boolean;
+  codingAgent: boolean;
+  note?: string;
+} {
+  if (DIRECT_PROVIDER_IDS.has(providerId)) {
+    return { chat: true, codingAgent: true };
+  }
+  // Subscription / coding-plan providers.
+  return {
+    chat: false,
+    codingAgent: true,
+    note: "Powers coding agents. Not the default chat brain.",
+  };
+}
+
 async function handleListAllAccounts(
   ctx: AccountsRouteContext,
 ): Promise<boolean> {
@@ -620,13 +649,20 @@ async function handleListAllAccounts(
       ? listAccounts(accountProvider).map((r) => r.id)
       : [];
     const onDiskSet = new Set(onDiskAccounts);
+    const strategy = readAccountStrategy(ctx.state.config, providerId);
+    // Non-mutating dry-run: which account the pool would serve next + why,
+    // so the UI can label the active row without re-deriving policy. Guarded
+    // because older host bridges may not implement selectionState.
+    const selection = pool.selectionState?.(providerId, strategy);
     return {
       providerId,
-      strategy: readAccountStrategy(ctx.state.config, providerId),
+      strategy,
       accounts: linkedConfigs.map((cfg) => ({
         ...cfg,
         hasCredential: onDiskSet.has(cfg.id),
       })),
+      runtimeEligibility: runtimeEligibilityFor(providerId),
+      ...(selection ? { selection } : {}),
     };
   });
   json(res, { providers });

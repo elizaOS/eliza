@@ -120,6 +120,7 @@ const bundle = await build({
   bundle: true,
   format: "iife",
   platform: "browser",
+  conditions: ["eliza-source", "browser"],
   jsx: "automatic",
   loader: { ".tsx": "tsx", ".ts": "ts", ".css": "empty", ".svg": "dataurl", ".png": "dataurl" },
   define: { "process.env.NODE_ENV": '"production"' },

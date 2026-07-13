@@ -374,6 +374,11 @@ describe("FineTuningView coverage parser vs the real index builder", () => {
 
     render(React.createElement(FineTuningView));
 
+    const statusHeading = await screen.findByText("finetuningview.Status");
+    expect(
+      statusHeading.parentElement?.nextElementSibling?.className,
+    ).toContain("grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]");
+
     fireEvent.click(await screen.findByLabelText("Build index"));
     await waitFor(() => {
       expect(trainingClient.buildTrainingAnalysisIndex).toHaveBeenCalledTimes(

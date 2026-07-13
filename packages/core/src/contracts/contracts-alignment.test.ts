@@ -1,8 +1,9 @@
 /**
  * Guards that core's contract implementations stay aligned with the
  * `@elizaos/contracts` literals they mirror: service capabilities/transports,
- * deployment runtimes, linked-account and wallet-RPC normalizers, and resolved
- * cloud-topology keys. Pure deterministic assertions over fixture configs.
+ * deployment runtimes, linked-account and wallet-RPC normalizers, account
+ * routing strategies, and resolved cloud-topology keys. Pure deterministic
+ * assertions over fixture configs.
  */
 import {
 	type BscWalletRpcProvider,
@@ -213,6 +214,16 @@ describe("core contract implementation alignment", () => {
 				},
 			}),
 		).toBeNull();
+	});
+
+	it("preserves reset-soonest as a supported account strategy", () => {
+		expect(
+			normalizeServiceRoutingConfig({
+				llmText: { backend: "elizacloud", strategy: "reset-soonest" },
+			}),
+		).toEqual({
+			llmText: { backend: "elizacloud", strategy: "reset-soonest" },
+		});
 	});
 
 	it("keeps deployment runtimes accepted and rejects unknown runtimes", () => {

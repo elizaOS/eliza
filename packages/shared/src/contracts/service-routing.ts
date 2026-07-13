@@ -206,7 +206,8 @@ function normalizeServiceRouteAccountStrategy(
   return value === "priority" ||
     value === "round-robin" ||
     value === "least-used" ||
-    value === "quota-aware"
+    value === "quota-aware" ||
+    value === "reset-soonest"
     ? value
     : undefined;
 }
