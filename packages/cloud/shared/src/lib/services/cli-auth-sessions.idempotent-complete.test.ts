@@ -203,3 +203,44 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
     ).rejects.toThrow("Invalid or expired session");
   });
 });
+
+describe("cliAuthSessionsService lifecycle", () => {
+  test("creates a pending session with a ten-minute expiry", async () => {
+    const create = track(
+      spyOn(cliAuthSessionsRepository, "create").mockImplementation(async (input) => ({
+        ...pendingSession(),
+        ...input,
+      })),
+    );
+
+    const before = Date.now();
+    const session = await cliAuthSessionsService.createSession(SESSION_ID);
+    const after = Date.now();
+
+    expect(session.status).toBe("pending");
+    expect(session.expires_at.getTime()).toBeGreaterThanOrEqual(before + 10 * 60_000);
+    expect(session.expires_at.getTime()).toBeLessThanOrEqual(after + 10 * 60_000);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  test("marks a stale repository result expired and returns no active session", async () => {
+    const expired = pendingSession();
+    expired.expires_at = new Date(Date.now() - 1_000);
+    track(spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(expired));
+    const markExpired = track(
+      spyOn(cliAuthSessionsRepository, "markExpired").mockResolvedValue(undefined),
+    );
+
+    await expect(cliAuthSessionsService.getActiveSession(SESSION_ID)).resolves.toBeNull();
+    expect(markExpired).toHaveBeenCalledWith(SESSION_ID);
+  });
+
+  test("delegates expired-session cleanup to the repository", async () => {
+    const removeExpired = track(
+      spyOn(cliAuthSessionsRepository, "deleteExpiredSessions").mockResolvedValue(undefined),
+    );
+
+    await cliAuthSessionsService.cleanupExpiredSessions();
+    expect(removeExpired).toHaveBeenCalledTimes(1);
+  });
+});
