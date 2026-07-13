@@ -177,7 +177,7 @@ jobs:
           always() &&
           (inputs.filter == '' || inputs.filter == 'anthropic-thinking-receipt')
         run: >-
-          bun test
+          BUN_TEST_COVERAGE=0 bun test
           packages/cloud/shared/src/lib/providers/anthropic-thinking.live.test.ts
 
       - name: Teardown Postgres
