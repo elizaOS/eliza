@@ -1,3 +1,8 @@
+/**
+ * Verifies that Worker-side agent API calls stay on the configured control-plane
+ * origin while preserving the public agent identity and protecting its bearer
+ * credential. Non-Worker coverage locks the existing direct tailnet route.
+ */
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
@@ -151,6 +156,23 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
       "x-forwarded-proto": "https",
     });
     expect(requests[0]?.redirect).toBe("manual");
+  });
+
+  test("fails closed before fetch when the agent credential is missing", async () => {
+    enterWorkerRuntime();
+    const fetchMock = mock(async () => Response.json({ ok: true }));
+    globalThis.fetch = fetchMock;
+
+    await expect(
+      runWithCloudBindings(
+        {
+          ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+          AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+        },
+        () => service().fetchAgentApi({ ...sandbox, environment_vars: {} }, "/api/agents"),
+      ),
+    ).rejects.toThrow(`Agent proxy requires an API token for ${sandbox.id}`);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test("fails closed before fetch when Worker routing configuration is missing or malformed", async () => {

@@ -2194,9 +2194,11 @@ export class ElizaSandboxService {
     headers.delete("host");
     headers.delete("x-forwarded-host");
     headers.delete("x-forwarded-proto");
-    new Headers(this.getAgentJsonHeaders(rec)).forEach((value, name) =>
-      headers.set(name, value),
-    );
+    const trustedHeaders = new Headers(this.getAgentJsonHeaders(rec));
+    if (!trustedHeaders.has("authorization")) {
+      throw new Error(`Agent proxy requires an API token for ${rec.id}`);
+    }
+    trustedHeaders.forEach((value, name) => headers.set(name, value));
     if (target.forwardedHost) {
       headers.set("x-forwarded-host", target.forwardedHost);
       headers.set("x-forwarded-proto", "https");
