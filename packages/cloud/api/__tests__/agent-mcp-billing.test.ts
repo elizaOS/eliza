@@ -15,9 +15,9 @@ import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
 
-const languageModel = mock((model: string) => ({ model }));
-mock.module("@ai-sdk/gateway", () => ({
-  gateway: { languageModel },
+const getLanguageModel = mock((model: string) => ({ model }));
+mock.module("@/lib/providers/language-model", () => ({
+  getLanguageModel,
 }));
 
 const streamText = mock();
@@ -156,7 +156,7 @@ async function callChat() {
 }
 
 beforeEach(() => {
-  languageModel.mockClear();
+  getLanguageModel.mockClear();
   streamText.mockReset();
   resolveAnthropicThinkingBudgetTokens.mockReset();
   resolveAnthropicThinkingBudgetTokens.mockReturnValue(null);
@@ -268,8 +268,8 @@ describe("Agent MCP billing", () => {
   // recordCreatorEarnings throws, the pre-fix code let it reach the outer catch,
   // which ran the NON-idempotent reconcile(0) — double-refunding the WHOLE
   // reservation (free inference + a net credit grant) and returning an error.
-  // The fix swallows the earnings error so reconcile fires exactly once and the
-  // already-correct settlement response is returned.
+  // The degraded response carries an explicit warning, so reconcile fires
+  // exactly once without presenting the accounting path as fully healthy.
   test("post-settlement earnings failure does not double-refund the reservation", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
     recordCreatorEarnings.mockRejectedValue(
@@ -278,7 +278,10 @@ describe("Agent MCP billing", () => {
 
     const response = await callChat();
     const body = (await response.json()) as {
-      result?: { content: Array<{ type: string; text: string }> };
+      result?: {
+        content: Array<{ type: string; text: string }>;
+        _meta?: { warnings?: Array<{ code: string; message: string }> };
+      };
       error?: { code: number; message: string };
     };
 
@@ -294,6 +297,12 @@ describe("Agent MCP billing", () => {
     expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
     expect(body.error).toBeUndefined();
     expect(body.result?.content?.[0]?.text).toBe("hello from model");
+    expect(body.result?._meta?.warnings).toEqual([
+      {
+        code: "CREATOR_EARNINGS_UNAVAILABLE",
+        message: "Creator earnings could not be recorded",
+      },
+    ]);
   });
 
   test("get_info returns agent metadata without billing", async () => {
@@ -343,6 +352,28 @@ describe("Agent MCP billing", () => {
     expect(body.error?.message).toContain("Insufficient credits");
     // Reserve-before-provider: a failed admission performs no inference.
     expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    streamText.mockResolvedValue({
+      textStream: textStream("unmetered output"),
+      usage: Promise.resolve({
+        inputTokens: undefined,
+        outputTokens: undefined,
+        totalTokens: undefined,
+      }),
+    });
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 
   test("a provider error refunds the reservation and returns -32000", async () => {

@@ -4,11 +4,10 @@
  * GET → MCP server metadata + tool catalog.
  * POST → JSON-RPC dispatch (`initialize`, `tools/list`, `tools/call`, `ping`).
  *
- * The `chat` tool reserves credits, calls the model via the configured
- * provider (BitRouter), then reconciles. Returns plain JSON, not SSE.
+ * The `chat` tool reserves credits, resolves the configured model provider,
+ * then reconciles actual usage. Returns plain JSON, not SSE.
  */
 
-import { gateway } from "@ai-sdk/gateway";
 import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -30,6 +29,7 @@ import {
   parseThinkingBudgetFromCharacterSettings,
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
+import { getLanguageModel } from "@/lib/providers/language-model";
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { CreditReservation } from "@/lib/services/credits";
@@ -47,6 +47,12 @@ const MCPRequestSchema = z.object({
   method: z.string(),
   params: z.record(z.string(), z.unknown()).optional(),
   id: z.union([z.string(), z.number()]),
+});
+
+const ProviderUsageSchema = z.object({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
 });
 
 const app = new Hono<AppEnv>();
@@ -168,6 +174,8 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     user = await requireUserOrApiKeyWithOrg(c);
   } catch {
+    // error-policy:J1 the public JSON-RPC boundary translates authentication
+    // failures without exposing session or API-key internals.
     return c.json(
       {
         jsonrpc: "2.0",
@@ -338,6 +346,8 @@ export async function handleToolCall(
         description: `Agent MCP: ${character.name} (${model})`,
       });
     } catch (error) {
+      // error-policy:J1 the route boundary translates the expected credit
+      // refusal and lets unexpected reservation failures reach the owner path.
       if (error instanceof InsufficientCreditsError) {
         return c.json({
           jsonrpc: "2.0",
@@ -353,7 +363,7 @@ export async function handleToolCall(
 
     try {
       const result = await streamText({
-        model: gateway.languageModel(model),
+        model: getLanguageModel(model),
         messages,
         // Cap the provider at the EXACT ceiling billing reserved above
         // (`estimatedOutputTokens`), not a second, larger formula (#16148).
@@ -376,13 +386,13 @@ export async function handleToolCall(
         fullText += delta;
       }
 
-      const usage = await result.usage;
+      const usage = ProviderUsageSchema.parse(await result.usage);
 
       const { totalCost: actualBaseCost } = await calculateCost(
         model,
         provider,
-        usage?.inputTokens || 0,
-        usage?.outputTokens || 0,
+        usage.inputTokens,
+        usage.outputTokens,
       );
       const { markupCredits: actualCreatorMarkup, totalCredits: actualTotal } =
         calculateCreditMarkup({
@@ -409,6 +419,9 @@ export async function handleToolCall(
         });
       }
 
+      let creatorEarningsWarning:
+        | { code: "CREATOR_EARNINGS_UNAVAILABLE"; message: string }
+        | undefined;
       if (character.monetization_enabled && actualCreatorMarkup > 0) {
         // Earnings recording is a NON-CRITICAL post-settlement step. The consumer
         // was already settled above (reconcile(actualTotal)); if this throws it
@@ -424,7 +437,7 @@ export async function handleToolCall(
             earnings: actualCreatorMarkup,
             consumerOrgId: authUser.organization_id,
             model,
-            tokens: (usage?.inputTokens || 0) + (usage?.outputTokens || 0),
+            tokens: usage.totalTokens,
             protocol: "mcp",
           });
           logger.info(
@@ -436,6 +449,9 @@ export async function handleToolCall(
             },
           );
         } catch (earningsError) {
+          // error-policy:J4 inference is already purchased and settled, so the
+          // response degrades explicitly with a machine-readable warning while
+          // the structured error log raises the accounting failure to operators.
           logger.error(
             "[Agent MCP] Failed to record creator earnings (settlement already applied — not rolling back)",
             {
@@ -447,6 +463,10 @@ export async function handleToolCall(
                   : String(earningsError),
             },
           );
+          creatorEarningsWarning = {
+            code: "CREATOR_EARNINGS_UNAVAILABLE",
+            message: "Creator earnings could not be recorded",
+          };
         }
       }
 
@@ -461,14 +481,19 @@ export async function handleToolCall(
               total: actualTotal,
             },
             usage: {
-              inputTokens: usage?.inputTokens || 0,
-              outputTokens: usage?.outputTokens || 0,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
             },
+            ...(creatorEarningsWarning
+              ? { warnings: [creatorEarningsWarning] }
+              : {}),
           },
         },
         id: rpcId,
       });
     } catch (error) {
+      // error-policy:J1 the JSON-RPC boundary refunds a failed generation and
+      // returns a structured failure instead of partial model output.
       await reservation.reconcile(0);
       logger.error("[Agent MCP] Error generating response", {
         error: error instanceof Error ? error.message : "Unknown error",
