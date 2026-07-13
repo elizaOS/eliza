@@ -7,6 +7,9 @@ import {
   WalletTrustSummary,
   WalletWhaleSummary,
 } from "../types";
+import {
+  createConfidenceResponse,
+} from "../confidence/framework";
 
 export function analyzeWalletSmartMoney(
   age: WalletAgeSummary,
@@ -27,17 +30,25 @@ export function analyzeWalletSmartMoney(
     smartMoneyScore += 12;
     positiveSignals.push("Wallet is established.");
   } else {
-    limitations.push("Wallet does not yet show a long-term history.");
+    limitations.push(
+      "Wallet does not yet show a long-term history.",
+    );
   }
 
   if (activity.activityLevel === "high") {
     smartMoneyScore += 20;
-    positiveSignals.push("Wallet shows high recent activity.");
+    positiveSignals.push(
+      "Wallet shows high recent activity.",
+    );
   } else if (activity.activityLevel === "medium") {
     smartMoneyScore += 12;
-    positiveSignals.push("Wallet shows moderate recent activity.");
+    positiveSignals.push(
+      "Wallet shows moderate recent activity.",
+    );
   } else {
-    limitations.push("Limited recent activity reduces smart money confidence.");
+    limitations.push(
+      "Limited recent activity reduces smart money confidence.",
+    );
   }
 
   if (
@@ -45,37 +56,57 @@ export function analyzeWalletSmartMoney(
     defi.profile === "power_user"
   ) {
     smartMoneyScore += 20;
-    positiveSignals.push("Wallet uses recognized DeFi protocols.");
+    positiveSignals.push(
+      "Wallet uses recognized DeFi protocols.",
+    );
   } else {
-    limitations.push("Limited recognized DeFi activity was detected.");
+    limitations.push(
+      "Limited recognized DeFi activity was detected.",
+    );
   }
 
   if (portfolio.diversityLevel === "high") {
     smartMoneyScore += 15;
-    positiveSignals.push("Wallet has high portfolio diversity.");
+    positiveSignals.push(
+      "Wallet has high portfolio diversity.",
+    );
   } else if (portfolio.diversityLevel === "medium") {
     smartMoneyScore += 10;
-    positiveSignals.push("Wallet has medium portfolio diversity.");
+    positiveSignals.push(
+      "Wallet has medium portfolio diversity.",
+    );
   } else {
     limitations.push("Portfolio diversity is limited.");
   }
 
   if (whale.isWhale) {
     smartMoneyScore += 15;
-    positiveSignals.push("Wallet has whale-level characteristics.");
+    positiveSignals.push(
+      "Wallet has whale-level characteristics.",
+    );
   }
 
-  if (trust.trustLevel === "high" || trust.trustLevel === "very_high") {
+  if (
+    trust.trustLevel === "high" ||
+    trust.trustLevel === "very_high"
+  ) {
     smartMoneyScore += 10;
-    positiveSignals.push("Wallet has strong trust signals.");
+    positiveSignals.push(
+      "Wallet has strong trust signals.",
+    );
   } else if (trust.trustLevel === "medium") {
     smartMoneyScore += 5;
-    positiveSignals.push("Wallet has moderate trust signals.");
+    positiveSignals.push(
+      "Wallet has moderate trust signals.",
+    );
   } else {
     limitations.push("Trust signals are limited.");
   }
 
-  smartMoneyScore = Math.max(0, Math.min(100, smartMoneyScore));
+  smartMoneyScore = Math.max(
+    0,
+    Math.min(100, smartMoneyScore),
+  );
 
   const level =
     smartMoneyScore >= 75
@@ -89,13 +120,63 @@ export function analyzeWalletSmartMoney(
   const profile =
     whale.isWhale
       ? "whale_participant"
-      : defi.profile === "active_defi_user" || defi.profile === "power_user"
+      : defi.profile === "active_defi_user" ||
+          defi.profile === "power_user"
         ? "active_defi_participant"
         : activity.activityLevel === "high"
           ? "professional_trader"
           : age.classification === "veteran"
             ? "long_term_investor"
             : "unknown";
+
+  const confidenceAnalysis = createConfidenceResponse([
+    {
+      condition: age.classification !== "unknown",
+      score: 15,
+      reason:
+        "Wallet age evidence was available.",
+    },
+    {
+      condition:
+        typeof activity.recentTransactionCount === "number",
+      score: 15,
+      reason:
+        "Wallet activity metrics were available.",
+    },
+    {
+      condition: Boolean(defi.profile),
+      score: 15,
+      reason:
+        "A DeFi usage profile was available.",
+    },
+    {
+      condition:
+        typeof portfolio.tokenCount === "number",
+      score: 15,
+      reason:
+        "Portfolio composition data was available.",
+    },
+    {
+      condition:
+        whale.estimatedPortfolioUsdValue !== null &&
+        whale.estimatedPortfolioUsdValue !== undefined,
+      score: 20,
+      reason:
+        "Estimated portfolio USD value was available.",
+    },
+    {
+      condition: trust.evidenceConfidence === "high",
+      score: 20,
+      reason:
+        "Trust evidence confidence is high.",
+    },
+    {
+      condition: trust.evidenceConfidence === "medium",
+      score: 10,
+      reason:
+        "Trust evidence confidence is medium.",
+    },
+  ]);
 
   const confidence =
     positiveSignals.length >= 4
@@ -105,13 +186,27 @@ export function analyzeWalletSmartMoney(
         : "low";
 
   return {
-    isSmartMoneyCandidate: level === "medium" || level === "high",
+    isSmartMoneyCandidate:
+      level === "medium" || level === "high",
+
     smartMoneyScore,
-    displayScore: `${(smartMoneyScore / 10).toFixed(1)} / 10`,
+
+    displayScore:
+      `${(smartMoneyScore / 10).toFixed(1)} / 10`,
+
     level,
+
+    evidenceConfidence:
+      confidenceAnalysis.level,
+
+    confidenceAnalysis,
+
     confidence,
+
     profile,
+
     positiveSignals,
+
     limitations,
   };
 }
