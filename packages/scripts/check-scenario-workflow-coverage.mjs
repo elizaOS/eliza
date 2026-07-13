@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-// Drives repo automation check scenario workflow coverage with explicit CLI and CI behavior.
+/**
+ * Audits scenario catalogs against the deterministic PR lane, the manifest-
+ * driven credentialed live workflow, and explicit platform deferrals. Reports
+ * fail closed when a runnable scenario or configured shard loses an authority.
+ */
 
 import { spawnSync } from "node:child_process";
 import {
@@ -14,6 +18,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { loadLiveScenarioManifest } from "./live-scenario-matrix.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -368,60 +373,15 @@ function matchesScenarioFileGlobs(file, fileGlobs) {
   return fileGlobs.some((fileGlob) => scenarioFileMatchesGlob(file, fileGlob));
 }
 
-function workflowScenarioGlobs() {
-  const workflowPath = path.join(
-    REPO_ROOT,
-    ".github",
-    "workflows",
-    "scenario-matrix.yml",
+function liveScenarioCoverage() {
+  const manifest = loadLiveScenarioManifest();
+  const defaultShards = manifest.shards.filter(
+    (shard) => shard.root === DEFAULT_SCENARIO_ROOT,
   );
-  const text = readFileSync(workflowPath, "utf8");
-  const matches = text
-    .split(/\r?\n/)
-    .map((line) => {
-      const match = line.match(/^\s*globs:\s*(.+?)\s*$/);
-      if (!match) return "";
-      const value = match[1].trim();
-      const quote = value[0];
-      if (
-        (quote === '"' || quote === "'") &&
-        value.length > 1 &&
-        value.at(-1) === quote
-      ) {
-        return value.slice(1, -1);
-      }
-      return value;
-    })
-    .filter(Boolean);
-  return matches
-    .flatMap((value) =>
-      value
-        .split(/\s+/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    )
-    .filter((item) => item !== "**/*.scenario.ts");
-}
-
-function scenarioMatrixCoverage() {
-  const globs = workflowScenarioGlobs();
-  const enabled = process.env.ELIZA_SCENARIO_MATRIX_ENABLED === "true";
-  if (enabled) {
-    return {
-      enabled,
-      coveredGlobs: globs,
-      deferredGlobs: [],
-    };
-  }
   return {
-    enabled,
-    coveredGlobs: [],
-    deferredGlobs: globs.map((glob) => ({
-      glob,
-      issue: "#14695",
-      reason:
-        "tracked in #14695; scenario-matrix.yml is disabled unless ELIZA_SCENARIO_MATRIX_ENABLED=true or a manual dispatch enables it",
-    })),
+    authority: manifest.authority,
+    shards: manifest.shards,
+    defaultCoveredGlobs: defaultShards.flatMap((shard) => shard.globs),
   };
 }
 
@@ -429,20 +389,108 @@ const KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE = [
   {
     glob: "packages/test/scenarios/activity/**/*.scenario.ts",
     issue: "#10757",
+    reason:
+      "tracked in #10757; the activity catalog has no provisioned platform lane in the live-scenario authority",
   },
   {
     glob: "packages/test/scenarios/selfcontrol/**/*.scenario.ts",
     issue: "#10757",
+    reason:
+      "tracked in #10757; the SelfControl catalog has no provisioned platform lane in the live-scenario authority",
   },
   {
     glob: "packages/test/scenarios/backup/**/*.scenario.ts",
     issue: "#10757",
+    reason:
+      "tracked in #10757; the backup catalog has no provisioned platform lane in the live-scenario authority",
   },
   {
     glob: "packages/test/scenarios/security/**/*.scenario.ts",
     issue: "#10757",
+    reason:
+      "tracked in #10757; the security catalog has no provisioned platform lane in the live-scenario authority",
   },
 ];
+
+function liveWorkflowDeferral(metadata) {
+  if (metadata.laneClass?.class === "deferred-platform") {
+    return (
+      metadata.laneClass.deferral?.reason ??
+      "platform-gated scenario has no provisioned live runner"
+    );
+  }
+  const knownDeferral = KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE.find((entry) =>
+    matchesScenarioFileGlobs(metadata.file, [entry.glob]),
+  );
+  return knownDeferral?.reason;
+}
+
+function auditLiveWorkflowCoverage(liveCoverage, metadataByRoot) {
+  const requiredRoots = [
+    DEFAULT_SCENARIO_ROOT,
+    "plugins/plugin-personal-assistant/test/scenarios",
+    "plugins/plugin-health/test/scenarios",
+    "plugins/plugin-app-control/test/scenarios",
+  ];
+  const configuredRoots = new Set(
+    liveCoverage.shards.map((shard) => shard.root),
+  );
+  const missingRoots = requiredRoots.filter(
+    (root) => !configuredRoots.has(root),
+  );
+  const emptyGlobs = [];
+  const coverageCounts = new Map();
+
+  for (const shard of liveCoverage.shards) {
+    const metadata = metadataByRoot.get(shard.root);
+    if (!metadata) {
+      throw new Error(
+        `live scenario shard ${shard.name} references an uninventoried root: ${shard.root}`,
+      );
+    }
+    const shardKeys = new Set();
+    for (const glob of shard.globs) {
+      const matches = metadata.filter(
+        (scenario) =>
+          scenario.lane === "live-only" &&
+          !liveWorkflowDeferral(scenario) &&
+          matchesScenarioFileGlobs(scenario.file, [glob]),
+      );
+      if (matches.length === 0) {
+        emptyGlobs.push(`${shard.name}\t${glob}`);
+      }
+      for (const scenario of matches) {
+        shardKeys.add(`${shard.root}\t${scenario.id}`);
+      }
+    }
+    for (const key of shardKeys) {
+      coverageCounts.set(key, (coverageCounts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const duplicateIds = [...coverageCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key]) => key)
+    .sort();
+  const missingIds = requiredRoots
+    .flatMap((root) =>
+      (metadataByRoot.get(root) ?? [])
+        .filter(
+          (scenario) =>
+            scenario.lane === "live-only" && !liveWorkflowDeferral(scenario),
+        )
+        .map((scenario) => `${root}\t${scenario.id}`),
+    )
+    .filter((key) => !coverageCounts.has(key))
+    .sort();
+
+  return {
+    missingRoots,
+    emptyGlobs: emptyGlobs.sort(),
+    duplicateIds,
+    missingIds,
+  };
+}
 
 function writeList(reportDir, fileName, rows) {
   writeFileSync(path.join(reportDir, fileName), `${rows.join("\n")}\n`, "utf8");
@@ -453,11 +501,8 @@ function scopedScenarioRows(scope, ids) {
 }
 
 function readJsonIfPresent(filePath) {
-  try {
-    return JSON.parse(readFileSync(filePath, "utf8"));
-  } catch {
-    return null;
-  }
+  if (!existsSync(filePath)) return null;
+  return JSON.parse(readFileSync(filePath, "utf8"));
 }
 
 function summarizeScenarioMatrix(filePath) {
@@ -518,22 +563,23 @@ function summarizeScenarioMatrix(filePath) {
   };
 }
 
+function collectArtifactFiles(directory, depth = 0, files = []) {
+  if (depth > 3) return files;
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue;
+    const entryPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      collectArtifactFiles(entryPath, depth + 1, files);
+    } else if (entry.isFile()) {
+      files.push(entryPath);
+    }
+  }
+  return files;
+}
+
 function existingScenarioRunArtifacts(reportDir) {
   const scenariosRoot = path.resolve(reportDir, "..");
-  const artifacts = [];
-  let names = [];
-  try {
-    names = spawnSync("find", [scenariosRoot, "-maxdepth", "3", "-type", "f"], {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .stdout.split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-  } catch {
-    return artifacts;
-  }
+  const names = collectArtifactFiles(scenariosRoot);
   const byRunDir = new Map();
   for (const filePath of names) {
     const normalized = path.resolve(filePath);
@@ -746,11 +792,11 @@ function renderMarkdown(summary, runArtifacts = []) {
     "## Corpus coverage split (#10757)",
     "",
     "Honest three-way split across the full scenario corpus, so deterministic PR",
-    "coverage, credentialed live-matrix coverage, and platform-gated coverage that",
+    "coverage, credentialed live-workflow coverage, and platform-gated coverage that",
     "is deferred (no runner yet) are counted separately rather than lumped together:",
     "",
     `- keyless PR-deterministic: ${summary.corpusLaneSplit.prDeterministicCount}`,
-    `- credentialed live-only (live matrix): ${summary.corpusLaneSplit.liveOnlyCount}`,
+    `- credentialed live-only (live workflow): ${summary.corpusLaneSplit.liveOnlyCount}`,
     `- deferred platform-gated (no runner yet): ${summary.corpusLaneSplit.deferredPlatformCount}`,
     `- total corpus: ${summary.corpusLaneSplit.total}`,
     "",
@@ -764,6 +810,7 @@ function renderMarkdown(summary, runArtifacts = []) {
         )),
     "",
     `Default package pr-deterministic scenarios: ${summary.prDeterministicDefaultCount}`,
+    `Credentialed authority: ${summary.liveScenarioAuthority} (${summary.liveScenarioShardCount} shards)`,
     `Workflow covered default package scenarios: ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}`,
     `Deferred default package scenarios tracked by follow-up: ${summary.deferredDefaultIds.length}`,
     `Missing default package scenarios from current workflow coverage: ${summary.missingDefaultIds.length}`,
@@ -821,34 +868,51 @@ function renderMarkdown(summary, runArtifacts = []) {
   return lines.join("\n");
 }
 
-function main() {
-  const options = parseArgs(process.argv.slice(2));
+/** Run the catalog audit through the same path used by the CLI. */
+export function runScenarioWorkflowCoverage(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
   ensureGeneratedKeywordData();
   mkdirSync(options.reportDir, { recursive: true });
 
   // This inventory is a workflow contract, not a runtime execution test. Keep
   // it Node-native so CI does not depend on Bun's TS loader/glob behavior while
-  // deciding whether the workflow matrix covers the scenario catalog.
+  // deciding whether the workflow authorities cover the scenario catalog.
   const defaultScenarios = listScenarioMetadata(DEFAULT_SCENARIO_ROOT);
   const defaultIds = defaultScenarios.map((metadata) => metadata.id);
   const includePendingIds = listScenarioMetadata(DEFAULT_SCENARIO_ROOT, {
     includePending: true,
   }).map((metadata) => metadata.id);
-  const pluginLifeopsIds = listScenarioMetadata(
+  const pluginLifeopsScenarios = listScenarioMetadata(
     "plugins/plugin-personal-assistant/test/scenarios",
-  ).map((metadata) => metadata.id);
-  const pluginHealthIds = listScenarioMetadata(
+  );
+  const pluginLifeopsIds = pluginLifeopsScenarios.map(
+    (metadata) => metadata.id,
+  );
+  const pluginHealthScenarios = listScenarioMetadata(
     "plugins/plugin-health/test/scenarios",
-  ).map((metadata) => metadata.id);
-  const pluginAppControlIds = listScenarioMetadata(
+  );
+  const pluginHealthIds = pluginHealthScenarios.map((metadata) => metadata.id);
+  const pluginAppControlScenarios = listScenarioMetadata(
     "plugins/plugin-app-control/test/scenarios",
-  ).map((metadata) => metadata.id);
+  );
+  const pluginAppControlIds = pluginAppControlScenarios.map(
+    (metadata) => metadata.id,
+  );
   const pluginAgentOrchestratorIds = listScenarioMetadata(
     "plugins/plugin-agent-orchestrator/test/scenarios",
   ).map((metadata) => metadata.id);
   const scenarioRunnerIds = listScenarioMetadata(
     "packages/scenario-runner/test/scenarios",
   ).map((metadata) => metadata.id);
+  const metadataByRoot = new Map([
+    [DEFAULT_SCENARIO_ROOT, defaultScenarios],
+    [
+      "plugins/plugin-personal-assistant/test/scenarios",
+      pluginLifeopsScenarios,
+    ],
+    ["plugins/plugin-health/test/scenarios", pluginHealthScenarios],
+    ["plugins/plugin-app-control/test/scenarios", pluginAppControlScenarios],
+  ]);
   const allScenarioRows = [
     ...scopedScenarioRows("packages/test/scenarios", defaultIds),
     ...scopedScenarioRows(
@@ -891,37 +955,28 @@ function main() {
     .sort();
 
   const covered = new Set();
-  const matrixCoverage = scenarioMatrixCoverage();
-  const coverageGlobs = [
-    ...matrixCoverage.coveredGlobs,
-    "packages/test/scenarios/executive-assistant/*.scenario.ts",
-    "packages/test/scenarios/connector-certification/*.scenario.ts",
-  ];
+  const liveCoverage = liveScenarioCoverage();
+  const liveCoverageAudit = auditLiveWorkflowCoverage(
+    liveCoverage,
+    metadataByRoot,
+  );
+  const coverageGlobs = liveCoverage.defaultCoveredGlobs;
   const prDeterministicDefaultIds = defaultScenarios
     .filter((scenario) => scenario.lane === "pr-deterministic")
     .map((scenario) => scenario.id)
     .sort();
   const deferred = new Map();
-  const deferredCoverageGlobs = [
-    ...KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE,
-    ...matrixCoverage.deferredGlobs,
-  ];
   for (const scenario of defaultScenarios) {
-    const match = deferredCoverageGlobs.find((entry) =>
-      matchesScenarioFileGlobs(scenario.file, [entry.glob]),
-    );
-    if (match) {
-      deferred.set(
-        scenario.id,
-        match.reason ??
-          `tracked in ${match.issue}; not currently part of the PR/live matrix`,
-      );
+    const reason = liveWorkflowDeferral(scenario);
+    if (reason) {
+      deferred.set(scenario.id, reason);
     }
   }
   for (const scenario of defaultScenarios) {
     if (
-      scenario.lane === "pr-deterministic" ||
-      matchesScenarioFileGlobs(scenario.file, coverageGlobs)
+      !deferred.has(scenario.id) &&
+      (scenario.lane === "pr-deterministic" ||
+        matchesScenarioFileGlobs(scenario.file, coverageGlobs))
     ) {
       covered.add(scenario.id);
     }
@@ -980,9 +1035,16 @@ function main() {
     pluginAgentOrchestratorCount: pluginAgentOrchestratorIds.length,
     scenarioRunnerCount: scenarioRunnerIds.length,
     allScenarioCount: allScenarioRows.length,
-    scenarioMatrixCoverageEnabled: matrixCoverage.enabled,
-    scenarioMatrixCoveredGlobCount: matrixCoverage.coveredGlobs.length,
-    scenarioMatrixDeferredGlobCount: matrixCoverage.deferredGlobs.length,
+    liveScenarioAuthority: liveCoverage.authority,
+    liveScenarioShardCount: liveCoverage.shards.length,
+    liveScenarioCoveredGlobCount: liveCoverage.shards.reduce(
+      (count, shard) => count + shard.globs.length,
+      0,
+    ),
+    missingLiveScenarioRoots: liveCoverageAudit.missingRoots,
+    emptyLiveScenarioGlobs: liveCoverageAudit.emptyGlobs,
+    duplicateLiveScenarioIds: liveCoverageAudit.duplicateIds,
+    missingLiveScenarioIds: liveCoverageAudit.missingIds,
     prDeterministicDefaultCount: prDeterministicDefaultIds.length,
     prDeterministicDefaultIds,
     coveredDefaultCount: defaultIds.filter((id) => covered.has(id)).length,
@@ -1054,7 +1116,7 @@ function main() {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   } else {
     process.stdout.write(
-      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; deferred ${summary.deferredDefaultIds.length}; missing ${summary.missingDefaultIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
+      `scenario workflow coverage ${summary.coveredDefaultCount}/${summary.defaultScenarioCount}; live-shards ${summary.liveScenarioShardCount}; deferred ${summary.deferredDefaultIds.length}; missing ${summary.missingDefaultIds.length}; live-missing ${summary.missingLiveScenarioIds.length}; untagged-lane ${summary.untaggedLaneScenarios.length}\n`,
     );
     if (summary.untaggedLaneScenarios.length > 0) {
       process.stderr.write(
@@ -1064,13 +1126,22 @@ function main() {
   }
   const hasFailures =
     summary.missingDefaultIds.length > 0 ||
+    summary.missingLiveScenarioRoots.length > 0 ||
+    summary.emptyLiveScenarioGlobs.length > 0 ||
+    summary.duplicateLiveScenarioIds.length > 0 ||
+    summary.missingLiveScenarioIds.length > 0 ||
     summary.untaggedLaneScenarios.length > 0;
   return options.failOnMissing && hasFailures ? 1 : 0;
 }
 
-try {
-  process.exit(main());
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(2);
+if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  try {
+    process.exitCode = runScenarioWorkflowCoverage();
+  } catch (error) {
+    // error-policy:J1 CLI boundary reports inventory failures and exits nonzero.
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 2;
+  }
 }

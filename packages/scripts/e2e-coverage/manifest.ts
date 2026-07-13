@@ -209,7 +209,8 @@ export const PLUGIN_ROUTE_COVERAGE: Record<string, ManifestEntry> = {
   "plugin-personal-assistant": {
     status: "exempt",
     reason:
-      "lifeOps HTTP routes are exercised by the live scenario matrix (scenario-matrix.yml lifeops shards) and the plugin-personal-assistant test suite; a keyless route e2e would duplicate that coverage without a deterministic backend.",
+      "lifeOps HTTP routes are exercised by the manifest-backed lifeops-app shard in live-scenarios.yml and the plugin-personal-assistant test suite; a keyless route e2e would duplicate that credentialed coverage without a deterministic backend.",
+    artifacts: ["packages/scripts/__tests__/live-scenarios-workflow.test.ts"],
   },
   "app-model-tester": {
     status: "exempt",

@@ -1,0 +1,118 @@
+{
+  "schema": "eliza_live_scenario_shards_v1",
+  "authority": ".github/workflows/live-scenarios.yml",
+  "shards": [
+    {
+      "name": "executive-connectors",
+      "root": "packages/test/scenarios",
+      "globs": [
+        "packages/test/scenarios/executive-assistant/*.scenario.ts",
+        "packages/test/scenarios/connector-certification/*.scenario.ts"
+      ]
+    },
+    {
+      "name": "messaging",
+      "root": "packages/test/scenarios",
+      "globs": [
+        "packages/test/scenarios/messaging.cross-platform/**/*.scenario.ts",
+        "packages/test/scenarios/messaging.discord-local/**/*.scenario.ts",
+        "packages/test/scenarios/messaging.gmail/**/*.scenario.ts",
+        "packages/test/scenarios/messaging.signal/**/*.scenario.ts",
+        "packages/test/scenarios/messaging.telegram-local/**/*.scenario.ts",
+        "packages/test/scenarios/messaging.twitter-dm/**/*.scenario.ts",
+        "packages/test/scenarios/messaging.whatsapp/**/*.scenario.ts"
+      ]
+    },
+    {
+      "name": "todos-reminders",
+      "root": "packages/test/scenarios",
+      "globs": [
+        "packages/test/scenarios/todos/**/*.scenario.ts",
+        "packages/test/scenarios/reminders/**/*.scenario.ts"
+      ]
+    },
+    {
+      "name": "calendar",
+      "root": "packages/test/scenarios",
+      "globs": ["packages/test/scenarios/calendar/**/*.scenario.ts"]
+    },
+    {
+      "name": "relationships",
+      "root": "packages/test/scenarios",
+      "globs": ["packages/test/scenarios/relationships/**/*.scenario.ts"]
+    },
+    {
+      "name": "browser-social",
+      "root": "packages/test/scenarios",
+      "globs": [
+        "packages/test/scenarios/browser.*/**/*.scenario.ts",
+        "packages/test/scenarios/social.*/**/*.scenario.ts"
+      ]
+    },
+    {
+      "name": "personality-payments",
+      "root": "packages/test/scenarios",
+      "globs": [
+        "packages/test/scenarios/personality/**/*.scenario.ts",
+        "packages/test/scenarios/payments/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.payments/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.morning-brief/**/*.scenario.ts"
+      ]
+    },
+    {
+      "name": "cross-cutting-gateway",
+      "root": "packages/test/scenarios",
+      "globs": [
+        "packages/test/scenarios/cross-cutting/**/*.scenario.ts",
+        "packages/test/scenarios/gateway/billing.*.scenario.ts",
+        "packages/test/scenarios/gateway/discord-*.scenario.ts",
+        "packages/test/scenarios/gateway/telegram-*.scenario.ts",
+        "packages/test/scenarios/gateway/twilio.*.scenario.ts",
+        "packages/test/scenarios/gateway/whatsapp-*.scenario.ts",
+        "packages/test/scenarios/remote/remote.agent-*.scenario.ts",
+        "packages/test/scenarios/remote/remote.pair.*.scenario.ts",
+        "packages/test/scenarios/remote/remote.sso-*.scenario.ts",
+        "packages/test/scenarios/remote/remote.vnc.*.scenario.ts",
+        "packages/test/scenarios/lifeops.calendar/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.controls/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.cross-channel/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.documents/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.executive-assistant/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.followup/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.gmail/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.habits/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.health/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.hygiene/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.identity/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.inbox-triage/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.planner/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.push/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.reminders/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.scheduling/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.security/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.sleep/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.travel-buffer/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.travel/**/*.scenario.ts",
+        "packages/test/scenarios/lifeops.workflow-events/**/*.scenario.ts",
+        "packages/test/scenarios/goals/**/*.scenario.ts"
+      ]
+    },
+    {
+      "name": "lifeops-app",
+      "root": "plugins/plugin-personal-assistant/test/scenarios",
+      "globs": [
+        "plugins/plugin-personal-assistant/test/scenarios/**/*.scenario.ts"
+      ]
+    },
+    {
+      "name": "plugin-health",
+      "root": "plugins/plugin-health/test/scenarios",
+      "globs": ["plugins/plugin-health/test/scenarios/**/*.scenario.ts"]
+    },
+    {
+      "name": "app-control",
+      "root": "plugins/plugin-app-control/test/scenarios",
+      "globs": ["plugins/plugin-app-control/test/scenarios/**/*.scenario.ts"]
+    }
+  ]
+}

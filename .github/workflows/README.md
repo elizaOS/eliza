@@ -10,7 +10,9 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `test.yml` | Push/PR to develop, manual, schedule | Broader develop tests plus required zero-key deterministic E2E; live jobs are separate |
 | `quality.yml` | Push/PR to main/develop, manual | Develop/main quality gates: format, type-safety ratchet, prompt-secret scan, UI determinism, lint |
 | `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
-| `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
+| `live-scenarios.yml` | Nightly/manual | Manifest-backed credentialed scenario shards with live-model trajectories |
+| `voice-live-e2e.yml` | Nightly/manual | Real cloud/fused voice contracts on provisioned model-heavy runners |
+| `local-inference-bench.yml` | Nightly/manual/path PR | Local-inference harness smoke and real-agent profiling |
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release.yaml` | Push to main, Release | NPM beta/production package releases |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
@@ -191,7 +193,21 @@ coverage for PRs to either protected branch is handled by `scenario-pr.yml`;
 PR E2E does not require `CEREBRAS_API_KEY`, `OPENAI_API_KEY`, or any other paid
 provider key. Live/provider-key coverage belongs to the dedicated live jobs and
 workflows (`cloud-live-e2e`, `provider-live-e2e`, `live-scenarios.yml`,
-`scenario-matrix.yml`) where missing-key behavior is documented per lane.
+`voice-live-e2e.yml`) where missing-key behavior is documented per lane.
+
+`live-scenarios.yml` is the sole credentialed scenario-catalog authority. Its
+scheduled and focused manual matrices both come from
+`packages/scripts/live-scenario-shards.json`; the coverage audit fails when a
+runnable live-only scenario is absent, duplicated between shards, or assigned
+to an empty glob. `scenario-pr.yml` separately owns keyless
+`pr-deterministic` scenarios, while platform-gated catalogs without a runner
+remain explicit deferrals in the audit rather than green skips.
+
+Real GPU voice and local-inference intent belongs to the active model-heavy
+lanes: `voice-live-e2e.yml` accepts the `gpu-cuda-12.6` runner label through
+`VOICE_LIVE_RUNNER_LABELS`, and `local-inference-bench.yml` owns scheduled
+real-agent profiles. Do not add a scheduled workflow whose jobs are disabled
+or point it at the removed `packages/inference` tree.
 
 ## Code Review Workflows
 
