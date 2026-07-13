@@ -547,6 +547,12 @@ export function AddAccountDialog({
   useEffect(() => {
     if (!open) return;
     setSelectedProviderId(providerId ?? null);
+    // An in-flight persisted OAuth session (user is mid-login, e.g. on the
+    // paste-code screen) is restored by the effect above. Resetting the step
+    // here would stomp that restore back to the provider's first screen
+    // whenever the surface remounts (tab switch, HMR), losing the user's
+    // place. Let the restore effect own step/label while a session persists.
+    if (providerId && readSubscriptionOAuth(providerId)) return;
     setStep(
       providerId ? initialStepForProvider(providerId) : "provider-select",
     );
