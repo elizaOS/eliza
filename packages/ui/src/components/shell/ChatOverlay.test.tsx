@@ -1126,10 +1126,10 @@ describe("ChatOverlay", () => {
   // Regression guard for #9142: the grabber bar was hardcoded `opacity-0`
   // unconditionally, so on desktop/web (no OS home indicator) the handle was
   // grabbable but the bar never painted. It must be visible off-iOS.
-  it("paints a visible grabber bar off-iOS (sheet grabber + pill)", () => {
-    render(<ChatOverlay controller={makeController()} />);
+  it("paints a visible grabber bar off-iOS + a recognizable resting pill capsule", () => {
+    render(<ChatOverlay controller={makeController()} agentName="Ada" />);
     // The test runtime resolves the Capacitor platform to "web", so isIOS is
-    // false and both bars must render visibly (opacity-100, not opacity-0).
+    // false and the grabber bar must render visibly (opacity-100, not opacity-0).
     const grabberBar = screen
       .getByTestId("chat-sheet-grabber")
       .querySelector("span[aria-hidden='true']");
@@ -1137,11 +1137,15 @@ describe("ChatOverlay", () => {
     expect(grabberBar?.className).toContain("opacity-100");
     expect(grabberBar?.className).not.toContain("opacity-0");
 
-    // Single-bar contract: the pill renders NO bar of its own — the grabber
-    // bar (constant size, outside the scale transform) is the pill's visual.
-    expect(
-      screen.getByTestId("chat-pill").querySelector("span[aria-hidden='true']"),
-    ).toBeNull();
+    // The resting pill now carries its OWN visible capsule (a glass "Ask {name}"
+    // affordance) so the floating chat is recognizable at rest, not the bare
+    // hairline handle it used to be. Opacity across pill↔input is still driven by
+    // the wrapper crossfade; here we assert the capsule exists and is labeled.
+    const pillCapsule = screen
+      .getByTestId("chat-pill")
+      .querySelector("span[aria-hidden='true']");
+    expect(pillCapsule).toBeTruthy();
+    expect(pillCapsule?.textContent).toContain("Ask Ada");
   });
 
   it("steps COLLAPSED→HALF→MAXIMIZED on successive pull-ups (FULL is never a rest), and back down", () => {

@@ -161,8 +161,15 @@ export type ChatOverlayWindowTier = "pill" | "open";
 /** Resting-pill window footprint (centered bottom). */
 export const PILL_WINDOW_WIDTH = 560;
 export const PILL_WINDOW_HEIGHT = 140;
-/** Gap between the pill window and the work-area bottom edge. */
-export const PILL_WINDOW_BOTTOM_MARGIN = 12;
+/**
+ * Gap between the pill window and the work-area bottom edge. Large enough that
+ * the floating pill (and its tap target) clear a revealed auto-hide Dock: on
+ * such setups `workArea` spans the full height, so a flush pill sits UNDER the
+ * Dock and its clicks are eaten. Floating it up also reads as a "floating pill"
+ * and keeps the tap target off the very screen edge, so reaching for it does not
+ * itself summon the Dock.
+ */
+export const PILL_WINDOW_BOTTOM_MARGIN = 56;
 
 /**
  * Compute the chat-overlay window frame for a display's usable work area at the

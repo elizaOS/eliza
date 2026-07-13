@@ -12,6 +12,7 @@ import {
   FileText,
   Film,
   Loader2,
+  MessageCircle,
   Mic,
   Music,
   Paperclip,
@@ -736,6 +737,7 @@ function PillHandle({
   binding,
   onOpen,
   pilled,
+  agentName,
 }: {
   binding: PullGestureBinding;
   onOpen: () => void;
@@ -746,6 +748,9 @@ function PillHandle({
   // opts back in), so the keyboard would never open. Gate on `pilled` so taps
   // pass through to the textarea once the input has formed.
   pilled: boolean;
+  // Drives the resting-pill label ("Ask {agentName}") so the collapsed chat is
+  // recognizable at a glance, not a bare hairline handle.
+  agentName: string;
 }): React.JSX.Element {
   return (
     <Button
@@ -780,10 +785,24 @@ function PillHandle({
         pilled ? "pointer-events-auto" : "pointer-events-none",
       )}
     >
-      {/* No visual of its own: the SheetGrabber bar (constant size, outside
-          the scale transform, pointer-locked to the panel's visual top) IS the
-          pill's visible handle. This button keeps the big invisible hit area
-          + the same pull binding, so pill gestures/taps are unchanged. */}
+      {/* The visible resting pill: a glass capsule with a chat glyph + "Ask
+          {name}" so the floating chat reads as a chat you can tap — not the
+          near-invisible hairline handle it used to be (#16200 follow-up). It is
+          `pointer-events-none` and `aria-hidden`, so the Button still owns the
+          single tap/pull authority (the capsule is pure affordance). It fades
+          with the parent wrapper's `pillOpacity`, so it is gone once the input
+          bar has formed. */}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "pointer-events-none inline-flex select-none items-center gap-2 rounded-full px-4 py-2",
+          "border border-white/20 bg-white/12 text-sm font-medium text-white/95",
+          "shadow-[0_8px_32px_rgba(0,0,0,0.35)] backdrop-blur-2xl",
+        )}
+      >
+        <MessageCircle className="h-4 w-4 opacity-90" aria-hidden="true" />
+        <span>Ask {agentName}</span>
+      </span>
     </Button>
   );
 }
@@ -6558,6 +6577,7 @@ export function ChatOverlay({
               binding={pullBinding}
               onOpen={openFromPill}
               pilled={pilled}
+              agentName={agentName}
             />
           </motion.div>
         </motion.fieldset>

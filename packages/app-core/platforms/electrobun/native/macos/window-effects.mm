@@ -2435,6 +2435,12 @@ extern "C" bool makeKeyAndOrderFrontWindow(void *windowPtr) {
 		if ([window isMiniaturized]) {
 			[window deminiaturize:nil];
 		}
+		// The app runs dockless (accessory activation policy): its windows only
+		// become key while the app itself is active, and makeKeyAndOrderFront
+		// alone will NOT activate an accessory app when another app is frontmost.
+		// Without this the summoned pill orders front but never becomes key, so
+		// the chat composer receives no keystrokes. Activate first, then key.
+		[NSApp activateIgnoringOtherApps:YES];
 		[window makeKeyAndOrderFront:nil];
 		success = YES;
 	});

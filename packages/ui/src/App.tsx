@@ -16,7 +16,7 @@ import {
   type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
-import { X } from "lucide-react";
+import { MessageSquare, Power, X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -128,6 +128,7 @@ import {
   useAppSelector,
   useAppSelectorShallow,
 } from "./state";
+import { useDesktopLauncherEntries } from "./state/desktop-tray-launcher";
 import { isShellPaintable } from "./state/startup-coordinator";
 import {
   authProbeShouldHoldShell,
@@ -590,13 +591,64 @@ function ChatOverlayShell() {
  * the popover is a compact at-a-glance panel + one-click launcher.
  */
 function TrayPopoverShell() {
+  // Focus Chat summons + activates the pill window (desktopShowWindow →
+  // makeKeyAndOrderFront, which now activates the accessory app so the composer
+  // can take keystrokes). Quit tears the app down through the same path as the
+  // menu-bar Quit item. Both are plain desktop RPCs — no new channel.
+  const focusChat = useCallback(() => {
+    void invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopShowWindow",
+      ipcChannel: "desktop:showWindow",
+    });
+  }, []);
+  const quit = useCallback(() => {
+    void invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopQuit",
+      ipcChannel: "desktop:quit",
+    });
+  }, []);
+  // The launcher catalog carries the view windows plus the "Open Eliza"
+  // (`tray-show-window`) row; Focus Chat already owns "open the chat", so the
+  // VIEWS section shows only the actual views to avoid a duplicate.
+  const viewEntries = useDesktopLauncherEntries().filter(
+    (entry) => entry.itemId !== "tray-show-window",
+  );
   return (
     <div
       data-testid="tray-popover-shell"
-      className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
+      className="fixed inset-0 flex flex-col gap-2 overflow-y-auto bg-transparent p-3"
     >
-      <TrayLauncher />
+      <Button
+        type="button"
+        variant="ghost"
+        data-testid="tray-focus-chat"
+        onClick={focusChat}
+        className="h-9 w-full justify-start gap-3 px-2 text-sm font-medium"
+      >
+        <MessageSquare aria-hidden="true" className="text-muted-strong" />
+        <span className="truncate">Focus Chat</span>
+      </Button>
       <WidgetHost slot="home" layout="stack" />
+      {viewEntries.length > 0 ? (
+        <div className="flex flex-col gap-0.5">
+          <div className="px-2 pb-0.5 pt-1 text-[0.68rem] font-semibold uppercase tracking-wide text-muted-strong">
+            Views
+          </div>
+          <TrayLauncher entries={viewEntries} />
+        </div>
+      ) : null}
+      <div className="mt-auto border-t border-border/60 pt-1">
+        <Button
+          type="button"
+          variant="ghost"
+          data-testid="tray-quit"
+          onClick={quit}
+          className="h-9 w-full justify-start gap-3 px-2 text-sm font-normal"
+        >
+          <Power aria-hidden="true" className="text-muted-strong" />
+          <span className="truncate">Quit Eliza</span>
+        </Button>
+      </div>
     </div>
   );
 }
