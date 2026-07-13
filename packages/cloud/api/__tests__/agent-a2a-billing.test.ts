@@ -44,11 +44,18 @@ mock.module("@/lib/pricing", () => ({
   getProviderFromModel,
 }));
 
+// Settable so a test can drive a non-null admitted thinking budget through the
+// mounted route (#16147). The resolver's own clamping is unit-tested elsewhere;
+// here it stands in for "whatever budget the route resolved to".
+const resolveAnthropicThinkingBudgetTokens = mock((): number | null => null);
+const mergeAnthropicCotProviderOptions = mock(
+  (): Record<string, unknown> => ({}),
+);
 mock.module("@/lib/providers/anthropic-thinking", () => ({
   getAnthropicCotEnv: () => ({}),
-  mergeAnthropicCotProviderOptions: () => ({}),
+  mergeAnthropicCotProviderOptions,
   parseThinkingBudgetFromCharacterSettings: () => null,
-  resolveAnthropicThinkingBudgetTokens: () => null,
+  resolveAnthropicThinkingBudgetTokens,
 }));
 
 const recordCreatorEarnings = mock();
@@ -166,6 +173,10 @@ function callChat() {
 beforeEach(() => {
   languageModel.mockClear();
   streamText.mockReset();
+  resolveAnthropicThinkingBudgetTokens.mockReset();
+  resolveAnthropicThinkingBudgetTokens.mockReturnValue(null);
+  mergeAnthropicCotProviderOptions.mockReset();
+  mergeAnthropicCotProviderOptions.mockReturnValue({});
   estimateRequestCost.mockReset();
   calculateCost.mockReset();
   getProviderFromModel.mockClear();
@@ -215,6 +226,32 @@ describe("Agent A2A billing", () => {
     );
     expect(body.error).toBeUndefined();
     expect(body.result?.content).toBe("hello from model");
+  });
+
+  // #16147: the output ceiling used to price/reserve must be the exact value
+  // capped on the provider call, for every resolved thinking budget including
+  // none. The resolver's clamping (char override / env default /
+  // ANTHROPIC_COT_BUDGET_MAX) is unit-tested separately; here we prove the route
+  // forwards whatever it resolved to BOTH sinks identically.
+  test.each([
+    [null, undefined],
+    [1024, 1524],
+    [8000, 8500],
+  ] as const)("prices and caps the provider at one admitted ceiling (budget=%p)", async (budget, expectedCap) => {
+    makeReservation({ adjustmentType: "none" });
+    resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
+
+    const response = await callChat();
+    expect(response.status).toBe(200);
+
+    // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
+    expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
+    // ...and the provider is capped at the identical value — never omitted.
+    expect(streamText).toHaveBeenCalledTimes(1);
+    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
+    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
+      estimateRequestCost.mock.calls[0]?.[2],
+    );
   });
 
   // Regression for #10266 (A2A side).

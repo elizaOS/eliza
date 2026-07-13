@@ -324,6 +324,10 @@ async function handleChat(
     const result = await streamText({
       model: gateway.languageModel(model),
       messages: fullMessages,
+      // Cap the provider at the exact ceiling billing reserved above, so final
+      // usage cannot outrun the admitted reservation (#16147). Omitting it let
+      // the provider bill more output than was priced upfront.
+      maxOutputTokens,
       ...mergeAnthropicCotProviderOptions(
         model,
         envForThinking,
