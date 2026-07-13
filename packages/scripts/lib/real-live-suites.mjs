@@ -41,7 +41,7 @@ import path from "node:path";
 
 /** Same content pattern that defines the guarded set in issue #9310. */
 export const GUARD_CONTENT_PATTERN =
-  /describe\.skip|requireLiveProvider|ELIZA_LIVE_TEST/;
+  /describe\.skip|requireLiveProvider|ELIZA_LIVE_TEST|COMPUTER_USE_REAL_DESKTOP_TESTS/;
 
 export const REAL_LIVE_FILE_PATTERN = /\.(?:real|live)\.test\.tsx?$/;
 
@@ -168,6 +168,13 @@ export const GUARDED_REAL_LIVE_SUITES = [
     blocked:
       "plugin-computeruse vitest.config.ts excludes *.real.test.ts in every lane (desktop-control host required)",
     optIn: "FORCE_OSWORLD_BENCHMARK",
+  },
+  {
+    file: "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
+    blocked:
+      "plugin-computeruse excludes real desktop actuation from every workspace sweep; run this exact file through packages/test/vitest/real.config.ts on an isolated interactive desktop",
+    notes:
+      "the file itself requires COMPUTER_USE_REAL_DESKTOP_TESTS=1 as a per-command acknowledgment",
   },
   {
     file: "plugins/plugin-computeruse/src/__tests__/windows-list.real.test.ts",

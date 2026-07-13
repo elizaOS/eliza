@@ -143,6 +143,47 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     });
   });
 
+  test("computer-use service actuation is isolated behind a per-command acknowledgment", () => {
+    const entry = manifest.find(
+      (candidate) =>
+        candidate.file ===
+        "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
+    );
+    expect(entry).toMatchObject({
+      blocked: expect.stringContaining("excludes real desktop actuation"),
+      notes: expect.stringContaining("per-command acknowledgment"),
+    });
+    expect(entry).not.toHaveProperty("optIn");
+
+    const realSource = fs.readFileSync(
+      path.join(
+        repoRoot,
+        "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
+      ),
+      "utf8",
+    );
+    expect(realSource).toContain(
+      'process.env.COMPUTER_USE_REAL_DESKTOP_TESTS !== "1"',
+    );
+    expect(realSource).toContain("throw new Error");
+
+    const integrationSource = fs.readFileSync(
+      path.join(
+        repoRoot,
+        "plugins/plugin-computeruse/src/__tests__/service.integration.test.ts",
+      ),
+      "utf8",
+    );
+    for (const hostModule of [
+      "../platform/desktop.js",
+      "../platform/driver.js",
+      "../platform/screenshot.js",
+      "screenshot-quality.ts",
+    ]) {
+      expect(integrationSource).not.toContain(hostModule);
+    }
+  });
+
   test("the exact Anthropic receipt disables aggregate coverage with a real Bun config", () => {
     const workflow = fs.readFileSync(
       path.join(repoRoot, ".github/workflows/develop-live.yml"),
