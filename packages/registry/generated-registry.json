@@ -935,6 +935,55 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "plugin-wallettriage": {
+      "git": {
+        "repo": "wallettriage/plugin-wallettriage",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "plugin-wallettriage",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Real-time wallet risk check for elizaOS agents — a CHECK_ADDRESS_RISK action that cross-references an address's active ERC20 approvals with a live exploit threat feed BEFORE the agent acts (risk score 0-100, revoke-first findings). Pay-per-query via x402 (~$0.01 USDC on Base); stateless, no API key. Built-in per-query spend cap.",
+      "homepage": "https://wallettriage.com",
+      "topics": [
+        "security",
+        "wallet",
+        "risk",
+        "x402",
+        "base",
+        "usdc",
+        "approvals",
+        "exploit",
+        "micropayments"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "plugin-x402-alpha-data": {
       "git": {
         "repo": "sna4an/plugin-x402-alpha-data",
