@@ -54,8 +54,9 @@ Silicon Mac (ANE present, CoreML native) — the answer is no, on two counts:**
    200×32 ms windows, CoreML EP (ANE) vs CPU EP: **CPU 0.227 ms/window vs ANE
    0.798 ms/window — the ANE is 3.5× slower** (identical outputs). ANE dispatch
    overhead dominates a few-layer LSTM; the ANE wins on *large* fixed-graph models
-   (Kokoro), not tiny per-frame gates. Evidence:
-   `native/verify/evidence/platform/coreml-ane-vs-cpu-voice-gate-2026-06-24.md`.
+   (Kokoro), not tiny per-frame gates. Reproduce with onnxruntime 1.22 and
+   coremltools 9.0 using the 200-window method above, then attach the generated
+   benchmark report to the reviewing issue or PR.
 
 So the architecture already routes every model to its optimal backend by compute
 profile, and it's verified:

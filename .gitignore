@@ -9,6 +9,9 @@ node_modules
 /e2e-recordings/
 # Local cross-silo evidence review dashboard (generated locally)
 /evidence/
+# Isolated UI e2e runners write screenshots, bundles, reports, and videos next
+# to their fixtures. CI uploads these directories as artifacts.
+/packages/ui/src/**/__e2e__/output-*/
 # Voice trajectory video capture (binary webm — regenerate via record-voice-trajectories.mjs)
 packages/ui/src/components/shell/__e2e__/output-voice-recording/
 # Settings hub e2e output (screenshots + webm — regenerate via test:settings-e2e)
@@ -692,6 +695,9 @@ scripts/ai-qa/.static-stack.json
 packages/inference/reports/
 packages/inference/verify/bench_results/
 plugins/plugin-local-inference/native/verify/bench_results/
+/plugins/plugin-local-inference/native/verify/evidence/platform/
+/plugins/plugin-local-inference/native/verify/android-vulkan-graph-smoke/
+/plugins/plugin-local-inference/native/verify/vulkan_dispatch_smoke
 packages/inference/verify/hardware-results/
 packages/inference/verify/android-vulkan-smoke/
 packages/inference/verify/cpu_bench
@@ -712,16 +718,31 @@ packages/inference/verify/dispatch_smoke
 packages/inference/verify/metal_bench
 packages/inference/verify/vulkan_dispatch_smoke
 
-# omnivoice-fuse stub library — a build artifact of `make -C
-# packages/app-core/scripts/omnivoice-fuse`, not source. The fused-ABI
-# tests (`voice/ffi-bindings.test.ts`) skip when it is absent.
-packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
-packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib
+# FFI stub libraries are compiled from ffi-stub.c for each test/build host.
+/packages/app-core/scripts/ffi-stub/libelizainference_stub.so
+/packages/app-core/scripts/ffi-stub/libelizainference_stub.dylib
+/packages/app-core/scripts/ffi-stub/libelizainference_stub.dll
 packages/training/vendor/
 
 # Generated run output — never source data.
 packages/app-core/collision-report.json
-plugins/app-lifeops/docs/audit/cerebras-journey-eval-results.json
+/plugins/plugin-training/docs/audit/9299-gepa-live/
+/plugins/plugin-personal-assistant/docs/audit/cerebras-journey-eval-results.json
+/packages/os/linux/vm/output/
+
+# Compiler output belongs in each package's dist directory, never beside source.
+/packages/auth/src/atomic-json.d.ts*
+/packages/logger/src/env.d.ts*
+/packages/logger/src/index.d.ts*
+/packages/logger/src/logger.d.ts*
+/plugins/plugin-anthropic-proxy/index.js
+/plugins/plugin-anthropic-proxy/index.js.map
+/plugins/plugin-anthropic-proxy/index.d.ts
+/plugins/plugin-anthropic-proxy/index.d.ts.map
+/plugins/plugin-anthropic-proxy/src/**/*.js
+/plugins/plugin-anthropic-proxy/src/**/*.js.map
+/plugins/plugin-hyperliquid/src/**/*.js
+/plugins/plugin-hyperliquid/src/**/*.js.map
 
 .swarm/
 packages/training/out/
