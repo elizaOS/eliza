@@ -99,23 +99,15 @@ export class NotificationService extends Service {
 
 	/** Load persisted notifications from the DB-backed cache. */
 	private async hydrate(): Promise<void> {
-		try {
-			const stored = await this.runtime.getCache<AgentNotification[]>(
-				this.cacheKey,
-			);
-			if (Array.isArray(stored)) {
-				const now = Date.now();
-				this.notifications = stored
-					.filter((n) => n && typeof n.id === "string" && n.title)
-					.filter((n) => !isExpired(n, now))
-					.slice(-MAX_NOTIFICATIONS);
-			}
-		} catch (error) {
-			// A cold/headless runtime may have no cache adapter yet; start empty.
-			logger.debug(
-				{ src: "service:notification", error },
-				"No persisted notifications to hydrate",
-			);
+		const stored = await this.runtime.getCache<AgentNotification[]>(
+			this.cacheKey,
+		);
+		if (Array.isArray(stored)) {
+			const now = Date.now();
+			this.notifications = stored
+				.filter((n) => n && typeof n.id === "string" && n.title)
+				.filter((n) => !isExpired(n, now))
+				.slice(-MAX_NOTIFICATIONS);
 		}
 	}
 

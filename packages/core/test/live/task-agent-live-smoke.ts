@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import { createTestRuntime } from "../helpers/pglite-runtime.ts";
+import { createTestRuntime } from "../../src/testing/pglite-runtime.ts";
 
 const {
 	AcpService,
