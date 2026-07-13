@@ -3,6 +3,8 @@
  * Validates and selects the credentialed scenario shards consumed by the live
  * GitHub Actions authority. The checked-in manifest is shared with the coverage
  * gate so manual shard selection cannot diverge from scheduled catalog coverage.
+ * Named credential profiles let the workflow expose secrets only to shards that
+ * declare the corresponding external-service boundary.
  */
 
 import { appendFileSync, readFileSync, realpathSync, statSync } from "node:fs";
@@ -22,9 +24,30 @@ export const LIVE_SCENARIO_MANIFEST_PATH = path.join(
   "live-scenario-shards.json",
 );
 
-const EXPECTED_SCHEMA = "eliza_live_scenario_shards_v1";
+const EXPECTED_SCHEMA = "eliza_live_scenario_shards_v2";
 const EXPECTED_AUTHORITY = ".github/workflows/live-scenarios.yml";
 const SHARD_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export const LIVE_SCENARIO_CREDENTIAL_PROFILES = Object.freeze([
+  "model",
+  "google-workspace",
+  "calendly",
+  "discord",
+  "telegram",
+  "signal",
+  "imessage",
+  "bluebubbles",
+  "whatsapp",
+  "twilio",
+  "twitter",
+  "notifications",
+  "travel",
+  "github",
+  "onepassword",
+  "elizacloud",
+  "apple",
+]);
+const CREDENTIAL_PROFILE_SET = new Set(LIVE_SCENARIO_CREDENTIAL_PROFILES);
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -81,7 +104,7 @@ export function validateLiveScenarioManifest(
     if (!isRecord(candidate)) {
       throw new Error(`live scenario shard ${index} must be an object`);
     }
-    const { name, root, globs } = candidate;
+    const { name, root, globs, credentialProfiles } = candidate;
     if (typeof name !== "string" || !SHARD_NAME_PATTERN.test(name)) {
       throw new Error(`live scenario shard ${index} has an invalid name`);
     }
@@ -106,6 +129,31 @@ export function validateLiveScenarioManifest(
     if (!Array.isArray(globs) || globs.length === 0) {
       throw new Error(`live scenario shard ${name} must declare file globs`);
     }
+    if (!Array.isArray(credentialProfiles) || credentialProfiles.length === 0) {
+      throw new Error(
+        `live scenario shard ${name} must declare credential profiles`,
+      );
+    }
+
+    const uniqueCredentialProfiles = new Set();
+    for (const profile of credentialProfiles) {
+      if (typeof profile !== "string" || !CREDENTIAL_PROFILE_SET.has(profile)) {
+        throw new Error(
+          `live scenario shard ${name} has unknown credential profile: ${String(profile)}`,
+        );
+      }
+      if (uniqueCredentialProfiles.has(profile)) {
+        throw new Error(
+          `duplicate credential profile in live scenario shard ${name}: ${profile}`,
+        );
+      }
+      uniqueCredentialProfiles.add(profile);
+    }
+    if (!uniqueCredentialProfiles.has("model")) {
+      throw new Error(
+        `live scenario shard ${name} must include the model credential profile`,
+      );
+    }
 
     const uniqueGlobs = new Set();
     for (const glob of globs) {
@@ -126,7 +174,12 @@ export function validateLiveScenarioManifest(
       uniqueGlobs.add(glob);
     }
 
-    return { name, root, globs: [...uniqueGlobs] };
+    return {
+      name,
+      root,
+      globs: [...uniqueGlobs],
+      credentialProfiles: [...uniqueCredentialProfiles],
+    };
   });
 
   return {

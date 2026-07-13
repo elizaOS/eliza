@@ -5,6 +5,9 @@
 # connector credentials. Manual dispatch may select one shard for focused
 # evidence; a scenario-id filter is accepted only with that explicit shard so
 # every other matrix leg cannot masquerade as a successful empty run.
+# Each manifest shard opts into named credential profiles; only the execution
+# step receives those secrets, so setup/build/upload and unrelated shards stay
+# outside the credential boundary.
 #
 # The manifest deliberately excludes platform-gated catalogs that have no
 # provisioned runner. packages/scripts/check-scenario-workflow-coverage.mjs
@@ -111,117 +114,6 @@ jobs:
     timeout-minutes: 120
     env:
       NODE_OPTIONS: "--max-old-space-size=8192 --conditions=eliza-source"
-
-      # Provider names used by the runtime.
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.ELIZA_E2E_OPENAI_API_KEY }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY || secrets.ELIZA_E2E_OPENROUTER_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.ELIZA_E2E_ANTHROPIC_API_KEY }} # gitleaks:allow - secret references, not credential values.
-      GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY || secrets.ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY }}
-      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.ELIZA_E2E_GROQ_API_KEY }} # gitleaks:allow - secret references, not credential values.
-      CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-      SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
-
-      # Runtime connector names retained by the original live authority.
-      GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
-      GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
-      GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
-      GMAIL_TEST_ACCOUNT_EMAIL: ${{ secrets.GMAIL_TEST_ACCOUNT_EMAIL }}
-      GMAIL_TEST_ACCOUNT_REFRESH_TOKEN: ${{ secrets.GMAIL_TEST_ACCOUNT_REFRESH_TOKEN }}
-      CALENDLY_API_TOKEN: ${{ secrets.CALENDLY_API_TOKEN || secrets.ELIZA_E2E_CALENDLY_ACCESS_TOKEN }}
-      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN || secrets.ELIZA_E2E_TELEGRAM_BOT_TOKEN }}
-      TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID || secrets.ELIZA_E2E_TELEGRAM_CHAT_ID }}
-      TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID || secrets.ELIZA_E2E_TELEGRAM_APP_ID }}
-      TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH || secrets.ELIZA_E2E_TELEGRAM_APP_HASH }}
-      DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN || secrets.ELIZA_E2E_DISCORD_BOT_TOKEN }}
-      DISCORD_TEST_GUILD_ID: ${{ secrets.DISCORD_TEST_GUILD_ID || secrets.ELIZA_E2E_DISCORD_QA_GUILD_ID }}
-      DISCORD_TEST_CHANNEL_ID: ${{ secrets.DISCORD_TEST_CHANNEL_ID || secrets.ELIZA_E2E_DISCORD_QA_CHANNEL_ID }}
-      SIGNAL_CLI_URL: ${{ secrets.SIGNAL_CLI_URL }}
-      SIGNAL_TEST_NUMBER: ${{ secrets.SIGNAL_TEST_NUMBER || secrets.ELIZA_E2E_SIGNAL_PHONE_NUMBER }}
-      IMESSAGE_BRIDGE_URL: ${{ secrets.IMESSAGE_BRIDGE_URL }}
-      IMESSAGE_TEST_HANDLE: ${{ secrets.IMESSAGE_TEST_HANDLE }}
-      WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN || secrets.ELIZA_E2E_WHATSAPP_ACCESS_TOKEN }}
-      WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID || secrets.ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID }}
-      WHATSAPP_TEST_CONTACT: ${{ secrets.WHATSAPP_TEST_CONTACT || secrets.ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER }}
-      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID || secrets.ELIZA_E2E_TWILIO_ACCOUNT_SID }}
-      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-      TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER || secrets.ELIZA_E2E_TWILIO_VOICE_FROM }} # gitleaks:allow - secret references, not credential values.
-      TWILIO_TEST_TO_NUMBER: ${{ secrets.TWILIO_TEST_TO_NUMBER || secrets.ELIZA_E2E_TWILIO_RECIPIENT }}
-      X_API_KEY: ${{ secrets.X_API_KEY }}
-      X_API_SECRET: ${{ secrets.X_API_SECRET }}
-      X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-      X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-      X_TEST_DM_HANDLE: ${{ secrets.X_TEST_DM_HANDLE || secrets.ELIZA_E2E_TWITTER_FRIEND_HANDLE }}
-      NOTIFICATION_RELAY_URL: ${{ secrets.NOTIFICATION_RELAY_URL }}
-      NOTIFICATION_RELAY_TOKEN: ${{ secrets.NOTIFICATION_RELAY_TOKEN }}
-      TRAVEL_BOOKING_API_KEY: ${{ secrets.TRAVEL_BOOKING_API_KEY }}
-
-      # Structured eliza-e2e vault names consumed by connector-specific paths.
-      ELIZA_E2E_GROQ_API_KEY: ${{ secrets.ELIZA_E2E_GROQ_API_KEY || secrets.GROQ_API_KEY }}
-      ELIZA_E2E_OPENAI_API_KEY: ${{ secrets.ELIZA_E2E_OPENAI_API_KEY || secrets.OPENAI_API_KEY }}
-      ELIZA_E2E_ANTHROPIC_API_KEY: ${{ secrets.ELIZA_E2E_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY }}
-      ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY || secrets.GOOGLE_GENERATIVE_AI_API_KEY || secrets.GOOGLE_API_KEY }}
-      ELIZA_E2E_OPENROUTER_API_KEY: ${{ secrets.ELIZA_E2E_OPENROUTER_API_KEY || secrets.OPENROUTER_API_KEY }}
-      ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID }}
-      ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET }}
-      ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN }}
-      ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS: ${{ secrets.ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS }}
-      ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID }}
-      ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET }}
-      ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN }}
-      ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS: ${{ secrets.ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS }}
-      ELIZA_E2E_CALENDLY_ACCESS_TOKEN: ${{ secrets.ELIZA_E2E_CALENDLY_ACCESS_TOKEN }}
-      ELIZA_E2E_CALENDLY_HOST_URI: ${{ secrets.ELIZA_E2E_CALENDLY_HOST_URI }}
-      ELIZA_E2E_CALENDLY_EVENT_TYPE_URI: ${{ secrets.ELIZA_E2E_CALENDLY_EVENT_TYPE_URI }}
-      ELIZA_E2E_DISCORD_BOT_TOKEN: ${{ secrets.ELIZA_E2E_DISCORD_BOT_TOKEN }}
-      ELIZA_E2E_DISCORD_CLIENT_ID: ${{ secrets.ELIZA_E2E_DISCORD_CLIENT_ID }}
-      ELIZA_E2E_DISCORD_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_DISCORD_CLIENT_SECRET }}
-      ELIZA_E2E_DISCORD_QA_GUILD_ID: ${{ secrets.ELIZA_E2E_DISCORD_QA_GUILD_ID }}
-      ELIZA_E2E_DISCORD_QA_CHANNEL_ID: ${{ secrets.ELIZA_E2E_DISCORD_QA_CHANNEL_ID }}
-      ELIZA_E2E_DISCORD_USER_RELAY_TOKEN: ${{ secrets.ELIZA_E2E_DISCORD_USER_RELAY_TOKEN }}
-      ELIZA_E2E_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_E2E_TELEGRAM_BOT_TOKEN }}
-      ELIZA_E2E_TELEGRAM_APP_ID: ${{ secrets.ELIZA_E2E_TELEGRAM_APP_ID }}
-      ELIZA_E2E_TELEGRAM_APP_HASH: ${{ secrets.ELIZA_E2E_TELEGRAM_APP_HASH }}
-      ELIZA_E2E_TELEGRAM_USERBOT_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_TELEGRAM_USERBOT_PHONE_NUMBER }}
-      ELIZA_E2E_TELEGRAM_USERBOT_SESSION_STRING: ${{ secrets.ELIZA_E2E_TELEGRAM_USERBOT_SESSION_STRING }}
-      ELIZA_E2E_TELEGRAM_CHAT_ID: ${{ secrets.ELIZA_E2E_TELEGRAM_CHAT_ID }}
-      ELIZA_E2E_TWITTER_CLIENT_ID: ${{ secrets.ELIZA_E2E_TWITTER_CLIENT_ID }}
-      ELIZA_E2E_TWITTER_CLIENT_SECRET: ${{ secrets.ELIZA_E2E_TWITTER_CLIENT_SECRET }}
-      ELIZA_E2E_TWITTER_USER_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_TWITTER_USER_REFRESH_TOKEN }}
-      ELIZA_E2E_TWITTER_FRIEND_REFRESH_TOKEN: ${{ secrets.ELIZA_E2E_TWITTER_FRIEND_REFRESH_TOKEN }}
-      ELIZA_E2E_TWITTER_USER_HANDLE: ${{ secrets.ELIZA_E2E_TWITTER_USER_HANDLE }}
-      ELIZA_E2E_TWITTER_FRIEND_HANDLE: ${{ secrets.ELIZA_E2E_TWITTER_FRIEND_HANDLE }}
-      ELIZA_E2E_SIGNAL_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_SIGNAL_PHONE_NUMBER }}
-      ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER }}
-      ELIZA_E2E_SIGNAL_DATA_DIR: ${{ secrets.ELIZA_E2E_SIGNAL_DATA_DIR }}
-      ELIZA_E2E_WHATSAPP_ACCESS_TOKEN: ${{ secrets.ELIZA_E2E_WHATSAPP_ACCESS_TOKEN }}
-      ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID: ${{ secrets.ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID }}
-      ELIZA_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ secrets.ELIZA_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID }}
-      ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ secrets.ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN }}
-      ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER: ${{ secrets.ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER }}
-      ELIZA_E2E_TWILIO_ACCOUNT_SID: ${{ secrets.ELIZA_E2E_TWILIO_ACCOUNT_SID }}
-      ELIZA_E2E_TWILIO_API_KEY_SID: ${{ secrets.ELIZA_E2E_TWILIO_API_KEY_SID }}
-      ELIZA_E2E_TWILIO_API_KEY_SECRET: ${{ secrets.ELIZA_E2E_TWILIO_API_KEY_SECRET }}
-      ELIZA_E2E_TWILIO_SMS_FROM: ${{ secrets.ELIZA_E2E_TWILIO_SMS_FROM }}
-      ELIZA_E2E_TWILIO_VOICE_FROM: ${{ secrets.ELIZA_E2E_TWILIO_VOICE_FROM }}
-      ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID: ${{ secrets.ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID }}
-      ELIZA_E2E_TWILIO_RECIPIENT: ${{ secrets.ELIZA_E2E_TWILIO_RECIPIENT }}
-      ELIZA_E2E_BLUEBUBBLES_SERVER_URL: ${{ secrets.ELIZA_E2E_BLUEBUBBLES_SERVER_URL }}
-      ELIZA_E2E_BLUEBUBBLES_PASSWORD: ${{ secrets.ELIZA_E2E_BLUEBUBBLES_PASSWORD }}
-      ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE: ${{ secrets.ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE }}
-      ELIZA_E2E_GITHUB_USER_PAT: ${{ secrets.ELIZA_E2E_GITHUB_USER_PAT }}
-      ELIZA_E2E_GITHUB_AGENT_PAT: ${{ secrets.ELIZA_E2E_GITHUB_AGENT_PAT }}
-      ELIZA_E2E_GITHUB_ORG: ${{ secrets.ELIZA_E2E_GITHUB_ORG }}
-      ELIZA_E2E_GITHUB_TEMPLATE_REPO: ${{ secrets.ELIZA_E2E_GITHUB_TEMPLATE_REPO }}
-      ELIZA_E2E_ONEPASS_SA_TOKEN: ${{ secrets.ELIZA_E2E_ONEPASS_SA_TOKEN }}
-      ELIZA_E2E_ONEPASS_VAULT_ID: ${{ secrets.ELIZA_E2E_ONEPASS_VAULT_ID }}
-      ELIZA_E2E_ELIZACLOUD_API_KEY: ${{ secrets.ELIZA_E2E_ELIZACLOUD_API_KEY }}
-      ELIZA_E2E_ELIZACLOUD_BASE_URL: ${{ secrets.ELIZA_E2E_ELIZACLOUD_BASE_URL }}
-      ELIZA_E2E_APPLE_TEAM_ID: ${{ secrets.ELIZA_E2E_APPLE_TEAM_ID }}
-      ELIZA_E2E_APPLE_APNS_KEY_ID: ${{ secrets.ELIZA_E2E_APPLE_APNS_KEY_ID }}
-      ELIZA_E2E_APPLE_APNS_KEY_P8: ${{ secrets.ELIZA_E2E_APPLE_APNS_KEY_P8 }}
-      ELIZA_E2E_APPLE_APNS_TOPIC: ${{ secrets.ELIZA_E2E_APPLE_APNS_TOPIC }}
-
       SCENARIO_ROOT: ${{ matrix.shard.root }}
       SCENARIO_FILE_GLOBS: ${{ join(matrix.shard.globs, ' ') }}
       SCENARIO_FILTER: ${{ inputs.scenario_filter }}
@@ -289,19 +181,6 @@ jobs:
           bun run --cwd packages/cloud/sdk build
           bun run --cwd plugins/plugin-commands build
 
-          provider_package=""
-          if [ -n "${GROQ_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-groq"
-          elif [ -n "${OPENAI_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-openai"
-          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-anthropic"
-          elif [ -n "${GOOGLE_GENERATIVE_AI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-google-genai"
-          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
-            provider_package="plugins/plugin-openrouter"
-          fi
-
           package_dirs=(
             plugins/plugin-sql
             plugins/plugin-blocker
@@ -335,10 +214,12 @@ jobs:
             plugins/plugin-whatsapp
             plugins/plugin-signal
             plugins/plugin-imessage
+            plugins/plugin-groq
+            plugins/plugin-openai
+            plugins/plugin-anthropic
+            plugins/plugin-google-genai
+            plugins/plugin-openrouter
           )
-          if [ -n "$provider_package" ]; then
-            package_dirs+=("$provider_package")
-          fi
 
           for package_dir in "${package_dirs[@]}"; do
             echo "::group::Build ${package_dir}"
@@ -348,6 +229,113 @@ jobs:
 
       - name: Run live scenario shard
         id: run
+        # Step scope prevents third-party setup/upload actions and package build
+        # scripts from inheriting credentials they do not need.
+        env:
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
+          OPENAI_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.OPENAI_API_KEY || secrets.ELIZA_E2E_OPENAI_API_KEY) || '' }}
+          OPENROUTER_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.OPENROUTER_API_KEY || secrets.ELIZA_E2E_OPENROUTER_API_KEY) || '' }}
+          ANTHROPIC_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.ANTHROPIC_API_KEY || secrets.ELIZA_E2E_ANTHROPIC_API_KEY) || '' }} # gitleaks:allow - secret references, not credential values.
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.GOOGLE_GENERATIVE_AI_API_KEY || secrets.ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY) || '' }}
+          GOOGLE_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.GOOGLE_API_KEY) || '' }}
+          GROQ_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.GROQ_API_KEY || secrets.ELIZA_E2E_GROQ_API_KEY) || '' }} # gitleaks:allow - secret references, not credential values.
+          CEREBRAS_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.CEREBRAS_API_KEY) || '' }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.GOOGLE_OAUTH_CLIENT_ID) || '' }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.GOOGLE_OAUTH_CLIENT_SECRET) || '' }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.GOOGLE_OAUTH_REFRESH_TOKEN) || '' }}
+          GMAIL_TEST_ACCOUNT_EMAIL: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.GMAIL_TEST_ACCOUNT_EMAIL) || '' }}
+          GMAIL_TEST_ACCOUNT_REFRESH_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.GMAIL_TEST_ACCOUNT_REFRESH_TOKEN) || '' }}
+          CALENDLY_API_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'calendly') && (secrets.CALENDLY_API_TOKEN || secrets.ELIZA_E2E_CALENDLY_ACCESS_TOKEN) || '' }}
+          TELEGRAM_BOT_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.TELEGRAM_BOT_TOKEN || secrets.ELIZA_E2E_TELEGRAM_BOT_TOKEN) || '' }}
+          TELEGRAM_TEST_CHAT_ID: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.TELEGRAM_TEST_CHAT_ID || secrets.ELIZA_E2E_TELEGRAM_CHAT_ID) || '' }}
+          TELEGRAM_API_ID: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.TELEGRAM_API_ID || secrets.ELIZA_E2E_TELEGRAM_APP_ID) || '' }}
+          TELEGRAM_API_HASH: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.TELEGRAM_API_HASH || secrets.ELIZA_E2E_TELEGRAM_APP_HASH) || '' }}
+          DISCORD_BOT_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.DISCORD_BOT_TOKEN || secrets.ELIZA_E2E_DISCORD_BOT_TOKEN) || '' }}
+          DISCORD_TEST_GUILD_ID: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.DISCORD_TEST_GUILD_ID || secrets.ELIZA_E2E_DISCORD_QA_GUILD_ID) || '' }}
+          DISCORD_TEST_CHANNEL_ID: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.DISCORD_TEST_CHANNEL_ID || secrets.ELIZA_E2E_DISCORD_QA_CHANNEL_ID) || '' }}
+          SIGNAL_CLI_URL: ${{ contains(matrix.shard.credentialProfiles, 'signal') && (secrets.SIGNAL_CLI_URL) || '' }}
+          SIGNAL_TEST_NUMBER: ${{ contains(matrix.shard.credentialProfiles, 'signal') && (secrets.SIGNAL_TEST_NUMBER || secrets.ELIZA_E2E_SIGNAL_PHONE_NUMBER) || '' }}
+          IMESSAGE_BRIDGE_URL: ${{ contains(matrix.shard.credentialProfiles, 'imessage') && (secrets.IMESSAGE_BRIDGE_URL) || '' }}
+          IMESSAGE_TEST_HANDLE: ${{ contains(matrix.shard.credentialProfiles, 'imessage') && (secrets.IMESSAGE_TEST_HANDLE) || '' }}
+          WHATSAPP_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.WHATSAPP_TOKEN || secrets.ELIZA_E2E_WHATSAPP_ACCESS_TOKEN) || '' }}
+          WHATSAPP_PHONE_ID: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.WHATSAPP_PHONE_ID || secrets.ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID) || '' }}
+          WHATSAPP_TEST_CONTACT: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.WHATSAPP_TEST_CONTACT || secrets.ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER) || '' }}
+          TWILIO_ACCOUNT_SID: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.TWILIO_ACCOUNT_SID || secrets.ELIZA_E2E_TWILIO_ACCOUNT_SID) || '' }}
+          TWILIO_AUTH_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.TWILIO_AUTH_TOKEN) || '' }}
+          TWILIO_FROM_NUMBER: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.TWILIO_FROM_NUMBER || secrets.ELIZA_E2E_TWILIO_VOICE_FROM) || '' }} # gitleaks:allow - secret references, not credential values.
+          TWILIO_TEST_TO_NUMBER: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.TWILIO_TEST_TO_NUMBER || secrets.ELIZA_E2E_TWILIO_RECIPIENT) || '' }}
+          X_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.X_API_KEY) || '' }}
+          X_API_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.X_API_SECRET) || '' }}
+          X_ACCESS_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.X_ACCESS_TOKEN) || '' }}
+          X_ACCESS_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.X_ACCESS_SECRET) || '' }}
+          X_TEST_DM_HANDLE: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.X_TEST_DM_HANDLE || secrets.ELIZA_E2E_TWITTER_FRIEND_HANDLE) || '' }}
+          NOTIFICATION_RELAY_URL: ${{ contains(matrix.shard.credentialProfiles, 'notifications') && (secrets.NOTIFICATION_RELAY_URL) || '' }}
+          NOTIFICATION_RELAY_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'notifications') && (secrets.NOTIFICATION_RELAY_TOKEN) || '' }}
+          TRAVEL_BOOKING_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'travel') && (secrets.TRAVEL_BOOKING_API_KEY) || '' }}
+          ELIZA_E2E_GROQ_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.ELIZA_E2E_GROQ_API_KEY || secrets.GROQ_API_KEY) || '' }}
+          ELIZA_E2E_OPENAI_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.ELIZA_E2E_OPENAI_API_KEY || secrets.OPENAI_API_KEY) || '' }}
+          ELIZA_E2E_ANTHROPIC_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.ELIZA_E2E_ANTHROPIC_API_KEY || secrets.ANTHROPIC_API_KEY) || '' }}
+          ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY || secrets.GOOGLE_GENERATIVE_AI_API_KEY || secrets.GOOGLE_API_KEY) || '' }}
+          ELIZA_E2E_OPENROUTER_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'model') && (secrets.ELIZA_E2E_OPENROUTER_API_KEY || secrets.OPENROUTER_API_KEY) || '' }}
+          ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_ID) || '' }}
+          ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTOWNER_CLIENT_SECRET) || '' }}
+          ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTOWNER_REFRESH_TOKEN) || '' }}
+          ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTOWNER_ADDRESS) || '' }}
+          ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_ID) || '' }}
+          ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTAGENT_CLIENT_SECRET) || '' }}
+          ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTAGENT_REFRESH_TOKEN) || '' }}
+          ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS: ${{ contains(matrix.shard.credentialProfiles, 'google-workspace') && (secrets.ELIZA_E2E_GMAIL_TESTAGENT_ADDRESS) || '' }}
+          ELIZA_E2E_CALENDLY_ACCESS_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'calendly') && (secrets.ELIZA_E2E_CALENDLY_ACCESS_TOKEN) || '' }}
+          ELIZA_E2E_CALENDLY_HOST_URI: ${{ contains(matrix.shard.credentialProfiles, 'calendly') && (secrets.ELIZA_E2E_CALENDLY_HOST_URI) || '' }}
+          ELIZA_E2E_CALENDLY_EVENT_TYPE_URI: ${{ contains(matrix.shard.credentialProfiles, 'calendly') && (secrets.ELIZA_E2E_CALENDLY_EVENT_TYPE_URI) || '' }}
+          ELIZA_E2E_DISCORD_BOT_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.ELIZA_E2E_DISCORD_BOT_TOKEN) || '' }}
+          ELIZA_E2E_DISCORD_CLIENT_ID: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.ELIZA_E2E_DISCORD_CLIENT_ID) || '' }}
+          ELIZA_E2E_DISCORD_CLIENT_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.ELIZA_E2E_DISCORD_CLIENT_SECRET) || '' }}
+          ELIZA_E2E_DISCORD_QA_GUILD_ID: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.ELIZA_E2E_DISCORD_QA_GUILD_ID) || '' }}
+          ELIZA_E2E_DISCORD_QA_CHANNEL_ID: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.ELIZA_E2E_DISCORD_QA_CHANNEL_ID) || '' }}
+          ELIZA_E2E_DISCORD_USER_RELAY_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'discord') && (secrets.ELIZA_E2E_DISCORD_USER_RELAY_TOKEN) || '' }}
+          ELIZA_E2E_TELEGRAM_BOT_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.ELIZA_E2E_TELEGRAM_BOT_TOKEN) || '' }}
+          ELIZA_E2E_TELEGRAM_APP_ID: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.ELIZA_E2E_TELEGRAM_APP_ID) || '' }}
+          ELIZA_E2E_TELEGRAM_APP_HASH: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.ELIZA_E2E_TELEGRAM_APP_HASH) || '' }}
+          ELIZA_E2E_TELEGRAM_USERBOT_PHONE_NUMBER: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.ELIZA_E2E_TELEGRAM_USERBOT_PHONE_NUMBER) || '' }}
+          ELIZA_E2E_TELEGRAM_USERBOT_SESSION_STRING: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.ELIZA_E2E_TELEGRAM_USERBOT_SESSION_STRING) || '' }}
+          ELIZA_E2E_TELEGRAM_CHAT_ID: ${{ contains(matrix.shard.credentialProfiles, 'telegram') && (secrets.ELIZA_E2E_TELEGRAM_CHAT_ID) || '' }}
+          ELIZA_E2E_TWITTER_CLIENT_ID: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.ELIZA_E2E_TWITTER_CLIENT_ID) || '' }}
+          ELIZA_E2E_TWITTER_CLIENT_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.ELIZA_E2E_TWITTER_CLIENT_SECRET) || '' }}
+          ELIZA_E2E_TWITTER_USER_REFRESH_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.ELIZA_E2E_TWITTER_USER_REFRESH_TOKEN) || '' }}
+          ELIZA_E2E_TWITTER_FRIEND_REFRESH_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.ELIZA_E2E_TWITTER_FRIEND_REFRESH_TOKEN) || '' }}
+          ELIZA_E2E_TWITTER_USER_HANDLE: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.ELIZA_E2E_TWITTER_USER_HANDLE) || '' }}
+          ELIZA_E2E_TWITTER_FRIEND_HANDLE: ${{ contains(matrix.shard.credentialProfiles, 'twitter') && (secrets.ELIZA_E2E_TWITTER_FRIEND_HANDLE) || '' }}
+          ELIZA_E2E_SIGNAL_PHONE_NUMBER: ${{ contains(matrix.shard.credentialProfiles, 'signal') && (secrets.ELIZA_E2E_SIGNAL_PHONE_NUMBER) || '' }}
+          ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER: ${{ contains(matrix.shard.credentialProfiles, 'signal') && (secrets.ELIZA_E2E_SIGNAL_RECIPIENT_PHONE_NUMBER) || '' }}
+          ELIZA_E2E_SIGNAL_DATA_DIR: ${{ contains(matrix.shard.credentialProfiles, 'signal') && (secrets.ELIZA_E2E_SIGNAL_DATA_DIR) || '' }}
+          ELIZA_E2E_WHATSAPP_ACCESS_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.ELIZA_E2E_WHATSAPP_ACCESS_TOKEN) || '' }}
+          ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.ELIZA_E2E_WHATSAPP_PHONE_NUMBER_ID) || '' }}
+          ELIZA_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.ELIZA_E2E_WHATSAPP_BUSINESS_ACCOUNT_ID) || '' }}
+          ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN) || '' }}
+          ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER: ${{ contains(matrix.shard.credentialProfiles, 'whatsapp') && (secrets.ELIZA_E2E_WHATSAPP_RECIPIENT_PHONE_NUMBER) || '' }}
+          ELIZA_E2E_TWILIO_ACCOUNT_SID: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.ELIZA_E2E_TWILIO_ACCOUNT_SID) || '' }}
+          ELIZA_E2E_TWILIO_API_KEY_SID: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.ELIZA_E2E_TWILIO_API_KEY_SID) || '' }}
+          ELIZA_E2E_TWILIO_API_KEY_SECRET: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.ELIZA_E2E_TWILIO_API_KEY_SECRET) || '' }}
+          ELIZA_E2E_TWILIO_SMS_FROM: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.ELIZA_E2E_TWILIO_SMS_FROM) || '' }}
+          ELIZA_E2E_TWILIO_VOICE_FROM: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.ELIZA_E2E_TWILIO_VOICE_FROM) || '' }}
+          ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.ELIZA_E2E_TWILIO_MESSAGING_SERVICE_SID) || '' }}
+          ELIZA_E2E_TWILIO_RECIPIENT: ${{ contains(matrix.shard.credentialProfiles, 'twilio') && (secrets.ELIZA_E2E_TWILIO_RECIPIENT) || '' }}
+          ELIZA_E2E_BLUEBUBBLES_SERVER_URL: ${{ contains(matrix.shard.credentialProfiles, 'bluebubbles') && (secrets.ELIZA_E2E_BLUEBUBBLES_SERVER_URL) || '' }}
+          ELIZA_E2E_BLUEBUBBLES_PASSWORD: ${{ contains(matrix.shard.credentialProfiles, 'bluebubbles') && (secrets.ELIZA_E2E_BLUEBUBBLES_PASSWORD) || '' }}
+          ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE: ${{ contains(matrix.shard.credentialProfiles, 'bluebubbles') && (secrets.ELIZA_E2E_BLUEBUBBLES_RECIPIENT_HANDLE) || '' }}
+          ELIZA_E2E_GITHUB_USER_PAT: ${{ contains(matrix.shard.credentialProfiles, 'github') && (secrets.ELIZA_E2E_GITHUB_USER_PAT) || '' }}
+          ELIZA_E2E_GITHUB_AGENT_PAT: ${{ contains(matrix.shard.credentialProfiles, 'github') && (secrets.ELIZA_E2E_GITHUB_AGENT_PAT) || '' }}
+          ELIZA_E2E_GITHUB_ORG: ${{ contains(matrix.shard.credentialProfiles, 'github') && (secrets.ELIZA_E2E_GITHUB_ORG) || '' }}
+          ELIZA_E2E_GITHUB_TEMPLATE_REPO: ${{ contains(matrix.shard.credentialProfiles, 'github') && (secrets.ELIZA_E2E_GITHUB_TEMPLATE_REPO) || '' }}
+          ELIZA_E2E_ONEPASS_SA_TOKEN: ${{ contains(matrix.shard.credentialProfiles, 'onepassword') && (secrets.ELIZA_E2E_ONEPASS_SA_TOKEN) || '' }}
+          ELIZA_E2E_ONEPASS_VAULT_ID: ${{ contains(matrix.shard.credentialProfiles, 'onepassword') && (secrets.ELIZA_E2E_ONEPASS_VAULT_ID) || '' }}
+          ELIZA_E2E_ELIZACLOUD_API_KEY: ${{ contains(matrix.shard.credentialProfiles, 'elizacloud') && (secrets.ELIZA_E2E_ELIZACLOUD_API_KEY) || '' }}
+          ELIZA_E2E_ELIZACLOUD_BASE_URL: ${{ contains(matrix.shard.credentialProfiles, 'elizacloud') && (secrets.ELIZA_E2E_ELIZACLOUD_BASE_URL) || '' }}
+          ELIZA_E2E_APPLE_TEAM_ID: ${{ contains(matrix.shard.credentialProfiles, 'apple') && (secrets.ELIZA_E2E_APPLE_TEAM_ID) || '' }}
+          ELIZA_E2E_APPLE_APNS_KEY_ID: ${{ contains(matrix.shard.credentialProfiles, 'apple') && (secrets.ELIZA_E2E_APPLE_APNS_KEY_ID) || '' }}
+          ELIZA_E2E_APPLE_APNS_KEY_P8: ${{ contains(matrix.shard.credentialProfiles, 'apple') && (secrets.ELIZA_E2E_APPLE_APNS_KEY_P8) || '' }}
+          ELIZA_E2E_APPLE_APNS_TOPIC: ${{ contains(matrix.shard.credentialProfiles, 'apple') && (secrets.ELIZA_E2E_APPLE_APNS_TOPIC) || '' }}
         run: |
           set -euo pipefail
           read -r -a scenario_globs <<< "$SCENARIO_FILE_GLOBS"

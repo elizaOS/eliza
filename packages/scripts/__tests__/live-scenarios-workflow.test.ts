@@ -7,7 +7,10 @@ import { expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { PLUGIN_ROUTE_COVERAGE } from "../e2e-coverage/manifest.ts";
-import { loadLiveScenarioManifest } from "../live-scenario-matrix.mjs";
+import {
+  LIVE_SCENARIO_CREDENTIAL_PROFILES,
+  loadLiveScenarioManifest,
+} from "../live-scenario-matrix.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const workflow = (name: string) =>
@@ -81,6 +84,99 @@ const expectedE2eEnvironmentNames = [
   "ELIZA_E2E_WHATSAPP_WEBHOOK_VERIFY_TOKEN",
 ];
 
+const expectedRuntimeCredentialEnvironmentNames = [
+  "ANTHROPIC_API_KEY",
+  "CALENDLY_API_TOKEN",
+  "CEREBRAS_API_KEY",
+  "DISCORD_BOT_TOKEN",
+  "DISCORD_TEST_CHANNEL_ID",
+  "DISCORD_TEST_GUILD_ID",
+  "GMAIL_TEST_ACCOUNT_EMAIL",
+  "GMAIL_TEST_ACCOUNT_REFRESH_TOKEN",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+  "GOOGLE_OAUTH_REFRESH_TOKEN",
+  "GROQ_API_KEY",
+  "IMESSAGE_BRIDGE_URL",
+  "IMESSAGE_TEST_HANDLE",
+  "NOTIFICATION_RELAY_TOKEN",
+  "NOTIFICATION_RELAY_URL",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "SIGNAL_CLI_URL",
+  "SIGNAL_TEST_NUMBER",
+  "TELEGRAM_API_HASH",
+  "TELEGRAM_API_ID",
+  "TELEGRAM_BOT_TOKEN",
+  "TELEGRAM_TEST_CHAT_ID",
+  "TRAVEL_BOOKING_API_KEY",
+  "TWILIO_ACCOUNT_SID",
+  "TWILIO_AUTH_TOKEN",
+  "TWILIO_FROM_NUMBER",
+  "TWILIO_TEST_TO_NUMBER",
+  "WHATSAPP_PHONE_ID",
+  "WHATSAPP_TEST_CONTACT",
+  "WHATSAPP_TOKEN",
+  "X_ACCESS_SECRET",
+  "X_ACCESS_TOKEN",
+  "X_API_KEY",
+  "X_API_SECRET",
+  "X_TEST_DM_HANDLE",
+];
+
+const modelCredentialEnvironmentNames = new Set([
+  "ANTHROPIC_API_KEY",
+  "CEREBRAS_API_KEY",
+  "ELIZA_E2E_ANTHROPIC_API_KEY",
+  "ELIZA_E2E_GOOGLE_GENERATIVE_AI_API_KEY",
+  "ELIZA_E2E_GROQ_API_KEY",
+  "ELIZA_E2E_OPENAI_API_KEY",
+  "ELIZA_E2E_OPENROUTER_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "GROQ_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+]);
+
+const credentialProfileForEnvironment = (environmentName: string): string => {
+  if (modelCredentialEnvironmentNames.has(environmentName)) return "model";
+  if (
+    /^(GOOGLE_OAUTH|GMAIL_TEST_ACCOUNT|ELIZA_E2E_GMAIL_)/.test(environmentName)
+  ) {
+    return "google-workspace";
+  }
+  const fragments: Array<[string, string]> = [
+    ["CALENDLY", "calendly"],
+    ["DISCORD", "discord"],
+    ["TELEGRAM", "telegram"],
+    ["SIGNAL", "signal"],
+    ["IMESSAGE", "imessage"],
+    ["BLUEBUBBLES", "bluebubbles"],
+    ["WHATSAPP", "whatsapp"],
+    ["TWILIO", "twilio"],
+    ["TWITTER", "twitter"],
+    ["NOTIFICATION", "notifications"],
+    ["TRAVEL", "travel"],
+    ["GITHUB", "github"],
+    ["ONEPASS", "onepassword"],
+    ["ELIZACLOUD", "elizacloud"],
+    ["APPLE", "apple"],
+  ];
+  if (environmentName.startsWith("X_")) return "twitter";
+  const match = fragments.find(([fragment]) =>
+    environmentName.includes(fragment),
+  );
+  if (!match) {
+    throw new Error(
+      `credential test inventory has no profile for ${environmentName}`,
+    );
+  }
+  return match[1];
+};
+
 test("keeps retired no-op workflows absent", () => {
   expect(existsSync(workflow("gpu-bench-nightly.yml"))).toBe(false);
   expect(existsSync(workflow("scenario-matrix.yml"))).toBe(false);
@@ -115,9 +211,67 @@ test("preserves every structured eliza-e2e credential mapping", () => {
   expect(actual).toEqual(expectedE2eEnvironmentNames);
 });
 
+test("limits each credential profile to the live shard execution step", () => {
+  const liveWorkflow = readWorkflow("live-scenarios.yml");
+  const jobStart = liveWorkflow.indexOf("  live-scenarios:");
+  const runStepStart = liveWorkflow.indexOf(
+    "      - name: Run live scenario shard",
+  );
+  const runEnvironmentStart = liveWorkflow.indexOf(
+    "        env:\n",
+    runStepStart,
+  );
+  const runCommandStart = liveWorkflow.indexOf(
+    "        run: |",
+    runEnvironmentStart,
+  );
+
+  expect(jobStart).toBeGreaterThan(-1);
+  expect(runStepStart).toBeGreaterThan(jobStart);
+  expect(runEnvironmentStart).toBeGreaterThan(runStepStart);
+  expect(runCommandStart).toBeGreaterThan(runEnvironmentStart);
+  expect(liveWorkflow.slice(0, runEnvironmentStart)).not.toContain("secrets.");
+  expect(liveWorkflow.slice(runCommandStart)).not.toContain("secrets.");
+
+  const runEnvironment = liveWorkflow.slice(
+    runEnvironmentStart,
+    runCommandStart,
+  );
+  const secretLines = runEnvironment
+    .split("\n")
+    .filter((line) => line.includes("secrets."));
+  const actualEnvironmentNames: string[] = [];
+  const actualProfiles = new Set<string>();
+  for (const line of secretLines) {
+    const mapping = line.match(
+      /^ {10}([A-Z0-9_]+): \$\{\{ contains\(matrix\.shard\.credentialProfiles, '([^']+)'\) && \((.*secrets\..*)\) \|\| '' \}\}(?: #.*)?$/,
+    );
+    expect(mapping, `unconditioned secret mapping: ${line}`).not.toBeNull();
+    if (!mapping) continue;
+    const [, environmentName, profile] = mapping;
+    expect(profile).toBe(credentialProfileForEnvironment(environmentName));
+    actualEnvironmentNames.push(environmentName);
+    actualProfiles.add(profile);
+  }
+
+  expect(actualEnvironmentNames.sort()).toEqual(
+    [
+      ...expectedE2eEnvironmentNames,
+      ...expectedRuntimeCredentialEnvironmentNames,
+    ].sort(),
+  );
+  expect([...actualProfiles].sort()).toEqual(
+    [...LIVE_SCENARIO_CREDENTIAL_PROFILES].sort(),
+  );
+});
+
 test("builds the dist-exported runtime closure before each live shard", () => {
   const liveWorkflow = readWorkflow("live-scenarios.yml");
   const runStep = "- name: Run live scenario shard";
+  const buildStep = liveWorkflow.slice(
+    liveWorkflow.indexOf("      - name: Build live scenario runtime packages"),
+    liveWorkflow.indexOf(`      ${runStep}`),
+  );
 
   expect(liveWorkflow).toMatch(
     /package_dirs=\([\s\S]*plugins\/plugin-local-inference[\s\S]*plugins\/plugin-app-control[\s\S]*plugins\/plugin-health[\s\S]*\)[\s\S]*for package_dir in "\$\{package_dirs\[@\]\}"/,
@@ -129,6 +283,17 @@ test("builds the dist-exported runtime closure before each live shard", () => {
     liveWorkflow.indexOf(runStep),
   );
   expect(liveWorkflow).toContain("--conditions=eliza-source");
+  for (const providerPackage of [
+    "plugins/plugin-groq",
+    "plugins/plugin-openai",
+    "plugins/plugin-anthropic",
+    "plugins/plugin-google-genai",
+    "plugins/plugin-openrouter",
+  ]) {
+    expect(buildStep).toContain(providerPackage);
+  }
+  expect(buildStep).not.toContain("provider_package");
+  expect(buildStep).not.toContain("secrets.");
 });
 
 test("maps GPU probe intent to active real voice and local-inference authorities", () => {

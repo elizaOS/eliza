@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runScenarioWorkflowCoverage } from "../check-scenario-workflow-coverage.mjs";
 import {
+  LIVE_SCENARIO_CREDENTIAL_PROFILES,
   LIVE_SCENARIO_MANIFEST_PATH,
   loadLiveScenarioManifest,
   selectLiveScenarioShards,
@@ -52,6 +53,47 @@ describe("live scenario matrix", () => {
     expect(
       manifest.shards.find((shard) => shard.name === "lifeops-app")?.root,
     ).toBe("plugins/plugin-personal-assistant/test/scenarios");
+    expect(
+      Object.fromEntries(
+        manifest.shards.map((shard) => [shard.name, shard.credentialProfiles]),
+      ),
+    ).toEqual({
+      "executive-connectors": [
+        "model",
+        "google-workspace",
+        "calendly",
+        "discord",
+        "telegram",
+        "signal",
+        "imessage",
+        "bluebubbles",
+        "whatsapp",
+        "twilio",
+        "twitter",
+        "notifications",
+        "travel",
+      ],
+      messaging: [
+        "model",
+        "google-workspace",
+        "discord",
+        "telegram",
+        "signal",
+        "whatsapp",
+        "twitter",
+      ],
+      "todos-reminders": ["model"],
+      calendar: ["model", "google-workspace", "calendly"],
+      relationships: ["model"],
+      "browser-social": ["model", "twitter", "onepassword"],
+      "personality-payments": ["model", "elizacloud"],
+      "cross-cutting-gateway": LIVE_SCENARIO_CREDENTIAL_PROFILES.filter(
+        (profile) => !["twitter", "github", "onepassword"].includes(profile),
+      ),
+      "lifeops-app": ["model", "google-workspace"],
+      "plugin-health": ["model"],
+      "app-control": ["model"],
+    });
   });
 
   test("selects either the full scheduled matrix or one manual shard", () => {
@@ -68,13 +110,14 @@ describe("live scenario matrix", () => {
 
   test("rejects duplicate, escaping, and out-of-root shard declarations", () => {
     const base = {
-      schema: "eliza_live_scenario_shards_v1",
+      schema: "eliza_live_scenario_shards_v2",
       authority: ".github/workflows/live-scenarios.yml",
       shards: [
         {
           name: "valid",
           root: "packages/test/scenarios",
           globs: ["packages/test/scenarios/calendar/**/*.scenario.ts"],
+          credentialProfiles: ["model"],
         },
       ],
     };
@@ -110,6 +153,63 @@ describe("live scenario matrix", () => {
     ).toThrow(/must stay beneath/);
   });
 
+  test("rejects missing, unknown, duplicate, and model-less credential profiles", () => {
+    const shard = {
+      name: "valid",
+      root: "packages/test/scenarios",
+      globs: ["packages/test/scenarios/calendar/**/*.scenario.ts"],
+      credentialProfiles: ["model"],
+    };
+    const manifest = {
+      schema: "eliza_live_scenario_shards_v2",
+      authority: ".github/workflows/live-scenarios.yml",
+      shards: [shard],
+    };
+
+    expect(() =>
+      validateLiveScenarioManifest(
+        { ...manifest, shards: [{ ...shard, credentialProfiles: undefined }] },
+        { requirePaths: false },
+      ),
+    ).toThrow(/must declare credential profiles/);
+    expect(() =>
+      validateLiveScenarioManifest(
+        {
+          ...manifest,
+          shards: [{ ...shard, credentialProfiles: ["unknown"] }],
+        },
+        { requirePaths: false },
+      ),
+    ).toThrow(/unknown credential profile/);
+    expect(() =>
+      validateLiveScenarioManifest(
+        {
+          ...manifest,
+          shards: [{ ...shard, credentialProfiles: ["model", "model"] }],
+        },
+        { requirePaths: false },
+      ),
+    ).toThrow(/duplicate credential profile/);
+    expect(() =>
+      validateLiveScenarioManifest(
+        {
+          ...manifest,
+          shards: [{ ...shard, credentialProfiles: ["calendar"] }],
+        },
+        { requirePaths: false },
+      ),
+    ).toThrow(/unknown credential profile/);
+    expect(() =>
+      validateLiveScenarioManifest(
+        {
+          ...manifest,
+          shards: [{ ...shard, credentialProfiles: ["google-workspace"] }],
+        },
+        { requirePaths: false },
+      ),
+    ).toThrow(/must include the model credential profile/);
+  });
+
   test("emits one-line matrix JSON through the real GitHub output boundary", () => {
     const directory = mkdtempSync(path.join(tmpdir(), "live-matrix-"));
     temporaryDirectories.push(directory);
@@ -127,10 +227,20 @@ describe("live scenario matrix", () => {
     expect(completed.stderr).toBe("");
     const line = readFileSync(outputPath, "utf8").trim();
     const matrix = JSON.parse(line.replace(/^matrix=/, "")) as {
-      shard: Array<{ name: string; root: string; globs: string[] }>;
+      shard: Array<{
+        name: string;
+        root: string;
+        globs: string[];
+        credentialProfiles: string[];
+      }>;
     };
     expect(matrix.shard).toHaveLength(1);
     expect(matrix.shard[0]?.name).toBe("calendar");
+    expect(matrix.shard[0]?.credentialProfiles).toEqual([
+      "model",
+      "google-workspace",
+      "calendly",
+    ]);
   });
 
   test("covers every runnable live catalog entry exactly once", () => {

@@ -1,5 +1,5 @@
 {
-  "schema": "eliza_live_scenario_shards_v1",
+  "schema": "eliza_live_scenario_shards_v2",
   "authority": ".github/workflows/live-scenarios.yml",
   "shards": [
     {
@@ -8,6 +8,21 @@
       "globs": [
         "packages/test/scenarios/executive-assistant/*.scenario.ts",
         "packages/test/scenarios/connector-certification/*.scenario.ts"
+      ],
+      "credentialProfiles": [
+        "model",
+        "google-workspace",
+        "calendly",
+        "discord",
+        "telegram",
+        "signal",
+        "imessage",
+        "bluebubbles",
+        "whatsapp",
+        "twilio",
+        "twitter",
+        "notifications",
+        "travel"
       ]
     },
     {
@@ -21,6 +36,15 @@
         "packages/test/scenarios/messaging.telegram-local/**/*.scenario.ts",
         "packages/test/scenarios/messaging.twitter-dm/**/*.scenario.ts",
         "packages/test/scenarios/messaging.whatsapp/**/*.scenario.ts"
+      ],
+      "credentialProfiles": [
+        "model",
+        "google-workspace",
+        "discord",
+        "telegram",
+        "signal",
+        "whatsapp",
+        "twitter"
       ]
     },
     {
@@ -29,17 +53,20 @@
       "globs": [
         "packages/test/scenarios/todos/**/*.scenario.ts",
         "packages/test/scenarios/reminders/**/*.scenario.ts"
-      ]
+      ],
+      "credentialProfiles": ["model"]
     },
     {
       "name": "calendar",
       "root": "packages/test/scenarios",
-      "globs": ["packages/test/scenarios/calendar/**/*.scenario.ts"]
+      "globs": ["packages/test/scenarios/calendar/**/*.scenario.ts"],
+      "credentialProfiles": ["model", "google-workspace", "calendly"]
     },
     {
       "name": "relationships",
       "root": "packages/test/scenarios",
-      "globs": ["packages/test/scenarios/relationships/**/*.scenario.ts"]
+      "globs": ["packages/test/scenarios/relationships/**/*.scenario.ts"],
+      "credentialProfiles": ["model"]
     },
     {
       "name": "browser-social",
@@ -47,7 +74,8 @@
       "globs": [
         "packages/test/scenarios/browser.*/**/*.scenario.ts",
         "packages/test/scenarios/social.*/**/*.scenario.ts"
-      ]
+      ],
+      "credentialProfiles": ["model", "twitter", "onepassword"]
     },
     {
       "name": "personality-payments",
@@ -57,7 +85,8 @@
         "packages/test/scenarios/payments/**/*.scenario.ts",
         "packages/test/scenarios/lifeops.payments/**/*.scenario.ts",
         "packages/test/scenarios/lifeops.morning-brief/**/*.scenario.ts"
-      ]
+      ],
+      "credentialProfiles": ["model", "elizacloud"]
     },
     {
       "name": "cross-cutting-gateway",
@@ -95,6 +124,22 @@
         "packages/test/scenarios/lifeops.travel/**/*.scenario.ts",
         "packages/test/scenarios/lifeops.workflow-events/**/*.scenario.ts",
         "packages/test/scenarios/goals/**/*.scenario.ts"
+      ],
+      "credentialProfiles": [
+        "model",
+        "google-workspace",
+        "calendly",
+        "discord",
+        "telegram",
+        "signal",
+        "imessage",
+        "bluebubbles",
+        "whatsapp",
+        "twilio",
+        "notifications",
+        "travel",
+        "elizacloud",
+        "apple"
       ]
     },
     {
@@ -102,17 +147,20 @@
       "root": "plugins/plugin-personal-assistant/test/scenarios",
       "globs": [
         "plugins/plugin-personal-assistant/test/scenarios/**/*.scenario.ts"
-      ]
+      ],
+      "credentialProfiles": ["model", "google-workspace"]
     },
     {
       "name": "plugin-health",
       "root": "plugins/plugin-health/test/scenarios",
-      "globs": ["plugins/plugin-health/test/scenarios/**/*.scenario.ts"]
+      "globs": ["plugins/plugin-health/test/scenarios/**/*.scenario.ts"],
+      "credentialProfiles": ["model"]
     },
     {
       "name": "app-control",
       "root": "plugins/plugin-app-control/test/scenarios",
-      "globs": ["plugins/plugin-app-control/test/scenarios/**/*.scenario.ts"]
+      "globs": ["plugins/plugin-app-control/test/scenarios/**/*.scenario.ts"],
+      "credentialProfiles": ["model"]
     }
   ]
 }
