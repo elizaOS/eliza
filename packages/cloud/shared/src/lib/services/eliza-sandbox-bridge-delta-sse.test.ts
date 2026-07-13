@@ -10,11 +10,44 @@
  * implementations (the standalone bridge service and the duplicate on the host
  * service) must rebuild the full text. Real methods, no network.
  */
-import { describe, expect, test } from "bun:test";
-import { ElizaSandboxService } from "./eliza-sandbox";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { ElizaSandboxBridgeService } from "./eliza-sandbox-bridge";
 
+// Match the main sandbox suite's module identity; Bun treats query aliases as separate modules.
+const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+
 type Normalizer = { normalizeBridgeSseResponse(response: Response): Response };
+
+type AgentApiFetcher = {
+  fetchAgentApi(
+    rec: {
+      id: string;
+      environment_vars: Record<string, string>;
+      bridge_url: string;
+      health_url: string;
+      node_id: string;
+      bridge_port: number;
+      web_ui_port: number;
+      headscale_ip: string;
+      sandbox_id: string;
+    },
+    path: string,
+    init?: RequestInit,
+  ): Promise<Response>;
+};
+
+const originalFetch = globalThis.fetch;
+const originalWebSocketPair = Object.getOwnPropertyDescriptor(globalThis, "WebSocketPair");
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalWebSocketPair) {
+    Object.defineProperty(globalThis, "WebSocketPair", originalWebSocketPair);
+  } else {
+    Reflect.deleteProperty(globalThis, "WebSocketPair");
+  }
+});
 
 function sseResponse(body: string): Response {
   return sseResponseChunks([body]);
@@ -149,3 +182,57 @@ for (const [label, make] of normalizers) {
     });
   });
 }
+
+test("Worker routing returns an upstream SSE response without cloning or buffering", async () => {
+  Object.defineProperty(globalThis, "WebSocketPair", {
+    value: class WebSocketPair {},
+    configurable: true,
+  });
+  const encoder = new TextEncoder();
+  const upstream = new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("data: first\n\n"));
+        controller.enqueue(encoder.encode("data: second\n\n"));
+        controller.close();
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+  let requestBody: BodyInit | null | undefined;
+  globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    requestBody = init?.body;
+    return upstream;
+  });
+
+  const service = new ElizaSandboxService() as unknown as AgentApiFetcher;
+  const response = await runWithCloudBindings(
+    {
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+      AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+    },
+    () =>
+      service.fetchAgentApi(
+        {
+          id: "e06bb509-6c52-4c33-a9f7-66addc43e8c8",
+          environment_vars: { ELIZA_API_TOKEN: "agent-token" },
+          bridge_url: "https://legacy-bridge.example",
+          health_url: "http://100.64.0.10:23816/api/health",
+          node_id: "node-1",
+          bridge_port: 18923,
+          web_ui_port: 23816,
+          headscale_ip: "100.64.0.10",
+          sandbox_id: "sandbox-e06bb509",
+        },
+        "/api/conversations/conversation-1/messages/stream",
+        {
+          method: "POST",
+          body: JSON.stringify({ text: "hello" }),
+        },
+      ),
+  );
+
+  expect(response).toBe(upstream);
+  expect(requestBody).toBe('{"text":"hello"}');
+  expect(await response.text()).toBe("data: first\n\ndata: second\n\n");
+});

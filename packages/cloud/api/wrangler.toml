@@ -115,6 +115,9 @@ NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
 NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
 ELIZA_CLOUD_URL = "https://elizacloud.ai"
 ELIZA_CLOUD_AGENT_BASE_DOMAIN = "elizacloud.ai"
+# Internal Worker-to-agent calls must target the control-plane origin directly;
+# same-zone fetches to a UUID host bypass its Worker route and hit wildcard DNS.
+AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai"
 WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
 WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://eliza.app"

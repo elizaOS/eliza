@@ -16,9 +16,11 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { AgentSandbox } from "../../db/repositories/agent-sandboxes";
 import { logger } from "../utils/logger";
-import { ElizaSandboxService } from "./eliza-sandbox";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox-bridge";
 import { ElizaSandboxBridgeService } from "./eliza-sandbox-bridge";
+
+// Match the main sandbox suite's module identity; Bun treats query aliases as separate modules.
+const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
 
 type MessageSender = {
   bridgeMessageSend(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse>;
@@ -40,9 +42,15 @@ const rpc: BridgeRequest = {
   },
 };
 
-const endpointStubs = {
+const bridgeEndpointStubs = {
   getAgentApiEndpoint: async (_rec: unknown, path: string) => `http://sandbox.test${path}`,
   getAgentJsonHeaders: () => ({ "content-type": "application/json" }),
+  ensureRuntimeAgentStarted: async () => ({ id: "runtime-agent-1", name: "Smoke" }),
+};
+
+const hostEndpointStubs = {
+  fetchAgentApi: async (_rec: unknown, path: string, init?: RequestInit) =>
+    fetch(`http://sandbox.test${path}`, init),
   ensureRuntimeAgentStarted: async () => ({ id: "runtime-agent-1", name: "Smoke" }),
 };
 
@@ -51,14 +59,14 @@ const endpointStubs = {
 const senders: Array<[string, () => MessageSender]> = [
   [
     "ElizaSandboxBridgeService",
-    () => new ElizaSandboxBridgeService(endpointStubs as never) as unknown as MessageSender,
+    () => new ElizaSandboxBridgeService(bridgeEndpointStubs as never) as unknown as MessageSender,
   ],
   [
     "ElizaSandboxService",
     () => {
       const hostService = new ElizaSandboxService() as unknown as MessageSender &
         Record<string, unknown>;
-      Object.assign(hostService, endpointStubs);
+      Object.assign(hostService, hostEndpointStubs);
       return hostService;
     },
   ],
@@ -67,7 +75,7 @@ const senders: Array<[string, () => MessageSender]> = [
 function makeHostServiceSender(): MessageSender {
   const hostService = new ElizaSandboxService() as unknown as MessageSender &
     Record<string, unknown>;
-  Object.assign(hostService, endpointStubs);
+  Object.assign(hostService, hostEndpointStubs);
   return hostService;
 }
 
