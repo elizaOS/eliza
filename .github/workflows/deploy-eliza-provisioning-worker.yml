@@ -261,11 +261,12 @@ jobs:
 
             rm -f .git/index.lock
 
-            # A prior deploy may have run git as root, leaving .git/logs/refs/**
-            # owned by root. Subsequent fetches as `deploy` then fail with
-            # "unable to append to '.git/logs/refs/remotes/origin/develop':
-            # Permission denied". Reclaim ownership before the fetch.
-            sudo chown -R deploy:deploy .git
+            # A prior operator or deploy may have run git/install/build as
+            # root, leaving either Git metadata or tracked source files owned
+            # by root. Git then cannot reset or check out the immutable target
+            # as `deploy`. The checkout is exclusively managed by this service,
+            # so normalize the whole tree before any mutating Git command.
+            sudo chown -R deploy:deploy /opt/eliza
 
             # Discard local drift, preserve env files. Quote globs so the
             # remote shell doesn't expand them before git sees the pattern,
