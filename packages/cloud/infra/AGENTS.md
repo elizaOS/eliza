@@ -18,11 +18,11 @@ packages/cloud/infra/
   cloud/
     .env.example                   # Local-dev secrets template; copy to .env
     docker-compose.yml             # Self-hosted Supabase Storage (Postgres + storage-api)
-    AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration status (agent-launch headscale moved off Railway onto the CP VMs)
-    RAILWAY.md                     # Canonical map of where each service runs
+    AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration record (completed; KMS sunset is the one open item)
+    RAILWAY.md                     # Canonical service/runtime/request-path map — where each surface runs
     bitrouter/                     # RETIRED — only CLOUDFLARE_MIGRATION_PLAN.md remains (the Worker is the model gateway now)
     charts/
-      README.md                    # Charts overview (gateway-discord chart is service-local)
+      README.md                    # Charts overview (local/shared charts only; the gateway-discord chart was deleted with the EKS retirement)
     local/                         # kind cluster setup for local development
       kind-config.yaml             # 1 control-plane + 1 worker node definition
       setup.sh                     # Bootstraps the full local kind cluster
@@ -121,7 +121,9 @@ Each control-plane VM runs:
 - `eliza-provisioning-worker` — job queue consumer (systemd unit, deployed by CI)
 - `eliza-agent-router` — subdomain HTTP routing (systemd unit)
 - `headscale` — VPN mesh for agent traffic
-- `cloudflared` — public tunnel (`sandboxes.elizacloud.ai`)
+- `nginx` — public ingress: the agent-router vhost (self-signed wildcard cert
+  behind Cloudflare-proxied DNS, zone SSL mode "Full") and the headscale vhost
+  (Let's Encrypt, DNS-only record). `cloudflared` is not in the request path.
 
 Remote state lives in Cloudflare R2 bucket `eliza-terraform-state`. Use `backend-staging.hcl` or `backend-production.hcl` for `terraform init -backend-config=`.
 
@@ -181,7 +183,7 @@ Local cluster service env vars (copy from `.env.*.example`):
 ## Conventions / gotchas
 
 - **GCP Terraform is not active.** `cloud/terraform/gcp/` is experimental and not wired to any CI workflow. Do not assume it represents the live deployment.
-- **AWS resources are being retired.** See `cloud/AWS_RETIREMENT.md`. Do not add new AWS dependencies.
+- **AWS is retired** (only the KMS sunset remains). See `cloud/AWS_RETIREMENT.md`. Do not add new AWS dependencies.
 - **Data-plane cores are not in Terraform.** Dedicated robot nodes (`eliza-core-{env}-N`, OS host `eliza-{env}-robot-N`) live in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty); autoscaled burst nodes (`eliza-core-<hex>`) are runtime-provisioned by `node-autoscaler.ts`. Only the control-plane VM is managed here.
 - **Remote state uses Cloudflare R2**, not an S3 bucket — export the R2 token as `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` before `terraform init`.
 - **Production secrets are not in docker-compose.** The compose file only serves local dev. Production K8s workloads receive secrets from external-secrets-operator (ESO).
