@@ -2,10 +2,12 @@
  * Service for managing CLI authentication sessions.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { decryptApiKey } from "../../db/crypto/api-keys";
 import { apiKeysRepository, cliAuthSessionsRepository } from "../../db/repositories";
+import type { ApiKey } from "../../db/schemas/api-keys";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
-import { apiKeysService } from "./api-keys";
+import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
 
 /**
  * Session expiry time in minutes.
@@ -16,6 +18,54 @@ const SESSION_EXPIRY_MINUTES = 10; // Sessions expire after 10 minutes
  * Service for CLI authentication flow and session management.
  */
 export class CliAuthSessionsService {
+  private async alreadyAuthenticatedResult(
+    session: CliAuthSession,
+    userId: string,
+    organizationId: string,
+    primaryApiKey: ApiKey | null,
+  ): Promise<{
+    session: CliAuthSession;
+    keyPrefix: string;
+    expiresAt: Date | null;
+    alreadyAuthenticated: true;
+  }> {
+    if (!session.user_id || session.user_id !== userId) {
+      throw new Error("Session already authenticated or expired");
+    }
+
+    if (!session.api_key_id) {
+      throw new ElizaError("Authenticated CLI session has no API key reference", {
+        code: "CLI_AUTH_SESSION_INTEGRITY",
+        context: { sessionId: session.session_id, defect: "missing_api_key_id" },
+        severity: "fatal",
+      });
+    }
+    if (!primaryApiKey) {
+      throw new ElizaError("Authenticated CLI session references a missing API key", {
+        code: "CLI_AUTH_SESSION_INTEGRITY",
+        context: { sessionId: session.session_id, defect: "missing_api_key_row" },
+        severity: "fatal",
+      });
+    }
+    if (primaryApiKey.user_id !== userId || primaryApiKey.organization_id !== organizationId) {
+      throw new ElizaError(
+        "Authenticated CLI session references an API key with different ownership",
+        {
+          code: "CLI_AUTH_SESSION_INTEGRITY",
+          context: { sessionId: session.session_id, defect: "api_key_owner_mismatch" },
+          severity: "fatal",
+        },
+      );
+    }
+
+    return {
+      session,
+      keyPrefix: primaryApiKey.key_prefix,
+      expiresAt: primaryApiKey.expires_at ?? null,
+      alreadyAuthenticated: true,
+    };
+  }
+
   /**
    * Create a new CLI authentication session
    */
@@ -63,13 +113,15 @@ export class CliAuthSessionsService {
     organizationId: string,
   ): Promise<{
     session: CliAuthSession;
-    apiKey: string | null;
-    keyPrefix: string | null;
+    keyPrefix: string;
     expiresAt: Date | null;
     alreadyAuthenticated: boolean;
   }> {
-    // Check if session exists and is still valid
-    const session = await this.getActiveSession(sessionId);
+    // Completion is a consistency-sensitive state transition. A replica miss
+    // immediately after session creation must not turn a valid login into an
+    // "expired" error, so establish the initial state on the primary.
+    const state = await cliAuthSessionCompletionService.findActive(sessionId);
+    const session = state?.session;
 
     if (!session) {
       throw new Error("Invalid or expired session");
@@ -78,29 +130,12 @@ export class CliAuthSessionsService {
     // Browser retries are safe only when ownership is positively established;
     // a legacy row without an owner cannot prove that the caller completed it.
     if (session.status === "authenticated") {
-      if (!session.user_id || session.user_id !== userId) {
-        throw new Error("Session already authenticated or expired");
-      }
-
-      let keyPrefix: string | null = null;
-      let expiresAt: Date | null = null;
-      if (session.api_key_id) {
-        const existingKey = await apiKeysRepository.findById(session.api_key_id);
-        if (existingKey) {
-          keyPrefix = existingKey.key_prefix;
-          expiresAt = existingKey.expires_at ?? null;
-        }
-      }
-
-      return {
+      return await this.alreadyAuthenticatedResult(
         session,
-        // Plaintext is never re-derivable (D-6); the CLI reads it via the
-        // single-use poll endpoint. The browser only consumes `keyPrefix`.
-        apiKey: null,
-        keyPrefix,
-        expiresAt,
-        alreadyAuthenticated: true,
-      };
+        userId,
+        organizationId,
+        state.apiKey ?? null,
+      );
     }
 
     if (session.status !== "pending") {
@@ -108,33 +143,34 @@ export class CliAuthSessionsService {
       throw new Error("Session already authenticated or expired");
     }
 
-    // Generate API key for CLI usage
-    const { apiKey, plainKey } = await apiKeysService.create({
-      name: `CLI Login - ${new Date().toISOString()}`,
-      description: "Generated via CLI login command",
-      organization_id: organizationId,
-      user_id: userId,
-      rate_limit: 1000,
-      is_active: true,
-      expires_at: null, // Never expires by default
-    });
-
-    // Update session with authentication details (no plaintext stored — D-6).
-    const updatedSession = await cliAuthSessionsRepository.markAuthenticated(
+    const claim = await cliAuthSessionCompletionService.claimPending({
       sessionId,
       userId,
-      apiKey.id,
-    );
+      organizationId,
+    });
 
-    if (!updatedSession) {
-      throw new Error("Failed to update session");
+    if (!claim.claimed) {
+      // Read from the same primary transaction that lost the conditional
+      // update. This avoids a read-replica lag window after another request
+      // wins the claim.
+      if (claim.session?.status === "authenticated") {
+        return await this.alreadyAuthenticatedResult(
+          claim.session,
+          userId,
+          organizationId,
+          claim.apiKey ?? null,
+        );
+      }
+      if (!claim.session || claim.session.expires_at <= new Date()) {
+        throw new Error("Invalid or expired session");
+      }
+      throw new Error("Session already authenticated or expired");
     }
 
     return {
-      session: updatedSession,
-      apiKey: plainKey,
-      keyPrefix: apiKey.key_prefix,
-      expiresAt: apiKey.expires_at,
+      session: claim.session,
+      keyPrefix: claim.apiKey.key_prefix,
+      expiresAt: claim.apiKey.expires_at,
       alreadyAuthenticated: false,
     };
   }

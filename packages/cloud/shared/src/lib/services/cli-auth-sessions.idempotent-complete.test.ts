@@ -25,15 +25,15 @@
  *  - authenticated by a DIFFERENT user -> still rejected (no session leak)
  *  - expired / null session -> still the clear error
  *
- * Only the two repository singletons + apiKeysService the service imports are
- * doubled; the service logic under test is real.
+ * Only the completion boundary and lifecycle repositories are doubled; the
+ * CLI-auth service logic under test is real.
  */
 
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
-import { apiKeysRepository, cliAuthSessionsRepository } from "../../db/repositories";
+import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
-import { apiKeysService } from "./api-keys";
+import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
 import { cliAuthSessionsService } from "./cli-auth-sessions";
 
 const SESSION_ID = "sess-idem-1";
@@ -73,6 +73,21 @@ function authenticatedSession(userId: string | null): CliAuthSession {
   } as CliAuthSession;
 }
 
+function completionState(session: CliAuthSession, keyPrefix?: string) {
+  return {
+    session,
+    apiKey: keyPrefix
+      ? ({
+          id: API_KEY_ID,
+          key_prefix: keyPrefix,
+          expires_at: null,
+          user_id: USER_ID,
+          organization_id: ORG_ID,
+        } as never)
+      : undefined,
+  };
+}
+
 const spies: Array<{ mockRestore: () => void }> = [];
 function track<T extends { mockRestore: () => void }>(s: T): T {
   spies.push(s);
@@ -90,78 +105,92 @@ afterEach(() => {
 describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
   test("pending session mints a key and reports alreadyAuthenticated=false (negative control)", async () => {
     track(
-      spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(pendingSession()),
+      spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
+        completionState(pendingSession()),
+      ),
     );
     const createSpy = track(
-      spyOn(apiKeysService, "create").mockResolvedValue({
+      spyOn(cliAuthSessionCompletionService, "claimPending").mockResolvedValue({
+        claimed: true,
+        session: authenticatedSession(USER_ID),
         apiKey: {
           id: API_KEY_ID,
           key_prefix: "ek_live_pre",
           expires_at: null,
         } as never,
-        plainKey: "ek_live_plaintext_secret",
       } as never),
     );
-    track(
-      spyOn(cliAuthSessionsRepository, "markAuthenticated").mockResolvedValue(
-        authenticatedSession(USER_ID),
-      ),
-    );
-
     const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
 
     expect(createSpy).toHaveBeenCalledTimes(1);
     expect(result.alreadyAuthenticated).toBe(false);
-    expect(result.apiKey).toBe("ek_live_plaintext_secret");
     expect(result.keyPrefix).toBe("ek_live_pre");
+  });
+
+  test("a same-user loser resolves the winning key metadata from the primary claim", async () => {
+    track(
+      spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
+        completionState(pendingSession()),
+      ),
+    );
+    track(
+      spyOn(cliAuthSessionCompletionService, "claimPending").mockResolvedValue({
+        claimed: false,
+        session: authenticatedSession(USER_ID),
+        apiKey: {
+          id: API_KEY_ID,
+          key_prefix: "ek_live_pre",
+          expires_at: null,
+          user_id: USER_ID,
+          organization_id: ORG_ID,
+        } as never,
+      }),
+    );
+    const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
+
+    expect(result).toMatchObject({
+      alreadyAuthenticated: true,
+      keyPrefix: "ek_live_pre",
+    });
   });
 
   test("re-completing an already-authenticated session by the SAME user is idempotent — success, no second key minted", async () => {
     track(
-      spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(
-        authenticatedSession(USER_ID),
+      spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
+        completionState(authenticatedSession(USER_ID), "ek_live_pre"),
       ),
     );
-    const createSpy = track(spyOn(apiKeysService, "create"));
-    const markSpy = track(spyOn(cliAuthSessionsRepository, "markAuthenticated"));
-    track(
-      spyOn(apiKeysRepository, "findById").mockResolvedValue({
-        id: API_KEY_ID,
-        key_prefix: "ek_live_pre",
-        expires_at: null,
-      } as never),
-    );
+    const createSpy = track(spyOn(cliAuthSessionCompletionService, "claimPending"));
 
     const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
 
     // The crux of the regression fix: NO error thrown, and NO duplicate key.
     expect(result.alreadyAuthenticated).toBe(true);
     expect(result.keyPrefix).toBe("ek_live_pre");
-    // Plaintext is never re-derivable (D-6) — the browser only needs keyPrefix.
-    expect(result.apiKey).toBeNull();
     expect(createSpy).not.toHaveBeenCalled();
-    expect(markSpy).not.toHaveBeenCalled();
   });
 
-  test("re-completing when the api_keys row is gone still succeeds with a null keyPrefix", async () => {
+  test("fails fast when an authenticated session references no API-key row", async () => {
     track(
-      spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(
-        authenticatedSession(USER_ID),
+      spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
+        completionState(authenticatedSession(USER_ID)),
       ),
     );
-    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(undefined as never));
 
-    const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
-
-    expect(result.alreadyAuthenticated).toBe(true);
-    expect(result.keyPrefix).toBeNull();
+    await expect(
+      cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),
+    ).rejects.toMatchObject({ code: "CLI_AUTH_SESSION_INTEGRITY" });
   });
 
   test("rejects an authenticated legacy session whose owner cannot be proven", async () => {
     const session = authenticatedSession(null);
     session.api_key_id = null;
-    track(spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(session));
-    const createSpy = track(spyOn(apiKeysService, "create"));
+    track(
+      spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
+        completionState(session),
+      ),
+    );
+    const createSpy = track(spyOn(cliAuthSessionCompletionService, "claimPending"));
 
     await expect(
       cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),
@@ -171,8 +200,8 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
 
   test("does NOT leak a session authenticated by a DIFFERENT user", async () => {
     track(
-      spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(
-        authenticatedSession(OTHER_USER_ID),
+      spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
+        completionState(authenticatedSession(OTHER_USER_ID), "ek_live_pre"),
       ),
     );
 
@@ -184,7 +213,11 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
   test("rejects any other non-pending terminal state", async () => {
     const session = pendingSession();
     session.status = "expired";
-    track(spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(session));
+    track(
+      spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(
+        completionState(session),
+      ),
+    );
 
     await expect(
       cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),
@@ -192,11 +225,7 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
   });
 
   test("a missing/expired session still throws the clear error", async () => {
-    track(
-      spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(
-        undefined as never,
-      ),
-    );
+    track(spyOn(cliAuthSessionCompletionService, "findActive").mockResolvedValue(undefined));
 
     await expect(
       cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),
