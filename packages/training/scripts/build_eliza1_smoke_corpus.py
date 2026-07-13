@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,7 @@ PRIVACY_FILTER_PATH = ROOT / "scripts" / "privacy_filter_trajectories.py"
 
 SOURCE_SCHEMA = "eliza.synthetic_smoke_source.v1"
 MANIFEST_SCHEMA = "eliza.eliza1_smoke_corpus_manifest.v2"
-GENERATOR_REVISION = 2
+GENERATOR_REVISION = 3
 SPLIT_NAMES = ("train", "val", "test")
 SOURCE_FIELDS = {"schema", "id", "split", "synthetic", "record"}
 SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,95}$")
@@ -51,11 +52,26 @@ def _sha256_file(path: Path) -> str:
 def _repo_reference(path: Path) -> tuple[str, bool]:
     resolved = path.resolve()
     try:
-        return resolved.relative_to(ROOT.resolve()).as_posix(), True
-    except ValueError:
+        relative = resolved.relative_to(ROOT.resolve()).as_posix()
+    except (
+        ValueError
+    ):  # error-policy:J3 Hash external paths instead of serializing local provenance.
         # Custom sources used by tests/operators must not leak machine-local
         # absolute paths into the manifest.
         return f"external/sha256:{_sha256_file(resolved)[:16]}", False
+
+    tracked = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "--error-unmatch", "--", relative],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+    if tracked.returncode not in (0, 1):
+        raise RuntimeError(
+            f"git could not determine source provenance: {tracked.stderr.strip()}"
+        )
+    return relative, tracked.returncode == 0
 
 
 def _jsonl_bytes(rows: list[dict[str, Any]]) -> bytes:
@@ -83,7 +99,9 @@ def _load_and_format_source(
                 )
             try:
                 envelope = json.loads(raw_line)
-            except json.JSONDecodeError as exc:
+            except (
+                json.JSONDecodeError
+            ) as exc:  # error-policy:J3 Reject malformed source rows explicitly.
                 raise ValueError(
                     f"{source_path}:{line_number}: invalid JSON: {exc.msg}"
                 ) from exc
@@ -144,6 +162,12 @@ def _load_and_format_source(
 
     if not seen_ids:
         raise ValueError(f"{source_path}: source fixture is empty")
+    empty_splits = [name for name in SPLIT_NAMES if not splits[name]]
+    if empty_splits:
+        raise ValueError(
+            f"{source_path}: every split must contain at least one row; "
+            f"empty={empty_splits}"
+        )
     return splits, ids
 
 

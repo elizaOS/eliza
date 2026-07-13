@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import scripts.build_eliza1_smoke_corpus as corpus_builder
 from scripts.build_eliza1_smoke_corpus import (
     FORMATTER_PATH,
     GENERATOR_REVISION,
@@ -24,15 +26,27 @@ from scripts.build_eliza1_smoke_corpus import (
 from scripts.format_for_training import format_record
 
 
-def _write_source(path: Path, record: dict, *, synthetic: bool = True) -> None:
-    envelope = {
-        "schema": SOURCE_SCHEMA,
-        "id": "planted-privacy-row",
-        "split": "train",
-        "synthetic": synthetic,
-        "record": record,
-    }
-    path.write_text(json.dumps(envelope) + "\n", encoding="utf-8")
+def _write_source(
+    path: Path,
+    record: dict,
+    *,
+    synthetic: bool = True,
+    splits: tuple[str, ...] = ("train",),
+) -> None:
+    envelopes = [
+        {
+            "schema": SOURCE_SCHEMA,
+            "id": f"planted-privacy-row-{split}",
+            "split": split,
+            "synthetic": synthetic,
+            "record": record,
+        }
+        for split in splits
+    ]
+    path.write_text(
+        "".join(f"{json.dumps(envelope)}\n" for envelope in envelopes),
+        encoding="utf-8",
+    )
 
 
 def test_builder_serializes_redacted_formatter_bytes(tmp_path: Path) -> None:
@@ -42,6 +56,18 @@ def test_builder_serializes_redacted_formatter_bytes(tmp_path: Path) -> None:
         "email": "fixture.owner@example.test",
         "phone": "415-555-0137",
         "coordinates": "37.7749, -122.4194",
+        "numeric_latitude": 40.7128,
+        "numeric_longitude": -74.0060,
+        "geojson_longitude": -118.2437,
+        "geojson_latitude": 34.0522,
+        "line_longitude": -87.6298,
+        "line_latitude": 41.8781,
+        "polygon_longitude": -80.1918,
+        "polygon_latitude": 25.7617,
+        "alias_latitude": 33.4484,
+        "alias_lng_upper": -112.0740,
+        "alias_lng_lower": -104.9903,
+        "alias_longitude": -77.0369,
     }
     record = {
         "format": "eliza_native_v1",
@@ -55,11 +81,73 @@ def test_builder_serializes_redacted_formatter_bytes(tmp_path: Path) -> None:
                         f"contact {planted['email']} or {planted['phone']} near "
                         f"{planted['coordinates']}."
                     ),
+                    "parts": [
+                        {
+                            "type": "data",
+                            "data": {
+                                "latitude": planted["numeric_latitude"],
+                                "longitude": planted["numeric_longitude"],
+                            },
+                        }
+                    ],
                 }
             ],
             "tools": {
                 planted["email"]: {
-                    "description": f"Call {planted['phone']} only in this planted fixture."
+                    "description": f"Call {planted['phone']} only in this planted fixture.",
+                    "parameters": {
+                        "default": {
+                            "latitude": planted["numeric_latitude"],
+                            "longitude": planted["numeric_longitude"],
+                        },
+                        "example": {
+                            "coordinates": [
+                                planted["numeric_latitude"],
+                                planted["numeric_longitude"],
+                            ]
+                        },
+                        "geojson": {
+                            "type": "Point",
+                            "coordinates": [
+                                planted["geojson_longitude"],
+                                planted["geojson_latitude"],
+                            ],
+                        },
+                        "route": {
+                            "type": "LineString",
+                            "coordinates": [
+                                [
+                                    planted["line_longitude"],
+                                    planted["line_latitude"],
+                                ],
+                                [
+                                    planted["geojson_longitude"],
+                                    planted["geojson_latitude"],
+                                ],
+                            ],
+                        },
+                        "area": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [
+                                        planted["polygon_longitude"],
+                                        planted["polygon_latitude"],
+                                    ],
+                                    [
+                                        planted["line_longitude"],
+                                        planted["line_latitude"],
+                                    ],
+                                ]
+                            ],
+                        },
+                        "duplicateAliases": {
+                            "lat": planted["alias_latitude"],
+                            "LNG": planted["alias_lng_upper"],
+                            "lng": planted["alias_lng_lower"],
+                            "longitude": planted["alias_longitude"],
+                        },
+                    },
                 }
             },
         },
@@ -77,14 +165,14 @@ def test_builder_serializes_redacted_formatter_bytes(tmp_path: Path) -> None:
     }
     source_path = tmp_path / "source.jsonl"
     output_dir = tmp_path / "output"
-    _write_source(source_path, record)
+    _write_source(source_path, record, splits=("train", "val", "test"))
 
     artifacts = build_artifacts(source_path)
     write_artifacts(artifacts, output_dir)
     emitted = b"".join(path.read_bytes() for path in sorted(output_dir.iterdir()))
 
     for sensitive_value in planted.values():
-        assert sensitive_value.encode() not in emitted
+        assert str(sensitive_value).encode() not in emitted
     assert b"raw-record-must-not-cross-boundary" not in emitted
     assert b"<REDACTED:openai-key>" in emitted
     assert b"<REDACTED:bearer>" in emitted
@@ -116,6 +204,9 @@ def test_tracked_corpus_matches_generator_and_manifest_hashes() -> None:
         == hashlib.sha256(SOURCE_PATH.read_bytes()).hexdigest()
     )
     assert manifest["totals"]["rows"] == 20
+    assert {
+        split: manifest["splits"][split]["rows"] for split in ("train", "val", "test")
+    } == {"train": 16, "val": 2, "test": 2}
     assert manifest["generator"] == {
         "path": "scripts/build_eliza1_smoke_corpus.py",
         "revision": GENERATOR_REVISION,
@@ -161,3 +252,49 @@ def test_builder_rejects_unmarked_source_rows(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="synthetic=true"):
         build_artifacts(source_path)
+
+
+def test_builder_rejects_missing_required_splits(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.jsonl"
+    _write_source(
+        source_path,
+        {
+            "messages": [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "hello"},
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="every split must contain"):
+        build_artifacts(source_path)
+
+
+def test_repo_reference_marks_in_repo_untracked_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        corpus_builder.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(returncode=1, stderr=""),
+    )
+
+    reference, source_controlled = corpus_builder._repo_reference(SOURCE_PATH)
+
+    assert reference == "fixtures/eliza1-smoke-source.jsonl"
+    assert source_controlled is False
+
+
+def test_repo_reference_fails_when_git_cannot_check_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        corpus_builder.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=128, stderr="fatal: unavailable"
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="git could not determine"):
+        corpus_builder._repo_reference(SOURCE_PATH)

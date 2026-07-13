@@ -1,4 +1,4 @@
-"""GPU memory + throughput instrumentation for HF training runs.
+"""GPU training instrumentation and numerical integrity gates for HF runs.
 
 What this provides:
 
@@ -15,6 +15,9 @@ What this provides:
 3. ``log_environment(out_dir)`` — captures GPU model, driver, torch version,
    CUDA version, and a snapshot of nvidia-smi at run start.
 
+4. Finite-value guards — stop on NaN/Inf loss or weights during training and
+   scan the persisted model tensors before downstream benchmark or publish.
+
 The point: numbers come from torch's own counters and a JSONL trace anyone
 can re-read. No claims of "trained Gemma on 16GB" without proof.
 """
@@ -28,7 +31,7 @@ import platform
 import shutil
 import subprocess
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -420,7 +423,17 @@ def assert_finite_loss(loss: Any, *, context: str = "training loss") -> None:
 
 
 def _checkpoint_tensor_files(checkpoint_dir: Path) -> list[Path]:
-    patterns = ("*.safetensors", "*.bin", "*.pt", "*.pth")
+    # Hugging Face writes runtime metadata such as `training_args.bin` beside
+    # model weights. Treating every pickle-shaped file as a tensor shard makes
+    # the safe loader reject valid checkpoints and risks deserializing objects
+    # that this numerical gate never needs.
+    patterns = (
+        "*.safetensors",
+        "pytorch_model*.bin",
+        "adapter_model*.bin",
+        "model_state*.pt",
+        "model_state*.pth",
+    )
     return sorted(
         path
         for pattern in patterns
@@ -429,7 +442,7 @@ def _checkpoint_tensor_files(checkpoint_dir: Path) -> list[Path]:
     )
 
 
-def _load_checkpoint_tensors(path: Path) -> dict[str, Any]:
+def _load_checkpoint_tensors(path: Path) -> Any:
     if path.suffix == ".safetensors":
         try:
             from safetensors.torch import load_file
@@ -441,13 +454,27 @@ def _load_checkpoint_tensors(path: Path) -> dict[str, Any]:
 
     import torch
 
-    try:
-        loaded = torch.load(path, map_location="cpu", weights_only=True)
-    except TypeError:
-        loaded = torch.load(path, map_location="cpu")
-    if isinstance(loaded, dict):
-        return loaded
-    return {"<root>": loaded}
+    loaded = torch.load(path, map_location="cpu", weights_only=True)
+    return loaded
+
+
+def _iter_checkpoint_tensors(
+    value: Any, *, prefix: str = "<root>"
+) -> Iterable[tuple[str, Any]]:
+    import torch
+
+    if torch.is_tensor(value):
+        yield prefix, value
+        return
+    if isinstance(value, Mapping):
+        for name, child in value.items():
+            child_prefix = str(name) if prefix == "<root>" else f"{prefix}.{name}"
+            yield from _iter_checkpoint_tensors(child, prefix=child_prefix)
+        return
+    if isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            child_prefix = f"{prefix}[{index}]"
+            yield from _iter_checkpoint_tensors(child, prefix=child_prefix)
 
 
 def assert_finite_checkpoint(
@@ -477,9 +504,7 @@ def assert_finite_checkpoint(
     offenders: list[str] = []
     for file_path in files:
         state = _load_checkpoint_tensors(file_path)
-        for name, tensor in state.items():
-            if not torch.is_tensor(tensor):
-                continue
+        for name, tensor in _iter_checkpoint_tensors(state):
             scanned_tensors += 1
             if torch.isfinite(tensor).all():
                 continue
@@ -493,6 +518,12 @@ def assert_finite_checkpoint(
                 break
         if len(offenders) >= max_reported:
             break
+
+    if scanned_tensors == 0:
+        names = ", ".join(path.relative_to(root).as_posix() for path in files)
+        raise RuntimeError(
+            f"checkpoint finite scan found tensor shard files but no tensors under {root}: {names}"
+        )
 
     if offenders:
         raise RuntimeError(

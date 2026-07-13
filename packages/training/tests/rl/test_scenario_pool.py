@@ -7,6 +7,7 @@ Tests cover:
 - Pool management (sampling, refresh, persistence)
 """
 
+import ntpath
 import tempfile
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from src.training.scenario_pool import (
     ScenarioPoolConfig,
     SocialPost,
 )
+from src.training.state_paths import resolve_state_dir, resolve_trajectory_dir
 
 
 @pytest.fixture(autouse=True)
@@ -432,6 +434,13 @@ class TestCurriculumManager:
             assert manager2.scores["s1"] == [0.5, 0.6]
             assert "s2" in manager2.solved
 
+    def test_invalid_checkpoint_fails_fast(self, tmp_path: Path) -> None:
+        checkpoint_path = tmp_path / "curriculum.json"
+        checkpoint_path.write_text("not json", encoding="utf-8")
+
+        with pytest.raises(ValueError):
+            CurriculumManager(checkpoint_path=str(checkpoint_path))
+
     def test_history_trimming(self):
         manager = CurriculumManager(max_history_per_scenario=5)
 
@@ -465,6 +474,114 @@ class TestScenarioPool:
 
         assert Path(config.curriculum_checkpoint_path) == (
             tmp_path / "eliza-state" / "training" / "curriculum_state.json"
+        )
+
+    def test_default_curriculum_checkpoint_honors_relative_xdg_and_namespace(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ELIZA_STATE_DIR")
+        monkeypatch.setenv("XDG_STATE_HOME", "relative-state")
+        monkeypatch.setenv("ELIZA_NAMESPACE", "training-test")
+
+        config = ScenarioPoolConfig()
+
+        assert Path(config.curriculum_checkpoint_path) == (
+            Path.home()
+            / "relative-state"
+            / "training-test"
+            / "training"
+            / "curriculum_state.json"
+        )
+
+    def test_default_curriculum_checkpoint_treats_blank_values_as_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ELIZA_STATE_DIR", " ")
+        monkeypatch.setenv("XDG_STATE_HOME", " ")
+        monkeypatch.setenv("ELIZA_NAMESPACE", " ")
+
+        config = ScenarioPoolConfig()
+
+        assert Path(config.curriculum_checkpoint_path) == (
+            Path.home()
+            / ".local"
+            / "state"
+            / "eliza"
+            / "training"
+            / "curriculum_state.json"
+        )
+
+    def test_default_curriculum_checkpoint_resolves_explicit_relative_path(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ELIZA_STATE_DIR", " relative-state/../state ")
+
+        config = ScenarioPoolConfig()
+
+        assert Path(config.curriculum_checkpoint_path) == (
+            tmp_path / "state" / "training" / "curriculum_state.json"
+        )
+
+    def test_default_curriculum_checkpoint_expands_explicit_home(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ELIZA_STATE_DIR", "~/custom-state")
+
+        config = ScenarioPoolConfig()
+
+        assert Path(config.curriculum_checkpoint_path) == (
+            Path.home() / "custom-state" / "training" / "curriculum_state.json"
+        )
+
+    def test_default_curriculum_checkpoint_keeps_xdg_tilde_literal(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ELIZA_STATE_DIR")
+        monkeypatch.setenv("XDG_STATE_HOME", "~/state")
+
+        config = ScenarioPoolConfig()
+
+        assert Path(config.curriculum_checkpoint_path) == (
+            Path.home() / "~" / "state" / "eliza" / "training" / "curriculum_state.json"
+        )
+
+    def test_default_curriculum_checkpoint_normalizes_rooted_namespace(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.delenv("ELIZA_STATE_DIR")
+        monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg" / "child"))
+        monkeypatch.setenv("ELIZA_NAMESPACE", "/../training-test")
+
+        config = ScenarioPoolConfig()
+
+        assert Path(config.curriculum_checkpoint_path) == (
+            tmp_path / "xdg" / "training-test" / "training" / "curriculum_state.json"
+        )
+
+    def test_state_dir_matches_node_join_for_windows_drive_qualified_namespace(
+        self,
+    ) -> None:
+        resolved = resolve_state_dir(
+            {
+                "XDG_STATE_HOME": r"D:relative-state",
+                "ELIZA_NAMESPACE": r"E:\agent",
+            },
+            get_home=lambda: r"C:\Users\eliza",
+            path_operations=ntpath,
+        )
+
+        assert resolved == r"C:\Users\eliza\D:relative-state\E:\agent"
+
+    def test_trajectory_dir_honors_native_recorder_override(self) -> None:
+        assert (
+            resolve_trajectory_dir(
+                {
+                    "ELIZA_TRAJECTORY_DIR": " /tmp/custom-trajectories ",
+                    "ELIZA_STATE_DIR": "/tmp/ignored-state",
+                }
+            )
+            == "/tmp/custom-trajectories"
         )
 
     def test_generate_synthetic_batch(self):
@@ -532,13 +649,11 @@ class TestScenarioPool:
             pool.curriculum.record_attempt(s.id, 0.9)
             pool.curriculum.record_attempt(s.id, 0.9)
 
-        # Those should now be skipped
+        solved_ids = {sampled[0].id, sampled[1].id}
         for _ in range(10):
             new_sampled = pool.sample(count=5)
-            # Solved scenarios should have lower probability
-            solved_ids = {sampled[0].id, sampled[1].id}
             sampled_ids = {s.id for s in new_sampled}
-            # They might still appear due to probability, but should be less frequent
+            assert solved_ids.isdisjoint(sampled_ids)
 
     def test_record_results(self):
         config = ScenarioPoolConfig(use_curriculum=True)
