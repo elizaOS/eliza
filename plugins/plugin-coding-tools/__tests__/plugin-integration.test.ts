@@ -7,8 +7,8 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import * as pluginModule from "../src/index.js";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as pluginModule from "../src/index.ts";
 import codingToolsPlugin, {
   availableToolsProvider,
   CODING_TOOLS_CONTEXTS,
@@ -20,7 +20,7 @@ import codingToolsPlugin, {
   SandboxService,
   SESSION_CWD_SERVICE,
   SessionCwdService,
-} from "../src/index.js";
+} from "../src/index.ts";
 
 const EXPECTED_ACTIONS = ["FILE", "SHELL", "WORKTREE"];
 
@@ -116,6 +116,64 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
       const ok = await action.validate?.(runtime, message);
       expect(ok, action.name).toBe(true);
     }
+  });
+
+  it("auto-enables only for configured terminal-capable environments", () => {
+    const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
+    expect(shouldEnable).toBeTypeOf("function");
+    if (!shouldEnable) return;
+
+    expect(shouldEnable({}, { features: {} })).toBe(false);
+    expect(shouldEnable({}, { features: { codingTools: true } })).toBe(true);
+    expect(
+      shouldEnable(
+        { ELIZA_BUILD_VARIANT: "store" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnable(
+        { ELIZA_PLATFORM: "ios" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnable(
+        { ELIZA_PLATFORM: "android", ELIZA_RUNTIME_MODE: "local-yolo" },
+        { features: { "coding-agent": {} } },
+      ),
+    ).toBe(true);
+    expect(
+      shouldEnable(
+        { ANDROID_ROOT: "/system", RUNTIME_MODE: "remote" },
+        { features: { codingTools: { enabled: false } } },
+      ),
+    ).toBe(false);
+  });
+
+  it("disposes every registered long-lived service", async () => {
+    const stop = {
+      sandbox: vi.fn(async () => undefined),
+      fileState: vi.fn(async () => undefined),
+      session: vi.fn(async () => undefined),
+      ripgrep: vi.fn(async () => undefined),
+    };
+    const instances = new Map<string, { stop: () => Promise<void> }>([
+      [SandboxService.serviceType, { stop: stop.sandbox }],
+      [FileStateService.serviceType, { stop: stop.fileState }],
+      [SessionCwdService.serviceType, { stop: stop.session }],
+      [RipgrepService.serviceType, { stop: stop.ripgrep }],
+    ]);
+    const runtime = {
+      getService: (serviceType: string) => instances.get(serviceType),
+    } as IAgentRuntime;
+
+    await codingToolsPlugin.dispose?.(runtime);
+
+    expect(stop.sandbox).toHaveBeenCalledOnce();
+    expect(stop.fileState).toHaveBeenCalledOnce();
+    expect(stop.session).toHaveBeenCalledOnce();
+    expect(stop.ripgrep).toHaveBeenCalledOnce();
   });
 });
 
