@@ -187,3 +187,63 @@ describe("describe() healthy count agrees with select() eligibility", () => {
     ).toBe(false);
   });
 });
+
+describe("account health mutation lifecycle", () => {
+  it("persists explicit failure states, recovery, metadata, and reprobe readiness", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "anthropic-subscription:a": account("a", {
+        usage: { refreshedAt: 1, resetsAt: Date.now() + 120_000 },
+      }),
+      "anthropic-subscription:b": account("b", {
+        health: "rate-limited",
+        healthDetail: { until: Date.now() - 1 },
+      }),
+      "anthropic-subscription:c": account("c", {
+        health: "rate-limited",
+        healthDetail: { until: Date.now() + 120_000 },
+      }),
+    };
+    const deleted: string[] = [];
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        accounts[`${next.providerId}:${next.id}`] = next;
+      },
+      deleteAccount: async (providerId, accountId) => {
+        deleted.push(`${providerId}:${accountId}`);
+      },
+    });
+
+    await pool.markRateLimited("a", Date.now() + 1_000, "provider quota", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.healthDetail).toMatchObject({
+      lastError: "provider quota",
+      until: expect.any(Number),
+    });
+
+    await pool.markNeedsReauth("a", "expired", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.health).toBe("needs-reauth");
+
+    await pool.markInvalid("a", "revoked", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.health).toBe("invalid");
+
+    await pool.markHealthy("a", { providerId: "anthropic-subscription" });
+    expect(accounts["anthropic-subscription:a"]?.health).toBe("ok");
+    expect(accounts["anthropic-subscription:a"]?.healthDetail).toBeUndefined();
+
+    const inserted = account("inserted", { priority: 4 });
+    await pool.upsert(inserted);
+    expect(pool.get("inserted", "anthropic-subscription")).toEqual(inserted);
+    expect(pool.list("anthropic-subscription")).toHaveLength(4);
+
+    await pool.deleteMetadata("anthropic-subscription", "inserted");
+    expect(deleted).toEqual(["anthropic-subscription:inserted"]);
+    expect(await pool.reprobeFlagged()).toContain("b");
+    expect(await pool.reprobeFlagged()).not.toContain("c");
+  });
+});
