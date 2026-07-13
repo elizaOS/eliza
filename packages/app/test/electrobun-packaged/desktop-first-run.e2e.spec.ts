@@ -257,6 +257,12 @@ async function launchHarness(args: {
     apiBase: args.apiBase,
     extraEnv: {
       ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER: "1",
+      // The packaged default main window is the chromeless bottom-bar pill
+      // (shouldStartBottomBar), whose chat-overlay shell never renders the
+      // full-window surfaces this spec drives (onboarding CHOICE widgets, the
+      // pairing gate). Opt out to boot the classic full dashboard window —
+      // the same pattern electrobun-packaged-regressions.e2e.spec.ts uses.
+      ELIZA_DESKTOP_BOTTOM_BAR: "0",
     },
   });
 
@@ -267,6 +273,86 @@ async function launchHarness(args: {
   await harness.showMainWindow();
   await harness.focusMainWindow();
   return { tempRoot, harness };
+}
+
+/**
+ * Re-boot the renderer through its own `?reset` escape hatch
+ * (first-run-boot-patches): clears the persisted active-server / setup-step /
+ * first-run-complete records and arms a genuinely fresh first run.
+ *
+ * Needed because the packaged macOS main view is never partition-isolated
+ * (shouldUseIsolatedMainView is Windows/CEF-only), so WebKit localStorage is
+ * machine-global across packaged runs — any earlier run that completed
+ * onboarding leaves `eliza:first-run-complete=1` + a stale
+ * `elizaos:active-server` behind, and the conductor never activates.
+ */
+async function rebootIntoFreshFirstRun(
+  harness: PackagedDesktopHarness,
+): Promise<void> {
+  await bridgeEval<boolean>(
+    harness,
+    `(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("reset", "1");
+      url.searchParams.set("enableRuntimeChooser", "1");
+      window.location.replace(url.toString());
+      return true;
+    })()`,
+  );
+}
+
+/**
+ * Drop a stale persisted active-server record (same machine-global-storage
+ * problem as above) and reload, WITHOUT resetting first-run: the pairing spec
+ * runs against a mock API that reports first-run complete, and a leftover
+ * record from an earlier packaged run otherwise routes the app away from the
+ * injected mock API and the pairing gate never renders.
+ */
+async function rebootWithoutStaleActiveServer(
+  harness: PackagedDesktopHarness,
+): Promise<void> {
+  await bridgeEval<boolean>(
+    harness,
+    `(() => {
+      try {
+        window.localStorage.removeItem("elizaos:active-server");
+      } catch (e) { void e; }
+      window.location.reload();
+      return true;
+    })()`,
+  );
+}
+
+/**
+ * Settle on whichever surface boots first: the pairing gate or the normal
+ * shell. Used by the retry loop below — a booting app can re-persist the
+ * active-server record around a single remove+reload (write-back race), so
+ * the pairing test settles, then reboots clean until the gate wins.
+ */
+async function waitForPairingOrShell(
+  harness: PackagedDesktopHarness,
+  timeoutMs: number,
+): Promise<"pairing" | "shell" | "unknown"> {
+  const deadline = Date.now() + timeoutMs;
+  let last: "pairing" | "shell" | "unknown" = "unknown";
+  while (Date.now() < deadline) {
+    last = await bridgeEval<"pairing" | "shell" | "unknown">(
+      harness,
+      `(() => {
+        if (document.body.innerText.includes("Pairing Required")) return "pairing";
+        if (
+          document.querySelector('[data-testid="chat-composer-textarea"]') ||
+          document.querySelector('[data-testid="home-launcher-surface"]')
+        ) {
+          return "shell";
+        }
+        return "unknown";
+      })()`,
+    );
+    if (last === "pairing" || last === "shell") return last;
+    await delay(500);
+  }
+  return last;
 }
 
 test("packaged desktop drives chat-first onboarding (with auto-start enable) and persists first-run", async () => {
@@ -281,6 +367,7 @@ test("packaged desktop drives chat-first onboarding (with auto-start enable) and
       tempPrefix: "eliza-desktop-first-run-",
       apiBase: api.baseUrl,
     }));
+    await rebootIntoFreshFirstRun(harness);
 
     await waitForTestId(harness, RUNTIME_CHOICE("local"), 120_000);
     // Partition storage can persist across packaged runs on a dev machine —
@@ -425,14 +512,17 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
       apiBase: api.baseUrl,
     }));
 
-    await waitForDom(
-      harness,
-      `document.body.innerText.includes("Pairing Required")`,
-      {
-        message: "Expected packaged desktop pairing screen",
-        timeoutMs: 120_000,
-      },
-    );
+    // Machine-global WebKit storage can carry an active-server record from an
+    // earlier packaged run (including the onboarding test above), which routes
+    // the app away from the injected mock API. Settle, then reboot without the
+    // record until the pairing gate wins — a single remove+reload can lose a
+    // write-back race against the booting app's persistence layer.
+    let gate = await waitForPairingOrShell(harness, 120_000);
+    for (let attempt = 0; gate !== "pairing" && attempt < 3; attempt += 1) {
+      await rebootWithoutStaleActiveServer(harness);
+      gate = await waitForPairingOrShell(harness, 60_000);
+    }
+    expect(gate, "Expected packaged desktop pairing screen").toBe("pairing");
 
     const pairResult = await bridgeEval<EvalResult<{ submitted: boolean }>>(
       harness,
@@ -444,7 +534,19 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
             return { ok: false, error: "pairing input not found" };
           }
           input.focus();
-          input.value = ${cssString(pairingCode)};
+          // React's controlled Input tracks the last value it set; a direct
+          // \`input.value = ...\` assignment is invisible to its change
+          // detection, so the store would submit an empty code. Write through
+          // the native prototype setter, then dispatch input.
+          const proto = input instanceof HTMLInputElement
+            ? window.HTMLInputElement.prototype
+            : window.HTMLTextAreaElement.prototype;
+          const valueSetter = Object.getOwnPropertyDescriptor(proto, "value");
+          if (valueSetter && valueSetter.set) {
+            valueSetter.set.call(input, ${cssString(pairingCode)});
+          } else {
+            input.value = ${cssString(pairingCode)};
+          }
           input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ${cssString(pairingCode)} }));
           const button = Array.from(document.querySelectorAll("button"))
             .find((el) => /submit|pair|activate/i.test(el.textContent || ""));
