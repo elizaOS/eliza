@@ -190,15 +190,8 @@ export function createModelSwitchAction(
 		name: "MODEL_SWITCH",
 		contexts: ["general", "settings"],
 		contextGate: { anyOf: ["general", "settings"] },
-		// OWNER-gated (issue #16172, gap 3): flipping local↔cloud inference is a
-		// GLOBAL runtime backend switch (it drives the same loopback
-		// /api/runtime/model-switch route the owner-only `/model local|cloud` slash
-		// command uses — see plugins/plugin-commands handlers.ts). When the planner
-		// routes a (possibly guest) message here — e.g. a mention-prefixed
-		// `<@bot> /model cloud` that slipped past the deterministic layer — the
-		// action must NOT execute a global switch for a non-owner. This matches the
-		// sibling AGENT_SWITCH gate and is enforced by the shared actionGateFailure
-		// chokepoint the shortcut gate + planned-tool-call executor both consult.
+		// This mutates the global inference backend, matching the sibling
+		// AGENT_SWITCH owner boundary regardless of planner or shortcut routing.
 		roleGate: { minRole: "OWNER" },
 		similes: [
 			"SWITCH_MODEL",

@@ -12,30 +12,13 @@ import type {
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/**
- * A leading bot mention followed by optional whitespace/newlines. Matches the
- * connector-native raw mention forms so command detection sees the same text
- * regardless of whether the server requires an explicit mention:
- *   - Discord user mention `<@123>` / `<@!123>` (the `!` is the legacy nickname form)
- *   - Discord role/channel-style angle mentions are intentionally NOT stripped
- *     (only user mentions prefix a command); a bare `@name` textual mention is
- *     handled separately by {@link normalizeCommandBody} with the known name.
- *
- * Only a SINGLE leading mention is stripped, and only when it sits at the very
- * start — so `/model <@123>` (a mention inside an argument) is untouched.
- */
+/** A single leading Discord user mention; role and channel forms do not match. */
 const LEADING_RAW_MENTION = /^<@!?\d+>\s*/;
 
 /**
- * Strip a leading connector-native bot mention (`<@id>` / `<@!id>`) plus the
- * whitespace/newline that separates it from the command, so a mention-prefixed
- * command (`<@bot> /model show`, common on strict-mention Discord servers)
- * matches the deterministic command layer exactly like a bare `/model show`.
- *
- * Text-form `@name` mentions are left to {@link normalizeCommandBody} (which
- * needs the bot's display name); this handles the id form every connector emits
- * in `content.text` before command detection runs, so no connector-specific
- * pre-normalization is required for the raw mention to be defeated.
+ * Remove the connector-native bot prefix so strict-mention messages reach the
+ * deterministic command layer. Textual names require the separate known-name
+ * normalization, and inner mentions remain command arguments.
  */
 export function stripLeadingBotMention(text: string): string {
 	return text.replace(LEADING_RAW_MENTION, "");
@@ -218,9 +201,7 @@ export function normalizeCommandBody(
 ): string {
 	let normalized = text.trim();
 
-	// Remove a leading connector-native mention (`<@id>` / `<@!id>`) first — the
-	// id form every connector emits in content.text, independent of any known
-	// display name.
+	// Raw connector IDs do not require a configured display name.
 	normalized = stripLeadingBotMention(normalized).trim();
 
 	// Remove textual bot mention prefix (e.g., "@bot /status" -> "/status")
