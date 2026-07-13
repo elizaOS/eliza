@@ -274,7 +274,7 @@ export function getSmallModel(runtime: IAgentRuntime): string {
     getCerebrasModel(runtime) ??
     getEvoLinkModel(runtime) ??
     getSetting(runtime, "SMALL_MODEL") ??
-    "gpt-5.4-mini"
+    "gpt-5.6-luna"
   );
 }
 
@@ -304,7 +304,7 @@ export function getLargeModel(runtime: IAgentRuntime): string {
     getCerebrasModel(runtime) ??
     getEvoLinkModel(runtime) ??
     getSetting(runtime, "LARGE_MODEL") ??
-    "gpt-5.5"
+    "gpt-5.6-sol"
   );
 }
 
