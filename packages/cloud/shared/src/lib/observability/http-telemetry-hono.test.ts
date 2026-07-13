@@ -9,7 +9,7 @@
 import { describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import { ELIZA_TRACE_ID_HEADER } from "./http-telemetry";
-import { httpTelemetryMiddleware } from "./http-telemetry-hono";
+import { httpTelemetryMiddleware, shouldDecorateHttpTelemetryStatus } from "./http-telemetry-hono";
 
 function immutableHeadersResponse(body: string, init: ResponseInit): Response {
   const response = new Response(body, init);
@@ -25,6 +25,11 @@ function immutableHeadersResponse(body: string, init: ResponseInit): Response {
 }
 
 describe("httpTelemetryMiddleware", () => {
+  it("bypasses status-101 upgrades whose workerd socket cannot survive rewrapping", () => {
+    expect(shouldDecorateHttpTelemetryStatus(101)).toBe(false);
+    expect(shouldDecorateHttpTelemetryStatus(200)).toBe(true);
+  });
+
   it("stamps trace id + Server-Timing on a mutable handler response", async () => {
     const app = new Hono();
     app.use("*", httpTelemetryMiddleware());
