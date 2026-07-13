@@ -22,6 +22,11 @@ import type {
 } from "../../../types/index.ts";
 
 const EMPTY_RESULT = { text: "", values: {}, data: {} } as const;
+const UNAVAILABLE_RESULT = {
+	text: "# Current topics unavailable",
+	values: { channelTopicsUnavailable: true },
+	data: { unavailable: true },
+} as const;
 
 export const channelTopicsProvider: Provider = {
 	name: "CHANNEL_TOPICS",
@@ -53,8 +58,9 @@ export const channelTopicsProvider: Provider = {
 		try {
 			topics = await service.ensureHydrated(roomId);
 		} catch {
-			// Read path is best-effort: a hydration failure just yields no topics.
-			return { ...EMPTY_RESULT };
+			// error-policy:J4 The service reports database failures through the
+			// runtime; this explicit state keeps failure distinct from an empty LRU.
+			return { ...UNAVAILABLE_RESULT };
 		}
 		if (topics.length === 0) {
 			return { ...EMPTY_RESULT };

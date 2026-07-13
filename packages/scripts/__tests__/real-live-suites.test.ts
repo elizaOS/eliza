@@ -117,6 +117,19 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     ).toEqual([]);
   });
 
+  test("channel topic context has an invocable credentialed live proof", () => {
+    expect(
+      manifest.find(
+        (entry) =>
+          entry.file ===
+          "packages/core/src/features/basic-capabilities/providers/channelTopics.live.test.ts",
+      ),
+    ).toMatchObject({
+      optIn: "ELIZA_LIVE_TEST",
+      anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
+    });
+  });
+
   test("every declared guard env var is read by the suite or its guardVia helpers", () => {
     const problems: string[] = [];
     for (const entry of manifest) {

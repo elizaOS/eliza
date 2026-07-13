@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       filter:
-        description: "Optional task-label regex; use a2a-receipt or mcp-receipt for an exact billing proof"
+        description: "Optional task-label regex; use a2a-receipt, mcp-receipt, or channel-topics-receipt for an exact proof"
         type: string
         default: ""
   schedule:
@@ -119,7 +119,10 @@ jobs:
           fi
 
       - name: Post-merge live matrix
-        if: inputs.filter != 'a2a-receipt' && inputs.filter != 'mcp-receipt'
+        if: >-
+          inputs.filter != 'a2a-receipt' &&
+          inputs.filter != 'mcp-receipt' &&
+          inputs.filter != 'channel-topics-receipt'
         env:
           RUNNER_TEMP_LOG: ${{ runner.temp }}/develop-live-sweep.log
           TEST_FILTER: ${{ inputs.filter }}
@@ -132,7 +135,11 @@ jobs:
           node packages/scripts/run-all-tests.mjs --all --no-cloud "${filter_args[@]}" 2>&1 | tee "$RUNNER_TEMP_LOG"
 
       - name: Cloud unit suite
-        if: always() && inputs.filter != 'a2a-receipt' && inputs.filter != 'mcp-receipt'
+        if: >-
+          always() &&
+          inputs.filter != 'a2a-receipt' &&
+          inputs.filter != 'mcp-receipt' &&
+          inputs.filter != 'channel-topics-receipt'
         run: bun run test:cloud
 
       - name: Exact-head A2A live provider and billing receipt
@@ -152,6 +159,16 @@ jobs:
           E2E_ONLY: group-c-agents
           E2E_RECEIPT_TARGET: mcp
         run: bun run --cwd packages/cloud/api test:e2e
+
+      - name: Exact-head channel topics live provider receipt
+        if: >-
+          always() &&
+          (inputs.filter == '' || inputs.filter == 'channel-topics-receipt')
+        env:
+          VITEST_LANE: post-merge
+        run: >-
+          bun run --cwd packages/core test --
+          src/features/basic-capabilities/providers/channelTopics.live.test.ts
 
       - name: Teardown Postgres
         if: always()

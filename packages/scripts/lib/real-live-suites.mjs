@@ -88,6 +88,13 @@ export const GUARDED_REAL_LIVE_SUITES = [
     probe: "local Ollama at OLLAMA_API_ENDPOINT",
   },
   {
+    file: "packages/core/src/features/basic-capabilities/providers/channelTopics.live.test.ts",
+    optIn: "ELIZA_LIVE_TEST",
+    anyOf: [["OPENAI_API_KEY"], ["CEREBRAS_API_KEY"]],
+    notes:
+      "real AgentRuntime provider context sent through the configured live text model",
+  },
+  {
     file: "packages/evidence/src/vision-qa/vision-qa.live.test.ts",
     requires: ["ANTHROPIC_API_KEY"],
     notes:
@@ -154,12 +161,6 @@ export const GUARDED_REAL_LIVE_SUITES = [
     blocked:
       "plugin-computeruse vitest.config.ts excludes *.real.test.ts in every lane (desktop-control host required)",
     optIn: "FORCE_OSWORLD_BENCHMARK",
-  },
-  {
-    file: "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
-    blocked:
-      "plugin-computeruse vitest.config.ts excludes *.real.test.ts in every lane (desktop-control host required)",
-    probe: "real desktop control (mouse/keyboard/screen)",
   },
   {
     file: "plugins/plugin-computeruse/src/__tests__/windows-list.real.test.ts",
