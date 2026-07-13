@@ -1,0 +1,49 @@
+{
+  "task": "schedule_plan",
+  "optimizer": "gepa",
+  "baseline": "Plan the scheduling negotiation action for this request.\nThe user may speak in any language.\nUse the current request, the structured parameters, and recent conversation context.\nReturn JSON only as a single object with exactly these fields:\n  subaction: one of start, propose, respond, finalize, cancel, list_active, list_proposals, or null\n  shouldAct: boolean\n  response: short natural-language reply when shouldAct is false or clarification is needed\n\nUse start when beginning a new negotiation.\nUse propose when submitting a concrete proposed slot for an existing negotiation.\nUse respond when recording accepted, declined, or expired against a proposal.\nUse finalize when confirming the winning proposal.\nUse cancel when stopping an active negotiation.\nUse list_active for listing negotiations.\nUse list_proposals for listing proposals in one negotiation.\nIf the user is making a first-turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed-call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.\nSet shouldAct=false when the user is vague or only asks for general scheduling help.\n\nExample: {\"subaction\":\"start\",\"shouldAct\":true,\"response\":null}\nExample clarification: {\"subaction\":null,\"shouldAct\":false,\"response\":\"Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?\"}",
+  "prompt": "Plan the scheduling negotiation action for this request.\nThe user may speak in any language.\nUse the current request, the structured parameters, and recent conversation context.\nReturn JSON only as a single object with exactly these fields:\n  subaction: one of start, propose, respond, finalize, cancel, list_active, list_proposals, or null\n  shouldAct: boolean\n  response: short natural-language reply when shouldAct is false or clarification is needed (must be null when shouldAct is true)\n\nUse start when beginning a new negotiation.\nUse propose when submitting a concrete proposed slot for an existing negotiation.\nUse respond when recording accepted, declined, or expired against a proposal.\nUse finalize when confirming the winning proposal.\nUse cancel when stopping an active negotiation.\nUse list_active for listing negotiations.\nUse list_proposals for listing proposals in one negotiation.\nIf the request clearly initiates a negotiation (e.g., “set up a time…”, “schedule a meeting…”, “find a slot…”) treat it as a start action: set shouldAct=true, subaction=start, and response must be null.\nIf the user is making a first‑turn calendar request, asking for recurring time, asking to bundle meetings while traveling, or asking for missed‑call repair, this action is the wrong tool. Return shouldAct=false so the planner can choose CALENDAR or MESSAGE with the appropriate inbox/draft operation instead.\nSet shouldAct=false when the user is vague or only asks for general scheduling help.\n\nExample: {\"subaction\":\"start\",\"shouldAct\":true,\"response\":null}\nExample clarification: {\"subaction\":null,\"shouldAct\":false,\"response\":\"Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?\"}",
+  "score": 0.9545454545454546,
+  "baselineScore": 0.7727272727272727,
+  "datasetId": "seed:schedule_plan",
+  "datasetSize": 11,
+  "generatedAt": "2026-06-25T00:50:20.080Z",
+  "lineage": [
+    {
+      "round": 0,
+      "variant": 0,
+      "score": 0.7727272727272727,
+      "notes": "baseline"
+    },
+    {
+      "round": 0,
+      "variant": 1,
+      "score": 0.9545454545454546,
+      "notes": "seed-feedback | The model omits the required `response` field (or sets it to null) when `shouldAct` is true, violating the JSON schema.…"
+    },
+    {
+      "round": 0,
+      "variant": 2,
+      "score": 0.09090909090909091,
+      "notes": "seed-compress | tokens=26"
+    },
+    {
+      "round": 0,
+      "variant": 3,
+      "score": 0.9545454545454546,
+      "notes": "seed-feedback | The model always includes a “response” field, but the spec expects it omitted when shouldAct is true. Change the prompt…"
+    },
+    {
+      "round": 1,
+      "variant": 3,
+      "score": 0.9545454545454546,
+      "notes": "feedback-mut | The model is always adding a `\"response\":null` field even when `shouldAct` is true, but the expected output omits the r…"
+    },
+    {
+      "round": 2,
+      "variant": 3,
+      "score": 0.9545454545454546,
+      "notes": "feedback-mut | The model is always including the “response” key (with null) even when `shouldAct` is true, violating the requirement t…"
+    }
+  ]
+}
