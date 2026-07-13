@@ -6,12 +6,26 @@
  * gesture that unlocks audio is not cancelled) and message-play telemetry.
  */
 
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  waitFor,
+} from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ConversationMessage } from "../../api/client-types-chat";
 import { useContinuousChat } from "../../hooks/useContinuousChat";
 import { useRealtimeVoiceSession } from "../../hooks/useRealtimeVoiceSession";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
+import {
+  getVoiceCaptureBreadcrumbs,
+  resetVoiceCaptureBreadcrumbs,
+} from "../../utils/voice-capture-debug";
 import type { VoiceChatState } from "../../voice/voice-chat-types";
+import { ChatComposer } from "../composites/chat/chat-composer";
 import {
   mapUiLanguageToSpeechLocale,
   useChatVoiceController,
@@ -26,6 +40,7 @@ const realtimeHarness = vi.hoisted(() => ({
     transcriptPartial: "",
     transcriptFinal: "",
     agentSpeaking: false,
+    needsUnlock: false,
     paused: false,
     error: null,
     speaker: null,
@@ -145,6 +160,8 @@ describe("useChatVoiceController voice playback unlock", () => {
     realtimeHarness.state.available = false;
     realtimeHarness.state.active = false;
     realtimeHarness.state.status = "idle";
+    realtimeHarness.state.agentSpeaking = false;
+    realtimeHarness.state.needsUnlock = false;
     realtimeHarness.state.error = null;
     realtimeHarness.state.start.mockClear();
     realtimeHarness.state.stop.mockClear();
@@ -153,10 +170,13 @@ describe("useChatVoiceController voice playback unlock", () => {
     continuousHarness.state.pause.mockClear();
     useContinuousChatMock.mockClear();
     useRealtimeVoiceSessionMock.mockClear();
+    useRealtimeVoiceSessionMock.mockImplementation(() => realtimeHarness.state);
   });
 
   afterEach(() => {
     cleanup();
+    resetVoiceCaptureBreadcrumbs();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -188,7 +208,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     });
   });
 
-  it("routes the primary mic to realtime when the force-armed session is available", () => {
+  it("routes the primary mic to realtime when the force-armed session is available", async () => {
     realtimeHarness.state.available = true;
     const { result } = renderHook(() =>
       useChatVoiceController({
@@ -198,12 +218,177 @@ describe("useChatVoiceController voice playback unlock", () => {
       }),
     );
 
-    act(() => {
+    await act(async () => {
       result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
     });
 
     expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
     expect(voiceState.startListening).not.toHaveBeenCalled();
+  });
+
+  it("keeps a normal realtime mic-tap session alive while continuous mode is off", async () => {
+    realtimeHarness.state.available = true;
+    const { result, rerender } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        continuousMode: "off",
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await act(async () => {
+      result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
+    });
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+
+    realtimeHarness.state.active = true;
+    act(() => rerender());
+    await waitFor(() =>
+      expect(realtimeHarness.state.stop).not.toHaveBeenCalled(),
+    );
+
+    act(() => result.current.endVoiceCapture());
+    expect(realtimeHarness.state.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("a second real composer click cancels a deferred realtime start", async () => {
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.active = false;
+    realtimeHarness.state.start.mockImplementationOnce(
+      () => new Promise<void>(() => {}),
+    );
+    voiceState = makeVoiceState({ supported: true });
+
+    function ComposerHarness() {
+      const controller = useChatVoiceController({
+        ...baseOptions,
+        continuousMode: "off",
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "deferred-consent"),
+      });
+      return (
+        <ChatComposer
+          variant="default"
+          layout="inline"
+          textareaRef={createRef<HTMLTextAreaElement>()}
+          chatInput=""
+          chatPendingImagesCount={0}
+          isComposerLocked={false}
+          isAgentStarting={false}
+          chatSending={false}
+          hideAttachButton
+          voice={{
+            supported: controller.voice.supported,
+            isListening: controller.composerVoice.isListening,
+            captureMode: controller.composerVoice.captureMode,
+            interimTranscript: controller.composerVoice.interimTranscript,
+            isSpeaking: controller.voice.isSpeaking,
+            startListening: controller.beginVoiceCapture,
+            stopListening: controller.endVoiceCapture,
+          }}
+          agentVoiceEnabled={false}
+          t={(key) => key}
+          onAttachImage={() => {}}
+          onChatInputChange={() => {}}
+          onSend={() => {}}
+          onStop={() => {}}
+          onStopSpeaking={() => {}}
+          onToggleAgentVoice={() => {}}
+        />
+      );
+    }
+
+    const { getByTestId } = render(<ComposerHarness />);
+    const mic = getByTestId("chat-composer-mic");
+    fireEvent.click(mic);
+    await waitFor(() => {
+      expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+      expect(mic.getAttribute("aria-pressed")).toBe("true");
+    });
+
+    fireEvent.click(mic);
+    await waitFor(() => {
+      expect(realtimeHarness.state.stop).toHaveBeenCalledTimes(1);
+      expect(mic.getAttribute("aria-pressed")).toBe("false");
+    });
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+    expect(voiceState.startListening).not.toHaveBeenCalled();
+  });
+
+  it("wires mint and trace correlation into privacy-safe client telemetry", () => {
+    realtimeHarness.state.available = true;
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    const hookOptions = useRealtimeVoiceSessionMock.mock.calls.at(-1)?.[0];
+    if (!hookOptions) throw new Error("realtime hook was not configured");
+    act(() => {
+      hookOptions.onMinted?.({
+        sessionId: "session-safe-id",
+        wsUrl: "wss://voice.test/ws",
+        token: "must-not-be-recorded",
+        expiresAt: 1,
+        uplink: { codecs: ["pcm16"] },
+        downlink: { codecs: ["pcm16"] },
+      });
+      hookOptions.clientOptions?.onTraceMark?.({
+        name: "speaking_start",
+        traceId: "trace-safe-id",
+        atMs: 42,
+      });
+    });
+
+    const breadcrumbs = getVoiceCaptureBreadcrumbs();
+    expect(breadcrumbs.map((entry) => entry.step)).toEqual([
+      "realtime:mint",
+      "realtime:trace",
+    ]);
+    expect(breadcrumbs[0]?.detail).toEqual({ correlated: true });
+    expect(breadcrumbs[1]?.detail).toEqual({
+      name: "speaking_start",
+      atMs: 42,
+      hasSessionId: true,
+      hasTraceId: true,
+    });
+    expect(JSON.stringify(breadcrumbs)).not.toContain("session-safe-id");
+    expect(JSON.stringify(breadcrumbs)).not.toContain("trace-safe-id");
+    expect(JSON.stringify(breadcrumbs)).not.toContain("must-not-be-recorded");
+  });
+
+  it("exposes realtime mic ownership to the composer while preserving speaking barge-in", async () => {
+    useRealtimeVoiceSessionMock.mockImplementation(() => ({
+      ...realtimeHarness.state,
+    }));
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.active = true;
+    const { result, rerender } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        continuousMode: "vad-gated",
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    expect(result.current.composerVoice).toMatchObject({
+      isListening: true,
+      captureMode: "compose",
+    });
+
+    realtimeHarness.state.agentSpeaking = true;
+    await act(async () => {
+      rerender();
+      await Promise.resolve();
+    });
+    expect(result.current.composerVoice.isListening).toBe(false);
   });
 
   it("keeps batch passive capture disabled while realtime is armed for continuous mode", async () => {
@@ -257,20 +442,22 @@ describe("useChatVoiceController voice playback unlock", () => {
   });
 });
 
-describe("chat view locale and companion history", () => {
-  const message = (id: string, timestamp: number) =>
-    ({ id, timestamp, role: "assistant", text: id }) as never;
+describe("chat-view hook helpers", () => {
+  const message = (id: string, timestamp: number): ConversationMessage => ({
+    id,
+    role: "assistant",
+    text: id,
+    timestamp,
+  });
 
-  it.each([
-    ["zh-CN", "zh-CN"],
-    ["ko", "ko-KR"],
-    ["es", "es-ES"],
-    ["pt", "pt-BR"],
-    ["vi", "vi-VN"],
-    ["tl", "fil-PH"],
-    ["unknown", "en-US"],
-  ])("maps %s to a supported speech locale", (input, expected) => {
-    expect(mapUiLanguageToSpeechLocale(input)).toBe(expected);
+  it("maps every supported UI language to its speech locale", () => {
+    expect(mapUiLanguageToSpeechLocale("zh-CN")).toBe("zh-CN");
+    expect(mapUiLanguageToSpeechLocale("ko")).toBe("ko-KR");
+    expect(mapUiLanguageToSpeechLocale("es")).toBe("es-ES");
+    expect(mapUiLanguageToSpeechLocale("pt")).toBe("pt-BR");
+    expect(mapUiLanguageToSpeechLocale("vi")).toBe("vi-VN");
+    expect(mapUiLanguageToSpeechLocale("tl")).toBe("fil-PH");
+    expect(mapUiLanguageToSpeechLocale("unknown")).toBe("en-US");
   });
 
   it("keeps the two most recent messages when no cutoff messages exist", () => {
@@ -313,6 +500,74 @@ describe("chat view locale and companion history", () => {
     ).toEqual(["old"]);
     expect(result.current.gameModalVisibleMsgs.map((item) => item.id)).toEqual([
       "current",
+    ]);
+    vi.useRealTimers();
+  });
+
+  it("retains, fades, and expires the prior companion context after a cutoff", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const initialMessages = [
+      message("old", 50),
+      message("recent-1", 110),
+      message("recent-2", 120),
+      message("recent-3", 130),
+    ];
+    const { result, rerender } = renderHook(
+      (props: {
+        activeConversationId: string;
+        companionMessageCutoffTs: number;
+        visibleMsgs: ConversationMessage[];
+      }) =>
+        useGameModalMessages({
+          ...props,
+          isGameModal: true,
+        }),
+      {
+        initialProps: {
+          activeConversationId: "conversation-1",
+          companionMessageCutoffTs: 100,
+          visibleMsgs: initialMessages,
+        },
+      },
+    );
+
+    expect(result.current.gameModalVisibleMsgs.map(({ id }) => id)).toEqual([
+      "recent-2",
+      "recent-3",
+    ]);
+
+    act(() => {
+      rerender({
+        activeConversationId: "conversation-1",
+        companionMessageCutoffTs: 200,
+        visibleMsgs: [...initialMessages, message("new", 210)],
+      });
+    });
+    expect(
+      result.current.companionCarryover?.messages.map(({ id }) => id),
+    ).toEqual(["recent-2", "recent-3"]);
+    expect(result.current.gameModalCarryoverOpacity).toBe(1);
+
+    act(() => {
+      vi.advanceTimersByTime(32_500);
+    });
+    expect(result.current.gameModalCarryoverOpacity).toBeCloseTo(0.5, 1);
+
+    act(() => {
+      vi.advanceTimersByTime(3_000);
+    });
+    expect(result.current.companionCarryover).toBeNull();
+
+    act(() => {
+      rerender({
+        activeConversationId: "conversation-2",
+        companionMessageCutoffTs: 300,
+        visibleMsgs: [message("other-thread", 310)],
+      });
+    });
+    expect(result.current.gameModalVisibleMsgs.map(({ id }) => id)).toEqual([
+      "other-thread",
     ]);
     vi.useRealTimers();
   });

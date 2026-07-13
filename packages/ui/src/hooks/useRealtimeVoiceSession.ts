@@ -1,8 +1,40 @@
 /**
- * React lifecycle adapter for the realtime voice client. It owns sockets and
- * media only while the build flag, identity, and consent gates remain valid;
- * client states, transcripts, pause markers, and actionable failures feed the
- * existing chat voice controls, which fall back to batch voice when disarmed.
+ * `useRealtimeVoiceSession` — the app-surface React hook that drives the
+ * realtime voice-session client (`createVoiceSessionClient`) as a lifecycle-tied
+ * enhancement of the EXISTING voice UI.
+ *
+ * Relationship to the batch path (critical acceptance): this hook is an
+ * ADDITIVE enhancement, never a replacement. It only "arms" when
+ *   - the VITE-side realtime flag is on (`isRealtimeVoiceFlagEnabled`), AND
+ *   - the server mint succeeds (the mint route is present + the server flag on).
+ * A mint that returns 404 (`VoiceSessionMintError.isFeatureDisabled`) or a
+ * consent 503/permission failure leaves the hook in a state the caller reads as
+ * "fall back to the existing batch ASR path". The caller wires the mic button to
+ * the realtime `start`/`stop`/`bargeIn` ONLY while `available` is true; the
+ * moment it isn't, the caller runs its unchanged batch flow. There is no second
+ * UI surface — the same mic button, the same `VoiceContinuousStatus` bar.
+ *
+ * State surfaced (all derived from the REAL client's state machine + trace
+ * marks, never synthesized):
+ *   - `status`           — the unified `VoiceContinuousStatus` (#15924).
+ *   - `transcriptPartial`/`transcriptFinal` — from `stt_partial`/`stt_final`.
+ *   - `agentSpeaking`    — the client phase is `speaking`.
+ *   - `paused`           — mic was suspended by a visibility-hide (a paused
+ *                          state, NOT a broken one — see the mic-capture seat).
+ *   - `error`            — a typed, actionable error (permission / transport /
+ *                          mint). Permission-denied surfaces as an actionable
+ *                          `kind:"permission"` so the UI can show a re-enable CTA.
+ *   - `start`/`stop`/`bargeIn`/`unlock` — lifecycle bound to the component.
+ *
+ * iOS/WebView: the client constructs and attempts to resume its playback
+ * AudioContext synchronously at the start of the user gesture, before consent
+ * or mint awaits can consume transient activation. If the browser still blocks
+ * it, `needsUnlock` drives the existing status-bar CTA. Visibility-hide
+ * surfaces a paused state via `mic_suspended`/`mic_resumed` trace marks.
+ *
+ * Everything third-party (client factory, mint fetch, consent fetch, flag read) is
+ * injectable so the hook is tested through the REAL client + its fake transports
+ * (`voice-session-fakes.ts`) — no stub of the thing under test.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,6 +46,7 @@ import {
   createVoiceSessionClient,
   type VoiceSessionClient,
   type VoiceSessionClientOptions,
+  VoiceSessionConsentError,
   VoiceSessionMintError,
 } from "../voice/voice-session-client";
 import { VoiceMicCaptureError } from "../voice/voice-session-mic-capture";
@@ -56,9 +89,9 @@ export interface UseRealtimeVoiceSessionOptions {
   /**
    * Obtain a one-time consent nonce (POST /api/v1/voice/session/consent) in
    * response to the visible consent gesture that starts the session. Called
-   * inside `start()` so the nonce is fresh per session. Returning null (503 /
-   * store not configured) surfaces a `consent` error and leaves the batch path
-   * as the fallback.
+   * by the client immediately before every mint/re-mint so one-use nonces are
+   * never replayed. Returning null (503 / store not configured) surfaces a
+   * `consent` error and leaves the batch path as the fallback.
    */
   getConsentNonce: MintConsentNonce;
   /**
@@ -69,11 +102,12 @@ export interface UseRealtimeVoiceSessionOptions {
   /**
    * Extra client options merged into the created client (mint `fetch`, mint
    * `mintPath`, injected AudioContext/WebSocket factories for tests). NEVER
-   * overrides agentId/conversationId/consentNonce (those come from this hook).
+   * overrides agentId/conversationId/getConsentNonce (those come from this
+   * hook).
    */
   clientOptions?: Omit<
     VoiceSessionClientOptions,
-    "agentId" | "conversationId" | "consentNonce"
+    "agentId" | "conversationId" | "getConsentNonce"
   >;
   /**
    * Fired once per session with the mint response — lets the caller record the
@@ -102,6 +136,8 @@ export interface UseRealtimeVoiceSessionState {
   transcriptFinal: string;
   /** True while the agent is audibly speaking (phase `speaking`). */
   agentSpeaking: boolean;
+  /** True when queued realtime audio is waiting for a browser autoplay tap. */
+  needsUnlock: boolean;
   /**
    * True when the session is alive but the mic was suspended by a
    * visibility-hide — a PAUSED state, not a broken one. Clears on resume.
@@ -157,6 +193,14 @@ function classifyError(error: Error): RealtimeVoiceError {
       actionable: false,
     };
   }
+  if (error instanceof VoiceSessionConsentError) {
+    return {
+      kind: "consent",
+      message:
+        "Couldn't confirm consent for a realtime voice session. Falling back to batch voice.",
+      actionable: false,
+    };
+  }
   // Transport loss past the reconnect budget surfaces as a generic Error from
   // the client (`voice session lost: ...`).
   if (/voice session lost/i.test(error.message)) {
@@ -191,12 +235,13 @@ export function useRealtimeVoiceSession(
   const [transcriptPartial, setTranscriptPartial] = useState("");
   const [transcriptFinal, setTranscriptFinal] = useState("");
   const [agentSpeaking, setAgentSpeaking] = useState(false);
+  const [needsUnlock, setNeedsUnlock] = useState(false);
   const [paused, setPaused] = useState(false);
   const [active, setActive] = useState(false);
   const [error, setError] = useState<RealtimeVoiceError | null>(null);
   // `featureDisabled` latches when a mint reports 404 so we stop advertising the
-  // realtime path as available (the caller uses batch). Cleared on a fresh
-  // `start()` so a later server-flag flip re-probes.
+  // realtime path as available for this mounted chat surface (the caller uses
+  // batch rather than repeatedly probing a disabled route on every mic tap).
   const [featureDisabled, setFeatureDisabled] = useState(false);
 
   const clientRef = useRef<VoiceSessionClient | null>(null);
@@ -204,6 +249,11 @@ export function useRealtimeVoiceSession(
   // races a new start) cannot write state for a session the component moved on
   // from.
   const sessionGenRef = useRef(0);
+  const identityChangeGenRef = useRef(0);
+  // Carries automatic restart ownership across rapid A→B→C identity changes.
+  // The first teardown clears clientRef synchronously, so the next effect must
+  // not mistake that in-flight handoff for an intentionally idle session.
+  const identityRestartPendingRef = useRef(false);
   const startingRef = useRef(false);
 
   // Keep the latest callbacks/config in refs so the stable `start`/`stop`
@@ -253,16 +303,30 @@ export function useRealtimeVoiceSession(
     }
   }, []);
 
-  const stop = useCallback(async () => {
-    sessionGenRef.current += 1;
+  const stopCurrentSession = useCallback(async (): Promise<number> => {
+    const stoppedGeneration = ++sessionGenRef.current;
     startingRef.current = false;
     await teardownClient();
-    setActive(false);
-    setAgentSpeaking(false);
-    setPaused(false);
-    setStatus("idle");
-    setTranscriptPartial("");
+    // A newer lifecycle may start while an old AudioContext close is pending.
+    // Only the generation that initiated this teardown may clear UI state.
+    if (sessionGenRef.current === stoppedGeneration) {
+      setActive(false);
+      setAgentSpeaking(false);
+      setNeedsUnlock(false);
+      setPaused(false);
+      setStatus("idle");
+      setTranscriptPartial("");
+    }
+    return stoppedGeneration;
   }, [teardownClient]);
+
+  const stop = useCallback(async () => {
+    // Explicit user/flag-driven stop also revokes any identity-change task that
+    // may currently be awaiting teardown before an automatic re-mint.
+    identityRestartPendingRef.current = false;
+    identityChangeGenRef.current += 1;
+    await stopCurrentSession();
+  }, [stopCurrentSession]);
 
   const start = useCallback(async () => {
     if (startingRef.current || clientRef.current) return;
@@ -272,44 +336,36 @@ export function useRealtimeVoiceSession(
 
     startingRef.current = true;
     setError(null);
+    setNeedsUnlock(false);
     const gen = ++sessionGenRef.current;
     const isCurrent = () => sessionGenRef.current === gen;
     // Local latch so the synchronous start() flow can see a feature-disabled
     // 404 the moment onError fires (state updates are async and can't be read
     // back mid-function).
-    let disabledThisSession = false;
-
-    let consentNonce: string | null;
-    try {
-      consentNonce = await getConsentNonceRef.current();
-    } catch {
-      // error-policy:J4 Consent failure selects the visible batch-voice path below.
-      consentNonce = null;
-    }
-    if (!isCurrent()) {
-      startingRef.current = false;
-      return;
-    }
-    if (!consentNonce) {
-      startingRef.current = false;
-      setError({
-        kind: "consent",
-        message:
-          "Couldn't confirm consent for a realtime voice session. Falling back to batch voice.",
-        actionable: false,
-      });
-      return;
-    }
+    let failedThisSession = false;
 
     const client = createClientRef.current({
       ...clientOptionsRef.current,
       agentId: aId,
       conversationId: cId,
-      consentNonce,
+      // The client invokes this immediately before every mint/re-mint. Keeping
+      // the source behind a ref gives reconnects the latest callback and, more
+      // importantly, prevents replay of the one-use nonce from the first mint.
+      getConsentNonce: () => getConsentNonceRef.current(),
       onState: (state, unifiedStatus) => {
         if (!isCurrent()) return;
         setStatus(unifiedStatus);
         setAgentSpeaking(state.phase === "speaking");
+      },
+      onMinted: (minted) => {
+        if (!isCurrent()) return;
+        onMintedRef.current?.(minted);
+        clientOptionsRef.current?.onMinted?.(minted);
+      },
+      onPlaybackUnlockChange: (required) => {
+        if (!isCurrent()) return;
+        setNeedsUnlock(required);
+        clientOptionsRef.current?.onPlaybackUnlockChange?.(required);
       },
       onServerEvent: (event) => {
         if (!isCurrent()) return;
@@ -331,16 +387,16 @@ export function useRealtimeVoiceSession(
         // `featureDisabled` so `available` flips false and the caller uses the
         // batch path. Any other error is a real, surfaced failure.
         if (err instanceof VoiceSessionMintError) {
-          disabledThisSession = true;
+          failedThisSession = true;
           setFeatureDisabled(true);
           if (err.isFeatureDisabled) return;
         }
         const classified = classifyError(err);
+        failedThisSession = true;
         setError(classified);
+        setActive(false);
         if (classified.kind === "transport" || classified.kind === "mint") {
-          disabledThisSession = true;
           setFeatureDisabled(true);
-          setActive(false);
         }
         clientOptionsRef.current?.onError?.(err);
       },
@@ -359,17 +415,14 @@ export function useRealtimeVoiceSession(
         await client.stop().catch(() => {});
         return;
       }
-      // iOS/WebView: resume the AudioContext on THIS user gesture so the first
-      // downlink audio is audible without a second tap. Runs AFTER start(),
-      // which is what creates the playback context — an unlock before it is a
-      // no-op. Still inside the same synchronous user-gesture task in the
-      // browser (start's awaits resolve on microtasks before the gesture's
-      // activation window closes for a resume()).
-      await client.unlockPlayback();
+      // `client.start()` already constructed and attempted to resume playback
+      // before its first await, preserving this gesture's transient activation.
+      // If that attempt was blocked, `needsUnlock` supplies a fresh CTA gesture;
+      // a second resume here would be too late and would only duplicate marks.
       // Only mark active if the client actually connected. A feature-disabled
       // 404 tore the client down; drop the ref and stay inactive so the caller
       // falls back to batch.
-      if (disabledThisSession) {
+      if (failedThisSession) {
         clientRef.current = null;
         setActive(false);
       } else if (clientRef.current === client) {
@@ -391,8 +444,11 @@ export function useRealtimeVoiceSession(
       // error-policy:J6 Failed startup teardown follows the surfaced primary error.
       await client.stop().catch(() => {});
       setActive(false);
+      setNeedsUnlock(false);
     } finally {
-      startingRef.current = false;
+      // A superseded start may finish after stop + a newer start. It must not
+      // clear the newer generation's pending latch.
+      if (isCurrent()) startingRef.current = false;
     }
   }, [applyServerEventToTranscript, flagEnabled]);
 
@@ -418,6 +474,8 @@ export function useRealtimeVoiceSession(
   // component.
   useEffect(() => {
     return () => {
+      identityRestartPendingRef.current = false;
+      identityChangeGenRef.current += 1;
       sessionGenRef.current += 1;
       const client = clientRef.current;
       clientRef.current = null;
@@ -426,13 +484,54 @@ export function useRealtimeVoiceSession(
     };
   }, []);
 
-  // If the flag flips off (or ids drop) while a session is live, tear it down —
-  // the batch path takes over and a stale realtime socket must not linger.
+  // If the flag flips off while a session is live, tear it down — the batch
+  // path takes over and a stale realtime socket must not linger.
   useEffect(() => {
-    if (!flagEnabled && clientRef.current) {
+    if (!flagEnabled && (clientRef.current || startingRef.current)) {
       void stop();
     }
   }, [flagEnabled, stop]);
+
+  // A mint is scoped to exactly one agent + conversation. If either identity
+  // changes while a start/live session owns the mic, stop the old socket and
+  // re-mint against the latest ids. A generation guard prevents rapid thread
+  // switches from resurrecting an intermediate identity.
+  const identityKey = `${agentId?.trim() ?? ""}\n${conversationId?.trim() ?? ""}`;
+  const previousIdentityRef = useRef(identityKey);
+  useEffect(() => {
+    if (previousIdentityRef.current === identityKey) return;
+    previousIdentityRef.current = identityKey;
+
+    const shouldRestart = Boolean(
+      identityRestartPendingRef.current ||
+        clientRef.current ||
+        startingRef.current,
+    );
+    if (!shouldRestart) return;
+
+    identityRestartPendingRef.current = true;
+    const changeGen = ++identityChangeGenRef.current;
+    let cancelled = false;
+    void (async () => {
+      const stoppedGeneration = await stopCurrentSession();
+      if (
+        cancelled ||
+        identityChangeGenRef.current !== changeGen ||
+        sessionGenRef.current !== stoppedGeneration
+      ) {
+        return;
+      }
+      const { agentId: nextAgentId, conversationId: nextConversationId } =
+        idsRef.current;
+      identityRestartPendingRef.current = false;
+      if (flagEnabled && nextAgentId?.trim() && nextConversationId?.trim()) {
+        await start();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [flagEnabled, identityKey, start, stopCurrentSession]);
 
   return useMemo<UseRealtimeVoiceSessionState>(
     () => ({
@@ -442,6 +541,7 @@ export function useRealtimeVoiceSession(
       transcriptPartial,
       transcriptFinal,
       agentSpeaking,
+      needsUnlock,
       paused,
       error,
       speaker: speaker ?? null,
@@ -457,6 +557,7 @@ export function useRealtimeVoiceSession(
       transcriptPartial,
       transcriptFinal,
       agentSpeaking,
+      needsUnlock,
       paused,
       error,
       speaker,

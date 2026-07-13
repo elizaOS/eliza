@@ -7,7 +7,9 @@ import {
 } from "../voice-session-client";
 import {
   FakeMicAudioContext,
+  FakeMicWorkletAudioContext,
   FakePlaybackAudioContext,
+  FakeVoiceAudioWorkletNode,
   FakeWebSocket,
   fakeGetUserMedia,
   makeWsFactory,
@@ -66,7 +68,7 @@ function baseDeps(
   const client = createVoiceSessionClient({
     agentId: "11111111-1111-1111-1111-111111111111",
     conversationId: "22222222-2222-2222-2222-222222222222",
-    consentNonce: "nonce-1",
+    getConsentNonce: async () => "nonce-1",
     fetch: mintFetch.fetch,
     webSocketFactory: ws.factory,
     getUserMedia: fakeGetUserMedia(),
@@ -87,6 +89,16 @@ async function flush(): Promise<void> {
   await Promise.resolve();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function playbackScriptNodeOf(ctx: FakePlaybackAudioContext) {
   const node = ctx.scriptNode;
   if (!node) throw new Error("no playback script node created");
@@ -94,6 +106,73 @@ function playbackScriptNodeOf(ctx: FakePlaybackAudioContext) {
 }
 
 describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
+  it("invokes playback resume before the first mint await consumes user activation", async () => {
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const playback = new FakePlaybackAudioContext(16_000);
+    let mintStarted = false;
+    let consentStarted = false;
+    const resume = vi.spyOn(playback, "resume").mockImplementation(async () => {
+      expect(consentStarted).toBe(false);
+      expect(mintStarted).toBe(false);
+      playback.state = "running";
+    });
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => {
+        consentStarted = true;
+        return "activation";
+      },
+      fetch: async (url, init) => {
+        mintStarted = true;
+        return mint.fetch(url, init);
+      },
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => playback,
+    });
+
+    const start = client.start();
+    expect(resume).toHaveBeenCalledTimes(1);
+    // The client function has not reached its first consent await yet, proving
+    // playback resume was invoked synchronously in the start gesture.
+    expect(consentStarted).toBe(false);
+    await start;
+    await client.stop();
+  });
+
+  it("reports every validated mint so reconnect telemetry keeps its session correlation", async () => {
+    const mint = makeMintFetch([{ token: "A" }, { token: "B" }]);
+    const ws = makeWsFactory();
+    const minted = vi.fn();
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "mint-callback",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onMinted: minted,
+    });
+
+    await client.start();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitClose(1006, "remint");
+    await flush();
+
+    expect(minted).toHaveBeenCalledTimes(2);
+    expect(minted.mock.calls.map(([value]) => value.sessionId)).toEqual([
+      "sess-1",
+      "sess-2",
+    ]);
+    await client.stop();
+  });
+
   it("constructs and validates the native WebSocket when no factory is injected", async () => {
     class NativeWebSocket extends FakeWebSocket {
       static readonly instances: NativeWebSocket[] = [];
@@ -109,7 +188,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const client = createVoiceSessionClient({
       agentId: "11111111-1111-1111-1111-111111111111",
       conversationId: "22222222-2222-2222-2222-222222222222",
-      consentNonce: "native-ws",
+      getConsentNonce: async () => "native-ws",
       fetch: mint.fetch,
       getUserMedia: fakeGetUserMedia(),
       createMicAudioContext: () => new FakeMicAudioContext(16_000),
@@ -148,7 +227,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const client = createVoiceSessionClient({
       agentId: "11111111-1111-1111-1111-111111111111",
       conversationId: "22222222-2222-2222-2222-222222222222",
-      consentNonce: "invalid-native-ws",
+      getConsentNonce: async () => "invalid-native-ws",
       fetch: mint.fetch,
       getUserMedia: fakeGetUserMedia(),
       createMicAudioContext: () => new FakeMicAudioContext(16_000),
@@ -197,7 +276,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const client = createVoiceSessionClient({
       agentId: "11111111-1111-1111-1111-111111111111",
       conversationId: "22222222-2222-2222-2222-222222222222",
-      consentNonce: "n",
+      getConsentNonce: async () => "n",
       fetch: mint.fetch,
       webSocketFactory: ws.factory,
       getUserMedia: fakeGetUserMedia(),
@@ -252,7 +331,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const client = createVoiceSessionClient({
       agentId: "11111111-1111-1111-1111-111111111111",
       conversationId: "22222222-2222-2222-2222-222222222222",
-      consentNonce: "n",
+      getConsentNonce: async () => "n",
       fetch: mint.fetch,
       webSocketFactory: ws.factory,
       getUserMedia: fakeGetUserMedia(),
@@ -307,6 +386,10 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     expect(mint.calls.length).toBe(2); // minted again
     const second = ws.last();
     expect(second).not.toBe(first);
+    // Late callbacks from the detached transport are ignored by socket
+    // identity, even though the browser/fake still holds its listeners.
+    first.emitControl({ t: "stt_final", text: "stale", traceId: "OLD" });
+    expect(client.state.finalTranscript).toBe("");
     second.emitOpen();
     const secondHello = second.sentControls()[0];
     expect(secondHello.t).toBe("hello");
@@ -317,18 +400,130 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
-  it("does NOT reconnect on a clean close (code 1000)", async () => {
-    const mint = makeMintFetch();
+  it("re-mints and tears down a live mic on an unexpected clean close", async () => {
+    const mint = makeMintFetch([{}, {}]);
     const ws = makeWsFactory();
-    const { client } = baseDeps(mint, ws);
+    const firstMicContext = new FakeMicAudioContext(16_000);
+    let micContextCreates = 0;
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => `nonce-${mint.calls.length + 1}`,
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () =>
+        micContextCreates++ === 0
+          ? firstMicContext
+          : new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+    });
     await client.start();
     await flush();
     const sock = ws.last();
     sock.emitOpen();
+    sock.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await flush();
+    expect(client.state.phase).toBe("listening");
     sock.emitClose(1000, "normal");
     await flush();
-    expect(mint.calls.length).toBe(1);
+    expect(firstMicContext.closed).toBe(true);
+    expect(mint.calls.length).toBe(2);
+    expect(ws.sockets).toHaveLength(2);
     await client.stop();
+  });
+
+  it("uses a fresh one-use consent nonce for every reconnect mint", async () => {
+    const ws = makeWsFactory();
+    const calls: Array<Record<string, unknown>> = [];
+    const seenNonces = new Set<string>();
+    let nonceNumber = 0;
+    const fetch = async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      calls.push(body);
+      const nonce = String(body.consentNonce ?? "");
+      if (seenNonces.has(nonce)) {
+        return new Response(JSON.stringify({ error: "nonce_replayed" }), {
+          status: 409,
+        });
+      }
+      seenNonces.add(nonce);
+      const n = calls.length;
+      return new Response(
+        JSON.stringify({
+          sessionId: `sess-${n}`,
+          wsUrl: `wss://cloud/ws?sessionId=sess-${n}`,
+          token: `tok-${n}`,
+          expiresAt: Date.now() + 60_000,
+          uplink: { codecs: ["pcm16"] },
+          downlink: { codecs: ["pcm16"] },
+          iceServers: null,
+        }),
+      );
+    };
+    const errors: Error[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => `one-use-${++nonceNumber}`,
+      fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onError: (error) => errors.push(error),
+    });
+
+    await client.start();
+    ws.last().emitOpen();
+    ws.last().emitClose(1006, "reconnect");
+    await flush();
+
+    expect(calls.map((call) => call.consentNonce)).toEqual([
+      "one-use-1",
+      "one-use-2",
+    ]);
+    expect(errors).toEqual([]);
+    expect(ws.sockets).toHaveLength(2);
+    await client.stop();
+  });
+
+  it("cancels a reconnect waiting on fresh consent when stop wins the race", async () => {
+    const reconnectConsent = deferred<string | null>();
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const errors: Error[] = [];
+    let consentCalls = 0;
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: () => {
+        consentCalls += 1;
+        return consentCalls === 1
+          ? Promise.resolve("initial-nonce")
+          : reconnectConsent.promise;
+      },
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onError: (error) => errors.push(error),
+    });
+
+    await client.start();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitClose(1006, "reconnect");
+    await flush();
+    expect(consentCalls).toBe(2);
+
+    await client.stop();
+    reconnectConsent.resolve("late-reconnect-nonce");
+    await flush();
+
+    expect(mint.calls).toHaveLength(1);
+    expect(ws.sockets).toHaveLength(1);
+    expect(client.state.phase).toBe("idle");
+    expect(errors).toEqual([]);
   });
 
   it("gives up after maxReconnects and surfaces an error", async () => {
@@ -338,7 +533,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const client = createVoiceSessionClient({
       agentId: "11111111-1111-1111-1111-111111111111",
       conversationId: "22222222-2222-2222-2222-222222222222",
-      consentNonce: "n",
+      getConsentNonce: async () => "n",
       fetch: mint.fetch,
       webSocketFactory: ws.factory,
       getUserMedia: fakeGetUserMedia(),
@@ -398,6 +593,284 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     await client.stop();
   });
 
+  it("serializes fatal-error recovery with the socket close callback", async () => {
+    const mint = makeMintFetch([{ token: "A" }, { token: "B" }]);
+    const ws = makeWsFactory();
+    const { client } = baseDeps(mint, ws);
+    await client.start();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "error", code: "invalid_token", retryable: false });
+    // Browsers normally deliver close after the fatal frame. It must not start
+    // a second concurrent re-mint or consume another retry slot.
+    first.emitClose(1006, "fatal");
+    await flush();
+
+    expect(mint.calls).toHaveLength(2);
+    expect(ws.sockets).toHaveLength(2);
+    await client.stop();
+  });
+
+  it("discards playback setup that resolves after stop without resurrecting state", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const moduleLoad = deferred<void>();
+    const addModule = vi.fn(() => moduleLoad.promise);
+    class DeferredPlaybackContext extends FakePlaybackAudioContext {
+      readonly audioWorklet = {
+        addModule,
+      };
+    }
+    const playbackContext = new DeferredPlaybackContext(16_000);
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const errors: Error[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "never-reached",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      createPlaybackAudioContext: () => playbackContext,
+      onError: (error) => errors.push(error),
+    });
+
+    const starting = client.start();
+    await vi.waitFor(() => expect(addModule).toHaveBeenCalledTimes(1));
+    await client.stop();
+    // Stop owns the provisional context even while the browser promise hangs.
+    expect(playbackContext.closed).toBe(true);
+    moduleLoad.resolve();
+    await starting;
+
+    expect(playbackContext.closed).toBe(true);
+    expect(mint.calls).toHaveLength(0);
+    expect(ws.sockets).toHaveLength(0);
+    expect(client.state.phase).toBe("idle");
+    expect(errors).toEqual([]);
+  });
+
+  it("ignores a deferred mint response that arrives after stop", async () => {
+    const mintResponse = deferred<Response>();
+    const mintCalls: Array<Record<string, unknown>> = [];
+    const ws = makeWsFactory();
+    const playbackContext = new FakePlaybackAudioContext(16_000);
+    const errors: Error[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "nonce-before-stop",
+      fetch: async (_url, init) => {
+        mintCalls.push(
+          JSON.parse(String(init?.body)) as Record<string, unknown>,
+        );
+        return mintResponse.promise;
+      },
+      webSocketFactory: ws.factory,
+      createPlaybackAudioContext: () => playbackContext,
+      onError: (error) => errors.push(error),
+    });
+
+    const starting = client.start();
+    await flush();
+    expect(mintCalls).toHaveLength(1);
+    await client.stop();
+    mintResponse.resolve(
+      new Response(
+        JSON.stringify({
+          sessionId: "late",
+          wsUrl: "wss://cloud/ws?sessionId=late",
+          token: "late-token",
+          expiresAt: Date.now() + 60_000,
+          uplink: { codecs: ["pcm16"] },
+          downlink: { codecs: ["pcm16"] },
+          iceServers: null,
+        }),
+      ),
+    );
+    await starting;
+
+    expect(playbackContext.closed).toBe(true);
+    expect(ws.sockets).toHaveLength(0);
+    expect(client.state.phase).toBe("idle");
+    expect(errors).toEqual([]);
+  });
+
+  it("stops media acquired after stop while getUserMedia was pending", async () => {
+    const media = deferred<MediaStream>();
+    const stopTrack = vi.fn();
+    const mint = makeMintFetch();
+    const ws = makeWsFactory();
+    const micContext = new FakeMicAudioContext(16_000);
+    const createMicAudioContext = vi.fn(() => micContext);
+    const playbackContext = new FakePlaybackAudioContext(16_000);
+    const errors: Error[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => "nonce-1",
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: () => media.promise,
+      createMicAudioContext,
+      createPlaybackAudioContext: () => playbackContext,
+      onError: (error) => errors.push(error),
+    });
+
+    await client.start();
+    const socket = ws.last();
+    socket.emitOpen();
+    socket.emitControl({ t: "ready", sessionId: "s", traceId: "T1" });
+    await Promise.resolve();
+    await client.stop();
+    media.resolve({
+      getTracks: () => [{ stop: stopTrack }],
+    } as unknown as MediaStream);
+    await flush();
+
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+    // Cancellation wins before AudioContext construction; there is no graph to
+    // close after the late media promise settles.
+    expect(createMicAudioContext).not.toHaveBeenCalled();
+    expect(micContext.closed).toBe(false);
+    expect(playbackContext.closed).toBe(true);
+    expect(client.state.phase).toBe("idle");
+    expect(errors).toEqual([]);
+  });
+
+  it("reconnect cancels stalled AudioWorklet setup before starting a new mic", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeVoiceAudioWorkletNode);
+    const moduleLoad = deferred<void>();
+    const addModule = vi.fn(() => moduleLoad.promise);
+    const firstMicContext = new FakeMicWorkletAudioContext(16_000);
+    Object.defineProperty(firstMicContext, "audioWorklet", {
+      value: { addModule },
+    });
+    const secondMicContext = new FakeMicAudioContext(16_000);
+    const micContexts = [firstMicContext, secondMicContext];
+    const trackStops = [vi.fn(), vi.fn()];
+    let mediaCount = 0;
+    let contextCount = 0;
+    const mint = makeMintFetch([{ token: "A" }, { token: "B" }]);
+    const ws = makeWsFactory();
+    const errors: Error[] = [];
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => `nonce-${mint.calls.length + 1}`,
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: async () => {
+        const stop = trackStops[mediaCount];
+        mediaCount += 1;
+        return {
+          getTracks: () => [{ stop }],
+        } as unknown as MediaStream;
+      },
+      createMicAudioContext: () => {
+        const context = micContexts[contextCount];
+        contextCount += 1;
+        return context;
+      },
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      onError: (error) => errors.push(error),
+    });
+
+    await client.start();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await vi.waitFor(() => expect(addModule).toHaveBeenCalledTimes(1));
+    expect(mediaCount).toBe(1);
+
+    first.emitClose(1006, "reconnect");
+    await vi.waitFor(() => {
+      expect(trackStops[0]).toHaveBeenCalledTimes(1);
+      expect(firstMicContext.closed).toBe(true);
+      expect(ws.sockets).toHaveLength(2);
+    });
+
+    const second = ws.last();
+    second.emitOpen();
+    second.emitControl({ t: "ready", sessionId: "s2", traceId: "T2" });
+    await vi.waitFor(() => {
+      expect(mediaCount).toBe(2);
+      expect(client.state.phase).toBe("listening");
+    });
+    expect(trackStops[1]).not.toHaveBeenCalled();
+    expect(errors).toEqual([]);
+
+    // The abandoned browser promise may resolve later without reviving capture.
+    moduleLoad.resolve();
+    await client.stop();
+    expect(trackStops[1]).toHaveBeenCalledTimes(1);
+    expect(secondMicContext.closed).toBe(true);
+  });
+
+  it("an old stop cannot close or idle a replacement playback lifecycle", async () => {
+    const micClose = deferred<void>();
+    const playbackClose = deferred<void>();
+    class DeferredMicCloseContext extends FakeMicAudioContext {
+      override async close(): Promise<void> {
+        await micClose.promise;
+        await super.close();
+      }
+    }
+    class DeferredPlaybackCloseContext extends FakePlaybackAudioContext {
+      override async close(): Promise<void> {
+        await playbackClose.promise;
+        await super.close();
+      }
+    }
+    const firstMic = new DeferredMicCloseContext(16_000);
+    const firstPlayback = new DeferredPlaybackCloseContext(16_000);
+    const secondPlayback = new FakePlaybackAudioContext(16_000);
+    const playbackContexts = [firstPlayback, secondPlayback];
+    let playbackCount = 0;
+    const mint = makeMintFetch([{ token: "A" }, { token: "B" }]);
+    const ws = makeWsFactory();
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => `nonce-${mint.calls.length + 1}`,
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => firstMic,
+      createPlaybackAudioContext: () => {
+        const context = playbackContexts[playbackCount];
+        playbackCount += 1;
+        return context;
+      },
+    });
+
+    await client.start();
+    const first = ws.last();
+    first.emitOpen();
+    first.emitControl({ t: "ready", sessionId: "s1", traceId: "T1" });
+    await vi.waitFor(() => expect(client.state.phase).toBe("listening"));
+
+    // Transport loss makes the connection reusable while old mic teardown is
+    // still pending. Starting again during stop exercises lifecycle ownership.
+    first.emitClose(1006, "old transport");
+    const stopping = client.stop();
+    const restarting = client.start();
+    await vi.waitFor(() => expect(playbackCount).toBe(2));
+
+    playbackClose.resolve();
+    await stopping;
+    await restarting;
+    expect(secondPlayback.closed).toBe(false);
+    expect(client.state.phase).toBe("connecting");
+    expect(ws.sockets).toHaveLength(2);
+
+    micClose.resolve();
+    await flush();
+    expect(secondPlayback.closed).toBe(false);
+    expect(client.state.phase).toBe("connecting");
+    await client.stop();
+    expect(secondPlayback.closed).toBe(true);
+  });
+
   it("a retryable server error does NOT tear down the session", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();
@@ -443,7 +916,7 @@ describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
     const client = createVoiceSessionClient({
       agentId: "11111111-1111-1111-1111-111111111111",
       conversationId: "22222222-2222-2222-2222-222222222222",
-      consentNonce: "n",
+      getConsentNonce: async () => "n",
       fetch: mint.fetch,
       webSocketFactory: ws.factory,
       getUserMedia: fakeGetUserMedia(),

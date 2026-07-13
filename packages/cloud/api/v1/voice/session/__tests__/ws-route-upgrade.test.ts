@@ -126,7 +126,7 @@ const baseEnv = {
 
 class FakeServerSocket {
   accepted = false;
-  binaryType = "blob";
+  binaryType: "blob" | "arraybuffer" = "blob";
   accept() {
     this.accepted = true;
   }

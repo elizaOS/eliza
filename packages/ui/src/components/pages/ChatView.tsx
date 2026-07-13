@@ -403,6 +403,7 @@ export function ChatView({
     useRealtimeVoiceMint();
   const {
     beginVoiceCapture,
+    composerVoice,
     endVoiceCapture,
     voiceSession,
     handleEditMessage,
@@ -1020,9 +1021,9 @@ export function ChatView({
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
-          isListening: voice.isListening,
-          captureMode: voice.captureMode,
-          interimTranscript: voice.interimTranscript,
+          isListening: composerVoice.isListening,
+          captureMode: composerVoice.captureMode,
+          interimTranscript: composerVoice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
           startListening: handleMicStartListening,
@@ -1092,9 +1093,9 @@ export function ChatView({
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
-          isListening: voice.isListening,
-          captureMode: voice.captureMode,
-          interimTranscript: voice.interimTranscript,
+          isListening: composerVoice.isListening,
+          captureMode: composerVoice.captureMode,
+          interimTranscript: composerVoice.interimTranscript,
           isSpeaking: voice.isSpeaking,
           assistantTtsQuality: voice.assistantTtsQuality,
           startListening: handleMicStartListening,

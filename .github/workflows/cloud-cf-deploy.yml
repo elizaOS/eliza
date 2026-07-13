@@ -488,8 +488,20 @@ jobs:
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          # Keep this mirror locked to wrangler.toml's env.production value.
+          # The workflow contract test fails if they drift.
+          PRODUCTION_REALTIME_WS_ENABLED: "false"
+          # Production intentionally omits these runtime vars while realtime is
+          # off. Their mirrors are also contract-locked to wrangler.toml so a
+          # future enable cannot deploy a credential-complete but 503-only route.
+          PRODUCTION_REALTIME_CARTESIA_VOICE_ID: ""
+          PRODUCTION_REALTIME_ELIZA_ENDPOINT: ""
           VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
-          VOICE_AMBIENT_PENDANT_AUTHORIZATION: ${{ secrets.VOICE_AMBIENT_PENDANT_AUTHORIZATION }}
+          # Staging may use its existing Cloud key for the Worker-to-gateway
+          # voice bridge. Production MUST use the dedicated authorization and
+          # can never fall back to a repository-wide Cloud key.
+          STAGING_ELIZACLOUD_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZACLOUD_API_KEY || '' }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
           # shared default tenant (#11461). publish_secret no-ops with a notice
@@ -499,6 +511,64 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          has_nonblank_value() {
+            local value="${1:-}"
+            [ -n "${value//[[:space:]]/}" ]
+          }
+
+          # Construct the staging fallback only when the source key is real.
+          # Never publish the invalid-but-nonempty string "Bearer ".
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             ! has_nonblank_value "$VOICE_REALTIME_ELIZA_AUTHORIZATION" && \
+             has_nonblank_value "$STAGING_ELIZACLOUD_API_KEY"; then
+            VOICE_REALTIME_ELIZA_AUTHORIZATION="Bearer $STAGING_ELIZACLOUD_API_KEY"
+            export VOICE_REALTIME_ELIZA_AUTHORIZATION
+          fi
+
+          is_truthy() {
+            case "${1,,}" in
+              1|true|yes|on) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # Production realtime is currently explicitly disabled. A stale
+          # Worker secret may therefore remain stored but is unreachable. If a
+          # future change enables the route, fail that deploy unless every
+          # provider and the dedicated bridge authorization is configured; the
+          # next publish then overwrites any legacy repository-key fallback.
+          # Production never constructs the staging repository-key fallback.
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
+             is_truthy "$PRODUCTION_REALTIME_WS_ENABLED"; then
+            missing_voice_secrets=()
+            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_voice_secrets+=("$name")
+              fi
+            done
+            if [ "${#missing_voice_secrets[@]}" -gt 0 ]; then
+              echo "::error::Production realtime voice is enabled but required dedicated/provider secrets are missing: ${missing_voice_secrets[*]}"
+              exit 1
+            fi
+          fi
+
+          # Staging has VOICE_REALTIME_WS_ENABLED=true in wrangler.toml. Refuse
+          # to deploy that advertised feature unless every required provider
+          # and bridge credential is present; a green deploy with a 503-only
+          # voice route is not an honest availability signal.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            missing_voice_secrets=()
+            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_voice_secrets+=("$name")
+              fi
+            done
+            if [ "${#missing_voice_secrets[@]}" -gt 0 ]; then
+              echo "::error::Realtime voice is enabled for staging but required secrets are missing: ${missing_voice_secrets[*]}"
+              exit 1
+            fi
+          fi
+
           # The Worker is the gateway: it calls native providers directly and
           # uses OpenRouter (BYOK) as the backup. At least one provider key (the
           # OpenRouter backup, or a native key) must be configured.
@@ -510,7 +580,7 @@ jobs:
           publish_secret() {
             local name="$1"
             local value="${!name:-}"
-            if [ -z "$value" ]; then
+            if ! has_nonblank_value "$value"; then
               echo "::notice::$name is not configured; skipping"
               return 0
             fi
@@ -526,15 +596,6 @@ jobs:
             echo "::error::wrangler secret put $name failed after 3 attempts"
             return 1
           }
-
-          if [ "${{ steps.env.outputs.deploy_environment }}" = "staging" ]; then
-            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION VOICE_AMBIENT_PENDANT_AUTHORIZATION; do
-              if [ -z "${!name:-}" ]; then
-                echo "::error::Required staging voice secret is missing: $name"
-                exit 1
-              fi
-            done
-          fi
 
           for name in \
             OPENROUTER_API_KEY \
@@ -553,7 +614,6 @@ jobs:
             DEEPGRAM_API_KEY \
             CARTESIA_API_KEY \
             VOICE_REALTIME_ELIZA_AUTHORIZATION \
-            VOICE_AMBIENT_PENDANT_AUTHORIZATION \
             STEWARD_PLATFORM_KEYS
           do
             publish_secret "$name"
