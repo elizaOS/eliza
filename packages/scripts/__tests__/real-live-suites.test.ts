@@ -143,17 +143,29 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     });
   });
 
-  test("computer-use service actuation is isolated behind an explicit real-lane opt-in", () => {
-    expect(
-      manifest.find(
-        (entry) =>
-          entry.file ===
-          "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
-      ),
-    ).toMatchObject({
-      optIn: "COMPUTER_USE_REAL_DESKTOP_TESTS",
-      blocked: expect.stringContaining("vitest.config.ts excludes"),
+  test("computer-use service actuation is isolated behind a per-command acknowledgment", () => {
+    const entry = manifest.find(
+      (candidate) =>
+        candidate.file ===
+        "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
+    );
+    expect(entry).toMatchObject({
+      blocked: expect.stringContaining("excludes real desktop actuation"),
+      notes: expect.stringContaining("per-command acknowledgment"),
     });
+    expect(entry).not.toHaveProperty("optIn");
+
+    const realSource = fs.readFileSync(
+      path.join(
+        repoRoot,
+        "plugins/plugin-computeruse/src/__tests__/service.real.test.ts",
+      ),
+      "utf8",
+    );
+    expect(realSource).toContain(
+      'process.env.COMPUTER_USE_REAL_DESKTOP_TESTS !== "1"',
+    );
+    expect(realSource).toContain("throw new Error");
 
     const integrationSource = fs.readFileSync(
       path.join(

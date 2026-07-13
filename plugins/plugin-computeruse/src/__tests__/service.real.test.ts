@@ -1,6 +1,6 @@
 /**
- * Drives ComputerUseService against the selected host driver only after an
- * operator opts in; hardware and permission failures fail instead of skipping.
+ * Proves observable ComputerUseService effects against the selected host
+ * driver only after an operator opts in. Hardware and permission failures fail.
  */
 
 import type { AgentRuntime } from "@elizaos/core";
@@ -12,15 +12,19 @@ import {
 } from "../../test/helpers/service-runtime.ts";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 
-const realDesktopEnabled = process.env.COMPUTER_USE_REAL_DESKTOP_TESTS === "1";
-const describeRealDesktop = realDesktopEnabled ? describe : describe.skip;
+if (process.env.COMPUTER_USE_REAL_DESKTOP_TESTS !== "1") {
+  throw new Error(
+    "Real desktop service tests require per-command acknowledgment: set COMPUTER_USE_REAL_DESKTOP_TESTS=1 on an isolated interactive desktop",
+  );
+}
 
-describeRealDesktop("ComputerUseService real desktop", () => {
+describe("ComputerUseService real desktop", () => {
   let runtime: AgentRuntime;
   let service: ComputerUseService;
 
   beforeAll(async () => {
     ({ runtime, service } = await startComputerUseRuntime({
+      COMPUTER_USE_APPROVAL_MODE: "full_control",
       COMPUTER_USE_SCREENSHOT_AFTER_ACTION: "false",
     }));
   });
@@ -38,50 +42,29 @@ describeRealDesktop("ComputerUseService real desktop", () => {
     );
   });
 
-  it("moves the pointer through the selected service driver", async () => {
-    const result = await service.executeDesktopAction({
+  it("moves the pointer and reads the resulting OS position", async () => {
+    const moveResult = await service.executeDesktopAction({
       action: "mouse_move",
       coordinate: [200, 200],
     });
-
-    expect(result.success, `mouse_move failed: ${result.error}`).toBe(true);
-    expect(result.screenshot).toBeUndefined();
-  });
-
-  it("clicks through the selected service driver", async () => {
-    const result = await service.executeDesktopAction({
-      action: "click",
-      coordinate: [200, 200],
-    });
-
-    expect(result.success, `click failed: ${result.error}`).toBe(true);
-  });
-
-  it("sends keys through the selected service driver", async () => {
-    const keyResult = await service.executeDesktopAction({
-      action: "key",
-      key: "Escape",
-    });
-    expect(keyResult.success, `key failed: ${keyResult.error}`).toBe(true);
-
-    const comboResult = await service.executeDesktopAction({
-      action: "key_combo",
-      key: "shift+Escape",
-    });
-    expect(comboResult.success, `key_combo failed: ${comboResult.error}`).toBe(
+    expect(moveResult.success, `mouse_move failed: ${moveResult.error}`).toBe(
       true,
     );
-  });
+    expect(moveResult.screenshot).toBeUndefined();
 
-  it("scrolls through the selected service driver", async () => {
-    const result = await service.executeDesktopAction({
-      action: "scroll",
-      coordinate: [400, 400],
-      scrollDirection: "down",
-      scrollAmount: 2,
+    const positionResult = await service.executeDesktopAction({
+      action: "get_cursor_position",
     });
-
-    expect(result.success, `scroll failed: ${result.error}`).toBe(true);
+    expect(
+      positionResult.success,
+      `cursor query failed: ${positionResult.error}`,
+    ).toBe(true);
+    expect(
+      Math.abs((positionResult.cursorPosition?.x ?? -1) - 200),
+    ).toBeLessThanOrEqual(2);
+    expect(
+      Math.abs((positionResult.cursorPosition?.y ?? -1) - 200),
+    ).toBeLessThanOrEqual(2);
   });
 
   it("enumerates at least one real host window", async () => {

@@ -48,9 +48,10 @@ bunx vitest run plugins/plugin-computeruse/src/__tests__/cua-parity-input.real.t
   --config packages/test/vitest/real.config.ts
 ```
 
-The service-level lane captures the display and actuates the pointer, keyboard,
-and scroll wheel. Run it only on an isolated interactive desktop and acknowledge
-those effects explicitly:
+The service-level lane captures the display and moves the pointer, then reads
+the OS cursor position back to prove the driver effect. Run it only on an
+isolated interactive desktop and acknowledge those effects explicitly. A direct
+invocation without the acknowledgment fails before the suite starts:
 
 ```bash
 COMPUTER_USE_REAL_DESKTOP_TESTS=1 bunx vitest run \

@@ -20,10 +20,7 @@ export async function startComputerUseRuntime(
     character: createCharacter({
       id: stringToUuid(`computeruse-service-${crypto.randomUUID()}`),
       name: "ComputerUseServiceTestAgent",
-      settings: {
-        COMPUTER_USE_APPROVAL_MODE: "full_control",
-        ...settings,
-      },
+      settings,
     }),
     adapter: new InMemoryDatabaseAdapter(),
     enableAutonomy: false,
