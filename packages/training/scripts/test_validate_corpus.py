@@ -1,3 +1,5 @@
+"""Validates native and formatted corpus rows at their privacy boundaries."""
+
 from __future__ import annotations
 
 import json
@@ -134,3 +136,48 @@ def test_validate_corpus_accepts_distinct_native_content(tmp_path: Path) -> None
     parsed = json.loads(report.read_text(encoding="utf-8"))
     assert code == 0
     assert parsed["invalid_records"] == 0
+
+
+def test_validate_corpus_accepts_canonical_formatted_messages(tmp_path: Path) -> None:
+    source = tmp_path / "messages.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "messages": [
+                    {"role": "user", "content": "hello"},
+                    {"role": "assistant", "content": "hello"},
+                ]
+            }
+        ],
+    )
+    report = tmp_path / "report.json"
+
+    code = validate_corpus_run(source, report, strict=True, max_records=None)
+
+    assert code == 0
+    assert json.loads(report.read_text(encoding="utf-8"))["invalid_records"] == 0
+
+
+def test_validate_corpus_rejects_unredacted_formatted_messages(tmp_path: Path) -> None:
+    source = tmp_path / "messages.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "messages": [
+                    {"role": "user", "content": "email fixture.owner@example.test"},
+                    {"role": "assistant", "content": "noted"},
+                ]
+            }
+        ],
+    )
+    report = tmp_path / "report.json"
+
+    code = validate_corpus_run(source, report, strict=True, max_records=None)
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 1
+    assert parsed["errors_by_task_type"]["__none__"][
+        "formatted_messages_not_canonical"
+    ] == 1

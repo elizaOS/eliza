@@ -361,11 +361,12 @@ uv run --extra train python scripts/train_local.py \
     --val-file data/final-eliza1-smoke/val.jsonl \
     --preflight-only
 # → "low-vram-smoke preset → seq=2048 batch=1 accum=16 ... budget=11.5GB"
-# → "preflight ok: train=314/314 validation=39/39 optimizer=apollo_mini rank=1"
+# → "preflight ok: train=16/16 validation=2/2 optimizer=apollo_mini rank=1"
 ```
 
 **Measured on RTX 3060 (12 GB, WSL2 Ubuntu, torch 2.12.0+cu130, no Liger
-JIT toolchain available, 314 smoke records in `data/final-eliza1-smoke/`):**
+JIT toolchain available, using the 20-row synthetic fixture in
+`data/final-eliza1-smoke/`):**
 
 | tier | preflight | peak VRAM (load + step 0) | notes                                               |
 |------|-----------|---------------------------|-----------------------------------------------------|
@@ -379,8 +380,8 @@ the budget by more than 10 %.
 **Trade-offs:**
 
 - Training context window drops from 4–8k to 2k. Records longer than ~2k
-  rendered chars are right-truncated by the tokenizer. The smoke
-  trajectory dataset already fits inside 2k; for the real native
+  rendered chars are right-truncated by the tokenizer. The synthetic smoke
+  fixture fits inside 2k; for a real native
   trajectory corpus pass `--max-chars 6000` (≈3× seq_len) so the
   char-filter rejects oversized rows up front rather than wasting them.
 - Long-context behaviors (multi-turn agent traces, long tool outputs)

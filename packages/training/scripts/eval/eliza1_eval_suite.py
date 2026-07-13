@@ -77,7 +77,8 @@ _LLAMA_PROCESS_RE = re.compile(
 # Source of truth: the eliza-1 training dataset's held-out test split (also
 # published as ``elizaos/eliza-1-training/test.jsonl``). The eval suite reads it at boot,
 # extracts the assistant-turn text from each ``{"messages":[...]}`` row, and
-# uses that concatenation as the perplexity corpus.
+# uses that concatenation as the perplexity corpus. The tracked synthetic smoke
+# split is only an offline pipeline fallback; it is not release-quality evidence.
 #
 # The previous 5-paragraph hand-typed fallback is kept ONLY as the absolute
 # last-resort when neither the local dataset checkout nor the operator's

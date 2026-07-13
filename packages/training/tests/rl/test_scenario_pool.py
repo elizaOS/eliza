@@ -24,6 +24,13 @@ from src.training.scenario_pool import (
     SocialPost,
 )
 
+
+@pytest.fixture(autouse=True)
+def isolated_eliza_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Keep curriculum checkpoints out of both the checkout and user state."""
+
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / "eliza-state"))
+
 # =============================================================================
 # Data Structure Tests
 # =============================================================================
@@ -450,6 +457,15 @@ class TestScenarioPool:
 
         assert len(pool.scenarios) == 0
         assert pool._sample_counter == 0
+
+    def test_default_curriculum_checkpoint_uses_state_dir(
+        self, tmp_path: Path
+    ) -> None:
+        config = ScenarioPoolConfig()
+
+        assert Path(config.curriculum_checkpoint_path) == (
+            tmp_path / "eliza-state" / "training" / "curriculum_state.json"
+        )
 
     def test_generate_synthetic_batch(self):
         config = ScenarioPoolConfig()

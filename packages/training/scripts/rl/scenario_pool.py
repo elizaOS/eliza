@@ -17,6 +17,7 @@ Features:
 
 import json
 import logging
+import os
 import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -28,6 +29,22 @@ import numpy as np
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+
+def _default_curriculum_checkpoint_path() -> str:
+    """Resolve mutable curriculum state through the runtime state contract."""
+
+    configured = os.environ.get("ELIZA_STATE_DIR")
+    if configured:
+        state_dir = Path(configured).expanduser()
+    else:
+        xdg_state_home = os.environ.get("XDG_STATE_HOME")
+        state_dir = (
+            Path(xdg_state_home).expanduser() / "eliza"
+            if xdg_state_home
+            else Path.home() / ".local" / "state" / "eliza"
+        )
+    return str(state_dir / "training" / "curriculum_state.json")
 
 
 # =============================================================================
@@ -490,7 +507,7 @@ class ScenarioPoolConfig(BaseModel):
     # Curriculum settings
     use_curriculum: bool = Field(default=True, description="Enable curriculum learning")
     curriculum_checkpoint_path: str = Field(
-        default="./curriculum_state.json",
+        default_factory=_default_curriculum_checkpoint_path,
         description="Path to curriculum state checkpoint",
     )
 

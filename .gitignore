@@ -392,7 +392,7 @@ tasks/
 !packages/benchmarks/swe-bench-multilingual/tests/test_data/**
 !packages/benchmarks/swe-bench-pro/helper_code/data/
 !packages/benchmarks/swe-bench-pro/helper_code/data/**
-# eliza-1 smoke corpus: ~400-row e2e SFT pipeline validator, kept in
+# eliza-1 smoke corpus: 20-row synthetic SFT pipeline validator, kept in
 # git so the pipeline can be smoke-tested from a fresh clone. The
 # `**/data/` rule above swallows the parent dir, so re-include each
 # segment before re-including the smoke corpus contents.
@@ -984,7 +984,6 @@ waifu.fun/
 /packages/benchmarks/claw-eval/tasks/M037_video_food_shop_search/fixtures/gt_7.png
 /packages/research/robot/assets/profiles/asimov-1/meshes/RIGHT_ANKLE_B.STL
 /packages/research/chip/board/kicad/e1-phone/preview/schematic/e1-phone-compute.svg
-/packages/training/data/final-eliza1-smoke/train.jsonl
 /packages/benchmarks/claw-eval/tasks/M037_video_food_shop_search/fixtures/gt_8.png
 /packages/benchmarks/claw-eval/tasks/M098_video_craft_webpage/fixtures/gt_5.png
 /packages/benchmarks/claw-eval/tasks/M037_video_food_shop_search/fixtures/gt_3.png
@@ -1263,7 +1262,6 @@ waifu.fun/
 /plugins/plugin-companion/public_src/animations/mixamo/Relieved Sigh.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Thankful.fbx
 /packages/benchmarks/swe-bench-pro/run_scripts/instance_NodeBB__NodeBB-4030f18a0432ffc17d887d739bcfafb1b6a75509-vd500ebb181b1d24b9e1e74f2495555de5431c8d0/instance_info.txt
-/packages/training/data/final-eliza1-smoke/test.jsonl
 /plugins/plugin-companion/public/animations/emotes/greeting.fbx
 /plugins/plugin-companion/public_src/animations/mixamo/Salute.fbx
 /plugins/plugin-local-inference/native/verify/cuda_verify
@@ -1424,7 +1422,6 @@ waifu.fun/
 /packages/ui/src/first-run/__e2e__/output/03-mobile-choose-cloud-connected.png
 /packages/app-core/platforms/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
 /packages/elizaos/templates/project/apps/app/electrobun/assets/appIcon.iconset/icon_512x512@2x.png
-/packages/training/data/final-eliza1-smoke/val.jsonl
 /packages/app/public/brand/concepts/concept_phone.jpg
 /packages/os/homepage/public/assets/concept_phone.jpg
 /packages/os/homepage/public/brand/concepts/concept_phone.jpg

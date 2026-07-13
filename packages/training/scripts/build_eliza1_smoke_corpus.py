@@ -1,342 +1,272 @@
 #!/usr/bin/env python3
-"""Build the eliza-1-smoke SFT corpus.
+"""Build the tracked Eliza-1 pipeline-smoke corpus from synthetic records.
 
-This is an ultra-light corpus intended to validate the e2e SFT pipeline
-(format_record -> train_local). It is NOT a real fine-tune mix. The
-recipe is intentionally small:
-
-  * `N_PER_NORMALIZED` rows per normalized dataset under
-    `packages/training/data/normalized/<source>.jsonl` (deterministic
-    sample by `random.Random(SEED).sample(...)`).
-  * `N_FROM_SFT_0_6B` rows from `datasets/eliza1-sft-0_6b/train.jsonl`
-    so the chat_messages schema path is exercised.
-  * `N_FROM_FINAL_MIX` rows from `data/final/train.jsonl` so the broad
-    mixed-final pipeline is exercised.
-  * Recent Eliza scenario trajectories from `~/.eliza/trajectories/`
-    (or the path in `ELIZA_TRAJECTORY_DIR`), converted to the
-    `eliza_native_v1` boundary record shape that
-    `format_for_training.format_record` accepts. Filtered to the last
-    `TRAJECTORY_DAYS` days, capped at `TRAJECTORY_CAP`.
-
-Every emitted row is passed through `format_record` which itself applies
-the canonical Python privacy filter
-(`privacy_filter_trajectories.redact_value`). The privacy contract is
-the same one the real corpus uses; trajectory data never leaves this
-script without the filter being applied.
-
-Output: `data/final-eliza1-smoke/{train,val,test}.jsonl` plus
-`manifest.json` documenting sources, sample-per-source counts, the
-trajectory filter, and the random seed.
-
-Splits: 80% train / 10% val / 10% test, deterministic shuffle.
+The source fixture assigns each row to a split and marks it synthetic. The
+builder writes only the object returned by ``format_record`` so the canonical
+privacy filter is the serialization boundary, then records content hashes for
+the complete regeneration chain in a deterministic manifest.
 """
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
-import os
-import random
+import re
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
+SCRIPT_PATH = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import format_record  # noqa: E402
-from sample_native_trajectory_alignment import (  # noqa: E402
-    native_rows_from_recorded_trajectory,
-)
 
-NORMALIZED_DIR = ROOT / "data" / "normalized"
-SFT_0_6B = ROOT / "datasets" / "eliza1-sft-0_6b" / "train.jsonl"
-FINAL_TRAIN = ROOT / "data" / "final" / "train.jsonl"
+SOURCE_PATH = ROOT / "fixtures" / "eliza1-smoke-source.jsonl"
 OUT_DIR = ROOT / "data" / "final-eliza1-smoke"
+FORMATTER_PATH = ROOT / "scripts" / "format_for_training.py"
+PRIVACY_FILTER_PATH = ROOT / "scripts" / "privacy_filter_trajectories.py"
 
-SEED = 42
-N_PER_NORMALIZED = 3
-N_FROM_SFT_0_6B = 10
-N_FROM_FINAL_MIX = 10
-TRAJECTORY_DAYS = 7
-TRAJECTORY_CAP = 100
-
-TRAIN_FRAC = 0.8
-VAL_FRAC = 0.1
-# test = remainder so the three fractions sum exactly to 1
+SOURCE_SCHEMA = "eliza.synthetic_smoke_source.v1"
+MANIFEST_SCHEMA = "eliza.eliza1_smoke_corpus_manifest.v2"
+GENERATOR_REVISION = 2
+SPLIT_NAMES = ("train", "val", "test")
+SOURCE_FIELDS = {"schema", "id", "split", "synthetic", "record"}
+SOURCE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,95}$")
 
 
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    if not path.exists():
-        return rows
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
+def _sha256_bytes(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _repo_reference(path: Path) -> tuple[str, bool]:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(ROOT.resolve()).as_posix(), True
+    except ValueError:
+        # Custom sources used by tests/operators must not leak machine-local
+        # absolute paths into the manifest.
+        return f"external/sha256:{_sha256_file(resolved)[:16]}", False
+
+
+def _jsonl_bytes(rows: list[dict[str, Any]]) -> bytes:
+    lines = [
+        json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        for row in rows
+    ]
+    return ("\n".join(lines) + ("\n" if lines else "")).encode("utf-8")
+
+
+def _load_and_format_source(
+    source_path: Path,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[str]]]:
+    """Validate the synthetic envelope and return privacy-filtered rows."""
+
+    splits: dict[str, list[dict[str, Any]]] = {name: [] for name in SPLIT_NAMES}
+    ids: dict[str, list[str]] = {name: [] for name in SPLIT_NAMES}
+    seen_ids: set[str] = set()
+
+    with source_path.open(encoding="utf-8") as source:
+        for line_number, raw_line in enumerate(source, start=1):
+            if not raw_line.strip():
+                raise ValueError(
+                    f"{source_path}:{line_number}: blank JSONL rows are not allowed"
+                )
             try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    return rows
+                envelope = json.loads(raw_line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"{source_path}:{line_number}: invalid JSON: {exc.msg}"
+                ) from exc
+            if not isinstance(envelope, dict):
+                raise ValueError(
+                    f"{source_path}:{line_number}: source row must be an object"
+                )
+
+            fields = set(envelope)
+            if fields != SOURCE_FIELDS:
+                missing = sorted(SOURCE_FIELDS - fields)
+                unexpected = sorted(fields - SOURCE_FIELDS)
+                raise ValueError(
+                    f"{source_path}:{line_number}: source envelope fields differ; "
+                    f"missing={missing}, unexpected={unexpected}"
+                )
+            if envelope["schema"] != SOURCE_SCHEMA:
+                raise ValueError(
+                    f"{source_path}:{line_number}: expected schema {SOURCE_SCHEMA!r}"
+                )
+            if envelope["synthetic"] is not True:
+                raise ValueError(
+                    f"{source_path}:{line_number}: source row must declare synthetic=true"
+                )
+
+            row_id = envelope["id"]
+            if not isinstance(row_id, str) or SOURCE_ID_RE.fullmatch(row_id) is None:
+                raise ValueError(
+                    f"{source_path}:{line_number}: id must match {SOURCE_ID_RE.pattern!r}"
+                )
+            if row_id in seen_ids:
+                raise ValueError(
+                    f"{source_path}:{line_number}: duplicate id {row_id!r}"
+                )
+            seen_ids.add(row_id)
+
+            split = envelope["split"]
+            if not isinstance(split, str) or split not in splits:
+                raise ValueError(
+                    f"{source_path}:{line_number}: split must be one of {SPLIT_NAMES}"
+                )
+            record = envelope["record"]
+            if not isinstance(record, dict):
+                raise ValueError(
+                    f"{source_path}:{line_number}: record must be an object"
+                )
+
+            formatted = format_record(record)
+            if formatted is None:
+                raise ValueError(
+                    f"{source_path}:{line_number}: format_record rejected source id {row_id!r}"
+                )
+
+            # This returned object is the privacy-filtered representation. It
+            # is deliberately the only record that can cross the write boundary.
+            splits[split].append(formatted)
+            ids[split].append(row_id)
+
+    if not seen_ids:
+        raise ValueError(f"{source_path}: source fixture is empty")
+    return splits, ids
 
 
-def _sample_normalized() -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Sample N_PER_NORMALIZED format_record-valid rows from each source."""
+def build_artifacts(source_path: Path = SOURCE_PATH) -> dict[str, bytes]:
+    """Return every generated artifact as deterministic UTF-8 bytes."""
 
-    by_source: dict[str, int] = {}
-    out: list[dict[str, Any]] = []
-    if not NORMALIZED_DIR.exists():
-        return out, by_source
-
-    files = sorted(
-        p for p in NORMALIZED_DIR.glob("*.jsonl") if not p.name.endswith(".errors.jsonl")
-    )
-    for path in files:
-        source = path.stem
-        rows = _load_jsonl(path)
-        # Pre-filter to format_record-valid rows so we don't waste a sample slot
-        # on a row train_local would reject. Cap the candidate pool to keep
-        # the script fast (the smoke corpus only needs a handful per source).
-        candidates: list[dict[str, Any]] = []
-        for rec in rows[: max(N_PER_NORMALIZED * 30, 60)]:
-            if format_record(rec) is not None:
-                candidates.append(rec)
-            if len(candidates) >= N_PER_NORMALIZED * 5:
-                break
-        if not candidates:
-            continue
-        rng = random.Random(_seed_for(source))
-        take = min(N_PER_NORMALIZED, len(candidates))
-        sampled = rng.sample(candidates, take)
-        for rec in sampled:
-            # Tag provenance so the manifest + downstream auditors can
-            # trace each row back to its normalized source.
-            metadata = rec.get("metadata") if isinstance(rec.get("metadata"), dict) else {}
-            new_meta = dict(metadata)
-            new_meta.setdefault("source_dataset", source)
-            new_meta["smoke_corpus_source"] = f"normalized/{source}"
-            rec["metadata"] = new_meta
-            out.append(rec)
-        by_source[source] = take
-    return out, by_source
-
-
-def _sample_jsonl_file(path: Path, n: int, tag: str) -> list[dict[str, Any]]:
-    rows = _load_jsonl(path)
-    if not rows:
-        return []
-    rng = random.Random(_seed_for(tag))
-    # Pre-filter so we don't bias toward unrenderable rows
-    candidates: list[dict[str, Any]] = []
-    for rec in rows[: max(n * 30, 100)]:
-        if format_record(rec) is not None:
-            candidates.append(rec)
-        if len(candidates) >= n * 5:
-            break
-    if not candidates:
-        return []
-    take = min(n, len(candidates))
-    sampled = rng.sample(candidates, take)
-    for rec in sampled:
-        metadata = rec.get("metadata") if isinstance(rec.get("metadata"), dict) else {}
-        if isinstance(metadata, dict):
-            new_meta = dict(metadata)
-            new_meta["smoke_corpus_source"] = tag
-            rec["metadata"] = new_meta
-    return sampled
-
-
-def _seed_for(label: str) -> int:
-    digest = hashlib.sha256(f"{SEED}:{label}".encode("utf-8")).hexdigest()
-    return int(digest[:16], 16)
-
-
-def _trajectory_rows() -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Collect recent Eliza runtime trajectories, convert to eliza_native_v1."""
-
-    state_root = Path(os.environ.get("ELIZA_TRAJECTORY_DIR") or Path.home() / ".eliza" / "trajectories")
-    info: dict[str, Any] = {
-        "path": str(state_root),
-        "exists": state_root.exists(),
-        "cutoff_days": TRAJECTORY_DAYS,
-        "cap": TRAJECTORY_CAP,
-        "files_scanned": 0,
-        "files_in_window": 0,
-        "rows_produced": 0,
-        "skipped_reason": None,
-        "oldest_mtime": None,
-        "newest_mtime": None,
+    source_path = source_path.resolve()
+    splits, ids = _load_and_format_source(source_path)
+    split_artifacts = {
+        f"{name}.jsonl": _jsonl_bytes(splits[name]) for name in SPLIT_NAMES
     }
-    if not state_root.exists():
-        info["skipped_reason"] = "trajectory directory does not exist"
-        return [], info
+    source_reference, source_controlled = _repo_reference(source_path)
 
-    cutoff = datetime.now(tz=timezone.utc).timestamp() - TRAJECTORY_DAYS * 86400
-    candidates: list[Path] = []
-    oldest, newest = None, None
-    for path in state_root.rglob("*.json"):
-        info["files_scanned"] += 1
-        try:
-            mtime = path.stat().st_mtime
-        except OSError:
-            continue
-        if oldest is None or mtime < oldest:
-            oldest = mtime
-        if newest is None or mtime > newest:
-            newest = mtime
-        if mtime >= cutoff:
-            candidates.append(path)
-    info["files_in_window"] = len(candidates)
-    info["oldest_mtime"] = (
-        datetime.fromtimestamp(oldest, tz=timezone.utc).isoformat() if oldest else None
-    )
-    info["newest_mtime"] = (
-        datetime.fromtimestamp(newest, tz=timezone.utc).isoformat() if newest else None
-    )
+    split_manifest = {}
+    for name in SPLIT_NAMES:
+        content = split_artifacts[f"{name}.jsonl"]
+        split_manifest[name] = {
+            "bytes": len(content),
+            "ids": ids[name],
+            "rows": len(splits[name]),
+            "sha256": _sha256_bytes(content),
+        }
 
-    if not candidates:
-        info["skipped_reason"] = "no trajectory files in window"
-        return [], info
-
-    rng = random.Random(_seed_for("trajectories"))
-    rng.shuffle(candidates)
-    candidates = candidates[: TRAJECTORY_CAP * 3]
-
-    rows: list[dict[str, Any]] = []
-    for path in candidates:
-        try:
-            trajectory = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if not isinstance(trajectory, dict):
-            continue
-        if not trajectory.get("trajectoryId") or not isinstance(trajectory.get("stages"), list):
-            continue
-        produced = native_rows_from_recorded_trajectory(trajectory, path)
-        for row in produced:
-            # The native rows already carry metadata.source_dataset =
-            # "real_eliza_runtime"; tag the smoke source so the manifest +
-            # downstream auditors can identify this slice.
-            md = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
-            new_md = dict(md)
-            new_md["smoke_corpus_source"] = "eliza_runtime_trajectories"
-            row["metadata"] = new_md
-            rows.append(row)
-            if len(rows) >= TRAJECTORY_CAP:
-                break
-        if len(rows) >= TRAJECTORY_CAP:
-            break
-
-    info["rows_produced"] = len(rows)
-    return rows, info
-
-
-def _split(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    rng = random.Random(_seed_for("shuffle"))
-    rng.shuffle(rows)
-    n = len(rows)
-    n_train = int(round(n * TRAIN_FRAC))
-    n_val = int(round(n * VAL_FRAC))
-    n_test = n - n_train - n_val
-    if n_test < 0:
-        n_test = 0
-        n_train = n - n_val
-    return {
-        "train": rows[:n_train],
-        "val": rows[n_train : n_train + n_val],
-        "test": rows[n_train + n_val :],
+    manifest = {
+        "schema": MANIFEST_SCHEMA,
+        "purpose": (
+            "Tiny synthetic fixture for exercising corpus formatting and the "
+            "end-to-end SFT pipeline; it is not a quality-training corpus."
+        ),
+        "generator": {
+            "path": SCRIPT_PATH.relative_to(ROOT).as_posix(),
+            "revision": GENERATOR_REVISION,
+            "sha256": _sha256_file(SCRIPT_PATH),
+        },
+        "source": {
+            "external_sources": [],
+            "kind": "synthetic",
+            "license": "MIT",
+            "path": source_reference,
+            "rows": sum(len(rows) for rows in splits.values()),
+            "schema": SOURCE_SCHEMA,
+            "sha256": _sha256_file(source_path),
+            "source_controlled": source_controlled,
+        },
+        "transforms": {
+            "formatter": {
+                "path": FORMATTER_PATH.relative_to(ROOT).as_posix(),
+                "sha256": _sha256_file(FORMATTER_PATH),
+            },
+            "privacy_filter": {
+                "applied": True,
+                "path": PRIVACY_FILTER_PATH.relative_to(ROOT).as_posix(),
+                "sha256": _sha256_file(PRIVACY_FILTER_PATH),
+            },
+        },
+        "serialization": {
+            "encoding": "utf-8",
+            "json": "compact with lexicographically sorted object keys",
+            "newline": "LF",
+            "record": "exact object returned by format_record",
+            "split_assignment": "explicit source envelope; source order preserved",
+        },
+        "splits": split_manifest,
+        "totals": {
+            "bytes": sum(len(content) for content in split_artifacts.values()),
+            "rows": sum(len(rows) for rows in splits.values()),
+        },
     }
+    manifest_bytes = (
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    return {**split_artifacts, "manifest.json": manifest_bytes}
 
 
-def _validate_rows(rows: Iterable[dict[str, Any]]) -> tuple[int, int]:
-    ok = 0
-    fail = 0
-    for rec in rows:
-        if format_record(rec) is not None:
-            ok += 1
-        else:
-            fail += 1
-    return ok, fail
+def write_artifacts(artifacts: dict[str, bytes], output_dir: Path = OUT_DIR) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for filename, content in artifacts.items():
+        (output_dir / filename).write_bytes(content)
+
+
+def artifact_mismatches(
+    artifacts: dict[str, bytes], output_dir: Path = OUT_DIR
+) -> list[str]:
+    mismatches: list[str] = []
+    for filename, expected in artifacts.items():
+        path = output_dir / filename
+        if not path.exists():
+            mismatches.append(f"missing {path}")
+        elif path.read_bytes() != expected:
+            mismatches.append(f"stale {path}")
+    return mismatches
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", type=Path, default=SOURCE_PATH)
+    parser.add_argument("--output-dir", type=Path, default=OUT_DIR)
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify tracked artifacts byte-for-byte without writing",
+    )
+    return parser.parse_args()
 
 
 def main() -> int:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    normalized_rows, by_normalized = _sample_normalized()
-    sft_rows = _sample_jsonl_file(SFT_0_6B, N_FROM_SFT_0_6B, "datasets/eliza1-sft-0_6b/train.jsonl")
-    final_rows = _sample_jsonl_file(FINAL_TRAIN, N_FROM_FINAL_MIX, "data/final/train.jsonl")
-    trajectory_rows, trajectory_info = _trajectory_rows()
-
-    all_rows = normalized_rows + sft_rows + final_rows + trajectory_rows
-    print(f"normalized rows: {len(normalized_rows)} from {len(by_normalized)} sources")
-    print(f"sft_0_6b rows: {len(sft_rows)}")
-    print(f"final mix rows: {len(final_rows)}")
-    print(f"trajectory rows: {len(trajectory_rows)} ({trajectory_info.get('skipped_reason') or 'ok'})")
-    print(f"total before split: {len(all_rows)}")
-
-    splits = _split(all_rows)
-
-    # Final validation pass: every emitted row MUST be format_record-valid
-    # (because train_local.py drives them through format_record).
-    counts: dict[str, dict[str, int]] = {}
-    for name, rows in splits.items():
-        ok, fail = _validate_rows(rows)
-        counts[name] = {"total": len(rows), "format_record_ok": ok, "format_record_failed": fail}
-        path = OUT_DIR / f"{name}.jsonl"
-        with path.open("w", encoding="utf-8") as f:
-            for rec in rows:
-                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        print(f"{name}: wrote {len(rows)} rows (format_record ok={ok}, failed={fail}) -> {path}")
-        if fail:
-            print(f"  FAIL: {name} has {fail} rows that format_record rejected", file=sys.stderr)
+    args = _parse_args()
+    artifacts = build_artifacts(args.source)
+    if args.check:
+        mismatches = artifact_mismatches(artifacts, args.output_dir)
+        if mismatches:
+            for mismatch in mismatches:
+                print(mismatch, file=sys.stderr)
             return 1
+        print(f"smoke corpus is reproducible: {len(artifacts)} artifacts match")
+        return 0
 
-    manifest = {
-        "schema": "eliza.eliza1_smoke_corpus_manifest.v1",
-        "purpose": "ultra-light smoke corpus to validate the e2e SFT pipeline. NOT a real fine-tune mix.",
-        "build_date": datetime.now(tz=timezone.utc).isoformat(),
-        "seed": SEED,
-        "splits": counts,
-        "totals": {
-            "rows": sum(c["total"] for c in counts.values()),
-            "format_record_ok": sum(c["format_record_ok"] for c in counts.values()),
-        },
-        "sources": {
-            "normalized": {
-                "n_per_source": N_PER_NORMALIZED,
-                "source_count": len(by_normalized),
-                "rows": len(normalized_rows),
-                "by_source": by_normalized,
-            },
-            "eliza1_sft_0_6b": {
-                "path": str(SFT_0_6B.relative_to(ROOT)),
-                "rows": len(sft_rows),
-            },
-            "final_mix": {
-                "path": str(FINAL_TRAIN.relative_to(ROOT)),
-                "rows": len(final_rows),
-            },
-            "eliza_runtime_trajectories": trajectory_info,
-        },
-        "privacy_filter": {
-            "applied": True,
-            "module": "scripts/format_for_training.py via scripts/privacy_filter_trajectories.py",
-            "note": "format_record() applies the canonical Python port of the app-training privacy filter to every emitted record. There is no bypass path.",
-        },
-        "split_ratios": {
-            "train": TRAIN_FRAC,
-            "val": VAL_FRAC,
-            "test": round(1.0 - TRAIN_FRAC - VAL_FRAC, 6),
-        },
-    }
-    (OUT_DIR / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
+    write_artifacts(artifacts, args.output_dir)
+    manifest = json.loads(artifacts["manifest.json"])
+    counts = ", ".join(
+        f"{name}={manifest['splits'][name]['rows']}" for name in SPLIT_NAMES
     )
-    print(f"wrote {OUT_DIR / 'manifest.json'}")
+    print(f"wrote deterministic synthetic smoke corpus ({counts}) to {args.output_dir}")
     return 0
 
 

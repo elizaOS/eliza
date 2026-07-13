@@ -214,18 +214,10 @@ def build_dataset(
             text = tokenizer.apply_chat_template(**kwargs)
         return {"text": text}
 
-    # pyarrow requires homogeneous column types across all rows. The smoke
-    # corpus mixes records with nested message shapes (Vercel-AI-SDK tool-call
-    # blocks vs OpenAI/ChatML tool_calls vs plain string content) which trips
-    # "cannot mix list and non-list, non-null values" in Dataset.from_list.
-    # Surfaced 2026-05-14 in the smoke v2 H200 run — 4/4 SFT tiers crashed
-    # immediately after `formatted train 314/314 records` with this error.
-    # Fix: pre-render to {"text": str} so the only column is a string column;
-    # arrow has no trouble with that. The render() call also surfaces rows
-    # whose content shape Gemma 4's chat template can't apply (e.g. assistant
-    # content as a list of tool-call blocks instead of string + tool_calls
-    # field) — we log + skip those rather than fail the whole split, since
-    # format_record's translation layer is the real long-term fix.
+    # PyArrow needs homogeneous column types, while native tool calls and plain
+    # messages have different nested shapes. Pre-rendering leaves one string
+    # column and also exercises the target tokenizer's chat template before
+    # Dataset construction.
     pre_rendered: list[dict[str, str]] = []
     template_skipped: dict[str, int] = {}
     for row in formatted:
