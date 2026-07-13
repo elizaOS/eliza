@@ -4,6 +4,9 @@
  */
 
 export type {
+  AccountRoutingTier,
+  AccountUseCase,
+  AccountUseCaseRouting,
   DeploymentTargetConfig,
   DeploymentTargetRuntime,
   LinkedAccountAccountSource,
@@ -23,6 +26,7 @@ export type {
   ServiceRoutingConfig,
   ServiceTransport,
 } from "@elizaos/contracts";
+export { ACCOUNT_USE_CASES } from "@elizaos/contracts";
 
 import type {
   DeploymentTargetConfig,

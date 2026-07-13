@@ -14,10 +14,12 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { AlertTriangle, Plus, RotateCw } from "lucide-react";
+import { AlertTriangle, Plus, RotateCw, Route } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type {
+  AccountRoutingTier,
   AccountStrategy,
+  AccountUseCaseId,
   AccountWithCredentialFlag,
 } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";
@@ -34,6 +36,9 @@ import {
 } from "./AddAccountDialog";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 import { readSubscriptionOAuth } from "./subscription-oauth-state";
+import { UseCaseRouting } from "./UseCaseRouting";
+
+const USE_CASES: AccountUseCaseId[] = ["chat", "codingAgent"];
 
 interface AccountManagementPanelProps {
   activeSubscriptionId?: SubscriptionProviderSelectionId | null;
@@ -78,6 +83,7 @@ export function AccountManagementPanel({
   );
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [showAvailable, setShowAvailable] = useState(false);
+  const [showRouting, setShowRouting] = useState(false);
 
   const providerMap = useMemo(() => {
     return new Map(
@@ -158,6 +164,35 @@ export function AccountManagementPanel({
         }
         throw err;
       }
+    },
+    [accounts],
+  );
+
+  // Providers eligible per use case, derived from runtime eligibility with a
+  // conservative fallback. Drives the routing chain add-picker so a user can
+  // only chain providers that can actually serve that use case.
+  const eligibleByUseCase = useMemo(() => {
+    const chat: LinkedAccountProviderId[] = [];
+    const codingAgent: LinkedAccountProviderId[] = [];
+    for (const option of ACCOUNT_PROVIDER_OPTIONS) {
+      const provider = providerMap.get(option.id);
+      const runtime = provider?.runtimeEligibility;
+      const isChat = runtime
+        ? runtime.chat
+        : option.category === "chat" && !option.unavailable;
+      const isCoding = runtime ? runtime.codingAgent : !option.unavailable;
+      if (isChat) chat.push(option.id);
+      if (isCoding) codingAgent.push(option.id);
+    }
+    return { chat, codingAgent } as Record<
+      AccountUseCaseId,
+      LinkedAccountProviderId[]
+    >;
+  }, [providerMap]);
+
+  const setRouting = useCallback(
+    (useCase: AccountUseCaseId, tiers: AccountRoutingTier[]) => {
+      void accounts.setRouting(useCase, tiers);
     },
     [accounts],
   );
@@ -248,6 +283,53 @@ export function AccountManagementPanel({
           {t("accounts.add.button", { defaultValue: "Add account" })}
         </Button>
       </div>
+
+      {/* ── Use-case fallback routing (progressive disclosure) ── */}
+      {!nothingConnected ? (
+        <div className="grid gap-2">
+          <button
+            type="button"
+            onClick={() => setShowRouting((v) => !v)}
+            className="flex w-full items-center gap-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong focus:outline-none focus-visible:text-txt-strong"
+            aria-expanded={showRouting}
+          >
+            <Route className="h-3.5 w-3.5" aria-hidden />
+            <span
+              className={cn(
+                "inline-block transition-transform",
+                showRouting && "rotate-90",
+              )}
+              aria-hidden
+            >
+              ›
+            </span>
+            {t("accounts.routing.sectionTitle", {
+              defaultValue: "Use cases & fallback order",
+            })}
+          </button>
+          {showRouting ? (
+            <div className="grid gap-2">
+              <p className="text-[11px] leading-4 text-muted">
+                {t("accounts.routing.sectionHint", {
+                  defaultValue:
+                    "Set which providers serve each use case and the order to fall back through. Within a tier, accounts rotate by reset-time automatically.",
+                })}
+              </p>
+              {USE_CASES.map((useCase) => (
+                <UseCaseRouting
+                  key={useCase}
+                  useCase={useCase}
+                  tiers={accounts.data?.routing?.[useCase] ?? []}
+                  eligibleProviders={eligibleByUseCase[useCase]}
+                  providers={accounts.data?.providers ?? []}
+                  saving={accounts.saving.has(`routing:${useCase}`)}
+                  onChange={(tiers) => setRouting(useCase, tiers)}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {nothingConnected ? (
         // ── Teaching empty state (not just "nothing here") ──
