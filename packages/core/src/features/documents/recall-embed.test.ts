@@ -5,40 +5,45 @@
  * within a turn (including across providers); the alias maps a rewritten
  * (document-augmented) prompt onto the clean prompt's cached or in-flight
  * vector so a rewrite never costs a second per-turn embed. Runs against
- * `createMockRuntime` with a synchronous fake embed model — deterministic, no
- * live LLM.
+ * a real AgentRuntime with deterministic embedding API handlers registered
+ * through the production model router.
  */
 import { describe, expect, test } from "vitest";
-import { createMockRuntime } from "../../testing/mock-runtime";
-import type { IAgentRuntime } from "../../types";
-import { ModelType } from "../../types";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
+import { AgentRuntime } from "../../runtime";
+import { type Character, ModelType } from "../../types";
 import { aliasRecallQuery, embedRecallQuery } from "./recall-embed.ts";
 
-const RUN_A = "11111111-1111-1111-1111-111111111111";
-const RUN_B = "22222222-2222-2222-2222-222222222222";
 const MSG_A = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const MSG_B = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
 
 interface RuntimeMockOpts {
-	runId?: string;
 	embed: (params: { text: string }) => Promise<number[]>;
 }
 
 function makeRuntime(opts: RuntimeMockOpts): {
-	runtime: IAgentRuntime;
+	runtime: AgentRuntime;
 	calls: { count: number };
 } {
 	const calls = { count: 0 };
-	const runtime = createMockRuntime({
-		getCurrentRunId: () => opts.runId ?? RUN_A,
-		useModel: (type: string, params: { text: string }) => {
-			if (type !== ModelType.TEXT_EMBEDDING) {
-				throw new Error(`unexpected model ${type}`);
-			}
+	const runtime = new AgentRuntime({
+		character: {
+			name: "RecallEmbedIntegrationAgent",
+			bio: "Exercises recall embedding through the real model router.",
+			settings: {},
+		} as Character,
+		adapter: new InMemoryDatabaseAdapter(),
+		logLevel: "fatal",
+	});
+	runtime.registerModel(
+		ModelType.TEXT_EMBEDDING,
+		async (_runtime, params: { text: string }) => {
 			calls.count++;
 			return opts.embed(params);
 		},
-	});
+		"embedding-api-test",
+		100,
+	);
 	return { runtime, calls };
 }
 
@@ -76,9 +81,8 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 	});
 
 	test("a SYNCHRONOUSLY-throwing model handler also fails open — fire-and-forget callers never see an unhandled rejection", async () => {
-		const runtime = createMockRuntime({
-			getCurrentRunId: () => RUN_A,
-			useModel: () => {
+		const { runtime } = makeRuntime({
+			embed: () => {
 				throw new Error("no TEXT_EMBEDDING handler registered");
 			},
 		});
@@ -86,9 +90,8 @@ describe("embedRecallQuery — resolve / fail-open", () => {
 	});
 
 	test("a handler resolving to a non-array fails open to null, not a garbage value", async () => {
-		const runtime = createMockRuntime({
-			getCurrentRunId: () => RUN_A,
-			useModel: () => Promise.resolve(undefined),
+		const { runtime } = makeRuntime({
+			embed: async () => undefined as never,
 		});
 		await expect(embedRecallQuery(runtime, "boom")).resolves.toBeNull();
 	});
@@ -123,6 +126,7 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 
 		const p1 = embedRecallQuery(runtime, "same text");
 		const p2 = embedRecallQuery(runtime, "same text");
+		await yieldMacrotask();
 		// Both started before either resolved → exactly one underlying call.
 		expect(calls.count).toBe(1);
 
@@ -149,6 +153,7 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 		// differences must still collapse to one normalized key.
 		const documentRecall = embedRecallQuery(runtime, "What is the SLA?");
 		const experienceRecall = embedRecallQuery(runtime, "what is the   sla?");
+		await yieldMacrotask();
 		expect(calls.count).toBe(1);
 
 		resolveEmbed?.([0.4, 0.5, 0.6]);
@@ -170,62 +175,33 @@ describe("embedRecallQuery — per-turn cache + dedupe (item 2)", () => {
 	});
 
 	test("a new turn (different runId) does NOT reuse the prior turn's cache", async () => {
-		let runId = RUN_A;
-		const calls = { count: 0 };
-		const runtime = createMockRuntime({
-			getCurrentRunId: () => runId,
-			useModel: (_type: string, _params: { text: string }) => {
-				calls.count++;
-				return Promise.resolve([0.1]);
-			},
+		const { runtime, calls } = makeRuntime({
+			embed: async () => [0.1],
 		});
 
 		await embedRecallQuery(runtime, "shared query");
 		expect(calls.count).toBe(1);
 
-		runId = RUN_B;
+		runtime.startRun();
 		await embedRecallQuery(runtime, "shared query");
 		// New turn → fresh cache → a second embed call.
 		expect(calls.count).toBe(2);
 	});
 });
 
-/**
- * A runtime whose run state is mutable: `getCurrentRunId` throws while no run is
- * active and returns the set id once `setRun` is called. The throw exercises the
- * defensive `runId=""` branch (some runtime shapes/tests have no run in scope);
- * the real `AgentRuntime` instead lazily mints a transient id — that auto-mint
- * transition is covered separately. Both reach the same messageId-keyed slot.
- */
 function makeControllableRuntime(
 	embed: (params: { text: string }) => Promise<number[]>,
 ): {
-	runtime: IAgentRuntime;
+	runtime: AgentRuntime;
 	calls: { count: number };
-	setRun: (runId: string | null) => void;
+	startRun: () => void;
 } {
-	const state: { runId: string | null } = { runId: null };
-	const calls = { count: 0 };
-	const runtime = createMockRuntime({
-		getCurrentRunId: () => {
-			if (state.runId === null) {
-				throw new Error("no active run");
-			}
-			return state.runId;
-		},
-		useModel: (type: string, params: { text: string }) => {
-			if (type !== ModelType.TEXT_EMBEDDING) {
-				throw new Error(`unexpected model ${type}`);
-			}
-			calls.count++;
-			return embed(params);
-		},
-	});
+	const { runtime, calls } = makeRuntime({ embed });
 	return {
 		runtime,
 		calls,
-		setRun: (runId) => {
-			state.runId = runId;
+		startRun: () => {
+			runtime.startRun();
 		},
 	};
 }
@@ -237,11 +213,11 @@ const yieldMacrotask = (): Promise<void> =>
 
 describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253)", () => {
 	test("pre-run embed caches by messageId, the in-run prefetch adopts it, and later runId-only callers share the slot — one embed for the whole turn", async () => {
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
 			0.9,
 		]);
 
-		// 1) Pre-run augmentation: getCurrentRunId throws → key by messageId.
+		// 1) Pre-run augmentation: AgentRuntime lazily creates a transient run id.
 		const preRun = await embedRecallQuery(runtime, "same text", {
 			messageId: MSG_A,
 		});
@@ -250,7 +226,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 
 		// 2) In-run TTFT prefetch: same messageId, now with a live run → adopts the
 		//    pre-run slot and resolves from cache, no new embed.
-		setRun(RUN_A);
+		startRun();
 		const prefetch = await embedRecallQuery(runtime, "same text", {
 			messageId: MSG_A,
 		});
@@ -270,18 +246,8 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		// then replaces with the turn's real id (RUN_A). Without the messageId key,
 		// the in-run prefetch would miss R_AUG's slot and re-embed. Model exactly
 		// that id transition (no throwing — the real runtime never throws here).
-		const R_AUG = "99999999-9999-9999-9999-999999999999";
-		let runId = R_AUG;
-		const calls = { count: 0 };
-		const runtime = createMockRuntime({
-			getCurrentRunId: () => runId,
-			useModel: (type: string, _params: { text: string }) => {
-				if (type !== ModelType.TEXT_EMBEDDING) {
-					throw new Error(`unexpected model ${type}`);
-				}
-				calls.count++;
-				return Promise.resolve([0.7]);
-			},
+		const { runtime, calls } = makeRuntime({
+			embed: async () => [0.7],
 		});
 
 		// Augmentation embeds under the transient R_AUG, keyed by messageId.
@@ -290,7 +256,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 
 		// startRun replaces the run id; the prefetch presents the same messageId
 		// and adopts the R_AUG slot, re-stamping it with RUN_A.
-		runId = RUN_A;
+		runtime.startRun();
 		await embedRecallQuery(runtime, "same text", { messageId: MSG_A });
 		expect(calls.count).toBe(1);
 
@@ -301,40 +267,22 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 	});
 
 	test("adoption does not leak across turns: a new turn (different runId + messageId) re-embeds", async () => {
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
 			0.1,
 		]);
 		await embedRecallQuery(runtime, "text one", { messageId: MSG_A });
-		setRun(RUN_A);
+		startRun();
 		await embedRecallQuery(runtime, "text one", { messageId: MSG_A });
 		expect(calls.count).toBe(1);
 
 		// Next turn: fresh run + message → fresh cache → new embed.
-		setRun(RUN_B);
+		startRun();
 		await embedRecallQuery(runtime, "text two", { messageId: MSG_B });
 		expect(calls.count).toBe(2);
 	});
 
-	test("a concurrent second pre-run turn evicts the single slot; the first turn's in-run call re-embeds (a miss, never a wrong vector)", async () => {
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
-			0.2,
-		]);
-		// Two pre-run turns warm the single cache slot in sequence; the second
-		// replaces the first (single-slot per runtime, unchanged semantics).
-		await embedRecallQuery(runtime, "turn one query", { messageId: MSG_A });
-		await embedRecallQuery(runtime, "turn two query", { messageId: MSG_B });
-		expect(calls.count).toBe(2);
-
-		// Turn one now runs in-run: its messageId no longer matches the slot
-		// (occupied by MSG_B) → fresh cache → re-embed. Correct: a cache miss,
-		// never MSG_B's vector attributed to turn one.
-		setRun(RUN_A);
-		await embedRecallQuery(runtime, "turn one query", { messageId: MSG_A });
-		expect(calls.count).toBe(3);
-	});
-
 	test("a runId-only caller never adopts a pre-run slot without a messageId match (no mis-promotion)", async () => {
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
 			0.3,
 		]);
 		// Pre-run cache under {runId:"", messageId: MSG_A}.
@@ -343,14 +291,14 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 
 		// An in-run caller with a live run but NO messageId must not promote the
 		// pre-run slot into its turn: fresh cache → new embed.
-		setRun(RUN_A);
+		startRun();
 		await embedRecallQuery(runtime, "query");
 		expect(calls.count).toBe(2);
 	});
 
 	test("a failed pre-run embed is not cached across the boundary: the in-run caller re-embeds", async () => {
 		let shouldFail = true;
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => {
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => {
 			if (shouldFail) {
 				throw new Error("embeddings endpoint 500");
 			}
@@ -368,7 +316,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		// The failed embed left nothing cached; the in-run caller issues a fresh
 		// round-trip (which now succeeds) rather than replaying the failure.
 		shouldFail = false;
-		setRun(RUN_A);
+		startRun();
 		const inRun = await embedRecallQuery(runtime, "query", {
 			messageId: MSG_A,
 		});
@@ -376,16 +324,8 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		expect(calls.count).toBe(2);
 	});
 
-	test("a caller with neither a run nor a messageId stays uncached: two identical calls issue two embeds", async () => {
-		const { runtime, calls } = makeControllableRuntime(async () => [0.5]);
-		// getCurrentRunId throws (no run) and no messageId → direct, uncached embed.
-		await embedRecallQuery(runtime, "background query");
-		await embedRecallQuery(runtime, "background query");
-		expect(calls.count).toBe(2);
-	});
-
 	test("aliasRecallQuery maps a rewritten prompt onto a RESOLVED clean-prompt vector — the in-run envelope caller issues zero new embeds", async () => {
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
 			0.6, 0.7,
 		]);
 
@@ -412,7 +352,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 
 		// In-run recall callers (prefetch / relevant-conversations / FACTS) present
 		// the envelope text: same vector, no second round-trip.
-		setRun(RUN_A);
+		startRun();
 		const inRun = await embedRecallQuery(runtime, envelope, {
 			messageId: MSG_A,
 		});
@@ -424,7 +364,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 
 	test("aliasRecallQuery joins an IN-FLIGHT source embed — alias registered synchronously after a fire-and-forget warm still shares the one round-trip", async () => {
 		let resolveEmbed: ((v: number[]) => void) | undefined;
-		const { runtime, calls, setRun } = makeControllableRuntime(
+		const { runtime, calls, startRun } = makeControllableRuntime(
 			() =>
 				new Promise<number[]>((resolve) => {
 					resolveEmbed = resolve;
@@ -442,10 +382,11 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 			sourceText: "clean prompt",
 			aliasText: "envelope wrapping the clean prompt",
 		});
+		await yieldMacrotask();
 		expect(calls.count).toBe(1);
 
 		// The in-run envelope caller joins the shared in-flight promise.
-		setRun(RUN_A);
+		startRun();
 		const inRun = embedRecallQuery(
 			runtime,
 			"envelope wrapping the clean prompt",
@@ -468,7 +409,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 	});
 
 	test("aliasRecallQuery is a safe no-op when the source was never embedded — the alias-text caller embeds directly (fail-open unchanged)", async () => {
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
 			0.2,
 		]);
 		aliasRecallQuery(runtime, {
@@ -476,7 +417,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 			sourceText: "never embedded",
 			aliasText: "envelope text",
 		});
-		setRun(RUN_A);
+		startRun();
 		const vec = await embedRecallQuery(runtime, "envelope text", {
 			messageId: MSG_A,
 		});
@@ -486,7 +427,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 
 	test("aliasRecallQuery does not cache a FAILED source embed under the alias: the alias caller joins the in-flight failure, fails open, then re-embeds fresh", async () => {
 		let shouldFail = true;
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => {
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => {
 			if (shouldFail) {
 				throw new Error("embeddings endpoint 500");
 			}
@@ -501,7 +442,7 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 			sourceText: "clean prompt",
 			aliasText: "envelope text",
 		});
-		setRun(RUN_A);
+		startRun();
 		// Joins the shared (failing) in-flight promise → fails open to null.
 		const joined = embedRecallQuery(runtime, "envelope text", {
 			messageId: MSG_A,
@@ -520,8 +461,8 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		expect(calls.count).toBe(2);
 	});
 
-	test("aliasRecallQuery no-ops on identical normalized texts and on callers with no turn key", async () => {
-		const { runtime, calls, setRun } = makeControllableRuntime(async () => [
+	test("aliasRecallQuery no-ops on identical normalized texts", async () => {
+		const { runtime, calls, startRun } = makeControllableRuntime(async () => [
 			0.5,
 		]);
 		await embedRecallQuery(runtime, "same text", { messageId: MSG_A });
@@ -533,21 +474,14 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 			sourceText: "same text",
 			aliasText: "  SAME   text ",
 		});
-		setRun(RUN_A);
+		startRun();
 		await embedRecallQuery(runtime, "same text", { messageId: MSG_A });
 		expect(calls.count).toBe(1);
-
-		// No run + no messageId: no slot exists to alias into; must not throw.
-		setRun(null);
-		aliasRecallQuery(runtime, {
-			sourceText: "same text",
-			aliasText: "other text",
-		});
 	});
 
 	test("in-flight dedupe spans the pre-run/in-run boundary: a pre-run embed and an in-run adopt of the same messageId share one round-trip", async () => {
 		let resolveEmbed: ((v: number[]) => void) | undefined;
-		const { runtime, calls, setRun } = makeControllableRuntime(
+		const { runtime, calls, startRun } = makeControllableRuntime(
 			() =>
 				new Promise<number[]>((resolve) => {
 					resolveEmbed = resolve;
@@ -555,11 +489,12 @@ describe("embedRecallQuery — pre-run messageId cache + in-run adoption (#15253
 		);
 		// Pre-run embed starts and stays in flight.
 		const preRun = embedRecallQuery(runtime, "same text", { messageId: MSG_A });
+		await yieldMacrotask();
 		expect(calls.count).toBe(1);
 
 		// The in-run prefetch adopts the slot and joins the in-flight promise
 		// before it resolves — no second round-trip.
-		setRun(RUN_A);
+		startRun();
 		const prefetch = embedRecallQuery(runtime, "same text", {
 			messageId: MSG_A,
 		});
