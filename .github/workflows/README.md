@@ -21,7 +21,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
 | `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
 | `weekly-maintenance.yml` | Weekly, Manual | Dependency/security audits |
-| `jsdoc-automation.yml` | Manual | JSDoc generation |
 
 ## Release Workflows
 
@@ -39,7 +38,20 @@ Publishes TypeScript/JavaScript packages to NPM.
 - Push to `main` → Beta release (`@beta` tag)
 - GitHub Release created → Production release (`@latest` tag)
 
-**Packages:** All `@elizaos/*` packages in the monorepo
+**Packages:** All `@elizaos/*` packages in the monorepo. The active computer-use
+package is `@elizaos/plugin-computeruse` under `plugins/plugin-computeruse`; it
+uses this canonical package release rather than a separate ComputerUse release
+pipeline.
+
+### Feed Deployment and Schema Provisioning
+
+Feed deploys through Railway rather than a GitHub branch deployment workflow.
+[`packages/feed/railway.json`](../../packages/feed/railway.json) configures the
+service to run
+[`packages/feed/scripts/railway-start.sh`](../../packages/feed/scripts/railway-start.sh),
+which invokes `drizzle-kit push --force` against the Feed schema before starting
+the web process. [`packages/feed/RAILWAY.md`](../../packages/feed/RAILWAY.md)
+documents that production boundary; `feed-test.yml` remains CI-only.
 
 ## Test Workflows
 
@@ -218,10 +230,6 @@ Documentation quality workflow:
 - **Quality Checks:** Double headers, missing frontmatter, heading hierarchy
 
 Automatically creates PRs with fixes when issues are found.
-
-### JSDoc Automation (`jsdoc-automation.yml`)
-
-Manual workflow for generating JSDoc documentation.
 
 ## Manual Release Process
 
