@@ -367,18 +367,29 @@ export function ChatWidgetHarness(): React.JSX.Element {
   const [chatMaximized, setChatMaximized] = React.useState(false);
   // Seed the REAL home surface (test-wired, no server): the per-plugin widgets'
   // mount-time fetches + the pinned NotificationsHomeCenter's store read must see
-  // populated data BEFORE the launcher subtree renders. useState's initializer
-  // runs synchronously on first render (ahead of children); the seed also ingests
-  // an urgent notification, which the store delivers as one heads-up banner (the
-  // transient glass banner surface) on top of the persistent inbox. The effect
-  // restores window.fetch on unmount.
-  const restoreFetchRef = React.useRef<(() => void) | null>(null);
-  React.useState(() => {
+  // populated data BEFORE the launcher subtree renders. The seed also ingests an
+  // urgent notification, which the store delivers as one heads-up banner (the
+  // transient glass banner surface) on top of the persistent inbox.
+  //
+  // Install the fetch mock in a LAYOUT effect, not a render initializer, and gate
+  // the launcher on `homeSeeded`: the full app boot installs its own `/api` fetch
+  // bridge (routes to the native agent), which in this backend-free harness would
+  // answer the widgets' `/api/lifeops/*` fetches with 403 and hide every card.
+  // Running after boot's synchronous bridge setup makes the mock WRAP the bridge
+  // (widget URLs get seeded data; everything else falls through), and gating the
+  // launcher until the flag flips guarantees no widget can fetch before the mock
+  // is in place.
+  const [homeSeeded, setHomeSeeded] = React.useState(false);
+  React.useLayoutEffect(() => {
     seedHomeWidgetNotifications();
-    restoreFetchRef.current = installHomeWidgetFetchMock();
-    return null;
-  });
-  React.useEffect(() => () => restoreFetchRef.current?.(), []);
+    // Installed for the whole harness session and deliberately NOT restored: the
+    // cleanup that reverts window.fetch would, under React StrictMode's dev
+    // mount→unmount→remount, briefly hand the app's /api bridge back and any
+    // widget re-fetch in that window 403s and self-hides. The harness is a dev
+    // tool with a single lifetime, so keeping the mock in place is correct.
+    installHomeWidgetFetchMock();
+    setHomeSeeded(true);
+  }, []);
   const sceneIndexRef = React.useRef(0);
   const chatInputSinkRef = React.useRef<((text: string) => void) | null>(null);
   const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
@@ -721,24 +732,28 @@ export function ChatWidgetHarness(): React.JSX.Element {
         {/* The REAL launcher (test-wired), not a stand-in: HomeLauncherSurface
             mounting the genuine HomeScreen — the per-plugin home widgets via the
             real WidgetHost plus the pinned NotificationsHomeCenter reading the
-            seeded notification store — and the Launcher tile page. Kept MOUNTED
-            but hidden while the chat is MAXIMIZED so the full-bleed glass blurs
-            only the bare wallpaper. Absolute over the shader field (z-1). */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 1,
-            overflow: "hidden",
-            display: hideDomHome || chatMaximized ? "none" : "block",
-          }}
-        >
-          <HomeLauncherSurface
-            initialPage="home"
-            home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
-            launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
-          />
-        </div>
+            seeded notification store — and the Launcher tile page. Mounted only
+            once `homeSeeded` flips (after the fetch mock is installed) so no widget
+            fetches before the mock wins; then kept mounted but hidden while the
+            chat is MAXIMIZED so the full-bleed glass blurs only the bare
+            wallpaper. Absolute over the shader field (z-1). */}
+        {homeSeeded ? (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 1,
+              overflow: "hidden",
+              display: hideDomHome || chatMaximized ? "none" : "block",
+            }}
+          >
+            <HomeLauncherSurface
+              initialPage="home"
+              home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
+              launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
+            />
+          </div>
+        ) : null}
         <GlassStyles />
         <ChatOverlay
           controller={controller}
