@@ -58,14 +58,15 @@ function sanitizeToken(value: string): string {
 }
 
 function finiteDuration(value: number, field: string): number {
-  if (!Number.isFinite(value) || value < 0) {
+  const rounded = Math.round(value * 100) / 100;
+  if (!Number.isFinite(value) || value < 0 || !Number.isFinite(rounded)) {
     throw new ElizaError("HTTP telemetry duration is invalid", {
       code: "HTTP_TELEMETRY_INVALID_DURATION",
       severity: "fatal",
       context: { field, value: String(value) },
     });
   }
-  return Math.round(value * 100) / 100;
+  return rounded;
 }
 
 /** Normalize once so structured logs and both response formats agree exactly. */

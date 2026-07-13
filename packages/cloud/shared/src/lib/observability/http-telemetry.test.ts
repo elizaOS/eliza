@@ -65,6 +65,7 @@ describe("HTTP telemetry", () => {
     Number.NaN,
     Number.POSITIVE_INFINITY,
     Number.NEGATIVE_INFINITY,
+    Number.MAX_VALUE,
     -0.01,
   ])("rejects invalid gateway timing %s instead of fabricating zero", (invalidDuration) => {
     let thrown: unknown;
@@ -87,12 +88,16 @@ describe("HTTP telemetry", () => {
     });
   });
 
-  test("rejects invalid standalone Server-Timing metrics before writing headers", () => {
+  test.each([
+    Number.NaN,
+    Number.MAX_VALUE,
+  ])("rejects invalid standalone Server-Timing metric %s before writing headers", (invalidDuration) => {
     const headers = new Headers({ "Server-Timing": "provider;dur=3" });
     expect(() =>
-      appendServerTiming(headers, [{ name: "cloud_worker", durationMs: Number.NaN }]),
+      appendServerTiming(headers, [{ name: "cloud_worker", durationMs: invalidDuration }]),
     ).toThrow("HTTP telemetry duration is invalid");
     expect(headers.get("Server-Timing")).toBe("provider;dur=3");
+    expect(headers.get("Server-Timing")).not.toContain("Infinity");
   });
 
   test("appends inner and outer Server-Timing without overwriting", () => {

@@ -25,7 +25,7 @@ function immutableHeadersResponse(body: string, init: ResponseInit): Response {
 }
 
 describe("httpTelemetryMiddleware", () => {
-  it("bypasses status-101 upgrades whose workerd socket cannot survive rewrapping", () => {
+  it("keeps status-101 upgrades outside telemetry's standard-field-only fallback", () => {
     expect(shouldDecorateHttpTelemetryStatus(101)).toBe(false);
     expect(shouldDecorateHttpTelemetryStatus(200)).toBe(true);
   });
