@@ -1,9 +1,10 @@
 // Exercises tests test realness audit.test automation behavior with deterministic script fixtures.
-import { afterEach, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, test } from "vitest";
 
 const audit = await import(
   new URL("../test-realness-audit.mjs", import.meta.url).href
@@ -171,6 +172,74 @@ describe("test-realness-audit", () => {
     );
   });
 
+  test("internal runtime mocks are diff-scoped migration debt", () => {
+    const root = makeRepo();
+    const relPath = "packages/sample/runtime.test.ts";
+    const baseFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      "import { test } from 'vitest';\ntest('real runtime', () => {});\n",
+    );
+    const currentFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      [
+        "import { createMockRuntime } from '../testing/mock-runtime';",
+        "import { test } from 'vitest';",
+        "test('synthetic runtime', () => {",
+        "  const runtime = createMockRuntime();",
+        "  void runtime;",
+        "});",
+      ].join("\n"),
+    );
+
+    expect(currentFindings).toContainEqual(
+      expect.objectContaining({
+        category: "internalRuntimeMock",
+        path: relPath,
+        line: 4,
+      }),
+    );
+    const regressions = audit.collectDiffScopedRegressions({
+      currentFindings,
+      baseFindings,
+      changedFiles: [relPath],
+    });
+    expect(audit.collectDiffScopedFailures(regressions)).toContain(
+      "internalRuntimeMock increased in touched test file packages/sample/runtime.test.ts: 1 current > 0 base",
+    );
+  });
+
+  test("partial objects cast to IAgentRuntime are diff-scoped migration debt", () => {
+    const root = makeRepo();
+    const relPath = "packages/sample/cast-runtime.test.ts";
+    const currentFindings = audit.analyzeTestSource(
+      root,
+      relPath,
+      [
+        "import type { IAgentRuntime } from '@elizaos/core';",
+        "const runtime = { agentId: 'fake' } as unknown as IAgentRuntime;",
+        "void runtime;",
+      ].join("\n"),
+    );
+
+    expect(currentFindings).toContainEqual(
+      expect.objectContaining({
+        category: "internalRuntimeCast",
+        path: relPath,
+        line: 2,
+      }),
+    );
+    const regressions = audit.collectDiffScopedRegressions({
+      currentFindings,
+      baseFindings: [],
+      changedFiles: [relPath],
+    });
+    expect(audit.collectDiffScopedFailures(regressions)).toContain(
+      "internalRuntimeCast increased in touched test file packages/sample/cast-runtime.test.ts: 1 current > 0 base",
+    );
+  });
+
   test("real-outcome assertions do not trigger the diff-scoped ratchet", () => {
     const root = makeRepo();
     const relPath = "packages/sample/real.test.ts";
@@ -208,18 +277,15 @@ describe("test-realness-audit", () => {
       "import { test } from 'vitest';\ntest('plain', () => {});\n",
     );
 
-    const result = Bun.spawnSync([
+    const result = spawnSync(
       "node",
-      SCRIPT_PATH,
-      "--repo-root",
-      root,
-      "--check",
-    ]);
+      [SCRIPT_PATH, "--repo-root", root, "--check"],
+      { encoding: "utf8" },
+    );
 
-    expect(result.exitCode).toBe(1);
-    const stderr = new TextDecoder().decode(result.stderr);
-    expect(stderr).toContain("diff-scoped ratchet could not run");
-    expect(stderr).toContain("Ensure CI fetches origin/develop");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("diff-scoped ratchet could not run");
+    expect(result.stderr).toContain("Ensure CI fetches origin/develop");
   });
 
   test("comments do not register as focused tests", () => {
@@ -280,18 +346,20 @@ describe("test-realness-audit", () => {
     const baselinePath = path.join(root, "empty-baseline.json");
     fs.writeFileSync(baselinePath, "");
 
-    const result = Bun.spawnSync([
+    const result = spawnSync(
       "node",
-      SCRIPT_PATH,
-      "--repo-root",
-      root,
-      "--baseline",
-      baselinePath,
-      "--print-baseline",
-    ]);
+      [
+        SCRIPT_PATH,
+        "--repo-root",
+        root,
+        "--baseline",
+        baselinePath,
+        "--print-baseline",
+      ],
+      { encoding: "utf8" },
+    );
 
-    expect(result.exitCode).toBe(0);
-    const stdout = new TextDecoder().decode(result.stdout);
-    expect(JSON.parse(stdout).thresholds.focusedOnly).toBe(0);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout).thresholds.focusedOnly).toBe(0);
   });
 });
