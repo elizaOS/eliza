@@ -33,12 +33,22 @@ import {
   isNativeTranscriptAvailable,
   nativeTranscriptBridge,
 } from "../../glass/native-transcript-bridge";
+import type { ViewEntry } from "../../hooks/view-catalog";
 import {
   DEFAULT_BACKGROUND_COLOR,
   DEFAULT_BACKGROUND_GLOW,
 } from "../../state/ui-preferences";
 import { MockAppProvider } from "../../storybook/mock-providers";
+import {
+  HOME_WIDGET_MOCK_PLUGINS,
+  installHomeWidgetFetchMock,
+  seedHomeWidgetNotifications,
+} from "../../widgets/__fixtures__/home-widget-mock-data";
+import { Launcher } from "../pages/Launcher";
 import { ChatOverlay } from "../shell/ChatOverlay";
+import { HomeLauncherSurface } from "../shell/HomeLauncherSurface";
+import { HomeScreen } from "../shell/HomeScreen";
+import { NotificationBanners } from "../shell/NotificationBanners";
 import type { ShellMessage } from "../shell/shell-state";
 import type {
   CaptureIntent,
@@ -47,6 +57,34 @@ import type {
 import { registerTaskWidget } from "./widgets/task-widget";
 
 registerTaskWidget();
+
+/** A representative launcher tile (the launcher page's data-fetching wrapper
+ *  needs a live /api/views layer the harness has no server for, so feed the
+ *  presentational Launcher a fixed tile set — same shape as HomeDashboard). */
+function viewEntry(id: string, label: string, icon: string): ViewEntry {
+  return {
+    key: `view:${id}`,
+    id,
+    label,
+    icon,
+    hasHero: false,
+    modality: "gui",
+    state: "loaded",
+    kind: "view",
+    viewKind: "release",
+  } as ViewEntry;
+}
+
+const LAUNCHER_TILES: ViewEntry[] = [
+  viewEntry("character", "Character", "UserRound"),
+  viewEntry("automations", "Automations", "Clock"),
+  viewEntry("wallet", "Wallet", "Wallet"),
+  viewEntry("contacts", "Contacts", "UsersRound"),
+  viewEntry("memories", "Memories", "BrainCircuit"),
+  viewEntry("database", "Database", "Database"),
+  viewEntry("documents", "Documents", "FileText"),
+  viewEntry("settings", "Settings", "Settings"),
+];
 
 /** Build-time seam for the native-transcript demo: `packages/app` bakes
  *  `ELIZA_NATIVE_TRANSCRIPT_DEMO=1` in via a Vite define because host tooling
@@ -306,19 +344,41 @@ export function ChatWidgetHarness(): React.JSX.Element {
       void clearNativeGlassBackdrop();
     };
   }, []);
-  const [messages, setMessages] =
-    React.useState<ShellMessage[]>(CHAT_HARNESS_OPENING);
+  // `?home` (or `?onboarding=0`) opens the harness PAST onboarding with the chat
+  // resting on the settled home, so the real launcher (widgets + notification
+  // inbox + banners) can be reviewed directly without stepping the first-run tour.
+  const startAtHome =
+    typeof window !== "undefined" &&
+    (new URLSearchParams(window.location.search).has("home") ||
+      new URLSearchParams(window.location.search).get("onboarding") === "0");
+  const [messages, setMessages] = React.useState<ShellMessage[]>(
+    startAtHome ? [] : CHAT_HARNESS_OPENING,
+  );
   const [phase, setPhase] =
     React.useState<ShellController["phase"]>("summoned");
   const [recording, setRecording] = React.useState(false);
   const [handsFree, setHandsFree] = React.useState(false);
   const [transcript, setTranscript] = React.useState("");
   const [agentVoiceMuted, setAgentVoiceMuted] = React.useState(false);
-  const [firstRunOpen, setFirstRunOpen] = React.useState(true);
+  const [firstRunOpen, setFirstRunOpen] = React.useState(!startAtHome);
   // True while the chat sheet is maximized (full-bleed). The maximized surface is
-  // liquid glass that blurs ONLY the app wallpaper, so the stand-in home content
-  // hides while it is up — mirrors the real shell hiding home/views on maximize.
+  // liquid glass that blurs ONLY the app wallpaper, so the real launcher hides
+  // while it is up — mirrors the real shell hiding home/views on maximize.
   const [chatMaximized, setChatMaximized] = React.useState(false);
+  // Seed the REAL home surface (test-wired, no server): the per-plugin widgets'
+  // mount-time fetches + the pinned NotificationsHomeCenter's store read must see
+  // populated data BEFORE the launcher subtree renders. useState's initializer
+  // runs synchronously on first render (ahead of children); the seed also ingests
+  // an urgent notification, which the store delivers as one heads-up banner (the
+  // transient glass banner surface) on top of the persistent inbox. The effect
+  // restores window.fetch on unmount.
+  const restoreFetchRef = React.useRef<(() => void) | null>(null);
+  React.useState(() => {
+    seedHomeWidgetNotifications();
+    restoreFetchRef.current = installHomeWidgetFetchMock();
+    return null;
+  });
+  React.useEffect(() => () => restoreFetchRef.current?.(), []);
   const sceneIndexRef = React.useRef(0);
   const chatInputSinkRef = React.useRef<((text: string) => void) | null>(null);
   const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
@@ -520,6 +580,11 @@ export function ChatWidgetHarness(): React.JSX.Element {
       sendActionMessage: async (text: string) => appendUserAndAdvance(text),
       setChatInput: (text: string) => chatInputSinkRef.current?.(text),
       copyToClipboard: async () => {},
+      // The real HomeScreen's WidgetHost resolves per-plugin home widgets from
+      // the app store's plugins snapshot; feed it the same populated mock set the
+      // HomeDashboard story uses so the launcher renders the genuine widgets.
+      plugins: HOME_WIDGET_MOCK_PLUGINS,
+      conversations: [],
     }),
     [appendUserAndAdvance],
   );
@@ -653,82 +718,26 @@ export function ChatWidgetHarness(): React.JSX.Element {
             glow={DEFAULT_BACKGROUND_GLOW}
           />
         )}
-        {/* Stand-in home content behind the sheet: gives the frosted glass
-            something real to refract at the inset detents. Hidden while the chat
-            is MAXIMIZED — the full-bleed glass blurs only the bare wallpaper, so
-            all other content drops out (mirrors the real shell hiding home/views
-            on maximize). Lifted above the shader field (z-1 over its z-0). */}
+        {/* The REAL launcher (test-wired), not a stand-in: HomeLauncherSurface
+            mounting the genuine HomeScreen — the per-plugin home widgets via the
+            real WidgetHost plus the pinned NotificationsHomeCenter reading the
+            seeded notification store — and the Launcher tile page. Kept MOUNTED
+            but hidden while the chat is MAXIMIZED so the full-bleed glass blurs
+            only the bare wallpaper. Absolute over the shader field (z-1). */}
         <div
-          aria-hidden
           style={{
-            display: hideDomHome || chatMaximized ? "none" : "block",
-            position: "relative",
+            position: "absolute",
+            inset: 0,
             zIndex: 1,
-            padding: "72px 28px",
-            maxWidth: 720,
-            color: "rgba(255,255,255,0.92)",
-            fontFamily: "inherit",
+            overflow: "hidden",
+            display: hideDomHome || chatMaximized ? "none" : "block",
           }}
         >
-          <h1 style={{ fontSize: 30, fontWeight: 600, margin: 0 }}>
-            Good evening
-          </h1>
-          <p style={{ opacity: 0.75, marginTop: 10, lineHeight: 1.6 }}>
-            Three meetings today. The build finished 12 minutes ago and the
-            review queue is clear.
-          </p>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 10,
-              marginTop: 18,
-            }}
-          >
-            {["Calendar", "Tasks", "Notes", "Wallet", "Settings"].map((t) => (
-              <span
-                key={t}
-                style={{
-                  padding: "10px 16px",
-                  borderRadius: 999,
-                  background: "rgba(255,255,255,0.12)",
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  fontSize: 13,
-                }}
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-          <div
-            style={{
-              marginTop: 22,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-            }}
-          >
-            {[
-              "Polish the home screen",
-              "Review the glass sheet",
-              "Plan tomorrow",
-              "Inbox zero",
-            ].map((t, i) => (
-              <div
-                key={t}
-                style={{
-                  borderRadius: 16,
-                  padding: "14px 16px",
-                  background:
-                    i % 2 ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.14)",
-                  fontSize: 14,
-                  lineHeight: 1.4,
-                }}
-              >
-                {t}
-              </div>
-            ))}
-          </div>
+          <HomeLauncherSurface
+            initialPage="home"
+            home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
+            launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
+          />
         </div>
         <GlassStyles />
         <ChatOverlay
@@ -736,6 +745,10 @@ export function ChatWidgetHarness(): React.JSX.Element {
           firstRunOpen={domFirstRunOpen}
           onFullBleedChange={setChatMaximized}
         />
+        {/* The REAL top-of-screen heads-up banners (portal-mounted) — the same
+            liquid-glass banner surface production ships; the seed effect above
+            pushes a couple so they show on load. */}
+        <NotificationBanners />
       </div>
     </MockAppProvider>
   );
