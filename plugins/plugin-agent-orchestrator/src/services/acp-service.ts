@@ -20,7 +20,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -40,6 +40,10 @@ import {
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { NativeAcpClient } from "./acp-native-transport.js";
+import {
+  formatAcpCommand,
+  provisionWorkspaceElizaCodeAcp,
+} from "./acp-provisioning.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
   appendCodexAcpSandboxConfig,
@@ -236,49 +240,23 @@ function findExecutableOnPath(name: string): string | undefined {
   return undefined;
 }
 
-function findWorkspaceElizaCodePackage(startDir: string): string | undefined {
-  let dir = resolve(startDir);
-  while (true) {
-    const candidate = join(dir, "packages", "examples", "code");
-    if (existsSync(join(candidate, "src", "acp.ts"))) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) return undefined;
-    dir = parent;
-  }
-}
-
 /**
- * Provision the workspace-native ACP executable on first use. Development and
- * self-hosted checkouts deliberately do not require a global npm install: the
- * package is built into its normal dist directory and launched with the same
- * Bun executable that performed the build.
+ * Provision the workspace-native ACP executable on first use, crash-safely.
+ * Development and self-hosted checkouts deliberately do not require a global
+ * npm install: the package is built into its normal dist directory and launched
+ * with the same Bun executable that performed the build.
+ *
+ * Delegates to the advisory-lock and atomic-publish protocol in
+ * `acp-provisioning.ts` (#16169). The thin adapter preserves the string command
+ * contract while the formatter quotes paths only when the downstream parser
+ * needs it.
  */
 export function ensureWorkspaceElizaCodeAcp(
   startDir: string = process.cwd(),
 ): string | undefined {
-  const packageDir = findWorkspaceElizaCodePackage(startDir);
-  const bun = findExecutableOnPath("bun");
-  if (!packageDir || !bun) return undefined;
-  const source = join(packageDir, "src", "acp.ts");
-  const output = join(packageDir, "dist", "acp.js");
-  const needsBuild =
-    !existsSync(output) || statSync(source).mtimeMs > statSync(output).mtimeMs;
-  if (needsBuild) {
-    const result = spawnSync(bun, ["run", "--cwd", packageDir, "build"], {
-      cwd: packageDir,
-      env: process.env,
-      encoding: "utf8",
-      timeout: 120_000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    if (result.status !== 0 || !existsSync(output)) {
-      const detail = String(
-        result.stderr || result.stdout || "build failed",
-      ).trim();
-      throw new Error(`Failed to auto-install eliza-code-acp: ${detail}`);
-    }
-  }
-  return `${bun} ${output}`;
+  const result = provisionWorkspaceElizaCodeAcp(startDir);
+  if (!result) return undefined;
+  return formatAcpCommand(result);
 }
 
 async function runGitForAcp(

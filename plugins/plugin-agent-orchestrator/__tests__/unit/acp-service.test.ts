@@ -1,7 +1,4 @@
-/**
- * Verifies AcpService.
- * Drives a real ACP subprocess; deterministic harness (no live model).
- */
+/** Exercises AcpService lifecycle and transport behavior with deterministic transport doubles; no model is invoked. */
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import {
@@ -117,7 +114,10 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
   return { NativeAcpClient: state.NativeAcpClient };
 });
 
-import { AcpService } from "../../src/services/acp-service.js";
+import {
+  AcpService,
+  ensureWorkspaceElizaCodeAcp,
+} from "../../src/services/acp-service.js";
 
 vi.mock("node:child_process", () => ({
   exec: vi.fn(),
@@ -316,6 +316,15 @@ function firstNativeClient(): MockNativeClient {
 }
 
 describe("AcpService", () => {
+  it("falls back when the current checkout has no workspace ACP package", () => {
+    const root = mkdtempSync(join(tmpdir(), "acp-no-workspace-package-"));
+    try {
+      expect(ensureWorkspaceElizaCodeAcp(root)).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";
