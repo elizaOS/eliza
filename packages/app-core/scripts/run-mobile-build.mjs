@@ -3783,6 +3783,7 @@ export function prepareIosOverlay({ buildTarget = null } = {}) {
   // Android's half registers in MainActivity.java; this is the iOS parallel.
   ensureIosCapacitorPluginClass("GlassBridge");
   ensureIosCapacitorPluginClass("NativeTranscript");
+  ensureIosCapacitorPluginClass("NativeComposer");
   if (
     shouldIncludeIosFullBunEngine() ||
     process.env.ELIZA_IOS_RUNTIME_MODE === "local"

@@ -146,10 +146,13 @@ import {
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
 import {
+  type NativeComposerEvent,
+  nativeComposerDriver,
   nativeGlassPlatform,
   useNativeGlass,
   useNativeGlassAnchor,
   useNativeGlassBackdropActive,
+  useNativePlatformSurface,
 } from "../../glass";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
@@ -3983,6 +3986,98 @@ export function ChatOverlay({
     [slashMenu, runExecution],
   );
 
+  // The composer's onChange / onFocus bodies, extracted so BOTH the DOM textarea
+  // and the native composer's `change`/`focus` intents run the identical logic
+  // (no duplication between the two rendering paths — the native field only
+  // forwards intents; the brains stay here).
+  const handleDraftChange = React.useCallback(
+    (nextDraft: string) => {
+      if (draft.trim().length > 0 && nextDraft.trim().length === 0) {
+        reportComposerActivity({
+          activity: "draft_abandoned",
+          surface: COMPOSER_ACTIVITY_SURFACE,
+          conversationId: activeConversationIdRef.current,
+          draftLength: 0,
+          reason: "cleared",
+        });
+      }
+      setDraft(nextDraft);
+      // Mirror the live draft to the active view (Help search etc.).
+      viewChatBinding?.onQuery?.(nextDraft);
+      if (nextDraft.trim().length > 0) expand();
+    },
+    [draft, setDraft, viewChatBinding, expand],
+  );
+  const handleComposerFocus = React.useCallback(() => {
+    setComposerFocused(true);
+    // See the tap-ladder note on the DOM onFocus below: focus is INPUT mode
+    // only; a suppressed (pill-open) focus keeps its own detent/preFocusCollapsed.
+    if (suppressExpandOnFocusRef.current) {
+      suppressExpandOnFocusRef.current = false;
+    } else {
+      preFocusCollapsedRef.current = !sheetOpen;
+    }
+  }, [sheetOpen]);
+
+  // ── Native composer (maximized only) ──────────────────────────────────────
+  // The DOM <Textarea> below stays the base/fallback. When the sheet is at rest
+  // full-bleed on a native platform AND the NativeComposer plugin is present, a
+  // real native text field (iOS UITextView / Android EditText) is anchored over
+  // the textarea's rect and the DOM one is hidden (visibility, keeping layout so
+  // the buttons/height don't shift). Native owns the buffer + first responder +
+  // IME and forwards INTENTS (change/submit/escape/focus/blur) which run the
+  // SAME handlers above — the composer brains stay in JS. Gated to `fullBleed`
+  // (the one stable, at-rest state; pill/half morph + swap focus per frame) and
+  // OFF during a slash session (the DOM slash menu paints below a native field,
+  // so DOM takes over for that transient session).
+  const composerPlaceholder = compactLanding
+    ? "Ask"
+    : firstRunOpen
+      ? "Sign in to start chatting"
+      : noProviderConfigured
+        ? "Connect a model provider in Settings to chat"
+        : modelBlocksSend
+          ? modelStatus?.kind === "downloading"
+            ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+            : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+          : booting
+            ? `Ask ${agentName} — waking up…`
+            : (viewChatBinding?.placeholder ?? `Ask ${agentName}`);
+  const nativeComposerEnabled =
+    fullBleed && glassTier === "native" && !firstRunOpen && !isSlashDraft;
+  const nativeComposerProps = React.useMemo(
+    () => ({ draft, placeholder: composerPlaceholder, disabled: firstRunOpen }),
+    [draft, composerPlaceholder, firstRunOpen],
+  );
+  const onComposerNativeEvent = React.useCallback(
+    (event: NativeComposerEvent) => {
+      switch (event.kind) {
+        case "change":
+          handleDraftChange(event.value);
+          break;
+        case "submit":
+          submit();
+          break;
+        case "escape":
+          collapse();
+          break;
+        case "focus":
+          handleComposerFocus();
+          break;
+        case "blur":
+          setComposerFocused(false);
+          break;
+      }
+    },
+    [handleDraftChange, submit, collapse, handleComposerFocus],
+  );
+  const nativeComposer = useNativePlatformSurface(nativeComposerDriver, {
+    ref: inputRef,
+    enabled: nativeComposerEnabled,
+    props: nativeComposerProps,
+    onEvent: onComposerNativeEvent,
+  });
+
   // The shared composer-core keydown: IME-commit guard (#9148) → slash-menu
   // interception → Enter sends → Escape collapses the open sheet. The slash
   // binding adapts the overlay's menu/executor onto the core's key contract.
@@ -6126,44 +6221,12 @@ export function ChatOverlay({
                 // Onboarding is sign-in-first: lock the composer until the user
                 // signs in, so they can't type into a chat that isn't ready yet.
                 disabled={firstRunOpen}
-                onChange={(e) => {
-                  const nextDraft = e.target.value;
-                  if (
-                    draft.trim().length > 0 &&
-                    nextDraft.trim().length === 0
-                  ) {
-                    reportComposerActivity({
-                      activity: "draft_abandoned",
-                      surface: COMPOSER_ACTIVITY_SURFACE,
-                      conversationId: activeConversationIdRef.current,
-                      draftLength: 0,
-                      reason: "cleared",
-                    });
-                  }
-                  setDraft(nextDraft);
-                  // Mirror the live draft to the active view (Help search etc.).
-                  viewChatBinding?.onQuery?.(nextDraft);
-                  if (nextDraft.trim().length > 0) expand();
-                }}
-                onFocus={() => {
-                  // Widen out of the short-landscape compact affordance (#14173)
-                  // on focus, before the first keystroke.
-                  setComposerFocused(true);
-                  // Focusing the collapsed input enters INPUT mode (keyboard up)
-                  // ONLY — it does NOT reveal the thread. The tap ladder is
-                  // collapsed-input → input → half → collapsed: the thread reveal
-                  // is a SEPARATE grabber tap (openFromGrabber → HALF); typing a
-                  // non-empty draft still expands (onChange below). A suppressed
-                  // focus (pill-open raises the keyboard and owns the target
-                  // detent + preFocusCollapsedRef itself) must not be clobbered
-                  // here; an ordinary focus records the pre-focus openness for the
-                  // keyboard-dismiss-restore path (`expand()` used to set this).
-                  if (suppressExpandOnFocusRef.current) {
-                    suppressExpandOnFocusRef.current = false;
-                  } else {
-                    preFocusCollapsedRef.current = !sheetOpen;
-                  }
-                }}
+                onChange={(e) => handleDraftChange(e.target.value)}
+                // Focus is INPUT mode only (keyboard up, thread NOT revealed —
+                // the tap ladder collapsed-input → input → half → collapsed);
+                // typing a non-empty draft still expands. Shared with the native
+                // composer's `focus` intent via handleComposerFocus.
+                onFocus={handleComposerFocus}
                 onBlur={() => setComposerFocused(false)}
                 onPaste={handleComposerPaste}
                 onKeyDown={handleComposerKeyDown}
@@ -6205,6 +6268,12 @@ export function ChatOverlay({
                 // onboarding `disabled:opacity-100` prevents the browser from
                 // dimming the locked cue.
                 className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
+                // When a native text field is mounted over this rect (maximized
+                // native mode), hide the DOM textarea but KEEP its layout so the
+                // row height + trailing buttons don't shift.
+                style={
+                  nativeComposer.active ? { visibility: "hidden" } : undefined
+                }
               />
               {booting && !noProviderConfigured && !firstRunOpen ? (
                 <span id="cc-booting-hint" className="sr-only">

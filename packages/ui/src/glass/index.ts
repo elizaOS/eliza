@@ -39,3 +39,17 @@ export {
   type NativeTranscriptRect,
   resetNativeTranscriptBridgeForTests,
 } from "./native-transcript-bridge";
+export {
+  type NativePlatform,
+  type NativeSurfaceDriver,
+  type NativeSurfaceGeometry,
+  type NativeSurfaceHandle,
+  useNativePlatformSurface,
+} from "./native-surface";
+export {
+  isNativeComposerAvailable,
+  nativeComposerDriver,
+  type NativeComposerEvent,
+  type NativeComposerProps,
+  resetNativeComposerBridgeForTests,
+} from "./native-composer-bridge";
