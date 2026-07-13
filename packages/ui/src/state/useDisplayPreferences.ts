@@ -1,8 +1,7 @@
 /**
  * Display preferences — theme and background settings.
  *
- * Extracted from AppContext. Each preference persists to localStorage
- * and normalizes on set.
+ * Each preference persists to localStorage and normalizes on set.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

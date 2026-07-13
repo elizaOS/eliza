@@ -4,10 +4,8 @@
 
 import type { IAgentRuntime, Media, Memory } from "@elizaos/core";
 import type { NavigateViewDetail } from "@elizaos/shared/events";
-import { BACKGROUND_APPLY_EVENT as SHARED_BACKGROUND_APPLY_EVENT } from "@elizaos/shared/events";
 import { describe, expect, it, vi } from "vitest";
 import {
-	BACKGROUND_APPLY_EVENT,
 	type BackgroundApplyPayload,
 	createBackgroundAction,
 	inferBackgroundPlan,
@@ -385,10 +383,6 @@ describe("programmable GLSL shader plan (#10694)", () => {
 });
 
 describe("BACKGROUND action handler", () => {
-	it("uses the shared background apply event contract", () => {
-		expect(BACKGROUND_APPLY_EVENT).toBe(SHARED_BACKGROUND_APPLY_EVENT);
-	});
-
 	function setup() {
 		const emitted: BackgroundApplyPayload[] = [];
 		const replies: string[] = [];

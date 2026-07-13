@@ -2,8 +2,6 @@
  * Barrel for the backgrounds surface (@elizaos/ui backgrounds).
  */
 export { AppBackground, type AppBackgroundProps } from "./AppBackground";
-export type { BackgroundHostProps } from "./BackgroundHost";
-export { BackgroundHost } from "./BackgroundHost";
 export {
   applyRootCanvasPaint,
   computeRootCanvasPaint,
@@ -19,7 +17,6 @@ export {
   type ShaderBackgroundProps,
 } from "./ShaderBackground";
 export {
-  DEFAULT_SHADER_PRESET_ID,
   getShaderPreset,
   SHADER_PRESETS,
   type ShaderPreset,
@@ -30,12 +27,10 @@ export {
   isPlausibleFragmentSource,
   mergeUniforms,
   normalizeUniforms,
-  SHADER_UNIFORM_KEYS,
   type ShaderUniformValues,
   UNIFORM_SCHEMA,
   uniformsEqual,
 } from "./shader-schema";
-export { SKY_BACKGROUND_COLOR, SOLID_BACKGROUND_CSS } from "./types";
 export {
   BACKGROUND_APPLY_EVENT,
   type BackgroundApplyOp,

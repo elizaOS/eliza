@@ -2,11 +2,7 @@
  * Unit coverage for the shader preset table and lookup. Pure data, no GPU.
  */
 import { describe, expect, it } from "vitest";
-import {
-  DEFAULT_SHADER_PRESET_ID,
-  getShaderPreset,
-  SHADER_PRESETS,
-} from "./shader-presets";
+import { getShaderPreset, SHADER_PRESETS } from "./shader-presets";
 import { isPlausibleFragmentSource } from "./shader-schema";
 
 describe("shader-presets library", () => {
@@ -17,7 +13,7 @@ describe("shader-presets library", () => {
   });
 
   it("the default preset id resolves", () => {
-    expect(getShaderPreset(DEFAULT_SHADER_PRESET_ID)).toBeDefined();
+    expect(getShaderPreset("aurora")).toBeDefined();
   });
 
   it.each(

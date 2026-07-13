@@ -46,12 +46,6 @@ export type {
 	BackgroundApplyOp,
 	BackgroundApplyPayload,
 } from "@elizaos/shared/events";
-export { BACKGROUND_APPLY_EVENT };
-
-/** Tunable GLSL uniform patch the agent can drive (#10694). The GLSL source
- * itself lives in `@elizaos/ui` — the action only names a preset id + uniforms;
- * the renderer resolves id → source and validates it. */
-export type ShaderUniformPatch = BackgroundShaderUniformPatch;
 
 /** The resolved plan for one BACKGROUND invocation. */
 type BackgroundPlan =
@@ -61,10 +55,12 @@ type BackgroundPlan =
 	| { op: "set"; mode: "shader"; color: string; colorLabel: string }
 	| { op: "set"; mode: "image"; imageUrl: string }
 	| { op: "set"; mode: "glsl"; presetId: string; presetLabel: string }
+	// The GLSL source lives in `@elizaos/ui`; the action only names uniforms and
+	// the renderer resolves + validates them (#10694).
 	| {
 			op: "set";
 			mode: "glsl-tweak";
-			uniforms: ShaderUniformPatch;
+			uniforms: BackgroundShaderUniformPatch;
 			tweakLabel: string;
 	  }
 	// A named curated-catalog entry ("use the misty-forest background"). The
@@ -162,7 +158,7 @@ const DEFAULT_SHADER_PRESET = "aurora";
 // Relative tweak verbs → absolute uniform targets. Applied by the renderer only
 // when a GLSL shader is already live (a no-op otherwise).
 const SHADER_TWEAK_TRIGGERS: ReadonlyArray<
-	readonly [RegExp, ShaderUniformPatch, string]
+	readonly [RegExp, BackgroundShaderUniformPatch, string]
 > = [
 	[
 		/\b(slower|slow down|calmer|gentler|relax(?:ed)?)\b/i,
@@ -418,13 +414,13 @@ export function inferBackgroundPlan(
 	if (
 		!explicitImage &&
 		!explicitPrompt &&
-		!GENERATE_RE.test(trimmed) &&
+		!wantsFreshGenerate &&
 		// Not a reference to an EXISTING (this/that/attached) attachment — those
 		// are attachment-backed requests handled below, not a browse-for-a-file
 		// intent. "use this uploaded file" with a broken attachment stays null.
 		!(ATTACHMENT_REFERENCE_RE.test(trimmed) && attachments?.length) &&
 		isUploadIntent(trimmed) &&
-		!firstImageAttachment(attachments)
+		!hasImageAttachment
 	) {
 		return { op: "navigate-upload" };
 	}

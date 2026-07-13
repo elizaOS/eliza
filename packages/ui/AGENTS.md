@@ -76,8 +76,7 @@ src/
                               (cover image), shared by the home + every view. It also
                               installs useBackgroundApplyChannel — the single subscriber to
                               the agent's `background:apply` view event (chat → background).
-                              BackgroundHost is a separate static solid host for
-                              marketing/landing/login pages. State + undo history live in
+                              State + undo history live in
                               state/useDisplayPreferences + state/persistence; the
                               /background view and the BACKGROUND action (plugin-app-control)
                               both drive the same store.

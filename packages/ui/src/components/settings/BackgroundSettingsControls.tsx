@@ -35,7 +35,7 @@ import {
   addUserBackgroundEntry,
   loadUserBackgroundCatalog,
 } from "../../state/user-background-catalog";
-import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
+import { resolveWallpaperUrl } from "../../utils/asset-url";
 import {
   BackgroundImageError,
   fileToBackgroundDataUrl,
@@ -43,26 +43,11 @@ import {
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
-function resolvePreviewImageUrl(url: string): string {
-  if (
-    url.startsWith("data:") ||
-    url.startsWith("blob:") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
-    url.startsWith("//")
-  ) {
-    return url;
-  }
-  if (url.startsWith("/api/") || url.startsWith("api/")) {
-    return resolveApiUrl(url);
-  }
-  return resolveAppAssetUrl(url);
-}
-
 /** A live thumbnail for one catalog entry. Image entries paint the real source. */
 function catalogPreviewStyle(entry: BackgroundCatalogEntry) {
   if (entry.kind === "image") {
     return {
-      backgroundImage: `url("${resolvePreviewImageUrl(entry.source)}")`,
+      backgroundImage: `url("${resolveWallpaperUrl(entry.source)}")`,
       backgroundSize: "cover",
       backgroundPosition: "center",
       backgroundRepeat: "no-repeat",
@@ -210,11 +195,8 @@ export function BackgroundSettingsControls({
     loadUserBackgroundCatalog(),
   );
 
-  const config: BackgroundConfig =
-    backgroundConfig && typeof backgroundConfig === "object"
-      ? backgroundConfig
-      : { mode: "shader", color: DEFAULT_BACKGROUND_COLOR };
-  const activeColor = config.color ?? DEFAULT_BACKGROUND_COLOR;
+  const config: BackgroundConfig = backgroundConfig;
+  const activeColor = config.color;
 
   const selectCatalog = useCallback(
     (entry: BackgroundCatalogEntry) => {

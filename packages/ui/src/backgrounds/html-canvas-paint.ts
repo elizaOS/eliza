@@ -12,10 +12,9 @@
  * to the physical bottom. Box geometry, ICB collapse, fixed-positioning
  * contexts, lvh/dvh unit resolution — NONE of it affects canvas paint.
  *
- * The strip we still see on build f42baade5a is exactly this: `html`/`body`
- * carry `--launch-bg` (#160d07), so wherever every box stops short of the true
- * bottom, the canvas shows that near-black through the gap. #160d07 IS the
- * strip.
+ * The strip is exactly this: `html`/`body` carry `--launch-bg` (#160d07), so
+ * wherever a box stops short of the true bottom, the canvas shows that
+ * near-black through the gap. #160d07 IS the strip.
  *
  * ── THE FIX ──
  * When a wallpaper/background is active, mirror it onto the ROOT element so the
@@ -48,31 +47,7 @@
 
 import type { BackgroundConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
-import { resolveApiUrl, resolveAppAssetUrl } from "../utils/asset-url";
-
-/**
- * Resolve a wallpaper `imageUrl` into one reachable from the renderer in every
- * shell — the SAME resolution `ImageBackground` uses so the canvas mirror and
- * the box image reference identical bytes (no double-fetch of a different URL).
- *  - `data:` / `blob:` / absolute `http(s):` / protocol-relative — pass through.
- *  - `/api/media/<hash>` — an agent-API path, resolve against the API base.
- *  - `/wallpapers/<id>.webp` / `/bg-sunset.webp` — a public static asset, resolve
- *    against the SPA asset base (correct on packaged `file://` / `capacitor://`).
- */
-function resolveWallpaperUrl(url: string): string {
-  if (
-    url.startsWith("data:") ||
-    url.startsWith("blob:") ||
-    /^[a-z][a-z0-9+.-]*:/i.test(url) ||
-    url.startsWith("//")
-  ) {
-    return url;
-  }
-  if (url.startsWith("/api/") || url.startsWith("api/")) {
-    return resolveApiUrl(url);
-  }
-  return resolveAppAssetUrl(url);
-}
+import { resolveWallpaperUrl } from "../utils/asset-url";
 
 /** What to write onto the root element's background to drive the canvas paint. */
 export interface RootCanvasPaint {
@@ -129,11 +104,11 @@ export function computeRootCanvasPaint(
  */
 export function applyRootCanvasPaint(
   config: BackgroundConfig | null | undefined,
-): RootCanvasPaint {
-  const paint = computeRootCanvasPaint(config);
-  if (typeof document === "undefined") return paint;
+): void {
+  if (typeof document === "undefined") return;
   const root = document.documentElement;
-  if (!root) return paint;
+  if (!root) return;
+  const paint = computeRootCanvasPaint(config);
 
   root.style.backgroundColor = paint.backgroundColor;
   if (paint.backgroundImage) {
@@ -150,5 +125,4 @@ export function applyRootCanvasPaint(
     root.style.backgroundPosition = "";
     root.style.backgroundRepeat = "";
   }
-  return paint;
 }

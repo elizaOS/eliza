@@ -11,11 +11,20 @@ import type { BackgroundConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 
 // Deterministic URL resolution so the test asserts on stable, resolved URLs
-// rather than the environment's real asset/api base.
-vi.mock("../utils/asset-url", () => ({
-  resolveAppAssetUrl: (u: string) => `ASSET:${u}`,
-  resolveApiUrl: (u: string) => `API:${u}`,
-}));
+// rather than the environment's real asset/api base. resolveWallpaperUrl closes
+// over the base resolvers at module load, so mock it here with the same branch
+// logic rather than trying to redirect the real one's captured imports.
+vi.mock("../utils/asset-url", () => {
+  const resolveAppAssetUrl = (u: string) => `ASSET:${u}`;
+  const resolveApiUrl = (u: string) => `API:${u}`;
+  const resolveWallpaperUrl = (u: string) =>
+    /^[a-z][a-z0-9+.-]*:/i.test(u) || u.startsWith("//")
+      ? u
+      : u.startsWith("/api/") || u.startsWith("api/")
+        ? resolveApiUrl(u)
+        : resolveAppAssetUrl(u);
+  return { resolveAppAssetUrl, resolveApiUrl, resolveWallpaperUrl };
+});
 
 import {
   applyRootCanvasPaint,

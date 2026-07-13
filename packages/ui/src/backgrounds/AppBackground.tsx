@@ -85,21 +85,24 @@ export function AppBackground({
   useAppearanceApplyChannel();
   useVoiceSettingsApplyChannel();
 
+  // The app store can return a non-object slice before the provider seeds it
+  // (the test fallback proxy returns a noop function, so this needs a
+  // `typeof === "object"` check, not just a null check). Normalize once; every
+  // reader below (native-backdrop effect, canvas mirror, render) uses this.
+  const config =
+    backgroundConfig && typeof backgroundConfig === "object"
+      ? backgroundConfig
+      : null;
+  const baseColor = config?.color ?? DEFAULT_BACKGROUND_COLOR;
+
   // Layered-glass shell: on Capacitor with the GlassBridge available (iOS 26+
   // / Android 12+), the DEFAULT ember field moves into a native layer BEHIND a
   // transparent webview — that is the only arrangement where a native glass
   // panel has real content to refract (glass under the webview is blind to
   // DOM pixels). Only the plain shader mode goes native: image and GLSL
   // wallpapers are inherently DOM/GPU-in-page and keep the CSS-blur tier.
-  const mode =
-    backgroundConfig && typeof backgroundConfig === "object"
-      ? backgroundConfig.mode
-      : "shader";
+  const mode = config?.mode ?? "shader";
   const nativeEligible = mode !== "image" && mode !== "glsl";
-  const baseColor =
-    (backgroundConfig && typeof backgroundConfig === "object"
-      ? backgroundConfig.color
-      : null) ?? DEFAULT_BACKGROUND_COLOR;
   const [nativeBackdrop, setNativeBackdropActive] = useState(false);
   useEffect(() => {
     let cancelled = false;
@@ -148,13 +151,6 @@ export function AppBackground({
   // Native backdrop active: the ember field is painted by the OS layer behind
   // the transparent webview — rendering the DOM shader too would occlude it.
   if (nativeBackdrop) return null;
-  // Defensive: the app store can return a non-object slice before the provider
-  // seeds it (e.g. the test fallback proxy). Fall back to the default shader.
-  const config =
-    backgroundConfig && typeof backgroundConfig === "object"
-      ? backgroundConfig
-      : null;
-  const color = config?.color ?? DEFAULT_BACKGROUND_COLOR;
   if (config?.mode === "image" && config.imageUrl) {
     return <ImageBackground imageUrl={config.imageUrl} />;
   }
@@ -165,9 +161,9 @@ export function AppBackground({
       <GlslBackground
         key={config.shader.source}
         shader={config.shader}
-        color={color}
+        color={baseColor}
       />
     );
   }
-  return <ShaderBackground color={color} />;
+  return <ShaderBackground color={baseColor} />;
 }

@@ -83,17 +83,6 @@ export const DEFAULT_BACKGROUND_COLOR = "#000000";
 export const DEFAULT_BACKGROUND_GLOW = "#ff6a1f";
 
 /**
- * The shader-mode config for the black ember field: the fallback when an
- * image background is cleared or fails to load, and the base the color
- * swatches and the glsl fallback resolve to. (The boot default is the Canopy
- * wallpaper — see {@link DEFAULT_BACKGROUND_CONFIG}.)
- */
-export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
-  mode: "shader",
-  color: DEFAULT_BACKGROUND_COLOR,
-};
-
-/**
  * The curated "Sunset" wallpaper: a fiery orange-and-red sunset in the clouds,
  * served as a same-origin static asset from `packages/app/public`. It renders
  * the `sunset` gallery tile (not the boot default — the app boots to the Canopy
@@ -102,8 +91,7 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
  * uploads) — it carries no GLSL source or preset id, so the confinement
  * invariants (#11088 / #13523) hold. The bytes live in `public/` (served,
  * cacheable), never in the JS bundle. When the image is cleared or fails to load
- * the shell falls back to the shader field
- * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}).
+ * the shell falls back to the shader ember field.
  */
 const SUNSET_WALLPAPER_URL = "/bg-sunset.webp";
 
@@ -140,9 +128,8 @@ const PHOTO_WALLPAPER_IDS: ReadonlySet<string> = new Set([
  * tracks it (launch FOUC guard, PWA theme-color, manifest, native splashes)
  * keeps its black baseline, and canopy's near-black darkest tones make the
  * black→image settle invisible at boot. If the image is cleared or fails to
- * load the shell falls back to the shader ember field
- * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}); every other curated scene stays
- * a user-selectable gallery option.
+ * load the shell falls back to the shader ember field; every other curated
+ * scene stays a user-selectable gallery option.
  */
 export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
   mode: "image",
@@ -151,17 +138,6 @@ export const DEFAULT_BACKGROUND_CONFIG: BackgroundConfig = {
 };
 
 /* ── Background catalog (curated + metadata) ──────────────────────────── */
-
-/**
- * How a catalog entry paints. `color` = a shader color field (a preset), `glsl`
- * = a named programmable-shader preset, `image` = a served/vetted cover-image
- * URL (curated gradient data URL, or a persisted `/api/media/<hash>` upload).
- *
- * Note: a catalog entry never carries GLSL *source* — only a `presetId` the
- * renderer resolves against its own shader corpus (#11088). The apply channel
- * enforces this: naming a catalog entry can never smuggle arbitrary shader code
- * or an unvetted client URL through the broker.
- */
 
 /**
  * One entry in the curated background catalog: the shared metadata

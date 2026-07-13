@@ -19,9 +19,8 @@ export interface ShaderBackgroundProps {
 // "Midnight ember." A deep warm near-black field with a single low orange glow
 // breathing up from the bottom, like a fire banked low in a dark room. The
 // center and top stay a clean dark field so content reads cleanly; only the
-// low glow drifts in brightness. This is the opposite of the prior "flat bright
-// color fills the whole viewport" wall: the field is dark, the warmth is an
-// accent that pools at the bottom near the composer, never a wash over the UI.
+// low glow drifts in brightness: the field is dark, the warmth is an accent
+// that pools at the bottom near the composer, never a wash over the UI.
 //
 // Two stacked radial pools (a wide low ambient and a tighter hot core) crossfade
 // in opacity only (compositor-cheap, no per-frame repaint of the gradients) so
