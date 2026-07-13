@@ -40,14 +40,14 @@ export const CODING_BACKEND_TOKENS: Record<string, CodingBackend> = {
 };
 
 /**
- * One user-facing name per backend, for display strings. The token map above
- * is the INPUT surface (aliases welcome); dumping its keys at the user showed
- * the same backend three times.
+ * One user-facing name per OFFERED backend, for display strings. The token
+ * map above is the INPUT surface (aliases welcome — including "opencode",
+ * which stays switchable by name but is deliberately not offered in lists
+ * and pickers; owner decision, 2026-07-13).
  */
 export const CODING_BACKEND_DISPLAY: readonly string[] = [
 	"codex",
 	"claude",
-	"opencode",
 	"eliza",
 ];
 
