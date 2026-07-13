@@ -462,14 +462,14 @@ export function buildModels(
 export function buildModelMetadata(
   source: { ELIZA_CHAT_VIA_CLI?: string } = {
     ELIZA_CHAT_VIA_CLI: readEnv("ELIZA_CHAT_VIA_CLI"),
-  },
+  }
 ): Plugin["modelMetadata"] {
   const backend = resolveCliBackend(source);
   if (!backend) return undefined;
   const isCodex = backend === "codex" || backend === "codex-sdk";
   const large = isCodex
-    ? (readEnv("ELIZA_CLI_CODEX_MODEL")?.trim() || "gpt-5.5")
-    : (readEnv("ELIZA_CLI_CLAUDE_MODEL")?.trim() || "claude-opus-4-8");
+    ? readEnv("ELIZA_CLI_CODEX_MODEL")?.trim() || "gpt-5.5"
+    : readEnv("ELIZA_CLI_CLAUDE_MODEL")?.trim() || "claude-opus-4-8";
   const plannerRaw = isCodex
     ? readEnv("ELIZA_CLI_CODEX_PLANNER_MODEL")?.trim()
     : readEnv("ELIZA_CLI_CLAUDE_PLANNER_MODEL")?.trim();
