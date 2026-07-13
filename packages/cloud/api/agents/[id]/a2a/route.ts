@@ -58,6 +58,18 @@ const ProviderUsageSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
 });
 
+const A2AChatParamsSchema = z.object({
+  model: z.string().trim().min(1).default("gpt-5-mini"),
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string().min(1),
+      }),
+    )
+    .min(1),
+});
+
 export function generateAgentCard(character: UserCharacter, baseUrl: string) {
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
@@ -257,18 +269,18 @@ async function handleChat(
   rpcId: string | number,
   authUser: { id: string; organization_id: string },
 ): Promise<Response> {
-  const { model = "gpt-5-mini", messages } = params as {
-    model?: string;
-    messages: Array<{ role: string; content: string }>;
-  };
-
-  if (!messages?.length) {
-    return c.json({
-      jsonrpc: "2.0",
-      error: { code: -32602, message: "messages required" },
-      id: rpcId,
-    });
+  const parsedParams = A2AChatParamsSchema.safeParse(params);
+  if (!parsedParams.success) {
+    return c.json(
+      {
+        jsonrpc: "2.0",
+        error: { code: -32602, message: "valid messages are required" },
+        id: rpcId,
+      },
+      400,
+    );
   }
+  const { model, messages } = parsedParams.data;
 
   const bioText = Array.isArray(character.bio)
     ? character.bio.join("\n")
@@ -278,10 +290,7 @@ async function handleChat(
 
   const fullMessages = [
     { role: "system" as const, content: systemPrompt },
-    ...messages.map((m) => ({
-      role: m.role as "user" | "assistant" | "system",
-      content: m.content,
-    })),
+    ...messages,
   ];
 
   const provider = getProviderFromModel(model);

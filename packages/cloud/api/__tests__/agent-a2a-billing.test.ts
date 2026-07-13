@@ -7,8 +7,8 @@
  * try. recordCreatorEarnings can throw on a transient DB error; the pre-fix code
  * let it reach the outer catch, which ran the NON-idempotent reconcile(0) —
  * double-refunding the WHOLE reservation (free inference + a net credit grant)
- * and returning a -32000 error. The fix swallows the earnings error so reconcile
- * fires exactly once and the already-correct settlement response is returned.
+ * and returning a -32000 error. The degraded response now preserves the model
+ * result with an explicit warning and reconciles exactly once.
  *
  * `handleChat` is module-private, so we drive it through the exported Hono app's
  * POST handler (method "chat"), mounted under `/agents/:id/a2a` so the `:id`
@@ -266,6 +266,32 @@ describe("Agent A2A billing", () => {
     expect(body.error?.message).toContain("Insufficient credits");
     expect(streamText).not.toHaveBeenCalled();
     expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["missing messages", {}],
+    ["non-array messages", { messages: "hello" }],
+    ["unsupported role", { messages: [{ role: "tool", content: "hello" }] }],
+    ["empty content", { messages: [{ role: "user", content: "" }] }],
+  ])("rejects invalid chat params before billing: %s", async (_label, params) => {
+    const response = await app.request("/agents/agent-1/a2a", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "chat",
+        params,
+        id: "invalid-rpc",
+      }),
+    });
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(response.status).toBe(400);
+    expect(body.error?.code).toBe(-32602);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
   });
 
   test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
