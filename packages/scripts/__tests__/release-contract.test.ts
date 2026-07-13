@@ -255,9 +255,11 @@ describe("release contract", () => {
     let complete = packed;
     for (const phase of [
       "candidate-recorded",
+      "registry-bound",
       "registry-staged",
       "registry-verified",
       "channel-promoted",
+      "git-bound",
       "git-tagged",
       "release-published",
       "version-sync-pr",

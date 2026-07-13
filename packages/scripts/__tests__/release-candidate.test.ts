@@ -197,7 +197,7 @@ describe("immutable release candidate", () => {
     expect(() =>
       recordReleaseTransition(
         path.join(fixture.base, "candidate"),
-        "registry-staged",
+        "registry-bound",
         { registry: "fixture" },
       ),
     ).toThrow();
@@ -209,6 +209,80 @@ describe("immutable release candidate", () => {
         ),
       ).phase,
     ).toBe("candidate-recorded");
+  }, 30_000);
+
+  test("recovers dead-owner and expired cross-host state locks", () => {
+    const fixture = makeFixture();
+    createCandidate(fixture, "candidate");
+    const candidate = path.join(fixture.base, "candidate");
+    const lockPath = path.join(candidate, "release-state.json.lock");
+    const deadPid = Number(
+      execFileSync(
+        process.execPath,
+        ["-e", "process.stdout.write(String(process.pid))"],
+        { encoding: "utf8" },
+      ),
+    );
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        ownerToken: "dead-owner",
+        hostname: os.hostname(),
+        pid: deadPid,
+        acquiredAt: new Date().toISOString(),
+      }),
+    );
+    expect(
+      recordReleaseTransition(candidate, "registry-bound", {
+        registry: "fixture",
+      }).phase,
+    ).toBe("registry-bound");
+    expect(fs.existsSync(lockPath)).toBe(false);
+
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        ownerToken: "expired-owner",
+        hostname: "another-runner",
+        pid: 1,
+        acquiredAt: "2000-01-01T00:00:00.000Z",
+      }),
+    );
+    const expired = new Date(Date.now() - 10 * 60 * 1000);
+    fs.utimesSync(lockPath, expired, expired);
+    expect(
+      recordReleaseTransition(candidate, "registry-staged", {
+        registry: "fixture",
+      }).phase,
+    ).toBe("registry-staged");
+    expect(fs.existsSync(lockPath)).toBe(false);
+  }, 30_000);
+
+  test("does not expire a live local state-lock owner", () => {
+    const fixture = makeFixture();
+    createCandidate(fixture, "candidate");
+    const candidate = path.join(fixture.base, "candidate");
+    const lockPath = path.join(candidate, "release-state.json.lock");
+    fs.writeFileSync(
+      lockPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        ownerToken: "live-owner",
+        hostname: os.hostname(),
+        pid: process.pid,
+        acquiredAt: "2000-01-01T00:00:00.000Z",
+      }),
+    );
+    const expired = new Date(Date.now() - 10 * 60 * 1000);
+    fs.utimesSync(lockPath, expired, expired);
+    expect(() =>
+      recordReleaseTransition(candidate, "registry-bound", {
+        registry: "fixture",
+      }),
+    ).toThrow("locked by another writer");
+    expect(fs.existsSync(lockPath)).toBe(true);
   }, 30_000);
 
   test("CLI boundary creates, verifies, transitions, and refuses implicit public registry access", async () => {
@@ -252,6 +326,17 @@ describe("immutable release candidate", () => {
     ]);
     const evidencePath = path.join(fixture.base, "evidence.json");
     fs.writeFileSync(evidencePath, JSON.stringify({ registry: "fixture" }));
+    expect(
+      await candidateMain([
+        "transition",
+        "--candidate",
+        candidate,
+        "--to",
+        "registry-bound",
+        "--evidence",
+        evidencePath,
+      ]),
+    ).toMatchObject({ phase: "registry-bound" });
     expect(
       await candidateMain([
         "transition",

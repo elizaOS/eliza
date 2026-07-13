@@ -95,6 +95,9 @@ function makeScenario() {
     expectedCommit: releaseSha,
     build: { command: process.execPath, args: ["build.mjs"] },
   });
+  recordReleaseTransition(candidateDirectory, "registry-bound", {
+    registry: "local",
+  });
   recordReleaseTransition(candidateDirectory, "registry-staged", {
     registry: "local",
   });
@@ -140,7 +143,7 @@ describe("atomic release refs", () => {
     expect(rejectedRefs).not.toContain("refs/tags/v1.0.0");
     expect(rejectedRefs).not.toContain("unrelated-local-tag");
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
-      "channel-promoted",
+      "git-bound",
     );
 
     fs.unlinkSync(hookPath);
@@ -169,9 +172,94 @@ describe("atomic release refs", () => {
         tag: "v1.0.1",
         expectedOldBranchSha: fixture.baseSha,
       }),
-    ).toThrow("Conflicting evidence for already-recorded phase git-tagged");
+    ).toThrow("Conflicting evidence for already-recorded phase git-bound");
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.1",
+    );
+  }, 30_000);
+
+  test("a post-push interruption binds retry intent before remote mutation", () => {
+    const fixture = makeScenario();
+    const lockPath = path.join(
+      fixture.candidateDirectory,
+      "release-state.json.lock",
+    );
+    const hookPath = path.join(fixture.remote, "hooks/post-receive");
+    fs.writeFileSync(
+      hookPath,
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' post-receive > ${JSON.stringify(lockPath)}`,
+        "",
+      ].join("\n"),
+    );
+    fs.chmodSync(hookPath, 0o755);
+
+    expect(() =>
+      pushAtomicReleaseRefs({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: "release-test",
+        branch: "develop",
+        tag: "v1.0.0",
+        expectedOldBranchSha: fixture.baseSha,
+      }),
+    ).toThrow("locked by another writer");
+    const interruptedRefs = remoteRefs(fixture.repoRoot, fixture.remote);
+    expect(interruptedRefs).toContain(
+      `${fixture.releaseSha}\trefs/heads/develop`,
+    );
+    expect(interruptedRefs).toContain(
+      `${fixture.releaseSha}\trefs/tags/v1.0.0^{}`,
+    );
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-bound",
+    );
+
+    fs.unlinkSync(hookPath);
+    fs.unlinkSync(lockPath);
+    const changedRemote = path.join(fixture.base, "changed-remote.git");
+    execFileSync("git", ["init", "--bare", changedRemote]);
+    git(fixture.repoRoot, ["remote", "set-url", "release-test", changedRemote]);
+    expect(() =>
+      pushAtomicReleaseRefs({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: "release-test",
+        branch: "develop",
+        tag: "v1.0.0",
+        expectedOldBranchSha: fixture.baseSha,
+      }),
+    ).toThrow("already-recorded phase git-bound");
+    expect(remoteRefs(fixture.repoRoot, changedRemote)).toBe("");
+    git(fixture.repoRoot, [
+      "remote",
+      "set-url",
+      "release-test",
+      fixture.remote,
+    ]);
+    expect(() =>
+      pushAtomicReleaseRefs({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: "release-test",
+        branch: "develop",
+        tag: "v1.0.0",
+        expectedOldBranchSha: fixture.releaseSha,
+      }),
+    ).toThrow("already-recorded phase git-bound");
+    expect(
+      pushAtomicReleaseRefs({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: "release-test",
+        branch: "develop",
+        tag: "v1.0.0",
+        expectedOldBranchSha: fixture.baseSha,
+      }),
+    ).toMatchObject({ pushed: false, expectedCommit: fixture.releaseSha });
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-tagged",
     );
   }, 30_000);
 

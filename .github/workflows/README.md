@@ -287,18 +287,23 @@ and both hexadecimal SHA-512 and npm SRI integrity for every tarball. The state
 can advance only through this sequence:
 
 ```
-planned -> built-packed -> candidate-recorded -> registry-staged
-        -> registry-verified -> channel-promoted -> git-tagged
-        -> release-published -> version-sync-pr
+planned -> built-packed -> candidate-recorded -> registry-bound
+        -> registry-staged -> registry-verified -> channel-promoted
+        -> git-bound -> git-tagged -> release-published -> version-sync-pr
 ```
 
 Registry publication stages missing versions under a candidate-specific tag,
 accepts a retry only when an existing version's `dist.integrity` exactly matches
 the plan, verifies the full cohort, promotes the requested channel, and removes
-the staging tags. Only HTTP 404 is absence; auth, throttling, transport, server,
-redirect, and parse failures abort. Git publication uses an atomic push of the
-explicit branch and tag refs, never `--follow-tags`, and requires the inspected
-remote branch SHA. `v2.0.3-beta.8`, `.9`, and `.10` are permanently reserved.
+the staging tags. The normalized registry and resolved Git push destination are
+recorded before their first external mutation, so an interrupted run cannot be
+resumed against a different target. Only HTTP 404 is absence; auth, throttling,
+transport, server, redirect, and parse failures abort. Git publication uses an
+atomic push of the explicit branch and tag refs, never `--follow-tags`, and
+requires the inspected remote branch SHA. Candidate state writes use an
+exclusive owner lock; a dead local owner or an expired cross-runner lease is
+recoverable without treating a live writer as stale. `v2.0.3-beta.8`, `.9`, and
+`.10` are permanently reserved.
 
 The current `release.yaml` cannot consume this candidate atomically until its
 implicit Lerna package set is replaced by a maintainer-approved allowlist and

@@ -299,9 +299,18 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
     }),
   ).rejects.toThrow("npm publish failed");
   expect(loadReleaseState(candidateDirectory).state.phase).toBe(
-    "candidate-recorded",
+    "registry-bound",
   );
   await waitForExit(firstServer.child);
+  await expect(
+    publishReleaseCandidate({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory,
+      registryUrl: new URL("alternate/", firstServer.registryUrl).toString(),
+      token,
+      npmCommand: interruptingNpm,
+    }),
+  ).rejects.toThrow("Candidate registry is");
 
   const resumedServer = await startVerdaccio(base, port);
   const partial = await inspectReleaseRegistry({

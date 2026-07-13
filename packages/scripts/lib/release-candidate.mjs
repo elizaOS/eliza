@@ -6,6 +6,7 @@
  */
 
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -17,6 +18,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { hostname } from "node:os";
 import path from "node:path";
 import {
   advanceReleaseState,
@@ -34,6 +36,9 @@ import {
 
 export const RELEASE_PLAN_FILENAME = "release-plan.json";
 export const RELEASE_STATE_FILENAME = "release-state.json";
+
+const RELEASE_STATE_LOCK_SCHEMA_VERSION = 1;
+const RELEASE_STATE_LOCK_LEASE_MS = 5 * 60 * 1000;
 
 function runGit(repoRoot, args) {
   return execFileSync("git", args, {
@@ -397,6 +402,112 @@ export function loadReleaseState(candidateDirectory) {
   return { state, statePath };
 }
 
+function hasErrorCode(error, code) {
+  return error && typeof error === "object" && error.code === code;
+}
+
+function lockOwnerIsDead(owner) {
+  if (
+    owner?.schemaVersion !== RELEASE_STATE_LOCK_SCHEMA_VERSION ||
+    owner.hostname !== hostname() ||
+    !Number.isSafeInteger(owner.pid) ||
+    owner.pid <= 0
+  ) {
+    return false;
+  }
+  try {
+    process.kill(owner.pid, 0);
+    return false;
+  } catch (error) {
+    // error-policy:J3 process liveness maps only ESRCH to an abandoned owner
+    if (hasErrorCode(error, "ESRCH")) return true;
+    if (hasErrorCode(error, "EPERM")) return false;
+    throw error;
+  }
+}
+
+function removeRecoverableStateLock(lockPath) {
+  let owner = null;
+  let source;
+  try {
+    source = readFileSync(lockPath, "utf8");
+    owner = JSON.parse(source);
+  } catch (error) {
+    // error-policy:J3 malformed ownership remains active until its lease expires
+    if (hasErrorCode(error, "ENOENT")) return true;
+    if (!(error instanceof SyntaxError)) throw error;
+  }
+  let lockStat;
+  try {
+    lockStat = statSync(lockPath);
+    if (readFileSync(lockPath, "utf8") !== source) return true;
+  } catch (error) {
+    // error-policy:J3 another contender may remove a stale lock first
+    if (hasErrorCode(error, "ENOENT")) return true;
+    throw error;
+  }
+  const leaseExpired =
+    Date.now() - lockStat.mtimeMs >= RELEASE_STATE_LOCK_LEASE_MS;
+  const localOwner = owner?.hostname === hostname();
+  const recoverable = localOwner ? lockOwnerIsDead(owner) : leaseExpired;
+  if (!recoverable) return false;
+
+  try {
+    unlinkSync(lockPath);
+  } catch (error) {
+    // error-policy:J3 a competing recovery makes acquisition retry safely
+    if (!hasErrorCode(error, "ENOENT")) throw error;
+  }
+  return true;
+}
+
+function acquireReleaseStateLock(lockPath) {
+  const owner = {
+    schemaVersion: RELEASE_STATE_LOCK_SCHEMA_VERSION,
+    ownerToken: randomUUID(),
+    hostname: hostname(),
+    pid: process.pid,
+    acquiredAt: new Date().toISOString(),
+  };
+  const source = stableStringify(owner);
+  while (true) {
+    try {
+      writeFileSync(lockPath, source, { encoding: "utf8", flag: "wx" });
+      return owner;
+    } catch (error) {
+      // error-policy:J2 exclusive-create collisions carry lock-owner context
+      if (!hasErrorCode(error, "EEXIST")) {
+        throw new Error(`Unable to acquire release-state lock ${lockPath}`, {
+          cause: error,
+        });
+      }
+      if (removeRecoverableStateLock(lockPath)) continue;
+      throw new Error(
+        `Release state is locked by another writer: ${lockPath}`,
+        {
+          cause: error,
+        },
+      );
+    }
+  }
+}
+
+function releaseReleaseStateLock(lockPath, owner) {
+  let currentOwner;
+  try {
+    currentOwner = JSON.parse(readFileSync(lockPath, "utf8"));
+  } catch (error) {
+    // error-policy:J2 a lost lock invalidates the protected transition
+    throw new Error(`Unable to validate release-state lock ${lockPath}`, {
+      cause: error,
+    });
+  }
+  if (currentOwner?.ownerToken !== owner.ownerToken) {
+    throw new Error(`Release-state lock ownership changed: ${lockPath}`);
+  }
+  unlinkSync(lockPath);
+}
+
 export function recordReleaseTransition(
   candidateDirectory,
   targetPhase,
@@ -407,21 +518,44 @@ export function recordReleaseTransition(
     RELEASE_STATE_FILENAME,
   );
   const lockPath = `${statePath}.lock`;
-  writeFileSync(lockPath, `${process.pid}\n`, { encoding: "utf8", flag: "wx" });
+  const lockOwner = acquireReleaseStateLock(lockPath);
+  let transitionError = null;
+  let result = null;
   try {
     const { state } = loadReleaseState(candidateDirectory);
     const nextState = advanceReleaseState(state, targetPhase, evidence);
-    if (nextState === state) return state;
-    const temporary = `${statePath}.${process.pid}.${Date.now()}.tmp`;
-    writeFileSync(temporary, stableStringify(nextState), {
-      encoding: "utf8",
-      flag: "wx",
-    });
-    renameSync(temporary, statePath);
-    return nextState;
-  } finally {
-    unlinkSync(lockPath);
+    if (nextState === state) {
+      result = state;
+    } else {
+      const temporary = `${statePath}.${process.pid}.${Date.now()}.tmp`;
+      writeFileSync(temporary, stableStringify(nextState), {
+        encoding: "utf8",
+        flag: "wx",
+      });
+      renameSync(temporary, statePath);
+      result = nextState;
+    }
+  } catch (error) {
+    // error-policy:J2 defer rethrow until lock ownership is validated
+    transitionError = error;
   }
+  let lockError = null;
+  try {
+    releaseReleaseStateLock(lockPath, lockOwner);
+  } catch (error) {
+    // error-policy:J2 combine lock loss with the protected write failure
+    lockError = error;
+  }
+  if (transitionError && lockError) {
+    // error-policy:J2 preserve both a transition failure and lost-lock failure
+    throw new AggregateError(
+      [transitionError, lockError],
+      "Release transition and lock release failed",
+    );
+  }
+  if (transitionError) throw transitionError;
+  if (lockError) throw lockError;
+  return result;
 }
 
 /** Verify Git, manifests, plan integrity, and every tarball before side effects. */

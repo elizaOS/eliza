@@ -439,23 +439,40 @@ export async function publishReleaseCandidate({
   const { plan } = verified;
   let phaseIndex = RELEASE_PHASES.indexOf(verified.state.phase);
   const candidateIndex = RELEASE_PHASES.indexOf("candidate-recorded");
+  const boundIndex = RELEASE_PHASES.indexOf("registry-bound");
+  const stagedIndex = RELEASE_PHASES.indexOf("registry-staged");
   const promotedIndex = RELEASE_PHASES.indexOf("channel-promoted");
   const normalizedRegistry = normalizeRegistryUrl(registryUrl);
   if (phaseIndex < candidateIndex)
     throw new Error(`Candidate is only at ${verified.state.phase}`);
-  if (phaseIndex >= RELEASE_PHASES.indexOf("registry-staged")) {
+  const bindingEvidence = {
+    registry: normalizedRegistry,
+    candidateTag: plan.candidateTag,
+  };
+  if (phaseIndex >= boundIndex) {
     const recorded = releaseTransitionEvidence(
       verified.state,
-      "registry-staged",
+      "registry-bound",
     );
     if (recorded?.registry !== normalizedRegistry) {
       throw new Error(
         `Candidate registry is ${recorded?.registry}, not ${normalizedRegistry}`,
       );
     }
+    if (stableStringify(recorded) !== stableStringify(bindingEvidence))
+      throw new Error("Candidate registry binding is malformed");
   }
 
   if (phaseIndex === candidateIndex) {
+    recordReleaseTransition(
+      candidateDirectory,
+      "registry-bound",
+      bindingEvidence,
+    );
+    phaseIndex = boundIndex;
+  }
+
+  if (phaseIndex === boundIndex) {
     const actions = await stageMissingPackages({
       repoRoot,
       candidateDirectory,
@@ -465,14 +482,13 @@ export async function publishReleaseCandidate({
       npmCommand,
     });
     recordReleaseTransition(candidateDirectory, "registry-staged", {
-      registry: normalizedRegistry,
-      candidateTag: plan.candidateTag,
+      ...bindingEvidence,
       actions,
     });
-    phaseIndex += 1;
+    phaseIndex = stagedIndex;
   }
 
-  if (phaseIndex === RELEASE_PHASES.indexOf("registry-staged")) {
+  if (phaseIndex === stagedIndex) {
     const packages = await verifyAllIntegrities({ registryUrl, plan, token });
     recordReleaseTransition(candidateDirectory, "registry-verified", {
       registry: normalizedRegistry,

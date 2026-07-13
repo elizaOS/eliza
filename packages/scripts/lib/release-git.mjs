@@ -44,6 +44,28 @@ function assertRefName(repoRoot, refName) {
   runGit(repoRoot, ["check-ref-format", refName]);
 }
 
+function resolveRemotePushUrls(repoRoot, remote) {
+  const result = spawnSync(
+    "git",
+    ["remote", "get-url", "--push", "--all", remote],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0)
+    return [runGit(repoRoot, ["ls-remote", "--get-url", "--", remote])];
+  const urls = result.stdout
+    .split("\n")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (urls.length === 0)
+    throw new Error(`Git remote ${remote} has no push URL`);
+  return urls;
+}
+
 export function assertReleaseTagAllowed(tag) {
   if (RESERVED_TAGS.has(tag)) {
     throw new Error(
@@ -169,26 +191,35 @@ export function pushAtomicReleaseRefs({
     "expectedCommit",
   );
   assertCommitExists(repoRoot, expectedCommit);
-  const phaseIndex = RELEASE_PHASES.indexOf(state.phase);
-  if (phaseIndex < RELEASE_PHASES.indexOf("channel-promoted")) {
+  let phaseIndex = RELEASE_PHASES.indexOf(state.phase);
+  const promotedIndex = RELEASE_PHASES.indexOf("channel-promoted");
+  const boundIndex = RELEASE_PHASES.indexOf("git-bound");
+  const taggedIndex = RELEASE_PHASES.indexOf("git-tagged");
+  if (phaseIndex < promotedIndex) {
     throw new Error(
       `Git refs cannot be published from release phase ${state.phase}`,
     );
   }
 
-  const transitionEvidence = {
+  const bindingEvidence = {
     remote,
+    remotePushUrls: resolveRemotePushUrls(repoRoot, remote),
     branchRef,
     tagRef,
     expectedCommit,
+    expectedOldBranchSha: expectedOld,
   };
-  if (phaseIndex >= RELEASE_PHASES.indexOf("git-tagged")) {
-    const recorded = releaseTransitionEvidence(state, "git-tagged");
-    if (stableStringify(recorded) !== stableStringify(transitionEvidence)) {
+  if (phaseIndex >= boundIndex) {
+    const recorded = releaseTransitionEvidence(state, "git-bound");
+    if (stableStringify(recorded) !== stableStringify(bindingEvidence)) {
       throw new Error(
-        "Conflicting evidence for already-recorded phase git-tagged",
+        "Conflicting evidence for already-recorded phase git-bound",
       );
     }
+  }
+  if (phaseIndex === promotedIndex) {
+    recordReleaseTransition(candidateDirectory, "git-bound", bindingEvidence);
+    phaseIndex = boundIndex;
   }
 
   const before = remoteReleaseRefs(repoRoot, remote, branchRef, tagRef);
@@ -227,11 +258,24 @@ export function pushAtomicReleaseRefs({
       `Atomic ref verification failed: branch=${after.branchCommit}, tag=${after.tagCommit}, expected=${expectedCommit}`,
     );
   }
-  if (state.phase === "channel-promoted") {
+  const completionEvidence = {
+    ...bindingEvidence,
+    branchCommit: after.branchCommit,
+    tagCommit: after.tagCommit,
+  };
+  if (phaseIndex >= taggedIndex) {
+    const recorded = releaseTransitionEvidence(state, "git-tagged");
+    if (stableStringify(recorded) !== stableStringify(completionEvidence)) {
+      throw new Error(
+        "Conflicting evidence for already-recorded phase git-tagged",
+      );
+    }
+  }
+  if (phaseIndex === boundIndex) {
     recordReleaseTransition(
       candidateDirectory,
       "git-tagged",
-      transitionEvidence,
+      completionEvidence,
     );
   }
   return { branchRef, tagRef, expectedCommit, pushed: refspecs.length > 0 };
