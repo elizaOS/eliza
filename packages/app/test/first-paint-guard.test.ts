@@ -74,14 +74,17 @@ describe("first-paint critical path", () => {
   it("still mounts React only after initializeAppModules in the main boot path", () => {
     // Guards the ordering invariant the whole optimization rests on: the normal
     // path awaits app modules, then mounts, then initializes the platform.
-    // (Special window-shell paths mount earlier by design and are out of
-    // scope.) Post-mount fire-and-forget work may sit between the deferred
-    // schedule and the platform await, so only the ordering is pinned.
-    const appModulesIdx = mainSrc.indexOf("await initializeAppModules();");
-    const mountIdx = mainSrc.indexOf(
+    // Special window-shell paths mount earlier by design and are out of scope —
+    // the chat-overlay shell even calls initializePlatform() itself (it owns
+    // the tray/shortcut wiring in dockless mode), so measure the LAST
+    // occurrence of each marker: the main boot path is the tail of main().
+    // Post-mount fire-and-forget work may sit between the deferred schedule
+    // and the platform await, so only the ordering is pinned.
+    const appModulesIdx = mainSrc.lastIndexOf("await initializeAppModules();");
+    const mountIdx = mainSrc.lastIndexOf(
       "mountReactApp();\n  scheduleDeferredAppModuleLoadsAfterPaint();",
     );
-    const platformIdx = mainSrc.indexOf("await initializePlatform();");
+    const platformIdx = mainSrc.lastIndexOf("await initializePlatform();");
     expect(appModulesIdx).toBeGreaterThan(-1);
     expect(mountIdx).toBeGreaterThan(appModulesIdx);
     expect(platformIdx).toBeGreaterThan(mountIdx);
