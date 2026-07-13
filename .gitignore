@@ -724,9 +724,18 @@ packages/inference/verify/vulkan_dispatch_smoke
 /packages/app-core/scripts/ffi-stub/libelizainference_stub.dll
 packages/training/vendor/
 
-# Generated run output — never source data.
+# Generated run output — never source data. The #9299 GEPA archive is an
+# immutable exception: PR #9543 uses these files as its authored result record,
+# optimized-prompt artifacts, and real-model trajectories.
 packages/app-core/collision-report.json
-/plugins/plugin-training/docs/audit/9299-gepa-live/
+/plugins/plugin-training/docs/audit/9299-gepa-live/*
+!/plugins/plugin-training/docs/audit/9299-gepa-live/RESULTS.md
+!/plugins/plugin-training/docs/audit/9299-gepa-live/calendar_extract.optimized.json
+!/plugins/plugin-training/docs/audit/9299-gepa-live/calendar_extract.run.log
+!/plugins/plugin-training/docs/audit/9299-gepa-live/inbox_triage.optimized.json
+!/plugins/plugin-training/docs/audit/9299-gepa-live/inbox_triage.run.log
+!/plugins/plugin-training/docs/audit/9299-gepa-live/schedule_plan.optimized.json
+!/plugins/plugin-training/docs/audit/9299-gepa-live/schedule_plan.run.log
 /plugins/plugin-personal-assistant/docs/audit/cerebras-journey-eval-results.json
 /packages/os/linux/vm/output/
 

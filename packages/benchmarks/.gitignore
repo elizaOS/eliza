@@ -69,7 +69,7 @@ Thumbs.db
 .agents/
 
 # OpenClaw-Bench writes timestamped run output here. The misspelled legacy
-# directory is also ignored so an old local runner cannot reintroduce it.
+# directory stays ignored; its authored Ralphy analyses live under `ralphy/`.
 openclaw-benchmark/outputs/
 openclaw-benchmark/benchmark/benchmark_resukts/
 

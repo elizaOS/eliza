@@ -1,0 +1,61 @@
+{
+  "task": "calendar_extract",
+  "optimizer": "gepa",
+  "baseline": "Plan the calendar action for this request.\nThe user may speak in any language.\nUse the current request plus recent conversation context.\nIf the current request is vague or a follow-up, recover the subject from recent conversation and apply the new constraint from the current request.\nYou are allowed to decide that the assistant should reply naturally without acting yet.\nSet shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for calendar help without enough specifics to safely act.\nWhen shouldAct=false, provide a short natural response that asks only for what is missing.\n\nReturn JSON only as a single object with exactly these fields:\n  subaction: one of the allowed subactions below, or null when this should be reply-only/no-action\n  shouldAct: boolean\n  response: short natural-language reply when shouldAct is false, otherwise empty or null\n  queries: array or ||-delimited string of up to 3 search queries\n  title: optional event title\n  tripLocation: optional trip location\n  timeMin: optional ISO 8601 datetime\n  timeMax: optional ISO 8601 datetime\n  windowLabel: optional natural-language window label\n\nsubactions[7]{name,use}:\n  feed,View schedule for today tomorrow or this week\n  next_event,Check the next upcoming event only\n  search_events,Find events by title attendee location or date range\n  create_event,Schedule a new event\n  update_event,Rename reschedule move or edit an existing event\n  delete_event,Remove or cancel an existing event\n  trip_window,Query what is happening during a trip or stay in a place\nUse only the exact subaction literals listed above.\nDo not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.\nIf the user asks to put, add, book, schedule, or enter a new meeting, appointment, call, lunch, or block on the calendar at a stated time, prefer create_event over search_events.\nWhen the user supplies timing for a new calendar item, that is usually create_event even if the subject could also be searched later.\n\nFor feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.\nFor search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like 'find my flight' or 'meetings with my colleague' so the search does not silently narrow away the target event.\ntimeMin and timeMax must be ISO 8601 datetimes that the API can use directly.\nwindowLabel should be a short natural-language label like on monday, this weekend, next month, or tonight.\nFor search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.\nWhen the user asks whether they have a flight to a place, include the place name as a search query in addition to any flight phrase.\nPreserve names, places, and keywords in their original language or script when useful.\nConvert time constraints into concise searchable dates or windows even if the user phrases them in another language.\nFocus on people, places, flights, itinerary, appointments, and explicit dates.\nIf the request is about a date, include a date query like april 12 or 2026-04-12.\nIf the request asks what is happening while the user is in a place, use trip_window and include tripLocation.\nFor update_event or delete_event, use queries to identify the existing target event and title for the new title only when the user is renaming it.\nFor requests like all events, full schedule, everything on my calendar, or a broad itinerary sweep, return a broad timeMin/timeMax window instead of relying on downstream heuristics.\n\nExample feed: {\"subaction\":\"feed\",\"shouldAct\":true,\"response\":null,\"queries\":[],\"title\":null,\"tripLocation\":null,\"timeMin\":null,\"timeMax\":null,\"windowLabel\":\"tomorrow\"}\nExample search: {\"subaction\":\"search_events\",\"shouldAct\":true,\"response\":null,\"queries\":[\"flight to denver\",\"denver\"],\"title\":null,\"tripLocation\":null,\"timeMin\":null,\"timeMax\":null,\"windowLabel\":null}\nExample update: {\"subaction\":\"update_event\",\"shouldAct\":true,\"response\":null,\"queries\":[\"meeting\"],\"title\":\"standup\",\"tripLocation\":null,\"timeMin\":null,\"timeMax\":null,\"windowLabel\":null}\nExample clarify: {\"subaction\":null,\"shouldAct\":false,\"response\":\"What do you want to do on your calendar?\",\"queries\":[],\"title\":null,\"tripLocation\":null,\"timeMin\":null,\"timeMax\":null,\"windowLabel\":null}\n\nThe user may speak any language. Detect the calendar intent regardless of language.\nWhen the user asks about what is happening in a specific location or during a trip, detect this as trip_window and extract the location, regardless of language.\n\nReturn JSON only as a single object. No prose. No markdown. No hidden reasoning.",
+  "prompt": "Plan the calendar action for this request.\nThe user may speak in any language.\nUse the current request plus recent conversation context.\nIf the current request is vague or a follow‑up, recover the subject from recent conversation and apply the new constraint from the current request.\nYou are allowed to decide that the assistant should reply naturally without acting yet.\nSet shouldAct=false when the user is vague, only acknowledging, brainstorming, or asking for calendar help without enough specifics to safely act.\nWhen shouldAct=false, provide a short natural response that asks only for what is missing.\n\nReturn JSON only as a single object with exactly these fields:\n  subaction: one of the allowed subactions below, or null when this should be reply‑only/no‑action\n  shouldAct: boolean\n  response: short natural‑language reply when shouldAct is false, otherwise empty or null\n  queries: array (always present, use [] when no queries) or ||‑delimited string of up to 3 search queries\n  title: optional event title\n  tripLocation: optional trip location\n  timeMin: optional ISO 8601 datetime\n  timeMax: optional ISO 8601 datetime\n  windowLabel: optional natural‑language window label\n\nsubactions[7]{name,use}:\n  feed,View schedule for today, tomorrow or this week\n  next_event,Check the next upcoming event only\n  search_events,Find events by title attendee location or date range\n  create_event,Schedule a new event\n  update_event,Rename reschedule move or edit an existing event\n  delete_event,Remove or cancel an existing event\n  trip_window,Query what is happening during a trip or stay in a place\nUse only the exact subaction literals listed above.\nDo not invent aliases like edit_event, modify_event, reschedule_event, move_event, cancel_event, remove_event, agenda, or itinerary_window.\nIf the user asks to put, add, book, schedule, or enter a new meeting, appointment, call, lunch, or block on the calendar at a stated time, prefer create_event over search_events.\nWhen the user supplies timing for a new calendar item, that is usually create_event even if the subject could also be searched later.\n\nFor feed, search_events, trip_window, update_event, or delete_event, infer an exact timeMin/timeMax window when the request names or implies a date or date range.\n**Special rule for feed**: when the user requests “today”, set timeMin to 00:00 of the current day and timeMax to 00:00 of the following day (ISO 8601). Apply analogous start‑of‑day/end‑of‑day logic for “tomorrow” and other explicit days.\nFor search_events specifically: only set timeMin/timeMax when the user's literal words name a date, day, week, or month. Leave them null for timeless queries like “find my flight” or “meetings with my colleague” so the search does not silently narrow away the target event.\ntimeMin and timeMax must be ISO 8601 datetimes that the API can use directly.\nwindowLabel should be a short natural‑language label like on monday, this weekend, next month, or tonight.\nFor search_events, update_event, delete_event, or trip_window, extract up to 3 short search queries.\nWhen the user asks whether they have a flight to a place, include the place name as a search query in addition to any flight phrase.\nPreserve names, places, and keywords in their original language or script when useful.\nConvert time constraints into concise searchable dates or windows even if the user phrases them in another language",
+  "score": 0.8636363636363636,
+  "baselineScore": 0.7954545454545454,
+  "datasetId": "seed:calendar_extract",
+  "datasetSize": 11,
+  "generatedAt": "2026-06-25T00:38:38.689Z",
+  "lineage": [
+    {
+      "round": 0,
+      "variant": 0,
+      "score": 0.7954545454545454,
+      "notes": "baseline"
+    },
+    {
+      "round": 0,
+      "variant": 1,
+      "score": 0.8257575757575757,
+      "notes": "seed-feedback | The model is outputting all optional fields (response, title, tripLocation, etc.) even when they are null, but the expe…"
+    },
+    {
+      "round": 0,
+      "variant": 2,
+      "score": 0.045454545454545456,
+      "notes": "seed-compress | tokens=445"
+    },
+    {
+      "round": 0,
+      "variant": 3,
+      "score": 0.8636363636363636,
+      "notes": "seed-feedback | The model is outputting a “response” field (and sometimes null values) even when shouldAct = true, which violates the s…"
+    },
+    {
+      "round": 1,
+      "variant": 2,
+      "score": 0.5151515151515151,
+      "notes": "feedback-mut | The model is adding the `response` key even when `shouldAct` is true and calculating `timeMax` as the end of the same d…"
+    },
+    {
+      "round": 1,
+      "variant": 3,
+      "score": 0.5681818181818182,
+      "notes": "compress-mut | tokens=234"
+    },
+    {
+      "round": 2,
+      "variant": 2,
+      "score": 0.8257575757575757,
+      "notes": "feedback-mut | The model is outputting all optional keys (response, title, tripLocation, timeMin, timeMax, windowLabel) even when they…"
+    },
+    {
+      "round": 2,
+      "variant": 3,
+      "score": 0.6666666666666666,
+      "notes": "compress-mut | tokens=475"
+    }
+  ]
+}
