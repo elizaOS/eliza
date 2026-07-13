@@ -32,8 +32,38 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
             springboard.staticTexts["Eliza Voice"].waitForExistence(timeout: 8),
             "Control Center gallery search must list the Eliza Voice control; a missing result means the ElizaWidgets appex/control registration path regressed."
         )
+        XCTAssertTrue(
+            springboard.staticTexts["Eliza Transcribe"].waitForExistence(timeout: 8),
+            "Control Center gallery search must list the Eliza Transcribe control; a missing result means the ElizaWidgets appex/control registration path regressed."
+        )
 
         attachAccessibilitySnapshot(named: "control-gallery-eliza-results")
+        goHome()
+    }
+
+    /// Drives the transcription deep link the way the OS surfaces do (the
+    /// Transcribe control / App Intent both mint this URL) and asserts the
+    /// container app foregrounds. `XCUISystem.open` delivers the URL through
+    /// the real system opener, so this covers scheme registration + routing
+    /// without needing a control installed in Control Center first.
+    func testTranscribeDeepLinkForegroundsApp() throws {
+        guard #available(iOS 16.4, *) else {
+            throw XCTSkip("XCUISystem.open(_:) requires iOS 16.4+")
+        }
+        guard let url = URL(
+            string: "elizaos://transcribe?source=ios-control&action=transcribe&transcribe=1"
+        ) else {
+            return XCTFail("The transcribe deep link must be a valid URL")
+        }
+
+        XCUIDevice.shared.system.open(url)
+
+        let app = XCUIApplication()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 20),
+            "Opening elizaos://transcribe must foreground the container app; the renderer deep-link spine then lands it on #chat?transcribe=1."
+        )
+        attachScreenshot(named: "transcribe-deeplink-01-app-foregrounded")
         goHome()
     }
 

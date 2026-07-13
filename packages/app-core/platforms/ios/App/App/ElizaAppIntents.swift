@@ -80,6 +80,50 @@ struct StartElizaVoiceIntent: AppIntent {
 }
 
 @available(iOS 16.0, *)
+struct StartElizaTranscriptionIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Transcription"
+    static var description = IntentDescription("Open Eliza directly into transcription mode.")
+    static var openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        ElizaAppIntentRouter.open(
+            path: "transcribe",
+            action: "transcribe",
+            extraItems: [URLQueryItem(name: "transcribe", value: "1")]
+        )
+        return .result()
+    }
+}
+
+/// The one auto-SEND intent. Every other intent above routes through an
+/// `elizaos://` URL, which is deliberately prefill-only in the renderer — any
+/// app can forge a URL, so URL-carried text must never send itself. This
+/// intent runs in-process (`openAppWhenRun` foregrounds the container app and
+/// `perform()` executes inside it), so it can use the provably-native channel
+/// instead: NotificationCenter → `ElizaIntentPlugin` → `notifyListeners`,
+/// which cold-start-queues until the WebView listener attaches.
+@available(iOS 16.0, *)
+struct SendElizaMessageIntent: AppIntent {
+    static var title: LocalizedStringResource = "Send Message to Eliza"
+    static var description = IntentDescription("Send a message straight into Eliza chat — delivered and answered without a confirmation step.")
+    static var openAppWhenRun = true
+
+    @Parameter(title: "Message", requestValueDialog: "What should Eliza be told?")
+    var text: String
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw $text.needsValueError("What should the message say?")
+        }
+        ElizaIntentPlugin.postNativeChatSend(text: trimmed, source: "ios-app-intents")
+        return .result()
+    }
+}
+
+@available(iOS 16.0, *)
 struct OpenElizaDailyBriefIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Daily Brief"
     static var description = IntentDescription("Open the LifeOps daily brief in Eliza.")
@@ -150,6 +194,29 @@ struct ElizaAppShortcutsProvider: AppShortcutsProvider {
             ],
             shortTitle: "Voice",
             systemImageName: "waveform"
+        )
+
+        AppShortcut(
+            intent: StartElizaTranscriptionIntent(),
+            phrases: [
+                "Transcribe with \(.applicationName)",
+                "Start \(.applicationName) transcription",
+            ],
+            shortTitle: "Transcribe",
+            systemImageName: "text.quote"
+        )
+
+        // The message text is a plain String parameter, so it cannot be
+        // interpolated into the spoken phrases (see the NOTE above) — Siri
+        // collects it via the intent's `requestValueDialog` instead.
+        AppShortcut(
+            intent: SendElizaMessageIntent(),
+            phrases: [
+                "Send a message to \(.applicationName)",
+                "Tell \(.applicationName) something",
+            ],
+            shortTitle: "Send Message",
+            systemImageName: "paperplane"
         )
 
         AppShortcut(

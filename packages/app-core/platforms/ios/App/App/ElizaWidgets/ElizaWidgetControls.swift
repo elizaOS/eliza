@@ -34,6 +34,18 @@ struct StartElizaVoiceControlIntent: AppIntent {
 }
 
 @available(iOS 18.0, *)
+struct StartElizaTranscriptionControlIntent: AppIntent {
+    static var title: LocalizedStringResource = "Eliza Transcribe"
+    static var description = IntentDescription("Open Eliza directly into transcription mode.")
+    static var openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult & OpensIntent {
+        .result(opensIntent: OpenURLIntent(ElizaWidgetDeepLink.transcribe(source: .control)))
+    }
+}
+
+@available(iOS 18.0, *)
 struct ElizaAskControl: ControlWidget {
     static let kind = "ElizaAskControl"
 
@@ -60,5 +72,20 @@ struct ElizaVoiceControl: ControlWidget {
         }
         .displayName("Eliza Voice")
         .description("Start a voice chat with Eliza from Control Center, the Lock Screen, or the Action button.")
+    }
+}
+
+@available(iOS 18.0, *)
+struct ElizaTranscribeControl: ControlWidget {
+    static let kind = "ElizaTranscribeControl"
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: Self.kind) {
+            ControlWidgetButton(action: StartElizaTranscriptionControlIntent()) {
+                Label("Eliza Transcribe", systemImage: "text.quote")
+            }
+        }
+        .displayName("Eliza Transcribe")
+        .description("Start transcription with Eliza from Control Center, the Lock Screen, or the Action button.")
     }
 }

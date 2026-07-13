@@ -21,6 +21,12 @@ import UserNotifications
 ///   - `setPairingStatus({ deviceId, agentUrl })`
 ///       Persists the same keys after a QR handshake or `session.start` push so
 ///       cold launches can restore `paired: true` via `getPairingStatus`.
+///   - listener event `nativeIntent`
+///       Native→JS channel for in-process App Intents (`SendElizaMessageIntent`).
+///       Payloads travel NotificationCenter → this plugin → `notifyListeners`
+///       with `retainUntilConsumed`, so an intent fired at cold start is queued
+///       on both halves (pre-plugin-load natively, pre-listener-attach in JS)
+///       instead of dropped. See `postNativeChatSend`.
 ///   - `getDeviceCapabilities()`
 ///       Returns a snapshot of the real hardware capabilities — device model
 ///       identifier (`utsname.machine`, e.g. `iPhone17,2`), simulator flag,
@@ -53,10 +59,83 @@ public class ElizaIntentPlugin: CAPPlugin, CAPBridgedPlugin {
         if #available(iOS 13.0, *) {
             MXMetricManager.shared.add(ElizaMetricKitSink.shared)
         }
+        ElizaIntentPlugin.attachNativeSendChannel(self)
     }
 
     private static let pairingDeviceIdKey = "com.eliza.companion.pairing.deviceId"
     private static let pairingAgentUrlKey = "com.eliza.companion.pairing.agentUrl"
+
+    // MARK: - Native auto-send channel (App Intents → WebView)
+
+    /// In-process transport for `SendElizaMessageIntent`. Auto-send must never
+    /// travel over `elizaos://` URLs (forgeable by any app), so the intent posts
+    /// this notification and the plugin forwards it to the WebView as a
+    /// `nativeIntent` listener event — a channel only native code can reach.
+    public static let nativeChatSendNotification = Notification.Name("ElizaNativeChatSendIntent")
+
+    /// The event name the JS half listens on (`ios-intent-send-bridge.ts`).
+    private static let nativeIntentEventName = "nativeIntent"
+
+    private static let nativeSendLock = NSLock()
+    /// Payloads posted before the Capacitor bridge has loaded this plugin
+    /// (cold-start App Intent racing bridge init); drained by `load()`.
+    private static var pendingNativeSends: [[String: Any]] = []
+    private static weak var nativeSendInstance: ElizaIntentPlugin?
+
+    /// Process-wide observer, installed on first touch (from `load()` or
+    /// `postNativeChatSend`, whichever runs first — Swift statics initialize
+    /// lazily and exactly once). Living on the class rather than an instance
+    /// means a post can never miss delivery for want of a loaded plugin: the
+    /// handler queues when no instance is attached yet.
+    private static let nativeSendObserver: NSObjectProtocol = NotificationCenter.default.addObserver(
+        forName: nativeChatSendNotification,
+        object: nil,
+        queue: .main
+    ) { notification in
+        guard let text = notification.userInfo?["text"] as? String,
+              let source = notification.userInfo?["source"] as? String,
+              !text.isEmpty else {
+            return
+        }
+        deliverNativeIntent(["action": "send-message", "text": text, "source": source])
+    }
+
+    /// Entry point for in-process native callers (App Intents). Routes through
+    /// NotificationCenter so the posting site stays decoupled from plugin
+    /// lifetime; touching `nativeSendObserver` first guarantees the observer
+    /// exists before the (synchronous, same-queue) post.
+    public static func postNativeChatSend(text: String, source: String) {
+        _ = nativeSendObserver
+        NotificationCenter.default.post(
+            name: nativeChatSendNotification,
+            object: nil,
+            userInfo: ["text": text, "source": source]
+        )
+    }
+
+    private static func deliverNativeIntent(_ payload: [String: Any]) {
+        nativeSendLock.lock()
+        let instance = nativeSendInstance
+        if instance == nil {
+            pendingNativeSends.append(payload)
+        }
+        nativeSendLock.unlock()
+        // retainUntilConsumed parks the event inside the Capacitor bridge until
+        // the JS listener attaches — the WebView half of the cold-start queue.
+        instance?.notifyListeners(nativeIntentEventName, data: payload, retainUntilConsumed: true)
+    }
+
+    private static func attachNativeSendChannel(_ instance: ElizaIntentPlugin) {
+        _ = nativeSendObserver
+        nativeSendLock.lock()
+        nativeSendInstance = instance
+        let queued = pendingNativeSends
+        pendingNativeSends.removeAll()
+        nativeSendLock.unlock()
+        for payload in queued {
+            instance.notifyListeners(nativeIntentEventName, data: payload, retainUntilConsumed: true)
+        }
+    }
 
     @objc public func scheduleAlarm(_ call: CAPPluginCall) {
         guard let timeIso = call.getString("timeIso"),

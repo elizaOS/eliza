@@ -39,6 +39,15 @@ enum ElizaWidgetDeepLink {
         )
     }
 
+    static func transcribe(source: Source) -> URL {
+        url(
+            path: "transcribe",
+            action: "transcribe",
+            source: source,
+            extraItems: [URLQueryItem(name: "transcribe", value: "1")]
+        )
+    }
+
     static func dailyBrief(source: Source) -> URL {
         url(path: "lifeops/daily-brief", action: "lifeops.daily-brief", source: source)
     }
@@ -101,8 +110,9 @@ struct ElizaWidgetTimelineProvider: TimelineProvider {
     }
 }
 
-/// The five quick actions mirror the app target's App Intents
+/// The widget's five quick actions correspond to their app-target App Intents
 /// (`ElizaAppIntents.swift`): Ask, Voice, Daily Brief, New Task, Smart Reply.
+/// (Transcribe ships as a Control / App Intent rather than a widget cell.)
 private struct ElizaQuickAction: Identifiable {
     let id: String
     let title: String
@@ -271,6 +281,9 @@ struct ElizaWidgetsBundle: WidgetBundle {
         }
         if #available(iOS 18.0, *) {
             ElizaVoiceControl()
+        }
+        if #available(iOS 18.0, *) {
+            ElizaTranscribeControl()
         }
     }
 }

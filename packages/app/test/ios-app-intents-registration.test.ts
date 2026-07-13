@@ -26,6 +26,10 @@ const widgetControlsSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaWidgets/ElizaWidgetControls.swift"),
   "utf8",
 );
+const intentPluginSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaIntentPlugin.swift"),
+  "utf8",
+);
 const widgetsInfoPlist = readFileSync(
   path.join(iosAppRoot, "App/ElizaWidgets/Info.plist"),
   "utf8",
@@ -108,6 +112,34 @@ const androidVoiceTileService = readFileSync(
   path.join(
     repoRoot,
     "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceTileService.java",
+  ),
+  "utf8",
+);
+const androidChatTileService = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaChatTileService.java",
+  ),
+  "utf8",
+);
+const androidTranscribeTileService = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaTranscribeTileService.java",
+  ),
+  "utf8",
+);
+const androidAssistantTileBase = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAssistantTileService.java",
+  ),
+  "utf8",
+);
+const androidShortcutsXml = readFileSync(
+  path.join(
+    repoRoot,
+    "packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml",
   ),
   "utf8",
 );
@@ -216,6 +248,8 @@ describe("native assistant entry contracts", () => {
     for (const intentName of [
       "AskElizaIntent",
       "StartElizaVoiceIntent",
+      "StartElizaTranscriptionIntent",
+      "SendElizaMessageIntent",
       "OpenElizaDailyBriefIntent",
       "CreateElizaTaskIntent",
       "DraftElizaSmartReplyIntent",
@@ -226,10 +260,33 @@ describe("native assistant entry contracts", () => {
     expect(appIntentsSwift).toContain("ios-app-intents");
     expect(appIntentsSwift).toContain("Ask \\(.applicationName)");
     expect(appIntentsSwift).toContain("Start \\(.applicationName) voice");
+    expect(appIntentsSwift).toContain("Transcribe with \\(.applicationName)");
+    expect(appIntentsSwift).toContain("Send a message to \\(.applicationName)");
     expect(appIntentsSwift).toContain("Open \\(.applicationName) daily brief");
     expect(appIntentsSwift).toContain(
       "Draft a reply with \\(.applicationName)",
     );
+  });
+
+  it("auto-sends only over the provably-native App Intent channel", () => {
+    // SendElizaMessageIntent must NOT mint an elizaos:// URL (URLs are
+    // forgeable by any app and are prefill-only in the renderer); it posts
+    // NotificationCenter → ElizaIntentPlugin → notifyListeners instead.
+    expect(appIntentsSwift).toContain(
+      'ElizaIntentPlugin.postNativeChatSend(text: trimmed, source: "ios-app-intents")',
+    );
+    expect(appIntentsSwift).toContain('@Parameter(title: "Message"');
+
+    // Plugin half: the process-wide observer + the two cold-start queues —
+    // pre-plugin-load buffering natively and retainUntilConsumed for the
+    // pre-listener-attach WebView window.
+    expect(intentPluginSwift).toContain("nativeChatSendNotification");
+    expect(intentPluginSwift).toContain(
+      "public static func postNativeChatSend(text: String, source: String)",
+    );
+    expect(intentPluginSwift).toContain('"action": "send-message"');
+    expect(intentPluginSwift).toContain("pendingNativeSends");
+    expect(intentPluginSwift).toContain("retainUntilConsumed: true");
   });
 
   it("builds the ElizaWidgets extension target with widget + controls sources", () => {
@@ -270,6 +327,11 @@ describe("native assistant entry contracts", () => {
     expect(widgetControlsSwift).toContain(
       "struct ElizaVoiceControl: ControlWidget",
     );
+    expect(widgetControlsSwift).toContain(
+      "struct ElizaTranscribeControl: ControlWidget",
+    );
+    expect(widgetsSwift).toContain("ElizaTranscribeControl()");
+    expect(widgetsSwift).toContain('path: "transcribe"');
     expect(widgetControlsSwift).toContain("ios-control");
     // Controls foreground the app (mic needs foreground) and deep-link via
     // OpenURLIntent instead of touching UIKit from the extension process.
@@ -353,6 +415,13 @@ describe("native assistant entry contracts", () => {
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Ask Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Eliza Voice");
+    expect(deviceExtensionSurfaceUITestsSwift).toContain("Eliza Transcribe");
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testTranscribeDeepLinkForegroundsApp",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "elizaos://transcribe?source=ios-control&action=transcribe&transcribe=1",
+    );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "elizaos://assistant?source=ios-widget&action=ask",
     );
@@ -497,18 +566,50 @@ describe("native assistant entry contracts", () => {
     expect(androidShareActivity).toContain("elizaos://chat");
   });
 
-  it("exposes an Android Quick Settings tile for native voice launch", () => {
+  it("exposes Android Quick Settings tiles for chat, voice, and transcribe", () => {
     expect(androidManifest).toContain("ElizaVoiceTileService");
+    expect(androidManifest).toContain("ElizaChatTileService");
+    expect(androidManifest).toContain("ElizaTranscribeTileService");
     expect(androidManifest).toContain(
       "android.permission.BIND_QUICK_SETTINGS_TILE",
     );
     expect(androidManifest).toContain(
       "android.service.quicksettings.action.QS_TILE",
     );
-    expect(androidVoiceTileService).toContain("TileService");
-    expect(androidVoiceTileService).toContain("android-quick-settings");
-    expect(androidVoiceTileService).toContain("elizaos://voice");
-    expect(androidVoiceTileService).toContain("startActivityAndCollapse");
+    // Shared launch path: the base owns the API-34 PendingIntent collapse
+    // contract; each tile only supplies its deep link. source=android-qs-tile
+    // is in the renderer's trusted assistant-launch set — the claim gate drops
+    // capture launches (voice=1/transcribe=1) from any other source.
+    expect(androidAssistantTileBase).toContain("TileService");
+    expect(androidAssistantTileBase).toContain("startActivityAndCollapse");
+    expect(androidAssistantTileBase).toContain("UPSIDE_DOWN_CAKE");
+    expect(androidAssistantTileBase).toContain("PendingIntent.getActivity");
+    expect(androidVoiceTileService).toContain(
+      "elizaos://voice?source=android-qs-tile",
+    );
+    expect(androidChatTileService).toContain(
+      "elizaos://chat?source=android-qs-tile",
+    );
+    expect(androidTranscribeTileService).toContain(
+      "elizaos://transcribe?source=android-qs-tile",
+    );
+  });
+
+  it("binds the Android static shortcuts for all three assistant intents", () => {
+    expect(androidShortcutsXml).toContain("eliza_app_action_chat");
+    expect(androidShortcutsXml).toContain("eliza_app_action_voice");
+    expect(androidShortcutsXml).toContain("eliza_app_action_transcribe");
+    // Capture shortcuts must mint a trusted source or the renderer claim gate
+    // opens the app without starting capture.
+    expect(androidShortcutsXml).toContain(
+      "elizaos://voice?source=android-app-actions",
+    );
+    expect(androidShortcutsXml).toContain(
+      "elizaos://transcribe?source=android-app-actions",
+    );
+    expect(androidShortcutsXml).toContain(
+      "@array/app_action_transcribe_features",
+    );
   });
 
   it("exposes an Android home-screen quick-actions widget", () => {
