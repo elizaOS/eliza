@@ -2034,6 +2034,12 @@ export default defineConfig({
     __ELIZA_NATIVE_TRANSCRIPT_DEMO__: JSON.stringify(
       process.env.ELIZA_NATIVE_TRANSCRIPT_DEMO === "1",
     ),
+    // Maximized-glass capture gate for the chat harness: baked in at build time
+    // (Capacitor can't carry `?maximized`) so a device build self-drives the chat
+    // to full-bleed on launch and the native maximized glass can be screenshot.
+    __ELIZA_CHAT_HARNESS_MAXIMIZE__: JSON.stringify(
+      process.env.ELIZA_CHAT_HARNESS_MAXIMIZE === "1",
+    ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
     [`import.meta.env.${BRANDED_ENV.ttsDebug}`]: JSON.stringify(

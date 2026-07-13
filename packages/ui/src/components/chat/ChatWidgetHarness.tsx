@@ -93,7 +93,30 @@ const LAUNCHER_TILES: ViewEntry[] = [
  *  simulator. Web/jsdom builds leave it undefined. */
 declare const __ELIZA_NATIVE_TRANSCRIPT_DEMO__: boolean | undefined;
 
+/** Build-time seam (Vite define): when true the harness self-drives the chat to
+ *  maximized on launch so a device build can capture the native maximized glass
+ *  (Capacitor can't carry `?maximized`). Undefined on normal builds. */
+declare const __ELIZA_CHAT_HARNESS_MAXIMIZE__: boolean | undefined;
+
 export const NATIVE_TRANSCRIPT_DEMO_FLAG = "eliza:native-transcript-demo";
+
+/** A short settled exchange shown behind the maximized-glass capture so the
+ *  full-bleed sheet reads as a real conversation, not an empty panel. */
+const MAXIMIZED_PREVIEW_MESSAGES: ShellMessage[] = [
+  {
+    id: "max-preview-user",
+    role: "user",
+    content: "what's on my plate this afternoon?",
+    createdAt: 1,
+  },
+  {
+    id: "max-preview-assistant",
+    role: "assistant",
+    content:
+      'Design review at 3:15, then the release checklist. "Ship the release" is flagged at risk — want me to pull the blockers into a quick list?',
+    createdAt: 2,
+  },
+];
 
 function nativeTranscriptDemoRequested(): boolean {
   if (
@@ -345,15 +368,30 @@ export function ChatWidgetHarness(): React.JSX.Element {
       void clearNativeGlassBackdrop();
     };
   }, []);
+  // `?maximized` (web) or the `__ELIZA_CHAT_HARNESS_MAXIMIZE__` build define
+  // (native — Capacitor can't carry a query string) opens the harness past
+  // onboarding and self-drives the chat to full-bleed, so the maximized LIQUID
+  // GLASS can be captured on a device (iOS renders the real native panel there;
+  // the maximize gesture is drag-only and can't be driven by idb/simctl).
+  const startMaximized =
+    (typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("maximized")) ||
+    (typeof __ELIZA_CHAT_HARNESS_MAXIMIZE__ !== "undefined" &&
+      __ELIZA_CHAT_HARNESS_MAXIMIZE__ === true);
   // `?home` (or `?onboarding=0`) opens the harness PAST onboarding with the chat
   // resting on the settled home, so the real launcher (widgets + notification
   // inbox + banners) can be reviewed directly without stepping the first-run tour.
   const startAtHome =
-    typeof window !== "undefined" &&
-    (new URLSearchParams(window.location.search).has("home") ||
-      new URLSearchParams(window.location.search).get("onboarding") === "0");
+    startMaximized ||
+    (typeof window !== "undefined" &&
+      (new URLSearchParams(window.location.search).has("home") ||
+        new URLSearchParams(window.location.search).get("onboarding") === "0"));
   const [messages, setMessages] = React.useState<ShellMessage[]>(
-    startAtHome ? [] : CHAT_HARNESS_OPENING,
+    startMaximized
+      ? MAXIMIZED_PREVIEW_MESSAGES
+      : startAtHome
+        ? []
+        : CHAT_HARNESS_OPENING,
   );
   const [phase, setPhase] =
     React.useState<ShellController["phase"]>("summoned");
@@ -410,6 +448,66 @@ export function ChatWidgetHarness(): React.JSX.Element {
     installHomeWidgetFetchMock();
     setHomeSeeded(true);
   }, []);
+  // Maximized-preview mode: self-drive the chat to full-bleed once the home has
+  // settled. The maximize is drag-only, so on a device (where idb/simctl can't
+  // drag the webview) synthetic PointerEvents on the grabber are the only way to
+  // reach it. Retry until the sheet reports maximized (the first attempts race
+  // the sheet's own settle) or the attempts run out.
+  React.useEffect(() => {
+    if (!startMaximized || !homeSeeded) return;
+    let cancelled = false;
+    let attempts = 0;
+    const tryMaximize = () => {
+      if (cancelled) return;
+      const sheet = document.querySelector('[data-testid="chat-sheet"]');
+      if (sheet?.getAttribute("data-maximized") === "true") return;
+      if (attempts++ > 20) return;
+      const grab =
+        document.querySelector('[data-testid="chat-sheet-grabber"]') ??
+        document.querySelector('[data-testid="chat-pill"]');
+      if (!grab) {
+        window.setTimeout(tryMaximize, 250);
+        return;
+      }
+      const rect = grab.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y0 = rect.top + Math.min(rect.height / 2, 16);
+      const fire = (type: string, cy: number) =>
+        grab.dispatchEvent(
+          new PointerEvent(type, {
+            pointerId: 1,
+            isPrimary: true,
+            clientX: x,
+            clientY: cy,
+            bubbles: true,
+            cancelable: true,
+            pointerType: "touch",
+            button: 0,
+          }),
+        );
+      fire("pointerdown", y0);
+      const steps = 24;
+      const targetY = 40;
+      let i = 0;
+      const move = () => {
+        if (cancelled) return;
+        i += 1;
+        fire("pointermove", y0 + ((targetY - y0) * i) / steps);
+        if (i < steps) {
+          window.requestAnimationFrame(move);
+        } else {
+          fire("pointerup", targetY);
+          window.setTimeout(tryMaximize, 700);
+        }
+      };
+      window.requestAnimationFrame(move);
+    };
+    const id = window.setTimeout(tryMaximize, 600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [startMaximized, homeSeeded]);
   const sceneIndexRef = React.useRef(0);
   const chatInputSinkRef = React.useRef<((text: string) => void) | null>(null);
   const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
