@@ -75,24 +75,10 @@ export class CliAuthSessionsService {
       throw new Error("Invalid or expired session");
     }
 
-    // Idempotent completion (fix: staging cli-login regression 2026-07-12).
-    //
-    // The browser cli-login page POSTs /complete inside a React effect that can
-    // fire more than once (StrictMode double-invoke, an effect re-run when
-    // `ready`/`authenticated` transition, a retry, or the user re-visiting the
-    // same ?session= URL within the 10-minute TTL). The first POST flips the
-    // session pending -> authenticated and mints the CLI API key; a second POST
-    // used to throw "Session already authenticated or expired", which the page
-    // rendered as a hard "Authentication Error" even though the user WAS signed
-    // in. Because the CLI/device receives the plaintext key via the separate
-    // single-use poll endpoint (getAndClearApiKey) and the browser only reads
-    // `keyPrefix`, completion is safe to treat as idempotent: if THIS user
-    // already authenticated this session, return success without minting a
-    // second key. Only reject when the session belongs to a different user or
-    // is expired.
+    // Browser retries are safe only when ownership is positively established;
+    // a legacy row without an owner cannot prove that the caller completed it.
     if (session.status === "authenticated") {
-      if (session.user_id && session.user_id !== userId) {
-        // Session was completed by a different account — do not leak it.
+      if (!session.user_id || session.user_id !== userId) {
         throw new Error("Session already authenticated or expired");
       }
 

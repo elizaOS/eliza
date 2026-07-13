@@ -157,16 +157,15 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
     expect(result.keyPrefix).toBeNull();
   });
 
-  test("an authenticated legacy session with no user remains idempotent and does not mint", async () => {
+  test("rejects an authenticated legacy session whose owner cannot be proven", async () => {
     const session = authenticatedSession(null);
     session.api_key_id = null;
     track(spyOn(cliAuthSessionsRepository, "findActiveBySessionId").mockResolvedValue(session));
     const createSpy = track(spyOn(apiKeysService, "create"));
 
-    const result = await cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID);
-
-    expect(result.alreadyAuthenticated).toBe(true);
-    expect(result.keyPrefix).toBeNull();
+    await expect(
+      cliAuthSessionsService.completeAuthentication(SESSION_ID, USER_ID, ORG_ID),
+    ).rejects.toThrow("Session already authenticated or expired");
     expect(createSpy).not.toHaveBeenCalled();
   });
 
