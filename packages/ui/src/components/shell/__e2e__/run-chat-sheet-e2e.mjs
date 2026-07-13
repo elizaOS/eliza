@@ -2584,7 +2584,8 @@ try {
     await p.close();
   }
 
-  // keyboard: focusing opens; tapping the scrim blurs the input + collapses
+  // keyboard: focusing enters INPUT mode (keyboard up, thread hidden — the tap
+  // ladder); tapping outside blurs the input, staying at the input peek.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2600,16 +2601,26 @@ try {
     await p.getByTestId("chat-composer-textarea").focus();
     await p.waitForTimeout(150);
     assert(await focused(), "FOCUS: composer holds focus");
-    assert((await variant(p)) === "open", "FOCUS: focusing opens the chat");
-    await p
-      .getByTestId("chat-sheet-backdrop")
-      .click({ position: { x: 16, y: 16 }, force: true });
+    // Focus is INPUT mode — it does NOT reveal the thread (variant stays closed).
+    assert(
+      (await variant(p)) === "closed",
+      "FOCUS: input mode does not open the thread",
+    );
+    // A tap outside drops the keyboard; the sheet stays at the input peek.
+    await p.evaluate(() =>
+      document.body.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true }),
+      ),
+    );
     await p.waitForTimeout(350);
     assert(
       (await focused()) === false,
       "CLICK-OUT: blurs the composer (mobile keyboard drops)",
     );
-    assert((await variant(p)) === "closed", "CLICK-OUT: collapses the chat");
+    assert(
+      (await variant(p)) === "closed",
+      "CLICK-OUT: stays at the input peek",
+    );
     await p.close();
   }
 

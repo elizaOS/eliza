@@ -295,8 +295,13 @@ describe("ChatOverlay slash commands", () => {
         { id: "u1", role: "user", content: "/help me out", createdAt: 1 },
       ],
     });
-    const { input } = renderOverlay(makeSlash(), controller);
-    fireEvent.focus(input);
+    renderOverlay(makeSlash(), controller);
+    // Reveal the transcript via the grabber — composer focus is INPUT mode only
+    // now (it no longer opens the thread).
+    const g = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(g, { clientY: 420, pointerId: 111 });
+    fireEvent.pointerMove(g, { clientY: 280, pointerId: 111 });
+    fireEvent.pointerUp(g, { clientY: 280, pointerId: 111 });
     const tokens = screen.getAllByTestId("slash-command-token");
     expect(tokens.length).toBeGreaterThan(0);
     expect(tokens[0].textContent).toBe("/help");

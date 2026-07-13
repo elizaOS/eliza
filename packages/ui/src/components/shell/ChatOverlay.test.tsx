@@ -218,6 +218,17 @@ function AppComposerHarness({
   );
 }
 
+// Reveal the transcript (open to HALF) via a grabber pull. The tap ladder makes
+// composer FOCUS enter input mode only (keyboard, no thread), so opening the
+// thread is a deliberate grabber gesture — use this wherever a test needs the
+// transcript visible (it replaced the old `fireEvent.focus(message)` shortcut).
+function openThreadViaGrabber(): void {
+  const g = screen.getByTestId("chat-sheet-grabber");
+  fireEvent.pointerDown(g, { clientY: 420, pointerId: 111 });
+  fireEvent.pointerMove(g, { clientY: 280, pointerId: 111 });
+  fireEvent.pointerUp(g, { clientY: 280, pointerId: 111 });
+}
+
 describe("ChatOverlay", () => {
   it("shows the mic and no send button when the draft is empty", () => {
     render(<ChatOverlay controller={makeController()} />);
@@ -416,22 +427,31 @@ describe("ChatOverlay", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     expect(sheet.getAttribute("data-variant")).toBe("closed");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
   });
 
-  it("flips the overlay to data-open when the composer textarea is focused (the ui-smoke contract)", () => {
+  it("focusing the composer enters INPUT mode only — it does NOT reveal the thread (tap ladder)", () => {
+    // Tap ladder: collapsed-input → input → half → collapsed. Focusing the
+    // composer raises the keyboard (input mode) but keeps the thread hidden; the
+    // thread reveal is the SEPARATE grabber tap. (Replaces the old "focus flips
+    // data-open" ui-smoke contract.)
     render(<ChatOverlay controller={makeController()} />);
     const overlay = screen.getByTestId("continuous-chat-overlay");
     expect(overlay.getAttribute("data-open")).toBeNull();
     fireEvent.focus(screen.getByTestId("chat-composer-textarea"));
+    // Still not "open" — focus is input mode, not a thread reveal.
+    expect(overlay.getAttribute("data-open")).toBeNull();
+    // The grabber tap is what opens the thread.
+    openThreadViaGrabber();
     expect(overlay.getAttribute("data-open")).toBe("true");
   });
 
-  it("opens the sheet when the thread lands AFTER the composer was focused (focus wins the boot race, #11112)", () => {
+  it("a thread landing after the composer was focused does NOT auto-open (focus is input mode)", () => {
     // Boot: the overlay renders (and can be focused) before the restored
-    // conversation's messages arrive. The focus→expand used to be a one-shot
-    // no-op with nothing revealable, so data-open never flipped.
+    // conversation's messages arrive. Focus is now input mode only, so a thread
+    // landing later never pops the sheet open on its own — the user reveals it
+    // with a deliberate grabber tap.
     const { rerender } = render(
       <ChatOverlay controller={makeController({ messages: [] })} />,
     );
@@ -440,12 +460,14 @@ describe("ChatOverlay", () => {
     act(() => {
       composer.focus();
     });
-    // Nothing to reveal yet — focusing the bare input must not open an empty sheet.
     expect(overlay.getAttribute("data-open")).toBeNull();
 
-    // The restored conversation's messages land while the composer is still
-    // focused: the parked focus-open intent completes the open.
+    // The restored conversation's messages land — the sheet stays closed (input
+    // mode); no auto-reveal.
     rerender(<ChatOverlay controller={makeController()} />);
+    expect(overlay.getAttribute("data-open")).toBeNull();
+    // A grabber tap now reveals the thread.
+    openThreadViaGrabber();
     expect(overlay.getAttribute("data-open")).toBe("true");
   });
 
@@ -472,9 +494,9 @@ describe("ChatOverlay", () => {
 
     fireEvent.focus(screen.getByLabelText("message"));
 
-    expect(screen.getByTestId("chat-sheet").getAttribute("data-variant")).toBe(
-      "open",
-    );
+    // Focus enters input mode (keyboard) without revealing the thread or shifting
+    // the overlay's bottom padding.
+    expect(overlay.getAttribute("data-open")).toBeNull();
     expect(overlay.style.paddingBottom).toBe(initialPadding);
   });
 
@@ -551,7 +573,7 @@ describe("ChatOverlay", () => {
         ),
       ).toBe("384px");
 
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
 
       expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
         "Ask Playwright Smoke",
@@ -1231,7 +1253,7 @@ describe("ChatOverlay", () => {
 
   it("filters whitespace-only messages from the expanded thread", () => {
     render(<ChatOverlay controller={makeController()} />);
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     const log = document.getElementById("continuous-thread");
     expect(log?.textContent).toContain("hi there");
     // one real message → exactly one transcript bubble
@@ -1265,7 +1287,7 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(screen.queryByTestId("topic-chips-bar")).toBeNull();
     expect(screen.queryByTestId("topic-group-header")).toBeNull();
     expect(screen.queryByTestId("topic-group-pill")).toBeNull();
@@ -1297,7 +1319,7 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(screen.getByTestId("topic-chips-bar")).toBeTruthy();
     // Two distinct topics → two group dividers, labels humanized.
     expect(screen.getAllByTestId("topic-group-header").length).toBe(2);
@@ -1320,7 +1342,7 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     const log = document.getElementById("continuous-thread");
     const lines = log?.querySelectorAll('[data-testid="thread-line"]');
     expect(lines?.length).toBe(2);
@@ -1354,7 +1376,7 @@ describe("ChatOverlay", () => {
     const { rerender } = render(
       <ChatOverlay controller={optimistic} />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
 
     const thread = document.getElementById("continuous-thread");
     expect(
@@ -1388,7 +1410,7 @@ describe("ChatOverlay", () => {
         controller={makeController({ phase: "responding", responding: true })}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     const viewport = screen.getByTestId("chat-thread-scroll");
     const content = viewport.querySelector<HTMLElement>(
       '[data-slot="message-scroller-content"]',
@@ -1407,7 +1429,7 @@ describe("ChatOverlay", () => {
     render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message");
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(input);
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
@@ -1415,10 +1437,9 @@ describe("ChatOverlay", () => {
 
   it("closes the sheet and marks the intent handled on an Android back-intent while open", () => {
     render(<ChatOverlay controller={makeController()} />);
-    const input = screen.getByLabelText("message");
     const sheet = screen.getByTestId("chat-sheet");
-    // Open the sheet (type-to-open → half detent).
-    fireEvent.focus(input);
+    // Open the sheet to the thread (grabber reveal → half detent).
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     // main.tsx dispatches this synchronously and reads back `detail.handled`.
@@ -1455,8 +1476,8 @@ describe("ChatOverlay", () => {
   it("collapsing blurs the composer so the mobile keyboard drops", () => {
     render(<ChatOverlay controller={makeController()} />);
     const input = screen.getByLabelText("message") as HTMLTextAreaElement;
-    fireEvent.focus(input); // onFocus → expand → sheetOpen true (flushed by act)
-    input.focus(); // also move real activeElement (jsdom fireEvent.focus doesn't)
+    openThreadViaGrabber(); // reveal the thread (open sheet)
+    input.focus(); // move real activeElement into the composer
     expect(document.activeElement).toBe(input);
     fireEvent.keyDown(input, { key: "Escape" }); // sheetOpen → collapse → blur
     expect(document.activeElement).not.toBe(input);
@@ -1489,7 +1510,7 @@ describe("ChatOverlay", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
     const grabber = screen.getByTestId("chat-sheet-grabber");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 1 });
     fireEvent.pointerMove(grabber, { clientY: 360, pointerId: 1 });
@@ -1503,7 +1524,7 @@ describe("ChatOverlay", () => {
     const backdrop = screen.getByTestId("chat-sheet-backdrop");
     // Collapsed: inactive + click-through (the live view behind stays usable).
     expect(backdrop.getAttribute("data-active")).toBe("false");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(backdrop.getAttribute("data-active")).toBe("true");
     // Tapping the dimmed view behind collapses the chat back to the input while
@@ -1516,7 +1537,7 @@ describe("ChatOverlay", () => {
   it("cedes taps to a layer painted ABOVE the chat (stacked dialog) instead of collapsing", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     // Simulate a Radix dialog stacked above the chat glass (role="dialog" or
@@ -1554,7 +1575,7 @@ describe("ChatOverlay", () => {
     // OPEN and not be swallowed.
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     // Mirror the notification center's real markers: a [data-notif-row] li with
@@ -1599,7 +1620,7 @@ describe("ChatOverlay", () => {
     // the whole section made most of the home band a dead zone (#15145 review).
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     // Focus alone keeps the sheet open but arms composerFocusedAtPress; blur so
     // the tap-outside path collapses rather than just clearing focus.
     fireEvent.blur(screen.getByLabelText("message"));
@@ -1620,7 +1641,7 @@ describe("ChatOverlay", () => {
   it("lets an open dialog own Escape — the chat only collapses once the dialog is gone", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     // An open Radix dialog (e.g. the command palette) above the chat: Escape
@@ -1643,7 +1664,7 @@ describe("ChatOverlay", () => {
   it("lets the transcript viewer own Escape — the chat only collapses once the viewer is gone (#9148)", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     // The maximized transcript viewer (portal to body) carries role="dialog"
@@ -1676,7 +1697,7 @@ describe("ChatOverlay", () => {
       />,
     );
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     // Open the inline editor for the user turn.
@@ -1704,7 +1725,7 @@ describe("ChatOverlay", () => {
       ],
     } as unknown as Partial<ShellController>);
     render(<ChatOverlay controller={controller} />);
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
 
     // The full transcript is one vertical scroll region while open.
     const log = document.getElementById("continuous-thread");
@@ -1928,7 +1949,7 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message")); // open the sheet
+    openThreadViaGrabber(); // open the sheet
     const viewport = screen.getByTestId("chat-thread-scroll");
     let scrollHeight = 400;
     Object.defineProperties(viewport, {
@@ -1974,7 +1995,7 @@ describe("ChatOverlay", () => {
     try {
       render(<ChatOverlay controller={controller} />);
       const input = screen.getByLabelText("message");
-      fireEvent.focus(input);
+      openThreadViaGrabber();
 
       const viewport = screen.getByTestId("chat-thread-scroll");
       Object.defineProperties(viewport, {
@@ -2052,7 +2073,7 @@ describe("ChatOverlay", () => {
     // document.activeElement in jsdom — i.e. the composer isn't really focused
     // (no soft keyboard). An outside tap in that state must NOT close the chat;
     // closing is a pull-down, the scrim, or Escape.
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
     expect(document.activeElement).not.toBe(screen.getByLabelText("message"));
     fireEvent.pointerDown(document.body);
@@ -2063,7 +2084,7 @@ describe("ChatOverlay", () => {
   it("does NOT close when the underlying app scrolls", () => {
     render(<ChatOverlay controller={makeController()} />);
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
     fireEvent.scroll(document.body);
     expect(sheet.getAttribute("data-variant")).toBe("open");
@@ -2127,7 +2148,7 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
 
     // The no_provider turn renders the STRUCTURED gate (heading + Settings CTA),
     // not an empty/near-empty bubble — this is the actionable recovery the user
@@ -2170,7 +2191,7 @@ describe("ChatOverlay", () => {
           } as unknown as Partial<ShellController>)}
         />,
       );
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
       const bubble = screen
         .getByText("the answer is 42")
         .closest('[data-testid="thread-line"]')
@@ -2207,7 +2228,7 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
 
     for (const text of ["copy my question", "copy my answer"]) {
       const textNode = screen.getByText(text);
@@ -2234,7 +2255,7 @@ describe("ChatOverlay", () => {
           } as unknown as Partial<ShellController>)}
         />,
       );
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
       const bubble = screen
         .getByText("tap me")
         .closest('[data-testid="thread-line"]')
@@ -2452,7 +2473,7 @@ describe("ChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
     const transcribe = screen.getByTestId("chat-composer-transcribe");
     expect(transcribe).toBeTruthy();
@@ -2551,7 +2572,7 @@ describe("ChatOverlay", () => {
       />,
     );
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     const chip = screen.getByTestId("overlay-voice-audio-unlock");
@@ -2818,7 +2839,7 @@ describe("ChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
       const indicator = screen.getByTestId("turn-status-indicator");
       expect(indicator.getAttribute("data-status-kind")).toBe("thinking");
       expect(indicator.getAttribute("role")).toBe("status");
@@ -2841,7 +2862,7 @@ describe("ChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
       expect(screen.getByTestId("turn-status-label").textContent).toBe(
         "Running Send message",
       );
@@ -2862,7 +2883,7 @@ describe("ChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
       // Exactly one indicator (no double-up between the bubble + standalone row).
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
@@ -2893,7 +2914,7 @@ describe("ChatOverlay", () => {
           } as Partial<ShellController>)}
         />,
       );
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
 
       expect(screen.getByText("Draft answer")).toBeTruthy();
       expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
@@ -2922,7 +2943,7 @@ describe("ChatOverlay", () => {
         />,
       );
 
-      fireEvent.focus(screen.getByLabelText("message"));
+      openThreadViaGrabber();
       expect(screen.getByRole("button", { name: /thinking/i })).toBeTruthy();
     });
 
@@ -2938,7 +2959,7 @@ describe("ChatOverlay", () => {
             } as Partial<ShellController>)}
           />,
         );
-        fireEvent.focus(screen.getByLabelText("message"));
+        openThreadViaGrabber();
         // The first phase already carries its word (thinking is labelled).
         expect(screen.getByTestId("turn-status-label").textContent).toContain(
           "Thinking",
@@ -3563,7 +3584,7 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
       />,
     );
     // Open the sheet so the thread (and its reasoning block) mounts.
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     const thinking = screen.getByRole("button", { name: /thinking/i });
     expect(thinking).toBeTruthy();
     // Collapsed by default: the reasoning body is not shown until toggled.
@@ -3582,7 +3603,7 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
     expect(
       screen.getByText("compared X and Y; X has fewer moving parts"),
@@ -3600,7 +3621,7 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(screen.queryByRole("button", { name: /thinking/i })).toBeNull();
   });
 
@@ -3641,7 +3662,7 @@ describe("ChatOverlay — streaming + thinking render (#10712)", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
 
     applyStreamingTextModification(setConversationMessages, {
       messageId: "a-stream",
@@ -3715,7 +3736,7 @@ describe("ChatOverlay — per-message action row (#10713)", () => {
       />,
     );
     // Focusing the composer opens the sheet so the transcript renders.
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
   }
 
   function bubbleFor(text: string): HTMLElement {
@@ -3995,7 +4016,7 @@ describe("ChatOverlay — OS assistant / deep-link launch (#9148)", () => {
       ],
     } as unknown as Partial<ShellController>);
     render(<ChatOverlay controller={controller} />);
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     const retry = screen.getByTestId("thread-line-retry");
     expect(retry).toBeTruthy();
     fireEvent.click(retry);
@@ -4016,7 +4037,7 @@ describe("ChatOverlay — OS assistant / deep-link launch (#9148)", () => {
       ],
     } as unknown as Partial<ShellController>);
     render(<ChatOverlay controller={controller} />);
-    fireEvent.focus(screen.getByLabelText("message"));
+    openThreadViaGrabber();
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
 

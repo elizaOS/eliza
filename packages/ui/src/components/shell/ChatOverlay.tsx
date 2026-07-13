@@ -6114,12 +6114,19 @@ export function ChatOverlay({
                   // Widen out of the short-landscape compact affordance (#14173)
                   // on focus, before the first keystroke.
                   setComposerFocused(true);
-                  // A pill-open focus only raises the keyboard; it must not
-                  // expand a history thread (see suppressExpandOnFocusRef).
+                  // Focusing the collapsed input enters INPUT mode (keyboard up)
+                  // ONLY — it does NOT reveal the thread. The tap ladder is
+                  // collapsed-input → input → half → collapsed: the thread reveal
+                  // is a SEPARATE grabber tap (openFromGrabber → HALF); typing a
+                  // non-empty draft still expands (onChange below). A suppressed
+                  // focus (pill-open raises the keyboard and owns the target
+                  // detent + preFocusCollapsedRef itself) must not be clobbered
+                  // here; an ordinary focus records the pre-focus openness for the
+                  // keyboard-dismiss-restore path (`expand()` used to set this).
                   if (suppressExpandOnFocusRef.current) {
                     suppressExpandOnFocusRef.current = false;
                   } else {
-                    expand();
+                    preFocusCollapsedRef.current = !sheetOpen;
                   }
                 }}
                 onBlur={() => setComposerFocused(false)}

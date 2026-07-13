@@ -533,7 +533,11 @@ describe("ChatOverlay first-run gating", () => {
       <ChatOverlay controller={controller} firstRunOpen={false} />,
     );
     const sheet = screen.getByTestId("chat-sheet");
-    fireEvent.focus(screen.getByLabelText("message"));
+    // Reveal the thread via the grabber — composer focus is INPUT mode only now.
+    const g = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(g, { clientY: 420, pointerId: 111 });
+    fireEvent.pointerMove(g, { clientY: 280, pointerId: 111 });
+    fireEvent.pointerUp(g, { clientY: 280, pointerId: 111 });
     expect(sheet.getAttribute("data-variant")).toBe("open");
 
     rerender(

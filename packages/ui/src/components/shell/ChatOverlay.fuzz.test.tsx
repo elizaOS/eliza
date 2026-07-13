@@ -727,13 +727,13 @@ describe("ChatOverlay — bug (a): a single pill tap opens to half", () => {
 });
 
 describe("ChatOverlay — bug (b): keyboard dismiss restores prior state", () => {
-  it("input → focus (auto-opens) → tap OUTSIDE → returns to the input peek", () => {
+  it("input → focus (INPUT mode, no thread) → tap OUTSIDE → drops keyboard, stays at the input peek", () => {
     render(<ChatOverlay controller={makeController()} />);
     expect(detentOf()).toBe("collapsed");
-    focusReal(); // keyboard up; auto-expands to half
-    expect(detentOf()).toBe("half");
-    fireEvent.pointerDown(document.body); // tap outside
-    expect(detentOf()).toBe("collapsed"); // back to where we were
+    focusReal(); // keyboard up = INPUT mode; the thread is NOT revealed
+    expect(detentOf()).toBe("collapsed");
+    fireEvent.pointerDown(document.body); // tap outside drops the keyboard
+    expect(detentOf()).toBe("collapsed"); // still the input peek
     expect(document.activeElement).not.toBe(input());
     assertInvariants("bug-b-input-clickout");
   });
@@ -757,21 +757,6 @@ describe("ChatOverlay — bug (b): keyboard dismiss restores prior state", () =>
     fireEvent.click(backdrop());
     expect(detentOf()).toBe("half");
     assertInvariants("bug-b-half-scrim");
-  });
-
-  it("input → focus → tap the SCRIM → collapses back to the input peek", () => {
-    render(<ChatOverlay controller={makeController()} />);
-    focusReal(); // auto-opens to half from the input peek
-    expect(detentOf()).toBe("half");
-    fireEvent.pointerDown(backdrop(), {
-      clientX: 20,
-      clientY: 20,
-      pointerId: 1,
-    });
-    fireEvent.pointerUp(backdrop(), { clientX: 20, clientY: 20, pointerId: 1 });
-    fireEvent.click(backdrop());
-    expect(detentOf()).toBe("collapsed");
-    assertInvariants("bug-b-input-scrim");
   });
 
   it("a SECOND scrim tap (keyboard already down) closes an open chat", () => {
@@ -799,13 +784,14 @@ describe("ChatOverlay — bug (b): keyboard dismiss restores prior state", () =>
     expect(document.activeElement).not.toBe(input());
     assertInvariants("bug-b-grabber-half");
 
-    // auto-opened-from-input: grabber tap drops keyboard AND re-collapses
+    // INPUT mode (focused, keyboard up, thread hidden): a grabber tap REVEALS
+    // the thread — the ladder step input → half.
     cleanup();
     render(<ChatOverlay controller={makeController()} />);
     focusReal();
-    expect(detentOf()).toBe("half");
+    expect(detentOf()).toBe("collapsed"); // focus is input mode, not a reveal
     tap(grabber() as Element, 180);
-    expect(detentOf()).toBe("collapsed");
+    expect(detentOf()).toBe("half");
     assertInvariants("bug-b-grabber-input");
   });
 
@@ -827,9 +813,10 @@ describe("ChatOverlay — bug (b): keyboard dismiss restores prior state", () =>
     const controller = makeController();
     render(<ChatOverlay controller={controller} />);
     expect(detentOf()).toBe("collapsed");
-    focusReal(); // tap into the input
+    focusReal(); // tap into the input → INPUT mode (keyboard up, no thread)
+    expect(detentOf()).toBe("collapsed");
+    fireEvent.change(input(), { target: { value: "hello" } }); // typing reveals the thread
     expect(detentOf()).toBe("half");
-    fireEvent.change(input(), { target: { value: "hello" } });
     fireEvent.keyDown(input(), { key: "Enter" }); // send
     expect(controller.send).toHaveBeenCalled();
     tap(grabber() as Element, 180); // dismiss the keyboard
