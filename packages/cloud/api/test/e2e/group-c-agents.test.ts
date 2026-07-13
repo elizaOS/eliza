@@ -79,6 +79,7 @@ async function seedOwnedCharacter(input: {
   plugins?: string[];
   settings?: Record<string, unknown>;
   isPublic?: boolean;
+  a2aEnabled?: boolean;
 }): Promise<void> {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -109,6 +110,7 @@ async function seedOwnedCharacter(input: {
          character_data,
          is_template,
          is_public,
+         a2a_enabled,
          source,
          view_count,
          interaction_count,
@@ -130,8 +132,9 @@ async function seedOwnedCharacter(input: {
          '{}'::jsonb,
          '{}'::jsonb,
          $8::jsonb,
-         $9,
          false,
+         $9,
+         $10,
          'cloud',
          3,
          2,
@@ -152,6 +155,7 @@ async function seedOwnedCharacter(input: {
           isPublic: input.isPublic ?? false,
         }),
         input.isPublic ?? false,
+        input.a2aEnabled ?? false,
       ],
     );
   } finally {
@@ -292,6 +296,37 @@ describeE2E("/api/agents/:id/a2a", () => {
     expect(res.status).toBe(404);
   });
 
+  test("GET returns the public card for an A2A-enabled seeded agent", async () => {
+    const userId = process.env.TEST_USER_ID;
+    const organizationId = process.env.TEST_ORGANIZATION_ID;
+    if (!userId || !organizationId) {
+      throw new Error("TEST_USER_ID and TEST_ORGANIZATION_ID are required");
+    }
+
+    const agentId = crypto.randomUUID();
+    const agentName = `A2A public card ${crypto.randomUUID()}`;
+    await seedOwnedCharacter({
+      id: agentId,
+      organizationId,
+      userId,
+      name: agentName,
+      isPublic: true,
+      a2aEnabled: true,
+    });
+    createdCharacterIds.push(agentId);
+
+    const response = await api.get(`/api/agents/${agentId}/a2a`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      name: agentName,
+      capabilities: { streaming: true },
+      authentication: {
+        schemes: [{ scheme: "bearer" }],
+      },
+      pricing: { currency: "USD" },
+    });
+  });
+
   test.skipIf(!hasLiveProvider)(
     "live provider stays within the admitted ceiling and settles the real credit hold",
     async () => {
@@ -313,6 +348,7 @@ describeE2E("/api/agents/:id/a2a", () => {
         userId,
         name: agentName,
         isPublic: true,
+        a2aEnabled: true,
       });
       createdCharacterIds.push(agentId);
 
