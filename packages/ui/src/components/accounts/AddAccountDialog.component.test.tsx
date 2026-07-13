@@ -72,6 +72,9 @@ describe("AddAccountDialog", () => {
     render(<AddAccountDialog open onClose={onClose} onCreated={onCreated} />);
 
     fireEvent.click(screen.getByRole("button", { name: /OpenAI API/ }));
+    expect(
+      (screen.getByLabelText("Account name") as HTMLInputElement).value,
+    ).toBe("API account");
     fireEvent.change(screen.getByLabelText("Account name"), {
       target: { value: " Work " },
     });
@@ -102,6 +105,9 @@ describe("AddAccountDialog", () => {
         onCreated={vi.fn()}
       />,
     );
+    expect(
+      (screen.getByLabelText("Account name") as HTMLInputElement).value,
+    ).toBe("Coding plan account");
     fireEvent.change(screen.getByLabelText("Account name"), {
       target: { value: "Plan" },
     });

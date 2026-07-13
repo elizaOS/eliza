@@ -206,11 +206,12 @@ function initialStepForProvider(
 }
 
 function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
-  return providerId === "anthropic-subscription"
-    ? "Claude account"
-    : providerId === "openai-codex"
-      ? "Codex account"
-      : "Subscription account";
+  if (providerId === "anthropic-subscription") return "Claude account";
+  if (providerId === "openai-codex") return "Codex account";
+  if (getSubscriptionAddMode(providerId) === "api-key") {
+    return "Coding plan account";
+  }
+  return "API account";
 }
 
 function providerDisplayName(
