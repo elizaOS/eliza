@@ -41,18 +41,18 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-const MIC_CONTROL = '[data-testid="chat-composer-mic"]';
+// The packaged desktop bottom-bar shell opens the ASSISTANT overlay
+// (HomePill → AssistantOverlay → ChatSurface), not the mobile-style
+// ChatOverlay glass composer — the voice observable is ChatSurface's mic
+// GlassIconButton, whose aria-label flips "Start voice input" ⇄
+// "Stop voice input" with capture state.
+const STOP_VOICE_BUTTON = 'button[aria-label="Stop voice input"]';
+const START_VOICE_BUTTON = 'button[aria-label="Start voice input"]';
 const DEFAULT_VOICE_ACCELERATOR = "CommandOrControl+Shift+M";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
 type EvalResult<T> = EvalOk<T> | EvalErr;
-
-interface MicRead {
-  present: boolean;
-  ariaLabel: string | null;
-  ariaPressed: string | null;
-}
 
 /**
  * Install (idempotently) the voice-control probe plus the headless capture
@@ -83,6 +83,25 @@ async function armVoiceProbe(harness: PackagedDesktopHarness): Promise<void> {
             try { osc.start(); } catch (_) {}
             return dest.stream;
           };
+        }
+        // The shell gates hands-free engage on
+        // navigator.permissions.query({name:"microphone"}) — headless packaged
+        // WebKit reports denied (no TCC grant), which blocks engagement. The
+        // controller re-probes authoritatively on every engage attempt, so a
+        // granted stub here lets the press proceed.
+        if (w.navigator?.permissions?.query) {
+          const originalQuery = w.navigator.permissions.query.bind(
+            w.navigator.permissions,
+          );
+          w.navigator.permissions.query = (descriptor) =>
+            descriptor && descriptor.name === "microphone"
+              ? Promise.resolve({
+                  state: "granted",
+                  onchange: null,
+                  addEventListener() {},
+                  removeEventListener() {},
+                })
+              : originalQuery(descriptor);
         }
         // Minimal SpeechRecognition so the browser ASR backend (the packaged
         // shell's fallback when local-inference ASR is not ready) starts
@@ -134,24 +153,24 @@ async function readProbe(harness: PackagedDesktopHarness): Promise<string[]> {
   return result.commands;
 }
 
-async function readMicControl(
+async function readVoiceButtons(
   harness: PackagedDesktopHarness,
-): Promise<MicRead> {
-  const result = await harness.eval<EvalResult<MicRead>>(`(() => {
+): Promise<{ stopPresent: boolean; startPresent: boolean }> {
+  const result = await harness.eval<
+    EvalResult<{ stopPresent: boolean; startPresent: boolean }>
+  >(`(() => {
     try {
-      const mic = document.querySelector('${MIC_CONTROL}');
       return {
         ok: true,
-        present: Boolean(mic),
-        ariaLabel: mic ? mic.getAttribute("aria-label") : null,
-        ariaPressed: mic ? mic.getAttribute("aria-pressed") : null,
+        stopPresent: Boolean(document.querySelector('${STOP_VOICE_BUTTON}')),
+        startPresent: Boolean(document.querySelector('${START_VOICE_BUTTON}')),
       };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   })()`);
   if (!result.ok)
-    throw new Error(`readMicControl eval failed: ${result.error}`);
+    throw new Error(`readVoiceButtons eval failed: ${result.error}`);
   return result;
 }
 
@@ -197,17 +216,29 @@ test("voice hotkey: registered by default, press toggles hands-free on/off; tran
     const activeHarness = harness;
 
     // ── Registration defaults ────────────────────────────────────────────
-    const state = await activeHarness.getState();
-    const shortcuts = state.shell.shortcuts ?? [];
+    // Shortcut registration is renderer-driven (initializeDesktopShell over
+    // the RPC bridge), which lands after shell-ready — poll rather than read
+    // /state once, or the assertion races the renderer's boot tail.
+    await expect
+      .poll(
+        async () => {
+          const state = await activeHarness.getState();
+          return (state.shell.shortcuts ?? []).map((s) => s.id);
+        },
+        {
+          timeout: 120_000,
+          message:
+            "Expected the renderer to register the voice + chat-overlay shortcuts.",
+        },
+      )
+      .toEqual(expect.arrayContaining(["voice", "chat-overlay"]));
+    const shortcuts = (await activeHarness.getState()).shell.shortcuts ?? [];
     const voice = shortcuts.find((s) => s.id === "voice");
-    expect(voice, "voice shortcut registered by default").toBeTruthy();
     expect(voice?.accelerator).toBe(DEFAULT_VOICE_ACCELERATOR);
     expect(
       shortcuts.find((s) => s.id === "transcribe"),
       "transcribe shortcut is opt-in (disabled by default)",
     ).toBeFalsy();
-    // Chat summon stays on by default alongside voice.
-    expect(shortcuts.find((s) => s.id === "chat-overlay")).toBeTruthy();
 
     // Pressing the unregistered transcribe id must 404 at the bridge — proves
     // the default-off state at the shortcut registry, not just in settings.
@@ -216,14 +247,11 @@ test("voice hotkey: registered by default, press toggles hands-free on/off; tran
     );
 
     // ── Arm the probe + headless capture stubs, then press ──────────────
+    // No pre-press composer assertion: the overlay rests at the PILL detent
+    // where the composer (and its mic control) is not in the DOM. The press
+    // itself is the entry point — engaging hands-free opens the chat surface,
+    // which mounts the composer.
     await armVoiceProbe(activeHarness);
-    await expect
-      .poll(async () => (await readMicControl(activeHarness)).present, {
-        timeout: 60_000,
-        message: "Expected the composer mic control to mount.",
-      })
-      .toBe(true);
-
     await activeHarness.pressShortcut("voice");
 
     // The press summons the window…
@@ -239,15 +267,15 @@ test("voice hotkey: registered by default, press toggles hands-free on/off; tran
         message: "Expected one converse-toggle voice-control dispatch.",
       })
       .toEqual(["converse-toggle"]);
-    // …which flips hands-free ON (mic control leaves its resting "talk" state).
+    // …which engages voice capture: the assistant overlay opens and the
+    // ChatSurface mic flips to its active "Stop voice input" state.
     await expect
-      .poll(async () => (await readMicControl(activeHarness)).ariaLabel, {
-        timeout: 15_000,
+      .poll(async () => (await readVoiceButtons(activeHarness)).stopPresent, {
+        timeout: 60_000,
         message:
-          "Expected hands-free to engage (mic aria-label = end conversation).",
+          "Expected the assistant overlay's Stop-voice-input control once capture engaged.",
       })
-      .toBe("end conversation");
-    expect((await readMicControl(activeHarness)).ariaPressed).toBe("true");
+      .toBe(true);
 
     // ── Second press: hands-free OFF ─────────────────────────────────────
     await activeHarness.pressShortcut("voice");
@@ -258,11 +286,11 @@ test("voice hotkey: registered by default, press toggles hands-free on/off; tran
       })
       .toEqual(["converse-toggle", "converse-toggle"]);
     await expect
-      .poll(async () => (await readMicControl(activeHarness)).ariaLabel, {
+      .poll(async () => (await readVoiceButtons(activeHarness)).stopPresent, {
         timeout: 15_000,
-        message: "Expected hands-free to disengage back to the resting state.",
+        message: "Expected voice capture to disengage back to the resting state.",
       })
-      .toBe("talk");
+      .toBe(false);
   } finally {
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);
