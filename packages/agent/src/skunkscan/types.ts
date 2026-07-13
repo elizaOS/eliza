@@ -497,10 +497,19 @@ export type WalletTransactionRiskSummary = {
 
 export type WalletSmartMoneySummary = {
   isSmartMoneyCandidate: boolean;
+
   smartMoneyScore: number;
+
   displayScore: string;
+
   level: "none" | "low" | "medium" | "high";
+
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
   confidence: "low" | "medium" | "high";
+
   profile:
     | "unknown"
     | "professional_trader"
@@ -508,7 +517,9 @@ export type WalletSmartMoneySummary = {
     | "long_term_investor"
     | "liquidity_provider"
     | "whale_participant";
+
   positiveSignals: string[];
+
   limitations: string[];
 };
 
