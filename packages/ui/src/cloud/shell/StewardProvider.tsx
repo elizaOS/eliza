@@ -61,16 +61,8 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
   /^\/bsc(?:\/|$)/,
   /^\/dashboard(?:\/|$)/,
   /^\/login(?:\/|$)/,
-  // `/join` is the post-OAuth provisioning landing (JoinPage). Its own
-  // registration (cloud/join/register.ts) documents that it "needs the Steward
-  // runtime so the session resolves", but the route was missing here — so the
-  // runtime only mounted when a token already sat in localStorage. On the
-  // returning-user / cookie-session hand back from OAuth the token isn't yet
-  // stored, so `LocalStewardAuthContext` stayed null, `useJoinSessionAuth`
-  // never became authenticated, and JoinPage sat on the provisioning spinner
-  // (or bounced back to /login) instead of running the join flow and
-  // navigating into the app. Load the runtime for `/join` unconditionally so
-  // the session resolves and provisioning + the post-provision redirect fire.
+  // JoinPage needs the runtime before a token is persisted so its cookie-backed
+  // session can resolve, provision the account, and enter the application.
   /^\/join(?:\/|$)/,
   /^\/invite(?:\/|$)/,
   /^\/accept-invitation(?:\/|$)/,
@@ -81,11 +73,9 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
 ] as const;
 
 /**
- * Whether the heavy `@stwd/*` Steward runtime must mount for this route. Exported
- * for unit coverage: the `/join` provisioning landing depends on this returning
- * true even before a token is persisted, so the session resolves and JoinPage
- * can provision + redirect (regression guard for the post-OAuth stuck-loading
- * bug).
+ * Whether the heavy `@stwd/*` Steward runtime must mount for a route. Join
+ * requires it before token persistence because session resolution precedes
+ * provisioning.
  */
 export function shouldLoadStewardRuntime(pathname: string): boolean {
   if (readStoredToken()) return true;

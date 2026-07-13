@@ -64,11 +64,7 @@ afterEach(() => {
   runtimeGate.release();
   cleanup();
   resolveBrowserStewardApiUrl.mockReturnValue("placeholder-steward-url");
-  try {
-    window.localStorage.clear();
-  } catch {
-    // jsdom storage is always available; ignore if a test disabled it.
-  }
+  window.localStorage.clear();
 });
 
 function renderAt(pathname: string) {
@@ -140,13 +136,8 @@ describe("StewardAuthProvider", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  // Regression: the post-OAuth `/join` provisioning landing was left on its
-  // loading spinner (and never redirected into the app) because the Steward
-  // runtime only mounted when a token already sat in localStorage. On the
-  // returning-user / cookie-session handback the token isn't stored yet, so the
-  // runtime never loaded, the session never resolved, and JoinPage stalled.
-  // `/join` must load the runtime even with NO stored token so provisioning +
-  // the post-provision redirect run.
+  // Cookie-backed OAuth handoffs reach /join before local token persistence,
+  // so the runtime must mount there to resolve the session.
   it("loads the Steward runtime on /join with no stored token so provisioning can redirect", async () => {
     resolveBrowserStewardApiUrl.mockReturnValue(
       "https://api.elizacloud.ai/steward",
@@ -163,16 +154,11 @@ describe("StewardAuthProvider", () => {
 
 describe("shouldLoadStewardRuntime", () => {
   afterEach(() => {
-    try {
-      window.localStorage.clear();
-    } catch {
-      // ignore
-    }
+    window.localStorage.clear();
   });
 
   it("loads the runtime for /join (and its subpaths) even with no stored token", () => {
-    // The gate receives `location.pathname` (query already split off by the
-    // router), so only the bare path forms are asserted here.
+    // The router has already removed the query before calling the gate.
     window.localStorage.clear();
     expect(shouldLoadStewardRuntime("/join")).toBe(true);
     expect(shouldLoadStewardRuntime("/join/")).toBe(true);
