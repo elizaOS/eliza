@@ -1,12 +1,19 @@
 /**
- * Service lifecycle and integration tests for ComputerUseService.
- *
- * Tests service start/stop, capability detection, action dispatch,
- * and the action history buffer.
+ * Exercises ComputerUseService through an initialized AgentRuntime, using real
+ * host integrations when available and permission-independent paths otherwise.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { AgentRuntime, createCharacter, stringToUuid } from "@elizaos/core";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
+import { InMemoryDatabaseAdapter } from "../../../../packages/core/src/database/inMemoryAdapter.ts";
 import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
 import { desktopMouseMove } from "../platform/desktop.js";
 import { currentPlatform } from "../platform/helpers.js";
@@ -37,13 +44,12 @@ function executeRawWindowAction(
 
 const os = currentPlatform();
 
-// Check if screenshot/desktop tools actually work (permissions may be missing)
 let hasScreenCapture = false;
 try {
   await captureScreenshot();
   hasScreenCapture = true;
 } catch {
-  // permissions not granted
+  // error-policy:J4 The hardware lane is explicitly unavailable without screen-capture permission.
 }
 
 let hasDesktopControl = false;
@@ -51,25 +57,43 @@ try {
   desktopMouseMove(0, 0);
   hasDesktopControl = true;
 } catch {
-  // permissions not granted or tools missing
+  // error-policy:J4 The hardware lane is explicitly unavailable without a desktop driver or permission.
 }
 
-function createMockRuntime(
+async function startComputerUseRuntime(
   settings: Record<string, string> = {},
-): IAgentRuntime {
-  const merged: Record<string, string> = {
-    COMPUTER_USE_APPROVAL_MODE: "full_control",
-    ...settings,
-  };
-  return {
-    character: {},
-    getSetting(key: string) {
-      return merged[key] ?? undefined;
-    },
-    getService() {
-      return null;
-    },
-  } as IAgentRuntime;
+): Promise<{ runtime: AgentRuntime; service: ComputerUseService }> {
+  const runtime = new AgentRuntime({
+    character: createCharacter({
+      id: stringToUuid(`computeruse-service-${crypto.randomUUID()}`),
+      name: "ComputerUseServiceIntegrationAgent",
+      settings: {
+        COMPUTER_USE_APPROVAL_MODE: "full_control",
+        ...settings,
+      },
+    }),
+    adapter: new InMemoryDatabaseAdapter(),
+    enableAutonomy: false,
+    logLevel: "fatal",
+  });
+  await runtime.initialize();
+  await runtime.registerPlugin({
+    name: "computeruse-service-integration",
+    description: "Real ComputerUseService lifecycle integration",
+    services: [ComputerUseService],
+  });
+  const service = await runtime.getServiceLoadPromise(
+    ComputerUseService.serviceType,
+  );
+  if (!(service instanceof ComputerUseService)) {
+    throw new Error("ComputerUseService did not register with AgentRuntime");
+  }
+  return { runtime, service };
+}
+
+async function stopComputerUseRuntime(runtime: AgentRuntime): Promise<void> {
+  await runtime.stop();
+  await runtime.close();
 }
 
 function skipIfAccessibilityPermissionMissing(
@@ -89,30 +113,20 @@ function skipIfAccessibilityPermissionMissing(
 }
 
 describe("ComputerUseService lifecycle", () => {
+  let runtime: AgentRuntime;
   let service: ComputerUseService;
 
-  beforeEach(async () => {
-    const runtime = createMockRuntime();
-    service = (await ComputerUseService.start(runtime)) as ComputerUseService;
+  beforeAll(async () => {
+    ({ runtime, service } = await startComputerUseRuntime());
   });
 
-  afterEach(async () => {
-    if (service) {
-      await service.stop();
-    }
+  afterAll(async () => {
+    await stopComputerUseRuntime(runtime);
   });
 
-  it("starts and exposes serviceType", () => {
+  it("registers a usable service with detected host capabilities", () => {
     expect(ComputerUseService.serviceType).toBe("computeruse");
-  });
-
-  it("has a capabilityDescription", () => {
-    expect(service.capabilityDescription).toBeDefined();
-    expect(typeof service.capabilityDescription).toBe("string");
     expect(service.capabilityDescription.length).toBeGreaterThan(0);
-  });
-
-  it("detects platform capabilities", () => {
     const caps = service.getCapabilities();
 
     expect(caps).toHaveProperty("screenshot");
@@ -120,7 +134,6 @@ describe("ComputerUseService lifecycle", () => {
     expect(caps).toHaveProperty("windowList");
     expect(caps).toHaveProperty("browser");
 
-    // Each capability has available and tool
     for (const key of [
       "screenshot",
       "computerUse",
@@ -131,107 +144,59 @@ describe("ComputerUseService lifecycle", () => {
       expect(typeof caps[key].tool).toBe("string");
     }
 
-    // On macOS, screenshot should always be available (screencapture is built-in)
     if (os === "darwin") {
       expect(caps.screenshot.available).toBe(true);
       expect(caps.screenshot.tool).toContain("screencapture");
     }
 
-    // On Windows, screenshot and computer use should be available (PowerShell)
     if (os === "win32") {
       expect(caps.screenshot.available).toBe(true);
       expect(caps.computerUse.available).toBe(true);
     }
-  });
-
-  it("returns valid screen dimensions", () => {
     const size = service.getScreenDimensions();
-
-    expect(size).toHaveProperty("width");
-    expect(size).toHaveProperty("height");
     expect(size.width).toBeGreaterThanOrEqual(640);
     expect(size.height).toBeGreaterThanOrEqual(480);
-  });
-
-  it("starts with empty action history", () => {
-    const history = service.getRecentActions();
-    expect(Array.isArray(history)).toBe(true);
-    expect(history.length).toBe(0);
-  });
-
-  it("stops cleanly", async () => {
-    await expect(service.stop()).resolves.toBeUndefined();
+    expect(service.getRecentActions()).toEqual([]);
   });
 });
 
-describe("ComputerUseService config", () => {
-  it("uses default config when no settings provided", async () => {
-    const runtime = createMockRuntime();
-    const svc = (await ComputerUseService.start(runtime)) as ComputerUseService;
-
-    // Defaults: screenshotAfterAction=true, actionTimeoutMs=10000
-    // We can verify by executing a screenshot action and checking it works
-    const result = await svc.executeDesktopAction({ action: "screenshot" });
-    // Screenshot should be attempted (may fail on CI but shouldn't error on config)
-    expect(result).toHaveProperty("success");
-
-    await svc.stop();
-  });
-
-  it("respects COMPUTER_USE_SCREENSHOT_AFTER_ACTION=false", async () => {
-    const runtime = createMockRuntime({
-      COMPUTER_USE_SCREENSHOT_AFTER_ACTION: "false",
-    });
-    const svc = (await ComputerUseService.start(runtime)) as ComputerUseService;
-
-    // When disabled, non-screenshot desktop actions should not return a screenshot
-    // We can only truly test this with a real desktop action, but we can verify the service starts
-    expect(svc.getCapabilities()).toBeDefined();
-
-    await svc.stop();
-  });
-
-  it("respects COMPUTER_USE_ACTION_TIMEOUT_MS setting", async () => {
-    const runtime = createMockRuntime({
-      COMPUTER_USE_ACTION_TIMEOUT_MS: "5000",
-    });
-    const svc = (await ComputerUseService.start(runtime)) as ComputerUseService;
-
-    // Service should start without error with custom timeout
-    expect(svc.getCapabilities()).toBeDefined();
-
-    await svc.stop();
-  });
-});
-
-// Tests that require working desktop control
+const describeIfScreenCapture = hasScreenCapture ? describe : describe.skip;
 const describeIfDesktop = hasDesktopControl ? describe : describe.skip;
 
-describeIfDesktop("ComputerUseService desktop actions (real)", () => {
+describeIfScreenCapture("ComputerUseService screen capture (real)", () => {
+  let runtime: AgentRuntime;
   let service: ComputerUseService;
 
-  beforeEach(async () => {
-    const runtime = createMockRuntime({
-      COMPUTER_USE_SCREENSHOT_AFTER_ACTION: "false", // don't capture after every action in tests
-    });
-    service = (await ComputerUseService.start(runtime)) as ComputerUseService;
+  beforeAll(async () => {
+    ({ runtime, service } = await startComputerUseRuntime());
   });
 
-  afterEach(async () => {
-    if (service) await service.stop();
+  afterAll(async () => {
+    await stopComputerUseRuntime(runtime);
   });
 
-  it("executes screenshot action", async () => {
+  it("captures a non-blank screenshot", async () => {
     const result = await service.executeDesktopAction({ action: "screenshot" });
-    // Even if screenshot fails (permissions), the action should not crash
-    expect(result).toHaveProperty("success");
-    if (hasScreenCapture) {
-      expect(result.success).toBe(true);
-      assertScreenshotBase64NotBlank(
-        result.screenshot,
-        "ComputerUseService screenshot action",
-      );
-    }
+    expect(result.success).toBe(true);
+    assertScreenshotBase64NotBlank(
+      result.screenshot,
+      "ComputerUseService screenshot action",
+    );
+  });
+});
+
+describeIfDesktop("ComputerUseService desktop actions (real)", () => {
+  let runtime: AgentRuntime;
+  let service: ComputerUseService;
+
+  beforeAll(async () => {
+    ({ runtime, service } = await startComputerUseRuntime({
+      COMPUTER_USE_SCREENSHOT_AFTER_ACTION: "false",
+    }));
+  });
+
+  afterAll(async () => {
+    await stopComputerUseRuntime(runtime);
   });
 
   it("executes mouse_move action", async ({ skip }) => {
@@ -242,6 +207,7 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
 
     skipIfAccessibilityPermissionMissing(skip, result);
     expect(result.success).toBe(true);
+    expect(result.screenshot).toBeUndefined();
   });
 
   it("executes click action", async ({ skip }) => {
@@ -285,56 +251,56 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
     skipIfAccessibilityPermissionMissing(skip, result);
     expect(result.success).toBe(true);
   });
+});
 
-  it("records actions in history regardless of success", async () => {
-    await service.executeDesktopAction({ action: "screenshot" });
-    await service.executeDesktopAction({
-      action: "mouse_move",
-      coordinate: [100, 100],
-    });
+describe("ComputerUseService desktop validation and history", () => {
+  let runtime: AgentRuntime;
+  let service: ComputerUseService;
 
-    const history = service.getRecentActions();
-    expect(history.length).toBe(2);
-    expect(history[0].action).toBe("screenshot");
-    expect(history[1].action).toBe("mouse_move");
-    // Both should have recorded (success or failure depends on platform permissions)
-    expect(typeof history[0].success).toBe("boolean");
-    expect(typeof history[1].success).toBe("boolean");
+  beforeEach(async () => {
+    ({ runtime, service } = await startComputerUseRuntime({
+      COMPUTER_USE_SCREENSHOT_AFTER_ACTION: "false",
+    }));
   });
 
-  it("caps history at max (10)", async () => {
-    for (let i = 0; i < 15; i++) {
-      await service.executeDesktopAction({
-        action: "click",
-      });
+  afterEach(async () => {
+    await stopComputerUseRuntime(runtime);
+  });
+
+  it("records failed actions and caps history at ten entries", async () => {
+    for (let index = 0; index < 12; index++) {
+      const result = await service.executeDesktopAction({ action: "click" });
+      expect(result.success).toBe(false);
     }
 
     const history = service.getRecentActions();
-    expect(history.length).toBe(10);
-  }, 15000);
+    expect(history).toHaveLength(10);
+    expect(history.every((entry) => entry.action === "click")).toBe(true);
+    expect(history.every((entry) => entry.success === false)).toBe(true);
+  });
 
-  it("returns error for missing coordinate", async () => {
+  it("rejects click without a coordinate", async () => {
     const result = await service.executeDesktopAction({ action: "click" });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("coordinate");
   });
 
-  it("returns error for missing text on type action", async () => {
+  it("rejects type without text", async () => {
     const result = await service.executeDesktopAction({ action: "type" });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("text is required");
   });
 
-  it("returns error for missing key on key action", async () => {
+  it("rejects key without a key name", async () => {
     const result = await service.executeDesktopAction({ action: "key" });
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("key is required");
   });
 
-  it("returns error for unknown action", async () => {
+  it("rejects an unknown desktop action", async () => {
     const result = await executeRawDesktopAction(service, {
       action: "nonexistent",
     });
@@ -343,7 +309,7 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
     expect(result.error).toContain("Unknown desktop action");
   });
 
-  it("returns error for drag without startCoordinate", async () => {
+  it("rejects drag without a starting coordinate", async () => {
     const result = await service.executeDesktopAction({
       action: "drag",
       coordinate: [100, 100],
@@ -355,16 +321,15 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
 });
 
 describe("ComputerUseService window actions (real)", () => {
+  let runtime: AgentRuntime;
   let service: ComputerUseService;
 
-  beforeEach(async () => {
-    service = (await ComputerUseService.start(
-      createMockRuntime(),
-    )) as ComputerUseService;
+  beforeAll(async () => {
+    ({ runtime, service } = await startComputerUseRuntime());
   });
 
-  afterEach(async () => {
-    if (service) await service.stop();
+  afterAll(async () => {
+    await stopComputerUseRuntime(runtime);
   });
 
   it("lists windows", async () => {
