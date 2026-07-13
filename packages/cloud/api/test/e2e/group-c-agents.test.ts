@@ -40,7 +40,11 @@ const UNOWNED_AGENT_ID = "00000000-0000-4000-8000-000000000000";
 
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
-const hasLiveGateway = Boolean(process.env.AI_GATEWAY_API_KEY?.trim());
+const hasLiveProvider = Boolean(
+  process.env.OPENAI_API_KEY?.trim() ||
+    process.env.OPENROUTER_API_KEY?.trim() ||
+    process.env.AI_GATEWAY_API_KEY?.trim(),
+);
 if (!serverReachable) {
   console.warn(
     `[group-c-agents] ${getBaseUrl()} did not respond to /api/health. ` +
@@ -54,9 +58,10 @@ if (!hasTestApiKey) {
       "bootstrap a test API key. Tests will SKIP.",
   );
 }
-if (!hasLiveGateway) {
+if (!hasLiveProvider) {
   console.warn(
-    "[group-c-agents] AI_GATEWAY_API_KEY is not set; the exact-head A2A " +
+    "[group-c-agents] OPENAI_API_KEY, OPENROUTER_API_KEY, and " +
+      "AI_GATEWAY_API_KEY are not set; the exact-head A2A " +
       "provider/billing receipt test will SKIP.",
   );
 }
@@ -287,8 +292,8 @@ describeE2E("/api/agents/:id/a2a", () => {
     expect(res.status).toBe(404);
   });
 
-  test.skipIf(!hasLiveGateway)(
-    "live gateway stays within the admitted ceiling and settles the real credit hold",
+  test.skipIf(!hasLiveProvider)(
+    "live provider stays within the admitted ceiling and settles the real credit hold",
     async () => {
       const userId = process.env.TEST_USER_ID;
       const organizationId = process.env.TEST_ORGANIZATION_ID;
@@ -392,7 +397,7 @@ describeE2E("/api/agents/:id/a2a", () => {
       process.stdout.write(
         `${JSON.stringify(
           {
-            evidence: "exact-head-a2a-live-gateway-billing-receipt",
+            evidence: "exact-head-a2a-live-provider-billing-receipt",
             agent: { id: agentId, name: agentName },
             httpStatus: response.status,
             providerReceipt: receipt.result,

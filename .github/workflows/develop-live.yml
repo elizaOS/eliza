@@ -134,9 +134,11 @@ jobs:
         if: always()
         run: bun run test:cloud
 
-      - name: Exact-head A2A live gateway and billing receipt
+      - name: Exact-head A2A live provider and billing receipt
         if: always()
-        run: bun run --cwd packages/cloud/api test:e2e group-c-agents.test.ts
+        env:
+          E2E_ONLY: group-c-agents
+        run: bun run --cwd packages/cloud/api test:e2e
 
       - name: Teardown Postgres
         if: always()

@@ -9,7 +9,6 @@
  * the full text before responding rather than streaming back.
  */
 
-import { gateway } from "@ai-sdk/gateway";
 import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
 import { streamText } from "ai";
 import { Hono } from "hono";
@@ -33,6 +32,7 @@ import {
   parseThinkingBudgetFromCharacterSettings,
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
+import { getLanguageModel } from "@/lib/providers/language-model";
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { CreditReservation } from "@/lib/services/credits";
@@ -324,7 +324,7 @@ async function handleChat(
 
   try {
     const result = await streamText({
-      model: gateway.languageModel(model),
+      model: getLanguageModel(model),
       messages: fullMessages,
       // Cap the provider at the exact ceiling billing reserved above, so final
       // usage cannot outrun the admitted reservation (#16147). Omitting it let

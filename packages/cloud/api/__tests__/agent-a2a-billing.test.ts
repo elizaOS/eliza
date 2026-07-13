@@ -25,9 +25,9 @@ import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
 
-const languageModel = mock((model: string) => ({ model }));
-mock.module("@ai-sdk/gateway", () => ({
-  gateway: { languageModel },
+const getLanguageModel = mock((model: string) => ({ model }));
+mock.module("@/lib/providers/language-model", () => ({
+  getLanguageModel,
 }));
 
 const streamText = mock();
@@ -173,7 +173,7 @@ function callChat(model = "gpt-5-mini") {
 }
 
 beforeEach(() => {
-  languageModel.mockClear();
+  getLanguageModel.mockClear();
   streamText.mockReset();
   resolveAnthropicThinkingBudgetTokens.mockReset();
   resolveAnthropicThinkingBudgetTokens.mockReturnValue(null);
