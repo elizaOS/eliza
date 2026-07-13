@@ -280,22 +280,40 @@ function sourceLabel(source: string): string {
 type ShowTargets = NonNullable<ModelConfigShowResponse["targets"]>;
 type Effective = { value: string; source: string } | null | undefined;
 
+/** Live serving endpoints, so the show names what ACTUALLY answers. */
+export interface ActiveChatEndpoints {
+	/** Host serving the OPENAI_* family (e.g. api.cerebras.ai). */
+	openai?: string;
+	/** Host serving the ANTHROPIC_* family. */
+	anthropic?: string;
+}
+
 function chatLine(
 	label: string,
 	keys: Record<string, Effective> | undefined,
 	modelKeys: string[],
 	effortKeys: string[],
+	endpoints?: ActiveChatEndpoints,
 ): string | null {
 	if (!keys) return null;
-	const model = modelKeys
-		.map((k) => keys[k])
-		.find((v): v is { value: string; source: string } => Boolean(v));
+	let model: { value: string; source: string } | undefined;
+	let family: "openai" | "anthropic" | undefined;
+	for (const k of modelKeys) {
+		const v = keys[k];
+		if (v) {
+			model = v;
+			family = k.startsWith("ANTHROPIC") ? "anthropic" : "openai";
+			break;
+		}
+	}
 	if (!model) return `${label}: not set`;
 	const effort = effortKeys
 		.map((k) => keys[k])
 		.find((v): v is { value: string; source: string } => Boolean(v));
 	const effortPart = effort ? ` — effort ${effort.value}` : "";
-	return `${label}: ${model.value}${effortPart} (${sourceLabel(model.source)})`;
+	const host = family ? endpoints?.[family] : undefined;
+	const viaPart = host ? `, via ${host}` : "";
+	return `${label}: ${model.value}${effortPart} (${sourceLabel(model.source)}${viaPart})`;
 }
 
 /**
@@ -304,19 +322,24 @@ function chatLine(
  * details — dumping them read as "wtf is model powerful"; the operator wants
  * model + effort + where it came from, per slot.
  */
-export function renderModelConfigShow(targets: ShowTargets): string {
+export function renderModelConfigShow(
+	targets: ShowTargets,
+	endpoints?: ActiveChatEndpoints,
+): string {
 	const lines = ["Model configuration:"];
 	const small = chatLine(
 		"small",
 		targets.small,
 		["OPENAI_SMALL_MODEL", "ANTHROPIC_SMALL_MODEL"],
 		["OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT_SMALL"],
+		endpoints,
 	);
 	const large = chatLine(
 		"large",
 		targets.large,
 		["OPENAI_LARGE_MODEL", "ANTHROPIC_LARGE_MODEL"],
 		["OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT_LARGE"],
+		endpoints,
 	);
 	if (small) lines.push(small);
 	if (large) lines.push(large);
@@ -365,7 +388,9 @@ export function renderModelConfigShow(targets: ShowTargets): string {
 	return lines.join("\n");
 }
 
-export async function runModelConfigShowViaRoute(): Promise<CommandResult> {
+export async function runModelConfigShowViaRoute(
+	endpoints?: ActiveChatEndpoints,
+): Promise<CommandResult> {
 	const port = resolveServerOnlyPort(process.env);
 	let response: Response;
 	try {
@@ -392,5 +417,5 @@ export async function runModelConfigShowViaRoute(): Promise<CommandResult> {
 		);
 	}
 
-	return reply(renderModelConfigShow(parsed.targets));
+	return reply(renderModelConfigShow(parsed.targets, endpoints));
 }

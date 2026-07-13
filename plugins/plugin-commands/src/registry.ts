@@ -200,16 +200,6 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		requiresAuth: true,
 	},
 	{
-		key: "models",
-		nativeName: "models",
-		description: "List available models",
-		textAliases: ["/models"],
-		scope: "both",
-		category: "options",
-		acceptsArgs: false,
-		requiresAuth: true,
-	},
-	{
 		key: "usage",
 		nativeName: "usage",
 		description: "Show token usage",
