@@ -1,5 +1,5 @@
 /** Verifies the account-routing client extension's typed HTTP contract. */
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import "./client-agent";
 import "./client-accounts";
 import { ElizaClient } from "./client-base";
@@ -14,13 +14,18 @@ describe("account client extension", () => {
         { providerId: "anthropic-api" as const, accountId: "fallback" },
       ],
     };
-    const fetchMock = vi.fn(async () => response);
-    client.fetch = fetchMock as unknown as typeof client.fetch;
+    const requests: Array<[string, RequestInit | undefined]> = [];
+    client.fetch = (async (path: string, init?: RequestInit) => {
+      requests.push([path, init]);
+      return response;
+    }) as unknown as typeof client.fetch;
 
     await expect(client.putUseCaseRouting(response)).resolves.toEqual(response);
-    expect(fetchMock).toHaveBeenCalledWith("/api/accounts/routing", {
-      method: "PUT",
-      body: JSON.stringify(response),
-    });
+    expect(requests).toEqual([
+      [
+        "/api/accounts/routing",
+        { method: "PUT", body: JSON.stringify(response) },
+      ],
+    ]);
   });
 });
