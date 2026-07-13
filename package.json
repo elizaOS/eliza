@@ -18,8 +18,8 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs && bun packages/scripts/sync-artifacts.mjs",
-    "install:light": "ELIZA_SKIP_ARTIFACT_SYNC=1 bun install",
+    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && bun packages/scripts/build-private-workspace-packages.mjs",
+    "install:light": "bun install",
     "cloud:mock": "bun scripts/cloud/mock-stack-up.mjs",
     "cloud:mock:fresh": "bun scripts/cloud/mock-stack-up.mjs --reset",
     "cloud:login:test-wallet": "bun scripts/cloud/siwe-test-login.mjs",
@@ -59,6 +59,7 @@
     "audit:tee-secret-leak": "node packages/scripts/audit-tee-secret-leak.mjs",
     "audit:tee-secret-leak:self-test": "node packages/scripts/audit-tee-secret-leak.mjs --self-test",
     "audit:apple-store-sandbox": "bun run --cwd packages/app-core audit:apple-store-sandbox",
+    "audit:artifact-authority": "node packages/scripts/artifact-authority-contract.mjs",
     "test:launch-qa:docs": "node packages/scripts/launch-qa/check-docs.mjs --scope=docs --json",
     "test:launch-qa": "bun test packages/scripts/launch-qa/*.test.ts && bun run test:launch-qa:docs && node packages/scripts/launch-qa/check-mobile-artifacts.mjs --json --allow-missing-generated && node packages/scripts/launch-qa/check-model-data.mjs --json && node packages/scripts/launch-qa/run.mjs --suite quick --dry-run",
     "test:launch-qa:release:dry": "node packages/scripts/launch-qa/run.mjs --suite release --dry-run",
@@ -117,7 +118,7 @@
     "audit:scripts:inventory": "node packages/scripts/audit-scripts-inventory.mjs",
     "audit:test-realness": "node packages/scripts/test-realness-audit.mjs --check",
     "audit:test-realness:evidence": "mkdir -p \"${TMPDIR:-/tmp}/eliza-evidence/10718-test-realness\" && node packages/scripts/test-realness-audit.mjs --check --report \"${TMPDIR:-/tmp}/eliza-evidence/10718-test-realness/test-realness-inventory.md\" --json \"${TMPDIR:-/tmp}/eliza-evidence/10718-test-realness/test-realness-inventory.json\"",
-    "verify": "bun run check:agents-claude && bun run audit:stale-js:self-test && bun run audit:type-safety-ratchet && bun run audit:error-policy-ratchet && bun run audit:voice-policy-ratchet && bun run audit:view-action-ratchet && bun run audit:alias-read-guard && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=8 && bun run audit:build-model && bun run audit:turbo-build-deps && bun run audit:tee-secret-leak && bun run audit:scripts && bun run audit:test-realness && bun run typecheck:dist",
+    "verify": "bun run check:agents-claude && bun run audit:stale-js:self-test && bun run audit:artifact-authority && bun run audit:type-safety-ratchet && bun run audit:error-policy-ratchet && bun run audit:voice-policy-ratchet && bun run audit:view-action-ratchet && bun run audit:alias-read-guard && NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck lint --concurrency=8 && bun run audit:build-model && bun run audit:turbo-build-deps && bun run audit:tee-secret-leak && bun run audit:scripts && bun run audit:test-realness && bun run typecheck:dist",
     "check": "bun run verify",
     "check:agents-claude": "node scripts/assert-agents-claude-identical.mjs",
     "check:comment-only": "node scripts/assert-comment-only-diff.mjs",
@@ -242,7 +243,6 @@
     "publish:dry-run": "bun packages/scripts/publish-from-dist.mjs",
     "publish:packages": "bun packages/scripts/publish-from-dist.mjs --apply",
     "typecheck:dist": "node packages/scripts/generate-dist-paths-config.mjs --check && node packages/scripts/prepare-dist-path-declarations.mjs && node packages/scripts/typecheck-dist-path-consumers.mjs",
-    "sync:artifacts": "bun packages/scripts/sync-artifacts.mjs",
     "check:view-bundles": "bun packages/scripts/view-bundle-import-guard.mjs"
   },
   "packageManager": "bun@1.4.0",

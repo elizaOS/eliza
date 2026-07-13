@@ -145,6 +145,9 @@ jobs:
       - name: Validate CI path gate
         run: node packages/scripts/ci-path-gate.self-test.mjs
 
+      - name: Validate source-owned artifact authority
+        run: node packages/scripts/artifact-authority-contract.mjs
+
       - name: Validate CI workflow dedup contract
         run: node packages/scripts/ci-workflow-dedup-contract.mjs
 

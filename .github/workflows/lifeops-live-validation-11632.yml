@@ -19,7 +19,6 @@ jobs:
   collect:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     env:
-      ELIZA_SKIP_ARTIFACT_SYNC: "1"
       ELIZA_LIVE_TEST: "1"
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

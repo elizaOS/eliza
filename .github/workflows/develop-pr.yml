@@ -42,6 +42,9 @@ jobs:
       - name: Per-plugin e2e coverage
         run: node packages/scripts/lint-lane-coverage.mjs
 
+      - name: Source-owned artifact authority
+        run: node packages/scripts/artifact-authority-contract.mjs
+
       # Binding policy audits from CLAUDE.md that previously ran nowhere in
       # CI. Both are dependency-free node scripts (<5s): the error-policy
       # ratchet fails only when a file this PR touches ADDS an empty catch or
